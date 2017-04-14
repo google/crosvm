@@ -632,7 +632,6 @@ pub struct kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1 {
     pub vector: __u8,
     pub _bitfield_1: u8,
     pub _bitfield_2: u8,
-    pub _bitfield_3: u8,
     pub reserved: [__u8; 4usize],
     pub dest_id: __u8,
 }
@@ -802,7 +801,7 @@ impl kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1 {
     pub fn reserve(&self) -> __u8 {
         let mask = 127usize as u8;
         let field_val: u8 =
-            unsafe { ::std::mem::transmute(self._bitfield_3) };
+            unsafe { ::std::mem::transmute(self._bitfield_2) };
         let val = (field_val & mask) >> 0usize;
         unsafe { ::std::mem::transmute(val as u8) }
     }
@@ -811,10 +810,10 @@ impl kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1 {
         let mask = 127usize as u8;
         let val = val as u8 as u8;
         let mut field_val: u8 =
-            unsafe { ::std::mem::transmute(self._bitfield_3) };
+            unsafe { ::std::mem::transmute(self._bitfield_2) };
         field_val &= !mask;
         field_val |= (val << 0usize) & mask;
-        self._bitfield_3 = unsafe { ::std::mem::transmute(field_val) };
+        self._bitfield_2 = unsafe { ::std::mem::transmute(field_val) };
     }
 }
 #[test]
@@ -1385,6 +1384,7 @@ pub struct kvm_msrs {
     pub nmsrs: __u32,
     pub pad: __u32,
     pub entries: __IncompleteArrayField<kvm_msr_entry>,
+    pub __force_alignment: [u64; 0],
 }
 #[test]
 fn bindgen_test_layout_kvm_msrs() {
@@ -3474,6 +3474,7 @@ pub struct kvm_coalesced_mmio_ring {
     pub first: __u32,
     pub last: __u32,
     pub coalesced_mmio: __IncompleteArrayField<kvm_coalesced_mmio>,
+    pub __force_alignment: [u64; 0],
 }
 #[test]
 fn bindgen_test_layout_kvm_coalesced_mmio_ring() {
@@ -4648,6 +4649,7 @@ pub struct kvm_irq_routing {
     pub nr: __u32,
     pub flags: __u32,
     pub entries: __IncompleteArrayField<kvm_irq_routing_entry>,
+    pub __force_alignment: [u64; 0],
 }
 #[test]
 fn bindgen_test_layout_kvm_irq_routing() {
