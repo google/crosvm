@@ -50,7 +50,7 @@ macro_rules! ioctl_iowr_nr {
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86 {
-    // generated with bindgen /usr/include/linux/kvm.h --no-unstable-rust --constified-enum '*'
+    // generated with bindgen /usr/include/linux/kvm.h --no-unstable-rust --constified-enum '*' --with-derive-default
     pub mod bindings;
     pub use bindings::*;
 
@@ -83,7 +83,7 @@ pub mod x86 {
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub mod arm {
-    // generated with bindgen <arm sysroot>/usr/include/linux/kvm.h --no-unstable-rust --constified-enum '*' -- -I<arm sysroot>/usr/include
+    // generated with bindgen <arm sysroot>/usr/include/linux/kvm.h --no-unstable-rust --constified-enum '*' --with-derive-default -- -I<arm sysroot>/usr/include
     pub mod bindings;
     pub use bindings::*;
 

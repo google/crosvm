@@ -510,7 +510,7 @@ pub type __u32 = ::std::os::raw::c_uint;
 pub type __s64 = ::std::os::raw::c_longlong;
 pub type __u64 = ::std::os::raw::c_ulonglong;
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct __kernel_fd_set {
     pub fds_bits: [::std::os::raw::c_ulong; 16usize],
 }
@@ -552,7 +552,7 @@ pub type __kernel_size_t = ::std::os::raw::c_uint;
 pub type __kernel_ssize_t = ::std::os::raw::c_int;
 pub type __kernel_ptrdiff_t = ::std::os::raw::c_int;
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct __kernel_fsid_t {
     pub val: [::std::os::raw::c_int; 2usize],
 }
@@ -589,7 +589,7 @@ pub type __be64 = __u64;
 pub type __sum16 = __u16;
 pub type __wsum = __u32;
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct pt_regs {
     pub uregs: [::std::os::raw::c_long; 18usize],
 }
@@ -609,7 +609,7 @@ impl Clone for pt_regs {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_regs {
     pub usr_regs: pt_regs,
     pub svc_regs: [::std::os::raw::c_ulong; 3usize],
@@ -659,7 +659,7 @@ impl Clone for kvm_regs {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_vcpu_init {
     pub target: __u32,
     pub features: [__u32; 7usize],
@@ -685,7 +685,7 @@ impl Clone for kvm_vcpu_init {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_sregs {
 }
 #[test]
@@ -699,7 +699,7 @@ impl Clone for kvm_sregs {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_fpu {
 }
 #[test]
@@ -713,7 +713,7 @@ impl Clone for kvm_fpu {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_guest_debug_arch {
 }
 #[test]
@@ -728,7 +728,7 @@ impl Clone for kvm_guest_debug_arch {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_debug_exit_arch {
 }
 #[test]
@@ -743,7 +743,7 @@ impl Clone for kvm_debug_exit_arch {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_sync_regs {
 }
 #[test]
@@ -757,7 +757,7 @@ impl Clone for kvm_sync_regs {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_arch_memory_slot {
 }
 #[test]
@@ -772,7 +772,7 @@ impl Clone for kvm_arch_memory_slot {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_user_trace_setup {
     pub buf_size: __u32,
     pub buf_nr: __u32,
@@ -799,7 +799,7 @@ impl Clone for kvm_user_trace_setup {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_breakpoint {
     pub enabled: __u32,
     pub padding: __u32,
@@ -831,7 +831,7 @@ impl Clone for kvm_breakpoint {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_debug_guest {
     pub enabled: __u32,
     pub pad: __u32,
@@ -869,7 +869,7 @@ impl Clone for kvm_debug_guest {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_memory_region {
     pub slot: __u32,
     pub flags: __u32,
@@ -907,7 +907,7 @@ impl Clone for kvm_memory_region {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_userspace_memory_region {
     pub slot: __u32,
     pub flags: __u32,
@@ -959,13 +959,13 @@ impl Clone for kvm_userspace_memory_region {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_irq_level {
     pub __bindgen_anon_1: kvm_irq_level__bindgen_ty_1,
     pub level: __u32,
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_irq_level__bindgen_ty_1 {
     pub irq: __BindgenUnionField<__u32>,
     pub status: __BindgenUnionField<__s32>,
@@ -1041,6 +1041,9 @@ fn bindgen_test_layout_kvm_irqchip__bindgen_ty_1() {
 impl Clone for kvm_irqchip__bindgen_ty_1 {
     fn clone(&self) -> Self { *self }
 }
+impl Default for kvm_irqchip__bindgen_ty_1 {
+    fn default() -> Self { unsafe { ::std::mem::zeroed() } }
+}
 #[test]
 fn bindgen_test_layout_kvm_irqchip() {
     assert_eq!(::std::mem::size_of::<kvm_irqchip>() , 520usize , concat ! (
@@ -1066,8 +1069,11 @@ fn bindgen_test_layout_kvm_irqchip() {
 impl Clone for kvm_irqchip {
     fn clone(&self) -> Self { *self }
 }
+impl Default for kvm_irqchip {
+    fn default() -> Self { unsafe { ::std::mem::zeroed() } }
+}
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_pit_config {
     pub flags: __u32,
     pub pad: [__u32; 15usize],
@@ -1109,7 +1115,7 @@ pub struct kvm_run {
     pub s: kvm_run__bindgen_ty_2,
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1 {
     pub hw: __BindgenUnionField<kvm_run__bindgen_ty_1__bindgen_ty_1>,
     pub fail_entry: __BindgenUnionField<kvm_run__bindgen_ty_1__bindgen_ty_2>,
@@ -1133,7 +1139,7 @@ pub struct kvm_run__bindgen_ty_1 {
     pub bindgen_union_field: [u64; 32usize],
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_1 {
     pub hardware_exit_reason: __u64,
 }
@@ -1159,7 +1165,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_1 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_2 {
     pub hardware_entry_failure_reason: __u64,
 }
@@ -1185,7 +1191,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_2 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_3 {
     pub exception: __u32,
     pub error_code: __u32,
@@ -1217,7 +1223,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_3 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_4 {
     pub direction: __u8,
     pub size: __u8,
@@ -1270,7 +1276,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_4 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_5 {
     pub arch: kvm_debug_exit_arch,
 }
@@ -1295,7 +1301,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_5 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_6 {
     pub phys_addr: __u64,
     pub data: [__u8; 8usize],
@@ -1341,7 +1347,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_6 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_7 {
     pub nr: __u64,
     pub args: [__u64; 6usize],
@@ -1394,7 +1400,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_7 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_8 {
     pub rip: __u64,
     pub is_write: __u32,
@@ -1433,7 +1439,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_8 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_9 {
     pub icptcode: __u8,
     pub ipa: __u16,
@@ -1472,7 +1478,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_9 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_10 {
     pub trans_exc_code: __u64,
     pub pgm_code: __u32,
@@ -1504,7 +1510,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_10 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_11 {
     pub dcrn: __u32,
     pub data: __u32,
@@ -1543,7 +1549,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_11 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_12 {
     pub suberror: __u32,
     pub ndata: __u32,
@@ -1582,7 +1588,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_12 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_13 {
     pub gprs: [__u64; 32usize],
 }
@@ -1607,7 +1613,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_13 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_14 {
     pub nr: __u64,
     pub ret: __u64,
@@ -1646,7 +1652,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_14 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_15 {
     pub subchannel_id: __u16,
     pub subchannel_nr: __u16,
@@ -1706,7 +1712,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_15 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_16 {
     pub epr: __u32,
 }
@@ -1731,7 +1737,7 @@ impl Clone for kvm_run__bindgen_ty_1__bindgen_ty_16 {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_17 {
     pub type_: __u32,
     pub flags: __u64,
@@ -1898,6 +1904,9 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_2() {
 impl Clone for kvm_run__bindgen_ty_2 {
     fn clone(&self) -> Self { *self }
 }
+impl Default for kvm_run__bindgen_ty_2 {
+    fn default() -> Self { unsafe { ::std::mem::zeroed() } }
+}
 #[test]
 fn bindgen_test_layout_kvm_run() {
     assert_eq!(::std::mem::size_of::<kvm_run>() , 1328usize , concat ! (
@@ -1964,8 +1973,11 @@ fn bindgen_test_layout_kvm_run() {
 impl Clone for kvm_run {
     fn clone(&self) -> Self { *self }
 }
+impl Default for kvm_run {
+    fn default() -> Self { unsafe { ::std::mem::zeroed() } }
+}
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_coalesced_mmio_zone {
     pub addr: __u64,
     pub size: __u32,
@@ -1999,7 +2011,7 @@ impl Clone for kvm_coalesced_mmio_zone {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_coalesced_mmio {
     pub phys_addr: __u64,
     pub len: __u32,
@@ -2037,7 +2049,7 @@ impl Clone for kvm_coalesced_mmio {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_coalesced_mmio_ring {
     pub first: __u32,
     pub last: __u32,
@@ -2072,7 +2084,7 @@ impl Clone for kvm_coalesced_mmio_ring {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_translation {
     pub linear_address: __u64,
     pub physical_address: __u64,
@@ -2122,7 +2134,7 @@ impl Clone for kvm_translation {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_interrupt {
     pub irq: __u32,
 }
@@ -2142,14 +2154,14 @@ impl Clone for kvm_interrupt {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_dirty_log {
     pub slot: __u32,
     pub padding1: __u32,
     pub __bindgen_anon_1: kvm_dirty_log__bindgen_ty_1,
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_dirty_log__bindgen_ty_1 {
     pub dirty_bitmap: __BindgenUnionField<*mut ::std::os::raw::c_void>,
     pub padding2: __BindgenUnionField<__u64>,
@@ -2201,7 +2213,7 @@ impl Clone for kvm_dirty_log {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_signal_mask {
     pub len: __u32,
     pub sigset: __IncompleteArrayField<__u8>,
@@ -2227,7 +2239,7 @@ impl Clone for kvm_signal_mask {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_tpr_access_ctl {
     pub enabled: __u32,
     pub flags: __u32,
@@ -2259,7 +2271,7 @@ impl Clone for kvm_tpr_access_ctl {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_vapic_addr {
     pub vapic_addr: __u64,
 }
@@ -2279,7 +2291,7 @@ impl Clone for kvm_vapic_addr {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_mp_state {
     pub mp_state: __u32,
 }
@@ -2299,7 +2311,7 @@ impl Clone for kvm_mp_state {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_psw {
     pub mask: __u64,
     pub addr: __u64,
@@ -2325,7 +2337,7 @@ impl Clone for kvm_s390_psw {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_interrupt {
     pub type_: __u32,
     pub parm: __u32,
@@ -2357,7 +2369,7 @@ impl Clone for kvm_s390_interrupt {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_io_info {
     pub subchannel_id: __u16,
     pub subchannel_nr: __u16,
@@ -2395,7 +2407,7 @@ impl Clone for kvm_s390_io_info {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_ext_info {
     pub ext_params: __u32,
     pub pad: __u32,
@@ -2427,7 +2439,7 @@ impl Clone for kvm_s390_ext_info {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_pgm_info {
     pub trans_exc_code: __u64,
     pub mon_code: __u64,
@@ -2513,7 +2525,7 @@ impl Clone for kvm_s390_pgm_info {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_prefix_info {
     pub address: __u32,
 }
@@ -2534,7 +2546,7 @@ impl Clone for kvm_s390_prefix_info {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_extcall_info {
     pub code: __u16,
 }
@@ -2556,7 +2568,7 @@ impl Clone for kvm_s390_extcall_info {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_emerg_info {
     pub code: __u16,
 }
@@ -2577,7 +2589,7 @@ impl Clone for kvm_s390_emerg_info {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_stop_info {
     pub flags: __u32,
 }
@@ -2597,7 +2609,7 @@ impl Clone for kvm_s390_stop_info {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_mchk_info {
     pub cr14: __u64,
     pub mcic: __u64,
@@ -2648,13 +2660,13 @@ impl Clone for kvm_s390_mchk_info {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_irq {
     pub type_: __u64,
     pub u: kvm_s390_irq__bindgen_ty_1,
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_irq__bindgen_ty_1 {
     pub io: __BindgenUnionField<kvm_s390_io_info>,
     pub ext: __BindgenUnionField<kvm_s390_ext_info>,
@@ -2750,7 +2762,7 @@ impl Clone for kvm_s390_irq {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_guest_debug {
     pub control: __u32,
     pub pad: __u32,
@@ -2834,6 +2846,9 @@ fn bindgen_test_layout_kvm_ioeventfd() {
                 "Alignment of field: " , stringify ! ( kvm_ioeventfd ) , "::"
                 , stringify ! ( pad ) ));
 }
+impl Default for kvm_ioeventfd {
+    fn default() -> Self { unsafe { ::std::mem::zeroed() } }
+}
 #[repr(C)]
 pub struct kvm_enable_cap {
     pub cap: __u32,
@@ -2868,6 +2883,9 @@ fn bindgen_test_layout_kvm_enable_cap() {
                 "Alignment of field: " , stringify ! ( kvm_enable_cap ) , "::"
                 , stringify ! ( pad ) ));
 }
+impl Default for kvm_enable_cap {
+    fn default() -> Self { unsafe { ::std::mem::zeroed() } }
+}
 #[repr(C)]
 pub struct kvm_ppc_pvinfo {
     pub flags: __u32,
@@ -2896,8 +2914,11 @@ fn bindgen_test_layout_kvm_ppc_pvinfo() {
                 "Alignment of field: " , stringify ! ( kvm_ppc_pvinfo ) , "::"
                 , stringify ! ( pad ) ));
 }
+impl Default for kvm_ppc_pvinfo {
+    fn default() -> Self { unsafe { ::std::mem::zeroed() } }
+}
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_ppc_one_page_size {
     pub page_shift: __u32,
     pub pte_enc: __u32,
@@ -2925,7 +2946,7 @@ impl Clone for kvm_ppc_one_page_size {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_ppc_one_seg_page_size {
     pub page_shift: __u32,
     pub slb_enc: __u32,
@@ -2962,7 +2983,7 @@ impl Clone for kvm_ppc_one_seg_page_size {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_ppc_smmu_info {
     pub flags: __u64,
     pub slb_size: __u32,
@@ -3000,7 +3021,7 @@ impl Clone for kvm_ppc_smmu_info {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_irq_routing_irqchip {
     pub irqchip: __u32,
     pub pin: __u32,
@@ -3028,7 +3049,7 @@ impl Clone for kvm_irq_routing_irqchip {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_irq_routing_msi {
     pub address_lo: __u32,
     pub address_hi: __u32,
@@ -3067,7 +3088,7 @@ impl Clone for kvm_irq_routing_msi {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_irq_routing_s390_adapter {
     pub ind_addr: __u64,
     pub summary_addr: __u64,
@@ -3119,7 +3140,7 @@ impl Clone for kvm_irq_routing_s390_adapter {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_irq_routing_entry {
     pub gsi: __u32,
     pub type_: __u32,
@@ -3128,7 +3149,7 @@ pub struct kvm_irq_routing_entry {
     pub u: kvm_irq_routing_entry__bindgen_ty_1,
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_irq_routing_entry__bindgen_ty_1 {
     pub irqchip: __BindgenUnionField<kvm_irq_routing_irqchip>,
     pub msi: __BindgenUnionField<kvm_irq_routing_msi>,
@@ -3212,7 +3233,7 @@ impl Clone for kvm_irq_routing_entry {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_irq_routing {
     pub nr: __u32,
     pub flags: __u32,
@@ -3245,7 +3266,7 @@ impl Clone for kvm_irq_routing {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_irqfd {
     pub fd: __u32,
     pub gsi: __u32,
@@ -3289,7 +3310,7 @@ impl Clone for kvm_irqfd {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_clock_data {
     pub clock: __u64,
     pub flags: __u32,
@@ -3321,7 +3342,7 @@ impl Clone for kvm_clock_data {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_config_tlb {
     pub params: __u64,
     pub array: __u64,
@@ -3359,7 +3380,7 @@ impl Clone for kvm_config_tlb {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_dirty_tlb {
     pub bitmap: __u64,
     pub num_dirty: __u32,
@@ -3385,7 +3406,7 @@ impl Clone for kvm_dirty_tlb {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_reg_list {
     pub n: __u64,
     pub reg: __IncompleteArrayField<__u64>,
@@ -3411,7 +3432,7 @@ impl Clone for kvm_reg_list {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_one_reg {
     pub id: __u64,
     pub addr: __u64,
@@ -3437,7 +3458,7 @@ impl Clone for kvm_one_reg {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_msi {
     pub address_lo: __u32,
     pub address_hi: __u32,
@@ -3481,7 +3502,7 @@ impl Clone for kvm_msi {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_arm_device_addr {
     pub id: __u64,
     pub addr: __u64,
@@ -3508,7 +3529,7 @@ impl Clone for kvm_arm_device_addr {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_create_device {
     pub type_: __u32,
     pub fd: __u32,
@@ -3540,7 +3561,7 @@ impl Clone for kvm_create_device {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_device_attr {
     pub flags: __u32,
     pub group: __u32,
@@ -3587,7 +3608,7 @@ pub const kvm_device_type_KVM_DEV_TYPE_ARM_VGIC_V3: kvm_device_type = 7;
 pub const kvm_device_type_KVM_DEV_TYPE_MAX: kvm_device_type = 8;
 pub type kvm_device_type = ::std::os::raw::c_uint;
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_s390_ucas_mapping {
     pub user_addr: __u64,
     pub vcpu_addr: __u64,
@@ -3621,7 +3642,7 @@ impl Clone for kvm_s390_ucas_mapping {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_assigned_pci_dev {
     pub assigned_dev_id: __u32,
     pub busnr: __u32,
@@ -3631,7 +3652,7 @@ pub struct kvm_assigned_pci_dev {
     pub __bindgen_anon_1: kvm_assigned_pci_dev__bindgen_ty_1,
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_assigned_pci_dev__bindgen_ty_1 {
     pub reserved: __BindgenUnionField<[__u32; 11usize]>,
     pub bindgen_union_field: [u32; 11usize],
@@ -3694,7 +3715,7 @@ impl Clone for kvm_assigned_pci_dev {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_assigned_irq {
     pub assigned_dev_id: __u32,
     pub host_irq: __u32,
@@ -3703,7 +3724,7 @@ pub struct kvm_assigned_irq {
     pub __bindgen_anon_1: kvm_assigned_irq__bindgen_ty_1,
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_assigned_irq__bindgen_ty_1 {
     pub reserved: __BindgenUnionField<[__u32; 12usize]>,
     pub bindgen_union_field: [u32; 12usize],
@@ -3759,7 +3780,7 @@ impl Clone for kvm_assigned_irq {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_assigned_msix_nr {
     pub assigned_dev_id: __u32,
     pub entry_nr: __u16,
@@ -3792,7 +3813,7 @@ impl Clone for kvm_assigned_msix_nr {
     fn clone(&self) -> Self { *self }
 }
 #[repr(C)]
-#[derive(Debug, Copy)]
+#[derive(Debug, Default, Copy)]
 pub struct kvm_assigned_msix_entry {
     pub assigned_dev_id: __u32,
     pub gsi: __u32,
