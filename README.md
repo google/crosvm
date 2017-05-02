@@ -12,9 +12,11 @@ devices.
 The crosvm source code is organized into crates, each with their own
 unit tests. These crates are:
 
-* `kvm-sys` low-level (mostly) auto-generated structures and constants for using KVM
-* `kvm` unsafe, low-level wrapper code for using kvm-sys
+* `kernel_loader` Loads elf64 kernel files to a slice of memory.
+* `kvm_sys` low-level (mostly) auto-generated structures and constants for using KVM
+* `kvm` unsafe, low-level wrapper code for using kvm_sys
 * `crosvm` the top-level binary front-end for using crosvm
+* `x86_64` Support code specific to 64 bit intel machines.
 
 ## Usage
 

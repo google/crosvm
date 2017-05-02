@@ -1,0 +1,20 @@
+[package]
+name = "crosvm"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+
+[profile.release]
+lto = true
+panic = 'abort'
+
+[dependencies]
+kvm = { path = "kvm" }
+sys_util = { path = "sys_util" }
+x86_64 = { path = "x86_64" }
+kernel_loader = { path = "kernel_loader" }
+libc = "0.2.21"
+byteorder = "1"
+
+[dependencies.clap]
+version = "*"
+default-features = false
