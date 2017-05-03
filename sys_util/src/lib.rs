@@ -7,8 +7,10 @@
 extern crate libc;
 
 mod mmap;
+mod eventfd;
 mod errno;
 
 pub use mmap::*;
+pub use eventfd::*;
 pub use errno::{Error, Result};
 use errno::errno_result;
