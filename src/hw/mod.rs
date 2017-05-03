@@ -7,7 +7,9 @@
 mod cmos;
 mod serial;
 mod i8042;
+mod bus;
 
 pub use self::cmos::Cmos;
 pub use self::serial::Serial;
 pub use self::i8042::I8042Device;
+pub use self::bus::{Bus, BusDevice};
