@@ -11,6 +11,7 @@ extern crate sys_util;
 mod cap;
 
 use std::fs::File;
+use std::mem;
 use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
@@ -40,6 +41,14 @@ unsafe fn ioctl_with_ref<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: &T) -> c_int {
 
 unsafe fn ioctl_with_mut_ref<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: &mut T) -> c_int {
     libc::ioctl(fd.as_raw_fd(), nr, arg as *mut T as *mut c_void)
+}
+
+unsafe fn ioctl_with_ptr<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: *const T) -> c_int {
+    libc::ioctl(fd.as_raw_fd(), nr, arg as *const c_void)
+}
+
+unsafe fn ioctl_with_mut_ptr<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: *mut T) -> c_int {
+    libc::ioctl(fd.as_raw_fd(), nr, arg as *mut c_void)
 }
 
 /// A wrapper around opening and using `/dev/kvm`.
@@ -97,6 +106,28 @@ impl Kvm {
                 4
             },
         }
+    }
+
+    /// X86 specific call to get the system supported CPUID values
+    ///
+    /// # Arguments
+    ///
+    /// * `max_cpus` - Maximum number of cpuid entries to return.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_supported_cpuid(&self, max_cpus: usize) -> Result<CpuId> {
+        let mut cpuid = CpuId::new(max_cpus);
+
+        let ret = unsafe {
+            // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the memory
+            // allocated for the struct. The limit is read from nent, which is set to the allocated
+            // size(max_cpus) above.
+            ioctl_with_mut_ptr(self, KVM_GET_SUPPORTED_CPUID(), cpuid.as_mut_ptr())
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+
+        Ok(cpuid)
     }
 }
 
@@ -543,11 +574,138 @@ impl Vcpu {
         }
         Ok(())
     }
+
+    /// X86 specific call to setup the FPU
+    ///
+    /// See the documentation for KVM_SET_FPU.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_fpu(&self, fpu: &kvm_fpu) -> Result<()> {
+        let ret = unsafe {
+            // Here we trust the kernel not to read past the end of the kvm_fpu struct.
+            ioctl_with_ref(self, KVM_SET_FPU(), fpu)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
+    /// X86 specific call to setup the MSRS
+    ///
+    /// See the documentation for KVM_SET_MSRS.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_msrs(&self, msrs: &kvm_msrs) -> Result<()> {
+        let ret = unsafe {
+            // Here we trust the kernel not to read past the end of the kvm_msrs struct.
+            ioctl_with_ref(self, KVM_SET_MSRS(), msrs)
+        };
+        if ret < 0 { // KVM_SET_MSRS actually returns the number of msr entries written.
+            return errno_result();
+        }
+        Ok(())
+    }
+
+    /// X86 specific call to setup the CPUID registers
+    ///
+    /// See the documentation for KVM_SET_CPUID2.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_cpuid2(&self, cpuid: &CpuId) -> Result<()> {
+        let ret = unsafe {
+            // Here we trust the kernel not to read past the end of the kvm_msrs struct.
+            ioctl_with_ptr(self, KVM_SET_CPUID2(), cpuid.as_ptr())
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
+    /// X86 specific call to get the state of the "Local Advanced Programmable Interrupt Controller".
+    ///
+    /// See the documentation for KVM_GET_LAPIC.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_lapic(&self) -> Result<kvm_lapic_state> {
+        let mut klapic: kvm_lapic_state = Default::default();
+
+        let ret = unsafe {
+            // The ioctl is unsafe unless you trust the kernel not to write past the end of the
+            // local_apic struct.
+            ioctl_with_mut_ref(self, KVM_GET_LAPIC(), &mut klapic)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(klapic)
+    }
+
+    /// X86 specific call to set the state of the "Local Advanced Programmable Interrupt Controller".
+    ///
+    /// See the documentation for KVM_SET_LAPIC.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_lapic(&self, klapic: &kvm_lapic_state) -> Result<()> {
+        let ret = unsafe {
+            // The ioctl is safe because the kernel will only read from the klapic struct.
+            ioctl_with_ref(self, KVM_SET_LAPIC(), klapic)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
 }
 
 impl AsRawFd for Vcpu {
     fn as_raw_fd(&self) -> RawFd {
         self.vcpu.as_raw_fd()
+    }
+}
+
+/// Wrapper for kvm_cpuid2 which has a zero length array at the end.
+/// Hides the zero length array behind a bounds check.
+pub struct CpuId {
+    bytes: Vec<u8>, // Actually accessed as a kvm_cpuid2 struct.
+    allocated_len: usize, // Number of kvm_cpuid_entry2 structs at the end of kvm_cpuid2.
+}
+
+impl CpuId {
+    pub fn new(array_len: usize) -> CpuId {
+        let vec_size_bytes = mem::size_of::<kvm_cpuid2>() +
+            (array_len * mem::size_of::<kvm_cpuid_entry2>());
+        let bytes: Vec<u8> = vec![0; vec_size_bytes];
+        let kvm_cpuid: &mut kvm_cpuid2 = unsafe {
+            // We have ensured in new that there is enough space for the structure so this
+            // conversion is safe.
+            &mut *(bytes.as_ptr() as *mut kvm_cpuid2)
+        };
+        kvm_cpuid.nent = array_len as u32;
+
+        CpuId { bytes: bytes, allocated_len: array_len }
+    }
+
+    /// Get the entries slice so they can be modified before passing to the VCPU.
+    pub fn mut_entries_slice(&mut self) -> &mut [kvm_cpuid_entry2] {
+        unsafe {
+            // We have ensured in new that there is enough space for the structure so this
+            // conversion is safe.
+            let kvm_cpuid: &mut kvm_cpuid2 = &mut *(self.bytes.as_ptr() as *mut kvm_cpuid2);
+
+            // Mapping the unsized array to a slice is unsafe because the length isn't known.  Using
+            // the length we originally allocated with eliminates the possibility of overflow.
+            if kvm_cpuid.nent as usize > self.allocated_len {
+                kvm_cpuid.nent = self.allocated_len as u32;
+            }
+            kvm_cpuid.entries.as_mut_slice(kvm_cpuid.nent as usize)
+        }
+    }
+
+    /// Get a  pointer so it can be passed to the kernel.  Using this pointer is unsafe.
+    pub fn as_ptr(&self) -> *const kvm_cpuid2 {
+        self.bytes.as_ptr() as *const kvm_cpuid2
+    }
+
+    /// Get a mutable pointer so it can be passed to the kernel.  Using this pointer is unsafe.
+    pub fn as_mut_ptr(&mut self) -> *mut kvm_cpuid2 {
+        self.bytes.as_mut_ptr() as *mut kvm_cpuid2
     }
 }
 
