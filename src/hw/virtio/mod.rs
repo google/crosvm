@@ -6,9 +6,11 @@
 
 mod queue;
 mod mmio;
+mod block;
 
 pub use self::queue::*;
 pub use self::mmio::*;
+pub use self::block::*;
 
 const DEVICE_ACKNOWLEDGE: u32 = 0x01;
 const DEVICE_DRIVER: u32 = 0x02;

@@ -23,3 +23,5 @@ pub use guest_address::*;
 pub use guest_memory::*;
 pub use struct_util::*;
 pub use tempdir::*;
+
+pub use guest_memory::Error as GuestMemoryError;
