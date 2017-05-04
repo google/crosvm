@@ -9,6 +9,7 @@ mod serial;
 mod i8042;
 mod bus;
 mod proxy;
+pub mod virtio;
 
 pub use self::cmos::Cmos;
 pub use self::serial::Serial;
