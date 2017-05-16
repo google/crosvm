@@ -10,7 +10,7 @@ extern crate kvm;
 
 use kvm::*;
 use kvm_sys::kvm_regs;
-use sys_util::MemoryMapping;
+use sys_util::{GuestAddress, GuestMemory};
 
 #[test]
 fn test_run() {
@@ -26,14 +26,17 @@ fn test_run() {
         0xf4,             /* hlt */
     ];
 
+    let mem_size = 0x1000;
+    let load_addr = GuestAddress(0x1000);
+    let mem = GuestMemory::new(&vec![(load_addr, mem_size)]).unwrap();
+
     let kvm = Kvm::new().expect("new kvm failed");
-    let mut vm = Vm::new(&kvm).expect("new vm failed");
+    let vm = Vm::new(&kvm, mem).expect("new vm failed");
     let vcpu = Vcpu::new(0, &kvm, &vm).expect("new vcpu failed");
 
-    let mem_size = 0x1000;
-    let mem = MemoryMapping::new(mem_size).expect("new mmap failed");
-    mem.as_mut_slice()[..code.len()].copy_from_slice(&code);
-    vm.add_memory(0x1000, mem).expect("adding memory failed");
+    vm.get_memory()
+        .write_slice_at_addr(&code, load_addr)
+        .expect("Writing code to memory failed.");
 
     let mut vcpu_sregs = vcpu.get_sregs().expect("get sregs failed");
     assert_ne!(vcpu_sregs.cs.base, 0);
@@ -62,5 +65,9 @@ fn test_run() {
     }
 
     assert_eq!(out, "9\n");
-    assert_eq!(vm.get_memory(0x1000).unwrap()[0xf1], 0x13);
+    let result: u8 =
+        vm.get_memory()
+            .read_obj_from_addr(load_addr.checked_add(0xf1).unwrap())
+            .expect("Error reading the result.");
+    assert_eq!(result, 0x13);
 }

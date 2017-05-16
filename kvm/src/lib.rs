@@ -19,7 +19,7 @@ use libc::{open, O_RDWR, EINVAL, ENOSPC};
 
 use kvm_sys::*;
 
-use sys_util::{MemoryMapping, EventFd, Error, Result};
+use sys_util::{GuestAddress, GuestMemory, MemoryMapping, EventFd, Error, Result};
 
 pub use cap::*;
 
@@ -49,6 +49,23 @@ unsafe fn ioctl_with_ptr<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: *const T) -> c
 
 unsafe fn ioctl_with_mut_ptr<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: *mut T) -> c_int {
     libc::ioctl(fd.as_raw_fd(), nr, arg as *mut c_void)
+}
+
+unsafe fn set_user_memory_region<F: AsRawFd>(fd: &F, slot: u32, guest_addr: u64, memory_size: u64, userspace_addr: u64) -> Result<()> {
+    let region = kvm_userspace_memory_region {
+        slot: slot,
+        flags: 0,
+        guest_phys_addr: guest_addr,
+        memory_size: memory_size,
+        userspace_addr: userspace_addr,
+    };
+
+    let ret = ioctl_with_ref(fd, KVM_SET_USER_MEMORY_REGION(), &region);
+    if ret == 0 {
+        Ok(())
+    } else {
+        errno_result()
+    }
 }
 
 /// A wrapper around opening and using `/dev/kvm`.
@@ -137,11 +154,6 @@ impl AsRawFd for Kvm {
     }
 }
 
-struct MemoryRegion {
-    mapping: MemoryMapping,
-    guest_addr: u64,
-}
-
 /// An address either in programmable I/O space or in memory mapped I/O space.
 pub enum IoeventAddress {
     Pio(u64),
@@ -159,20 +171,35 @@ impl Into<u64> for NoDatamatch {
 /// A wrapper around creating and using a VM.
 pub struct Vm {
     vm: File,
-    mem_regions: Vec<MemoryRegion>,
+    guest_mem: GuestMemory,
+    next_mem_slot: usize,
 }
 
 impl Vm {
     /// Constructs a new `Vm` using the given `Kvm` instance.
-    pub fn new(kvm: &Kvm) -> Result<Vm> {
+    pub fn new(kvm: &Kvm, guest_mem: GuestMemory) -> Result<Vm> {
         // Safe because we know kvm is a real kvm fd as this module is the only one that can make
         // Kvm objects.
         let ret = unsafe { ioctl(kvm, KVM_CREATE_VM()) };
         if ret >= 0 {
             // Safe because we verify the value of ret and we are the owners of the fd.
+            let vm_file = unsafe { File::from_raw_fd(ret) };
+            guest_mem.with_regions(|index, guest_addr, size, host_addr| {
+                unsafe {
+                    // Safe because the guest regions are guaranteed not to overlap.
+                    set_user_memory_region(&vm_file, index as u32,
+                        guest_addr.offset() as u64,
+                        size as u64,
+                        host_addr as u64)
+                }
+            })?;
+
+            let next_mem_slot = guest_mem.num_regions();
+
             Ok(Vm {
-                vm: unsafe { File::from_raw_fd(ret) },
-                mem_regions: Vec::new(),
+                vm: vm_file,
+                guest_mem: guest_mem,
+                next_mem_slot: next_mem_slot,
             })
         } else {
             errno_result()
@@ -181,85 +208,41 @@ impl Vm {
 
     /// Inserts the given `MemoryMapping` into the VM's address space at `guest_addr`.
     ///
-    /// This returns on the memory slot number on success. Note that memory inserted into the VM's
-    /// address space must not overlap with any other memory slot's region.
-    pub fn add_memory(&mut self, guest_addr: u64, mem: MemoryMapping) -> Result<u32> {
-        let size = mem.size() as u64;
-        let guest_start = guest_addr;
-        let guest_end = guest_start + size;
-
-        for region in self.mem_regions.iter() {
-            let region_start = region.guest_addr;
-            let region_end = region_start + region.mapping.size() as u64;
-            if guest_start < region_end && guest_end > region_start {
-                return Err(Error::new(ENOSPC))
-            }
-
+    /// Note that memory inserted into the VM's address space must not overlap
+    /// with any other memory slot's region.
+    pub fn add_device_memory(&mut self, guest_addr: GuestAddress, mem: MemoryMapping) -> Result<()> {
+        if guest_addr < self.guest_mem.end_addr() {
+            return Err(Error::new(ENOSPC));
         }
-
-        let slot = self.mem_regions.len() as u32;
 
         // Safe because we check that the given guest address is valid and has no overlaps. We also
         // know that the pointer and size are correct because the MemoryMapping interface ensures
         // this.
         unsafe {
-            self.set_user_memory_region(slot, guest_addr, size, mem.as_ptr() as u64)
-        }?;
+            set_user_memory_region(&self.vm, self.next_mem_slot as u32,
+                                        guest_addr.offset() as u64,
+                                        mem.size() as u64,
+                                        mem.as_ptr() as u64)?;
+        };
+        self.next_mem_slot += 1;
 
-        self.mem_regions.push(MemoryRegion{
-            mapping: mem,
-            guest_addr: guest_addr,
-        });
-
-        Ok(slot)
+        Ok(())
     }
 
     /// Gets a reference to the memory at the given address in the VM's address space.
-    pub fn get_memory(&self, guest_addr: u64) -> Option<&[u8]> {
-        for region in self.mem_regions.iter() {
-            if guest_addr >= region.guest_addr && guest_addr < region.guest_addr + region.mapping.size() as u64 {
-                let offset = (guest_addr - region.guest_addr) as usize;
-                return Some(&region.mapping.as_slice()[offset..])
-            }
-        }
-        None
-    }
-
-    /// Gets a mutable reference to the memory at the given address in the VM's address space.
-    pub fn get_memory_mut(&mut self, guest_addr: u64) -> Option<&mut [u8]> {
-        for region in self.mem_regions.iter_mut() {
-            if guest_addr >= region.guest_addr && guest_addr < region.guest_addr + region.mapping.size() as u64 {
-                let offset = (guest_addr - region.guest_addr) as usize;
-                return Some(&mut region.mapping.as_mut_slice()[offset..])
-            }
-        }
-        None
-    }
-
-    unsafe fn set_user_memory_region(&self, slot: u32, guest_addr: u64, memory_size: u64, userspace_addr: u64) -> Result<()> {
-        let region = kvm_userspace_memory_region {
-            slot: slot,
-            flags: 0,
-            guest_phys_addr: guest_addr,
-            memory_size: memory_size,
-            userspace_addr: userspace_addr,
-        };
-
-        let ret = ioctl_with_ref(self, KVM_SET_USER_MEMORY_REGION(), &region);
-        if ret == 0 {
-            Ok(())
-        } else {
-            errno_result()
-        }
+    pub fn get_memory(&self) -> &GuestMemory {
+        &self.guest_mem
     }
 
     /// Sets the address of the three-page region in the VM's address space.
     ///
     /// See the documentation on the KVM_SET_TSS_ADDR ioctl.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn set_tss_addr(&self, addr: c_ulong) -> Result<()> {
+    pub fn set_tss_addr(&self, addr: GuestAddress) -> Result<()> {
         // Safe because we know that our file is a VM fd and we verify the return result.
-        let ret = unsafe { ioctl_with_val(self, KVM_SET_TSS_ADDR(), addr) };
+        let ret = unsafe {
+            ioctl_with_val(self, KVM_SET_TSS_ADDR(), addr.offset() as u64)
+        };
         if ret == 0 {
             Ok(())
         } else {
@@ -437,7 +420,8 @@ impl Vcpu {
         // the value of the fd and we own the fd.
         let vcpu = unsafe { File::from_raw_fd(vcpu_fd) };
 
-        let run_mmap = MemoryMapping::from_fd(&vcpu, run_mmap_size)?;
+        let run_mmap = MemoryMapping::from_fd(&vcpu, run_mmap_size)
+            .map_err(|_| Error::new(ENOSPC))?;
 
         Ok(Vcpu {
             vcpu: vcpu,
@@ -721,7 +705,8 @@ mod tests {
     #[test]
     fn create_vm() {
         let kvm = Kvm::new().unwrap();
-        Vm::new(&kvm).unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        Vm::new(&kvm, gm).unwrap();
     }
 
     #[test]
@@ -735,32 +720,32 @@ mod tests {
     #[test]
     fn add_memory() {
         let kvm = Kvm::new().unwrap();
-        let mut vm = Vm::new(&kvm).unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMapping::new(mem_size).unwrap();
-        vm.add_memory(0x1000, mem).unwrap();
+        vm.add_device_memory(GuestAddress(0x1000), mem).unwrap();
     }
 
-    #[test]
+     #[test]
     fn overlap_memory() {
         let kvm = Kvm::new().unwrap();
-        let mut vm = Vm::new(&kvm).unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x2000;
-        let mem1 = MemoryMapping::new(mem_size).unwrap();
-        let mem2 = MemoryMapping::new(mem_size).unwrap();
-        vm.add_memory(0x1000, mem1).unwrap();
-        assert!(vm.add_memory(0x2000, mem2).is_err());
+        let mem = MemoryMapping::new(mem_size).unwrap();
+        assert!(vm.add_device_memory(GuestAddress(0x2000), mem).is_err());
     }
 
     #[test]
     fn get_memory() {
         let kvm = Kvm::new().unwrap();
-        let mut vm = Vm::new(&kvm).unwrap();
-        let mem_size = 0x1000;
-        let mem = MemoryMapping::new(mem_size).unwrap();
-        mem.as_mut_slice()[0xf0] = 67;
-        vm.add_memory(0x1000, mem).unwrap();
-        assert_eq!(vm.get_memory(0x10f0).unwrap()[0], 67);
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        let obj_addr = GuestAddress(0xf0);
+        vm.get_memory().write_obj_at_addr(67u8, obj_addr).unwrap();
+        let read_val: u8 = vm.get_memory().read_obj_from_addr(obj_addr).unwrap();
+        assert_eq!(read_val, 67u8);
     }
 
     #[test]
@@ -768,7 +753,8 @@ mod tests {
         assert_eq!(std::mem::size_of::<NoDatamatch>(), 0);
 
         let kvm = Kvm::new().unwrap();
-        let vm = Vm::new(&kvm).unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
         let evtfd = EventFd::new().unwrap();
         vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xf4), NoDatamatch).unwrap();
         vm.register_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), NoDatamatch).unwrap();
@@ -781,7 +767,8 @@ mod tests {
     #[test]
     fn register_irqfd() {
         let kvm = Kvm::new().unwrap();
-        let vm = Vm::new(&kvm).unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
         let evtfd1 = EventFd::new().unwrap();
         let evtfd2 = EventFd::new().unwrap();
         let evtfd3 = EventFd::new().unwrap();
@@ -794,7 +781,8 @@ mod tests {
     #[test]
     fn create_vcpu() {
         let kvm = Kvm::new().unwrap();
-        let vm = Vm::new(&kvm).unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
         Vcpu::new(0, &kvm, &vm).unwrap();
     }
 

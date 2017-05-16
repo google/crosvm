@@ -8,6 +8,8 @@ use std::mem;
 use std::ffi::CStr;
 use std::io::{Read, Seek, SeekFrom};
 
+use sys_util::{GuestAddress, GuestMemory};
+
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
@@ -17,11 +19,12 @@ mod elf;
 #[derive(Debug, PartialEq)]
 pub enum Error {
     BigEndianElfOnLittle,
+    CommandLineCopy,
     CommandLineOverflow,
-    ImagePastRamEnd,
     InvalidElfMagicNumber,
     InvalidProgramHeaderSize,
     InvalidProgramHeaderOffset,
+    InvalidProgramHeaderAddress,
     ReadElfHeader,
     ReadKernelImage,
     ReadProgramHeader,
@@ -35,10 +38,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///
 /// # Arguments
 ///
-/// * `guest_mem` - A u8 slice that will be partially overwritten by the kernel.
+/// * `guest_mem` - The guest memory region the kernel is written to.
 /// * `kernel_start` - The offset into `guest_mem` at which to load the kernel.
 /// * `kernel_image` - Input vmlinux image.
-pub fn load_kernel<F>(guest_mem: &mut [u8], kernel_start: usize, kernel_image: &mut F) -> Result<()>
+pub fn load_kernel<F>(guest_mem: &GuestMemory, kernel_start: GuestAddress, kernel_image: &mut F) -> Result<()>
     where F: Read + Seek
 {
     let mut ehdr: elf::Elf64_Ehdr = Default::default();
@@ -81,15 +84,12 @@ pub fn load_kernel<F>(guest_mem: &mut [u8], kernel_start: usize, kernel_image: &
             continue;
         }
 
-        let mem_offset = phdr.p_paddr as usize + kernel_start;
-        let mem_end = mem_offset + phdr.p_filesz as usize;
-        if mem_end > guest_mem.len() {
-            return Err(Error::ImagePastRamEnd);
-        }
-        let mut dst = &mut guest_mem[mem_offset..mem_end];
         kernel_image.seek(SeekFrom::Start(phdr.p_offset))
             .map_err(|_| Error::SeekKernelStart)?;
-        kernel_image.read_exact(dst)
+
+        let mem_offset = kernel_start.checked_add(phdr.p_paddr as usize)
+            .ok_or(Error::InvalidProgramHeaderAddress)?;
+        guest_mem.read_to_memory(mem_offset, kernel_image, phdr.p_filesz as usize)
             .map_err(|_| Error::ReadKernelImage)?;
     }
 
@@ -101,22 +101,22 @@ pub fn load_kernel<F>(guest_mem: &mut [u8], kernel_start: usize, kernel_image: &
 /// # Arguments
 ///
 /// * `guest_mem` - A u8 slice that will be partially overwritten by the command line.
-/// * `kernel_start` - The offset into `guest_mem` at which to load the command line.
+/// * `guest_addr` - The address in `guest_mem` at which to load the command line.
 /// * `cmdline` - The kernel command line.
-pub fn load_cmdline(guest_mem: &mut [u8], offset: usize, cmdline: &CStr) -> Result<()> {
+pub fn load_cmdline(guest_mem: &GuestMemory, guest_addr: GuestAddress, cmdline: &CStr) -> Result<()> {
     let len = cmdline.to_bytes().len();
     if len <= 0 {
         return Ok(());
     }
 
-    let end = offset + len + 1; // Extra for null termination.
-    if end > guest_mem.len() {
-        return Err(Error::CommandLineOverflow);
+    let end = guest_addr.checked_add(len + 1)
+        .ok_or(Error::CommandLineOverflow)?; // Extra for null termination.
+    if end > guest_mem.end_addr() {
+        return Err(Error::CommandLineOverflow)?;
     }
-    let cmdline_slice = &mut guest_mem[offset..end];
-    for (i, s) in cmdline_slice.iter_mut().enumerate() {
-        *s = cmdline.to_bytes().get(i).map_or(0, |c| (*c as u8));
-    }
+
+    guest_mem.write_slice_at_addr(cmdline.to_bytes_with_nul(), guest_addr)
+        .map_err(|_| Error::CommandLineCopy)?;
 
     Ok(())
 }
@@ -125,28 +125,46 @@ pub fn load_cmdline(guest_mem: &mut [u8], offset: usize, cmdline: &CStr) -> Resu
 mod test {
     use std::io::Cursor;
     use super::*;
+    use sys_util::{GuestAddress, GuestMemory};
+
+    const MEM_SIZE: usize = 0x8000;
+
+    fn create_guest_mem() -> GuestMemory {
+        GuestMemory::new(&vec![(GuestAddress(0x0), MEM_SIZE)]).unwrap()
+    }
 
     #[test]
     fn cmdline_overflow() {
-        let mut mem = vec![0; 50];
+        let gm = create_guest_mem();
+        let cmdline_address = GuestAddress(MEM_SIZE - 5);
         assert_eq!(Err(Error::CommandLineOverflow),
-                   load_cmdline(mem.as_mut_slice(),
-                                45,
+                   load_cmdline(&gm,
+                                cmdline_address,
                                 CStr::from_bytes_with_nul(b"12345\0").unwrap()));
     }
 
     #[test]
     fn cmdline_write_end() {
-        let mut mem = vec![0; 50];
+        let gm = create_guest_mem();
+        let mut cmdline_address = GuestAddress(45);
         assert_eq!(Ok(()),
-                   load_cmdline(mem.as_mut_slice(),
-                                45,
+                   load_cmdline(&gm,
+                                cmdline_address,
                                 CStr::from_bytes_with_nul(b"1234\0").unwrap()));
-        assert_eq!(mem[45], '1' as u8);
-        assert_eq!(mem[46], '2' as u8);
-        assert_eq!(mem[47], '3' as u8);
-        assert_eq!(mem[48], '4' as u8);
-        assert_eq!(mem[49], '\0' as u8);
+        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
+        assert_eq!(val, '1' as u8);
+        cmdline_address = cmdline_address.unchecked_add(1);
+        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
+        assert_eq!(val, '2' as u8);
+        cmdline_address = cmdline_address.unchecked_add(1);
+        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
+        assert_eq!(val, '3' as u8);
+        cmdline_address = cmdline_address.unchecked_add(1);
+        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
+        assert_eq!(val, '4' as u8);
+        cmdline_address = cmdline_address.unchecked_add(1);
+        let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
+        assert_eq!(val, '\0' as u8);
     }
 
     // Elf64 image that prints hello world on x86_64.
@@ -158,50 +176,42 @@ mod test {
 
     #[test]
     fn load_elf() {
+        let gm = create_guest_mem();
+        let kernel_addr = GuestAddress(0x0);
         let image = make_elf_bin();
-        let mut mem = Vec::<u8>::with_capacity(0x8000);
-        unsafe {
-            mem.set_len(0x8000);
-        }
         assert_eq!(Ok(()),
-                   load_kernel(mem.as_mut_slice(), 0x0, &mut Cursor::new(&image)));
+                   load_kernel(&gm, kernel_addr, &mut Cursor::new(&image)));
     }
 
     #[test]
     fn bad_magic() {
-        let mut mem = Vec::<u8>::with_capacity(0x8000);
-        unsafe {
-            mem.set_len(0x8000);
-        }
+        let gm = create_guest_mem();
+        let kernel_addr = GuestAddress(0x0);
         let mut bad_image = make_elf_bin();
         bad_image[0x1] = 0x33;
         assert_eq!(Err(Error::InvalidElfMagicNumber),
-                   load_kernel(mem.as_mut_slice(), 0x0, &mut Cursor::new(&bad_image)));
+                   load_kernel(&gm, kernel_addr, &mut Cursor::new(&bad_image)));
     }
 
     #[test]
     fn bad_endian() {
         // Only little endian is supported
-        let mut mem = Vec::<u8>::with_capacity(0x8000);
-        unsafe {
-            mem.set_len(0x8000);
-        }
+        let gm = create_guest_mem();
+        let kernel_addr = GuestAddress(0x0);
         let mut bad_image = make_elf_bin();
         bad_image[0x5] = 2;
         assert_eq!(Err(Error::BigEndianElfOnLittle),
-                   load_kernel(mem.as_mut_slice(), 0x0, &mut Cursor::new(&bad_image)));
+                   load_kernel(&gm, kernel_addr, &mut Cursor::new(&bad_image)));
     }
 
     #[test]
     fn bad_phoff() {
         // program header has to be past the end of the elf header
-        let mut mem = Vec::<u8>::with_capacity(0x8000);
-        unsafe {
-            mem.set_len(0x8000);
-        }
+        let gm = create_guest_mem();
+        let kernel_addr = GuestAddress(0x0);
         let mut bad_image = make_elf_bin();
         bad_image[0x20] = 0x10;
         assert_eq!(Err(Error::InvalidProgramHeaderOffset),
-                   load_kernel(mem.as_mut_slice(), 0x0, &mut Cursor::new(&bad_image)));
+                   load_kernel(&gm, kernel_addr, &mut Cursor::new(&bad_image)));
     }
 }

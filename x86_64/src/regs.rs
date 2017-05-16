@@ -2,11 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::Cursor;
-use std::mem;
-use std::result;
-
-use byteorder::{LittleEndian, WriteBytesExt};
+use std::{mem, result};
 
 use kvm;
 use kvm_sys::kvm_fpu;
@@ -16,13 +12,26 @@ use kvm_sys::kvm_regs;
 use kvm_sys::kvm_sregs;
 use gdt;
 use sys_util;
+use sys_util::{GuestAddress, GuestMemory};
 
 #[derive(Debug)]
 pub enum Error {
+    /// Setting up msrs failed.
     MsrIoctlFailed(sys_util::Error),
+    /// Failed to configure the FPU.
     FpuIoctlFailed(sys_util::Error),
+    /// Failed to set base registers for this cpu.
     SettingRegistersIoctl(sys_util::Error),
+    /// Failed to set sregs for this cpu.
     SRegsIoctlFailed(sys_util::Error),
+    /// Writing the GDT to RAM failed.
+    WriteGDTFailure,
+    /// Writing the IDT to RAM failed.
+    WriteIDTFailure,
+    /// Writing PML4 to RAM failed.
+    WritePML4Address,
+    /// Writing PDPTE to RAM failed.
+    WritePDPTEAddress,
 }
 pub type Result<T> = result::Result<T, Error>;
 
@@ -168,21 +177,25 @@ const BOOT_IDT_OFFSET: usize = 0x520;
 
 const BOOT_GDT_MAX: usize = 4;
 
-fn write_gdt_table(table: &[u64; BOOT_GDT_MAX], out: &mut [u8]) {
-    let mut writer = Cursor::new(&mut out[BOOT_GDT_OFFSET..
-                                      (BOOT_GDT_OFFSET + mem::size_of_val(table))]);
-    for entry in table.iter() {
-        writer.write_u64::<LittleEndian>(*entry).unwrap(); // Can't fail if the above slice worked.
+fn write_gdt_table(table: &[u64], guest_mem: &GuestMemory) -> Result<()> {
+    let boot_gdt_addr = GuestAddress(BOOT_GDT_OFFSET);
+    for (index, entry) in table.iter().enumerate() {
+        let addr = guest_mem.checked_offset(boot_gdt_addr, index * mem::size_of::<u64>())
+            .ok_or(Error::WriteGDTFailure)?;
+        guest_mem.write_obj_at_addr(*entry, addr)
+            .map_err(|_| Error::WriteGDTFailure)?;
     }
+    Ok(())
 }
 
-fn write_idt_value(val: u64, out: &mut [u8]) {
-    let mut writer = Cursor::new(&mut out[BOOT_IDT_OFFSET..
-                                      (BOOT_IDT_OFFSET + mem::size_of::<u64>())]);
-    writer.write_u64::<LittleEndian>(val).unwrap(); // Can't fail if the above slice worked.
+fn write_idt_value(val: u64, guest_mem: &GuestMemory) -> Result<()> {
+    let boot_idt_addr = GuestAddress(BOOT_IDT_OFFSET);
+    guest_mem
+        .write_obj_at_addr(val, boot_idt_addr)
+        .map_err(|_| Error::WriteIDTFailure)
 }
 
-fn configure_segments_and_sregs(mem: &mut [u8], sregs: &mut kvm_sregs) {
+fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut kvm_sregs) -> Result<()> {
     let gdt_table: [u64; BOOT_GDT_MAX as usize] = [
         gdt::gdt_entry(0, 0, 0), // NULL
         gdt::gdt_entry(0xa09b, 0, 0xfffff), // CODE
@@ -195,11 +208,11 @@ fn configure_segments_and_sregs(mem: &mut [u8], sregs: &mut kvm_sregs) {
     let tss_seg = gdt::kvm_segment_from_gdt(gdt_table[3], 3);
 
     // Write segments
-    write_gdt_table(&gdt_table, mem);
+    write_gdt_table(&gdt_table[..], mem)?;
     sregs.gdt.base = BOOT_GDT_OFFSET as u64;
     sregs.gdt.limit = mem::size_of_val(&gdt_table) as u16 - 1;
 
-    write_idt_value(0, mem);
+    write_idt_value(0, mem)?;
     sregs.idt.base = BOOT_IDT_OFFSET as u64;
     sregs.idt.limit = mem::size_of::<u64>() as u16 - 1;
 
@@ -214,50 +227,37 @@ fn configure_segments_and_sregs(mem: &mut [u8], sregs: &mut kvm_sregs) {
     /* 64-bit protected mode */
     sregs.cr0 |= X86_CR0_PE;
     sregs.efer |= EFER_LME;
+
+    Ok(())
 }
 
-fn setup_page_tables(mem: &mut [u8], sregs: &mut kvm_sregs) {
+fn setup_page_tables(mem: &GuestMemory, sregs: &mut kvm_sregs) -> Result<()> {
     // Puts PML4 right after zero page but aligned to 4k.
-    const BOOT_PML4_OFFSET: usize = 0x9000;
-    const BOOT_PDPTE_OFFSET: usize = 0xa000;
-    const TABLE_LEN: usize = 4096;
+    let boot_pml4_addr = GuestAddress(0x9000);
+    let boot_pdpte_addr = GuestAddress(0xa000);
 
-    {
-        let out_slice = &mut mem[BOOT_PML4_OFFSET..(BOOT_PML4_OFFSET + TABLE_LEN)];
-        for v in out_slice.iter_mut() {
-            *v = 0;
-        }
-        let mut writer = Cursor::new(out_slice);
-        // write_u64 Can't fail if the above slice works.
-        writer
-            .write_u64::<LittleEndian>(BOOT_PDPTE_OFFSET as u64 | 3)
-            .unwrap();
-    }
-    {
-        let out_slice = &mut mem[BOOT_PDPTE_OFFSET..(BOOT_PDPTE_OFFSET + TABLE_LEN)];
-        for v in out_slice.iter_mut() {
-            *v = 0;
-        }
-        let mut writer = Cursor::new(out_slice);
-        writer.write_u64::<LittleEndian>(0x83).unwrap(); // Can't fail if the slice works.
-    }
-    sregs.cr3 = BOOT_PML4_OFFSET as u64;
+    mem.write_obj_at_addr(boot_pdpte_addr.offset() as u64 | 0x03, boot_pml4_addr)
+        .map_err(|_| Error::WritePML4Address)?;
+    mem.write_obj_at_addr(0x83u64, boot_pdpte_addr)
+        .map_err(|_| Error::WritePDPTEAddress)?;
+    sregs.cr3 = boot_pml4_addr.offset() as u64;
     sregs.cr4 |= X86_CR4_PAE;
     sregs.cr0 |= X86_CR0_PG;
+    Ok(())
 }
 
 /// Configures the segment registers and system page tables for a given CPU.
 ///
 /// # Arguments
 ///
-/// * `guest_mem` - The memory that will be passed to the guest.
+/// * `mem` - The memory that will be passed to the guest.
 /// * `vcpu_fd` - The FD returned from the KVM_CREATE_VCPU ioctl.
-pub fn setup_sregs(mem: &mut [u8], vcpu: &kvm::Vcpu) -> Result<()> {
+pub fn setup_sregs(mem: &GuestMemory, vcpu: &kvm::Vcpu) -> Result<()> {
     let mut sregs: kvm_sregs = vcpu.get_sregs()
         .map_err(|e| Error::SRegsIoctlFailed(e))?;
 
-    configure_segments_and_sregs(mem, &mut sregs);
-    setup_page_tables(mem, &mut sregs); // TODO(dgreid) - Can this be done once per system instead?
+    configure_segments_and_sregs(mem, &mut sregs)?;
+    setup_page_tables(mem, &mut sregs)?; // TODO(dgreid) - Can this be done once per system instead?
 
     vcpu.set_sregs(&sregs)
         .map_err(|e| Error::SRegsIoctlFailed(e))?;
@@ -267,25 +267,30 @@ pub fn setup_sregs(mem: &mut [u8], vcpu: &kvm::Vcpu) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use byteorder::{LittleEndian, ReadBytesExt};
-    use std::io::Cursor;
     use super::*;
+    use sys_util::{GuestAddress, GuestMemory};
+
+    fn create_guest_mem() -> GuestMemory {
+        GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap()
+    }
+
+    fn read_u64(gm: &GuestMemory, offset: usize) -> u64 {
+        let read_addr = GuestAddress(offset);
+        gm.read_obj_from_addr(read_addr).unwrap()
+    }
 
     #[test]
     fn segments_and_sregs() {
         let mut sregs: kvm_sregs = Default::default();
-        let mut mem_vec: Vec<u8> = Vec::with_capacity(0x10000);
-        unsafe {
-            mem_vec.set_len(0x10000);
-        }
-        configure_segments_and_sregs(mem_vec.as_mut_slice(), &mut sregs);
-        let mut reader = Cursor::new(&mem_vec.as_slice()[BOOT_GDT_OFFSET..]);
-        assert_eq!(0, reader.read_u64::<LittleEndian>().unwrap());
-        assert_eq!(0xaf9b000000ffff, reader.read_u64::<LittleEndian>().unwrap());
-        assert_eq!(0xcf93000000ffff, reader.read_u64::<LittleEndian>().unwrap());
-        assert_eq!(0x8f8b000000ffff, reader.read_u64::<LittleEndian>().unwrap());
-        let mut reader = Cursor::new(&mem_vec.as_slice()[BOOT_IDT_OFFSET..]);
-        assert_eq!(0, reader.read_u64::<LittleEndian>().unwrap());
+        let gm = create_guest_mem();
+        configure_segments_and_sregs(&gm, &mut sregs).unwrap();
+
+        assert_eq!(0x0, read_u64(&gm, BOOT_GDT_OFFSET));
+        assert_eq!(0xaf9b000000ffff, read_u64(&gm, BOOT_GDT_OFFSET + 8));
+        assert_eq!(0xcf93000000ffff, read_u64(&gm, BOOT_GDT_OFFSET + 16));
+        assert_eq!(0x8f8b000000ffff, read_u64(&gm, BOOT_GDT_OFFSET + 24));
+        assert_eq!(0x0, read_u64(&gm, BOOT_IDT_OFFSET));
+
         assert_eq!(0, sregs.cs.base);
         assert_eq!(0xfffff, sregs.ds.limit);
         assert_eq!(0x10, sregs.es.selector);
@@ -302,15 +307,12 @@ mod tests {
     #[test]
     fn page_tables() {
         let mut sregs: kvm_sregs = Default::default();
-        let mut mem_vec: Vec<u8> = Vec::with_capacity(0x10000);
-        unsafe {
-            mem_vec.set_len(0x10000);
-        }
-        setup_page_tables(mem_vec.as_mut_slice(), &mut sregs);
-        let mut reader = Cursor::new(&mem_vec.as_slice()[0x9000..]);
-        assert_eq!(0xa003, reader.read_u64::<LittleEndian>().unwrap());
-        let mut reader = Cursor::new(&mem_vec.as_slice()[0xa000..]);
-        assert_eq!(0x83, reader.read_u64::<LittleEndian>().unwrap());
+        let gm = create_guest_mem();
+        setup_page_tables(&gm, &mut sregs).unwrap();
+
+        assert_eq!(0xa003, read_u64(&gm, 0x9000));
+        assert_eq!(0x83, read_u64(&gm, 0xa000));
+
         assert_eq!(0x9000, sregs.cr3);
         assert_eq!(X86_CR4_PAE, sregs.cr4);
         assert_eq!(X86_CR0_PG, sregs.cr0);
