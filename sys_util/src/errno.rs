@@ -3,11 +3,12 @@
 // found in the LICENSE file.
 
 use std::result;
+use std::io;
 
 use libc::__errno_location;
 
-/// An error number, retrieved from [errno](http://man7.org/linux/man-pages/man3/errno.3.html), set
-/// by a libc function that returned an error.
+/// An error number, retrieved from errno (man 3 errno), set by a libc
+/// function that returned an error.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Error(i32);
 pub type Result<T> = result::Result<T, Error>;
@@ -29,6 +30,12 @@ impl Error {
     /// Gets the errno for this error
     pub fn errno(&self) -> i32 {
         self.0
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(e: io::Error) -> Self {
+        Error::new(e.raw_os_error().unwrap_or_default())
     }
 }
 
