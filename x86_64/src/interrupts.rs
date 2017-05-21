@@ -56,7 +56,7 @@ fn set_apic_delivery_mode(reg: u32, mode: u32) -> u32 {
 /// # Arguments
 /// * `vcpu` - The VCPU object to configure.
 pub fn set_lint(vcpu: &kvm::Vcpu) -> Result<()> {
-    let mut klapic = vcpu.get_lapic().map_err(|e| Error::GetLapic(e))?;
+    let mut klapic = vcpu.get_lapic().map_err(Error::GetLapic)?;
 
     let lvt_lint0 = get_klapic_reg(&klapic, APIC_LVT0);
     set_klapic_reg(&mut klapic,
@@ -67,5 +67,5 @@ pub fn set_lint(vcpu: &kvm::Vcpu) -> Result<()> {
                    APIC_LVT1,
                    set_apic_delivery_mode(lvt_lint1, APIC_MODE_NMI));
 
-    vcpu.set_lapic(&klapic).map_err(|e| Error::SetLapic(e))
+    vcpu.set_lapic(&klapic).map_err(Error::SetLapic)
 }

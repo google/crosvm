@@ -110,17 +110,17 @@ pub fn configure_vcpu(guest_mem: &GuestMemory,
                       cpu_id: u64,
                       num_cpus: u64)
                       -> Result<()> {
-    cpuid::setup_cpuid(&kvm, &vcpu, cpu_id, num_cpus).map_err(|e| Error::CpuSetup(e))?;
-    regs::setup_msrs(&vcpu).map_err(|e| Error::RegisterConfiguration(e))?;
+    cpuid::setup_cpuid(kvm, vcpu, cpu_id, num_cpus).map_err(Error::CpuSetup)?;
+    regs::setup_msrs(vcpu).map_err(Error::RegisterConfiguration)?;
     let kernel_end = guest_mem.checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
         .ok_or(Error::KernelOffsetPastEnd)?;
-    regs::setup_regs(&vcpu,
+    regs::setup_regs(vcpu,
                      (kernel_end).offset() as u64,
                      BOOT_STACK_POINTER as u64,
-                     ZERO_PAGE_OFFSET as u64).map_err(|e| Error::RegisterConfiguration(e))?;
-    regs::setup_fpu(&vcpu).map_err(|e| Error::FpuRegisterConfiguration(e))?;
-    regs::setup_sregs(guest_mem, &vcpu).map_err(|e| Error::SegmentRegisterConfiguration(e))?;
-    interrupts::set_lint(&vcpu).map_err(|e| Error::LocalIntConfiguration(e))?;
+                     ZERO_PAGE_OFFSET as u64).map_err(Error::RegisterConfiguration)?;
+    regs::setup_fpu(vcpu).map_err(Error::FpuRegisterConfiguration)?;
+    regs::setup_sregs(guest_mem, vcpu).map_err(Error::SegmentRegisterConfiguration)?;
+    interrupts::set_lint(vcpu).map_err(Error::LocalIntConfiguration)?;
     Ok(())
 }
 
@@ -148,7 +148,7 @@ pub fn configure_system(guest_mem: &GuestMemory,
     let end_32bit_gap_start = GuestAddress(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE);
 
     // Note that this puts the mptable at 0x0 in guest physical memory.
-    mptable::setup_mptable(guest_mem, num_cpus).map_err(|e| Error::MpTableSetup(e))?;
+    mptable::setup_mptable(guest_mem, num_cpus).map_err(Error::MpTableSetup)?;
 
     let mut params: boot_params = Default::default();
 

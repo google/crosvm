@@ -73,12 +73,12 @@ fn filter_cpuid(cpu_id: u64, cpu_count: u64, kvm_cpuid: &mut kvm::CpuId) -> Resu
 /// * `nrcpus` - The number of vcpus being used by this VM.
 pub fn setup_cpuid(kvm: &kvm::Kvm, vcpu: &kvm::Vcpu, cpu_id: u64, nrcpus: u64) -> Result<()> {
     let mut kvm_cpuid = kvm.get_supported_cpuid(MAX_KVM_CPUID_ENTRIES)
-        .map_err(|e| Error::GetSupportedCpusFailed(e))?;
+        .map_err(Error::GetSupportedCpusFailed)?;
 
     filter_cpuid(cpu_id, nrcpus, &mut kvm_cpuid)?;
 
     vcpu.set_cpuid2(&kvm_cpuid)
-        .map_err(|e| Error::SetSupportedCpusFailed(e))
+        .map_err(Error::SetSupportedCpusFailed)
 }
 
 #[cfg(test)]
