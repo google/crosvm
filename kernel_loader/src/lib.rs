@@ -79,7 +79,7 @@ pub fn load_kernel<F>(guest_mem: &GuestMemory, kernel_start: GuestAddress, kerne
     };
 
     // Read in each section pointed to by the program headers.
-    for phdr in phdrs.iter() {
+    for phdr in &phdrs {
         if (phdr.p_type & elf::PT_LOAD) == 0 || phdr.p_filesz == 0 {
             continue;
         }
@@ -105,7 +105,7 @@ pub fn load_kernel<F>(guest_mem: &GuestMemory, kernel_start: GuestAddress, kerne
 /// * `cmdline` - The kernel command line.
 pub fn load_cmdline(guest_mem: &GuestMemory, guest_addr: GuestAddress, cmdline: &CStr) -> Result<()> {
     let len = cmdline.to_bytes().len();
-    if len <= 0 {
+    if len == 0 {
         return Ok(());
     }
 
