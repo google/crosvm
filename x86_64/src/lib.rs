@@ -18,9 +18,15 @@ mod bootparam;
 #[allow(non_upper_case_globals)]
 mod msr_index;
 
+#[allow(dead_code)]
+#[allow(non_upper_case_globals)]
+#[allow(non_camel_case_types)]
+mod mpspec;
+
 mod cpuid;
 mod gdt;
 mod interrupts;
+mod mptable;
 mod regs;
 
 use std::mem;
@@ -32,6 +38,7 @@ use sys_util::{GuestAddress, GuestMemory};
 
 pub use regs::Error as RegError;
 pub use interrupts::Error as IntError;
+pub use mptable::Error as MpTableError;
 
 #[derive(Debug)]
 pub enum Error {
@@ -47,6 +54,8 @@ pub enum Error {
     SegmentRegisterConfiguration(RegError),
     /// Error configuring the VCPU local interrupt.
     LocalIntConfiguration(IntError),
+    /// Error writing MP table to memory.
+    MpTableSetup(MpTableError),
     /// Error writing the zero page of guest memory.
     ZeroPageSetup,
     /// The zero page extends past the end of guest_mem.
@@ -92,14 +101,16 @@ pub fn arch_memory_regions(size: usize) -> Vec<(GuestAddress, usize)> {
 /// * `kernel_load_offset` - Offset from `guest_mem` at which the kernel starts.
 /// * `kvm` - The /dev/kvm object that created vcpu.
 /// * `vcpu` - The VCPU object to configure.
-/// * `num_cpus` - The number of vcpus that will be given to the guest.
+/// * `cpu_id` - The id of the given `vcpu`.
+/// * `num_cpus` - Number of virtual CPUs the guest will have.
 pub fn configure_vcpu(guest_mem: &GuestMemory,
                       kernel_load_addr: GuestAddress,
                       kvm: &kvm::Kvm,
                       vcpu: &kvm::Vcpu,
-                      num_cpus: usize)
+                      cpu_id: u64,
+                      num_cpus: u64)
                       -> Result<()> {
-    cpuid::setup_cpuid(&kvm, &vcpu, 0, num_cpus as u64).map_err(|e| Error::CpuSetup(e))?;
+    cpuid::setup_cpuid(&kvm, &vcpu, cpu_id, num_cpus).map_err(|e| Error::CpuSetup(e))?;
     regs::setup_msrs(&vcpu).map_err(|e| Error::RegisterConfiguration(e))?;
     let kernel_end = guest_mem.checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
         .ok_or(Error::KernelOffsetPastEnd)?;
@@ -121,10 +132,12 @@ pub fn configure_vcpu(guest_mem: &GuestMemory,
 /// * `kernel_addr` - Address in `guest_mem` where the kernel was loaded.
 /// * `cmdline_addr` - Address in `guest_mem` where the kernel command line was loaded.
 /// * `cmdline_size` - Size of the kernel command line in bytes including the null terminator.
+/// * `num_cpus` - Number of virtual CPUs the guest will have.
 pub fn configure_system(guest_mem: &GuestMemory,
                         kernel_addr: GuestAddress,
                         cmdline_addr: GuestAddress,
-                        cmdline_size: usize)
+                        cmdline_size: usize,
+                        num_cpus: u8)
                         -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
@@ -133,6 +146,9 @@ pub fn configure_system(guest_mem: &GuestMemory,
     const KERNEL_MIN_ALIGNMENT_BYTES: u32 = 0x1000000; // Must be non-zero.
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
     let end_32bit_gap_start = GuestAddress(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE);
+
+    // Note that this puts the mptable at 0x0 in guest physical memory.
+    mptable::setup_mptable(guest_mem, num_cpus).map_err(|e| Error::MpTableSetup(e))?;
 
     let mut params: boot_params = Default::default();
 
