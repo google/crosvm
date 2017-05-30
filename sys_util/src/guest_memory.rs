@@ -118,7 +118,7 @@ impl GuestMemory {
     }
 
     /// Writes a slice to guest memory at the specified guest address.
-    /// Returns Ok(<number of bytes written>).  The number of bytes written can
+    /// Returns the number of bytes written.  The number of bytes written can
     /// be less than the length of the slice if there isn't enough room in the
     /// memory region.
     ///

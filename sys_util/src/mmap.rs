@@ -105,7 +105,7 @@ impl MemoryMapping {
     }
 
     /// Writes a slice to the memory region at the specified offset.
-    /// Returns Ok(<number of bytes written>).  The number of bytes written can
+    /// Returns the number of bytes written.  The number of bytes written can
     /// be less than the length of the slice if there isn't enough room in the
     /// memory region.
     ///
