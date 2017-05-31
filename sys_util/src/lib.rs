@@ -12,6 +12,7 @@ mod errno;
 mod guest_address;
 mod guest_memory;
 mod struct_util;
+mod tempdir;
 
 pub use mmap::*;
 pub use eventfd::*;
@@ -20,3 +21,4 @@ use errno::errno_result;
 pub use guest_address::*;
 pub use guest_memory::*;
 pub use struct_util::*;
+pub use tempdir::*;
