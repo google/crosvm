@@ -23,6 +23,7 @@ mod terminal;
 mod signal;
 #[macro_use]
 pub mod syslog;
+mod fork;
 
 pub use mmap::*;
 pub use shm::*;
@@ -36,5 +37,6 @@ pub use struct_util::*;
 pub use tempdir::*;
 pub use terminal::*;
 pub use signal::*;
+pub use fork::*;
 
 pub use guest_memory::Error as GuestMemoryError;
