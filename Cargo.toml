@@ -15,7 +15,6 @@ x86_64 = { path = "x86_64" }
 kernel_loader = { path = "kernel_loader" }
 libc = "0.2.21"
 byteorder = "1"
-syscall_defines = { path = "syscall_defines" }
 
 [dependencies.clap]
 version = "*"

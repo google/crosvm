@@ -4,18 +4,14 @@
 
 //! Runs hardware devices in child processes.
 
-use std::process;
-use std::io::{Error, Result};
+use std::io::{Error, ErrorKind, Result};
 use std::os::unix::net::UnixDatagram;
 use std::time::Duration;
-
-use libc;
-use libc::pid_t;
 
 use byteorder::{NativeEndian, ByteOrder};
 
 use hw::BusDevice;
-use syscall_defines::linux::LinuxSyscall::SYS_clone;
+use sys_util::{clone_process, CloneNamespace};
 
 const SOCKET_TIMEOUT_MS: u64 = 2000;
 const MSG_SIZE: usize = 24;
@@ -27,7 +23,7 @@ enum Command {
     Shutdown = 2,
 }
 
-fn child_proc(sock: UnixDatagram, device: &mut BusDevice) -> ! {
+fn child_proc(sock: UnixDatagram, device: &mut BusDevice) {
     let mut running = true;
 
     let res = handle_eintr!(sock.send(&CHILD_SIGNATURE));
@@ -75,23 +71,6 @@ fn child_proc(sock: UnixDatagram, device: &mut BusDevice) -> ! {
             break;
         }
     }
-
-    // ! Never returns
-    process::exit(0);
-}
-
-unsafe fn do_clone() -> Result<pid_t> {
-    // Forking is unsafe, this function must be unsafe as there is no way to
-    // guarantee saftey without more context about the state of the program.
-    let pid = libc::syscall(SYS_clone as i64,
-            libc::CLONE_NEWUSER | libc::CLONE_NEWPID |
-            libc::SIGCHLD as i32,
-            0);
-    if pid < 0 {
-        Err(Error::last_os_error())
-    } else {
-        Ok(pid as pid_t)
-    }
 }
 
 /// Wraps an inner `hw::BusDevice` that is run inside a child process via fork.
@@ -107,20 +86,21 @@ impl ProxyDevice {
     ///
     /// The forked process will automatically be terminated when this is dropped, so be sure to keep
     /// a reference.
-    /// `post_clone_cb` - Called after forking the child process, passed the
-    /// child end of the pipe that must be kep open.
+    ///
+    /// # Arguments
+    /// * `device` - The device to isolate to another process.
+    /// * `post_clone_cb` - Called after forking the child process, passed the child end of the pipe
+    /// that must be kept open.
     pub fn new<D: BusDevice, F>(mut device: D, post_clone_cb: F) -> Result<ProxyDevice>
-            where F: FnOnce(&UnixDatagram) {
+        where F: FnOnce(&UnixDatagram)
+    {
         let (child_sock, parent_sock) = UnixDatagram::pair()?;
 
-        // Forking a new process is unsafe, we must ensure no resources required
-        // by the other side are freed after the two processes start.
-        let ret = unsafe { do_clone()? };
-        if ret == 0 {
+        clone_process(CloneNamespace::NewUserPid, move || {
             post_clone_cb(&child_sock);
-            // ! Never returns
             child_proc(child_sock, &mut device);
-        }
+        })
+                .map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e)))?;
 
         let mut buf = [0; MSG_SIZE];
         parent_sock

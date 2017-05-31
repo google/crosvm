@@ -12,7 +12,6 @@ extern crate x86_64;
 extern crate kernel_loader;
 extern crate byteorder;
 #[macro_use] extern crate sys_util;
-extern crate syscall_defines;
 
 use std::ffi::{CString, CStr};
 use std::fmt;
