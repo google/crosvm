@@ -176,11 +176,10 @@ impl Serial {
                 }
             }
             IER => self.interrupt_enable = v & IER_FIFO_BITS,
-            FCR => {}
             LCR => self.line_control = v,
             MCR => self.modem_control = v,
             SCR => self.scratch = v,
-            o => panic!("bad write offset on serial device: {}", o),
+            _ => {}
         }
         Ok(())
     }
@@ -189,10 +188,6 @@ impl Serial {
 impl BusDevice for Serial {
     fn write(&mut self, offset: u64, data: &[u8]) {
         if data.len() != 1 {
-            return;
-        }
-
-        if offset >= 8 {
             return;
         }
 
@@ -227,7 +222,7 @@ impl BusDevice for Serial {
             LSR => self.line_status,
             MSR => self.modem_status,
             SCR => self.scratch,
-            o => panic!("bad read offset on serial device: {}", o),
+            _ => 0,
         };
     }
 }
