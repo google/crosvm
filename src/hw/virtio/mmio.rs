@@ -24,6 +24,9 @@ const MMIO_VERSION: u32 = 2;
 /// Optionally, a virtio device can implement device reset in which it returns said resources and
 /// resets its internal.
 pub trait VirtioDevice: Send {
+    /// The virtio device type.
+    fn device_type(&self) -> u32;
+
     /// The maximum size of each queue that this device supports.
     fn queue_max_sizes(&self) -> &[u16];
 
@@ -170,7 +173,7 @@ impl BusDevice for MmioDevice {
         let v = match offset {
             0x0 => MMIO_MAGIC_VALUE,
             0x004 => MMIO_VERSION,
-            0x008 => TYPE_BLOCK,
+            0x008 => self.device.device_type(),
             0x00c => VENDOR_ID, // vendor id
             0x010 => {
                 self.device.features(self.features_select) |

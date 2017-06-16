@@ -14,7 +14,7 @@ use byteorder::{ByteOrder, LittleEndian};
 use sys_util::Result as SysResult;
 use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError, Poller};
 
-use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_USED_RING};
+use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_USED_RING, TYPE_BLOCK};
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
@@ -290,6 +290,10 @@ impl Drop for Block {
 }
 
 impl VirtioDevice for Block {
+    fn device_type(&self) -> u32 {
+        TYPE_BLOCK
+    }
+
     fn queue_max_sizes(&self) -> &[u16] {
         QUEUE_SIZES
     }
