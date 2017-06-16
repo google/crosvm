@@ -1,0 +1,10 @@
+[package]
+name = "vhost"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+
+[dependencies]
+libc = "*"
+net_util = { path = "../net_util" }
+sys_util = { path = "../sys_util" }
+virtio_sys = { path = "../virtio_sys" }
