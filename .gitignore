@@ -1,5 +1,6 @@
 target/
 **/*.rs.bk
-Cargo.lock
 **/*.sw[po]
 **/*.orig
+**/Cargo.lock
+!/Cargo.lock
