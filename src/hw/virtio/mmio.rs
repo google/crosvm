@@ -212,7 +212,7 @@ impl BusDevice for MmioDevice {
         let v = LittleEndian::read_u32(data);
         match offset {
             0x014 => self.features_select = v,
-            0x020 => self.device.ack_features(v, self.acked_features_select),
+            0x020 => self.device.ack_features(self.acked_features_select, v),
             0x024 => self.acked_features_select = v,
             0x030 => self.queue_select = v,
             0x038 => mut_q = self.with_queue_mut(|q| q.size = v as u16),
