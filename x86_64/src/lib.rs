@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 extern crate byteorder;
+extern crate data_model;
 extern crate kvm;
 extern crate kvm_sys;
 extern crate libc;
@@ -13,6 +14,21 @@ extern crate sys_util;
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
 mod bootparam;
+// Bindgen didn't implement copy for boot_params because edid_info contains an array with len > 32.
+impl Copy for bootparam::edid_info {}
+impl Clone for bootparam::edid_info {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl Copy for bootparam::boot_params {}
+impl Clone for bootparam::boot_params {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+// boot_params is just a series of ints, it is safe to initialize it.
+unsafe impl data_model::DataInit for bootparam::boot_params {}
 
 #[allow(dead_code)]
 #[allow(non_upper_case_globals)]
@@ -22,6 +38,14 @@ mod msr_index;
 #[allow(non_upper_case_globals)]
 #[allow(non_camel_case_types)]
 mod mpspec;
+// These mpspec types are only data, reading them from data is a safe initialization.
+unsafe impl data_model::DataInit for mpspec::mpc_bus {}
+unsafe impl data_model::DataInit for mpspec::mpc_cpu {}
+unsafe impl data_model::DataInit for mpspec::mpc_intsrc {}
+unsafe impl data_model::DataInit for mpspec::mpc_ioapic {}
+unsafe impl data_model::DataInit for mpspec::mpc_table {}
+unsafe impl data_model::DataInit for mpspec::mpc_lintsrc {}
+unsafe impl data_model::DataInit for mpspec::mpf_intel {}
 
 mod cpuid;
 mod gdt;

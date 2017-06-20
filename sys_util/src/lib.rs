@@ -4,6 +4,7 @@
 
 //! Small system utility modules for usage by other modules.
 
+extern crate data_model;
 extern crate libc;
 
 mod mmap;
