@@ -117,6 +117,18 @@ impl GuestMemory {
         Ok(())
     }
 
+    /// Perform the specified action on each region's addresses mutably.
+    pub fn with_regions_mut<F, E>(&self, mut cb: F) -> result::Result<(), E>
+        where F: FnMut(usize, GuestAddress, usize, usize) -> result::Result<(), E>
+    {
+        for (index, region) in self.regions.iter().enumerate() {
+            cb(index,
+               region.guest_base,
+               region.mapping.size(),
+               region.mapping.as_ptr() as usize)?;
+        }
+        Ok(())
+    }
     /// Writes a slice to guest memory at the specified guest address.
     /// Returns the number of bytes written.  The number of bytes written can
     /// be less than the length of the slice if there isn't enough room in the
@@ -272,7 +284,7 @@ impl GuestMemory {
         })
     }
 
-    fn do_in_region<F, T>(&self, guest_addr: GuestAddress, cb: F) -> Result<T>
+    pub fn do_in_region<F, T>(&self, guest_addr: GuestAddress, cb: F) -> Result<T>
         where F: FnOnce(&MemoryMapping, usize) -> Result<T>
     {
         for region in self.regions.iter() {
