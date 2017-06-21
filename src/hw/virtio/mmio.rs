@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::os::unix::io::RawFd;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -24,6 +25,10 @@ const MMIO_VERSION: u32 = 2;
 /// Optionally, a virtio device can implement device reset in which it returns said resources and
 /// resets its internal.
 pub trait VirtioDevice: Send {
+    /// A vector of device-specific file descriptors that must be kept open
+    /// after jailing. Must be called before the process is jailed.
+    fn keep_fds(&self) -> Vec<RawFd>;
+
     /// The virtio device type.
     fn device_type(&self) -> u32;
 

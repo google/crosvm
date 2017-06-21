@@ -17,7 +17,6 @@ use std::ffi::{CString, CStr};
 use std::fmt;
 use std::fs::File;
 use std::io::{stdin, stdout};
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::string::String;
 use std::sync::{Arc, Mutex, Barrier};
@@ -25,6 +24,7 @@ use std::thread::{spawn, JoinHandle};
 
 use clap::{Arg, App, SubCommand};
 
+use device_manager::{DeviceManager, VmRequest};
 use io_jail::Minijail;
 use kvm::*;
 use sys_util::{GuestAddress, GuestMemory, EventFd, TempDir, Terminal, Poller, Pollable,
@@ -33,6 +33,7 @@ use sys_util::{GuestAddress, GuestMemory, EventFd, TempDir, Terminal, Poller, Po
 pub mod hw;
 pub mod kernel_cmdline;
 pub mod control_socket;
+pub mod device_manager;
 
 use control_socket::*;
 
@@ -40,11 +41,11 @@ enum Error {
     Socket(std::io::Error),
     Disk(std::io::Error),
     BlockDeviceNew(sys_util::Error),
-    BlockDeviceJail(io_jail::Error),
-    BlockDevicePivotRoot(io_jail::Error),
     BlockDeviceRootSetup(sys_util::Error),
+    DeviceJail(io_jail::Error),
+    DevicePivotRoot(io_jail::Error),
+    RegisterBlock(device_manager::Error),
     Cmdline(kernel_cmdline::Error),
-    ProxyDeviceCreation(std::io::Error),
     RegisterIoevent(sys_util::Error),
     RegisterIrqfd(sys_util::Error),
     KernelLoader(kernel_loader::Error),
@@ -80,15 +81,13 @@ impl fmt::Display for Error {
             &Error::Socket(ref e) => write!(f, "failed to create socket: {}", e),
             &Error::Disk(ref e) => write!(f, "failed to load disk image: {}", e),
             &Error::BlockDeviceNew(ref e) => write!(f, "failed to create block device: {:?}", e),
-            &Error::BlockDeviceJail(ref e) => write!(f, "failed to jail block device: {:?}", e),
-            &Error::BlockDevicePivotRoot(ref e) => {
-                write!(f, "failed to pivot root block device: {:?}", e)
-            }
             &Error::BlockDeviceRootSetup(ref e) => {
                 write!(f, "failed to create root directory for a block device: {:?}", e)
             }
+            &Error::RegisterBlock(ref e) => write!(f, "error registering block device: {:?}", e),
+            &Error::DeviceJail(ref e) => write!(f, "failed to jail device: {:?}", e),
+            &Error::DevicePivotRoot(ref e) => write!(f, "failed to pivot root device: {:?}", e),
             &Error::Cmdline(ref e) => write!(f, "the given kernel command line was invalid: {}", e),
-            &Error::ProxyDeviceCreation(ref e) => write!(f, "failed to create proxy device: {}", e),
             &Error::RegisterIoevent(ref e) => write!(f, "error registering ioevent: {:?}", e),
             &Error::RegisterIrqfd(ref e) => write!(f, "error registering irqfd: {:?}", e),
             &Error::KernelLoader(ref e) => write!(f, "error loading kernel: {:?}", e),
@@ -115,31 +114,26 @@ struct Config {
     warn_unknown_ports: bool,
 }
 
-enum VmRequest {
-    RegisterIoevent(EventFd, IoeventAddress, u32),
-    RegisterIrqfd(EventFd, u32),
-}
-
 const KERNEL_START_OFFSET: usize = 0x200000;
 const CMDLINE_OFFSET: usize = 0x20000;
 const CMDLINE_MAX_SIZE: usize = KERNEL_START_OFFSET - CMDLINE_OFFSET;
 
-fn create_block_device_jail(root: &Path) -> Result<Minijail> {
+fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
     // they run as nobody unless otherwise configured.
-    let mut j = Minijail::new().map_err(|e| Error::BlockDeviceJail(e))?;
+    let mut j = Minijail::new().map_err(|e| Error::DeviceJail(e))?;
     // Don't need any capabilities.
     j.use_caps(0);
     // Create a new mount namespace with an empty root FS.
     j.namespace_vfs();
     j.enter_pivot_root(root)
-        .map_err(|e| Error::BlockDevicePivotRoot(e))?;
+        .map_err(|e| Error::DevicePivotRoot(e))?;
     // Run in an empty network namespace.
     j.namespace_net();
     // Apply the block device seccomp policy.
     j.no_new_privs();
-    j.parse_seccomp_filters(Path::new("block_device.policy"))
-        .map_err(|e| Error::BlockDeviceJail(e))?;
+    j.parse_seccomp_filters(seccomp_policy)
+        .map_err(|e| Error::DeviceJail(e))?;
     j.use_seccomp_filter();
     Ok(j)
 }
@@ -161,68 +155,29 @@ fn run_config(cfg: Config) -> Result<()> {
         .insert_str("console=ttyS0 noapic noacpi reboot=k panic=1 pci=off")
         .unwrap();
 
-    let mut vm_requests = Vec::new();
-
-    let mut bus = hw::Bus::new();
-
-    let mmio_len = 0x1000;
-    let mut mmio_base: u64 = 0xd0000000;
-    let mut irq: u32 = 5;
+    let mut device_manager = DeviceManager::new(guest_mem.clone(), 0x1000, 0xd0000000, 5);
 
     let block_root = TempDir::new(&PathBuf::from("/tmp/block_root"))
         .map_err(Error::BlockDeviceRootSetup)?;
-
     if let Some(ref disk_path) = cfg.disk_path {
-        // List of FDs to keep open in the child after it forks.
-        let mut keep_fds: Vec<RawFd> = Vec::new();
-
         let disk_image = File::open(disk_path).map_err(|e| Error::Disk(e))?;
-        keep_fds.push(disk_image.as_raw_fd());
 
         let block_box = Box::new(hw::virtio::Block::new(disk_image)
                                      .map_err(|e| Error::BlockDeviceNew(e))?);
-        let block_mmio = hw::virtio::MmioDevice::new(guest_mem.clone(), block_box)?;
-        for (i, queue_evt) in block_mmio.queue_evts().iter().enumerate() {
-            let io_addr = IoeventAddress::Mmio(mmio_base + hw::virtio::NOITFY_REG_OFFSET as u64);
-            vm_requests.push(VmRequest::RegisterIoevent(queue_evt.try_clone()?, io_addr, i as u32));
-            keep_fds.push(queue_evt.as_raw_fd());
+        let jail = if cfg.multiprocess {
+            let block_root_path = block_root.as_path().unwrap(); // Won't fail if new succeeded.
+            Some(create_base_minijail(block_root_path, Path::new("block_device.policy"))?)
         }
+        else {
+            None
+        };
 
-        if let Some(interrupt_evt) = block_mmio.interrupt_evt() {
-            vm_requests.push(VmRequest::RegisterIrqfd(interrupt_evt.try_clone()?, irq));
-            keep_fds.push(interrupt_evt.as_raw_fd());
-        }
-
-        if cfg.multiprocess {
-            // block_root.as_path() won't fail if block_root::new succeeded.
-            let block_root_path = block_root.as_path().unwrap();
-            let jail = create_block_device_jail(block_root_path)?;
-            let proxy_dev = hw::ProxyDevice::new(block_mmio, move |keep_pipe| {
-                keep_fds.push(keep_pipe.as_raw_fd());
-                // Need to panic here as there isn't a way to recover from a
-                // partly-jailed process.
-                unsafe {
-                    // This is OK as we have whitelisted all the FDs we need open.
-                    jail.enter(Some(&keep_fds)).unwrap();
-                }
-            })
-                    .map_err(|e| Error::ProxyDeviceCreation(e))?;
-            bus.insert(Arc::new(Mutex::new(proxy_dev)), mmio_base, mmio_len)
-                .unwrap();
-        } else {
-            bus.insert(Arc::new(Mutex::new(block_mmio)), mmio_base, mmio_len)
-                .unwrap();
-        }
-
-        cmdline
-            .insert("virtio_mmio.device",
-                    &format!("4K@0x{:08x}:{}", mmio_base, irq))
-            .map_err(Error::Cmdline)?;
         cmdline
             .insert("root", "/dev/vda")
             .map_err(Error::Cmdline)?;
-        mmio_base += mmio_len;
-        irq += 1;
+
+        device_manager.register_mmio(block_box, jail, &mut cmdline)
+                      .map_err(Error::RegisterBlock)?;
     }
 
     if let Some(params) = cfg.params {
@@ -231,12 +186,12 @@ fn run_config(cfg: Config) -> Result<()> {
             .map_err(|e| Error::Cmdline(e))?;
     }
 
-    run_kvm(vm_requests,
+    run_kvm(device_manager.vm_requests,
             cfg.kernel_image,
             &CString::new(cmdline).unwrap(),
             cfg.vcpu_count.unwrap_or(1),
             guest_mem,
-            bus,
+            &device_manager.bus,
             socket,
             cfg.warn_unknown_ports)
 }
@@ -246,7 +201,7 @@ fn run_kvm(requests: Vec<VmRequest>,
            cmdline: &CStr,
            vcpu_count: u32,
            guest_mem: GuestMemory,
-           mmio_bus: hw::Bus,
+           mmio_bus: &hw::Bus,
            control_socket: Option<ControlSocketRecv>,
            warn_unknown_ports: bool)
            -> Result<()> {

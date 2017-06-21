@@ -4,6 +4,7 @@
 
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Read, Write};
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -290,6 +291,16 @@ impl Drop for Block {
 }
 
 impl VirtioDevice for Block {
+    fn keep_fds(&self) -> Vec<RawFd> {
+        let mut keep_fds = Vec::new();
+
+        if let Some(ref disk_image) = self.disk_image {
+            keep_fds.push(disk_image.as_raw_fd());
+        }
+
+        keep_fds
+    }
+
     fn device_type(&self) -> u32 {
         TYPE_BLOCK
     }
