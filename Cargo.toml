@@ -15,6 +15,11 @@ x86_64 = { path = "x86_64" }
 kernel_loader = { path = "kernel_loader" }
 libc = "0.2.21"
 byteorder = "1"
+syscall_defines = { path = "syscall_defines" }
+net_sys = { path = "net_sys" }
+net_util = { path = "net_util" }
+vhost = { path = "vhost" }
+virtio_sys = { path = "virtio_sys" }
 
 [dependencies.clap]
 version = "*"

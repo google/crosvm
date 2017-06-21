@@ -198,7 +198,9 @@ impl Queue {
         }
     }
 
-    fn actual_size(&self) -> u16 {
+    /// Return the actual size of the queue, as the driver may not set up a
+    /// queue as big as the device allows.
+    pub fn actual_size(&self) -> u16 {
         min(self.size, self.max_size)
     }
 
