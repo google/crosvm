@@ -41,3 +41,6 @@ data_init_type!(i16);
 data_init_type!(i32);
 data_init_type!(i64);
 data_init_type!(isize);
+
+pub mod endian;
+pub use endian::*;
