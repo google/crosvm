@@ -44,3 +44,6 @@ data_init_type!(isize);
 
 pub mod endian;
 pub use endian::*;
+
+pub mod volatile_memory;
+pub use volatile_memory::*;
