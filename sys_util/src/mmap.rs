@@ -11,8 +11,10 @@ use std::ptr::null_mut;
 use std::os::unix::io::AsRawFd;
 
 use libc;
+
 use errno;
 
+use data_model::volatile_memory::*;
 use data_model::DataInit;
 
 #[derive(Debug)]
@@ -281,6 +283,19 @@ impl MemoryMapping {
     }
 }
 
+impl VolatileMemory for MemoryMapping {
+    fn get_slice(&self, offset: usize, count: usize) -> VolatileMemoryResult<VolatileSlice> {
+        let mem_end = calc_offset(offset, count)?;
+        if mem_end > self.size {
+            return Err(VolatileMemoryError::OutOfBounds { addr: mem_end });
+        }
+
+        // Safe because we checked that offset + count was within our range and we only ever hand
+        // out volatile accessors.
+        Ok(unsafe { VolatileSlice::new((self.addr as usize + offset) as *mut _, count) })
+    }
+}
+
 impl Drop for MemoryMapping {
     fn drop(&mut self) {
         // This is safe because we mmap the area at addr ourselves, and nobody
@@ -294,6 +309,7 @@ impl Drop for MemoryMapping {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use data_model::{VolatileMemory, VolatileMemoryError};
 
     #[test]
     fn basic_map() {
@@ -307,5 +323,46 @@ mod tests {
         let res = m.write_slice(&[1, 2, 3, 4, 5, 6], 0);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), 5);
+    }
+
+    #[test]
+    fn slice_size() {
+        let m = MemoryMapping::new(5).unwrap();
+        let s = m.get_slice(2, 3).unwrap();
+        assert_eq!(s.size(), 3);
+    }
+
+    #[test]
+    fn slice_addr() {
+        let m = MemoryMapping::new(5).unwrap();
+        let s = m.get_slice(2, 3).unwrap();
+        assert_eq!(s.as_ptr(), unsafe { m.as_ptr().offset(2) });
+    }
+
+    #[test]
+    fn slice_store() {
+        let m = MemoryMapping::new(5).unwrap();
+        let r = m.get_ref(2).unwrap();
+        r.store(9u16);
+        assert_eq!(m.read_obj::<u16>(2).unwrap(), 9);
+    }
+
+    #[test]
+    fn slice_overflow_error() {
+        use std::usize;
+        let m = MemoryMapping::new(5).unwrap();
+        let res = m.get_slice(usize::MAX, 3).unwrap_err();
+        assert_eq!(res,
+                   VolatileMemoryError::Overflow {
+                       base: usize::MAX,
+                       offset: 3,
+                   });
+
+    }
+    #[test]
+    fn slice_oob_error() {
+        let m = MemoryMapping::new(5).unwrap();
+        let res = m.get_slice(3, 3).unwrap_err();
+        assert_eq!(res, VolatileMemoryError::OutOfBounds { addr: 6 });
     }
 }

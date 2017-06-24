@@ -9,6 +9,7 @@ use std::result;
 use std::sync::Arc;
 
 use data_model::DataInit;
+use data_model::volatile_memory::*;
 use guest_address::GuestAddress;
 use mmap::MemoryMapping;
 
@@ -56,7 +57,8 @@ impl GuestMemory {
                 }
             }
 
-            let mapping = MemoryMapping::new(range.1).map_err(|_| Error::MemoryMappingFailed)?;
+            let mapping = MemoryMapping::new(range.1)
+                .map_err(|_| Error::MemoryMappingFailed)?;
             regions.push(MemoryRegion {
                              mapping: mapping,
                              guest_base: range.0,
@@ -282,6 +284,19 @@ impl GuestMemory {
     }
 }
 
+impl VolatileMemory for GuestMemory {
+    fn get_slice(&self, offset: usize, count: usize) -> VolatileMemoryResult<VolatileSlice> {
+        for region in self.regions.iter() {
+            if offset >= region.guest_base.0 && offset < region_end(region).0 {
+                return region
+                           .mapping
+                           .get_slice(offset - region.guest_base.0, count);
+            }
+        }
+        Err(VolatileMemoryError::OutOfBounds { addr: offset })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,6 +326,39 @@ mod tests {
         gm.write_obj_at_addr(val1, GuestAddress(0x500)).unwrap();
         gm.write_obj_at_addr(val2, GuestAddress(0x1000 + 32))
             .unwrap();
+        let num1: u64 = gm.read_obj_from_addr(GuestAddress(0x500)).unwrap();
+        let num2: u64 = gm.read_obj_from_addr(GuestAddress(0x1000 + 32)).unwrap();
+        assert_eq!(val1, num1);
+        assert_eq!(val2, num2);
+    }
+
+    #[test]
+    fn test_ref_load_u64() {
+        let start_addr1 = GuestAddress(0x0);
+        let start_addr2 = GuestAddress(0x1000);
+        let gm = GuestMemory::new(&vec![(start_addr1, 0x1000), (start_addr2, 0x1000)]).unwrap();
+
+        let val1: u64 = 0xaa55aa55aa55aa55;
+        let val2: u64 = 0x55aa55aa55aa55aa;
+        gm.write_obj_at_addr(val1, GuestAddress(0x500)).unwrap();
+        gm.write_obj_at_addr(val2, GuestAddress(0x1000 + 32))
+            .unwrap();
+        let num1: u64 = gm.get_ref(0x500).unwrap().load();
+        let num2: u64 = gm.get_ref(0x1000 + 32).unwrap().load();
+        assert_eq!(val1, num1);
+        assert_eq!(val2, num2);
+    }
+
+    #[test]
+    fn test_ref_store_u64() {
+        let start_addr1 = GuestAddress(0x0);
+        let start_addr2 = GuestAddress(0x1000);
+        let gm = GuestMemory::new(&vec![(start_addr1, 0x1000), (start_addr2, 0x1000)]).unwrap();
+
+        let val1: u64 = 0xaa55aa55aa55aa55;
+        let val2: u64 = 0x55aa55aa55aa55aa;
+        gm.get_ref(0x500).unwrap().store(val1);
+        gm.get_ref(0x1000 + 32).unwrap().store(val2);
         let num1: u64 = gm.read_obj_from_addr(GuestAddress(0x500)).unwrap();
         let num2: u64 = gm.read_obj_from_addr(GuestAddress(0x1000 + 32)).unwrap();
         assert_eq!(val1, num1);
