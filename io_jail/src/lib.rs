@@ -12,16 +12,20 @@ mod libminijail;
 
 use std::ffi::CString;
 use std::fs;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
 use std::str::FromStr;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub enum Error {
     /// minjail_new failed, this is an allocation failure.
     CreatingMinijail,
     /// The path or name string passed in didn't parse to a valid CString.
     InvalidCString,
+    /// Failed to call dup2 to set stdin, stdout, or stderr to /dev/null.
+    DupDevNull(i32),
+    /// Failed to set up /dev/null for FDs 0, 1, or 2.
+    OpenDevNull(std::io::Error),
     /// Setting the specified alt-syscall table failed with errno. Is the table in the kernel?
     SetAltSyscallTable(i32),
     /// chroot failed with the provided errno.
@@ -207,8 +211,10 @@ impl Minijail {
 
     /// Enters the previously configured minijail.
     /// `enter` is unsafe because it closes all open FD for this process.  That
-    /// could cause a lot of trouble if not handled carefully.
-    /// This Function aborts on error because a partially entered jail isn't
+    /// could cause a lot of trouble if not handled carefully.  FDs 0, 1, and 2
+    /// are overwritten with /dev/null FDs unless they are included in the
+    /// inheritable_fds list.
+    /// This Function may abort on error because a partially entered jail isn't
     /// recoverable.
     pub unsafe fn enter(&self, inheritable_fds: Option<&[RawFd]>) -> Result<()> {
         if let Some(keep_fds) = inheritable_fds {
@@ -240,6 +246,17 @@ impl Minijail {
             // directory, that FD was already closed.  Closing it again will
             // return an error but won't break anything.
             libc::close(fd);
+        }
+        // Set stdin, stdout, and stderr to /dev/null unless they are in the inherit list.
+        // These will only be closed when this process exits.
+        let dev_null = fs::File::open("/dev/null").map_err(Error::OpenDevNull)?;
+        for io_fd in &[libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
+            if !inheritable_fds.contains(io_fd) {
+                let ret = libc::dup2(dev_null.as_raw_fd(), *io_fd);
+                if ret < 0 {
+                    return Err(Error::DupDevNull(*libc::__errno_location()));
+                }
+            }
         }
         Ok(())
     }
