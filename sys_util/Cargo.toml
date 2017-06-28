@@ -6,4 +6,4 @@ authors = ["The Chromium OS Authors"]
 [dependencies]
 data_model = { path = "../data_model" }
 libc = "*"
-
+syscall_defines = { path = "../syscall_defines" }

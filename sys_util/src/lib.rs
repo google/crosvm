@@ -6,6 +6,7 @@
 
 extern crate data_model;
 extern crate libc;
+extern crate syscall_defines;
 
 #[macro_use]
 pub mod handle_eintr;
@@ -19,6 +20,8 @@ mod struct_util;
 mod tempdir;
 mod terminal;
 mod signal;
+#[macro_use]
+pub mod syslog;
 
 pub use mmap::*;
 pub use eventfd::*;
