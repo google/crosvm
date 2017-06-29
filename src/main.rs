@@ -18,9 +18,12 @@ use std::fmt;
 use std::fs::File;
 use std::io::{stdin, stdout};
 use std::path::{Path, PathBuf};
+use std::ptr;
 use std::string::String;
 use std::sync::{Arc, Mutex, Barrier};
-use std::thread::{spawn, JoinHandle};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::{spawn, sleep, JoinHandle};
+use std::time::Duration;
 
 use clap::{Arg, App, SubCommand};
 
@@ -28,7 +31,7 @@ use device_manager::{DeviceManager, VmRequest};
 use io_jail::Minijail;
 use kvm::*;
 use sys_util::{GuestAddress, GuestMemory, EventFd, TempDir, Terminal, Poller, Pollable,
-               register_signal_handler, Killable};
+               register_signal_handler, Killable, SignalFd, syslog};
 
 pub mod hw;
 pub mod kernel_cmdline;
@@ -51,6 +54,7 @@ enum Error {
     KernelLoader(kernel_loader::Error),
     ConfigureSystem(x86_64::Error),
     EventFd(sys_util::Error),
+    SignalFd(sys_util::SignalFdError),
     Kvm(sys_util::Error),
     Vm(sys_util::Error),
     Vcpu(sys_util::Error),
@@ -93,6 +97,7 @@ impl fmt::Display for Error {
             &Error::KernelLoader(ref e) => write!(f, "error loading kernel: {:?}", e),
             &Error::ConfigureSystem(ref e) => write!(f, "error configuring system: {:?}", e),
             &Error::EventFd(ref e) => write!(f, "error creating EventFd: {:?}", e),
+            &Error::SignalFd(ref e) => write!(f, "error with SignalFd: {:?}", e),
             &Error::Kvm(ref e) => write!(f, "error creating Kvm: {:?}", e),
             &Error::Vm(ref e) => write!(f, "error creating Vm: {:?}", e),
             &Error::Vcpu(ref e) => write!(f, "error creating Vcpu: {:?}", e),
@@ -240,6 +245,12 @@ fn run_kvm(requests: Vec<VmRequest>,
 
     let exit_evt = EventFd::new().expect("failed to create exit eventfd");
 
+    // Masking signals is inherently dangerous, since this can persist across
+    // clones/execs. Do this after any jailed devices have been spawned, but
+    // before the vcpus spawn so they also inherit the masking for SIGCHLD.
+    let sigchld_fd = SignalFd::new(libc::SIGCHLD)
+        .expect("failed to create child signalfd");
+
     struct NoDevice;
     impl hw::BusDevice for NoDevice {}
 
@@ -291,11 +302,13 @@ fn run_kvm(requests: Vec<VmRequest>,
     vm.register_irqfd(&com_evt_2_4, 3)
         .map_err(Error::RegisterIrqfd)?;
 
+    let kill_signaled = Arc::new(AtomicBool::new(false));
     let mut vcpu_handles = Vec::with_capacity(vcpu_count as usize);
     let vcpu_thread_barrier = Arc::new(Barrier::new((vcpu_count + 1) as usize));
     for cpu_id in 0..vcpu_count {
         let mmio_bus = mmio_bus.clone();
         let io_bus = io_bus.clone();
+        let kill_signaled = kill_signaled.clone();
         let vcpu_thread_barrier = vcpu_thread_barrier.clone();
         let vcpu_exit_evt = exit_evt.try_clone().map_err(Error::EventFd)?;
         let vcpu = Vcpu::new(cpu_id as u64, &kvm, &vm).map_err(Error::Vcpu)?;
@@ -362,6 +375,9 @@ fn run_kvm(requests: Vec<VmRequest>,
                         }
                     }
                 }
+                if kill_signaled.load(Ordering::SeqCst) {
+                    break;
+                }
             }
             vcpu_exit_evt
                 .write(1)
@@ -371,17 +387,25 @@ fn run_kvm(requests: Vec<VmRequest>,
 
     vcpu_thread_barrier.wait();
 
-    run_control(control_socket, stdio_serial, exit_evt, vcpu_handles)
+    run_control(control_socket,
+                stdio_serial,
+                exit_evt,
+                sigchld_fd,
+                kill_signaled,
+                vcpu_handles)
 }
 
 fn run_control(control_socket: Option<ControlSocketRecv>,
                stdio_serial: Arc<Mutex<hw::Serial>>,
                exit_evt: EventFd,
+               sigchld_fd: SignalFd,
+               kill_signaled: Arc<AtomicBool>,
                vcpu_handles: Vec<JoinHandle<()>>)
                -> Result<()> {
     const EXIT: u32 = 1;
     const STDIN: u32 = 2;
     const CONTROL: u32 = 3;
+    const CHILD_SIGNAL: u32 = 4;
 
     let stdin_handle = stdin();
     let stdin_lock = stdin_handle.lock();
@@ -395,8 +419,9 @@ fn run_control(control_socket: Option<ControlSocketRecv>,
     if let Some(socket) = control_socket.as_ref() {
         pollables.push((CONTROL, socket as &Pollable));
     }
+    pollables.push((CHILD_SIGNAL, &sigchld_fd as &Pollable));
 
-    let mut poller = Poller::new(3);
+    let mut poller = Poller::new(4);
 
     'poll: loop {
         let poll_res = {
@@ -436,11 +461,28 @@ fn run_control(control_socket: Option<ControlSocketRecv>,
                         }
                     }
                 }
+                CHILD_SIGNAL => {
+                    // Print all available siginfo structs, then exit the loop.
+                    loop {
+                        let result = sigchld_fd.read().map_err(Error::SignalFd)?;
+                        if let Some(siginfo) = result {
+                            error!("child {} died: signo {}, status {}, code {}",
+                                   siginfo.ssi_pid,
+                                   siginfo.ssi_signo,
+                                   siginfo.ssi_status,
+                                   siginfo.ssi_code);
+                        }
+                        break 'poll;
+                    }
+                }
                 _ => {}
             }
         }
     }
 
+    // vcpu threads MUST see the kill signaled flag, otherwise they may
+    // re-enter the VM.
+    kill_signaled.store(true, Ordering::SeqCst);
     for handle in vcpu_handles {
         match handle.kill(0) {
             Ok(_) => {
@@ -460,6 +502,10 @@ fn run_control(control_socket: Option<ControlSocketRecv>,
 }
 
 fn main() {
+    if let Err(e) = syslog::init() {
+        println!("failed to initiailize syslog: {:?}", e);
+        return;
+    }
     let matches = App::new("crosvm")
         .version("0.1.0")
         .author("The Chromium OS Authors")
@@ -545,6 +591,54 @@ fn main() {
                 Ok(_) => println!("crosvm has exited normally"),
                 Err(e) => println!("{}", e),
             }
+
+            // Reap exit status from any child device processes. At this point,
+            // all devices should have been dropped in the main process and
+            // told to shutdown. Try over a period of 100ms, since it may
+            // take some time for the processes to shut down.
+            let mut all_children_exited: bool = false;
+            const CHILD_WAIT_MAX_ITER: isize = 10;
+            const CHILD_WAIT_MS: u64 = 10;
+            for _ in 0..CHILD_WAIT_MAX_ITER {
+                // waitpid() is safe when used in this manner; we will check
+                // without blocking if there are any child processes that
+                // are still running or need their exit statuses reaped.
+                let ret = unsafe {
+                    libc::waitpid(-1, ptr::null_mut(), libc::WNOHANG)
+                };
+                // waitpid() returns -1 when there are no children left.
+                if ret < 0 {
+                    let err = sys_util::Error::last().errno();
+                    // We expect ECHILD which indicates that there were
+                    // no children left.
+                    if err == libc::ECHILD {
+                        all_children_exited = true;
+                    }
+                    else {
+                        warn!("waitpid returned {} while waiting for children",
+                              err);
+                    }
+                    break;
+                }
+                // There's no timeout option for waitpid, so our only recourse
+                // is to use WNOHANG and sleep while waiting for the children
+                // to exit.
+                sleep(Duration::from_millis(CHILD_WAIT_MS));
+            }
+            if !all_children_exited {
+                // We gave them a chance, and it's too late.
+                // A pid of 0 will kill any processes left in our process group,
+                // which is safe for us to do (we spawned them).
+                warn!("not all child processes have exited; sending SIGKILL");
+                let ret = unsafe { libc::kill(0, libc::SIGKILL) };
+                if ret < 0 {
+                    // We're now at the mercy of the OS to clean up after us.
+                    warn!("unable to kill all child processes");
+                }
+            }
+
+            // WARNING: Any code added after this point is not guaranteed to run
+            // since we may forcibly kill this process (and its children) above.
         }
         _ => {}
     }
