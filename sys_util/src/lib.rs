@@ -24,6 +24,7 @@ mod signal;
 #[macro_use]
 pub mod syslog;
 mod fork;
+mod signalfd;
 
 pub use mmap::*;
 pub use shm::*;
@@ -38,5 +39,7 @@ pub use tempdir::*;
 pub use terminal::*;
 pub use signal::*;
 pub use fork::*;
+pub use signalfd::*;
 
 pub use guest_memory::Error as GuestMemoryError;
+pub use signalfd::Error as SignalFdError;
