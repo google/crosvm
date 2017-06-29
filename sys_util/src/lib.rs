@@ -7,6 +7,8 @@
 extern crate data_model;
 extern crate libc;
 
+#[macro_use]
+pub mod handle_eintr;
 mod mmap;
 mod eventfd;
 mod errno;

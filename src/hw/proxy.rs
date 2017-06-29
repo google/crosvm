@@ -5,7 +5,7 @@
 //! Runs hardware devices in child processes.
 
 use std::process;
-use std::io::{Error, ErrorKind, Result};
+use std::io::{Error, Result};
 use std::os::unix::net::UnixDatagram;
 use std::time::Duration;
 
@@ -19,27 +19,6 @@ const SOCKET_TIMEOUT_MS: u64 = 2000;
 const MSG_SIZE: usize = 24;
 const CHILD_SIGNATURE: [u8; MSG_SIZE] = [0x7f; MSG_SIZE];
 
-/// Macro that retries the given expression every time it returns an `std::io::Error` whose kind is
-/// `ErrorKind::Interrupted`. This is useful for operations prone to being spuriously interrupted by
-/// signals.
-macro_rules! handle_intr {
-    ($x:expr) => (
-        {
-            let res;
-            loop {
-                match $x {
-                    Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
-                    v => {
-                        res = v;
-                        break;
-                    }
-                }
-            }
-            res
-        }
-    )
-}
-
 enum Command {
     Read = 0,
     Write = 1,
@@ -49,7 +28,7 @@ enum Command {
 fn child_proc(sock: UnixDatagram, device: &mut BusDevice) -> ! {
     let mut running = true;
 
-    let res = handle_intr!(sock.send(&CHILD_SIGNATURE));
+    let res = handle_eintr!(sock.send(&CHILD_SIGNATURE));
     if let Err(e) = res {
         println!("error: failed to send child started signal: {}", e);
         running = false;
@@ -57,7 +36,7 @@ fn child_proc(sock: UnixDatagram, device: &mut BusDevice) -> ! {
 
     while running {
         let mut buf = [0; MSG_SIZE];
-        match handle_intr!(sock.recv(&mut buf)) {
+        match handle_eintr!(sock.recv(&mut buf)) {
             Ok(c) if c != buf.len() => {
                 println!("error: child device process incorrect recv size: got {}, expected {}",
                          c,
@@ -77,13 +56,13 @@ fn child_proc(sock: UnixDatagram, device: &mut BusDevice) -> ! {
 
         let res = if cmd == Command::Read as u32 {
             device.read(offset, &mut buf[16..16 + len]);
-            handle_intr!(sock.send(&buf))
+            handle_eintr!(sock.send(&buf))
         } else if cmd == Command::Write as u32 {
             device.write(offset, &buf[16..16 + len]);
-            handle_intr!(sock.send(&buf))
+            handle_eintr!(sock.send(&buf))
         } else if cmd == Command::Shutdown as u32 {
             running = false;
-            handle_intr!(sock.send(&buf))
+            handle_eintr!(sock.send(&buf))
         } else {
             println!("child device process unknown command: {}", cmd);
             break;
@@ -128,7 +107,7 @@ impl ProxyDevice {
             .set_write_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))?;
         parent_sock
             .set_read_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))?;
-        handle_intr!(parent_sock.recv(&mut buf))?;
+        handle_eintr!(parent_sock.recv(&mut buf))?;
         assert_eq!(buf, CHILD_SIGNATURE);
         Ok(ProxyDevice { sock: parent_sock })
     }
@@ -139,12 +118,12 @@ impl ProxyDevice {
         NativeEndian::write_u32(&mut buf[4..], len);
         NativeEndian::write_u64(&mut buf[8..], offset);
         buf[16..16 + data.len()].clone_from_slice(data);
-        handle_intr!(self.sock.send(&buf)).map(|_| ())
+        handle_eintr!(self.sock.send(&buf)).map(|_| ())
     }
 
     fn recv_resp(&self, data: &mut [u8]) -> Result<()> {
         let mut buf = [0; MSG_SIZE];
-        handle_intr!(self.sock.recv(&mut buf))?;
+        handle_eintr!(self.sock.recv(&mut buf))?;
         let len = data.len();
         data.clone_from_slice(&buf[16..16 + len]);
         Ok(())
@@ -152,7 +131,7 @@ impl ProxyDevice {
 
     fn wait(&self) -> Result<()> {
         let mut buf = [0; MSG_SIZE];
-        handle_intr!(self.sock.recv(&mut buf)).map(|_| ())
+        handle_eintr!(self.sock.recv(&mut buf)).map(|_| ())
     }
 }
 
