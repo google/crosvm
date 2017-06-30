@@ -9,6 +9,7 @@ mod mmio;
 mod block;
 mod rng;
 mod net;
+mod wl;
 
 pub mod vhost;
 
@@ -17,6 +18,7 @@ pub use self::mmio::*;
 pub use self::block::*;
 pub use self::rng::*;
 pub use self::net::*;
+pub use self::wl::*;
 
 const DEVICE_ACKNOWLEDGE: u32 = 0x01;
 const DEVICE_DRIVER: u32 = 0x02;
@@ -28,6 +30,7 @@ const DEVICE_FAILED: u32 = 0x80;
 const TYPE_NET: u32 = 1;
 const TYPE_BLOCK: u32 = 2;
 const TYPE_RNG: u32 = 4;
+const TYPE_WL: u32 = 30;
 
 const INTERRUPT_STATUS_USED_RING: u32 = 0x1;
 

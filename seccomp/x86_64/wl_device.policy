@@ -1,0 +1,35 @@
+close: 1
+getpid: 1
+exit_group: 1
+futex: 1
+# Disallow mmap with PROT_EXEC set.  The syntax here doesn't allow bit
+# negation, thus the manually negated mask constant.
+mmap: arg2 in 0xfffffffb
+mprotect: arg2 in 0xfffffffb
+munmap: 1
+poll: 1
+read: 1
+recvfrom: 1
+sched_getaffinity: 1
+set_robust_list: 1
+sigaltstack: 1
+# Disallow clone's other than new threads.
+# arg0 is flags. Because kernel.
+clone: arg0 & 0x00010000
+write: 1
+eventfd2: 1
+dup: 1
+# Used to connect to wayland. arg0 == AF_UNIX && arg1 == SOCK_STREAM|SOCK_CLOEXEC
+socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
+# arg1 == FIONBIO
+ioctl: arg1 == 0x5421
+connect: arg2 == 13
+# Used to communicate with wayland
+recvmsg: 1
+sendmsg: 1
+# Used for sharing memory with wayland. arg1 == MFD_CLOEXEC
+memfd_create: arg1 == 1
+# Used to set of size new memfd
+ftruncate: 1
+# Used to determine shm size after recvmsg with fd
+lseek: 1

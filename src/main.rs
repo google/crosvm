@@ -25,7 +25,8 @@ pub mod kernel_cmdline;
 pub mod vm_control;
 pub mod device_manager;
 
-use std::ffi::{CString, CStr};
+use std::env::var_os;
+use std::ffi::{OsString, CString, CStr};
 use std::fmt;
 use std::fs::{File, OpenOptions, remove_file};
 use std::io::{stdin, stdout};
@@ -41,8 +42,9 @@ use std::time::Duration;
 use io_jail::Minijail;
 use kvm::*;
 use sys_util::{GuestAddress, GuestMemory, EventFd, TempDir, Terminal, Poller, Pollable, Scm,
-               register_signal_handler, Killable, SignalFd, getpid, kill_process_group, reap_child,
-               syslog};
+               register_signal_handler, Killable, SignalFd, geteuid, getegid, getpid,
+               kill_process_group, reap_child, syslog};
+
 
 use argument::{Argument, set_arguments, print_help};
 use device_manager::*;
@@ -50,6 +52,7 @@ use vm_control::{VmRequest, VmResponse};
 
 enum Error {
     OpenKernel(PathBuf, std::io::Error),
+    EnvVar(&'static str),
     Socket(std::io::Error),
     Disk(std::io::Error),
     BlockDeviceNew(sys_util::Error),
@@ -61,7 +64,9 @@ enum Error {
     DevicePivotRoot(io_jail::Error),
     RegisterBlock(device_manager::Error),
     RegisterNet(device_manager::Error),
+    RegisterWayland(device_manager::Error),
     Cmdline(kernel_cmdline::Error),
+    MissingWayland(PathBuf),
     RegisterIrqfd(sys_util::Error),
     RegisterRng(device_manager::Error),
     RngDeviceNew(hw::virtio::RngError),
@@ -100,6 +105,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &Error::OpenKernel(ref p, ref e) => write!(f, "failed to open kernel image {:?}: {}", p, e),
+            &Error::EnvVar(key) => write!(f, "missing enviroment variable: {}", key),
             &Error::Socket(ref e) => write!(f, "failed to create socket: {}", e),
             &Error::Disk(ref e) => write!(f, "failed to load disk image: {}", e),
             &Error::BlockDeviceNew(ref e) => write!(f, "failed to create block device: {:?}", e),
@@ -120,7 +126,9 @@ impl fmt::Display for Error {
             &Error::RngDeviceRootSetup(ref e) => {
                 write!(f, "failed to create root directory for a rng device: {:?}", e)
             }
+            &Error::RegisterWayland(ref e) => write!(f, "error registering wayland device: {}", e),
             &Error::Cmdline(ref e) => write!(f, "the given kernel command line was invalid: {}", e),
+            &Error::MissingWayland(ref p) => write!(f, "wayland socket does not exist: {:?}", p),
             &Error::RegisterIrqfd(ref e) => write!(f, "error registering irqfd: {:?}", e),
             &Error::KernelLoader(ref e) => write!(f, "error loading kernel: {:?}", e),
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -155,6 +163,13 @@ impl Drop for UnlinkUnixDatagram {
     }
 }
 
+fn env_var(key: &'static str) -> Result<OsString> {
+    match var_os(key) {
+        Some(v) => Ok(v),
+        None => Err(Error::EnvVar(key))
+    }
+}
+
 struct DiskOption {
     path: PathBuf,
     writable: bool,
@@ -171,6 +186,7 @@ struct Config {
     netmask: Option<net::Ipv4Addr>,
     mac_address: Option<String>,
     vhost_net: bool,
+    disable_wayland: bool,
     socket_path: Option<PathBuf>,
     multiprocess: bool,
     warn_unknown_ports: bool,
@@ -326,6 +342,44 @@ fn run_config(cfg: Config) -> Result<()> {
             };
 
             device_manager.register_mmio(net_box, jail, &mut cmdline).map_err(Error::RegisterNet)?;
+        }
+    }
+
+    let wl_root = TempDir::new(&PathBuf::from("/tmp/wl_root"))?;
+    if !cfg.disable_wayland {
+        match env_var("XDG_RUNTIME_DIR") {
+            Ok(p) => {
+                let jailed_wayland_path = Path::new("/wayland-0");
+                let wayland_path = Path::new(&p).join("wayland-0");
+                if !wayland_path.exists() {
+                    return Err(Error::MissingWayland(wayland_path));
+                }
+
+                let (host_socket, device_socket) = UnixDatagram::pair().map_err(Error::Socket)?;
+                control_sockets.push(UnlinkUnixDatagram(host_socket));
+                let wl_box = Box::new(hw::virtio::Wl::new(if cfg.multiprocess {
+                        &jailed_wayland_path
+                    } else {
+                        wayland_path.as_path()
+                    },
+                    device_socket)?);
+
+                let jail = if cfg.multiprocess {
+                    let wl_root_path = wl_root.as_path().unwrap(); // Won't fail if new succeeded.
+                    let mut jail = create_base_minijail(wl_root_path, Path::new("wl_device.policy"))?;
+                    // Map the jail's root uid/gid to the main processes effective uid/gid so that
+                    // the jailed device can access the wayland-0 socket with the same credentials
+                    // as the main process.
+                    jail.uidmap(&format!("0 {} 1", geteuid()));
+                    jail.gidmap(&format!("0 {} 1", getegid()));
+                    jail.mount_bind(wayland_path.as_path(), jailed_wayland_path, true).unwrap();
+                    Some(jail)
+                } else {
+                    None
+                };
+                device_manager.register_mmio(wl_box, jail, &mut cmdline).map_err(Error::RegisterWayland)?;
+            }
+            _ => warn!("missing environment variable \"XDG_RUNTIME_DIR\" required to activate virtio wayland device"),
         }
     }
 
@@ -780,6 +834,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.mac_address = Some(value.unwrap().to_owned());
         }
+        "no-wl" => {
+            cfg.disable_wayland = true;
+        }
         "socket" => {
             if cfg.socket_path.is_some() {
                 return Err(argument::Error::TooManyArguments("`socket` already given".to_owned()));
@@ -829,6 +886,7 @@ fn run_vm(args: std::env::Args) {
                           "IP address to assign to host tap interface."),
           Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
           Argument::value("mac", "MAC", "MAC address for VM."),
+          Argument::flag("no-wl", "Disables the virtio wayland device."),
           Argument::short_value('s',
                                 "socket",
                                 "PATH",
