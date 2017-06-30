@@ -18,6 +18,8 @@ use std::str::FromStr;
 
 #[derive(Debug)]
 pub enum Error {
+    // minijail failed to accept bind mount.
+    BindMount(i32),
     /// minjail_new failed, this is an allocation failure.
     CreatingMinijail,
     /// The path or name string passed in didn't parse to a valid CString.
@@ -207,6 +209,17 @@ impl Minijail {
     }
     pub fn mount_tmp_size(&mut self, size: usize) {
         unsafe { libminijail::minijail_mount_tmp_size(self.jail, size); }
+    }
+    pub fn mount_bind(&mut self, src: &Path, dest: &Path, writable: bool) -> Result<()> {
+        let src = src.as_os_str().to_str().ok_or(Error::InvalidCString)?;
+        let src = CString::new(src).map_err(|_| Error::InvalidCString)?;
+        let dest = dest.as_os_str().to_str().ok_or(Error::InvalidCString)?;
+        let dest = CString::new(dest).map_err(|_| Error::InvalidCString)?;
+        let ret = unsafe { libminijail::minijail_bind(self.jail, src.as_ptr(), dest.as_ptr(), writable as _) };
+        if ret < 0 {
+            return Err(Error::BindMount(ret));
+        }
+        Ok(())
     }
 
     /// Enters the previously configured minijail.
