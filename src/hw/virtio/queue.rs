@@ -12,13 +12,6 @@ const VIRTQ_DESC_F_WRITE: u16 = 0x2;
 #[allow(dead_code)]
 const VIRTQ_DESC_F_INDIRECT: u16 = 0x4;
 
-#[derive(Clone, Debug)]
-pub enum Error {
-    RequestOutOfBounds,
-    SectorOutOfBounds,
-}
-pub type Result<T> = result::Result<T, Error>;
-
 /// A virtio descriptor chain.
 pub struct DescriptorChain<'a> {
     mem: &'a GuestMemory,
