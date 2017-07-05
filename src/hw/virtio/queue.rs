@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::cmp::min;
+use std::num::Wrapping;
 
 use sys_util::{GuestAddress, GuestMemory};
 
@@ -121,10 +122,10 @@ pub struct AvailIter<'a, 'b> {
     mem: &'a GuestMemory,
     desc_table: GuestAddress,
     avail_ring: GuestAddress,
-    next_index: usize,
-    last_index: usize,
-    queue_size: usize,
-    next_avail: &'b mut u16,
+    next_index: Wrapping<u16>,
+    last_index: Wrapping<u16>,
+    queue_size: u16,
+    next_avail: &'b mut Wrapping<u16>,
 }
 
 impl<'a, 'b> Iterator for AvailIter<'a, 'b> {
@@ -135,24 +136,20 @@ impl<'a, 'b> Iterator for AvailIter<'a, 'b> {
             return None;
         }
 
-        let avail_addr = match self.mem
-                  .checked_offset(self.avail_ring, 4 + self.next_index * 2) {
+        let offset = (4 + (self.next_index.0 % self.queue_size) * 2) as usize;
+        let avail_addr = match self.mem.checked_offset(self.avail_ring, offset) {
             Some(a) => a,
             None => return None,
         };
         // This index is checked below in checked_new
         let desc_index: u16 = self.mem.read_obj_from_addr(avail_addr).unwrap();
 
-        self.next_index += 1;
-        self.next_index %= self.queue_size;
+        self.next_index += Wrapping(1);
 
-        let ret = DescriptorChain::checked_new(self.mem,
-                                               self.desc_table,
-                                               self.queue_size as u16,
-                                               desc_index);
+        let ret =
+            DescriptorChain::checked_new(self.mem, self.desc_table, self.queue_size, desc_index);
         if ret.is_some() {
-            *self.next_avail += 1;
-            *self.next_avail %= self.queue_size as u16;
+            *self.next_avail += Wrapping(1);
         }
         ret
     }
@@ -179,8 +176,8 @@ pub struct Queue {
     /// Guest physical address of the used ring
     pub used_ring: GuestAddress,
 
-    next_avail: u16,
-    next_used: u16,
+    next_avail: Wrapping<u16>,
+    next_used: Wrapping<u16>,
 }
 
 impl Queue {
@@ -193,8 +190,8 @@ impl Queue {
             desc_table: GuestAddress(0),
             avail_ring: GuestAddress(0),
             used_ring: GuestAddress(0),
-            next_avail: 0,
-            next_used: 0,
+            next_avail: Wrapping(0),
+            next_used: Wrapping(0),
         }
     }
 
@@ -253,8 +250,8 @@ impl Queue {
                        mem: mem,
                        desc_table: GuestAddress(0),
                        avail_ring: GuestAddress(0),
-                       next_index: 0,
-                       last_index: 0,
+                       next_index: Wrapping(0),
+                       last_index: Wrapping(0),
                        queue_size: 0,
                        next_avail: &mut self.next_avail,
                    };
@@ -264,14 +261,15 @@ impl Queue {
 
         let index_addr = mem.checked_offset(avail_ring, 2).unwrap();
         // Note that last_index has no invalid values
-        let last_index: u16 = mem.read_obj_from_addr::<u16>(index_addr).unwrap() % queue_size;
+        let last_index: u16 = mem.read_obj_from_addr::<u16>(index_addr).unwrap();
+
         AvailIter {
             mem: mem,
             desc_table: self.desc_table,
             avail_ring: avail_ring,
-            next_index: self.next_avail as usize,
-            last_index: last_index as usize,
-            queue_size: queue_size as usize,
+            next_index: self.next_avail,
+            last_index: Wrapping(last_index),
+            queue_size: queue_size,
             next_avail: &mut self.next_avail,
         }
     }
@@ -285,7 +283,7 @@ impl Queue {
         }
 
         let used_ring = self.used_ring;
-        let next_used = (self.next_used % self.actual_size()) as usize;
+        let next_used = (self.next_used.0 % self.actual_size()) as usize;
         let used_elem = used_ring.unchecked_add(4 + next_used * 8);
 
         // These writes can't fail as we are guaranteed to be within the descriptor ring.
@@ -294,8 +292,8 @@ impl Queue {
         mem.write_obj_at_addr(len as u32, used_elem.unchecked_add(4))
             .unwrap();
 
-        self.next_used = self.next_used.wrapping_add(1);
-        mem.write_obj_at_addr(self.next_used as u16, used_ring.unchecked_add(2))
+        self.next_used += Wrapping(1);
+        mem.write_obj_at_addr(self.next_used.0 as u16, used_ring.unchecked_add(2))
             .unwrap();
     }
 }
