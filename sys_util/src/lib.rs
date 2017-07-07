@@ -11,6 +11,7 @@ extern crate syscall_defines;
 #[macro_use]
 pub mod handle_eintr;
 mod mmap;
+mod shm;
 mod eventfd;
 mod errno;
 mod guest_address;
@@ -24,6 +25,7 @@ mod signal;
 pub mod syslog;
 
 pub use mmap::*;
+pub use shm::*;
 pub use eventfd::*;
 pub use errno::{Error, Result};
 use errno::errno_result;
