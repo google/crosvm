@@ -20,35 +20,13 @@ use libc::{open, O_RDWR, EINVAL, ENOSPC};
 use kvm_sys::*;
 
 use sys_util::{GuestAddress, GuestMemory, MemoryMapping, EventFd, Error, Result};
+use sys_util::{ioctl, ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref, ioctl_with_ptr,
+               ioctl_with_mut_ptr};
 
 pub use cap::*;
 
 fn errno_result<T>() -> Result<T> {
     Err(Error::last())
-}
-
-unsafe fn ioctl<F: AsRawFd>(fd: &F, nr: c_ulong) -> c_int {
-    libc::ioctl(fd.as_raw_fd(), nr, 0)
-}
-
-unsafe fn ioctl_with_val<F: AsRawFd>(fd: &F, nr: c_ulong, arg: c_ulong) -> c_int {
-    libc::ioctl(fd.as_raw_fd(), nr, arg)
-}
-
-unsafe fn ioctl_with_ref<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: &T) -> c_int {
-    libc::ioctl(fd.as_raw_fd(), nr, arg as *const T as *const c_void)
-}
-
-unsafe fn ioctl_with_mut_ref<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: &mut T) -> c_int {
-    libc::ioctl(fd.as_raw_fd(), nr, arg as *mut T as *mut c_void)
-}
-
-unsafe fn ioctl_with_ptr<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: *const T) -> c_int {
-    libc::ioctl(fd.as_raw_fd(), nr, arg as *const c_void)
-}
-
-unsafe fn ioctl_with_mut_ptr<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: *mut T) -> c_int {
-    libc::ioctl(fd.as_raw_fd(), nr, arg as *mut c_void)
 }
 
 unsafe fn set_user_memory_region<F: AsRawFd>(fd: &F, slot: u32, guest_addr: u64, memory_size: u64, userspace_addr: u64) -> Result<()> {

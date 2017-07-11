@@ -10,6 +10,10 @@ extern crate syscall_defines;
 
 #[macro_use]
 pub mod handle_eintr;
+#[macro_use]
+pub mod ioctl;
+#[macro_use]
+pub mod syslog;
 mod mmap;
 mod shm;
 mod eventfd;
@@ -21,8 +25,6 @@ mod struct_util;
 mod tempdir;
 mod terminal;
 mod signal;
-#[macro_use]
-pub mod syslog;
 mod fork;
 mod signalfd;
 
@@ -40,6 +42,7 @@ pub use terminal::*;
 pub use signal::*;
 pub use fork::*;
 pub use signalfd::*;
+pub use ioctl::*;
 
 pub use guest_memory::Error as GuestMemoryError;
 pub use signalfd::Error as SignalFdError;
