@@ -526,7 +526,7 @@ fn main() {
                                  .short("c")
                                  .long("cpus")
                                  .value_name("N")
-                                 .help("number of VCPUs (WARNING: CURRENTLY UNUSED)")
+                                 .help("number of VCPUs")
                                  .takes_value(true))
                         .arg(Arg::with_name("memory")
                                  .short("m")
