@@ -20,6 +20,7 @@ extern crate virtio_sys;
 use std::ffi::{CString, CStr};
 use std::fmt;
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::{stdin, stdout};
 use std::net;
 use std::path::{Path, PathBuf};
@@ -125,8 +126,13 @@ impl fmt::Display for Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
-struct Config {
-    disk_path: Option<String>,
+struct DiskOption<'a> {
+    path: &'a str,
+    writable: bool,
+}
+
+struct Config<'a> {
+    disks: Vec<DiskOption<'a>>,
     vcpu_count: Option<u32>,
     memory: Option<usize>,
     kernel_image: File,
@@ -234,11 +240,15 @@ fn run_config(cfg: Config) -> Result<()> {
 
     let block_root = TempDir::new(&PathBuf::from("/tmp/block_root"))
         .map_err(Error::BlockDeviceRootSetup)?;
-    if let Some(ref disk_path) = cfg.disk_path {
-        let disk_image = File::open(disk_path).map_err(|e| Error::Disk(e))?;
+    for disk in cfg.disks {
+        let disk_image = OpenOptions::new()
+                            .read(true)
+                            .write(disk.writable)
+                            .open(disk.path)
+                            .map_err(|e| Error::Disk(e))?;
 
         let block_box = Box::new(hw::virtio::Block::new(disk_image)
-                                     .map_err(|e| Error::BlockDeviceNew(e))?);
+                    .map_err(|e| Error::BlockDeviceNew(e))?);
         let jail = if cfg.multiprocess {
             let block_root_path = block_root.as_path().unwrap(); // Won't fail if new succeeded.
             Some(create_base_minijail(block_root_path, Path::new("block_device.policy"))?)
@@ -247,12 +257,8 @@ fn run_config(cfg: Config) -> Result<()> {
             None
         };
 
-        cmdline
-            .insert("root", "/dev/vda")
-            .map_err(Error::Cmdline)?;
-
         device_manager.register_mmio(block_box, jail, &mut cmdline)
-                      .map_err(Error::RegisterBlock)?;
+                .map_err(Error::RegisterBlock)?;
     }
 
     // We checked above that if the IP is defined, then the netmask is, too.
@@ -611,7 +617,17 @@ fn main() {
                                  .short("d")
                                  .long("disk")
                                  .value_name("FILE")
-                                 .help("rootfs disk image")
+                                 .help("disk image")
+                                 .multiple(true)
+                                 .number_of_values(1)
+                                 .takes_value(true))
+                        .arg(Arg::with_name("writable")
+                                 .short("w")
+                                 .long("writable")
+                                 .value_name("FILE")
+                                 .help("make disk image writable")
+                                 .multiple(true)
+                                 .number_of_values(1)
                                  .takes_value(true))
                         .arg(Arg::with_name("cpus")
                                  .short("c")
@@ -677,8 +693,24 @@ fn main() {
             }
         }
         ("run", Some(matches)) => {
+            let mut disks = Vec::new();
+            matches.values_of("disk").map(|paths| {
+                disks.extend(paths.map(|ref p| {
+                    DiskOption {
+                        path: p,
+                        writable: false,
+                    }
+                }))
+            });
+            if let Some(write_paths) = matches.values_of("writable") {
+                for path in write_paths {
+                    disks.iter_mut().find(|ref mut d| d.path == path).map(
+                        |ref mut d| d.writable = true,
+                    );
+                }
+            }
             let config = Config {
-                disk_path: matches.value_of("disk").map(|s| s.to_string()),
+                disks: disks,
                 vcpu_count: matches.value_of("cpus").and_then(|v| v.parse().ok()),
                 memory: matches.value_of("memory").and_then(|v| v.parse().ok()),
                 kernel_image: File::open(matches.value_of("KERNEL").unwrap())
