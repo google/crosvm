@@ -406,7 +406,7 @@ pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::
 #[macro_export]
 macro_rules! log {
     ($pri:expr, $($args:tt)+) => ({
-        ::syslog::log($pri, ::syslog::Facility::User, file!(), line!(), format_args!($($args)+))
+        $crate::syslog::log($pri, $crate::syslog::Facility::User, file!(), line!(), format_args!($($args)+))
     })
 }
 
@@ -415,7 +415,7 @@ macro_rules! log {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! error {
-    ($($args:tt)+) => (log!(::syslog::Priority::Error, $($args)*))
+    ($($args:tt)+) => (log!($crate::syslog::Priority::Error, $($args)*))
 }
 
 /// A macro for logging a warning.
@@ -423,7 +423,7 @@ macro_rules! error {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! warn {
-    ($($args:tt)+) => (log!(::syslog::Priority::Warning, $($args)*))
+    ($($args:tt)+) => (log!($crate::syslog::Priority::Warning, $($args)*))
 }
 
 /// A macro for logging info.
@@ -431,7 +431,7 @@ macro_rules! warn {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! info {
-    ($($args:tt)+) => (log!(::syslog::Priority::Info, $($args)*))
+    ($($args:tt)+) => (log!($crate::syslog::Priority::Info, $($args)*))
 }
 
 /// A macro for logging debug information.
@@ -439,7 +439,7 @@ macro_rules! info {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! debug {
-    ($($args:tt)+) => (log!(::syslog::Priority::Debug, $($args)*))
+    ($($args:tt)+) => (log!($crate::syslog::Priority::Debug, $($args)*))
 }
 
 #[cfg(test)]
