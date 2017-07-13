@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cmp;
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Read, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -9,8 +10,6 @@ use std::result;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::spawn;
-
-use byteorder::{ByteOrder, LittleEndian};
 
 use sys_util::Result as SysResult;
 use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError, Poller};
@@ -20,6 +19,7 @@ use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_USED_RING, TY
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
 const SECTOR_SHIFT: u8 = 9;
+const SECTOR_SIZE: u64 = 0x01 << SECTOR_SHIFT;
 
 const VIRTIO_BLK_T_IN: u32 = 0;
 const VIRTIO_BLK_T_OUT: u32 = 1;
@@ -263,8 +263,20 @@ impl Worker {
 /// Virtio device for exposing block level read/write operations on a host file.
 pub struct Block {
     kill_evt: Option<EventFd>,
-    disk_size: u64,
     disk_image: Option<File>,
+    config_space: Vec<u8>,
+}
+
+fn build_config_space(disk_size: u64) -> Vec<u8> {
+    // We only support disk size, which uses the first two words of the configuration space.
+    // If the image is not a multiple of the sector size, the tail bits are not exposed.
+    // The config space is little endian.
+    let mut config = Vec::with_capacity(8);
+    let num_sectors = disk_size >> SECTOR_SHIFT;
+    for i in 0..8 {
+        config.push((num_sectors >> (8 * i)) as u8);
+    }
+    config
 }
 
 impl Block {
@@ -273,10 +285,16 @@ impl Block {
     /// The given file must be seekable and sizable.
     pub fn new(mut disk_image: File) -> SysResult<Block> {
         let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
+        if disk_size % SECTOR_SIZE != 0 {
+            println!("block: Disk size {} is not a multiple of sector size {}; \
+                         the remainder will not be visible to the guest.",
+                     disk_size,
+                     SECTOR_SIZE);
+        }
         Ok(Block {
                kill_evt: None,
-               disk_size: disk_size,
                disk_image: Some(disk_image),
+               config_space: build_config_space(disk_size),
            })
     }
 }
@@ -309,14 +327,16 @@ impl VirtioDevice for Block {
         QUEUE_SIZES
     }
 
-    fn read_config(&self, offset: u64, data: &mut [u8]) {
-        // We only support the first word of configuration space.
-        let v = match offset {
-            0 => ((self.disk_size + 0x511) >> SECTOR_SHIFT) as u32,
-            _ => return,
-        };
-
-        LittleEndian::write_u32(data, v);
+    fn read_config(&self, offset: u64, mut data: &mut [u8]) {
+        let config_len = self.config_space.len() as u64;
+        if offset >= config_len {
+            return;
+        }
+        if let Some(end) = offset.checked_add(data.len() as u64) {
+            // This write can't fail, offset and end are checked against config_len.
+            data.write(&self.config_space[offset as usize..cmp::min(end, config_len) as usize])
+                .unwrap();
+        }
     }
 
     fn activate(&mut self,
@@ -351,5 +371,28 @@ impl VirtioDevice for Block {
                 worker.run(queue_evts.remove(0), kill_evt);
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use sys_util::TempDir;
+
+    use super::*;
+
+    #[test]
+    fn read_size() {
+        let tempdir = TempDir::new("/tmp/block_read_test").unwrap();
+        let mut path = PathBuf::from(tempdir.as_path().unwrap());
+        path.push("disk_image");
+        let f = File::create(&path).unwrap();
+        f.set_len(0x1000).unwrap();
+
+        let b = Block::new(f).unwrap();
+        let mut num_sectors = [0u8; 4];
+        b.read_config(0, &mut num_sectors);
+        // size is 0x1000, so num_sectors is 8 (4096/512).
+        assert_eq!([0x08, 0x00, 0x00, 0x00], num_sectors);
     }
 }
