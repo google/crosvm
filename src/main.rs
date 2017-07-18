@@ -143,6 +143,47 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     Ok(j)
 }
 
+// Wait for all children to exit. Return true if they have all exited, false
+// otherwise.
+fn wait_all_children() -> bool {
+    const CHILD_WAIT_MAX_ITER: isize = 10;
+    const CHILD_WAIT_MS: u64 = 10;
+    for _ in 0..CHILD_WAIT_MAX_ITER {
+        // waitpid() is safe when used in this manner; we will check
+        // without blocking if there are any child processes that
+        // are still running or need their exit statuses reaped.
+        loop {
+            let ret = unsafe {
+                libc::waitpid(-1, ptr::null_mut(), libc::WNOHANG)
+            };
+            // waitpid() returns -1 when there are no children left, and
+            // returns 0 when there are children alive but not yet exited.
+            if ret < 0 {
+                let err = sys_util::Error::last().errno();
+                // We expect ECHILD which indicates that there were
+                // no children left.
+                if err == libc::ECHILD {
+                    return true;
+                }
+                else {
+                    warn!("waitpid returned {} while waiting for children",
+                          err);
+                }
+                return false;
+            } else if ret == 0 {
+                break;
+            }
+        }
+        // There's no timeout option for waitpid, so our only recourse
+        // is to use WNOHANG and sleep while waiting for the children
+        // to exit.
+        sleep(Duration::from_millis(CHILD_WAIT_MS));
+    }
+
+    // If we've made it to this point, not all of the children have exited.
+    return false;
+}
+
 fn run_config(cfg: Config) -> Result<()> {
     let socket = if let Some(ref socket_path) = cfg.socket_path {
         Some(ControlSocketRecv::new(socket_path)
@@ -596,36 +637,7 @@ fn main() {
             // all devices should have been dropped in the main process and
             // told to shutdown. Try over a period of 100ms, since it may
             // take some time for the processes to shut down.
-            let mut all_children_exited: bool = false;
-            const CHILD_WAIT_MAX_ITER: isize = 10;
-            const CHILD_WAIT_MS: u64 = 10;
-            for _ in 0..CHILD_WAIT_MAX_ITER {
-                // waitpid() is safe when used in this manner; we will check
-                // without blocking if there are any child processes that
-                // are still running or need their exit statuses reaped.
-                let ret = unsafe {
-                    libc::waitpid(-1, ptr::null_mut(), libc::WNOHANG)
-                };
-                // waitpid() returns -1 when there are no children left.
-                if ret < 0 {
-                    let err = sys_util::Error::last().errno();
-                    // We expect ECHILD which indicates that there were
-                    // no children left.
-                    if err == libc::ECHILD {
-                        all_children_exited = true;
-                    }
-                    else {
-                        warn!("waitpid returned {} while waiting for children",
-                              err);
-                    }
-                    break;
-                }
-                // There's no timeout option for waitpid, so our only recourse
-                // is to use WNOHANG and sleep while waiting for the children
-                // to exit.
-                sleep(Duration::from_millis(CHILD_WAIT_MS));
-            }
-            if !all_children_exited {
+            if !wait_all_children() {
                 // We gave them a chance, and it's too late.
                 // A pid of 0 will kill any processes left in our process group,
                 // which is safe for us to do (we spawned them).
