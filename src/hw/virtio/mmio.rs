@@ -149,6 +149,14 @@ impl MmioDevice {
         self.driver_status == ready_bits && self.driver_status & DEVICE_FAILED == 0
     }
 
+    fn are_queues_valid(&self) -> bool {
+        if let Some(mem) = self.mem.as_ref() {
+            self.queues.iter().all(|q| q.is_valid(mem))
+        } else {
+            false
+        }
+    }
+
     fn with_queue<U, F>(&self, d: U, f: F) -> U
         where F: FnOnce(&Queue) -> U
     {
@@ -170,33 +178,37 @@ impl MmioDevice {
 
 impl BusDevice for MmioDevice {
     fn read(&mut self, offset: u64, data: &mut [u8]) {
-        if data.len() != 4 {
-            println!("invalid virtio mmio read of size {}", data.len());
-            return;
-        }
-
-        let v = match offset {
-            0x0 => MMIO_MAGIC_VALUE,
-            0x004 => MMIO_VERSION,
-            0x008 => self.device.device_type(),
-            0x00c => VENDOR_ID, // vendor id
-            0x010 => {
-                self.device.features(self.features_select) |
-                if self.features_select == 1 { 0x1 } else { 0x0 }
+        match offset {
+            0x00...0xff if data.len() == 4 => {
+                let v = match offset {
+                    0x0 => MMIO_MAGIC_VALUE,
+                    0x04 => MMIO_VERSION,
+                    0x08 => self.device.device_type(),
+                    0x0c => VENDOR_ID, // vendor id
+                    0x10 => {
+                        self.device.features(self.features_select) |
+                        if self.features_select == 1 { 0x1 } else { 0x0 }
+                    }
+                    0x34 => self.with_queue(0, |q| q.max_size as u32),
+                    0x44 => self.with_queue(0, |q| q.ready as u32),
+                    0x60 => self.interrupt_status.load(Ordering::SeqCst) as u32,
+                    0x70 => self.driver_status,
+                    0xfc => self.config_generation,
+                    _ => {
+                        println!("unknown virtio mmio register read: 0x{:x}", offset);
+                        return;
+                    }
+                };
+                LittleEndian::write_u32(data, v);
             }
-            0x034 => self.with_queue(0, |q| q.max_size as u32),
-            0x044 => self.with_queue(0, |q| q.ready as u32),
-            0x060 => self.interrupt_status.load(Ordering::SeqCst) as u32,
-            0x070 => self.driver_status,
-            0x0fc => self.config_generation,
-            o @ 0x100...0xfff if o % 4 == 0 => return self.device.read_config(offset - 0x100, data),
+            0x100...0xfff => self.device.read_config(offset - 0x100, data),
             _ => {
-                println!("unknown virtio mmio read: 0x{:x}", offset);
-                0
+                println!("invalid virtio mmio read: 0x{:x}:0x{:x}",
+                         offset,
+                         data.len());
             }
         };
 
-        LittleEndian::write_u32(data, v);
     }
 
     fn write(&mut self, offset: u64, data: &[u8]) {
@@ -208,35 +220,40 @@ impl BusDevice for MmioDevice {
             *v = (*v & !0xffffffff) | (x as u64)
         }
 
-        if data.len() != 4 {
-            println!("invalid virtio mmio write of size {}", data.len());
-            return;
-        }
-
         let mut mut_q = false;
-        let v = LittleEndian::read_u32(data);
         match offset {
-            0x014 => self.features_select = v,
-            0x020 => self.device.ack_features(self.acked_features_select, v),
-            0x024 => self.acked_features_select = v,
-            0x030 => self.queue_select = v,
-            0x038 => mut_q = self.with_queue_mut(|q| q.size = v as u16),
-            0x044 => mut_q = self.with_queue_mut(|q| q.ready = v == 1),
-            0x050 => println!("received unexpected virtio queue notification via mmio write"),
-            0x064 => {
-                self.interrupt_status
-                    .fetch_and(!(v as usize), Ordering::SeqCst);
+            0x00...0xff if data.len() == 4 => {
+                let v = LittleEndian::read_u32(data);
+                match offset {
+                    0x14 => self.features_select = v,
+                    0x20 => self.device.ack_features(self.acked_features_select, v),
+                    0x24 => self.acked_features_select = v,
+                    0x30 => self.queue_select = v,
+                    0x38 => mut_q = self.with_queue_mut(|q| q.size = v as u16),
+                    0x44 => mut_q = self.with_queue_mut(|q| q.ready = v == 1),
+                    0x64 => {
+                        self.interrupt_status
+                            .fetch_and(!(v as usize), Ordering::SeqCst);
+                    }
+                    0x70 => self.driver_status = v,
+                    0x80 => mut_q = self.with_queue_mut(|q| lo(&mut q.desc_table, v)),
+                    0x84 => mut_q = self.with_queue_mut(|q| hi(&mut q.desc_table, v)),
+                    0x90 => mut_q = self.with_queue_mut(|q| lo(&mut q.avail_ring, v)),
+                    0x94 => mut_q = self.with_queue_mut(|q| hi(&mut q.avail_ring, v)),
+                    0xa0 => mut_q = self.with_queue_mut(|q| lo(&mut q.used_ring, v)),
+                    0xa4 => mut_q = self.with_queue_mut(|q| hi(&mut q.used_ring, v)),
+                    _ => {
+                        println!("unknown virtio mmio register write: 0x{:x}", offset);
+                        return;
+                    }
+                }
             }
-            0x070 => self.driver_status = v,
-            0x080 => mut_q = self.with_queue_mut(|q| lo(&mut q.desc_table, v)),
-            0x084 => mut_q = self.with_queue_mut(|q| hi(&mut q.desc_table, v)),
-            0x090 => mut_q = self.with_queue_mut(|q| lo(&mut q.avail_ring, v)),
-            0x094 => mut_q = self.with_queue_mut(|q| hi(&mut q.avail_ring, v)),
-            0x0a0 => mut_q = self.with_queue_mut(|q| lo(&mut q.used_ring, v)),
-            0x0a4 => mut_q = self.with_queue_mut(|q| hi(&mut q.used_ring, v)),
-            o @ 0x100...0xfff if o % 4 == 0 => self.device.write_config(offset - 0x100, data),
+            0x100...0xfff => return self.device.write_config(offset - 0x100, data),
             _ => {
-                println!("unknown mmio write: 0x{:x} = {}", offset, v);
+                println!("invalid virtio mmio write: 0x{:x}:0x{:x}",
+                         offset,
+                         data.len());
+                return;
             }
         }
 
@@ -244,7 +261,7 @@ impl BusDevice for MmioDevice {
             println!("warning: virtio queue was changed after device was activated");
         }
 
-        if !self.device_activated && self.is_driver_ready() {
+        if !self.device_activated && self.is_driver_ready() && self.are_queues_valid() {
             if let Some(interrupt_evt) = self.interrupt_evt.take() {
                 if let Some(mem) = self.mem.take() {
                     self.device

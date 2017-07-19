@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cmp::min;
-use std::result;
 
 use sys_util::{GuestAddress, GuestMemory};
 
@@ -203,7 +202,7 @@ impl Queue {
         min(self.size, self.max_size)
     }
 
-    fn is_valid(&self, mem: &GuestMemory) -> bool {
+    pub fn is_valid(&self, mem: &GuestMemory) -> bool {
         let queue_size = self.actual_size() as usize;
         let desc_table = self.desc_table;
         let desc_table_size = 16 * queue_size;
