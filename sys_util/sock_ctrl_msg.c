@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <string.h> // memcpy
+#include <unistd.h> // close
 #include <sys/errno.h>
 #include <sys/socket.h> // CMSG_*
 
