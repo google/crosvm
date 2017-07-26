@@ -22,6 +22,8 @@ pub enum Error {
     BindMount(i32),
     /// minjail_new failed, this is an allocation failure.
     CreatingMinijail,
+    /// The path doesn't exist.
+    InvalidPath,
     /// The path or name string passed in didn't parse to a valid CString.
     InvalidCString,
     /// Failed to call dup2 to set stdin, stdout, or stderr to /dev/null.
@@ -129,6 +131,10 @@ impl Minijail {
         unsafe { libminijail::minijail_set_seccomp_filter_tsync(self.jail); }
     }
     pub fn parse_seccomp_filters(&mut self, path: &Path) -> Result<()> {
+        if !path.is_file() {
+            return Err(Error::InvalidPath);
+        }
+
         let pathstring = path.as_os_str().to_str().ok_or(Error::InvalidCString)?;
         let filename = CString::new(pathstring).map_err(|_| Error::InvalidCString)?;
         unsafe {
