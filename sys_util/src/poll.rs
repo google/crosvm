@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::net::{UnixDatagram, UnixStream};
 
 use libc::{nfds_t, pollfd, poll, POLLIN};
 
@@ -18,6 +19,17 @@ pub unsafe trait Pollable {
     fn pollable_fd(&self) -> RawFd;
 }
 
+unsafe impl Pollable for UnixStream {
+    fn pollable_fd(&self) -> RawFd {
+        self.as_raw_fd()
+    }
+}
+
+unsafe impl Pollable for UnixDatagram {
+    fn pollable_fd(&self) -> RawFd {
+        self.as_raw_fd()
+    }
+}
 
 /// Used to poll multiple `Pollable` objects at once.
 ///
