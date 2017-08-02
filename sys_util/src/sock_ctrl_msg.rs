@@ -6,7 +6,9 @@ use std::fs::File;
 use std::os::unix::io::{AsRawFd, RawFd, FromRawFd};
 use std::os::unix::net::{UnixDatagram, UnixStream};
 
-use libc::{iovec, c_void};
+use libc::{c_void, iovec};
+
+use data_model::VolatileSlice;
 
 use {Result, Error};
 
@@ -56,6 +58,43 @@ impl ScmSocket for UnixStream {
     }
 }
 
+/// Trait for types that can be converted into an `iovec` that can be referenced by a syscall for
+/// the lifetime of this object.
+///
+/// This trait is unsafe because interfaces that use this trait depend on the base pointer and size
+/// being accurate.
+pub unsafe trait IntoIovec {
+    /// Gets the base pointer of this `iovec`.
+    fn as_ptr(&self) -> *const c_void;
+
+    /// Gets the size in bytes of this `iovec`.
+    fn size(&self) -> usize;
+}
+
+// Safe because this slice can not have another mutable reference and it's pointer and size are
+// guaranteed to be valid.
+unsafe impl<'a> IntoIovec for &'a [u8] {
+    fn as_ptr(&self) -> *const c_void {
+        self.as_ref().as_ptr() as *const c_void
+    }
+
+    fn size(&self) -> usize {
+        self.len()
+    }
+}
+
+// Safe because volatile slices are only ever accessed with other volatile interfaces and the
+// pointer and size are guaranteed to be accurate.
+unsafe impl<'a> IntoIovec for VolatileSlice<'a> {
+    fn as_ptr(&self) -> *const c_void {
+        self.as_ptr() as *const c_void
+    }
+
+    fn size(&self) -> usize {
+        self.size()
+    }
+}
+
 /// Used to send and receive messages with file descriptors on sockets that accept control messages
 /// (e.g. Unix domain sockets).
 pub struct Scm {
@@ -85,23 +124,22 @@ impl Scm {
     /// # Arguments
     ///
     /// * `socket` - A socket that supports socket control messages.
-    /// * `bufs` - A list of buffers to send on the `socket`. These will not be copied before
-    ///            `sendmsg` is called.
+    /// * `bufs` - A list of buffers to send on the `socket`.
     /// * `fds` - A list of file descriptors to be sent.
-    pub fn send<T: ScmSocket>(&mut self,
+    pub fn send<T: ScmSocket, D: IntoIovec>(&mut self,
                               socket: &T,
-                              bufs: &[&[u8]],
+                              bufs: &[D],
                               fds: &[RawFd])
                               -> Result<usize> {
         let cmsg_buf_len = cmsg_buffer_len(fds.len());
         self.cmsg_buffer.reserve(cmsg_buf_len);
         self.vecs.clear();
-        for buf in bufs {
+        for ref buf in bufs {
             self.vecs
                 .push(iovec {
-                          iov_base: buf.as_ptr() as *mut c_void,
-                          iov_len: buf.len(),
-                      });
+                    iov_base: buf.as_ptr() as *mut c_void,
+                    iov_len: buf.size(),
+              });
         }
         let write_count = unsafe {
             // Safe because we are giving scm_sendmsg only valid pointers and lengths and we check
@@ -241,7 +279,7 @@ mod tests {
 
         let mut scm = Scm::new(1);
         let evt = EventFd::new().expect("failed to create eventfd");
-        let write_count = scm.send(&s1, &[&[]], &[evt.as_raw_fd()])
+        let write_count = scm.send(&s1, &[[].as_ref()], &[evt.as_raw_fd()])
             .expect("failed to send fd");
 
         assert_eq!(write_count, 0);
@@ -270,7 +308,7 @@ mod tests {
 
         let mut scm = Scm::new(1);
         let evt = EventFd::new().expect("failed to create eventfd");
-        let write_count = scm.send(&s1, &[&[237]], &[evt.as_raw_fd()])
+        let write_count = scm.send(&s1, &[[237].as_ref()], &[evt.as_raw_fd()])
             .expect("failed to send fd");
 
         assert_eq!(write_count, 1);
