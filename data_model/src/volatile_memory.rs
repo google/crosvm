@@ -146,6 +146,76 @@ impl<'a> VolatileSlice<'a> {
         self.size
     }
 
+    /// Copies `self.size()` or `buf.len()` times the size of `T` bytes, whichever is smaller, to
+    /// `buf`.
+    ///
+    /// The copy happens from smallest to largest address in `T` sized chunks using volatile reads.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::fs::File;
+    /// # use std::path::Path;
+    /// # use data_model::VolatileMemory;
+    /// # fn test_write_null() -> Result<(), ()> {
+    /// let mut mem = [0u8; 32];
+    /// let mem_ref = &mut mem[..];
+    /// let vslice = mem_ref.get_slice(0, 32).map_err(|_| ())?;
+    /// let mut buf = [5u8; 16];
+    /// vslice.copy_to(&mut buf[..]);
+    /// for v in &buf[..] {
+    ///     assert_eq!(buf[0], 0);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn copy_to<T>(&self, buf: &mut [T])
+        where T: DataInit
+    {
+        let mut addr = self.addr;
+        for v in buf.iter_mut().take(self.size / size_of::<T>()) {
+            unsafe {
+                *v = read_volatile(addr as *const T);
+                addr = addr.offset(size_of::<T>() as isize);
+            }
+        }
+    }
+
+    /// Copies `self.size()` or `buf.len()` times the size of `T` bytes, whichever is smaller, to
+    /// this slice's memory.
+    ///
+    /// The copy happens from smallest to largest address in `T` sized chunks using volatile writes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::fs::File;
+    /// # use std::path::Path;
+    /// # use data_model::VolatileMemory;
+    /// # fn test_write_null() -> Result<(), ()> {
+    /// let mut mem = [0u8; 32];
+    /// let mem_ref = &mut mem[..];
+    /// let vslice = mem_ref.get_slice(0, 32).map_err(|_| ())?;
+    /// let buf = [5u8; 64];
+    /// vslice.copy_from(&buf[..]);
+    /// for i in 0..4 {
+    ///     assert_eq!(vslice.get_ref::<u32>(i * 4).map_err(|_| ())?.load(), 0x05050505);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn copy_from<T>(&self, buf: &[T])
+        where T: DataInit
+    {
+        let mut addr = self.addr;
+        for &v in buf.iter().take(self.size / size_of::<T>()) {
+            unsafe {
+                write_volatile(addr as *mut T, v);
+                addr = addr.offset(size_of::<T>() as isize);
+            }
+        }
+    }
+
     /// Attempt to write all data from memory to a writable object and returns how many bytes were
     /// actually written on success.
     ///
