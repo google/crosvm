@@ -96,6 +96,7 @@ impl<'a> DescriptorChain<'a> {
     /// If the driver designated this as a write only descriptor.
     ///
     /// If this is false, this descriptor is read only.
+    /// Write only means the the emulated device can write and the driver can read.
     pub fn is_write_only(&self) -> bool {
         self.flags & VIRTQ_DESC_F_WRITE != 0
     }

@@ -62,6 +62,9 @@ enum Error {
     Cmdline(kernel_cmdline::Error),
     RegisterIoevent(sys_util::Error),
     RegisterIrqfd(sys_util::Error),
+    RegisterRng(device_manager::Error),
+    RngDeviceNew(hw::virtio::RngError),
+    RngDeviceRootSetup(sys_util::Error),
     KernelLoader(kernel_loader::Error),
     ConfigureSystem(x86_64::Error),
     EventFd(sys_util::Error),
@@ -109,6 +112,11 @@ impl fmt::Display for Error {
             &Error::DeviceJail(ref e) => write!(f, "failed to jail device: {:?}", e),
             &Error::DevicePivotRoot(ref e) => write!(f, "failed to pivot root device: {:?}", e),
             &Error::RegisterNet(ref e) => write!(f, "error registering net device: {:?}", e),
+            &Error::RegisterRng(ref e) => write!(f, "error registering rng device: {:?}", e),
+            &Error::RngDeviceNew(ref e) => write!(f, "failed to set up rng: {:?}", e),
+            &Error::RngDeviceRootSetup(ref e) => {
+                write!(f, "failed to create root directory for a rng device: {:?}", e)
+            }
             &Error::Cmdline(ref e) => write!(f, "the given kernel command line was invalid: {}", e),
             &Error::RegisterIoevent(ref e) => write!(f, "error registering ioevent: {:?}", e),
             &Error::RegisterIrqfd(ref e) => write!(f, "error registering irqfd: {:?}", e),
@@ -260,6 +268,18 @@ fn run_config(cfg: Config) -> Result<()> {
         device_manager.register_mmio(block_box, jail, &mut cmdline)
                 .map_err(Error::RegisterBlock)?;
     }
+
+    let rng_root = TempDir::new(&PathBuf::from("/tmp/rng_root"))
+        .map_err(Error::RngDeviceRootSetup)?;
+    let rng_box = Box::new(hw::virtio::Rng::new().map_err(Error::RngDeviceNew)?);
+    let rng_jail = if cfg.multiprocess {
+        let rng_root_path = rng_root.as_path().unwrap(); // Won't fail if new succeeded.
+        Some(create_base_minijail(rng_root_path, Path::new("rng_device.policy"))?)
+    } else {
+        None
+    };
+    device_manager.register_mmio(rng_box, rng_jail, &mut cmdline)
+        .map_err(Error::RegisterRng)?;
 
     // We checked above that if the IP is defined, then the netmask is, too.
     let net_root = TempDir::new(&PathBuf::from("/tmp/net_root"))
