@@ -16,35 +16,40 @@ extern crate net_sys;
 extern crate net_util;
 extern crate vhost;
 extern crate virtio_sys;
+extern crate data_model;
 
-use std::ffi::{CString, CStr};
+pub mod hw;
+pub mod kernel_cmdline;
+pub mod vm_control;
+pub mod device_manager;
+
+use std::ffi::{OsString, CString, CStr};
 use std::fmt;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{stdin, stdout};
 use std::net;
+use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::ptr;
 use std::string::String;
-use std::sync::{Arc, Mutex, Barrier};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, Barrier};
 use std::thread::{spawn, sleep, JoinHandle};
 use std::time::Duration;
 
+use libc::getpid;
+
 use clap::{Arg, App, SubCommand};
 
-use device_manager::{DeviceManager, VmRequest};
+
 use io_jail::Minijail;
 use kvm::*;
-use sys_util::{GuestAddress, GuestMemory, EventFd, TempDir, Terminal, Poller, Pollable,
+use sys_util::{GuestAddress, GuestMemory, EventFd, TempDir, Terminal, Poller, Pollable, Scm,
                register_signal_handler, Killable, SignalFd, syslog};
 
-pub mod hw;
-pub mod kernel_cmdline;
-pub mod control_socket;
-pub mod device_manager;
-
-use control_socket::*;
+use device_manager::*;
+use vm_control::{VmRequest, VmResponse};
 
 enum Error {
     Socket(std::io::Error),
@@ -159,6 +164,7 @@ struct Config<'a> {
 const KERNEL_START_OFFSET: usize = 0x200000;
 const CMDLINE_OFFSET: usize = 0x20000;
 const CMDLINE_MAX_SIZE: usize = KERNEL_START_OFFSET - CMDLINE_OFFSET;
+const BASE_DEV_MEMORY_PFN: u64 = 1u64 << 26;
 
 fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
@@ -231,12 +237,19 @@ fn run_config(cfg: Config) -> Result<()> {
         return Err(Error::NetMissingConfig);
     }
 
-    let socket = if let Some(ref socket_path) = cfg.socket_path {
-        Some(ControlSocketRecv::new(socket_path)
-                 .map_err(|e| Error::Socket(e))?)
-    } else {
-        None
-    };
+    let mut control_sockets = Vec::new();
+    if let Some(ref path) = cfg.socket_path {
+        let path = Path::new(path);
+        let control_socket = if path.is_dir() {
+                // Getting the pid is always safe and never fails.
+                let pid = unsafe { getpid() };
+                UnixDatagram::bind(path.join(format!("crosvm-{}.sock", pid)))
+            } else {
+                UnixDatagram::bind(path)
+            }
+            .map_err(|e| Error::Socket(e))?;
+        control_sockets.push(control_socket);
+    }
 
     let mem_size = cfg.memory.unwrap_or(256) << 20;
     let guest_mem =
@@ -328,7 +341,7 @@ fn run_config(cfg: Config) -> Result<()> {
             cfg.vcpu_count.unwrap_or(1),
             guest_mem,
             &device_manager.bus,
-            socket,
+            control_sockets,
             cfg.warn_unknown_ports)
 }
 
@@ -338,7 +351,7 @@ fn run_kvm(requests: Vec<VmRequest>,
            vcpu_count: u32,
            guest_mem: GuestMemory,
            mmio_bus: &hw::Bus,
-           control_socket: Option<ControlSocketRecv>,
+           control_sockets: Vec<UnixDatagram>,
            warn_unknown_ports: bool)
            -> Result<()> {
     let kvm = Kvm::new().map_err(Error::Kvm)?;
@@ -346,21 +359,20 @@ fn run_kvm(requests: Vec<VmRequest>,
     let kernel_start_addr = GuestAddress(KERNEL_START_OFFSET);
     let cmdline_addr = GuestAddress(CMDLINE_OFFSET);
 
-    let vm = Vm::new(&kvm, guest_mem).map_err(Error::Vm)?;
+    let mut vm = Vm::new(&kvm, guest_mem).map_err(Error::Vm)?;
     vm.set_tss_addr(tss_addr).expect("set tss addr failed");
     vm.create_pit().expect("create pit failed");
     vm.create_irq_chip().expect("create irq chip failed");
 
+    let mut next_dev_pfn = BASE_DEV_MEMORY_PFN;
     for request in requests {
-        match request {
-            VmRequest::RegisterIoevent(evt, addr, datamatch) => {
-                vm.register_ioevent(&evt, addr, datamatch)
-                    .map_err(Error::RegisterIoevent)?
-            }
-            VmRequest::RegisterIrqfd(evt, irq) => {
-                vm.register_irqfd(&evt, irq)
-                    .map_err(Error::RegisterIrqfd)?
-            }
+        let mut running = false;
+        if let VmResponse::Err(e) = request.execute(&mut vm, &mut next_dev_pfn, &mut running) {
+            return Err(Error::Vm(e));
+        }
+        if !running {
+            println!("configuration requested exit");
+            return Ok(());
         }
     }
 
@@ -518,7 +530,9 @@ fn run_kvm(requests: Vec<VmRequest>,
 
     vcpu_thread_barrier.wait();
 
-    run_control(control_socket,
+    run_control(vm,
+                control_sockets,
+                next_dev_pfn,
                 stdio_serial,
                 exit_evt,
                 sigchld_fd,
@@ -526,17 +540,21 @@ fn run_kvm(requests: Vec<VmRequest>,
                 vcpu_handles)
 }
 
-fn run_control(control_socket: Option<ControlSocketRecv>,
+fn run_control(mut vm: Vm,
+               control_sockets: Vec<UnixDatagram>,
+               mut next_dev_pfn: u64,
                stdio_serial: Arc<Mutex<hw::Serial>>,
                exit_evt: EventFd,
                sigchld_fd: SignalFd,
                kill_signaled: Arc<AtomicBool>,
                vcpu_handles: Vec<JoinHandle<()>>)
                -> Result<()> {
-    const EXIT: u32 = 1;
-    const STDIN: u32 = 2;
-    const CONTROL: u32 = 3;
-    const CHILD_SIGNAL: u32 = 4;
+    const MAX_VM_FD_RECV: usize = 1;
+
+    const EXIT: u32 = 0;
+    const STDIN: u32 = 1;
+    const CHILD_SIGNAL: u32 = 2;
+    const VM_BASE: u32 = 3;
 
     let stdin_handle = stdin();
     let stdin_lock = stdin_handle.lock();
@@ -547,15 +565,16 @@ fn run_control(control_socket: Option<ControlSocketRecv>,
     let mut pollables = Vec::new();
     pollables.push((EXIT, &exit_evt as &Pollable));
     pollables.push((STDIN, &stdin_lock as &Pollable));
-    if let Some(socket) = control_socket.as_ref() {
-        pollables.push((CONTROL, socket as &Pollable));
-    }
     pollables.push((CHILD_SIGNAL, &sigchld_fd as &Pollable));
+    for (i, socket) in control_sockets.iter().enumerate() {
+        pollables.push((VM_BASE + i as u32, socket as &Pollable));
+    }
 
-    let mut poller = Poller::new(4);
+    let mut poller = Poller::new(pollables.len());
+    let mut scm = Scm::new(MAX_VM_FD_RECV);
 
     'poll: loop {
-        let poll_res = {
+        let tokens = {
             match poller.poll(&pollables[..]) {
                 Ok(v) => v,
                 Err(e) => {
@@ -564,8 +583,8 @@ fn run_control(control_socket: Option<ControlSocketRecv>,
                 }
             }
         };
-        for i in poll_res {
-            match *i {
+        for &token in tokens {
+            match token {
                 EXIT => {
                     println!("vcpu requested shutdown");
                     break 'poll;
@@ -581,17 +600,6 @@ fn run_control(control_socket: Option<ControlSocketRecv>,
                             .expect("failed to queue bytes into serial port");
                     }
                 }
-                CONTROL if control_socket.is_some() => {
-                    if let Some(socket) = control_socket.as_ref() {
-                        match socket.recv().unwrap() {
-                            Command::Stop => {
-                                println!("control socket requested shutdown");
-                                break 'poll;
-                            }
-                            _ => {}
-                        }
-                    }
-                }
                 CHILD_SIGNAL => {
                     // Print all available siginfo structs, then exit the loop.
                     loop {
@@ -604,6 +612,24 @@ fn run_control(control_socket: Option<ControlSocketRecv>,
                                    siginfo.ssi_code);
                         }
                         break 'poll;
+                    }
+                }
+                t if t >= VM_BASE && t < VM_BASE + (control_sockets.len() as u32) => {
+                    let socket = &control_sockets[(t - VM_BASE) as usize];
+                    match VmRequest::recv(&mut scm, socket) {
+                        Ok(request) => {
+                            let mut running = true;
+                            let response =
+                                request.execute(&mut vm, &mut next_dev_pfn, &mut running);
+                            if let Err(e) = response.send(&mut scm, socket) {
+                                println!("failed to send VmResponse: {:?}", e);
+                            }
+                            if !running {
+                                println!("control socket requested exit");
+                                break 'poll;
+                            }
+                        }
+                        Err(e) => println!("failed to recv VmRequest: {:?}", e),
                     }
                 }
                 _ => {}
@@ -718,15 +744,20 @@ fn main() {
 
     match matches.subcommand() {
         ("stop", Some(matches)) => {
+            let mut scm = Scm::new(1);
             for socket_path in matches.values_of("socket").unwrap() {
-                let res = match ControlSocketSend::new(socket_path) {
-                    Ok(s) => s.send(&Command::Stop),
-                    Err(e) => Err(e),
-                };
-                if let Err(e) = res {
-                    println!("failed to send stop command to socket at '{}': {}",
-                             socket_path,
-                             e);
+                match UnixDatagram::unbound().and_then(|s| {
+                                                           s.connect(socket_path)?;
+                                                           Ok(s)
+                                                       }) {
+                    Ok(s) => {
+                        if let Err(e) = VmRequest::Exit.send(&mut scm, &s) {
+                            println!("failed to send stop request to socket at '{}': {:?}",
+                                     socket_path,
+                                     e);
+                        }
+                    }
+                    Err(e) => println!("failed to connect to socket at '{}': {}", socket_path, e),
                 }
             }
         }

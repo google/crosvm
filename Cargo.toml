@@ -20,6 +20,7 @@ net_sys = { path = "net_sys" }
 net_util = { path = "net_util" }
 vhost = { path = "vhost" }
 virtio_sys = { path = "virtio_sys" }
+data_model = { path = "data_model" }
 
 [dependencies.clap]
 version = "*"

@@ -37,7 +37,7 @@ macro_rules! endian_type {
         /// An unsigned integer type of with an explicit endianness.
         ///
         /// See module level documentation for examples.
-        #[derive(Copy, Clone, Eq, PartialEq, Debug)]
+        #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
         pub struct $new_type($old_type);
 
         impl $new_type {

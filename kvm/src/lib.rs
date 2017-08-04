@@ -135,6 +135,7 @@ impl AsRawFd for Kvm {
 }
 
 /// An address either in programmable I/O space or in memory mapped I/O space.
+#[derive(Copy, Clone)]
 pub enum IoeventAddress {
     Pio(u64),
     Mmio(u64),

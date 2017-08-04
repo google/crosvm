@@ -46,5 +46,6 @@ pub use signalfd::*;
 pub use ioctl::*;
 pub use sock_ctrl_msg::*;
 
+pub use mmap::Error as MmapError;
 pub use guest_memory::Error as GuestMemoryError;
 pub use signalfd::Error as SignalFdError;

@@ -11,11 +11,12 @@ use std::sync::{Arc, Mutex};
 
 use io_jail::Minijail;
 use kvm::IoeventAddress;
-use sys_util::{EventFd, GuestMemory};
+use sys_util::GuestMemory;
+use sys_util;
 
 use hw;
 use kernel_cmdline;
-use sys_util;
+use vm_control::VmRequest;
 
 /// Errors for device manager.
 #[derive(Debug)]
@@ -52,13 +53,6 @@ impl fmt::Display for Error {
 }
 
 type Result<T> = ::std::result::Result<T, Error>;
-
-/// Represents a request to register an ioeventfd or irqfd, which will be
-/// processed once the VM starts up.
-pub enum VmRequest {
-    RegisterIoevent(EventFd, IoeventAddress, u32),
-    RegisterIrqfd(EventFd, u32),
-}
 
 const MAX_IRQ: u32 = 15;
 
@@ -158,7 +152,7 @@ mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
     use std::os::unix::io::RawFd;
-    use sys_util::{GuestAddress, GuestMemory};
+    use sys_util::{EventFd, GuestAddress, GuestMemory};
     use device_manager;
     use kernel_cmdline;
     use hw;
