@@ -7,11 +7,13 @@ extern crate net_sys;
 extern crate sys_util;
 
 use std::fs::File;
+use std::io::{Read, Write, Result as IoResult};
 use std::mem;
 use std::net;
 use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
+use sys_util::Pollable;
 use sys_util::{ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref};
 
 #[derive(Debug)]
@@ -212,8 +214,32 @@ impl Tap {
     }
 }
 
+impl Read for Tap {
+    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+        self.tap_file.read(buf)
+    }
+}
+
+impl Write for Tap {
+    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+        self.tap_file.write(&buf)
+    }
+
+    fn flush(&mut self) -> IoResult<()> {
+        Ok(())
+    }
+}
+
 impl AsRawFd for Tap {
     fn as_raw_fd(&self) -> RawFd {
+        self.tap_file.as_raw_fd()
+    }
+}
+
+// Safe since the tap fd's lifetime lasts as long as this trait object, and the
+// tap fd is pollable.
+unsafe impl Pollable for Tap {
+    fn pollable_fd(&self) -> RawFd {
         self.tap_file.as_raw_fd()
     }
 }
