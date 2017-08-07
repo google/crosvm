@@ -25,8 +25,10 @@ pub enum Error {
     ReadFromSource,
     /// `mmap` returned the given error.
     SystemCallFailed(errno::Error),
-    /// Wrting to memory failed
+    /// Writing to memory failed
     WriteToMemory(std::io::Error),
+    /// Reading from memory failed
+    ReadFromMemory(std::io::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -115,7 +117,7 @@ impl MemoryMapping {
     /// ```
     /// #   use sys_util::MemoryMapping;
     /// #   let mut mem_map = MemoryMapping::new(1024).unwrap();
-    ///     let res = mem_map.write_slice(&[1,2,3,4,5], 0);
+    ///     let res = mem_map.write_slice(&[1,2,3,4,5], 256);
     ///     assert!(res.is_ok());
     ///     assert_eq!(res.unwrap(), 5);
     /// ```
@@ -129,6 +131,35 @@ impl MemoryMapping {
             // won't hurt anything as long as we get the bounds checks right.
             let mut slice: &mut [u8] = &mut self.as_mut_slice()[offset..];
             Ok(slice.write(buf).map_err(Error::WriteToMemory)?)
+        }
+    }
+
+    /// Reads to a slice from the memory region at the specified offset.
+    /// Returns the number of bytes read.  The number of bytes read can
+    /// be less than the length of the slice if there isn't enough room in the
+    /// memory region.
+    ///
+    /// # Examples
+    /// * Read a slice of size 16 at offset 256.
+    ///
+    /// ```
+    /// #   use sys_util::MemoryMapping;
+    /// #   let mut mem_map = MemoryMapping::new(1024).unwrap();
+    ///     let buf = &mut [0u8; 16];
+    ///     let res = mem_map.read_slice(buf, 256);
+    ///     assert!(res.is_ok());
+    ///     assert_eq!(res.unwrap(), 16);
+    /// ```
+    pub fn read_slice(&self, mut buf: &mut [u8], offset: usize) -> Result<usize> {
+        if offset >= self.size {
+            return Err(Error::InvalidAddress);
+        }
+        unsafe {
+            // Guest memory can't strictly be modeled as a slice because it is
+            // volatile.  Writing to it with what compiles down to a memcpy
+            // won't hurt anything as long as we get the bounds checks right.
+            let slice: &[u8] = &self.as_slice()[offset..];
+            Ok(buf.write(slice).map_err(Error::ReadFromMemory)?)
         }
     }
 

@@ -155,6 +155,36 @@ impl GuestMemory {
         })
     }
 
+    /// Reads to a slice from guest memory at the specified guest address.
+    /// Returns the number of bytes read.  The number of bytes read can
+    /// be less than the length of the slice if there isn't enough room in the
+    /// memory region.
+    ///
+    /// # Examples
+    /// * Read a slice of length 16 at guestaddress 0x200.
+    ///
+    /// ```
+    /// # use sys_util::{GuestAddress, GuestMemory, MemoryMapping};
+    /// # fn test_write_u64() -> Result<(), ()> {
+    /// #   let start_addr = GuestAddress(0x1000);
+    /// #   let mut gm = GuestMemory::new(&vec![(start_addr, 0x400)]).map_err(|_| ())?;
+    ///     let buf = &mut [0u8; 16];
+    ///     let res = gm.read_slice_at_addr(buf, GuestAddress(0x200));
+    ///     assert_eq!(Ok(16), res);
+    ///     Ok(())
+    /// # }
+    /// ```
+    pub fn read_slice_at_addr(&self,
+                              mut buf: &mut [u8],
+                              guest_addr: GuestAddress)
+                              -> Result<usize> {
+        self.do_in_region(guest_addr, move |mapping, offset| {
+            mapping
+                .read_slice(buf, offset)
+                .map_err(|_| Error::InvalidGuestAddress(guest_addr))
+        })
+    }
+
     /// Reads an object from guest memory at the given guest address.
     /// Reading from a volatile area isn't strictly safe as it could change
     /// mid-read.  However, as long as the type T is plain old data and can
