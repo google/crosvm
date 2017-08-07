@@ -7,12 +7,12 @@
 mod queue;
 mod mmio;
 mod block;
-mod net;
+mod vhost_net;
 
 pub use self::queue::*;
 pub use self::mmio::*;
 pub use self::block::*;
-pub use self::net::*;
+pub use self::vhost_net::*;
 
 const DEVICE_ACKNOWLEDGE: u32 = 0x01;
 const DEVICE_DRIVER: u32 = 0x02;

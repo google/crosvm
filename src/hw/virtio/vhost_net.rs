@@ -13,7 +13,7 @@ use std::thread::spawn;
 use net_sys;
 use net_util::{Tap, Error as TapError};
 use sys_util::{Error as SysError, EventFd, GuestMemory, Poller};
-use vhost::{VhostNet, Error as VhostError};
+use vhost::{VhostNet as VhostNetHandle, Error as VhostError};
 use virtio_sys::{vhost, virtio_net};
 use virtio_sys::virtio_net::virtio_net_hdr_mrg_rxbuf;
 
@@ -23,7 +23,7 @@ const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 
 #[derive(Debug)]
-pub enum NetError {
+pub enum VhostNetError {
     /// Creating kill eventfd failed.
     CreateKillEventFd(SysError),
     /// Cloning kill eventfd failed.
@@ -73,7 +73,7 @@ pub enum NetError {
 struct Worker {
     queues: Vec<Queue>,
     tap: Tap,
-    vhost_net: VhostNet,
+    vhost_net_handle: VhostNetHandle,
     vhost_interrupt: EventFd,
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
@@ -87,29 +87,31 @@ impl Worker {
         self.interrupt_evt.write(1).unwrap();
     }
 
-    fn run(&mut self, queue_evts: Vec<EventFd>, kill_evt: EventFd) -> Result<(), NetError> {
+    fn run(&mut self, queue_evts: Vec<EventFd>, kill_evt: EventFd) -> Result<(), VhostNetError> {
         // Preliminary setup for vhost net.
-        self.vhost_net.set_owner().map_err(NetError::VhostSetOwner)?;
+        self.vhost_net_handle
+            .set_owner()
+            .map_err(VhostNetError::VhostSetOwner)?;
 
-        let avail_features = self.vhost_net
+        let avail_features = self.vhost_net_handle
             .get_features()
-            .map_err(NetError::VhostGetFeatures)?;
+            .map_err(VhostNetError::VhostGetFeatures)?;
 
         let features: c_ulonglong = self.acked_features & avail_features;
-        self.vhost_net
+        self.vhost_net_handle
             .set_features(features)
-            .map_err(NetError::VhostSetFeatures)?;
+            .map_err(VhostNetError::VhostSetFeatures)?;
 
-        self.vhost_net
+        self.vhost_net_handle
             .set_mem_table()
-            .map_err(NetError::VhostSetMemTable)?;
+            .map_err(VhostNetError::VhostSetMemTable)?;
 
         for (queue_index, ref queue) in self.queues.iter().enumerate() {
-            self.vhost_net
+            self.vhost_net_handle
                 .set_vring_num(queue_index, queue.max_size)
-                .map_err(NetError::VhostSetVringNum)?;
+                .map_err(VhostNetError::VhostSetVringNum)?;
 
-            self.vhost_net
+            self.vhost_net_handle
                 .set_vring_addr(QUEUE_SIZES[queue_index],
                                 queue.actual_size(),
                                 queue_index,
@@ -118,19 +120,19 @@ impl Worker {
                                 queue.used_ring,
                                 queue.avail_ring,
                                 None)
-                .map_err(NetError::VhostSetVringAddr)?;
-            self.vhost_net
+                .map_err(VhostNetError::VhostSetVringAddr)?;
+            self.vhost_net_handle
                 .set_vring_base(queue_index, 0)
-                .map_err(NetError::VhostSetVringBase)?;
-            self.vhost_net
+                .map_err(VhostNetError::VhostSetVringBase)?;
+            self.vhost_net_handle
                 .set_vring_call(queue_index, &self.vhost_interrupt)
-                .map_err(NetError::VhostSetVringCall)?;
-            self.vhost_net
+                .map_err(VhostNetError::VhostSetVringCall)?;
+            self.vhost_net_handle
                 .set_vring_kick(queue_index, &queue_evts[queue_index])
-                .map_err(NetError::VhostSetVringKick)?;
-            self.vhost_net
+                .map_err(VhostNetError::VhostSetVringKick)?;
+            self.vhost_net_handle
                 .net_set_backend(queue_index, &self.tap)
-                .map_err(NetError::VhostNetSetBackend)?;
+                .map_err(VhostNetError::VhostNetSetBackend)?;
         }
 
         const VHOST_IRQ: u32 = 1;
@@ -139,18 +141,20 @@ impl Worker {
         let mut poller = Poller::new(2);
 
         'poll: loop {
-            let tokens =
-                match poller.poll(&[(VHOST_IRQ, &self.vhost_interrupt), (KILL, &kill_evt)]) {
-                    Ok(v) => v,
-                    Err(e) => return Err(NetError::PollError(e))
-                };
+            let tokens = match poller.poll(&[(VHOST_IRQ, &self.vhost_interrupt),
+                                             (KILL, &kill_evt)]) {
+                Ok(v) => v,
+                Err(e) => return Err(VhostNetError::PollError(e)),
+            };
 
             let mut needs_interrupt = false;
             for &token in tokens {
                 match token {
                     VHOST_IRQ => {
                         needs_interrupt = true;
-                        self.vhost_interrupt.read().map_err(NetError::VhostIrqRead)?;
+                        self.vhost_interrupt
+                            .read()
+                            .map_err(VhostNetError::VhostIrqRead)?;
                     }
                     KILL => break 'poll,
                     _ => unreachable!(),
@@ -164,42 +168,44 @@ impl Worker {
     }
 }
 
-pub struct Net {
+pub struct VhostNet {
     workers_kill_evt: Option<EventFd>,
     kill_evt: EventFd,
     tap: Option<Tap>,
-    vhost_net: Option<VhostNet>,
+    vhost_net_handle: Option<VhostNetHandle>,
     vhost_interrupt: Option<EventFd>,
     avail_features: u64,
     acked_features: u64,
 }
 
-impl Net {
+impl VhostNet {
     /// Create a new virtio network device with the given IP address and
     /// netmask.
     pub fn new(ip_addr: Ipv4Addr,
                netmask: Ipv4Addr,
-               mem: &GuestMemory) -> Result<Net, NetError> {
-        let kill_evt = EventFd::new().map_err(NetError::CreateKillEventFd)?;
+               mem: &GuestMemory)
+               -> Result<VhostNet, VhostNetError> {
+        let kill_evt = EventFd::new().map_err(VhostNetError::CreateKillEventFd)?;
 
-        let tap = Tap::new().map_err(NetError::TapOpen)?;
-        tap.set_ip_addr(ip_addr).map_err(NetError::TapSetIp)?;
-        tap.set_netmask(netmask).map_err(NetError::TapSetNetmask)?;
+        let tap = Tap::new().map_err(VhostNetError::TapOpen)?;
+        tap.set_ip_addr(ip_addr)
+            .map_err(VhostNetError::TapSetIp)?;
+        tap.set_netmask(netmask)
+            .map_err(VhostNetError::TapSetNetmask)?;
 
         // Set offload flags to match the virtio features below.
-        tap.set_offload(net_sys::TUN_F_CSUM |
-                        net_sys::TUN_F_UFO |
-                        net_sys::TUN_F_TSO4 |
-                        net_sys::TUN_F_TSO6)
-            .map_err(NetError::TapSetOffload)?;
+        tap.set_offload(net_sys::TUN_F_CSUM | net_sys::TUN_F_UFO |
+                        net_sys::TUN_F_TSO4 | net_sys::TUN_F_TSO6)
+            .map_err(VhostNetError::TapSetOffload)?;
 
         // We declare VIRTIO_NET_F_MRG_RXBUF, so set the vnet hdr size to match.
         let vnet_hdr_size = mem::size_of::<virtio_net_hdr_mrg_rxbuf>() as i32;
         tap.set_vnet_hdr_size(vnet_hdr_size)
-            .map_err(NetError::TapSetVnetHdrSize)?;
+            .map_err(VhostNetError::TapSetVnetHdrSize)?;
 
-        tap.enable().map_err(NetError::TapEnable)?;
-        let vhost_net = VhostNet::new(mem).map_err(NetError::VhostOpen)?;
+        tap.enable().map_err(VhostNetError::TapEnable)?;
+        let vhost_net_handle = VhostNetHandle::new(mem)
+            .map_err(VhostNetError::VhostOpen)?;
 
         let avail_features =
             1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM |
@@ -214,19 +220,21 @@ impl Net {
             1 << vhost::VIRTIO_F_NOTIFY_ON_EMPTY |
             1 << vhost::VIRTIO_F_VERSION_1;
 
-        Ok(Net {
-               workers_kill_evt: Some(kill_evt.try_clone().map_err(NetError::CloneKillEventFd)?),
+        Ok(VhostNet {
+               workers_kill_evt: Some(kill_evt
+                                          .try_clone()
+                                          .map_err(VhostNetError::CloneKillEventFd)?),
                kill_evt: kill_evt,
                tap: Some(tap),
-               vhost_net: Some(vhost_net),
-               vhost_interrupt: Some(EventFd::new().map_err(NetError::VhostIrqCreate)?),
+               vhost_net_handle: Some(vhost_net_handle),
+               vhost_interrupt: Some(EventFd::new().map_err(VhostNetError::VhostIrqCreate)?),
                avail_features: avail_features,
                acked_features: 0u64,
            })
     }
 }
 
-impl Drop for Net {
+impl Drop for VhostNet {
     fn drop(&mut self) {
         // Only kill the child if it claimed its eventfd.
         if self.workers_kill_evt.is_none() {
@@ -236,7 +244,7 @@ impl Drop for Net {
     }
 }
 
-impl VirtioDevice for Net {
+impl VirtioDevice for VhostNet {
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
 
@@ -244,8 +252,8 @@ impl VirtioDevice for Net {
             keep_fds.push(tap.as_raw_fd());
         }
 
-        if let Some(ref vhost_net) = self.vhost_net {
-            keep_fds.push(vhost_net.as_raw_fd());
+        if let Some(ref vhost_net_handle) = self.vhost_net_handle {
+            keep_fds.push(vhost_net_handle.as_raw_fd());
         }
 
         if let Some(ref vhost_interrupt) = self.vhost_interrupt {
@@ -284,7 +292,7 @@ impl VirtioDevice for Net {
             1 => (value as u64) << 32,
             _ => {
                 warn!("net: virtio net device cannot ack unknown feature page: {}",
-                         page);
+                      page);
                 0u64
             }
         };
@@ -311,7 +319,7 @@ impl VirtioDevice for Net {
             return;
         }
 
-        if let Some(vhost_net) = self.vhost_net.take() {
+        if let Some(vhost_net_handle) = self.vhost_net_handle.take() {
             if let Some(tap) = self.tap.take() {
                 if let Some(vhost_interrupt) = self.vhost_interrupt.take() {
                     if let Some(kill_evt) = self.workers_kill_evt.take() {
@@ -320,7 +328,7 @@ impl VirtioDevice for Net {
                             let mut worker = Worker {
                                 queues: queues,
                                 tap: tap,
-                                vhost_net: vhost_net,
+                                vhost_net_handle: vhost_net_handle,
                                 vhost_interrupt: vhost_interrupt,
                                 interrupt_status: status,
                                 interrupt_evt: interrupt_evt,
@@ -328,8 +336,7 @@ impl VirtioDevice for Net {
                             };
                             let result = worker.run(queue_evts, kill_evt);
                             if let Err(e) = result {
-                                error!("net worker thread exited with error: {:?}",
-                                       e);
+                                error!("net worker thread exited with error: {:?}", e);
                             }
                         });
                     }

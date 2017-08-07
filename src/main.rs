@@ -51,7 +51,7 @@ enum Error {
     Disk(std::io::Error),
     BlockDeviceNew(sys_util::Error),
     BlockDeviceRootSetup(sys_util::Error),
-    NetDeviceNew(hw::virtio::NetError),
+    VhostNetDeviceNew(hw::virtio::VhostNetError),
     NetDeviceRootSetup(sys_util::Error),
     MacAddressNeedsNetConfig,
     NetMissingConfig,
@@ -100,7 +100,7 @@ impl fmt::Display for Error {
                 write!(f, "failed to create root directory for a block device: {:?}", e)
             }
             &Error::RegisterBlock(ref e) => write!(f, "error registering block device: {:?}", e),
-            &Error::NetDeviceNew(ref e) => write!(f, "failed to set up networking: {:?}", e),
+            &Error::VhostNetDeviceNew(ref e) => write!(f, "failed to set up vhost networking: {:?}", e),
             &Error::NetDeviceRootSetup(ref e) => {
                 write!(f, "failed to create root directory for a net device: {:?}", e)
             }
@@ -266,12 +266,12 @@ fn run_config(cfg: Config) -> Result<()> {
         .map_err(Error::NetDeviceRootSetup)?;
     if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
-            let net_box = Box::new(hw::virtio::Net::new(host_ip, netmask, &guest_mem)
-                                   .map_err(|e| Error::NetDeviceNew(e))?);
+            let net_box = Box::new(hw::virtio::VhostNet::new(host_ip, netmask, &guest_mem)
+                                   .map_err(|e| Error::VhostNetDeviceNew(e))?);
             let jail = if cfg.multiprocess {
                 let net_root_path = net_root.as_path().unwrap(); // Won't fail if new succeeded.
 
-                Some(create_base_minijail(net_root_path, Path::new("net_device.policy"))?)
+                Some(create_base_minijail(net_root_path, Path::new("vhost_net_device.policy"))?)
             }
             else {
                 None
