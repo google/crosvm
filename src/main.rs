@@ -52,6 +52,7 @@ enum Error {
     BlockDeviceNew(sys_util::Error),
     BlockDeviceRootSetup(sys_util::Error),
     VhostNetDeviceNew(hw::virtio::VhostNetError),
+    NetDeviceNew(hw::virtio::NetError),
     NetDeviceRootSetup(sys_util::Error),
     MacAddressNeedsNetConfig,
     NetMissingConfig,
@@ -104,6 +105,7 @@ impl fmt::Display for Error {
             }
             &Error::RegisterBlock(ref e) => write!(f, "error registering block device: {:?}", e),
             &Error::VhostNetDeviceNew(ref e) => write!(f, "failed to set up vhost networking: {:?}", e),
+            &Error::NetDeviceNew(ref e) => write!(f, "failed to set up virtio networking: {:?}", e),
             &Error::NetDeviceRootSetup(ref e) => {
                 write!(f, "failed to create root directory for a net device: {:?}", e)
             }
@@ -148,6 +150,7 @@ struct Config<'a> {
     host_ip: Option<net::Ipv4Addr>,
     netmask: Option<net::Ipv4Addr>,
     mac_address: Option<String>,
+    vhost_net: bool,
     socket_path: Option<String>,
     multiprocess: bool,
     warn_unknown_ports: bool,
@@ -286,12 +289,24 @@ fn run_config(cfg: Config) -> Result<()> {
         .map_err(Error::NetDeviceRootSetup)?;
     if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
-            let net_box = Box::new(hw::virtio::VhostNet::new(host_ip, netmask, &guest_mem)
-                                   .map_err(|e| Error::VhostNetDeviceNew(e))?);
+            let net_box: Box<hw::virtio::VirtioDevice> = if cfg.vhost_net {
+                Box::new(hw::virtio::VhostNet::new(host_ip, netmask, &guest_mem)
+                                   .map_err(|e| Error::VhostNetDeviceNew(e))?)
+            } else {
+                Box::new(hw::virtio::Net::new(host_ip, netmask)
+                                   .map_err(|e| Error::NetDeviceNew(e))?)
+            };
+
             let jail = if cfg.multiprocess {
                 let net_root_path = net_root.as_path().unwrap(); // Won't fail if new succeeded.
 
-                Some(create_base_minijail(net_root_path, Path::new("vhost_net_device.policy"))?)
+                let policy_path = if cfg.vhost_net {
+                    Path::new("vhost_net_device.policy")
+                } else {
+                    Path::new("net_device.policy")
+                };
+
+                Some(create_base_minijail(net_root_path, policy_path)?)
             }
             else {
                 None
@@ -683,6 +698,9 @@ fn main() {
                                  .long("mac")
                                  .value_name("MAC")
                                  .help("mac address for VM"))
+                        .arg(Arg::with_name("vhost_net")
+                                 .long("vhost_net")
+                                 .help("use vhost_net for networking"))
                         .arg(Arg::with_name("socket")
                                  .short("s")
                                  .long("socket")
@@ -740,6 +758,7 @@ fn main() {
                 host_ip: matches.value_of("host_ip").and_then(|v| v.parse().ok()),
                 netmask: matches.value_of("netmask").and_then(|v| v.parse().ok()),
                 mac_address: matches.value_of("mac").map(|s| s.to_string()),
+                vhost_net: matches.is_present("vhost_net"),
                 socket_path: matches.value_of("socket").map(|s| s.to_string()),
                 warn_unknown_ports: matches.is_present("warn-unknown-ports"),
             };
