@@ -4,6 +4,7 @@
 
 use std::cmp::min;
 use std::num::Wrapping;
+use std::sync::atomic::{fence, Ordering};
 
 use sys_util::{GuestAddress, GuestMemory};
 
@@ -294,6 +295,10 @@ impl Queue {
             .unwrap();
 
         self.next_used += Wrapping(1);
+
+        // This fence ensures all descriptor writes are visible before the index update is.
+        fence(Ordering::Release);
+
         mem.write_obj_at_addr(self.next_used.0 as u16, used_ring.unchecked_add(2))
             .unwrap();
     }
