@@ -197,6 +197,7 @@ struct Config {
     disable_wayland: bool,
     socket_path: Option<PathBuf>,
     multiprocess: bool,
+    seccomp_policy_dir: Option<String>,
     cid: Option<u64>,
 }
 
@@ -204,6 +205,8 @@ const KERNEL_START_OFFSET: usize = 0x200000;
 const CMDLINE_OFFSET: usize = 0x20000;
 const CMDLINE_MAX_SIZE: usize = KERNEL_START_OFFSET - CMDLINE_OFFSET;
 const BASE_DEV_MEMORY_PFN: u64 = 1u64 << 26;
+
+static SECCOMP_POLICY_DIR: &'static str = "/usr/share/policy/crosvm";
 
 fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
@@ -254,6 +257,11 @@ fn wait_all_children() -> bool {
 }
 
 fn run_config(cfg: Config) -> Result<()> {
+    let seccomp_policy_dir = match cfg.seccomp_policy_dir {
+        Some(ref p) => PathBuf::from(p),
+        None => PathBuf::from(SECCOMP_POLICY_DIR),
+    };
+
     if cfg.multiprocess {
         // Printing something to the syslog before entering minijail so that libc's syslogger has a
         // chance to open files necessary for its operation, like `/etc/localtime`. After jailing,
@@ -299,7 +307,8 @@ fn run_config(cfg: Config) -> Result<()> {
                     .map_err(|e| Error::BlockDeviceNew(e))?);
         let jail = if cfg.multiprocess {
             let block_root_path = block_root.as_path().unwrap(); // Won't fail if new succeeded.
-            Some(create_base_minijail(block_root_path, Path::new("block_device.policy"))?)
+            let policy_path: PathBuf = seccomp_policy_dir.join("block_device.policy");
+            Some(create_base_minijail(block_root_path, &policy_path)?)
         }
         else {
             None
@@ -314,7 +323,8 @@ fn run_config(cfg: Config) -> Result<()> {
     let rng_box = Box::new(hw::virtio::Rng::new().map_err(Error::RngDeviceNew)?);
     let rng_jail = if cfg.multiprocess {
         let rng_root_path = rng_root.as_path().unwrap(); // Won't fail if new succeeded.
-        Some(create_base_minijail(rng_root_path, Path::new("rng_device.policy"))?)
+        let policy_path: PathBuf = seccomp_policy_dir.join("rng_device.policy");
+        Some(create_base_minijail(rng_root_path, &policy_path)?)
     } else {
         None
     };
@@ -337,13 +347,13 @@ fn run_config(cfg: Config) -> Result<()> {
             let jail = if cfg.multiprocess {
                 let net_root_path = net_root.as_path().unwrap(); // Won't fail if new succeeded.
 
-                let policy_path = if cfg.vhost_net {
-                    Path::new("vhost_net_device.policy")
+                let policy_path: PathBuf = if cfg.vhost_net {
+                    seccomp_policy_dir.join("vhost_net_device.policy")
                 } else {
-                    Path::new("net_device.policy")
+                    seccomp_policy_dir.join("net_device.policy")
                 };
 
-                Some(create_base_minijail(net_root_path, policy_path)?)
+                Some(create_base_minijail(net_root_path, &policy_path)?)
             }
             else {
                 None
@@ -374,7 +384,8 @@ fn run_config(cfg: Config) -> Result<()> {
 
                 let jail = if cfg.multiprocess {
                     let wl_root_path = wl_root.as_path().unwrap(); // Won't fail if new succeeded.
-                    let mut jail = create_base_minijail(wl_root_path, Path::new("wl_device.policy"))?;
+                    let policy_path: PathBuf = seccomp_policy_dir.join("wl_device.policy");
+                    let mut jail = create_base_minijail(wl_root_path, &policy_path)?;
                     // Map the jail's root uid/gid to the main processes effective uid/gid so that
                     // the jailed device can access the wayland-0 socket with the same credentials
                     // as the main process.
@@ -399,9 +410,9 @@ fn run_config(cfg: Config) -> Result<()> {
 
         let jail = if cfg.multiprocess {
             let root_path = vsock_root.as_path().unwrap();
-            let policy_path = Path::new("vhost_vsock_device.policy");
+            let policy_path: PathBuf = seccomp_policy_dir.join("vhost_vsock_device.policy");
 
-            Some(create_base_minijail(root_path, policy_path)?)
+            Some(create_base_minijail(root_path, &policy_path)?)
         } else {
             None
         };
@@ -871,6 +882,10 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 }
             })?);
         }
+        "seccomp_policy_dir" => {
+            // Value is Some because we are in this match so it's safe to unwrap.
+            cfg.seccomp_policy_dir = Some(value.unwrap().to_owned());
+        },
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -908,6 +923,7 @@ fn run_vm(args: std::env::Args) {
                                 "Path to put the control socket. If PATH is a directory, a name will be generated."),
           Argument::short_flag('u', "multiprocess", "Run each device in a child process."),
           Argument::value("cid", "CID", "Context ID for virtual sockets"),
+          Argument::value("seccomp_policy_dir", "PATH", "Path to seccomp .policy files."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
