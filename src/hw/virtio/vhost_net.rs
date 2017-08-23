@@ -13,7 +13,7 @@ use std::thread::spawn;
 use net_sys;
 use net_util::{Tap, Error as TapError};
 use sys_util::{Error as SysError, EventFd, GuestMemory, Poller};
-use vhost::{VhostNet as VhostNetHandle, Error as VhostError};
+use vhost::{Error as VhostError, Net as VhostNetHandle, Vhost};
 use virtio_sys::{vhost, virtio_net};
 use virtio_sys::virtio_net::virtio_net_hdr_mrg_rxbuf;
 
@@ -131,7 +131,7 @@ impl Worker {
                 .set_vring_kick(queue_index, &queue_evts[queue_index])
                 .map_err(VhostNetError::VhostSetVringKick)?;
             self.vhost_net_handle
-                .net_set_backend(queue_index, &self.tap)
+                .set_backend(queue_index, &self.tap)
                 .map_err(VhostNetError::VhostNetSetBackend)?;
         }
 

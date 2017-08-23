@@ -7,9 +7,11 @@ extern crate net_util;
 extern crate sys_util;
 extern crate virtio_sys;
 
-use std::fs::File;
+mod net;
+pub use net::Net;
+
 use std::mem;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::AsRawFd;
 use std::ptr::null;
 
 use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError, Error as SysError};
@@ -17,7 +19,7 @@ use sys_util::{ioctl, ioctl_with_ref, ioctl_with_mut_ref, ioctl_with_ptr};
 
 #[derive(Debug)]
 pub enum Error {
-    /// Error opening /dev/host-net.
+    /// Error opening vhost device.
     VhostOpen(SysError),
     /// Error while running ioctl.
     IoctlError(SysError),
@@ -38,45 +40,20 @@ fn ioctl_result<T>() -> Result<T> {
     Err(Error::IoctlError(SysError::last()))
 }
 
-/// Handle to run VHOST_NET ioctls.
-///
-/// This provides a simple wrapper around a VHOST_NET file descriptor and
-/// methods that safely run ioctls on that file descriptor.
-pub struct VhostNet {
-    // vhost_net must be dropped first, which will stop and tear down the
-    // vhost_net worker before GuestMemory can potentially be unmapped.
-    vhost_net: File,
-    mem: GuestMemory,
-}
-
-impl VhostNet {
-    /// Opens /dev/vhost-net and holds a file descriptor open for it.
-    ///
-    /// # Arguments
-    /// * `mem` - Guest memory mapping.
-    pub fn new(mem: &GuestMemory) -> Result<VhostNet> {
-        // Open calls are safe because we give a constant nul-terminated
-        // string and verify the result.
-        let fd = unsafe {
-            libc::open(b"/dev/vhost-net\0".as_ptr() as *const i8,
-                       libc::O_RDONLY | libc::O_WRONLY | libc::O_NONBLOCK | libc::O_CLOEXEC)
-        };
-        if fd < 0 {
-            return Err(Error::VhostOpen(SysError::last()));
-        }
-        Ok(VhostNet {
-            // There are no other users of this fd, so this is safe.
-            vhost_net: unsafe { File::from_raw_fd(fd) },
-            mem: mem.clone(),
-        })
-    }
+/// An interface for setting up vhost-based virtio devices.  Vhost-based devices are different
+/// from regular virtio devices because the host kernel takes care of handling all the data
+/// transfer.  The device itself only needs to deal with setting up the kernel driver and
+/// managing the control channel.
+pub trait Vhost: AsRawFd + std::marker::Sized {
+    /// Get the guest memory mapping.
+    fn mem(&self) -> &GuestMemory;
 
     /// Set the current process as the owner of this file descriptor.
     /// This must be run before any other vhost ioctls.
-    pub fn set_owner(&self) -> Result<()> {
+    fn set_owner(&self) -> Result<()> {
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
-        let ret = unsafe { ioctl(&self.vhost_net, virtio_sys::VHOST_SET_OWNER()) };
+        let ret = unsafe { ioctl(self, virtio_sys::VHOST_SET_OWNER()) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -84,12 +61,12 @@ impl VhostNet {
     }
 
     /// Get a bitmask of supported virtio/vhost features.
-    pub fn get_features(&self) -> Result<u64> {
+    fn get_features(&self) -> Result<u64> {
         let mut avail_features: u64 = 0;
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
         let ret = unsafe {
-            ioctl_with_mut_ref(&self.vhost_net,
+            ioctl_with_mut_ref(self,
                                virtio_sys::VHOST_GET_FEATURES(),
                                &mut avail_features)
         };
@@ -99,16 +76,16 @@ impl VhostNet {
         Ok(avail_features)
     }
 
-    /// Inform VHOST_NET which features to enable. This should be a subset of
+    /// Inform the vhost subsystem which features to enable. This should be a subset of
     /// supported features from VHOST_GET_FEATURES.
     ///
     /// # Arguments
     /// * `features` - Bitmask of features to set.
-    pub fn set_features(&self, features: u64) -> Result<()> {
+    fn set_features(&self, features: u64) -> Result<()> {
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
         let ret =
-            unsafe { ioctl_with_ref(&self.vhost_net, virtio_sys::VHOST_SET_FEATURES(), &features) };
+            unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_FEATURES(), &features) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -116,8 +93,8 @@ impl VhostNet {
     }
 
     /// Set the guest memory mappings for vhost to use.
-    pub fn set_mem_table(&self) -> Result<()> {
-        let num_regions = self.mem.num_regions();
+    fn set_mem_table(&self) -> Result<()> {
+        let num_regions = self.mem().num_regions();
         let vec_size_bytes = mem::size_of::<virtio_sys::vhost_memory>() +
                              (num_regions * mem::size_of::<virtio_sys::vhost_memory_region>());
         let mut bytes: Vec<u8> = vec![0; vec_size_bytes];
@@ -130,7 +107,7 @@ impl VhostNet {
         // we correctly specify the size to match the amount of backing memory.
         let vhost_regions = unsafe { vhost_memory.regions.as_mut_slice(num_regions as usize) };
 
-        let _ = self.mem
+        let _ = self.mem()
                 .with_regions_mut::<_, ()>(|index, guest_addr, size, host_addr| {
                     vhost_regions[index] = virtio_sys::vhost_memory_region {
                         guest_phys_addr: guest_addr.offset() as u64,
@@ -146,7 +123,7 @@ impl VhostNet {
         // of this function. The kernel will make its own copy of the memory
         // tables. As always, check the return value.
         let ret = unsafe {
-            ioctl_with_ptr(&self.vhost_net,
+            ioctl_with_ptr(self,
                            virtio_sys::VHOST_SET_MEM_TABLE(),
                            bytes.as_ptr())
         };
@@ -161,7 +138,7 @@ impl VhostNet {
     /// # Arguments
     /// * `queue_index` - Index of the queue to set descriptor count for.
     /// * `num` - Number of descriptors in the queue.
-    pub fn set_vring_num(&self, queue_index: usize, num: u16) -> Result<()> {
+    fn set_vring_num(&self, queue_index: usize, num: u16) -> Result<()> {
         let vring_state = virtio_sys::vhost_vring_state {
             index: queue_index as u32,
             num: num as u32,
@@ -170,7 +147,7 @@ impl VhostNet {
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
         let ret = unsafe {
-            ioctl_with_ref(&self.vhost_net,
+            ioctl_with_ref(self,
                            virtio_sys::VHOST_SET_VRING_NUM(),
                            &vring_state)
         };
@@ -195,15 +172,15 @@ impl VhostNet {
             false
         } else if desc_addr
                       .checked_add(desc_table_size)
-                      .map_or(true, |v| !self.mem.address_in_range(v)) {
+                      .map_or(true, |v| !self.mem().address_in_range(v)) {
             false
         } else if avail_addr
                       .checked_add(avail_ring_size)
-                      .map_or(true, |v| !self.mem.address_in_range(v)) {
+                      .map_or(true, |v| !self.mem().address_in_range(v)) {
             false
         } else if used_addr
                       .checked_add(used_ring_size)
-                      .map_or(true, |v| !self.mem.address_in_range(v)) {
+                      .map_or(true, |v| !self.mem().address_in_range(v)) {
             false
         } else {
             true
@@ -222,35 +199,35 @@ impl VhostNet {
     /// * `used_addr` - Used ring buffer address.
     /// * `avail_addr` - Available ring buffer address.
     /// * `log_addr` - Optional address for logging.
-    pub fn set_vring_addr(&self,
-                          queue_max_size: u16,
-                          queue_size: u16,
-                          queue_index: usize,
-                          flags: u32,
-                          desc_addr: GuestAddress,
-                          used_addr: GuestAddress,
-                          avail_addr: GuestAddress,
-                          log_addr: Option<GuestAddress>)
-                          -> Result<()> {
+    fn set_vring_addr(&self,
+                      queue_max_size: u16,
+                      queue_size: u16,
+                      queue_index: usize,
+                      flags: u32,
+                      desc_addr: GuestAddress,
+                      used_addr: GuestAddress,
+                      avail_addr: GuestAddress,
+                      log_addr: Option<GuestAddress>)
+                      -> Result<()> {
         // TODO(smbarber): Refactor out virtio from crosvm so we can
         // validate a Queue struct directly.
         if !self.is_valid(queue_max_size, queue_size, desc_addr, used_addr, avail_addr) {
             return Err(Error::InvalidQueue);
         }
 
-        let desc_addr = self.mem
+        let desc_addr = self.mem()
             .get_host_address(desc_addr)
             .map_err(Error::DescriptorTableAddress)?;
-        let used_addr = self.mem
+        let used_addr = self.mem()
             .get_host_address(used_addr)
             .map_err(Error::UsedAddress)?;
-        let avail_addr = self.mem
+        let avail_addr = self.mem()
             .get_host_address(avail_addr)
             .map_err(Error::AvailAddress)?;
         let log_addr = match log_addr {
             None => null(),
             Some(a) => {
-                self.mem
+                self.mem()
                 .get_host_address(a)
                 .map_err(Error::LogAddress)?
             },
@@ -268,7 +245,7 @@ impl VhostNet {
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
         let ret = unsafe {
-            ioctl_with_ref(&self.vhost_net,
+            ioctl_with_ref(self,
                            virtio_sys::VHOST_SET_VRING_ADDR(),
                            &vring_addr)
         };
@@ -283,7 +260,7 @@ impl VhostNet {
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
     /// * `num` - Index where available descriptors start.
-    pub fn set_vring_base(&self, queue_index: usize, num: u16) -> Result<()> {
+    fn set_vring_base(&self, queue_index: usize, num: u16) -> Result<()> {
         let vring_state = virtio_sys::vhost_vring_state {
             index: queue_index as u32,
             num: num as u32,
@@ -292,7 +269,7 @@ impl VhostNet {
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
         let ret = unsafe {
-            ioctl_with_ref(&self.vhost_net,
+            ioctl_with_ref(self,
                            virtio_sys::VHOST_SET_VRING_BASE(),
                            &vring_state)
         };
@@ -307,7 +284,7 @@ impl VhostNet {
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
     /// * `fd` - EventFd to trigger.
-    pub fn set_vring_call(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
+    fn set_vring_call(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
         let vring_file = virtio_sys::vhost_vring_file {
             index: queue_index as u32,
             fd: fd.as_raw_fd(),
@@ -316,7 +293,7 @@ impl VhostNet {
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
         let ret = unsafe {
-            ioctl_with_ref(&self.vhost_net,
+            ioctl_with_ref(self,
                            virtio_sys::VHOST_SET_VRING_CALL(),
                            &vring_file)
         };
@@ -332,7 +309,7 @@ impl VhostNet {
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
     /// * `fd` - EventFd that will be signaled from guest.
-    pub fn set_vring_kick(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
+    fn set_vring_kick(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
         let vring_file = virtio_sys::vhost_vring_file {
             index: queue_index as u32,
             fd: fd.as_raw_fd(),
@@ -341,7 +318,7 @@ impl VhostNet {
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
         let ret = unsafe {
-            ioctl_with_ref(&self.vhost_net,
+            ioctl_with_ref(self,
                            virtio_sys::VHOST_SET_VRING_KICK(),
                            &vring_file)
         };
@@ -351,36 +328,6 @@ impl VhostNet {
         Ok(())
     }
 
-    /// Set the tap file descriptor that will serve as the VHOST_NET backend.
-    /// This will start the vhost worker for the given queue.
-    ///
-    /// # Arguments
-    /// * `queue_index` - Index of the queue to modify.
-    /// * `fd` - Tap interface that will be used as the backend.
-    pub fn net_set_backend(&self, queue_index: usize, fd: &net_util::Tap) -> Result<()> {
-        let vring_file = virtio_sys::vhost_vring_file {
-            index: queue_index as u32,
-            fd: fd.as_raw_fd(),
-        };
-
-        // This ioctl is called on a valid vhost_net fd and has its
-        // return value checked.
-        let ret = unsafe {
-            ioctl_with_ref(&self.vhost_net,
-                           virtio_sys::VHOST_NET_SET_BACKEND(),
-                           &vring_file)
-        };
-        if ret < 0 {
-            return ioctl_result();
-        }
-        Ok(())
-    }
-}
-
-impl AsRawFd for VhostNet {
-    fn as_raw_fd(&self) -> RawFd {
-        self.vhost_net.as_raw_fd()
-    }
 }
 
 #[cfg(test)]
@@ -399,27 +346,27 @@ mod tests {
     #[test]
     fn open_vhostnet() {
         let gm = create_guest_memory().unwrap();
-        VhostNet::new(&gm).unwrap();
+        Net::new(&gm).unwrap();
     }
 
     #[test]
     fn set_owner() {
         let gm = create_guest_memory().unwrap();
-        let vhost_net = VhostNet::new(&gm).unwrap();
+        let vhost_net = Net::new(&gm).unwrap();
         vhost_net.set_owner().unwrap();
     }
 
     #[test]
     fn get_features() {
         let gm = create_guest_memory().unwrap();
-        let vhost_net = VhostNet::new(&gm).unwrap();
+        let vhost_net = Net::new(&gm).unwrap();
         vhost_net.get_features().unwrap();
     }
 
     #[test]
     fn set_features() {
         let gm = create_guest_memory().unwrap();
-        let vhost_net = VhostNet::new(&gm).unwrap();
+        let vhost_net = Net::new(&gm).unwrap();
         vhost_net.set_features(0).unwrap();
     }
 }
