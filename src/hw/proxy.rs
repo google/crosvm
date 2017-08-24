@@ -4,6 +4,8 @@
 
 //! Runs hardware devices in child processes.
 
+use libc::pid_t;
+
 use std::io::{Error, ErrorKind, Result};
 use std::os::unix::net::UnixDatagram;
 use std::time::Duration;
@@ -15,7 +17,6 @@ use sys_util::{clone_process, CloneNamespace};
 
 const SOCKET_TIMEOUT_MS: u64 = 2000;
 const MSG_SIZE: usize = 24;
-const CHILD_SIGNATURE: [u8; MSG_SIZE] = [0x7f; MSG_SIZE];
 
 enum Command {
     Read = 0,
@@ -25,12 +26,6 @@ enum Command {
 
 fn child_proc(sock: UnixDatagram, device: &mut BusDevice) {
     let mut running = true;
-
-    let res = handle_eintr!(sock.send(&CHILD_SIGNATURE));
-    if let Err(e) = res {
-        println!("error: failed to send child started signal: {}", e);
-        running = false;
-    }
 
     while running {
         let mut buf = [0; MSG_SIZE];
@@ -79,6 +74,7 @@ fn child_proc(sock: UnixDatagram, device: &mut BusDevice) {
 /// are inherited, this should be used as early as possible in the main process.
 pub struct ProxyDevice {
     sock: UnixDatagram,
+    pid: pid_t,
 }
 
 impl ProxyDevice {
@@ -96,20 +92,21 @@ impl ProxyDevice {
     {
         let (child_sock, parent_sock) = UnixDatagram::pair()?;
 
-        clone_process(CloneNamespace::NewUserPid, move || {
+        let pid = clone_process(CloneNamespace::NewUserPid, move || {
             post_clone_cb(&child_sock);
             child_proc(child_sock, &mut device);
         })
                 .map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e)))?;
 
-        let mut buf = [0; MSG_SIZE];
         parent_sock
             .set_write_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))?;
         parent_sock
             .set_read_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))?;
-        handle_eintr!(parent_sock.recv(&mut buf))?;
-        assert_eq!(buf, CHILD_SIGNATURE);
-        Ok(ProxyDevice { sock: parent_sock })
+        Ok(ProxyDevice { sock: parent_sock, pid: pid })
+    }
+
+    pub fn pid(&self) -> pid_t {
+        self.pid
     }
 
     fn send_cmd(&self, cmd: Command, offset: u64, len: u32, data: &[u8]) -> Result<()> {

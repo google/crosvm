@@ -57,7 +57,7 @@ fn count_dir_entries<P: AsRef<Path>>(path: P) -> io::Result<usize> {
 /// # Arguments
 /// * `ns` - What namespace the new process will have (see NAMESPACES(7)).
 /// * `post_clone_cb` - Callback to run in the new process
-pub fn clone_process<F>(ns: CloneNamespace, post_clone_cb: F) -> result::Result<(), CloneError>
+pub fn clone_process<F>(ns: CloneNamespace, post_clone_cb: F) -> result::Result<pid_t, CloneError>
     where F: FnOnce()
 {
     match count_dir_entries("/proc/self/task") {
@@ -90,7 +90,7 @@ pub fn clone_process<F>(ns: CloneNamespace, post_clone_cb: F) -> result::Result<
         process::exit(0);
     }
 
-    Ok(())
+    Ok(ret)
 }
 
 #[cfg(test)]

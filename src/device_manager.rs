@@ -5,15 +5,17 @@
 //! Manages jailing and connecting virtio devices to the system bus.
 
 use std::fmt;
+use std::fs;
 use std::io;
+use std::io::Write;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::{Arc, Mutex};
 
-use libc::STDERR_FILENO;
+use libc::{getresuid, getresgid, setresuid, setresgid, uid_t, gid_t, STDERR_FILENO};
 
 use io_jail::Minijail;
 use kvm::IoeventAddress;
-use sys_util::{GuestMemory, syslog};
+use sys_util::{EventFd, GuestMemory, syslog};
 use sys_util;
 
 use hw;
@@ -29,6 +31,14 @@ pub enum Error {
     CloneIoeventFd(sys_util::Error),
     /// Failed to clone the mmio irqfd.
     CloneIrqFd(sys_util::Error),
+    /// There was an error creating a sync EventFd.
+    CreateSync(sys_util::Error),
+    /// There was an error writing the uid_map.
+    WriteUidMap(io::Error),
+    /// There was an error writing the gid_map.
+    WriteGidMap(io::Error),
+    /// There was an error synchronizing the child process.
+    Sync(sys_util::Error),
     /// Failed to initialize proxy device for jailed device.
     ProxyDeviceCreation(io::Error),
     /// Appending to kernel command line failed.
@@ -43,6 +53,10 @@ impl fmt::Display for Error {
             &Error::CreateMmioDevice(ref e) => write!(f, "failed to create mmio device: {:?}", e),
             &Error::CloneIoeventFd(ref e) => write!(f, "failed to clone ioeventfd: {:?}", e),
             &Error::CloneIrqFd(ref e) => write!(f, "failed to clone irqfd: {:?}", e),
+            &Error::CreateSync(ref e) => write!(f, "failed to create sync eventfd: {:?}", e),
+            &Error::WriteUidMap(ref e) => write!(f, "failed to write uid map: {}", e),
+            &Error::WriteGidMap(ref e) => write!(f, "failed to write gid map: {}", e),
+            &Error::Sync(ref e) => write!(f, "failed to sync proxy device start: {:?}", e),
             &Error::ProxyDeviceCreation(ref e) => write!(f, "failed to create proxy device: {}", e),
             &Error::Cmdline(ref e) => {
                 write!(f, "unable to add device to kernel command line: {}", e)
@@ -118,15 +132,72 @@ impl DeviceManager {
         }
 
         if let Some(jail) = jail {
-            let proxy_dev = hw::ProxyDevice::new(mmio_device, move |keep_pipe| {
+            let (mut ruid, mut euid, mut suid) = (0, 0, 0);
+            let (mut rgid, mut egid, mut sgid) = (0, 0, 0);
+            let mut id_map_done_evt = None;
+            let needs_id_map = jail.get_uidmap().is_some() || jail.get_gidmap().is_some();
+            if needs_id_map {
+                id_map_done_evt = Some(EventFd::new().map_err(Error::CreateSync)?);
+                // These never fail as long as they are given valid addresses, which are trivially
+                // valid stack addresses.
+                unsafe {
+                    getresuid(&mut ruid as *mut uid_t,
+                              &mut euid as *mut uid_t,
+                              &mut suid as *mut uid_t);
+                    getresgid(&mut rgid as *mut gid_t,
+                              &mut egid as *mut gid_t,
+                              &mut sgid as *mut gid_t);
+                };
+            };
+
+            let proxy_dev = hw::ProxyDevice::new(mmio_device, |keep_pipe| {
+                // The setresuid/setresgid calls will not work until the maps have been set, so we
+                // wait for a signal indicating the uid/gid maps have been set by the parent.
+                if let Some(evt) = id_map_done_evt.take() {
+                    let _ = evt.read();
+                    unsafe {
+                        if jail.get_uidmap().is_some() {
+                            setresuid(ruid, euid, suid);
+                        }
+                        if jail.get_gidmap().is_some() {
+                            setresgid(rgid, egid, sgid);
+                        }
+                    }
+                }
                 keep_fds.push(keep_pipe.as_raw_fd());
                 // Need to panic here as there isn't a way to recover from a
                 // partly-jailed process.
                 unsafe {
                     // This is OK as we have whitelisted all the FDs we need open.
+                    // TODO(zachr): use jail.fork when that CL gets committed.
                     jail.enter(Some(&keep_fds)).unwrap();
                 }
             }).map_err(|e| Error::ProxyDeviceCreation(e))?;
+
+            if let Some(uid_map) = jail.get_uidmap() {
+                let mut uid_file = fs::OpenOptions::new().write(true)
+                        .read(false)
+                        .create(false)
+                        .open(format!("/proc/{}/uid_map", proxy_dev.pid()))
+                        .unwrap();
+                uid_file.write_all(uid_map.as_bytes()).map_err(Error::WriteUidMap)?;
+            }
+
+            if let Some(gid_map) = jail.get_gidmap() {
+                let mut gid_file = fs::OpenOptions::new().write(true)
+                        .read(false)
+                        .create(false)
+                        .open(format!("/proc/{}/gid_map", proxy_dev.pid()))
+                        .unwrap();
+                gid_file.write_all(gid_map.as_bytes()).map_err(Error::WriteGidMap)?;
+            }
+
+            // The proxy device process waits for this EventFd before setting its uid/gid, which
+            // will only work after setting the above mappings.
+            if let Some(evt) = id_map_done_evt {
+                evt.write(1).map_err(Error::Sync)?;
+            }
+
             self.bus
                 .insert(Arc::new(Mutex::new(proxy_dev)),
                         self.mmio_base,
