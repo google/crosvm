@@ -153,6 +153,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// process on error.
 pub struct Minijail {
     jail: *mut libminijail::minijail,
+    // Normally, these would be set in the minijail, but minijail can't use these in minijail_enter.
+    // Instead these are accessible by the caller of `Minijail::enter` to manually set.
+    uid_map: Option<String>,
+    gid_map: Option<String>,
 }
 
 impl Minijail {
@@ -166,7 +170,7 @@ impl Minijail {
         if j.is_null() {
             return Err(Error::CreatingMinijail);
         }
-        Ok(Minijail { jail: j })
+        Ok(Minijail { jail: j, uid_map: None, gid_map: None })
     }
 
     // The following functions are safe because they only set values in the
@@ -244,6 +248,18 @@ impl Minijail {
     }
     pub fn remount_proc_readonly(&mut self) {
         unsafe { libminijail::minijail_remount_proc_readonly(self.jail); }
+    }
+    pub fn uidmap(&mut self, uid_map: &str) {
+        self.uid_map = Some(uid_map.to_owned());
+    }
+    pub fn get_uidmap(&self) -> Option<&str> {
+        self.uid_map.as_ref().map(String::as_str)
+    }
+    pub fn gidmap(&mut self, gid_map: &str) {
+        self.gid_map = Some(gid_map.to_owned());
+    }
+    pub fn get_gidmap(&self) -> Option<&str> {
+        self.gid_map.as_ref().map(String::as_str)
     }
     pub fn inherit_usergroups(&mut self) {
         unsafe { libminijail::minijail_inherit_usergroups(self.jail); }
