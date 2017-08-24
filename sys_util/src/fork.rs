@@ -96,14 +96,7 @@ pub fn clone_process<F>(ns: CloneNamespace, post_clone_cb: F) -> result::Result<
 mod tests {
     use super::*;
     use libc;
-    use EventFd;
-    use syscall_defines::linux::LinuxSyscall::SYS_getpid;
-
-    // This bypasses libc's caching getpid() wrapper which is invalid because we do a raw clone
-    // syscall in this module.
-    fn getpid() -> pid_t {
-        unsafe { libc::syscall(SYS_getpid as i64) as i32 }
-    }
+    use {getpid, EventFd};
 
     fn wait_process() -> libc::c_int {
         let mut status: libc::c_int = 0;

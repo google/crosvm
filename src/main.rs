@@ -31,22 +31,18 @@ use std::io::{stdin, stdout};
 use std::net;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
-use std::ptr;
 use std::string::String;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Barrier};
 use std::thread::{spawn, sleep, JoinHandle};
 use std::time::Duration;
 
-use libc::getpid;
-
 use clap::{Arg, App, SubCommand};
-
 
 use io_jail::Minijail;
 use kvm::*;
 use sys_util::{GuestAddress, GuestMemory, EventFd, TempDir, Terminal, Poller, Pollable, Scm,
-               register_signal_handler, Killable, SignalFd, syslog};
+               register_signal_handler, Killable, SignalFd, kill_process_group, reap_child, syslog};
 
 use device_manager::*;
 use vm_control::{VmRequest, VmResponse};
@@ -192,34 +188,21 @@ fn wait_all_children() -> bool {
     const CHILD_WAIT_MAX_ITER: isize = 10;
     const CHILD_WAIT_MS: u64 = 10;
     for _ in 0..CHILD_WAIT_MAX_ITER {
-        // waitpid() is safe when used in this manner; we will check
-        // without blocking if there are any child processes that
-        // are still running or need their exit statuses reaped.
         loop {
-            let ret = unsafe {
-                libc::waitpid(-1, ptr::null_mut(), libc::WNOHANG)
-            };
-            // waitpid() returns -1 when there are no children left, and
-            // returns 0 when there are children alive but not yet exited.
-            if ret < 0 {
-                let err = sys_util::Error::last().errno();
-                // We expect ECHILD which indicates that there were
-                // no children left.
-                if err == libc::ECHILD {
-                    return true;
+            match reap_child() {
+                Ok(0) => break,
+                // We expect ECHILD which indicates that there were no children left.
+                Err(e) if e.errno() == libc::ECHILD => return true,
+                Err(e) => {
+                    warn!("error while waiting for children: {:?}", e);
+                    return false;
                 }
-                else {
-                    warn!("waitpid returned {} while waiting for children",
-                          err);
-                }
-                return false;
-            } else if ret == 0 {
-                break;
+                // We reaped one child, so continue reaping.
+                _ => {},
             }
         }
-        // There's no timeout option for waitpid, so our only recourse
-        // is to use WNOHANG and sleep while waiting for the children
-        // to exit.
+        // There's no timeout option for waitpid which reap_child calls internally, so our only
+        // recourse is to sleep while waiting for the children to exit.
         sleep(Duration::from_millis(CHILD_WAIT_MS));
     }
 
@@ -241,9 +224,7 @@ fn run_config(cfg: Config) -> Result<()> {
     if let Some(ref path) = cfg.socket_path {
         let path = Path::new(path);
         let control_socket = if path.is_dir() {
-                // Getting the pid is always safe and never fails.
-                let pid = unsafe { getpid() };
-                UnixDatagram::bind(path.join(format!("crosvm-{}.sock", pid)))
+                UnixDatagram::bind(path.join(format!("crosvm-{}.sock", getpid())))
             } else {
                 UnixDatagram::bind(path)
             }
@@ -805,13 +786,10 @@ fn main() {
             // take some time for the processes to shut down.
             if !wait_all_children() {
                 // We gave them a chance, and it's too late.
-                // A pid of 0 will kill any processes left in our process group,
-                // which is safe for us to do (we spawned them).
                 warn!("not all child processes have exited; sending SIGKILL");
-                let ret = unsafe { libc::kill(0, libc::SIGKILL) };
-                if ret < 0 {
+                if let Err(e) = kill_process_group() {
                     // We're now at the mercy of the OS to clean up after us.
-                    warn!("unable to kill all child processes");
+                    warn!("unable to kill all child processes: {:?}", e);
                 }
             }
 
