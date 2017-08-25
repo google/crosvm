@@ -52,7 +52,7 @@ enum Error {
     Disk(std::io::Error),
     BlockDeviceNew(sys_util::Error),
     BlockDeviceRootSetup(sys_util::Error),
-    VhostNetDeviceNew(hw::virtio::VhostNetError),
+    VhostNetDeviceNew(hw::virtio::vhost::Error),
     NetDeviceNew(hw::virtio::NetError),
     NetDeviceRootSetup(sys_util::Error),
     MacAddressNeedsNetConfig,
@@ -300,7 +300,7 @@ fn run_config(cfg: Config) -> Result<()> {
     if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
             let net_box: Box<hw::virtio::VirtioDevice> = if cfg.vhost_net {
-                Box::new(hw::virtio::VhostNet::new(host_ip, netmask, &guest_mem)
+                Box::new(hw::virtio::vhost::Net::new(host_ip, netmask, &guest_mem)
                                    .map_err(|e| Error::VhostNetDeviceNew(e))?)
             } else {
                 Box::new(hw::virtio::Net::new(host_ip, netmask)
