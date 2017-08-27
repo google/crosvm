@@ -21,9 +21,5 @@ vhost = { path = "vhost" }
 virtio_sys = { path = "virtio_sys" }
 data_model = { path = "data_model" }
 
-[dependencies.clap]
-version = "*"
-default-features = false
-
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { path = "x86_64" }

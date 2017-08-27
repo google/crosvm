@@ -4,7 +4,6 @@
 
 //! Runs a virtual machine under KVM
 
-extern crate clap;
 extern crate libc;
 extern crate io_jail;
 extern crate kvm;
@@ -12,13 +11,15 @@ extern crate kvm;
 extern crate x86_64;
 extern crate kernel_loader;
 extern crate byteorder;
-#[macro_use] extern crate sys_util;
+#[macro_use]
+extern crate sys_util;
 extern crate net_sys;
 extern crate net_util;
 extern crate vhost;
 extern crate virtio_sys;
 extern crate data_model;
 
+pub mod argument;
 pub mod hw;
 pub mod kernel_cmdline;
 pub mod vm_control;
@@ -37,18 +38,18 @@ use std::sync::{Arc, Mutex, Barrier};
 use std::thread::{spawn, sleep, JoinHandle};
 use std::time::Duration;
 
-use clap::{Arg, App, SubCommand};
-
 use io_jail::Minijail;
 use kvm::*;
 use sys_util::{GuestAddress, GuestMemory, EventFd, TempDir, Terminal, Poller, Pollable, Scm,
                register_signal_handler, Killable, SignalFd, getpid, kill_process_group, reap_child,
                syslog};
 
+use argument::{Argument, set_arguments, print_help};
 use device_manager::*;
 use vm_control::{VmRequest, VmResponse};
 
 enum Error {
+    OpenKernel(PathBuf, std::io::Error),
     Socket(std::io::Error),
     Disk(std::io::Error),
     BlockDeviceNew(sys_util::Error),
@@ -56,8 +57,6 @@ enum Error {
     VhostNetDeviceNew(hw::virtio::vhost::Error),
     NetDeviceNew(hw::virtio::NetError),
     NetDeviceRootSetup(sys_util::Error),
-    MacAddressNeedsNetConfig,
-    NetMissingConfig,
     DeviceJail(io_jail::Error),
     DevicePivotRoot(io_jail::Error),
     RegisterBlock(device_manager::Error),
@@ -100,6 +99,7 @@ impl std::convert::From<sys_util::Error> for Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            &Error::OpenKernel(ref p, ref e) => write!(f, "failed to open kernel image {:?}: {}", p, e),
             &Error::Socket(ref e) => write!(f, "failed to create socket: {}", e),
             &Error::Disk(ref e) => write!(f, "failed to load disk image: {}", e),
             &Error::BlockDeviceNew(ref e) => write!(f, "failed to create block device: {:?}", e),
@@ -112,8 +112,6 @@ impl fmt::Display for Error {
             &Error::NetDeviceRootSetup(ref e) => {
                 write!(f, "failed to create root directory for a net device: {:?}", e)
             }
-            &Error::MacAddressNeedsNetConfig => write!(f, "MAC address can only be specified when host IP and netmask are provided"),
-            &Error::NetMissingConfig => write!(f, "networking requires both host IP and netmask specified"),
             &Error::DeviceJail(ref e) => write!(f, "failed to jail device: {:?}", e),
             &Error::DevicePivotRoot(ref e) => write!(f, "failed to pivot root device: {:?}", e),
             &Error::RegisterNet(ref e) => write!(f, "error registering net device: {:?}", e),
@@ -157,22 +155,23 @@ impl Drop for UnlinkUnixDatagram {
     }
 }
 
-struct DiskOption<'a> {
-    path: &'a str,
+struct DiskOption {
+    path: PathBuf,
     writable: bool,
 }
 
-struct Config<'a> {
-    disks: Vec<DiskOption<'a>>,
+#[derive(Default)]
+struct Config {
+    disks: Vec<DiskOption>,
     vcpu_count: Option<u32>,
     memory: Option<usize>,
-    kernel_image: File,
-    params: Option<String>,
+    kernel_path: PathBuf,
+    params: String,
     host_ip: Option<net::Ipv4Addr>,
     netmask: Option<net::Ipv4Addr>,
     mac_address: Option<String>,
     vhost_net: bool,
-    socket_path: Option<String>,
+    socket_path: Option<PathBuf>,
     multiprocess: bool,
     warn_unknown_ports: bool,
 }
@@ -231,24 +230,13 @@ fn wait_all_children() -> bool {
 }
 
 fn run_config(cfg: Config) -> Result<()> {
-    if cfg.mac_address.is_some() &&
-       (cfg.netmask.is_none() || cfg.host_ip.is_none()) {
-        return Err(Error::MacAddressNeedsNetConfig);
-    }
-
-    if cfg.netmask.is_some() != cfg.host_ip.is_some() {
-        return Err(Error::NetMissingConfig);
-    }
+    let kernel_image = File::open(cfg.kernel_path.as_path())
+        .map_err(|e| Error::OpenKernel(cfg.kernel_path.clone(), e))?;
 
     let mut control_sockets = Vec::new();
     if let Some(ref path) = cfg.socket_path {
         let path = Path::new(path);
-        let control_socket = if path.is_dir() {
-                UnixDatagram::bind(path.join(format!("crosvm-{}.sock", getpid())))
-            } else {
-                UnixDatagram::bind(path)
-            }
-            .map_err(|e| Error::Socket(e))?;
+        let control_socket = UnixDatagram::bind(path).map_err(|e| Error::Socket(e))?;
         control_sockets.push(UnlinkUnixDatagram(control_socket));
     }
 
@@ -334,14 +322,14 @@ fn run_config(cfg: Config) -> Result<()> {
         }
     }
 
-    if let Some(params) = cfg.params {
+    if !cfg.params.is_empty() {
         cmdline
-            .insert_str(params)
+            .insert_str(cfg.params)
             .map_err(|e| Error::Cmdline(e))?;
     }
 
     run_kvm(device_manager.vm_requests,
-            cfg.kernel_image,
+            kernel_image,
             &CString::new(cmdline).unwrap(),
             cfg.vcpu_count.unwrap_or(1),
             guest_mem,
@@ -668,163 +656,279 @@ fn run_control(mut vm: Vm,
     Ok(())
 }
 
+fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::Result<()> {
+    match name {
+        "" => {
+            if !cfg.kernel_path.as_os_str().is_empty() {
+                return Err(argument::Error::TooManyArguments("expected exactly one kernel path"
+                                                                 .to_owned()));
+            } else {
+                let kernel_path = PathBuf::from(value.unwrap());
+                if !kernel_path.exists() {
+                    return Err(argument::Error::InvalidValue {
+                                   value: value.unwrap().to_owned(),
+                                   expected: "this kernel path does not exist",
+                               });
+                }
+                cfg.kernel_path = kernel_path;
+            }
+        }
+        "params" => {
+            if cfg.params.ends_with(|c| !char::is_whitespace(c)) {
+                cfg.params.push(' ');
+            }
+            cfg.params.push_str(&value.unwrap());
+        }
+        "cpus" => {
+            if cfg.vcpu_count.is_some() {
+                return Err(argument::Error::TooManyArguments("`cpus` already given".to_owned()));
+            }
+            cfg.vcpu_count =
+                Some(value
+                         .unwrap()
+                         .parse()
+                         .map_err(|_| {
+                                      argument::Error::InvalidValue {
+                                          value: value.unwrap().to_owned(),
+                                          expected: "this value for `cpus` needs to be integer",
+                                      }
+                                  })?)
+        }
+        "mem" => {
+            if cfg.memory.is_some() {
+                return Err(argument::Error::TooManyArguments("`mem` already given".to_owned()));
+            }
+            cfg.memory =
+                Some(value
+                         .unwrap()
+                         .parse()
+                         .map_err(|_| {
+                                      argument::Error::InvalidValue {
+                                          value: value.unwrap().to_owned(),
+                                          expected: "this value for `mem` needs to be integer",
+                                      }
+                                  })?)
+        }
+        "root" | "disk" | "rwdisk" => {
+            let disk_path = PathBuf::from(value.unwrap());
+            if !disk_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                               value: value.unwrap().to_owned(),
+                               expected: "this disk path does not exist",
+                           });
+            }
+            if name == "root" {
+                if cfg.disks.len() >= 26 {
+                    return Err(argument::Error::TooManyArguments("ran out of letters for to assign to root disk".to_owned()));
+                }
+                let white = if cfg.params.ends_with(|c| !char::is_whitespace(c)) {
+                    " "
+                } else {
+                    ""
+                };
+                cfg.params
+                    .push_str(&format!("{}root=/dev/vd{} ro",
+                                       white,
+                                       char::from('a' as u8 + cfg.disks.len() as u8)));
+            }
+            cfg.disks
+                .push(DiskOption {
+                          path: disk_path,
+                          writable: name.starts_with("rw"),
+                      });
+        }
+        "host_ip" => {
+            if cfg.host_ip.is_some() {
+                return Err(argument::Error::TooManyArguments("`host_ip` already given".to_owned()));
+            }
+            cfg.host_ip =
+                Some(value
+                         .unwrap()
+                         .parse()
+                         .map_err(|_| {
+                                      argument::Error::InvalidValue {
+                                          value: value.unwrap().to_owned(),
+                                          expected: "`host_ip` needs to be in the form \"x.x.x.x\"",
+                                      }
+                                  })?)
+        }
+        "netmask" => {
+            if cfg.netmask.is_some() {
+                return Err(argument::Error::TooManyArguments("`netmask` already given".to_owned()));
+            }
+            cfg.netmask =
+                Some(value
+                         .unwrap()
+                         .parse()
+                         .map_err(|_| {
+                                      argument::Error::InvalidValue {
+                                          value: value.unwrap().to_owned(),
+                                          expected: "`netmask` needs to be in the form \"x.x.x.x\"",
+                                      }
+                                  })?)
+        }
+        "mac" => {
+            if cfg.mac_address.is_some() {
+                return Err(argument::Error::TooManyArguments("`mac` already given".to_owned()));
+            }
+            cfg.mac_address = Some(value.unwrap().to_owned());
+        }
+        "socket" => {
+            if cfg.socket_path.is_some() {
+                return Err(argument::Error::TooManyArguments("`socket` already given".to_owned()));
+            }
+            let mut socket_path = PathBuf::from(value.unwrap());
+            if socket_path.is_dir() {
+                socket_path.push(format!("crosvm-{}.sock", getpid()));
+            }
+            if socket_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                               value: socket_path.to_string_lossy().into_owned(),
+                               expected: "this socket path already exists",
+                           });
+            }
+            cfg.socket_path = Some(socket_path);
+        }
+        "multiprocess" => {
+            cfg.multiprocess = true;
+        }
+        "help" => return Err(argument::Error::PrintHelp),
+        _ => unreachable!(),
+    }
+    Ok(())
+}
+
+
+fn run_vm(args: std::env::Args) {
+    let arguments =
+        &[Argument::positional("KERNEL", "bzImage of kernel to run"),
+          Argument::short_value('p',
+                                "params",
+                                "PARAMS",
+                                "Extra kernel command line arguments. Can be given more than once."),
+          Argument::short_value('c', "cpus", "N", "Number of VCPUs. (default: 1)"),
+          Argument::short_value('m',
+                                "mem",
+                                "N",
+                                "Amount of guest memory in MiB. (default: 256)"),
+          Argument::short_value('r',
+                                "root",
+                                "PATH",
+                                "Path to a root disk image. Like `--disk` but adds appropriate kernel command line option."),
+          Argument::short_value('d', "disk", "PATH", "Path to a disk image."),
+          Argument::value("rwdisk", "PATH", "Path to a writable disk image."),
+          Argument::value("host_ip",
+                          "IP",
+                          "IP address to assign to host tap interface."),
+          Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
+          Argument::value("mac", "MAC", "MAC address for VM."),
+          Argument::short_value('s',
+                                "socket",
+                                "PATH",
+                                "Path to put the control socket. If PATH is a directory, a name will be generated."),
+          Argument::short_flag('u', "multiprocess", "Run each device in a child process."),
+          Argument::short_flag('h', "help", "Print help message.")];
+
+    let mut cfg = Config::default();
+    let match_res = set_arguments(args, &arguments[..], |name, value| set_argument(&mut cfg, name, value)).and_then(|_| {
+        if cfg.kernel_path.as_os_str().is_empty() {
+            return Err(argument::Error::ExpectedArgument("`KERNEL`".to_owned()));
+        }
+        if cfg.host_ip.is_some() || cfg.netmask.is_some() || cfg.mac_address.is_some() {
+            if cfg.host_ip.is_none() {
+                return Err(argument::Error::ExpectedArgument("`host_ip` missing from network config".to_owned()));
+            }
+            if cfg.netmask.is_none() {
+                return Err(argument::Error::ExpectedArgument("`netmask` missing from network config".to_owned()));
+            }
+            if cfg.mac_address.is_none() {
+                return Err(argument::Error::ExpectedArgument("`mac` missing from network config".to_owned()));
+            }
+        }
+        Ok(())
+    });
+
+    match match_res {
+        Ok(_) => {
+            match run_config(cfg) {
+                Ok(_) => println!("crosvm has exited normally"),
+                Err(e) => println!("{}", e),
+            }
+        }
+        Err(argument::Error::PrintHelp) => print_help("crosvm run", "KERNEL", &arguments[..]),
+        Err(e) => println!("{}", e),
+    }
+}
+
+fn stop_vms(args: std::env::Args) {
+    let mut scm = Scm::new(1);
+    if args.len() == 0 {
+        print_help("crosvm stop", "VM_SOCKET...", &[]);
+        println!("Stops the crosvm instance listening on each `VM_SOCKET` given.");
+    }
+    for socket_path in args {
+        match UnixDatagram::unbound().and_then(|s| {
+                                                   s.connect(&socket_path)?;
+                                                   Ok(s)
+                                               }) {
+            Ok(s) => {
+                if let Err(e) = VmRequest::Exit.send(&mut scm, &s) {
+                    error!("failed to send stop request to socket at '{}': {:?}",
+                           socket_path,
+                           e);
+                }
+            }
+            Err(e) => error!("failed to connect to socket at '{}': {}", socket_path, e),
+        }
+    }
+}
+
+
+fn print_usage() {
+    print_help("crosvm", "[stop|run]", &[]);
+    println!("Commands:");
+    println!("    stop - Stops crosvm instances via their control sockets.");
+    println!("    run  - Start a new crosvm instance.");
+}
+
 fn main() {
     if let Err(e) = syslog::init() {
         println!("failed to initiailize syslog: {:?}", e);
         return;
     }
-    let matches = App::new("crosvm")
-        .version("0.1.0")
-        .author("The Chromium OS Authors")
-        .about("Runs a virtual machine under KVM")
-        .subcommand(SubCommand::with_name("stop").arg(Arg::with_name("socket")
-                                                          .required(true)
-                                                          .multiple(true)
-                                                          .index(1)
-                                                          .value_name("PATH")
-                                                          .help("path of the control sockets")))
-        .subcommand(SubCommand::with_name("run")
-                        .arg(Arg::with_name("disk")
-                                 .short("d")
-                                 .long("disk")
-                                 .value_name("FILE")
-                                 .help("disk image")
-                                 .multiple(true)
-                                 .number_of_values(1)
-                                 .takes_value(true))
-                        .arg(Arg::with_name("writable")
-                                 .short("w")
-                                 .long("writable")
-                                 .value_name("FILE")
-                                 .help("make disk image writable")
-                                 .multiple(true)
-                                 .number_of_values(1)
-                                 .takes_value(true))
-                        .arg(Arg::with_name("cpus")
-                                 .short("c")
-                                 .long("cpus")
-                                 .value_name("N")
-                                 .help("number of VCPUs")
-                                 .takes_value(true))
-                        .arg(Arg::with_name("memory")
-                                 .short("m")
-                                 .long("mem")
-                                 .value_name("N")
-                                 .help("amount of guest memory in MiB")
-                                 .takes_value(true))
-                        .arg(Arg::with_name("params")
-                                 .short("p")
-                                 .long("params")
-                                 .value_name("params")
-                                 .help("extra kernel command line arguments")
-                                 .takes_value(true))
-                        .arg(Arg::with_name("multiprocess")
-                                 .short("u")
-                                 .long("multiprocess")
-                                 .help("run the devices in a child process"))
-                        .arg(Arg::with_name("host_ip")
-                                 .long("host_ip")
-                                 .value_name("HOST_IP")
-                                 .help("IP address to assign to host tap interface"))
-                        .arg(Arg::with_name("netmask")
-                                 .long("netmask")
-                                 .value_name("NETMASK")
-                                 .help("netmask for VM subnet"))
-                        .arg(Arg::with_name("mac")
-                                 .long("mac")
-                                 .value_name("MAC")
-                                 .help("mac address for VM"))
-                        .arg(Arg::with_name("vhost_net")
-                                 .long("vhost_net")
-                                 .help("use vhost_net for networking"))
-                        .arg(Arg::with_name("socket")
-                                 .short("s")
-                                 .long("socket")
-                                 .value_name("PATH")
-                                 .help("Path to put the control socket. If PATH is a directory, a name will be generated.")
-                                 .takes_value(true))
-                        .arg(Arg::with_name("warn-unknown-ports")
-                                 .long("warn-unknown-ports")
-                                 .help("warn when an the VM uses an unknown port"))
-                        .arg(Arg::with_name("KERNEL")
-                                 .required(true)
-                                 .index(1)
-                                 .help("bzImage of kernel to run")))
-        .get_matches();
 
-    match matches.subcommand() {
-        ("stop", Some(matches)) => {
-            let mut scm = Scm::new(1);
-            for socket_path in matches.values_of("socket").unwrap() {
-                match UnixDatagram::unbound().and_then(|s| {
-                                                           s.connect(socket_path)?;
-                                                           Ok(s)
-                                                       }) {
-                    Ok(s) => {
-                        if let Err(e) = VmRequest::Exit.send(&mut scm, &s) {
-                            println!("failed to send stop request to socket at '{}': {:?}",
-                                     socket_path,
-                                     e);
-                        }
-                    }
-                    Err(e) => println!("failed to connect to socket at '{}': {}", socket_path, e),
-                }
-            }
-        }
-        ("run", Some(matches)) => {
-            let mut disks = Vec::new();
-            matches.values_of("disk").map(|paths| {
-                disks.extend(paths.map(|ref p| {
-                    DiskOption {
-                        path: p,
-                        writable: false,
-                    }
-                }))
-            });
-            if let Some(write_paths) = matches.values_of("writable") {
-                for path in write_paths {
-                    disks.iter_mut().find(|ref mut d| d.path == path).map(
-                        |ref mut d| d.writable = true,
-                    );
-                }
-            }
-            let config = Config {
-                disks: disks,
-                vcpu_count: matches.value_of("cpus").and_then(|v| v.parse().ok()),
-                memory: matches.value_of("memory").and_then(|v| v.parse().ok()),
-                kernel_image: File::open(matches.value_of("KERNEL").unwrap())
-                    .expect("Expected kernel image path to be valid"),
-                params: matches.value_of("params").map(|s| s.to_string()),
-                multiprocess: matches.is_present("multiprocess"),
-                host_ip: matches.value_of("host_ip").and_then(|v| v.parse().ok()),
-                netmask: matches.value_of("netmask").and_then(|v| v.parse().ok()),
-                mac_address: matches.value_of("mac").map(|s| s.to_string()),
-                vhost_net: matches.is_present("vhost_net"),
-                socket_path: matches.value_of("socket").map(|s| s.to_string()),
-                warn_unknown_ports: matches.is_present("warn-unknown-ports"),
-            };
-
-            match run_config(config) {
-                Ok(_) => println!("crosvm has exited normally"),
-                Err(e) => println!("{}", e),
-            }
-
-            // Reap exit status from any child device processes. At this point,
-            // all devices should have been dropped in the main process and
-            // told to shutdown. Try over a period of 100ms, since it may
-            // take some time for the processes to shut down.
-            if !wait_all_children() {
-                // We gave them a chance, and it's too late.
-                warn!("not all child processes have exited; sending SIGKILL");
-                if let Err(e) = kill_process_group() {
-                    // We're now at the mercy of the OS to clean up after us.
-                    warn!("unable to kill all child processes: {:?}", e);
-                }
-            }
-
-            // WARNING: Any code added after this point is not guaranteed to run
-            // since we may forcibly kill this process (and its children) above.
-        }
-        _ => {}
+    let mut args = std::env::args();
+    if args.next().is_none() {
+        error!("expected executable name");
+        return;
     }
+
+    match args.next().as_ref().map(|a| a.as_ref()) {
+        None => print_usage(),
+        Some("stop") => {
+            stop_vms(args);
+        }
+        Some("run") => {
+            run_vm(args);
+        }
+        Some(c) => {
+            println!("invalid subcommand: {:?}", c);
+            print_usage();
+        }
+    }
+
+    // Reap exit status from any child device processes. At this point, all devices should have been
+    // dropped in the main process and told to shutdown. Try over a period of 100ms, since it may
+    // take some time for the processes to shut down.
+    if !wait_all_children() {
+        // We gave them a chance, and it's too late.
+        warn!("not all child processes have exited; sending SIGKILL");
+        if let Err(e) = kill_process_group() {
+            // We're now at the mercy of the OS to clean up after us.
+            warn!("unable to kill all child processes: {:?}", e);
+        }
+    }
+
+    // WARNING: Any code added after this point is not guaranteed to run
+    // since we may forcibly kill this process (and its children) above.
 }
