@@ -30,6 +30,7 @@ const DEVICE_FAILED: u32 = 0x80;
 const TYPE_NET: u32 = 1;
 const TYPE_BLOCK: u32 = 2;
 const TYPE_RNG: u32 = 4;
+const TYPE_VSOCK: u32 = 19;
 const TYPE_WL: u32 = 30;
 
 const INTERRUPT_STATUS_USED_RING: u32 = 0x1;

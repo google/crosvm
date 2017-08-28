@@ -11,9 +11,11 @@ use sys_util::Error as SysError;
 use vhost::Error as VhostError;
 
 mod net;
+mod vsock;
 mod worker;
 
 pub use self::net::Net;
+pub use self::vsock::Vsock;
 
 #[derive(Debug)]
 pub enum Error {
@@ -57,6 +59,10 @@ pub enum Error {
     VhostSetVringKick(VhostError),
     /// Net set backend failed.
     VhostNetSetBackend(VhostError),
+    /// Failed to set CID for guest.
+    VhostVsockSetCid(VhostError),
+    /// Failed to start vhost-vsock driver.
+    VhostVsockStart(VhostError),
     /// Failed to create vhost eventfd.
     VhostIrqCreate(SysError),
     /// Failed to read vhost eventfd.

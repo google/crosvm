@@ -8,7 +8,10 @@ extern crate sys_util;
 extern crate virtio_sys;
 
 pub mod net;
+mod vsock;
+
 pub use net::Net;
+pub use vsock::Vsock;
 
 use std::io::Error as IoError;
 use std::mem;

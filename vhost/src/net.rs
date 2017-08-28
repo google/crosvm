@@ -4,10 +4,9 @@
 
 use libc;
 use net_util;
-use std::ffi::CString;
-use std::fs::File;
-use std::io::Error as IoError;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::fs::{File, OpenOptions};
+use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::io::{AsRawFd, RawFd};
 use virtio_sys;
 
 use sys_util::{ioctl_with_ref, GuestMemory};
@@ -43,19 +42,13 @@ impl Net {
     /// # Arguments
     /// * `mem` - Guest memory mapping.
     pub fn new(mem: &GuestMemory) -> Result<Net> {
-        // Open calls are safe because we give a constant nul-terminated
-        // string and verify the result.  The CString unwrap is safe because
-        // DEVICE does not have any embedded '\0' characters.
-        let fd = unsafe {
-            libc::open(CString::new(DEVICE).unwrap().as_ptr(),
-                       libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC)
-        };
-        if fd < 0 {
-            return Err(Error::VhostOpen(IoError::last_os_error()));
-        }
         Ok(Net {
-            // There are no other users of this fd, so this is safe.
-            fd: unsafe { File::from_raw_fd(fd) },
+            fd: OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
+                .open(DEVICE)
+                .map_err(Error::VhostOpen)?,
             mem: mem.clone(),
         })
     }

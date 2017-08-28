@@ -60,11 +60,14 @@ enum Error {
     VhostNetDeviceNew(hw::virtio::vhost::Error),
     NetDeviceNew(hw::virtio::NetError),
     NetDeviceRootSetup(sys_util::Error),
+    VhostVsockDeviceNew(hw::virtio::vhost::Error),
+    VsockDeviceRootSetup(sys_util::Error),
     DeviceJail(io_jail::Error),
     DevicePivotRoot(io_jail::Error),
     RegisterBlock(device_manager::Error),
     RegisterNet(device_manager::Error),
     RegisterWayland(device_manager::Error),
+    RegisterVsock(device_manager::Error),
     Cmdline(kernel_cmdline::Error),
     MissingWayland(PathBuf),
     RegisterIrqfd(sys_util::Error),
@@ -114,12 +117,17 @@ impl fmt::Display for Error {
             }
             &Error::RegisterBlock(ref e) => write!(f, "error registering block device: {:?}", e),
             &Error::VhostNetDeviceNew(ref e) => write!(f, "failed to set up vhost networking: {:?}", e),
+            &Error::RegisterVsock(ref e) => write!(f, "error registering virtual socket device: {:?}", e),
             &Error::NetDeviceNew(ref e) => write!(f, "failed to set up virtio networking: {:?}", e),
             &Error::NetDeviceRootSetup(ref e) => {
                 write!(f, "failed to create root directory for a net device: {:?}", e)
             }
             &Error::DeviceJail(ref e) => write!(f, "failed to jail device: {}", e),
             &Error::DevicePivotRoot(ref e) => write!(f, "failed to pivot root device: {}", e),
+            &Error::VhostVsockDeviceNew(ref e) => write!(f, "failed to set up virtual socket device: {:?}", e),
+            &Error::VsockDeviceRootSetup(ref e) => {
+                write!(f, "failed to create root directory for a vsock device: {:?}", e)
+            }
             &Error::RegisterNet(ref e) => write!(f, "error registering net device: {:?}", e),
             &Error::RegisterRng(ref e) => write!(f, "error registering rng device: {:?}", e),
             &Error::RngDeviceNew(ref e) => write!(f, "failed to set up rng: {:?}", e),
@@ -190,6 +198,7 @@ struct Config {
     socket_path: Option<PathBuf>,
     multiprocess: bool,
     warn_unknown_ports: bool,
+    cid: Option<u64>,
 }
 
 const KERNEL_START_OFFSET: usize = 0x200000;
@@ -381,6 +390,24 @@ fn run_config(cfg: Config) -> Result<()> {
             }
             _ => warn!("missing environment variable \"XDG_RUNTIME_DIR\" required to activate virtio wayland device"),
         }
+    }
+
+    let vsock_root = TempDir::new(&PathBuf::from("/tmp/vsock_root"))
+        .map_err(Error::VsockDeviceRootSetup)?;
+    if let Some(cid) = cfg.cid {
+        let vsock_box = Box::new(hw::virtio::vhost::Vsock::new(cid, &guest_mem)
+            .map_err(|e| Error::VhostVsockDeviceNew(e))?);
+
+        let jail = if cfg.multiprocess {
+            let root_path = vsock_root.as_path().unwrap();
+            let policy_path = Path::new("vhost_vsock_device.policy");
+
+            Some(create_base_minijail(root_path, policy_path)?)
+        } else {
+            None
+        };
+
+        device_manager.register_mmio(vsock_box, jail, &mut cmdline).map_err(Error::RegisterVsock)?;
     }
 
     if !cfg.params.is_empty() {
@@ -856,6 +883,17 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "multiprocess" => {
             cfg.multiprocess = true;
         }
+        "cid" => {
+            if cfg.cid.is_some() {
+                return Err(argument::Error::TooManyArguments("`cid` alread given".to_owned()));
+            }
+            cfg.cid = Some(value.unwrap().parse().map_err(|_| {
+                argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: "this value for `cid` must be an unsigned integer",
+                }
+            })?);
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -892,6 +930,7 @@ fn run_vm(args: std::env::Args) {
                                 "PATH",
                                 "Path to put the control socket. If PATH is a directory, a name will be generated."),
           Argument::short_flag('u', "multiprocess", "Run each device in a child process."),
+          Argument::value("cid", "CID", "Context ID for virtual sockets"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

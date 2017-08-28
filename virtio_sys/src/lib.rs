@@ -41,3 +41,5 @@ ioctl_iow_nr!(VHOST_SCSI_CLEAR_ENDPOINT, VHOST, 0x41, vhost_scsi_target);
 ioctl_iow_nr!(VHOST_SCSI_GET_ABI_VERSION, VHOST, 0x42, ::std::os::raw::c_int);
 ioctl_iow_nr!(VHOST_SCSI_SET_EVENTS_MISSED, VHOST, 0x43, ::std::os::raw::c_uint);
 ioctl_iow_nr!(VHOST_SCSI_GET_EVENTS_MISSED, VHOST, 0x44, ::std::os::raw::c_uint);
+ioctl_iow_nr!(VHOST_VSOCK_SET_GUEST_CID, VHOST, 0x60, ::std::os::raw::c_ulonglong);
+ioctl_iow_nr!(VHOST_VSOCK_SET_RUNNING, VHOST, 0x61, ::std::os::raw::c_int);
