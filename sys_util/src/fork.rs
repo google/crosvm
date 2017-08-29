@@ -65,6 +65,7 @@ pub fn clone_process<F>(ns: CloneNamespace, post_clone_cb: F) -> result::Result<
         Ok(thread_count) => {
             // Test cfg gets a free pass on this because tests generally have multiple independent
             // test threads going.
+            let _ = thread_count;
             #[cfg(not(test))]
             return Err(CloneError::Multithreaded(thread_count));
         }

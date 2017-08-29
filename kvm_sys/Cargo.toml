@@ -3,8 +3,6 @@ name = "kvm_sys"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 
-[dev-dependencies]
-libc = "0.2.21"
-
 [dependencies]
+libc = "*"
 sys_util = { path = "../sys_util" }

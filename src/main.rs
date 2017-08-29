@@ -23,7 +23,7 @@ pub mod kernel_cmdline;
 pub mod vm_control;
 pub mod device_manager;
 
-use std::ffi::{OsString, CString, CStr};
+use std::ffi::{CString, CStr};
 use std::fmt;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -42,7 +42,8 @@ use clap::{Arg, App, SubCommand};
 use io_jail::Minijail;
 use kvm::*;
 use sys_util::{GuestAddress, GuestMemory, EventFd, TempDir, Terminal, Poller, Pollable, Scm,
-               register_signal_handler, Killable, SignalFd, kill_process_group, reap_child, syslog};
+               register_signal_handler, Killable, SignalFd, getpid, kill_process_group, reap_child,
+               syslog};
 
 use device_manager::*;
 use vm_control::{VmRequest, VmResponse};
@@ -62,7 +63,6 @@ enum Error {
     RegisterBlock(device_manager::Error),
     RegisterNet(device_manager::Error),
     Cmdline(kernel_cmdline::Error),
-    RegisterIoevent(sys_util::Error),
     RegisterIrqfd(sys_util::Error),
     RegisterRng(device_manager::Error),
     RngDeviceNew(hw::virtio::RngError),
@@ -121,7 +121,6 @@ impl fmt::Display for Error {
                 write!(f, "failed to create root directory for a rng device: {:?}", e)
             }
             &Error::Cmdline(ref e) => write!(f, "the given kernel command line was invalid: {}", e),
-            &Error::RegisterIoevent(ref e) => write!(f, "error registering ioevent: {:?}", e),
             &Error::RegisterIrqfd(ref e) => write!(f, "error registering irqfd: {:?}", e),
             &Error::KernelLoader(ref e) => write!(f, "error loading kernel: {:?}", e),
             &Error::ConfigureSystem(ref e) => write!(f, "error configuring system: {:?}", e),

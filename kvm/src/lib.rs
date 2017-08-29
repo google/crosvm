@@ -759,7 +759,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
         let mut vm = Vm::new(&kvm, gm).unwrap();
-        assert!(vm.remove_device_memory(0).unwrap());
+        assert!(vm.remove_device_memory(0).is_err());
     }
 
      #[test]

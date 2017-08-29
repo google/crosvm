@@ -14,7 +14,6 @@ const LOOP_SIZE: usize = 0x40;
 const DATA: u8 = 0;
 const IER: u8 = 1;
 const IIR: u8 = 2;
-const FCR: u8 = 2;
 const LCR: u8 = 3;
 const MCR: u8 = 4;
 const LSR: u8 = 5;
@@ -276,7 +275,7 @@ mod tests {
                                          Box::new(serial_out.clone()));
 
         serial.write(IER as u64, &[IER_RECV_BIT]);
-        serial.queue_input_bytes(&['a' as u8, 'b' as u8, 'c' as u8]);
+        serial.queue_input_bytes(&['a' as u8, 'b' as u8, 'c' as u8]).unwrap();
 
         assert_eq!(intr_evt.read(), Ok(1));
         let mut data = [0u8; 1];
