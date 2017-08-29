@@ -25,8 +25,7 @@ pub mod device_manager;
 
 use std::ffi::{CString, CStr};
 use std::fmt;
-use std::fs::File;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions, remove_file};
 use std::io::{stdin, stdout};
 use std::net;
 use std::os::unix::net::UnixDatagram;
@@ -136,6 +135,24 @@ impl fmt::Display for Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
+struct UnlinkUnixDatagram(UnixDatagram);
+impl AsRef<UnixDatagram> for UnlinkUnixDatagram {
+    fn as_ref(&self) -> &UnixDatagram{
+        &self.0
+    }
+}
+impl Drop for UnlinkUnixDatagram {
+    fn drop(&mut self) {
+        if let Ok(addr) = self.0.local_addr() {
+            if let Some(path) = addr.as_pathname() {
+                if let Err(e) = remove_file(path) {
+                    warn!("failed to remove control socket file: {:?}", e);
+                }
+            }
+        }
+    }
+}
+
 struct DiskOption<'a> {
     path: &'a str,
     writable: bool,
@@ -228,7 +245,7 @@ fn run_config(cfg: Config) -> Result<()> {
                 UnixDatagram::bind(path)
             }
             .map_err(|e| Error::Socket(e))?;
-        control_sockets.push(control_socket);
+        control_sockets.push(UnlinkUnixDatagram(control_socket));
     }
 
     let mem_size = cfg.memory.unwrap_or(256) << 20;
@@ -331,7 +348,7 @@ fn run_kvm(requests: Vec<VmRequest>,
            vcpu_count: u32,
            guest_mem: GuestMemory,
            mmio_bus: &hw::Bus,
-           control_sockets: Vec<UnixDatagram>,
+           control_sockets: Vec<UnlinkUnixDatagram>,
            warn_unknown_ports: bool)
            -> Result<()> {
     let kvm = Kvm::new().map_err(Error::Kvm)?;
@@ -521,7 +538,7 @@ fn run_kvm(requests: Vec<VmRequest>,
 }
 
 fn run_control(mut vm: Vm,
-               control_sockets: Vec<UnixDatagram>,
+               control_sockets: Vec<UnlinkUnixDatagram>,
                mut next_dev_pfn: u64,
                stdio_serial: Arc<Mutex<hw::Serial>>,
                exit_evt: EventFd,
@@ -547,7 +564,7 @@ fn run_control(mut vm: Vm,
     pollables.push((STDIN, &stdin_lock as &Pollable));
     pollables.push((CHILD_SIGNAL, &sigchld_fd as &Pollable));
     for (i, socket) in control_sockets.iter().enumerate() {
-        pollables.push((VM_BASE + i as u32, socket as &Pollable));
+        pollables.push((VM_BASE + i as u32, socket.as_ref() as &Pollable));
     }
 
     let mut poller = Poller::new(pollables.len());
@@ -596,12 +613,12 @@ fn run_control(mut vm: Vm,
                 }
                 t if t >= VM_BASE && t < VM_BASE + (control_sockets.len() as u32) => {
                     let socket = &control_sockets[(t - VM_BASE) as usize];
-                    match VmRequest::recv(&mut scm, socket) {
+                    match VmRequest::recv(&mut scm, socket.as_ref()) {
                         Ok(request) => {
                             let mut running = true;
                             let response =
                                 request.execute(&mut vm, &mut next_dev_pfn, &mut running);
-                            if let Err(e) = response.send(&mut scm, socket) {
+                            if let Err(e) = response.send(&mut scm, socket.as_ref()) {
                                 println!("failed to send VmResponse: {:?}", e);
                             }
                             if !running {
