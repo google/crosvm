@@ -52,7 +52,7 @@ pub use signalfd::Error as SignalFdError;
 
 use std::ptr;
 
-use libc::{kill, syscall, waitpid, pid_t, uid_t, gid_t, SIGKILL, WNOHANG};
+use libc::{kill, syscall, waitpid, c_long, pid_t, uid_t, gid_t, SIGKILL, WNOHANG};
 
 use syscall_defines::linux::LinuxSyscall::SYS_getpid;
 
@@ -61,7 +61,7 @@ use syscall_defines::linux::LinuxSyscall::SYS_getpid;
 #[inline(always)]
 pub fn getpid() -> pid_t {
     // Safe because this syscall can never fail and we give it a valid syscall number.
-    unsafe { syscall(SYS_getpid as i64) as pid_t }
+    unsafe { syscall(SYS_getpid as c_long) as pid_t }
 }
 
 /// Safe wrapper for `geteuid(2)`.

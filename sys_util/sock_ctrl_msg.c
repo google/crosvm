@@ -39,7 +39,8 @@ ssize_t scm_sendmsg(int fd, const struct iovec *outv, size_t outv_count, uint8_t
     if (fd < 0 || ((!cmsg_buffer || !fds) && fd_count > 0))
         return -EINVAL;
 
-    struct msghdr msg = {0};
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(msg));
     msg.msg_iov = (struct iovec *)outv; // discard const, sendmsg won't mutate it
     msg.msg_iovlen = outv_count;
 
@@ -83,7 +84,8 @@ ssize_t scm_recvmsg(int fd, struct iovec *outv, size_t outv_count, uint8_t *cmsg
     if (fd < 0 || !cmsg_buffer || !fds || !fd_count)
         return -EINVAL;
 
-    struct msghdr msg = {0};
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(msg));
     msg.msg_iov = outv;
     msg.msg_iovlen = outv_count;
     msg.msg_control = cmsg_buffer;

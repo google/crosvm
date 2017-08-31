@@ -10,7 +10,7 @@ use std::result;
 
 use errno_result;
 
-use libc::{syscall, SIGCHLD, CLONE_NEWUSER, CLONE_NEWPID, pid_t};
+use libc::{syscall, SIGCHLD, CLONE_NEWUSER, CLONE_NEWPID, c_long, pid_t};
 
 use syscall_defines::linux::LinuxSyscall::SYS_clone;
 
@@ -36,7 +36,7 @@ pub enum CloneError {
 unsafe fn do_clone(flags: i32) -> ::Result<pid_t> {
     // Forking is unsafe, this function must be unsafe as there is no way to guarantee safety
     // without more context about the state of the program.
-    let pid = syscall(SYS_clone as i64, flags | SIGCHLD as i32, 0);
+    let pid = syscall(SYS_clone as c_long, flags | SIGCHLD as i32, 0);
     if pid < 0 {
         errno_result()
     } else {

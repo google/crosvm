@@ -11,7 +11,6 @@ panic = 'abort'
 io_jail = { path = "io_jail" }
 kvm = { path = "kvm" }
 sys_util = { path = "sys_util" }
-x86_64 = { path = "x86_64" }
 kernel_loader = { path = "kernel_loader" }
 libc = "0.2.21"
 byteorder = "1"
@@ -25,3 +24,6 @@ data_model = { path = "data_model" }
 [dependencies.clap]
 version = "*"
 default-features = false
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+x86_64 = { path = "x86_64" }

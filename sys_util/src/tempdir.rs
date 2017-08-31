@@ -45,7 +45,7 @@ impl TempDir {
         let ret = unsafe {
             // Creating the directory isn't unsafe.  The fact that it modifies the guts of the path
             // is also OK because it only overwrites the last 6 Xs added above.
-            libc::mkdtemp(dir_bytes.as_mut_ptr() as *mut i8)
+            libc::mkdtemp(dir_bytes.as_mut_ptr() as *mut libc::c_char)
         };
         if ret.is_null() {
             return errno_result();

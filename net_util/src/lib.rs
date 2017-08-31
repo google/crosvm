@@ -72,7 +72,7 @@ impl Tap {
         // Open calls are safe because we give a constant nul-terminated
         // string and verify the result.
         let fd = unsafe {
-            libc::open(b"/dev/net/tun\0".as_ptr() as *const i8,
+            libc::open(b"/dev/net/tun\0".as_ptr() as *const c_char,
                        libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC)
         };
         if fd < 0 {
@@ -93,9 +93,8 @@ impl Tap {
             let ifru_flags = ifreq.ifr_ifru.ifru_flags.as_mut();
             let mut name_slice = &mut ifrn_name[..TUNTAP_DEV_FORMAT.len()];
             name_slice.copy_from_slice(TUNTAP_DEV_FORMAT);
-            *ifru_flags = (net_sys::IFF_TAP |
-                           net_sys::IFF_NO_PI |
-                           net_sys::IFF_VNET_HDR) as c_short;
+            *ifru_flags = (net_sys::IFF_TAP | net_sys::IFF_NO_PI | net_sys::IFF_VNET_HDR) as
+                          c_short;
         }
 
         // ioctl is safe since we call it with a valid tap fd and check the return
@@ -107,9 +106,9 @@ impl Tap {
 
         // Safe since only the name is accessed, and it's cloned out.
         Ok(Tap {
-            tap_file: tuntap,
-            if_name: unsafe { ifreq.ifr_ifrn.ifrn_name.as_ref().clone() },
-        })
+               tap_file: tuntap,
+               if_name: unsafe { ifreq.ifr_ifrn.ifrn_name.as_ref().clone() },
+           })
     }
 
     /// Set the host-side IP address for the tap interface.
@@ -126,7 +125,8 @@ impl Tap {
         }
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
-        let ret = unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFADDR as u64, &ifreq) };
+        let ret =
+            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFADDR as c_ulong, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(sys_util::Error::last()));
         }
@@ -148,7 +148,8 @@ impl Tap {
         }
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
-        let ret = unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFNETMASK as u64, &ifreq) };
+        let ret =
+            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFNETMASK as c_ulong, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(sys_util::Error::last()));
         }
@@ -159,7 +160,8 @@ impl Tap {
     /// Set the offload flags for the tap interface.
     pub fn set_offload(&self, flags: c_uint) -> Result<()> {
         // ioctl is safe. Called with a valid tap fd, and we check the return.
-        let ret = unsafe { ioctl_with_val(&self.tap_file, net_sys::TUNSETOFFLOAD(), flags as u64) };
+        let ret =
+            unsafe { ioctl_with_val(&self.tap_file, net_sys::TUNSETOFFLOAD(), flags as c_ulong) };
         if ret < 0 {
             return Err(Error::IoctlError(sys_util::Error::last()));
         }
@@ -181,7 +183,8 @@ impl Tap {
         }
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
-        let ret = unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFFLAGS as u64, &ifreq) };
+        let ret =
+            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFFLAGS as c_ulong, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(sys_util::Error::last()));
         }

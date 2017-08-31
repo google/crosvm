@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::os::unix::io::{AsRawFd, IntoRawFd, FromRawFd, RawFd};
 
-use libc::{off64_t, c_int, c_uint, c_char, syscall, ftruncate64};
+use libc::{off64_t, c_long, c_int, c_uint, c_char, syscall, ftruncate64};
 
 use syscall_defines::linux::LinuxSyscall::SYS_memfd_create;
 
@@ -23,7 +23,7 @@ pub struct SharedMemory {
 const MFD_CLOEXEC: c_uint = 0x0001;
 
 unsafe fn memfd_create(name: *const c_char, flags: c_uint) -> c_int {
-    syscall(SYS_memfd_create as i64, name as i64, flags as i64) as c_int
+    syscall(SYS_memfd_create as c_long, name as i64, flags as i64) as c_int
 }
 
 impl SharedMemory {
@@ -35,7 +35,7 @@ impl SharedMemory {
     /// The file descriptor is opened with the close on exec flag.
     pub fn new(name: Option<&CStr>) -> Result<SharedMemory> {
         let shm_name = name.map(|n| n.as_ptr())
-            .unwrap_or(b"/crosvm_shm\0".as_ptr() as *const i8);
+            .unwrap_or(b"/crosvm_shm\0".as_ptr() as *const c_char);
         // The following are safe because we give a valid C string and check the
         // results of the memfd_create call.
         let fd = unsafe { memfd_create(shm_name, MFD_CLOEXEC) };

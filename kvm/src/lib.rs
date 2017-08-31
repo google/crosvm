@@ -11,7 +11,6 @@ extern crate sys_util;
 mod cap;
 
 use std::fs::File;
-use std::mem;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::os::raw::*;
@@ -22,6 +21,7 @@ use libc::{open, O_RDWR, EINVAL, ENOSPC, ENOENT};
 use kvm_sys::*;
 
 use sys_util::{GuestAddress, GuestMemory, MemoryMapping, EventFd, Error, Result};
+#[allow(unused_imports)]
 use sys_util::{ioctl, ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref, ioctl_with_ptr,
                ioctl_with_mut_ptr};
 
@@ -659,15 +659,19 @@ impl AsRawFd for Vcpu {
 
 /// Wrapper for kvm_cpuid2 which has a zero length array at the end.
 /// Hides the zero length array behind a bounds check.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub struct CpuId {
     bytes: Vec<u8>, // Actually accessed as a kvm_cpuid2 struct.
     allocated_len: usize, // Number of kvm_cpuid_entry2 structs at the end of kvm_cpuid2.
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 impl CpuId {
     pub fn new(array_len: usize) -> CpuId {
-        let vec_size_bytes = mem::size_of::<kvm_cpuid2>() +
-            (array_len * mem::size_of::<kvm_cpuid_entry2>());
+        use std::mem::size_of;
+
+        let vec_size_bytes = size_of::<kvm_cpuid2>() +
+            (array_len * size_of::<kvm_cpuid_entry2>());
         let bytes: Vec<u8> = vec![0; vec_size_bytes];
         let kvm_cpuid: &mut kvm_cpuid2 = unsafe {
             // We have ensured in new that there is enough space for the structure so this

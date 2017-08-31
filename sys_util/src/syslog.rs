@@ -38,9 +38,9 @@ use std::result;
 use std::str::from_utf8;
 use std::sync::{Mutex, MutexGuard, Once, ONCE_INIT};
 
-use libc::{tm, time, time_t, localtime_r, gethostname, c_char, syscall};
+use libc::{tm, time, time_t, localtime_r, gethostname, c_char};
 
-use syscall_defines::linux::LinuxSyscall::SYS_getpid;
+use getpid;
 
 const SYSLOG_PATH: &'static str = "/dev/log";
 
@@ -291,13 +291,6 @@ fn send_buf(socket: &UnixDatagram, buf: &[u8]) {
             }
         }
     }
-}
-
-// This bypasses libc's caching getpid() wrapper which can be invalid if a raw clone was used
-// elsewhere.
-fn getpid() -> i32 {
-    // Safe because this syscall can never fail and we give it a valid syscall number.
-    unsafe { syscall(SYS_getpid as i64) as i32 }
 }
 
 fn get_localtime() -> tm {

@@ -13,3 +13,7 @@ pub mod linux;
 #[cfg(target_arch="aarch64")]
 #[path="linux-aarch64/mod.rs"]
 pub mod linux;
+
+#[cfg(target_arch="arm")]
+#[path="linux-arm/mod.rs"]
+pub mod linux;

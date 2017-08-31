@@ -8,6 +8,7 @@ extern crate clap;
 extern crate libc;
 extern crate io_jail;
 extern crate kvm;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 extern crate x86_64;
 extern crate kernel_loader;
 extern crate byteorder;
@@ -67,6 +68,7 @@ enum Error {
     RngDeviceNew(hw::virtio::RngError),
     RngDeviceRootSetup(sys_util::Error),
     KernelLoader(kernel_loader::Error),
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     ConfigureSystem(x86_64::Error),
     EventFd(sys_util::Error),
     SignalFd(sys_util::SignalFdError),
@@ -82,6 +84,7 @@ impl std::convert::From<kernel_loader::Error> for Error {
     }
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 impl std::convert::From<x86_64::Error> for Error {
     fn from(e: x86_64::Error) -> Error {
         Error::ConfigureSystem(e)
@@ -122,6 +125,7 @@ impl fmt::Display for Error {
             &Error::Cmdline(ref e) => write!(f, "the given kernel command line was invalid: {}", e),
             &Error::RegisterIrqfd(ref e) => write!(f, "error registering irqfd: {:?}", e),
             &Error::KernelLoader(ref e) => write!(f, "error loading kernel: {:?}", e),
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             &Error::ConfigureSystem(ref e) => write!(f, "error configuring system: {:?}", e),
             &Error::EventFd(ref e) => write!(f, "error creating EventFd: {:?}", e),
             &Error::SignalFd(ref e) => write!(f, "error with SignalFd: {:?}", e),
@@ -249,8 +253,12 @@ fn run_config(cfg: Config) -> Result<()> {
     }
 
     let mem_size = cfg.memory.unwrap_or(256) << 20;
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let arch_mem_regions = vec![(GuestAddress(0), mem_size)];
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let arch_mem_regions = x86_64::arch_memory_regions(mem_size);
     let guest_mem =
-        GuestMemory::new(&x86_64::arch_memory_regions(mem_size)).expect("new mmap failed");
+        GuestMemory::new(&arch_mem_regions).expect("new mmap failed");
 
     let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE);
     cmdline
@@ -352,13 +360,16 @@ fn run_kvm(requests: Vec<VmRequest>,
            warn_unknown_ports: bool)
            -> Result<()> {
     let kvm = Kvm::new().map_err(Error::Kvm)?;
-    let tss_addr = GuestAddress(0xfffbd000);
     let kernel_start_addr = GuestAddress(KERNEL_START_OFFSET);
     let cmdline_addr = GuestAddress(CMDLINE_OFFSET);
 
     let mut vm = Vm::new(&kvm, guest_mem).map_err(Error::Vm)?;
-    vm.set_tss_addr(tss_addr).expect("set tss addr failed");
-    vm.create_pit().expect("create pit failed");
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        let tss_addr = GuestAddress(0xfffbd000);
+        vm.set_tss_addr(tss_addr).expect("set tss addr failed");
+        vm.create_pit().expect("create pit failed");
+    }
     vm.create_irq_chip().expect("create irq chip failed");
 
     let mut next_dev_pfn = BASE_DEV_MEMORY_PFN;
@@ -375,6 +386,7 @@ fn run_kvm(requests: Vec<VmRequest>,
 
     kernel_loader::load_kernel(vm.get_memory(), kernel_start_addr, &mut kernel_image)?;
     kernel_loader::load_cmdline(vm.get_memory(), cmdline_addr, cmdline)?;
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     x86_64::configure_system(vm.get_memory(),
                              kernel_start_addr,
                              cmdline_addr,
@@ -451,7 +463,8 @@ fn run_kvm(requests: Vec<VmRequest>,
         let kill_signaled = kill_signaled.clone();
         let vcpu_thread_barrier = vcpu_thread_barrier.clone();
         let vcpu_exit_evt = exit_evt.try_clone().map_err(Error::EventFd)?;
-        let vcpu = Vcpu::new(cpu_id as u64, &kvm, &vm).map_err(Error::Vcpu)?;
+        let vcpu = Vcpu::new(cpu_id as libc::c_ulong, &kvm, &vm).map_err(Error::Vcpu)?;
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         x86_64::configure_vcpu(vm.get_memory(),
                                kernel_start_addr,
                                &kvm,
