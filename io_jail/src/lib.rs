@@ -10,38 +10,105 @@ extern crate libc;
 #[allow(non_upper_case_globals)]
 mod libminijail;
 
+use std::fmt;
 use std::ffi::CString;
 use std::fs;
+use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 #[derive(Debug)]
 pub enum Error {
     // minijail failed to accept bind mount.
-    BindMount(i32),
+    BindMount {
+        errno: i32,
+        src: PathBuf,
+        dst: PathBuf,
+    },
     /// minjail_new failed, this is an allocation failure.
     CreatingMinijail,
-    /// The path doesn't exist.
-    InvalidPath,
-    /// The path or name string passed in didn't parse to a valid CString.
-    InvalidCString,
+    /// The seccomp policy path doesn't exist.
+    SeccompPath(PathBuf),
+    /// The string passed in didn't parse to a valid CString.
+    StrToCString(String),
+    /// The path passed in didn't parse to a valid CString.
+    PathToCString(PathBuf),
     /// Failed to call dup2 to set stdin, stdout, or stderr to /dev/null.
     DupDevNull(i32),
     /// Failed to set up /dev/null for FDs 0, 1, or 2.
-    OpenDevNull(std::io::Error),
+    OpenDevNull(io::Error),
     /// Setting the specified alt-syscall table failed with errno. Is the table in the kernel?
-    SetAltSyscallTable(i32),
+    SetAltSyscallTable { errno: i32, name: String },
     /// chroot failed with the provided errno.
-    SettingChrootDirectory(i32),
+    SettingChrootDirectory(i32, PathBuf),
     /// pivot_root failed with the provided errno.
-    SettingPivotRootDirectory(i32),
+    SettingPivotRootDirectory(i32, PathBuf),
     /// There is an entry in /proc/self/fd that isn't a valid PID.
-    ReadFdDirEntry,
+    ReadFdDirEntry(io::Error),
     /// /proc/self/fd failed to open.
-    ReadFdDir,
+    ReadFdDir(io::Error),
+    /// An entry in /proc/self/fd is not an integer
+    ProcFd(String),
 }
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &Error::BindMount {
+                 ref src,
+                 ref dst,
+                 errno,
+             } => {
+                write!(f,
+                       "failed to accept bind mount {:?} -> {:?}: {}",
+                       src,
+                       dst,
+                       errno)
+            }
+            &Error::CreatingMinijail => {
+                write!(f, "minjail_new failed due to an allocation failure")
+            }
+            &Error::SeccompPath(ref p) => write!(f, "missing seccomp policy path: {:?}", p),
+            &Error::StrToCString(ref s) => {
+                write!(f, "failed to convert string into CString: {:?}", s)
+            }
+            &Error::PathToCString(ref s) => {
+                write!(f, "failed to convert path into CString: {:?}", s)
+            }
+            &Error::DupDevNull(errno) => {
+                write!(f,
+                       "failed to call dup2 to set stdin, stdout, or stderr to /dev/null: {}",
+                       errno)
+            }
+            &Error::OpenDevNull(ref e) => {
+                write!(f,
+                       "fail to open /dev/null for setting FDs 0, 1, or 2: {}",
+                       e)
+            }
+            &Error::SetAltSyscallTable { ref name, errno } => {
+                write!(f, "failed to set alt-syscall table {:?}: {}", name, errno)
+            }
+            &Error::SettingChrootDirectory(errno, ref p) => {
+                write!(f, "failed to set chroot {:?}: {}", p, errno)
+            }
+            &Error::SettingPivotRootDirectory(errno, ref p) => {
+                write!(f, "failed to set pivot root {:?}: {}", p, errno)
+            }
+            &Error::ReadFdDirEntry(ref e) => {
+                write!(f, "failed to read an entry in /proc/self/fd: {}", e)
+            }
+            &Error::ReadFdDir(ref e) => write!(f, "failed to open /proc/self/fd: {}", e),
+            &Error::ProcFd(ref s) => {
+                write!(f, "an entry in /proc/self/fd is not an integer: {}", s)
+            }
+        }
+    }
+}
+
+
 pub type Result<T> = std::result::Result<T, Error>;
+
 
 /// Configuration to jail a process based on wrapping libminijail.
 ///
@@ -132,11 +199,11 @@ impl Minijail {
     }
     pub fn parse_seccomp_filters(&mut self, path: &Path) -> Result<()> {
         if !path.is_file() {
-            return Err(Error::InvalidPath);
+            return Err(Error::SeccompPath(path.to_owned()));
         }
 
-        let pathstring = path.as_os_str().to_str().ok_or(Error::InvalidCString)?;
-        let filename = CString::new(pathstring).map_err(|_| Error::InvalidCString)?;
+        let pathstring = path.as_os_str().to_str().ok_or(Error::PathToCString(path.to_owned()))?;
+        let filename = CString::new(pathstring).map_err(|_| Error::PathToCString(path.to_owned()))?;
         unsafe {
             libminijail::minijail_parse_seccomp_filters(self.jail, filename.as_ptr());
         }
@@ -183,30 +250,30 @@ impl Minijail {
     }
     pub fn use_alt_syscall(&mut self, table_name: &str) -> Result<()> {
         let table_name_string = CString::new(table_name)
-                .map_err(|_| Error::InvalidCString)?;
+                .map_err(|_| Error::StrToCString(table_name.to_owned()))?;
         let ret = unsafe {
             libminijail::minijail_use_alt_syscall(self.jail, table_name_string.as_ptr())
         };
         if ret < 0 {
-            return Err(Error::SetAltSyscallTable(ret));
+            return Err(Error::SetAltSyscallTable { errno: ret, name: table_name.to_owned() });
         }
         Ok(())
     }
     pub fn enter_chroot(&mut self, dir: &Path) -> Result<()> {
-        let pathstring = dir.as_os_str().to_str().ok_or(Error::InvalidCString)?;
-        let dirname = CString::new(pathstring).map_err(|_| Error::InvalidCString)?;
+        let pathstring = dir.as_os_str().to_str().ok_or(Error::PathToCString(dir.to_owned()))?;
+        let dirname = CString::new(pathstring).map_err(|_| Error::PathToCString(dir.to_owned()))?;
         let ret = unsafe { libminijail::minijail_enter_chroot(self.jail, dirname.as_ptr()) };
         if ret < 0 {
-            return Err(Error::SettingChrootDirectory(ret));
+            return Err(Error::SettingChrootDirectory(ret, dir.to_owned()));
         }
         Ok(())
     }
     pub fn enter_pivot_root(&mut self, dir: &Path) -> Result<()> {
-        let pathstring = dir.as_os_str().to_str().ok_or(Error::InvalidCString)?;
-        let dirname = CString::new(pathstring).map_err(|_| Error::InvalidCString)?;
+        let pathstring = dir.as_os_str().to_str().ok_or(Error::PathToCString(dir.to_owned()))?;
+        let dirname = CString::new(pathstring).map_err(|_| Error::PathToCString(dir.to_owned()))?;
         let ret = unsafe { libminijail::minijail_enter_pivot_root(self.jail, dirname.as_ptr()) };
         if ret < 0 {
-            return Err(Error::SettingPivotRootDirectory(ret));
+            return Err(Error::SettingPivotRootDirectory(ret, dir.to_owned()));
         }
         Ok(())
     }
@@ -217,13 +284,28 @@ impl Minijail {
         unsafe { libminijail::minijail_mount_tmp_size(self.jail, size); }
     }
     pub fn mount_bind(&mut self, src: &Path, dest: &Path, writable: bool) -> Result<()> {
-        let src = src.as_os_str().to_str().ok_or(Error::InvalidCString)?;
-        let src = CString::new(src).map_err(|_| Error::InvalidCString)?;
-        let dest = dest.as_os_str().to_str().ok_or(Error::InvalidCString)?;
-        let dest = CString::new(dest).map_err(|_| Error::InvalidCString)?;
-        let ret = unsafe { libminijail::minijail_bind(self.jail, src.as_ptr(), dest.as_ptr(), writable as _) };
+        let src_os = src.as_os_str()
+            .to_str()
+            .ok_or(Error::PathToCString(src.to_owned()))?;
+        let src_path = CString::new(src_os)
+            .map_err(|_| Error::StrToCString(src_os.to_owned()))?;
+        let dest_os = dest.as_os_str()
+            .to_str()
+            .ok_or(Error::PathToCString(dest.to_owned()))?;
+        let dest_path = CString::new(dest_os)
+            .map_err(|_| Error::StrToCString(dest_os.to_owned()))?;
+        let ret = unsafe {
+            libminijail::minijail_bind(self.jail,
+                                       src_path.as_ptr(),
+                                       dest_path.as_ptr(),
+                                       writable as _)
+        };
         if ret < 0 {
-            return Err(Error::BindMount(ret));
+            return Err(Error::BindMount {
+                           errno: ret,
+                           src: src.to_owned(),
+                           dst: dest.to_owned(),
+                       });
         }
         Ok(())
     }
@@ -249,13 +331,13 @@ impl Minijail {
     unsafe fn close_open_fds(&self, inheritable_fds: &[RawFd]) -> Result<()> {
         const FD_PATH: &'static str = "/proc/self/fd";
         let mut fds_to_close: Vec<RawFd> = Vec::new();
-        for entry in fs::read_dir(FD_PATH).map_err(|_| Error::ReadFdDir)? {
-            let dir_entry = entry.map_err(|_| Error::ReadFdDirEntry)?;
+        for entry in fs::read_dir(FD_PATH).map_err(|e| Error::ReadFdDir(e))? {
+            let dir_entry = entry.map_err(|e| Error::ReadFdDirEntry(e))?;
             let name_path = dir_entry.path();
             let name = name_path.strip_prefix(FD_PATH)
-                    .map_err(|_| Error::InvalidCString)?;
-            let name_str = name.to_str().ok_or(Error::InvalidCString)?;
-            let fd = <i32>::from_str(name_str).map_err(|_| Error::InvalidCString)?;
+                    .map_err(|_| Error::PathToCString(name_path.to_owned()))?;
+            let name_str = name.to_str().ok_or(Error::PathToCString(name.to_owned()))?;
+            let fd = <i32>::from_str(name_str).map_err(|_| Error::ProcFd(name_str.to_owned()))?;
             if !inheritable_fds.contains(&fd) {
                 fds_to_close.push(fd);
             }

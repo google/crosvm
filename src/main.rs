@@ -112,8 +112,8 @@ impl fmt::Display for Error {
             &Error::NetDeviceRootSetup(ref e) => {
                 write!(f, "failed to create root directory for a net device: {:?}", e)
             }
-            &Error::DeviceJail(ref e) => write!(f, "failed to jail device: {:?}", e),
-            &Error::DevicePivotRoot(ref e) => write!(f, "failed to pivot root device: {:?}", e),
+            &Error::DeviceJail(ref e) => write!(f, "failed to jail device: {}", e),
+            &Error::DevicePivotRoot(ref e) => write!(f, "failed to pivot root device: {}", e),
             &Error::RegisterNet(ref e) => write!(f, "error registering net device: {:?}", e),
             &Error::RegisterRng(ref e) => write!(f, "error registering rng device: {:?}", e),
             &Error::RngDeviceNew(ref e) => write!(f, "failed to set up rng: {:?}", e),
