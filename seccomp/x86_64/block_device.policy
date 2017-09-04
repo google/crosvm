@@ -22,3 +22,4 @@ write: 1
 eventfd2: 1
 dup: 1
 poll: 1
+getpid: 1

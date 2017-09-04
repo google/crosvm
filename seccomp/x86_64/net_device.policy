@@ -20,3 +20,4 @@ sigaltstack: 1
 # arg0 is flags. Because kernel.
 clone: arg0 & 0x00010000
 write: 1
+getpid: 1

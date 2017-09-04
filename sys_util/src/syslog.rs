@@ -31,14 +31,15 @@ use std::fs::File;
 use std::io::{Write, Cursor, ErrorKind, stderr};
 use std::io;
 use std::mem;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
-use std::result;
+use std::ptr::null;
 use std::str::from_utf8;
 use std::sync::{Mutex, MutexGuard, Once, ONCE_INIT};
 
-use libc::{tm, time, time_t, localtime_r, gethostname, c_char};
+use libc::{tm, time, time_t, localtime_r, gethostname, openlog, fcntl, c_char, LOG_NDELAY,
+           LOG_PERROR, LOG_PID, LOG_USER, F_GETFD};
 
 use getpid;
 
@@ -100,12 +101,18 @@ pub enum Facility {
 /// Errors returned by `syslog::init()`.
 #[derive(Debug)]
 pub enum Error {
+    /// Initialization was never attempted.
+    NeverInitialized,
     /// Initialization has previously failed and can not be retried.
     Poisoned,
     /// Error while creating socket.
     Socket(io::Error),
     /// Error while attempting to connect socket.
     Connect(io::Error),
+    // There was an error using `open` to get the lowest file descriptor.
+    GetLowestFd(io::Error),
+    // The guess of libc's file descriptor for the syslog connection was invalid.
+    InvalidFd,
 }
 
 fn get_hostname() -> Result<String, ()> {
@@ -131,9 +138,43 @@ fn get_proc_name() -> Option<String> {
         .and_then(Result::ok)
 }
 
+// Uses libc's openlog function to get a socket to the syslogger. By getting the socket this way, as
+// opposed to connecting to the syslogger directly, libc's internal state gets initialized for other
+// libraries (e.g. minijail) that make use of libc's syslog function. Note that this function
+// depends on no other threads or signal handlers being active in this process because they might
+// create FDs.
+//
+// TODO(zachr): Once https://android-review.googlesource.com/470998 lands, there won't be any
+// libraries in use that hard depend on libc's syslogger. Remove this and go back to making the
+// connection directly once minjail is ready.
+fn openlog_and_get_socket() -> Result<UnixDatagram, Error> {
+    // Ordinarily libc's FD for the syslog connection can't be accessed, but we can guess that the
+    // FD that openlog will be getting is the lowest unused FD. To guarantee that an FD is opened in
+    // this function we use the LOG_NDELAY to tell openlog to connect to the syslog now. To get the
+    // lowest unused FD, we open a dummy file (which the manual says will always return the lowest
+    // fd), and then close that fd. Voilà, we now know the lowest numbered FD. The call to openlog
+    // will make use of that FD, and then we just wrap a `UnixDatagram` around it for ease of use.
+    let fd = File::open("/dev/null")
+        .map_err(Error::GetLowestFd)?
+        .as_raw_fd();
+
+    unsafe {
+        // Safe because openlog accesses no pointers because `ident` is null, only valid flags are
+        // used, and it returns no error.
+        openlog(null(), LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_USER);
+        // For safety, ensure the fd we guessed is valid. The `fcntl` call itself only reads the
+        // file descriptor table of the current process, which is trivially safe.
+        if fcntl(fd, F_GETFD) >= 0 {
+            Ok(UnixDatagram::from_raw_fd(fd))
+        } else {
+            Err(Error::InvalidFd)
+        }
+    }
+}
+
 struct State {
     stderr: bool,
-    socket: UnixDatagram,
+    socket: Option<UnixDatagram>,
     file: Option<File>,
     hostname: Option<String>,
     proc_name: Option<String>,
@@ -141,11 +182,10 @@ struct State {
 
 impl State {
     fn new() -> Result<State, Error> {
-        let s = UnixDatagram::unbound().map_err(Error::Socket)?;
-        s.connect(SYSLOG_PATH).map_err(Error::Connect)?;
+        let s = openlog_and_get_socket()?;
         Ok(State {
                stderr: true,
-               socket: s,
+               socket: Some(s),
                file: None,
                hostname: get_hostname().ok(),
                proc_name: get_proc_name(),
@@ -162,10 +202,10 @@ fn new_mutex_ptr<T>(inner: T) -> *const Mutex<T> {
 
 /// Initialize the syslog connection and internal variables.
 ///
-/// This should only be called once per process, but it is safe to do so from multiple threads more
-/// than once. Every call made after the first will have no effect besides return `Ok` or `Err`
-/// appropriately.
-pub fn init() -> result::Result<(), Error> {
+/// This should only be called once per process before any other threads have been spawned or any
+/// signal handlers have been registered. Every call made after the first will have no effect
+/// besides return `Ok` or `Err` appropriately.
+pub fn init() -> Result<(), Error> {
     let mut err = Error::Poisoned;
     STATE_ONCE.call_once(|| match State::new() {
                              // Safe because STATE mutation is guarded by `Once`.
@@ -180,15 +220,15 @@ pub fn init() -> result::Result<(), Error> {
     }
 }
 
-fn lock() -> Result<MutexGuard<'static, State>, ()> {
+fn lock() -> Result<MutexGuard<'static, State>, Error> {
     // Safe because we assume that STATE is always in either a valid or NULL state.
     let state_ptr = unsafe { STATE };
     if state_ptr.is_null() {
-        return Err(());
+        return Err(Error::NeverInitialized);
     }
     // Safe because STATE only mutates once and we checked for NULL.
     let state = unsafe { &*state_ptr };
-    state.lock().map_err(|_| ())
+    state.lock().map_err(|_| Error::Poisoned)
 }
 
 // Attempts to lock and retrieve the state. Returns from the function silently on failure.
@@ -229,6 +269,41 @@ pub fn set_proc_name<T: Into<String>>(proc_name: T) {
     state.proc_name = Some(proc_name.into());
 }
 
+/// Enables or disables echoing log messages to the syslog.
+///
+/// The default behavior is **enabled**.
+///
+/// If `enable` goes from `true` to `false`, the syslog connection is closed. The connection is
+/// reopened if `enable` is set to `true` after it became `false`.
+///
+/// Returns an error if syslog was never initialized or the syslog connection failed to be
+/// established.
+///
+/// # Arguments
+/// * `enable` - `true` to enable echoing to syslog, `false` to disable echoing to syslog.
+pub fn echo_syslog(enable: bool) -> Result<(), Error> {
+    let state_ptr = unsafe { STATE };
+    if state_ptr.is_null() {
+        return Err(Error::NeverInitialized);
+    }
+    let mut state = lock().map_err(|_| Error::Poisoned)?;
+
+    match state.socket.take() {
+        Some(_) if enable => {},
+        Some(s) => {
+            // Because `openlog_and_get_socket` actually just "borrows" the syslog FD, this module
+            // does not own the syslog connection and therefore should not destroy it.
+            mem::forget(s);
+        }
+        None if enable => {
+            let s = openlog_and_get_socket()?;
+            state.socket = Some(s);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 /// Replaces the optional `File` to echo log messages to.
 ///
 /// The default behavior is to not echo to a file. Passing `None` to this function restores that
@@ -262,9 +337,9 @@ pub fn echo_stderr(enable: bool) {
 /// pushed into `fds`.
 ///
 /// Note that the `stderr` file descriptor is never added, as it is not owned by syslog.
-pub fn get_fds(fds: &mut Vec<RawFd>) {
+pub fn push_fds(fds: &mut Vec<RawFd>) {
     let state = lock!();
-    fds.push(state.socket.as_raw_fd());
+    fds.extend(state.socket.iter().map(|s| s.as_raw_fd()));
     fds.extend(state.file.iter().map(|f| f.as_raw_fd()));
 }
 
@@ -339,38 +414,40 @@ pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::
                                         "Sep", "Oct", "Nov", "Dec"];
 
     let mut state = lock!();
-    let tm = get_localtime();
-    let prifac = (pri as u8) | (fac as u8);
     let mut buf = [0u8; 1024];
-    let (res, len) = {
-        let mut buf_cursor = Cursor::new(&mut buf[..]);
-        (write!(&mut buf_cursor,
-                "<{}>{} {:02} {:02}:{:02}:{:02} {} {}[{}]: [{}:{}] {}",
-                prifac,
-                MONTHS[tm.tm_mon as usize],
-                tm.tm_mday,
-                tm.tm_hour,
-                tm.tm_min,
-                tm.tm_sec,
-                state
-                    .hostname
-                    .as_ref()
-                    .map(|s| s.as_ref())
-                    .unwrap_or("-"),
-                state
-                    .proc_name
-                    .as_ref()
-                    .map(|s| s.as_ref())
-                    .unwrap_or("-"),
-                getpid(),
-                file_name,
-                line,
-                args),
-         buf_cursor.position() as usize)
-    };
+    if let Some(ref socket) = state.socket {
+        let tm = get_localtime();
+        let prifac = (pri as u8) | (fac as u8);
+        let (res, len) = {
+            let mut buf_cursor = Cursor::new(&mut buf[..]);
+            (write!(&mut buf_cursor,
+                    "<{}>{} {:02} {:02}:{:02}:{:02} {} {}[{}]: [{}:{}] {}",
+                    prifac,
+                    MONTHS[tm.tm_mon as usize],
+                    tm.tm_mday,
+                    tm.tm_hour,
+                    tm.tm_min,
+                    tm.tm_sec,
+                    state
+                        .hostname
+                        .as_ref()
+                        .map(|s| s.as_ref())
+                        .unwrap_or("-"),
+                    state
+                        .proc_name
+                        .as_ref()
+                        .map(|s| s.as_ref())
+                        .unwrap_or("-"),
+                    getpid(),
+                    file_name,
+                    line,
+                    args),
+             buf_cursor.position() as usize)
+        };
 
-    if res.is_ok() {
-        send_buf(&state.socket, &buf[..len]);
+        if res.is_ok() {
+            send_buf(&socket, &buf[..len]);
+        }
     }
 
     let (res, len) = {
@@ -454,7 +531,7 @@ mod tests {
     fn fds() {
         init().unwrap();
         let mut fds = Vec::new();
-        get_fds(&mut fds);
+        push_fds(&mut fds);
         assert!(fds.len() >= 1);
         for fd in fds {
             assert!(fd >= 0);

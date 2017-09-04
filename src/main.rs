@@ -230,6 +230,13 @@ fn wait_all_children() -> bool {
 }
 
 fn run_config(cfg: Config) -> Result<()> {
+    if cfg.multiprocess {
+        // Printing something to the syslog before entering minijail so that libc's syslogger has a
+        // chance to open files necessary for its operation, like `/etc/localtime`. After jailing,
+        // access to those files will not be possible.
+        info!("crosvm entering multiprocess mode");
+    }
+
     let kernel_image = File::open(cfg.kernel_path.as_path())
         .map_err(|e| Error::OpenKernel(cfg.kernel_path.clone(), e))?;
 

@@ -46,13 +46,15 @@ TEST_MODULES_PARALLEL = [
     'kvm',
     'kvm_sys',
     'net_sys',
-    'sys_util',
     'syscall_defines',
     'virtio_sys',
     'x86_64',
 ]
 
-TEST_MODULES_SERIAL = ['io_jail']
+TEST_MODULES_SERIAL = [
+    'io_jail',
+    'sys_util',
+  ]
 
 # Bright green
 PASS_COLOR = '\033[1;32m'
