@@ -46,6 +46,7 @@ TEST_MODULES_PARALLEL = [
     'kvm',
     'kvm_sys',
     'net_sys',
+    'net_util',
     'syscall_defines',
     'virtio_sys',
     'x86_64',

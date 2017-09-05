@@ -6,8 +6,9 @@ extern crate libc;
 extern crate net_sys;
 extern crate sys_util;
 
+use std::fmt::Debug;
 use std::fs::File;
-use std::io::{Read, Write, Result as IoResult};
+use std::io::{Read, Write, Result as IoResult, Error as IoError, ErrorKind};
 use std::mem;
 use std::net;
 use std::os::raw::*;
@@ -19,13 +20,13 @@ use sys_util::{ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref};
 #[derive(Debug)]
 pub enum Error {
     /// Failed to create a socket.
-    CreateSocket(sys_util::Error),
+    CreateSocket(IoError),
     /// Couldn't open /dev/net/tun.
-    OpenTun(sys_util::Error),
+    OpenTun(IoError),
     /// Unable to create tap interface.
-    CreateTap(sys_util::Error),
+    CreateTap(IoError),
     /// ioctl failed.
-    IoctlError(sys_util::Error),
+    IoctlError(IoError),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -48,7 +49,7 @@ fn create_socket() -> Result<net::UdpSocket> {
     // This is safe since we check the return value.
     let sock = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
     if sock < 0 {
-        return Err(Error::CreateSocket(sys_util::Error::last()));
+        return Err(Error::CreateSocket(IoError::last_os_error()));
     }
 
     // This is safe; nothing else will use or hold onto the raw sock fd.
@@ -61,6 +62,7 @@ fn create_socket() -> Result<net::UdpSocket> {
 /// can run ioctls on the interface. The tap interface fd will be closed when
 /// Tap goes out of scope, and the kernel will clean up the interface
 /// automatically.
+#[derive(Debug)]
 pub struct Tap {
     tap_file: File,
     if_name: [u8; 16usize],
@@ -76,7 +78,7 @@ impl Tap {
                        libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC)
         };
         if fd < 0 {
-            return Err(Error::OpenTun(sys_util::Error::last()));
+            return Err(Error::OpenTun(IoError::last_os_error()));
         }
 
         // We just checked that the fd is valid.
@@ -100,8 +102,14 @@ impl Tap {
         // ioctl is safe since we call it with a valid tap fd and check the return
         // value.
         let ret = unsafe { ioctl_with_mut_ref(&tuntap, net_sys::TUNSETIFF(), &mut ifreq) };
+
         if ret < 0 {
-            return Err(Error::CreateTap(sys_util::Error::last()));
+            let error = IoError::last_os_error();
+
+            // In a non-root, test environment, we won't have permission to call this; allow
+            if !(cfg!(test) && error.kind() == ErrorKind::PermissionDenied) {
+                return Err(Error::CreateTap(error));
+            }
         }
 
         // Safe since only the name is accessed, and it's cloned out.
@@ -128,7 +136,7 @@ impl Tap {
         let ret =
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFADDR as c_ulong, &ifreq) };
         if ret < 0 {
-            return Err(Error::IoctlError(sys_util::Error::last()));
+            return Err(Error::IoctlError(IoError::last_os_error()));
         }
 
         Ok(())
@@ -151,7 +159,7 @@ impl Tap {
         let ret =
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFNETMASK as c_ulong, &ifreq) };
         if ret < 0 {
-            return Err(Error::IoctlError(sys_util::Error::last()));
+            return Err(Error::IoctlError(IoError::last_os_error()));
         }
 
         Ok(())
@@ -163,7 +171,7 @@ impl Tap {
         let ret =
             unsafe { ioctl_with_val(&self.tap_file, net_sys::TUNSETOFFLOAD(), flags as c_ulong) };
         if ret < 0 {
-            return Err(Error::IoctlError(sys_util::Error::last()));
+            return Err(Error::IoctlError(IoError::last_os_error()));
         }
 
         Ok(())
@@ -186,7 +194,7 @@ impl Tap {
         let ret =
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFFLAGS as c_ulong, &ifreq) };
         if ret < 0 {
-            return Err(Error::IoctlError(sys_util::Error::last()));
+            return Err(Error::IoctlError(IoError::last_os_error()));
         }
 
         Ok(())
@@ -197,7 +205,7 @@ impl Tap {
         // ioctl is safe. Called with a valid tap fd, and we check the return.
         let ret = unsafe { ioctl_with_ref(&self.tap_file, net_sys::TUNSETVNETHDRSZ(), &size) };
         if ret < 0 {
-            return Err(Error::IoctlError(sys_util::Error::last()));
+            return Err(Error::IoctlError(IoError::last_os_error()));
         }
 
         Ok(())
@@ -262,14 +270,45 @@ mod tests {
         let ip_addr: net::Ipv4Addr = "100.115.92.5".parse().unwrap();
         let netmask: net::Ipv4Addr = "255.255.255.252".parse().unwrap();
 
-        tap.set_ip_addr(ip_addr).unwrap();
-        tap.set_netmask(netmask).unwrap();
+        let ret = tap.set_ip_addr(ip_addr);
+        assert_ok_or_perm_denied(ret);
+        let ret = tap.set_netmask(netmask);
+        assert_ok_or_perm_denied(ret);
+    }
+
+    /// This test will only work if the test is run with root permissions and, unlike other tests
+    /// in this file, do not return PermissionDenied. They fail because the TAP FD is not
+    /// initialized (as opposed to permission denial). Run this with "cargo test -- --ignored".
+    #[test]
+    #[ignore]
+    fn root_only_tests() {
+        // This line will fail to provide an initialized FD if the test is not run as root.
+        let tap = Tap::new().unwrap();
+        tap.set_vnet_hdr_size(16).unwrap();
+        tap.set_offload(0).unwrap();
     }
 
     #[test]
     fn tap_enable() {
         let tap = Tap::new().unwrap();
 
-        tap.enable().unwrap();
+        let ret = tap.enable();
+        assert_ok_or_perm_denied(ret);
+    }
+
+    #[test]
+    fn tap_get_ifreq() {
+        let tap = Tap::new().unwrap();
+        let ret = tap.get_ifreq();
+        assert_eq!("__BindgenUnionField", format!("{:?}", ret.ifr_ifrn.ifrn_name));
+    }
+
+    fn assert_ok_or_perm_denied<T>(res: Result<T>) {
+        match res {
+            // We won't have permission in test environments; allow that
+            Ok(_t) => {},
+            Err(Error::IoctlError(ref ioe)) if ioe.kind() == ErrorKind::PermissionDenied => {},
+            Err(e) => panic!("Unexpected Error:\n{:?}", e),
+        }
     }
 }
