@@ -7,22 +7,23 @@ extern crate net_util;
 extern crate sys_util;
 extern crate virtio_sys;
 
-mod net;
+pub mod net;
 pub use net::Net;
 
+use std::io::Error as IoError;
 use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::ptr::null;
 
-use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError, Error as SysError};
-use sys_util::{ioctl, ioctl_with_ref, ioctl_with_mut_ref, ioctl_with_ptr};
+use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError};
+use sys_util::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 
 #[derive(Debug)]
 pub enum Error {
     /// Error opening vhost device.
-    VhostOpen(SysError),
+    VhostOpen(IoError),
     /// Error while running ioctl.
-    IoctlError(SysError),
+    IoctlError(IoError),
     /// Invalid queue.
     InvalidQueue,
     /// Invalid descriptor table address.
@@ -37,7 +38,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 fn ioctl_result<T>() -> Result<T> {
-    Err(Error::IoctlError(SysError::last()))
+    Err(Error::IoctlError(IoError::last_os_error()))
 }
 
 /// An interface for setting up vhost-based virtio devices.  Vhost-based devices are different
@@ -317,23 +318,19 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
 
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
-        let ret = unsafe {
-            ioctl_with_ref(self,
-                           virtio_sys::VHOST_SET_VRING_KICK(),
-                           &vring_file)
-        };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_KICK(), &vring_file) };
         if ret < 0 {
             return ioctl_result();
         }
         Ok(())
     }
-
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use net::tests::FakeNet;
     use std::result;
     use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
 
@@ -343,30 +340,93 @@ mod tests {
         GuestMemory::new(&vec![(start_addr1, 0x100), (start_addr2, 0x400)])
     }
 
-    #[test]
-    fn open_vhostnet() {
+    fn assert_ok_or_known_failure<T>(res: Result<T>) {
+        match res {
+            // FakeNet won't respond to ioctl's
+            Ok(_t) => {}
+            Err(Error::IoctlError(ref ioe)) if ioe.raw_os_error().unwrap() == 25 => {}
+            Err(e) => panic!("Unexpected Error:\n{:?}", e),
+        }
+    }
+
+    fn create_fake_vhost_net () -> FakeNet {
         let gm = create_guest_memory().unwrap();
-        Net::new(&gm).unwrap();
+        FakeNet::new(&gm).unwrap()
+    }
+
+    #[test]
+    fn test_create_fake_vhost_net() {
+        create_fake_vhost_net();
     }
 
     #[test]
     fn set_owner() {
-        let gm = create_guest_memory().unwrap();
-        let vhost_net = Net::new(&gm).unwrap();
-        vhost_net.set_owner().unwrap();
+        let vhost_net = create_fake_vhost_net();
+        let res = vhost_net.set_owner();
+        assert_ok_or_known_failure(res);
     }
 
     #[test]
     fn get_features() {
-        let gm = create_guest_memory().unwrap();
-        let vhost_net = Net::new(&gm).unwrap();
-        vhost_net.get_features().unwrap();
+        let vhost_net = create_fake_vhost_net();
+        let res = vhost_net.get_features();
+        assert_ok_or_known_failure(res);
     }
 
     #[test]
     fn set_features() {
-        let gm = create_guest_memory().unwrap();
-        let vhost_net = Net::new(&gm).unwrap();
-        vhost_net.set_features(0).unwrap();
+        let vhost_net = create_fake_vhost_net();
+        let res = vhost_net.set_features(0);
+        assert_ok_or_known_failure(res);
+    }
+
+    #[test]
+    fn set_mem_table() {
+        let vhost_net = create_fake_vhost_net();
+        let res = vhost_net.set_mem_table();
+        assert_ok_or_known_failure(res);
+    }
+
+    #[test]
+    fn set_vring_num() {
+        let vhost_net = create_fake_vhost_net();
+        let res = vhost_net.set_vring_num(0, 1);
+        assert_ok_or_known_failure(res);
+    }
+
+    #[test]
+    fn set_vring_addr() {
+        let vhost_net = create_fake_vhost_net();
+        let res = vhost_net.set_vring_addr(
+            1,
+            1,
+            0,
+            0x0,
+            GuestAddress(0x0),
+            GuestAddress(0x0),
+            GuestAddress(0x0),
+            None);
+        assert_ok_or_known_failure(res);
+    }
+
+    #[test]
+    fn set_vring_base() {
+        let vhost_net = create_fake_vhost_net();
+        let res = vhost_net.set_vring_base(0, 1);
+        assert_ok_or_known_failure(res);
+    }
+
+    #[test]
+    fn set_vring_call() {
+        let vhost_net = create_fake_vhost_net();
+        let res = vhost_net.set_vring_call(0, &EventFd::new().unwrap());
+        assert_ok_or_known_failure(res);
+    }
+
+    #[test]
+    fn set_vring_kick() {
+        let vhost_net = create_fake_vhost_net();
+        let res = vhost_net.set_vring_kick(0, &EventFd::new().unwrap());
+        assert_ok_or_known_failure(res);
     }
 }

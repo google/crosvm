@@ -13,6 +13,7 @@ use net_sys;
 use net_util::Tap;
 use sys_util::{EventFd, GuestMemory};
 use vhost::Net as VhostNetHandle;
+use vhost::net::NetT;
 use virtio_sys::{vhost, virtio_net};
 
 use super::{Error, Result};

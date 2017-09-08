@@ -48,6 +48,7 @@ TEST_MODULES_PARALLEL = [
     'net_sys',
     'net_util',
     'syscall_defines',
+    'vhost',
     'virtio_sys',
     'x86_64',
 ]
