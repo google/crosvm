@@ -21,8 +21,10 @@ use data_model::DataInit;
 pub enum Error {
     /// Requested memory out of range.
     InvalidAddress,
+    /// Requested memory range spans past the end of the region.
+    InvalidRange(usize, usize),
     /// Couldn't read from the given source.
-    ReadFromSource,
+    ReadFromSource(std::io::Error),
     /// `mmap` returned the given error.
     SystemCallFailed(errno::Error),
     /// Writing to memory failed
@@ -243,16 +245,14 @@ impl MemoryMapping {
     {
         let mem_end = mem_offset + count;
         if mem_end > self.size() {
-            return Err(Error::InvalidAddress);
+            return Err(Error::InvalidRange(mem_offset, count));
         }
         unsafe {
             // It is safe to overwrite the volatile memory.  Acessing the guest
             // memory as a mutable slice is OK because nothing assumes another
             // thread won't change what is loaded.
             let mut dst = &mut self.as_mut_slice()[mem_offset..mem_end];
-            if src.read_exact(dst).is_err() {
-                return Err(Error::ReadFromSource);
-            }
+            src.read_exact(dst).map_err(Error::ReadFromSource)?;
         }
         Ok(())
     }
@@ -283,20 +283,18 @@ impl MemoryMapping {
         where F: Write
     {
         let mem_end = match mem_offset.checked_add(count) {
-            None => return Err(Error::InvalidAddress),
+            None => return Err(Error::InvalidRange(mem_offset, count)),
             Some(m) => m,
         };
         if mem_end > self.size() {
-            return Err(Error::InvalidAddress);
+            return Err(Error::InvalidRange(mem_offset, count));
         }
         unsafe {
             // It is safe to read from volatile memory.  Acessing the guest
             // memory as a slice is OK because nothing assumes another thread
             // won't change what is loaded.
             let src = &self.as_mut_slice()[mem_offset..mem_end];
-            if dst.write_all(src).is_err() {
-                return Err(Error::ReadFromSource);
-            }
+            dst.write_all(src).map_err(Error::ReadFromSource)?;
         }
         Ok(())
     }

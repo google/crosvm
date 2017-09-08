@@ -4,7 +4,7 @@
 
 use std::cmp;
 use std::fs::File;
-use std::io::{Seek, SeekFrom, Read, Write};
+use std::io::{self, Seek, SeekFrom, Read, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::Arc;
@@ -79,14 +79,20 @@ fn sector(mem: &GuestMemory, desc_addr: GuestAddress) -> result::Result<u64, Par
 
 #[derive(Debug)]
 enum ExecuteError {
-    Io,
+    Flush(io::Error),
+    Read(GuestMemoryError),
+    Seek(io::Error),
+    Write(GuestMemoryError),
     Unsupported(u32),
 }
 
 impl ExecuteError {
     fn status(&self) -> u8 {
         match self {
-            &ExecuteError::Io => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::Read(_) => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::Seek(_) => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::Write(_) => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
         }
     }
@@ -148,20 +154,19 @@ impl Request {
                                        disk: &mut T,
                                        mem: &GuestMemory)
                                        -> result::Result<u32, ExecuteError> {
-        // TODO(zachr): When VolatileMemory merges, make ExecuteError::Io more descriptive.
         disk.seek(SeekFrom::Start(self.sector << SECTOR_SHIFT))
-            .map_err(|_| ExecuteError::Io)?;
+            .map_err(ExecuteError::Seek)?;
         match self.request_type {
             RequestType::In => {
                 mem.read_to_memory(self.data_addr, disk, self.data_len as usize)
-                    .map_err(|_| ExecuteError::Io)?;
+                    .map_err(ExecuteError::Read)?;
                 return Ok(self.data_len);
             }
             RequestType::Out => {
                 mem.write_from_memory(self.data_addr, disk, self.data_len as usize)
-                    .map_err(|_| ExecuteError::Io)?
+                    .map_err(ExecuteError::Write)?;
             }
-            RequestType::Flush => disk.flush().map_err(|_| ExecuteError::Io)?,
+            RequestType::Flush => disk.flush().map_err(ExecuteError::Flush)?,
             RequestType::Unsupported(t) => return Err(ExecuteError::Unsupported(t)),
         };
         Ok(0)
@@ -394,5 +399,9 @@ mod tests {
         b.read_config(0, &mut num_sectors);
         // size is 0x1000, so num_sectors is 8 (4096/512).
         assert_eq!([0x08, 0x00, 0x00, 0x00], num_sectors);
+        let mut msw_sectors = [0u8; 4];
+        b.read_config(4, &mut msw_sectors);
+        // size is 0x1000, so msw_sectors is 0.
+        assert_eq!([0x00, 0x00, 0x00, 0x00], msw_sectors);
     }
 }

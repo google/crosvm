@@ -11,12 +11,13 @@ use std::sync::Arc;
 use data_model::DataInit;
 use data_model::volatile_memory::*;
 use guest_address::GuestAddress;
-use mmap::MemoryMapping;
+use mmap::{self, MemoryMapping};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub enum Error {
     InvalidGuestAddress(GuestAddress),
-    MemoryMappingFailed,
+    MemoryAccess(GuestAddress, mmap::Error),
+    MemoryMappingFailed(mmap::Error),
     MemoryRegionOverlap,
     NoMemoryRegions,
     RegionOperationFailed,
@@ -58,7 +59,7 @@ impl GuestMemory {
             }
 
             let mapping = MemoryMapping::new(range.1)
-                .map_err(|_| Error::MemoryMappingFailed)?;
+                .map_err(Error::MemoryMappingFailed)?;
             regions.push(MemoryRegion {
                              mapping: mapping,
                              guest_base: range.0,
@@ -142,8 +143,8 @@ impl GuestMemory {
     /// # fn test_write_u64() -> Result<(), ()> {
     /// #   let start_addr = GuestAddress(0x1000);
     /// #   let mut gm = GuestMemory::new(&vec![(start_addr, 0x400)]).map_err(|_| ())?;
-    ///     let res = gm.write_slice_at_addr(&[1,2,3,4,5], GuestAddress(0x200));
-    ///     assert_eq!(Ok(5), res);
+    ///     let res = gm.write_slice_at_addr(&[1,2,3,4,5], GuestAddress(0x200)).map_err(|_| ())?;
+    ///     assert_eq!(5, res);
     ///     Ok(())
     /// # }
     /// ```
@@ -151,7 +152,7 @@ impl GuestMemory {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
                 .write_slice(buf, offset)
-                .map_err(|_| Error::InvalidGuestAddress(guest_addr))
+                .map_err(|e| Error::MemoryAccess(guest_addr, e))
         })
     }
 
@@ -169,8 +170,8 @@ impl GuestMemory {
     /// #   let start_addr = GuestAddress(0x1000);
     /// #   let mut gm = GuestMemory::new(&vec![(start_addr, 0x400)]).map_err(|_| ())?;
     ///     let buf = &mut [0u8; 16];
-    ///     let res = gm.read_slice_at_addr(buf, GuestAddress(0x200));
-    ///     assert_eq!(Ok(16), res);
+    ///     let res = gm.read_slice_at_addr(buf, GuestAddress(0x200)).map_err(|_| ())?;
+    ///     assert_eq!(16, res);
     ///     Ok(())
     /// # }
     /// ```
@@ -181,7 +182,7 @@ impl GuestMemory {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
                 .read_slice(buf, offset)
-                .map_err(|_| Error::InvalidGuestAddress(guest_addr))
+                .map_err(|e| Error::MemoryAccess(guest_addr, e))
         })
     }
 
@@ -209,7 +210,7 @@ impl GuestMemory {
         self.do_in_region(guest_addr, |mapping, offset| {
             mapping
                 .read_obj(offset)
-                .map_err(|_| Error::InvalidGuestAddress(guest_addr))
+                .map_err(|e| Error::MemoryAccess(guest_addr, e))
         })
     }
 
@@ -232,7 +233,7 @@ impl GuestMemory {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
                 .write_obj(val, offset)
-                .map_err(|_| Error::InvalidGuestAddress(guest_addr))
+                .map_err(|e| Error::MemoryAccess(guest_addr, e))
         })
     }
 
@@ -272,7 +273,7 @@ impl GuestMemory {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
                 .read_to_memory(offset, src, count)
-                .map_err(|_| Error::InvalidGuestAddress(guest_addr))
+                .map_err(|e| Error::MemoryAccess(guest_addr, e))
         })
     }
 
@@ -310,7 +311,7 @@ impl GuestMemory {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
                 .write_from_memory(offset, dst, count)
-                .map_err(|_| Error::InvalidGuestAddress(guest_addr))
+                .map_err(|e| Error::MemoryAccess(guest_addr, e))
         })
     }
 
@@ -456,7 +457,6 @@ mod tests {
 
         // Check that a bad address returns an error.
         let bad_addr = GuestAddress(0x123456);
-        assert_eq!(mem.get_host_address(bad_addr).unwrap_err(),
-                   Error::InvalidGuestAddress(bad_addr));
+        assert!(mem.get_host_address(bad_addr).is_err());
     }
 }
