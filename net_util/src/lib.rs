@@ -6,7 +6,6 @@ extern crate libc;
 extern crate net_sys;
 extern crate sys_util;
 
-use std::fmt::Debug;
 use std::fs::File;
 use std::io::{Read, Write, Result as IoResult, Error as IoError, ErrorKind};
 use std::mem;
