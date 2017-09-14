@@ -82,6 +82,7 @@ pub struct Config {
     multiprocess: bool,
     seccomp_policy_dir: PathBuf,
     cid: Option<u64>,
+    gpu: bool,
     plugin: Option<PathBuf>,
     plugin_root: Option<PathBuf>,
 }
@@ -105,6 +106,7 @@ impl Default for Config {
             multiprocess: !cfg!(feature = "default-no-sandbox"),
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             cid: None,
+            gpu: false,
             plugin: None,
             plugin_root: None,
         }
@@ -351,6 +353,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 }
             })?);
         }
+        "gpu" => {
+            cfg.gpu = true;
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -404,6 +409,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("tap-fd",
                           "fd",
                           "File descriptor for configured tap device.  Mutually exclusive with `host_ip`, `netmask`, and `mac`."),
+          #[cfg(feature = "gpu")]
+          Argument::flag("gpu", "(EXPERIMENTAL) enable virtio-gpu device"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

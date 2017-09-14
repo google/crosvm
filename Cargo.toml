@@ -13,13 +13,12 @@ panic = 'abort'
 plugin = ["plugin_proto", "crosvm_plugin", "protobuf"]
 default-no-sandbox = []
 wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
+gpu = ["devices/gpu"]
 
 [dependencies]
 arch = { path = "arch" }
 devices = { path = "devices" }
 gpu_buffer = { path = "gpu_buffer", optional = true }
-gpu_display = { path = "gpu_display", optional = true }
-gpu_renderer = { path = "gpu_renderer", optional = true }
 io_jail = { path = "io_jail" }
 kvm = { path = "kvm" }
 kvm_sys = { path = "kvm_sys" }

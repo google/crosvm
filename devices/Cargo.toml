@@ -5,10 +5,14 @@ authors = ["The Chromium OS Authors"]
 
 [features]
 wl-dmabuf = []
+gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
 
 [dependencies]
 byteorder = "*"
 data_model = { path = "../data_model" }
+gpu_buffer = { path = "../gpu_buffer", optional = true }
+gpu_display = { path = "../gpu_display", optional = true }
+gpu_renderer = { path = "../gpu_renderer", optional = true }
 libc = "*"
 io_jail = { path = "../io_jail" }
 net_sys = { path = "../net_sys" }

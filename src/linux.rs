@@ -71,6 +71,7 @@ pub enum Error {
     QcowDeviceCreate(qcow::Error),
     RegisterBalloon(MmioRegisterError),
     RegisterBlock(MmioRegisterError),
+    RegisterGpu(MmioRegisterError),
     RegisterNet(MmioRegisterError),
     RegisterRng(MmioRegisterError),
     RegisterSignalHandler(sys_util::Error),
@@ -133,6 +134,7 @@ impl fmt::Display for Error {
                 write!(f, "error registering balloon device: {:?}", e)
             },
             &Error::RegisterBlock(ref e) => write!(f, "error registering block device: {:?}", e),
+            &Error::RegisterGpu(ref e) => write!(f, "error registering gpu device: {:?}", e),
             &Error::RegisterNet(ref e) => write!(f, "error registering net device: {:?}", e),
             &Error::RegisterRng(ref e) => write!(f, "error registering rng device: {:?}", e),
             &Error::RegisterSignalHandler(ref e) => {
@@ -341,6 +343,7 @@ fn register_mmio(bus: &mut devices::Bus,
 }
 
 fn setup_mmio_bus(cfg: &Config,
+                  _exit_evt: EventFd,
                   vm: &mut Vm,
                   mem: &GuestMemory,
                   cmdline: &mut kernel_cmdline::Cmdline,
@@ -555,6 +558,24 @@ fn setup_mmio_bus(cfg: &Config,
 
         register_mmio(&mut bus, vm, vsock_box, jail, resources, cmdline)
             .map_err(Error::RegisterVsock)?;
+    }
+
+    #[cfg(feature = "gpu")]
+    {
+        if cfg.gpu {
+            let gpu_box =
+                Box::new(devices::virtio::Gpu::new(_exit_evt
+                                                       .try_clone()
+                                                       .map_err(Error::CloneEventFd)?));
+            let gpu_jail = if cfg.multiprocess {
+                error!("jail for virtio-gpu is unimplemented");
+                unimplemented!();
+            } else {
+                None
+            };
+            register_mmio(&mut bus, vm, gpu_box, gpu_jail, resources, cmdline)
+                .map_err(Error::RegisterGpu)?;
+        }
     }
 
     Ok(bus)
@@ -870,6 +891,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let (balloon_host_socket, balloon_device_socket) = UnixDatagram::pair()
         .map_err(Error::CreateSocket)?;
     let mmio_bus = setup_mmio_bus(&cfg,
+                                  exit_evt.try_clone().map_err(Error::CloneEventFd)?,
                                   &mut vm,
                                   &mem,
                                   &mut cmdline,

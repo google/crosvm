@@ -10,6 +10,8 @@ mod mmio;
 mod block;
 mod rng;
 mod net;
+#[cfg(feature = "gpu")]
+mod gpu;
 mod wl;
 
 pub mod vhost;
@@ -20,6 +22,8 @@ pub use self::mmio::*;
 pub use self::block::*;
 pub use self::rng::*;
 pub use self::net::*;
+#[cfg(feature = "gpu")]
+pub use self::gpu::*;
 pub use self::wl::*;
 
 const DEVICE_ACKNOWLEDGE: u32 = 0x01;
@@ -33,8 +37,12 @@ const TYPE_NET: u32 = 1;
 const TYPE_BLOCK: u32 = 2;
 const TYPE_RNG: u32 = 4;
 const TYPE_BALLOON: u32 = 5;
+#[allow(dead_code)]
+const TYPE_GPU: u32 = 16;
 const TYPE_VSOCK: u32 = 19;
 const TYPE_WL: u32 = 30;
+
+const VIRTIO_F_VERSION_1: u32 = 32;
 
 const INTERRUPT_STATUS_USED_RING: u32 = 0x1;
 const INTERRUPT_STATUS_CONFIG_CHANGED: u32 = 0x2;
