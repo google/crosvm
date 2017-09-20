@@ -12,8 +12,8 @@ io_jail = { path = "io_jail" }
 kvm = { path = "kvm" }
 sys_util = { path = "sys_util" }
 kernel_loader = { path = "kernel_loader" }
-libc = "0.2.29"
-byteorder = "1"
+libc = "=0.2.29"
+byteorder = "=1.1.0"
 syscall_defines = { path = "syscall_defines" }
 net_sys = { path = "net_sys" }
 net_util = { path = "net_util" }
