@@ -1,43 +1,29 @@
 #!/usr/bin/env python3
+# Copyright 2017 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
 
 """Builds crosvm in debug/release mode on all supported target architectures.
 
 A sysroot for each target architectures is required. The defaults are all
-generic boards' sysroots, but they can be changed with the ARM_SYSROOT,
-AARCH64_SYSROOT, X86_64_SYSROOT environment variables.
+generic boards' sysroots, but they can be changed with the command line
+arguments.
 
-To test changes more quickly, set the NOCLEAN environment variable. This
-prevents the target directories from being removed before building and testing.
+To test changes more quickly, set the --noclean option. This prevents the
+target directories from being removed before building and testing.
 """
 
 from __future__ import print_function
+import argparse
 import multiprocessing.pool
 import os
 import shutil
 import subprocess
 import sys
 
-NOCLEAN = os.getenv('NOCLEAN') is not None
-
 ARM_TRIPLE = os.getenv('ARM_TRIPLE', 'armv7a-cros-linux-gnueabi')
 AARCH64_TRIPLE = os.getenv('AARCH64_TRIPLE', 'aarch64-cros-linux-gnu')
 X86_64_TRIPLE = os.getenv('X86_64_TRIPLE', 'x86_64-cros-linux-gnu')
-
-ARM_SYSROOT = os.getenv('ARM_SYSROOT', '/build/arm-generic')
-AARCH64_SYSROOT = os.getenv('AARCH64_SYSROOT', '/build/arm64-generic')
-X86_64_SYSROOT = os.getenv('X86_64_SYSROOT', '/build/amd64-generic')
-
-BUILD_TEST_CASES = [
-    #(sysroot path, target triple, debug/release, should test?)
-    (ARM_SYSROOT, ARM_TRIPLE, "debug", False),
-    (ARM_SYSROOT, ARM_TRIPLE, "release", False),
-    (AARCH64_SYSROOT, AARCH64_TRIPLE, "debug", False),
-    (AARCH64_SYSROOT, AARCH64_TRIPLE, "release", False),
-    (X86_64_SYSROOT, X86_64_TRIPLE, "debug", False),
-    (X86_64_SYSROOT, X86_64_TRIPLE, "release", False),
-    (X86_64_SYSROOT, X86_64_TRIPLE, "debug", True),
-    (X86_64_SYSROOT, X86_64_TRIPLE, "release", True),
-]
 
 TEST_MODULES_PARALLEL = [
     'crosvm',
@@ -56,16 +42,24 @@ TEST_MODULES_PARALLEL = [
 TEST_MODULES_SERIAL = [
     'io_jail',
     'sys_util',
-  ]
+]
 
-# Bright green
+# Bright green.
 PASS_COLOR = '\033[1;32m'
-# Bright red
+# Bright red.
 FAIL_COLOR = '\033[1;31m'
-# Default color
+# Default color.
 END_COLOR = '\033[0m'
 
+
 def get_target_path(triple, kind, test_it):
+  """Constructs a target path based on the configuration parameters.
+
+  Args:
+    triple: Target triple. Example: 'x86_64-unknown-linux-gnu'.
+    kind: 'debug' or 'release'.
+    test_it: If this target is tested.
+  """
   target_path = '/tmp/%s_%s' % (triple, kind)
   if test_it:
     target_path += '_test'
@@ -73,6 +67,13 @@ def get_target_path(triple, kind, test_it):
 
 
 def build_target(triple, is_release, env):
+  """Does a cargo build for the triple in release or debug mode.
+
+  Args:
+    triple: Target triple. Example: 'x86_64-unknown-linux-gnu'.
+    is_release: True to build a release version.
+    env: Enviroment variables to run cargo with.
+  """
   args = ['cargo', 'build', '--target=%s' % triple]
 
   if is_release:
@@ -80,7 +81,17 @@ def build_target(triple, is_release, env):
 
   return subprocess.Popen(args, env=env).wait() == 0
 
+
 def test_target_modules(triple, is_release, env, modules, parallel):
+  """Does a cargo test on given modules for the triple and configuration.
+
+  Args:
+    triple: Target triple. Example: 'x86_64-unknown-linux-gnu'.
+    is_release: True to build a release version.
+    env: Enviroment variables to run cargo with.
+    modules: List of module strings to test.
+    parallel: True to run the tests in parallel threads.
+  """
   args = ['cargo', 'test', '--target=%s' % triple]
 
   if is_release:
@@ -98,6 +109,13 @@ def test_target_modules(triple, is_release, env, modules, parallel):
 
 
 def test_target(triple, is_release, env):
+  """Does a cargo test for the given triple and configuration.
+
+  Args:
+    triple: Target triple. Example: 'x86_64-unknown-linux-gnu'.
+    is_release: True to build a release version.
+    env: Enviroment variables to run cargo with.
+  """
   return (
       test_target_modules(
           triple, is_release, env, TEST_MODULES_PARALLEL, True) and
@@ -106,13 +124,22 @@ def test_target(triple, is_release, env):
   )
 
 
-def check_build(sysroot, triple, kind, test_it):
+def check_build(sysroot, triple, kind, test_it, clean):
+  """Runs relavent builds/tests for the given triple and configuration
+
+  Args:
+    sysroot: path to the target's sysroot directory.
+    triple: Target triple. Example: 'x86_64-unknown-linux-gnu'.
+    kind: 'debug' or 'release'.
+    test_it: True to test this triple and kind.
+    clean: True to skip cleaning the target path.
+  """
   if not os.path.isdir(sysroot):
     return 'sysroot missing'
 
   target_path = get_target_path(triple, kind, test_it)
 
-  if not NOCLEAN:
+  if clean:
     shutil.rmtree(target_path, True)
 
   is_release = kind == 'release'
@@ -133,6 +160,11 @@ def check_build(sysroot, triple, kind, test_it):
 
 
 def get_stripped_size(triple):
+  """Returns the formatted size of the given triple's release binary.
+
+  Args:
+    triple: Target triple. Example: 'x86_64-unknown-linux-gnu'.
+  """
   target_path = get_target_path(triple, 'release', False)
   bin_path = os.path.join(target_path, triple, 'release', 'crosvm')
   proc = subprocess.Popen(['%s-strip' % triple, bin_path])
@@ -143,15 +175,46 @@ def get_stripped_size(triple):
   return '%dKiB' % (os.path.getsize(bin_path) / 1024)
 
 
-def main():
+def get_parser():
+  """Gets the argument parser"""
+  parser = argparse.ArgumentParser(description=__doc__)
+  parser.add_argument('--arm-sysroot',
+                      default='/build/arm-generic',
+                      help='ARM sysroot directory (default=%(default)s)')
+  parser.add_argument('--aarch64-sysroot',
+                      default='/build/arm64-generic',
+                      help='AARCH64 sysroot directory (default=%(default)s)')
+  parser.add_argument('--x86_64-sysroot',
+                      default='/build/amd64-generic',
+                      help='x86_64 sysroot directory (default=%(default)s)')
+  parser.add_argument('--noclean', dest='clean', default=True,
+                      action='store_false',
+                      help='Keep the tempororary build directories.')
+  return parser
+
+
+def main(argv):
+  opts = get_parser().parse_args(argv)
+  build_test_cases = (
+      #(sysroot path, target triple, debug/release, should test?)
+      (opts.arm_sysroot, ARM_TRIPLE, "debug", False, opts.clean),
+      (opts.arm_sysroot, ARM_TRIPLE, "release", False, opts.clean),
+      (opts.aarch64_sysroot, AARCH64_TRIPLE, "debug", False, opts.clean),
+      (opts.aarch64_sysroot, AARCH64_TRIPLE, "release", False, opts.clean),
+      (opts.x86_64_sysroot, X86_64_TRIPLE, "debug", False, opts.clean),
+      (opts.x86_64_sysroot, X86_64_TRIPLE, "release", False, opts.clean),
+      (opts.x86_64_sysroot, X86_64_TRIPLE, "debug", True, opts.clean),
+      (opts.x86_64_sysroot, X86_64_TRIPLE, "release", True, opts.clean),
+  )
+
   os.chdir(os.path.dirname(sys.argv[0]))
-  pool = multiprocessing.pool.Pool()
-  results = pool.starmap(check_build, BUILD_TEST_CASES, 1)
+  pool = multiprocessing.pool.Pool(len(build_test_cases))
+  results = pool.starmap(check_build, build_test_cases, 1)
 
   print('---')
   print('build test summary:')
-  for test_case, result in zip(BUILD_TEST_CASES, results):
-    _, triple, kind, test_it = test_case
+  for test_case, result in zip(build_test_cases, results):
+    _, triple, kind, test_it, _ = test_case
     title = '%s_%s' % (triple.split('-')[0], kind)
     if test_it:
       title += "_test"
@@ -169,4 +232,4 @@ def main():
 
 
 if __name__ == '__main__':
-  main()
+  sys.exit(main(sys.argv[1:]))
