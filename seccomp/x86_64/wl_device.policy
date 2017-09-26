@@ -1,4 +1,6 @@
 close: 1
+dup: 1
+dup2: 1
 getpid: 1
 exit_group: 1
 futex: 1
@@ -18,7 +20,6 @@ sigaltstack: 1
 clone: arg0 & 0x00010000
 write: 1
 eventfd2: 1
-dup: 1
 # Used to connect to wayland. arg0 == AF_UNIX && arg1 == SOCK_STREAM|SOCK_CLOEXEC
 socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
 # arg1 == FIONBIO

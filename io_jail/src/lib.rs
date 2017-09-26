@@ -10,6 +10,7 @@ extern crate libc;
 #[allow(non_upper_case_globals)]
 mod libminijail;
 
+use libc::pid_t;
 use std::fmt;
 use std::ffi::CString;
 use std::fs;
@@ -26,8 +27,14 @@ pub enum Error {
         src: PathBuf,
         dst: PathBuf,
     },
+    /// Failure to count the number of threads in /proc/self/tasks.
+    CheckingMultiThreaded(io::Error),
     /// minjail_new failed, this is an allocation failure.
     CreatingMinijail,
+    /// minijail_fork failed with the given error code.
+    ForkingMinijail(i32),
+    /// Attempt to `fork` while already multithreaded.
+    ForkingWhileMultiThreaded,
     /// The seccomp policy path doesn't exist.
     SeccompPath(PathBuf),
     /// The string passed in didn't parse to a valid CString.
@@ -50,6 +57,8 @@ pub enum Error {
     ReadFdDir(io::Error),
     /// An entry in /proc/self/fd is not an integer
     ProcFd(String),
+    /// Minijail refused to preserve an FD in the inherit list of `fork()`.
+    PreservingFd(i32),
 }
 
 impl fmt::Display for Error {
@@ -66,9 +75,18 @@ impl fmt::Display for Error {
                        dst,
                        errno)
             }
+            &Error::CheckingMultiThreaded(ref e) => {
+                write!(f, "Failed to count the number of threads from /proc/self/tasks {}", e)
+            },
             &Error::CreatingMinijail => {
                 write!(f, "minjail_new failed due to an allocation failure")
             }
+            &Error::ForkingMinijail(ref e) => {
+                write!(f, "minijail_fork failed with error {}", e)
+            },
+            &Error::ForkingWhileMultiThreaded => {
+                write!(f, "Attempt to call fork() while multithreaded")
+            },
             &Error::SeccompPath(ref p) => write!(f, "missing seccomp policy path: {:?}", p),
             &Error::StrToCString(ref s) => {
                 write!(f, "failed to convert string into CString: {:?}", s)
@@ -102,6 +120,9 @@ impl fmt::Display for Error {
             &Error::ProcFd(ref s) => {
                 write!(f, "an entry in /proc/self/fd is not an integer: {}", s)
             }
+            &Error::PreservingFd(ref e) => {
+                write!(f, "fork failed in minijail_preserve_fd with error {}", e)
+            },
         }
     }
 }
@@ -341,6 +362,54 @@ impl Minijail {
         Ok(())
     }
 
+    /// Forks a child and puts it in the previously configured minijail.
+    /// `fork` is unsafe because it closes all open FD for this process.  That
+    /// could cause a lot of trouble if not handled carefully.  FDs 0, 1, and 2
+    /// are overwritten with /dev/null FDs unless they are included in the
+    /// inheritable_fds list.
+    /// This Function may abort in the child on error because a partially
+    /// entered jail isn't recoverable.
+    pub unsafe fn fork(&self, inheritable_fds: Option<&[RawFd]>) -> Result<pid_t> {
+        if !is_single_threaded().map_err(Error::CheckingMultiThreaded)? {
+            return Err(Error::ForkingWhileMultiThreaded);
+        }
+
+        if let Some(keep_fds) = inheritable_fds {
+            for fd in keep_fds {
+                let ret = libminijail::minijail_preserve_fd(self.jail, *fd, *fd);
+                if ret < 0 {
+                    return Err(Error::PreservingFd(ret));
+                }
+            }
+        }
+
+        let dev_null = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/null")
+            .map_err(Error::OpenDevNull)?;
+        // Set stdin, stdout, and stderr to /dev/null unless they are in the inherit list.
+        // These will only be closed when this process exits.
+        for io_fd in &[libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
+            if inheritable_fds.is_none() || !inheritable_fds.unwrap().contains(io_fd) {
+                let ret = libminijail::minijail_preserve_fd(self.jail,
+                                                            dev_null.as_raw_fd(),
+                                                            *io_fd);
+                if ret < 0 {
+                    return Err(Error::PreservingFd(ret));
+                }
+            }
+        }
+
+        libminijail::minijail_close_open_fds(self.jail);
+
+        let ret = libminijail::minijail_fork(self.jail);
+        if ret < 0 {
+            return Err(Error::ForkingMinijail(ret));
+        }
+        Ok(ret as pid_t)
+    }
+
     // Closing all open FDs could be unsafe if something is relying on an FD
     // that is closed unexpectedly.  It is safe as long as it is called
     // immediately after forking and all needed FDs are in `inheritable_fds`.
@@ -387,6 +456,20 @@ impl Drop for Minijail {
             // this object have been dropped.
             libminijail::minijail_destroy(self.jail);
         }
+    }
+}
+
+// Count the number of files in the directory specified by `path`.
+fn count_dir_entries<P: AsRef<Path>>(path: P) -> io::Result<usize> {
+    Ok(fs::read_dir(path)?.count())
+}
+
+// Return true if the current thread is the only thread in the process.
+fn is_single_threaded() -> io::Result<bool> {
+    match count_dir_entries("/proc/self/task") {
+        Ok(1) => Ok(true),
+        Ok(_) => Ok(false),
+        Err(e) => Err(e),
     }
 }
 

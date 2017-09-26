@@ -74,6 +74,7 @@ extern "C" {
     pub fn minijail_enter_pivot_root(j: *mut minijail,
                                      dir: *const c_char)
                                      -> c_int;
+    pub fn minijail_fork(j: *mut minijail) -> pid_t;
     pub fn minijail_get_original_path(j: *mut minijail,
                                       chroot_path: *const c_char)
                                       -> *mut c_char;
@@ -97,6 +98,10 @@ extern "C" {
                          dest: *const c_char,
                          writeable: c_int)
                          -> c_int;
+    pub fn minijail_preserve_fd(j: *mut minijail,
+                                parent_fd: c_int,
+                                child_fd: c_int)
+                                -> c_int;
     pub fn minijail_enter(j: *const minijail);
     pub fn minijail_run(j: *mut minijail,
                         filename: *const c_char,
