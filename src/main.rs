@@ -12,9 +12,11 @@ extern crate kvm;
 extern crate x86_64;
 extern crate kernel_loader;
 extern crate byteorder;
+extern crate net_util;
 extern crate qcow;
 #[macro_use]
 extern crate sys_util;
+extern crate vhost;
 extern crate vm_control;
 extern crate data_model;
 

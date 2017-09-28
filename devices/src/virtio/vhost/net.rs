@@ -10,10 +10,10 @@ use std::sync::atomic::AtomicUsize;
 use std::thread;
 
 use net_sys;
-use net_util::Tap;
+use net_util::TapT;
+
 use sys_util::{EventFd, GuestMemory};
-use vhost::Net as VhostNetHandle;
-use vhost::net::NetT;
+use vhost::NetT as VhostNetT;
 use virtio_sys::{vhost, virtio_net};
 
 use super::{Error, Result};
@@ -24,23 +24,27 @@ const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
 const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE; NUM_QUEUES];
 
-pub struct Net {
+pub struct Net<T: TapT, U: VhostNetT<T>> {
     workers_kill_evt: Option<EventFd>,
     kill_evt: EventFd,
-    tap: Option<Tap>,
-    vhost_net_handle: Option<VhostNetHandle>,
+    tap: Option<T>,
+    vhost_net_handle: Option<U>,
     vhost_interrupt: Option<EventFd>,
     avail_features: u64,
     acked_features: u64,
 }
 
-impl Net {
+impl<T, U> Net<T, U>
+where
+    T: TapT,
+    U: VhostNetT<T>,
+{
     /// Create a new virtio network device with the given IP address and
     /// netmask.
-    pub fn new(ip_addr: Ipv4Addr, netmask: Ipv4Addr, mem: &GuestMemory) -> Result<Net> {
+    pub fn new(ip_addr: Ipv4Addr, netmask: Ipv4Addr, mem: &GuestMemory) -> Result<Net<T, U>> {
         let kill_evt = EventFd::new().map_err(Error::CreateKillEventFd)?;
 
-        let tap = Tap::new().map_err(Error::TapOpen)?;
+        let tap: T = T::new().map_err(Error::TapOpen)?;
         tap.set_ip_addr(ip_addr).map_err(Error::TapSetIp)?;
         tap.set_netmask(netmask).map_err(Error::TapSetNetmask)?;
 
@@ -54,7 +58,7 @@ impl Net {
         tap.set_vnet_hdr_size(vnet_hdr_size).map_err(Error::TapSetVnetHdrSize)?;
 
         tap.enable().map_err(Error::TapEnable)?;
-        let vhost_net_handle = VhostNetHandle::new(mem).map_err(Error::VhostOpen)?;
+        let vhost_net_handle = U::new(mem).map_err(Error::VhostOpen)?;
 
         let avail_features =
             1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM | 1 << virtio_net::VIRTIO_NET_F_CSUM |
@@ -79,7 +83,11 @@ impl Net {
     }
 }
 
-impl Drop for Net {
+impl<T, U> Drop for Net<T, U>
+where
+    T: TapT,
+    U: VhostNetT<T>,
+{
     fn drop(&mut self) {
         // Only kill the child if it claimed its eventfd.
         if self.workers_kill_evt.is_none() {
@@ -89,7 +97,11 @@ impl Drop for Net {
     }
 }
 
-impl VirtioDevice for Net {
+impl<T, U> VirtioDevice for Net<T, U>
+where
+    T: TapT + 'static,
+    U: VhostNetT<T> + 'static,
+{
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
 
@@ -182,7 +194,7 @@ impl VirtioDevice for Net {
                                                              status,
                                                              interrupt_evt,
                                                              acked_features);
-                                let activate_vqs = |handle: &VhostNetHandle| -> Result<()> {
+                                let activate_vqs = |handle: &U| -> Result<()> {
                                     for idx in 0..NUM_QUEUES {
                                         handle
                                             .set_backend(idx, &tap)
@@ -205,5 +217,71 @@ impl VirtioDevice for Net {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use std::result;
+    use net_util::fakes::FakeTap;
+    use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
+    use vhost::net::fakes::FakeNet;
+
+    fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
+        let start_addr1 = GuestAddress(0x0);
+        let start_addr2 = GuestAddress(0x100);
+        GuestMemory::new(&vec![(start_addr1, 0x100), (start_addr2, 0x400)])
+    }
+
+    fn create_net_common() -> Net<FakeTap, FakeNet<FakeTap>> {
+        let guest_memory = create_guest_memory().unwrap();
+        Net::<FakeTap, FakeNet<FakeTap>>::new(
+            Ipv4Addr::new(127, 0, 0, 1),
+            Ipv4Addr::new(255, 255, 255, 0),
+            &guest_memory,
+        ).unwrap()
+    }
+
+    #[test]
+    fn create_net() {
+        create_net_common();
+    }
+
+    #[test]
+    fn keep_fds() {
+        let net = create_net_common();
+        let fds = net.keep_fds();
+        assert!(fds.len() >= 1, "We should have gotten at least one fd");
+    }
+
+    #[test]
+    fn features() {
+        let net = create_net_common();
+        assert_eq!(net.features(0), 822135939);
+        assert_eq!(net.features(1), 1);
+        assert_eq!(net.features(2), 0);
+    }
+
+    #[test]
+    fn ack_features() {
+        let mut net = create_net_common();
+        // Just testing that we don't panic, for now
+        net.ack_features(0, 1);
+        net.ack_features(1, 1);
+    }
+
+    #[test]
+    fn activate() {
+        let mut net = create_net_common();
+        let guest_memory = create_guest_memory().unwrap();
+        // Just testing that we don't panic, for now
+        net.activate(
+            guest_memory,
+            EventFd::new().unwrap(),
+            Arc::new(AtomicUsize::new(0)),
+            vec![Queue::new(1)],
+            vec![EventFd::new().unwrap()],
+        );
     }
 }

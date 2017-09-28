@@ -11,6 +11,7 @@ pub mod net;
 mod vsock;
 
 pub use net::Net;
+pub use net::NetT;
 pub use vsock::Vsock;
 
 use std::io::Error as IoError;
@@ -333,7 +334,8 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
 mod tests {
     use super::*;
 
-    use net::tests::FakeNet;
+    use net::fakes::FakeNet;
+    use net_util::fakes::FakeTap;
     use std::result;
     use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
 
@@ -352,9 +354,9 @@ mod tests {
         }
     }
 
-    fn create_fake_vhost_net () -> FakeNet {
+    fn create_fake_vhost_net() -> FakeNet<FakeTap> {
         let gm = create_guest_memory().unwrap();
-        FakeNet::new(&gm).unwrap()
+        FakeNet::<FakeTap>::new(&gm).unwrap()
     }
 
     #[test]

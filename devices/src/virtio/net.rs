@@ -4,7 +4,6 @@
 
 use std::cmp;
 use std::mem;
-use std::io::{Read, Write};
 use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
@@ -13,8 +12,8 @@ use std::thread;
 
 use libc::EAGAIN;
 use net_sys;
-use net_util::{Tap, Error as TapError};
-use sys_util::{Error as SysError};
+use net_util::{Error as TapError, TapT};
+use sys_util::Error as SysError;
 use sys_util::{EventFd, GuestMemory, Pollable, Poller};
 use virtio_sys::{vhost, virtio_net};
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
@@ -50,11 +49,11 @@ pub enum NetError {
     PollError(SysError),
 }
 
-struct Worker {
+struct Worker<T: TapT> {
     mem: GuestMemory,
     rx_queue: Queue,
     tx_queue: Queue,
-    tap: Tap,
+    tap: T,
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
     rx_buf: [u8; MAX_BUFFER_SIZE],
@@ -66,7 +65,10 @@ struct Worker {
     acked_features: u64,
 }
 
-impl Worker {
+impl<T> Worker<T>
+where
+    T: TapT,
+{
     fn signal_used_queue(&self) {
         self.interrupt_status
             .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
@@ -226,7 +228,7 @@ impl Worker {
         const KILL: u32 = 4;
 
         'poll: loop {
-            let tokens = match poller.poll(&[(RX_TAP, &self.tap as &Pollable),
+            let tokens = match poller.poll(&[(RX_TAP, &self.tap),
                                              (RX_QUEUE, &rx_queue_evt as &Pollable),
                                              (TX_QUEUE, &tx_queue_evt as &Pollable),
                                              (KILL, &kill_evt as &Pollable)]) {
@@ -274,21 +276,24 @@ impl Worker {
     }
 }
 
-pub struct Net {
+pub struct Net<T: TapT> {
     workers_kill_evt: Option<EventFd>,
     kill_evt: EventFd,
-    tap: Option<Tap>,
+    tap: Option<T>,
     avail_features: u64,
     acked_features: u64,
 }
 
-impl Net {
+impl<T> Net<T>
+where
+    T: TapT,
+{
     /// Create a new virtio network device with the given IP address and
     /// netmask.
-    pub fn new(ip_addr: Ipv4Addr, netmask: Ipv4Addr) -> Result<Net, NetError> {
+    pub fn new(ip_addr: Ipv4Addr, netmask: Ipv4Addr) -> Result<Net<T>, NetError> {
         let kill_evt = EventFd::new().map_err(NetError::CreateKillEventFd)?;
 
-        let tap = Tap::new().map_err(NetError::TapOpen)?;
+        let tap: T = T::new().map_err(NetError::TapOpen)?;
         tap.set_ip_addr(ip_addr).map_err(NetError::TapSetIp)?;
         tap.set_netmask(netmask)
             .map_err(NetError::TapSetNetmask)?;
@@ -306,24 +311,25 @@ impl Net {
 
         let avail_features =
             1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM | 1 << virtio_net::VIRTIO_NET_F_CSUM |
-            1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4 |
-            1 << virtio_net::VIRTIO_NET_F_GUEST_UFO |
-            1 << virtio_net::VIRTIO_NET_F_HOST_TSO4 |
-            1 << virtio_net::VIRTIO_NET_F_HOST_UFO | 1 << vhost::VIRTIO_F_VERSION_1;
+                1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4 |
+                1 << virtio_net::VIRTIO_NET_F_GUEST_UFO |
+                1 << virtio_net::VIRTIO_NET_F_HOST_TSO4 |
+                1 << virtio_net::VIRTIO_NET_F_HOST_UFO | 1 << vhost::VIRTIO_F_VERSION_1;
 
         Ok(Net {
-               workers_kill_evt: Some(kill_evt
-                                          .try_clone()
-                                          .map_err(NetError::CloneKillEventFd)?),
-               kill_evt: kill_evt,
-               tap: Some(tap),
-               avail_features: avail_features,
-               acked_features: 0u64,
-           })
+            workers_kill_evt: Some(kill_evt.try_clone().map_err(NetError::CloneKillEventFd)?),
+            kill_evt: kill_evt,
+            tap: Some(tap),
+            avail_features: avail_features,
+            acked_features: 0u64,
+        })
     }
 }
 
-impl Drop for Net {
+impl<T> Drop for Net<T>
+where
+    T: TapT,
+{
     fn drop(&mut self) {
         // Only kill the child if it claimed its eventfd.
         if self.workers_kill_evt.is_none() {
@@ -333,7 +339,10 @@ impl Drop for Net {
     }
 }
 
-impl VirtioDevice for Net {
+impl<T> VirtioDevice for Net<T>
+where
+    T: 'static + TapT,
+{
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
 

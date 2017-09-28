@@ -22,9 +22,11 @@ use io_jail::{self, Minijail};
 use kernel_cmdline;
 use kernel_loader;
 use kvm::*;
+use net_util::Tap;
 use qcow::{self, QcowFile};
 use sys_util::*;
 use sys_util;
+use vhost;
 use vm_control::VmRequest;
 
 use Config;
@@ -352,10 +354,10 @@ fn setup_mmio_bus(cfg: &Config,
     if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
             let net_box: Box<devices::virtio::VirtioDevice> = if cfg.vhost_net {
-                Box::new(devices::virtio::vhost::Net::new(host_ip, netmask, &mem)
-                             .map_err(Error::VhostNetDeviceNew)?)
+                Box::new(devices::virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(host_ip, netmask, &mem)
+                                   .map_err(|e| Error::VhostNetDeviceNew(e))?)
             } else {
-                Box::new(devices::virtio::Net::new(host_ip, netmask)
+                Box::new(devices::virtio::Net::<Tap>::new(host_ip, netmask)
                                    .map_err(|e| Error::NetDeviceNew(e))?)
             };
 

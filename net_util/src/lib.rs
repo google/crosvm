@@ -67,9 +67,30 @@ pub struct Tap {
     if_name: [u8; 16usize],
 }
 
-impl Tap {
+pub trait TapT: Read + Write + AsRawFd + Pollable + Send + Sized {
     /// Create a new tap interface.
-    pub fn new() -> Result<Tap> {
+    fn new() -> Result<Self>;
+
+    /// Set the host-side IP address for the tap interface.
+    fn set_ip_addr(&self, ip_addr: net::Ipv4Addr) -> Result<()>;
+
+    /// Set the netmask for the subnet that the tap interface will exist on.
+    fn set_netmask(&self, netmask: net::Ipv4Addr) -> Result<()>;
+
+    /// Set the offload flags for the tap interface.
+    fn set_offload(&self, flags: c_uint) -> Result<()>;
+
+    /// Enable the tap interface.
+    fn enable(&self) -> Result<()>;
+
+    /// Set the size of the vnet hdr.
+    fn set_vnet_hdr_size(&self, size: c_int) -> Result<()>;
+
+    fn get_ifreq(&self) -> net_sys::ifreq;
+}
+
+impl TapT for Tap {
+    fn new() -> Result<Tap> {
         // Open calls are safe because we give a constant nul-terminated
         // string and verify the result.
         let fd = unsafe {
@@ -118,8 +139,7 @@ impl Tap {
            })
     }
 
-    /// Set the host-side IP address for the tap interface.
-    pub fn set_ip_addr(&self, ip_addr: net::Ipv4Addr) -> Result<()> {
+    fn set_ip_addr(&self, ip_addr: net::Ipv4Addr) -> Result<()> {
         let sock = create_socket()?;
         let addr = create_sockaddr(ip_addr);
 
@@ -141,8 +161,7 @@ impl Tap {
         Ok(())
     }
 
-    /// Set the netmask for the subnet that the tap interface will exist on.
-    pub fn set_netmask(&self, netmask: net::Ipv4Addr) -> Result<()> {
+    fn set_netmask(&self, netmask: net::Ipv4Addr) -> Result<()> {
         let sock = create_socket()?;
         let addr = create_sockaddr(netmask);
 
@@ -164,8 +183,7 @@ impl Tap {
         Ok(())
     }
 
-    /// Set the offload flags for the tap interface.
-    pub fn set_offload(&self, flags: c_uint) -> Result<()> {
+    fn set_offload(&self, flags: c_uint) -> Result<()> {
         // ioctl is safe. Called with a valid tap fd, and we check the return.
         let ret =
             unsafe { ioctl_with_val(&self.tap_file, net_sys::TUNSETOFFLOAD(), flags as c_ulong) };
@@ -176,8 +194,7 @@ impl Tap {
         Ok(())
     }
 
-    /// Enable the tap interface.
-    pub fn enable(&self) -> Result<()> {
+    fn enable(&self) -> Result<()> {
         let sock = create_socket()?;
 
         let mut ifreq = self.get_ifreq();
@@ -199,8 +216,7 @@ impl Tap {
         Ok(())
     }
 
-    /// Set the size of the vnet hdr.
-    pub fn set_vnet_hdr_size(&self, size: c_int) -> Result<()> {
+    fn set_vnet_hdr_size(&self, size: c_int) -> Result<()> {
         // ioctl is safe. Called with a valid tap fd, and we check the return.
         let ret = unsafe { ioctl_with_ref(&self.tap_file, net_sys::TUNSETVNETHDRSZ(), &size) };
         if ret < 0 {
@@ -251,6 +267,90 @@ impl AsRawFd for Tap {
 unsafe impl Pollable for Tap {
     fn pollable_fd(&self) -> RawFd {
         self.tap_file.as_raw_fd()
+    }
+}
+
+pub mod fakes {
+    use super::*;
+    use std::fs::OpenOptions;
+    use std::fs::remove_file;
+
+    const TMP_FILE: &str = "/tmp/crosvm_tap_test_file";
+
+    pub struct FakeTap {
+        tap_file: File,
+    }
+
+    impl TapT for FakeTap {
+        fn new() -> Result<FakeTap> {
+            Ok(FakeTap {
+                tap_file: OpenOptions::new()
+                    .read(true)
+                    .append(true)
+                    .create(true)
+                    .open(TMP_FILE)
+                    .unwrap()
+            })
+        }
+
+        fn set_ip_addr(&self, _: net::Ipv4Addr) -> Result<()> {
+            Ok(())
+        }
+
+        fn set_netmask(&self, _: net::Ipv4Addr) -> Result<()> {
+            Ok(())
+        }
+
+        fn set_offload(&self, _: c_uint) -> Result<()> {
+            Ok(())
+        }
+
+        fn enable(&self) -> Result<()> {
+            Ok(())
+        }
+
+        fn set_vnet_hdr_size(&self, _: c_int) -> Result<()> {
+            Ok(())
+        }
+
+        fn get_ifreq(&self) -> net_sys::ifreq {
+            let ifreq: net_sys::ifreq = Default::default();
+            ifreq
+        }
+    }
+
+    impl Drop for FakeTap {
+        fn drop(&mut self) {
+            let _ = remove_file(TMP_FILE);
+        }
+    }
+
+    impl Read for FakeTap {
+        fn read(&mut self, _: &mut [u8]) -> IoResult<usize> {
+            Ok(0)
+        }
+    }
+
+    impl Write for FakeTap {
+        fn write(&mut self, _: &[u8]) -> IoResult<usize> {
+            Ok(0)
+        }
+
+        fn flush(&mut self) -> IoResult<()> {
+            Ok(())
+        }
+    }
+
+    impl AsRawFd for FakeTap {
+        fn as_raw_fd(&self) -> RawFd {
+            self.tap_file.as_raw_fd()
+        }
+    }
+
+    unsafe impl Pollable for FakeTap {
+        fn pollable_fd(&self) -> RawFd {
+            self.tap_file.as_raw_fd()
+        }
     }
 }
 
