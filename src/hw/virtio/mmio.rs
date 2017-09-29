@@ -195,7 +195,7 @@ impl BusDevice for MmioDevice {
                     0x70 => self.driver_status,
                     0xfc => self.config_generation,
                     _ => {
-                        println!("unknown virtio mmio register read: 0x{:x}", offset);
+                        warn!("unknown virtio mmio register read: 0x{:x}", offset);
                         return;
                     }
                 };
@@ -203,9 +203,7 @@ impl BusDevice for MmioDevice {
             }
             0x100...0xfff => self.device.read_config(offset - 0x100, data),
             _ => {
-                println!("invalid virtio mmio read: 0x{:x}:0x{:x}",
-                         offset,
-                         data.len());
+                warn!("invalid virtio mmio read: 0x{:x}:0x{:x}", offset, data.len());
             }
         };
 
@@ -243,22 +241,20 @@ impl BusDevice for MmioDevice {
                     0xa0 => mut_q = self.with_queue_mut(|q| lo(&mut q.used_ring, v)),
                     0xa4 => mut_q = self.with_queue_mut(|q| hi(&mut q.used_ring, v)),
                     _ => {
-                        println!("unknown virtio mmio register write: 0x{:x}", offset);
+                        warn!("unknown virtio mmio register write: 0x{:x}", offset);
                         return;
                     }
                 }
             }
             0x100...0xfff => return self.device.write_config(offset - 0x100, data),
             _ => {
-                println!("invalid virtio mmio write: 0x{:x}:0x{:x}",
-                         offset,
-                         data.len());
+                warn!("invalid virtio mmio write: 0x{:x}:0x{:x}", offset, data.len());
                 return;
             }
         }
 
         if self.device_activated && mut_q {
-            println!("warning: virtio queue was changed after device was activated");
+            warn!("virtio queue was changed after device was activated");
         }
 
         if !self.device_activated && self.is_driver_ready() && self.are_queues_valid() {

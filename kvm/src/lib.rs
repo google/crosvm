@@ -6,6 +6,7 @@
 
 extern crate libc;
 extern crate kvm_sys;
+#[macro_use]
 extern crate sys_util;
 
 mod cap;
@@ -99,7 +100,7 @@ impl Kvm {
             0 => 4, // according to api.txt
             x if x > 0 => x as u32,
             _ => {
-                println!("warning: kernel returned invalid number of VCPUs");
+                warn!("kernel returned invalid number of VCPUs");
                 4
             },
         }

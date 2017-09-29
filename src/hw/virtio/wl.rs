@@ -900,15 +900,12 @@ impl Worker {
                             self.out_queue.add_used(&self.mem, index, len);
                         }
                     }
-                    KILL => {
-                        println!("crosvm Wl worker killed");
-                        break 'poll;
-                    }
+                    KILL => break 'poll,
                     v => {
                         if let Some(&id) = token_vfd_id_map.get(&v) {
                             let res = self.state.recv(id);
                             if let Err(e) = res {
-                                println!("recv vfd {} error: {:?}", id, e);
+                                error!("failed to receive vfd {}: {:?}", id, e);
                             }
                         }
                     }
@@ -932,7 +929,7 @@ impl Worker {
                             len
                         }
                         Err(e) => {
-                            println!("failed to encode response to descriptor chain: {:?}", e);
+                            error!("failed to encode response to descriptor chain: {:?}", e);
                             0
                         }
                     };
@@ -1013,7 +1010,7 @@ impl VirtioDevice for Wl {
             match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
                 Ok(v) => v,
                 Err(e) => {
-                    println!("wl: error creating kill EventFd pair: {:?}", e);
+                    error!("failed creating kill EventFd pair: {:?}", e);
                     return;
                 }
             };

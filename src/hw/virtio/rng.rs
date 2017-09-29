@@ -77,7 +77,7 @@ impl Worker {
             let tokens = match poller.poll(&[(Q_AVAIL, &queue_evt), (KILL, &kill_evt)]) {
                 Ok(v) => v,
                 Err(e) => {
-                    println!("rng: error polling for events: {:?}", e);
+                    error!("failed polling for events: {:?}", e);
                     break;
                 }
             };
@@ -87,7 +87,7 @@ impl Worker {
                 match token {
                     Q_AVAIL => {
                         if let Err(e) = queue_evt.read() {
-                            println!("rng: error reading queue EventFd: {:?}", e);
+                            error!("failed reading queue EventFd: {:?}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_queue();
@@ -163,7 +163,7 @@ impl VirtioDevice for Rng {
             match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
                 Ok(v) => v,
                 Err(e) => {
-                    println!("rng: error creating kill EventFd pair: {:?}", e);
+                    error!("failed to create kill EventFd pair: {:?}", e);
                     return;
                 }
             };

@@ -197,7 +197,6 @@ struct Config {
     disable_wayland: bool,
     socket_path: Option<PathBuf>,
     multiprocess: bool,
-    warn_unknown_ports: bool,
     cid: Option<u64>,
 }
 
@@ -422,8 +421,7 @@ fn run_config(cfg: Config) -> Result<()> {
             cfg.vcpu_count.unwrap_or(1),
             guest_mem,
             &device_manager.bus,
-            control_sockets,
-            cfg.warn_unknown_ports)
+            control_sockets)
 }
 
 fn run_kvm(requests: Vec<VmRequest>,
@@ -432,8 +430,7 @@ fn run_kvm(requests: Vec<VmRequest>,
            vcpu_count: u32,
            guest_mem: GuestMemory,
            mmio_bus: &hw::Bus,
-           control_sockets: Vec<UnlinkUnixDatagram>,
-           warn_unknown_ports: bool)
+           control_sockets: Vec<UnlinkUnixDatagram>)
            -> Result<()> {
     let kvm = Kvm::new().map_err(Error::Kvm)?;
     let kernel_start_addr = GuestAddress(KERNEL_START_OFFSET);
@@ -455,7 +452,7 @@ fn run_kvm(requests: Vec<VmRequest>,
             return Err(Error::Vm(e));
         }
         if !running {
-            println!("configuration requested exit");
+            info!("configuration requested exit");
             return Ok(());
         }
     }
@@ -562,40 +559,20 @@ fn run_kvm(requests: Vec<VmRequest>,
                     Ok(run) => {
                         match run {
                             VcpuExit::IoIn(addr, data) => {
-                                if !io_bus.read(addr as u64, data) && warn_unknown_ports {
-                                    println!("warning: unhandled I/O port {}-bit read at 0x{:03x}",
-                                             data.len() << 3,
-                                             addr);
-                                }
+                                io_bus.read(addr as u64, data);
                             }
-
                             VcpuExit::IoOut(addr, data) => {
-                                if !io_bus.write(addr as u64, data) && warn_unknown_ports {
-                                    println!("warning: unhandled I/O port {}-bit write at 0x{:03x}",
-                                             data.len() << 3,
-                                             addr);
-                                }
+                                io_bus.write(addr as u64, data);
                             }
-
                             VcpuExit::MmioRead(addr, data) => {
-                                if !mmio_bus.read(addr, data) && warn_unknown_ports {
-                                    println!("warning: unhandled mmio {}-bit read at 0x{:08x}",
-                                             data.len() << 3,
-                                             addr);
-                                }
+                                mmio_bus.read(addr, data);
                             }
-
                             VcpuExit::MmioWrite(addr, data) => {
-                                if !mmio_bus.write(addr, data) && warn_unknown_ports {
-                                    println!("warning: unhandled mmio {}-bit write at 0x{:08x}",
-                                             data.len() << 3,
-                                             addr);
-                                }
+                                mmio_bus.write(addr, data);
                             }
-
                             VcpuExit::Hlt => break,
                             VcpuExit::Shutdown => break,
-                            r => println!("unexpected vcpu exit: {:?}", r),
+                            r => warn!("unexpected vcpu exit: {:?}", r),
                         }
                     }
                     Err(e) => {
@@ -664,7 +641,7 @@ fn run_control(mut vm: Vm,
             match poller.poll(&pollables[..]) {
                 Ok(v) => v,
                 Err(e) => {
-                    println!("failed to poll: {:?}", e);
+                    error!("failed to poll: {:?}", e);
                     break;
                 }
             }
@@ -672,7 +649,7 @@ fn run_control(mut vm: Vm,
         for &token in tokens {
             match token {
                 EXIT => {
-                    println!("vcpu requested shutdown");
+                    info!("vcpu requested shutdown");
                     break 'poll;
                 }
                 STDIN => {
@@ -708,14 +685,14 @@ fn run_control(mut vm: Vm,
                             let response =
                                 request.execute(&mut vm, &mut next_dev_pfn, &mut running);
                             if let Err(e) = response.send(&mut scm, socket.as_ref()) {
-                                println!("failed to send VmResponse: {:?}", e);
+                                error!("failed to send VmResponse: {:?}", e);
                             }
                             if !running {
-                                println!("control socket requested exit");
+                                info!("control socket requested exit");
                                 break 'poll;
                             }
                         }
-                        Err(e) => println!("failed to recv VmRequest: {:?}", e),
+                        Err(e) => error!("failed to recv VmRequest: {:?}", e),
                     }
                 }
                 _ => {}
@@ -730,10 +707,10 @@ fn run_control(mut vm: Vm,
         match handle.kill(0) {
             Ok(_) => {
                 if let Err(e) = handle.join() {
-                    println!("failed to join vcpu thread: {:?}", e);
+                    error!("failed to join vcpu thread: {:?}", e);
                 }
             }
-            Err(e) => println!("failed to kill vcpu thread: {:?}", e),
+            Err(e) => error!("failed to kill vcpu thread: {:?}", e),
         }
     }
 
@@ -955,8 +932,8 @@ fn run_vm(args: std::env::Args) {
     match match_res {
         Ok(_) => {
             match run_config(cfg) {
-                Ok(_) => println!("crosvm has exited normally"),
-                Err(e) => println!("{}", e),
+                Ok(_) => info!("crosvm has exited normally"),
+                Err(e) => error!("{}", e),
             }
         }
         Err(argument::Error::PrintHelp) => print_help("crosvm run", "KERNEL", &arguments[..]),

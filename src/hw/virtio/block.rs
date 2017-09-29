@@ -197,7 +197,7 @@ impl Worker {
                             VIRTIO_BLK_S_OK
                         }
                         Err(e) => {
-                            println!("block: error executing disk request: {:?}", e);
+                            error!("failed executing disk request: {:?}", e);
                             len = 1; // 1 byte for the status
                             e.status()
                         }
@@ -209,8 +209,7 @@ impl Worker {
                         .unwrap();
                 }
                 Err(e) => {
-                    println!("block: error processing available descriptor chain: {:?}",
-                             e);
+                    error!("failed processing available descriptor chain: {:?}", e);
                     len = 0;
                 }
             }
@@ -239,7 +238,7 @@ impl Worker {
             let tokens = match poller.poll(&[(Q_AVAIL, &queue_evt), (KILL, &kill_evt)]) {
                 Ok(v) => v,
                 Err(e) => {
-                    println!("block: error polling for events: {:?}", e);
+                    error!("failed polling for events: {:?}", e);
                     break;
                 }
             };
@@ -249,7 +248,7 @@ impl Worker {
                 match token {
                     Q_AVAIL => {
                         if let Err(e) = queue_evt.read() {
-                            println!("block: error reading queue EventFd: {:?}", e);
+                            error!("failed reading queue EventFd: {:?}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_queue(0);
@@ -291,10 +290,10 @@ impl Block {
     pub fn new(mut disk_image: File) -> SysResult<Block> {
         let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
         if disk_size % SECTOR_SIZE != 0 {
-            println!("block: Disk size {} is not a multiple of sector size {}; \
+            warn!("Disk size {} is not a multiple of sector size {}; \
                          the remainder will not be visible to the guest.",
-                     disk_size,
-                     SECTOR_SIZE);
+                  disk_size,
+                  SECTOR_SIZE);
         }
         Ok(Block {
                kill_evt: None,
@@ -358,7 +357,7 @@ impl VirtioDevice for Block {
             match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
                 Ok(v) => v,
                 Err(e) => {
-                    println!("block: error creating kill EventFd pair: {:?}", e);
+                    error!("failed creating kill EventFd pair: {:?}", e);
                     return;
                 }
             };

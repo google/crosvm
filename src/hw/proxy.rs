@@ -31,13 +31,13 @@ fn child_proc(sock: UnixDatagram, device: &mut BusDevice) {
         let mut buf = [0; MSG_SIZE];
         match handle_eintr!(sock.recv(&mut buf)) {
             Ok(c) if c != buf.len() => {
-                println!("error: child device process incorrect recv size: got {}, expected {}",
-                         c,
-                         buf.len());
+                error!("child device process incorrect recv size: got {}, expected {}",
+                       c,
+                       buf.len());
                 break;
             }
             Err(e) => {
-                println!("error: child device process failed recv: {}", e);
+                error!("child device process failed recv: {}", e);
                 break;
             }
             _ => {}
@@ -57,12 +57,12 @@ fn child_proc(sock: UnixDatagram, device: &mut BusDevice) {
             running = false;
             handle_eintr!(sock.send(&buf))
         } else {
-            println!("child device process unknown command: {}", cmd);
+            error!("child device process unknown command: {}", cmd);
             break;
         };
 
         if let Err(e) = res {
-            println!("error: child device process failed send: {}", e);
+            error!("error: child device process failed send: {}", e);
             break;
         }
     }
@@ -102,7 +102,10 @@ impl ProxyDevice {
             .set_write_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))?;
         parent_sock
             .set_read_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))?;
-        Ok(ProxyDevice { sock: parent_sock, pid: pid })
+        Ok(ProxyDevice {
+               sock: parent_sock,
+               pid: pid,
+           })
     }
 
     pub fn pid(&self) -> pid_t {
@@ -137,7 +140,7 @@ impl BusDevice for ProxyDevice {
         let res = self.send_cmd(Command::Read, offset, data.len() as u32, &[])
             .and_then(|_| self.recv_resp(data));
         if let Err(e) = res {
-            println!("error: failed read from child device process: {}", e);
+            error!("failed read from child device process: {}", e);
         }
     }
 
@@ -145,7 +148,7 @@ impl BusDevice for ProxyDevice {
         let res = self.send_cmd(Command::Write, offset, data.len() as u32, data)
             .and_then(|_| self.wait());
         if let Err(e) = res {
-            println!("error: failed write to child device process: {}", e);
+            error!("failed write to child device process: {}", e);
         }
     }
 }
@@ -154,7 +157,7 @@ impl Drop for ProxyDevice {
     fn drop(&mut self) {
         let res = self.send_cmd(Command::Shutdown, 0, 0, &[]);
         if let Err(e) = res {
-            println!("error: failed to shutdown child device process: {}", e);
+            error!("failed to shutdown child device process: {}", e);
         }
     }
 }
