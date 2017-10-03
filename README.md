@@ -69,10 +69,12 @@ were terminated early.
 
 ### Multiprocess Mode
 
-To run crosvm in multiprocess mode, use the `-u` flag. Each device that supports
-running inside of a sandbox will run in a jailed child process of crosvm. The
-appropriate minijail seccomp policy files for the running architecture must be
-in the current working directory.
+By default crosvm runs in multiprocess mode. Each device that supports running
+inside of a sandbox will run in a jailed child process of crosvm. The
+appropriate minijail seccomp policy files must be present either in
+`/usr/share/policy/crosvm` or in the path specified by the
+`--seccomp-policy-dir` argument. The sandbox can be disabled for testing with
+the '--disable-sandbox` option.
 
 ### Virtio Wayland
 
