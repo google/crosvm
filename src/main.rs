@@ -882,7 +882,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 }
             })?);
         }
-        "seccomp_policy_dir" => {
+        "seccomp-policy-dir" => {
             // Value is Some because we are in this match so it's safe to unwrap.
             cfg.seccomp_policy_dir = Some(value.unwrap().to_owned());
         },
@@ -923,7 +923,7 @@ fn run_vm(args: std::env::Args) {
                                 "Path to put the control socket. If PATH is a directory, a name will be generated."),
           Argument::short_flag('u', "multiprocess", "Run each device in a child process."),
           Argument::value("cid", "CID", "Context ID for virtual sockets"),
-          Argument::value("seccomp_policy_dir", "PATH", "Path to seccomp .policy files."),
+          Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
