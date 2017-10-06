@@ -173,6 +173,7 @@ crates are:
 * `syscall_defines` - Lists of syscall numbers in each architecture used to make syscalls not supported in `libc`.
 * `vhost` - Wrappers for creating vhost based devices.
 * `virtio_sys` - Low-level (mostly) auto-generated structures and constants for interfacing with kernel vhost support.
+* `vm_control` - IPC for the VM.
 * `x86_64` - Support code specific to 64 bit intel machines.
 
 The `seccomp` folder contains minijail seccomp policy files for each sandboxed

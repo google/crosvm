@@ -17,12 +17,12 @@ extern crate net_sys;
 extern crate net_util;
 extern crate vhost;
 extern crate virtio_sys;
+extern crate vm_control;
 extern crate data_model;
 
 pub mod argument;
 pub mod hw;
 pub mod kernel_cmdline;
-pub mod vm_control;
 pub mod device_manager;
 
 use std::env::var_os;

@@ -10,6 +10,11 @@
 //! The wire message format is a little-endian C-struct of fixed size, along with a file descriptor
 //! if the request type expects one.
 
+extern crate data_model;
+extern crate kvm;
+extern crate libc;
+extern crate sys_util;
+
 use std::fs::File;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;

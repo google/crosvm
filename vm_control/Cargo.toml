@@ -1,0 +1,10 @@
+[package]
+name = "vm_control"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+
+[dependencies]
+data_model = { path = "../data_model" }
+kvm = { path = "../kvm" }
+libc = "*"
+sys_util = { path = "../sys_util" }

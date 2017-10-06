@@ -19,6 +19,7 @@ net_sys = { path = "net_sys" }
 net_util = { path = "net_util" }
 vhost = { path = "vhost" }
 virtio_sys = { path = "virtio_sys" }
+vm_control = { path = "vm_control" }
 data_model = { path = "data_model" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
