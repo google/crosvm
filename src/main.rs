@@ -4,6 +4,7 @@
 
 //! Runs a virtual machine under KVM
 
+extern crate devices;
 extern crate libc;
 extern crate io_jail;
 extern crate kvm;
@@ -13,15 +14,10 @@ extern crate kernel_loader;
 extern crate byteorder;
 #[macro_use]
 extern crate sys_util;
-extern crate net_sys;
-extern crate net_util;
-extern crate vhost;
-extern crate virtio_sys;
 extern crate vm_control;
 extern crate data_model;
 
 pub mod argument;
-pub mod hw;
 pub mod kernel_cmdline;
 pub mod device_manager;
 
@@ -57,10 +53,10 @@ enum Error {
     Disk(std::io::Error),
     BlockDeviceNew(sys_util::Error),
     BlockDeviceRootSetup(sys_util::Error),
-    VhostNetDeviceNew(hw::virtio::vhost::Error),
-    NetDeviceNew(hw::virtio::NetError),
+    VhostNetDeviceNew(devices::virtio::vhost::Error),
+    NetDeviceNew(devices::virtio::NetError),
     NetDeviceRootSetup(sys_util::Error),
-    VhostVsockDeviceNew(hw::virtio::vhost::Error),
+    VhostVsockDeviceNew(devices::virtio::vhost::Error),
     VsockDeviceRootSetup(sys_util::Error),
     DeviceJail(io_jail::Error),
     DevicePivotRoot(io_jail::Error),
@@ -72,7 +68,7 @@ enum Error {
     MissingWayland(PathBuf),
     RegisterIrqfd(sys_util::Error),
     RegisterRng(device_manager::Error),
-    RngDeviceNew(hw::virtio::RngError),
+    RngDeviceNew(devices::virtio::RngError),
     RngDeviceRootSetup(sys_util::Error),
     KernelLoader(kernel_loader::Error),
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -318,7 +314,7 @@ fn run_config(cfg: Config) -> Result<()> {
                             .open(disk.path)
                             .map_err(|e| Error::Disk(e))?;
 
-        let block_box = Box::new(hw::virtio::Block::new(disk_image)
+        let block_box = Box::new(devices::virtio::Block::new(disk_image)
                     .map_err(|e| Error::BlockDeviceNew(e))?);
         let jail = if cfg.multiprocess {
             let block_root_path = block_root.as_path().unwrap(); // Won't fail if new succeeded.
@@ -335,7 +331,7 @@ fn run_config(cfg: Config) -> Result<()> {
 
     let rng_root = TempDir::new(&PathBuf::from("/tmp/rng_root"))
         .map_err(Error::RngDeviceRootSetup)?;
-    let rng_box = Box::new(hw::virtio::Rng::new().map_err(Error::RngDeviceNew)?);
+    let rng_box = Box::new(devices::virtio::Rng::new().map_err(Error::RngDeviceNew)?);
     let rng_jail = if cfg.multiprocess {
         let rng_root_path = rng_root.as_path().unwrap(); // Won't fail if new succeeded.
         let policy_path: PathBuf = cfg.seccomp_policy_dir.join("rng_device.policy");
@@ -351,11 +347,11 @@ fn run_config(cfg: Config) -> Result<()> {
         .map_err(Error::NetDeviceRootSetup)?;
     if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
-            let net_box: Box<hw::virtio::VirtioDevice> = if cfg.vhost_net {
-                Box::new(hw::virtio::vhost::Net::new(host_ip, netmask, &guest_mem)
+            let net_box: Box<devices::virtio::VirtioDevice> = if cfg.vhost_net {
+                Box::new(devices::virtio::vhost::Net::new(host_ip, netmask, &guest_mem)
                                    .map_err(|e| Error::VhostNetDeviceNew(e))?)
             } else {
-                Box::new(hw::virtio::Net::new(host_ip, netmask)
+                Box::new(devices::virtio::Net::new(host_ip, netmask)
                                    .map_err(|e| Error::NetDeviceNew(e))?)
             };
 
@@ -390,7 +386,7 @@ fn run_config(cfg: Config) -> Result<()> {
 
                 let (host_socket, device_socket) = UnixDatagram::pair().map_err(Error::Socket)?;
                 control_sockets.push(UnlinkUnixDatagram(host_socket));
-                let wl_box = Box::new(hw::virtio::Wl::new(if cfg.multiprocess {
+                let wl_box = Box::new(devices::virtio::Wl::new(if cfg.multiprocess {
                         &jailed_wayland_path
                     } else {
                         wayland_path.as_path()
@@ -420,7 +416,7 @@ fn run_config(cfg: Config) -> Result<()> {
     let vsock_root = TempDir::new(&PathBuf::from("/tmp/vsock_root"))
         .map_err(Error::VsockDeviceRootSetup)?;
     if let Some(cid) = cfg.cid {
-        let vsock_box = Box::new(hw::virtio::vhost::Vsock::new(cid, &guest_mem)
+        let vsock_box = Box::new(devices::virtio::vhost::Vsock::new(cid, &guest_mem)
             .map_err(|e| Error::VhostVsockDeviceNew(e))?);
 
         let jail = if cfg.multiprocess {
@@ -455,7 +451,7 @@ fn run_kvm(requests: Vec<VmRequest>,
            cmdline: &CStr,
            vcpu_count: u32,
            guest_mem: GuestMemory,
-           mmio_bus: &hw::Bus,
+           mmio_bus: &devices::Bus,
            control_sockets: Vec<UnlinkUnixDatagram>)
            -> Result<()> {
     let kvm = Kvm::new().map_err(Error::Kvm)?;
@@ -492,7 +488,7 @@ fn run_kvm(requests: Vec<VmRequest>,
                              cmdline.to_bytes().len() + 1,
                              vcpu_count as u8)?;
 
-    let mut io_bus = hw::Bus::new();
+    let mut io_bus = devices::Bus::new();
 
     let exit_evt = EventFd::new().expect("failed to create exit eventfd");
 
@@ -503,41 +499,42 @@ fn run_kvm(requests: Vec<VmRequest>,
         .expect("failed to create child signalfd");
 
     struct NoDevice;
-    impl hw::BusDevice for NoDevice {}
+    impl devices::BusDevice for NoDevice {}
 
     let com_evt_1_3 = EventFd::new().map_err(Error::EventFd)?;
     let com_evt_2_4 = EventFd::new().map_err(Error::EventFd)?;
     let stdio_serial =
-        Arc::new(Mutex::new(hw::Serial::new_out(com_evt_1_3.try_clone().map_err(Error::EventFd)?,
-                                                Box::new(stdout()))));
+        Arc::new(Mutex::new(
+                    devices::Serial::new_out(com_evt_1_3.try_clone().map_err(Error::EventFd)?,
+                Box::new(stdout()))));
     let nul_device = Arc::new(Mutex::new(NoDevice));
     io_bus.insert(stdio_serial.clone(), 0x3f8, 0x8).unwrap();
     io_bus
-        .insert(Arc::new(Mutex::new(hw::Serial::new_sink(com_evt_2_4
+        .insert(Arc::new(Mutex::new(devices::Serial::new_sink(com_evt_2_4
                                                              .try_clone()
                                                              .map_err(Error::EventFd)?))),
                 0x2f8,
                 0x8)
         .unwrap();
     io_bus
-        .insert(Arc::new(Mutex::new(hw::Serial::new_sink(com_evt_1_3
+        .insert(Arc::new(Mutex::new(devices::Serial::new_sink(com_evt_1_3
                                                              .try_clone()
                                                              .map_err(Error::EventFd)?))),
                 0x3e8,
                 0x8)
         .unwrap();
     io_bus
-        .insert(Arc::new(Mutex::new(hw::Serial::new_sink(com_evt_2_4
+        .insert(Arc::new(Mutex::new(devices::Serial::new_sink(com_evt_2_4
                                                              .try_clone()
                                                              .map_err(Error::EventFd)?))),
                 0x2e8,
                 0x8)
         .unwrap();
     io_bus
-        .insert(Arc::new(Mutex::new(hw::Cmos::new())), 0x70, 0x2)
+        .insert(Arc::new(Mutex::new(devices::Cmos::new())), 0x70, 0x2)
         .unwrap();
     io_bus
-        .insert(Arc::new(Mutex::new(hw::I8042Device::new(exit_evt
+        .insert(Arc::new(Mutex::new(devices::I8042Device::new(exit_evt
                                                              .try_clone()
                                                              .map_err(Error::EventFd)?))),
                 0x061,
@@ -632,7 +629,7 @@ fn run_kvm(requests: Vec<VmRequest>,
 fn run_control(mut vm: Vm,
                control_sockets: Vec<UnlinkUnixDatagram>,
                mut next_dev_pfn: u64,
-               stdio_serial: Arc<Mutex<hw::Serial>>,
+               stdio_serial: Arc<Mutex<devices::Serial>>,
                exit_evt: EventFd,
                sigchld_fd: SignalFd,
                kill_signaled: Arc<AtomicBool>,

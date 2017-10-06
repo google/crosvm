@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 
 use sys_util::{EventFd, Result};
 
-use hw::BusDevice;
+use BusDevice;
 
 const LOOP_SIZE: usize = 0x40;
 

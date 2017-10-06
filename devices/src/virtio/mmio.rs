@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use byteorder::{ByteOrder, LittleEndian};
 
 use super::*;
-use hw::BusDevice;
+use BusDevice;
 use sys_util::{Result, EventFd, GuestAddress, GuestMemory};
 
 const VENDOR_ID: u32 = 0;
@@ -81,7 +81,7 @@ pub trait VirtioDevice: Send {
 /// This requires 3 points of installation to work with a VM:
 ///
 /// 1. Mmio reads and writes must be sent to this device at what is referred to here as MMIO base.
-/// 1. `Mmio::queue_evts` must be installed at `hw::virtio::NOITFY_REG_OFFSET` offset from the MMIO
+/// 1. `Mmio::queue_evts` must be installed at `virtio::NOITFY_REG_OFFSET` offset from the MMIO
 /// base. Each event in the array must be signaled if the index is written at that offset.
 /// 1. `Mmio::interrupt_evt` must signal an interrupt that the guest driver is listening to when it
 /// is written to.
@@ -133,7 +133,7 @@ impl MmioDevice {
     }
 
     /// Gets the list of queue events that must be triggered whenever the VM writes to
-    /// `hw::virtio::NOITFY_REG_OFFSET` past the MMIO base. Each event must be triggered when the
+    /// `virtio::NOITFY_REG_OFFSET` past the MMIO base. Each event must be triggered when the
     /// value being written equals the index of the event in this list.
     pub fn queue_evts(&self) -> &[EventFd] {
         self.queue_evts.as_slice()

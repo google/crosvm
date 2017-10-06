@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use byteorder::{NativeEndian, ByteOrder};
 
-use hw::BusDevice;
+use BusDevice;
 use sys_util::{clone_process, CloneNamespace};
 
 const SOCKET_TIMEOUT_MS: u64 = 2000;
@@ -68,7 +68,7 @@ fn child_proc(sock: UnixDatagram, device: &mut BusDevice) {
     }
 }
 
-/// Wraps an inner `hw::BusDevice` that is run inside a child process via fork.
+/// Wraps an inner `BusDevice` that is run inside a child process via fork.
 ///
 /// Because forks are very unfriendly to destructors and all memory mappings and file descriptors
 /// are inherited, this should be used as early as possible in the main process.

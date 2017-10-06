@@ -8,17 +8,13 @@ lto = true
 panic = 'abort'
 
 [dependencies]
+devices = { path = "devices" }
 io_jail = { path = "io_jail" }
 kvm = { path = "kvm" }
 sys_util = { path = "sys_util" }
 kernel_loader = { path = "kernel_loader" }
 libc = "=0.2.29"
 byteorder = "=1.1.0"
-syscall_defines = { path = "syscall_defines" }
-net_sys = { path = "net_sys" }
-net_util = { path = "net_util" }
-vhost = { path = "vhost" }
-virtio_sys = { path = "virtio_sys" }
 vm_control = { path = "vm_control" }
 data_model = { path = "data_model" }
 

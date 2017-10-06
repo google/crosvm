@@ -18,7 +18,7 @@ use kvm::IoeventAddress;
 use sys_util::{EventFd, GuestMemory, syslog};
 use sys_util;
 
-use hw;
+use devices;
 use kernel_cmdline;
 use vm_control::VmRequest;
 
@@ -74,7 +74,7 @@ const MAX_IRQ: u32 = 15;
 
 /// Manages the complexities of adding a device.
 pub struct DeviceManager {
-    pub bus: hw::Bus,
+    pub bus: devices::Bus,
     pub vm_requests: Vec<VmRequest>,
     guest_mem: GuestMemory,
     mmio_len: u64,
@@ -91,13 +91,13 @@ impl DeviceManager {
             mmio_len: mmio_len,
             mmio_base: mmio_base,
             irq: irq_base,
-            bus: hw::Bus::new(),
+            bus: devices::Bus::new(),
         }
     }
 
     /// Register a device to be used via MMIO transport.
     pub fn register_mmio(&mut self,
-                         device: Box<hw::virtio::VirtioDevice>,
+                         device: Box<devices::virtio::VirtioDevice>,
                          jail: Option<Minijail>,
                          cmdline: &mut kernel_cmdline::Cmdline)
                          -> Result<()> {
@@ -110,11 +110,11 @@ impl DeviceManager {
         keep_fds.push(STDERR_FILENO);
         syslog::push_fds(&mut keep_fds);
 
-        let mmio_device = hw::virtio::MmioDevice::new(self.guest_mem.clone(), device)
+        let mmio_device = devices::virtio::MmioDevice::new(self.guest_mem.clone(), device)
             .map_err(Error::CreateMmioDevice)?;
         for (i, queue_evt) in mmio_device.queue_evts().iter().enumerate() {
             let io_addr = IoeventAddress::Mmio(self.mmio_base +
-                                               hw::virtio::NOITFY_REG_OFFSET as u64);
+                                               devices::virtio::NOITFY_REG_OFFSET as u64);
             self.vm_requests.push(VmRequest::RegisterIoevent(queue_evt
                                                                  .try_clone()
                                                                  .map_err(Error::CloneIoeventFd)?,
@@ -150,7 +150,7 @@ impl DeviceManager {
                 };
             };
 
-            let proxy_dev = hw::ProxyDevice::new(mmio_device, |keep_pipe| {
+            let proxy_dev = devices::ProxyDevice::new(mmio_device, |keep_pipe| {
                 // The setresuid/setresgid calls will not work until the maps have been set, so we
                 // wait for a signal indicating the uid/gid maps have been set by the parent.
                 if let Some(evt) = id_map_done_evt.take() {
@@ -230,7 +230,7 @@ mod tests {
     use sys_util::{EventFd, GuestAddress, GuestMemory};
     use device_manager;
     use kernel_cmdline;
-    use hw;
+    use devices;
 
     const QUEUE_SIZES: &'static [u16] = &[64];
 
@@ -239,7 +239,7 @@ mod tests {
         dummy: u32,
     }
 
-    impl hw::virtio::VirtioDevice for DummyDevice {
+    impl devices::virtio::VirtioDevice for DummyDevice {
         fn keep_fds(&self) -> Vec<RawFd> {
             Vec::new()
         }
@@ -258,7 +258,7 @@ mod tests {
                     mem: GuestMemory,
                     interrupt_evt: EventFd,
                     status: Arc<AtomicUsize>,
-                    queues: Vec<hw::virtio::Queue>,
+                    queues: Vec<devices::virtio::Queue>,
                     mut queue_evts: Vec<EventFd>) {
         }
     }

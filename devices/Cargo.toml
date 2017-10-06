@@ -1,0 +1,15 @@
+[package]
+name = "devices"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+
+[dependencies]
+byteorder = "*"
+data_model = { path = "../data_model" }
+libc = "*"
+net_sys = { path = "../net_sys" }
+net_util = { path = "../net_util" }
+sys_util = { path = "../sys_util" }
+vhost = { path = "../vhost" }
+virtio_sys = { path = "../virtio_sys" }
+vm_control = { path = "../vm_control" }

@@ -5,7 +5,7 @@
 use std::mem;
 use libc::{tm, time_t, time, gmtime_r};
 
-use hw::BusDevice;
+use BusDevice;
 
 const INDEX_MASK: u8 = 0x7f;
 const INDEX_OFFSET: u64 = 0x0;

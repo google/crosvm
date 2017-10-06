@@ -4,7 +4,7 @@
 
 use sys_util::EventFd;
 
-use hw::BusDevice;
+use BusDevice;
 
 /// A i8042 PS/2 controller that emulates just enough to shutdown the machine.
 pub struct I8042Device {
