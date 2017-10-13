@@ -64,6 +64,8 @@ enum Error {
     RegisterNet(device_manager::Error),
     RegisterWayland(device_manager::Error),
     RegisterVsock(device_manager::Error),
+    SettingGidMap(io_jail::Error),
+    SettingUidMap(io_jail::Error),
     Cmdline(kernel_cmdline::Error),
     MissingWayland(PathBuf),
     RegisterIrqfd(sys_util::Error),
@@ -131,6 +133,8 @@ impl fmt::Display for Error {
                 write!(f, "failed to create root directory for a rng device: {:?}", e)
             }
             &Error::RegisterWayland(ref e) => write!(f, "error registering wayland device: {}", e),
+            &Error::SettingGidMap(ref e) => write!(f, "error setting GID map: {}", e),
+            &Error::SettingUidMap(ref e) => write!(f, "error setting UID map: {}", e),
             &Error::Cmdline(ref e) => write!(f, "the given kernel command line was invalid: {}", e),
             &Error::MissingWayland(ref p) => write!(f, "wayland socket does not exist: {:?}", p),
             &Error::RegisterIrqfd(ref e) => write!(f, "error registering irqfd: {:?}", e),
@@ -228,6 +232,9 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     // All child jails run in a new user namespace without any users mapped,
     // they run as nobody unless otherwise configured.
     let mut j = Minijail::new().map_err(|e| Error::DeviceJail(e))?;
+    j.namespace_pids();
+    j.namespace_user();
+    j.namespace_user_disable_setgroups();
     // Don't need any capabilities.
     j.use_caps(0);
     // Create a new mount namespace with an empty root FS.
@@ -241,6 +248,8 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     j.parse_seccomp_filters(seccomp_policy)
         .map_err(|e| Error::DeviceJail(e))?;
     j.use_seccomp_filter();
+    // Don't do init setup.
+    j.run_as_init();
     Ok(j)
 }
 
@@ -400,8 +409,12 @@ fn run_config(cfg: Config) -> Result<()> {
                     // Map the jail's root uid/gid to the main processes effective uid/gid so that
                     // the jailed device can access the wayland-0 socket with the same credentials
                     // as the main process.
-                    jail.uidmap(&format!("0 {} 1", geteuid()));
-                    jail.gidmap(&format!("0 {} 1", getegid()));
+                    jail.uidmap(&format!("0 {} 1", geteuid()))
+                        .map_err(Error::SettingUidMap)?;
+                    jail.change_uid(geteuid());
+                    jail.gidmap(&format!("0 {} 1", getegid()))
+                        .map_err(Error::SettingGidMap)?;
+                    jail.change_gid(getegid());
                     jail.mount_bind(wayland_path.as_path(), jailed_wayland_path, true).unwrap();
                     Some(jail)
                 } else {

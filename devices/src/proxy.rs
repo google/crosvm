@@ -6,14 +6,33 @@
 
 use libc::pid_t;
 
-use std::io::{Error, ErrorKind, Result};
+use std::{self, fmt, io};
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
+use std::process;
 use std::time::Duration;
 
 use byteorder::{NativeEndian, ByteOrder};
 
 use BusDevice;
-use sys_util::{clone_process, CloneNamespace};
+use io_jail::{self, Minijail};
+
+/// Errors for proxy devices.
+#[derive(Debug)]
+pub enum Error {
+    ForkingJail(io_jail::Error),
+    Io(io::Error),
+}
+pub type Result<T> = std::result::Result<T, Error>;
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &Error::ForkingJail(_) => write!(f, "Failed to fork jail process"),
+            &Error::Io(ref e) => write!(f, "IO error configuring proxy device {}.", e),
+        }
+    }
+}
 
 const SOCKET_TIMEOUT_MS: u64 = 2000;
 const MSG_SIZE: usize = 24;
@@ -85,23 +104,31 @@ impl ProxyDevice {
     ///
     /// # Arguments
     /// * `device` - The device to isolate to another process.
-    /// * `post_clone_cb` - Called after forking the child process, passed the child end of the pipe
-    /// that must be kept open.
-    pub fn new<D: BusDevice, F>(mut device: D, post_clone_cb: F) -> Result<ProxyDevice>
-        where F: FnOnce(&UnixDatagram)
+    /// * `keep_fds` - File descriptors that will be kept open in the child
+    pub fn new<D: BusDevice>(mut device: D, jail: &Minijail, mut keep_fds: Vec<RawFd>)
+            -> Result<ProxyDevice>
     {
-        let (child_sock, parent_sock) = UnixDatagram::pair()?;
+        let (child_sock, parent_sock) = UnixDatagram::pair().map_err(Error::Io)?;
 
-        let pid = clone_process(CloneNamespace::NewUserPid, move || {
-            post_clone_cb(&child_sock);
-            child_proc(child_sock, &mut device);
-        })
-                .map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e)))?;
+        keep_fds.push(child_sock.as_raw_fd());
+        // Forking here is safe as long as the program is still single threaded.
+        let pid = unsafe {
+            match jail.fork(Some(&keep_fds)).map_err(Error::ForkingJail)? {
+                0 => {
+                    child_proc(child_sock, &mut device);
+                    // ! Never returns
+                    process::exit(0);
+                },
+                p => p,
+            }
+        };
 
         parent_sock
-            .set_write_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))?;
+            .set_write_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))
+            .map_err(Error::Io)?;
         parent_sock
-            .set_read_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))?;
+            .set_read_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))
+            .map_err(Error::Io)?;
         Ok(ProxyDevice {
                sock: parent_sock,
                pid: pid,
@@ -118,12 +145,12 @@ impl ProxyDevice {
         NativeEndian::write_u32(&mut buf[4..], len);
         NativeEndian::write_u64(&mut buf[8..], offset);
         buf[16..16 + data.len()].clone_from_slice(data);
-        handle_eintr!(self.sock.send(&buf)).map(|_| ())
+        handle_eintr!(self.sock.send(&buf)).map(|_| ()).map_err(Error::Io)
     }
 
     fn recv_resp(&self, data: &mut [u8]) -> Result<()> {
         let mut buf = [0; MSG_SIZE];
-        handle_eintr!(self.sock.recv(&mut buf))?;
+        handle_eintr!(self.sock.recv(&mut buf)).map_err(Error::Io)?;
         let len = data.len();
         data.clone_from_slice(&buf[16..16 + len]);
         Ok(())
@@ -131,7 +158,7 @@ impl ProxyDevice {
 
     fn wait(&self) -> Result<()> {
         let mut buf = [0; MSG_SIZE];
-        handle_eintr!(self.sock.recv(&mut buf)).map(|_| ())
+        handle_eintr!(self.sock.recv(&mut buf)).map(|_| ()).map_err(Error::Io)
     }
 }
 

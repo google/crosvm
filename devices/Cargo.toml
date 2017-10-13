@@ -7,6 +7,7 @@ authors = ["The Chromium OS Authors"]
 byteorder = "*"
 data_model = { path = "../data_model" }
 libc = "*"
+io_jail = { path = "../io_jail" }
 net_sys = { path = "../net_sys" }
 net_util = { path = "../net_util" }
 sys_util = { path = "../sys_util" }

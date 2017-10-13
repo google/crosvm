@@ -17,7 +17,6 @@ use std::fs;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 #[derive(Debug)]
 pub enum Error {
@@ -174,10 +173,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// process on error.
 pub struct Minijail {
     jail: *mut libminijail::minijail,
-    // Normally, these would be set in the minijail, but minijail can't use these in minijail_enter.
-    // Instead these are accessible by the caller of `Minijail::enter` to manually set.
-    uid_map: Option<String>,
-    gid_map: Option<String>,
 }
 
 impl Minijail {
@@ -191,7 +186,7 @@ impl Minijail {
         if j.is_null() {
             return Err(Error::CreatingMinijail);
         }
-        Ok(Minijail { jail: j, uid_map: None, gid_map: None })
+        Ok(Minijail { jail: j })
     }
 
     // The following functions are safe because they only set values in the
@@ -249,6 +244,18 @@ impl Minijail {
     pub fn reset_signal_mask(&mut self) {
         unsafe { libminijail::minijail_reset_signal_mask(self.jail); }
     }
+    pub fn run_as_init(&mut self) {
+        unsafe { libminijail::minijail_run_as_init(self.jail); }
+    }
+    pub fn namespace_pids(&mut self) {
+        unsafe { libminijail::minijail_namespace_pids(self.jail); }
+    }
+    pub fn namespace_user(&mut self) {
+        unsafe { libminijail::minijail_namespace_user(self.jail); }
+    }
+    pub fn namespace_user_disable_setgroups(&mut self) {
+        unsafe { libminijail::minijail_namespace_user_disable_setgroups(self.jail); }
+    }
     pub fn namespace_vfs(&mut self) {
         unsafe { libminijail::minijail_namespace_vfs(self.jail); }
     }
@@ -270,17 +277,17 @@ impl Minijail {
     pub fn remount_proc_readonly(&mut self) {
         unsafe { libminijail::minijail_remount_proc_readonly(self.jail); }
     }
-    pub fn uidmap(&mut self, uid_map: &str) {
-        self.uid_map = Some(uid_map.to_owned());
+    pub fn uidmap(&mut self, uid_map: &str) -> Result<()> {
+        let map_cstring = CString::new(uid_map)
+                .map_err(|_| Error::StrToCString(uid_map.to_owned()))?;
+        unsafe { libminijail::minijail_uidmap(self.jail, map_cstring.as_ptr()); }
+        Ok(())
     }
-    pub fn get_uidmap(&self) -> Option<&str> {
-        self.uid_map.as_ref().map(String::as_str)
-    }
-    pub fn gidmap(&mut self, gid_map: &str) {
-        self.gid_map = Some(gid_map.to_owned());
-    }
-    pub fn get_gidmap(&self) -> Option<&str> {
-        self.gid_map.as_ref().map(String::as_str)
+    pub fn gidmap(&mut self, gid_map: &str) -> Result<()> {
+        let map_cstring = CString::new(gid_map)
+                .map_err(|_| Error::StrToCString(gid_map.to_owned()))?;
+        unsafe { libminijail::minijail_gidmap(self.jail, map_cstring.as_ptr()); }
+        Ok(())
     }
     pub fn inherit_usergroups(&mut self) {
         unsafe { libminijail::minijail_inherit_usergroups(self.jail); }
@@ -347,21 +354,6 @@ impl Minijail {
         Ok(())
     }
 
-    /// Enters the previously configured minijail.
-    /// `enter` is unsafe because it closes all open FD for this process.  That
-    /// could cause a lot of trouble if not handled carefully.  FDs 0, 1, and 2
-    /// are overwritten with /dev/null FDs unless they are included in the
-    /// inheritable_fds list.
-    /// This Function may abort on error because a partially entered jail isn't
-    /// recoverable.
-    pub unsafe fn enter(&self, inheritable_fds: Option<&[RawFd]>) -> Result<()> {
-        if let Some(keep_fds) = inheritable_fds {
-            self.close_open_fds(keep_fds)?;
-        }
-        libminijail::minijail_enter(self.jail);
-        Ok(())
-    }
-
     /// Forks a child and puts it in the previously configured minijail.
     /// `fork` is unsafe because it closes all open FD for this process.  That
     /// could cause a lot of trouble if not handled carefully.  FDs 0, 1, and 2
@@ -408,43 +400,6 @@ impl Minijail {
             return Err(Error::ForkingMinijail(ret));
         }
         Ok(ret as pid_t)
-    }
-
-    // Closing all open FDs could be unsafe if something is relying on an FD
-    // that is closed unexpectedly.  It is safe as long as it is called
-    // immediately after forking and all needed FDs are in `inheritable_fds`.
-    unsafe fn close_open_fds(&self, inheritable_fds: &[RawFd]) -> Result<()> {
-        const FD_PATH: &'static str = "/proc/self/fd";
-        let mut fds_to_close: Vec<RawFd> = Vec::new();
-        for entry in fs::read_dir(FD_PATH).map_err(|e| Error::ReadFdDir(e))? {
-            let dir_entry = entry.map_err(|e| Error::ReadFdDirEntry(e))?;
-            let name_path = dir_entry.path();
-            let name = name_path.strip_prefix(FD_PATH)
-                    .map_err(|_| Error::PathToCString(name_path.to_owned()))?;
-            let name_str = name.to_str().ok_or(Error::PathToCString(name.to_owned()))?;
-            let fd = <i32>::from_str(name_str).map_err(|_| Error::ProcFd(name_str.to_owned()))?;
-            if !inheritable_fds.contains(&fd) {
-                fds_to_close.push(fd);
-            }
-        }
-        for fd in fds_to_close {
-            // Note that this will also close the DIR fd used to read the
-            // directory, that FD was already closed.  Closing it again will
-            // return an error but won't break anything.
-            libc::close(fd);
-        }
-        // Set stdin, stdout, and stderr to /dev/null unless they are in the inherit list.
-        // These will only be closed when this process exits.
-        let dev_null = fs::File::open("/dev/null").map_err(Error::OpenDevNull)?;
-        for io_fd in &[libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
-            if !inheritable_fds.contains(io_fd) {
-                let ret = libc::dup2(dev_null.as_raw_fd(), *io_fd);
-                if ret < 0 {
-                    return Err(Error::DupDevNull(*libc::__errno_location()));
-                }
-            }
-        }
-        Ok(())
     }
 }
 

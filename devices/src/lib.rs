@@ -6,6 +6,7 @@
 
 extern crate byteorder;
 extern crate data_model;
+extern crate io_jail;
 extern crate libc;
 extern crate net_sys;
 extern crate net_util;
@@ -26,4 +27,5 @@ pub use self::bus::{Bus, BusDevice};
 pub use self::cmos::Cmos;
 pub use self::i8042::I8042Device;
 pub use self::proxy::ProxyDevice;
+pub use self::proxy::Error as ProxyError;
 pub use self::serial::Serial;
