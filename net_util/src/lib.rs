@@ -92,7 +92,7 @@ impl Tap {
         unsafe {
             let ifrn_name = ifreq.ifr_ifrn.ifrn_name.as_mut();
             let ifru_flags = ifreq.ifr_ifru.ifru_flags.as_mut();
-            let mut name_slice = &mut ifrn_name[..TUNTAP_DEV_FORMAT.len()];
+            let name_slice = &mut ifrn_name[..TUNTAP_DEV_FORMAT.len()];
             name_slice.copy_from_slice(TUNTAP_DEV_FORMAT);
             *ifru_flags = (net_sys::IFF_TAP | net_sys::IFF_NO_PI | net_sys::IFF_VNET_HDR) as
                           c_short;

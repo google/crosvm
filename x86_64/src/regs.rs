@@ -104,7 +104,7 @@ pub fn setup_msrs(vcpu: &kvm::Vcpu) -> Result<()> {
     let vec_size_bytes = mem::size_of::<kvm_msrs>() +
                          (entry_vec.len() * mem::size_of::<kvm_msr_entry>());
     let vec: Vec<u8> = Vec::with_capacity(vec_size_bytes);
-    let mut msrs: &mut kvm_msrs = unsafe {
+    let msrs: &mut kvm_msrs = unsafe {
         // Converting the vector's memory to a struct is unsafe.  Carefully using the read-only
         // vector to size and set the members ensures no out-of-bounds erros below.
         &mut *(vec.as_ptr() as *mut kvm_msrs)

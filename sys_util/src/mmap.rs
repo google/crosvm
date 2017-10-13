@@ -251,7 +251,7 @@ impl MemoryMapping {
             // It is safe to overwrite the volatile memory.  Acessing the guest
             // memory as a mutable slice is OK because nothing assumes another
             // thread won't change what is loaded.
-            let mut dst = &mut self.as_mut_slice()[mem_offset..mem_end];
+            let dst = &mut self.as_mut_slice()[mem_offset..mem_end];
             src.read_exact(dst).map_err(Error::ReadFromSource)?;
         }
         Ok(())
