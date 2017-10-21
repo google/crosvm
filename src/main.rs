@@ -21,8 +21,7 @@ pub mod argument;
 pub mod kernel_cmdline;
 pub mod device_manager;
 
-use std::env::var_os;
-use std::ffi::{OsString, CString, CStr};
+use std::ffi::{CString, CStr};
 use std::fmt;
 use std::fs::{File, OpenOptions, remove_file};
 use std::io::{stdin, stdout};
@@ -38,8 +37,8 @@ use std::time::Duration;
 use io_jail::Minijail;
 use kvm::*;
 use sys_util::{GuestAddress, GuestMemory, EventFd, TempDir, Terminal, Poller, Pollable, Scm,
-               register_signal_handler, Killable, SignalFd, geteuid, getegid, getpid,
-               kill_process_group, reap_child, syslog};
+               register_signal_handler, Killable, SignalFd, chown, getpid, geteuid, getegid,
+               get_user_id, get_group_id, kill_process_group, reap_child, syslog};
 
 
 use argument::{Argument, set_arguments, print_help};
@@ -48,7 +47,6 @@ use vm_control::{VmRequest, VmResponse};
 
 enum Error {
     OpenKernel(PathBuf, std::io::Error),
-    EnvVar(&'static str),
     Socket(std::io::Error),
     Disk(std::io::Error),
     BlockDeviceNew(sys_util::Error),
@@ -64,10 +62,11 @@ enum Error {
     RegisterNet(device_manager::Error),
     RegisterWayland(device_manager::Error),
     RegisterVsock(device_manager::Error),
-    SettingGidMap(io_jail::Error),
-    SettingUidMap(io_jail::Error),
     Cmdline(kernel_cmdline::Error),
-    MissingWayland(PathBuf),
+    GetWaylandGroup(sys_util::Error),
+    SettingUidMap(io_jail::Error),
+    SettingGidMap(io_jail::Error),
+    ChownWaylandRoot(sys_util::Error),
     RegisterIrqfd(sys_util::Error),
     RegisterRng(device_manager::Error),
     RngDeviceNew(devices::virtio::RngError),
@@ -106,7 +105,6 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &Error::OpenKernel(ref p, ref e) => write!(f, "failed to open kernel image {:?}: {}", p, e),
-            &Error::EnvVar(key) => write!(f, "missing enviroment variable: {}", key),
             &Error::Socket(ref e) => write!(f, "failed to create socket: {}", e),
             &Error::Disk(ref e) => write!(f, "failed to load disk image: {}", e),
             &Error::BlockDeviceNew(ref e) => write!(f, "failed to create block device: {:?}", e),
@@ -133,10 +131,11 @@ impl fmt::Display for Error {
                 write!(f, "failed to create root directory for a rng device: {:?}", e)
             }
             &Error::RegisterWayland(ref e) => write!(f, "error registering wayland device: {}", e),
-            &Error::SettingGidMap(ref e) => write!(f, "error setting GID map: {}", e),
             &Error::SettingUidMap(ref e) => write!(f, "error setting UID map: {}", e),
+            &Error::SettingGidMap(ref e) => write!(f, "error setting GID map: {}", e),
+            &Error::ChownWaylandRoot(ref e) => write!(f, "error chowning wayland root directory: {:?}", e),
             &Error::Cmdline(ref e) => write!(f, "the given kernel command line was invalid: {}", e),
-            &Error::MissingWayland(ref p) => write!(f, "wayland socket does not exist: {:?}", p),
+            &Error::GetWaylandGroup(ref e) => write!(f, "could not find gid for wayland group: {:?}", e),
             &Error::RegisterIrqfd(ref e) => write!(f, "error registering irqfd: {:?}", e),
             &Error::KernelLoader(ref e) => write!(f, "error loading kernel: {:?}", e),
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -171,13 +170,6 @@ impl Drop for UnlinkUnixDatagram {
     }
 }
 
-fn env_var(key: &'static str) -> Result<OsString> {
-    match var_os(key) {
-        Some(v) => Ok(v),
-        None => Err(Error::EnvVar(key))
-    }
-}
-
 struct DiskOption {
     path: PathBuf,
     writable: bool,
@@ -193,7 +185,8 @@ struct Config {
     netmask: Option<net::Ipv4Addr>,
     mac_address: Option<String>,
     vhost_net: bool,
-    disable_wayland: bool,
+    wayland_socket_path: Option<PathBuf>,
+    wayland_group: Option<String>,
     socket_path: Option<PathBuf>,
     multiprocess: bool,
     seccomp_policy_dir: PathBuf,
@@ -212,7 +205,8 @@ impl Default for Config {
             netmask: None,
             mac_address: None,
             vhost_net: false,
-            disable_wayland: false,
+            wayland_socket_path: None,
+            wayland_group: None,
             socket_path: None,
             multiprocess: true,
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
@@ -384,46 +378,70 @@ fn run_config(cfg: Config) -> Result<()> {
     }
 
     let wl_root = TempDir::new(&PathBuf::from("/tmp/wl_root"))?;
-    if !cfg.disable_wayland {
-        match env_var("XDG_RUNTIME_DIR") {
-            Ok(p) => {
-                let jailed_wayland_path = Path::new("/wayland-0");
-                let wayland_path = Path::new(&p).join("wayland-0");
-                if !wayland_path.exists() {
-                    return Err(Error::MissingWayland(wayland_path));
+    if let Some(wayland_socket_path) = cfg.wayland_socket_path {
+        let jailed_wayland_path = Path::new("/wayland-0");
+
+        let (host_socket, device_socket) = UnixDatagram::pair().map_err(Error::Socket)?;
+        control_sockets.push(UnlinkUnixDatagram(host_socket));
+        let wl_box = Box::new(devices::virtio::Wl::new(if cfg.multiprocess {
+            &jailed_wayland_path
+        } else {
+            wayland_socket_path.as_path()
+        },
+        device_socket)?);
+
+        let jail = if cfg.multiprocess {
+            let wl_root_path = wl_root.as_path().unwrap(); // Won't fail if new succeeded.
+            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("wl_device.policy");
+            let mut jail = create_base_minijail(wl_root_path, &policy_path)?;
+
+            // Bind mount the wayland socket into jail's root. This is necessary since each
+            // new wayland context must open() the socket.
+            jail.mount_bind(wayland_socket_path.as_path(), jailed_wayland_path, true)
+                .unwrap();
+
+            // Set the uid/gid for the jailed process, and give a basic id map. This
+            // is required for the above bind mount to work.
+            let wayland_group = cfg.wayland_group.unwrap_or(String::from("wayland"));
+            let wayland_cstr = CString::new(wayland_group.into_bytes()).unwrap();
+            let wayland_gid = get_group_id(&wayland_cstr)
+                .map_err(Error::GetWaylandGroup)?;
+
+            let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
+            let crosvm_uid = match get_user_id(&crosvm_user_group) {
+                Ok(u) => u,
+                Err(e) => {
+                    warn!("falling back to current user id for Wayland: {:?}", e);
+                    geteuid()
                 }
+            };
+            let crosvm_gid = match get_group_id(&crosvm_user_group) {
+                Ok(u) => u,
+                Err(e) => {
+                    warn!("falling back to current group id for Wayland: {:?}", e);
+                    getegid()
+                }
+            };
+            jail.change_uid(crosvm_uid);
+            jail.change_gid(wayland_gid);
+            jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
+                .map_err(Error::SettingUidMap)?;
+            jail.gidmap(&format!("{0} {0} 1", wayland_gid))
+                .map_err(Error::SettingGidMap)?;
 
-                let (host_socket, device_socket) = UnixDatagram::pair().map_err(Error::Socket)?;
-                control_sockets.push(UnlinkUnixDatagram(host_socket));
-                let wl_box = Box::new(devices::virtio::Wl::new(if cfg.multiprocess {
-                        &jailed_wayland_path
-                    } else {
-                        wayland_path.as_path()
-                    },
-                    device_socket)?);
+            // chown the root directory for the jail so we can actually bind mount the socket.
+            let wayland_root_cstr = CString::new(wl_root_path.as_os_str().to_str().unwrap())
+                .unwrap();
+            chown(&wayland_root_cstr, crosvm_uid, crosvm_gid)
+                .map_err(Error::ChownWaylandRoot)?;
 
-                let jail = if cfg.multiprocess {
-                    let wl_root_path = wl_root.as_path().unwrap(); // Won't fail if new succeeded.
-                    let policy_path: PathBuf = cfg.seccomp_policy_dir.join("wl_device.policy");
-                    let mut jail = create_base_minijail(wl_root_path, &policy_path)?;
-                    // Map the jail's root uid/gid to the main processes effective uid/gid so that
-                    // the jailed device can access the wayland-0 socket with the same credentials
-                    // as the main process.
-                    jail.uidmap(&format!("0 {} 1", geteuid()))
-                        .map_err(Error::SettingUidMap)?;
-                    jail.change_uid(geteuid());
-                    jail.gidmap(&format!("0 {} 1", getegid()))
-                        .map_err(Error::SettingGidMap)?;
-                    jail.change_gid(getegid());
-                    jail.mount_bind(wayland_path.as_path(), jailed_wayland_path, true).unwrap();
-                    Some(jail)
-                } else {
-                    None
-                };
-                device_manager.register_mmio(wl_box, jail, &mut cmdline).map_err(Error::RegisterWayland)?;
-            }
-            _ => warn!("missing environment variable \"XDG_RUNTIME_DIR\" required to activate virtio wayland device"),
-        }
+            Some(jail)
+        } else {
+            None
+        };
+        device_manager
+            .register_mmio(wl_box, jail, &mut cmdline)
+            .map_err(Error::RegisterWayland)?;
     }
 
     let vsock_root = TempDir::new(&PathBuf::from("/tmp/vsock_root"))
@@ -874,8 +892,26 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.mac_address = Some(value.unwrap().to_owned());
         }
-        "no-wl" => {
-            cfg.disable_wayland = true;
+        "wayland-sock" => {
+            if cfg.wayland_socket_path.is_some() {
+                return Err(argument::Error::TooManyArguments("`wayland-sock` already given"
+                                                                 .to_owned()));
+            }
+            let wayland_socket_path = PathBuf::from(value.unwrap());
+            if !wayland_socket_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                               value: value.unwrap().to_string(),
+                               expected: "Wayland socket does not exist",
+                           });
+            }
+            cfg.wayland_socket_path = Some(wayland_socket_path);
+        }
+        "wayland-group" => {
+            if cfg.wayland_group.is_some() {
+                return Err(argument::Error::TooManyArguments("`wayland-group` already given"
+                                                                 .to_owned()));
+            }
+            cfg.wayland_group = Some(value.unwrap().to_owned());
         }
         "socket" => {
             if cfg.socket_path.is_some() {
@@ -944,7 +980,10 @@ fn run_vm(args: std::env::Args) {
                           "IP address to assign to host tap interface."),
           Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
           Argument::value("mac", "MAC", "MAC address for VM."),
-          Argument::flag("no-wl", "Disables the virtio wayland device."),
+          Argument::value("wayland-sock", "PATH", "Path to the Wayland socket to use."),
+          Argument::value("wayland-group",
+                          "GROUP",
+                          "Name of the group with access to the Wayland socket."),
           Argument::short_value('s',
                                 "socket",
                                 "PATH",
