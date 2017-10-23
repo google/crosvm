@@ -57,9 +57,9 @@ while crosvm is running. To tell crosvm to stop and exit, for example:
 >**NOTE:** If the socket path given is for a directory, a socket name underneath
 that path will be generated based on crosvm's PID.
 ```bash
-$ crosvm run -s /var/run/crosvm.sock ${USUAL_CROSVM_ARGS}
+$ crosvm run -s /run/crosvm.sock ${USUAL_CROSVM_ARGS}
     <in another shell>
-$ crosvm stop /var/run/crosvm.sock
+$ crosvm stop /run/crosvm.sock
 ```
 >**WARNING:** The guest OS will not be notified or gracefully shutdown.
 
