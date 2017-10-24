@@ -52,6 +52,7 @@ pub use mmap::Error as MmapError;
 pub use guest_memory::Error as GuestMemoryError;
 pub use signalfd::Error as SignalFdError;
 
+use std::ffi::CStr;
 use std::ptr;
 
 use libc::{kill, syscall, waitpid, c_long, pid_t, uid_t, gid_t, SIGKILL, WNOHANG};
@@ -78,6 +79,19 @@ pub fn geteuid() -> uid_t {
 pub fn getegid() -> gid_t {
     // trivially safe
     unsafe { libc::getegid() }
+}
+
+/// Safe wrapper for chown(2).
+#[inline(always)]
+pub fn chown(path: &CStr, uid: uid_t, gid: gid_t) -> Result<()> {
+    // Safe since we pass in a valid string pointer and check the return value.
+    let ret = unsafe { libc::chown(path.as_ptr(), uid, gid) };
+
+    if ret < 0 {
+        errno_result()
+    } else {
+        Ok(())
+    }
 }
 
 /// Reaps a child process that has terminated.
