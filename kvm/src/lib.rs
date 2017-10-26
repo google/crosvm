@@ -12,7 +12,7 @@ extern crate sys_util;
 mod cap;
 
 use std::fs::File;
-use std::collections::HashMap;
+use std::collections::{BinaryHeap, HashMap};
 use std::collections::hash_map::Entry;
 use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
@@ -155,7 +155,7 @@ pub struct Vm {
     vm: File,
     guest_mem: GuestMemory,
     device_memory: HashMap<u32, MemoryMapping>,
-    next_mem_slot: usize,
+    mem_slot_gaps: BinaryHeap<i32>,
 }
 
 impl Vm {
@@ -177,13 +177,11 @@ impl Vm {
                 }
             })?;
 
-            let next_mem_slot = guest_mem.num_regions();
-
             Ok(Vm {
                 vm: vm_file,
                 guest_mem: guest_mem,
                 device_memory: HashMap::new(),
-                next_mem_slot: next_mem_slot,
+                mem_slot_gaps: BinaryHeap::new(),
             })
         } else {
             errno_result()
@@ -206,7 +204,15 @@ impl Vm {
             return Err(Error::new(ENOSPC));
         }
 
-        let slot = self.next_mem_slot as u32;
+        // The slot gaps are stored negated because `mem_slot_gaps` is a max-heap, so we negate the
+        // popped value from the heap to get the lowest slot. If there are no gaps, the lowest slot
+        // number is equal to the number of slots we are currently using between guest memory and
+        // device memory. For example, if 2 slots are used by guest memory, 3 slots are used for
+        // device memory, and there are no gaps, it follows that the lowest unused slot is 2+3=5.
+        let slot = match self.mem_slot_gaps.pop() {
+            Some(gap) => (-gap) as u32,
+            None => (self.device_memory.len() + self.guest_mem.num_regions()) as u32,
+        };
 
         // Safe because we check that the given guest address is valid and has no overlaps. We also
         // know that the pointer and size are correct because the MemoryMapping interface ensures
@@ -219,7 +225,6 @@ impl Vm {
                                         mem.as_ptr() as u64)?;
         };
         self.device_memory.insert(slot, mem);
-        self.next_mem_slot += 1;
 
         Ok(slot)
     }
@@ -234,6 +239,9 @@ impl Vm {
                 unsafe {
                     set_user_memory_region(&self.vm, slot, 0, 0, 0)?;
                 }
+                // Because `mem_slot_gaps` is a max-heap, but we want to pop the min slots, we
+                // negate the slot value before insertion.
+                self.mem_slot_gaps.push(-(slot as i32));
                 Ok(entry.remove())
             }
             _ => Err(Error::new(-ENOENT))
