@@ -31,7 +31,8 @@ use std::path::{Path, PathBuf};
 use std::string::String;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Barrier};
-use std::thread::{spawn, sleep, JoinHandle};
+use std::thread;
+use std::thread::{sleep, JoinHandle};
 use std::time::Duration;
 
 use io_jail::Minijail;
@@ -79,6 +80,7 @@ enum Error {
     Kvm(sys_util::Error),
     Vm(sys_util::Error),
     Vcpu(sys_util::Error),
+    SpawnVcpu(std::io::Error),
     Sys(sys_util::Error),
 }
 
@@ -145,6 +147,7 @@ impl fmt::Display for Error {
             &Error::Kvm(ref e) => write!(f, "error creating Kvm: {:?}", e),
             &Error::Vm(ref e) => write!(f, "error creating Vm: {:?}", e),
             &Error::Vcpu(ref e) => write!(f, "error creating Vcpu: {:?}", e),
+            &Error::SpawnVcpu(ref e) => write!(f, "error creating spawning Vcpu: {}", e),
             &Error::Sys(ref e) => write!(f, "error with system call: {:?}", e),
         }
     }
@@ -598,7 +601,9 @@ fn run_kvm(requests: Vec<VmRequest>,
                                &vcpu,
                                cpu_id as u64,
                                vcpu_count as u64)?;
-        vcpu_handles.push(spawn(move || {
+        vcpu_handles.push(thread::Builder::new()
+                              .name(format!("crosvm_vcpu{}", cpu_id))
+                              .spawn(move || {
             unsafe {
                 extern "C" fn handle_signal() {}
                 // Our signal handler does nothing and is trivially async signal safe.
@@ -642,7 +647,7 @@ fn run_kvm(requests: Vec<VmRequest>,
             vcpu_exit_evt
                 .write(1)
                 .expect("failed to signal vcpu exit eventfd");
-        }));
+        }).map_err(Error::SpawnVcpu)?);
     }
 
     vcpu_thread_barrier.wait();

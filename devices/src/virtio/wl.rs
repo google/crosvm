@@ -44,7 +44,7 @@ use std::rc::Rc;
 use std::result;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread::spawn;
+use std::thread;
 
 use data_model::*;
 use data_model::VolatileMemoryError;
@@ -1018,16 +1018,23 @@ impl VirtioDevice for Wl {
 
         if let Some(vm_socket) = self.vm_socket.take() {
             let wayland_path = self.wayland_path.clone();
-            spawn(move || {
-                Worker::new(mem,
-                            interrupt_evt,
-                            status,
-                            queues.remove(0),
-                            queues.remove(0),
-                            wayland_path,
-                            vm_socket)
-                        .run(queue_evts, kill_evt);
-            });
+            let worker_result = thread::Builder::new()
+                .name("virtio_wl".to_string())
+                .spawn(move || {
+                    Worker::new(mem,
+                                interrupt_evt,
+                                status,
+                                queues.remove(0),
+                                queues.remove(0),
+                                wayland_path,
+                                vm_socket)
+                            .run(queue_evts, kill_evt);
+                });
+
+            if let Err(e) = worker_result {
+                error!("failed to spawn virtio_wl worker: {}", e);
+                return;
+            }
         }
     }
 }

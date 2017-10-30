@@ -7,7 +7,7 @@ use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
-use std::thread::spawn;
+use std::thread;
 
 use net_sys;
 use net_util::Tap;
@@ -173,29 +173,34 @@ impl VirtioDevice for Net {
                 if let Some(vhost_interrupt) = self.vhost_interrupt.take() {
                     if let Some(kill_evt) = self.workers_kill_evt.take() {
                         let acked_features = self.acked_features;
-                        spawn(move || {
-                            let mut worker = Worker::new(
-                                queues,
-                                vhost_net_handle,
-                                vhost_interrupt,
-                                status,
-                                interrupt_evt,
-                                acked_features,
-                            );
-                            let activate_vqs = |handle: &VhostNetHandle| -> Result<()> {
-                                for idx in 0..NUM_QUEUES {
-                                    handle
-                                        .set_backend(idx, &tap)
-                                        .map_err(Error::VhostNetSetBackend)?;
+                        let worker_result = thread::Builder::new()
+                            .name("vhost_net".to_string())
+                            .spawn(move || {
+                                let mut worker = Worker::new(queues,
+                                                             vhost_net_handle,
+                                                             vhost_interrupt,
+                                                             status,
+                                                             interrupt_evt,
+                                                             acked_features);
+                                let activate_vqs = |handle: &VhostNetHandle| -> Result<()> {
+                                    for idx in 0..NUM_QUEUES {
+                                        handle
+                                            .set_backend(idx, &tap)
+                                            .map_err(Error::VhostNetSetBackend)?;
+                                    }
+                                    Ok(())
+                                };
+                                let result =
+                                    worker.run(queue_evts, QUEUE_SIZES, kill_evt, activate_vqs);
+                                if let Err(e) = result {
+                                    error!("net worker thread exited with error: {:?}", e);
                                 }
-                                Ok(())
-                            };
-                            let result =
-                                worker.run(queue_evts, QUEUE_SIZES, kill_evt, activate_vqs);
-                            if let Err(e) = result {
-                                error!("net worker thread exited with error: {:?}", e);
-                            }
-                        });
+                            });
+
+                        if let Err(e) = worker_result {
+                            error!("failed to spawn vhost_net worker: {}", e);
+                            return;
+                        }
                     }
                 }
             }

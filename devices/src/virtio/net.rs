@@ -9,7 +9,7 @@ use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread::spawn;
+use std::thread;
 
 use libc::EAGAIN;
 use net_sys;
@@ -403,29 +403,36 @@ impl VirtioDevice for Net {
         if let Some(tap) = self.tap.take() {
             if let Some(kill_evt) = self.workers_kill_evt.take() {
                 let acked_features = self.acked_features;
-                spawn(move || {
-                    // First queue is rx, second is tx.
-                    let rx_queue = queues.remove(0);
-                    let tx_queue = queues.remove(0);
-                    let mut worker = Worker {
-                        mem: mem,
-                        rx_queue: rx_queue,
-                        tx_queue: tx_queue,
-                        tap: tap,
-                        interrupt_status: status,
-                        interrupt_evt: interrupt_evt,
-                        rx_buf: [0u8; MAX_BUFFER_SIZE],
-                        rx_count: 0,
-                        deferred_rx: false,
-                        acked_features: acked_features,
-                    };
-                    let rx_queue_evt = queue_evts.remove(0);
-                    let tx_queue_evt = queue_evts.remove(0);
-                    let result = worker.run(rx_queue_evt, tx_queue_evt, kill_evt);
-                    if let Err(e) = result {
-                        error!("net worker thread exited with error: {:?}", e);
-                    }
-                });
+                let worker_result = thread::Builder::new()
+                    .name("virtio_net".to_string())
+                    .spawn(move || {
+                        // First queue is rx, second is tx.
+                        let rx_queue = queues.remove(0);
+                        let tx_queue = queues.remove(0);
+                        let mut worker = Worker {
+                            mem: mem,
+                            rx_queue: rx_queue,
+                            tx_queue: tx_queue,
+                            tap: tap,
+                            interrupt_status: status,
+                            interrupt_evt: interrupt_evt,
+                            rx_buf: [0u8; MAX_BUFFER_SIZE],
+                            rx_count: 0,
+                            deferred_rx: false,
+                            acked_features: acked_features,
+                        };
+                        let rx_queue_evt = queue_evts.remove(0);
+                        let tx_queue_evt = queue_evts.remove(0);
+                        let result = worker.run(rx_queue_evt, tx_queue_evt, kill_evt);
+                        if let Err(e) = result {
+                            error!("net worker thread exited with error: {:?}", e);
+                        }
+                    });
+
+                if let Err(e) = worker_result {
+                    error!("failed to spawn virtio_net worker: {}", e);
+                    return;
+                }
             }
         }
     }

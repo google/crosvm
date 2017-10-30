@@ -40,3 +40,5 @@ sigaltstack: 1
 clone: arg0 & 0x00010000
 write: 1
 getpid: 1
+# Allow PR_SET_NAME only.
+prctl: arg0 == 15

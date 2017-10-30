@@ -9,7 +9,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread::spawn;
+use std::thread;
 
 use sys_util::Result as SysResult;
 use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError, Poller};
@@ -364,16 +364,23 @@ impl VirtioDevice for Block {
         self.kill_evt = Some(self_kill_evt);
 
         if let Some(disk_image) = self.disk_image.take() {
-            spawn(move || {
-                let mut worker = Worker {
-                    queues: queues,
-                    mem: mem,
-                    disk_image: disk_image,
-                    interrupt_status: status,
-                    interrupt_evt: interrupt_evt,
-                };
-                worker.run(queue_evts.remove(0), kill_evt);
-            });
+            let worker_result = thread::Builder::new()
+                .name("virtio_blk".to_string())
+                .spawn(move || {
+                    let mut worker = Worker {
+                        queues: queues,
+                        mem: mem,
+                        disk_image: disk_image,
+                        interrupt_status: status,
+                        interrupt_evt: interrupt_evt,
+                    };
+                    worker.run(queue_evts.remove(0), kill_evt);
+                });
+
+            if let Err(e) = worker_result {
+                error!("failed to spawn virtio_blk worker: {}", e);
+                return;
+            }
         }
     }
 }
