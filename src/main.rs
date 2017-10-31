@@ -713,13 +713,22 @@ fn run_control(mut vm: Vm,
                 }
                 STDIN => {
                     let mut out = [0u8; 64];
-                    let count = stdin_lock.read_raw(&mut out[..]).unwrap_or_default();
-                    if count != 0 {
-                        stdio_serial
-                            .lock()
-                            .unwrap()
-                            .queue_input_bytes(&out[..count])
-                            .expect("failed to queue bytes into serial port");
+                    match stdin_lock.read_raw(&mut out[..]) {
+                        Ok(0) => {
+                            // Zero-length read indicates EOF. Remove from pollables.
+                            pollables.retain(|&pollable| pollable.0 != STDIN);
+                        },
+                        Err(e) => {
+                            warn!("error while reading stdin: {:?}", e);
+                            pollables.retain(|&pollable| pollable.0 != STDIN);
+                        },
+                        Ok(count) => {
+                            stdio_serial
+                                .lock()
+                                .unwrap()
+                                .queue_input_bytes(&out[..count])
+                                .expect("failed to queue bytes into serial port");
+                        },
                     }
                 }
                 CHILD_SIGNAL => {
