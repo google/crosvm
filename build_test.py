@@ -97,13 +97,13 @@ def test_target_modules(triple, is_release, env, modules, parallel):
   if is_release:
     args.append('--release')
 
-  if not parallel:
-    env = env.copy()
-    env['RUST_TEST_THREADS'] = '1'
-
   for mod in modules:
     args.append('-p')
     args.append(mod)
+
+  if not parallel:
+    args.append('--')
+    args.append('--test-threads=1')
 
   return subprocess.Popen(args, env=env).wait() == 0
 

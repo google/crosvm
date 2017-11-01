@@ -362,8 +362,14 @@ impl Minijail {
     /// This Function may abort in the child on error because a partially
     /// entered jail isn't recoverable.
     pub unsafe fn fork(&self, inheritable_fds: Option<&[RawFd]>) -> Result<pid_t> {
-        if !is_single_threaded().map_err(Error::CheckingMultiThreaded)? {
-            return Err(Error::ForkingWhileMultiThreaded);
+        // This test will fail during `cargo test` because the test harness always spawns a test
+        // thread. We will make an exception for that case because the tests for this module should
+        // always be run in a serial fashion using `--test-threads=1`.
+        #[cfg(not(test))]
+        {
+            if !is_single_threaded().map_err(Error::CheckingMultiThreaded)? {
+                return Err(Error::ForkingWhileMultiThreaded);
+            }
         }
 
         if let Some(keep_fds) = inheritable_fds {
@@ -453,7 +459,7 @@ mod tests {
         j.parse_seccomp_filters(Path::new("src/test_filter.policy")).unwrap();
         j.use_seccomp_filter();
         unsafe {
-            j.enter(None).unwrap();
+            j.fork(None).unwrap();
         }
     }
 
@@ -468,9 +474,10 @@ mod tests {
             let second = libc::open(FILE_PATH.as_ptr() as *const i8, libc::O_RDONLY);
             assert!(second >= 0);
             let fds: Vec<RawFd> = vec![0, 1, 2, first];
-            j.enter(Some(&fds)).unwrap();
-            assert!(libc::close(second) < 0); // Should fail as second should be closed already.
-            assert_eq!(libc::close(first), 0); // Should succeed as first should be untouched.
+            if j.fork(Some(&fds)).unwrap() == 0 {
+                assert!(libc::close(second) < 0); // Should fail as second should be closed already.
+                assert_eq!(libc::close(first), 0); // Should succeed as first should be untouched.
+            }
         }
     }
 
@@ -480,7 +487,7 @@ mod tests {
         let mut j = Minijail::new().unwrap();
         j.enter_chroot(Path::new(".")).unwrap();
         unsafe {
-            j.enter(None).unwrap();
+            j.fork(None).unwrap();
         }
     }
 
@@ -490,7 +497,7 @@ mod tests {
         let mut j = Minijail::new().unwrap();
         j.namespace_vfs();
         unsafe {
-            j.enter(None).unwrap();
+            j.fork(None).unwrap();
         }
     }
 }
