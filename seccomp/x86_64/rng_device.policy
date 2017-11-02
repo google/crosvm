@@ -25,3 +25,4 @@ poll: 1
 getpid: 1
 # Allow PR_SET_NAME only.
 prctl: arg0 == 15
+restart_syscall: 1

@@ -635,8 +635,12 @@ fn run_kvm(requests: Vec<VmRequest>,
                         }
                     }
                     Err(e) => {
-                        if e.errno() != libc::EAGAIN {
-                            break;
+                        match e.errno() {
+                            libc::EAGAIN | libc::EINTR => {},
+                            _ => {
+                                error!("vcpu hit unknown error: {:?}", e);
+                                break;
+                            }
                         }
                     }
                 }
