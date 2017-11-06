@@ -105,6 +105,15 @@ impl GuestMemory {
         self.regions.len()
     }
 
+    /// Madvise away the address range in the host that is associated with the given guest range.
+    pub fn dont_need_range(&self, addr: GuestAddress, count: usize) -> Result<()> {
+        self.do_in_region(addr, move |mapping, offset| {
+            mapping
+                .dont_need_range(offset, count)
+                .map_err(|e| Error::MemoryAccess(addr, e))
+        })
+    }
+
     /// Perform the specified action on each region's addresses.
     pub fn with_regions<F, E>(&self, cb: F) -> result::Result<(), E>
         where F: Fn(usize, GuestAddress, usize, usize) -> result::Result<(), E>

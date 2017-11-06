@@ -299,6 +299,29 @@ impl MemoryMapping {
         Ok(())
     }
 
+    /// Uses madvise to tell the kernel the specified range won't be needed soon.
+    pub fn dont_need_range(&self, mem_offset: usize, count: usize) -> Result<()> {
+        let mem_end = match mem_offset.checked_add(count) {
+            None => return Err(Error::InvalidRange(mem_offset, count)),
+            Some(m) => m,
+        };
+        if mem_end > self.size() {
+            return Err(Error::InvalidRange(mem_offset, count));
+        }
+        let ret = unsafe {
+            // madvising away the region is the same as the guest changing it.
+            // Next time it is read, it may return zero pages.
+            libc::madvise((self.addr as usize + mem_offset) as *mut _,
+                          count,
+                          libc::MADV_DONTNEED)
+        };
+        if ret < 0 {
+            Err(Error::InvalidRange(mem_offset, count))
+        } else {
+            Ok(())
+        }
+    }
+
     unsafe fn as_slice(&self) -> &[u8] {
         // This is safe because we mapped the area at addr ourselves, so this slice will not
         // overflow. However, it is possible to alias.
