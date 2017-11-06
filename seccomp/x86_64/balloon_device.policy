@@ -1,0 +1,27 @@
+# Copyright 2017 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+close: 1
+exit_group: 1
+futex: 1
+madvise: 1
+# Disallow mmap with PROT_EXEC set.  The syntax here doesn't allow bit
+# negation, thus the manually negated mask constant.
+mmap: arg2 in 0xfffffffb
+mprotect: arg2 in 0xfffffffb
+munmap: 1
+read: 1
+recvfrom: 1
+sched_getaffinity: 1
+set_robust_list: 1
+sigaltstack: 1
+# Disallow clone's other than new threads.
+clone: arg0 & 0x00010000
+write: 1
+eventfd2: 1
+dup: 1
+poll: 1
+getpid: 1
+# Allow PR_SET_NAME only.
+prctl: arg0 == 15

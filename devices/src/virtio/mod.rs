@@ -4,6 +4,7 @@
 
 //! Implements virtio devices, queues, and transport mechanisms.
 
+mod balloon;
 mod queue;
 mod mmio;
 mod block;
@@ -13,6 +14,7 @@ mod wl;
 
 pub mod vhost;
 
+pub use self::balloon::*;
 pub use self::queue::*;
 pub use self::mmio::*;
 pub use self::block::*;
@@ -30,10 +32,12 @@ const DEVICE_FAILED: u32 = 0x80;
 const TYPE_NET: u32 = 1;
 const TYPE_BLOCK: u32 = 2;
 const TYPE_RNG: u32 = 4;
+const TYPE_BALLOON: u32 = 5;
 const TYPE_VSOCK: u32 = 19;
 const TYPE_WL: u32 = 30;
 
 const INTERRUPT_STATUS_USED_RING: u32 = 0x1;
+const INTERRUPT_STATUS_CONFIG_CHANGED: u32 = 0x2;
 
 /// Offset from the base MMIO address of a virtio device used by the guest to notify the device of
 /// queue events.
