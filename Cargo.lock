@@ -1,4 +1,21 @@
 [root]
+name = "x86_64"
+version = "0.1.0"
+dependencies = [
+ "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "data_model 0.1.0",
+ "kvm 0.1.0",
+ "kvm_sys 0.1.0",
+ "libc 0.2.32 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sys_util 0.1.0",
+]
+
+[[package]]
+name = "byteorder"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "crosvm"
 version = "0.1.0"
 dependencies = [
@@ -13,11 +30,6 @@ dependencies = [
  "vm_control 0.1.0",
  "x86_64 0.1.0",
 ]
-
-[[package]]
-name = "byteorder"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "data_model"
@@ -134,18 +146,6 @@ version = "0.1.0"
 dependencies = [
  "data_model 0.1.0",
  "kvm 0.1.0",
- "libc 0.2.32 (registry+https://github.com/rust-lang/crates.io-index)",
- "sys_util 0.1.0",
-]
-
-[[package]]
-name = "x86_64"
-version = "0.1.0"
-dependencies = [
- "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "data_model 0.1.0",
- "kvm 0.1.0",
- "kvm_sys 0.1.0",
  "libc 0.2.32 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
