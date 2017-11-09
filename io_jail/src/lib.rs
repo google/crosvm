@@ -147,8 +147,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///       j.no_new_privs();
 ///       j.parse_seccomp_filters(Path::new("my_filter.policy")).map_err(|_| ())?;
 ///       j.use_seccomp_filter();
-///       unsafe { // Enter will close all the programs FDs.
-///           j.enter(None).map_err(|_| ())?;
+///       unsafe { // `fork` will close all the programs FDs.
+///           j.fork(None).map_err(|_| ())?;
 ///       }
 /// #     Ok(())
 /// # }
@@ -162,15 +162,16 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// # fn seccomp_filter_test() -> Result<(), ()> {
 ///       let j = Minijail::new().map_err(|_| ())?;
 ///       let preserve_fds: Vec<RawFd> = vec![0, 1, 2];
-///       unsafe { // Enter will close all the programs FDs.
-///           j.enter(Some(&preserve_fds)).map_err(|_| ())?;
+///       unsafe { // `fork` will close all the programs FDs.
+///           j.fork(Some(&preserve_fds)).map_err(|_| ())?;
 ///       }
 /// #     Ok(())
 /// # }
 /// ```
 /// # Errors
-/// The `enter` function doesn't return an error. Instead, It kills the current
-/// process on error.
+/// The `fork` function might not return an error if it fails after forking. A
+/// partial jail is not recoverable and will instead result in killing the
+/// process.
 pub struct Minijail {
     jail: *mut libminijail::minijail,
 }
