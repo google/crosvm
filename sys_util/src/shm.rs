@@ -7,8 +7,9 @@ use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::os::unix::io::{AsRawFd, IntoRawFd, FromRawFd, RawFd};
 
-use libc::{off64_t, c_long, c_int, c_uint, c_char, syscall, ftruncate64};
+use libc::{self, off64_t, c_long, c_int, c_uint, c_char, close, syscall, ftruncate64};
 
+use errno;
 use syscall_defines::linux::LinuxSyscall::SYS_memfd_create;
 
 use {Result, errno_result};
@@ -90,6 +91,23 @@ impl AsRawFd for SharedMemory {
     }
 }
 
+/// Checks if the kernel we are running on has memfd_create. It was introduced in 3.17.
+/// Only to be used from tests to prevent running on ancient kernels that won't
+/// support the functionality anyways.
+pub fn kernel_has_memfd() -> bool {
+    unsafe {
+        let fd = memfd_create(b"/test_memfd_create\0".as_ptr() as *const c_char, 0);
+        if fd < 0 {
+            if errno::Error::last().errno() == libc::ENOSYS {
+                return false;
+            }
+            return true;
+        }
+        close(fd);
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,12 +122,14 @@ mod tests {
 
     #[test]
     fn new() {
+        if !kernel_has_memfd() { return; }
         let shm = SharedMemory::new(None).expect("failed to create shared memory");
         assert_eq!(shm.size(), 0);
     }
 
     #[test]
     fn new_sized() {
+        if !kernel_has_memfd() { return; }
         let mut shm = SharedMemory::new(None).expect("failed to create shared memory");
         shm.set_size(1024)
             .expect("failed to set shared memory size");
@@ -118,6 +138,7 @@ mod tests {
 
     #[test]
     fn new_huge() {
+        if !kernel_has_memfd() { return; }
         let mut shm = SharedMemory::new(None).expect("failed to create shared memory");
         shm.set_size(0x7fff_ffff_ffff_ffff)
             .expect("failed to set shared memory size");
@@ -126,6 +147,7 @@ mod tests {
 
     #[test]
     fn new_too_huge() {
+        if !kernel_has_memfd() { return; }
         let mut shm = SharedMemory::new(None).expect("failed to create shared memory");
         shm.set_size(0x8000_0000_0000_0000).unwrap_err();
         assert_eq!(shm.size(), 0);
@@ -133,6 +155,7 @@ mod tests {
 
     #[test]
     fn new_named() {
+        if !kernel_has_memfd() { return; }
         let name = "very unique name";
         let cname = CString::new(name).unwrap();
         let shm = SharedMemory::new(Some(&cname)).expect("failed to create shared memory");
@@ -144,6 +167,7 @@ mod tests {
 
     #[test]
     fn mmap_page() {
+        if !kernel_has_memfd() { return; }
         let mut shm = SharedMemory::new(None).expect("failed to create shared memory");
         shm.set_size(4096)
             .expect("failed to set shared memory size");

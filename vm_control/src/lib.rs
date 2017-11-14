@@ -307,6 +307,7 @@ mod tests {
 
     use std::net::Shutdown;
 
+    use sys_util::kernel_has_memfd;
     use sys_util::SharedMemory;
 
     #[test]
@@ -322,6 +323,7 @@ mod tests {
 
     #[test]
     fn request_register_memory() {
+        if !kernel_has_memfd() { return; }
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
         let mut scm = Scm::new(1);
         let shm_size: usize = 4096;
