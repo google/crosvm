@@ -306,7 +306,7 @@ fn run_config(cfg: Config) -> Result<()> {
 
     let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE);
     cmdline
-        .insert_str("console=ttyS0 noapic noacpi reboot=k panic=1 pci=off")
+        .insert_str("console=ttyS0 noacpi reboot=k panic=1 pci=off")
         .unwrap();
 
     let mut device_manager = DeviceManager::new(guest_mem.clone(), 0x1000, 0xd0000000, 5);

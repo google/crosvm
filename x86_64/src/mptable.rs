@@ -119,6 +119,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
     base_mp = base_mp.unchecked_add(mem::size_of::<mpc_table>());
 
     let mut checksum: u8 = 0;
+    let ioapicid: u8 = num_cpus + 1;
 
     for cpu_id in 0..num_cpus {
         let size = mem::size_of::<mpc_cpu>();
@@ -143,7 +144,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
         let size = mem::size_of::<mpc_ioapic>();
         let mut mpc_ioapic = mpc_ioapic::default();
         mpc_ioapic.type_ = MP_IOAPIC as u8;
-        mpc_ioapic.apicid = num_cpus + 1;
+        mpc_ioapic.apicid = ioapicid;
         mpc_ioapic.apicver = APIC_VERSION;
         mpc_ioapic.flags = MPC_APIC_USABLE as u8;
         mpc_ioapic.apicaddr = IO_APIC_DEFAULT_PHYS_BASE;
@@ -178,11 +179,27 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
         base_mp = base_mp.unchecked_add(size);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
     }
+    // Per kvm_setup_default_irq_routing() in kernel
+    for i in 0..16 {
+        let size = mem::size_of::<mpc_intsrc>();
+        let mut mpc_intsrc = mpc_intsrc::default();
+        mpc_intsrc.type_ = MP_INTSRC as u8;
+        mpc_intsrc.irqtype = mp_irq_source_types_mp_INT as u8;
+        mpc_intsrc.irqflag = MP_IRQDIR_DEFAULT as u16;
+        mpc_intsrc.srcbus = 0;
+        mpc_intsrc.srcbusirq = i;
+        mpc_intsrc.dstapic = ioapicid;
+        mpc_intsrc.dstirq = i;
+        mem.write_obj_at_addr(mpc_intsrc, base_mp)
+            .map_err(|_| Error::WriteMpcIntsrc)?;
+        base_mp = base_mp.unchecked_add(size);
+        checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
+    }
     {
         let size = mem::size_of::<mpc_lintsrc>();
         let mut mpc_lintsrc = mpc_lintsrc::default();
         mpc_lintsrc.type_ = MP_LINTSRC as u8;
-        mpc_lintsrc.irqtype = mp_irq_source_types_mp_INT as u8;
+        mpc_lintsrc.irqtype = mp_irq_source_types_mp_ExtINT as u8;
         mpc_lintsrc.irqflag = MP_IRQDIR_DEFAULT as u16;
         mpc_lintsrc.srcbusid = 0;
         mpc_lintsrc.srcbusirq = 0;
@@ -201,7 +218,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
         mpc_lintsrc.irqflag = MP_IRQDIR_DEFAULT as u16;
         mpc_lintsrc.srcbusid = 0;
         mpc_lintsrc.srcbusirq = 0;
-        mpc_lintsrc.destapic = 0;
+        mpc_lintsrc.destapic = 0xFF; // Per SeaBIOS
         mpc_lintsrc.destapiclint = 1;
         mem.write_obj_at_addr(mpc_lintsrc, base_mp)
             .map_err(|_| Error::WriteMpcLintsrc)?;
