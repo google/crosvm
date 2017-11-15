@@ -55,7 +55,7 @@ use sys_util::{Error, Result, EventFd, Poller, Pollable, Scm, SharedMemory, Gues
 use vm_control::{VmControlError, VmRequest, VmResponse, MaybeOwnedFd};
 use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_USED_RING, TYPE_WL};
 
-const VIRTWL_SEND_MAX_ALLOCS: usize = 16;
+const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
 const VIRTIO_WL_CMD_VFD_NEW: u32 = 256;
 const VIRTIO_WL_CMD_VFD_CLOSE: u32 = 257;
 const VIRTIO_WL_CMD_VFD_SEND: u32 = 258;
