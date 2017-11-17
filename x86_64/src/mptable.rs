@@ -76,7 +76,9 @@ fn mpf_intel_compute_checksum(v: &mpf_intel) -> u8 {
 fn compute_mp_size(num_cpus: u8) -> usize {
     mem::size_of::<mpf_intel>() + mem::size_of::<mpc_table>() +
     mem::size_of::<mpc_cpu>() * (num_cpus as usize) + mem::size_of::<mpc_ioapic>() +
-    mem::size_of::<mpc_bus>() + mem::size_of::<mpc_intsrc>() + mem::size_of::<mpc_lintsrc>() * 2
+    mem::size_of::<mpc_bus>() + mem::size_of::<mpc_intsrc>() +
+    mem::size_of::<mpc_intsrc>() * 16 +
+    mem::size_of::<mpc_lintsrc>() * 2
 }
 
 /// Performs setup of the MP table for the given `num_cpus`.
@@ -89,7 +91,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
 
     // The checked_add here ensures the all of the following base_mp.unchecked_add's will be without
     // overflow.
-    if let Some(end_mp) = base_mp.checked_add(mp_size) {
+    if let Some(end_mp) = base_mp.checked_add(mp_size - 1) {
         if !mem.address_in_range(end_mp) {
             return Err(Error::NotEnoughMemory);
         }
@@ -264,16 +266,26 @@ mod tests {
 
     #[test]
     fn bounds_check() {
-        let mem = GuestMemory::new(&[(GuestAddress(0), 0xff)]).unwrap();
+        let num_cpus = 4;
+        let mem = GuestMemory::new(&[(GuestAddress(0), compute_mp_size(num_cpus))]).unwrap();
 
-        setup_mptable(&mem, 4).unwrap();
+        setup_mptable(&mem, num_cpus).unwrap();
+    }
+
+    #[test]
+    fn bounds_check_fails() {
+        let num_cpus = 4;
+        let mem = GuestMemory::new(&[(GuestAddress(0), compute_mp_size(num_cpus) - 1)]).unwrap();
+
+        assert!(setup_mptable(&mem, num_cpus).is_err());
     }
 
     #[test]
     fn mpf_intel_checksum() {
-        let mem = GuestMemory::new(&[(GuestAddress(0), 0xff)]).unwrap();
+        let num_cpus = 1;
+        let mem = GuestMemory::new(&[(GuestAddress(0), compute_mp_size(num_cpus))]).unwrap();
 
-        setup_mptable(&mem, 1).unwrap();
+        setup_mptable(&mem, num_cpus).unwrap();
 
         let mpf_intel = mem.read_obj_from_addr(GuestAddress(0)).unwrap();
 
@@ -282,9 +294,10 @@ mod tests {
 
     #[test]
     fn mpc_table_checksum() {
-        let mem = GuestMemory::new(&[(GuestAddress(0), 0xff)]).unwrap();
+        let num_cpus = 4;
+        let mem = GuestMemory::new(&[(GuestAddress(0), compute_mp_size(num_cpus))]).unwrap();
 
-        setup_mptable(&mem, 4).unwrap();
+        setup_mptable(&mem, num_cpus).unwrap();
 
         let mpf_intel: mpf_intel = mem.read_obj_from_addr(GuestAddress(0)).unwrap();
         let mpc_offset = GuestAddress(mpf_intel.physptr as usize);
