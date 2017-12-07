@@ -132,6 +132,7 @@ dependencies = [
 name = "vm_control"
 version = "0.1.0"
 dependencies = [
+ "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
  "kvm 0.1.0",
  "libc 0.2.32 (registry+https://github.com/rust-lang/crates.io-index)",

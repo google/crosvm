@@ -253,7 +253,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     device_manager.register_mmio(rng_box, rng_jail, &mut cmdline)
         .map_err(Error::RegisterRng)?;
 
-    let (_, balloon_device_socket) = UnixDatagram::pair().map_err(Error::Socket)?;
+    let (balloon_host_socket, balloon_device_socket) = UnixDatagram::pair().map_err(Error::Socket)?;
     let balloon_box = Box::new(devices::virtio::Balloon::new(balloon_device_socket)
                                    .map_err(Error::BalloonDeviceNew)?);
     let balloon_jail = if cfg.multiprocess {
@@ -387,7 +387,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
             cfg.vcpu_count.unwrap_or(1),
             guest_mem,
             &device_manager.bus,
-            control_sockets)
+            control_sockets,
+            balloon_host_socket)
 }
 
 fn run_kvm(requests: Vec<VmRequest>,
@@ -396,7 +397,8 @@ fn run_kvm(requests: Vec<VmRequest>,
            vcpu_count: u32,
            guest_mem: GuestMemory,
            mmio_bus: &devices::Bus,
-           control_sockets: Vec<UnlinkUnixDatagram>)
+           control_sockets: Vec<UnlinkUnixDatagram>,
+           balloon_host_socket: UnixDatagram)
            -> Result<()> {
     let kvm = Kvm::new().map_err(Error::Kvm)?;
     let kernel_start_addr = GuestAddress(KERNEL_START_OFFSET);
@@ -414,7 +416,8 @@ fn run_kvm(requests: Vec<VmRequest>,
     let mut next_dev_pfn = BASE_DEV_MEMORY_PFN;
     for request in requests {
         let mut running = false;
-        if let VmResponse::Err(e) = request.execute(&mut vm, &mut next_dev_pfn, &mut running) {
+        if let VmResponse::Err(e) = request.execute(&mut vm, &mut next_dev_pfn,
+                                                    &mut running, &balloon_host_socket) {
             return Err(Error::Vm(e));
         }
         if !running {
@@ -573,7 +576,8 @@ fn run_kvm(requests: Vec<VmRequest>,
                 exit_evt,
                 sigchld_fd,
                 kill_signaled,
-                vcpu_handles)
+                vcpu_handles,
+                balloon_host_socket)
 }
 
 fn run_control(mut vm: Vm,
@@ -583,7 +587,8 @@ fn run_control(mut vm: Vm,
                exit_evt: EventFd,
                sigchld_fd: SignalFd,
                kill_signaled: Arc<AtomicBool>,
-               vcpu_handles: Vec<JoinHandle<()>>)
+               vcpu_handles: Vec<JoinHandle<()>>,
+               balloon_host_socket: UnixDatagram)
                -> Result<()> {
     const MAX_VM_FD_RECV: usize = 1;
 
@@ -665,7 +670,8 @@ fn run_control(mut vm: Vm,
                         Ok(request) => {
                             let mut running = true;
                             let response =
-                                request.execute(&mut vm, &mut next_dev_pfn, &mut running);
+                                request.execute(&mut vm, &mut next_dev_pfn,
+                                                &mut running, &balloon_host_socket);
                             if let Err(e) = response.send(&mut scm, socket.as_ref()) {
                                 error!("failed to send VmResponse: {:?}", e);
                             }

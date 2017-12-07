@@ -382,6 +382,36 @@ fn stop_vms(args: std::env::Args) {
     }
 }
 
+fn balloon_vms(mut args: std::env::Args) {
+    let mut scm = Scm::new(1);
+    if args.len() < 2 {
+        print_help("crosvm balloon", "PAGE_ADJUST VM_SOCKET...", &[]);
+        println!("Adjust the ballon size of the crosvm instance by `PAGE_ADJUST` pages, `PAGE_ADJUST` can be negative to shrink the balloon.");
+    }
+    let num_pages: i32 = match args.nth(0).unwrap().parse::<i32>() {
+        Ok(n) => n,
+        Err(_) => {
+            error!("Failed to parse number of pages");
+            return;
+        },
+    };
+
+    for socket_path in args {
+        match UnixDatagram::unbound().and_then(|s| {
+                                                   s.connect(&socket_path)?;
+                                                   Ok(s)
+                                               }) {
+            Ok(s) => {
+                if let Err(e) = VmRequest::BalloonAdjust(num_pages).send(&mut scm, &s) {
+                    error!("failed to send balloon request to socket at '{}': {:?}",
+                           socket_path,
+                           e);
+                }
+            }
+            Err(e) => error!("failed to connect to socket at '{}': {}", socket_path, e),
+        }
+    }
+}
 
 fn print_usage() {
     print_help("crosvm", "[stop|run]", &[]);
@@ -409,6 +439,9 @@ fn main() {
         }
         Some("run") => {
             run_vm(args);
+        }
+        Some("balloon") => {
+            balloon_vms(args);
         }
         Some(c) => {
             println!("invalid subcommand: {:?}", c);

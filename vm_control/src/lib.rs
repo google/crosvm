@@ -10,6 +10,7 @@
 //! The wire message format is a little-endian C-struct of fixed size, along with a file descriptor
 //! if the request type expects one.
 
+extern crate byteorder;
 extern crate data_model;
 extern crate kvm;
 extern crate libc;
@@ -22,6 +23,7 @@ use std::result;
 
 use libc::{ERANGE, EINVAL};
 
+use byteorder::{LittleEndian, WriteBytesExt};
 use data_model::{DataInit, Le32, Le64, VolatileMemory};
 use sys_util::{EventFd, Error as SysError, MmapError, MemoryMapping, Scm, GuestAddress};
 use kvm::{IoeventAddress, Vm};
@@ -65,6 +67,8 @@ impl AsRawFd for MaybeOwnedFd {
 ///
 /// Unless otherwise noted, each request should expect a `VmResponse::Ok` to be received on success.
 pub enum VmRequest {
+    /// Try to grow or shrink the VM's balloon.
+    BalloonAdjust(i32),
     /// Break the VM's run loop and exit.
     Exit,
     /// Register the given ioevent address along with given datamatch to trigger the `EventFd`.
@@ -81,7 +85,8 @@ pub enum VmRequest {
 const VM_REQUEST_TYPE_EXIT: u32 = 1;
 const VM_REQUEST_TYPE_REGISTER_MEMORY: u32 = 2;
 const VM_REQUEST_TYPE_UNREGISTER_MEMORY: u32 = 3;
-const VM_REQUEST_SIZE: usize = 16;
+const VM_REQUEST_TYPE_BALLOON_ADJUST: u32 = 4;
+const VM_REQUEST_SIZE: usize = 24;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -89,6 +94,7 @@ struct VmRequestStruct {
     type_: Le32,
     slot: Le32,
     size: Le64,
+    num_pages: Le32,
 }
 
 // Safe because it only has data and has no implicit padding.
@@ -99,6 +105,7 @@ impl VmRequest {
     ///
     /// A `VmResponse` should be sent out over the given socket before another request is received.
     pub fn recv(scm: &mut Scm, s: &UnixDatagram) -> VmControlResult<VmRequest> {
+        assert_eq!(VM_REQUEST_SIZE, std::mem::size_of::<VmRequestStruct>());
         let mut buf = [0; VM_REQUEST_SIZE];
         let mut fds = Vec::new();
         let read = scm.recv(s, &mut [&mut buf], &mut fds)
@@ -118,6 +125,9 @@ impl VmRequest {
                                              req.size.to_native() as usize))
             }
             VM_REQUEST_TYPE_UNREGISTER_MEMORY => Ok(VmRequest::UnregisterMemory(req.slot.into())),
+            VM_REQUEST_TYPE_BALLOON_ADJUST => {
+                Ok(VmRequest::BalloonAdjust(req.num_pages.to_native() as i32))
+            },
             _ => Err(VmControlError::InvalidType),
         }
     }
@@ -127,6 +137,7 @@ impl VmRequest {
     /// After this request is a sent, a `VmResponse` should be received before sending another
     /// request.
     pub fn send(&self, scm: &mut Scm, s: &UnixDatagram) -> VmControlResult<()> {
+        assert_eq!(VM_REQUEST_SIZE, std::mem::size_of::<VmRequestStruct>());
         let mut req = VmRequestStruct::default();
         let mut fd_buf = [0; 1];
         let mut fd_len = 0;
@@ -142,6 +153,10 @@ impl VmRequest {
                 req.type_ = Le32::from(VM_REQUEST_TYPE_UNREGISTER_MEMORY);
                 req.slot = Le32::from(slot);
             }
+            &VmRequest::BalloonAdjust(pages) => {
+                req.type_ = Le32::from(VM_REQUEST_TYPE_BALLOON_ADJUST);
+                req.num_pages = Le32::from(pages as u32);
+            },
             _ => return Err(VmControlError::InvalidType),
         }
         let mut buf = [0; VM_REQUEST_SIZE];
@@ -162,7 +177,8 @@ impl VmRequest {
     /// This does not return a result, instead encapsulating the success or failure in a
     /// `VmResponse` with the intended purpose of sending the response back over the  socket that
     /// received this `VmRequest`.
-    pub fn execute(&self, vm: &mut Vm, next_mem_pfn: &mut u64, running: &mut bool) -> VmResponse {
+    pub fn execute(&self, vm: &mut Vm, next_mem_pfn: &mut u64, running: &mut bool,
+                   balloon_host_socket: &UnixDatagram) -> VmResponse {
         *running = true;
         match self {
             &VmRequest::Exit => {
@@ -209,6 +225,15 @@ impl VmRequest {
                     Err(e) => VmResponse::Err(e),
                 }
             }
+            &VmRequest::BalloonAdjust(num_pages) => {
+                let mut buf = [0u8; 4];
+                // write_i32 can't fail as the buffer is 4 bytes long.
+                (&mut buf[0..]).write_i32::<LittleEndian>(num_pages).unwrap();
+                match balloon_host_socket.send(&buf) {
+                    Ok(_) => VmResponse::Ok,
+                    Err(_) => VmResponse::Err(SysError::last()),
+                }
+            },
         }
     }
 }
