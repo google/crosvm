@@ -51,12 +51,10 @@ enum Error {
     Socket(std::io::Error),
     Disk(std::io::Error),
     BlockDeviceNew(sys_util::Error),
-    BlockDeviceRootSetup(sys_util::Error),
     VhostNetDeviceNew(devices::virtio::vhost::Error),
     NetDeviceNew(devices::virtio::NetError),
-    NetDeviceRootSetup(sys_util::Error),
+    NoVarEmpty,
     VhostVsockDeviceNew(devices::virtio::vhost::Error),
-    VsockDeviceRootSetup(sys_util::Error),
     DeviceJail(io_jail::Error),
     DevicePivotRoot(io_jail::Error),
     RegisterBlock(device_manager::Error),
@@ -71,7 +69,6 @@ enum Error {
     RegisterIrqfd(sys_util::Error),
     RegisterRng(device_manager::Error),
     RngDeviceNew(devices::virtio::RngError),
-    RngDeviceRootSetup(sys_util::Error),
     KernelLoader(kernel_loader::Error),
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     ConfigureSystem(x86_64::Error),
@@ -110,28 +107,17 @@ impl fmt::Display for Error {
             &Error::Socket(ref e) => write!(f, "failed to create socket: {}", e),
             &Error::Disk(ref e) => write!(f, "failed to load disk image: {}", e),
             &Error::BlockDeviceNew(ref e) => write!(f, "failed to create block device: {:?}", e),
-            &Error::BlockDeviceRootSetup(ref e) => {
-                write!(f, "failed to create root directory for a block device: {:?}", e)
-            }
             &Error::RegisterBlock(ref e) => write!(f, "error registering block device: {:?}", e),
             &Error::VhostNetDeviceNew(ref e) => write!(f, "failed to set up vhost networking: {:?}", e),
             &Error::RegisterVsock(ref e) => write!(f, "error registering virtual socket device: {:?}", e),
             &Error::NetDeviceNew(ref e) => write!(f, "failed to set up virtio networking: {:?}", e),
-            &Error::NetDeviceRootSetup(ref e) => {
-                write!(f, "failed to create root directory for a net device: {:?}", e)
-            }
+            &Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
             &Error::DeviceJail(ref e) => write!(f, "failed to jail device: {}", e),
             &Error::DevicePivotRoot(ref e) => write!(f, "failed to pivot root device: {}", e),
             &Error::VhostVsockDeviceNew(ref e) => write!(f, "failed to set up virtual socket device: {:?}", e),
-            &Error::VsockDeviceRootSetup(ref e) => {
-                write!(f, "failed to create root directory for a vsock device: {:?}", e)
-            }
             &Error::RegisterNet(ref e) => write!(f, "error registering net device: {:?}", e),
             &Error::RegisterRng(ref e) => write!(f, "error registering rng device: {:?}", e),
             &Error::RngDeviceNew(ref e) => write!(f, "failed to set up rng: {:?}", e),
-            &Error::RngDeviceRootSetup(ref e) => {
-                write!(f, "failed to create root directory for a rng device: {:?}", e)
-            }
             &Error::RegisterWayland(ref e) => write!(f, "error registering wayland device: {}", e),
             &Error::SettingUidMap(ref e) => write!(f, "error setting UID map: {}", e),
             &Error::SettingGidMap(ref e) => write!(f, "error setting GID map: {}", e),
@@ -279,6 +265,8 @@ fn wait_all_children() -> bool {
 }
 
 fn run_config(cfg: Config) -> Result<()> {
+    static DEFAULT_PIVOT_ROOT: &'static str = "/var/empty";
+
     if cfg.multiprocess {
         // Printing something to the syslog before entering minijail so that libc's syslogger has a
         // chance to open files necessary for its operation, like `/etc/localtime`. After jailing,
@@ -311,8 +299,12 @@ fn run_config(cfg: Config) -> Result<()> {
 
     let mut device_manager = DeviceManager::new(guest_mem.clone(), 0x1000, 0xd0000000, 5);
 
-    let block_root = TempDir::new(&PathBuf::from("/tmp/block_root"))
-        .map_err(Error::BlockDeviceRootSetup)?;
+    // An empty directory for jailed device's pivot root.
+    let empty_root_path = Path::new(DEFAULT_PIVOT_ROOT);
+    if cfg.multiprocess && !empty_root_path.exists() {
+        return Err(Error::NoVarEmpty);
+    }
+
     for disk in cfg.disks {
         let disk_image = OpenOptions::new()
                             .read(true)
@@ -323,9 +315,8 @@ fn run_config(cfg: Config) -> Result<()> {
         let block_box = Box::new(devices::virtio::Block::new(disk_image)
                     .map_err(|e| Error::BlockDeviceNew(e))?);
         let jail = if cfg.multiprocess {
-            let block_root_path = block_root.as_path().unwrap(); // Won't fail if new succeeded.
             let policy_path: PathBuf = cfg.seccomp_policy_dir.join("block_device.policy");
-            Some(create_base_minijail(block_root_path, &policy_path)?)
+            Some(create_base_minijail(empty_root_path, &policy_path)?)
         }
         else {
             None
@@ -335,13 +326,10 @@ fn run_config(cfg: Config) -> Result<()> {
                 .map_err(Error::RegisterBlock)?;
     }
 
-    let rng_root = TempDir::new(&PathBuf::from("/tmp/rng_root"))
-        .map_err(Error::RngDeviceRootSetup)?;
     let rng_box = Box::new(devices::virtio::Rng::new().map_err(Error::RngDeviceNew)?);
     let rng_jail = if cfg.multiprocess {
-        let rng_root_path = rng_root.as_path().unwrap(); // Won't fail if new succeeded.
         let policy_path: PathBuf = cfg.seccomp_policy_dir.join("rng_device.policy");
-        Some(create_base_minijail(rng_root_path, &policy_path)?)
+        Some(create_base_minijail(empty_root_path, &policy_path)?)
     } else {
         None
     };
@@ -349,8 +337,6 @@ fn run_config(cfg: Config) -> Result<()> {
         .map_err(Error::RegisterRng)?;
 
     // We checked above that if the IP is defined, then the netmask is, too.
-    let net_root = TempDir::new(&PathBuf::from("/tmp/net_root"))
-        .map_err(Error::NetDeviceRootSetup)?;
     if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
             let net_box: Box<devices::virtio::VirtioDevice> = if cfg.vhost_net {
@@ -362,15 +348,13 @@ fn run_config(cfg: Config) -> Result<()> {
             };
 
             let jail = if cfg.multiprocess {
-                let net_root_path = net_root.as_path().unwrap(); // Won't fail if new succeeded.
-
                 let policy_path: PathBuf = if cfg.vhost_net {
                     cfg.seccomp_policy_dir.join("vhost_net_device.policy")
                 } else {
                     cfg.seccomp_policy_dir.join("net_device.policy")
                 };
 
-                Some(create_base_minijail(net_root_path, &policy_path)?)
+                Some(create_base_minijail(empty_root_path, &policy_path)?)
             }
             else {
                 None
@@ -447,17 +431,14 @@ fn run_config(cfg: Config) -> Result<()> {
             .map_err(Error::RegisterWayland)?;
     }
 
-    let vsock_root = TempDir::new(&PathBuf::from("/tmp/vsock_root"))
-        .map_err(Error::VsockDeviceRootSetup)?;
     if let Some(cid) = cfg.cid {
         let vsock_box = Box::new(devices::virtio::vhost::Vsock::new(cid, &guest_mem)
             .map_err(|e| Error::VhostVsockDeviceNew(e))?);
 
         let jail = if cfg.multiprocess {
-            let root_path = vsock_root.as_path().unwrap();
             let policy_path: PathBuf = cfg.seccomp_policy_dir.join("vhost_vsock_device.policy");
 
-            Some(create_base_minijail(root_path, &policy_path)?)
+            Some(create_base_minijail(empty_root_path, &policy_path)?)
         } else {
             None
         };
