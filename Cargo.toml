@@ -19,6 +19,7 @@ libc = "=0.2.34"
 byteorder = "=1.1.0"
 vm_control = { path = "vm_control" }
 data_model = { path = "data_model" }
+qcow = { path = "qcow" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { path = "x86_64" }
