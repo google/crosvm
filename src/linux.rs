@@ -25,7 +25,7 @@ use kernel_loader;
 use kvm::*;
 use sys_util::*;
 use sys_util;
-use vm_control::{VmResponse, VmRequest};
+use vm_control::VmRequest;
 
 use Config;
 
@@ -181,40 +181,15 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     Ok(j)
 }
 
-pub fn run_config(cfg: Config) -> Result<()> {
+fn setup_mmio_bus(vm: &mut Vm,
+                  guest_mem: &GuestMemory,
+                  cfg: Config,
+                  cmdline: &mut kernel_cmdline::Cmdline,
+                  control_sockets: &mut Vec<UnlinkUnixDatagram>,
+                  balloon_device_socket: UnixDatagram)
+                  -> Result<devices::Bus> {
     static DEFAULT_PIVOT_ROOT: &'static str = "/var/empty";
-
-    if cfg.multiprocess {
-        // Printing something to the syslog before entering minijail so that libc's syslogger has a
-        // chance to open files necessary for its operation, like `/etc/localtime`. After jailing,
-        // access to those files will not be possible.
-        info!("crosvm entering multiprocess mode");
-    }
-
-    let kernel_image = File::open(cfg.kernel_path.as_path())
-        .map_err(|e| Error::OpenKernel(cfg.kernel_path.clone(), e))?;
-
-    let mut control_sockets = Vec::new();
-    if let Some(ref path) = cfg.socket_path {
-        let path = Path::new(path);
-        let control_socket = UnixDatagram::bind(path).map_err(|e| Error::Socket(e))?;
-        control_sockets.push(UnlinkUnixDatagram(control_socket));
-    }
-
-    let mem_size = cfg.memory.unwrap_or(256) << 20;
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-    let arch_mem_regions = vec![(GuestAddress(0), mem_size)];
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    let arch_mem_regions = x86_64::arch_memory_regions(mem_size);
-    let guest_mem =
-        GuestMemory::new(&arch_mem_regions).expect("new mmap failed");
-
-    let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE);
-    cmdline
-        .insert_str("console=ttyS0 noacpi reboot=k panic=1 pci=off")
-        .unwrap();
-
-    let mut device_manager = DeviceManager::new(guest_mem.clone(), 0x1000, 0xd0000000, 5);
+    let mut device_manager = DeviceManager::new(vm, guest_mem.clone(), 0x1000, 0xd0000000, 5);
 
     // An empty directory for jailed device's pivot root.
     let empty_root_path = Path::new(DEFAULT_PIVOT_ROOT);
@@ -239,8 +214,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
             None
         };
 
-        device_manager.register_mmio(block_box, jail, &mut cmdline)
-                .map_err(Error::RegisterBlock)?;
+        device_manager
+            .register_mmio(block_box, jail, cmdline)
+            .map_err(Error::RegisterBlock)?;
     }
 
     let rng_box = Box::new(devices::virtio::Rng::new().map_err(Error::RngDeviceNew)?);
@@ -250,10 +226,10 @@ pub fn run_config(cfg: Config) -> Result<()> {
     } else {
         None
     };
-    device_manager.register_mmio(rng_box, rng_jail, &mut cmdline)
+    device_manager
+        .register_mmio(rng_box, rng_jail, cmdline)
         .map_err(Error::RegisterRng)?;
 
-    let (balloon_host_socket, balloon_device_socket) = UnixDatagram::pair().map_err(Error::Socket)?;
     let balloon_box = Box::new(devices::virtio::Balloon::new(balloon_device_socket)
                                    .map_err(Error::BalloonDeviceNew)?);
     let balloon_jail = if cfg.multiprocess {
@@ -262,7 +238,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     } else {
         None
     };
-    device_manager.register_mmio(balloon_box, balloon_jail, &mut cmdline)
+    device_manager.register_mmio(balloon_box, balloon_jail, cmdline)
         .map_err(Error::RegisterBalloon)?;
 
     // We checked above that if the IP is defined, then the netmask is, too.
@@ -289,7 +265,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 None
             };
 
-            device_manager.register_mmio(net_box, jail, &mut cmdline).map_err(Error::RegisterNet)?;
+            device_manager
+                .register_mmio(net_box, jail, cmdline)
+                .map_err(Error::RegisterNet)?;
         }
     }
 
@@ -356,7 +334,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
             None
         };
         device_manager
-            .register_mmio(wl_box, jail, &mut cmdline)
+            .register_mmio(wl_box, jail, cmdline)
             .map_err(Error::RegisterWayland)?;
     }
 
@@ -372,7 +350,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
             None
         };
 
-        device_manager.register_mmio(vsock_box, jail, &mut cmdline).map_err(Error::RegisterVsock)?;
+        device_manager
+            .register_mmio(vsock_box, jail, cmdline)
+            .map_err(Error::RegisterVsock)?;
     }
 
     if !cfg.params.is_empty() {
@@ -380,31 +360,36 @@ pub fn run_config(cfg: Config) -> Result<()> {
             .insert_str(cfg.params)
             .map_err(|e| Error::Cmdline(e))?;
     }
-
-    run_kvm(device_manager.vm_requests,
-            kernel_image,
-            &CString::new(cmdline).unwrap(),
-            cfg.vcpu_count.unwrap_or(1),
-            guest_mem,
-            &device_manager.bus,
-            control_sockets,
-            balloon_host_socket)
+    Ok(device_manager.bus)
 }
 
-fn run_kvm(requests: Vec<VmRequest>,
-           mut kernel_image: File,
-           cmdline: &CStr,
-           vcpu_count: u32,
-           guest_mem: GuestMemory,
-           mmio_bus: &devices::Bus,
-           control_sockets: Vec<UnlinkUnixDatagram>,
-           balloon_host_socket: UnixDatagram)
-           -> Result<()> {
-    let kvm = Kvm::new().map_err(Error::Kvm)?;
-    let kernel_start_addr = GuestAddress(KERNEL_START_OFFSET);
-    let cmdline_addr = GuestAddress(CMDLINE_OFFSET);
+pub fn run_config(cfg: Config) -> Result<()> {
+    if cfg.multiprocess {
+        // Printing something to the syslog before entering minijail so that libc's syslogger has a
+        // chance to open files necessary for its operation, like `/etc/localtime`. After jailing,
+        // access to those files will not be possible.
+        info!("crosvm entering multiprocess mode");
+    }
 
-    let mut vm = Vm::new(&kvm, guest_mem).map_err(Error::Vm)?;
+    let kernel_image = File::open(cfg.kernel_path.as_path())
+        .map_err(|e| Error::OpenKernel(cfg.kernel_path.clone(), e))?;
+
+    let mut control_sockets = Vec::new();
+    if let Some(ref path) = cfg.socket_path {
+        let path = Path::new(path);
+        let control_socket = UnixDatagram::bind(path).map_err(|e| Error::Socket(e))?;
+        control_sockets.push(UnlinkUnixDatagram(control_socket));
+    }
+
+    let mem_size = cfg.memory.unwrap_or(256) << 20;
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let arch_mem_regions = vec![(GuestAddress(0), mem_size)];
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let arch_mem_regions = x86_64::arch_memory_regions(mem_size);
+    let guest_mem = GuestMemory::new(&arch_mem_regions).expect("new mmap failed");
+
+    let kvm = Kvm::new().map_err(Error::Kvm)?;
+    let mut vm = Vm::new(&kvm, guest_mem.clone()).map_err(Error::Vm)?;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
         let tss_addr = GuestAddress(0xfffbd000);
@@ -413,18 +398,36 @@ fn run_kvm(requests: Vec<VmRequest>,
     }
     vm.create_irq_chip().expect("create irq chip failed");
 
-    let mut next_dev_pfn = BASE_DEV_MEMORY_PFN;
-    for request in requests {
-        let mut running = false;
-        if let VmResponse::Err(e) = request.execute(&mut vm, &mut next_dev_pfn,
-                                                    &mut running, &balloon_host_socket) {
-            return Err(Error::Vm(e));
-        }
-        if !running {
-            info!("configuration requested exit");
-            return Ok(());
-        }
-    }
+    let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE);
+    cmdline
+        .insert_str("console=ttyS0 noacpi reboot=k panic=1 pci=off")
+        .unwrap();
+
+    let vcpu_count = cfg.vcpu_count.unwrap_or(1);
+    let (balloon_host_socket, balloon_device_socket) = UnixDatagram::pair().map_err(Error::Socket)?;
+    let mmio_bus = setup_mmio_bus(&mut vm, &guest_mem, cfg, &mut cmdline, &mut control_sockets, balloon_device_socket)?;
+
+    run_kvm(kvm,
+            vm,
+            kernel_image,
+            &CString::new(cmdline).unwrap(),
+            vcpu_count,
+            mmio_bus,
+            control_sockets,
+            balloon_host_socket)
+}
+
+fn run_kvm(kvm: Kvm,
+           vm: Vm,
+           mut kernel_image: File,
+           cmdline: &CStr,
+           vcpu_count: u32,
+           mmio_bus: devices::Bus,
+           control_sockets: Vec<UnlinkUnixDatagram>,
+           balloon_host_socket: UnixDatagram)
+           -> Result<()> {
+    let kernel_start_addr = GuestAddress(KERNEL_START_OFFSET);
+    let cmdline_addr = GuestAddress(CMDLINE_OFFSET);
 
     kernel_loader::load_kernel(vm.get_memory(), kernel_start_addr, &mut kernel_image)?;
     kernel_loader::load_cmdline(vm.get_memory(), cmdline_addr, cmdline)?;
@@ -571,7 +574,6 @@ fn run_kvm(requests: Vec<VmRequest>,
 
     run_control(vm,
                 control_sockets,
-                next_dev_pfn,
                 stdio_serial,
                 exit_evt,
                 sigchld_fd,
@@ -582,7 +584,6 @@ fn run_kvm(requests: Vec<VmRequest>,
 
 fn run_control(mut vm: Vm,
                control_sockets: Vec<UnlinkUnixDatagram>,
-               mut next_dev_pfn: u64,
                stdio_serial: Arc<Mutex<devices::Serial>>,
                exit_evt: EventFd,
                sigchld_fd: SignalFd,
@@ -596,6 +597,8 @@ fn run_control(mut vm: Vm,
     const STDIN: u32 = 1;
     const CHILD_SIGNAL: u32 = 2;
     const VM_BASE: u32 = 3;
+
+    let mut next_dev_pfn = BASE_DEV_MEMORY_PFN;
 
     let stdin_handle = stdin();
     let stdin_lock = stdin_handle.lock();
