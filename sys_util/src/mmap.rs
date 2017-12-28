@@ -8,7 +8,7 @@
 use std;
 use std::io::{Read, Write};
 use std::ptr::null_mut;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, FromRawFd};
 
 use libc;
 
@@ -35,6 +35,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Wraps an anonymous shared memory mapping in the current process.
+#[derive(Debug)]
 pub struct MemoryMapping {
     addr: *mut u8,
     size: usize,
@@ -63,7 +64,7 @@ impl MemoryMapping {
                        -1,
                        0)
         };
-        if addr.is_null() {
+        if addr == libc::MAP_FAILED {
             return Err(Error::SystemCallFailed(errno::Error::last()));
         }
         Ok(MemoryMapping {
@@ -88,7 +89,7 @@ impl MemoryMapping {
                        fd.as_raw_fd(),
                        0)
         };
-        if addr.is_null() {
+        if addr == libc::MAP_FAILED {
             return Err(Error::SystemCallFailed(errno::Error::last()));
         }
         Ok(MemoryMapping {
@@ -367,6 +368,27 @@ mod tests {
     fn basic_map() {
         let m = MemoryMapping::new(1024).unwrap();
         assert_eq!(1024, m.size());
+    }
+
+    #[test]
+    fn map_invalid_size() {
+        let res = MemoryMapping::new(0).unwrap_err();
+        if let Error::SystemCallFailed(e) = res {
+            assert_eq!(e.errno(), libc::EINVAL);
+        } else {
+            panic!("unexpected error: {:?}", res);
+        }
+    }
+
+    #[test]
+    fn map_invalid_fd() {
+        let fd = unsafe { std::fs::File::from_raw_fd(-1) };
+        let res = MemoryMapping::from_fd(&fd, 1024).unwrap_err();
+        if let Error::SystemCallFailed(e) = res {
+            assert_eq!(e.errno(), libc::EBADF);
+        } else {
+            panic!("unexpected error: {:?}", res);
+        }
     }
 
     #[test]
