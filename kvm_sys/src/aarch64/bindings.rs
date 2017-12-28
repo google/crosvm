@@ -37,7 +37,7 @@ impl<T> ::std::clone::Clone for __IncompleteArrayField<T> {
     }
 }
 impl<T> ::std::marker::Copy for __IncompleteArrayField<T> {}
-pub const __BITS_PER_LONG: ::std::os::raw::c_uint = 32;
+pub const __BITS_PER_LONG: ::std::os::raw::c_uint = 64;
 pub const __FD_SETSIZE: ::std::os::raw::c_uint = 1024;
 pub const _IOC_NRBITS: ::std::os::raw::c_uint = 8;
 pub const _IOC_TYPEBITS: ::std::os::raw::c_uint = 8;
@@ -59,6 +59,13 @@ pub const IOC_OUT: ::std::os::raw::c_uint = 2147483648;
 pub const IOC_INOUT: ::std::os::raw::c_uint = 3221225472;
 pub const IOCSIZE_MASK: ::std::os::raw::c_uint = 1073676288;
 pub const IOCSIZE_SHIFT: ::std::os::raw::c_uint = 16;
+pub const KVM_SPSR_EL1: ::std::os::raw::c_uint = 0;
+pub const KVM_SPSR_SVC: ::std::os::raw::c_uint = 0;
+pub const KVM_SPSR_ABT: ::std::os::raw::c_uint = 1;
+pub const KVM_SPSR_UND: ::std::os::raw::c_uint = 2;
+pub const KVM_SPSR_IRQ: ::std::os::raw::c_uint = 3;
+pub const KVM_SPSR_FIQ: ::std::os::raw::c_uint = 4;
+pub const KVM_NR_SPSR: ::std::os::raw::c_uint = 5;
 pub const PSCI_0_2_FN_BASE: ::std::os::raw::c_uint = 2214592512;
 pub const PSCI_0_2_64BIT: ::std::os::raw::c_uint = 1073741824;
 pub const PSCI_0_2_FN64_BASE: ::std::os::raw::c_uint = 3288334336;
@@ -93,71 +100,29 @@ pub const PSCI_RET_INTERNAL_FAILURE: ::std::os::raw::c_int = -6;
 pub const PSCI_RET_NOT_PRESENT: ::std::os::raw::c_int = -7;
 pub const PSCI_RET_DISABLED: ::std::os::raw::c_int = -8;
 pub const PSCI_RET_INVALID_ADDRESS: ::std::os::raw::c_int = -9;
-pub const HWCAP_SWP: ::std::os::raw::c_uint = 1;
-pub const HWCAP_HALF: ::std::os::raw::c_uint = 2;
-pub const HWCAP_THUMB: ::std::os::raw::c_uint = 4;
-pub const HWCAP_26BIT: ::std::os::raw::c_uint = 8;
-pub const HWCAP_FAST_MULT: ::std::os::raw::c_uint = 16;
-pub const HWCAP_FPA: ::std::os::raw::c_uint = 32;
-pub const HWCAP_VFP: ::std::os::raw::c_uint = 64;
-pub const HWCAP_EDSP: ::std::os::raw::c_uint = 128;
-pub const HWCAP_JAVA: ::std::os::raw::c_uint = 256;
-pub const HWCAP_IWMMXT: ::std::os::raw::c_uint = 512;
-pub const HWCAP_CRUNCH: ::std::os::raw::c_uint = 1024;
-pub const HWCAP_THUMBEE: ::std::os::raw::c_uint = 2048;
-pub const HWCAP_NEON: ::std::os::raw::c_uint = 4096;
-pub const HWCAP_VFPv3: ::std::os::raw::c_uint = 8192;
-pub const HWCAP_VFPv3D16: ::std::os::raw::c_uint = 16384;
-pub const HWCAP_TLS: ::std::os::raw::c_uint = 32768;
-pub const HWCAP_VFPv4: ::std::os::raw::c_uint = 65536;
-pub const HWCAP_IDIVA: ::std::os::raw::c_uint = 131072;
-pub const HWCAP_IDIVT: ::std::os::raw::c_uint = 262144;
-pub const HWCAP_VFPD32: ::std::os::raw::c_uint = 524288;
-pub const HWCAP_IDIV: ::std::os::raw::c_uint = 393216;
-pub const HWCAP_LPAE: ::std::os::raw::c_uint = 1048576;
-pub const HWCAP_EVTSTRM: ::std::os::raw::c_uint = 2097152;
-pub const HWCAP2_AES: ::std::os::raw::c_uint = 1;
-pub const HWCAP2_PMULL: ::std::os::raw::c_uint = 2;
-pub const HWCAP2_SHA1: ::std::os::raw::c_uint = 4;
-pub const HWCAP2_SHA2: ::std::os::raw::c_uint = 8;
-pub const HWCAP2_CRC32: ::std::os::raw::c_uint = 16;
-pub const PTRACE_GETREGS: ::std::os::raw::c_uint = 12;
-pub const PTRACE_SETREGS: ::std::os::raw::c_uint = 13;
-pub const PTRACE_GETFPREGS: ::std::os::raw::c_uint = 14;
-pub const PTRACE_SETFPREGS: ::std::os::raw::c_uint = 15;
-pub const PTRACE_GETWMMXREGS: ::std::os::raw::c_uint = 18;
-pub const PTRACE_SETWMMXREGS: ::std::os::raw::c_uint = 19;
-pub const PTRACE_OLDSETOPTIONS: ::std::os::raw::c_uint = 21;
-pub const PTRACE_GET_THREAD_AREA: ::std::os::raw::c_uint = 22;
-pub const PTRACE_SET_SYSCALL: ::std::os::raw::c_uint = 23;
-pub const PTRACE_GETCRUNCHREGS: ::std::os::raw::c_uint = 25;
-pub const PTRACE_SETCRUNCHREGS: ::std::os::raw::c_uint = 26;
-pub const PTRACE_GETVFPREGS: ::std::os::raw::c_uint = 27;
-pub const PTRACE_SETVFPREGS: ::std::os::raw::c_uint = 28;
-pub const PTRACE_GETHBPREGS: ::std::os::raw::c_uint = 29;
-pub const PTRACE_SETHBPREGS: ::std::os::raw::c_uint = 30;
-pub const USR26_MODE: ::std::os::raw::c_uint = 0;
-pub const FIQ26_MODE: ::std::os::raw::c_uint = 1;
-pub const IRQ26_MODE: ::std::os::raw::c_uint = 2;
-pub const SVC26_MODE: ::std::os::raw::c_uint = 3;
-pub const USR_MODE: ::std::os::raw::c_uint = 16;
-pub const SVC_MODE: ::std::os::raw::c_uint = 19;
-pub const FIQ_MODE: ::std::os::raw::c_uint = 17;
-pub const IRQ_MODE: ::std::os::raw::c_uint = 18;
-pub const ABT_MODE: ::std::os::raw::c_uint = 23;
-pub const HYP_MODE: ::std::os::raw::c_uint = 26;
-pub const UND_MODE: ::std::os::raw::c_uint = 27;
-pub const SYSTEM_MODE: ::std::os::raw::c_uint = 31;
-pub const MODE32_BIT: ::std::os::raw::c_uint = 16;
-pub const MODE_MASK: ::std::os::raw::c_uint = 31;
-pub const V4_PSR_T_BIT: ::std::os::raw::c_uint = 32;
-pub const V7M_PSR_T_BIT: ::std::os::raw::c_uint = 16777216;
-pub const PSR_T_BIT: ::std::os::raw::c_uint = 32;
+pub const HWCAP_FP: ::std::os::raw::c_uint = 1;
+pub const HWCAP_ASIMD: ::std::os::raw::c_uint = 2;
+pub const HWCAP_EVTSTRM: ::std::os::raw::c_uint = 4;
+pub const HWCAP_AES: ::std::os::raw::c_uint = 8;
+pub const HWCAP_PMULL: ::std::os::raw::c_uint = 16;
+pub const HWCAP_SHA1: ::std::os::raw::c_uint = 32;
+pub const HWCAP_SHA2: ::std::os::raw::c_uint = 64;
+pub const HWCAP_CRC32: ::std::os::raw::c_uint = 128;
+pub const HWCAP_ATOMICS: ::std::os::raw::c_uint = 256;
+pub const PSR_MODE_EL0t: ::std::os::raw::c_uint = 0;
+pub const PSR_MODE_EL1t: ::std::os::raw::c_uint = 4;
+pub const PSR_MODE_EL1h: ::std::os::raw::c_uint = 5;
+pub const PSR_MODE_EL2t: ::std::os::raw::c_uint = 8;
+pub const PSR_MODE_EL2h: ::std::os::raw::c_uint = 9;
+pub const PSR_MODE_EL3t: ::std::os::raw::c_uint = 12;
+pub const PSR_MODE_EL3h: ::std::os::raw::c_uint = 13;
+pub const PSR_MODE_MASK: ::std::os::raw::c_uint = 15;
+pub const PSR_MODE32_BIT: ::std::os::raw::c_uint = 16;
 pub const PSR_F_BIT: ::std::os::raw::c_uint = 64;
 pub const PSR_I_BIT: ::std::os::raw::c_uint = 128;
 pub const PSR_A_BIT: ::std::os::raw::c_uint = 256;
-pub const PSR_E_BIT: ::std::os::raw::c_uint = 512;
-pub const PSR_J_BIT: ::std::os::raw::c_uint = 16777216;
+pub const PSR_D_BIT: ::std::os::raw::c_uint = 512;
+pub const PSR_PAN_BIT: ::std::os::raw::c_uint = 4194304;
 pub const PSR_Q_BIT: ::std::os::raw::c_uint = 134217728;
 pub const PSR_V_BIT: ::std::os::raw::c_uint = 268435456;
 pub const PSR_C_BIT: ::std::os::raw::c_uint = 536870912;
@@ -167,18 +132,13 @@ pub const PSR_f: ::std::os::raw::c_uint = 4278190080;
 pub const PSR_s: ::std::os::raw::c_uint = 16711680;
 pub const PSR_x: ::std::os::raw::c_uint = 65280;
 pub const PSR_c: ::std::os::raw::c_uint = 255;
-pub const APSR_MASK: ::std::os::raw::c_uint = 4161732608;
-pub const PSR_ISET_MASK: ::std::os::raw::c_uint = 16777232;
-pub const PSR_IT_MASK: ::std::os::raw::c_uint = 100727808;
-pub const PSR_ENDIAN_MASK: ::std::os::raw::c_uint = 512;
-pub const PSR_ENDSTATE: ::std::os::raw::c_uint = 0;
-pub const PT_TEXT_ADDR: ::std::os::raw::c_uint = 65536;
-pub const PT_DATA_ADDR: ::std::os::raw::c_uint = 65540;
-pub const PT_TEXT_END_ADDR: ::std::os::raw::c_uint = 65544;
-pub const ARM_VFPREGS_SIZE: ::std::os::raw::c_uint = 260;
-pub const KVM_ARM_TARGET_CORTEX_A15: ::std::os::raw::c_uint = 0;
-pub const KVM_ARM_TARGET_CORTEX_A7: ::std::os::raw::c_uint = 1;
-pub const KVM_ARM_NUM_TARGETS: ::std::os::raw::c_uint = 2;
+pub const KVM_ARM_TARGET_AEM_V8: ::std::os::raw::c_uint = 0;
+pub const KVM_ARM_TARGET_FOUNDATION_V8: ::std::os::raw::c_uint = 1;
+pub const KVM_ARM_TARGET_CORTEX_A57: ::std::os::raw::c_uint = 2;
+pub const KVM_ARM_TARGET_XGENE_POTENZA: ::std::os::raw::c_uint = 3;
+pub const KVM_ARM_TARGET_CORTEX_A53: ::std::os::raw::c_uint = 4;
+pub const KVM_ARM_TARGET_GENERIC_V8: ::std::os::raw::c_uint = 5;
+pub const KVM_ARM_NUM_TARGETS: ::std::os::raw::c_uint = 6;
 pub const KVM_ARM_DEVICE_TYPE_SHIFT: ::std::os::raw::c_uint = 0;
 pub const KVM_ARM_DEVICE_TYPE_MASK: ::std::os::raw::c_uint = 65535;
 pub const KVM_ARM_DEVICE_ID_SHIFT: ::std::os::raw::c_uint = 16;
@@ -188,18 +148,16 @@ pub const KVM_VGIC_V2_ADDR_TYPE_DIST: ::std::os::raw::c_uint = 0;
 pub const KVM_VGIC_V2_ADDR_TYPE_CPU: ::std::os::raw::c_uint = 1;
 pub const KVM_VGIC_V2_DIST_SIZE: ::std::os::raw::c_uint = 4096;
 pub const KVM_VGIC_V2_CPU_SIZE: ::std::os::raw::c_uint = 8192;
+pub const KVM_VGIC_V3_ADDR_TYPE_DIST: ::std::os::raw::c_uint = 2;
+pub const KVM_VGIC_V3_ADDR_TYPE_REDIST: ::std::os::raw::c_uint = 3;
 pub const KVM_ARM_VCPU_POWER_OFF: ::std::os::raw::c_uint = 0;
-pub const KVM_ARM_VCPU_PSCI_0_2: ::std::os::raw::c_uint = 1;
+pub const KVM_ARM_VCPU_EL1_32BIT: ::std::os::raw::c_uint = 1;
+pub const KVM_ARM_VCPU_PSCI_0_2: ::std::os::raw::c_uint = 2;
+pub const KVM_ARM_MAX_DBG_REGS: ::std::os::raw::c_uint = 16;
+pub const KVM_GUESTDBG_USE_SW_BP: ::std::os::raw::c_uint = 65536;
+pub const KVM_GUESTDBG_USE_HW: ::std::os::raw::c_uint = 131072;
 pub const KVM_REG_ARM_COPROC_MASK: ::std::os::raw::c_uint = 268369920;
 pub const KVM_REG_ARM_COPROC_SHIFT: ::std::os::raw::c_uint = 16;
-pub const KVM_REG_ARM_32_OPC2_MASK: ::std::os::raw::c_uint = 7;
-pub const KVM_REG_ARM_32_OPC2_SHIFT: ::std::os::raw::c_uint = 0;
-pub const KVM_REG_ARM_OPC1_MASK: ::std::os::raw::c_uint = 120;
-pub const KVM_REG_ARM_OPC1_SHIFT: ::std::os::raw::c_uint = 3;
-pub const KVM_REG_ARM_CRM_MASK: ::std::os::raw::c_uint = 1920;
-pub const KVM_REG_ARM_CRM_SHIFT: ::std::os::raw::c_uint = 7;
-pub const KVM_REG_ARM_32_CRN_MASK: ::std::os::raw::c_uint = 30720;
-pub const KVM_REG_ARM_32_CRN_SHIFT: ::std::os::raw::c_uint = 11;
 pub const KVM_REG_ARM_CORE: ::std::os::raw::c_uint = 1048576;
 pub const KVM_REG_ARM_DEMUX: ::std::os::raw::c_uint = 1114112;
 pub const KVM_REG_ARM_DEMUX_ID_MASK: ::std::os::raw::c_uint = 65280;
@@ -207,16 +165,17 @@ pub const KVM_REG_ARM_DEMUX_ID_SHIFT: ::std::os::raw::c_uint = 8;
 pub const KVM_REG_ARM_DEMUX_ID_CCSIDR: ::std::os::raw::c_uint = 0;
 pub const KVM_REG_ARM_DEMUX_VAL_MASK: ::std::os::raw::c_uint = 255;
 pub const KVM_REG_ARM_DEMUX_VAL_SHIFT: ::std::os::raw::c_uint = 0;
-pub const KVM_REG_ARM_VFP: ::std::os::raw::c_uint = 1179648;
-pub const KVM_REG_ARM_VFP_MASK: ::std::os::raw::c_uint = 65535;
-pub const KVM_REG_ARM_VFP_BASE_REG: ::std::os::raw::c_uint = 0;
-pub const KVM_REG_ARM_VFP_FPSID: ::std::os::raw::c_uint = 4096;
-pub const KVM_REG_ARM_VFP_FPSCR: ::std::os::raw::c_uint = 4097;
-pub const KVM_REG_ARM_VFP_MVFR1: ::std::os::raw::c_uint = 4102;
-pub const KVM_REG_ARM_VFP_MVFR0: ::std::os::raw::c_uint = 4103;
-pub const KVM_REG_ARM_VFP_FPEXC: ::std::os::raw::c_uint = 4104;
-pub const KVM_REG_ARM_VFP_FPINST: ::std::os::raw::c_uint = 4105;
-pub const KVM_REG_ARM_VFP_FPINST2: ::std::os::raw::c_uint = 4106;
+pub const KVM_REG_ARM64_SYSREG: ::std::os::raw::c_uint = 1245184;
+pub const KVM_REG_ARM64_SYSREG_OP0_MASK: ::std::os::raw::c_uint = 49152;
+pub const KVM_REG_ARM64_SYSREG_OP0_SHIFT: ::std::os::raw::c_uint = 14;
+pub const KVM_REG_ARM64_SYSREG_OP1_MASK: ::std::os::raw::c_uint = 14336;
+pub const KVM_REG_ARM64_SYSREG_OP1_SHIFT: ::std::os::raw::c_uint = 11;
+pub const KVM_REG_ARM64_SYSREG_CRN_MASK: ::std::os::raw::c_uint = 1920;
+pub const KVM_REG_ARM64_SYSREG_CRN_SHIFT: ::std::os::raw::c_uint = 7;
+pub const KVM_REG_ARM64_SYSREG_CRM_MASK: ::std::os::raw::c_uint = 120;
+pub const KVM_REG_ARM64_SYSREG_CRM_SHIFT: ::std::os::raw::c_uint = 3;
+pub const KVM_REG_ARM64_SYSREG_OP2_MASK: ::std::os::raw::c_uint = 7;
+pub const KVM_REG_ARM64_SYSREG_OP2_SHIFT: ::std::os::raw::c_uint = 0;
 pub const KVM_DEV_ARM_VGIC_GRP_ADDR: ::std::os::raw::c_uint = 0;
 pub const KVM_DEV_ARM_VGIC_GRP_DIST_REGS: ::std::os::raw::c_uint = 1;
 pub const KVM_DEV_ARM_VGIC_GRP_CPU_REGS: ::std::os::raw::c_uint = 2;
@@ -557,24 +516,24 @@ pub type __kernel_sighandler_t =
     ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>;
 pub type __kernel_key_t = ::std::os::raw::c_int;
 pub type __kernel_mqd_t = ::std::os::raw::c_int;
-pub type __kernel_mode_t = ::std::os::raw::c_ushort;
-pub type __kernel_ipc_pid_t = ::std::os::raw::c_ushort;
-pub type __kernel_uid_t = ::std::os::raw::c_ushort;
-pub type __kernel_gid_t = ::std::os::raw::c_ushort;
-pub type __kernel_old_dev_t = ::std::os::raw::c_ushort;
+pub type __kernel_old_uid_t = ::std::os::raw::c_ushort;
+pub type __kernel_old_gid_t = ::std::os::raw::c_ushort;
 pub type __kernel_long_t = ::std::os::raw::c_long;
 pub type __kernel_ulong_t = ::std::os::raw::c_ulong;
 pub type __kernel_ino_t = __kernel_ulong_t;
+pub type __kernel_mode_t = ::std::os::raw::c_uint;
 pub type __kernel_pid_t = ::std::os::raw::c_int;
+pub type __kernel_ipc_pid_t = ::std::os::raw::c_int;
+pub type __kernel_uid_t = ::std::os::raw::c_uint;
+pub type __kernel_gid_t = ::std::os::raw::c_uint;
 pub type __kernel_suseconds_t = __kernel_long_t;
 pub type __kernel_daddr_t = ::std::os::raw::c_int;
 pub type __kernel_uid32_t = ::std::os::raw::c_uint;
 pub type __kernel_gid32_t = ::std::os::raw::c_uint;
-pub type __kernel_old_uid_t = __kernel_uid_t;
-pub type __kernel_old_gid_t = __kernel_gid_t;
-pub type __kernel_size_t = ::std::os::raw::c_uint;
-pub type __kernel_ssize_t = ::std::os::raw::c_int;
-pub type __kernel_ptrdiff_t = ::std::os::raw::c_int;
+pub type __kernel_old_dev_t = ::std::os::raw::c_uint;
+pub type __kernel_size_t = __kernel_ulong_t;
+pub type __kernel_ssize_t = __kernel_long_t;
+pub type __kernel_ptrdiff_t = __kernel_long_t;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct __kernel_fsid_t {
@@ -622,112 +581,285 @@ pub type __sum16 = __u16;
 pub type __wsum = __u32;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
-pub struct pt_regs {
-    pub uregs: [::std::os::raw::c_long; 18usize],
+pub struct user_pt_regs {
+    pub regs: [__u64; 31usize],
+    pub sp: __u64,
+    pub pc: __u64,
+    pub pstate: __u64,
 }
 #[test]
-fn bindgen_test_layout_pt_regs() {
+fn bindgen_test_layout_user_pt_regs() {
     assert_eq!(
-        ::std::mem::size_of::<pt_regs>(),
-        144usize,
-        concat!("Size of: ", stringify!(pt_regs))
+        ::std::mem::size_of::<user_pt_regs>(),
+        272usize,
+        concat!("Size of: ", stringify!(user_pt_regs))
     );
     assert_eq!(
-        ::std::mem::align_of::<pt_regs>(),
+        ::std::mem::align_of::<user_pt_regs>(),
         8usize,
-        concat!("Alignment of ", stringify!(pt_regs))
+        concat!("Alignment of ", stringify!(user_pt_regs))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<pt_regs>())).uregs as *const _ as usize },
+        unsafe { &(*(::std::ptr::null::<user_pt_regs>())).regs as *const _ as usize },
         0usize,
         concat!(
             "Offset of field: ",
-            stringify!(pt_regs),
+            stringify!(user_pt_regs),
             "::",
-            stringify!(uregs)
+            stringify!(regs)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<user_pt_regs>())).sp as *const _ as usize },
+        248usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_pt_regs),
+            "::",
+            stringify!(sp)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<user_pt_regs>())).pc as *const _ as usize },
+        256usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_pt_regs),
+            "::",
+            stringify!(pc)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<user_pt_regs>())).pstate as *const _ as usize },
+        264usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_pt_regs),
+            "::",
+            stringify!(pstate)
+        )
+    );
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct user_fpsimd_state {
+    pub vregs: [__uint128_t; 32usize],
+    pub fpsr: __u32,
+    pub fpcr: __u32,
+    pub __bindgen_padding_0: u64,
+}
+#[test]
+fn bindgen_test_layout_user_fpsimd_state() {
+    assert_eq!(
+        ::std::mem::size_of::<user_fpsimd_state>(),
+        528usize,
+        concat!("Size of: ", stringify!(user_fpsimd_state))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<user_fpsimd_state>())).vregs as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_fpsimd_state),
+            "::",
+            stringify!(vregs)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<user_fpsimd_state>())).fpsr as *const _ as usize },
+        512usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_fpsimd_state),
+            "::",
+            stringify!(fpsr)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<user_fpsimd_state>())).fpcr as *const _ as usize },
+        516usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_fpsimd_state),
+            "::",
+            stringify!(fpcr)
+        )
+    );
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct user_hwdebug_state {
+    pub dbg_info: __u32,
+    pub pad: __u32,
+    pub dbg_regs: [user_hwdebug_state__bindgen_ty_1; 16usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct user_hwdebug_state__bindgen_ty_1 {
+    pub addr: __u64,
+    pub ctrl: __u32,
+    pub pad: __u32,
+}
+#[test]
+fn bindgen_test_layout_user_hwdebug_state__bindgen_ty_1() {
+    assert_eq!(
+        ::std::mem::size_of::<user_hwdebug_state__bindgen_ty_1>(),
+        16usize,
+        concat!("Size of: ", stringify!(user_hwdebug_state__bindgen_ty_1))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<user_hwdebug_state__bindgen_ty_1>(),
+        8usize,
+        concat!(
+            "Alignment of ",
+            stringify!(user_hwdebug_state__bindgen_ty_1)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::std::ptr::null::<user_hwdebug_state__bindgen_ty_1>())).addr as *const _ as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_hwdebug_state__bindgen_ty_1),
+            "::",
+            stringify!(addr)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::std::ptr::null::<user_hwdebug_state__bindgen_ty_1>())).ctrl as *const _ as usize
+        },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_hwdebug_state__bindgen_ty_1),
+            "::",
+            stringify!(ctrl)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::std::ptr::null::<user_hwdebug_state__bindgen_ty_1>())).pad as *const _ as usize
+        },
+        12usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_hwdebug_state__bindgen_ty_1),
+            "::",
+            stringify!(pad)
+        )
+    );
+}
+#[test]
+fn bindgen_test_layout_user_hwdebug_state() {
+    assert_eq!(
+        ::std::mem::size_of::<user_hwdebug_state>(),
+        264usize,
+        concat!("Size of: ", stringify!(user_hwdebug_state))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<user_hwdebug_state>(),
+        8usize,
+        concat!("Alignment of ", stringify!(user_hwdebug_state))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<user_hwdebug_state>())).dbg_info as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_hwdebug_state),
+            "::",
+            stringify!(dbg_info)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<user_hwdebug_state>())).pad as *const _ as usize },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_hwdebug_state),
+            "::",
+            stringify!(pad)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<user_hwdebug_state>())).dbg_regs as *const _ as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(user_hwdebug_state),
+            "::",
+            stringify!(dbg_regs)
         )
     );
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct kvm_regs {
-    pub usr_regs: pt_regs,
-    pub svc_regs: [::std::os::raw::c_ulong; 3usize],
-    pub abt_regs: [::std::os::raw::c_ulong; 3usize],
-    pub und_regs: [::std::os::raw::c_ulong; 3usize],
-    pub irq_regs: [::std::os::raw::c_ulong; 3usize],
-    pub fiq_regs: [::std::os::raw::c_ulong; 8usize],
+    pub regs: user_pt_regs,
+    pub sp_el1: __u64,
+    pub elr_el1: __u64,
+    pub spsr: [__u64; 5usize],
+    pub __bindgen_padding_0: u64,
+    pub fp_regs: user_fpsimd_state,
 }
 #[test]
 fn bindgen_test_layout_kvm_regs() {
     assert_eq!(
         ::std::mem::size_of::<kvm_regs>(),
-        304usize,
+        864usize,
         concat!("Size of: ", stringify!(kvm_regs))
     );
     assert_eq!(
-        ::std::mem::align_of::<kvm_regs>(),
-        8usize,
-        concat!("Alignment of ", stringify!(kvm_regs))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_regs>())).usr_regs as *const _ as usize },
+        unsafe { &(*(::std::ptr::null::<kvm_regs>())).regs as *const _ as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(kvm_regs),
             "::",
-            stringify!(usr_regs)
+            stringify!(regs)
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_regs>())).svc_regs as *const _ as usize },
-        144usize,
+        unsafe { &(*(::std::ptr::null::<kvm_regs>())).sp_el1 as *const _ as usize },
+        272usize,
         concat!(
             "Offset of field: ",
             stringify!(kvm_regs),
             "::",
-            stringify!(svc_regs)
+            stringify!(sp_el1)
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_regs>())).abt_regs as *const _ as usize },
-        168usize,
+        unsafe { &(*(::std::ptr::null::<kvm_regs>())).elr_el1 as *const _ as usize },
+        280usize,
         concat!(
             "Offset of field: ",
             stringify!(kvm_regs),
             "::",
-            stringify!(abt_regs)
+            stringify!(elr_el1)
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_regs>())).und_regs as *const _ as usize },
-        192usize,
+        unsafe { &(*(::std::ptr::null::<kvm_regs>())).spsr as *const _ as usize },
+        288usize,
         concat!(
             "Offset of field: ",
             stringify!(kvm_regs),
             "::",
-            stringify!(und_regs)
+            stringify!(spsr)
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_regs>())).irq_regs as *const _ as usize },
-        216usize,
+        unsafe { &(*(::std::ptr::null::<kvm_regs>())).fp_regs as *const _ as usize },
+        336usize,
         concat!(
             "Offset of field: ",
             stringify!(kvm_regs),
             "::",
-            stringify!(irq_regs)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_regs>())).fiq_regs as *const _ as usize },
-        240usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(kvm_regs),
-            "::",
-            stringify!(fiq_regs)
+            stringify!(fp_regs)
         )
     );
 }
@@ -804,34 +936,102 @@ fn bindgen_test_layout_kvm_fpu() {
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
-pub struct kvm_guest_debug_arch {}
+pub struct kvm_guest_debug_arch {
+    pub dbg_bcr: [__u64; 16usize],
+    pub dbg_bvr: [__u64; 16usize],
+    pub dbg_wcr: [__u64; 16usize],
+    pub dbg_wvr: [__u64; 16usize],
+}
 #[test]
 fn bindgen_test_layout_kvm_guest_debug_arch() {
     assert_eq!(
         ::std::mem::size_of::<kvm_guest_debug_arch>(),
-        0usize,
+        512usize,
         concat!("Size of: ", stringify!(kvm_guest_debug_arch))
     );
     assert_eq!(
         ::std::mem::align_of::<kvm_guest_debug_arch>(),
-        1usize,
+        8usize,
         concat!("Alignment of ", stringify!(kvm_guest_debug_arch))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<kvm_guest_debug_arch>())).dbg_bcr as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_guest_debug_arch),
+            "::",
+            stringify!(dbg_bcr)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<kvm_guest_debug_arch>())).dbg_bvr as *const _ as usize },
+        128usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_guest_debug_arch),
+            "::",
+            stringify!(dbg_bvr)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<kvm_guest_debug_arch>())).dbg_wcr as *const _ as usize },
+        256usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_guest_debug_arch),
+            "::",
+            stringify!(dbg_wcr)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<kvm_guest_debug_arch>())).dbg_wvr as *const _ as usize },
+        384usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_guest_debug_arch),
+            "::",
+            stringify!(dbg_wvr)
+        )
     );
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
-pub struct kvm_debug_exit_arch {}
+pub struct kvm_debug_exit_arch {
+    pub hsr: __u32,
+    pub far: __u64,
+}
 #[test]
 fn bindgen_test_layout_kvm_debug_exit_arch() {
     assert_eq!(
         ::std::mem::size_of::<kvm_debug_exit_arch>(),
-        0usize,
+        16usize,
         concat!("Size of: ", stringify!(kvm_debug_exit_arch))
     );
     assert_eq!(
         ::std::mem::align_of::<kvm_debug_exit_arch>(),
-        1usize,
+        8usize,
         concat!("Alignment of ", stringify!(kvm_debug_exit_arch))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<kvm_debug_exit_arch>())).hsr as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_debug_exit_arch),
+            "::",
+            stringify!(hsr)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<kvm_debug_exit_arch>())).far as *const _ as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_debug_exit_arch),
+            "::",
+            stringify!(far)
+        )
     );
 }
 #[repr(C)]
@@ -1247,7 +1447,7 @@ pub struct kvm_irqchip {
 #[derive(Copy, Clone)]
 pub union kvm_irqchip__bindgen_ty_1 {
     pub dummy: [::std::os::raw::c_char; 512usize],
-    _bindgen_union_align: [u8 ; 512usize],
+    _bindgen_union_align: [u8; 512usize],
 }
 #[test]
 fn bindgen_test_layout_kvm_irqchip__bindgen_ty_1() {
@@ -1453,6 +1653,11 @@ pub struct kvm_run {
     pub s: kvm_run__bindgen_ty_2,
 }
 #[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_run__bindgen_ty_1__bindgen_ty_1 {
+    pub hardware_exit_reason: __u64,
+}
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub union kvm_run__bindgen_ty_1 {
     pub hw: kvm_run__bindgen_ty_1__bindgen_ty_1,
@@ -1478,11 +1683,6 @@ pub union kvm_run__bindgen_ty_1 {
     pub padding: [::std::os::raw::c_char; 256usize],
     _bindgen_union_align: [u64; 32usize],
 } 
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct kvm_run__bindgen_ty_1__bindgen_ty_1 {
-    pub hardware_exit_reason: __u64,
-}
 #[test]
 fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_1() {
     assert_eq!(
@@ -1693,12 +1893,12 @@ pub struct kvm_run__bindgen_ty_1__bindgen_ty_5 {
 fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_5() {
     assert_eq!(
         ::std::mem::size_of::<kvm_run__bindgen_ty_1__bindgen_ty_5>(),
-        0usize,
+        16usize,
         concat!("Size of: ", stringify!(kvm_run__bindgen_ty_1__bindgen_ty_5))
     );
     assert_eq!(
         ::std::mem::align_of::<kvm_run__bindgen_ty_1__bindgen_ty_5>(),
-        1usize,
+        8usize,
         concat!(
             "Alignment of ",
             stringify!(kvm_run__bindgen_ty_1__bindgen_ty_5)
@@ -4187,6 +4387,7 @@ pub struct kvm_s390_irq {
     pub type_: __u64,
     pub u: kvm_s390_irq__bindgen_ty_1,
 }
+
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union kvm_s390_irq__bindgen_ty_1 {
@@ -4419,12 +4620,12 @@ pub struct kvm_guest_debug {
 fn bindgen_test_layout_kvm_guest_debug() {
     assert_eq!(
         ::std::mem::size_of::<kvm_guest_debug>(),
-        8usize,
+        520usize,
         concat!("Size of: ", stringify!(kvm_guest_debug))
     );
     assert_eq!(
         ::std::mem::align_of::<kvm_guest_debug>(),
-        4usize,
+        8usize,
         concat!("Alignment of ", stringify!(kvm_guest_debug))
     );
     assert_eq!(
@@ -6142,3 +6343,4 @@ fn bindgen_test_layout_kvm_assigned_msix_entry() {
         )
     );
 }
+pub type __uint128_t = [u64; 2];
