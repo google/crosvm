@@ -204,10 +204,11 @@ impl VmRequest {
                     _ => return VmResponse::Err(SysError::new(-EINVAL)),
                 };
                 let pfn = *next_mem_pfn;
-                let slot = match vm.add_device_memory(GuestAddress((pfn << 12) as usize), mmap) {
-                    Ok(slot) => slot,
-                    Err(e) => return VmResponse::Err(e),
-                };
+                let slot =
+                    match vm.add_device_memory(GuestAddress((pfn << 12) as usize), mmap, false) {
+                        Ok(slot) => slot,
+                        Err(e) => return VmResponse::Err(e),
+                    };
                 // TODO(zachr): Use a smarter allocation strategy. The current strategy is just
                 // bumping this pointer, meaning the remove operation does not free any address
                 // space. Given enough allocations, device memory may run out of address space and
