@@ -272,6 +272,22 @@ impl Vm {
         }
     }
 
+    /// Sets the address of a one-page region in the VM's address space.
+    ///
+    /// See the documentation on the KVM_SET_IDENTITY_MAP_ADDR ioctl.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_identity_map_addr(&self, addr: GuestAddress) -> Result<()> {
+        // Safe because we know that our file is a VM fd and we verify the return result.
+        let ret = unsafe {
+            ioctl_with_val(self, KVM_SET_IDENTITY_MAP_ADDR(), addr.offset() as u64)
+        };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
     /// Crates an in kernel interrupt controller.
     ///
     /// See the documentation on the KVM_CREATE_IRQCHIP ioctl.
