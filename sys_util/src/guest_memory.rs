@@ -19,7 +19,6 @@ pub enum Error {
     MemoryAccess(GuestAddress, mmap::Error),
     MemoryMappingFailed(mmap::Error),
     MemoryRegionOverlap,
-    NoMemoryRegions,
     RegionOperationFailed,
 }
 pub type Result<T> = result::Result<T, Error>;
@@ -44,10 +43,6 @@ impl GuestMemory {
     /// Creates a container for guest memory regions.
     /// Valid memory regions are specified as a Vec of (Address, Size) tuples sorted by Address.
     pub fn new(ranges: &[(GuestAddress, usize)]) -> Result<GuestMemory> {
-        if ranges.is_empty() {
-            return Err(Error::NoMemoryRegions);
-        }
-
         let mut regions = Vec::<MemoryRegion>::new();
         for range in ranges.iter() {
             if let Some(last) = regions.last() {
