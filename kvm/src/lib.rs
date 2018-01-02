@@ -581,6 +581,19 @@ impl Vcpu {
         Ok(())
     }
 
+    /// Gets the VCPU FPU registers.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_fpu(&self) -> Result<kvm_fpu> {
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut regs = unsafe { std::mem::zeroed() };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_FPU(), &mut regs) };
+        if ret != 0 {
+            return errno_result();
+        }
+        Ok(regs)
+    }
+
     /// X86 specific call to setup the FPU
     ///
     /// See the documentation for KVM_SET_FPU.
