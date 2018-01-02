@@ -17,7 +17,7 @@ use std::collections::hash_map::Entry;
 use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
-use libc::{open, O_RDWR, EINVAL, ENOSPC, ENOENT};
+use libc::{open, O_RDWR, O_CLOEXEC, EINVAL, ENOSPC, ENOENT};
 
 use kvm_sys::*;
 
@@ -62,7 +62,7 @@ impl Kvm {
     pub fn new() -> Result<Kvm> {
         // Open calls are safe because we give a constant nul-terminated string and verify the
         // result.
-        let ret = unsafe { open("/dev/kvm\0".as_ptr() as *const c_char, O_RDWR) };
+        let ret = unsafe { open("/dev/kvm\0".as_ptr() as *const c_char, O_RDWR | O_CLOEXEC) };
         if ret < 0 {
             return errno_result();
         }
