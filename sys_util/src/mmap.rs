@@ -8,7 +8,7 @@
 use std;
 use std::io::{Read, Write};
 use std::ptr::null_mut;
-use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::os::unix::io::AsRawFd;
 
 use libc;
 
@@ -21,6 +21,8 @@ use data_model::DataInit;
 pub enum Error {
     /// Requested memory out of range.
     InvalidAddress,
+    /// Requested offset is out of range of `libc::off_t`.
+    InvalidOffset,
     /// Requested memory range spans past the end of the region.
     InvalidRange(usize, usize),
     /// Couldn't read from the given source.
@@ -79,6 +81,19 @@ impl MemoryMapping {
     /// * `fd` - File descriptor to mmap from.
     /// * `size` - Size of memory region in bytes.
     pub fn from_fd(fd: &AsRawFd, size: usize) -> Result<MemoryMapping> {
+        MemoryMapping::from_fd_offset(fd, size, 0)
+    }
+
+    /// Maps the `size` bytes starting at `offset` bytes of the given `fd`.
+    ///
+    /// # Arguments
+    /// * `fd` - File descriptor to mmap from.
+    /// * `size` - Size of memory region in bytes.
+    /// * `offset` - Offset in bytes from the beginning of `fd` to start the mmap.
+    pub fn from_fd_offset(fd: &AsRawFd, size: usize, offset: usize) -> Result<MemoryMapping> {
+        if offset > libc::off_t::max_value() as usize {
+            return Err(Error::InvalidOffset);
+        }
         // This is safe because we are creating a mapping in a place not already used by any other
         // area in this process.
         let addr = unsafe {
@@ -87,7 +102,7 @@ impl MemoryMapping {
                        libc::PROT_READ | libc::PROT_WRITE,
                        libc::MAP_SHARED,
                        fd.as_raw_fd(),
-                       0)
+                       offset as libc::off_t)
         };
         if addr == libc::MAP_FAILED {
             return Err(Error::SystemCallFailed(errno::Error::last()));
@@ -363,6 +378,7 @@ impl Drop for MemoryMapping {
 mod tests {
     use super::*;
     use data_model::{VolatileMemory, VolatileMemoryError};
+    use std::os::unix::io::FromRawFd;
 
     #[test]
     fn basic_map() {
@@ -438,5 +454,16 @@ mod tests {
         let m = MemoryMapping::new(5).unwrap();
         let res = m.get_slice(3, 3).unwrap_err();
         assert_eq!(res, VolatileMemoryError::OutOfBounds { addr: 6 });
+    }
+
+    #[test]
+    fn from_fd_offset_invalid() {
+        let fd = unsafe { std::fs::File::from_raw_fd(-1) };
+        let res = MemoryMapping::from_fd_offset(&fd, 4096, (libc::off_t::max_value() as usize) + 1)
+            .unwrap_err();
+        match res {
+            Error::InvalidOffset => {}
+            e => panic!("unexpected error: {:?}", e),
+        }
     }
 }

@@ -190,4 +190,33 @@ mod tests {
             assert_eq!(mmap2.get_ref::<u8>(i).unwrap().load(), 0x45u8);
         }
     }
+
+    #[test]
+    fn mmap_page_offset() {
+        if !kernel_has_memfd() {
+            return;
+        }
+        let mut shm = SharedMemory::new(None).expect("failed to create shared memory");
+        shm.set_size(8092)
+            .expect("failed to set shared memory size");
+
+        let mmap1 =
+            MemoryMapping::from_fd_offset(&shm, shm.size() as usize, 4096)
+            .expect("failed to map shared memory");
+        let mmap2 =
+            MemoryMapping::from_fd(&shm, shm.size() as usize).expect("failed to map shared memory");
+
+        mmap1
+            .get_slice(0, 4096)
+            .expect("failed to get mmap slice")
+            .read_from(&mut repeat(0x45))
+            .expect("failed to fill mmap slice");
+
+        for i in 0..4096 {
+            assert_eq!(mmap2.get_ref::<u8>(i).unwrap().load(), 0);
+        }
+        for i in 4096..8092 {
+            assert_eq!(mmap2.get_ref::<u8>(i).unwrap().load(), 0x45u8);
+        }
+    }
 }
