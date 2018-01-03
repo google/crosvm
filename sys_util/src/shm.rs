@@ -7,7 +7,9 @@ use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::os::unix::io::{AsRawFd, IntoRawFd, FromRawFd, RawFd};
 
-use libc::{self, off64_t, c_long, c_int, c_uint, c_char, close, syscall, ftruncate64};
+use libc::{self, off64_t, c_long, c_int, c_uint, c_char, close, syscall, ftruncate64, fcntl,
+           F_ADD_SEALS, F_GET_SEALS, F_SEAL_GROW, F_SEAL_SHRINK, F_SEAL_WRITE, F_SEAL_SEAL,
+           MFD_ALLOW_SEALING};
 
 use errno;
 use syscall_defines::linux::LinuxSyscall::SYS_memfd_create;
@@ -27,19 +29,87 @@ unsafe fn memfd_create(name: *const c_char, flags: c_uint) -> c_int {
     syscall(SYS_memfd_create as c_long, name as i64, flags as i64) as c_int
 }
 
+/// A set of memfd seals.
+///
+/// An enumeration of each bit can be found at `fcntl(2)`.
+#[derive(Copy, Clone)]
+pub struct MemfdSeals(i32);
+
+impl MemfdSeals {
+    /// Returns an empty set of memfd seals.
+    #[inline]
+    pub fn new() -> MemfdSeals {
+        MemfdSeals(0)
+    }
+
+    /// Gets the raw bitmask of seals enumerated in `fcntl(2)`.
+    #[inline]
+    pub fn bitmask(self) -> i32 {
+        self.0
+    }
+
+    /// True of the grow seal bit is present.
+    #[inline]
+    pub fn grow_seal(self) -> bool {
+        self.0 & F_SEAL_GROW != 0
+    }
+
+    /// Sets the grow seal bit.
+    #[inline]
+    pub fn set_grow_seal(&mut self) {
+        self.0 |= F_SEAL_GROW;
+    }
+
+    /// True of the shrink seal bit is present.
+    #[inline]
+    pub fn shrink_seal(self) -> bool {
+        self.0 & F_SEAL_SHRINK != 0
+    }
+
+    /// Sets the shrink seal bit.
+    #[inline]
+    pub fn set_shrink_seal(&mut self) {
+        self.0 |= F_SEAL_SHRINK;
+    }
+
+    /// True of the write seal bit is present.
+    #[inline]
+    pub fn write_seal(self) -> bool {
+        self.0 & F_SEAL_WRITE != 0
+    }
+
+    /// Sets the write seal bit.
+    #[inline]
+    pub fn set_write_seal(&mut self) {
+        self.0 |= F_SEAL_WRITE;
+    }
+
+    /// True of the seal seal bit is present.
+    #[inline]
+    pub fn seal_seal(self) -> bool {
+        self.0 & F_SEAL_SEAL != 0
+    }
+
+    /// Sets the seal seal bit.
+    #[inline]
+    pub fn set_seal_seal(&mut self) {
+        self.0 |= F_SEAL_SEAL;
+    }
+}
+
 impl SharedMemory {
     /// Creates a new shared memory file descriptor with zero size.
     ///
     /// If a name is given, it will appear in `/proc/self/fd/<shm fd>` for the purposes of
     /// debugging. The name does not need to be unique.
     ///
-    /// The file descriptor is opened with the close on exec flag.
+    /// The file descriptor is opened with the close on exec flag and allows memfd sealing.
     pub fn new(name: Option<&CStr>) -> Result<SharedMemory> {
         let shm_name = name.map(|n| n.as_ptr())
             .unwrap_or(b"/crosvm_shm\0".as_ptr() as *const c_char);
         // The following are safe because we give a valid C string and check the
         // results of the memfd_create call.
-        let fd = unsafe { memfd_create(shm_name, MFD_CLOEXEC) };
+        let fd = unsafe { memfd_create(shm_name, MFD_CLOEXEC | MFD_ALLOW_SEALING) };
         if fd < 0 {
             return errno_result();
         }
@@ -61,6 +131,29 @@ impl SharedMemory {
                fd: file,
                size: file_size as u64,
            })
+    }
+
+    /// Gets the memfd seals that have already been added to this.
+    ///
+    /// This may fail if this instance was not constructed from a memfd.
+    pub fn get_seals(&self) -> Result<MemfdSeals> {
+        let ret = unsafe { fcntl(self.fd.as_raw_fd(), F_GET_SEALS) };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(MemfdSeals(ret))
+    }
+
+    /// Adds the given set of memfd seals.
+    ///
+    /// This may fail if this instance was not constructed from a memfd with sealing allowed or if
+    /// the seal seal (`F_SEAL_SEAL`) bit was already added.
+    pub fn add_seals(&mut self, seals: MemfdSeals) -> Result<()> {
+        let ret = unsafe { fcntl(self.fd.as_raw_fd(), F_ADD_SEALS, seals) };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
     }
 
     /// Gets the size in bytes of the shared memory.
@@ -163,6 +256,22 @@ mod tests {
         let link_name =
             read_link(fd_path).expect("failed to read link of shared memory /proc/self/fd entry");
         assert!(link_name.to_str().unwrap().contains(name));
+    }
+
+    #[test]
+    fn new_sealed() {
+        if !kernel_has_memfd() {
+            return;
+        }
+        let mut shm = SharedMemory::new(None).expect("failed to create shared memory");
+        let mut seals = shm.get_seals().expect("failed to get seals");
+        assert_eq!(seals.bitmask(), 0);
+        seals.set_seal_seal();
+        shm.add_seals(seals).expect("failed to add seals");
+        seals = shm.get_seals().expect("failed to get seals");
+        assert!(seals.seal_seal());
+        // Adding more seals should be rejected by the kernel.
+        shm.add_seals(seals).unwrap_err();
     }
 
     #[test]

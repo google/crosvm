@@ -15,7 +15,7 @@ io_jail = { path = "io_jail" }
 kvm = { path = "kvm" }
 sys_util = { path = "sys_util" }
 kernel_loader = { path = "kernel_loader" }
-libc = "=0.2.32"
+libc = "=0.2.34"
 byteorder = "=1.1.0"
 vm_control = { path = "vm_control" }
 data_model = { path = "data_model" }
