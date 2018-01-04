@@ -198,7 +198,11 @@ impl MemoryMapping {
             // Guest memory can't strictly be modeled as a slice because it is
             // volatile.  Writing to it with what compiles down to a memcpy
             // won't hurt anything as long as we get the bounds checks right.
-            if offset + std::mem::size_of::<T>() > self.size {
+            let mem_end = match offset.checked_add(std::mem::size_of::<T>()) {
+                None => return Err(Error::InvalidAddress),
+                Some(m) => m,
+            };
+            if mem_end > self.size() {
                 return Err(Error::InvalidAddress);
             }
             std::ptr::write_volatile(&mut self.as_mut_slice()[offset..] as *mut _ as *mut T, val);
@@ -223,7 +227,11 @@ impl MemoryMapping {
     ///     assert_eq!(55, num);
     /// ```
     pub fn read_obj<T: DataInit>(&self, offset: usize) -> Result<T> {
-        if offset + std::mem::size_of::<T>() > self.size {
+        let mem_end = match offset.checked_add(std::mem::size_of::<T>()) {
+            None => return Err(Error::InvalidAddress),
+            Some(m) => m,
+        };
+        if mem_end > self.size() {
             return Err(Error::InvalidAddress);
         }
         unsafe {
@@ -259,7 +267,10 @@ impl MemoryMapping {
     pub fn read_to_memory<F>(&self, mem_offset: usize, src: &mut F, count: usize) -> Result<()>
         where F: Read
     {
-        let mem_end = mem_offset + count;
+        let mem_end = match mem_offset.checked_add(count) {
+            None => return Err(Error::InvalidRange(mem_offset, count)),
+            Some(m) => m,
+        };
         if mem_end > self.size() {
             return Err(Error::InvalidRange(mem_offset, count));
         }
