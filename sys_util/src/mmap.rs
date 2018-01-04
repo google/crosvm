@@ -198,13 +198,7 @@ impl MemoryMapping {
             // Guest memory can't strictly be modeled as a slice because it is
             // volatile.  Writing to it with what compiles down to a memcpy
             // won't hurt anything as long as we get the bounds checks right.
-            let mem_end = match offset.checked_add(std::mem::size_of::<T>()) {
-                None => return Err(Error::InvalidAddress),
-                Some(m) => m,
-            };
-            if mem_end > self.size() {
-                return Err(Error::InvalidAddress);
-            }
+            self.range_end(offset, std::mem::size_of::<T>())?;
             std::ptr::write_volatile(&mut self.as_mut_slice()[offset..] as *mut _ as *mut T, val);
             Ok(())
         }
@@ -227,13 +221,7 @@ impl MemoryMapping {
     ///     assert_eq!(55, num);
     /// ```
     pub fn read_obj<T: DataInit>(&self, offset: usize) -> Result<T> {
-        let mem_end = match offset.checked_add(std::mem::size_of::<T>()) {
-            None => return Err(Error::InvalidAddress),
-            Some(m) => m,
-        };
-        if mem_end > self.size() {
-            return Err(Error::InvalidAddress);
-        }
+        self.range_end(offset, std::mem::size_of::<T>())?;
         unsafe {
             // This is safe because by definition Copy types can have their bits
             // set arbitrarily and still be valid.
@@ -267,13 +255,8 @@ impl MemoryMapping {
     pub fn read_to_memory<F>(&self, mem_offset: usize, src: &mut F, count: usize) -> Result<()>
         where F: Read
     {
-        let mem_end = match mem_offset.checked_add(count) {
-            None => return Err(Error::InvalidRange(mem_offset, count)),
-            Some(m) => m,
-        };
-        if mem_end > self.size() {
-            return Err(Error::InvalidRange(mem_offset, count));
-        }
+        let mem_end = self.range_end(mem_offset, count)
+            .map_err(|_| Error::InvalidRange(mem_offset, count))?;
         unsafe {
             // It is safe to overwrite the volatile memory.  Acessing the guest
             // memory as a mutable slice is OK because nothing assumes another
@@ -309,13 +292,8 @@ impl MemoryMapping {
     pub fn write_from_memory<F>(&self, mem_offset: usize, dst: &mut F, count: usize) -> Result<()>
         where F: Write
     {
-        let mem_end = match mem_offset.checked_add(count) {
-            None => return Err(Error::InvalidRange(mem_offset, count)),
-            Some(m) => m,
-        };
-        if mem_end > self.size() {
-            return Err(Error::InvalidRange(mem_offset, count));
-        }
+        let mem_end = self.range_end(mem_offset, count)
+            .map_err(|_| Error::InvalidRange(mem_offset, count))?;
         unsafe {
             // It is safe to read from volatile memory.  Acessing the guest
             // memory as a slice is OK because nothing assumes another thread
@@ -328,13 +306,8 @@ impl MemoryMapping {
 
     /// Uses madvise to tell the kernel the specified range won't be needed soon.
     pub fn dont_need_range(&self, mem_offset: usize, count: usize) -> Result<()> {
-        let mem_end = match mem_offset.checked_add(count) {
-            None => return Err(Error::InvalidRange(mem_offset, count)),
-            Some(m) => m,
-        };
-        if mem_end > self.size() {
-            return Err(Error::InvalidRange(mem_offset, count));
-        }
+        self.range_end(mem_offset, count)
+            .map_err(|_| Error::InvalidRange(mem_offset, count))?;
         let ret = unsafe {
             // madvising away the region is the same as the guest changing it.
             // Next time it is read, it may return zero pages.
@@ -359,6 +332,16 @@ impl MemoryMapping {
         // This is safe because we mapped the area at addr ourselves, so this slice will not
         // overflow. However, it is possible to alias.
         std::slice::from_raw_parts_mut(self.addr, self.size)
+    }
+
+    // Check that offset+count is valid and return the sum.
+    fn range_end(&self, offset: usize, count: usize) -> Result<usize> {
+        let mem_end = offset.checked_add(count)
+            .ok_or(Error::InvalidAddress)?;
+        if mem_end > self.size() {
+            return Err(Error::InvalidAddress);
+        }
+        Ok(mem_end)
     }
 }
 
