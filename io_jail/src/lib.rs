@@ -26,6 +26,15 @@ pub enum Error {
         src: PathBuf,
         dst: PathBuf,
     },
+    // minijail failed to accept mount.
+    Mount {
+        errno: i32,
+        src: PathBuf,
+        dest: PathBuf,
+        fstype: String,
+        flags: usize,
+        data: String,
+    },
     /// Failure to count the number of threads in /proc/self/tasks.
     CheckingMultiThreaded(io::Error),
     /// minjail_new failed, this is an allocation failure.
@@ -72,6 +81,24 @@ impl fmt::Display for Error {
                        "failed to accept bind mount {:?} -> {:?}: {}",
                        src,
                        dst,
+                       errno)
+            }
+            &Error::Mount {
+                errno,
+                ref src,
+                ref dest,
+                ref fstype,
+                flags,
+                ref data,
+            } => {
+                write!(f,
+                       "failed to accept mount {:?} -> {:?} of type {:?} with flags 0x{:x} \
+                        and data {:?}: {}",
+                       src,
+                       dest,
+                       fstype,
+                       flags,
+                       data,
                        errno)
             }
             &Error::CheckingMultiThreaded(ref e) => {
@@ -319,6 +346,45 @@ impl Minijail {
         let ret = unsafe { libminijail::minijail_enter_pivot_root(self.jail, dirname.as_ptr()) };
         if ret < 0 {
             return Err(Error::SettingPivotRootDirectory(ret, dir.to_owned()));
+        }
+        Ok(())
+    }
+    pub fn mount(&mut self, src: &Path, dest: &Path, fstype: &str, flags: usize) -> Result<()> {
+        self.mount_with_data(src, dest, fstype, flags, "")
+    }
+    pub fn mount_with_data(&mut self, src: &Path, dest: &Path, fstype: &str,
+                           flags: usize, data: &str) -> Result<()> {
+        let src_os = src.as_os_str()
+            .to_str()
+            .ok_or(Error::PathToCString(src.to_owned()))?;
+        let src_path = CString::new(src_os)
+            .map_err(|_| Error::StrToCString(src_os.to_owned()))?;
+        let dest_os = dest.as_os_str()
+            .to_str()
+            .ok_or(Error::PathToCString(dest.to_owned()))?;
+        let dest_path = CString::new(dest_os)
+            .map_err(|_| Error::StrToCString(dest_os.to_owned()))?;
+        let fstype_string = CString::new(fstype)
+            .map_err(|_| Error::StrToCString(fstype.to_owned()))?;
+        let data_string = CString::new(data)
+            .map_err(|_| Error::StrToCString(data.to_owned()))?;
+        let ret = unsafe {
+            libminijail::minijail_mount_with_data(self.jail,
+                                                  src_path.as_ptr(),
+                                                  dest_path.as_ptr(),
+                                                  fstype_string.as_ptr(),
+                                                  flags as _,
+                                                  data_string.as_ptr())
+        };
+        if ret < 0 {
+            return Err(Error::Mount {
+                errno: ret,
+                src: src.to_owned(),
+                dest: dest.to_owned(),
+                fstype: fstype.to_owned(),
+                flags: flags,
+                data: data.to_owned(),
+            });
         }
         Ok(())
     }
