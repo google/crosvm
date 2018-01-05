@@ -38,7 +38,7 @@ use std::ptr::null;
 use std::str::from_utf8;
 use std::sync::{Mutex, MutexGuard, Once, ONCE_INIT};
 
-use libc::{tm, time, time_t, localtime_r, gethostname, openlog, fcntl, c_char, LOG_NDELAY,
+use libc::{tm, time, time_t, localtime_r, gethostname, openlog, closelog, fcntl, c_char, LOG_NDELAY,
            LOG_PERROR, LOG_PID, LOG_USER, F_GETFD};
 
 use getpid;
@@ -148,6 +148,11 @@ fn get_proc_name() -> Option<String> {
 // libraries in use that hard depend on libc's syslogger. Remove this and go back to making the
 // connection directly once minjail is ready.
 fn openlog_and_get_socket() -> Result<UnixDatagram, Error> {
+    // closelog first in case there was already a file descriptor open.  Safe because it takes no
+    // arguments and just closes an open file descriptor.  Does nothing if the file descriptor
+    // was not already open.
+    unsafe { closelog(); }
+
     // Ordinarily libc's FD for the syslog connection can't be accessed, but we can guess that the
     // FD that openlog will be getting is the lowest unused FD. To guarantee that an FD is opened in
     // this function we use the LOG_NDELAY to tell openlog to connect to the syslog now. To get the
