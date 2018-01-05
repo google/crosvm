@@ -360,7 +360,6 @@ fn setup_mmio_bus(cfg: &Config,
         }
     }
 
-    let wl_root = TempDir::new(&PathBuf::from("/tmp/wl_root")).map_err(Error::WaylandTempDir)?;
     if let Some(wayland_socket_path) = cfg.wayland_socket_path.as_ref() {
         let jailed_wayland_path = Path::new("/wayland-0");
 
@@ -375,9 +374,15 @@ fn setup_mmio_bus(cfg: &Config,
                                       .map_err(Error::WaylandDeviceNew)?);
 
         let jail = if cfg.multiprocess {
-            let wl_root_path = wl_root.as_path().unwrap(); // Won't fail if new succeeded.
             let policy_path: PathBuf = cfg.seccomp_policy_dir.join("wl_device.policy");
-            let mut jail = create_base_minijail(wl_root_path, &policy_path)?;
+            let mut jail = create_base_minijail(empty_root_path, &policy_path)?;
+
+            // Create a tmpfs in the device's root directory so that we can bind mount the
+            // wayland socket into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
+            jail.mount_with_data(Path::new("none"), Path::new("/"), "tmpfs",
+                                 (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                                 "size=67108864")
+                .unwrap();
 
             // Bind mount the wayland socket into jail's root. This is necessary since each
             // new wayland context must open() the socket.
@@ -399,25 +404,12 @@ fn setup_mmio_bus(cfg: &Config,
                     geteuid()
                 }
             };
-            let crosvm_gid = match get_group_id(&crosvm_user_group) {
-                Ok(u) => u,
-                Err(e) => {
-                    warn!("falling back to current group id for Wayland: {:?}", e);
-                    getegid()
-                }
-            };
             jail.change_uid(crosvm_uid);
             jail.change_gid(wayland_gid);
             jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
                 .map_err(Error::SettingUidMap)?;
             jail.gidmap(&format!("{0} {0} 1", wayland_gid))
                 .map_err(Error::SettingGidMap)?;
-
-            // chown the root directory for the jail so we can actually bind mount the socket.
-            let wayland_root_cstr = CString::new(wl_root_path.as_os_str().to_str().unwrap())
-                .unwrap();
-            chown(&wayland_root_cstr, crosvm_uid, crosvm_gid)
-                .map_err(Error::ChownWaylandRoot)?;
 
             Some(jail)
         } else {
