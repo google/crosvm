@@ -28,8 +28,8 @@ connect: arg2 == 13
 # Used to communicate with wayland
 recvmsg: 1
 sendmsg: 1
-# Used for sharing memory with wayland. arg1 == MFD_CLOEXEC
-memfd_create: arg1 == 1
+# Used for sharing memory with wayland. arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING
+memfd_create: arg1 == 3
 # Used to set of size new memfd
 ftruncate: 1
 # Used to determine shm size after recvmsg with fd
