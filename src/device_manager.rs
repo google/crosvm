@@ -8,8 +8,6 @@ use std::fmt;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::{Arc, Mutex};
 
-use libc::STDERR_FILENO;
-
 use io_jail::Minijail;
 use kvm::{Vm, IoeventAddress};
 use sys_util::{GuestMemory, syslog};
@@ -98,7 +96,6 @@ impl<'a> DeviceManager<'a> {
 
         // List of FDs to keep open in the child after it forks.
         let mut keep_fds: Vec<RawFd> = device.keep_fds();
-        keep_fds.push(STDERR_FILENO);
         syslog::push_fds(&mut keep_fds);
 
         let mmio_device = devices::virtio::MmioDevice::new(self.guest_mem.clone(), device)
