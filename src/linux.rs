@@ -191,6 +191,9 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     j.namespace_net();
     // Apply the block device seccomp policy.
     j.no_new_privs();
+    // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP, which will correctly kill
+    // the entire device process if a worker thread commits a seccomp violation.
+    j.set_seccomp_filter_tsync();
     j.parse_seccomp_filters(seccomp_policy)
         .map_err(|e| Error::DeviceJail(e))?;
     j.use_seccomp_filter();
