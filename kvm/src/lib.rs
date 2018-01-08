@@ -375,17 +375,32 @@ impl Vm {
         }
     }
 
-    /// Registers an event to be signalled whenever a certain address is written to.
+    /// Registers an event to be signaled whenever a certain address is written to.
     ///
-    /// The `datamatch` parameter can be used to limit singalling `evt` to only the cases where the
+    /// The `datamatch` parameter can be used to limit signaling `evt` to only the cases where the
     /// value being written is equal to `datamatch`. Note that the size of `datamatch` is important
     /// and must match the expected size of the guest's write.
     ///
-    /// In all cases where `evt` is signalled, the ordinary vmexit to userspace that would be
+    /// In all cases where `evt` is signaled, the ordinary vmexit to userspace that would be
     /// triggered is prevented.
     pub fn register_ioevent<T: Into<u64>>(&self, evt: &EventFd, addr: IoeventAddress, datamatch: T) -> Result<()> {
+        self.ioeventfd(evt, addr, datamatch.into(), std::mem::size_of::<T>() as u32, false)
+    }
+
+    /// Unregisters an event previously registered with `register_ioevent`.
+    ///
+    /// The `evt`, `addr`, and `datamatch` set must be the same as the ones passed into
+    /// `register_ioevent`.
+    pub fn unregister_ioevent<T: Into<u64>>(&self, evt: &EventFd, addr: IoeventAddress, datamatch: T) -> Result<()> {
+        self.ioeventfd(evt, addr, datamatch.into(), std::mem::size_of::<T>() as u32, true)
+    }
+
+    fn ioeventfd(&self, evt: &EventFd, addr: IoeventAddress, datamatch: u64, datamatch_len: u32, deassign: bool) -> Result<()> {
         let mut flags = 0;
-        if std::mem::size_of::<T>() > 0 {
+        if deassign {
+            flags |= 1 << kvm_ioeventfd_flag_nr_deassign;
+        }
+        if datamatch_len > 0 {
             flags |= 1 << kvm_ioeventfd_flag_nr_datamatch
         }
         match addr {
@@ -393,8 +408,8 @@ impl Vm {
             _ => {}
         };
         let ioeventfd = kvm_ioeventfd {
-            datamatch: datamatch.into(),
-            len: std::mem::size_of::<T>() as u32,
+            datamatch: datamatch,
+            len: datamatch_len,
             addr: match addr { IoeventAddress::Pio(p) => p as u64, IoeventAddress::Mmio(m) => m },
             fd: evt.as_raw_fd(),
             flags: flags,
@@ -416,6 +431,27 @@ impl Vm {
         let irqfd = kvm_irqfd {
             fd: evt.as_raw_fd() as u32,
             gsi: gsi,
+            ..Default::default()
+        };
+        // Safe because we know that our file is a VM fd, we know the kernel will only read the
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_IRQFD(), &irqfd) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Unregisters an event that was previously registered with `register_irqfd`.
+    ///
+    /// The `evt` and `gsi` pair must be the same as the ones passed into `register_irqfd`.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64"))]
+    pub fn unregister_irqfd(&self, evt: &EventFd, gsi: u32) -> Result<()> {
+        let irqfd = kvm_irqfd {
+            fd: evt.as_raw_fd() as u32,
+            gsi: gsi,
+            flags: KVM_IRQFD_FLAG_DEASSIGN,
             ..Default::default()
         };
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
@@ -882,6 +918,20 @@ mod tests {
     }
 
     #[test]
+    fn unregister_ioevent() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        let evtfd = EventFd::new().unwrap();
+        vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xf4), NoDatamatch).unwrap();
+        vm.register_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), NoDatamatch).unwrap();
+        vm.register_ioevent(&evtfd, IoeventAddress::Mmio(0x1004), 0x7fu8).unwrap();
+        vm.unregister_ioevent(&evtfd, IoeventAddress::Pio(0xf4), NoDatamatch).unwrap();
+        vm.unregister_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), NoDatamatch).unwrap();
+        vm.unregister_ioevent(&evtfd, IoeventAddress::Mmio(0x1004), 0x7fu8).unwrap();
+    }
+
+    #[test]
     fn register_irqfd() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
@@ -893,6 +943,22 @@ mod tests {
         vm.register_irqfd(&evtfd2, 8).unwrap();
         vm.register_irqfd(&evtfd3, 4).unwrap();
         vm.register_irqfd(&evtfd3, 4).unwrap_err();
+    }
+
+    #[test]
+    fn unregister_irqfd() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        let evtfd1 = EventFd::new().unwrap();
+        let evtfd2 = EventFd::new().unwrap();
+        let evtfd3 = EventFd::new().unwrap();
+        vm.register_irqfd(&evtfd1, 4).unwrap();
+        vm.register_irqfd(&evtfd2, 8).unwrap();
+        vm.register_irqfd(&evtfd3, 4).unwrap();
+        vm.unregister_irqfd(&evtfd1, 4).unwrap();
+        vm.unregister_irqfd(&evtfd2, 8).unwrap();
+        vm.unregister_irqfd(&evtfd3, 4).unwrap();
     }
 
     #[test]
