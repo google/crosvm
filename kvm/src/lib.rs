@@ -17,11 +17,11 @@ use std::collections::hash_map::Entry;
 use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
-use libc::{open, sysconf, O_RDWR, O_CLOEXEC, EINVAL, ENOSPC, ENOENT, _SC_PAGESIZE};
+use libc::{open, O_RDWR, O_CLOEXEC, EINVAL, ENOSPC, ENOENT};
 
 use kvm_sys::*;
 
-use sys_util::{GuestAddress, GuestMemory, MemoryMapping, EventFd, Error, Result};
+use sys_util::{GuestAddress, GuestMemory, MemoryMapping, EventFd, Error, Result, pagesize};
 #[allow(unused_imports)]
 use sys_util::{ioctl, ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref, ioctl_with_ptr,
                ioctl_with_mut_ptr};
@@ -266,7 +266,7 @@ impl Vm {
     /// region `slot` represents. For example, if the size of `slot` is 16 pages, `dirty_log` must
     /// be 2 bytes or greater.
     pub fn get_dirty_log(&self, slot: u32, dirty_log: &mut [u8]) -> Result<()> {
-        let page_size = unsafe { sysconf(_SC_PAGESIZE) } as usize;
+        let page_size = pagesize();
         match self.device_memory.get(&slot) {
             Some(mmap) => {
                 // Ensures that there are as many bits in dirty_log as there are pages in the mmap.
@@ -907,7 +907,7 @@ mod tests {
     fn vcpu_mmap_size() {
         let kvm = Kvm::new().unwrap();
         let mmap_size = kvm.get_vcpu_mmap_size().unwrap();
-        let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
+        let page_size = pagesize();
         assert!(mmap_size >= page_size);
         assert!(mmap_size % page_size == 0);
     }

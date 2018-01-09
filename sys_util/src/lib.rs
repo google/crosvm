@@ -55,9 +55,17 @@ pub use signalfd::Error as SignalFdError;
 use std::ffi::CStr;
 use std::ptr;
 
-use libc::{kill, syscall, waitpid, c_long, pid_t, uid_t, gid_t, SIGKILL, WNOHANG};
+use libc::{kill, syscall, sysconf, waitpid, c_long, pid_t, uid_t, gid_t, _SC_PAGESIZE,
+           SIGKILL, WNOHANG};
 
 use syscall_defines::linux::LinuxSyscall::SYS_getpid;
+
+/// Safe wrapper for `sysconf(_SC_PAGESIZE)`.
+#[inline(always)]
+pub fn pagesize() -> usize {
+    // Trivially safe
+    unsafe { sysconf(_SC_PAGESIZE) as usize }
+}
 
 /// This bypasses `libc`'s caching `getpid(2)` wrapper which can be invalid if a raw clone was used
 /// elsewhere.
