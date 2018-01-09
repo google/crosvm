@@ -20,6 +20,7 @@ pub mod x86 {
     pub mod bindings;
     pub use bindings::*;
 
+    ioctl_iow_nr!(KVM_SET_GSI_ROUTING, KVMIO, 0x6a, kvm_irq_routing);
     ioctl_iowr_nr!(KVM_GET_MSR_INDEX_LIST, KVMIO, 0x02, kvm_msr_list);
     ioctl_iowr_nr!(KVM_GET_SUPPORTED_CPUID, KVMIO, 0x05, kvm_cpuid2);
     ioctl_iowr_nr!(KVM_GET_EMULATED_CPUID, KVMIO, 0x09, kvm_cpuid2);

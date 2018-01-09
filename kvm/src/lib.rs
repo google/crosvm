@@ -14,6 +14,7 @@ mod cap;
 use std::fs::File;
 use std::collections::{BinaryHeap, HashMap};
 use std::collections::hash_map::Entry;
+use std::mem::size_of;
 use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
@@ -166,6 +167,18 @@ impl Into<u64> for NoDatamatch {
     fn into(self) -> u64 {
         0
     }
+}
+
+/// A source of IRQs in an `IrqRoute`.
+pub enum IrqSource {
+    Irqchip { chip: u32, pin: u32 },
+    Msi { address: u64, data: u32 },
+}
+
+/// A single route for an IRQ.
+pub struct IrqRoute {
+    pub gsi: u32,
+    pub source: IrqSource,
 }
 
 /// A wrapper around creating and using a VM.
@@ -467,6 +480,55 @@ impl Vm {
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, KVM_IRQFD(), &irqfd) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Sets the GSI routing table, replacing any table set with previous calls to
+    /// `set_gsi_routing`.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_gsi_routing(&self, routes: &[IrqRoute]) -> Result<()> {
+        let vec_size_bytes = size_of::<kvm_irq_routing>() +
+            (routes.len() * size_of::<kvm_irq_routing_entry>());
+        let bytes: Vec<u8> = vec![0; vec_size_bytes];
+        let irq_routing: &mut kvm_irq_routing = unsafe {
+            // We have ensured in new that there is enough space for the structure so this
+            // conversion is safe.
+            &mut *(bytes.as_ptr() as *mut kvm_irq_routing)
+        };
+        irq_routing.nr = routes.len() as u32;
+
+        {
+            // Safe because we ensured there is enough space in irq_routing to hold the number of
+            // route entries.
+            let irq_routes = unsafe { irq_routing.entries.as_mut_slice(routes.len()) };
+            for (route, irq_route) in routes.iter().zip(irq_routes.iter_mut()) {
+                irq_route.gsi = route.gsi;
+                match route.source {
+                    IrqSource::Irqchip { chip, pin } => {
+                        irq_route.type_ = KVM_IRQ_ROUTING_IRQCHIP;
+                        irq_route.u.irqchip = kvm_irq_routing_irqchip {
+                            irqchip: chip,
+                            pin,
+                        }
+                    }
+                    IrqSource::Msi { address, data } => {
+                        irq_route.type_ = KVM_IRQ_ROUTING_MSI;
+                        irq_route.u.msi = kvm_irq_routing_msi {
+                            address_lo: address as u32,
+                            address_hi: (address >> 32) as u32,
+                            data: data,
+                            ..Default::default()
+                        }
+                    }
+                }
+            }
+        }
+
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_GSI_ROUTING(), irq_routing) };
         if ret == 0 {
             Ok(())
         } else {
@@ -979,6 +1041,44 @@ mod tests {
         vm.unregister_irqfd(&evtfd1, 4).unwrap();
         vm.unregister_irqfd(&evtfd2, 8).unwrap();
         vm.unregister_irqfd(&evtfd3, 4).unwrap();
+    }
+
+    #[test]
+    fn set_gsi_routing() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        vm.set_gsi_routing(&[]).unwrap();
+        vm.set_gsi_routing(&[IrqRoute {
+            gsi: 1,
+            source: IrqSource::Irqchip {
+                chip: KVM_IRQCHIP_IOAPIC,
+                pin: 3,
+            },
+        }]).unwrap();
+        vm.set_gsi_routing(&[IrqRoute {
+            gsi: 1,
+            source: IrqSource::Msi {
+                address: 0xf000000,
+                data: 0xa0,
+            },
+        }]).unwrap();
+        vm.set_gsi_routing(&[
+            IrqRoute {
+                gsi: 1,
+                source: IrqSource::Irqchip {
+                    chip: KVM_IRQCHIP_IOAPIC,
+                    pin: 3,
+                },
+            },
+            IrqRoute {
+                gsi: 2,
+                source: IrqSource::Msi {
+                    address: 0xf000000,
+                    data: 0xa0,
+                },
+            },
+        ]).unwrap();
     }
 
     #[test]
