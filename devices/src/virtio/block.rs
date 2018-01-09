@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cmp;
-use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Read, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
@@ -28,6 +27,9 @@ const VIRTIO_BLK_T_FLUSH: u32 = 4;
 const VIRTIO_BLK_S_OK: u8 = 0;
 const VIRTIO_BLK_S_IOERR: u8 = 1;
 const VIRTIO_BLK_S_UNSUPP: u8 = 2;
+
+pub trait DiskFile: Read + Seek + Write {}
+impl<D: Read + Seek + Write> DiskFile for D {}
 
 #[derive(PartialEq)]
 enum RequestType {
@@ -150,7 +152,7 @@ impl Request {
            })
     }
 
-    fn execute<T: Seek + Read + Write>(&self,
+    fn execute<T: DiskFile>(&self,
                                        disk: &mut T,
                                        mem: &GuestMemory)
                                        -> result::Result<u32, ExecuteError> {
@@ -173,15 +175,15 @@ impl Request {
     }
 }
 
-struct Worker {
+struct Worker<T: DiskFile> {
     queues: Vec<Queue>,
     mem: GuestMemory,
-    disk_image: File,
+    disk_image: T,
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
 }
 
-impl Worker {
+impl<T: DiskFile> Worker<T> {
     fn process_queue(&mut self, queue_index: usize) -> bool {
         let queue = &mut self.queues[queue_index];
 
@@ -265,9 +267,9 @@ impl Worker {
 }
 
 /// Virtio device for exposing block level read/write operations on a host file.
-pub struct Block {
+pub struct Block<T: DiskFile> {
     kill_evt: Option<EventFd>,
-    disk_image: Option<File>,
+    disk_image: Option<T>,
     config_space: Vec<u8>,
 }
 
@@ -283,11 +285,11 @@ fn build_config_space(disk_size: u64) -> Vec<u8> {
     config
 }
 
-impl Block {
+impl<T: DiskFile> Block<T> {
     /// Create a new virtio block device that operates on the given file.
     ///
     /// The given file must be seekable and sizable.
-    pub fn new(mut disk_image: File) -> SysResult<Block> {
+    pub fn new(mut disk_image: T) -> SysResult<Block<T>> {
         let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
         if disk_size % SECTOR_SIZE != 0 {
             warn!("Disk size {} is not a multiple of sector size {}; \
@@ -303,7 +305,7 @@ impl Block {
     }
 }
 
-impl Drop for Block {
+impl<T: DiskFile> Drop for Block<T> {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
@@ -312,7 +314,7 @@ impl Drop for Block {
     }
 }
 
-impl VirtioDevice for Block {
+impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
 
@@ -387,6 +389,7 @@ impl VirtioDevice for Block {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
     use std::path::PathBuf;
     use sys_util::TempDir;
 
