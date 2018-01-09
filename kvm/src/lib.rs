@@ -56,6 +56,17 @@ unsafe fn set_user_memory_region<F: AsRawFd>(fd: &F,
     if ret == 0 { Ok(()) } else { errno_result() }
 }
 
+/// Helper function to determine the size in bytes of a dirty log bitmap for the given memory region
+/// size.
+///
+/// # Arguments
+///
+/// * `size` - Number of bytes in the memory region being queried.
+pub fn dirty_log_bitmap_size(size: usize) -> usize {
+    let page_size = pagesize();
+    (((size + page_size - 1) / page_size) + 7) / 8
+}
+
 /// A wrapper around opening and using `/dev/kvm`.
 ///
 /// Useful for querying extensions and basic values from the KVM backend. A `Kvm` is required to
@@ -266,11 +277,10 @@ impl Vm {
     /// region `slot` represents. For example, if the size of `slot` is 16 pages, `dirty_log` must
     /// be 2 bytes or greater.
     pub fn get_dirty_log(&self, slot: u32, dirty_log: &mut [u8]) -> Result<()> {
-        let page_size = pagesize();
         match self.device_memory.get(&slot) {
             Some(mmap) => {
-                // Ensures that there are as many bits in dirty_log as there are pages in the mmap.
-                if (mmap.size() / page_size) > (dirty_log.len() << 3) {
+                // Ensures that there are as many bytes in dirty_log as there are pages in the mmap.
+                if dirty_log_bitmap_size(mmap.size()) > dirty_log.len() {
                     return Err(Error::new(-EINVAL));
                 }
                 let mut dirty_log_kvm = kvm_dirty_log {
@@ -827,6 +837,16 @@ impl CpuId {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dirty_log_size() {
+        let page_size = pagesize();
+        assert_eq!(dirty_log_bitmap_size(0), 0);
+        assert_eq!(dirty_log_bitmap_size(page_size), 1);
+        assert_eq!(dirty_log_bitmap_size(page_size * 8), 1);
+        assert_eq!(dirty_log_bitmap_size(page_size * 8 + 1), 2);
+        assert_eq!(dirty_log_bitmap_size(page_size * 100), 13);
+    }
 
     #[test]
     fn new() {
