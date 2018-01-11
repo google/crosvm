@@ -12,6 +12,7 @@ extern crate kvm;
 extern crate x86_64;
 extern crate kernel_loader;
 extern crate byteorder;
+extern crate qcow;
 #[macro_use]
 extern crate sys_util;
 extern crate vm_control;
@@ -36,9 +37,15 @@ use vm_control::VmRequest;
 
 static SECCOMP_POLICY_DIR: &'static str = "/usr/share/policy/crosvm";
 
+enum DiskType {
+    FlatFile,
+    Qcow,
+}
+
 struct DiskOption {
     path: PathBuf,
     writable: bool,
+    disk_type: DiskType,
 }
 
 pub struct Config {
@@ -162,7 +169,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                                       }
                                   })?)
         }
-        "root" | "disk" | "rwdisk" => {
+        "root" | "disk" | "rwdisk" | "qcow" | "rwqcow" => {
             let disk_path = PathBuf::from(value.unwrap());
             if !disk_path.exists() {
                 return Err(argument::Error::InvalidValue {
@@ -188,6 +195,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 .push(DiskOption {
                           path: disk_path,
                           writable: name.starts_with("rw"),
+                          disk_type: if name.ends_with("qcow") {
+                                  DiskType::Qcow
+                              } else {
+                                  DiskType::FlatFile
+                              },
                       });
         }
         "host_ip" => {
@@ -308,7 +320,9 @@ fn run_vm(args: std::env::Args) {
                                 "PATH",
                                 "Path to a root disk image. Like `--disk` but adds appropriate kernel command line option."),
           Argument::short_value('d', "disk", "PATH", "Path to a disk image."),
+          Argument::value("qcow", "PATH", "Path to a qcow2 disk image."),
           Argument::value("rwdisk", "PATH", "Path to a writable disk image."),
+          Argument::value("rwqcow", "PATH", "Path to a writable qcow2 disk image."),
           Argument::value("host_ip",
                           "IP",
                           "IP address to assign to host tap interface."),

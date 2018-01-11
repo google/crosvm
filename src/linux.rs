@@ -22,11 +22,13 @@ use io_jail::{self, Minijail};
 use kernel_cmdline;
 use kernel_loader;
 use kvm::*;
+use qcow::{self, QcowFile};
 use sys_util::*;
 use sys_util;
 use vm_control::VmRequest;
 
 use Config;
+use DiskType;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64;
@@ -55,6 +57,7 @@ pub enum Error {
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
     OpenKernel(PathBuf, io::Error),
+    QcowDeviceCreate(qcow::Error),
     RegisterBalloon(device_manager::Error),
     RegisterBlock(device_manager::Error),
     RegisterIrqfd(sys_util::Error),
@@ -111,6 +114,9 @@ impl fmt::Display for Error {
             &Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
             &Error::OpenKernel(ref p, ref e) => {
                 write!(f, "failed to open kernel image {:?}: {}", p, e)
+            }
+            &Error::QcowDeviceCreate(ref e) => {
+                write!(f, "failed to read qcow formatted file {:?}", e)
             }
             &Error::RegisterBalloon(ref e) => {
                 write!(f, "error registering balloon device: {:?}", e)
@@ -290,14 +296,23 @@ fn setup_mmio_bus(cfg: &Config,
     }
 
     for disk in &cfg.disks {
-        let disk_image = OpenOptions::new()
+        let mut raw_image = OpenOptions::new()
                             .read(true)
                             .write(disk.writable)
                             .open(&disk.path)
                             .map_err(|e| Error::Disk(e))?;
-
-        let block_box = Box::new(devices::virtio::Block::new(disk_image)
-                    .map_err(|e| Error::BlockDeviceNew(e))?);
+        let block_box: Box<devices::virtio::VirtioDevice> = match disk.disk_type {
+            DiskType::FlatFile => { // Access as a raw block device.
+                Box::new(devices::virtio::Block::new(raw_image)
+                    .map_err(|e| Error::BlockDeviceNew(e))?)
+            }
+            DiskType::Qcow => { // Valid qcow header present
+                let qcow_image = QcowFile::from(raw_image)
+                    .map_err(|e| Error::QcowDeviceCreate(e))?;
+                Box::new(devices::virtio::Block::new(qcow_image)
+                    .map_err(|e| Error::BlockDeviceNew(e))?)
+            }
+        };
         let jail = if cfg.multiprocess {
             let policy_path: PathBuf = cfg.seccomp_policy_dir.join("block_device.policy");
             Some(create_base_minijail(empty_root_path, &policy_path)?)
