@@ -184,6 +184,12 @@ impl AsRawFd for SharedMemory {
     }
 }
 
+impl Into<File> for SharedMemory {
+    fn into(self) -> File {
+        self.fd
+    }
+}
+
 /// Checks if the kernel we are running on has memfd_create. It was introduced in 3.17.
 /// Only to be used from tests to prevent running on ancient kernels that won't
 /// support the functionality anyways.
