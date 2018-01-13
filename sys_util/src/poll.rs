@@ -2,12 +2,25 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::i64;
+use std::time::Duration;
+use std::ptr::null;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::{UnixDatagram, UnixStream};
 
-use libc::{nfds_t, pollfd, poll, POLLIN};
+use libc::{c_int, c_long, timespec, time_t, nfds_t, sigset_t, pollfd, syscall, SYS_ppoll, POLLIN};
 
 use {Result, errno_result};
+
+// The libc wrapper suppresses the kernel's changes to timeout, so we use the syscall directly.
+unsafe fn ppoll(fds: *mut pollfd,
+                nfds: nfds_t,
+                timeout: *mut timespec,
+                sigmask: *const sigset_t,
+                sigsetsize: usize)
+                -> c_int {
+    syscall(SYS_ppoll, fds, nfds, timeout, sigmask, sigsetsize) as c_int
+}
 
 /// Trait for file descriptors that can be polled for input.
 ///
@@ -69,6 +82,21 @@ impl Poller {
     /// This is guaranteed to not allocate if `pollables.len()` is less than the `capacity` given in
     /// `Poller::new`.
     pub fn poll(&mut self, pollables: &[(u32, &Pollable)]) -> Result<&[u32]> {
+        self.poll_timeout(pollables, &mut Duration::new(i64::MAX as u64, 0))
+    }
+
+    /// Waits for up to the given timeout for any of the given slice of `token`-`Pollable` tuples to
+    /// be readable without blocking and returns the `token` of each that is readable.
+    ///
+    /// If a timeout duration is given, the duration will be modified to the unused portion of the
+    /// timeout, even if an error is returned.
+    ///
+    /// This is guaranteed to not allocate if `pollables.len()` is less than the `capacity` given in
+    /// `Poller::new`.
+    pub fn poll_timeout(&mut self,
+                        pollables: &[(u32, &Pollable)],
+                        timeout: &mut Duration)
+                        -> Result<&[u32]> {
         self.pollfds.clear();
         for pollable in pollables.iter() {
             self.pollfds
@@ -79,13 +107,23 @@ impl Poller {
                       });
         }
 
+        let mut timeout_spec = timespec {
+            tv_sec: timeout.as_secs() as time_t,
+            tv_nsec: timeout.subsec_nanos() as c_long,
+        };
+
         // Safe because poll is given the correct length of properly initialized pollfds, and we
         // check the return result.
         let ret = unsafe {
-            handle_eintr!(poll(self.pollfds.as_mut_ptr(),
-                       self.pollfds.len() as nfds_t,
-                       -1))
+            handle_eintr!(ppoll(self.pollfds.as_mut_ptr(),
+                                self.pollfds.len() as nfds_t,
+                                &mut timeout_spec,
+                                null(),
+                                0))
         };
+
+        *timeout = Duration::new(timeout_spec.tv_sec as u64, timeout_spec.tv_nsec as u32);
+
         if ret < 0 {
             return errno_result();
         }
@@ -129,5 +167,21 @@ mod tests {
 
         let mut poller = Poller::new(2);
         assert_eq!(poller.poll(&pollables[..]), Ok([1, 2].as_ref()));
+    }
+
+    #[test]
+    fn timeout() {
+        let evt1 = EventFd::new().unwrap();
+        let initial_dur = Duration::from_millis(10);
+        let mut timeout_dur = initial_dur;
+        let mut poller = Poller::new(0);
+        assert_eq!(poller.poll_timeout(&[(1, &evt1)], &mut timeout_dur),
+                   Ok([].as_ref()));
+        assert_eq!(timeout_dur, Duration::from_secs(0));
+        evt1.write(1).unwrap();
+        timeout_dur = initial_dur;
+        assert_eq!(poller.poll_timeout(&[(1, &evt1)], &mut timeout_dur),
+                   Ok([1].as_ref()));
+        assert!(timeout_dur < initial_dur);
     }
 }
