@@ -8,6 +8,7 @@ extern crate devices;
 extern crate libc;
 extern crate io_jail;
 extern crate kvm;
+extern crate kvm_sys;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 extern crate x86_64;
 extern crate kernel_loader;
@@ -20,10 +21,16 @@ extern crate sys_util;
 extern crate vhost;
 extern crate vm_control;
 extern crate data_model;
+#[cfg(feature = "plugin")]
+extern crate plugin_proto;
+#[cfg(feature = "plugin")]
+extern crate protobuf;
 
 pub mod argument;
 pub mod device_manager;
 pub mod linux;
+#[cfg(feature = "plugin")]
+pub mod plugin;
 
 use std::net;
 use std::os::unix::net::UnixDatagram;
@@ -65,6 +72,7 @@ pub struct Config {
     multiprocess: bool,
     seccomp_policy_dir: PathBuf,
     cid: Option<u64>,
+    plugin: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -84,6 +92,7 @@ impl Default for Config {
             multiprocess: true,
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             cid: None,
+            plugin: None,
         }
     }
 }
@@ -119,7 +128,10 @@ fn wait_all_children() -> bool {
 fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::Result<()> {
     match name {
         "" => {
-            if !cfg.kernel_path.as_os_str().is_empty() {
+            if cfg.plugin.is_some() {
+                return Err(argument::Error::TooManyArguments("`plugin` can not be used with kernel"
+                                                                 .to_owned()));
+            } else if !cfg.kernel_path.as_os_str().is_empty() {
                 return Err(argument::Error::TooManyArguments("expected exactly one kernel path"
                                                                  .to_owned()));
             } else {
@@ -289,6 +301,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             // `value` is Some because we are in this match so it's safe to unwrap.
             cfg.seccomp_policy_dir = PathBuf::from(value.unwrap());
         },
+        "plugin" => {
+            if !cfg.kernel_path.as_os_str().is_empty() {
+                return Err(argument::Error::TooManyArguments("`plugin` can not be used with kernel".to_owned()));
+            } else if cfg.plugin.is_some() {
+                return Err(argument::Error::TooManyArguments("`plugin` already given".to_owned()));
+            }
+            cfg.plugin = Some(PathBuf::from(value.unwrap().to_owned()));
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -296,7 +316,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
 }
 
 
-fn run_vm(args: std::env::Args) {
+fn run_vm(args: std::env::Args) -> i32 {
     let arguments =
         &[Argument::positional("KERNEL", "bzImage of kernel to run"),
           Argument::short_value('p',
@@ -333,11 +353,13 @@ fn run_vm(args: std::env::Args) {
           Argument::flag("disable-sandbox", "Run all devices in one, non-sandboxed process."),
           Argument::value("cid", "CID", "Context ID for virtual sockets"),
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
+          #[cfg(feature = "plugin")]
+          Argument::value("plugin", "PATH", "Path to plugin process to run under crosvm."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
     let match_res = set_arguments(args, &arguments[..], |name, value| set_argument(&mut cfg, name, value)).and_then(|_| {
-        if cfg.kernel_path.as_os_str().is_empty() {
+        if cfg.kernel_path.as_os_str().is_empty() && cfg.plugin.is_none() {
             return Err(argument::Error::ExpectedArgument("`KERNEL`".to_owned()));
         }
         if cfg.host_ip.is_some() || cfg.netmask.is_some() || cfg.mac_address.is_some() {
@@ -355,15 +377,32 @@ fn run_vm(args: std::env::Args) {
     });
 
     match match_res {
-        Ok(_) => {
+        #[cfg(feature = "plugin")]
+        Ok(()) if cfg.plugin.is_some() => {
+            match plugin::run_config(cfg) {
+                Ok(_) => info!("crosvm and plugin have exited normally"),
+                Err(e) => {
+                    error!("{}", e);
+                    return 1;
+                }
+            }
+        }
+        Ok(()) => {
             match linux::run_config(cfg) {
                 Ok(_) => info!("crosvm has exited normally"),
-                Err(e) => error!("{}", e),
+                Err(e) => {
+                    error!("{}", e);
+                    return 1;
+                }
             }
         }
         Err(argument::Error::PrintHelp) => print_help("crosvm run", "KERNEL", &arguments[..]),
-        Err(e) => println!("{}", e),
+        Err(e) => {
+            println!("{}", e);
+            return 1;
+        }
     }
+    0
 }
 
 fn stop_vms(args: std::env::Args) {
@@ -430,27 +469,31 @@ fn print_usage() {
 fn main() {
     if let Err(e) = syslog::init() {
         println!("failed to initiailize syslog: {:?}", e);
-        return;
+        std::process::exit(1);
     }
 
     let mut args = std::env::args();
     if args.next().is_none() {
         error!("expected executable name");
-        return;
+        std::process::exit(1);
     }
 
+    // Past this point, usage of exit is in danger of leaking zombie processes.
+
+    let mut exit_code = 0;
     match args.next().as_ref().map(|a| a.as_ref()) {
         None => print_usage(),
         Some("stop") => {
             stop_vms(args);
         }
         Some("run") => {
-            run_vm(args);
+            exit_code = run_vm(args);
         }
         Some("balloon") => {
             balloon_vms(args);
         }
         Some(c) => {
+            exit_code = 1;
             println!("invalid subcommand: {:?}", c);
             print_usage();
         }
@@ -470,4 +513,5 @@ fn main() {
 
     // WARNING: Any code added after this point is not guaranteed to run
     // since we may forcibly kill this process (and its children) above.
+    std::process::exit(exit_code);
 }
