@@ -10,7 +10,7 @@ panic = 'abort'
 [workspace]
 
 [features]
-plugin = ["plugin_proto"]
+plugin = ["plugin_proto", "crosvm_plugin"]
 
 [dependencies]
 devices = { path = "devices" }
@@ -27,6 +27,7 @@ vm_control = { path = "vm_control" }
 data_model = { path = "data_model" }
 qcow = { path = "qcow" }
 plugin_proto = { path = "plugin_proto", optional = true }
+crosvm_plugin = { path = "crosvm_plugin", optional = true }
 qcow_utils = { path = "qcow_utils" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
