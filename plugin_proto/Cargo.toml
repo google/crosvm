@@ -1,0 +1,12 @@
+[package]
+name = "plugin_proto"
+version = "0.5.0"
+authors = ["The Chromium OS Authors"]
+build = "build.rs"
+
+[dependencies]
+protobuf = "=1.4.3"
+
+[build-dependencies]
+gcc = "=0.3.54"
+protoc-rust = "=1.4.3"

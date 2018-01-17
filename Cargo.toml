@@ -9,6 +9,9 @@ panic = 'abort'
 
 [workspace]
 
+[features]
+plugin = ["plugin_proto"]
+
 [dependencies]
 devices = { path = "devices" }
 io_jail = { path = "io_jail" }
@@ -20,6 +23,7 @@ byteorder = "=1.1.0"
 vm_control = { path = "vm_control" }
 data_model = { path = "data_model" }
 qcow = { path = "qcow" }
+plugin_proto = { path = "plugin_proto", optional = true }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { path = "x86_64" }

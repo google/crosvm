@@ -1,0 +1,268 @@
+syntax = "proto3";
+
+// The protocol defined here is actually two sub-protocols, one protocol for control of the main
+// process (MainRequest/MainResponse), and one for control of each VCPU thread
+// (VcpuRequest/VcpuResponse). Each protocol works the same: the client creates a protobuf of either
+// a MainRequest or VcpuRequest, sends it encoded over the main socket or one of the vcpu sockets,
+// reads the the MainResponse or VcpuResponse over the same socket and decodes it as a protobuf. For
+// specific information on the purpose of each request, see the C API in crosvm.h. Most requests
+// here map 1:1 to a function in that API. Only the intricacies unique to the wire protocol are
+// commented on here.
+
+enum AddressSpace {
+    IOPORT = 0;
+    MMIO = 1;
+ }
+
+// A request made to the crosvm main process that affects the global aspects of the VM.
+message MainRequest {
+    // Every message under the Create namespace will instantiate an object with the given ID. The
+    // type of object is determined by the oneof constructor field.
+    message Create {
+        message IoEvent {
+            AddressSpace space = 1;
+            uint64 address = 2;
+            uint32 length = 3;
+            uint64 datamatch = 4;
+        }
+
+        message Memory {
+            uint64 offset = 1;
+            uint64 start = 2;
+            uint64 length = 3;
+            bool read_only = 4;
+        }
+
+        message IrqEvent {
+            uint32 irq_id = 1;
+            bool resample = 2;
+        }
+
+        uint32 id = 1;
+        oneof constructor {
+            IoEvent io_event = 2;
+            // This message also requires a memfd sent over the socket.
+            Memory memory = 3;
+            IrqEvent irq_event = 4;
+        }
+    }
+
+    // No matter what the type an object is, it can be destroyed using this common method.
+    message Destroy {
+        uint32 id = 1;
+    }
+
+    message NewConnection {}
+
+    message GetShutdownEventfd {}
+
+    message ReserveRange {
+        AddressSpace space = 1;
+        uint64 start = 2;
+        uint64 length = 3;
+    }
+
+    message SetIrq {
+        uint32 irq_id = 1;
+        bool active = 2;
+    }
+
+    message SetIrqRouting {
+        message Route {
+            message Irqchip {
+                uint32 irqchip = 1;
+                uint32 pin = 2;
+            }
+
+            message Msi {
+                uint64 address = 1;
+                uint32 data = 2;
+            }
+
+            uint32 irq_id = 1;
+            oneof route {
+                Irqchip irqchip = 2;
+                Msi msi = 3;
+            }
+        }
+
+        repeated Route routes = 1;
+    }
+
+    message SetIdentityMapAddr {
+        uint32 address = 1;
+    }
+
+    message PauseVcpus {
+        uint64 cpu_mask = 1;
+        uint64 user = 2;
+    }
+
+    message GetVcpus {}
+    message Start {}
+
+    message MemoryDirtyLog {
+        uint32 id = 1;
+    }
+
+    // The type of the message is determined by which of these oneof fields is present in the
+    // protobuf.
+    oneof message {
+        // Common method for instantiating a new object of any type.
+        Create create = 1;
+        // Common method for destroying an object of any type.
+        Destroy destroy = 2;
+        NewConnection new_connection = 3;
+        GetShutdownEventfd get_shutdown_eventfd = 4;
+        ReserveRange reserve_range = 5;
+        SetIrq set_irq = 6;
+        SetIrqRouting set_irq_routing = 7;
+        SetIdentityMapAddr set_identity_map_addr = 8;
+        PauseVcpus pause_vcpus = 9;
+        GetVcpus get_vcpus = 10;
+        Start start = 11;
+        // Method for a Memory type object for retrieving the dirty bitmap.
+        MemoryDirtyLog dirty_log = 101;
+    }
+}
+
+message MainResponse {
+    // Depending on the object that was created, an fd might also come from the socket.
+    message Create {}
+    message Destroy {}
+    // NewMessage receives a socket fd along with the data from reading this socket.
+    // The returned socket can be used totally independently of the original socket, and can perform
+    // requests and responses independent of the other sockets.
+    message NewConnection {}
+    message GetShutdownEventfd {}
+    message ReserveRange {}
+    message SetIrq {}
+    message SetIrqRouting {}
+    message SetIdentityMapAddr {}
+    message PauseVcpus {}
+    // This message should also receive a socket fd per VCPU along with the data from reading this
+    // socket. The VcpuRequest/VcpuResponse protocol is run over each of the returned fds.
+    message GetVcpus {}
+    message Start {}
+    message MemoryDirtyLog {
+        bytes bitmap = 1;
+    }
+
+    // This is zero on success, and a negative integer on failure.
+    sint32 errno = 1;
+    // The field present here is always the same as the one present in the corresponding
+    // MainRequest.
+    oneof message {
+        Create create = 2;
+        Destroy destroy = 3;
+        NewConnection new_connection = 4;
+        GetShutdownEventfd get_shutdown_eventfd = 5;
+        ReserveRange reserve_range = 6;
+        SetIrq set_irq = 7;
+        SetIrqRouting set_irq_routing = 8;
+        SetIdentityMapAddr set_identity_map_addr = 9;
+        PauseVcpus pause_vcpus = 10;
+        GetVcpus get_vcpus = 11;
+        Start start = 12;
+        MemoryDirtyLog dirty_log = 101;
+    }
+}
+
+// A request made for a specific VCPU. These requests are sent over the sockets returned from the
+// GetVcpu MainRequest.
+message VcpuRequest {
+    // This message will block until a non-empty response can be sent. The first response will
+    // always be an Init wait reason.
+    message Wait {
+    }
+
+    message Resume {
+        // The data is only necessary for non-write (read) I/O accesses. In all other cases, data is
+        // ignored.
+        bytes data = 1;
+    }
+
+    // Each type refers to a set of KVM VCPU registers. The structure of the data corresponds to the
+    // kvm structure.
+    enum StateSet {
+        // struct kvm_regs
+        REGS = 0;
+        // struct kvm_sregs
+        SREGS = 1;
+        // struct kvm_fpu
+        FPU = 2;
+    }
+
+    message GetState {
+        StateSet set = 1;
+    }
+
+    message SetState {
+        StateSet set = 1;
+        // The in memory representation of a struct kvm_regs, struct kvm_sregs, or struct kvm_fpu,
+        // depending on the value of the StateSet.
+        bytes state = 2;
+    }
+
+    // The type of the message is determined by which of these oneof fields is present in the
+    // protobuf.
+    oneof message {
+        Wait wait = 1;
+        Resume resume = 2;
+        GetState get_state = 3;
+        SetState set_state = 4;
+    }
+}
+
+
+message VcpuResponse  {
+    // Depending on the reason a VCPU has exited, the Wait request will unblock and return a field
+    // in the oneof exit. This is called the "wait reason."
+    message Wait {
+        // This request will always be the first wait reason returend by the first wait request.
+        message Init {
+        }
+
+        // This type of wait reason is only generated if the access occurred on this VCPU on an
+        // address previously reserved by a ReserveRange main request.
+        message Io {
+            AddressSpace space = 1;
+            uint64 address = 2;
+            bool is_write = 3;
+            bytes data = 4;
+        }
+
+        // This type of wait reason is only generated after a PuaseVcpus request on this VCPU.
+        message User {
+            uint64 user = 1;
+        }
+
+        oneof exit {
+            Init init = 1;
+            Io io = 2;
+            User user = 3;
+        }
+    }
+
+    message Resume {}
+
+    message GetState {
+        // The in memory representation of a struct kvm_regs, struct kvm_sregs, or struct kvm_fpu,
+        // depending on what StateSet was requested in GetState.
+        bytes state = 1;
+    }
+
+    message SetState {
+    }
+
+    // This is zero on success, and a negative integer on failure.
+    sint32 errno = 1;
+    // The field present here is always the same as the one present in the corresponding
+    // VcpuRequest.
+    oneof message {
+        Wait wait = 2;
+        Resume resume = 3;
+        GetState get_state = 4;
+        SetState set_state = 5;
+    }
+}
