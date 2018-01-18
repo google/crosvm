@@ -30,7 +30,16 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
+// QCOW magic constant that starts the header.
+const QCOW_MAGIC: u32 = 0x5146_49fb;
+// Default to a cluster size of 2^DEFAULT_CLUSTER_BITS
+const DEFAULT_CLUSTER_BITS: u32 = 16;
 const MAX_CLUSTER_BITS: u32 = 30;
+// Only support 2 byte refcounts, 2^refcount_order bits.
+const DEFAULT_REFCOUNT_ORDER: u32 = 4;
+
+const V3_BARE_HEADER_SIZE: u32 = 104;
+
 // bits 0-8 and 56-63 are reserved.
 const L1_TABLE_OFFSET_MASK: u64 = 0x00ff_ffff_ffff_fe00;
 const L2_TABLE_OFFSET_MASK: u64 = 0x00ff_ffff_ffff_fe00;
@@ -71,7 +80,6 @@ pub struct QcowHeader {
 impl QcowHeader {
     /// Creates a QcowHeader from a reference to a file.
     pub fn new(f: &mut File) -> Result<QcowHeader> {
-        const QCOW_MAGIC: u32 = 0x5146_49fb;
         f.seek(SeekFrom::Start(0)).map_err(Error::ReadingHeader)?;
         let magic = f.read_u32::<BigEndian>().map_err(Error::ReadingHeader)?;
         if magic != QCOW_MAGIC {
@@ -108,6 +116,41 @@ impl QcowHeader {
             refcount_order: read_u32_from_file(f)?,
             header_size: read_u32_from_file(f)?,
         })
+    }
+
+    /// Create a header for the given `size`.
+    pub fn create_for_size(size: u64) -> QcowHeader {
+        let cluster_bits: u32 = DEFAULT_CLUSTER_BITS;
+        let cluster_size: u32 = 0x01 << cluster_bits;
+        // L2 blocks are always one cluster long. They contain cluster_size/sizeof(u64) addresses.
+        let l2_size: u32 = cluster_size / size_of::<u64>() as u32;
+        let num_clusters: u32 = div_round_up_u64(size, cluster_size as u64) as u32;
+        let num_l2_clusters: u32 = div_round_up_u32(num_clusters, l2_size);
+        let l1_clusters: u32 = div_round_up_u32(num_l2_clusters, cluster_size);
+        QcowHeader {
+            magic: QCOW_MAGIC,
+            version: 3,
+            backing_file_offset: 0,
+            backing_file_size: 0,
+            cluster_bits: DEFAULT_CLUSTER_BITS,
+            size: size,
+            crypt_method: 0,
+            l1_size: num_l2_clusters,
+            l1_table_offset: cluster_size as u64,
+            refcount_table_offset: (cluster_size * (l1_clusters + 1)) as u64, // After l1 + header.
+            refcount_table_clusters: {
+                let refcount_bytes = (0x01 << DEFAULT_CLUSTER_BITS) / 8;
+                let refcounts_per_cluster = cluster_size / refcount_bytes;
+                div_round_up_u32(num_clusters, refcounts_per_cluster)
+            },
+            nb_snapshots: 0,
+            snapshots_offset: 0,
+            incompatible_features: 0,
+            compatible_features: 0,
+            autoclear_features: 0,
+            refcount_order: DEFAULT_REFCOUNT_ORDER,
+            header_size: V3_BARE_HEADER_SIZE,
+       }
     }
 }
 
@@ -456,6 +499,16 @@ fn write_u64_to_offset(f: &mut File, offset: u64, value: u64) -> std::io::Result
     f.write_u64::<BigEndian>(value)
 }
 
+// Ceiling of the division of `dividend`/`divisor`.
+fn div_round_up_u64(dividend: u64, divisor: u64) -> u64 {
+    (dividend + divisor - 1) / divisor
+}
+
+// Ceiling of the division of `dividend`/`divisor`.
+fn div_round_up_u32(dividend: u32, divisor: u32) -> u32 {
+    (dividend + divisor - 1) / divisor
+}
+
 #[cfg(test)]
 extern crate sys_util;
 
@@ -499,6 +552,11 @@ mod tests {
         disk_file.seek(SeekFrom::Start(0)).unwrap();
 
         testfn(disk_file); // File closed when the function exits.
+    }
+
+    #[test]
+    fn default_header() {
+        let _ = QcowHeader::create_for_size(0x10_0000);
     }
 
     #[test]
