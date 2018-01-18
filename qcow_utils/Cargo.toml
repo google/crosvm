@@ -1,0 +1,12 @@
+[package]
+name = "qcow_utils"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+
+[lib]
+path = "src/qcow_utils.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "*"
+qcow = { path = "../qcow" }

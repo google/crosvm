@@ -1,15 +1,3 @@
-[root]
-name = "x86_64"
-version = "0.1.0"
-dependencies = [
- "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "data_model 0.1.0",
- "kvm 0.1.0",
- "kvm_sys 0.1.0",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
- "sys_util 0.1.0",
-]
-
 [[package]]
 name = "bitflags"
 version = "1.0.1"
@@ -38,6 +26,7 @@ dependencies = [
  "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
  "plugin_proto 0.5.0",
  "qcow 0.1.0",
+ "qcow_utils 0.1.0",
  "sys_util 0.1.0",
  "vm_control 0.1.0",
  "x86_64 0.1.0",
@@ -185,6 +174,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "qcow_utils"
+version = "0.1.0"
+dependencies = [
+ "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qcow 0.1.0",
+]
+
+[[package]]
 name = "rand"
 version = "0.3.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -239,6 +236,18 @@ dependencies = [
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
  "kvm 0.1.0",
+ "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sys_util 0.1.0",
+]
+
+[[package]]
+name = "x86_64"
+version = "0.1.0"
+dependencies = [
+ "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "data_model 0.1.0",
+ "kvm 0.1.0",
+ "kvm_sys 0.1.0",
  "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]

@@ -24,6 +24,7 @@ vm_control = { path = "vm_control" }
 data_model = { path = "data_model" }
 qcow = { path = "qcow" }
 plugin_proto = { path = "plugin_proto", optional = true }
+qcow_utils = { path = "qcow_utils" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { path = "x86_64" }
