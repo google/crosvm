@@ -25,6 +25,7 @@ pub enum Error {
     NoRefcountClusters,
     ReadingHeader(io::Error),
     SizeTooSmallForNumberOfClusters,
+    WritingHeader(io::Error),
     UnsupportedRefcountOrder,
     UnsupportedVersion(u32),
 }
@@ -151,6 +152,39 @@ impl QcowHeader {
             refcount_order: DEFAULT_REFCOUNT_ORDER,
             header_size: V3_BARE_HEADER_SIZE,
        }
+    }
+
+    /// Write the header to `file`.
+    pub fn write_to<F: Write>(&self, file: &mut F) -> Result<()> {
+        // Writes the next u32 to the file.
+        fn write_u32_to_file<F: Write>(f: &mut F, value: u32) -> Result<()> {
+            f.write_u32::<BigEndian>(value).map_err(Error::WritingHeader)
+        }
+
+        // Writes the next u64 to the file.
+        fn write_u64_to_file<F: Write>(f: &mut F, value: u64) -> Result<()> {
+            f.write_u64::<BigEndian>(value).map_err(Error::WritingHeader)
+        }
+
+        write_u32_to_file(file, self.magic)?;
+        write_u32_to_file(file, self.version)?;
+        write_u64_to_file(file, self.backing_file_offset)?;
+        write_u32_to_file(file, self.backing_file_size)?;
+        write_u32_to_file(file, self.cluster_bits)?;
+        write_u64_to_file(file, self.size)?;
+        write_u32_to_file(file, self.crypt_method)?;
+        write_u32_to_file(file, self.l1_size)?;
+        write_u64_to_file(file, self.l1_table_offset)?;
+        write_u64_to_file(file, self.refcount_table_offset)?;
+        write_u32_to_file(file, self.refcount_table_clusters)?;
+        write_u32_to_file(file, self.nb_snapshots)?;
+        write_u64_to_file(file, self.snapshots_offset)?;
+        write_u64_to_file(file, self.incompatible_features)?;
+        write_u64_to_file(file, self.compatible_features)?;
+        write_u64_to_file(file, self.autoclear_features)?;
+        write_u32_to_file(file, self.refcount_order)?;
+        write_u32_to_file(file, self.header_size)?;
+        Ok(())
     }
 }
 
@@ -556,7 +590,12 @@ mod tests {
 
     #[test]
     fn default_header() {
-        let _ = QcowHeader::create_for_size(0x10_0000);
+        let header = QcowHeader::create_for_size(0x10_0000);
+        let shm = SharedMemory::new(None).unwrap();
+        let mut disk_file: File = shm.into();
+        header.write_to(&mut disk_file).expect("Failed to write header to shm.");
+        disk_file.seek(SeekFrom::Start(0)).unwrap();
+        QcowFile::from(disk_file).expect("Failed to create Qcow from default Header");
     }
 
     #[test]
