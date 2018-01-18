@@ -19,7 +19,7 @@ const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
 
 #[derive(Debug)]
 pub enum RngError {
-    /// Can't access /dev/random
+    /// Can't access /dev/urandom
     AccessingRandomDev(io::Error),
 }
 pub type Result<T> = std::result::Result<T, RngError>;
@@ -110,9 +110,9 @@ pub struct Rng {
 }
 
 impl Rng {
-    /// Create a new virtio rng device that gets random data from /dev/random.
+    /// Create a new virtio rng device that gets random data from /dev/urandom.
     pub fn new() -> Result<Rng> {
-        let random_file = File::open("/dev/random")
+        let random_file = File::open("/dev/urandom")
             .map_err(RngError::AccessingRandomDev)?;
         Ok(Rng {
                kill_evt: None,
