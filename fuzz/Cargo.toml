@@ -15,6 +15,10 @@ sys_util = { path = "../sys_util" }
 members = ["."]
 
 [[bin]]
+name = "crosvm_block_fuzzer"
+path = "block_fuzzer.rs"
+
+[[bin]]
 name = "crosvm_qcow_fuzzer"
 path = "qcow_fuzzer.rs"
 
