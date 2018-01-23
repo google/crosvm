@@ -264,6 +264,19 @@ impl Queue {
         let index_addr = mem.checked_offset(avail_ring, 2).unwrap();
         // Note that last_index has no invalid values
         let last_index: u16 = mem.read_obj_from_addr::<u16>(index_addr).unwrap();
+        let queue_len = Wrapping(last_index) - self.next_avail;
+
+        if queue_len.0 > queue_size {
+            return AvailIter {
+                mem: mem,
+                desc_table: GuestAddress(0),
+                avail_ring: GuestAddress(0),
+                next_index: Wrapping(0),
+                last_index: Wrapping(0),
+                queue_size: 0,
+                next_avail: &mut self.next_avail,
+            };
+        }
 
         AvailIter {
             mem: mem,
