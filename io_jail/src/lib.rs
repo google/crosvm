@@ -17,6 +17,7 @@ use std::fs;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
+use std::ptr::{null, null_mut};
 
 #[derive(Debug)]
 pub enum Error {
@@ -421,6 +422,73 @@ impl Minijail {
         Ok(())
     }
 
+    /// Forks and execs a child and puts it in the previously configured minijail.
+    /// FDs 0, 1, and 2 are overwritten with /dev/null FDs unless they are included in the
+    /// inheritable_fds list. This function may abort in the child on error because a partially
+    /// entered jail isn't recoverable.
+    pub fn run(&self, cmd: &Path, inheritable_fds: &[RawFd], args: &[&str]) -> Result<pid_t> {
+        let cmd_os = cmd.to_str()
+            .ok_or(Error::PathToCString(cmd.to_owned()))?;
+        let cmd_cstr = CString::new(cmd_os)
+            .map_err(|_| Error::StrToCString(cmd_os.to_owned()))?;
+
+        // Converts each incoming `args` string to a `CString`, and then puts each `CString` pointer
+        // into a null terminated array, suitable for use as an argv parameter to `execve`.
+        let mut args_cstr = Vec::with_capacity(args.len());
+        let mut args_array = Vec::with_capacity(args.len());
+        for &arg in args {
+            let arg_cstr = CString::new(arg)
+                .map_err(|_| Error::StrToCString(arg.to_owned()))?;
+            args_array.push(arg_cstr.as_ptr());
+            args_cstr.push(arg_cstr);
+        }
+        args_array.push(null());
+
+        for fd in inheritable_fds {
+            let ret = unsafe { libminijail::minijail_preserve_fd(self.jail, *fd, *fd) };
+            if ret < 0 {
+                return Err(Error::PreservingFd(ret));
+            }
+        }
+
+        let dev_null = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/null")
+            .map_err(Error::OpenDevNull)?;
+        // Set stdin, stdout, and stderr to /dev/null unless they are in the inherit list.
+        // These will only be closed when this process exits.
+        for io_fd in &[libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
+            if !inheritable_fds.contains(io_fd) {
+                let ret = unsafe {
+                    libminijail::minijail_preserve_fd(self.jail, dev_null.as_raw_fd(), *io_fd)
+                };
+                if ret < 0 {
+                    return Err(Error::PreservingFd(ret));
+                }
+            }
+        }
+
+        unsafe {
+            libminijail::minijail_close_open_fds(self.jail);
+        }
+
+        let mut pid = 0;
+        let ret = unsafe {
+            libminijail::minijail_run_pid_pipes(self.jail,
+                                                cmd_cstr.as_ptr(),
+                                                args_array.as_ptr(),
+                                                &mut pid,
+                                                null_mut(),
+                                                null_mut(),
+                                                null_mut())
+        };
+        if ret < 0 {
+            return Err(Error::ForkingMinijail(ret));
+        }
+        Ok(pid)
+    }
+
     /// Forks a child and puts it in the previously configured minijail.
     /// `fork` is unsafe because it closes all open FD for this process.  That
     /// could cause a lot of trouble if not handled carefully.  FDs 0, 1, and 2
@@ -566,5 +634,11 @@ mod tests {
         unsafe {
             j.fork(None).unwrap();
         }
+    }
+
+    #[test]
+    fn run() {
+        let j = Minijail::new().unwrap();
+        j.run(Path::new("/bin/true"), &[], &[]).unwrap();
     }
 }
