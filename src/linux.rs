@@ -409,11 +409,6 @@ fn setup_mmio_bus(cfg: &Config,
 
             // Set the uid/gid for the jailed process, and give a basic id map. This
             // is required for the above bind mount to work.
-            let wayland_group = cfg.wayland_group.as_ref().map(|s| s.as_str()).unwrap_or("wayland");
-            let wayland_cstr = CString::new(wayland_group).unwrap();
-            let wayland_gid = get_group_id(&wayland_cstr)
-                .map_err(Error::GetWaylandGroup)?;
-
             let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
             let crosvm_uid = match get_user_id(&crosvm_user_group) {
                 Ok(u) => u,
@@ -422,11 +417,18 @@ fn setup_mmio_bus(cfg: &Config,
                     geteuid()
                 }
             };
+            let crosvm_gid = match get_group_id(&crosvm_user_group) {
+                Ok(u) => u,
+                Err(e) => {
+                    warn!("falling back to current group id for Wayland: {:?}", e);
+                    getegid()
+                }
+            };
             jail.change_uid(crosvm_uid);
-            jail.change_gid(wayland_gid);
+            jail.change_gid(crosvm_gid);
             jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
                 .map_err(Error::SettingUidMap)?;
-            jail.gidmap(&format!("{0} {0} 1", wayland_gid))
+            jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
                 .map_err(Error::SettingGidMap)?;
 
             Some(jail)

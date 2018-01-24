@@ -59,7 +59,6 @@ pub struct Config {
     mac_address: Option<String>,
     vhost_net: bool,
     wayland_socket_path: Option<PathBuf>,
-    wayland_group: Option<String>,
     socket_path: Option<PathBuf>,
     multiprocess: bool,
     seccomp_policy_dir: PathBuf,
@@ -79,7 +78,6 @@ impl Default for Config {
             mac_address: None,
             vhost_net: false,
             wayland_socket_path: None,
-            wayland_group: None,
             socket_path: None,
             multiprocess: true,
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
@@ -251,13 +249,6 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                            });
             }
             cfg.wayland_socket_path = Some(wayland_socket_path);
-        }
-        "wayland-group" => {
-            if cfg.wayland_group.is_some() {
-                return Err(argument::Error::TooManyArguments("`wayland-group` already given"
-                                                                 .to_owned()));
-            }
-            cfg.wayland_group = Some(value.unwrap().to_owned());
         }
         "socket" => {
             if cfg.socket_path.is_some() {
