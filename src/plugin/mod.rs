@@ -10,6 +10,7 @@ use std::fs::File;
 use std::io;
 use std::os::unix::io::{IntoRawFd, FromRawFd};
 use std::os::unix::net::UnixDatagram;
+use std::path::Path;
 use std::result;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
@@ -17,13 +18,15 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use libc::{socketpair, ioctl, c_ulong, AF_UNIX, SOCK_SEQPACKET, FIOCLEX, EAGAIN, EINTR, EINVAL,
-           ENOENT, EPERM, EDEADLK, ENOTTY, EEXIST, EBADF, EOVERFLOW, SIGCHLD};
+           ENOENT, EPERM, EDEADLK, ENOTTY, EEXIST, EBADF, EOVERFLOW, SIGCHLD, MS_NOSUID, MS_NODEV};
 
 use protobuf::ProtobufError;
 
+use io_jail::{self, Minijail};
 use kvm::{Kvm, Vm, Vcpu, VcpuExit, IoeventAddress, NoDatamatch};
 use sys_util::{EventFd, MmapError, Killable, SignalFd, SignalFdError, Poller, Pollable,
-               GuestMemory, Result as SysResult, Error as SysError, register_signal_handler};
+               GuestMemory, Result as SysResult, Error as SysError, register_signal_handler,
+               geteuid, getegid};
 
 use Config;
 
@@ -39,6 +42,7 @@ pub enum Error {
     CloneVcpuSocket(io::Error),
     CreateEventFd(SysError),
     CreateIrqChip(SysError),
+    CreateJail(io_jail::Error),
     CreateKvm(SysError),
     CreateMainSocket(SysError),
     CreateSignalFd(SignalFdError),
@@ -48,9 +52,18 @@ pub enum Error {
     CreateVm(SysError),
     DecodeRequest(ProtobufError),
     EncodeResponse(ProtobufError),
+    MountLib(io_jail::Error),
+    MountLib64(io_jail::Error),
+    MountPlugin(io_jail::Error),
+    MountPluginLib(io_jail::Error),
+    MountRoot(io_jail::Error),
+    NoVarEmpty,
+    ParsePivotRoot(io_jail::Error),
+    ParseSeccomp(io_jail::Error),
     PluginFailed(i32),
     PluginKill(SysError),
     PluginKilled(i32),
+    PluginRunJail(io_jail::Error),
     PluginSocketHup,
     PluginSocketPoll(SysError),
     PluginSocketRecv(SysError),
@@ -59,6 +72,8 @@ pub enum Error {
     PluginTimeout,
     PluginWait(SysError),
     Poll(SysError),
+    SetGidMap(io_jail::Error),
+    SetUidMap(io_jail::Error),
     SigChild {
         pid: u32,
         signo: u32,
@@ -76,6 +91,7 @@ impl fmt::Display for Error {
             Error::CloneVcpuSocket(ref e) => write!(f, "failed to clone vcpu socket: {:?}", e),
             Error::CreateEventFd(ref e) => write!(f, "failed to create eventfd: {:?}", e),
             Error::CreateIrqChip(ref e) => write!(f, "failed to create kvm irqchip: {:?}", e),
+            Error::CreateJail(ref e) => write!(f, "failed to create jail: {}", e),
             Error::CreateKvm(ref e) => write!(f, "error creating Kvm: {:?}", e),
             Error::CreateMainSocket(ref e) => {
                 write!(f, "error creating main request socket: {:?}", e)
@@ -89,9 +105,18 @@ impl fmt::Display for Error {
             Error::CreateVm(ref e) => write!(f, "error creating vm: {:?}", e),
             Error::DecodeRequest(ref e) => write!(f, "failed to decode plugin request: {}", e),
             Error::EncodeResponse(ref e) => write!(f, "failed to encode plugin response: {}", e),
+            Error::MountLib(ref e) => write!(f, "failed to mount: {}", e),
+            Error::MountLib64(ref e) => write!(f, "failed to mount: {}", e),
+            Error::MountPlugin(ref e) => write!(f, "failed to mount: {}", e),
+            Error::MountPluginLib(ref e) => write!(f, "failed to mount: {}", e),
+            Error::MountRoot(ref e) => write!(f, "failed to mount: {}", e),
+            Error::NoVarEmpty => write!(f, "no /var/empty for jailed process to pivot root into"),
+            Error::ParsePivotRoot(ref e) => write!(f, "failed to set jail pivot root: {}", e),
+            Error::ParseSeccomp(ref e) => write!(f, "failed to parse jail seccomp filter: {}", e),
             Error::PluginFailed(ref e) => write!(f, "plugin exited with error: {}", e),
             Error::PluginKill(ref e) => write!(f, "error sending kill signal to plugin: {:?}", e),
             Error::PluginKilled(ref e) => write!(f, "plugin exited with signal {}", e),
+            Error::PluginRunJail(ref e) => write!(f, "failed to run jail: {}", e),
             Error::PluginSocketHup => write!(f, "plugin request socket has been hung up"),
             Error::PluginSocketPoll(ref e) => {
                 write!(f, "failed to poll plugin request sockets: {:?}", e)
@@ -106,6 +131,8 @@ impl fmt::Display for Error {
             Error::PluginTimeout => write!(f, "plugin did not exit within timeout"),
             Error::PluginWait(ref e) => write!(f, "error waiting for plugin to exit: {:?}", e),
             Error::Poll(ref e) => write!(f, "failed to poll all FDs: {:?}", e),
+            Error::SetGidMap(ref e) => write!(f, "failed to set gidmap for jail: {}", e),
+            Error::SetUidMap(ref e) => write!(f, "failed to set uidmap for jail: {}", e),
             Error::SigChild {
                 pid,
                 signo,
@@ -161,6 +188,46 @@ fn mmap_to_sys_err(e: MmapError) -> SysError {
         MmapError::SystemCallFailed(e) => e,
         _ => SysError::new(-EINVAL),
     }
+}
+
+fn create_plugin_jail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
+    // All child jails run in a new user namespace without any users mapped,
+    // they run as nobody unless otherwise configured.
+    let mut j = Minijail::new().map_err(Error::CreateJail)?;
+    j.namespace_pids();
+    j.namespace_user();
+    j.uidmap(&format!("{0} {0} 1", geteuid()))
+        .map_err(Error::SetUidMap)?;
+    j.gidmap(&format!("{0} {0} 1", getegid()))
+        .map_err(Error::SetGidMap)?;
+    j.namespace_user_disable_setgroups();
+    // Don't need any capabilities.
+    j.use_caps(0);
+    // Create a new mount namespace with an empty root FS.
+    j.namespace_vfs();
+    j.enter_pivot_root(root).map_err(Error::ParsePivotRoot)?;
+    // Run in an empty network namespace.
+    j.namespace_net();
+    j.no_new_privs();
+    // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP, which will correctly kill
+    // the entire plugin process if a worker thread commits a seccomp violation.
+    j.set_seccomp_filter_tsync();
+    j.parse_seccomp_filters(seccomp_policy)
+        .map_err(Error::ParseSeccomp)?;
+    j.use_seccomp_filter();
+    // Don't do init setup.
+    j.run_as_init();
+
+    // Create a tmpfs in the plugin's root directory so that we can bind mount it's executable
+    // file into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
+    j.mount_with_data(Path::new("none"),
+                         Path::new("/"),
+                         "tmpfs",
+                         (MS_NOSUID | MS_NODEV) as usize,
+                         "size=67108864")
+        .map_err(Error::MountRoot)?;
+
+    Ok(j)
 }
 
 /// Each `PluginObject` represents one object that was instantiated by the guest using the `Create`
@@ -228,12 +295,27 @@ pub fn run_config(cfg: Config) -> Result<()> {
     // quickly.
     let sigchld_fd = SignalFd::new(SIGCHLD).map_err(Error::CreateSignalFd)?;
 
+    let jail = if cfg.multiprocess {
+        // An empty directory for jailed plugin pivot root.
+        let empty_root_path = Path::new("/var/empty");
+        if !empty_root_path.exists() {
+            return Err(Error::NoVarEmpty);
+        }
+
+        let policy_path = cfg.seccomp_policy_dir.join("plugin.policy");
+        let jail = create_plugin_jail(empty_root_path, &policy_path)?;
+        Some(jail)
+    } else {
+        None
+    };
+
+    let plugin_path = cfg.plugin.as_ref().unwrap().as_path();
     let vcpu_count = cfg.vcpu_count.unwrap_or(1);
     let mem = GuestMemory::new(&[]).unwrap();
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;
     let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
     vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
-    let mut plugin = Process::new(vcpu_count, &mut vm, &cfg.plugin.unwrap())?;
+    let mut plugin = Process::new(vcpu_count, &mut vm, plugin_path, jail)?;
 
     let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
     let kill_signaled = Arc::new(AtomicBool::new(false));
@@ -385,7 +467,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                             Ok(Some(siginfo)) => {
                                 // If the plugin process has ended, there is no need to continue
                                 // processing plugin connections, so we break early.
-                                if siginfo.ssi_pid == plugin.pid() {
+                                if siginfo.ssi_pid == plugin.pid() as u32 {
                                     break 'poll;
                                 }
                                 // Because SIGCHLD is not expected from anything other than the

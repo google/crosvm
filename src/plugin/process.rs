@@ -3,21 +3,22 @@
 // found in the LICENSE file.
 
 use std::collections::hash_map::{HashMap, Entry, VacantEntry};
+use std::env::set_var;
 use std::fs::File;
 use std::net::Shutdown;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
-use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
-use std::process::{Command, Child};
+use std::process::Command;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread::JoinHandle;
 
-use libc::EINVAL;
+use libc::{waitpid, pid_t, EINVAL, WNOHANG, WIFEXITED, WEXITSTATUS, WTERMSIG};
 
 use protobuf;
 use protobuf::Message;
 
+use io_jail::Minijail;
 use kvm::{Vm, IoeventAddress, NoDatamatch, IrqSource, IrqRoute, dirty_log_bitmap_size};
 use sys_util::{EventFd, MemoryMapping, Killable, Scm, Poller, Pollable, SharedMemory,
                GuestAddress, Result as SysResult, Error as SysError};
@@ -44,7 +45,7 @@ pub enum ProcessStatus {
 /// an unprivileged manner as a child process spawned via a path to a arbitrary executable.
 pub struct Process {
     started: bool,
-    plugin_proc: Child,
+    plugin_pid: pid_t,
     request_sockets: Vec<UnixDatagram>,
     objects: HashMap<u32, PluginObject>,
     shared_vcpu_state: Arc<RwLock<SharedVcpuState>>,
@@ -66,7 +67,11 @@ impl Process {
     ///
     /// This will immediately spawn the plugin process and wait for the child to signal that it is
     /// ready to start. This call may block indefinitely.
-    pub fn new(cpu_count: u32, vm: &mut Vm, cmd_path: &Path) -> Result<Process> {
+    ///
+    /// Set the `jail` argument to spawn the plugin process within the preconfigured jail.
+    /// Due to an API limitation in libminijail necessitating that this function set an environment
+    /// variable, this function is not thread-safe.
+    pub fn new(cpu_count: u32, vm: &mut Vm, cmd: &Path, jail: Option<Minijail>) -> Result<Process> {
         let (request_socket, child_socket) = new_seqpacket_pair().map_err(Error::CreateMainSocket)?;
 
         let mut vcpu_sockets: Vec<(UnixDatagram, UnixDatagram)> = Vec::with_capacity(cpu_count as
@@ -77,11 +82,20 @@ impl Process {
         let mut per_vcpu_states: Vec<Arc<Mutex<PerVcpuState>>> = Vec::new();
         per_vcpu_states.resize(cpu_count as usize, Default::default());
 
-        // TODO(zachr): use a minijail
-        let plugin_proc = Command::new(cmd_path)
-            .env("CROSVM_SOCKET", child_socket.as_raw_fd().to_string())
-            .spawn()
-            .map_err(Error::PluginSpawn)?;
+        let plugin_pid = match jail {
+            Some(jail) => {
+                set_var("CROSVM_SOCKET", child_socket.as_raw_fd().to_string());
+                jail.run(cmd, &[0, 1, 2, child_socket.as_raw_fd()], &[])
+                    .map_err(Error::PluginRunJail)?
+            }
+            None => {
+                Command::new(cmd)
+                    .env("CROSVM_SOCKET", child_socket.as_raw_fd().to_string())
+                    .spawn()
+                    .map_err(Error::PluginSpawn)?
+                    .id() as pid_t
+            }
+        };
 
         // Very important to drop the child socket so that the pair will properly hang up if the
         // plugin process exits or closes its end.
@@ -91,7 +105,7 @@ impl Process {
 
         let mut plugin = Process {
             started: false,
-            plugin_proc,
+            plugin_pid,
             request_sockets,
             objects: Default::default(),
             shared_vcpu_state: Default::default(),
@@ -160,8 +174,8 @@ impl Process {
     }
 
     /// Returns the process ID of the plugin process.
-    pub fn pid(&self) -> u32 {
-        self.plugin_proc.id()
+    pub fn pid(&self) -> pid_t {
+        self.plugin_pid
     }
 
     /// Returns a slice of each socket that should be polled.
@@ -211,17 +225,25 @@ impl Process {
 
     /// Waits without blocking for the plugin process to exit and returns the status.
     pub fn try_wait(&mut self) -> SysResult<ProcessStatus> {
-        match self.plugin_proc.try_wait() {
-            Ok(Some(status)) => {
-                match status.code() {
-                    Some(0) => Ok(ProcessStatus::Success),
-                    Some(code) => Ok(ProcessStatus::Fail(code)),
-                    // If there was no exit code there must be a signal.
-                    None => Ok(ProcessStatus::Signal(status.signal().unwrap())),
+        let mut status = 0;
+        // Safe because waitpid is given a valid pointer of correct size and mutability, and the
+        // return value is checked.
+        let ret = unsafe { waitpid(self.plugin_pid, &mut status, WNOHANG) };
+        match ret {
+            -1 => Err(SysError::last()),
+            0 => Ok(ProcessStatus::Running),
+            _ => {
+                // Trivially safe
+                if unsafe { WIFEXITED(status) } {
+                    match unsafe { WEXITSTATUS(status) } { // Trivially safe
+                        0 => Ok(ProcessStatus::Success),
+                        code => Ok(ProcessStatus::Fail(code)),
+                    }
+                } else {
+                    // Plugin terminated but has no exit status, so it must have been signaled.
+                    Ok(ProcessStatus::Signal(unsafe { WTERMSIG(status) })) // Trivially safe
                 }
             }
-            Ok(None) => Ok(ProcessStatus::Running),
-            Err(e) => Err(io_to_sys_err(e)),
         }
     }
 

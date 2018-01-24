@@ -307,7 +307,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             } else if cfg.plugin.is_some() {
                 return Err(argument::Error::TooManyArguments("`plugin` already given".to_owned()));
             }
-            cfg.plugin = Some(PathBuf::from(value.unwrap().to_owned()));
+            let plugin = PathBuf::from(value.unwrap().to_owned());
+            if plugin.is_relative() {
+                return Err(argument::Error::InvalidValue {
+                  value: plugin.to_string_lossy().into_owned(),
+                  expected: "the plugin path must be an absolute path",
+                })
+            }
+            cfg.plugin = Some(plugin);
         }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
@@ -354,7 +361,7 @@ fn run_vm(args: std::env::Args) -> i32 {
           Argument::value("cid", "CID", "Context ID for virtual sockets"),
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
           #[cfg(feature = "plugin")]
-          Argument::value("plugin", "PATH", "Path to plugin process to run under crosvm."),
+          Argument::value("plugin", "PATH", "Absolute path to plugin process to run under crosvm."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

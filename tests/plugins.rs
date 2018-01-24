@@ -26,8 +26,8 @@ impl Drop for RemovePath {
     }
 }
 
-fn get_crosvm_path() -> PathBuf {
-    let mut crosvm_path = current_exe()
+fn get_target_path() -> PathBuf {
+    current_exe()
         .ok()
         .map(|mut path| {
                  path.pop();
@@ -36,24 +36,26 @@ fn get_crosvm_path() -> PathBuf {
                  }
                  path
              })
-        .expect("failed to get crosvm binary directory");
-    crosvm_path.push("crosvm");
-    crosvm_path
+        .expect("failed to get crosvm binary directory")
 }
 
 fn build_plugin(src: &str) -> RemovePath {
     let mut out_bin = PathBuf::from("target");
-    let mut libcrosvm_plugin = get_crosvm_path();
-    libcrosvm_plugin.set_file_name("libcrosvm_plugin.so");
+    let libcrosvm_plugin_dir = get_target_path();
     out_bin.push(thread_rng()
                      .gen_ascii_chars()
                      .take(10)
                      .collect::<String>());
     let mut child = Command::new(var_os("CC").unwrap_or(OsString::from("cc")))
-        .args(&["-Icrosvm_plugin", "-pthread", "-o"])
+        .args(&["-Icrosvm_plugin", "-pthread", "-o"]) // crosvm.h location and set output path.
         .arg(&out_bin)
-        .arg(libcrosvm_plugin)
-        .args(&["-xc", "-"])
+        .arg("-L") // Path of shared object to link to.
+        .arg(&libcrosvm_plugin_dir)
+        .arg("-lcrosvm_plugin")
+        .arg("-Wl,-rpath") // Search for shared object in the same path when exec'd.
+        .arg(&libcrosvm_plugin_dir)
+        .args(&["-Wl,-rpath", "."]) // Also check current directory in case of sandboxing.
+        .args(&["-xc", "-"]) // Read source code from piped stdin.
         .stdin(Stdio::piped())
         .spawn()
         .expect("failed to spawn compiler");
@@ -70,10 +72,24 @@ fn build_plugin(src: &str) -> RemovePath {
     RemovePath(PathBuf::from(out_bin))
 }
 
-fn run_plugin(bin_path: &Path) {
-    let mut child = Command::new(get_crosvm_path())
-        .args(&["run", "-c", "1", "--plugin"])
-        .arg(bin_path)
+fn run_plugin(bin_path: &Path, with_sandbox: bool) {
+    let mut crosvm_path = get_target_path();
+    crosvm_path.push("crosvm");
+    let mut cmd = Command::new(crosvm_path);
+    cmd.args(&["run",
+                "-c",
+                "1",
+                "--seccomp-policy-dir",
+                "tests",
+                "--plugin"])
+        .arg(bin_path
+                 .canonicalize()
+                 .expect("failed to canonicalize plugin path"));
+    if !with_sandbox {
+        cmd.arg("--disable-sandbox");
+    }
+
+    let mut child = cmd
         .spawn()
         .expect("failed to spawn crosvm");
     for _ in 0..12 {
@@ -91,7 +107,9 @@ fn run_plugin(bin_path: &Path) {
 
 fn test_plugin(src: &str) {
     let bin_path = build_plugin(src);
-    run_plugin(&bin_path.0);
+    // Run with and without the sandbox enabled.
+    run_plugin(&bin_path.0, false);
+    run_plugin(&bin_path.0, true);
 }
 
 #[test]
