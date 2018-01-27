@@ -31,6 +31,7 @@ mmap: arg2 in 0xfffffffb
 mprotect: arg2 in 0xfffffffb
 munmap: 1
 poll: 1
+ppoll: 1
 read: 1
 connect: 1
 sendto: 1

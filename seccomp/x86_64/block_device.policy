@@ -25,6 +25,7 @@ clone: arg0 & 0x00010000
 write: 1
 eventfd2: 1
 poll: 1
+ppoll: 1
 getpid: 1
 # Allow PR_SET_NAME only.
 prctl: arg0 == 15

@@ -10,6 +10,7 @@ mmap: arg2 in 0xfffffffb
 mprotect: arg2 in 0xfffffffb
 munmap: 1
 poll: 1
+ppoll: 1
 read: 1
 recvfrom: 1
 sched_getaffinity: 1
