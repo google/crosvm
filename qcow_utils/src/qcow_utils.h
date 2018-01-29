@@ -6,5 +6,13 @@
 
 // Exported interface to basic qcow functionality to be used from C.
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Create a basic, empty qcow2 file that can grow to `virtual_size` at `path`.
 int create_qcow_with_size(const char *path, uint64_t virtual_size);
+
+#ifdef __cplusplus
+};
+#endif

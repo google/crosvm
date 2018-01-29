@@ -1,0 +1,8 @@
+bslot=@BSLOT@
+include_dir=@INCLUDE_DIR@
+
+Name: libqcow_utils
+Description: QCOW2 shared library.
+Version: ${bslot}
+CFlags: -I${include_dir}
+Libs: -lqcow_utils
