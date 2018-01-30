@@ -342,7 +342,7 @@ impl Vm {
     pub fn set_identity_map_addr(&self, addr: GuestAddress) -> Result<()> {
         // Safe because we know that our file is a VM fd and we verify the return result.
         let ret = unsafe {
-            ioctl_with_val(self, KVM_SET_IDENTITY_MAP_ADDR(), addr.offset() as u64)
+            ioctl_with_ref(self, KVM_SET_IDENTITY_MAP_ADDR(), &(addr.offset() as u64))
         };
         if ret == 0 {
             Ok(())
@@ -1096,5 +1096,13 @@ mod tests {
         let page_size = pagesize();
         assert!(mmap_size >= page_size);
         assert!(mmap_size % page_size == 0);
+    }
+
+    #[test]
+    fn set_identity_map_addr() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        vm.set_identity_map_addr(GuestAddress(0x20000)).unwrap();
     }
 }
