@@ -430,8 +430,9 @@ impl Read for QcowFile {
 
         let mut nread: usize = 0;
         while nread < read_count {
-            let file_offset = self.file_offset(address + nread as u64, false)?;
-            let count = self.limit_range_cluster(address, read_count - nread);
+            let curr_addr = address + nread as u64;
+            let file_offset = self.file_offset(curr_addr, false)?;
+            let count = self.limit_range_cluster(curr_addr, read_count - nread);
 
             if let Some(offset) = file_offset {
                 self.file.seek(SeekFrom::Start(offset))?;
@@ -491,9 +492,10 @@ impl Write for QcowFile {
 
         let mut nwritten: usize = 0;
         while nwritten < write_count {
+            let curr_addr = address + nwritten as u64;
             // file_offset always returns an address when allocate == true.
-            let offset = self.file_offset(address + nwritten as u64, true)?.unwrap();
-            let count = self.limit_range_cluster(address, write_count - nwritten);
+            let offset = self.file_offset(curr_addr, true)?.unwrap();
+            let count = self.limit_range_cluster(curr_addr, write_count - nwritten);
 
             if let Err(e) = self.file.seek(SeekFrom::Start(offset)) {
                 return Err(e);
@@ -560,7 +562,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // backing file offset
             0x00, 0x00, 0x00, 0x00, // backing file size
             0x00, 0x00, 0x00, 0x0c, // cluster_bits
-            0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, // size
+            0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, // size
             0x00, 0x00, 0x00, 0x00, // crypt method
             0x00, 0x00, 0x00, 0x00, // L1 size
             0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, // L1 table offset
@@ -654,7 +656,7 @@ mod tests {
     fn test_header() {
         with_basic_file(&valid_header(), |disk_file: File| {
             let q = QcowFile::from(disk_file).unwrap();
-            assert_eq!(q.virtual_size(), 0x1000_0000);
+            assert_eq!(q.virtual_size(), 0x20_0000_0000);
         });
     }
 
@@ -780,6 +782,41 @@ mod tests {
                 } else {
                     let read_count: usize = q.read(&mut b).expect("Failed to read.");
                     assert_eq!(read_count, BUF_SIZE);
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn combo_write_read() {
+        with_basic_file(&valid_header(), |disk_file: File| {
+            const NUM_BLOCKS: usize = 555;
+            const BLOCK_SIZE: usize = 0x1_0000;
+            const OFFSET: usize = 0x1_0000_0020;
+            let mut q = QcowFile::from(disk_file).unwrap();
+            let data = [0x55u8; BLOCK_SIZE];
+            let mut readback = [0u8; BLOCK_SIZE];
+            for i in 0..NUM_BLOCKS {
+                let seek_offset = OFFSET + i * BLOCK_SIZE;
+                q.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
+                let nwritten = q.write(&data).expect("Failed to write test data.");
+                assert_eq!(nwritten, BLOCK_SIZE);
+                // Read back the data to check it was written correctly.
+                q.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
+                let nread = q.read(&mut readback).expect("Failed to read.");
+                assert_eq!(nread, BLOCK_SIZE);
+                for (orig, read) in data.iter().zip(readback.iter()) {
+                    assert_eq!(orig, read);
+                }
+            }
+            // Check the data again after the writes have happened.
+            for i in 0..NUM_BLOCKS {
+                let seek_offset = OFFSET + i * BLOCK_SIZE;
+                q.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
+                let nread = q.read(&mut readback).expect("Failed to read.");
+                assert_eq!(nread, BLOCK_SIZE);
+                for (orig, read) in data.iter().zip(readback.iter()) {
+                    assert_eq!(orig, read);
                 }
             }
         });
