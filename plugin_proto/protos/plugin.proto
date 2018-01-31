@@ -191,6 +191,8 @@ message VcpuRequest {
         SREGS = 1;
         // struct kvm_fpu
         FPU = 2;
+        // struct kvm_debugregs
+        DEBUGREGS = 3;
     }
 
     message GetState {

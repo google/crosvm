@@ -43,7 +43,7 @@ use sys_util::Scm;
 
 use kvm::dirty_log_bitmap_size;
 
-use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu};
+use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs};
 
 use plugin_proto::*;
 
@@ -907,6 +907,30 @@ pub unsafe extern "C" fn crosvm_vcpu_set_fpu(this: *mut crosvm_vcpu, fpu: *const
     let this = &mut *this;
     let fpu = from_raw_parts(fpu as *mut u8, size_of::<kvm_fpu>());
     match this.set_state(VcpuRequest_StateSet::FPU, fpu) {
+        Ok(_) => 0,
+        Err(e) => e,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_get_debugregs(this: *mut crosvm_vcpu,
+                                                   dregs: *mut kvm_debugregs)
+                                                   -> c_int {
+    let this = &mut *this;
+    let dregs = from_raw_parts_mut(dregs as *mut u8, size_of::<kvm_debugregs>());
+    match this.get_state(VcpuRequest_StateSet::DEBUGREGS, dregs) {
+        Ok(_) => 0,
+        Err(e) => e,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_set_debugregs(this: *mut crosvm_vcpu,
+                                                   dregs: *const kvm_debugregs)
+                                                   -> c_int {
+    let this = &mut *this;
+    let dregs = from_raw_parts(dregs as *mut u8, size_of::<kvm_debugregs>());
+    match this.set_state(VcpuRequest_StateSet::DEBUGREGS, dregs) {
         Ok(_) => 0,
         Err(e) => e,
     }

@@ -804,6 +804,32 @@ impl Vcpu {
         Ok(())
     }
 
+    /// Gets the VCPU debug registers.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_debugregs(&self) -> Result<kvm_debugregs> {
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut regs = unsafe { std::mem::zeroed() };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_DEBUGREGS(), &mut regs) };
+        if ret != 0 {
+            return errno_result();
+        }
+        Ok(regs)
+    }
+
+    /// Sets the VCPU debug registers
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_debugregs(&self, dregs: &kvm_debugregs) -> Result<()> {
+        let ret = unsafe {
+            // Here we trust the kernel not to read past the end of the kvm_fpu struct.
+            ioctl_with_ref(self, KVM_SET_DEBUGREGS(), dregs)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
     /// X86 specific call to setup the MSRS
     ///
     /// See the documentation for KVM_SET_MSRS.
@@ -1141,6 +1167,20 @@ mod tests {
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
         let vm = Vm::new(&kvm, gm).unwrap();
         Vcpu::new(0, &kvm, &vm).unwrap();
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn debugregs() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        let vcpu = Vcpu::new(0, &kvm, &vm).unwrap();
+        let mut dregs = vcpu.get_debugregs().unwrap();
+        dregs.dr7 = 13;
+        vcpu.set_debugregs(&dregs).unwrap();
+        let dregs2 = vcpu.get_debugregs().unwrap();
+        assert_eq!(dregs.dr7, dregs2.dr7);
     }
 
     #[test]

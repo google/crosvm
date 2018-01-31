@@ -37,3 +37,4 @@ x86_64 = { path = "x86_64" }
 
 [dev-dependencies]
 rand = "=0.3.20"
+sys_util = { path = "sys_util" }

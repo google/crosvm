@@ -16,7 +16,7 @@ use protobuf::Message;
 
 use data_model::DataInit;
 use kvm::Vcpu;
-use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu};
+use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs};
 use plugin_proto::*;
 
 use super::*;
@@ -61,6 +61,9 @@ unsafe impl DataInit for VcpuSregs {}
 #[derive(Copy, Clone)]
 struct VcpuFpu(kvm_fpu);
 unsafe impl DataInit for VcpuFpu {}
+#[derive(Copy, Clone)]
+struct VcpuDebugregs(kvm_debugregs);
+unsafe impl DataInit for VcpuDebugregs {}
 
 
 fn get_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet) -> SysResult<Vec<u8>> {
@@ -68,6 +71,9 @@ fn get_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet) -> SysResult<Vec
            VcpuRequest_StateSet::REGS => VcpuRegs(vcpu.get_regs()?).as_slice().to_vec(),
            VcpuRequest_StateSet::SREGS => VcpuSregs(vcpu.get_sregs()?).as_slice().to_vec(),
            VcpuRequest_StateSet::FPU => VcpuFpu(vcpu.get_fpu()?).as_slice().to_vec(),
+           VcpuRequest_StateSet::DEBUGREGS => {
+               VcpuDebugregs(vcpu.get_debugregs()?).as_slice().to_vec()
+           }
        })
 }
 
@@ -87,6 +93,11 @@ fn set_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet, state: &[u8]) ->
             vcpu.set_fpu(&VcpuFpu::from_slice(state)
                               .ok_or(SysError::new(-EINVAL))?
                               .0)
+        }
+        VcpuRequest_StateSet::DEBUGREGS => {
+            vcpu.set_debugregs(&VcpuDebugregs::from_slice(state)
+                                    .ok_or(SysError::new(-EINVAL))?
+                                    .0)
         }
     }
 }
