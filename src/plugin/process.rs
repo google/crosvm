@@ -71,7 +71,12 @@ impl Process {
     /// Set the `jail` argument to spawn the plugin process within the preconfigured jail.
     /// Due to an API limitation in libminijail necessitating that this function set an environment
     /// variable, this function is not thread-safe.
-    pub fn new(cpu_count: u32, vm: &mut Vm, cmd: &Path, jail: Option<Minijail>) -> Result<Process> {
+    pub fn new(cpu_count: u32,
+               vm: &mut Vm,
+               cmd: &Path,
+               args: &[&str],
+               jail: Option<Minijail>)
+               -> Result<Process> {
         let (request_socket, child_socket) = new_seqpacket_pair().map_err(Error::CreateMainSocket)?;
 
         let mut vcpu_sockets: Vec<(UnixDatagram, UnixDatagram)> = Vec::with_capacity(cpu_count as
@@ -85,11 +90,12 @@ impl Process {
         let plugin_pid = match jail {
             Some(jail) => {
                 set_var("CROSVM_SOCKET", child_socket.as_raw_fd().to_string());
-                jail.run(cmd, &[0, 1, 2, child_socket.as_raw_fd()], &[])
+                jail.run(cmd, &[0, 1, 2, child_socket.as_raw_fd()], args)
                     .map_err(Error::PluginRunJail)?
             }
             None => {
                 Command::new(cmd)
+                    .args(args)
                     .env("CROSVM_SOCKET", child_socket.as_raw_fd().to_string())
                     .spawn()
                     .map_err(Error::PluginSpawn)?

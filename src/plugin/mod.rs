@@ -309,13 +309,15 @@ pub fn run_config(cfg: Config) -> Result<()> {
         None
     };
 
+    let plugin_args: Vec<&str> = cfg.params.iter().map(|s| &s[..]).collect();
+
     let plugin_path = cfg.plugin.as_ref().unwrap().as_path();
     let vcpu_count = cfg.vcpu_count.unwrap_or(1);
     let mem = GuestMemory::new(&[]).unwrap();
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;
     let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
     vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
-    let mut plugin = Process::new(vcpu_count, &mut vm, plugin_path, jail)?;
+    let mut plugin = Process::new(vcpu_count, &mut vm, plugin_path, &plugin_args, jail)?;
 
     let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
     let kill_signaled = Arc::new(AtomicBool::new(false));

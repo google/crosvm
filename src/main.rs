@@ -62,7 +62,7 @@ pub struct Config {
     vcpu_count: Option<u32>,
     memory: Option<usize>,
     kernel_path: PathBuf,
-    params: String,
+    params: Vec<String>,
     host_ip: Option<net::Ipv4Addr>,
     netmask: Option<net::Ipv4Addr>,
     mac_address: Option<String>,
@@ -82,7 +82,7 @@ impl Default for Config {
             vcpu_count: None,
             memory: None,
             kernel_path: PathBuf::default(),
-            params: String::new(),
+            params: Vec::new(),
             host_ip: None,
             netmask: None,
             mac_address: None,
@@ -146,10 +146,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
         }
         "params" => {
-            if cfg.params.ends_with(|c| !char::is_whitespace(c)) {
-                cfg.params.push(' ');
-            }
-            cfg.params.push_str(&value.unwrap());
+            cfg.params.push(value.unwrap().to_owned());
         }
         "cpus" => {
             if cfg.vcpu_count.is_some() {
@@ -193,15 +190,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 if cfg.disks.len() >= 26 {
                     return Err(argument::Error::TooManyArguments("ran out of letters for to assign to root disk".to_owned()));
                 }
-                let white = if cfg.params.ends_with(|c| !char::is_whitespace(c)) {
-                    " "
-                } else {
-                    ""
-                };
                 cfg.params
-                    .push_str(&format!("{}root=/dev/vd{} ro",
-                                       white,
-                                       char::from('a' as u8 + cfg.disks.len() as u8)));
+                    .push(format!("root=/dev/vd{} ro",
+                                  char::from('a' as u8 + cfg.disks.len() as u8)));
             }
             cfg.disks
                 .push(DiskOption {
@@ -329,7 +320,7 @@ fn run_vm(args: std::env::Args) -> i32 {
           Argument::short_value('p',
                                 "params",
                                 "PARAMS",
-                                "Extra kernel command line arguments. Can be given more than once."),
+                                "Extra kernel or plugin command line arguments. Can be given more than once."),
           Argument::short_value('c', "cpus", "N", "Number of VCPUs. (default: 1)"),
           Argument::short_value('m',
                                 "mem",

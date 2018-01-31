@@ -746,8 +746,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
                                   &mut control_sockets,
                                   balloon_device_socket)?;
 
-    if !cfg.params.is_empty() {
-        cmdline.insert_str(&cfg.params).map_err(Error::Cmdline)?;
+    for param in &cfg.params {
+        cmdline.insert_str(&param).map_err(Error::Cmdline)?;
     }
 
     let vcpu_count = cfg.vcpu_count.unwrap_or(1);
