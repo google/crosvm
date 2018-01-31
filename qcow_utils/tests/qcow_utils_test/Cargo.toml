@@ -1,0 +1,12 @@
+[package]
+name = "qcow_utils_test"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+
+[lib]
+path = "utils_test.rs"
+
+[dependencies]
+libc = "*"
+qcow_utils = { path = "../.." }
+tempdir = { path = "../../../tempdir" }
