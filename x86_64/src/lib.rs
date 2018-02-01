@@ -89,17 +89,17 @@ pub enum Error {
 }
 pub type Result<T> = result::Result<T, Error>;
 
-const BOOT_STACK_POINTER: usize = 0x8000;
-const MEM_32BIT_GAP_SIZE: usize = (768 << 20);
-const FIRST_ADDR_PAST_32BITS: usize = (1 << 32);
-const KERNEL_64BIT_ENTRY_OFFSET: usize = 0x200;
-const ZERO_PAGE_OFFSET: usize = 0x7000;
+const BOOT_STACK_POINTER: u64 = 0x8000;
+const MEM_32BIT_GAP_SIZE: u64 = (768 << 20);
+const FIRST_ADDR_PAST_32BITS: u64 = (1 << 32);
+const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
+const ZERO_PAGE_OFFSET: u64 = 0x7000;
 
 /// Returns a Vec of the valid memory addresses.
 /// These should be used to configure the GuestMemory structure for the platfrom.
 /// For x86_64 all addresses are valid from the start of the kenel except a
 /// carve out at the end of 32bit address space.
-pub fn arch_memory_regions(size: usize) -> Vec<(GuestAddress, usize)> {
+pub fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
     let mem_end = GuestAddress(size);
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
     let end_32bit_gap_start = GuestAddress(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE);
@@ -205,7 +205,7 @@ pub fn configure_system(guest_mem: &GuestMemory,
     }
 
     let zero_page_addr = GuestAddress(ZERO_PAGE_OFFSET);
-    guest_mem.checked_offset(zero_page_addr, mem::size_of::<boot_params>())
+    guest_mem.checked_offset(zero_page_addr, mem::size_of::<boot_params>() as u64)
         .ok_or(Error::ZeroPagePastRamEnd)?;
     guest_mem.write_obj_at_addr(params, zero_page_addr)
         .map_err(|_| Error::ZeroPageSetup)?;
@@ -234,17 +234,17 @@ mod tests {
 
     #[test]
     fn regions_lt_4gb() {
-        let regions = arch_memory_regions(1usize << 29);
+        let regions = arch_memory_regions(1u64 << 29);
         assert_eq!(1, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
-        assert_eq!(1usize << 29, regions[0].1);
+        assert_eq!(1u64 << 29, regions[0].1);
     }
 
     #[test]
     fn regions_gt_4gb() {
-        let regions = arch_memory_regions((1usize << 32) + 0x8000);
+        let regions = arch_memory_regions((1u64 << 32) + 0x8000);
         assert_eq!(2, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
-        assert_eq!(GuestAddress(1usize << 32), regions[1].0);
+        assert_eq!(GuestAddress(1u64 << 32), regions[1].0);
     }
 }

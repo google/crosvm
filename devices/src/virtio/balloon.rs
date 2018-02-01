@@ -73,7 +73,7 @@ impl Worker {
                 if valid_inflate_desc(&avail_desc) {
                     let num_addrs = avail_desc.len / 4;
                     'addr_loop: for i in 0..num_addrs as usize {
-                        let addr = match avail_desc.addr.checked_add(i * 4) {
+                        let addr = match avail_desc.addr.checked_add((i * 4) as u64) {
                             Some(a) => a,
                             None => break,
                         };
@@ -82,7 +82,7 @@ impl Worker {
                             Err(_) => continue,
                         };
                         let guest_address =
-                            GuestAddress((guest_input as usize) << VIRTIO_BALLOON_PFN_SHIFT);
+                            GuestAddress((guest_input as u64) << VIRTIO_BALLOON_PFN_SHIFT);
 
                         if self.mem
                             .dont_need_range(guest_address, 1 << VIRTIO_BALLOON_PFN_SHIFT)

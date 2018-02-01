@@ -28,7 +28,7 @@ fn test_run() {
     let mmap = MemoryMapping::from_fd(&mem, mem_size as usize)
         .expect("failed to create memory mapping");
 
-    mmap.write_slice(&code[..], load_addr.offset())
+    mmap.write_slice(&code[..], load_addr.offset() as usize)
         .expect("Writing code to memory failed.");
 
     let kvm = Kvm::new().expect("new kvm failed");

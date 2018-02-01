@@ -175,9 +175,9 @@ impl Drop for UnlinkUnixDatagram {
     }
 }
 
-const KERNEL_START_OFFSET: usize = 0x200000;
-const CMDLINE_OFFSET: usize = 0x20000;
-const CMDLINE_MAX_SIZE: usize = KERNEL_START_OFFSET - CMDLINE_OFFSET;
+const KERNEL_START_OFFSET: u64 = 0x200000;
+const CMDLINE_OFFSET: u64 = 0x20000;
+const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
 const BASE_DEV_MEMORY_PFN: u64 = 1u64 << 26;
 
 fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
@@ -211,9 +211,9 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
 fn setup_memory(memory: Option<usize>) -> Result<GuestMemory> {
     let mem_size = memory.unwrap_or(256) << 20;
     #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-    let arch_mem_regions = vec![(GuestAddress(0), mem_size)];
+    let arch_mem_regions = vec![(GuestAddress(0), mem_size as u64)];
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    let arch_mem_regions = x86_64::arch_memory_regions(mem_size);
+    let arch_mem_regions = x86_64::arch_memory_regions(mem_size as u64);
     GuestMemory::new(&arch_mem_regions).map_err(Error::CreateGuestMemory)
 }
 
@@ -725,7 +725,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;
     let mut vm = setup_vm(&kvm, mem.clone())?;
 
-    let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE);
+    let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
     cmdline
         .insert_str("console=ttyS0 noacpi reboot=k panic=1 pci=off")
         .unwrap();

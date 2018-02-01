@@ -30,7 +30,7 @@ struct MemoryRegion {
 
 fn region_end(region: &MemoryRegion) -> GuestAddress {
     // unchecked_add is safe as the region bounds were checked when it was created.
-    region.guest_base.unchecked_add(region.mapping.size())
+    region.guest_base.unchecked_add(region.mapping.size() as u64)
 }
 
 /// Tracks a memory region and where it is mapped in the guest.
@@ -42,18 +42,18 @@ pub struct GuestMemory {
 impl GuestMemory {
     /// Creates a container for guest memory regions.
     /// Valid memory regions are specified as a Vec of (Address, Size) tuples sorted by Address.
-    pub fn new(ranges: &[(GuestAddress, usize)]) -> Result<GuestMemory> {
+    pub fn new(ranges: &[(GuestAddress, u64)]) -> Result<GuestMemory> {
         let mut regions = Vec::<MemoryRegion>::new();
         for range in ranges.iter() {
             if let Some(last) = regions.last() {
                 if last.guest_base
-                       .checked_add(last.mapping.size())
+                       .checked_add(last.mapping.size() as u64)
                        .map_or(true, |a| a > range.0) {
                     return Err(Error::MemoryRegionOverlap);
                 }
             }
 
-            let mapping = MemoryMapping::new(range.1)
+            let mapping = MemoryMapping::new(range.1 as usize)
                 .map_err(Error::MemoryMappingFailed)?;
             regions.push(MemoryRegion {
                              mapping: mapping,
@@ -90,21 +90,21 @@ impl GuestMemory {
     }
 
     /// Returns the address plus the offset if it is in range.
-    pub fn checked_offset(&self, addr: GuestAddress, offset: usize) -> Option<GuestAddress> {
+    pub fn checked_offset(&self, addr: GuestAddress, offset: u64) -> Option<GuestAddress> {
         addr.checked_add(offset)
             .and_then(|a| if a < self.end_addr() { Some(a) } else { None })
     }
 
     /// Returns the size of the memory region in bytes.
-    pub fn num_regions(&self) -> usize {
-        self.regions.len()
+    pub fn num_regions(&self) -> u64 {
+        self.regions.len() as u64
     }
 
     /// Madvise away the address range in the host that is associated with the given guest range.
-    pub fn dont_need_range(&self, addr: GuestAddress, count: usize) -> Result<()> {
+    pub fn dont_need_range(&self, addr: GuestAddress, count: u64) -> Result<()> {
         self.do_in_region(addr, move |mapping, offset| {
             mapping
-                .dont_need_range(offset, count)
+                .dont_need_range(offset, count as usize)
                 .map_err(|e| Error::MemoryAccess(addr, e))
         })
     }
@@ -352,7 +352,7 @@ impl GuestMemory {
     {
         for region in self.regions.iter() {
             if guest_addr >= region.guest_base && guest_addr < region_end(region) {
-                return cb(&region.mapping, guest_addr.offset_from(region.guest_base));
+                return cb(&region.mapping, guest_addr.offset_from(region.guest_base) as usize);
             }
         }
         Err(Error::InvalidGuestAddress(guest_addr))
@@ -360,7 +360,7 @@ impl GuestMemory {
 }
 
 impl VolatileMemory for GuestMemory {
-    fn get_slice(&self, offset: usize, count: usize) -> VolatileMemoryResult<VolatileSlice> {
+    fn get_slice(&self, offset: u64, count: u64) -> VolatileMemoryResult<VolatileSlice> {
         for region in self.regions.iter() {
             if offset >= region.guest_base.0 && offset < region_end(region).0 {
                 return region

@@ -87,7 +87,7 @@ pub fn load_kernel<F>(guest_mem: &GuestMemory, kernel_start: GuestAddress, kerne
         kernel_image.seek(SeekFrom::Start(phdr.p_offset))
             .map_err(|_| Error::SeekKernelStart)?;
 
-        let mem_offset = kernel_start.checked_add(phdr.p_paddr as usize)
+        let mem_offset = kernel_start.checked_add(phdr.p_paddr)
             .ok_or(Error::InvalidProgramHeaderAddress)?;
         guest_mem.read_to_memory(mem_offset, kernel_image, phdr.p_filesz as usize)
             .map_err(|_| Error::ReadKernelImage)?;
@@ -109,7 +109,7 @@ pub fn load_cmdline(guest_mem: &GuestMemory, guest_addr: GuestAddress, cmdline: 
         return Ok(());
     }
 
-    let end = guest_addr.checked_add(len + 1)
+    let end = guest_addr.checked_add(len as u64 + 1)
         .ok_or(Error::CommandLineOverflow)?; // Extra for null termination.
     if end > guest_mem.end_addr() {
         return Err(Error::CommandLineOverflow)?;
@@ -127,7 +127,7 @@ mod test {
     use super::*;
     use sys_util::{GuestAddress, GuestMemory};
 
-    const MEM_SIZE: usize = 0x8000;
+    const MEM_SIZE: u64 = 0x8000;
 
     fn create_guest_mem() -> GuestMemory {
         GuestMemory::new(&vec![(GuestAddress(0x0), MEM_SIZE)]).unwrap()

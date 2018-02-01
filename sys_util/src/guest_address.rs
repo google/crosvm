@@ -9,7 +9,7 @@ use std::ops::{BitAnd, BitOr};
 
 /// Represents an Address in the guest's memory.
 #[derive(Clone, Copy, Debug)]
-pub struct GuestAddress(pub usize);
+pub struct GuestAddress(pub u64);
 
 impl GuestAddress {
     /// Returns the offset from this address to the given base address.
@@ -20,37 +20,37 @@ impl GuestAddress {
     /// # use sys_util::GuestAddress;
     ///   let base = GuestAddress(0x100);
     ///   let addr = GuestAddress(0x150);
-    ///   assert_eq!(addr.offset_from(base), 0x50usize);
+    ///   assert_eq!(addr.offset_from(base), 0x50u64);
     /// ```
-    pub fn offset_from(&self, base: GuestAddress) -> usize {
+    pub fn offset_from(&self, base: GuestAddress) -> u64 {
         self.0 - base.0
     }
 
-    /// Returns the address as a usize offset from 0x0.
+    /// Returns the address as a u64 offset from 0x0.
     /// Use this when a raw number is needed to pass to the kernel.
-    pub fn offset(&self) -> usize {
+    pub fn offset(&self) -> u64 {
         self.0
     }
 
     /// Returns the result of the add or None if there is overflow.
-    pub fn checked_add(&self, other: usize) -> Option<GuestAddress> {
+    pub fn checked_add(&self, other: u64) -> Option<GuestAddress> {
         self.0.checked_add(other).map(GuestAddress)
     }
 
     /// Returns the result of the base address + the size.
     /// Only use this when `offset` is guaranteed not to overflow.
-    pub fn unchecked_add(&self, offset: usize) -> GuestAddress {
+    pub fn unchecked_add(&self, offset: u64) -> GuestAddress {
         GuestAddress(self.0 + offset)
     }
 
     /// Returns the result of the subtraction of None if there is underflow.
-    pub fn checked_sub(&self, other: usize) -> Option<GuestAddress> {
+    pub fn checked_sub(&self, other: u64) -> Option<GuestAddress> {
         self.0.checked_sub(other).map(GuestAddress)
     }
 
     /// Returns the bitwise and of the address with the given mask.
     pub fn mask(&self, mask: u64) -> GuestAddress {
-        GuestAddress(self.0 & mask as usize)
+        GuestAddress(self.0 & mask as u64)
     }
 }
 
@@ -58,7 +58,7 @@ impl BitAnd<u64> for GuestAddress {
     type Output = GuestAddress;
 
     fn bitand(self, other: u64) -> GuestAddress {
-        GuestAddress(self.0 & other as usize)
+        GuestAddress(self.0 & other as u64)
     }
 }
 
@@ -66,7 +66,7 @@ impl BitOr<u64> for GuestAddress {
     type Output = GuestAddress;
 
     fn bitor(self, other: u64) -> GuestAddress {
-        GuestAddress(self.0 | other as usize)
+        GuestAddress(self.0 | other as u64)
     }
 }
 

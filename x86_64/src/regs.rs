@@ -170,15 +170,15 @@ const X86_CR4_PAE: u64 = 0x20;
 
 const EFER_LME: u64 = 0x100;
 
-const BOOT_GDT_OFFSET: usize = 0x500;
-const BOOT_IDT_OFFSET: usize = 0x520;
+const BOOT_GDT_OFFSET: u64 = 0x500;
+const BOOT_IDT_OFFSET: u64 = 0x520;
 
 const BOOT_GDT_MAX: usize = 4;
 
 fn write_gdt_table(table: &[u64], guest_mem: &GuestMemory) -> Result<()> {
     let boot_gdt_addr = GuestAddress(BOOT_GDT_OFFSET);
     for (index, entry) in table.iter().enumerate() {
-        let addr = guest_mem.checked_offset(boot_gdt_addr, index * mem::size_of::<u64>())
+        let addr = guest_mem.checked_offset(boot_gdt_addr, (index * mem::size_of::<u64>()) as u64)
             .ok_or(Error::WriteGDTFailure)?;
         guest_mem.write_obj_at_addr(*entry, addr)
             .map_err(|_| Error::WriteGDTFailure)?;
@@ -270,7 +270,7 @@ mod tests {
         GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap()
     }
 
-    fn read_u64(gm: &GuestMemory, offset: usize) -> u64 {
+    fn read_u64(gm: &GuestMemory, offset: u64) -> u64 {
         let read_addr = GuestAddress(offset);
         gm.read_obj_from_addr(read_addr).unwrap()
     }

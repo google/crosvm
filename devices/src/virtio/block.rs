@@ -44,7 +44,7 @@ enum ParseError {
     /// Guest gave us bad memory addresses
     GuestMemory(GuestMemoryError),
     /// Guest gave us offsets that would have overflowed a usize.
-    CheckedOffset(GuestAddress, usize),
+    CheckedOffset(GuestAddress, u64),
     /// Guest gave us a write only descriptor that protocol says to read from.
     UnexpectedWriteOnlyDescriptor,
     /// Guest gave us a read only descriptor that protocol says to write to.
@@ -69,7 +69,7 @@ fn request_type(mem: &GuestMemory,
 }
 
 fn sector(mem: &GuestMemory, desc_addr: GuestAddress) -> result::Result<u64, ParseError> {
-    const SECTOR_OFFSET: usize = 8;
+    const SECTOR_OFFSET: u64 = 8;
     let addr = match mem.checked_offset(desc_addr, SECTOR_OFFSET) {
         Some(v) => v,
         None => return Err(ParseError::CheckedOffset(desc_addr, SECTOR_OFFSET)),

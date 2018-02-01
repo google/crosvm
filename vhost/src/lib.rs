@@ -98,7 +98,7 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
 
     /// Set the guest memory mappings for vhost to use.
     fn set_mem_table(&self) -> Result<()> {
-        let num_regions = self.mem().num_regions();
+        let num_regions = self.mem().num_regions() as usize;
         let vec_size_bytes = mem::size_of::<virtio_sys::vhost_memory>() +
                              (num_regions * mem::size_of::<virtio_sys::vhost_memory_region>());
         let mut bytes: Vec<u8> = vec![0; vec_size_bytes];
@@ -175,15 +175,15 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
                   (queue_size & (queue_size - 1)) != 0 {
             false
         } else if desc_addr
-                      .checked_add(desc_table_size)
+                      .checked_add(desc_table_size as u64)
                       .map_or(true, |v| !self.mem().address_in_range(v)) {
             false
         } else if avail_addr
-                      .checked_add(avail_ring_size)
+                      .checked_add(avail_ring_size as u64)
                       .map_or(true, |v| !self.mem().address_in_range(v)) {
             false
         } else if used_addr
-                      .checked_add(used_ring_size)
+                      .checked_add(used_ring_size as u64)
                       .map_or(true, |v| !self.mem().address_in_range(v)) {
             false
         } else {

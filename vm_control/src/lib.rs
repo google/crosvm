@@ -205,7 +205,7 @@ impl VmRequest {
                 };
                 let pfn = *next_mem_pfn;
                 let slot =
-                    match vm.add_device_memory(GuestAddress((pfn << 12) as usize), mmap, false) {
+                    match vm.add_device_memory(GuestAddress(pfn << 12), mmap, false) {
                         Ok(slot) => slot,
                         Err(e) => return VmResponse::Err(e),
                     };

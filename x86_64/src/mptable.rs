@@ -57,7 +57,7 @@ const APIC_VERSION: u8 = 0x14;
 const CPU_STEPPING: u32 = 0x600;
 const CPU_FEATURE_APIC: u32 = 0x200;
 const CPU_FEATURE_FPU: u32 = 0x001;
-const MPTABLE_START: usize = 0x400 * 639; // Last 1k of Linux's 640k base RAM.
+const MPTABLE_START: u64 = 0x400 * 639; // Last 1k of Linux's 640k base RAM.
 
 fn compute_checksum<T: Copy>(v: &T) -> u8 {
     // Safe because we are only reading the bytes within the size of the `T` reference `v`.
@@ -92,7 +92,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
 
     // The checked_add here ensures the all of the following base_mp.unchecked_add's will be without
     // overflow.
-    if let Some(end_mp) = base_mp.checked_add(mp_size - 1) {
+    if let Some(end_mp) = base_mp.checked_add(mp_size as u64 - 1) {
         if !mem.address_in_range(end_mp) {
             return Err(Error::NotEnoughMemory);
         }
@@ -109,17 +109,17 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
         mpf_intel.signature = SMP_MAGIC_IDENT;
         mpf_intel.length = 1;
         mpf_intel.specification = 4;
-        mpf_intel.physptr = (base_mp.offset() + mem::size_of::<mpf_intel>()) as u32;
+        mpf_intel.physptr = (base_mp.offset() + mem::size_of::<mpf_intel>() as u64) as u32;
         mpf_intel.checksum = mpf_intel_compute_checksum(&mpf_intel);
         mem.write_obj_at_addr(mpf_intel, base_mp)
             .map_err(|_| Error::WriteMpfIntel)?;
-        base_mp = base_mp.unchecked_add(size);
+        base_mp = base_mp.unchecked_add(size as u64);
     }
 
     // We set the location of the mpc_table here but we can't fill it out until we have the length
     // of the entire table later.
     let table_base = base_mp;
-    base_mp = base_mp.unchecked_add(mem::size_of::<mpc_table>());
+    base_mp = base_mp.unchecked_add(mem::size_of::<mpc_table>() as u64);
 
     let mut checksum: u8 = 0;
     let ioapicid: u8 = num_cpus + 1;
@@ -140,7 +140,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
         mpc_cpu.featureflag = CPU_FEATURE_APIC | CPU_FEATURE_FPU;
         mem.write_obj_at_addr(mpc_cpu, base_mp)
             .map_err(|_| Error::WriteMpcCpu)?;
-        base_mp = base_mp.unchecked_add(size);
+        base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_cpu));
     }
     {
@@ -153,7 +153,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
         mpc_ioapic.apicaddr = IO_APIC_DEFAULT_PHYS_BASE;
         mem.write_obj_at_addr(mpc_ioapic, base_mp)
             .map_err(|_| Error::WriteMpcIoapic)?;
-        base_mp = base_mp.unchecked_add(size);
+        base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_ioapic));
     }
     {
@@ -164,7 +164,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
         mpc_bus.bustype = BUS_TYPE_ISA;
         mem.write_obj_at_addr(mpc_bus, base_mp)
             .map_err(|_| Error::WriteMpcBus)?;
-        base_mp = base_mp.unchecked_add(size);
+        base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_bus));
     }
     {
@@ -179,7 +179,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
         mpc_intsrc.dstirq = 0;
         mem.write_obj_at_addr(mpc_intsrc, base_mp)
             .map_err(|_| Error::WriteMpcIntsrc)?;
-        base_mp = base_mp.unchecked_add(size);
+        base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
     }
     // Per kvm_setup_default_irq_routing() in kernel
@@ -195,7 +195,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
         mpc_intsrc.dstirq = i;
         mem.write_obj_at_addr(mpc_intsrc, base_mp)
             .map_err(|_| Error::WriteMpcIntsrc)?;
-        base_mp = base_mp.unchecked_add(size);
+        base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
     }
     {
@@ -210,7 +210,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
         mpc_lintsrc.destapiclint = 0;
         mem.write_obj_at_addr(mpc_lintsrc, base_mp)
             .map_err(|_| Error::WriteMpcLintsrc)?;
-        base_mp = base_mp.unchecked_add(size);
+        base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_lintsrc));
     }
     {
@@ -225,7 +225,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8) -> Result<()> {
         mpc_lintsrc.destapiclint = 1;
         mem.write_obj_at_addr(mpc_lintsrc, base_mp)
             .map_err(|_| Error::WriteMpcLintsrc)?;
-        base_mp = base_mp.unchecked_add(size);
+        base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_lintsrc));
     }
 
@@ -269,7 +269,7 @@ mod tests {
     fn bounds_check() {
         let num_cpus = 4;
         let mem = GuestMemory::new(&[(GuestAddress(MPTABLE_START),
-                                      compute_mp_size(num_cpus))]).unwrap();
+                                      compute_mp_size(num_cpus) as u64)]).unwrap();
 
         setup_mptable(&mem, num_cpus).unwrap();
     }
@@ -278,7 +278,7 @@ mod tests {
     fn bounds_check_fails() {
         let num_cpus = 4;
         let mem = GuestMemory::new(&[(GuestAddress(MPTABLE_START),
-                                      compute_mp_size(num_cpus) - 1)]).unwrap();
+                                      (compute_mp_size(num_cpus) - 1) as u64)]).unwrap();
 
         assert!(setup_mptable(&mem, num_cpus).is_err());
     }
@@ -287,7 +287,7 @@ mod tests {
     fn mpf_intel_checksum() {
         let num_cpus = 1;
         let mem = GuestMemory::new(&[(GuestAddress(MPTABLE_START),
-                                      compute_mp_size(num_cpus))]).unwrap();
+                                      compute_mp_size(num_cpus) as u64)]).unwrap();
 
         setup_mptable(&mem, num_cpus).unwrap();
 
@@ -300,12 +300,12 @@ mod tests {
     fn mpc_table_checksum() {
         let num_cpus = 4;
         let mem = GuestMemory::new(&[(GuestAddress(MPTABLE_START),
-                                      compute_mp_size(num_cpus))]).unwrap();
+                                      compute_mp_size(num_cpus) as u64)]).unwrap();
 
         setup_mptable(&mem, num_cpus).unwrap();
 
         let mpf_intel: mpf_intel = mem.read_obj_from_addr(GuestAddress(MPTABLE_START)).unwrap();
-        let mpc_offset = GuestAddress(mpf_intel.physptr as usize);
+        let mpc_offset = GuestAddress(mpf_intel.physptr as u64);
         let mpc_table: mpc_table = mem.read_obj_from_addr(mpc_offset).unwrap();
 
         struct Sum(u8);
@@ -331,26 +331,26 @@ mod tests {
     fn cpu_entry_count() {
         const MAX_CPUS: u8 = 0xff;
         let mem = GuestMemory::new(&[(GuestAddress(MPTABLE_START),
-                                      compute_mp_size(MAX_CPUS))]).unwrap();
+                                      compute_mp_size(MAX_CPUS) as u64)]).unwrap();
 
         for i in 0..MAX_CPUS {
             setup_mptable(&mem, i).unwrap();
 
             let mpf_intel: mpf_intel = mem.read_obj_from_addr(GuestAddress(MPTABLE_START)).unwrap();
-            let mpc_offset = GuestAddress(mpf_intel.physptr as usize);
+            let mpc_offset = GuestAddress(mpf_intel.physptr as u64);
             let mpc_table: mpc_table = mem.read_obj_from_addr(mpc_offset).unwrap();
             let mpc_end = mpc_offset
-                .checked_add(mpc_table.length as usize)
+                .checked_add(mpc_table.length as u64)
                 .unwrap();
 
             let mut entry_offset = mpc_offset
-                .checked_add(mem::size_of::<mpc_table>())
+                .checked_add(mem::size_of::<mpc_table>() as u64)
                 .unwrap();
             let mut cpu_count = 0;
             while entry_offset < mpc_end {
                 let entry_type: u8 = mem.read_obj_from_addr(entry_offset).unwrap();
                 entry_offset = entry_offset
-                    .checked_add(table_entry_size(entry_type))
+                    .checked_add(table_entry_size(entry_type) as u64)
                     .unwrap();
                 assert!(entry_offset <= mpc_end);
                 if entry_type as u32 == MP_PROCESSOR {

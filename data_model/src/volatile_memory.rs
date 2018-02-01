@@ -33,9 +33,9 @@ use DataInit;
 #[derive(Eq, PartialEq, Debug)]
 pub enum VolatileMemoryError {
     /// `addr` is out of bounds of the volatile memory slice.
-    OutOfBounds { addr: usize },
-    /// Taking a slice at `base` with `offset` would overflow `usize`.
-    Overflow { base: usize, offset: usize },
+    OutOfBounds { addr: u64 },
+    /// Taking a slice at `base` with `offset` would overflow `u64`.
+    Overflow { base: u64, offset: u64 },
 }
 
 impl fmt::Display for VolatileMemoryError {
@@ -61,13 +61,13 @@ type Result<T> = VolatileMemoryResult<T>;
 
 /// Convenience function for computing `base + offset` which returns
 /// `Err(VolatileMemoryError::Overflow)` instead of panicking in the case `base + offset` exceeds
-/// `usize::MAX`.
+/// `u64::MAX`.
 ///
 /// # Examples
 ///
 /// ```
 /// # use data_model::*;
-/// # fn get_slice(offset: usize, count: usize) -> VolatileMemoryResult<()> {
+/// # fn get_slice(offset: u64, count: u64) -> VolatileMemoryResult<()> {
 ///   let mem_end = calc_offset(offset, count)?;
 ///   if mem_end > 100 {
 ///       return Err(VolatileMemoryError::OutOfBounds{addr: mem_end});
@@ -75,7 +75,7 @@ type Result<T> = VolatileMemoryResult<T>;
 /// # Ok(())
 /// # }
 /// ```
-pub fn calc_offset(base: usize, offset: usize) -> Result<usize> {
+pub fn calc_offset(base: u64, offset: u64) -> Result<u64> {
     match base.checked_add(offset) {
         None => {
             Err(Error::Overflow {
@@ -91,11 +91,11 @@ pub fn calc_offset(base: usize, offset: usize) -> Result<usize> {
 pub trait VolatileMemory {
     /// Gets a slice of memory at `offset` that is `count` bytes in length and supports volatile
     /// access.
-    fn get_slice(&self, offset: usize, count: usize) -> Result<VolatileSlice>;
+    fn get_slice(&self, offset: u64, count: u64) -> Result<VolatileSlice>;
 
     /// Gets a `VolatileRef` at `offset`.
-    fn get_ref<T: DataInit>(&self, offset: usize) -> Result<VolatileRef<T>> {
-        let slice = self.get_slice(offset, size_of::<T>())?;
+    fn get_ref<T: DataInit>(&self, offset: u64) -> Result<VolatileRef<T>> {
+        let slice = self.get_slice(offset, size_of::<T>() as u64)?;
         Ok(VolatileRef {
                addr: slice.addr as *mut T,
                phantom: PhantomData,
@@ -104,12 +104,12 @@ pub trait VolatileMemory {
 }
 
 impl<'a> VolatileMemory for &'a mut [u8] {
-    fn get_slice(&self, offset: usize, count: usize) -> Result<VolatileSlice> {
+    fn get_slice(&self, offset: u64, count: u64) -> Result<VolatileSlice> {
         let mem_end = calc_offset(offset, count)?;
-        if mem_end > self.len() {
+        if mem_end > self.len() as u64 {
             return Err(Error::OutOfBounds { addr: mem_end });
         }
-        Ok(unsafe { VolatileSlice::new((self.as_ptr() as usize + offset) as *mut _, count) })
+        Ok(unsafe { VolatileSlice::new((self.as_ptr() as u64 + offset) as *mut _, count) })
     }
 }
 
@@ -117,7 +117,7 @@ impl<'a> VolatileMemory for &'a mut [u8] {
 #[derive(Debug)]
 pub struct VolatileSlice<'a> {
     addr: *mut u8,
-    size: usize,
+    size: u64,
     phantom: PhantomData<&'a u8>,
 }
 
@@ -128,7 +128,7 @@ impl<'a> VolatileSlice<'a> {
     /// and is available for the duration of the lifetime of the new `VolatileSlice`. The caller
     /// must also guarantee that all other users of the given chunk of memory are using volatile
     /// accesses.
-    pub unsafe fn new(addr: *mut u8, size: usize) -> VolatileSlice<'a> {
+    pub unsafe fn new(addr: *mut u8, size: u64) -> VolatileSlice<'a> {
         VolatileSlice {
             addr: addr,
             size: size,
@@ -142,7 +142,7 @@ impl<'a> VolatileSlice<'a> {
     }
 
     /// Gets the size of this slice.
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u64 {
         self.size
     }
 
@@ -173,7 +173,7 @@ impl<'a> VolatileSlice<'a> {
         where T: DataInit
     {
         let mut addr = self.addr;
-        for v in buf.iter_mut().take(self.size / size_of::<T>()) {
+        for v in buf.iter_mut().take(self.size as usize / size_of::<T>()) {
             unsafe {
                 *v = read_volatile(addr as *const T);
                 addr = addr.offset(size_of::<T>() as isize);
@@ -208,7 +208,7 @@ impl<'a> VolatileSlice<'a> {
         where T: DataInit
     {
         let mut addr = self.addr;
-        for &v in buf.iter().take(self.size / size_of::<T>()) {
+        for &v in buf.iter().take(self.size as usize / size_of::<T>()) {
             unsafe {
                 write_volatile(addr as *mut T, v);
                 addr = addr.offset(size_of::<T>() as isize);
@@ -326,21 +326,21 @@ impl<'a> VolatileSlice<'a> {
     // These function are private and only used for the read/write functions. It is not valid in
     // general to take slices of volatile memory.
     unsafe fn as_slice(&self) -> &[u8] {
-        from_raw_parts(self.addr, self.size)
+        from_raw_parts(self.addr, self.size as usize)
     }
     unsafe fn as_mut_slice(&self) -> &mut [u8] {
-        from_raw_parts_mut(self.addr, self.size)
+        from_raw_parts_mut(self.addr, self.size as usize)
     }
 }
 
 impl<'a> VolatileMemory for VolatileSlice<'a> {
-    fn get_slice(&self, offset: usize, count: usize) -> Result<VolatileSlice> {
+    fn get_slice(&self, offset: u64, count: u64) -> Result<VolatileSlice> {
         let mem_end = calc_offset(offset, count)?;
         if mem_end > self.size {
             return Err(Error::OutOfBounds { addr: mem_end });
         }
         Ok(VolatileSlice {
-               addr: (self.addr as usize + offset) as *mut _,
+               addr: (self.addr as u64 + offset) as *mut _,
                size: count,
                phantom: PhantomData,
            })
@@ -396,8 +396,8 @@ impl<'a, T: DataInit> VolatileRef<'a, T> {
     ///   let v_ref = unsafe { VolatileRef::new(0 as *mut u32) };
     ///   assert_eq!(v_ref.size(), size_of::<u32>());
     /// ```
-    pub fn size(&self) -> usize {
-        size_of::<T>()
+    pub fn size(&self) -> u64 {
+        size_of::<T>() as u64
     }
 
     /// Does a volatile write of the value `v` to the address of this ref.
@@ -417,7 +417,7 @@ impl<'a, T: DataInit> VolatileRef<'a, T> {
 
     /// Converts this `T` reference to a raw slice with the same size and address.
     pub fn to_slice(&self) -> VolatileSlice<'a> {
-        unsafe { VolatileSlice::new(self.addr as *mut u8, size_of::<T>()) }
+        unsafe { VolatileSlice::new(self.addr as *mut u8, size_of::<T>() as u64) }
     }
 }
 
@@ -443,13 +443,13 @@ mod tests {
     }
 
     impl VolatileMemory for VecMem {
-        fn get_slice(&self, offset: usize, count: usize) -> Result<VolatileSlice> {
+        fn get_slice(&self, offset: u64, count: u64) -> Result<VolatileSlice> {
             let mem_end = calc_offset(offset, count)?;
-            if mem_end > self.mem.len() {
+            if mem_end > self.mem.len() as u64 {
                 return Err(Error::OutOfBounds { addr: mem_end });
             }
             Ok(unsafe {
-                   VolatileSlice::new((self.mem.as_ptr() as usize + offset) as *mut _, count)
+                   VolatileSlice::new((self.mem.as_ptr() as u64 + offset) as *mut _, count)
                })
         }
     }
@@ -490,7 +490,7 @@ mod tests {
         let v_ref = a_ref.get_ref(1).unwrap();
         v_ref.store(0x12345678u32);
         let ref_slice = v_ref.to_slice();
-        assert_eq!(v_ref.as_ptr() as usize, ref_slice.as_ptr() as usize);
+        assert_eq!(v_ref.as_ptr() as u64, ref_slice.as_ptr() as u64);
         assert_eq!(v_ref.size(), ref_slice.size());
     }
 
@@ -547,7 +547,7 @@ mod tests {
 
     #[test]
     fn slice_overflow_error() {
-        use std::usize::MAX;
+        use std::u64::MAX;
         let a = VecMem::new(1);
         let res = a.get_slice(MAX, 1).unwrap_err();
         assert_eq!(res,
@@ -567,7 +567,7 @@ mod tests {
 
     #[test]
     fn ref_overflow_error() {
-        use std::usize::MAX;
+        use std::u64::MAX;
         let a = VecMem::new(1);
         let res = a.get_ref::<u8>(MAX).unwrap_err();
         assert_eq!(res,

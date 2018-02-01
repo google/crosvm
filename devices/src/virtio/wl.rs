@@ -90,9 +90,9 @@ fn round_to_page_size(v: u64) -> u64 {
 }
 
 fn parse_new(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
-    const ID_OFFSET: usize = 8;
-    const FLAGS_OFFSET: usize = 12;
-    const SIZE_OFFSET: usize = 24;
+    const ID_OFFSET: u64 = 8;
+    const FLAGS_OFFSET: u64 = 12;
+    const SIZE_OFFSET: u64 = 24;
 
     let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
                                               .ok_or(WlError::CheckedOffset)?)?;
@@ -109,9 +109,9 @@ fn parse_new(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
 }
 
 fn parse_send(addr: GuestAddress, len: u32, mem: &GuestMemory) -> WlResult<WlOp> {
-    const ID_OFFSET: usize = 8;
-    const VFD_COUNT_OFFSET: usize = 12;
-    const VFDS_OFFSET: usize = 16;
+    const ID_OFFSET: u64 = 8;
+    const VFD_COUNT_OFFSET: u64 = 12;
+    const VFDS_OFFSET: u64 = 16;
 
     let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
                                               .ok_or(WlError::CheckedOffset)?)?;
@@ -121,7 +121,7 @@ fn parse_send(addr: GuestAddress, len: u32, mem: &GuestMemory) -> WlResult<WlOp>
     let vfd_count: u32 = vfd_count.into();
     let vfds_addr = mem.checked_offset(addr, VFDS_OFFSET)
         .ok_or(WlError::CheckedOffset)?;
-    let data_addr = mem.checked_offset(vfds_addr, (vfd_count * 4) as usize)
+    let data_addr = mem.checked_offset(vfds_addr, (vfd_count * 4) as u64)
         .ok_or(WlError::CheckedOffset)?;
     Ok(WlOp::Send {
            id: id.into(),
@@ -133,7 +133,7 @@ fn parse_send(addr: GuestAddress, len: u32, mem: &GuestMemory) -> WlResult<WlOp>
 }
 
 fn parse_id(addr: GuestAddress, mem: &GuestMemory) -> WlResult<u32> {
-    const ID_OFFSET: usize = 8;
+    const ID_OFFSET: u64 = 8;
     let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
                                               .ok_or(WlError::CheckedOffset)?)?;
     Ok(id.into())
@@ -192,16 +192,17 @@ fn encode_vfd_recv(desc_mem: VolatileSlice,
     desc_mem.get_ref(0)?.store(ctrl_vfd_recv);
 
     let vfd_slice = desc_mem
-        .get_slice(size_of::<CtrlVfdRecv>(), vfd_ids.len() * size_of::<Le32>())?;
+        .get_slice(size_of::<CtrlVfdRecv>() as u64,
+                   (vfd_ids.len() * size_of::<Le32>()) as u64)?;
     for (i, &recv_vfd_id) in vfd_ids.iter().enumerate() {
         vfd_slice
-            .get_ref(size_of::<Le32>() * i)?
+            .get_ref((size_of::<Le32>() * i) as u64)?
             .store(recv_vfd_id);
     }
 
     let data_slice = desc_mem
-        .get_slice(size_of::<CtrlVfdRecv>() + vfd_ids.len() * size_of::<Le32>(),
-                   data.len())?;
+        .get_slice((size_of::<CtrlVfdRecv>() + vfd_ids.len() * size_of::<Le32>()) as u64,
+                   data.len() as u64)?;
     data_slice.copy_from(data);
 
     Ok((size_of::<CtrlVfdRecv>() + vfd_ids.len() * size_of::<Le32>() + data.len()) as u32)
@@ -615,7 +616,7 @@ impl WlState {
     }
 
     fn send(&mut self, vfd_id: u32, vfds: VolatileSlice, data: VolatileSlice) -> WlResult<WlResp> {
-        let vfd_count = vfds.size() / size_of::<Le32>();
+        let vfd_count = vfds.size() as usize / size_of::<Le32>();
         let mut vfd_ids = [Le32::from(0); VIRTWL_SEND_MAX_ALLOCS];
         vfds.copy_to(&mut vfd_ids[..]);
         let mut fds = [0; VIRTWL_SEND_MAX_ALLOCS];
@@ -665,8 +666,8 @@ impl WlState {
                 data_addr,
                 data_len,
             } => {
-                let vfd_mem = mem.get_slice(vfds_addr.0, (vfd_count as usize) * size_of::<Le32>())?;
-                let data_mem = mem.get_slice(data_addr.0, data_len as usize)?;
+                let vfd_mem = mem.get_slice(vfds_addr.0, (vfd_count as u64) * size_of::<Le32>() as u64)?;
+                let data_mem = mem.get_slice(data_addr.0, data_len as u64)?;
                 self.send(id, vfd_mem, data_mem)
             }
             WlOp::NewCtx { id } => self.new_context(id),
@@ -880,7 +881,7 @@ impl Worker {
                                         };
 
                                         let resp_mem = self.mem
-                                            .get_slice(resp_desc.addr.0, resp_desc.len as usize)
+                                            .get_slice(resp_desc.addr.0, resp_desc.len as u64)
                                             .unwrap();
                                         let used_len = encode_resp(resp_mem, resp)
                                             .unwrap_or_default();
@@ -922,7 +923,7 @@ impl Worker {
                     let (index, addr, desc_len) = self.in_desc_chains.pop_front().unwrap();
                     // This memory location is valid because it came from a queue which always
                     // checks the descriptor memory locations.
-                    let desc_mem = self.mem.get_slice(addr.0, desc_len as usize).unwrap();
+                    let desc_mem = self.mem.get_slice(addr.0, desc_len as u64).unwrap();
                     let len = match encode_resp(desc_mem, in_resp) {
                         Ok(len) => {
                             should_pop = true;

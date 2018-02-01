@@ -246,7 +246,7 @@ impl Vm {
         // device memory, and there are no gaps, it follows that the lowest unused slot is 2+3=5.
         let slot = match self.mem_slot_gaps.pop() {
             Some(gap) => (-gap) as u32,
-            None => (self.device_memory.len() + self.guest_mem.num_regions()) as u32,
+            None => (self.device_memory.len() + self.guest_mem.num_regions() as usize) as u32,
         };
 
         // Safe because we check that the given guest address is valid and has no overlaps. We also

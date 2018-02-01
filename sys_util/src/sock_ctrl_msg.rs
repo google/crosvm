@@ -91,7 +91,7 @@ unsafe impl<'a> IntoIovec for VolatileSlice<'a> {
     }
 
     fn size(&self) -> usize {
-        self.size()
+        self.size() as usize
     }
 }
 

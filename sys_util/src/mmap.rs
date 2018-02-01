@@ -346,15 +346,15 @@ impl MemoryMapping {
 }
 
 impl VolatileMemory for MemoryMapping {
-    fn get_slice(&self, offset: usize, count: usize) -> VolatileMemoryResult<VolatileSlice> {
+    fn get_slice(&self, offset: u64, count: u64) -> VolatileMemoryResult<VolatileSlice> {
         let mem_end = calc_offset(offset, count)?;
-        if mem_end > self.size {
+        if mem_end > self.size as u64 {
             return Err(VolatileMemoryError::OutOfBounds { addr: mem_end });
         }
 
         // Safe because we checked that offset + count was within our range and we only ever hand
         // out volatile accessors.
-        Ok(unsafe { VolatileSlice::new((self.addr as usize + offset) as *mut _, count) })
+        Ok(unsafe { VolatileSlice::new((self.addr as usize + offset as usize) as *mut _, count) })
     }
 }
 
@@ -435,10 +435,10 @@ mod tests {
     fn slice_overflow_error() {
         use std::usize;
         let m = MemoryMapping::new(5).unwrap();
-        let res = m.get_slice(usize::MAX, 3).unwrap_err();
+        let res = m.get_slice(std::u64::MAX, 3).unwrap_err();
         assert_eq!(res,
                    VolatileMemoryError::Overflow {
-                       base: usize::MAX,
+                       base: std::u64::MAX,
                        offset: 3,
                    });
 

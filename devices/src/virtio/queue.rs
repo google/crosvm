@@ -47,12 +47,12 @@ impl<'a> DescriptorChain<'a> {
             return None;
         }
 
-        let desc_head = match mem.checked_offset(desc_table, (index as usize) * 16) {
+        let desc_head = match mem.checked_offset(desc_table, (index as u64) * 16) {
             Some(a) => a,
             None => return None,
         };
         // These reads can't fail unless Guest memory is hopelessly broken.
-        let addr = GuestAddress(mem.read_obj_from_addr::<u64>(desc_head).unwrap() as usize);
+        let addr = GuestAddress(mem.read_obj_from_addr::<u64>(desc_head).unwrap() as u64);
         if mem.checked_offset(desc_head, 16).is_none() {
             return None;
         }
@@ -79,7 +79,7 @@ impl<'a> DescriptorChain<'a> {
 
     fn is_valid(&self) -> bool {
         if self.mem
-               .checked_offset(self.addr, self.len as usize)
+               .checked_offset(self.addr, self.len as u64)
                .is_none() {
             false
         } else if self.has_next() && self.next >= self.queue_size {
@@ -139,7 +139,7 @@ impl<'a, 'b> Iterator for AvailIter<'a, 'b> {
         }
 
         let offset = (4 + (self.next_index.0 % self.queue_size) * 2) as usize;
-        let avail_addr = match self.mem.checked_offset(self.avail_ring, offset) {
+        let avail_addr = match self.mem.checked_offset(self.avail_ring, offset as u64) {
             Some(a) => a,
             None => return None,
         };
@@ -219,21 +219,21 @@ impl Queue {
             error!("virtio queue with invalid size: {}", self.size);
             false
         } else if desc_table
-                      .checked_add(desc_table_size)
+                      .checked_add(desc_table_size as u64)
                       .map_or(true, |v| !mem.address_in_range(v)) {
             error!("virtio queue descriptor table goes out of bounds: start:0x{:08x} size:0x{:08x}",
                    desc_table.offset(),
                    desc_table_size);
             false
         } else if avail_ring
-                      .checked_add(avail_ring_size)
+                      .checked_add(avail_ring_size as u64)
                       .map_or(true, |v| !mem.address_in_range(v)) {
             error!("virtio queue available ring goes out of bounds: start:0x{:08x} size:0x{:08x}",
                    avail_ring.offset(),
                    avail_ring_size);
             false
         } else if used_ring
-                      .checked_add(used_ring_size)
+                      .checked_add(used_ring_size as u64)
                       .map_or(true, |v| !mem.address_in_range(v)) {
             error!("virtio queue used ring goes out of bounds: start:0x{:08x} size:0x{:08x}",
                    used_ring.offset(),
@@ -299,7 +299,7 @@ impl Queue {
 
         let used_ring = self.used_ring;
         let next_used = (self.next_used.0 % self.actual_size()) as usize;
-        let used_elem = used_ring.unchecked_add(4 + next_used * 8);
+        let used_elem = used_ring.unchecked_add((4 + next_used * 8) as u64);
 
         // These writes can't fail as we are guaranteed to be within the descriptor ring.
         mem.write_obj_at_addr(desc_index as u32, used_elem)
