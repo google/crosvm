@@ -20,7 +20,6 @@ use device_manager;
 use devices;
 use io_jail::{self, Minijail};
 use kernel_cmdline;
-use kernel_loader;
 use kvm::*;
 use net_util::Tap;
 use qcow::{self, QcowFile};
@@ -55,8 +54,6 @@ pub enum Error {
     Disk(io::Error),
     DiskImageLock(sys_util::Error),
     GetWaylandGroup(sys_util::Error),
-    LoadCmdline(kernel_loader::Error),
-    LoadKernel(kernel_loader::Error),
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
     OpenKernel(PathBuf, io::Error),
@@ -79,9 +76,13 @@ pub enum Error {
     WaylandDeviceNew(sys_util::Error),
     WaylandTempDir(sys_util::Error),
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    ConfigureSystem(x86_64::Error),
+    SetupSystemMemory(x86_64::Error),
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     ConfigureVcpu(x86_64::Error),
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    LoadKernel(x86_64::Error),
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    SetupIoBus(x86_64::Error),
 }
 
 impl fmt::Display for Error {
@@ -112,8 +113,6 @@ impl fmt::Display for Error {
             &Error::GetWaylandGroup(ref e) => {
                 write!(f, "could not find gid for wayland group: {:?}", e)
             }
-            &Error::LoadCmdline(ref e) => write!(f, "error loading kernel command line: {:?}", e),
-            &Error::LoadKernel(ref e) => write!(f, "error loading kernel: {:?}", e),
             &Error::NetDeviceNew(ref e) => write!(f, "failed to set up virtio networking: {:?}", e),
             &Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
             &Error::OpenKernel(ref p, ref e) => {
@@ -152,9 +151,14 @@ impl fmt::Display for Error {
                 write!(f, "failed to create wayland device jail directroy: {:?}", e)
             }
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            &Error::ConfigureSystem(ref e) => write!(f, "error configuring system: {:?}", e),
+            &Error::SetupSystemMemory(ref e) => write!(f, "error setting up system memory: {:?}", e),
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             &Error::ConfigureVcpu(ref e) => write!(f, "failed to configure vcpu: {:?}", e),
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            &Error::LoadKernel(ref e) => write!(f, "failed to load kernel: {:?}", e),
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            &Error::SetupIoBus(ref e) => write!(f, "failed to setup iobus: {:?}", e),
+
         }
     }
 }
@@ -178,10 +182,6 @@ impl Drop for UnlinkUnixDatagram {
         }
     }
 }
-
-const KERNEL_START_OFFSET: u64 = 0x200000;
-const CMDLINE_OFFSET: u64 = 0x20000;
-const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
 
 fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
@@ -211,75 +211,6 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     Ok(j)
 }
 
-fn setup_memory(mem_size: usize) -> Result<GuestMemory> {
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-    let arch_mem_regions = vec![(GuestAddress(0), mem_size as u64)];
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    let arch_mem_regions = x86_64::arch_memory_regions(mem_size as u64);
-    GuestMemory::new(&arch_mem_regions).map_err(Error::CreateGuestMemory)
-}
-
-fn setup_io_bus(vm: &mut Vm,
-                exit_evt: EventFd)
-                -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)> {
-    struct NoDevice;
-    impl devices::BusDevice for NoDevice {}
-
-    let mut io_bus = devices::Bus::new();
-
-    let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
-    let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
-    let stdio_serial =
-        Arc::new(Mutex::new(devices::Serial::new_out(com_evt_1_3
-                                                         .try_clone()
-                                                         .map_err(Error::CloneEventFd)?,
-                                                     Box::new(stdout()))));
-    let nul_device = Arc::new(Mutex::new(NoDevice));
-    io_bus.insert(stdio_serial.clone(), 0x3f8, 0x8).unwrap();
-    io_bus
-        .insert(Arc::new(Mutex::new(devices::Serial::new_sink(com_evt_2_4
-                                                                  .try_clone()
-                                                                  .map_err(Error::CloneEventFd)?))),
-                0x2f8,
-                0x8)
-        .unwrap();
-    io_bus
-        .insert(Arc::new(Mutex::new(devices::Serial::new_sink(com_evt_1_3
-                                                                  .try_clone()
-                                                                  .map_err(Error::CloneEventFd)?))),
-                0x3e8,
-                0x8)
-        .unwrap();
-    io_bus
-        .insert(Arc::new(Mutex::new(devices::Serial::new_sink(com_evt_2_4
-                                                                  .try_clone()
-                                                                  .map_err(Error::CloneEventFd)?))),
-                0x2e8,
-                0x8)
-        .unwrap();
-    io_bus
-        .insert(Arc::new(Mutex::new(devices::Cmos::new())), 0x70, 0x2)
-        .unwrap();
-    io_bus
-        .insert(Arc::new(Mutex::new(devices::I8042Device::new(exit_evt
-                                                                  .try_clone()
-                                                                  .map_err(Error::CloneEventFd)?))),
-                0x061,
-                0x4)
-        .unwrap();
-    io_bus.insert(nul_device.clone(), 0x040, 0x8).unwrap(); // ignore pit
-    io_bus.insert(nul_device.clone(), 0x0ed, 0x1).unwrap(); // most likely this one does nothing
-    io_bus.insert(nul_device.clone(), 0x0f0, 0x2).unwrap(); // ignore fpu
-    io_bus.insert(nul_device.clone(), 0xcf8, 0x8).unwrap(); // ignore pci
-
-    vm.register_irqfd(&com_evt_1_3, 4)
-        .map_err(Error::RegisterIrqfd)?;
-    vm.register_irqfd(&com_evt_2_4, 3)
-        .map_err(Error::RegisterIrqfd)?;
-
-    Ok((io_bus, stdio_serial))
-}
-
 fn setup_mmio_bus(cfg: &Config,
                   vm: &mut Vm,
                   mem: &GuestMemory,
@@ -288,8 +219,10 @@ fn setup_mmio_bus(cfg: &Config,
                   balloon_device_socket: UnixDatagram)
                   -> Result<devices::Bus> {
     static DEFAULT_PIVOT_ROOT: &'static str = "/var/empty";
-    let mut device_manager =
-        device_manager::DeviceManager::new(vm, mem.clone(), 0x1000, 0xd0000000, 5);
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let mut device_manager = x86_64::get_device_manager(vm, mem.clone());
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let mut device_manager = device_manager::DeviceManager::new(vm, mem.clone(), 0, 0, 0);
 
     // An empty directory for jailed device's pivot root.
     let empty_root_path = Path::new(DEFAULT_PIVOT_ROOT);
@@ -474,38 +407,6 @@ fn setup_mmio_bus(cfg: &Config,
     Ok(device_manager.bus)
 }
 
-fn setup_system_memory(mem: &GuestMemory,
-                       vcpu_count: u32,
-                       mut kernel_image: File,
-                       cmdline: &CStr)
-                       -> Result<()> {
-    let kernel_start_addr = GuestAddress(KERNEL_START_OFFSET);
-    let cmdline_addr = GuestAddress(CMDLINE_OFFSET);
-    kernel_loader::load_kernel(mem, kernel_start_addr, &mut kernel_image)
-        .map_err(Error::LoadKernel)?;
-    kernel_loader::load_cmdline(mem, cmdline_addr, cmdline)
-        .map_err(Error::LoadCmdline)?;
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    x86_64::configure_system(mem,
-                             kernel_start_addr,
-                             cmdline_addr,
-                             cmdline.to_bytes().len() + 1,
-                             vcpu_count as u8)
-            .map_err(Error::ConfigureSystem)?;
-    Ok(())
-}
-
-fn setup_vm(kvm: &Kvm, mem: GuestMemory) -> Result<Vm> {
-    let vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    {
-        let tss_addr = GuestAddress(0xfffbd000);
-        vm.set_tss_addr(tss_addr).expect("set tss addr failed");
-        vm.create_pit().expect("create pit failed");
-    }
-    vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
-    Ok(vm)
-}
 
 fn setup_vcpu(kvm: &Kvm,
               vm: &Vm,
@@ -517,12 +418,10 @@ fn setup_vcpu(kvm: &Kvm,
               io_bus: devices::Bus,
               mmio_bus: devices::Bus)
               -> Result<JoinHandle<()>> {
-    let kernel_start_addr = GuestAddress(KERNEL_START_OFFSET);
     let vcpu = Vcpu::new(cpu_id as libc::c_ulong, &kvm, &vm)
         .map_err(Error::CreateVcpu)?;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     x86_64::configure_vcpu(vm.get_memory(),
-                           kernel_start_addr,
                            &kvm,
                            &vcpu,
                            cpu_id as u64,
@@ -736,21 +635,42 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
 
     let mem_size = cfg.memory.unwrap_or(256) << 20;
-    let mem = setup_memory(mem_size)?;
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let mem = x86_64::setup_memory(mem_size).map_err(|e| Error::CreateGuestMemory(e))?;
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let mem = GuestMemory::new(&vec![(GuestAddress(0), mem_size as u64)]).
+        map_err(|e| Error::CreateGuestMemory(e))?;
+
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;
-    let mut vm = setup_vm(&kvm, mem.clone())?;
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let mut vm = x86_64::create_vm(&kvm, mem.clone()).map_err(|e| Error::CreateVm(e))?;
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let mut vm = Vm::new(&kvm, mem.clone()).map_err(|e| Error::CreateVm(e))?;
 
-    let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
-    cmdline
-        .insert_str("console=ttyS0 noacpi reboot=k panic=1 pci=off")
-        .unwrap();
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let mut cmdline = x86_64::get_base_linux_cmdline();
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let mut cmdline = kernel_cmdline::Cmdline::new(128);
 
-    // Put device memory at nearest 2MB boundary after physical memory
-    const MB: u64 = 1024 * 1024;
-    let mem_size_round_2mb = (mem_size as u64 + 2*MB - 1) / (2*MB) * (2*MB);
-    let mut next_dev_pfn = mem_size_round_2mb / pagesize() as u64;
-    let (io_bus, stdio_serial) = setup_io_bus(&mut vm,
-                                              exit_evt.try_clone().map_err(Error::CloneEventFd)?)?;
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let mut next_dev_pfn = x86_64::get_base_dev_pfn(mem_size as u64);
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let mut next_dev_pfn = 0;
+
+    let mut control_sockets = Vec::new();
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let (io_bus, stdio_serial) = x86_64::setup_io_bus(&mut vm,
+                                                      exit_evt.try_clone().
+                                                      map_err(Error::CloneEventFd)?).
+        map_err(|e| Error::SetupIoBus(e))?;
+    // The non x86 case is kind of bogus using the exit_evt as an fd for serial
+    // It's purpose is just to make the build happy since it doesn't actually run anyway
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let (io_bus, stdio_serial) = (devices::Bus::new(),
+                                  Arc::new(Mutex::new(
+                                      devices::Serial::new_out(exit_evt.try_clone().
+                                                               map_err(Error::CloneEventFd)?,
+                                                               Box::new(stdout())))));
 
     let (balloon_host_socket, balloon_device_socket) = UnixDatagram::pair()
         .map_err(Error::CreateSocket)?;
@@ -768,10 +688,14 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let vcpu_count = cfg.vcpu_count.unwrap_or(1);
     let kernel_image = File::open(cfg.kernel_path.as_path())
         .map_err(|e| Error::OpenKernel(cfg.kernel_path.clone(), e))?;
-    setup_system_memory(&mem,
-                        vcpu_count,
-                        kernel_image,
-                        &CString::new(cmdline).unwrap())?;
+
+    // separate out load_kernel from other setup to get a specific error for
+    // kernel loading
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    x86_64::load_kernel(&mem, kernel_image).map_err(|e| Error::LoadKernel(e))?;
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    x86_64::setup_system_memory(&mem, vcpu_count, &CString::new(cmdline).unwrap()).
+        map_err(|e| Error::SetupSystemMemory(e))?;
 
     let mut vcpu_handles = Vec::with_capacity(vcpu_count as usize);
     let vcpu_thread_barrier = Arc::new(Barrier::new((vcpu_count + 1) as usize));

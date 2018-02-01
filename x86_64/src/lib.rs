@@ -4,10 +4,14 @@
 
 extern crate byteorder;
 extern crate data_model;
+extern crate devices;
+extern crate device_manager;
 extern crate kvm;
 extern crate kvm_sys;
 extern crate libc;
 extern crate sys_util;
+extern crate kernel_cmdline;
+extern crate kernel_loader;
 
 #[allow(dead_code)]
 #[allow(non_upper_case_globals)]
@@ -55,10 +59,15 @@ mod regs;
 
 use std::mem;
 use std::result;
+use std::fs::File;
+use std::ffi::CStr;
+use std::sync::{Arc, Mutex};
+use std::io::stdout;
 
 use bootparam::boot_params;
 use bootparam::E820_RAM;
-use sys_util::{GuestAddress, GuestMemory};
+use sys_util::{EventFd, GuestAddress, GuestMemory};
+use kvm::*;
 
 pub use regs::Error as RegError;
 pub use interrupts::Error as IntError;
@@ -66,16 +75,26 @@ pub use mptable::Error as MpTableError;
 
 #[derive(Debug)]
 pub enum Error {
+    /// Error configuring the system
+    ConfigureSystem,
     /// Error configuring the VCPU.
     CpuSetup(cpuid::Error),
+    /// Unable to clone an EventFd
+    CloneEventFd(sys_util::Error),
+    /// Unable to make an EventFd
+    CreateEventFd(sys_util::Error),
     /// The kernel extends past the end of RAM
     KernelOffsetPastEnd,
     /// Error configuring the VCPU registers.
     RegisterConfiguration(RegError),
     /// Error configuring the VCPU floating point registers.
     FpuRegisterConfiguration(RegError),
+    /// Error registering an IrqFd
+    RegisterIrqfd(sys_util::Error),
     /// Error configuring the VCPU segment registers.
     SegmentRegisterConfiguration(RegError),
+    LoadCmdline(kernel_loader::Error),
+    LoadKernel(kernel_loader::Error),
     /// Error configuring the VCPU local interrupt.
     LocalIntConfiguration(IntError),
     /// Error writing MP table to memory.
@@ -95,11 +114,163 @@ const FIRST_ADDR_PAST_32BITS: u64 = (1 << 32);
 const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
 const ZERO_PAGE_OFFSET: u64 = 0x7000;
 
+const KERNEL_START_OFFSET: u64 = 0x200000;
+const CMDLINE_OFFSET: u64 = 0x20000;
+const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
+
+/// Loads the kernel from an open file.
+///
+/// # Arguments
+///
+/// * `mem` - The memory to be used by the guest.
+/// * `kernel_image` - the File object for the specified kernel.
+pub fn load_kernel(mem: &GuestMemory, mut kernel_image: File) -> Result<()> {
+    kernel_loader::load_kernel(mem, GuestAddress(KERNEL_START_OFFSET), &mut kernel_image)
+        .map_err(|e| Error::LoadKernel(e))?;
+    Ok(())
+}
+
+/// Configures the system memory space should be called once per vm before
+/// starting vcpu threads.
+///
+/// # Arguments
+///
+/// * `mem` - The memory to be used by the guest.
+/// * `vcpu_count` - Number of virtual CPUs the guest will have.
+/// * `cmdline` - the kernel commandline
+pub fn setup_system_memory(mem: &GuestMemory, vcpu_count: u32, cmdline: &CStr) -> Result<()> {
+    kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)
+        .map_err(|e| Error::LoadCmdline(e))?;
+    configure_system(mem, GuestAddress(KERNEL_START_OFFSET), GuestAddress(CMDLINE_OFFSET),
+                     cmdline.to_bytes().len() + 1, vcpu_count as u8)
+        .map_err(|_| Error::ConfigureSystem)?;
+    Ok(())
+}
+
+/// Creates a new VM object and initializes architecture specific devices
+///
+/// # Arguments
+///
+/// * `kvm` - The opened /dev/kvm object.
+/// * `mem` - The memory to be used by the guest.
+pub fn create_vm(kvm: &Kvm, mem: GuestMemory) -> result::Result<Vm, sys_util::Error> {
+    let vm = Vm::new(&kvm, mem)?;
+    let tss_addr = GuestAddress(0xfffbd000);
+    vm.set_tss_addr(tss_addr).expect("set tss addr failed");
+    vm.create_pit().expect("create pit failed");
+    vm.create_irq_chip()?;
+    Ok(vm)
+}
+
+/// This creates a GuestMemory object for this VM
+///
+/// * `mem_size` - Desired physical memory size for this VM
+pub fn setup_memory(mem_size: usize) -> result::Result<sys_util::GuestMemory, sys_util::GuestMemoryError> {
+    let arch_mem_regions = arch_memory_regions(mem_size as u64);
+    GuestMemory::new(&arch_mem_regions)
+}
+
+/// This returns the first page frame number for use by the balloon driver.
+pub fn get_base_dev_pfn(mem_size: u64) -> u64 {
+    // Put device memory at nearest 2MB boundary after physical memory
+    const MB: u64 = 1024 * 1024;
+    let mem_size_round_2mb = (mem_size + 2*MB - 1) / (2*MB) * (2*MB);
+    mem_size_round_2mb / sys_util::pagesize() as u64
+}
+
+/// This returns a base part of the kernel command for this architecture
+pub fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
+    let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
+    cmdline.insert_str("console=ttyS0 noacpi reboot=k panic=1 pci=off").
+        unwrap();
+    cmdline
+}
+
+/// This creates and returns a device_manager object for this vm.
+///
+/// # Arguments
+///
+/// * `vm` - the vm object
+/// * `mem` - A copy of the GuestMemory object for this VM.
+pub fn get_device_manager(vm: &mut Vm, mem: GuestMemory) -> device_manager::DeviceManager {
+    const MMIO_BASE: u64 = 0xd0000000;
+    const MMIO_LEN: u64 = 0x1000;
+    const IRQ_BASE: u32 = 5;
+
+    device_manager::DeviceManager::new(vm, mem, MMIO_LEN, MMIO_BASE, IRQ_BASE)
+}
+
+/// Sets up the IO bus for this platform
+///
+/// # Arguments
+///
+/// * - `vm` the vm object
+/// * - `exit_evt` - the event fd object which should receive exit events
+pub fn setup_io_bus(vm: &mut Vm, exit_evt: EventFd)
+                    -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)> {
+    struct NoDevice;
+    impl devices::BusDevice for NoDevice {}
+
+    let mut io_bus = devices::Bus::new();
+
+    let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
+    let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
+    let stdio_serial =
+        Arc::new(Mutex::new(devices::Serial::new_out(com_evt_1_3
+                                                         .try_clone()
+                                                         .map_err(Error::CloneEventFd)?,
+                                                     Box::new(stdout()))));
+    let nul_device = Arc::new(Mutex::new(NoDevice));
+    io_bus.insert(stdio_serial.clone(), 0x3f8, 0x8).unwrap();
+    io_bus
+        .insert(Arc::new(Mutex::new(devices::Serial::new_sink(com_evt_2_4
+                                                                  .try_clone()
+                                                                  .map_err(Error::CloneEventFd)?))),
+                0x2f8,
+                0x8)
+        .unwrap();
+    io_bus
+        .insert(Arc::new(Mutex::new(devices::Serial::new_sink(com_evt_1_3
+                                                                  .try_clone()
+                                                                  .map_err(Error::CloneEventFd)?))),
+                0x3e8,
+                0x8)
+        .unwrap();
+    io_bus
+        .insert(Arc::new(Mutex::new(devices::Serial::new_sink(com_evt_2_4
+                                                                  .try_clone()
+                                                                  .map_err(Error::CloneEventFd)?))),
+                0x2e8,
+                0x8)
+        .unwrap();
+    io_bus
+        .insert(Arc::new(Mutex::new(devices::Cmos::new())), 0x70, 0x2)
+        .unwrap();
+    io_bus
+        .insert(Arc::new(Mutex::new(devices::I8042Device::new(exit_evt
+                                                                  .try_clone()
+                                                                  .map_err(Error::CloneEventFd)?))),
+                0x061,
+                0x4)
+        .unwrap();
+    io_bus.insert(nul_device.clone(), 0x040, 0x8).unwrap(); // ignore pit
+    io_bus.insert(nul_device.clone(), 0x0ed, 0x1).unwrap(); // most likely this one does nothing
+    io_bus.insert(nul_device.clone(), 0x0f0, 0x2).unwrap(); // ignore fpu
+    io_bus.insert(nul_device.clone(), 0xcf8, 0x8).unwrap(); // ignore pci
+
+    vm.register_irqfd(&com_evt_1_3, 4)
+        .map_err(Error::RegisterIrqfd)?;
+    vm.register_irqfd(&com_evt_2_4, 3)
+        .map_err(Error::RegisterIrqfd)?;
+
+    Ok((io_bus, stdio_serial))
+}
+
 /// Returns a Vec of the valid memory addresses.
 /// These should be used to configure the GuestMemory structure for the platfrom.
 /// For x86_64 all addresses are valid from the start of the kenel except a
 /// carve out at the end of 32bit address space.
-pub fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
+fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
     let mem_end = GuestAddress(size);
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
     let end_32bit_gap_start = GuestAddress(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE);
@@ -128,12 +299,12 @@ pub fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
 /// * `cpu_id` - The id of the given `vcpu`.
 /// * `num_cpus` - Number of virtual CPUs the guest will have.
 pub fn configure_vcpu(guest_mem: &GuestMemory,
-                      kernel_load_addr: GuestAddress,
                       kvm: &kvm::Kvm,
                       vcpu: &kvm::Vcpu,
                       cpu_id: u64,
                       num_cpus: u64)
                       -> Result<()> {
+    let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
     cpuid::setup_cpuid(kvm, vcpu, cpu_id, num_cpus).map_err(Error::CpuSetup)?;
     regs::setup_msrs(vcpu).map_err(Error::RegisterConfiguration)?;
     let kernel_end = guest_mem.checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
@@ -148,21 +319,12 @@ pub fn configure_vcpu(guest_mem: &GuestMemory,
     Ok(())
 }
 
-/// Configures the system and should be called once per vm before starting vcpu threads.
-///
-/// # Arguments
-///
-/// * `guest_mem` - The memory to be used by the guest.
-/// * `kernel_addr` - Address in `guest_mem` where the kernel was loaded.
-/// * `cmdline_addr` - Address in `guest_mem` where the kernel command line was loaded.
-/// * `cmdline_size` - Size of the kernel command line in bytes including the null terminator.
-/// * `num_cpus` - Number of virtual CPUs the guest will have.
-pub fn configure_system(guest_mem: &GuestMemory,
-                        kernel_addr: GuestAddress,
-                        cmdline_addr: GuestAddress,
-                        cmdline_size: usize,
-                        num_cpus: u8)
-                        -> Result<()> {
+fn configure_system(guest_mem: &GuestMemory,
+                    kernel_addr: GuestAddress,
+                    cmdline_addr: GuestAddress,
+                    cmdline_size: usize,
+                    num_cpus: u8)
+                    -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
     const KERNEL_HDR_MAGIC: u32 = 0x53726448;
