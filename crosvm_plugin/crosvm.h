@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 6
+#define CROSVM_API_MINOR 7
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -418,6 +418,13 @@ int crosvm_vcpu_set_fpu(struct crosvm_vcpu*, const struct kvm_fpu*);
 int crosvm_vcpu_get_debugregs(struct crosvm_vcpu*, struct kvm_debugregs*);
 /* Sets the state of the vcpu's debug registers */
 int crosvm_vcpu_set_debugregs(struct crosvm_vcpu*, const struct kvm_debugregs*);
+
+/* Gets the MSRs of the vcpu indicated by the index field of each entry. */
+int crosvm_vcpu_get_msrs(struct crosvm_vcpu*, uint32_t __msr_count,
+                         struct kvm_msr_entry *__msr_entries);
+/* Sets the MSRs of the vcpu indicated by the index field of each entry. */
+int crosvm_vcpu_set_msrs(struct crosvm_vcpu*, uint32_t __msr_count,
+                         const struct kvm_msr_entry *__msr_entries);
 
 #ifdef  __cplusplus
 }

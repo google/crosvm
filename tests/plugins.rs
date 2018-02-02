@@ -295,3 +295,82 @@ fn test_debugregs() {
     };
     test_mini_plugin(&mini_plugin);
 }
+
+#[test]
+fn test_msrs() {
+    let mini_plugin = MiniPlugin {
+        assembly_src: "org 0x1000
+             bits 16
+             rdmsr
+             mov [0x0], eax
+             mov [0x4], edx
+             mov ecx, ebx
+             mov eax, [0x8]
+             mov edx, [0xc]
+             wrmsr
+             mov byte [es:0], 1",
+        src: r#"
+            #define MSR1_INDEX 0x00000174
+            #define MSR1_DATA 1
+            #define MSR2_INDEX 0x00000175
+            #define MSR2_DATA 2
+            #define KILL_ADDRESS 0x3000
+
+            int g_kill_evt;
+            struct kvm_msr_entry g_msr2;
+
+            int setup_vm(struct crosvm *crosvm, void *mem) {
+                g_kill_evt = crosvm_get_shutdown_eventfd(crosvm);
+                crosvm_reserve_range(crosvm, CROSVM_ADDRESS_SPACE_MMIO, KILL_ADDRESS, 1);
+                ((uint64_t*)mem)[1] = MSR2_DATA;
+                return 0;
+            }
+
+            int handle_vpcu_init(struct crosvm_vcpu *vcpu, struct kvm_regs *regs,
+                                 struct kvm_sregs *sregs)
+            {
+                regs->rcx = MSR1_INDEX;
+                regs->rbx = MSR2_INDEX;
+                sregs->es.base = KILL_ADDRESS;
+
+                struct kvm_msr_entry msr1 = {0};
+                msr1.index = MSR1_INDEX;
+                msr1.data = MSR1_DATA;
+                crosvm_vcpu_set_msrs(vcpu, 1, &msr1);
+
+                return 0;
+            }
+
+            int handle_vpcu_evt(struct crosvm_vcpu *vcpu, struct crosvm_vcpu_event evt) {
+                if (evt.kind == CROSVM_VCPU_EVENT_KIND_IO_ACCESS &&
+                        evt.io_access.address_space == CROSVM_ADDRESS_SPACE_MMIO &&
+                        evt.io_access.address == KILL_ADDRESS &&
+                        evt.io_access.is_write &&
+                        evt.io_access.length == 1 &&
+                        evt.io_access.data[0] == 1)
+                {
+                    uint64_t dummy = 1;
+                    g_msr2.index = MSR2_INDEX;
+                    crosvm_vcpu_get_msrs(vcpu, 1, &g_msr2);
+                    write(g_kill_evt, &dummy, sizeof(dummy));
+                    return 1;
+                }
+                return 0;
+            }
+
+            int check_result(struct crosvm *vcpu, void *mem) {
+                uint64_t msr1_data = ((uint64_t*)mem)[0];
+                if (msr1_data != MSR1_DATA) {
+                    fprintf(stderr, "msr1 has unexpected value: 0x%x\n", msr1_data);
+                    return 1;
+                }
+                if (g_msr2.data != MSR2_DATA) {
+                    fprintf(stderr, "msr2 has unexpected value: 0x%x\n", g_msr2.data);
+                    return 1;
+                }
+                return 0;
+            }"#,
+        ..Default::default()
+    };
+    test_mini_plugin(&mini_plugin);
+}

@@ -206,6 +206,21 @@ message VcpuRequest {
         bytes state = 2;
     }
 
+    message GetMsrs {
+        // The entry data will be returned in the same order as this in the
+        // VcpuResponse::GetMsrs::entry_data array.
+        repeated uint32 entry_indices = 1;
+    }
+
+    message MsrEntry {
+        uint32 index = 1;
+        uint64 data = 2;
+    }
+
+    message SetMsrs {
+        repeated MsrEntry entries = 1;
+    }
+
     // The type of the message is determined by which of these oneof fields is present in the
     // protobuf.
     oneof message {
@@ -213,6 +228,8 @@ message VcpuRequest {
         Resume resume = 2;
         GetState get_state = 3;
         SetState set_state = 4;
+        GetMsrs get_msrs = 5;
+        SetMsrs set_msrs = 6;
     }
 }
 
@@ -257,6 +274,14 @@ message VcpuResponse  {
     message SetState {
     }
 
+    message GetMsrs {
+        // The order of the entry_data values is the same order as the array of indices given in the
+        // corresponding request.
+        repeated uint64 entry_data = 1;
+    }
+
+    message SetMsrs {}
+
     // This is zero on success, and a negative integer on failure.
     sint32 errno = 1;
     // The field present here is always the same as the one present in the corresponding
@@ -266,5 +291,7 @@ message VcpuResponse  {
         Resume resume = 3;
         GetState get_state = 4;
         SetState set_state = 5;
+        GetMsrs get_msrs = 6;
+        SetMsrs set_msrs = 7;
     }
 }

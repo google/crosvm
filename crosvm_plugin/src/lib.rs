@@ -43,7 +43,7 @@ use sys_util::Scm;
 
 use kvm::dirty_log_bitmap_size;
 
-use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs};
+use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msr_entry};
 
 use plugin_proto::*;
 
@@ -692,6 +692,48 @@ impl crosvm_vcpu {
         self.vcpu_transaction(&r)?;
         Ok(())
     }
+
+    fn get_msrs(&mut self, msr_entries: &mut [kvm_msr_entry]) -> result::Result<(), c_int> {
+        let mut r = VcpuRequest::new();
+        {
+            let entry_indices: &mut Vec<u32> = r.mut_get_msrs().mut_entry_indices();
+            for entry in msr_entries.iter() {
+                entry_indices.push(entry.index);
+            }
+        }
+        let response = self.vcpu_transaction(&r)?;
+        if !response.has_get_msrs() {
+            return Err(-EPROTO);
+        }
+        let get_msrs: &VcpuResponse_GetMsrs = response.get_get_msrs();
+        if get_msrs.get_entry_data().len() != msr_entries.len() {
+            return Err(-EPROTO);
+        }
+        for (&msr_data, msr_entry) in
+            get_msrs
+                .get_entry_data()
+                .iter()
+                .zip(msr_entries.iter_mut()) {
+            msr_entry.data = msr_data;
+        }
+        Ok(())
+    }
+
+    fn set_msrs(&mut self, msr_entries: &[kvm_msr_entry]) -> result::Result<(), c_int> {
+        let mut r = VcpuRequest::new();
+        {
+            let set_msrs_entries: &mut RepeatedField<VcpuRequest_MsrEntry> = r.mut_set_msrs()
+                .mut_entries();
+            for msr_entry in msr_entries.iter() {
+                let mut entry = VcpuRequest_MsrEntry::new();
+                entry.index = msr_entry.index;
+                entry.data = msr_entry.data;
+                set_msrs_entries.push(entry);
+            }
+        }
+        self.vcpu_transaction(&r)?;
+        Ok(())
+    }
 }
 
 #[no_mangle]
@@ -931,6 +973,32 @@ pub unsafe extern "C" fn crosvm_vcpu_set_debugregs(this: *mut crosvm_vcpu,
     let this = &mut *this;
     let dregs = from_raw_parts(dregs as *mut u8, size_of::<kvm_debugregs>());
     match this.set_state(VcpuRequest_StateSet::DEBUGREGS, dregs) {
+        Ok(_) => 0,
+        Err(e) => e,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_get_msrs(this: *mut crosvm_vcpu,
+                                              msr_count: u32,
+                                              msr_entries: *mut kvm_msr_entry)
+                                              -> c_int {
+    let this = &mut *this;
+    let msr_entries = from_raw_parts_mut(msr_entries, msr_count as usize);
+    match this.get_msrs(msr_entries) {
+        Ok(_) => 0,
+        Err(e) => e,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_set_msrs(this: *mut crosvm_vcpu,
+                                              msr_count: u32,
+                                              msr_entries: *const kvm_msr_entry)
+                                              -> c_int {
+    let this = &mut *this;
+    let msr_entries = from_raw_parts(msr_entries, msr_count as usize);
+    match this.set_msrs(msr_entries) {
         Ok(_) => 0,
         Err(e) => e,
     }

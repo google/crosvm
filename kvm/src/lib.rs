@@ -830,6 +830,41 @@ impl Vcpu {
         Ok(())
     }
 
+    /// X86 specific call to get the MSRS
+    ///
+    /// See the documentation for KVM_SET_MSRS.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_msrs(&self, msr_entries: &mut [kvm_msr_entry]) -> Result<()> {
+        let vec_size_bytes = size_of::<kvm_msrs>() +
+                             (msr_entries.len() * size_of::<kvm_msr_entry>());
+        let vec: Vec<u8> = vec![0; vec_size_bytes];
+        let msrs: &mut kvm_msrs = unsafe {
+            // Converting the vector's memory to a struct is unsafe.  Carefully using the read-only
+            // vector to size and set the members ensures no out-of-bounds erros below.
+            &mut *(vec.as_ptr() as *mut kvm_msrs)
+        };
+        unsafe {
+            // Mapping the unsized array to a slice is unsafe becase the length isn't known.
+            // Providing the length used to create the struct guarantees the entire slice is valid.
+            let entries: &mut [kvm_msr_entry] = msrs.entries.as_mut_slice(msr_entries.len());
+            entries.copy_from_slice(&msr_entries);
+        }
+        msrs.nmsrs = msr_entries.len() as u32;
+        let ret = unsafe {
+            // Here we trust the kernel not to read or write past the end of the kvm_msrs struct.
+            ioctl_with_ref(self, KVM_GET_MSRS(), msrs)
+        };
+        if ret < 0 {
+            // KVM_SET_MSRS actually returns the number of msr entries written.
+            return errno_result();
+        }
+        unsafe {
+            let entries: &mut [kvm_msr_entry] = msrs.entries.as_mut_slice(msr_entries.len());
+            msr_entries.copy_from_slice(&entries);
+        }
+        Ok(())
+    }
+
     /// X86 specific call to setup the MSRS
     ///
     /// See the documentation for KVM_SET_MSRS.
@@ -1181,6 +1216,24 @@ mod tests {
         vcpu.set_debugregs(&dregs).unwrap();
         let dregs2 = vcpu.get_debugregs().unwrap();
         assert_eq!(dregs.dr7, dregs2.dr7);
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn get_msrs() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        let vcpu = Vcpu::new(0, &kvm, &vm).unwrap();
+        vcpu.get_msrs(&mut [kvm_msr_entry {
+                                index: 0x0000011e,
+                                ..Default::default()
+                            },
+                            kvm_msr_entry {
+                                index: 0x000003f1,
+                                ..Default::default()
+                            }])
+            .unwrap();
     }
 
     #[test]

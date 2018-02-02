@@ -6,6 +6,7 @@ use std::cell::{Cell, RefCell};
 use std::cmp::min;
 use std::cmp::{self, Ord, PartialOrd, PartialEq};
 use std::collections::btree_set::BTreeSet;
+use std::mem::size_of;
 use std::os::unix::net::UnixDatagram;
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -16,7 +17,7 @@ use protobuf::Message;
 
 use data_model::DataInit;
 use kvm::Vcpu;
-use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs};
+use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msrs, kvm_msr_entry};
 use plugin_proto::*;
 
 use super::*;
@@ -404,6 +405,49 @@ impl PluginVcpu {
             response.mut_set_state();
             let set_state = request.get_set_state();
             set_vcpu_state(vcpu, set_state.set, set_state.get_state())
+        } else if request.has_get_msrs() {
+            let entry_data = &mut response.mut_get_msrs().entry_data;
+            let entry_indices = &request.get_get_msrs().entry_indices;
+            let mut msr_entries = Vec::with_capacity(entry_indices.len());
+            for &index in entry_indices {
+                msr_entries.push(kvm_msr_entry {
+                                     index,
+                                     ..Default::default()
+                                 });
+            }
+            match vcpu.get_msrs(&mut msr_entries) {
+                Ok(()) => {
+                    for msr_entry in msr_entries {
+                        entry_data.push(msr_entry.data);
+                    }
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
+        } else if request.has_set_msrs() {
+            response.mut_set_msrs();
+            let request_entries = &request.get_set_msrs().entries;
+            let vec_size_bytes = size_of::<kvm_msrs>() +
+                                 (request_entries.len() * size_of::<kvm_msr_entry>());
+            let vec: Vec<u8> = vec![0; vec_size_bytes];
+            let kvm_msrs: &mut kvm_msrs = unsafe {
+                // Converting the vector's memory to a struct is unsafe.  Carefully using the read-
+                // only vector to size and set the members ensures no out-of-bounds erros below.
+                &mut *(vec.as_ptr() as *mut kvm_msrs)
+            };
+            unsafe {
+                // Mapping the unsized array to a slice is unsafe becase the length isn't known.
+                // Providing the length used to create the struct guarantees the entire slice is
+                // valid.
+                let kvm_msr_entries: &mut [kvm_msr_entry] =
+                    kvm_msrs.entries.as_mut_slice(request_entries.len());
+                for (msr_entry, entry) in kvm_msr_entries.iter_mut().zip(request_entries.iter()) {
+                    msr_entry.index = entry.index;
+                    msr_entry.data = entry.data;
+                }
+            }
+            kvm_msrs.nmsrs = request_entries.len() as u32;
+            vcpu.set_msrs(&kvm_msrs)
         } else {
             Err(SysError::new(-ENOTTY))
         };
