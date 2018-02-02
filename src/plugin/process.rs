@@ -288,7 +288,8 @@ impl Process {
                      offset: u64,
                      start: u64,
                      length: u64,
-                     read_only: bool)
+                     read_only: bool,
+                     dirty_log: bool)
                      -> SysResult<()> {
         let shm = SharedMemory::from_raw_fd(memfd)?;
         // Checking the seals ensures the plugin process won't shrink the mmapped file, causing us
@@ -305,7 +306,7 @@ impl Process {
         }
         let mem = MemoryMapping::from_fd_offset(&shm, length as usize, offset as usize)
             .map_err(mmap_to_sys_err)?;
-        let slot = vm.add_device_memory(GuestAddress(start), mem, read_only, true)?;
+        let slot = vm.add_device_memory(GuestAddress(start), mem, read_only, dirty_log)?;
         entry.insert(PluginObject::Memory {
                          slot,
                          length: length as usize,
@@ -423,7 +424,8 @@ impl Process {
                                                     memory.offset,
                                                     memory.start,
                                                     memory.length,
-                                                    memory.read_only)
+                                                    memory.read_only,
+                                                    memory.dirty_log)
                             }
                             None => Err(SysError::new(-EBADF)),
                         }

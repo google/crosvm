@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
     memcpy(mem + LOAD_ADDRESS, code, sizeof(code));
 
     struct crosvm_memory *mem_obj;
-    ret = crosvm_create_memory(crosvm, mem_fd, 0, mem_size, 0, false, &mem_obj);
+    ret = crosvm_create_memory(crosvm, mem_fd, 0, mem_size, 0, false, false, &mem_obj);
     if (ret) {
         fprintf(stderr, "failed to create memory in crosvm: %d\n", ret);
         return 1;

@@ -433,7 +433,8 @@ impl crosvm_memory {
               offset: u64,
               length: u64,
               start: u64,
-              read_only: bool)
+              read_only: bool,
+              dirty_log: bool)
               -> result::Result<crosvm_memory, c_int> {
         const PAGE_MASK: u64 = 0x0fff;
         if offset & PAGE_MASK != 0 || length & PAGE_MASK != 0 {
@@ -449,6 +450,7 @@ impl crosvm_memory {
             memory.start = start;
             memory.length = length;
             memory.read_only = read_only;
+            memory.dirty_log = dirty_log;
         }
         let ret = match crosvm.main_transaction(&r, &[fd]) {
             Ok(_) => return Ok(crosvm_memory { id, length }),
@@ -471,7 +473,7 @@ impl crosvm_memory {
 
 impl_ctor_dtor!(
     crosvm_memory,
-    crosvm_create_memory(fd: c_int, offset: u64, length: u64, start: u64, read_only: bool),
+    crosvm_create_memory(fd: c_int, offset: u64, length: u64, start: u64, read_only: bool, dirty_log: bool),
     crosvm_destroy_memory,
 );
 

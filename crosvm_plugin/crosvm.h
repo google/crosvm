@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 7
+#define CROSVM_API_MINOR 8
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -236,10 +236,14 @@ int crosvm_io_event_fd(struct crosvm_io*);
  *
  * If |read_only| is true, attempts by the guest to write to this memory region
  * will trigger an IO access exit.
+ *
+ * To use the `crosvm_memory_get_dirty_log` method with the returned object,
+ * |__dirty_log| must be true.
  */
 int crosvm_create_memory(struct crosvm*, int __fd, uint64_t __offset,
                          uint64_t __length, uint64_t __start,
-                         bool __read_only, struct crosvm_memory**);
+                         bool __read_only, bool __dirty_log,
+                         struct crosvm_memory**);
 
 /*
  * Destroys the given shared memory and unregisters it from guest physical
