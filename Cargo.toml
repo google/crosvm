@@ -17,6 +17,7 @@ devices = { path = "devices" }
 io_jail = { path = "io_jail" }
 kvm = { path = "kvm" }
 sys_util = { path = "sys_util" }
+kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
 libc = "=0.2.34"
 byteorder = "=1.1.0"

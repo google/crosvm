@@ -11,6 +11,7 @@ extern crate kvm;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 extern crate x86_64;
 extern crate kernel_loader;
+extern crate kernel_cmdline;
 extern crate byteorder;
 extern crate net_util;
 extern crate qcow;
@@ -21,7 +22,6 @@ extern crate vm_control;
 extern crate data_model;
 
 pub mod argument;
-pub mod kernel_cmdline;
 pub mod device_manager;
 pub mod linux;
 

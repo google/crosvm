@@ -21,6 +21,7 @@ dependencies = [
  "data_model 0.1.0",
  "devices 0.1.0",
  "io_jail 0.1.0",
+ "kernel_cmdline 0.1.0",
  "kernel_loader 0.1.0",
  "kvm 0.1.0",
  "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -75,6 +76,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "io_jail"
+version = "0.1.0"
+dependencies = [
+ "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "kernel_cmdline"
 version = "0.1.0"
 dependencies = [
  "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",

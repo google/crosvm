@@ -1,0 +1,9 @@
+[package]
+name = "kernel_cmdline"
+version = "0.1.0"
+
+[dependencies]
+libc = "*"
+
+[lib]
+path = "src/kernel_cmdline.rs"
