@@ -474,9 +474,32 @@ impl Vm {
         }
     }
 
-    /// Unregisters an event that was previously registered with `register_irqfd`.
+    /// Registers an event that will, when signalled, trigger the `gsi` irq, and `resample_evt` will
+    /// get triggered when the irqchip is resampled.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64"))]
+    pub fn register_irqfd_resample(&self,
+                                   evt: &EventFd,
+                                   resample_evt: &EventFd,
+                                   gsi: u32)
+                                   -> Result<()> {
+        let irqfd = kvm_irqfd {
+            flags: KVM_IRQFD_FLAG_RESAMPLE,
+            fd: evt.as_raw_fd() as u32,
+            resamplefd: resample_evt.as_raw_fd() as u32,
+            gsi: gsi,
+            ..Default::default()
+        };
+        // Safe because we know that our file is a VM fd, we know the kernel will only read the
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_IRQFD(), &irqfd) };
+        if ret == 0 { Ok(()) } else { errno_result() }
+    }
+
+    /// Unregisters an event that was previously registered with
+    /// `register_irqfd`/`register_irqfd_resample`.
     ///
-    /// The `evt` and `gsi` pair must be the same as the ones passed into `register_irqfd`.
+    /// The `evt` and `gsi` pair must be the same as the ones passed into
+    /// `register_irqfd`/`register_irqfd_resample`.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64"))]
     pub fn unregister_irqfd(&self, evt: &EventFd, gsi: u32) -> Result<()> {
         let irqfd = kvm_irqfd {
@@ -1059,6 +1082,19 @@ mod tests {
         vm.unregister_irqfd(&evtfd1, 4).unwrap();
         vm.unregister_irqfd(&evtfd2, 8).unwrap();
         vm.unregister_irqfd(&evtfd3, 4).unwrap();
+    }
+
+    #[test]
+    fn irqfd_resample() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        let evtfd1 = EventFd::new().unwrap();
+        let evtfd2 = EventFd::new().unwrap();
+        vm.register_irqfd_resample(&evtfd1, &evtfd2, 4).unwrap();
+        vm.unregister_irqfd(&evtfd1, 4).unwrap();
+        // Ensures the ioctl is actually reading the resamplefd.
+        vm.register_irqfd_resample(&evtfd1, unsafe { &EventFd::from_raw_fd(-1) }, 4).unwrap_err();
     }
 
     #[test]
