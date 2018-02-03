@@ -4,7 +4,7 @@
 
 use std::mem;
 use std::fs::File;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 use libc::{read, write, eventfd, dup, c_void};
 
@@ -88,6 +88,12 @@ impl FromRawFd for EventFd {
         EventFd {
             eventfd: File::from_raw_fd(fd)
         }
+    }
+}
+
+impl IntoRawFd for EventFd {
+    fn into_raw_fd(self) -> RawFd {
+        self.eventfd.into_raw_fd()
     }
 }
 
