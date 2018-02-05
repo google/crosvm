@@ -314,7 +314,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
 }
 
 
-fn run_vm(args: std::env::Args) -> i32 {
+fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
     let arguments =
         &[Argument::positional("KERNEL", "bzImage of kernel to run"),
           Argument::short_value('p',
@@ -387,28 +387,35 @@ fn run_vm(args: std::env::Args) -> i32 {
         }
         Ok(()) => {
             match linux::run_config(cfg) {
-                Ok(_) => info!("crosvm has exited normally"),
+                Ok(_) => {
+                    info!("crosvm has exited normally");
+                    Ok(())
+                }
                 Err(e) => {
                     error!("{}", e);
-                    return 1;
+                    Err(())
                 }
             }
         }
-        Err(argument::Error::PrintHelp) => print_help("crosvm run", "KERNEL", &arguments[..]),
+        Err(argument::Error::PrintHelp) => {
+            print_help("crosvm run", "KERNEL", &arguments[..]);
+            Ok(())
+        }
         Err(e) => {
             println!("{}", e);
-            return 1;
+            Err(())
         }
     }
-    0
 }
 
-fn stop_vms(args: std::env::Args) {
+fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
     let mut scm = Scm::new(1);
     if args.len() == 0 {
         print_help("crosvm stop", "VM_SOCKET...", &[]);
         println!("Stops the crosvm instance listening on each `VM_SOCKET` given.");
     }
+
+    let mut return_result = Ok(());
     for socket_path in args {
         match UnixDatagram::unbound().and_then(|s| {
                                                    s.connect(&socket_path)?;
@@ -421,12 +428,17 @@ fn stop_vms(args: std::env::Args) {
                            e);
                 }
             }
-            Err(e) => error!("failed to connect to socket at '{}': {}", socket_path, e),
+            Err(e) => {
+                error!("failed to connect to socket at '{}': {}", socket_path, e);
+                return_result = Err(());;
+            }
         }
     }
+
+    return_result
 }
 
-fn balloon_vms(mut args: std::env::Args) {
+fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     let mut scm = Scm::new(1);
     if args.len() < 2 {
         print_help("crosvm balloon", "PAGE_ADJUST VM_SOCKET...", &[]);
@@ -436,10 +448,11 @@ fn balloon_vms(mut args: std::env::Args) {
         Ok(n) => n,
         Err(_) => {
             error!("Failed to parse number of pages");
-            return;
+            return Err(());
         },
     };
 
+    let mut return_result = Ok(());
     for socket_path in args {
         match UnixDatagram::unbound().and_then(|s| {
                                                    s.connect(&socket_path)?;
@@ -452,9 +465,14 @@ fn balloon_vms(mut args: std::env::Args) {
                            e);
                 }
             }
-            Err(e) => error!("failed to connect to socket at '{}': {}", socket_path, e),
+            Err(e) => {
+                error!("failed to connect to socket at '{}': {}", socket_path, e);
+                return_result = Err(());
+            }
         }
     }
+
+    return_result
 }
 
 fn print_usage() {
@@ -464,38 +482,39 @@ fn print_usage() {
     println!("    run  - Start a new crosvm instance.");
 }
 
-fn main() {
+fn crosvm_main() -> std::result::Result<(), ()> {
     if let Err(e) = syslog::init() {
         println!("failed to initiailize syslog: {:?}", e);
-        std::process::exit(1);
+        return Err(());
     }
 
     let mut args = std::env::args();
     if args.next().is_none() {
         error!("expected executable name");
-        std::process::exit(1);
+        return Err(());
     }
 
     // Past this point, usage of exit is in danger of leaking zombie processes.
-
-    let mut exit_code = 0;
-    match args.next().as_ref().map(|a| a.as_ref()) {
-        None => print_usage(),
+    let ret = match args.next().as_ref().map(|a| a.as_ref()) {
+        None => {
+            print_usage();
+            Ok(())
+        }
         Some("stop") => {
-            stop_vms(args);
+            stop_vms(args)
         }
         Some("run") => {
-            exit_code = run_vm(args);
+            run_vm(args)
         }
         Some("balloon") => {
-            balloon_vms(args);
+            balloon_vms(args)
         }
         Some(c) => {
-            exit_code = 1;
             println!("invalid subcommand: {:?}", c);
             print_usage();
+            Err(())
         }
-    }
+    };
 
     // Reap exit status from any child device processes. At this point, all devices should have been
     // dropped in the main process and told to shutdown. Try over a period of 100ms, since it may
@@ -511,5 +530,9 @@ fn main() {
 
     // WARNING: Any code added after this point is not guaranteed to run
     // since we may forcibly kill this process (and its children) above.
-    std::process::exit(exit_code);
+    ret
+}
+
+fn main() {
+    std::process::exit(if crosvm_main().is_ok() { 0 } else { 1 });
 }
