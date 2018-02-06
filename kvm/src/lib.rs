@@ -35,16 +35,20 @@ fn errno_result<T>() -> Result<T> {
 
 unsafe fn set_user_memory_region<F: AsRawFd>(fd: &F,
                                              slot: u32,
+                                             read_only: bool,
                                              log_dirty_pages: bool,
                                              guest_addr: u64,
                                              memory_size: u64,
                                              userspace_addr: u64)
                                              -> Result<()> {
-    let flags = if log_dirty_pages {
-        KVM_MEM_LOG_DIRTY_PAGES
+    let mut flags = if read_only {
+        KVM_MEM_READONLY
     } else {
         0
     };
+    if log_dirty_pages {
+        flags |= KVM_MEM_LOG_DIRTY_PAGES;
+    }
     let region = kvm_userspace_memory_region {
         slot: slot,
         flags,
@@ -201,7 +205,7 @@ impl Vm {
             guest_mem.with_regions(|index, guest_addr, size, host_addr| {
                 unsafe {
                     // Safe because the guest regions are guaranteed not to overlap.
-                    set_user_memory_region(&vm_file, index as u32, false,
+                    set_user_memory_region(&vm_file, index as u32, false, false,
                         guest_addr.offset() as u64,
                         size as u64,
                         host_addr as u64)
@@ -228,11 +232,15 @@ impl Vm {
     /// Note that memory inserted into the VM's address space must not overlap with any other memory
     /// slot's region.
     ///
+    /// If `read_only` is true, the guest will be able to read the memory as normal, but attempts to
+    /// write will trigger a mmio VM exit, leaving the memory untouched.
+    ///
     /// If `log_dirty_pages` is true, the slot number can be used to retrieve the pages written to
     /// by the guest with `get_dirty_log`.
     pub fn add_device_memory(&mut self,
                              guest_addr: GuestAddress,
                              mem: MemoryMapping,
+                             read_only: bool,
                              log_dirty_pages: bool)
                              -> Result<u32> {
         if guest_addr < self.guest_mem.end_addr() {
@@ -254,7 +262,7 @@ impl Vm {
         // this. We take ownership of the memory mapping so that it won't be unmapped until the slot
         // is removed.
         unsafe {
-            set_user_memory_region(&self.vm, slot, log_dirty_pages,
+            set_user_memory_region(&self.vm, slot, read_only, log_dirty_pages,
                                         guest_addr.offset() as u64,
                                         mem.size() as u64,
                                         mem.as_ptr() as u64)?;
@@ -272,7 +280,7 @@ impl Vm {
             Entry::Occupied(entry) => {
                 // Safe because the slot is checked against the list of device memory slots.
                 unsafe {
-                    set_user_memory_region(&self.vm, slot, false, 0, 0, 0)?;
+                    set_user_memory_region(&self.vm, slot, false, false, 0, 0, 0)?;
                 }
                 // Because `mem_slot_gaps` is a max-heap, but we want to pop the min slots, we
                 // negate the slot value before insertion.
@@ -937,7 +945,17 @@ mod tests {
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMapping::new(mem_size).unwrap();
-        vm.add_device_memory(GuestAddress(0x1000), mem, false).unwrap();
+        vm.add_device_memory(GuestAddress(0x1000), mem, false, false).unwrap();
+    }
+
+    #[test]
+    fn add_memory_ro() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let mut vm = Vm::new(&kvm, gm).unwrap();
+        let mem_size = 0x1000;
+        let mem = MemoryMapping::new(mem_size).unwrap();
+        vm.add_device_memory(GuestAddress(0x1000), mem, true, false).unwrap();
     }
 
     #[test]
@@ -948,7 +966,7 @@ mod tests {
         let mem_size = 0x1000;
         let mem = MemoryMapping::new(mem_size).unwrap();
         let mem_ptr = mem.as_ptr();
-        let slot = vm.add_device_memory(GuestAddress(0x1000), mem, false).unwrap();
+        let slot = vm.add_device_memory(GuestAddress(0x1000), mem, false, false).unwrap();
         let mem = vm.remove_device_memory(slot).unwrap();
         assert_eq!(mem.size(), mem_size);
         assert_eq!(mem.as_ptr(), mem_ptr);
@@ -969,7 +987,7 @@ mod tests {
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x2000;
         let mem = MemoryMapping::new(mem_size).unwrap();
-        assert!(vm.add_device_memory(GuestAddress(0x2000), mem, false).is_err());
+        assert!(vm.add_device_memory(GuestAddress(0x2000), mem, false, false).is_err());
     }
 
     #[test]

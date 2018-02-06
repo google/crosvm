@@ -49,6 +49,7 @@ fn test_run() {
     let slot = vm.add_device_memory(GuestAddress(0),
         MemoryMapping::from_fd(&mem, mem_size as usize)
             .expect("failed to create memory mapping"),
+        false,
         true)
         .expect("failed to register memory");
 
