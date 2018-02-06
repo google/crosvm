@@ -394,7 +394,7 @@ impl<'a, T: DataInit> VolatileRef<'a, T> {
     /// # use std::mem::size_of;
     /// # use data_model::VolatileRef;
     ///   let v_ref = unsafe { VolatileRef::new(0 as *mut u32) };
-    ///   assert_eq!(v_ref.size(), size_of::<u32>());
+    ///   assert_eq!(v_ref.size(), size_of::<u32>() as u64);
     /// ```
     pub fn size(&self) -> u64 {
         size_of::<T>() as u64
