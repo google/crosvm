@@ -433,7 +433,6 @@ mod tests {
 
     #[test]
     fn slice_overflow_error() {
-        use std::usize;
         let m = MemoryMapping::new(5).unwrap();
         let res = m.get_slice(std::u64::MAX, 3).unwrap_err();
         assert_eq!(res,
