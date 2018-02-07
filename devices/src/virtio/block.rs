@@ -82,9 +82,9 @@ fn sector(mem: &GuestMemory, desc_addr: GuestAddress) -> result::Result<u64, Par
 #[derive(Debug)]
 enum ExecuteError {
     Flush(io::Error),
-    Read(GuestMemoryError),
+    Read(GuestAddress, u32, GuestMemoryError),
     Seek(io::Error),
-    Write(GuestMemoryError),
+    Write(GuestAddress, u32, GuestMemoryError),
     Unsupported(u32),
 }
 
@@ -92,9 +92,9 @@ impl ExecuteError {
     fn status(&self) -> u8 {
         match self {
             &ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::Read(_) => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::Read(_, _, _) => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Seek(_) => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::Write(_) => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::Write(_, _, _) => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
         }
     }
@@ -161,12 +161,12 @@ impl Request {
         match self.request_type {
             RequestType::In => {
                 mem.read_to_memory(self.data_addr, disk, self.data_len as usize)
-                    .map_err(ExecuteError::Read)?;
+                    .map_err(|e| ExecuteError::Read(self.data_addr, self.data_len, e))?;
                 return Ok(self.data_len);
             }
             RequestType::Out => {
                 mem.write_from_memory(self.data_addr, disk, self.data_len as usize)
-                    .map_err(ExecuteError::Write)?;
+                    .map_err(|e| ExecuteError::Write(self.data_addr, self.data_len, e))?;
             }
             RequestType::Flush => disk.flush().map_err(ExecuteError::Flush)?,
             RequestType::Unsupported(t) => return Err(ExecuteError::Unsupported(t)),
