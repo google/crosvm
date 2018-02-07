@@ -374,3 +374,128 @@ fn test_msrs() {
     };
     test_mini_plugin(&mini_plugin);
 }
+
+#[test]
+fn test_cpuid() {
+    let mini_plugin = MiniPlugin {
+        assembly_src: "org 0x1000
+             bits 16
+             push eax
+             push ecx
+             cpuid
+             mov [0x0], eax
+             mov [0x4], ebx
+             mov [0x8], ecx
+             mov [0xc], edx
+             pop ecx
+             pop eax
+             add ecx, 1
+             cpuid
+             mov [0x10], eax
+             mov [0x14], ebx
+             mov [0x18], ecx
+             mov [0x1c], edx
+             mov byte [es:0], 1",
+        src: r#"
+            #define ENTRY1_INDEX 0
+            #define ENTRY1_EAX 0x40414243
+            #define ENTRY1_EBX 0x50515253
+            #define ENTRY1_ECX 0x60616263
+            #define ENTRY1_EDX 0x71727374
+            #define ENTRY2_INDEX 1
+            #define ENTRY2_EAX 0xAABBCCDD
+            #define ENTRY2_EBX 0xEEFF0011
+            #define ENTRY2_ECX 0x22334455
+            #define ENTRY2_EDX 0x66778899
+            #define KILL_ADDRESS 0x3000
+
+            int g_kill_evt;
+            struct kvm_msr_entry g_msr2;
+
+            int setup_vm(struct crosvm *crosvm, void *mem) {
+                g_kill_evt = crosvm_get_shutdown_eventfd(crosvm);
+                crosvm_reserve_range(crosvm, CROSVM_ADDRESS_SPACE_MMIO, KILL_ADDRESS, 1);
+                return 0;
+            }
+
+            int handle_vpcu_init(struct crosvm_vcpu *vcpu, struct kvm_regs *regs,
+                                 struct kvm_sregs *sregs)
+            {
+                regs->rax = ENTRY1_INDEX;
+                regs->rcx = 0;
+                regs->rsp = 0x1000;
+                sregs->es.base = KILL_ADDRESS;
+
+                struct kvm_cpuid_entry2 entries[2];
+                entries[0].function = 0;
+                entries[0].index = ENTRY1_INDEX;
+                entries[0].flags = KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
+                entries[0].eax = ENTRY1_EAX;
+                entries[0].ebx = ENTRY1_EBX;
+                entries[0].ecx = ENTRY1_ECX;
+                entries[0].edx = ENTRY1_EDX;
+                entries[1].function = 0;
+                entries[1].index = ENTRY2_INDEX;
+                entries[1].flags = KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
+                entries[1].eax = ENTRY2_EAX;
+                entries[1].ebx = ENTRY2_EBX;
+                entries[1].ecx = ENTRY2_ECX;
+                entries[1].edx = ENTRY2_EDX;
+                return crosvm_vcpu_set_cpuid(vcpu, 2, entries);
+            }
+
+            int handle_vpcu_evt(struct crosvm_vcpu *vcpu, struct crosvm_vcpu_event evt) {
+                if (evt.kind == CROSVM_VCPU_EVENT_KIND_IO_ACCESS &&
+                        evt.io_access.address_space == CROSVM_ADDRESS_SPACE_MMIO &&
+                        evt.io_access.address == KILL_ADDRESS &&
+                        evt.io_access.is_write &&
+                        evt.io_access.length == 1 &&
+                        evt.io_access.data[0] == 1)
+                {
+                    uint64_t dummy = 1;
+                    write(g_kill_evt, &dummy, sizeof(dummy));
+                    return 1;
+                }
+                return 0;
+            }
+
+            int check_result(struct crosvm *vcpu, void *memory) {
+                uint32_t *mem = (uint32_t*)memory;
+                if (mem[0] != ENTRY1_EAX) {
+                    fprintf(stderr, "entry 1 eax has unexpected value: 0x%x\n", mem[0]);
+                    return 1;
+                }
+                if (mem[1] != ENTRY1_EBX) {
+                    fprintf(stderr, "entry 1 ebx has unexpected value: 0x%x\n", mem[1]);
+                    return 1;
+                }
+                if (mem[2] != ENTRY1_ECX) {
+                    fprintf(stderr, "entry 1 ecx has unexpected value: 0x%x\n", mem[2]);
+                    return 1;
+                }
+                if (mem[3] != ENTRY1_EDX) {
+                    fprintf(stderr, "entry 1 edx has unexpected value: 0x%x\n", mem[3]);
+                    return 1;
+                }
+                if (mem[4] != ENTRY2_EAX) {
+                    fprintf(stderr, "entry 2 eax has unexpected value: 0x%x\n", mem[4]);
+                    return 1;
+                }
+                if (mem[5] != ENTRY2_EBX) {
+                    fprintf(stderr, "entry 2 ebx has unexpected value: 0x%x\n", mem[5]);
+                    return 1;
+                }
+                if (mem[6] != ENTRY2_ECX) {
+                    fprintf(stderr, "entry 2 ecx has unexpected value: 0x%x\n", mem[6]);
+                    return 1;
+                }
+                if (mem[7] != ENTRY2_EDX) {
+                    fprintf(stderr, "entry 2 edx has unexpected value: 0x%x\n", mem[7]);
+                    return 1;
+                }
+                return 0;
+            }"#,
+        ..Default::default()
+    };
+    test_mini_plugin(&mini_plugin);
+}

@@ -16,8 +16,9 @@ use protobuf;
 use protobuf::Message;
 
 use data_model::DataInit;
-use kvm::Vcpu;
-use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msrs, kvm_msr_entry};
+use kvm::{Vcpu, CpuId};
+use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msrs, kvm_msr_entry,
+              KVM_CPUID_FLAG_SIGNIFCANT_INDEX};
 use plugin_proto::*;
 
 use super::*;
@@ -448,6 +449,26 @@ impl PluginVcpu {
             }
             kvm_msrs.nmsrs = request_entries.len() as u32;
             vcpu.set_msrs(&kvm_msrs)
+        } else if request.has_set_cpuid() {
+            response.mut_set_cpuid();
+            let request_entries = &request.get_set_cpuid().entries;
+            let mut cpuid = CpuId::new(request_entries.len());
+            {
+                let cpuid_entries = cpuid.mut_entries_slice();
+                for (request_entry, cpuid_entry) in
+                    request_entries.iter().zip(cpuid_entries.iter_mut()) {
+                    cpuid_entry.function = request_entry.function;
+                    if request_entry.has_index {
+                        cpuid_entry.index = request_entry.index;
+                        cpuid_entry.flags = KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
+                    }
+                    cpuid_entry.eax = request_entry.eax;
+                    cpuid_entry.ebx = request_entry.ebx;
+                    cpuid_entry.ecx = request_entry.ecx;
+                    cpuid_entry.edx = request_entry.edx;
+                }
+            }
+            vcpu.set_cpuid2(&cpuid)
         } else {
             Err(SysError::new(-ENOTTY))
         };

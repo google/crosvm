@@ -14,6 +14,16 @@ enum AddressSpace {
     MMIO = 1;
  }
 
+message CpuidEntry  {
+    uint32 function = 1;
+    bool has_index = 3;
+    uint32 index = 4;
+    uint32 eax = 5;
+    uint32 ebx = 6;
+    uint32 ecx = 7;
+    uint32 edx = 8;
+}
+
 // A request made to the crosvm main process that affects the global aspects of the VM.
 message MainRequest {
     // Every message under the Create namespace will instantiate an object with the given ID. The
@@ -224,6 +234,10 @@ message VcpuRequest {
         repeated MsrEntry entries = 1;
     }
 
+    message SetCpuid {
+        repeated CpuidEntry entries = 1;
+    }
+
     // The type of the message is determined by which of these oneof fields is present in the
     // protobuf.
     oneof message {
@@ -233,6 +247,7 @@ message VcpuRequest {
         SetState set_state = 4;
         GetMsrs get_msrs = 5;
         SetMsrs set_msrs = 6;
+        SetCpuid set_cpuid = 7;
     }
 }
 
@@ -285,6 +300,8 @@ message VcpuResponse  {
 
     message SetMsrs {}
 
+    message SetCpuid {}
+
     // This is zero on success, and a negative integer on failure.
     sint32 errno = 1;
     // The field present here is always the same as the one present in the corresponding
@@ -296,5 +313,6 @@ message VcpuResponse  {
         SetState set_state = 5;
         GetMsrs get_msrs = 6;
         SetMsrs set_msrs = 7;
+        SetCpuid set_cpuid = 8;
     }
 }

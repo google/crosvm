@@ -43,7 +43,8 @@ use sys_util::Scm;
 
 use kvm::dirty_log_bitmap_size;
 
-use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msr_entry};
+use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msr_entry, kvm_cpuid_entry2,
+              KVM_CPUID_FLAG_SIGNIFCANT_INDEX};
 
 use plugin_proto::*;
 
@@ -736,6 +737,26 @@ impl crosvm_vcpu {
         self.vcpu_transaction(&r)?;
         Ok(())
     }
+
+    fn set_cpuid(&mut self, cpuid_entries: &[kvm_cpuid_entry2]) -> result::Result<(), c_int> {
+        let mut r = VcpuRequest::new();
+        {
+            let set_cpuid_entries: &mut RepeatedField<CpuidEntry> = r.mut_set_cpuid().mut_entries();
+            for cpuid_entry in cpuid_entries.iter() {
+                let mut entry = CpuidEntry::new();
+                entry.function = cpuid_entry.function;
+                entry.has_index = cpuid_entry.flags & KVM_CPUID_FLAG_SIGNIFCANT_INDEX != 0;
+                entry.index = cpuid_entry.index;
+                entry.eax = cpuid_entry.eax;
+                entry.ebx = cpuid_entry.ebx;
+                entry.ecx = cpuid_entry.ecx;
+                entry.edx = cpuid_entry.edx;
+                set_cpuid_entries.push(entry);
+            }
+        }
+        self.vcpu_transaction(&r)?;
+        Ok(())
+    }
 }
 
 #[no_mangle]
@@ -1001,6 +1022,19 @@ pub unsafe extern "C" fn crosvm_vcpu_set_msrs(this: *mut crosvm_vcpu,
     let this = &mut *this;
     let msr_entries = from_raw_parts(msr_entries, msr_count as usize);
     match this.set_msrs(msr_entries) {
+        Ok(_) => 0,
+        Err(e) => e,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_set_cpuid(this: *mut crosvm_vcpu,
+                                               cpuid_count: u32,
+                                               cpuid_entries: *const kvm_cpuid_entry2)
+                                               -> c_int {
+    let this = &mut *this;
+    let cpuid_entries = from_raw_parts(cpuid_entries, cpuid_count as usize);
+    match this.set_cpuid(cpuid_entries) {
         Ok(_) => 0,
         Err(e) => e,
     }
