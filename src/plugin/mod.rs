@@ -283,52 +283,21 @@ impl PluginObject {
     }
 }
 
-/// Run a VM with a plugin process specified by `cfg`.
-///
-/// Not every field of `cfg` will be used. In particular, most field that pertain to a specific
-/// device are ignored because the plugin is responsible for emulating hardware.
-pub fn run_config(cfg: Config) -> Result<()> {
-    info!("crosvm starting plugin process");
-
-    // Masking signals is inherently dangerous, since this can persist across clones/execs. Do this
-    // before any jailed devices have been spawned, so that we can catch any of them that fail very
-    // quickly.
-    let sigchld_fd = SignalFd::new(SIGCHLD).map_err(Error::CreateSignalFd)?;
-
-    let jail = if cfg.multiprocess {
-        // An empty directory for jailed plugin pivot root.
-        let empty_root_path = Path::new("/var/empty");
-        if !empty_root_path.exists() {
-            return Err(Error::NoVarEmpty);
-        }
-
-        let policy_path = cfg.seccomp_policy_dir.join("plugin.policy");
-        let jail = create_plugin_jail(empty_root_path, &policy_path)?;
-        Some(jail)
-    } else {
-        None
-    };
-
-    let plugin_args: Vec<&str> = cfg.params.iter().map(|s| &s[..]).collect();
-
-    let plugin_path = cfg.plugin.as_ref().unwrap().as_path();
-    let vcpu_count = cfg.vcpu_count.unwrap_or(1);
-    let mem = GuestMemory::new(&[]).unwrap();
-    let kvm = Kvm::new().map_err(Error::CreateKvm)?;
-    let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
-    vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
-    let mut plugin = Process::new(vcpu_count, &mut vm, plugin_path, &plugin_args, jail)?;
-
-    let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
-    let kill_signaled = Arc::new(AtomicBool::new(false));
-    let mut vcpu_handles = Vec::with_capacity(vcpu_count as usize);
-    let vcpu_thread_barrier = Arc::new(Barrier::new((vcpu_count + 1) as usize));
+pub fn run_vcpus(kvm: &Kvm,
+                 vm: &Vm,
+                 plugin: &Process,
+                 vcpu_count: u32,
+                 kill_signaled: &Arc<AtomicBool>,
+                 exit_evt: &EventFd,
+                 vcpu_handles: &mut Vec<thread::JoinHandle<()>>)
+                 -> Result<()> {
+    let vcpu_thread_barrier = Arc::new(Barrier::new((vcpu_count) as usize));
     for cpu_id in 0..vcpu_count {
         let kill_signaled = kill_signaled.clone();
         let vcpu_thread_barrier = vcpu_thread_barrier.clone();
         let vcpu_exit_evt = exit_evt.try_clone().map_err(Error::CloneEventFd)?;
         let vcpu_plugin = plugin.create_vcpu(cpu_id)?;
-        let vcpu = Vcpu::new(cpu_id as c_ulong, &kvm, &vm)
+        let vcpu = Vcpu::new(cpu_id as c_ulong, kvm, vm)
             .map_err(Error::CreateVcpu)?;
 
         vcpu_handles.push(thread::Builder::new()
@@ -398,21 +367,74 @@ pub fn run_config(cfg: Config) -> Result<()> {
         })
                               .map_err(Error::SpawnVcpu)?);
     }
+    Ok(())
+}
 
-    vcpu_thread_barrier.wait();
+/// Run a VM with a plugin process specified by `cfg`.
+///
+/// Not every field of `cfg` will be used. In particular, most field that pertain to a specific
+/// device are ignored because the plugin is responsible for emulating hardware.
+pub fn run_config(cfg: Config) -> Result<()> {
+    info!("crosvm starting plugin process");
 
-    const EXIT: u32 = 0;
-    const CHILD_SIGNAL: u32 = 1;
-    const PLUGIN_BASE: u32 = 2;
+    // Masking signals is inherently dangerous, since this can persist across clones/execs. Do this
+    // before any jailed devices have been spawned, so that we can catch any of them that fail very
+    // quickly.
+    let sigchld_fd = SignalFd::new(SIGCHLD).map_err(Error::CreateSignalFd)?;
 
-    let mut sockets_to_drop = Vec::new();
-    let mut poller = Poller::new(3);
+    let jail = if cfg.multiprocess {
+        // An empty directory for jailed plugin pivot root.
+        let empty_root_path = Path::new("/var/empty");
+        if !empty_root_path.exists() {
+            return Err(Error::NoVarEmpty);
+        }
+
+        let policy_path = cfg.seccomp_policy_dir.join("plugin.policy");
+        let jail = create_plugin_jail(empty_root_path, &policy_path)?;
+        Some(jail)
+    } else {
+        None
+    };
+
+    let plugin_args: Vec<&str> = cfg.params.iter().map(|s| &s[..]).collect();
+
+    let plugin_path = cfg.plugin.as_ref().unwrap().as_path();
+    let vcpu_count = cfg.vcpu_count.unwrap_or(1);
+    let mem = GuestMemory::new(&[]).unwrap();
+    let kvm = Kvm::new().map_err(Error::CreateKvm)?;
+    let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
+    vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
+    let mut plugin = Process::new(vcpu_count, &mut vm, plugin_path, &plugin_args, jail)?;
 
     let mut res = Ok(());
     // If Some, we will exit after enough time is passed to shutdown cleanly.
     let mut dying_instant: Option<Instant> = None;
     let duration_to_die = Duration::from_millis(1000);
 
+    let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+    let kill_signaled = Arc::new(AtomicBool::new(false));
+    let mut vcpu_handles = Vec::with_capacity(vcpu_count as usize);
+    // It's possible that the plugin failed to indicate that it wanted the VM to start. We don't
+    // want to start VCPUs in such a case.
+    if plugin.is_started() {
+        res = run_vcpus(&kvm,
+                        &vm,
+                        &plugin,
+                        vcpu_count,
+                        &kill_signaled,
+                        &exit_evt,
+                        &mut vcpu_handles);
+        if res.is_err() {
+            dying_instant.get_or_insert(Instant::now());
+        }
+    } else {
+        // If the plugin has not started by the time the process constructor returns, it's too late,
+        // and we start the clock on winding things down.
+        dying_instant.get_or_insert(Instant::now());
+    }
+
+    let mut sockets_to_drop = Vec::new();
+    let mut poller = Poller::new(3);
     // In this loop, make every attempt to not return early. If an error is encountered, set `res`
     // to the error, set `dying_instant` to now, and signal the plugin that it will be killed soon.
     // If the plugin cannot be singaled because it is dead of `signal_kill` failed, simply break
@@ -425,6 +447,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
             break;
         }
 
+        const EXIT: u32 = 0;
+        const CHILD_SIGNAL: u32 = 1;
+        const PLUGIN_BASE: u32 = 2;
         let tokens = {
             let mut pollables = Vec::new();
             // No need to check the exit event if we are already doing cleanup.

@@ -135,7 +135,7 @@ impl Process {
         let mut poller = Poller::new(1);
         while !self.started {
             if self.request_sockets.is_empty() {
-                return Err(Error::PluginSocketHup);
+                break;
             }
 
             let tokens = {
@@ -177,6 +177,11 @@ impl Process {
         Ok(PluginVcpu::new(self.shared_vcpu_state.clone(),
                            self.per_vcpu_states[cpu_id as usize].clone(),
                            vcpu_socket))
+    }
+
+    /// Returns if the plugin process indicated the VM was ready to start.
+    pub fn is_started(&self) -> bool {
+        self.started
     }
 
     /// Returns the process ID of the plugin process.
