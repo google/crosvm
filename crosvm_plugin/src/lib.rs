@@ -233,6 +233,16 @@ impl crosvm {
         }
     }
 
+    fn check_extension(&mut self, extension: u32) -> result::Result<bool, c_int> {
+        let mut r = MainRequest::new();
+        r.mut_check_extension().extension = extension;
+        let (response, _) = self.main_transaction(&r, &[])?;
+        if !response.has_check_extension() {
+            return Err(-EPROTO);
+        }
+        Ok(response.get_check_extension().has_extension)
+    }
+
     fn reserve_range(&mut self, space: u32, start: u64, length: u64) -> result::Result<(), c_int> {
         let mut r = MainRequest::new();
         {
@@ -805,6 +815,21 @@ pub unsafe extern "C" fn crosvm_get_shutdown_eventfd(self_: *mut crosvm) -> c_in
     let self_ = &mut (*self_);
     match self_.get_shutdown_eventfd() {
         Ok(f) => f.into_raw_fd(),
+        Err(e) => e,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_check_extension(self_: *mut crosvm,
+                                                extension: u32,
+                                                has_extension: *mut bool)
+                                                -> c_int {
+    let self_ = &mut (*self_);
+    match self_.check_extension(extension) {
+        Ok(supported) => {
+            *has_extension = supported;
+            0
+        }
         Err(e) => e,
     }
 }

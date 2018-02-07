@@ -226,6 +226,11 @@ fn test_irqfd() {
 }
 
 #[test]
+fn test_extensions() {
+    test_plugin(include_str!("plugin_extensions.c"));
+}
+
+#[test]
 fn test_debugregs() {
     let mini_plugin = MiniPlugin {
         assembly_src: "org 0x1000

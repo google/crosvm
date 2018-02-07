@@ -68,6 +68,10 @@ message MainRequest {
 
     message GetShutdownEventfd {}
 
+    message CheckExtension {
+        uint32 extension = 1;
+    }
+
     message ReserveRange {
         AddressSpace space = 1;
         uint64 start = 2;
@@ -126,13 +130,14 @@ message MainRequest {
         Destroy destroy = 2;
         NewConnection new_connection = 3;
         GetShutdownEventfd get_shutdown_eventfd = 4;
-        ReserveRange reserve_range = 5;
-        SetIrq set_irq = 6;
-        SetIrqRouting set_irq_routing = 7;
-        SetIdentityMapAddr set_identity_map_addr = 8;
-        PauseVcpus pause_vcpus = 9;
-        GetVcpus get_vcpus = 10;
-        Start start = 11;
+        CheckExtension check_extension = 5;
+        ReserveRange reserve_range = 6;
+        SetIrq set_irq = 7;
+        SetIrqRouting set_irq_routing = 8;
+        SetIdentityMapAddr set_identity_map_addr = 9;
+        PauseVcpus pause_vcpus = 10;
+        GetVcpus get_vcpus = 11;
+        Start start = 12;
         // Method for a Memory type object for retrieving the dirty bitmap. Only valid if the memory
         // object was created with dirty_log set.
         MemoryDirtyLog dirty_log = 101;
@@ -148,6 +153,9 @@ message MainResponse {
     // requests and responses independent of the other sockets.
     message NewConnection {}
     message GetShutdownEventfd {}
+    message CheckExtension {
+        bool has_extension = 1;
+    }
     message ReserveRange {}
     message SetIrq {}
     message SetIrqRouting {}
@@ -170,13 +178,14 @@ message MainResponse {
         Destroy destroy = 3;
         NewConnection new_connection = 4;
         GetShutdownEventfd get_shutdown_eventfd = 5;
-        ReserveRange reserve_range = 6;
-        SetIrq set_irq = 7;
-        SetIrqRouting set_irq_routing = 8;
-        SetIdentityMapAddr set_identity_map_addr = 9;
-        PauseVcpus pause_vcpus = 10;
-        GetVcpus get_vcpus = 11;
-        Start start = 12;
+        CheckExtension check_extension = 6;
+        ReserveRange reserve_range = 7;
+        SetIrq set_irq = 8;
+        SetIrqRouting set_irq_routing = 9;
+        SetIdentityMapAddr set_identity_map_addr = 10;
+        PauseVcpus pause_vcpus = 11;
+        GetVcpus get_vcpus = 12;
+        Start start = 13;
         MemoryDirtyLog dirty_log = 101;
     }
 }

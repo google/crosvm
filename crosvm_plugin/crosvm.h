@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 9
+#define CROSVM_API_MINOR 10
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -107,6 +107,12 @@ int crosvm_destroy_connection(struct crosvm**);
  * shared and will therefore only trigger once.
  */
 int crosvm_get_shutdown_eventfd(struct crosvm*);
+
+/*
+ * Gets a bool indicating if a KVM_CAP_* enum is supported on this VM
+ */
+int crosvm_check_extension(struct crosvm*, uint32_t __extension,
+                           bool *__has_extension);
 
 /*
  * Registers a range in the given address space that, when accessed, will block

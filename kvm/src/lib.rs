@@ -223,6 +223,18 @@ impl Vm {
         }
     }
 
+    /// Checks if a particular `Cap` is available.
+    ///
+    /// This is distinct from the `Kvm` version of this method because the some extensions depend on
+    /// the particular `Vm` existence. This method is encouraged by the kernel because it more
+    /// accurately reflects the usable capabilities.
+    pub fn check_extension(&self, c: Cap) -> bool {
+        // Safe because we know that our file is a KVM fd and that the extension is one of the ones
+        // defined by kernel.
+        unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), c as c_ulong) == 1 }
+    }
+
+
     /// Inserts the given `MemoryMapping` into the VM's address space at `guest_addr`.
     ///
     /// The slot that was assigned the device memory mapping is returned on success. The slot can be
@@ -1020,6 +1032,16 @@ mod tests {
         assert!(kvm.check_extension(Cap::UserMemory));
         // I assume nobody is testing this on s390
         assert!(!kvm.check_extension(Cap::S390UserSigp));
+    }
+
+    #[test]
+    fn check_vm_extension() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        assert!(vm.check_extension(Cap::UserMemory));
+        // I assume nobody is testing this on s390
+        assert!(!vm.check_extension(Cap::S390UserSigp));
     }
 
     #[test]

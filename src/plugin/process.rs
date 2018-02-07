@@ -5,6 +5,7 @@
 use std::collections::hash_map::{HashMap, Entry, VacantEntry};
 use std::env::set_var;
 use std::fs::File;
+use std::mem::transmute;
 use std::net::Shutdown;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
@@ -482,6 +483,14 @@ impl Process {
         } else if request.has_get_shutdown_eventfd() {
             response.mut_get_shutdown_eventfd();
             response_fds.push(self.kill_evt.as_raw_fd());
+            Ok(())
+        } else if request.has_check_extension() {
+            // Safe because the Cap enum is not read by the check_extension method. In that method,
+            // cap is cast back to an integer and fed to an ioctl. If the extension name is actually
+            // invalid, the kernel will safely reject the extension under the assumption that the
+            // capability is legitimately unsupported.
+            let cap = unsafe { transmute(request.get_check_extension().extension) };
+            response.mut_check_extension().has_extension = vm.check_extension(cap);
             Ok(())
         } else if request.has_reserve_range() {
             response.mut_reserve_range();
