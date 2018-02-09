@@ -83,6 +83,12 @@ fn run_plugin(bin_path: &Path, with_sandbox: bool) {
     cmd.args(&["run",
                 "-c",
                 "1",
+                "--host_ip",
+                "100.115.92.5",
+                "--netmask",
+                "255.255.255.252",
+                "--mac",
+                "de:21:e8:47:6b:6a",
                 "--seccomp-policy-dir",
                 "tests",
                 "--plugin"])
@@ -238,6 +244,11 @@ fn test_supported_cpuid() {
 #[test]
 fn test_vcpu_pause() {
     test_plugin(include_str!("plugin_vcpu_pause.c"));
+}
+
+#[test]
+fn test_net_config() {
+    test_plugin(include_str!("plugin_net_config.c"));
 }
 
 #[test]

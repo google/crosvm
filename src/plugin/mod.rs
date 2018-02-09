@@ -18,12 +18,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use libc::{socketpair, ioctl, c_ulong, AF_UNIX, SOCK_SEQPACKET, FIOCLEX, EAGAIN, EINTR, EINVAL,
-           ENOENT, EPERM, EDEADLK, ENOTTY, EEXIST, EBADF, EOVERFLOW, SIGCHLD, MS_NOSUID, MS_NODEV};
+           ENOENT, EPERM, EDEADLK, EEXIST, EBADF, EOVERFLOW, SIGCHLD, MS_NOSUID, MS_NODEV};
 
 use protobuf::ProtobufError;
 
 use io_jail::{self, Minijail};
 use kvm::{Kvm, Vm, Vcpu, VcpuExit, IoeventAddress, NoDatamatch};
+use net_util::{Error as TapError, Tap, TapT};
 use sys_util::{EventFd, MmapError, Killable, SignalFd, SignalFdError, Poller, Pollable,
                GuestMemory, Result as SysResult, Error as SysError,
                register_signal_handler, block_signal, clear_signal, SIGRTMIN,
@@ -83,6 +84,11 @@ pub enum Error {
     },
     SignalFd(SignalFdError),
     SpawnVcpu(io::Error),
+    TapOpen(TapError),
+    TapSetIp(TapError),
+    TapSetNetmask(TapError),
+    TapSetMacAddress(TapError),
+    TapEnable(TapError),
 }
 
 impl fmt::Display for Error {
@@ -149,7 +155,11 @@ impl fmt::Display for Error {
             }
             Error::SignalFd(ref e) => write!(f, "failed to read signal fd: {:?}", e),
             Error::SpawnVcpu(ref e) => write!(f, "error spawning vcpu thread: {}", e),
-
+            Error::TapOpen(ref e) => write!(f, "error opening tap device: {:?}", e),
+            Error::TapSetIp(ref e) => write!(f, "error setting tap ip: {:?}", e),
+            Error::TapSetNetmask(ref e) => write!(f, "error setting tap netmask: {:?}", e),
+            Error::TapSetMacAddress(ref e) => write!(f, "error setting tap mac address: {:?}", e),
+            Error::TapEnable(ref e) => write!(f, "error enabling tap device: {:?}", e),
         }
     }
 }
@@ -413,6 +423,23 @@ pub fn run_config(cfg: Config) -> Result<()> {
         None
     };
 
+    let mut tap_opt: Option<Tap> = None;
+    if let Some(host_ip) = cfg.host_ip {
+        if let Some(netmask) = cfg.netmask {
+            if let Some(mac_address) = cfg.mac_address {
+                let tap = Tap::new(false).map_err(Error::TapOpen)?;
+                tap.set_ip_addr(host_ip).map_err(Error::TapSetIp)?;
+                tap.set_netmask(netmask)
+                    .map_err(Error::TapSetNetmask)?;
+                tap.set_mac_address(mac_address)
+                    .map_err(Error::TapSetMacAddress)?;
+
+                tap.enable().map_err(Error::TapEnable)?;
+                tap_opt = Some(tap);
+            }
+        }
+    }
+
     let plugin_args: Vec<&str> = cfg.params.iter().map(|s| &s[..]).collect();
 
     let plugin_path = cfg.plugin.as_ref().unwrap().as_path();
@@ -421,7 +448,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;
     let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
     vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
-    let mut plugin = Process::new(vcpu_count, &kvm, &mut vm, plugin_path, &plugin_args, jail)?;
+    let mut plugin = Process::new(vcpu_count, &kvm, &mut vm,
+                                  plugin_path, &plugin_args, jail, tap_opt)?;
 
     let mut res = Ok(());
     // If Some, we will exit after enough time is passed to shutdown cleanly.

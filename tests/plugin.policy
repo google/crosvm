@@ -33,6 +33,8 @@ fstat: 1
 ftruncate: 1
 getcwd: 1
 getrlimit: 1
+# TUNGETFEATURES
+ioctl: arg1 == 0x800454CF
 madvise: 1
 memfd_create: 1
 mmap: 1

@@ -61,6 +61,16 @@ const CROSVM_VCPU_EVENT_KIND_PAUSED: u32 = 2;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+pub struct crosvm_net_config {
+    tap_fd: c_int,
+    host_ipv4_address: u32,
+    netmask: u32,
+    host_mac_address: [u8; 6],
+    _reserved: [u8; 2],
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
 pub struct anon_irqchip {
     irqchip: u32,
     pin: u32,
@@ -374,6 +384,38 @@ impl crosvm {
             Ok(vcpu as *const crosvm_vcpu as *mut crosvm_vcpu)
         } else {
             Err(ENOENT)
+        }
+    }
+
+    fn get_net_config(&mut self) -> result::Result<crosvm_net_config, c_int> {
+        let mut r = MainRequest::new();
+        r.mut_get_net_config();
+
+        let (response, mut files) = self.main_transaction(&r, &[])?;
+        if !response.has_get_net_config() {
+            return Err(EPROTO);
+        }
+        let config = response.get_get_net_config();
+
+        match files.pop() {
+            Some(f) => {
+                let mut net_config = crosvm_net_config {
+                    tap_fd: f.into_raw_fd(),
+                    host_ipv4_address: config.host_ipv4_address,
+                    netmask: config.netmask,
+                    host_mac_address: [0; 6],
+                    _reserved: [0; 2],
+                };
+
+                let mac_addr = config.get_host_mac_address();
+                if mac_addr.len() != net_config.host_mac_address.len() {
+                    return Err(EPROTO)
+                }
+                net_config.host_mac_address.copy_from_slice(mac_addr);
+
+                Ok(net_config)
+            },
+            None => Err(EPROTO),
         }
     }
 }
@@ -914,6 +956,20 @@ fn crosvm_get_emulated_cpuid(this: *mut crosvm,
     if let Some(num) = ret.ok() {
         *out_count = num as u32;
     }
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_net_get_config(self_: *mut crosvm,
+                                               config: *mut crosvm_net_config)
+                                               -> c_int {
+    let self_ = &mut (*self_);
+    let ret = self_.get_net_config();
+
+    if let Ok(c) = ret {
+        *config = c;
+    }
+
     to_crosvm_rc(ret)
 }
 

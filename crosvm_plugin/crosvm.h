@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 11
+#define CROSVM_API_MINOR 12
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -128,6 +128,34 @@ int crosvm_get_supported_cpuid(struct crosvm*, uint32_t __entry_count,
 int crosvm_get_emulated_cpuid(struct crosvm*, uint32_t __entry_count,
                               struct kvm_cpuid_entry2 *__cpuid_entries,
                               uint32_t *__out_count);
+
+/*
+ * The network configuration for a crosvm instance.
+ */
+struct crosvm_net_config {
+  /*
+   * The tap device fd. This fd is owned by the caller, and should be closed
+   * by the caller when it is no longer in use.
+   */
+  int tap_fd;
+  /* The IPv4 address of the tap interface, in network (big-endian) format. */
+  uint32_t host_ip;
+  /* The netmask of the tap interface subnet, in network (big-endian) format. */
+  uint32_t netmask;
+  /* The mac address of the host side of the tap interface. */
+  uint8_t host_mac_address[6];
+  uint8_t _padding[2];
+};
+
+#ifdef static_assert
+static_assert(sizeof(struct crosvm_net_config) == 20,
+              "extra padding in struct crosvm_net_config");
+#endif
+
+/*
+ * Gets the network configuration.
+ */
+int crosvm_net_get_config(struct crosvm*, struct crosvm_net_config*);
 
 /*
  * Registers a range in the given address space that, when accessed, will block

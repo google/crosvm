@@ -14,7 +14,10 @@ use std::process::Command;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread::JoinHandle;
 
-use libc::{waitpid, pid_t, EINVAL, WNOHANG, WIFEXITED, WEXITSTATUS, WTERMSIG};
+use net_util;
+use net_util::Error as NetError;
+
+use libc::{waitpid, pid_t, EINVAL, ENODATA, ENOTTY, WNOHANG, WIFEXITED, WEXITSTATUS, WTERMSIG};
 
 use protobuf;
 use protobuf::Message;
@@ -55,6 +58,7 @@ pub struct Process {
     // Resource to sent to plugin
     kill_evt: EventFd,
     vcpu_sockets: Vec<(UnixDatagram, UnixDatagram)>,
+    tap: Option<net_util::Tap>,
 
     // Socket Transmission
     scm: Scm,
@@ -77,7 +81,8 @@ impl Process {
                vm: &mut Vm,
                cmd: &Path,
                args: &[&str],
-               jail: Option<Minijail>)
+               jail: Option<Minijail>,
+               tap: Option<net_util::Tap>)
                -> Result<Process> {
         let (request_socket, child_socket) = new_seqpacket_pair().map_err(Error::CreateMainSocket)?;
 
@@ -120,6 +125,7 @@ impl Process {
             per_vcpu_states,
             kill_evt: EventFd::new().map_err(Error::CreateEventFd)?,
             vcpu_sockets,
+            tap,
             scm: Scm::new(1),
             request_buffer: vec![0; MAX_DATAGRAM_SIZE],
             datagram_files: Vec::new(),
@@ -382,6 +388,31 @@ impl Process {
         }
     }
 
+    fn handle_get_net_config(tap: &net_util::Tap,
+                             config: &mut MainResponse_GetNetConfig) -> SysResult<()> {
+        // Log any NetError so that the cause can be found later, but extract and return the
+        // underlying errno for the client as well.
+        fn map_net_error(s: &str, e: NetError) -> SysError {
+            error!("failed to get {}: {:?}", s, e);
+            e.sys_error()
+        }
+
+        let ip_addr = tap.ip_addr().map_err(|e| map_net_error("IP address", e))?;
+        config.set_host_ipv4_address(u32::from(ip_addr));
+
+        let netmask = tap.netmask().map_err(|e| map_net_error("netmask", e))?;
+        config.set_netmask(u32::from(netmask));
+
+        let result_mac_addr = config.mut_host_mac_address();
+        let mac_addr_octets = tap.mac_address()
+                                 .map_err(|e| map_net_error("mac address", e))?
+                                 .octets();
+        result_mac_addr.resize(mac_addr_octets.len(), 0);
+        result_mac_addr.clone_from_slice(&mac_addr_octets);
+
+        Ok(())
+    }
+
     /// Handles a request on a readable socket identified by its index in the slice returned by
     /// `sockets`.
     ///
@@ -524,6 +555,18 @@ impl Process {
             } else {
                 self.started = true;
                 Ok(())
+            }
+        } else if request.has_get_net_config() {
+            match self.tap {
+                Some(ref tap) => match Self::handle_get_net_config(tap,
+                                                                   response.mut_get_net_config()) {
+                    Ok(_) => {
+                        response_fds.push(tap.as_raw_fd());
+                        Ok(())
+                    },
+                    Err(e) => Err(e),
+                },
+                None => Err(SysError::new(-ENODATA)),
             }
         } else if request.has_dirty_log() {
             let dirty_log_response = response.mut_dirty_log();
