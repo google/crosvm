@@ -140,9 +140,15 @@ impl QcowHeader {
             l1_table_offset: cluster_size as u64,
             refcount_table_offset: (cluster_size * (l1_clusters + 1)) as u64, // After l1 + header.
             refcount_table_clusters: {
-                let refcount_bytes = (0x01 << DEFAULT_CLUSTER_BITS) / 8;
-                let refcounts_per_cluster = cluster_size / refcount_bytes;
-                div_round_up_u32(num_clusters, refcounts_per_cluster)
+                // Pre-allocate enough clusters for the entire refcount table as it must be
+                // continuous in the file. Allocate enough space to refcount all clusters, including
+                // the refcount clusters.
+                let refcount_bytes = 0x01u32 << DEFAULT_REFCOUNT_ORDER / 8;
+                let for_data = div_round_up_u32(num_clusters * refcount_bytes, cluster_size);
+                let for_refcounts = div_round_up_u32(for_data * refcount_bytes, cluster_size);
+                let max_refcount_clusters = for_data + for_refcounts;
+                // The refcount table needs to store the offset of each refcount cluster.
+                div_round_up_u32(max_refcount_clusters * size_of::<u64>() as u32, cluster_size)
             },
             nb_snapshots: 0,
             snapshots_offset: 0,
@@ -155,7 +161,7 @@ impl QcowHeader {
     }
 
     /// Write the header to `file`.
-    pub fn write_to<F: Write>(&self, file: &mut F) -> Result<()> {
+    pub fn write_to<F: Write + Seek>(&self, file: &mut F) -> Result<()> {
         // Writes the next u32 to the file.
         fn write_u32_to_file<F: Write>(f: &mut F, value: u32) -> Result<()> {
             f.write_u32::<BigEndian>(value).map_err(Error::WritingHeader)
@@ -184,6 +190,17 @@ impl QcowHeader {
         write_u64_to_file(file, self.autoclear_features)?;
         write_u32_to_file(file, self.refcount_order)?;
         write_u32_to_file(file, self.header_size)?;
+
+        // Set the file length by seeking and writing a zero to the last byte. This avoids needing
+        // a `File` instead of anything that implements seek as the `file` argument.
+        // Zeros out the l1 and refcount table clusters.
+        let cluster_size = 0x01u64 << self.cluster_bits;
+        let refcount_blocks_size = self.refcount_table_clusters as u64 * cluster_size;
+        file.seek(SeekFrom::Start(self.refcount_table_offset + refcount_blocks_size - 2))
+            .map_err(Error::WritingHeader)?;
+        file.write(&[0u8])
+            .map_err(Error::WritingHeader)?;
+
         Ok(())
     }
 }
@@ -590,6 +607,19 @@ mod tests {
         testfn(disk_file); // File closed when the function exits.
     }
 
+    fn with_default_file<F>(file_size: u64, mut testfn: F)
+    where
+        F: FnMut(File),
+    {
+        let shm = SharedMemory::new(None).unwrap();
+        let mut disk_file: File = shm.into();
+        let header = QcowHeader::create_for_size(file_size);
+        header.write_to(&mut disk_file).unwrap();
+        disk_file.seek(SeekFrom::Start(0)).unwrap();
+
+        testfn(disk_file); // File closed when the function exits.
+    }
+
     #[test]
     fn default_header() {
         let header = QcowHeader::create_for_size(0x10_0000);
@@ -789,7 +819,7 @@ mod tests {
 
     #[test]
     fn combo_write_read() {
-        with_basic_file(&valid_header(), |disk_file: File| {
+        with_default_file(1024 * 1024 * 1024 * 256, |disk_file: File| {
             const NUM_BLOCKS: usize = 555;
             const BLOCK_SIZE: usize = 0x1_0000;
             const OFFSET: usize = 0x1_0000_0020;
@@ -808,6 +838,13 @@ mod tests {
                 for (orig, read) in data.iter().zip(readback.iter()) {
                     assert_eq!(orig, read);
                 }
+            }
+            // Check that address 0 is still zeros.
+            q.seek(SeekFrom::Start(0)).expect("Failed to seek.");
+            let nread = q.read(&mut readback).expect("Failed to read.");
+            assert_eq!(nread, BLOCK_SIZE);
+            for read in readback.iter() {
+                assert_eq!(*read, 0);
             }
             // Check the data again after the writes have happened.
             for i in 0..NUM_BLOCKS {
