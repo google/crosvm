@@ -284,18 +284,18 @@ impl PluginVcpu {
     /// The VCPU thread should call this before rerunning a VM in order to handle pending requests
     /// to this VCPU.
     pub fn pre_run(&self, vcpu: &Vcpu) -> SysResult<()> {
-        match self.per_vcpu_state.lock() {
-            Ok(mut per_vcpu_state) => {
-                if let Some(user) = per_vcpu_state.pause_request.take() {
-                    let mut wait_reason = VcpuResponse_Wait::new();
-                    wait_reason.mut_user().user = user;
-                    self.wait_reason.set(Some(wait_reason));
-                    self.handle_until_resume(vcpu)?;
-                }
-                Ok(())
-            }
-            Err(_) => Err(SysError::new(-EDEADLK)),
+        let request = {
+            let mut lock = self.per_vcpu_state.lock().map_err(|_| SysError::new(-EDEADLK))?;
+            lock.pause_request.take()
+        };
+
+        if let Some(user_data) = request {
+            let mut wait_reason = VcpuResponse_Wait::new();
+            wait_reason.mut_user().user = user_data;
+            self.wait_reason.set(Some(wait_reason));
+            self.handle_until_resume(vcpu)?;
         }
+        Ok(())
     }
 
     fn process(&self, io_space: IoSpace, addr: u64, mut data: VcpuRunData, vcpu: &Vcpu) -> bool {

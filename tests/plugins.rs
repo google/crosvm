@@ -231,6 +231,11 @@ fn test_extensions() {
 }
 
 #[test]
+fn test_vcpu_pause() {
+    test_plugin(include_str!("plugin_vcpu_pause.c"));
+}
+
+#[test]
 fn test_debugregs() {
     let mini_plugin = MiniPlugin {
         assembly_src: "org 0x1000
