@@ -4,6 +4,12 @@
 
 //! Manages jailing and connecting virtio devices to the system bus.
 
+extern crate devices;
+extern crate io_jail;
+extern crate kvm;
+extern crate sys_util;
+extern crate kernel_cmdline;
+
 use std::fmt;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::{Arc, Mutex};
@@ -11,10 +17,6 @@ use std::sync::{Arc, Mutex};
 use io_jail::Minijail;
 use kvm::{Vm, IoeventAddress};
 use sys_util::{GuestMemory, syslog};
-use sys_util;
-
-use devices;
-use kernel_cmdline;
 
 /// Errors for device manager.
 #[derive(Debug)]
@@ -151,7 +153,7 @@ mod tests {
     use std::os::unix::io::RawFd;
     use sys_util::{EventFd, GuestAddress, GuestMemory};
     use kvm::*;
-    use device_manager;
+    use DeviceManager;
     use kernel_cmdline;
     use devices;
 
@@ -195,7 +197,7 @@ mod tests {
             .unwrap();
         let mut vm = Vm::new(&Kvm::new().unwrap(), guest_mem.clone()).unwrap();
         let mut device_manager =
-            device_manager::DeviceManager::new(&mut vm, guest_mem, 0x1000, 0xd0000000, 5);
+            DeviceManager::new(&mut vm, guest_mem, 0x1000, 0xd0000000, 5);
 
         let mut cmdline = kernel_cmdline::Cmdline::new(4096);
         let dummy_box = Box::new(DummyDevice { dummy: 0 });

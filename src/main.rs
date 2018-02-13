@@ -5,6 +5,7 @@
 //! Runs a virtual machine under KVM
 
 extern crate devices;
+extern crate device_manager;
 extern crate libc;
 extern crate io_jail;
 extern crate kvm;
@@ -27,7 +28,6 @@ extern crate plugin_proto;
 extern crate protobuf;
 
 pub mod argument;
-pub mod device_manager;
 pub mod linux;
 #[cfg(feature = "plugin")]
 pub mod plugin;

@@ -1,0 +1,14 @@
+[package]
+name = "device_manager"
+version = "0.1.0"
+
+[dependencies]
+devices = { path = "../devices" }
+io_jail = { path = "../io_jail" }
+kvm = { path = "../kvm" }
+sys_util = { path = "../sys_util" }
+kernel_cmdline = { path = "../kernel_cmdline" }
+libc = "*"
+
+[lib]
+path = "src/device_manager.rs"

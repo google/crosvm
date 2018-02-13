@@ -28,6 +28,7 @@ X86_64_TRIPLE = os.getenv('X86_64_TRIPLE', 'x86_64-cros-linux-gnu')
 TEST_MODULES_PARALLEL = [
     'crosvm',
     'data_model',
+    'device_manager',
     'kernel_loader',
     'kvm',
     'kvm_sys',

@@ -14,6 +14,7 @@ plugin = ["plugin_proto", "crosvm_plugin", "protobuf"]
 
 [dependencies]
 devices = { path = "devices" }
+device_manager = { path = "device_manager" }
 io_jail = { path = "io_jail" }
 kvm = { path = "kvm" }
 kvm_sys = { path = "kvm_sys" }
