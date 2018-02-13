@@ -733,7 +733,6 @@ pub fn run_config(cfg: Config) -> Result<()> {
         .unwrap();
 
     let mut next_dev_pfn = BASE_DEV_MEMORY_PFN;
-    let mut control_sockets = Vec::new();
     let (io_bus, stdio_serial) = setup_io_bus(&mut vm,
                                               exit_evt.try_clone().map_err(Error::CloneEventFd)?)?;
 
