@@ -411,13 +411,8 @@ fn setup_mmio_bus(cfg: &Config,
 fn setup_vcpu(kvm: &Kvm,
               vm: &Vm,
               cpu_id: u32,
-              vcpu_count: u32,
-              start_barrier: Arc<Barrier>,
-              exit_evt: EventFd,
-              kill_signaled: Arc<AtomicBool>,
-              io_bus: devices::Bus,
-              mmio_bus: devices::Bus)
-              -> Result<JoinHandle<()>> {
+              vcpu_count: u32)
+              -> Result<Vcpu> {
     let vcpu = Vcpu::new(cpu_id as libc::c_ulong, &kvm, &vm)
         .map_err(Error::CreateVcpu)?;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -426,7 +421,17 @@ fn setup_vcpu(kvm: &Kvm,
                            &vcpu,
                            cpu_id as u64,
                            vcpu_count as u64)
-            .map_err(Error::ConfigureVcpu)?;
+        .map_err(Error::ConfigureVcpu)?;
+    Ok(vcpu)
+}
+
+fn run_vcpu(vcpu: Vcpu,
+            cpu_id: u32,
+            start_barrier: Arc<Barrier>,
+            io_bus: devices::Bus,
+            mmio_bus: devices::Bus,
+            exit_evt: EventFd,
+            kill_signaled: Arc<AtomicBool>) -> Result<JoinHandle<()>> {
     thread::Builder::new()
         .name(format!("crosvm_vcpu{}", cpu_id))
         .spawn(move || {
@@ -647,6 +652,18 @@ pub fn run_config(cfg: Config) -> Result<()> {
     #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
     let mut vm = Vm::new(&kvm, mem.clone()).map_err(|e| Error::CreateVm(e))?;
 
+    let vcpu_count = cfg.vcpu_count.unwrap_or(1);
+    let mut vcpu_handles = Vec::with_capacity(vcpu_count as usize);
+    let vcpu_thread_barrier = Arc::new(Barrier::new((vcpu_count + 1) as usize));
+    let mut vcpus = Vec::with_capacity(vcpu_count as usize);
+    for cpu_id in 0..vcpu_count {
+        let vcpu = setup_vcpu(&kvm,
+                              &vm,
+                              cpu_id,
+                              vcpu_count)?;
+        vcpus.push(vcpu);
+    }
+
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let mut cmdline = x86_64::get_base_linux_cmdline();
     #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
@@ -685,7 +702,6 @@ pub fn run_config(cfg: Config) -> Result<()> {
         cmdline.insert_str(&param).map_err(Error::Cmdline)?;
     }
 
-    let vcpu_count = cfg.vcpu_count.unwrap_or(1);
     let kernel_image = File::open(cfg.kernel_path.as_path())
         .map_err(|e| Error::OpenKernel(cfg.kernel_path.clone(), e))?;
 
@@ -697,20 +713,15 @@ pub fn run_config(cfg: Config) -> Result<()> {
     x86_64::setup_system_memory(&mem, vcpu_count, &CString::new(cmdline).unwrap()).
         map_err(|e| Error::SetupSystemMemory(e))?;
 
-    let mut vcpu_handles = Vec::with_capacity(vcpu_count as usize);
-    let vcpu_thread_barrier = Arc::new(Barrier::new((vcpu_count + 1) as usize));
-    for cpu_id in 0..vcpu_count {
-        let exit_evt = exit_evt.try_clone().map_err(Error::CloneEventFd)?;
-        let vcpu_handle = setup_vcpu(&kvm,
-                   &vm,
-                   cpu_id,
-                   vcpu_count,
-                   vcpu_thread_barrier.clone(),
-                   exit_evt,
-                   kill_signaled.clone(),
-                   io_bus.clone(),
-                   mmio_bus.clone())?;
-        vcpu_handles.push(vcpu_handle);
+    for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
+        let handle = run_vcpu(vcpu,
+                              cpu_id as u32,
+                              vcpu_thread_barrier.clone(),
+                              io_bus.clone(),
+                              mmio_bus.clone(),
+                              exit_evt.try_clone().map_err(Error::CloneEventFd)?,
+                              kill_signaled.clone())?;
+        vcpu_handles.push(handle);
     }
     vcpu_thread_barrier.wait();
 
