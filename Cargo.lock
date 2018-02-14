@@ -1,4 +1,16 @@
 [[package]]
+name = "arch"
+version = "0.1.0"
+dependencies = [
+ "device_manager 0.1.0",
+ "devices 0.1.0",
+ "kernel_cmdline 0.1.0",
+ "kvm 0.1.0",
+ "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sys_util 0.1.0",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -17,6 +29,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "crosvm"
 version = "0.1.0"
 dependencies = [
+ "arch 0.1.0",
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "crosvm_plugin 0.12.0",
  "data_model 0.1.0",
@@ -289,6 +302,7 @@ dependencies = [
 name = "x86_64"
 version = "0.1.0"
 dependencies = [
+ "arch 0.1.0",
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
  "device_manager 0.1.0",

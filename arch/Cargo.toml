@@ -1,17 +1,12 @@
 [package]
-name = "x86_64"
+name = "arch"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 
 [dependencies]
-arch = { path = "../arch" }
-data_model = { path = "../data_model" }
 devices = { path = "../devices" }
 device_manager = { path = "../device_manager" }
-kvm_sys = { path = "../kvm_sys" }
 kvm = { path = "../kvm" }
 sys_util = { path = "../sys_util" }
 kernel_cmdline = { path = "../kernel_cmdline" }
-kernel_loader = { path = "../kernel_loader" }
 libc = "*"
-byteorder = "*"

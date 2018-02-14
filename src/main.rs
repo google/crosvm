@@ -4,6 +4,7 @@
 
 //! Runs a virtual machine under KVM
 
+extern crate arch;
 extern crate devices;
 extern crate device_manager;
 extern crate libc;

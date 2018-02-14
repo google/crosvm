@@ -13,6 +13,7 @@ panic = 'abort'
 plugin = ["plugin_proto", "crosvm_plugin", "protobuf"]
 
 [dependencies]
+arch = { path = "arch" }
 devices = { path = "devices" }
 device_manager = { path = "device_manager" }
 io_jail = { path = "io_jail" }
