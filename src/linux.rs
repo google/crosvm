@@ -757,11 +757,11 @@ pub fn run_config(cfg: Config) -> Result<()> {
                         kernel_image,
                         &CString::new(cmdline).unwrap())?;
 
-    let vcpu_handles = Vec::with_capacity(vcpu_count as usize);
+    let mut vcpu_handles = Vec::with_capacity(vcpu_count as usize);
     let vcpu_thread_barrier = Arc::new(Barrier::new((vcpu_count + 1) as usize));
     for cpu_id in 0..vcpu_count {
         let exit_evt = exit_evt.try_clone().map_err(Error::CloneEventFd)?;
-        setup_vcpu(&kvm,
+        let vcpu_handle = setup_vcpu(&kvm,
                    &vm,
                    cpu_id,
                    vcpu_count,
@@ -770,6 +770,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                    kill_signaled.clone(),
                    io_bus.clone(),
                    mmio_bus.clone())?;
+        vcpu_handles.push(vcpu_handle);
     }
     vcpu_thread_barrier.wait();
 
