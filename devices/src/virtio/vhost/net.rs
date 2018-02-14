@@ -10,7 +10,7 @@ use std::sync::atomic::AtomicUsize;
 use std::thread;
 
 use net_sys;
-use net_util::TapT;
+use net_util::{MacAddress, TapT};
 
 use sys_util::{EventFd, GuestMemory};
 use vhost::NetT as VhostNetT;
@@ -41,12 +41,16 @@ where
 {
     /// Create a new virtio network device with the given IP address and
     /// netmask.
-    pub fn new(ip_addr: Ipv4Addr, netmask: Ipv4Addr, mem: &GuestMemory) -> Result<Net<T, U>> {
+    pub fn new(ip_addr: Ipv4Addr,
+               netmask: Ipv4Addr,
+               mac_addr: MacAddress,
+               mem: &GuestMemory) -> Result<Net<T, U>> {
         let kill_evt = EventFd::new().map_err(Error::CreateKillEventFd)?;
 
-        let tap: T = T::new().map_err(Error::TapOpen)?;
+        let tap: T = T::new(true).map_err(Error::TapOpen)?;
         tap.set_ip_addr(ip_addr).map_err(Error::TapSetIp)?;
         tap.set_netmask(netmask).map_err(Error::TapSetNetmask)?;
+        tap.set_mac_address(mac_addr).map_err(Error::TapSetMacAddress)?;
 
         // Set offload flags to match the virtio features below.
         tap.set_offload(
@@ -239,6 +243,7 @@ pub mod tests {
         Net::<FakeTap, FakeNet<FakeTap>>::new(
             Ipv4Addr::new(127, 0, 0, 1),
             Ipv4Addr::new(255, 255, 255, 0),
+            "de:21:e8:47:6b:6a".parse().unwrap(),
             &guest_memory,
         ).unwrap()
     }

@@ -34,6 +34,8 @@ pub use sockios::*;
 
 pub const TUNTAP: ::std::os::raw::c_uint = 84;
 
+pub const ARPHRD_ETHER: sa_family_t = 1;
+
 ioctl_iow_nr!(TUNSETNOCSUM, TUNTAP, 200, ::std::os::raw::c_int);
 ioctl_iow_nr!(TUNSETDEBUG, TUNTAP, 201, ::std::os::raw::c_int);
 ioctl_iow_nr!(TUNSETIFF, TUNTAP, 202, ::std::os::raw::c_int);

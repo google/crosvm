@@ -31,6 +31,8 @@ pub enum Error {
     TapSetIp(TapError),
     /// Setting tap netmask failed.
     TapSetNetmask(TapError),
+    /// Setting tap mac address failed.
+    TapSetMacAddress(TapError),
     /// Setting tap interface offload flags failed.
     TapSetOffload(TapError),
     /// Setting vnet header size failed.

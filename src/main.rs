@@ -65,7 +65,7 @@ pub struct Config {
     params: Vec<String>,
     host_ip: Option<net::Ipv4Addr>,
     netmask: Option<net::Ipv4Addr>,
-    mac_address: Option<String>,
+    mac_address: Option<net_util::MacAddress>,
     vhost_net: bool,
     wayland_socket_path: Option<PathBuf>,
     socket_path: Option<PathBuf>,
@@ -239,7 +239,16 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             if cfg.mac_address.is_some() {
                 return Err(argument::Error::TooManyArguments("`mac` already given".to_owned()));
             }
-            cfg.mac_address = Some(value.unwrap().to_owned());
+            cfg.mac_address =
+                Some(value
+                         .unwrap()
+                         .parse()
+                         .map_err(|_| {
+                                      argument::Error::InvalidValue {
+                                          value: value.unwrap().to_owned(),
+                                          expected: "`mac` needs to be in the form \"XX:XX:XX:XX:XX:XX\"",
+                                      }
+                                  })?)
         }
         "wayland-sock" => {
             if cfg.wayland_socket_path.is_some() {

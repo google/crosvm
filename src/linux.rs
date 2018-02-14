@@ -353,30 +353,34 @@ fn setup_mmio_bus(cfg: &Config,
     // We checked above that if the IP is defined, then the netmask is, too.
     if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
-            let net_box: Box<devices::virtio::VirtioDevice> = if cfg.vhost_net {
-                Box::new(devices::virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(host_ip, netmask, &mem)
-                                   .map_err(|e| Error::VhostNetDeviceNew(e))?)
-            } else {
-                Box::new(devices::virtio::Net::<Tap>::new(host_ip, netmask)
-                                   .map_err(|e| Error::NetDeviceNew(e))?)
-            };
-
-            let jail = if cfg.multiprocess {
-                let policy_path: PathBuf = if cfg.vhost_net {
-                    cfg.seccomp_policy_dir.join("vhost_net_device.policy")
+            if let Some(mac_address) = cfg.mac_address {
+                let net_box: Box<devices::virtio::VirtioDevice> = if cfg.vhost_net {
+                    Box::new(devices::virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(host_ip,
+                                                                                      netmask,
+                                                                                      mac_address,
+                                                                                      &mem)
+                                       .map_err(|e| Error::VhostNetDeviceNew(e))?)
                 } else {
-                    cfg.seccomp_policy_dir.join("net_device.policy")
+                    Box::new(devices::virtio::Net::<Tap>::new(host_ip, netmask, mac_address)
+                                       .map_err(|e| Error::NetDeviceNew(e))?)
                 };
 
-                Some(create_base_minijail(empty_root_path, &policy_path)?)
-            }
-            else {
-                None
-            };
+                let jail = if cfg.multiprocess {
+                    let policy_path: PathBuf = if cfg.vhost_net {
+                        cfg.seccomp_policy_dir.join("vhost_net_device.policy")
+                    } else {
+                        cfg.seccomp_policy_dir.join("net_device.policy")
+                    };
 
-            device_manager
-                .register_mmio(net_box, jail, cmdline)
-                .map_err(Error::RegisterNet)?;
+                    Some(create_base_minijail(empty_root_path, &policy_path)?)
+                } else {
+                    None
+                };
+
+                device_manager
+                    .register_mmio(net_box, jail, cmdline)
+                    .map_err(Error::RegisterNet)?;
+            }
         }
     }
 

@@ -6,12 +6,15 @@ extern crate libc;
 extern crate net_sys;
 extern crate sys_util;
 
+use std::fmt;
 use std::fs::File;
 use std::io::{Read, Write, Result as IoResult, Error as IoError, ErrorKind};
 use std::mem;
 use std::net;
+use std::num::ParseIntError;
 use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::str::FromStr;
 
 use sys_util::Pollable;
 use sys_util::{ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref};
@@ -44,6 +47,15 @@ fn create_sockaddr(ip_addr: net::Ipv4Addr) -> net_sys::sockaddr {
     unsafe { mem::transmute(addr_in) }
 }
 
+/// Extract the IPv4 address from a sockaddr. Assumes the sockaddr is a sockaddr_in.
+fn read_ipv4_addr(addr: &net_sys::sockaddr) -> net::Ipv4Addr {
+    debug_assert_eq!(addr.sa_family as u32, net_sys::AF_INET);
+    // This is safe because sockaddr and sockaddr_in are the same size, and we've checked that
+    // this address is AF_INET.
+    let in_addr: net_sys::sockaddr_in = unsafe { mem::transmute(*addr) };
+    net::Ipv4Addr::from(in_addr.sin_addr.s_addr)
+}
+
 fn create_socket() -> Result<net::UdpSocket> {
     // This is safe since we check the return value.
     let sock = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
@@ -53,6 +65,74 @@ fn create_socket() -> Result<net::UdpSocket> {
 
     // This is safe; nothing else will use or hold onto the raw sock fd.
     Ok(unsafe { net::UdpSocket::from_raw_fd(sock) })
+}
+
+#[derive(Debug)]
+pub enum MacAddressError {
+    /// Invalid number of octets.
+    InvalidNumOctets(usize),
+    /// Failed to parse octet.
+    ParseOctet(ParseIntError),
+
+}
+
+impl fmt::Display for MacAddressError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            MacAddressError::InvalidNumOctets(n) => write!(f, "invalid number of octets: {}", n),
+            MacAddressError::ParseOctet(ref e) => write!(f, "failed to parse octet: {:?}", e),
+        }
+    }
+}
+/// An Ethernet mac address. This struct is compatible with the C `struct sockaddr`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MacAddress {
+    family: net_sys::sa_family_t,
+    addr: [u8; 6usize],
+    __pad: [u8; 8usize],
+}
+
+impl MacAddress {
+    pub fn octets(&self) -> [u8; 6usize] {
+        self.addr.clone()
+    }
+}
+
+impl FromStr for MacAddress {
+    type Err = MacAddressError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let octets: Vec<&str> = s.split(":").collect();
+        if octets.len() != 6usize {
+            return Err(MacAddressError::InvalidNumOctets(octets.len()));
+        }
+
+        let mut result = MacAddress {
+            family: net_sys::ARPHRD_ETHER,
+            addr: [0; 6usize],
+            __pad: [0; 8usize],
+        };
+
+        for (i, octet) in octets.iter().enumerate() {
+            result.addr[i] = u8::from_str_radix(octet, 16).map_err(MacAddressError::ParseOctet)?;
+        }
+
+        Ok(result)
+    }
+}
+
+impl fmt::Display for MacAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,
+               "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+               self.addr[0],
+               self.addr[1],
+               self.addr[2],
+               self.addr[3],
+               self.addr[4],
+               self.addr[5])
+    }
 }
 
 /// Handle for a network tap interface.
@@ -68,14 +148,28 @@ pub struct Tap {
 }
 
 pub trait TapT: Read + Write + AsRawFd + Pollable + Send + Sized {
-    /// Create a new tap interface.
-    fn new() -> Result<Self>;
+    /// Create a new tap interface. Set the `vnet_hdr` flag to true to allow offloading on this tap,
+    /// which will add an extra 12 byte virtio net header to incoming frames. Offloading cannot
+    /// be used if `vnet_hdr` is false.
+    fn new(vnet_hdr: bool) -> Result<Self>;
+
+    /// Get the host-side IP address for the tap interface.
+    fn ip_addr(&self) -> Result<net::Ipv4Addr>;
 
     /// Set the host-side IP address for the tap interface.
     fn set_ip_addr(&self, ip_addr: net::Ipv4Addr) -> Result<()>;
 
+    /// Get the netmask for the tap interface's subnet.
+    fn netmask(&self) -> Result<net::Ipv4Addr>;
+
     /// Set the netmask for the subnet that the tap interface will exist on.
     fn set_netmask(&self, netmask: net::Ipv4Addr) -> Result<()>;
+
+    /// Get the mac address for the tap interface.
+    fn mac_address(&self) -> Result<MacAddress>;
+
+    /// Set the mac address for the tap interface.
+    fn set_mac_address(&self, mac_addr: MacAddress) -> Result<()>;
 
     /// Set the offload flags for the tap interface.
     fn set_offload(&self, flags: c_uint) -> Result<()>;
@@ -90,7 +184,7 @@ pub trait TapT: Read + Write + AsRawFd + Pollable + Send + Sized {
 }
 
 impl TapT for Tap {
-    fn new() -> Result<Tap> {
+    fn new(vnet_hdr: bool) -> Result<Tap> {
         // Open calls are safe because we give a constant nul-terminated
         // string and verify the result.
         let fd = unsafe {
@@ -115,8 +209,9 @@ impl TapT for Tap {
             let ifru_flags = ifreq.ifr_ifru.ifru_flags.as_mut();
             let name_slice = &mut ifrn_name[..TUNTAP_DEV_FORMAT.len()];
             name_slice.copy_from_slice(TUNTAP_DEV_FORMAT);
-            *ifru_flags = (net_sys::IFF_TAP | net_sys::IFF_NO_PI | net_sys::IFF_VNET_HDR) as
-                          c_short;
+            *ifru_flags = (net_sys::IFF_TAP |
+                           net_sys::IFF_NO_PI |
+                           if vnet_hdr { net_sys::IFF_VNET_HDR } else { 0 }) as c_short;
         }
 
         // ioctl is safe since we call it with a valid tap fd and check the return
@@ -137,6 +232,24 @@ impl TapT for Tap {
                tap_file: tuntap,
                if_name: unsafe { ifreq.ifr_ifrn.ifrn_name.as_ref().clone() },
            })
+    }
+
+    fn ip_addr(&self) -> Result<net::Ipv4Addr> {
+        let sock = create_socket()?;
+        let mut ifreq = self.get_ifreq();
+
+        // ioctl is safe. Called with a valid sock fd, and we check the return.
+        let ret = unsafe { ioctl_with_mut_ref(&sock,
+                                              net_sys::sockios::SIOCGIFADDR as c_ulong,
+                                              &mut ifreq) };
+        if ret < 0 {
+            return Err(Error::IoctlError(IoError::last_os_error()));
+        }
+
+        // We only access one field of the ifru union, hence this is safe.
+        let addr = unsafe { ifreq.ifr_ifru.ifru_addr.as_ref() };
+
+        Ok(read_ipv4_addr(addr))
     }
 
     fn set_ip_addr(&self, ip_addr: net::Ipv4Addr) -> Result<()> {
@@ -161,6 +274,24 @@ impl TapT for Tap {
         Ok(())
     }
 
+    fn netmask(&self) -> Result<net::Ipv4Addr> {
+        let sock = create_socket()?;
+        let mut ifreq = self.get_ifreq();
+
+        // ioctl is safe. Called with a valid sock fd, and we check the return.
+        let ret = unsafe { ioctl_with_mut_ref(&sock,
+                                              net_sys::sockios::SIOCGIFNETMASK as c_ulong,
+                                              &mut ifreq) };
+        if ret < 0 {
+            return Err(Error::IoctlError(IoError::last_os_error()));
+        }
+
+        // We only access one field of the ifru union, hence this is safe.
+        let addr = unsafe { ifreq.ifr_ifru.ifru_netmask.as_ref() };
+
+        Ok(read_ipv4_addr(addr))
+    }
+
     fn set_netmask(&self, netmask: net::Ipv4Addr) -> Result<()> {
         let sock = create_socket()?;
         let addr = create_sockaddr(netmask);
@@ -169,13 +300,56 @@ impl TapT for Tap {
 
         // We only access one field of the ifru union, hence this is safe.
         unsafe {
-            let ifru_addr = ifreq.ifr_ifru.ifru_addr.as_mut();
+            let ifru_addr = ifreq.ifr_ifru.ifru_netmask.as_mut();
             *ifru_addr = addr;
         }
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret =
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFNETMASK as c_ulong, &ifreq) };
+        if ret < 0 {
+            return Err(Error::IoctlError(IoError::last_os_error()));
+        }
+
+        Ok(())
+    }
+
+    fn mac_address(&self) -> Result<MacAddress> {
+        let sock = create_socket()?;
+        let mut ifreq = self.get_ifreq();
+
+        // ioctl is safe. Called with a valid sock fd, and we check the return.
+        let ret = unsafe { ioctl_with_mut_ref(&sock,
+                                              net_sys::sockios::SIOCGIFHWADDR as c_ulong,
+                                              &mut ifreq) };
+        if ret < 0 {
+            return Err(Error::IoctlError(IoError::last_os_error()));
+        }
+
+        // We only access one field of the ifru union, hence this is safe.
+        let ifru_hwaddr = unsafe { ifreq.ifr_ifru.ifru_hwaddr.as_ref() };
+
+        // This is safe since the MacAddress struct is already sized to match the C sockaddr
+        // struct. The address family has also been checked.
+        Ok(unsafe { mem::transmute(*ifru_hwaddr)} )
+    }
+
+    fn set_mac_address(&self, mac_addr: MacAddress) -> Result<()> {
+        let sock = create_socket()?;
+
+        let mut ifreq = self.get_ifreq();
+
+        // We only access one field of the ifru union, hence this is safe.
+        unsafe {
+            let ifru_hwaddr = ifreq.ifr_ifru.ifru_hwaddr.as_mut();
+            // This is safe since the MacAddress struct is already sized to match the C sockaddr
+            // struct.
+            *ifru_hwaddr = std::mem::transmute(mac_addr);
+        }
+
+        // ioctl is safe. Called with a valid sock fd, and we check the return.
+        let ret =
+            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFHWADDR as c_ulong, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(IoError::last_os_error()));
         }
@@ -282,7 +456,7 @@ pub mod fakes {
     }
 
     impl TapT for FakeTap {
-        fn new() -> Result<FakeTap> {
+        fn new(_: bool) -> Result<FakeTap> {
             Ok(FakeTap {
                 tap_file: OpenOptions::new()
                     .read(true)
@@ -293,11 +467,27 @@ pub mod fakes {
             })
         }
 
+        fn ip_addr(&self) -> Result<net::Ipv4Addr> {
+            Ok(net::Ipv4Addr::new(1, 2, 3, 4))
+        }
+
         fn set_ip_addr(&self, _: net::Ipv4Addr) -> Result<()> {
             Ok(())
         }
 
+        fn netmask(&self) -> Result<net::Ipv4Addr> {
+            Ok(net::Ipv4Addr::new(255, 255, 255, 252))
+        }
+
         fn set_netmask(&self, _: net::Ipv4Addr) -> Result<()> {
+            Ok(())
+        }
+
+        fn mac_address(&self) -> Result<MacAddress> {
+            Ok("01:02:03:04:05:06".parse().unwrap())
+        }
+
+        fn set_mac_address(&self, _: MacAddress) -> Result<()> {
             Ok(())
         }
 
@@ -359,19 +549,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parse_mac_address() {
+        assert!("01:02:03:04:05:06".parse::<MacAddress>().is_ok());
+        assert!("01:06".parse::<MacAddress>().is_err());
+        assert!("01:02:03:04:05:06:07:08:09".parse::<MacAddress>().is_err());
+        assert!("not a mac address".parse::<MacAddress>().is_err());
+    }
+
+    #[test]
     fn tap_create() {
-        Tap::new().unwrap();
+        Tap::new(true).unwrap();
     }
 
     #[test]
     fn tap_configure() {
-        let tap = Tap::new().unwrap();
+        let tap = Tap::new(true).unwrap();
         let ip_addr: net::Ipv4Addr = "100.115.92.5".parse().unwrap();
         let netmask: net::Ipv4Addr = "255.255.255.252".parse().unwrap();
+        let mac_addr: MacAddress = "a2:06:b9:3d:68:4d".parse().unwrap();
 
         let ret = tap.set_ip_addr(ip_addr);
         assert_ok_or_perm_denied(ret);
         let ret = tap.set_netmask(netmask);
+        assert_ok_or_perm_denied(ret);
+        let ret = tap.set_mac_address(mac_addr);
         assert_ok_or_perm_denied(ret);
     }
 
@@ -382,14 +583,14 @@ mod tests {
     #[ignore]
     fn root_only_tests() {
         // This line will fail to provide an initialized FD if the test is not run as root.
-        let tap = Tap::new().unwrap();
+        let tap = Tap::new(true).unwrap();
         tap.set_vnet_hdr_size(16).unwrap();
         tap.set_offload(0).unwrap();
     }
 
     #[test]
     fn tap_enable() {
-        let tap = Tap::new().unwrap();
+        let tap = Tap::new(true).unwrap();
 
         let ret = tap.enable();
         assert_ok_or_perm_denied(ret);
@@ -397,7 +598,7 @@ mod tests {
 
     #[test]
     fn tap_get_ifreq() {
-        let tap = Tap::new().unwrap();
+        let tap = Tap::new(true).unwrap();
         let ret = tap.get_ifreq();
         assert_eq!("__BindgenUnionField", format!("{:?}", ret.ifr_ifrn.ifrn_name));
     }

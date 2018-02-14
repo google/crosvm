@@ -12,7 +12,7 @@ use std::thread;
 
 use libc::EAGAIN;
 use net_sys;
-use net_util::{Error as TapError, TapT};
+use net_util::{Error as TapError, MacAddress, TapT};
 use sys_util::Error as SysError;
 use sys_util::{EventFd, GuestMemory, Pollable, Poller};
 use virtio_sys::{vhost, virtio_net};
@@ -39,6 +39,8 @@ pub enum NetError {
     TapSetIp(TapError),
     /// Setting tap netmask failed.
     TapSetNetmask(TapError),
+    /// Setting tap mac address failed.
+    TapSetMacAddress(TapError),
     /// Setting tap interface offload flags failed.
     TapSetOffload(TapError),
     /// Setting vnet header size failed.
@@ -290,13 +292,17 @@ where
 {
     /// Create a new virtio network device with the given IP address and
     /// netmask.
-    pub fn new(ip_addr: Ipv4Addr, netmask: Ipv4Addr) -> Result<Net<T>, NetError> {
+    pub fn new(ip_addr: Ipv4Addr,
+               netmask: Ipv4Addr,
+               mac_addr: MacAddress) -> Result<Net<T>, NetError> {
         let kill_evt = EventFd::new().map_err(NetError::CreateKillEventFd)?;
 
-        let tap: T = T::new().map_err(NetError::TapOpen)?;
+        let tap: T = T::new(true).map_err(NetError::TapOpen)?;
         tap.set_ip_addr(ip_addr).map_err(NetError::TapSetIp)?;
         tap.set_netmask(netmask)
             .map_err(NetError::TapSetNetmask)?;
+        tap.set_mac_address(mac_addr)
+            .map_err(NetError::TapSetMacAddress)?;
 
         // Set offload flags to match the virtio features below.
         tap.set_offload(net_sys::TUN_F_CSUM | net_sys::TUN_F_UFO | net_sys::TUN_F_TSO4 |
