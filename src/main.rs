@@ -378,10 +378,13 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
         #[cfg(feature = "plugin")]
         Ok(()) if cfg.plugin.is_some() => {
             match plugin::run_config(cfg) {
-                Ok(_) => info!("crosvm and plugin have exited normally"),
+                Ok(_) => {
+                    info!("crosvm and plugin have exited normally");
+                    Ok(())
+                }
                 Err(e) => {
                     error!("{}", e);
-                    return 1;
+                    Err(())
                 }
             }
         }
