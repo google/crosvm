@@ -25,7 +25,8 @@ use protobuf::ProtobufError;
 use io_jail::{self, Minijail};
 use kvm::{Kvm, Vm, Vcpu, VcpuExit, IoeventAddress, NoDatamatch};
 use sys_util::{EventFd, MmapError, Killable, SignalFd, SignalFdError, Poller, Pollable,
-               GuestMemory, Result as SysResult, Error as SysError, register_signal_handler,
+               GuestMemory, Result as SysResult, Error as SysError,
+               register_signal_handler, SIGRTMIN,
                geteuid, getegid};
 
 use Config;
@@ -306,7 +307,7 @@ pub fn run_vcpus(kvm: &Kvm,
             unsafe {
                 extern "C" fn handle_signal() {}
                 // Our signal handler does nothing and is trivially async signal safe.
-                register_signal_handler(0, handle_signal)
+                register_signal_handler(SIGRTMIN() + 0, handle_signal)
                     .expect("failed to register vcpu signal handler");
             }
 
@@ -560,7 +561,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     // blocked connections.
     plugin.signal_kill().map_err(Error::PluginKill)?;
     for handle in vcpu_handles {
-        match handle.kill(0) {
+        match handle.kill(SIGRTMIN() + 0) {
             Ok(_) => {
                 if let Err(e) = handle.join() {
                     error!("failed to join vcpu thread: {:?}", e);

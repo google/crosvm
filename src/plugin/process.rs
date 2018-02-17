@@ -374,7 +374,7 @@ impl Process {
                 .enumerate() {
             if cpu_mask & (1 << cpu_id) != 0 {
                 per_cpu_state.lock().unwrap().request_pause(user_data);
-                if let Err(e) = handle.kill(0) {
+                if let Err(e) = handle.kill(SIGRTMIN() + 0) {
                     error!("failed to interrupt vcpu {}: {:?}", cpu_id, e);
                 }
             }

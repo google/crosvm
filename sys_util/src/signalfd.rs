@@ -7,27 +7,21 @@ use std::result;
 use std::fs::File;
 use std::os::raw::c_int;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::ptr::null_mut;
 
-use libc::{read, sigaddset, sigemptyset, sigismember, sigset_t, c_void, signalfd,
-           signalfd_siginfo, pthread_sigmask};
-use libc::{EAGAIN, SIG_BLOCK, SIG_UNBLOCK, SFD_NONBLOCK, SFD_CLOEXEC};
+use libc::{read, c_void, signalfd, signalfd_siginfo};
+use libc::{EAGAIN, SFD_NONBLOCK, SFD_CLOEXEC};
 
 use errno;
-use errno::errno_result;
+use signal;
 
 #[derive(Debug)]
 pub enum Error {
-    /// Couldn't create a sigset from the given signal.
+    /// Failed to construct sigset when creating signalfd.
     CreateSigset(errno::Error),
     /// Failed to create a new signalfd.
     CreateSignalFd(errno::Error),
-    /// The wrapped signal has already been blocked.
-    SignalAlreadyBlocked(c_int),
-    /// Failed to check if the requested signal is in the blocked set already.
-    CompareBlockedSignals(errno::Error),
-    /// The signal could not be blocked.
-    BlockSignal(errno::Error),
+    /// Failed to block the signal when creating signalfd.
+    CreateBlockSignal(signal::Error),
     /// Unable to read from signalfd.
     SignalFdRead(errno::Error),
     /// Signalfd could be read, but didn't return a full siginfo struct.
@@ -44,65 +38,33 @@ pub type Result<T> = result::Result<T, Error>;
 pub struct SignalFd {
     signalfd: File,
     signal: c_int,
-    sigset: sigset_t,
 }
 
 impl SignalFd {
-    fn create_sigset(signal: c_int) -> errno::Result<sigset_t> {
-        // sigset will actually be initialized by sigemptyset below.
-        let mut sigset: sigset_t = unsafe { mem::zeroed() };
-
-        // Safe - return value is checked.
-        let ret = unsafe { sigemptyset(&mut sigset as *mut sigset_t) };
-        if ret < 0 {
-            return errno_result();
-        }
-
-        let ret = unsafe { sigaddset(&mut sigset as *mut sigset_t, signal) };
-        if ret < 0 {
-            return errno_result();
-        }
-        Ok(sigset)
-    }
-
     /// Creates a new SignalFd for the given signal, blocking the normal handler
     /// for the signal as well. Since we mask out the normal handler, this is
     /// a risky operation - signal masking will persist across fork and even
     /// **exec** so the user of SignalFd should think long and hard about
     /// when to mask signals.
     pub fn new(signal: c_int) -> Result<SignalFd> {
-        // This unsafe block will create a signalfd that watches for the
-        // supplied signal, and then block the normal handler. At each
-        // step, we check return values.
+        let sigset = signal::create_sigset(&[signal]).map_err(Error::CreateSigset)?;
+
+        // This is safe as we check the return value and know that fd is valid.
+        let fd = unsafe { signalfd(-1, &sigset, SFD_CLOEXEC | SFD_NONBLOCK) };
+        if fd < 0 {
+            return Err(Error::CreateSignalFd(errno::Error::last()));
+        }
+
+        // Mask out the normal handler for the signal.
+        signal::block_signal(signal).map_err(Error::CreateBlockSignal)?;
+
+        // This is safe because we checked fd for success and know the
+        // kernel gave us an fd that we own.
         unsafe {
-            let sigset = SignalFd::create_sigset(signal)
-                .map_err(Error::CreateSigset)?;
-            let fd = signalfd(-1, &sigset, SFD_CLOEXEC | SFD_NONBLOCK);
-            if fd < 0 {
-                return Err(Error::CreateSignalFd(errno::Error::last()));
-            }
-
-            // Mask out the normal handler for the signal.
-            let mut old_sigset: sigset_t = mem::zeroed();
-            let ret = pthread_sigmask(SIG_BLOCK, &sigset, &mut old_sigset as *mut sigset_t);
-            if ret < 0 {
-                return Err(Error::BlockSignal(errno::Error::last()));
-            }
-
-            let ret = sigismember(&old_sigset, signal);
-            if ret < 0 {
-                return Err(Error::CompareBlockedSignals(errno::Error::last()));
-            } else if ret > 0 {
-                return Err(Error::SignalAlreadyBlocked(signal));
-            }
-
-            // This is safe because we checked fd for success and know the
-            // kernel gave us an fd that we own.
             Ok(SignalFd {
-                   signalfd: File::from_raw_fd(fd),
-                   signal: signal,
-                   sigset: sigset,
-               })
+                signalfd: File::from_raw_fd(fd),
+                signal: signal,
+            })
         }
     }
 
@@ -150,12 +112,9 @@ impl Drop for SignalFd {
     fn drop(&mut self) {
         // This is thread-safe and safe in the sense that we're doing what
         // was promised - unmasking the signal when we go out of scope.
-        let ret =
-            unsafe { pthread_sigmask(SIG_UNBLOCK, &mut self.sigset as *mut sigset_t, null_mut()) };
-
-        // drop can't return a Result, so just print an error to syslog.
-        if ret < 0 {
-            error!("signalfd failed to unblock signal {}: {}", self.signal, ret);
+        let res = signal::unblock_signal(self.signal);
+        if let Err(e) = res {
+            error!("signalfd failed to unblock signal {}: {:?}", self.signal, e);
         }
     }
 }
@@ -164,7 +123,7 @@ impl Drop for SignalFd {
 mod tests {
     use super::*;
 
-    use libc::{raise, sigismember};
+    use libc::{raise, sigset_t, sigismember, pthread_sigmask};
     use signal::SIGRTMIN;
     use std::ptr::null;
 

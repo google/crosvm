@@ -2,12 +2,34 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{c_int, pthread_t, signal, pthread_kill, SIG_ERR, EINVAL};
+use libc::{c_int, signal,
+           sigset_t, sigaddset, sigemptyset, sigismember,
+           pthread_t, pthread_kill, pthread_sigmask,
+           SIG_BLOCK, SIG_UNBLOCK, SIG_ERR, EINVAL};
 
+use std::mem;
+use std::ptr::null_mut;
+use std::result;
 use std::thread::JoinHandle;
 use std::os::unix::thread::JoinHandleExt;
 
-use {Error, Result, errno_result};
+use {errno, errno_result};
+
+#[derive(Debug)]
+pub enum Error {
+    /// Couldn't create a sigset.
+    CreateSigset(errno::Error),
+    /// The wrapped signal has already been blocked.
+    SignalAlreadyBlocked(c_int),
+    /// Failed to check if the requested signal is in the blocked set already.
+    CompareBlockedSignals(errno::Error),
+    /// The signal could not be blocked.
+    BlockSignal(errno::Error),
+    /// The signal could not be unblocked.
+    UnblockSignal(errno::Error),
+}
+
+pub type SignalResult<T> = result::Result<T, Error>;
 
 #[link(name = "c")]
 extern "C" {
@@ -27,25 +49,88 @@ pub fn SIGRTMAX() -> c_int {
     unsafe { __libc_current_sigrtmax() }
 }
 
-fn valid_signal_num(num: u8) -> bool {
-    (num as c_int) + SIGRTMIN() <= SIGRTMAX()
+fn valid_signal_num(num: c_int) -> bool {
+    num >= SIGRTMIN() && num <= SIGRTMAX()
 }
 
-/// Registers `handler` as the signal handler of signum `num + SIGRTMIN`.
+/// Registers `handler` as the signal handler of signum `num`.
 ///
-/// The value of `num + SIGRTMIN` must not exceed `SIGRTMAX`.
+/// The value of `num` must be within [`SIGRTMIN`, `SIGRTMAX`] range.
 ///
 /// This is considered unsafe because the given handler will be called asynchronously, interrupting
 /// whatever the thread was doing and therefore must only do async-signal-safe operations.
-pub unsafe fn register_signal_handler(num: u8, handler: extern "C" fn() -> ()) -> Result<()> {
+pub unsafe fn register_signal_handler(
+    num: c_int,
+    handler: extern "C" fn() -> (),
+) -> errno::Result<()> {
     if !valid_signal_num(num) {
-        return Err(Error::new(EINVAL));
+        return Err(errno::Error::new(EINVAL));
     }
-    let ret = signal((num as i32) + SIGRTMIN(), handler as *const () as usize);
+    let ret = signal(num, handler as *const () as usize);
     if ret == SIG_ERR {
         return errno_result();
     }
 
+    Ok(())
+}
+
+/// Creates `sigset` from an array of signal numbers.
+///
+/// This is a helper function used when we want to manipulate signals.
+pub fn create_sigset(signals: &[c_int]) -> errno::Result<sigset_t> {
+    // sigset will actually be initialized by sigemptyset below.
+    let mut sigset: sigset_t = unsafe { mem::zeroed() };
+
+    // Safe - return value is checked.
+    let ret = unsafe { sigemptyset(&mut sigset) };
+    if ret < 0 {
+        return errno_result();
+    }
+
+    for signal in signals {
+        // Safe - return value is checked.
+        let ret = unsafe { sigaddset(&mut sigset, *signal) };
+        if ret < 0 {
+            return errno_result();
+        }
+    }
+
+    Ok(sigset)
+}
+
+/// Masks given signal.
+///
+/// If signal is already blocked the call will fail with Error::SignalAlreadyBlocked
+/// result.
+pub fn block_signal(num: c_int) -> SignalResult<()> {
+    let sigset = create_sigset(&[num]).map_err(Error::CreateSigset)?;
+
+    // Safe - return values are checked.
+    unsafe {
+        let mut old_sigset: sigset_t = mem::zeroed();
+        let ret = pthread_sigmask(SIG_BLOCK, &sigset, &mut old_sigset as *mut sigset_t);
+        if ret < 0 {
+            return Err(Error::BlockSignal(errno::Error::last()));
+        }
+        let ret = sigismember(&old_sigset, num);
+        if ret < 0 {
+            return Err(Error::CompareBlockedSignals(errno::Error::last()));
+        } else if ret > 0 {
+            return Err(Error::SignalAlreadyBlocked(num));
+        }
+    }
+    Ok(())
+}
+
+/// Unmasks given signal.
+pub fn unblock_signal(num: c_int) -> SignalResult<()> {
+    let sigset = create_sigset(&[num]).map_err(Error::CreateSigset)?;
+
+    // Safe - return value is checked.
+    let ret = unsafe { pthread_sigmask(SIG_UNBLOCK, &sigset, null_mut()) };
+    if ret < 0 {
+        return Err(Error::UnblockSignal(errno::Error::last()));
+    }
     Ok(())
 }
 
@@ -59,17 +144,17 @@ pub unsafe fn register_signal_handler(num: u8, handler: extern "C" fn() -> ()) -
 pub unsafe trait Killable {
     fn pthread_handle(&self) -> pthread_t;
 
-    /// Sends the signal `num + SIGRTMIN` to this killable thread.
+    /// Sends the signal `num` to this killable thread.
     ///
-    /// The value of `num + SIGRTMIN` must not exceed `SIGRTMAX`.
-    fn kill(&self, num: u8) -> Result<()> {
+    /// The value of `num` must be within [`SIGRTMIN`, `SIGRTMAX`] range.
+    fn kill(&self, num: c_int) -> errno::Result<()> {
         if !valid_signal_num(num) {
-            return Err(Error::new(EINVAL));
+            return Err(errno::Error::new(EINVAL));
         }
 
         // Safe because we ensure we are using a valid pthread handle, a valid signal number, and
         // check the return result.
-        let ret = unsafe { pthread_kill(self.pthread_handle(), (num as i32) + SIGRTMIN()) };
+        let ret = unsafe { pthread_kill(self.pthread_handle(), num) };
         if ret < 0 {
             return errno_result();
         }

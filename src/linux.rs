@@ -536,7 +536,7 @@ fn setup_vcpu(kvm: &Kvm,
             unsafe {
                 extern "C" fn handle_signal() {}
                 // Our signal handler does nothing and is trivially async signal safe.
-                register_signal_handler(0, handle_signal)
+                register_signal_handler(SIGRTMIN() + 0, handle_signal)
                     .expect("failed to register vcpu signal handler");
             }
 
@@ -696,7 +696,7 @@ fn run_control(vm: &mut Vm,
     // re-enter the VM.
     kill_signaled.store(true, Ordering::SeqCst);
     for handle in vcpu_handles {
-        match handle.kill(0) {
+        match handle.kill(SIGRTMIN() + 0) {
             Ok(_) => {
                 if let Err(e) = handle.join() {
                     error!("failed to join vcpu thread: {:?}", e);
