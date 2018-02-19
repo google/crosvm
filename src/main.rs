@@ -306,7 +306,10 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 })
             }
             cfg.plugin = Some(plugin);
-        }
+        },
+        "vhost-net" => {
+            cfg.vhost_net = true
+        },
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -353,6 +356,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
           #[cfg(feature = "plugin")]
           Argument::value("plugin", "PATH", "Absolute path to plugin process to run under crosvm."),
+          Argument::flag("vhost-net", "Use vhost for networking."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
