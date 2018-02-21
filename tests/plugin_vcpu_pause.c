@@ -238,6 +238,21 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    signal_unpause(crosvm, false);
+
+    /* Wait until VCPU thread tells us that it is no longer paused */
+    read(g_kill_evt, &dummy, sizeof(dummy));
+
+    /*
+     * Try pausing VCPUs 3rd time to see if we will miss pause
+     * request as we are exiting previous pause.
+     */
+    ret = signal_pause(crosvm);
+    if (ret) {
+        fprintf(stderr, "failed to pause vcpus (2nd time): %d\n", ret);
+        return 1;
+    }
+
     signal_unpause(crosvm, true);
 
     /* Wait until VCPU thread tells us that it is no longer paused */

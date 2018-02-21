@@ -26,7 +26,7 @@ use io_jail::{self, Minijail};
 use kvm::{Kvm, Vm, Vcpu, VcpuExit, IoeventAddress, NoDatamatch};
 use sys_util::{EventFd, MmapError, Killable, SignalFd, SignalFdError, Poller, Pollable,
                GuestMemory, Result as SysResult, Error as SysError,
-               register_signal_handler, SIGRTMIN,
+               register_signal_handler, block_signal, clear_signal, SIGRTMIN,
                geteuid, getegid};
 
 use Config;
@@ -307,9 +307,20 @@ pub fn run_vcpus(kvm: &Kvm,
             unsafe {
                 extern "C" fn handle_signal() {}
                 // Our signal handler does nothing and is trivially async signal safe.
+                // We need to install this signal handler even though we do block
+                // the signal below, to ensure that this signal will interrupt
+                // execution of KVM_RUN (this is implementation issue).
                 register_signal_handler(SIGRTMIN() + 0, handle_signal)
                     .expect("failed to register vcpu signal handler");
             }
+
+            // We do not really want the signal handler to run...
+            block_signal(SIGRTMIN() + 0)
+                .expect("failed to block signal");
+            // Tell KVM to not block anything when entering kvm run
+            // because we will be using first RT signal to kick the VCPU.
+            vcpu.set_signal_mask(&[])
+                .expect("failed to set up KVM VCPU signal mask");
 
             let res = vcpu_plugin.init(&vcpu);
             vcpu_thread_barrier.wait();
@@ -355,6 +366,11 @@ pub fn run_vcpus(kvm: &Kvm,
                     if kill_signaled.load(Ordering::SeqCst) {
                         break;
                     }
+
+                    // Try to clear the signal that we use to kick VCPU if it is
+                    // pending before attempting to handle pause requests.
+                    clear_signal(SIGRTMIN() + 0)
+                        .expect("failed to clear pending signal");
 
                     if let Err(e) = vcpu_plugin.pre_run(&vcpu) {
                         error!("failed to process pause on vcpu {}: {:?}", cpu_id, e);
