@@ -53,6 +53,7 @@ pub use guest_memory::Error as GuestMemoryError;
 pub use signalfd::Error as SignalFdError;
 
 use std::ffi::CStr;
+use std::os::unix::io::AsRawFd;
 use std::ptr;
 
 use libc::{kill, syscall, sysconf, waitpid, c_long, pid_t, uid_t, gid_t, _SC_PAGESIZE,
@@ -94,6 +95,37 @@ pub fn getegid() -> gid_t {
 pub fn chown(path: &CStr, uid: uid_t, gid: gid_t) -> Result<()> {
     // Safe since we pass in a valid string pointer and check the return value.
     let ret = unsafe { libc::chown(path.as_ptr(), uid, gid) };
+
+    if ret < 0 {
+        errno_result()
+    } else {
+        Ok(())
+    }
+}
+
+/// The operation to perform with `flock`.
+pub enum FlockOperation {
+    LockShared,
+    LockExclusive,
+    Unlock,
+}
+
+/// Safe wrapper for flock(2) with the operation `op` and optionally `nonblocking`. The lock will be
+/// dropped automatically when `file` is dropped.
+#[inline(always)]
+pub fn flock(file: &AsRawFd, op: FlockOperation, nonblocking: bool) -> Result<()> {
+    let mut operation = match op {
+        FlockOperation::LockShared => libc::LOCK_SH,
+        FlockOperation::LockExclusive => libc::LOCK_EX,
+        FlockOperation::Unlock => libc::LOCK_UN,
+    };
+
+    if nonblocking {
+        operation |= libc::LOCK_NB;
+    }
+
+    // Safe since we pass in a valid fd and flock operation, and check the return value.
+    let ret = unsafe { libc::flock(file.as_raw_fd(), operation) };
 
     if ret < 0 {
         errno_result()

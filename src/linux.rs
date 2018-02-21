@@ -53,6 +53,7 @@ pub enum Error {
     DeviceJail(io_jail::Error),
     DevicePivotRoot(io_jail::Error),
     Disk(io::Error),
+    DiskImageLock(sys_util::Error),
     GetWaylandGroup(sys_util::Error),
     LoadCmdline(kernel_loader::Error),
     LoadKernel(kernel_loader::Error),
@@ -107,6 +108,7 @@ impl fmt::Display for Error {
             &Error::DeviceJail(ref e) => write!(f, "failed to jail device: {}", e),
             &Error::DevicePivotRoot(ref e) => write!(f, "failed to pivot root device: {}", e),
             &Error::Disk(ref e) => write!(f, "failed to load disk image: {}", e),
+            &Error::DiskImageLock(ref e) => write!(f, "failed to lock disk image: {:?}", e),
             &Error::GetWaylandGroup(ref e) => {
                 write!(f, "could not find gid for wayland group: {:?}", e)
             }
@@ -303,6 +305,14 @@ fn setup_mmio_bus(cfg: &Config,
                             .write(disk.writable)
                             .open(&disk.path)
                             .map_err(|e| Error::Disk(e))?;
+        // Lock the disk image to prevent other crosvm instances from using it.
+        let lock_op = if disk.writable {
+            FlockOperation::LockExclusive
+        } else {
+            FlockOperation::LockShared
+        };
+        flock(&raw_image, lock_op, true).map_err(Error::DiskImageLock)?;
+
         let block_box: Box<devices::virtio::VirtioDevice> = match disk.disk_type {
             DiskType::FlatFile => { // Access as a raw block device.
                 Box::new(devices::virtio::Block::new(raw_image)
