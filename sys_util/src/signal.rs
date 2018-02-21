@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{c_int, signal,
-           sigset_t, sigaddset, sigemptyset, sigismember,
+use libc::{c_int, signal, timespec,
+           sigset_t, siginfo_t,
+           sigaddset, sigemptyset, sigismember, sigpending, sigtimedwait,
            pthread_t, pthread_kill, pthread_sigmask,
-           SIG_BLOCK, SIG_UNBLOCK, SIG_ERR, EINVAL};
+           SIG_BLOCK, SIG_UNBLOCK, SIG_ERR, EAGAIN, EINTR, EINVAL };
 
 use std::mem;
 use std::ptr::null_mut;
@@ -27,6 +28,12 @@ pub enum Error {
     BlockSignal(errno::Error),
     /// The signal could not be unblocked.
     UnblockSignal(errno::Error),
+    /// Failed to wait for given signal.
+    ClearWaitPending(errno::Error),
+    /// Failed to get pending signals.
+    ClearGetPending(errno::Error),
+    /// Failed to check if given signal is in the set of pending signals.
+    ClearCheckPending(errno::Error),
 }
 
 pub type SignalResult<T> = result::Result<T, Error>;
@@ -131,6 +138,51 @@ pub fn unblock_signal(num: c_int) -> SignalResult<()> {
     if ret < 0 {
         return Err(Error::UnblockSignal(errno::Error::last()));
     }
+    Ok(())
+}
+
+/// Clears pending signal.
+pub fn clear_signal(num: c_int) -> SignalResult<()> {
+    let sigset = create_sigset(&[num]).map_err(Error::CreateSigset)?;
+
+    while {
+        // This is safe as we are rigorously checking return values
+        // of libc calls.
+        unsafe {
+            let mut siginfo: siginfo_t = mem::zeroed();
+            let ts = timespec { tv_sec: 0, tv_nsec: 0 };
+            // Attempt to clear one instance of pending signal. If signal
+            // is not pending, the call will fail with EAGAIN or EINTR.
+            let ret = sigtimedwait(&sigset, &mut siginfo, &ts);
+            if ret < 0 {
+                let e = errno::Error::last();
+                match e.errno() {
+                    EAGAIN | EINTR => {}
+                    _ => {
+                        return Err(Error::ClearWaitPending(errno::Error::last()));
+                    }
+                }
+            }
+
+            // This sigset will be actually filled with `sigpending` call.
+            let mut chkset: sigset_t = mem::zeroed();
+            // See if more instances of the signal are pending.
+            let ret = sigpending(&mut chkset);
+            if ret < 0 {
+                return Err(Error::ClearGetPending(errno::Error::last()));
+            }
+
+            let ret = sigismember(&chkset, num);
+            if ret < 0 {
+                return Err(Error::ClearCheckPending(errno::Error::last()));
+            }
+
+            // This is do-while loop condition.
+            ret != 0
+        }
+    }
+    {}
+
     Ok(())
 }
 
