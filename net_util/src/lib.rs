@@ -8,7 +8,7 @@ extern crate sys_util;
 
 use std::fmt;
 use std::fs::File;
-use std::io::{Read, Write, Result as IoResult, Error as IoError, ErrorKind};
+use std::io::{Read, Write, Result as IoResult};
 use std::mem;
 use std::net;
 use std::num::ParseIntError;
@@ -16,21 +16,34 @@ use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::str::FromStr;
 
-use sys_util::Pollable;
+use libc::EPERM;
+
+use sys_util::{Error as SysError, Pollable};
 use sys_util::{ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref};
 
 #[derive(Debug)]
 pub enum Error {
     /// Failed to create a socket.
-    CreateSocket(IoError),
+    CreateSocket(SysError),
     /// Couldn't open /dev/net/tun.
-    OpenTun(IoError),
+    OpenTun(SysError),
     /// Unable to create tap interface.
-    CreateTap(IoError),
+    CreateTap(SysError),
     /// ioctl failed.
-    IoctlError(IoError),
+    IoctlError(SysError),
 }
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Error {
+    pub fn sys_error(&self) -> SysError {
+        match self {
+            &Error::CreateSocket(e) => e,
+            &Error::OpenTun(e) => e,
+            &Error::CreateTap(e) => e,
+            &Error::IoctlError(e) => e,
+        }
+    }
+}
 
 /// Create a sockaddr_in from an IPv4 address, and expose it as
 /// an opaque sockaddr suitable for usage by socket ioctls.
@@ -60,7 +73,7 @@ fn create_socket() -> Result<net::UdpSocket> {
     // This is safe since we check the return value.
     let sock = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
     if sock < 0 {
-        return Err(Error::CreateSocket(IoError::last_os_error()));
+        return Err(Error::CreateSocket(SysError::last()));
     }
 
     // This is safe; nothing else will use or hold onto the raw sock fd.
@@ -192,7 +205,7 @@ impl TapT for Tap {
                        libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC)
         };
         if fd < 0 {
-            return Err(Error::OpenTun(IoError::last_os_error()));
+            return Err(Error::OpenTun(SysError::last()));
         }
 
         // We just checked that the fd is valid.
@@ -219,10 +232,10 @@ impl TapT for Tap {
         let ret = unsafe { ioctl_with_mut_ref(&tuntap, net_sys::TUNSETIFF(), &mut ifreq) };
 
         if ret < 0 {
-            let error = IoError::last_os_error();
+            let error = SysError::last();
 
             // In a non-root, test environment, we won't have permission to call this; allow
-            if !(cfg!(test) && error.kind() == ErrorKind::PermissionDenied) {
+            if !(cfg!(test) && error.errno() == EPERM) {
                 return Err(Error::CreateTap(error));
             }
         }
@@ -243,7 +256,7 @@ impl TapT for Tap {
                                               net_sys::sockios::SIOCGIFADDR as c_ulong,
                                               &mut ifreq) };
         if ret < 0 {
-            return Err(Error::IoctlError(IoError::last_os_error()));
+            return Err(Error::IoctlError(SysError::last()));
         }
 
         // We only access one field of the ifru union, hence this is safe.
@@ -268,7 +281,7 @@ impl TapT for Tap {
         let ret =
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFADDR as c_ulong, &ifreq) };
         if ret < 0 {
-            return Err(Error::IoctlError(IoError::last_os_error()));
+            return Err(Error::IoctlError(SysError::last()));
         }
 
         Ok(())
@@ -283,7 +296,7 @@ impl TapT for Tap {
                                               net_sys::sockios::SIOCGIFNETMASK as c_ulong,
                                               &mut ifreq) };
         if ret < 0 {
-            return Err(Error::IoctlError(IoError::last_os_error()));
+            return Err(Error::IoctlError(SysError::last()));
         }
 
         // We only access one field of the ifru union, hence this is safe.
@@ -308,7 +321,7 @@ impl TapT for Tap {
         let ret =
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFNETMASK as c_ulong, &ifreq) };
         if ret < 0 {
-            return Err(Error::IoctlError(IoError::last_os_error()));
+            return Err(Error::IoctlError(SysError::last()));
         }
 
         Ok(())
@@ -323,7 +336,7 @@ impl TapT for Tap {
                                               net_sys::sockios::SIOCGIFHWADDR as c_ulong,
                                               &mut ifreq) };
         if ret < 0 {
-            return Err(Error::IoctlError(IoError::last_os_error()));
+            return Err(Error::IoctlError(SysError::last()));
         }
 
         // We only access one field of the ifru union, hence this is safe.
@@ -351,7 +364,7 @@ impl TapT for Tap {
         let ret =
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFHWADDR as c_ulong, &ifreq) };
         if ret < 0 {
-            return Err(Error::IoctlError(IoError::last_os_error()));
+            return Err(Error::IoctlError(SysError::last()));
         }
 
         Ok(())
@@ -362,7 +375,7 @@ impl TapT for Tap {
         let ret =
             unsafe { ioctl_with_val(&self.tap_file, net_sys::TUNSETOFFLOAD(), flags as c_ulong) };
         if ret < 0 {
-            return Err(Error::IoctlError(IoError::last_os_error()));
+            return Err(Error::IoctlError(SysError::last()));
         }
 
         Ok(())
@@ -384,7 +397,7 @@ impl TapT for Tap {
         let ret =
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFFLAGS as c_ulong, &ifreq) };
         if ret < 0 {
-            return Err(Error::IoctlError(IoError::last_os_error()));
+            return Err(Error::IoctlError(SysError::last()));
         }
 
         Ok(())
@@ -394,7 +407,7 @@ impl TapT for Tap {
         // ioctl is safe. Called with a valid tap fd, and we check the return.
         let ret = unsafe { ioctl_with_ref(&self.tap_file, net_sys::TUNSETVNETHDRSZ(), &size) };
         if ret < 0 {
-            return Err(Error::IoctlError(IoError::last_os_error()));
+            return Err(Error::IoctlError(SysError::last()));
         }
 
         Ok(())
@@ -607,7 +620,7 @@ mod tests {
         match res {
             // We won't have permission in test environments; allow that
             Ok(_t) => {},
-            Err(Error::IoctlError(ref ioe)) if ioe.kind() == ErrorKind::PermissionDenied => {},
+            Err(Error::IoctlError(ref e)) if e.errno() == EPERM => {},
             Err(e) => panic!("Unexpected Error:\n{:?}", e),
         }
     }
