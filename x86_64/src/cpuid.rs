@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 use std::result;
+use std::fmt::{self, Display};
+use std::error::{self, Error as CpuidError};
 
 use kvm;
 use sys_util;
@@ -17,6 +19,23 @@ pub enum Error {
     SetSupportedCpusFailed(sys_util::Error),
 }
 pub type Result<T> = result::Result<T, Error>;
+
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        match self {
+            &Error::GetSupportedCpusFailed(_) =>
+                "GetSupportedCpus ioctl failed",
+            &Error::SetSupportedCpusFailed(_) =>
+                "SetSupportedCpus ioctl failed",
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "CPUID Error: {}", Error::description(self))
+    }
+}
 
 // CPUID bits in ebx, ecx, and edx.
 const EBX_CLFLUSH_CACHELINE: u32 = 8; // Flush a cache line size.

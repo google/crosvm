@@ -5,6 +5,8 @@
 use std::io::Cursor;
 use std::mem;
 use std::result;
+use std::error::{self, Error as InterruptsError};
+use std::fmt::{self, Display};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
@@ -18,6 +20,21 @@ pub enum Error {
     SetLapic(sys_util::Error),
 }
 pub type Result<T> = result::Result<T, Error>;
+
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        match self {
+            &Error::GetLapic(_) => "GetLapic ioctl failed",
+            &Error::SetLapic(_) => "SetLapic ioctl failed",
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Interrupt Error: {}", Error::description(self))
+    }
+}
 
 // Defines poached from apicdef.h kernel header.
 const APIC_LVT0: usize = 0x350;

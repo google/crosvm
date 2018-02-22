@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 use std::{mem, result};
+use std::error::{self, Error as RegsError};
+use std::fmt::{self, Display};
 
 use kvm;
 use kvm_sys::kvm_fpu;
@@ -36,6 +38,38 @@ pub enum Error {
     WritePDEAddress,
 }
 pub type Result<T> = result::Result<T, Error>;
+
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        match self {
+            &Error::MsrIoctlFailed(_) =>
+                "Setting up msrs failed",
+            &Error::FpuIoctlFailed(_) =>
+                "Failed to configure the FPU",
+            &Error::SettingRegistersIoctl(_) =>
+                "Failed to set base registers for this cpu",
+            &Error::SRegsIoctlFailed(_) =>
+                "Failed to set sregs for this cpu",
+            &Error::WriteGDTFailure =>
+                "Writing the GDT to RAM failed",
+            &Error::WriteIDTFailure =>
+                "Writing the IDT to RAM failed",
+            &Error::WritePML4Address =>
+                "Writing PML4 to RAM failed",
+            &Error::WritePDPTEAddress =>
+                "Writing PDPTE to RAM failed",
+            &Error::WritePDEAddress =>
+                "Writing PDE to RAM failed",
+
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Interrupt Error: {}", Error::description(self))
+    }
+}
 
 fn create_msr_entries() -> Vec<kvm_msr_entry> {
     let mut entries = Vec::<kvm_msr_entry>::new();

@@ -6,6 +6,8 @@ use std::io;
 use std::mem;
 use std::result;
 use std::slice;
+use std::error::{self, Error as MptableError};
+use std::fmt::{self, Display};
 
 use libc::c_char;
 
@@ -35,6 +37,32 @@ pub enum Error {
     WriteMpcLintsrc,
     /// Failure to write MP table header.
     WriteMpcTable,
+}
+
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        match self {
+            &Error::NotEnoughMemory =>
+                "There was too little guest memory to store the MP table",
+            &Error::AddressOverflow =>
+                "The MP table has too little address space to be stored",
+            &Error::Clear => "Failure while zeroing out the memory for the MP table",
+            &Error::WriteMpfIntel => "Failure to write the MP floating pointer",
+            &Error::WriteMpcCpu => "Failure to write MP CPU entry",
+            &Error::WriteMpcIoapic => "Failure to write MP ioapic entry",
+            &Error::WriteMpcBus => "Failure to write MP bus entry",
+            &Error::WriteMpcIntsrc => "Failure to write MP interrupt source entry",
+            &Error::WriteMpcLintsrc =>
+                "Failure to write MP local interrupt source entry",
+            &Error::WriteMpcTable => "Failure to write MP table header",
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "MPTable Error: {}", Error::description(self))
+    }
 }
 
 pub type Result<T> = result::Result<T, Error>;
