@@ -369,7 +369,8 @@ impl QcowFile {
         } else {
             l2_addr_from_table
         };
-        let l2_entry_addr: u64 = l2_addr + self.l2_address_offset(address);
+        let l2_entry_addr: u64 = l2_addr.checked_add(self.l2_address_offset(address))
+                .ok_or(std::io::Error::from_raw_os_error(EINVAL))?;
         let cluster_addr_disk: u64 = read_u64_from_offset(&mut self.file, l2_entry_addr)?;
         let cluster_addr_from_table: u64 = cluster_addr_disk & L2_TABLE_OFFSET_MASK;
         let cluster_addr = if cluster_addr_from_table == 0 {
@@ -414,8 +415,9 @@ impl QcowFile {
         let refcount_block_entries = cluster_size * size_of::<u64>() as u64 / self.refcount_bits;
         let refcount_block_index = (address / cluster_size) % refcount_block_entries;
         let refcount_table_index = (address / cluster_size) / refcount_block_entries;
-        let refcount_block_entry_addr =
-            self.header.refcount_table_offset + refcount_table_index * size_of::<u64>() as u64;
+        let refcount_block_entry_addr = self.header.refcount_table_offset
+                .checked_add(refcount_table_index * size_of::<u64>() as u64)
+                .ok_or(std::io::Error::from_raw_os_error(EINVAL))?;
         let refcount_block_address_from_file =
             read_u64_from_offset(&mut self.file, refcount_block_entry_addr)?;
         let refcount_block_address = if refcount_block_address_from_file == 0 {
