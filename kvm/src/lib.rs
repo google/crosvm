@@ -133,22 +133,33 @@ impl Kvm {
         }
     }
 
-    /// X86 specific call to get the system supported CPUID values
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_supported_cpuid(&self) -> Result<CpuId> {
+    fn get_cpuid(&self, kind: u64) -> Result<CpuId> {
         let mut cpuid = CpuId::new(MAX_KVM_CPUID_ENTRIES);
 
         let ret = unsafe {
             // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the memory
             // allocated for the struct. The limit is read from nent, which is set to the allocated
             // size(MAX_KVM_CPUID_ENTRIES) above.
-            ioctl_with_mut_ptr(self, KVM_GET_SUPPORTED_CPUID(), cpuid.as_mut_ptr())
+            ioctl_with_mut_ptr(self, kind, cpuid.as_mut_ptr())
         };
         if ret < 0 {
             return errno_result();
         }
 
         Ok(cpuid)
+    }
+
+    /// X86 specific call to get the system supported CPUID values
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_supported_cpuid(&self) -> Result<CpuId> {
+        self.get_cpuid(KVM_GET_SUPPORTED_CPUID())
+    }
+
+    /// X86 specific call to get the system emulated CPUID values
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_emulated_cpuid(&self) -> Result<CpuId> {
+        self.get_cpuid(KVM_GET_EMULATED_CPUID())
     }
 }
 
