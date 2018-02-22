@@ -7,7 +7,6 @@ use std::result;
 use kvm;
 use sys_util;
 
-const MAX_KVM_CPUID_ENTRIES: usize = 256;
 const VENDOR_EBX_VAL: u32 = 0x534f5243;
 const VENDOR_ECX_VAL: u32 = 0x4d56534f;
 const VENDOR_EDX_VAL: u32 = 0x52434d56;
@@ -72,7 +71,7 @@ fn filter_cpuid(cpu_id: u64, cpu_count: u64, kvm_cpuid: &mut kvm::CpuId) -> Resu
 /// * `cpu_id` - The index of the CPU `vcpu` is for.
 /// * `nrcpus` - The number of vcpus being used by this VM.
 pub fn setup_cpuid(kvm: &kvm::Kvm, vcpu: &kvm::Vcpu, cpu_id: u64, nrcpus: u64) -> Result<()> {
-    let mut kvm_cpuid = kvm.get_supported_cpuid(MAX_KVM_CPUID_ENTRIES)
+    let mut kvm_cpuid = kvm.get_supported_cpuid()
         .map_err(Error::GetSupportedCpusFailed)?;
 
     filter_cpuid(cpu_id, nrcpus, &mut kvm_cpuid)?;

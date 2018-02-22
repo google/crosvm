@@ -31,6 +31,8 @@ use sys_util::{ioctl, ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref, ioctl_
 
 pub use cap::*;
 
+const MAX_KVM_CPUID_ENTRIES: usize = 256;
+
 fn errno_result<T>() -> Result<T> {
     Err(Error::last())
 }
@@ -132,18 +134,14 @@ impl Kvm {
     }
 
     /// X86 specific call to get the system supported CPUID values
-    ///
-    /// # Arguments
-    ///
-    /// * `max_cpus` - Maximum number of cpuid entries to return.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_supported_cpuid(&self, max_cpus: usize) -> Result<CpuId> {
-        let mut cpuid = CpuId::new(max_cpus);
+    pub fn get_supported_cpuid(&self) -> Result<CpuId> {
+        let mut cpuid = CpuId::new(MAX_KVM_CPUID_ENTRIES);
 
         let ret = unsafe {
             // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the memory
             // allocated for the struct. The limit is read from nent, which is set to the allocated
-            // size(max_cpus) above.
+            // size(MAX_KVM_CPUID_ENTRIES) above.
             ioctl_with_mut_ptr(self, KVM_GET_SUPPORTED_CPUID(), cpuid.as_mut_ptr())
         };
         if ret < 0 {
