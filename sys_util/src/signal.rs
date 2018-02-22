@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{c_int, signal, timespec,
+use libc::{c_int, sigaction, timespec,
            sigset_t, siginfo_t,
            sigaddset, sigemptyset, sigismember, sigpending, sigtimedwait,
            pthread_t, pthread_kill, pthread_sigmask,
-           SIG_BLOCK, SIG_UNBLOCK, SIG_ERR, EAGAIN, EINTR, EINVAL };
+           SIG_BLOCK, SIG_UNBLOCK, EAGAIN, EINTR, EINVAL };
 
 use std::mem;
 use std::ptr::null_mut;
@@ -73,8 +73,12 @@ pub unsafe fn register_signal_handler(
     if !valid_signal_num(num) {
         return Err(errno::Error::new(EINVAL));
     }
-    let ret = signal(num, handler as *const () as usize);
-    if ret == SIG_ERR {
+
+    let mut sigact: sigaction = mem::zeroed();
+    sigact.sa_sigaction = handler as *const () as usize;
+
+    let ret = sigaction(num, &sigact, null_mut());
+    if ret < 0 {
         return errno_result();
     }
 
@@ -151,7 +155,7 @@ pub fn clear_signal(num: c_int) -> SignalResult<()> {
         unsafe {
             let mut siginfo: siginfo_t = mem::zeroed();
             let ts = timespec { tv_sec: 0, tv_nsec: 0 };
-            // Attempt to clear one instance of pending signal. If signal
+            // Attempt to consume one instance of pending signal. If signal
             // is not pending, the call will fail with EAGAIN or EINTR.
             let ret = sigtimedwait(&sigset, &mut siginfo, &ts);
             if ret < 0 {
