@@ -24,7 +24,7 @@ mod poll;
 mod struct_util;
 mod tempdir;
 mod terminal;
-mod signal;
+pub mod signal;
 mod fork;
 mod signalfd;
 mod sock_ctrl_msg;

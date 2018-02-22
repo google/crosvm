@@ -19,10 +19,12 @@ use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
 use libc::{open, O_RDWR, O_CLOEXEC, EINVAL, ENOSPC, ENOENT};
+use libc::sigset_t;
 
 use kvm_sys::*;
 
-use sys_util::{GuestAddress, GuestMemory, MemoryMapping, EventFd, Error, Result, pagesize};
+use sys_util::{GuestAddress, GuestMemory, MemoryMapping, EventFd,
+               signal, Error, Result, pagesize};
 #[allow(unused_imports)]
 use sys_util::{ioctl, ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref, ioctl_with_ptr,
                ioctl_with_mut_ptr};
@@ -933,6 +935,38 @@ impl Vcpu {
         let ret = unsafe {
             // The ioctl is safe because the kernel will only read from the klapic struct.
             ioctl_with_ref(self, KVM_SET_LAPIC(), klapic)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
+    /// Specifies set of signals that are blocked during execution of KVM_RUN.
+    /// Signals that are not blocked will will cause KVM_RUN to return
+    /// with -EINTR.
+    ///
+    /// See the documentation for KVM_SET_SIGNAL_MASK
+    pub fn set_signal_mask(&self, signals: &[c_int]) -> Result<()> {
+        let sigset = signal::create_sigset(signals)?;
+
+        let vec_size_bytes = size_of::<kvm_signal_mask>() + size_of::<sigset_t>();
+        let vec: Vec<u8> = vec![0; vec_size_bytes];
+        let kvm_sigmask: &mut kvm_signal_mask = unsafe {
+            // Converting the vector's memory to a struct is unsafe.
+            // Carefully using the read-only vector to size and set the members
+            // ensures no out-of-bounds errors below.
+            &mut *(vec.as_ptr() as *mut kvm_signal_mask)
+        };
+        kvm_sigmask.len = size_of::<sigset_t>() as u32;
+        unsafe {
+            std::ptr::copy(&sigset, kvm_sigmask.sigset.as_mut_ptr() as *mut sigset_t, 1);
+        }
+
+        let ret = unsafe {
+            // The ioctl is safe because the kernel will only read from the
+            // kvm_signal_mask structure.
+            ioctl_with_ref(self, KVM_SET_SIGNAL_MASK(), kvm_sigmask)
         };
         if ret < 0 {
             return errno_result();
