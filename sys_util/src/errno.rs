@@ -4,6 +4,8 @@
 
 use std::result;
 use std::io;
+use std::error;
+use std::fmt::{self, Display};
 
 use libc::__errno_location;
 
@@ -36,6 +38,18 @@ impl Error {
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Error::new(e.raw_os_error().unwrap_or_default())
+    }
+}
+
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        "System returned an error code"
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Error: {}", self.errno())
     }
 }
 
