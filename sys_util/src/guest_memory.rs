@@ -7,6 +7,8 @@
 use std::io::{Read, Write};
 use std::result;
 use std::sync::Arc;
+use std::error::{self, Error as GuestMemoryError};
+use std::fmt::{self, Display};
 
 use data_model::DataInit;
 use data_model::volatile_memory::*;
@@ -19,9 +21,29 @@ pub enum Error {
     MemoryAccess(GuestAddress, mmap::Error),
     MemoryMappingFailed(mmap::Error),
     MemoryRegionOverlap,
-    RegionOperationFailed,
 }
 pub type Result<T> = result::Result<T, Error>;
+
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        match self {
+            &Error::InvalidGuestAddress(_) =>
+                "Invalid Guest Address",
+            &Error::MemoryAccess(_, _) =>
+                "Invalid Guest Memory Access",
+            &Error::MemoryMappingFailed(_) =>
+                "Failed to map guest memory",
+            &Error::MemoryRegionOverlap =>
+                "Memory regions overlap",
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Guest memory error: {}", Error::description(self))
+    }
+}
 
 struct MemoryRegion {
     mapping: MemoryMapping,
