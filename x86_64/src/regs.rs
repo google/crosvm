@@ -32,6 +32,8 @@ pub enum Error {
     WritePML4Address,
     /// Writing PDPTE to RAM failed.
     WritePDPTEAddress,
+    /// Writing PDE to RAM failed.
+    WritePDEAddress,
 }
 pub type Result<T> = result::Result<T, Error>;
 
@@ -233,11 +235,22 @@ fn setup_page_tables(mem: &GuestMemory, sregs: &mut kvm_sregs) -> Result<()> {
     // Puts PML4 right after zero page but aligned to 4k.
     let boot_pml4_addr = GuestAddress(0x9000);
     let boot_pdpte_addr = GuestAddress(0xa000);
+    let boot_pde_addr = GuestAddress(0xb000);
 
+    // Entry covering VA [0..512GB)
     mem.write_obj_at_addr(boot_pdpte_addr.offset() as u64 | 0x03, boot_pml4_addr)
         .map_err(|_| Error::WritePML4Address)?;
-    mem.write_obj_at_addr(0x83u64, boot_pdpte_addr)
+
+    // Entry covering VA [0..1GB)
+    mem.write_obj_at_addr(boot_pde_addr.offset() as u64 | 0x03, boot_pdpte_addr)
         .map_err(|_| Error::WritePDPTEAddress)?;
+
+    // 512 2MB entries together covering VA [0..1GB). Note we are assuming
+    // CPU supports 2MB pages (/proc/cpuinfo has 'pse'). All modern CPUs do.
+    for i in 0..512 {
+        mem.write_obj_at_addr((i << 21) + 0x83u64, boot_pde_addr.unchecked_add(i * 8))
+            .map_err(|_| Error::WritePDEAddress)?;
+    }
     sregs.cr3 = boot_pml4_addr.offset() as u64;
     sregs.cr4 |= X86_CR4_PAE;
     sregs.cr0 |= X86_CR0_PG;
@@ -307,7 +320,10 @@ mod tests {
         setup_page_tables(&gm, &mut sregs).unwrap();
 
         assert_eq!(0xa003, read_u64(&gm, 0x9000));
-        assert_eq!(0x83, read_u64(&gm, 0xa000));
+        assert_eq!(0xb003, read_u64(&gm, 0xa000));
+        for i in 0..512 {
+            assert_eq!((i << 21) + 0x83u64, read_u64(&gm, 0xb000 + i * 8));
+        }
 
         assert_eq!(0x9000, sregs.cr3);
         assert_eq!(X86_CR4_PAE, sregs.cr4);
