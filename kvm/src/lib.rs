@@ -863,11 +863,11 @@ impl Vcpu {
         let vec: Vec<u8> = vec![0; vec_size_bytes];
         let msrs: &mut kvm_msrs = unsafe {
             // Converting the vector's memory to a struct is unsafe.  Carefully using the read-only
-            // vector to size and set the members ensures no out-of-bounds erros below.
+            // vector to size and set the members ensures no out-of-bounds errors below.
             &mut *(vec.as_ptr() as *mut kvm_msrs)
         };
         unsafe {
-            // Mapping the unsized array to a slice is unsafe becase the length isn't known.
+            // Mapping the unsized array to a slice is unsafe because the length isn't known.
             // Providing the length used to create the struct guarantees the entire slice is valid.
             let entries: &mut [kvm_msr_entry] = msrs.entries.as_mut_slice(msr_entries.len());
             entries.copy_from_slice(&msr_entries);
