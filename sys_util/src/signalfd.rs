@@ -108,6 +108,12 @@ unsafe impl ::Pollable for SignalFd {
     }
 }
 
+impl AsRawFd for SignalFd {
+    fn as_raw_fd(&self) -> RawFd {
+        self.signalfd.as_raw_fd()
+    }
+}
+
 impl Drop for SignalFd {
     fn drop(&mut self) {
         // This is thread-safe and safe in the sense that we're doing what

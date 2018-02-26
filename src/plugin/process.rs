@@ -24,8 +24,8 @@ use protobuf::Message;
 
 use io_jail::Minijail;
 use kvm::{Vm, IoeventAddress, NoDatamatch, IrqSource, IrqRoute, dirty_log_bitmap_size};
-use sys_util::{EventFd, MemoryMapping, Killable, Scm, Poller, Pollable, SharedMemory,
-               GuestAddress, Result as SysResult, Error as SysError};
+use sys_util::{EventFd, MemoryMapping, Killable, Scm, SharedMemory, GuestAddress,
+               Result as SysResult, Error as SysError, SIGRTMIN};
 use plugin_proto::*;
 
 use super::*;
@@ -58,7 +58,6 @@ pub struct Process {
     // Resource to sent to plugin
     kill_evt: EventFd,
     vcpu_sockets: Vec<(UnixDatagram, UnixDatagram)>,
-    tap: Option<net_util::Tap>,
 
     // Socket Transmission
     scm: Scm,
@@ -77,12 +76,9 @@ impl Process {
     /// Due to an API limitation in libminijail necessitating that this function set an environment
     /// variable, this function is not thread-safe.
     pub fn new(cpu_count: u32,
-               kvm: &Kvm,
-               vm: &mut Vm,
                cmd: &Path,
                args: &[&str],
-               jail: Option<Minijail>,
-               tap: Option<net_util::Tap>)
+               jail: Option<Minijail>)
                -> Result<Process> {
         let (request_socket, child_socket) = new_seqpacket_pair().map_err(Error::CreateMainSocket)?;
 
@@ -110,65 +106,20 @@ impl Process {
             }
         };
 
-        // Very important to drop the child socket so that the pair will properly hang up if the
-        // plugin process exits or closes its end.
-        drop(child_socket);
-
-        let request_sockets = vec![request_socket];
-
-        let mut plugin = Process {
-            started: false,
-            plugin_pid,
-            request_sockets,
-            objects: Default::default(),
-            shared_vcpu_state: Default::default(),
-            per_vcpu_states,
-            kill_evt: EventFd::new().map_err(Error::CreateEventFd)?,
-            vcpu_sockets,
-            tap,
-            scm: Scm::new(1),
-            request_buffer: vec![0; MAX_DATAGRAM_SIZE],
-            datagram_files: Vec::new(),
-            response_buffer: Vec::new(),
-        };
-
-        plugin.run_until_started(kvm, vm)?;
-
-        Ok(plugin)
-    }
-
-
-    fn run_until_started(&mut self, kvm: &Kvm, vm: &mut Vm) -> Result<()> {
-        let mut sockets_to_drop = Vec::new();
-        let mut poller = Poller::new(1);
-        while !self.started {
-            if self.request_sockets.is_empty() {
-                break;
-            }
-
-            let tokens = {
-                let mut pollables = Vec::with_capacity(self.objects.len());
-                for (i, socket) in self.request_sockets.iter().enumerate() {
-                    pollables.push((i as u32, socket as &Pollable));
-                }
-                poller
-                    .poll(&pollables[..])
-                    .map_err(Error::PluginSocketPoll)?
-            };
-
-            for &token in tokens {
-                match self.handle_socket(token as usize, kvm, vm, &[]) {
-                    Ok(_) => {}
-                    Err(Error::PluginSocketHup) => sockets_to_drop.push(token as usize),
-                    r => return r,
-                }
-            }
-
-            self.drop_sockets(&mut sockets_to_drop);
-            sockets_to_drop.clear();
-        }
-
-        Ok(())
+        Ok(Process {
+               started: false,
+               plugin_pid,
+               request_sockets: vec![request_socket],
+               objects: Default::default(),
+               shared_vcpu_state: Default::default(),
+               per_vcpu_states,
+               kill_evt: EventFd::new().map_err(Error::CreateEventFd)?,
+               vcpu_sockets,
+               scm: Scm::new(1),
+               request_buffer: vec![0; MAX_DATAGRAM_SIZE],
+               datagram_files: Vec::new(),
+               response_buffer: Vec::new(),
+           })
     }
 
     /// Creates a VCPU plugin connection object, used by a VCPU run loop to communicate with the
@@ -422,7 +373,8 @@ impl Process {
                          index: usize,
                          kvm: &Kvm,
                          vm: &mut Vm,
-                         vcpu_handles: &[JoinHandle<()>])
+                         vcpu_handles: &[JoinHandle<()>],
+                         tap: Option<&Tap>)
                          -> Result<()> {
         let msg_size = self.scm
             .recv(&self.request_sockets[index],
@@ -557,15 +509,16 @@ impl Process {
                 Ok(())
             }
         } else if request.has_get_net_config() {
-            match self.tap {
-                Some(ref tap) => match Self::handle_get_net_config(tap,
-                                                                   response.mut_get_net_config()) {
-                    Ok(_) => {
-                        response_fds.push(tap.as_raw_fd());
-                        Ok(())
-                    },
-                    Err(e) => Err(e),
-                },
+            match tap {
+                Some(tap) => {
+                    match Self::handle_get_net_config(tap, response.mut_get_net_config()) {
+                        Ok(_) => {
+                            response_fds.push(tap.as_raw_fd());
+                            Ok(())
+                        }
+                        Err(e) => Err(e),
+                    }
+                }
                 None => Err(SysError::new(-ENODATA)),
             }
         } else if request.has_dirty_log() {
