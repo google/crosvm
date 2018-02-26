@@ -231,6 +231,11 @@ fn test_extensions() {
 }
 
 #[test]
+fn test_supported_cpuid() {
+    test_plugin(include_str!("plugin_supported_cpuid.c"));
+}
+
+#[test]
 fn test_vcpu_pause() {
     test_plugin(include_str!("plugin_vcpu_pause.c"));
 }

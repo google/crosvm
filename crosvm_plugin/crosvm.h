@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 10
+#define CROSVM_API_MINOR 11
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -113,6 +113,21 @@ int crosvm_get_shutdown_eventfd(struct crosvm*);
  */
 int crosvm_check_extension(struct crosvm*, uint32_t __extension,
                            bool *__has_extension);
+
+/*
+ * Queries x86 cpuid features which are supported by the hardware and
+ * kvm.
+ */
+int crosvm_get_supported_cpuid(struct crosvm*, uint32_t __entry_count,
+                               struct kvm_cpuid_entry2 *__cpuid_entries,
+                               uint32_t *__out_count);
+
+/*
+ * Queries x86 cpuid features which are emulated by kvm.
+ */
+int crosvm_get_emulated_cpuid(struct crosvm*, uint32_t __entry_count,
+                              struct kvm_cpuid_entry2 *__cpuid_entries,
+                              uint32_t *__out_count);
 
 /*
  * Registers a range in the given address space that, when accessed, will block

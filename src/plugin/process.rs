@@ -73,6 +73,7 @@ impl Process {
     /// Due to an API limitation in libminijail necessitating that this function set an environment
     /// variable, this function is not thread-safe.
     pub fn new(cpu_count: u32,
+               kvm: &Kvm,
                vm: &mut Vm,
                cmd: &Path,
                args: &[&str],
@@ -125,13 +126,13 @@ impl Process {
             response_buffer: Vec::new(),
         };
 
-        plugin.run_until_started(vm)?;
+        plugin.run_until_started(kvm, vm)?;
 
         Ok(plugin)
     }
 
 
-    fn run_until_started(&mut self, vm: &mut Vm) -> Result<()> {
+    fn run_until_started(&mut self, kvm: &Kvm, vm: &mut Vm) -> Result<()> {
         let mut sockets_to_drop = Vec::new();
         let mut poller = Poller::new(1);
         while !self.started {
@@ -150,7 +151,7 @@ impl Process {
             };
 
             for &token in tokens {
-                match self.handle_socket(token as usize, vm, &[]) {
+                match self.handle_socket(token as usize, kvm, vm, &[]) {
                     Ok(_) => {}
                     Err(Error::PluginSocketHup) => sockets_to_drop.push(token as usize),
                     r => return r,
@@ -388,6 +389,7 @@ impl Process {
     /// interrupt a VCPU thread currently running in the VM if the socket request it.
     pub fn handle_socket(&mut self,
                          index: usize,
+                         kvm: &Kvm,
                          vm: &mut Vm,
                          vcpu_handles: &[JoinHandle<()>])
                          -> Result<()> {
@@ -532,6 +534,28 @@ impl Process {
                     vm.get_dirty_log(slot, &mut dirty_log[..])
                 }
                 _ => Err(SysError::new(-ENOENT)),
+            }
+        } else if request.has_get_supported_cpuid() {
+            let cpuid_response = &mut response.mut_get_supported_cpuid().entries;
+            match kvm.get_supported_cpuid() {
+                Ok(mut cpuid) => {
+                    for entry in cpuid.mut_entries_slice() {
+                        cpuid_response.push(cpuid_kvm_to_proto(entry));
+                    }
+                    Ok(())
+                }
+                Err(e) => Err(e)
+            }
+        } else if request.has_get_emulated_cpuid() {
+            let cpuid_response = &mut response.mut_get_emulated_cpuid().entries;
+            match kvm.get_emulated_cpuid() {
+                Ok(mut cpuid) => {
+                    for entry in cpuid.mut_entries_slice() {
+                        cpuid_response.push(cpuid_kvm_to_proto(entry));
+                    }
+                    Ok(())
+                }
+                Err(e) => Err(e)
             }
         } else {
             Err(SysError::new(-ENOTTY))

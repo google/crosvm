@@ -405,7 +405,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;
     let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
     vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
-    let mut plugin = Process::new(vcpu_count, &mut vm, plugin_path, &plugin_args, jail)?;
+    let mut plugin = Process::new(vcpu_count, &kvm, &mut vm, plugin_path, &plugin_args, jail)?;
 
     let mut res = Ok(());
     // If Some, we will exit after enough time is passed to shutdown cleanly.
@@ -530,7 +530,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 }
                 t if t >= PLUGIN_BASE && t < PLUGIN_BASE + (plugin.sockets().len() as u32) => {
                     let socket_index = (t - PLUGIN_BASE) as usize;
-                    match plugin.handle_socket(socket_index, &mut vm, &vcpu_handles) {
+                    match plugin.handle_socket(socket_index, &kvm, &mut vm, &vcpu_handles) {
                         Ok(_) => {}
                         // A HUP is an expected event for a socket, so don't bother warning about
                         // it.

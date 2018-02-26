@@ -35,7 +35,7 @@ use std::slice;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use libc::{ENOTCONN, EINVAL, EPROTO, ENOENT};
+use libc::{E2BIG, ENOTCONN, EINVAL, EPROTO, ENOENT};
 
 use protobuf::{Message, ProtobufEnum, RepeatedField, parse_from_bytes};
 
@@ -240,6 +240,54 @@ impl crosvm {
             return Err(-EPROTO);
         }
         Ok(response.get_check_extension().has_extension)
+    }
+
+    fn get_supported_cpuid(&mut self, cpuid_entries: &mut [kvm_cpuid_entry2])
+                           -> result::Result<usize, c_int> {
+        let mut r = MainRequest::new();
+        r.mut_get_supported_cpuid();
+
+        let (response, _) = self.main_transaction(&r, &[])?;
+        if !response.has_get_supported_cpuid() {
+            return Err(-EPROTO);
+        }
+
+        let supported_cpuids: &MainResponse_CpuidResponse = response.get_get_supported_cpuid();
+        if supported_cpuids.get_entries().len() > cpuid_entries.len() {
+            return Err(-E2BIG);
+        }
+
+        for (proto_entry, kvm_entry) in
+            supported_cpuids.get_entries().iter()
+                .zip(cpuid_entries.iter_mut()) {
+            *kvm_entry = cpuid_proto_to_kvm(proto_entry);
+        }
+
+        Ok(supported_cpuids.get_entries().len())
+    }
+
+    fn get_emulated_cpuid(&mut self, cpuid_entries: &mut [kvm_cpuid_entry2])
+                           -> result::Result<usize, c_int> {
+        let mut r = MainRequest::new();
+        r.mut_get_emulated_cpuid();
+
+        let (response, _) = self.main_transaction(&r, &[])?;
+        if !response.has_get_emulated_cpuid() {
+            return Err(-EPROTO);
+        }
+
+        let emulated_cpuids: &MainResponse_CpuidResponse = response.get_get_emulated_cpuid();
+        if emulated_cpuids.get_entries().len() > cpuid_entries.len() {
+            return Err(-E2BIG);
+        }
+
+        for (proto_entry, kvm_entry) in
+            emulated_cpuids.get_entries().iter()
+                .zip(cpuid_entries.iter_mut()) {
+            *kvm_entry = cpuid_proto_to_kvm(proto_entry);
+        }
+
+        Ok(emulated_cpuids.get_entries().len())
     }
 
     fn reserve_range(&mut self, space: u32, start: u64, length: u64) -> result::Result<(), c_int> {
@@ -821,6 +869,42 @@ pub unsafe extern "C" fn crosvm_check_extension(self_: *mut crosvm,
             *has_extension = supported;
             0
         }
+        Err(e) => e,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C"
+fn crosvm_get_supported_cpuid(this: *mut crosvm,
+                              entry_count: u32,
+                              cpuid_entries: *mut kvm_cpuid_entry2,
+                              out_count: *mut u32)
+                              -> c_int {
+    let this = &mut *this;
+    let cpuid_entries = from_raw_parts_mut(cpuid_entries, entry_count as usize);
+    match this.get_supported_cpuid(cpuid_entries) {
+        Ok(num) => {
+            *out_count = num as u32;
+            0
+        },
+        Err(e) => e,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C"
+fn crosvm_get_emulated_cpuid(this: *mut crosvm,
+                             entry_count: u32,
+                             cpuid_entries: *mut kvm_cpuid_entry2,
+                             out_count: *mut u32)
+                             -> c_int {
+    let this = &mut *this;
+    let cpuid_entries = from_raw_parts_mut(cpuid_entries, entry_count as usize);
+    match this.get_emulated_cpuid(cpuid_entries) {
+        Ok(num) => {
+            *out_count = num as u32;
+            0
+        },
         Err(e) => e,
     }
 }
