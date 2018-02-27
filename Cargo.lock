@@ -176,6 +176,7 @@ name = "plugin_proto"
 version = "0.10.0"
 dependencies = [
  "gcc 0.3.54 (registry+https://github.com/rust-lang/crates.io-index)",
+ "kvm_sys 0.1.0",
  "protobuf 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "protoc-rust 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

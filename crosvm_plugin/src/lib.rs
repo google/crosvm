@@ -43,8 +43,7 @@ use sys_util::Scm;
 
 use kvm::dirty_log_bitmap_size;
 
-use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msr_entry, kvm_cpuid_entry2,
-              KVM_CPUID_FLAG_SIGNIFCANT_INDEX};
+use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msr_entry, kvm_cpuid_entry2};
 
 use plugin_proto::*;
 
@@ -753,15 +752,7 @@ impl crosvm_vcpu {
         {
             let set_cpuid_entries: &mut RepeatedField<CpuidEntry> = r.mut_set_cpuid().mut_entries();
             for cpuid_entry in cpuid_entries.iter() {
-                let mut entry = CpuidEntry::new();
-                entry.function = cpuid_entry.function;
-                entry.has_index = cpuid_entry.flags & KVM_CPUID_FLAG_SIGNIFCANT_INDEX != 0;
-                entry.index = cpuid_entry.index;
-                entry.eax = cpuid_entry.eax;
-                entry.ebx = cpuid_entry.ebx;
-                entry.ecx = cpuid_entry.ecx;
-                entry.edx = cpuid_entry.edx;
-                set_cpuid_entries.push(entry);
+                set_cpuid_entries.push(cpuid_kvm_to_proto(cpuid_entry));
             }
         }
         self.vcpu_transaction(&r)?;
