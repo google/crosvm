@@ -37,6 +37,9 @@ qcow_utils = { path = "qcow_utils" }
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { path = "x86_64" }
 
+[target.'cfg(any(target_arch = "aarch64", target_arch = "arm"))'.dependencies]
+aarch64 = { path = "aarch64" }
+
 [dev-dependencies]
 rand = "=0.3.20"
 sys_util = { path = "sys_util" }

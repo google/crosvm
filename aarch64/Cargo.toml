@@ -1,0 +1,16 @@
+[package]
+name = "aarch64"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+
+[dependencies]
+arch = { path = "../arch" }
+data_model = { path = "../data_model" }
+device_manager = { path = "../device_manager" }
+devices = { path = "../devices" }
+kernel_cmdline = { path = "../kernel_cmdline" }
+kvm_sys = { path = "../kvm_sys" }
+kvm = { path = "../kvm" }
+sys_util = { path = "../sys_util" }
+libc = "*"
+byteorder = "*"

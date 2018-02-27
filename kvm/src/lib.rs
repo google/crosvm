@@ -708,6 +708,16 @@ impl Vm {
             errno_result()
         }
     }
+
+    /// Does KVM_CREATE_DEVICE for a generic device.
+    pub fn create_device(&self, device: &mut kvm_create_device) -> Result<()> {
+        let ret = unsafe { sys_util::ioctl_with_ref(self, KVM_CREATE_DEVICE(), device) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
 }
 
 impl AsRawFd for Vm {
@@ -1152,6 +1162,35 @@ impl Vcpu {
             // kvm_signal_mask structure.
             ioctl_with_ref(self, KVM_SET_SIGNAL_MASK(), kvm_sigmask)
         };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
+    /// Sets the value of one register on this VCPU.  The id of the register is
+    /// encoded as specified in the kernel documentation for KVM_SET_ONE_REG.
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    pub fn set_one_reg(&self, reg_id: u64, data: u64) -> Result<()> {
+        let data_ref = &data as *const u64;
+        let onereg = kvm_one_reg { id: reg_id,
+                                   addr: data_ref as u64};
+        // safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_ONE_REG(), &onereg) };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
+    /// This initializes an ARM VCPU to the specified type with the specified features
+    /// and resets the values of all of its registers to defaults.
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    pub fn arm_vcpu_init(&self, kvi: &kvm_vcpu_init) -> Result<()> {
+        // safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct
+        let ret = unsafe { ioctl_with_ref(self, KVM_ARM_VCPU_INIT(), kvi) };
         if ret < 0 {
             return errno_result();
         }

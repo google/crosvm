@@ -5,6 +5,8 @@
 //! Runs a virtual machine under KVM
 
 extern crate arch;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+extern crate aarch64;
 extern crate devices;
 extern crate device_manager;
 extern crate libc;

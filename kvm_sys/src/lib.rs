@@ -49,7 +49,7 @@ pub mod x86 {
 }
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-pub mod arm {
+pub mod aarch64 {
     // generated with bindgen <arm sysroot>/usr/include/linux/kvm.h --no-unstable-rust --constified-enum '*' --with-derive-default -- -I<arm sysroot>/usr/include
     pub mod bindings;
     pub use bindings::*;
@@ -136,4 +136,4 @@ ioctl_io_nr!(KVM_SMI, KVMIO, 0xb7);
 pub use x86::*;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-pub use arm::*;
+pub use aarch64::*;
