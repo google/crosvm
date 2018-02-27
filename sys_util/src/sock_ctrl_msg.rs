@@ -154,7 +154,7 @@ impl Scm {
         };
 
         if write_count < 0 {
-            Err(Error::new(write_count as i32))
+            Err(Error::new(-write_count as i32))
         } else {
             Ok(write_count as usize)
         }
@@ -201,7 +201,7 @@ impl Scm {
         };
 
         if read_count < 0 {
-            Err(Error::new(read_count as i32))
+            Err(Error::new(-read_count as i32))
         } else {
             // Safe because we have unqiue ownership of each fd we wrap with File.
             for &fd in &self.fds[0..fd_count] {
