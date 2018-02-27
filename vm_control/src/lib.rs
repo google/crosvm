@@ -201,7 +201,7 @@ impl VmRequest {
                 let mmap = match MemoryMapping::from_fd(fd, size) {
                     Ok(v) => v,
                     Err(MmapError::SystemCallFailed(e)) => return VmResponse::Err(e),
-                    _ => return VmResponse::Err(SysError::new(-EINVAL)),
+                    _ => return VmResponse::Err(SysError::new(EINVAL)),
                 };
                 let pfn = *next_mem_pfn;
                 let slot =
