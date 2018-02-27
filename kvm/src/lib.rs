@@ -299,7 +299,7 @@ impl Vm {
                 self.mem_slot_gaps.push(-(slot as i32));
                 Ok(entry.remove())
             }
-            _ => Err(Error::new(-ENOENT))
+            _ => Err(Error::new(ENOENT))
         }
     }
 
@@ -314,7 +314,7 @@ impl Vm {
             Some(mmap) => {
                 // Ensures that there are as many bytes in dirty_log as there are pages in the mmap.
                 if dirty_log_bitmap_size(mmap.size()) > dirty_log.len() {
-                    return Err(Error::new(-EINVAL));
+                    return Err(Error::new(EINVAL));
                 }
                 let mut dirty_log_kvm = kvm_dirty_log {
                     slot,
@@ -327,7 +327,7 @@ impl Vm {
                 let ret = unsafe { ioctl_with_ref(self, KVM_GET_DIRTY_LOG(), &dirty_log_kvm) };
                 if ret == 0 { Ok(()) } else { errno_result() }
             }
-            _ => Err(Error::new(-ENOENT)),
+            _ => Err(Error::new(ENOENT)),
         }
     }
 
