@@ -90,7 +90,7 @@ pub struct crosvm_irq_route {
 
 fn proto_error_to_int(e: protobuf::ProtobufError) -> c_int {
     match e {
-        protobuf::ProtobufError::IoError(e) => e.raw_os_error().unwrap_or(-EINVAL),
+        protobuf::ProtobufError::IoError(e) => -e.raw_os_error().unwrap_or(EINVAL),
         _ => -EINVAL,
     }
 }
@@ -165,14 +165,14 @@ impl crosvm {
             .map_err(proto_error_to_int)?;
         self.fd_messager
             .send(&self.socket, &[self.request_buffer.as_slice()], fds)
-            .map_err(|e| e.errno())?;
+            .map_err(|e| -e.errno())?;
 
         let mut datagram_files = Vec::new();
         let msg_size = self.fd_messager
             .recv(&self.socket,
                   &mut [&mut self.response_buffer],
                   &mut datagram_files)
-            .map_err(|e| e.errno())?;
+            .map_err(|e| -e.errno())?;
 
         let response: MainResponse = parse_from_bytes(&self.response_buffer[..msg_size])
             .map_err(proto_error_to_int)?;
@@ -615,11 +615,11 @@ impl crosvm_vcpu {
             .map_err(proto_error_to_int)?;
         self.socket
             .send(self.request_buffer.as_slice())
-            .map_err(|e| e.raw_os_error().unwrap_or(-EINVAL))?;
+            .map_err(|e| -e.raw_os_error().unwrap_or(EINVAL))?;
 
         let msg_size = self.socket
             .recv(&mut self.response_buffer)
-            .map_err(|e| e.raw_os_error().unwrap_or(-EINVAL))?;
+            .map_err(|e| -e.raw_os_error().unwrap_or(EINVAL))?;
 
         let response: VcpuResponse = parse_from_bytes(&self.response_buffer[..msg_size])
             .map_err(proto_error_to_int)?;
