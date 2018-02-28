@@ -288,7 +288,7 @@ impl VmResponse {
         match resp.type_.into() {
             VM_RESPONSE_TYPE_OK => Ok(VmResponse::Ok),
             VM_RESPONSE_TYPE_ERR => {
-                Ok(VmResponse::Err(SysError::new(-(resp.errno.to_native() as i32))))
+                Ok(VmResponse::Err(SysError::new(resp.errno.to_native() as i32)))
             }
             VM_RESPONSE_TYPE_REGISTER_MEMORY => {
                 Ok(VmResponse::RegisterMemory {
@@ -440,7 +440,7 @@ mod tests {
     fn resp_err() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
         let mut scm = Scm::new(1);
-        let r1 = VmResponse::Err(SysError::new(-89));
+        let r1 = VmResponse::Err(SysError::new(libc::EDESTADDRREQ));
         r1.send(&mut scm, &s1).unwrap();
         let r2 = VmResponse::recv(&mut scm, &s2).unwrap();
         assert_eq!(r1, r2);
