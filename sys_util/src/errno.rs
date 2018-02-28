@@ -57,3 +57,13 @@ impl Display for Error {
 pub fn errno_result<T>() -> Result<T> {
     Err(Error::last())
 }
+
+/// Sets errno to given error code.
+/// Only defined when we compile tests as normal code does not
+/// normally need set errno.
+#[cfg(test)]
+pub fn set_errno(e: i32) {
+    unsafe {
+        *__errno_location() = e;
+    }
+}

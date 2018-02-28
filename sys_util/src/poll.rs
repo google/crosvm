@@ -115,11 +115,11 @@ impl Poller {
         // Safe because poll is given the correct length of properly initialized pollfds, and we
         // check the return result.
         let ret = unsafe {
-            handle_eintr!(ppoll(self.pollfds.as_mut_ptr(),
-                                self.pollfds.len() as nfds_t,
-                                &mut timeout_spec,
-                                null(),
-                                0))
+            handle_eintr_errno!(ppoll(self.pollfds.as_mut_ptr(),
+                                      self.pollfds.len() as nfds_t,
+                                      &mut timeout_spec,
+                                      null(),
+                                      0))
         };
 
         *timeout = Duration::new(timeout_spec.tv_sec as u64, timeout_spec.tv_nsec as u32);

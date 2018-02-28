@@ -15,12 +15,6 @@ pub trait InterruptibleResult {
     fn is_interrupted(&self) -> bool;
 }
 
-impl InterruptibleResult for i32 {
-    fn is_interrupted(&self) -> bool {
-        *self == EINTR
-    }
-}
-
 impl<T> InterruptibleResult for ::Result<T> {
     fn is_interrupted(&self) -> bool {
         match self {
@@ -40,14 +34,16 @@ impl<T> InterruptibleResult for io::Result<T> {
 }
 
 /// Macro that retries the given expression every time its result indicates it was interrupted (i.e.
-/// returned `-EINTR`). This is useful for operations that are prone to being interrupted by
+/// returned `EINTR`). This is useful for operations that are prone to being interrupted by
 /// signals, such as blocking syscalls.
 ///
 /// The given expression `$x` can return
 ///
-/// * `i32` in which case the expression is retried if equal to `EINTR`.
 /// * `sys_util::Result` in which case the expression is retried if the `Error::errno()` is `EINTR`.
 /// * `std::io::Result` in which case the expression is retried if the `ErrorKind` is `ErrorKind::Interrupted`.
+///
+/// Note that if expression returns i32 (i.e. either -1 or error code), then handle_eintr_errno()
+/// or handle_eintr_rc() should be used instead.
 ///
 /// In all cases where the result does not indicate that the expression was interrupted, the result
 /// is returned verbatim to the caller of this macro.
@@ -142,23 +138,80 @@ macro_rules! handle_eintr {
     )
 }
 
+/// Macro that retries the given expression every time its result indicates it was interrupted.
+/// It is intended to use with system functions that return `EINTR` and other error codes
+/// directly as their result.
+/// Most of reentrant functions use this way of signalling errors.
+#[macro_export]
+macro_rules! handle_eintr_rc {
+    ($x:expr) => (
+        {
+            use libc::EINTR;
+            let mut res;
+            loop {
+                res = $x;
+                if res != EINTR {
+                    break;
+                }
+            }
+            res
+        }
+    )
+}
+
+/// Macro that retries the given expression every time its result indicates it was interrupted.
+/// It is intended to use with system functions that signal error by returning `-1` and setting
+/// `errno` to appropriate error code (`EINTR`, `EINVAL`, etc.)
+/// Most of standard non-reentrant libc functions use this way of signalling errors.
+#[macro_export]
+macro_rules! handle_eintr_errno {
+    ($x:expr) => (
+        {
+            use $crate::Error;
+            use libc::EINTR;
+            let mut res;
+            loop {
+                res = $x;
+                if res != -1 || Error::last() != Error::new(EINTR) {
+                    break;
+                }
+            }
+            res
+        }
+    )
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use errno::set_errno;
 
     use Error as SysError;
 
     #[test]
-    fn i32_eintr() {
+    fn i32_eintr_rc() {
         let mut count = 3;
         {
             let mut dummy = || {
                 count -= 1;
                 if count > 0 { EINTR } else { 0 }
             };
-            let res = handle_eintr!(dummy());
+            let res = handle_eintr_rc!(dummy());
             assert_eq!(res, 0);
+        }
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn i32_eintr_errno() {
+        let mut count = 3;
+        {
+            let mut dummy = || {
+                count -= 1;
+                if count > 0 { set_errno(EINTR); -1 } else { 56 }
+            };
+            let res = handle_eintr_errno!(dummy());
+            assert_eq!(res, 56);
         }
         assert_eq!(count, 0);
     }
