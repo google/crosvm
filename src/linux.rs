@@ -182,7 +182,6 @@ impl Drop for UnlinkUnixDatagram {
 const KERNEL_START_OFFSET: u64 = 0x200000;
 const CMDLINE_OFFSET: u64 = 0x20000;
 const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
-const BASE_DEV_MEMORY_PFN: u64 = 1u64 << 26;
 
 fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
@@ -212,8 +211,7 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     Ok(j)
 }
 
-fn setup_memory(memory: Option<usize>) -> Result<GuestMemory> {
-    let mem_size = memory.unwrap_or(256) << 20;
+fn setup_memory(mem_size: usize) -> Result<GuestMemory> {
     #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
     let arch_mem_regions = vec![(GuestAddress(0), mem_size as u64)];
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -737,7 +735,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let kill_signaled = Arc::new(AtomicBool::new(false));
     let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
 
-    let mem = setup_memory(cfg.memory)?;
+    let mem_size = cfg.memory.unwrap_or(256) << 20;
+    let mem = setup_memory(mem_size)?;
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;
     let mut vm = setup_vm(&kvm, mem.clone())?;
 
@@ -746,7 +745,10 @@ pub fn run_config(cfg: Config) -> Result<()> {
         .insert_str("console=ttyS0 noacpi reboot=k panic=1 pci=off")
         .unwrap();
 
-    let mut next_dev_pfn = BASE_DEV_MEMORY_PFN;
+    // Put device memory at nearest 2MB boundary after physical memory
+    const MB: u64 = 1024 * 1024;
+    let mem_size_round_2mb = (mem_size as u64 + 2*MB - 1) / (2*MB) * (2*MB);
+    let mut next_dev_pfn = mem_size_round_2mb / pagesize() as u64;
     let (io_bus, stdio_serial) = setup_io_bus(&mut vm,
                                               exit_evt.try_clone().map_err(Error::CloneEventFd)?)?;
 
