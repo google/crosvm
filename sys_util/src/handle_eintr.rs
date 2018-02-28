@@ -17,14 +17,14 @@ pub trait InterruptibleResult {
 
 impl InterruptibleResult for i32 {
     fn is_interrupted(&self) -> bool {
-        *self == -EINTR
+        *self == EINTR
     }
 }
 
 impl<T> InterruptibleResult for ::Result<T> {
     fn is_interrupted(&self) -> bool {
         match self {
-            &Err(e) if e.errno() == -EINTR => true,
+            &Err(e) if e.errno() == EINTR => true,
             _ => false,
         }
     }
@@ -45,8 +45,8 @@ impl<T> InterruptibleResult for io::Result<T> {
 ///
 /// The given expression `$x` can return
 ///
-/// * `i32` in which case the expression is retried if equal to `-EINTR`.
-/// * `sys_util::Result` in which case the expression is retried if the `Error::errno()` is `-EINTR`.
+/// * `i32` in which case the expression is retried if equal to `EINTR`.
+/// * `sys_util::Result` in which case the expression is retried if the `Error::errno()` is `EINTR`.
 /// * `std::io::Result` in which case the expression is retried if the `ErrorKind` is `ErrorKind::Interrupted`.
 ///
 /// In all cases where the result does not indicate that the expression was interrupted, the result
@@ -155,10 +155,10 @@ mod tests {
         {
             let mut dummy = || {
                 count -= 1;
-                if count > 0 { -EINTR } else { 56 }
+                if count > 0 { EINTR } else { 0 }
             };
             let res = handle_eintr!(dummy());
-            assert_eq!(res, 56);
+            assert_eq!(res, 0);
         }
         assert_eq!(count, 0);
     }
@@ -170,7 +170,7 @@ mod tests {
             let mut dummy = || {
                 count -= 1;
                 if count > 1 {
-                    Err(SysError::new(-EINTR))
+                    Err(SysError::new(EINTR))
                 } else {
                     Ok(101)
                 }
