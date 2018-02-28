@@ -182,6 +182,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "poll_token_derive"
+version = "0.1.0"
+
+[[package]]
 name = "protobuf"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -237,6 +241,7 @@ dependencies = [
  "data_model 0.1.0",
  "gcc 0.3.54 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "poll_token_derive 0.1.0",
  "syscall_defines 0.1.0",
 ]
 

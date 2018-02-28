@@ -150,6 +150,10 @@ impl Poller {
 }
 
 /// Trait for a token that can be associated with an `fd` in a `PollContext`.
+///
+/// Simple enums that have no or primitive variant data data can use the `#[derive(PollToken)]`
+/// custom derive to implement this trait. See
+/// [poll_token_derive::poll_token](../poll_token_derive/fn.poll_token.html) for details.
 pub trait PollToken {
     /// Converts this token into a u64 that can be turned back into a token via `from_raw_token`.
     fn as_raw_token(&self) -> u64;
@@ -669,5 +673,33 @@ mod tests {
         let start_inst = Instant::now();
         ctx.wait_timeout(dur).unwrap();
         assert!(start_inst.elapsed() >= dur);
+    }
+
+    #[test]
+    #[allow(dead_code)]
+    fn poll_token_derive() {
+        #[derive(PollToken)]
+        enum EmptyToken {}
+
+        #[derive(PartialEq, Debug, PollToken)]
+        enum Token {
+            Alpha,
+            Beta,
+            // comments
+            Gamma(u32),
+            Delta { index: usize },
+            Omega,
+        }
+
+        assert_eq!(Token::from_raw_token(Token::Alpha.as_raw_token()),
+                   Token::Alpha);
+        assert_eq!(Token::from_raw_token(Token::Beta.as_raw_token()),
+                   Token::Beta);
+        assert_eq!(Token::from_raw_token(Token::Gamma(55).as_raw_token()),
+                   Token::Gamma(55));
+        assert_eq!(Token::from_raw_token(Token::Delta { index: 100 }.as_raw_token()),
+                   Token::Delta { index: 100 });
+        assert_eq!(Token::from_raw_token(Token::Omega.as_raw_token()),
+                   Token::Omega);
     }
 }

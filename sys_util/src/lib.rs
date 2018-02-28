@@ -7,6 +7,9 @@
 extern crate data_model;
 extern crate libc;
 extern crate syscall_defines;
+#[allow(unused_imports)]
+#[macro_use]
+extern crate poll_token_derive;
 
 #[macro_use]
 pub mod handle_eintr;
@@ -47,6 +50,7 @@ pub use signalfd::*;
 pub use ioctl::*;
 pub use sock_ctrl_msg::*;
 pub use passwd::*;
+pub use poll_token_derive::*;
 
 pub use mmap::Error as MmapError;
 pub use guest_memory::Error as GuestMemoryError;
