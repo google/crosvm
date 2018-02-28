@@ -275,7 +275,7 @@ impl Process {
             2 => vm.register_ioevent(&evt, addr, io_event.datamatch as u16)?,
             4 => vm.register_ioevent(&evt, addr, io_event.datamatch as u32)?,
             8 => vm.register_ioevent(&evt, addr, io_event.datamatch as u64)?,
-            _ => return Err(SysError::new(-EINVAL)),
+            _ => return Err(SysError::new(EINVAL)),
         };
 
         let fd = evt.as_raw_fd();
@@ -303,12 +303,12 @@ impl Process {
         // to SIGBUS in the future.
         let seals = shm.get_seals()?;
         if !seals.shrink_seal() {
-            return Err(SysError::new(-EPERM));
+            return Err(SysError::new(EPERM));
         }
         // Check to make sure we don't mmap areas beyond the end of the memfd.
         match length.checked_add(offset) {
-            Some(end) if end > shm.size() => return Err(SysError::new(-EINVAL)),
-            None => return Err(SysError::new(-EOVERFLOW)),
+            Some(end) if end > shm.size() => return Err(SysError::new(EINVAL)),
+            None => return Err(SysError::new(EOVERFLOW)),
             _ => {}
         }
         let mem = MemoryMapping::from_fd_offset(&shm, length as usize, offset as usize)
@@ -333,7 +333,7 @@ impl Process {
                     _ => lock.reserve_range(space, reserve_range.start, reserve_range.length),
                 }
             }
-            Err(_) => Err(SysError::new(-EDEADLK)),
+            Err(_) => Err(SysError::new(EDEADLK)),
         }
     }
 
@@ -360,7 +360,7 @@ impl Process {
                 // Because route is a oneof field in the proto definition, this should
                 // only happen if a new variant gets added without updating this chained
                 // if block.
-                return Err(SysError::new(-EINVAL));
+                return Err(SysError::new(EINVAL));
             },
                         });
         }
@@ -435,7 +435,7 @@ impl Process {
                                                     memory.read_only,
                                                     memory.dirty_log)
                             }
-                            None => Err(SysError::new(-EBADF)),
+                            None => Err(SysError::new(EBADF)),
                         }
                     } else if create.has_irq_event() {
                         let irq_event = create.get_irq_event();
@@ -460,16 +460,16 @@ impl Process {
                             (Err(e), _) | (_, Err(e)) => Err(e),
                         }
                     } else {
-                        Err(SysError::new(-ENOTTY))
+                        Err(SysError::new(ENOTTY))
                     }
                 }
-                Entry::Occupied(_) => Err(SysError::new(-EEXIST)),
+                Entry::Occupied(_) => Err(SysError::new(EEXIST)),
             }
         } else if request.has_destroy() {
             response.mut_destroy();
             match self.objects.entry(request.get_destroy().id) {
                 Entry::Occupied(entry) => entry.remove().destroy(vm),
-                Entry::Vacant(_) => Err(SysError::new(-ENOENT)),
+                Entry::Vacant(_) => Err(SysError::new(ENOENT)),
             }
         } else if request.has_new_connection() {
             response.mut_new_connection();
@@ -520,7 +520,7 @@ impl Process {
         } else if request.has_start() {
             response.mut_start();
             if self.started {
-                Err(SysError::new(-EINVAL))
+                Err(SysError::new(EINVAL))
             } else {
                 self.started = true;
                 Ok(())
@@ -533,7 +533,7 @@ impl Process {
                     dirty_log.resize(dirty_log_bitmap_size(length), 0);
                     vm.get_dirty_log(slot, &mut dirty_log[..])
                 }
-                _ => Err(SysError::new(-ENOENT)),
+                _ => Err(SysError::new(ENOENT)),
             }
         } else if request.has_get_supported_cpuid() {
             let cpuid_response = &mut response.mut_get_supported_cpuid().entries;
@@ -558,7 +558,7 @@ impl Process {
                 Err(e) => Err(e)
             }
         } else {
-            Err(SysError::new(-ENOTTY))
+            Err(SysError::new(ENOTTY))
         };
 
         if let Err(e) = res {

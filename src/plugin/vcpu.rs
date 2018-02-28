@@ -83,22 +83,22 @@ fn set_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet, state: &[u8]) ->
     match state_set {
         VcpuRequest_StateSet::REGS => {
             vcpu.set_regs(&VcpuRegs::from_slice(state)
-                               .ok_or(SysError::new(-EINVAL))?
+                               .ok_or(SysError::new(EINVAL))?
                                .0)
         }
         VcpuRequest_StateSet::SREGS => {
             vcpu.set_sregs(&VcpuSregs::from_slice(state)
-                                .ok_or(SysError::new(-EINVAL))?
+                                .ok_or(SysError::new(EINVAL))?
                                 .0)
         }
         VcpuRequest_StateSet::FPU => {
             vcpu.set_fpu(&VcpuFpu::from_slice(state)
-                              .ok_or(SysError::new(-EINVAL))?
+                              .ok_or(SysError::new(EINVAL))?
                               .0)
         }
         VcpuRequest_StateSet::DEBUGREGS => {
             vcpu.set_debugregs(&VcpuDebugregs::from_slice(state)
-                                    .ok_or(SysError::new(-EINVAL))?
+                                    .ok_or(SysError::new(EINVAL))?
                                     .0)
         }
     }
@@ -118,17 +118,17 @@ impl SharedVcpuState {
     /// This will reject any reservation that overlaps with an existing reservation.
     pub fn reserve_range(&mut self, space: IoSpace, start: u64, length: u64) -> SysResult<()> {
         if length == 0 {
-            return Err(SysError::new(-EINVAL));
+            return Err(SysError::new(EINVAL));
         }
 
         // Reject all cases where this reservation is part of another reservation.
         if self.is_reserved(space, start) {
-            return Err(SysError::new(-EPERM));
+            return Err(SysError::new(EPERM));
         }
 
         let last_address = match start.checked_add(length) {
             Some(end) => end - 1,
-            None => return Err(SysError::new(-EINVAL)),
+            None => return Err(SysError::new(EINVAL)),
         };
 
         let space = match space {
@@ -140,7 +140,7 @@ impl SharedVcpuState {
                   .range(..Range(last_address, 0))
                   .next_back()
                   .cloned() {
-            Some(Range(existing_start, _)) if existing_start >= start => Err(SysError::new(-EPERM)),
+            Some(Range(existing_start, _)) if existing_start >= start => Err(SysError::new(EPERM)),
             _ => {
                 space.insert(Range(start, length));
                 Ok(())
@@ -158,7 +158,7 @@ impl SharedVcpuState {
         if space.remove(&range) {
             Ok(())
         } else {
-            Err(SysError::new(-ENOENT))
+            Err(SysError::new(ENOENT))
         }
     }
 
@@ -285,7 +285,7 @@ impl PluginVcpu {
     /// to this VCPU.
     pub fn pre_run(&self, vcpu: &Vcpu) -> SysResult<()> {
         let request = {
-            let mut lock = self.per_vcpu_state.lock().map_err(|_| SysError::new(-EDEADLK))?;
+            let mut lock = self.per_vcpu_state.lock().map_err(|_| SysError::new(EDEADLK))?;
             lock.pause_request.take()
         };
 
@@ -332,7 +332,7 @@ impl PluginVcpu {
                 self.wait_reason.set(Some(wait_reason));
                 match self.handle_until_resume(vcpu) {
                     Ok(resume_data) => data.copy_from_slice(&resume_data),
-                    Err(e) if e.errno() == -EPIPE => {}
+                    Err(e) if e.errno() == EPIPE => {}
                     Err(e) => error!("failed to process vcpu requests: {:?}", e),
                 }
                 true
@@ -383,12 +383,12 @@ impl PluginVcpu {
                     response.set_wait(wait_reason);
                     Ok(())
                 }
-                None => Err(SysError::new(-EPROTO)),
+                None => Err(SysError::new(EPROTO)),
             }
         } else if wait_reason.is_some() {
             // Any request other than getting the wait_reason while there is one pending is invalid.
             self.wait_reason.set(wait_reason);
-            Err(SysError::new(-EPROTO))
+            Err(SysError::new(EPROTO))
         } else if request.has_resume() {
             response.mut_resume();
             resume_data = Some(request.take_resume().take_data());
@@ -470,7 +470,7 @@ impl PluginVcpu {
             }
             vcpu.set_cpuid2(&cpuid)
         } else {
-            Err(SysError::new(-ENOTTY))
+            Err(SysError::new(ENOTTY))
         };
 
         if let Err(e) = res {

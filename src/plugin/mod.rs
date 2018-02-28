@@ -175,19 +175,19 @@ fn new_seqpacket_pair() -> SysResult<(UnixDatagram, UnixDatagram)> {
 
 fn proto_to_sys_err(e: ProtobufError) -> SysError {
     match e {
-        ProtobufError::IoError(e) => SysError::new(-e.raw_os_error().unwrap_or(EINVAL)),
-        _ => SysError::new(-EINVAL),
+        ProtobufError::IoError(e) => SysError::new(e.raw_os_error().unwrap_or(EINVAL)),
+        _ => SysError::new(EINVAL),
     }
 }
 
 fn io_to_sys_err(e: io::Error) -> SysError {
-    SysError::new(-e.raw_os_error().unwrap_or(EINVAL))
+    SysError::new(e.raw_os_error().unwrap_or(EINVAL))
 }
 
 fn mmap_to_sys_err(e: MmapError) -> SysError {
     match e {
         MmapError::SystemCallFailed(e) => e,
-        _ => SysError::new(-EINVAL),
+        _ => SysError::new(EINVAL),
     }
 }
 
@@ -246,7 +246,7 @@ fn create_plugin_jail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
 /// ```
 /// match objects.get(&request_id) {
 ///    Some(&PluginObject::Memory { slot, length }) => vm.get_dirty_log(slot, &mut dirty_log[..])
-///    _ => return Err(SysError::new(-ENOENT)),
+///    _ => return Err(SysError::new(ENOENT)),
 /// }
 /// ```
 enum PluginObject {
@@ -275,7 +275,7 @@ impl PluginObject {
                     2 => vm.unregister_ioevent(&evt, addr, datamatch as u16),
                     4 => vm.unregister_ioevent(&evt, addr, datamatch as u32),
                     8 => vm.unregister_ioevent(&evt, addr, datamatch as u64),
-                    _ => Err(SysError::new(-EINVAL)),
+                    _ => Err(SysError::new(EINVAL)),
                 }
             }
             PluginObject::Memory { slot, .. } => vm.remove_device_memory(slot).and(Ok(())),
