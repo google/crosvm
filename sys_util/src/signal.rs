@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{c_int, sigaction, timespec,
+use libc::{c_int, sigaction, SA_RESTART, timespec,
            sigset_t, siginfo_t,
            sigaddset, sigemptyset, sigismember, sigpending, sigtimedwait,
            pthread_t, pthread_kill, pthread_sigmask,
@@ -75,6 +75,7 @@ pub unsafe fn register_signal_handler(
     }
 
     let mut sigact: sigaction = mem::zeroed();
+    sigact.sa_flags = SA_RESTART;
     sigact.sa_sigaction = handler as *const () as usize;
 
     let ret = sigaction(num, &sigact, null_mut());
