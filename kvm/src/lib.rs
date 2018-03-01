@@ -967,7 +967,15 @@ impl Vcpu {
             // ensures no out-of-bounds errors below.
             &mut *(vec.as_ptr() as *mut kvm_signal_mask)
         };
-        kvm_sigmask.len = size_of::<sigset_t>() as u32;
+
+        // Rust definition of sigset_t takes 128 bytes, but the kernel only
+        // expects 8-bytes structure, so we can't write
+        // kvm_sigmask.len  = size_of::<sigset_t>() as u32;
+        kvm_sigmask.len = 8;
+        // Ensure the length is not too big.
+        const _ASSERT: usize = size_of::<sigset_t>() - 8 as usize;
+
+        // Safe as we allocated exactly the needed space
         unsafe {
             std::ptr::copy(&sigset, kvm_sigmask.sigset.as_mut_ptr() as *mut sigset_t, 1);
         }
@@ -1299,6 +1307,15 @@ mod tests {
                                 ..Default::default()
                             }])
             .unwrap();
+    }
+
+    #[test]
+    fn set_signal_mask() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        let vcpu = Vcpu::new(0, &kvm, &vm).unwrap();
+        vcpu.set_signal_mask(&[sys_util::SIGRTMIN() + 0]).unwrap();
     }
 
     #[test]
