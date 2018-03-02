@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::i64;
 use std::time::Duration;
 use std::ptr::null;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -82,7 +81,7 @@ impl Poller {
     /// This is guaranteed to not allocate if `pollables.len()` is less than the `capacity` given in
     /// `Poller::new`.
     pub fn poll(&mut self, pollables: &[(u32, &Pollable)]) -> Result<&[u32]> {
-        self.poll_timeout(pollables, &mut Duration::new(i64::MAX as u64, 0))
+        self.poll_timeout(pollables, &mut Duration::new(time_t::max_value() as u64, 0))
     }
 
     /// Waits for up to the given timeout for any of the given slice of `token`-`Pollable` tuples to
@@ -111,7 +110,6 @@ impl Poller {
             tv_sec: timeout.as_secs() as time_t,
             tv_nsec: timeout.subsec_nanos() as c_long,
         };
-
         // Safe because poll is given the correct length of properly initialized pollfds, and we
         // check the return result.
         let ret = unsafe {
