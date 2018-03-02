@@ -1096,6 +1096,20 @@ mod tests {
     }
 
     #[test]
+    fn get_supported_cpuid() {
+        let kvm = Kvm::new().unwrap();
+        let mut cpuid = kvm.get_supported_cpuid().unwrap();
+        let cpuid_entries = cpuid.mut_entries_slice();
+        assert!(cpuid_entries.len() > 0);
+    }
+
+    #[test]
+    fn get_emulated_cpuid() {
+        let kvm = Kvm::new().unwrap();
+        kvm.get_emulated_cpuid().unwrap();
+    }
+
+    #[test]
     fn add_memory() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
