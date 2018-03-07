@@ -15,16 +15,13 @@ use libc::EINVAL;
 use qcow::QcowHeader;
 
 #[no_mangle]
-pub extern "C" fn create_qcow_with_size(path: *const c_char,
-                                        virtual_size: u64) -> c_int {
-    let c_str = unsafe {
-        // NULL pointers are checked, but this will access any other invalid pointer passed from C
-        // code. It's the caller's responsibility to pass a valid pointer.
-        if path.is_null() {
-            return -EINVAL;
-        }
-        CStr::from_ptr(path)
-    };
+pub unsafe extern "C" fn create_qcow_with_size(path: *const c_char, virtual_size: u64) -> c_int {
+    // NULL pointers are checked, but this will access any other invalid pointer passed from C
+    // code. It's the caller's responsibility to pass a valid pointer.
+    if path.is_null() {
+        return -EINVAL;
+    }
+    let c_str = CStr::from_ptr(path);
     let file_path = match c_str.to_str() {
         Ok(s) => s,
         Err(_) => return -EINVAL,

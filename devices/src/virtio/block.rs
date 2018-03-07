@@ -340,7 +340,7 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
         }
         if let Some(end) = offset.checked_add(data.len() as u64) {
             // This write can't fail, offset and end are checked against config_len.
-            data.write(&self.config_space[offset as usize..cmp::min(end, config_len) as usize])
+            data.write_all(&self.config_space[offset as usize..cmp::min(end, config_len) as usize])
                 .unwrap();
         }
     }

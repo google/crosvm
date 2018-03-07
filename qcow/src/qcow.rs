@@ -455,7 +455,7 @@ impl Read for QcowFile {
 
             if let Some(offset) = file_offset {
                 self.file.seek(SeekFrom::Start(offset))?;
-                self.file.read(&mut buf[nread..(nread + count)])?;
+                self.file.read_exact(&mut buf[nread..(nread + count)])?;
             } else {
                 // Previously unwritten region, return zeros
                 for b in (&mut buf[nread..(nread + count)]).iter_mut() {

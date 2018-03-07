@@ -257,7 +257,7 @@ impl VirtioDevice for Balloon {
             .unwrap();
         if let Some(end) = offset.checked_add(data.len() as u64) {
             // This write can't fail, offset and end are checked against the length of config.
-            data.write(&config[offset as usize..cmp::min(end, 8) as usize])
+            data.write_all(&config[offset as usize..cmp::min(end, 8) as usize])
                 .unwrap();
         }
     }
