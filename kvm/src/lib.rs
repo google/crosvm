@@ -31,8 +31,6 @@ use sys_util::{ioctl, ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref, ioctl_
 
 pub use cap::*;
 
-const MAX_KVM_CPUID_ENTRIES: usize = 256;
-
 fn errno_result<T>() -> Result<T> {
     Err(Error::last())
 }
@@ -135,6 +133,7 @@ impl Kvm {
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn get_cpuid(&self, kind: u64) -> Result<CpuId> {
+        const MAX_KVM_CPUID_ENTRIES: usize = 256;
         let mut cpuid = CpuId::new(MAX_KVM_CPUID_ENTRIES);
 
         let ret = unsafe {
