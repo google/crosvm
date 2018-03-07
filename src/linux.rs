@@ -674,7 +674,6 @@ pub fn run_config(cfg: Config) -> Result<()> {
     #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
     let mut next_dev_pfn = 0;
 
-    let mut control_sockets = Vec::new();
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let (io_bus, stdio_serial) = x86_64::setup_io_bus(&mut vm,
                                                       exit_evt.try_clone().
