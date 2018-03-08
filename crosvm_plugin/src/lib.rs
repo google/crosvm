@@ -919,7 +919,7 @@ pub unsafe extern "C" fn crosvm_check_extension(self_: *mut crosvm,
     let self_ = &mut (*self_);
     let ret = self_.check_extension(extension);
 
-    if let Some(supported) = ret.ok() {
+    if let Ok(supported) = ret {
         *has_extension = supported;
     }
     to_crosvm_rc(ret)
@@ -936,7 +936,7 @@ fn crosvm_get_supported_cpuid(this: *mut crosvm,
     let cpuid_entries = from_raw_parts_mut(cpuid_entries, entry_count as usize);
     let ret = this.get_supported_cpuid(cpuid_entries);
 
-    if let Some(num) = ret.ok() {
+    if let Ok(num) = ret {
         *out_count = num as u32;
     }
     to_crosvm_rc(ret)
@@ -953,7 +953,7 @@ fn crosvm_get_emulated_cpuid(this: *mut crosvm,
     let cpuid_entries = from_raw_parts_mut(cpuid_entries, entry_count as usize);
     let ret = this.get_emulated_cpuid(cpuid_entries);
 
-    if let Some(num) = ret.ok() {
+    if let Ok(num) = ret {
         *out_count = num as u32;
     }
     to_crosvm_rc(ret)
@@ -1033,7 +1033,7 @@ pub unsafe extern "C" fn crosvm_get_vcpu(self_: *mut crosvm,
     let self_ = &mut (*self_);
     let ret = self_.get_vcpu(cpu_id);
 
-    if let Some(vcpu) = ret.ok() {
+    if let Ok(vcpu) = ret {
         *out = vcpu;
     }
     to_crosvm_rc(ret)
