@@ -143,7 +143,7 @@ impl QcowHeader {
                 // Pre-allocate enough clusters for the entire refcount table as it must be
                 // continuous in the file. Allocate enough space to refcount all clusters, including
                 // the refcount clusters.
-                let refcount_bytes = 0x01u32 << DEFAULT_REFCOUNT_ORDER / 8;
+                let refcount_bytes = (0x01u32 << DEFAULT_REFCOUNT_ORDER) / 8;
                 let for_data = div_round_up_u32(num_clusters * refcount_bytes, cluster_size);
                 let for_refcounts = div_round_up_u32(for_data * refcount_bytes, cluster_size);
                 let max_refcount_clusters = for_data + for_refcounts;
