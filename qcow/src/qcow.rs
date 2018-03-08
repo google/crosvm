@@ -98,7 +98,7 @@ impl QcowHeader {
         }
 
         Ok(QcowHeader {
-            magic: magic,
+            magic,
             version: read_u32_from_file(f)?,
             backing_file_offset: read_u64_from_file(f)?,
             backing_file_size: read_u32_from_file(f)?,
@@ -125,7 +125,7 @@ impl QcowHeader {
         let cluster_size: u32 = 0x01 << cluster_bits;
         // L2 blocks are always one cluster long. They contain cluster_size/sizeof(u64) addresses.
         let l2_size: u32 = cluster_size / size_of::<u64>() as u32;
-        let num_clusters: u32 = div_round_up_u64(size, cluster_size as u64) as u32;
+        let num_clusters: u32 = div_round_up_u64(size, u64::from(cluster_size)) as u32;
         let num_l2_clusters: u32 = div_round_up_u32(num_clusters, l2_size);
         let l1_clusters: u32 = div_round_up_u32(num_l2_clusters, cluster_size);
         QcowHeader {
@@ -134,11 +134,12 @@ impl QcowHeader {
             backing_file_offset: 0,
             backing_file_size: 0,
             cluster_bits: DEFAULT_CLUSTER_BITS,
-            size: size,
+            size,
             crypt_method: 0,
             l1_size: num_l2_clusters,
-            l1_table_offset: cluster_size as u64,
-            refcount_table_offset: (cluster_size * (l1_clusters + 1)) as u64, // After l1 + header.
+            l1_table_offset: u64::from(cluster_size),
+             // The refcount table is after l1 + header.
+            refcount_table_offset: u64::from(cluster_size * (l1_clusters + 1)),
             refcount_table_clusters: {
                 // Pre-allocate enough clusters for the entire refcount table as it must be
                 // continuous in the file. Allocate enough space to refcount all clusters, including
@@ -195,7 +196,7 @@ impl QcowHeader {
         // a `File` instead of anything that implements seek as the `file` argument.
         // Zeros out the l1 and refcount table clusters.
         let cluster_size = 0x01u64 << self.cluster_bits;
-        let refcount_blocks_size = self.refcount_table_clusters as u64 * cluster_size;
+        let refcount_blocks_size = u64::from(self.refcount_table_clusters) * cluster_size;
         file.seek(SeekFrom::Start(self.refcount_table_offset + refcount_blocks_size - 2))
             .map_err(Error::WritingHeader)?;
         file.write(&[0u8])
@@ -276,13 +277,13 @@ impl QcowFile {
         offset_is_cluster_boundary(header.snapshots_offset, header.cluster_bits)?;
 
         let qcow = QcowFile {
-            file: file,
-            header: header,
+            file,
+            header,
             l2_entries: cluster_size / size_of::<u64>() as u64,
-            cluster_size: cluster_size,
+            cluster_size,
             cluster_mask: cluster_size - 1,
             current_offset: 0,
-            refcount_bits: refcount_bits,
+            refcount_bits,
         };
 
         // Check that the L1 and refcount tables fit in a 64bit address space.
@@ -290,7 +291,7 @@ impl QcowFile {
             .checked_add(qcow.l1_address_offset(qcow.virtual_size()))
             .ok_or(Error::InvalidL1TableOffset)?;
         qcow.header.refcount_table_offset
-            .checked_add(qcow.header.refcount_table_clusters as u64 * qcow.cluster_size)
+            .checked_add(u64::from(qcow.header.refcount_table_clusters) * qcow.cluster_size)
             .ok_or(Error::InvalidRefcountTableOffset)?;
 
         Ok(qcow)
@@ -370,7 +371,7 @@ impl QcowFile {
             l2_addr_from_table
         };
         let l2_entry_addr: u64 = l2_addr.checked_add(self.l2_address_offset(address))
-                .ok_or(std::io::Error::from_raw_os_error(EINVAL))?;
+                .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
         let cluster_addr_disk: u64 = read_u64_from_offset(&mut self.file, l2_entry_addr)?;
         let cluster_addr_from_table: u64 = cluster_addr_disk & L2_TABLE_OFFSET_MASK;
         let cluster_addr = if cluster_addr_from_table == 0 {
@@ -417,7 +418,7 @@ impl QcowFile {
         let refcount_table_index = (address / cluster_size) / refcount_block_entries;
         let refcount_block_entry_addr = self.header.refcount_table_offset
                 .checked_add(refcount_table_index * size_of::<u64>() as u64)
-                .ok_or(std::io::Error::from_raw_os_error(EINVAL))?;
+                .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
         let refcount_block_address_from_file =
             read_u64_from_offset(&mut self.file, refcount_block_entry_addr)?;
         let refcount_block_address = if refcount_block_address_from_file == 0 {
@@ -430,7 +431,7 @@ impl QcowFile {
         };
         let refcount_address: u64 = refcount_block_address
                 .checked_add(refcount_block_index * 2)
-                .ok_or(std::io::Error::from_raw_os_error(EINVAL))?;
+                .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
         self.file.seek(SeekFrom::Start(refcount_address))?;
         self.file.write_u16::<BigEndian>(refcount)
     }
