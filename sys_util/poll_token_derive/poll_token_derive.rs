@@ -326,8 +326,7 @@ impl EnumModel {
         if self.variants.is_empty() {
             return 0;
         }
-        let variant_count = self.variants.len();
-        (mem::size_of_val(&variant_count) as u32 * 8) - (variant_count - 1).leading_zeros()
+        self.variants.len().next_power_of_two().trailing_zeros()
     }
 
     // Generates the function body for `as_raw_token`.

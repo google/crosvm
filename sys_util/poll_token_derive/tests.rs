@@ -197,16 +197,22 @@ mod enum_model {
             variants: vec![EnumVariant {
                                name: "A".to_owned(),
                                data: None,
-                           },
-                           EnumVariant {
-                               name: "B".to_owned(),
-                               data: None,
-                           },
-                           EnumVariant {
-                               name: "C".to_owned(),
-                               data: None,
                            }],
         };
+        assert_eq!(model.variant_bits(), 0);
+
+        model.variants.append(
+            &mut vec![
+                EnumVariant {
+                    name: "B".to_owned(),
+                    data: None,
+                },
+                EnumVariant {
+                    name: "C".to_owned(),
+                    data: None,
+                }
+            ]
+        );
         assert_eq!(model.variant_bits(), 2);
         for _ in 0..1021 {
             model
