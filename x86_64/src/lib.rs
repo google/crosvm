@@ -59,6 +59,8 @@ mod regs;
 
 use std::mem;
 use std::result;
+use std::error::{self, Error as X86Error};
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::ffi::CStr;
 use std::sync::{Arc, Mutex};
@@ -106,6 +108,44 @@ pub enum Error {
     /// Invalid e820 setup params.
     E820Configuration,
 }
+
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        match self {
+            &Error::ConfigureSystem => "Error configuring the system",
+            &Error::CpuSetup(_) => "Error configuring the VCPU",
+            &Error::CloneEventFd(_) => "Unable to clone an EventFd",
+            &Error::CreateEventFd(_) => "Unable to make an EventFd",
+            &Error::KernelOffsetPastEnd =>
+                "The kernel extends past the end of RAM",
+            &Error::RegisterConfiguration(_) =>
+                "Error configuring the VCPU registers",
+            &Error::FpuRegisterConfiguration(_) =>
+                "Error configuring the VCPU floating point registers",
+            &Error::RegisterIrqfd(_) => "Error registering an IrqFd",
+            &Error::SegmentRegisterConfiguration(_) =>
+                "Error configuring the VCPU segment registers",
+            &Error::LoadCmdline(_) => "Error Loading command line",
+            &Error::LoadKernel(_) => "Error Loading Kernel",
+            &Error::LocalIntConfiguration(_) =>
+                "Error configuring the VCPU local interrupt",
+            &Error::MpTableSetup(_) =>
+                "Error writing MP table to memory",
+            &Error::ZeroPageSetup =>
+                "Error writing the zero page of guest memory",
+            &Error::ZeroPagePastRamEnd =>
+                "The zero page extends past the end of guest_mem",
+            &Error::E820Configuration => "Invalid e820 setup params",
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "X86 Arch Error: {}", Error::description(self))
+    }
+}
+
 pub type Result<T> = result::Result<T, Error>;
 
 const BOOT_STACK_POINTER: u64 = 0x8000;
