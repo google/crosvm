@@ -1,0 +1,7 @@
+[package]
+name = "p9"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+
+[dependencies]
+wire_format_derive = { path = "wire_format_derive" }
