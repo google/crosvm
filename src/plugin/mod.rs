@@ -46,6 +46,7 @@ pub enum Error {
     CreateJail(io_jail::Error),
     CreateKvm(SysError),
     CreateMainSocket(SysError),
+    CreatePIT(SysError),
     CreatePollContext(SysError),
     CreateSignalFd(SignalFdError),
     CreateSocketPair(io::Error),
@@ -104,6 +105,7 @@ impl fmt::Display for Error {
             Error::CreateMainSocket(ref e) => {
                 write!(f, "error creating main request socket: {:?}", e)
             }
+            Error::CreatePIT(ref e) => write!(f, "failed to create kvm PIT: {:?}", e),
             Error::CreatePollContext(ref e) => write!(f, "failed to create poll context: {:?}", e),
             Error::CreateSignalFd(ref e) => write!(f, "failed to create signalfd: {:?}", e),
             Error::CreateSocketPair(ref e) => write!(f, "failed to create socket pair: {}", e),
@@ -458,6 +460,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;
     let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
     vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
+    vm.create_pit().map_err(Error::CreatePIT)?;
     let mut plugin = Process::new(vcpu_count, plugin_path, &plugin_args, jail)?;
 
     let mut res = Ok(());
