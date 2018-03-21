@@ -9,9 +9,12 @@ use std::error::{self, Error as CpuidError};
 use kvm;
 use sys_util;
 
-const VENDOR_EBX_VAL: u32 = 0x534f5243;
-const VENDOR_ECX_VAL: u32 = 0x4d56534f;
-const VENDOR_EDX_VAL: u32 = 0x52434d56;
+// Query the CPU vendor.  ebx/ecx/edx pack an ASCII string into these 3 regs
+// in little endian format.  We set to "CrOSVMBestVM".
+// https://en.wikipedia.org/wiki/CPUID#EAX=0:_Get_vendor_ID_(including_EAX=1:_Get_CPUID)
+const VENDOR_EBX_VAL: u32 = 0x4d567473;  // MVts
+const VENDOR_ECX_VAL: u32 = 0x65424d56;  // eBMV
+const VENDOR_EDX_VAL: u32 = 0x534f7243;  // SOrC
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -52,7 +55,7 @@ fn filter_cpuid(cpu_id: u64, cpu_count: u64, kvm_cpuid: &mut kvm::CpuId) -> Resu
     for entry in entries.iter_mut() {
         match entry.function {
             0 => {
-                // Vendor name "CROSVMCROSVM" in little endian.
+                // Vendor name.
                 entry.ebx = VENDOR_EBX_VAL;
                 entry.ecx = VENDOR_ECX_VAL;
                 entry.edx = VENDOR_EDX_VAL;
