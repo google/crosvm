@@ -10,11 +10,11 @@ use kvm;
 use sys_util;
 
 // Query the CPU vendor.  ebx/ecx/edx pack an ASCII string into these 3 regs
-// in little endian format.  We set to "CrOSVMBestVM".
+// in little endian format.  We set to "crosvmBestVM".
 // https://en.wikipedia.org/wiki/CPUID#EAX=0:_Get_vendor_ID_(including_EAX=1:_Get_CPUID)
-const VENDOR_EBX_VAL: u32 = 0x4d567473;  // MVts
-const VENDOR_ECX_VAL: u32 = 0x65424d56;  // eBMV
-const VENDOR_EDX_VAL: u32 = 0x534f7243;  // SOrC
+const VENDOR_EBX_VAL: u32 = 0x736f7263;  // sorc
+const VENDOR_ECX_VAL: u32 = 0x4d567473;  // MVts
+const VENDOR_EDX_VAL: u32 = 0x65426d76;  // eBmv
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
