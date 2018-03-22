@@ -22,10 +22,12 @@ pub enum Error {
     MsrIoctlFailed(sys_util::Error),
     /// Failed to configure the FPU.
     FpuIoctlFailed(sys_util::Error),
+    /// Failed to get sregs for this cpu.
+    GetSRegsIoctlFailed(sys_util::Error),
     /// Failed to set base registers for this cpu.
     SettingRegistersIoctl(sys_util::Error),
     /// Failed to set sregs for this cpu.
-    SRegsIoctlFailed(sys_util::Error),
+    SetSRegsIoctlFailed(sys_util::Error),
     /// Writing the GDT to RAM failed.
     WriteGDTFailure,
     /// Writing the IDT to RAM failed.
@@ -46,9 +48,11 @@ impl error::Error for Error {
                 "Setting up msrs failed",
             &Error::FpuIoctlFailed(_) =>
                 "Failed to configure the FPU",
+            &Error::GetSRegsIoctlFailed(_) =>
+                "Failed to get sregs for this cpu",
             &Error::SettingRegistersIoctl(_) =>
                 "Failed to set base registers for this cpu",
-            &Error::SRegsIoctlFailed(_) =>
+            &Error::SetSRegsIoctlFailed(_) =>
                 "Failed to set sregs for this cpu",
             &Error::WriteGDTFailure =>
                 "Writing the GDT to RAM failed",
@@ -298,12 +302,12 @@ fn setup_page_tables(mem: &GuestMemory, sregs: &mut kvm_sregs) -> Result<()> {
 /// * `mem` - The memory that will be passed to the guest.
 /// * `vcpu_fd` - The FD returned from the KVM_CREATE_VCPU ioctl.
 pub fn setup_sregs(mem: &GuestMemory, vcpu: &kvm::Vcpu) -> Result<()> {
-    let mut sregs: kvm_sregs = vcpu.get_sregs().map_err(Error::SRegsIoctlFailed)?;
+    let mut sregs: kvm_sregs = vcpu.get_sregs().map_err(Error::GetSRegsIoctlFailed)?;
 
     configure_segments_and_sregs(mem, &mut sregs)?;
     setup_page_tables(mem, &mut sregs)?; // TODO(dgreid) - Can this be done once per system instead?
 
-    vcpu.set_sregs(&sregs).map_err(Error::SRegsIoctlFailed)?;
+    vcpu.set_sregs(&sregs).map_err(Error::SetSRegsIoctlFailed)?;
 
     Ok(())
 }
