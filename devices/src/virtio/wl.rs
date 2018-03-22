@@ -642,6 +642,11 @@ impl WlState {
             Some(vfd) => vfd.recv(&mut self.scm, &mut self.in_file_queue)?,
             None => return Ok(()),
         };
+        // Short-circuit the empty recv case to avoid putting empty recv commands into the virtio
+        // queue.
+        if self.in_file_queue.is_empty() && buf.is_empty() {
+            return Ok(())
+        }
         for file in self.in_file_queue.drain(..) {
             self.vfds
                 .insert(self.next_vfd_id, WlVfd::from_file(self.vm.clone(), file)?);
