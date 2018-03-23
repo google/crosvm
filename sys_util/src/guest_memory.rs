@@ -106,6 +106,15 @@ impl GuestMemory {
             .map_or(GuestAddress(0), |region| region_end(region))
     }
 
+    /// Returns the total size of memory in bytes.
+    pub fn memory_size(&self) -> u64
+    {
+        self.regions
+            .iter()
+            .map(|region| region.mapping.size() as u64)
+            .sum()
+    }
+
     /// Returns true if the given address is within the memory range available to the guest.
     pub fn address_in_range(&self, addr: GuestAddress) -> bool {
         addr < self.end_addr()
@@ -461,6 +470,20 @@ mod tests {
         assert_eq!(val1, num1);
         assert_eq!(val2, num2);
     }
+
+    #[test]
+    fn test_memory_size() {
+        let start_region1 = GuestAddress(0x0);
+        let size_region1 = 0x1000;
+        let start_region2 = GuestAddress(0x10000);
+        let size_region2 = 0x2000;
+        let gm = GuestMemory::new(&vec![(start_region1, size_region1),
+                                        (start_region2, size_region2)]).unwrap();
+
+        let mem_size = gm.memory_size();
+        assert_eq!(mem_size, size_region1 + size_region2);
+    }
+
 
     // Get the base address of the mapping for a GuestAddress.
     fn get_mapping(mem: &GuestMemory, addr: GuestAddress) -> Result<*const u8> {
