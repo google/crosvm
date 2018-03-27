@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 12
+#define CROSVM_API_MINOR 13
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -221,6 +221,29 @@ static_assert(sizeof(struct crosvm_irq_route) == 24,
  */
 int crosvm_set_irq_routing(struct crosvm*, uint32_t __route_count,
                            const struct crosvm_irq_route* __routes);
+
+/* Gets the state of interrupt controller in a VM. */
+int crosvm_get_pic_state(struct crosvm *, bool __primary,
+                         struct kvm_pic_state *__pic_state);
+
+/* Sets the state of interrupt controller in a VM. */
+int crosvm_set_pic_state(struct crosvm *, bool __primary,
+                         struct kvm_pic_state *__pic_state);
+
+/* Gets the state of IOAPIC in a VM. */
+int crosvm_get_ioapic_state(struct crosvm *,
+                            struct kvm_ioapic_state *__ioapic_state);
+
+/* Sets the state of IOAPIC in a VM. */
+int crosvm_set_ioapic_state(struct crosvm *,
+                            struct kvm_ioapic_state *__ioapic_state);
+
+/* Gets the state of interrupt controller in a VM. */
+int crosvm_get_pit_state(struct crosvm *, struct kvm_pit_state2 *__pit_state);
+
+/* Sets the state of interrupt controller in a VM. */
+int crosvm_set_pit_state(struct crosvm *,
+                         const struct kvm_pit_state2 *__pit_state);
 
 /* Sets the identity map address as in the KVM_SET_IDENTITY_MAP_ADDR ioctl. */
 int crosvm_set_identity_map_addr(struct crosvm*, uint32_t __addr);
@@ -482,6 +505,20 @@ int crosvm_vcpu_set_msrs(struct crosvm_vcpu*, uint32_t __msr_count,
 /* Sets the responses to the cpuid instructions executed on this vcpu, */
 int crosvm_vcpu_set_cpuid(struct crosvm_vcpu*, uint32_t __cpuid_count,
                           const struct kvm_cpuid_entry2 *__cpuid_entries);
+
+/* Gets state of LAPIC of the VCPU. */
+int crosvm_vcpu_get_lapic_state(struct crosvm_vcpu *,
+                                struct kvm_lapic_state *__lapic_state);
+/* Sets state of LAPIC of the VCPU. */
+int crosvm_vcpu_set_lapic_state(struct crosvm_vcpu *,
+                                const struct kvm_lapic_state *__lapic_state);
+
+/* Gets the "multiprocessor state" of given VCPU. */
+int crosvm_vcpu_get_mp_state(struct crosvm_vcpu *,
+                             struct kvm_mp_state *__mp_state);
+/* Sets the "multiprocessor state" of given VCPU. */
+int crosvm_vcpu_set_mp_state(struct crosvm_vcpu *,
+                             const struct kvm_mp_state *__mp_state);
 
 #ifdef  __cplusplus
 }

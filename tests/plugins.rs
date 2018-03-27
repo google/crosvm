@@ -242,6 +242,11 @@ fn test_supported_cpuid() {
 }
 
 #[test]
+fn test_vm_state_manipulation() {
+    test_plugin(include_str!("plugin_vm_state.c"));
+}
+
+#[test]
 fn test_vcpu_pause() {
     test_plugin(include_str!("plugin_vcpu_pause.c"));
 }
@@ -517,6 +522,92 @@ fn test_cpuid() {
                 }
                 if (mem[7] != ENTRY2_EDX) {
                     fprintf(stderr, "entry 2 edx has unexpected value: 0x%x\n", mem[7]);
+                    return 1;
+                }
+                return 0;
+            }"#,
+        ..Default::default()
+    };
+    test_mini_plugin(&mini_plugin);
+}
+
+#[test]
+fn test_vcpu_state_manipulation() {
+    let mini_plugin = MiniPlugin {
+        assembly_src: "org 0x1000
+             bits 16
+             mov byte [0x3000], 1",
+        src: r#"
+            #define KILL_ADDRESS 0x3000
+
+            int g_kill_evt;
+            bool success = false;
+
+            int setup_vm(struct crosvm *crosvm, void *mem) {
+                g_kill_evt = crosvm_get_shutdown_eventfd(crosvm);
+                crosvm_reserve_range(crosvm, CROSVM_ADDRESS_SPACE_MMIO, KILL_ADDRESS, 1);
+                return 0;
+            }
+
+            int handle_vpcu_init(struct crosvm_vcpu *vcpu, struct kvm_regs *regs,
+                                 struct kvm_sregs *sregs)
+            {
+                int ret;
+
+                struct kvm_lapic_state lapic;
+                ret = crosvm_vcpu_get_lapic_state(vcpu, &lapic);
+                if (ret < 0) {
+                    fprintf(stderr, "failed to get initial LAPIC state: %d\n", ret);
+                    return 1;
+                }
+
+                ret = crosvm_vcpu_set_lapic_state(vcpu, &lapic);
+                if (ret < 0) {
+                    fprintf(stderr, "failed to update LAPIC state: %d\n", ret);
+                    return 1;
+                }
+
+                ret = crosvm_vcpu_get_lapic_state(vcpu, &lapic);
+                if (ret < 0) {
+                    fprintf(stderr, "failed to get updated LAPIC state: %d\n", ret);
+                    return 1;
+                }
+
+                struct kvm_mp_state mp_state;
+                ret = crosvm_vcpu_get_mp_state(vcpu, &mp_state);
+                if (ret < 0) {
+                    fprintf(stderr, "failed to get initial MP state: %d\n", ret);
+                    return 1;
+                }
+
+                ret = crosvm_vcpu_set_mp_state(vcpu, &mp_state);
+                if (ret < 0) {
+                    fprintf(stderr, "failed to update MP state: %d\n", ret);
+                    return 1;
+                }
+
+                success = true;
+                return 0;
+            }
+
+            int handle_vpcu_evt(struct crosvm_vcpu *vcpu, struct crosvm_vcpu_event evt) {
+                if (evt.kind == CROSVM_VCPU_EVENT_KIND_IO_ACCESS &&
+                        evt.io_access.address_space == CROSVM_ADDRESS_SPACE_MMIO &&
+                        evt.io_access.address == KILL_ADDRESS &&
+                        evt.io_access.is_write &&
+                        evt.io_access.length == 1 &&
+                        evt.io_access.data[0] == 1)
+                {
+                    uint64_t dummy = 1;
+                    write(g_kill_evt, &dummy, sizeof(dummy));
+                    return 1;
+                }
+                return 0;
+            }
+
+            int check_result(struct crosvm *vcpu, void *mem) {
+                if (!success) {
+                    fprintf(stderr, "test failed\n");
                     return 1;
                 }
                 return 0;

@@ -18,7 +18,7 @@ use protobuf::Message;
 use data_model::DataInit;
 use kvm::{Vcpu, CpuId};
 use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msrs, kvm_msr_entry,
-              KVM_CPUID_FLAG_SIGNIFCANT_INDEX};
+              KVM_CPUID_FLAG_SIGNIFCANT_INDEX, kvm_lapic_state, kvm_mp_state};
 use plugin_proto::*;
 
 use super::*;
@@ -66,7 +66,12 @@ unsafe impl DataInit for VcpuFpu {}
 #[derive(Copy, Clone)]
 struct VcpuDebugregs(kvm_debugregs);
 unsafe impl DataInit for VcpuDebugregs {}
-
+#[derive(Copy, Clone)]
+struct VcpuLapicState(kvm_lapic_state);
+unsafe impl DataInit for VcpuLapicState {}
+#[derive(Copy, Clone)]
+struct VcpuMpState(kvm_mp_state);
+unsafe impl DataInit for VcpuMpState {}
 
 fn get_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet) -> SysResult<Vec<u8>> {
     Ok(match state_set {
@@ -76,6 +81,8 @@ fn get_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet) -> SysResult<Vec
            VcpuRequest_StateSet::DEBUGREGS => {
                VcpuDebugregs(vcpu.get_debugregs()?).as_slice().to_vec()
            }
+           VcpuRequest_StateSet::LAPIC => VcpuLapicState(vcpu.get_lapic()?).as_slice().to_vec(),
+           VcpuRequest_StateSet::MP => VcpuMpState(vcpu.get_mp_state()?).as_slice().to_vec(),
        })
 }
 
@@ -98,6 +105,16 @@ fn set_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet, state: &[u8]) ->
         }
         VcpuRequest_StateSet::DEBUGREGS => {
             vcpu.set_debugregs(&VcpuDebugregs::from_slice(state)
+                                    .ok_or(SysError::new(EINVAL))?
+                                    .0)
+        }
+        VcpuRequest_StateSet::LAPIC => {
+            vcpu.set_lapic(&VcpuLapicState::from_slice(state)
+                                .ok_or(SysError::new(EINVAL))?
+                                .0)
+        }
+        VcpuRequest_StateSet::MP => {
+            vcpu.set_mp_state(&VcpuMpState::from_slice(state)
                                     .ok_or(SysError::new(EINVAL))?
                                     .0)
         }

@@ -23,12 +23,69 @@ use protobuf;
 use protobuf::Message;
 
 use io_jail::Minijail;
-use kvm::{Vm, IoeventAddress, NoDatamatch, IrqSource, IrqRoute, dirty_log_bitmap_size};
+use kvm::{Vm, IoeventAddress, NoDatamatch, IrqSource, IrqRoute, PicId, dirty_log_bitmap_size};
+use kvm_sys::{kvm_pic_state, kvm_ioapic_state, kvm_pit_state2};
 use sys_util::{EventFd, MemoryMapping, Killable, Scm, SharedMemory, GuestAddress,
                Result as SysResult, Error as SysError, SIGRTMIN};
 use plugin_proto::*;
 
 use super::*;
+
+// Wrapper types to make the kvm state structs DataInit
+use data_model::DataInit;
+#[derive(Copy, Clone)]
+struct VmPicState(kvm_pic_state);
+unsafe impl DataInit for VmPicState {}
+#[derive(Copy, Clone)]
+struct VmIoapicState(kvm_ioapic_state);
+unsafe impl DataInit for VmIoapicState {}
+#[derive(Copy, Clone)]
+struct VmPitState(kvm_pit_state2);
+unsafe impl DataInit for VmPitState {}
+
+fn get_vm_state(vm: &Vm, state_set: MainRequest_StateSet) -> SysResult<Vec<u8>> {
+    Ok(match state_set {
+           MainRequest_StateSet::PIC0 => {
+               VmPicState(vm.get_pic_state(PicId::Primary)?).as_slice().to_vec()
+           }
+           MainRequest_StateSet::PIC1 => {
+               VmPicState(vm.get_pic_state(PicId::Secondary)?).as_slice().to_vec()
+           }
+           MainRequest_StateSet::IOAPIC => {
+               VmIoapicState(vm.get_ioapic_state()?).as_slice().to_vec()
+           }
+           MainRequest_StateSet::PIT => {
+               VmPitState(vm.get_pit_state()?).as_slice().to_vec()
+           }
+       })
+}
+
+fn set_vm_state(vm: &Vm, state_set: MainRequest_StateSet, state: &[u8]) -> SysResult<()> {
+    match state_set {
+        MainRequest_StateSet::PIC0 => {
+            vm.set_pic_state(PicId::Primary,
+                             &VmPicState::from_slice(state)
+                                 .ok_or(SysError::new(EINVAL))?
+                                 .0)
+        }
+        MainRequest_StateSet::PIC1 => {
+            vm.set_pic_state(PicId::Secondary,
+                             &VmPicState::from_slice(state)
+                                 .ok_or(SysError::new(EINVAL))?
+                                 .0)
+        }
+        MainRequest_StateSet::IOAPIC => {
+            vm.set_ioapic_state(&VmIoapicState::from_slice(state)
+                                    .ok_or(SysError::new(EINVAL))?
+                                    .0)
+        }
+        MainRequest_StateSet::PIT => {
+            vm.set_pit_state(&VmPitState::from_slice(state)
+                                 .ok_or(SysError::new(EINVAL))?
+                                 .0)
+        }
+    }
+}
 
 /// The status of a process, either that it is running, or that it exited under some condition.
 pub enum ProcessStatus {
@@ -487,6 +544,19 @@ impl Process {
         } else if request.has_set_irq_routing() {
             response.mut_set_irq_routing();
             Self::handle_set_irq_routing(vm, request.get_set_irq_routing())
+        } else if request.has_get_state() {
+            let response_state = response.mut_get_state();
+            match get_vm_state(vm, request.get_get_state().set) {
+                Ok(state) => {
+                    response_state.state = state;
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
+        } else if request.has_set_state() {
+            response.mut_set_state();
+            let set_state = request.get_set_state();
+            set_vm_state(vm, set_state.set, set_state.get_state())
         } else if request.has_set_identity_map_addr() {
             response.mut_set_identity_map_addr();
             let addr = request.get_set_identity_map_addr().address;

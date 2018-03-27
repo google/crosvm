@@ -43,7 +43,8 @@ use sys_util::Scm;
 
 use kvm::dirty_log_bitmap_size;
 
-use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msr_entry, kvm_cpuid_entry2};
+use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msr_entry, kvm_cpuid_entry2,
+              kvm_lapic_state, kvm_mp_state, kvm_pic_state, kvm_ioapic_state, kvm_pit_state2};
 
 use plugin_proto::*;
 
@@ -349,6 +350,34 @@ impl crosvm {
                 }
                 set_irq_routing.push(entry);
             }
+        }
+        self.main_transaction(&r, &[])?;
+        Ok(())
+    }
+
+    fn get_state(&mut self, state_set: MainRequest_StateSet, out: &mut [u8])
+                 -> result::Result<(), c_int> {
+        let mut r = MainRequest::new();
+        r.mut_get_state().set = state_set;
+        let (response, _) = self.main_transaction(&r, &[])?;
+        if !response.has_get_state() {
+            return Err(EPROTO);
+        }
+        let get_state: &MainResponse_GetState = response.get_get_state();
+        if get_state.state.len() != out.len() {
+            return Err(EPROTO);
+        }
+        out.copy_from_slice(&get_state.state);
+        Ok(())
+    }
+
+    fn set_state(&mut self, state_set: MainRequest_StateSet, new_state: &[u8])
+                 -> result::Result<(), c_int> {
+        let mut r = MainRequest::new();
+        {
+            let set_state: &mut MainRequest_SetState = r.mut_set_state();
+            set_state.set = state_set;
+            set_state.state = new_state.to_vec();
         }
         self.main_transaction(&r, &[])?;
         Ok(())
@@ -1002,6 +1031,71 @@ pub unsafe extern "C" fn crosvm_set_irq_routing(self_: *mut crosvm,
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn crosvm_get_pic_state(this: *mut crosvm,
+                                              primary: bool,
+                                              state: *mut kvm_pic_state)
+                                              -> c_int {
+    let this = &mut *this;
+    let state_set = if primary { MainRequest_StateSet::PIC0 } else { MainRequest_StateSet::PIC1 };
+    let state = from_raw_parts_mut(state as *mut u8, size_of::<kvm_pic_state>());
+    let ret = this.get_state(state_set, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_set_pic_state(this: *mut crosvm,
+                                              primary: bool,
+                                              state: *mut kvm_pic_state)
+                                              -> c_int {
+    let this = &mut *this;
+    let state_set = if primary { MainRequest_StateSet::PIC0 } else { MainRequest_StateSet::PIC1 };
+    let state = from_raw_parts(state as *mut u8, size_of::<kvm_pic_state>());
+    let ret = this.set_state(state_set, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_get_ioapic_state(this: *mut crosvm,
+                                                 state: *mut kvm_ioapic_state)
+                                                 -> c_int {
+    let this = &mut *this;
+    let state = from_raw_parts_mut(state as *mut u8, size_of::<kvm_ioapic_state>());
+    let ret = this.get_state(MainRequest_StateSet::IOAPIC, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_set_ioapic_state(this: *mut crosvm,
+                                                 state: *const kvm_ioapic_state)
+                                                 -> c_int {
+
+    let this = &mut *this;
+    let state = from_raw_parts(state as *mut u8, size_of::<kvm_ioapic_state>());
+    let ret = this.set_state(MainRequest_StateSet::IOAPIC, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_get_pit_state(this: *mut crosvm,
+                                              state: *mut kvm_pit_state2)
+                                              -> c_int {
+    let this = &mut *this;
+    let state = from_raw_parts_mut(state as *mut u8, size_of::<kvm_pit_state2>());
+    let ret = this.get_state(MainRequest_StateSet::PIT, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_set_pit_state(this: *mut crosvm,
+                                              state: *const kvm_pit_state2)
+                                              -> c_int {
+    let this = &mut *this;
+    let state = from_raw_parts(state as *mut u8, size_of::<kvm_pit_state2>());
+    let ret = this.set_state(MainRequest_StateSet::PIT, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn crosvm_set_identity_map_addr(self_: *mut crosvm, addr: u32) -> c_int {
     let self_ = &mut (*self_);
     let ret = self_.set_identity_map_addr(addr);
@@ -1162,5 +1256,47 @@ pub unsafe extern "C" fn crosvm_vcpu_set_cpuid(this: *mut crosvm_vcpu,
     let this = &mut *this;
     let cpuid_entries = from_raw_parts(cpuid_entries, cpuid_count as usize);
     let ret = this.set_cpuid(cpuid_entries);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_get_lapic_state(this: *mut crosvm_vcpu,
+                                                     state: *mut kvm_lapic_state)
+                                                     -> c_int {
+    let this = &mut *this;
+    let state = from_raw_parts_mut(state as *mut u8, size_of::<kvm_lapic_state>());
+    let ret = this.get_state(VcpuRequest_StateSet::LAPIC, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_set_lapic_state(this: *mut crosvm_vcpu,
+                                                     state: *const kvm_lapic_state)
+                                                     -> c_int {
+
+    let this = &mut *this;
+    let state = from_raw_parts(state as *mut u8, size_of::<kvm_lapic_state>());
+    let ret = this.set_state(VcpuRequest_StateSet::LAPIC, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_get_mp_state(this: *mut crosvm_vcpu,
+                                                  state: *mut kvm_mp_state)
+                                                  -> c_int {
+    let this = &mut *this;
+    let state = from_raw_parts_mut(state as *mut u8, size_of::<kvm_mp_state>());
+    let ret = this.get_state(VcpuRequest_StateSet::MP, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_set_mp_state(this: *mut crosvm_vcpu,
+                                                  state: *const kvm_mp_state)
+                                                  -> c_int {
+
+    let this = &mut *this;
+    let state = from_raw_parts(state as *mut u8, size_of::<kvm_mp_state>());
+    let ret = this.set_state(VcpuRequest_StateSet::MP, state);
     to_crosvm_rc(ret)
 }

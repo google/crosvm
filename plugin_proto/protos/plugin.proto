@@ -110,6 +110,30 @@ message MainRequest {
         repeated Route routes = 1;
     }
 
+    // Each type refers to certain piece of VM state (such as PIT state).
+    // The structure of the data corresponds to the kvm structure.
+    enum StateSet {
+        // struct kvm_pic_state
+        PIC0 = 0;
+        // struct kvm_pic_state
+        PIC1 = 1;
+        // struct kvm_ioapic_state
+        IOAPIC = 2;
+        // struct kvm_pit_state2
+        PIT = 3;
+    }
+
+    message GetState {
+        StateSet set = 1;
+    }
+
+    message SetState {
+        StateSet set = 1;
+        // The in memory representation of certain state, depending on the value
+        // of the StateSet.
+        bytes state = 2;
+    }
+
     message SetIdentityMapAddr {
         uint32 address = 1;
     }
@@ -142,10 +166,12 @@ message MainRequest {
         ReserveRange reserve_range = 9;
         SetIrq set_irq = 10;
         SetIrqRouting set_irq_routing = 11;
-        SetIdentityMapAddr set_identity_map_addr = 12;
-        PauseVcpus pause_vcpus = 13;
-        GetVcpus get_vcpus = 14;
-        Start start = 15;
+        GetState get_state = 12;
+        SetState set_state = 13;
+        SetIdentityMapAddr set_identity_map_addr = 14;
+        PauseVcpus pause_vcpus = 15;
+        GetVcpus get_vcpus = 16;
+        Start start = 17;
         // Method for a Memory type object for retrieving the dirty bitmap. Only valid if the memory
         // object was created with dirty_log set.
         MemoryDirtyLog dirty_log = 101;
@@ -178,6 +204,12 @@ message MainResponse {
     message ReserveRange {}
     message SetIrq {}
     message SetIrqRouting {}
+    message GetState {
+        // The in memory representation of a state, depending on what StateSet was
+        // requested in GetState.
+        bytes state = 1;
+    }
+    message SetState {}
     message SetIdentityMapAddr {}
     message PauseVcpus {}
     // This message should also receive a socket fd per VCPU along with the data from reading this
@@ -204,10 +236,12 @@ message MainResponse {
         ReserveRange reserve_range = 10;
         SetIrq set_irq = 11;
         SetIrqRouting set_irq_routing = 12;
-        SetIdentityMapAddr set_identity_map_addr = 13;
-        PauseVcpus pause_vcpus = 14;
-        GetVcpus get_vcpus = 15;
-        Start start = 16;
+        GetState get_state = 13;
+        SetState set_state = 14;
+        SetIdentityMapAddr set_identity_map_addr = 15;
+        PauseVcpus pause_vcpus = 16;
+        GetVcpus get_vcpus = 17;
+        Start start = 18;
         MemoryDirtyLog dirty_log = 101;
     }
 }
@@ -226,8 +260,8 @@ message VcpuRequest {
         bytes data = 1;
     }
 
-    // Each type refers to a set of KVM VCPU registers. The structure of the data corresponds to the
-    // kvm structure.
+    // Each type refers to certain piece of VCPU state (a set registers, or something else).
+    // The structure of the data corresponds to the kvm structure.
     enum StateSet {
         // struct kvm_regs
         REGS = 0;
@@ -237,6 +271,10 @@ message VcpuRequest {
         FPU = 2;
         // struct kvm_debugregs
         DEBUGREGS = 3;
+        // struct kvm_lapic_state
+        LAPIC = 4;
+        // struct kvm_mp_state
+        MP = 5;
     }
 
     message GetState {
@@ -315,8 +353,9 @@ message VcpuResponse  {
     message Resume {}
 
     message GetState {
-        // The in memory representation of a struct kvm_regs, struct kvm_sregs, or struct kvm_fpu,
-        // depending on what StateSet was requested in GetState.
+        // The in memory representation of a struct kvm_regs, struct kvm_sregs, struct kvm_fpu,
+        // struct kvm_lapic_state, or struct kvm_mp_state, depending on what StateSet was
+        // requested in GetState.
         bytes state = 1;
     }
 
