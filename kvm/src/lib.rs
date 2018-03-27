@@ -395,6 +395,38 @@ impl Vm {
         }
     }
 
+    /// Retrieves the state of irqchip by issuing KVM_GET_IRQCHIP ioctl.
+    ///
+    /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_irq_chip_state(&self) -> Result<kvm_irqchip> {
+        // Safe because we know that our file is a VM fd, we know the kernel will only write
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut irqchip_state = unsafe { std::mem::zeroed() };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_IRQCHIP(), &mut irqchip_state) };
+        if ret == 0 {
+            Ok(irqchip_state)
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Sets the state of irqchip by issuing KVM_SET_IRQCHIP ioctl.
+    ///
+    /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_irq_chip_state(&self, irqchip_state: &kvm_irqchip) -> Result<()> {
+        // Safe because we know that our file is a VM fd, we know the kernel will only read
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_IRQCHIP(), irqchip_state) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+
     /// Sets the level on the given irq to 1 if `active` is true, and 0 otherwise.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64"))]
     pub fn set_irq_line(&self, irq: u32, active: bool) -> Result<()> {
@@ -421,6 +453,37 @@ impl Vm {
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, KVM_CREATE_PIT2(), &pit_config) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Retrieves the state of PIT by issuing KVM_GET_PIT2 ioctl.
+    ///
+    /// Note that this call can only succeed after a call to `Vm::create_pit`.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_pit_state(&self) -> Result<kvm_pit_state2> {
+        // Safe because we know that our file is a VM fd, we know the kernel will only write
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut pit_state = unsafe { std::mem::zeroed() };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_PIT2(), &mut pit_state) };
+        if ret == 0 {
+            Ok(pit_state)
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Sets the state of PIT by issuing KVM_SET_PIT2 ioctl.
+    ///
+    /// Note that this call can only succeed after a call to `Vm::create_pit`.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_pit_state(&self, pit_state: &kvm_pit_state2) -> Result<()> {
+        // Safe because we know that our file is a VM fd, we know the kernel will only read
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_PIT2(), pit_state) };
         if ret == 0 {
             Ok(())
         } else {
@@ -1169,6 +1232,27 @@ mod tests {
         vm.get_memory().write_obj_at_addr(67u8, obj_addr).unwrap();
         let read_val: u8 = vm.get_memory().read_obj_from_addr(obj_addr).unwrap();
         assert_eq!(read_val, 67u8);
+    }
+
+    #[test]
+    fn irqchip_handling() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        vm.create_irq_chip().unwrap();
+        let irqchip_state = vm.get_irq_chip_state().unwrap();
+        vm.set_irq_chip_state(&irqchip_state).unwrap();
+    }
+
+    #[test]
+    fn pit_handling() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        vm.create_irq_chip().unwrap();
+        vm.create_pit().unwrap();
+        let pit_state = vm.get_pit_state().unwrap();
+        vm.set_pit_state(&pit_state).unwrap();
     }
 
     #[test]
