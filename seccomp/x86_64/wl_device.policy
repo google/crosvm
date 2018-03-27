@@ -40,3 +40,6 @@ lseek: 1
 # Allow PR_SET_NAME only.
 prctl: arg0 == 15
 restart_syscall: 1
+# Allow F_GETFL only
+fcntl: arg1 == 3
+pipe2: 1

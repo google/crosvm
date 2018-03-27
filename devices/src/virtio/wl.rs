@@ -33,10 +33,11 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeSet as Set, BTreeMap as Map, VecDeque};
 use std::convert::From;
 use std::ffi::CStr;
+use std::error::{self, Error as StdError};
 use std::fmt;
 use std::fs::File;
-use std::io;
-use std::mem::size_of;
+use std::io::{self, Seek, SeekFrom, Read};
+use std::mem::{size_of, size_of_val};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::{UnixDatagram, UnixStream};
 use std::path::{PathBuf, Path};
@@ -50,7 +51,7 @@ use data_model::*;
 use data_model::VolatileMemoryError;
 
 use sys_util::{Error, Result, EventFd, Poller, Pollable, Scm, SharedMemory, GuestAddress,
-               GuestMemory, GuestMemoryError};
+               GuestMemory, GuestMemoryError, FileFlags, pipe};
 
 use vm_control::{VmControlError, VmRequest, VmResponse, MaybeOwnedFd};
 use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_USED_RING, TYPE_WL};
@@ -61,15 +62,21 @@ const VIRTIO_WL_CMD_VFD_CLOSE: u32 = 257;
 const VIRTIO_WL_CMD_VFD_SEND: u32 = 258;
 const VIRTIO_WL_CMD_VFD_RECV: u32 = 259;
 const VIRTIO_WL_CMD_VFD_NEW_CTX: u32 = 260;
+const VIRTIO_WL_CMD_VFD_NEW_PIPE: u32 = 261;
+const VIRTIO_WL_CMD_VFD_HUP: u32 = 262;
 const VIRTIO_WL_RESP_OK: u32 = 4096;
 const VIRTIO_WL_RESP_VFD_NEW: u32 = 4097;
 const VIRTIO_WL_RESP_ERR: u32 = 4352;
 const VIRTIO_WL_RESP_OUT_OF_MEMORY: u32 = 4353;
 const VIRTIO_WL_RESP_INVALID_ID: u32 = 4354;
 const VIRTIO_WL_RESP_INVALID_TYPE: u32 = 4355;
+const VIRTIO_WL_RESP_INVALID_FLAGS: u32 = 4356;
+const VIRTIO_WL_RESP_INVALID_CMD: u32 = 4357;
 const VIRTIO_WL_VFD_WRITE: u32 = 0x1;
+const VIRTIO_WL_VFD_READ: u32 = 0x2;
 const VIRTIO_WL_VFD_MAP: u32 = 0x2;
 const VIRTIO_WL_VFD_CONTROL: u32 = 0x4;
+const VIRTIO_WL_F_TRANS_FLAGS: u32 = 0x01;
 
 const Q_IN: u32 = 0;
 const Q_OUT: u32 = 1;
@@ -105,6 +112,21 @@ fn parse_new(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
            id: id.into(),
            flags: flags.into(),
            size: size.into(),
+       })
+}
+
+fn parse_new_pipe(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
+    const ID_OFFSET: u64 = 8;
+    const FLAGS_OFFSET: u64 = 12;
+
+    let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
+                                              .ok_or(WlError::CheckedOffset)?)?;
+    let flags: Le32 =
+        mem.read_obj_from_addr(mem.checked_offset(addr, FLAGS_OFFSET)
+                                    .ok_or(WlError::CheckedOffset)?)?;
+    Ok(WlOp::NewPipe {
+           id: id.into(),
+           flags: flags.into(),
        })
 }
 
@@ -146,7 +168,8 @@ fn parse_desc(desc: &DescriptorChain, mem: &GuestMemory) -> WlResult<WlOp> {
         VIRTIO_WL_CMD_VFD_CLOSE => Ok(WlOp::Close { id: parse_id(desc.addr, mem)? }),
         VIRTIO_WL_CMD_VFD_SEND => parse_send(desc.addr, desc.len, mem),
         VIRTIO_WL_CMD_VFD_NEW_CTX => Ok(WlOp::NewCtx { id: parse_id(desc.addr, mem)? }),
-        v => Ok(WlOp::Unsupported { op_type: v }),
+        VIRTIO_WL_CMD_VFD_NEW_PIPE => parse_new_pipe(desc.addr, mem),
+        v => Ok(WlOp::InvalidCommand { op_type: v }),
     }
 }
 
@@ -208,6 +231,19 @@ fn encode_vfd_recv(desc_mem: VolatileSlice,
     Ok((size_of::<CtrlVfdRecv>() + vfd_ids.len() * size_of::<Le32>() + data.len()) as u32)
 }
 
+fn encode_vfd_hup(desc_mem: VolatileSlice, vfd_id: u32) -> WlResult<u32> {
+    let ctrl_vfd_new = CtrlVfd {
+        hdr: CtrlHeader {
+            type_: Le32::from(VIRTIO_WL_CMD_VFD_HUP),
+            flags: Le32::from(0),
+        },
+        id: Le32::from(vfd_id),
+    };
+
+    desc_mem.get_ref(0)?.store(ctrl_vfd_new);
+    Ok(size_of_val(&ctrl_vfd_new) as u32)
+}
+
 fn encode_resp(desc_mem: VolatileSlice, resp: WlResp) -> WlResult<u32> {
     match resp {
         WlResp::VfdNew {
@@ -218,6 +254,7 @@ fn encode_resp(desc_mem: VolatileSlice, resp: WlResp) -> WlResult<u32> {
             resp,
         } => encode_vfd_new(desc_mem, resp, id, flags, pfn, size),
         WlResp::VfdRecv { id, data, vfds } => encode_vfd_recv(desc_mem, id, data, vfds),
+        WlResp::VfdHup { id } => encode_vfd_hup(desc_mem, id),
         r => {
             desc_mem.get_ref(0)?.store(Le32::from(r.get_code()));
             Ok(size_of::<Le32>() as u32)
@@ -228,8 +265,8 @@ fn encode_resp(desc_mem: VolatileSlice, resp: WlResp) -> WlResult<u32> {
 #[derive(Debug)]
 enum WlError {
     NewAlloc(Error),
+    NewPipe(Error),
     AllocSetSize(Error),
-    AllocFromFile(Error),
     SocketConnect(io::Error),
     SocketNonBlock(io::Error),
     VmControl(VmControlError),
@@ -238,7 +275,36 @@ enum WlError {
     GuestMemory(GuestMemoryError),
     VolatileMemory(VolatileMemoryError),
     SendVfd(Error),
+    WritePipe(io::Error),
     RecvVfd(Error),
+    ReadPipe(io::Error),
+}
+
+impl fmt::Display for WlError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.description())
+    }
+}
+
+impl error::Error for WlError {
+    fn description(&self) -> &str {
+        match *self {
+            WlError::NewAlloc(_) => "Failed to create shared memory allocation",
+            WlError::NewPipe(_) => "Failed to create pipe",
+            WlError::AllocSetSize(_) => "Failed to set size of shared memory",
+            WlError::SocketConnect(_) => "Failed to connect socket",
+            WlError::SocketNonBlock(_) => "Failed to set socket as non-blocking",
+            WlError::VmControl(_) => "Failed to control parent VM",
+            WlError::VmBadResponse => "Invalid response from parent VM",
+            WlError::CheckedOffset => "Overflow in calculation",
+            WlError::GuestMemory(_) => "Access violation in guest memory",
+            WlError::VolatileMemory(_) => "Access violating in guest volatile memory",
+            WlError::SendVfd(_) => "Failed to send on a socket",
+            WlError::WritePipe(_) => "Failed to write to a pipe",
+            WlError::RecvVfd(_) => "Failed to recv on a socket",
+            WlError::ReadPipe(_) => "Failed to read a pipe",
+        }
+    }
 }
 
 type WlResult<T> = result::Result<T, WlError>;
@@ -304,6 +370,15 @@ struct CtrlVfdRecv {
 
 unsafe impl DataInit for CtrlVfdRecv {}
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct CtrlVfd {
+    hdr: CtrlHeader,
+    id: Le32,
+}
+
+unsafe impl DataInit for CtrlVfd {}
+
 #[derive(Debug)]
 enum WlOp {
     NewAlloc { id: u32, flags: u32, size: u32 },
@@ -316,7 +391,8 @@ enum WlOp {
         data_len: u32,
     },
     NewCtx { id: u32 },
-    Unsupported { op_type: u32 },
+    NewPipe { id: u32, flags: u32 },
+    InvalidCommand { op_type: u32 },
 }
 
 #[derive(Debug)]
@@ -337,10 +413,13 @@ enum WlResp<'a> {
         data: &'a [u8],
         vfds: &'a [u32],
     },
-    Err,
+    VfdHup { id: u32 },
+    Err(Box<error::Error>),
     OutOfMemory,
     InvalidId,
     InvalidType,
+    InvalidFlags,
+    InvalidCommand,
 }
 
 impl<'a> WlResp<'a> {
@@ -355,10 +434,13 @@ impl<'a> WlResp<'a> {
                 }
             }
             &WlResp::VfdRecv { .. } => VIRTIO_WL_CMD_VFD_RECV,
-            &WlResp::Err => VIRTIO_WL_RESP_ERR,
+            &WlResp::VfdHup { .. } => VIRTIO_WL_CMD_VFD_HUP,
+            &WlResp::Err(_) => VIRTIO_WL_RESP_ERR,
             &WlResp::OutOfMemory => VIRTIO_WL_RESP_OUT_OF_MEMORY,
             &WlResp::InvalidId => VIRTIO_WL_RESP_INVALID_ID,
             &WlResp::InvalidType => VIRTIO_WL_RESP_INVALID_TYPE,
+            &WlResp::InvalidFlags => VIRTIO_WL_RESP_INVALID_FLAGS,
+            &WlResp::InvalidCommand => VIRTIO_WL_RESP_INVALID_CMD,
         }
     }
 }
@@ -366,7 +448,9 @@ impl<'a> WlResp<'a> {
 #[derive(Default)]
 struct WlVfd {
     socket: Option<UnixStream>,
-    guest_shared_memory: Option<SharedMemory>,
+    guest_shared_memory: Option<(u64 /* size */, File)>,
+    remote_pipe: Option<File>,
+    local_pipe: Option<(u32 /* flags */, File)>,
     slot: Option<(u32 /* slot */, u64 /* pfn */, VmRequester)>,
 }
 
@@ -379,6 +463,12 @@ impl fmt::Debug for WlVfd {
         if let Some(&(slot, pfn, _)) = self.slot.as_ref() {
             write!(f, " slot: {} pfn: {}", slot, pfn)?;
         }
+        if let Some(ref s) = self.remote_pipe {
+            write!(f, " remote: {}", s.as_raw_fd())?;
+        }
+        if let Some((_, ref s)) = self.local_pipe {
+            write!(f, " local: {}", s.as_raw_fd())?;
+        }
         write!(f, " }}")
     }
 }
@@ -390,11 +480,9 @@ impl WlVfd {
         socket
             .set_nonblocking(true)
             .map_err(WlError::SocketNonBlock)?;
-        Ok(WlVfd {
-               socket: Some(socket),
-               guest_shared_memory: None,
-               slot: None,
-           })
+        let mut vfd = WlVfd::default();
+        vfd.socket = Some(socket);
+        Ok(vfd)
     }
 
     fn allocate(vm: VmRequester, size: u64) -> WlResult<WlVfd> {
@@ -410,101 +498,174 @@ impl WlVfd {
                                                    vfd_shm.size() as usize))?;
         match register_response {
             VmResponse::RegisterMemory { pfn, slot } => {
-                Ok(WlVfd {
-                       socket: None,
-                       guest_shared_memory: Some(vfd_shm),
-                       slot: Some((slot, pfn, vm)),
-                   })
+                let mut vfd = WlVfd::default();
+                vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm.into()));
+                vfd.slot = Some((slot, pfn, vm));
+                Ok(vfd)
             }
             _ => Err(WlError::VmBadResponse),
         }
     }
 
-    fn from_file(vm: VmRequester, fd: File) -> WlResult<WlVfd> {
-        let vfd_shm = SharedMemory::from_raw_fd(fd)
-            .map_err(WlError::AllocFromFile)?;
-        let size = round_to_page_size(vfd_shm.size());
-        let register_response =
-            vm.request(VmRequest::RegisterMemory(MaybeOwnedFd::Borrowed(vfd_shm.as_raw_fd()),
-                                                   size as usize))?;
-        match register_response {
-            VmResponse::RegisterMemory { pfn, slot } => {
-                Ok(WlVfd {
-                       socket: None,
-                       guest_shared_memory: Some(vfd_shm),
-                       slot: Some((slot, pfn, vm)),
-                   })
+    fn pipe_remote_read_local_write() -> WlResult<WlVfd> {
+        let (read_pipe, write_pipe) = pipe(true).map_err(WlError::NewPipe)?;
+        let mut vfd = WlVfd::default();
+        vfd.remote_pipe = Some(read_pipe);
+        vfd.local_pipe = Some((VIRTIO_WL_VFD_WRITE, write_pipe));
+        Ok(vfd)
+    }
+
+    fn pipe_remote_write_local_read() -> WlResult<WlVfd> {
+        let (read_pipe, write_pipe) = pipe(true).map_err(WlError::NewPipe)?;
+        let mut vfd = WlVfd::default();
+        vfd.remote_pipe = Some(write_pipe);
+        vfd.local_pipe = Some((VIRTIO_WL_VFD_READ, read_pipe));
+        Ok(vfd)
+    }
+
+    fn from_file(vm: VmRequester, mut fd: File) -> WlResult<WlVfd> {
+        // We need to determine if the given file is more like shared memory or a pipe/socket. A
+        // quick and easy check is to seek to the end of the file. If it works we assume it's not a
+        // pipe/socket because those have no end. We can even use that seek location as an indicator
+        // for how big the shared memory chunk to map into guest memory is. If seeking to the end
+        // fails, we assume it's a socket or pipe with read/write semantics.
+        match fd.seek(SeekFrom::End(0)) {
+            Ok(fd_size) => {
+                let size = round_to_page_size(fd_size);
+                let register_response =
+                    vm.request(VmRequest::RegisterMemory(MaybeOwnedFd::Borrowed(fd.as_raw_fd()),
+                                                           size as usize))?;
+
+                match register_response {
+                    VmResponse::RegisterMemory { pfn, slot } => {
+                        let mut vfd = WlVfd::default();
+                        vfd.guest_shared_memory = Some((size, fd));
+                        vfd.slot = Some((slot, pfn, vm));
+                        Ok(vfd)
+                    }
+                    _ => Err(WlError::VmBadResponse),
+                }
             }
-            _ => Err(WlError::VmBadResponse),
+            _ => {
+                let flags = match FileFlags::from_file(&fd) {
+                    Ok(FileFlags::Read) => VIRTIO_WL_VFD_READ,
+                    Ok(FileFlags::Write) => VIRTIO_WL_VFD_WRITE,
+                    Ok(FileFlags::ReadWrite) => VIRTIO_WL_VFD_READ | VIRTIO_WL_VFD_WRITE,
+                    _ => 0,
+                };
+                let mut vfd = WlVfd::default();
+                vfd.local_pipe = Some((flags, fd));
+                Ok(vfd)
+            }
         }
     }
 
-    fn flags(&self) -> u32 {
+    fn flags(&self, use_transition_flags: bool) -> u32 {
         let mut flags = 0;
-        if self.socket.is_some() {
-            flags |= VIRTIO_WL_VFD_CONTROL;
-        }
-        if self.slot.is_some() {
-            flags |= VIRTIO_WL_VFD_WRITE | VIRTIO_WL_VFD_MAP
+        if use_transition_flags {
+            if self.socket.is_some() {
+                flags |= VIRTIO_WL_VFD_WRITE | VIRTIO_WL_VFD_READ;
+            }
+            if let Some((f, _)) = self.local_pipe {
+                flags |= f;
+            }
+        } else {
+            if self.socket.is_some() {
+                flags |= VIRTIO_WL_VFD_CONTROL;
+            }
+            if self.slot.is_some() {
+                flags |= VIRTIO_WL_VFD_WRITE | VIRTIO_WL_VFD_MAP
+            }
         }
         flags
     }
 
+    // Page frame number in the guest this VFD was mapped at.
     fn pfn(&self) -> Option<u64> {
         self.slot.as_ref().map(|s| s.1)
     }
 
+    // Size in bytes of the shared memory VFD.
     fn size(&self) -> Option<u64> {
-        self.guest_shared_memory.as_ref().map(|m| m.size())
+        self.guest_shared_memory.as_ref().map(|&(size, _)| size)
     }
 
+    // The FD that gets sent if this VFD is sent over a socket.
     fn fd(&self) -> Option<RawFd> {
         self.guest_shared_memory
             .as_ref()
-            .map(|m| m.as_raw_fd())
+            .map(|&(_, ref fd)| fd.as_raw_fd())
             .or(self.socket.as_ref().map(|s| s.as_raw_fd()))
+            .or(self.remote_pipe.as_ref().map(|p| p.as_raw_fd()))
     }
 
+    // Sends data/files from the guest to the host over this VFD.
     fn send(&mut self, scm: &mut Scm, fds: &[RawFd], data: VolatileSlice) -> WlResult<WlResp> {
-        match self.socket {
-            Some(ref socket) => {
-                scm.send(socket, &[data], fds)
-                    .map_err(WlError::SendVfd)?;
-                Ok(WlResp::Ok)
+        if let Some(ref socket) = self.socket {
+            scm.send(socket, &[data], fds)
+                .map_err(WlError::SendVfd)?;
+            Ok(WlResp::Ok)
+        } else if let Some((_, ref mut local_pipe)) = self.local_pipe {
+            // Impossible to send fds over a simple pipe.
+            if !fds.is_empty() {
+                return Ok(WlResp::InvalidType);
             }
-            None => Ok(WlResp::InvalidType),
+            data.write_all_to(local_pipe)
+                .map_err(WlError::WritePipe)?;
+            Ok(WlResp::Ok)
+        } else {
+            Ok(WlResp::InvalidType)
         }
     }
 
+    // Receives data/files from the host for this VFD and queues it for the guest.
     fn recv(&mut self, scm: &mut Scm, in_file_queue: &mut Vec<File>) -> WlResult<Vec<u8>> {
-        // This awkward looking scope is to allow us to remove self.socket if we discover after
-        // borrowing it that the socket is disconnected.
-        {
-            let socket = match self.socket {
-                Some(ref s) => s,
-                None => return Ok(Vec::new()),
-            };
+        if let Some(socket) = self.socket.take() {
             let mut buf = Vec::new();
             buf.resize(IN_BUFFER_LEN, 0);
             let old_len = in_file_queue.len();
-            let len = scm.recv(socket, &mut [&mut buf[..]], in_file_queue)
+            // If any errors happen, the socket will get dropped, preventing more reading.
+            let len = scm.recv(&socket, &mut [&mut buf[..]], in_file_queue)
                 .map_err(WlError::RecvVfd)?;
-            // If any data gets read, the return statement avoids removing the socket.
+            // If any data gets read, the put the socket back for future recv operations.
             if len != 0 || in_file_queue.len() != old_len {
                 buf.truncate(len);
                 buf.shrink_to_fit();
+                self.socket = Some(socket);
                 return Ok(buf);
             }
+            Ok(Vec::new())
+        } else if let Some((flags, mut local_pipe)) = self.local_pipe.take() {
+            let mut buf = Vec::new();
+            buf.resize(IN_BUFFER_LEN, 0);
+            let len = local_pipe
+                .read(&mut buf[..])
+                .map_err(WlError::ReadPipe)?;
+            if len != 0 {
+                buf.truncate(len);
+                buf.shrink_to_fit();
+                self.local_pipe = Some((flags, local_pipe));
+                return Ok(buf);
+            }
+            Ok(Vec::new())
+        } else {
+            Ok(Vec::new())
         }
-        self.socket = None;
-        Ok(Vec::new())
+    }
+
+    // Called after this VFD is sent over a socket to ensure the local end of the VFD receives hang
+    // up events.
+    fn close_remote(&mut self) {
+        self.remote_pipe = None;
     }
 
     fn close(&mut self) -> WlResult<()> {
-        self.socket = None;
         if let Some((slot, _, vm)) = self.slot.take() {
             vm.request(VmRequest::UnregisterMemory(slot))?;
         }
+        self.socket = None;
+        self.remote_pipe = None;
+        self.local_pipe = None;
         Ok(())
     }
 }
@@ -519,11 +680,13 @@ impl Drop for WlVfd {
 enum WlRecv {
     Vfd { id: u32 },
     Data { buf: Vec<u8> },
+    Hup,
 }
 
 struct WlState {
     wayland_path: PathBuf,
     vm: VmRequester,
+    use_transition_flags: bool,
     vfds: Map<u32, WlVfd>,
     next_vfd_id: u32,
     scm: Scm,
@@ -534,10 +697,11 @@ struct WlState {
 }
 
 impl WlState {
-    fn new(wayland_path: PathBuf, vm_socket: UnixDatagram) -> WlState {
+    fn new(wayland_path: PathBuf, vm_socket: UnixDatagram, use_transition_flags: bool) -> WlState {
         WlState {
             wayland_path: wayland_path,
             vm: VmRequester::new(vm_socket),
+            use_transition_flags,
             scm: Scm::new(VIRTWL_SEND_MAX_ALLOCS),
             vfds: Map::new(),
             next_vfd_id: NEXT_VFD_ID_BASE,
@@ -548,12 +712,53 @@ impl WlState {
         }
     }
 
+    fn new_pipe(&mut self, id: u32, flags: u32) -> WlResult<WlResp> {
+        if id & VFD_ID_HOST_MASK != 0 {
+            return Ok(WlResp::InvalidId);
+        }
+
+        if flags & !(VIRTIO_WL_VFD_WRITE | VIRTIO_WL_VFD_READ) != 0 {
+            return Ok(WlResp::InvalidFlags);
+        }
+
+        if flags & VIRTIO_WL_VFD_WRITE != 0 && flags & VIRTIO_WL_VFD_READ != 0 {
+            return Ok(WlResp::InvalidFlags);
+        }
+
+        match self.vfds.entry(id) {
+            Entry::Vacant(entry) => {
+                let vfd = if flags & VIRTIO_WL_VFD_WRITE != 0 {
+                    WlVfd::pipe_remote_read_local_write()?
+                } else if flags & VIRTIO_WL_VFD_READ != 0 {
+                    WlVfd::pipe_remote_write_local_read()?
+                } else {
+                    return Ok(WlResp::InvalidFlags);
+                };
+                let resp = WlResp::VfdNew {
+                    id: id,
+                    flags: 0,
+                    pfn: 0,
+                    size: 0,
+                    resp: true,
+                };
+                entry.insert(vfd);
+                Ok(resp)
+            }
+            Entry::Occupied(_) => Ok(WlResp::InvalidId),
+        }
+    }
+
     fn new_alloc(&mut self, id: u32, flags: u32, size: u32) -> WlResult<WlResp> {
         if id & VFD_ID_HOST_MASK != 0 {
             return Ok(WlResp::InvalidId);
         }
-        if flags & !(VIRTIO_WL_VFD_WRITE | VIRTIO_WL_VFD_MAP) != 0 {
-            return Ok(WlResp::Err);
+
+        if self.use_transition_flags {
+            if flags != 0 {
+                return Ok(WlResp::InvalidFlags);
+            }
+        } else if flags & !(VIRTIO_WL_VFD_WRITE | VIRTIO_WL_VFD_MAP) != 0 {
+            return Ok(WlResp::Err(Box::from("invalid flags")));
         }
 
         match self.vfds.entry(id) {
@@ -561,7 +766,7 @@ impl WlState {
                 let vfd = WlVfd::allocate(self.vm.clone(), size as u64)?;
                 let resp = WlResp::VfdNew {
                     id: id,
-                    flags: flags,
+                    flags,
                     pfn: vfd.pfn().unwrap_or_default(),
                     size: vfd.size().unwrap_or_default() as u32,
                     resp: true,
@@ -577,12 +782,19 @@ impl WlState {
         if id & VFD_ID_HOST_MASK != 0 {
             return Ok(WlResp::InvalidId);
         }
+
+        let flags = if self.use_transition_flags {
+            VIRTIO_WL_VFD_WRITE | VIRTIO_WL_VFD_READ
+        } else {
+            VIRTIO_WL_VFD_CONTROL
+        };
+
         match self.vfds.entry(id) {
             Entry::Vacant(entry) => {
                 entry.insert(WlVfd::connect(&self.wayland_path)?);
                 Ok(WlResp::VfdNew {
                        id: id,
-                       flags: VIRTIO_WL_VFD_CONTROL,
+                       flags,
                        pfn: 0,
                        size: 0,
                        resp: true,
@@ -631,10 +843,24 @@ impl WlState {
                 None => return Ok(WlResp::InvalidId),
             }
         }
+
         match self.vfds.get_mut(&vfd_id) {
-            Some(vfd) => vfd.send(&mut self.scm, &fds[..vfd_count], data),
-            None => Ok(WlResp::InvalidId),
+            Some(vfd) => {
+                match vfd.send(&mut self.scm, &fds[..vfd_count], data)? {
+                    WlResp::Ok => {}
+                    _ => return Ok(WlResp::InvalidType),
+                }
+            }
+            None => return Ok(WlResp::InvalidId),
         }
+        // The vfds with remote FDs need to be closed so that the local side can receive
+        // hangup events.
+        for &id in &vfd_ids[..vfd_count] {
+            // The following unwrap can not panic because the IDs were already checked earlier in
+            // this method.
+            self.vfds.get_mut(&id.into()).unwrap().close_remote();
+        }
+        Ok(WlResp::Ok)
     }
 
     fn recv(&mut self, vfd_id: u32) -> WlResult<()> {
@@ -642,10 +868,9 @@ impl WlState {
             Some(vfd) => vfd.recv(&mut self.scm, &mut self.in_file_queue)?,
             None => return Ok(()),
         };
-        // Short-circuit the empty recv case to avoid putting empty recv commands into the virtio
-        // queue.
         if self.in_file_queue.is_empty() && buf.is_empty() {
-            return Ok(())
+            self.in_queue.push_back((vfd_id, WlRecv::Hup));
+            return Ok(());
         }
         for file in self.in_file_queue.drain(..) {
             self.vfds
@@ -671,12 +896,17 @@ impl WlState {
                 data_addr,
                 data_len,
             } => {
-                let vfd_mem = mem.get_slice(vfds_addr.0, (vfd_count as u64) * size_of::<Le32>() as u64)?;
+                let vfd_mem =
+                    mem.get_slice(vfds_addr.0, (vfd_count as u64) * size_of::<Le32>() as u64)?;
                 let data_mem = mem.get_slice(data_addr.0, data_len as u64)?;
                 self.send(id, vfd_mem, data_mem)
             }
             WlOp::NewCtx { id } => self.new_context(id),
-            WlOp::Unsupported { .. } => Ok(WlResp::Err),
+            WlOp::NewPipe { id, flags } => self.new_pipe(id, flags),
+            WlOp::InvalidCommand { op_type } => {
+                warn!("unexpected command {}", op_type);
+                Ok(WlResp::InvalidCommand)
+            }
         }
     }
 
@@ -689,7 +919,7 @@ impl WlState {
                             Some(vfd) => {
                                 Some(WlResp::VfdNew {
                                          id: id,
-                                         flags: vfd.flags(),
+                                         flags: vfd.flags(self.use_transition_flags),
                                          pfn: vfd.pfn().unwrap_or_default(),
                                          size: vfd.size().unwrap_or_default() as u32,
                                          resp: false,
@@ -728,6 +958,7 @@ impl WlState {
                              })
                     }
                 }
+                &(vfd_id, WlRecv::Hup) => Some(WlResp::VfdHup { id: vfd_id }),
             }
         } else {
             None
@@ -755,6 +986,10 @@ impl WlState {
                         return;
                     }
                 }
+                &(_, WlRecv::Hup) => {
+                    self.recv_vfds.clear();
+                    self.current_recv_vfd = None;
+                }
             }
         }
         self.in_queue.pop_front();
@@ -766,7 +1001,18 @@ impl WlState {
         for (id, socket) in self.vfds
                 .iter()
                 .filter_map(|(&k, v)| v.socket.as_ref().map(|s| (k, s))) {
-            f(id, &socket);
+            f(id, socket);
+        }
+    }
+
+    fn iter_pipes<'a, F>(&'a self, mut f: F)
+        where F: FnMut(u32, &'a File)
+    {
+        for (id, local_pipe) in
+            self.vfds
+                .iter()
+                .filter_map(|(&k, v)| v.local_pipe.as_ref().map(|&(_, ref p)| (k, p))) {
+            f(id, local_pipe);
         }
     }
 }
@@ -788,7 +1034,8 @@ impl Worker {
            in_queue: Queue,
            out_queue: Queue,
            wayland_path: PathBuf,
-           vm_socket: UnixDatagram)
+           vm_socket: UnixDatagram,
+           use_transition_flags: bool)
            -> Worker {
         Worker {
             mem: mem,
@@ -796,7 +1043,7 @@ impl Worker {
             interrupt_status: interrupt_status,
             in_queue: in_queue,
             out_queue: out_queue,
-            state: WlState::new(wayland_path, vm_socket),
+            state: WlState::new(wayland_path, vm_socket, use_transition_flags),
             in_desc_chains: VecDeque::with_capacity(QUEUE_SIZE as usize),
         }
     }
@@ -830,6 +1077,12 @@ impl Worker {
                                       token_vfd_id_map.insert(token, id);
                                       pollables.push((token, socket));
                                   });
+                self.state
+                    .iter_pipes(|id, pipe| {
+                                    let token = VFD_BASE_TOKEN + token_vfd_id_map.len() as u32;
+                                    token_vfd_id_map.insert(token, id);
+                                    pollables.push((token, pipe));
+                                });
                 poller.poll(&pollables[..]).expect("error: failed poll")
             };
 
@@ -879,10 +1132,10 @@ impl Worker {
                                             Ok(op) => {
                                                 match self.state.execute(&self.mem, op) {
                                                     Ok(r) => r,
-                                                    _ => WlResp::Err,
+                                                    Err(e) => WlResp::Err(Box::new(e)),
                                                 }
                                             }
-                                            _ => WlResp::Err,
+                                            Err(e) => WlResp::Err(Box::new(e)),
                                         };
 
                                         let resp_mem = self.mem
@@ -960,6 +1213,7 @@ pub struct Wl {
     kill_evt: Option<EventFd>,
     wayland_path: PathBuf,
     vm_socket: Option<UnixDatagram>,
+    use_transition_flags: bool,
 }
 
 impl Wl {
@@ -970,6 +1224,7 @@ impl Wl {
                kill_evt: None,
                wayland_path: wayland_path.as_ref().to_owned(),
                vm_socket: Some(vm_socket),
+               use_transition_flags: false,
            })
     }
 }
@@ -1002,6 +1257,19 @@ impl VirtioDevice for Wl {
         QUEUE_SIZES
     }
 
+    fn features(&self, page: u32) -> u32 {
+        match page {
+            0 => (1 << VIRTIO_WL_F_TRANS_FLAGS),
+            _ => 0x0,
+        }
+    }
+
+    fn ack_features(&mut self, page: u32, value: u32) {
+        if page == 0 && value & (1 << VIRTIO_WL_F_TRANS_FLAGS) != 0 {
+            self.use_transition_flags = true;
+        }
+    }
+
     fn activate(&mut self,
                 mem: GuestMemory,
                 interrupt_evt: EventFd,
@@ -1024,6 +1292,7 @@ impl VirtioDevice for Wl {
 
         if let Some(vm_socket) = self.vm_socket.take() {
             let wayland_path = self.wayland_path.clone();
+            let use_transition_flags = self.use_transition_flags;
             let worker_result = thread::Builder::new()
                 .name("virtio_wl".to_string())
                 .spawn(move || {
@@ -1033,7 +1302,8 @@ impl VirtioDevice for Wl {
                                 queues.remove(0),
                                 queues.remove(0),
                                 wayland_path,
-                                vm_socket)
+                                vm_socket,
+                                use_transition_flags)
                             .run(queue_evts, kill_evt);
                 });
 
