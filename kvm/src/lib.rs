@@ -1023,6 +1023,44 @@ impl Vcpu {
         Ok(())
     }
 
+    /// Gets the vcpu's current "multiprocessing state".
+    ///
+    /// See the documentation for KVM_GET_MP_STATE. This call can only succeed after
+    /// a call to `Vm::create_irq_chip`.
+    ///
+    /// Note that KVM defines the call for both x86 and s390 but we do not expect anyone
+    /// to run crosvm on s390.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_mp_state(&self) -> Result<kvm_mp_state> {
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only
+        // write correct amount of memory to our pointer, and we verify the return result.
+        let mut state: kvm_mp_state = unsafe { std::mem::zeroed() };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_MP_STATE(), &mut state) };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(state)
+    }
+
+    /// Sets the vcpu's current "multiprocessing state".
+    ///
+    /// See the documentation for KVM_SET_MP_STATE. This call can only succeed after
+    /// a call to `Vm::create_irq_chip`.
+    ///
+    /// Note that KVM defines the call for both x86 and s390 but we do not expect anyone
+    /// to run crosvm on s390.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_mp_state(&self, state: &kvm_mp_state) -> Result<()> {
+        let ret = unsafe {
+            // The ioctl is safe because the kernel will only read from the kvm_mp_state struct.
+            ioctl_with_ref(self, KVM_SET_MP_STATE(), state)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
     /// Specifies set of signals that are blocked during execution of KVM_RUN.
     /// Signals that are not blocked will will cause KVM_RUN to return
     /// with -EINTR.
@@ -1414,6 +1452,17 @@ mod tests {
                                 ..Default::default()
                             }])
             .unwrap();
+    }
+
+    #[test]
+    fn mp_state() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        vm.create_irq_chip().unwrap();
+        let vcpu = Vcpu::new(0, &kvm, &vm).unwrap();
+        let state = vcpu.get_mp_state().unwrap();
+        vcpu.set_mp_state(&state).unwrap();
     }
 
     #[test]
