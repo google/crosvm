@@ -409,7 +409,7 @@ fn setup_vcpu(kvm: &Kvm,
               -> Result<Vcpu> {
     let vcpu = Vcpu::new(cpu_id as libc::c_ulong, &kvm, &vm)
         .map_err(Error::CreateVcpu)?;
-    Arch::configure_vcpu(vm.get_memory(), &kvm, &vcpu, cpu_id as u64, vcpu_count as u64).
+    Arch::configure_vcpu(vm.get_memory(), &kvm, &vm, &vcpu, cpu_id as u64, vcpu_count as u64).
         map_err(Error::ConfigureVcpu)?;
     Ok(vcpu)
 }

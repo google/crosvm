@@ -718,6 +718,21 @@ impl Vm {
             errno_result()
         }
     }
+
+    /// This queries the kernel for the preferred target CPU type.
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    pub fn arm_preferred_target(&self, kvi: &mut kvm_vcpu_init) -> Result<()> {
+        // The ioctl is safe because we allocated the struct and we know the
+        // kernel will write exactly the size of the struct.
+        let ret = unsafe {
+            ioctl_with_mut_ref(self, KVM_ARM_PREFERRED_TARGET(), kvi)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
 }
 
 impl AsRawFd for Vm {

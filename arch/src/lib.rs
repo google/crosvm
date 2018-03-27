@@ -102,11 +102,13 @@ pub trait LinuxArch {
     /// * `kernel_load_offset` - Offset in bytes from `guest_mem` at which the
     ///                          kernel starts.
     /// * `kvm` - The /dev/kvm object that created vcpu.
+    /// * `vm` - The VM object associated with this VCPU.
     /// * `vcpu` - The VCPU object to configure.
     /// * `cpu_id` - The id of the given `vcpu`.
     /// * `num_cpus` - Number of virtual CPUs the guest will have.
     fn configure_vcpu(guest_mem: &GuestMemory,
                       kvm: &Kvm,
+                      vm: &Vm,
                       vcpu: &Vcpu,
                       cpu_id: u64,
                       num_cpus: u64)

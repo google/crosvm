@@ -326,15 +326,18 @@ impl arch::LinuxArch for AArch64 {
 
     fn configure_vcpu(guest_mem: &GuestMemory,
                       _kvm: &Kvm,
+                      vm: &Vm,
                       vcpu: &Vcpu,
                       cpu_id: u64,
                       _num_cpus: u64)
                       -> Result<()> {
         let mut kvi = kvm_sys::kvm_vcpu_init {
-            // TODO(sonnyrao): need to read back target from host kernel
             target: kvm_sys::KVM_ARM_TARGET_GENERIC_V8,
             features: [0; 7],
         };
+
+        // This reads back the kernel's preferred target type.
+        vm.arm_preferred_target(&mut kvi)?;
 
         // TODO(sonnyrao): need to verify this feature is supported by host kernel
         kvi.features[0] |= 1 << kvm_sys::KVM_ARM_VCPU_PSCI_0_2;
