@@ -468,6 +468,9 @@ fn run_vcpu(vcpu: Vcpu,
                             }
                             VcpuExit::Hlt => break,
                             VcpuExit::Shutdown => break,
+                            VcpuExit::SystemEvent(_, _) =>
+                                //TODO handle reboot and crash events
+                                kill_signaled.store(true, Ordering::SeqCst),
                             r => warn!("unexpected vcpu exit: {:?}", r),
                         }
                     }

@@ -696,7 +696,9 @@ pub enum VcpuExit<'a> {
     Watchdog,
     S390Tsch,
     Epr,
-    SystemEvent,
+    /// The cpu triggered a system level event which is specified by the type field.
+    /// The possible events are shutdown, reset, or crash.
+    SystemEvent(u32 /* event_type*/, u64 /* flags */),
 }
 
 /// A wrapper around creating and using a VCPU.
@@ -803,7 +805,13 @@ impl Vcpu {
                 KVM_EXIT_WATCHDOG        => Ok(VcpuExit::Watchdog),
                 KVM_EXIT_S390_TSCH       => Ok(VcpuExit::S390Tsch),
                 KVM_EXIT_EPR             => Ok(VcpuExit::Epr),
-                KVM_EXIT_SYSTEM_EVENT    => Ok(VcpuExit::SystemEvent),
+                KVM_EXIT_SYSTEM_EVENT    => {
+                    // Safe because we know the exit reason told us this union
+                    // field is valid
+                    let event_type = unsafe { run.__bindgen_anon_1.system_event.type_ };
+                    let event_flags = unsafe { run.__bindgen_anon_1.system_event.flags };
+                    Ok(VcpuExit::SystemEvent(event_type, event_flags))
+                },
                 r => panic!("unknown kvm exit reason: {}", r),
             }
         } else {
