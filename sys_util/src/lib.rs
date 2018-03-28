@@ -32,6 +32,7 @@ mod fork;
 mod signalfd;
 mod sock_ctrl_msg;
 mod passwd;
+mod file_flags;
 
 pub use mmap::*;
 pub use shm::*;
@@ -51,6 +52,7 @@ pub use ioctl::*;
 pub use sock_ctrl_msg::*;
 pub use passwd::*;
 pub use poll_token_derive::*;
+pub use file_flags::*;
 
 pub use mmap::Error as MmapError;
 pub use guest_memory::Error as GuestMemoryError;
