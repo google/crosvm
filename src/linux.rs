@@ -49,6 +49,7 @@ pub enum Error {
     CreateGuestMemory(Box<error::Error>),
     CreateIrqChip(Box<error::Error>),
     CreateKvm(sys_util::Error),
+    CreatePollContext(sys_util::Error),
     CreateSignalFd(sys_util::SignalFdError),
     CreateSocket(io::Error),
     CreateVcpu(sys_util::Error),
@@ -61,6 +62,7 @@ pub enum Error {
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
     OpenKernel(PathBuf, io::Error),
+    PollContextAdd(sys_util::Error),
     QcowDeviceCreate(qcow::Error),
     RegisterBalloon(device_manager::Error),
     RegisterBlock(device_manager::Error),
@@ -102,6 +104,7 @@ impl fmt::Display for Error {
                 write!(f, "failed to create in-kernel IRQ chip: {:?}", e)
             }
             &Error::CreateKvm(ref e) => write!(f, "failed to open /dev/kvm: {:?}", e),
+            &Error::CreatePollContext(ref e) => write!(f, "failed to create poll context: {:?}", e),
             &Error::CreateSignalFd(ref e) => write!(f, "failed to create signalfd: {:?}", e),
             &Error::CreateSocket(ref e) => write!(f, "failed to create socket: {}", e),
             &Error::CreateVcpu(ref e) => write!(f, "failed to create VCPU: {:?}", e),
@@ -118,6 +121,7 @@ impl fmt::Display for Error {
             &Error::OpenKernel(ref p, ref e) => {
                 write!(f, "failed to open kernel image {:?}: {}", p, e)
             }
+            &Error::PollContextAdd(ref e) => write!(f, "failed to add fd to poll context: {:?}", e),
             &Error::QcowDeviceCreate(ref e) => {
                 write!(f, "failed to read qcow formatted file {:?}", e)
             }
@@ -493,10 +497,13 @@ fn run_control(vm: &mut Vm,
                -> Result<()> {
     const MAX_VM_FD_RECV: usize = 1;
 
-    const EXIT: u32 = 0;
-    const STDIN: u32 = 1;
-    const CHILD_SIGNAL: u32 = 2;
-    const VM_BASE: u32 = 3;
+    #[derive(PollToken)]
+    enum Token {
+        Exit,
+        Stdin,
+        ChildSignal,
+        VmControl { index: usize },
+    }
 
     let stdin_handle = stdin();
     let stdin_lock = stdin_handle.lock();
@@ -504,20 +511,21 @@ fn run_control(vm: &mut Vm,
         .set_raw_mode()
         .expect("failed to set terminal raw mode");
 
-    let mut pollables = Vec::new();
-    pollables.push((EXIT, &exit_evt as &Pollable));
-    pollables.push((STDIN, &stdin_lock as &Pollable));
-    pollables.push((CHILD_SIGNAL, &sigchld_fd as &Pollable));
-    for (i, socket) in control_sockets.iter().enumerate() {
-        pollables.push((VM_BASE + i as u32, socket.as_ref() as &Pollable));
+    let poll_ctx = PollContext::new().map_err(Error::CreatePollContext)?;
+    poll_ctx.add(&exit_evt, Token::Exit).map_err(Error::PollContextAdd)?;
+    if let Err(e) = poll_ctx.add(&stdin_handle, Token::Stdin) {
+        warn!("failed to add stdin to poll context: {:?}", e);
+    }
+    poll_ctx.add(&sigchld_fd, Token::ChildSignal).map_err(Error::PollContextAdd)?;
+    for (index, socket) in control_sockets.iter().enumerate() {
+        poll_ctx.add(socket.as_ref(), Token::VmControl{ index }).map_err(Error::PollContextAdd)?;
     }
 
-    let mut poller = Poller::new(pollables.len());
     let mut scm = Scm::new(MAX_VM_FD_RECV);
 
     'poll: loop {
-        let tokens = {
-            match poller.poll(&pollables[..]) {
+        let events = {
+            match poll_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed to poll: {:?}", e);
@@ -525,22 +533,22 @@ fn run_control(vm: &mut Vm,
                 }
             }
         };
-        for &token in tokens {
-            match token {
-                EXIT => {
+        for event in events.iter_readable() {
+            match event.token() {
+                Token::Exit => {
                     info!("vcpu requested shutdown");
                     break 'poll;
                 }
-                STDIN => {
+                Token::Stdin => {
                     let mut out = [0u8; 64];
                     match stdin_lock.read_raw(&mut out[..]) {
                         Ok(0) => {
                             // Zero-length read indicates EOF. Remove from pollables.
-                            pollables.retain(|&pollable| pollable.0 != STDIN);
+                            let _ = poll_ctx.delete(&stdin_handle);
                         },
                         Err(e) => {
                             warn!("error while reading stdin: {:?}", e);
-                            pollables.retain(|&pollable| pollable.0 != STDIN);
+                            let _ = poll_ctx.delete(&stdin_handle);
                         },
                         Ok(count) => {
                             stdio_serial
@@ -551,7 +559,7 @@ fn run_control(vm: &mut Vm,
                         },
                     }
                 }
-                CHILD_SIGNAL => {
+                Token::ChildSignal => {
                     // Print all available siginfo structs, then exit the loop.
                     loop {
                         let result = sigchld_fd.read().map_err(Error::SignalFd)?;
@@ -565,26 +573,45 @@ fn run_control(vm: &mut Vm,
                         break 'poll;
                     }
                 }
-                t if t >= VM_BASE && t < VM_BASE + (control_sockets.len() as u32) => {
-                    let socket = &control_sockets[(t - VM_BASE) as usize];
-                    match VmRequest::recv(&mut scm, socket.as_ref()) {
-                        Ok(request) => {
-                            let mut running = true;
-                            let response =
-                                request.execute(vm, next_dev_pfn,
-                                                &mut running, &balloon_host_socket);
-                            if let Err(e) = response.send(&mut scm, socket.as_ref()) {
-                                error!("failed to send VmResponse: {:?}", e);
+                Token::VmControl { index } => {
+                    if let Some(socket) = control_sockets.get(index as usize) {
+                        match VmRequest::recv(&mut scm, socket.as_ref()) {
+                            Ok(request) => {
+                                let mut running = true;
+                                let response =
+                                    request.execute(vm, next_dev_pfn,
+                                                    &mut running, &balloon_host_socket);
+                                if let Err(e) = response.send(&mut scm, socket.as_ref()) {
+                                    error!("failed to send VmResponse: {:?}", e);
+                                }
+                                if !running {
+                                    info!("control socket requested exit");
+                                    break 'poll;
+                                }
                             }
-                            if !running {
-                                info!("control socket requested exit");
-                                break 'poll;
-                            }
+                            Err(e) => error!("failed to recv VmRequest: {:?}", e),
                         }
-                        Err(e) => error!("failed to recv VmRequest: {:?}", e),
                     }
                 }
-                _ => {}
+            }
+        }
+        for event in events.iter_hungup() {
+            // It's possible more data is readable and buffered while the socket is hungup, so
+            // don't delete the socket from the poll context until we're sure all the data is
+            // read.
+            if !event.readable() {
+                match event.token() {
+                    Token::Exit => {},
+                    Token::Stdin => {
+                        let _ = poll_ctx.delete(&stdin_handle);
+                    },
+                    Token::ChildSignal => {},
+                    Token::VmControl { index } => {
+                        if let Some(socket) = control_sockets.get(index as usize) {
+                            let _ = poll_ctx.delete(socket.as_ref());
+                        }
+                    },
+                }
             }
         }
     }
