@@ -57,11 +57,12 @@ pub use guest_memory::Error as GuestMemoryError;
 pub use signalfd::Error as SignalFdError;
 
 use std::ffi::CStr;
-use std::os::unix::io::AsRawFd;
+use std::fs::File;
+use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::ptr;
 
-use libc::{kill, syscall, sysconf, waitpid, c_long, pid_t, uid_t, gid_t, _SC_PAGESIZE,
-           SIGKILL, WNOHANG};
+use libc::{kill, syscall, sysconf, waitpid, pipe2, c_long, pid_t, uid_t, gid_t, _SC_PAGESIZE,
+           SIGKILL, WNOHANG, O_CLOEXEC};
 
 use syscall_defines::linux::LinuxSyscall::SYS_getpid;
 
@@ -186,5 +187,28 @@ pub fn kill_process_group() -> Result<()> {
     } else {
         // Kill succeeded, so this process never reaches here.
         unreachable!();
+    }
+}
+
+/// Spawns a pipe pair where the first pipe is the read end and the second pipe is the write end.
+///
+/// If `close_on_exec` is true, the `O_CLOEXEC` flag will be set during pipe creation.
+pub fn pipe(close_on_exec: bool) -> Result<(File, File)> {
+    let flags = if close_on_exec { O_CLOEXEC } else { 0 };
+    let mut pipe_fds = [-1; 2];
+    // Safe because pipe2 will only write 2 element array of i32 to the given pointer, and we check
+    // for error.
+    let ret = unsafe { pipe2(&mut pipe_fds[0], flags) };
+    if ret == -1 {
+        errno_result()
+    } else {
+        // Safe because both fds must be valid for pipe2 to have returned sucessfully and we have
+        // exclusive ownership of them.
+        Ok(unsafe {
+            (
+                File::from_raw_fd(pipe_fds[0]),
+                File::from_raw_fd(pipe_fds[1])
+            )
+        })
     }
 }
