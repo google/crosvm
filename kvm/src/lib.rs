@@ -697,8 +697,10 @@ pub enum VcpuExit<'a> {
     S390Tsch,
     Epr,
     /// The cpu triggered a system level event which is specified by the type field.
-    /// The possible events are shutdown, reset, or crash.
-    SystemEvent(u32 /* event_type*/, u64 /* flags */),
+    /// The first field is the event type and the second field is flags.
+    /// The possible event types are shutdown, reset, or crash.  So far there
+    /// are not any flags defined.
+    SystemEvent(u32 /* event_type */, u64 /* flags */),
 }
 
 /// A wrapper around creating and using a VCPU.
