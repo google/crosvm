@@ -16,7 +16,7 @@ use std::thread;
 use std::time::Duration;
 
 use libc::{c_int, c_long, timespec, time_t, nfds_t, sigset_t, pollfd, syscall, SYS_ppoll, POLLIN,
-           EPOLL_CLOEXEC, EPOLLIN, EPOLLHUP, EPOLL_CTL_ADD, EPOLL_CTL_MOD, EPOLL_CTL_DEL,
+           POLLHUP, EPOLL_CLOEXEC, EPOLLIN, EPOLLHUP, EPOLL_CTL_ADD, EPOLL_CTL_MOD, EPOLL_CTL_DEL,
            epoll_create1, epoll_ctl, epoll_wait, epoll_event};
 
 use {Result, errno_result};
@@ -140,7 +140,7 @@ impl Poller {
 
         self.tokens.clear();
         for (pollfd, pollable) in self.pollfds.iter().zip(pollables.iter()) {
-            if (pollfd.revents & POLLIN) != 0 {
+            if (pollfd.revents & (POLLIN | POLLHUP)) != 0 {
                 self.tokens.push(pollable.0);
             }
         }
