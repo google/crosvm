@@ -209,6 +209,7 @@ const X86_CR0_PG: u64 = 0x80000000;
 const X86_CR4_PAE: u64 = 0x20;
 
 const EFER_LME: u64 = 0x100;
+const EFER_LMA: u64 = 0x400;
 
 const BOOT_GDT_OFFSET: u64 = 0x500;
 const BOOT_IDT_OFFSET: u64 = 0x520;
@@ -292,6 +293,7 @@ fn setup_page_tables(mem: &GuestMemory, sregs: &mut kvm_sregs) -> Result<()> {
     sregs.cr3 = boot_pml4_addr.offset() as u64;
     sregs.cr4 |= X86_CR4_PAE;
     sregs.cr0 |= X86_CR0_PG;
+    sregs.efer |= EFER_LMA; // Long mode is active. Must be auto-enabled with CR0_PG.
     Ok(())
 }
 
