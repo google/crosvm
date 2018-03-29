@@ -55,6 +55,12 @@ unsafe impl Pollable for UnixDatagram {
     }
 }
 
+unsafe impl Pollable for File {
+    fn pollable_fd(&self) -> RawFd {
+        self.as_raw_fd()
+    }
+}
+
 /// Used to poll multiple `Pollable` objects at once.
 ///
 /// # Example
