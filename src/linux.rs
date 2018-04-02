@@ -8,6 +8,7 @@ use std::fmt;
 use std::error;
 use std::fs::{File, OpenOptions, remove_file};
 use std::io::{self, stdin};
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,6 +17,7 @@ use std::thread;
 use std::thread::JoinHandle;
 
 use libc;
+use libc::c_int;
 
 use device_manager;
 use devices;
@@ -58,7 +60,10 @@ pub enum Error {
     DevicePivotRoot(io_jail::Error),
     Disk(io::Error),
     DiskImageLock(sys_util::Error),
+    FailedCLOEXECCheck,
+    FailedToDupFd,
     GetWaylandGroup(sys_util::Error),
+    InvalidFdPath,
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
     OpenKernel(PathBuf, io::Error),
@@ -113,9 +118,14 @@ impl fmt::Display for Error {
             &Error::DevicePivotRoot(ref e) => write!(f, "failed to pivot root device: {}", e),
             &Error::Disk(ref e) => write!(f, "failed to load disk image: {}", e),
             &Error::DiskImageLock(ref e) => write!(f, "failed to lock disk image: {:?}", e),
+            &Error::FailedCLOEXECCheck => {
+                write!(f, "/proc/self/fd argument failed check for CLOEXEC")
+            }
+            &Error::FailedToDupFd => write!(f, "failed to dup fd from /proc/self/fd"),
             &Error::GetWaylandGroup(ref e) => {
                 write!(f, "could not find gid for wayland group: {:?}", e)
             }
+            &Error::InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
             &Error::NetDeviceNew(ref e) => write!(f, "failed to set up virtio networking: {:?}", e),
             &Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
             &Error::OpenKernel(ref p, ref e) => {
@@ -231,11 +241,40 @@ fn setup_mmio_bus(cfg: &Config,
     }
 
     for disk in &cfg.disks {
-        let mut raw_image = OpenOptions::new()
-                            .read(true)
-                            .write(disk.writable)
-                            .open(&disk.path)
-                            .map_err(|e| Error::Disk(e))?;
+        // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
+        let mut raw_image: File = if disk.path.parent() == Some(Path::new("/proc/self/fd")) {
+            if !disk.path.is_file() {
+                return Err(Error::InvalidFdPath);
+            }
+            let raw_fd = disk.path.file_name()
+                .and_then(|fd_osstr| fd_osstr.to_str())
+                .and_then(|fd_str| fd_str.parse::<c_int>().ok())
+                .ok_or(Error::InvalidFdPath)?;
+            unsafe {
+                // The FD is valid and this process owns it because it exists in /proc/self/fd.
+                // Ensure |raw_image| is the only owner by first duping it then closing the
+                // original.
+                // Checking that close-on-exec isn't set helps filter out FDs that were opened by
+                // crosvm as all crosvm FDs are close on exec.
+                let flags = libc::fcntl(raw_fd, libc::F_GETFD);
+                if flags < 0 || (flags & libc::FD_CLOEXEC) != 0 {
+                    return Err(Error::FailedCLOEXECCheck);
+                }
+
+                let dup_fd = libc::fcntl(raw_fd, libc::F_DUPFD_CLOEXEC, 0) as RawFd;
+                if dup_fd < 0 {
+                    return Err(Error::FailedToDupFd);
+                }
+                libc::close(raw_fd);
+                File::from_raw_fd(dup_fd)
+            }
+        } else {
+            OpenOptions::new()
+                .read(true)
+                .write(disk.writable)
+                .open(&disk.path)
+                .map_err(|e| Error::Disk(e))?
+        };
         // Lock the disk image to prevent other crosvm instances from using it.
         let lock_op = if disk.writable {
             FlockOperation::LockExclusive
