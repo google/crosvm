@@ -26,3 +26,6 @@ ppoll: 1
 getpid: 1
 # Allow PR_SET_NAME only.
 prctl: arg0 == 15
+epoll_create1: 1
+epoll_ctl: 1
+epoll_wait: 1

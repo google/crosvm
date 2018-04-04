@@ -14,7 +14,7 @@ use libc::EAGAIN;
 use net_sys;
 use net_util::{Error as TapError, MacAddress, TapT};
 use sys_util::Error as SysError;
-use sys_util::{EventFd, GuestMemory, Pollable, Poller};
+use sys_util::{EventFd, GuestMemory, PollContext, PollToken};
 use virtio_sys::{vhost, virtio_net};
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
 
@@ -31,6 +31,8 @@ const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 pub enum NetError {
     /// Creating kill eventfd failed.
     CreateKillEventFd(SysError),
+    /// Creating PollContext failed.
+    CreatePollContext(SysError),
     /// Cloning kill eventfd failed.
     CloneKillEventFd(SysError),
     /// Open tap device failed.
@@ -219,28 +221,30 @@ where
            tx_queue_evt: EventFd,
            kill_evt: EventFd)
            -> Result<(), NetError> {
-        let mut poller = Poller::new(4);
-        // A frame is available for reading from the tap device to receive in the guest.
-        const RX_TAP: u32 = 1;
-        // The guest has made a buffer available to receive a frame into.
-        const RX_QUEUE: u32 = 2;
-        // The transmit queue has a frame that is ready to send from the guest.
-        const TX_QUEUE: u32 = 3;
-        // crosvm has requested the device to shut down.
-        const KILL: u32 = 4;
+        #[derive(PollToken)]
+        enum Token {
+            // A frame is available for reading from the tap device to receive in the guest.
+            RxTap,
+            // The guest has made a buffer available to receive a frame into.
+            RxQueue,
+            // The transmit queue has a frame that is ready to send from the guest.
+            TxQueue,
+            // crosvm has requested the device to shut down.
+            Kill,
+        }
+
+        let poll_ctx: PollContext<Token> = PollContext::new()
+                      .and_then(|pc| pc.add(&self.tap, Token::RxTap).and(Ok(pc)))
+                      .and_then(|pc| pc.add(&rx_queue_evt, Token::RxQueue).and(Ok(pc)))
+                      .and_then(|pc| pc.add(&tx_queue_evt, Token::TxQueue).and(Ok(pc)))
+                      .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+                      .map_err(NetError::CreatePollContext)?;
 
         'poll: loop {
-            let tokens = match poller.poll(&[(RX_TAP, &self.tap),
-                                             (RX_QUEUE, &rx_queue_evt as &Pollable),
-                                             (TX_QUEUE, &tx_queue_evt as &Pollable),
-                                             (KILL, &kill_evt as &Pollable)]) {
-                Ok(v) => v,
-                Err(e) => return Err(NetError::PollError(e)),
-            };
-
-            for &token in tokens {
-                match token {
-                    RX_TAP => {
+            let events = poll_ctx.wait().map_err(NetError::PollError)?;
+            for event in events.iter_readable() {
+                match event.token() {
+                    Token::RxTap => {
                         // Process a deferred frame first if available. Don't read from tap again
                         // until we manage to receive this deferred frame.
                         if self.deferred_rx {
@@ -252,7 +256,7 @@ where
                         }
                         self.process_rx();
                     }
-                    RX_QUEUE => {
+                    Token::RxQueue => {
                         if let Err(e) = rx_queue_evt.read() {
                             error!("net: error reading rx queue EventFd: {:?}", e);
                             break 'poll;
@@ -262,15 +266,14 @@ where
                             self.deferred_rx = false;
                         }
                     }
-                    TX_QUEUE => {
+                    Token::TxQueue => {
                         if let Err(e) = tx_queue_evt.read() {
                             error!("net: error reading tx queue EventFd: {:?}", e);
                             break 'poll;
                         }
                         self.process_tx();
                     }
-                    KILL => break 'poll,
-                    _ => unreachable!(),
+                    Token::Kill => break 'poll,
                 }
             }
         }

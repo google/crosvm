@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
-use sys_util::{EventFd, GuestMemory, Poller};
+use sys_util::{EventFd, GuestMemory, PollContext, PollToken};
 
 use super::{VirtioDevice, Queue, INTERRUPT_STATUS_USED_RING, TYPE_RNG};
 
@@ -69,12 +69,25 @@ impl Worker {
     }
 
     fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd) {
-        const Q_AVAIL: u32 = 0;
-        const KILL: u32 = 1;
+        #[derive(PollToken)]
+        enum Token {
+            QueueAvailable,
+            Kill,
+        }
 
-        let mut poller = Poller::new(2);
+        let poll_ctx: PollContext<Token> =
+            match PollContext::new()
+                      .and_then(|pc| pc.add(&queue_evt, Token::QueueAvailable).and(Ok(pc)))
+                      .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc))) {
+                Ok(pc) => pc,
+                Err(e) => {
+                    error!("failed creating PollContext: {:?}", e);
+                    return;
+                }
+            };
+
         'poll: loop {
-            let tokens = match poller.poll(&[(Q_AVAIL, &queue_evt), (KILL, &kill_evt)]) {
+            let events = match poll_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed polling for events: {:?}", e);
@@ -83,17 +96,16 @@ impl Worker {
             };
 
             let mut needs_interrupt = false;
-            for &token in tokens {
-                match token {
-                    Q_AVAIL => {
+            for event in events.iter_readable() {
+                match event.token() {
+                    Token::QueueAvailable => {
                         if let Err(e) = queue_evt.read() {
                             error!("failed reading queue EventFd: {:?}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_queue();
                     }
-                    KILL => break 'poll,
-                    _ => unreachable!(),
+                    Token::Kill => break 'poll,
                 }
             }
             if needs_interrupt {

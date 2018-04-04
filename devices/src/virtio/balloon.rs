@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use sys_util::{self, EventFd, GuestAddress, GuestMemory, Pollable, Poller};
+use sys_util::{self, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 
 use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_CONFIG_CHANGED,
             INTERRUPT_STATUS_USED_RING, TYPE_BALLOON};
@@ -123,49 +123,57 @@ impl Worker {
     }
 
     fn run(&mut self, mut queue_evts: Vec<EventFd>, kill_evt: EventFd) {
-        const POLL_INFLATE: u32 = 0;
-        const POLL_DEFLATE: u32 = 1;
-        const POLL_COMMAND_SOCKET: u32 = 2;
-        const POLL_KILL: u32 = 3;
+        #[derive(PartialEq, PollToken)]
+        enum Token {
+            Inflate,
+            Deflate,
+            CommandSocket,
+            Kill,
+        }
 
         let inflate_queue_evt = queue_evts.remove(0);
         let deflate_queue_evt = queue_evts.remove(0);
 
-        let mut poller = Poller::new(5);
+        let poll_ctx: PollContext<Token> =
+            match PollContext::new()
+                      .and_then(|pc| pc.add(&inflate_queue_evt, Token::Inflate).and(Ok(pc)))
+                      .and_then(|pc| pc.add(&deflate_queue_evt, Token::Deflate).and(Ok(pc)))
+                      .and_then(|pc| pc.add(&self.command_socket, Token::CommandSocket).and(Ok(pc)))
+                      .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc))) {
+                Ok(pc) => pc,
+                Err(e) => {
+                    error!("failed creating PollContext: {:?}", e);
+                    return;
+                }
+            };
+
         'poll: loop {
-            let tokens = match poller.poll(
-                &[
-                    (POLL_INFLATE, &inflate_queue_evt),
-                    (POLL_DEFLATE, &deflate_queue_evt),
-                    (POLL_COMMAND_SOCKET, &self.command_socket as &Pollable),
-                    (POLL_KILL, &kill_evt),
-                ],
-            ) {
+            let events = match poll_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed polling for events: {:?}", e);
-                    break 'poll;
+                    break;
                 }
             };
 
             let mut needs_interrupt = false;
-            'read_tokens: for &token in tokens {
-                match token {
-                    POLL_INFLATE => {
+            for event in events.iter_readable() {
+                match event.token() {
+                    Token::Inflate => {
                         if let Err(e) = inflate_queue_evt.read() {
                             error!("failed reading inflate queue EventFd: {:?}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_inflate_deflate(true);
                     }
-                    POLL_DEFLATE => {
+                    Token::Deflate => {
                         if let Err(e) = deflate_queue_evt.read() {
                             error!("failed reading deflate queue EventFd: {:?}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_inflate_deflate(false);
                     }
-                    POLL_COMMAND_SOCKET => {
+                    Token::CommandSocket => {
                         let mut buf = [0u8; 4];
                         if let Ok(count) = self.command_socket.recv(&mut buf) {
                             if count == 4 {
@@ -174,7 +182,7 @@ impl Worker {
                                 let num_pages = self.config.num_pages.load(Ordering::Relaxed) as
                                     i32;
                                 if increment < 0 && increment.abs() > num_pages {
-                                    continue 'read_tokens;
+                                    continue;
                                 }
                                 self.config.num_pages.fetch_add(
                                     increment as usize,
@@ -184,8 +192,14 @@ impl Worker {
                             }
                         }
                     }
-                    POLL_KILL => break 'poll,
-                    _ => unreachable!(),
+                    Token::Kill => break 'poll,
+                }
+            }
+            for event in events.iter_hungup() {
+                if event.token() == Token::CommandSocket && !event.readable() {
+                    // If this call fails, the command socket was already removed from the
+                    // PollContext.
+                    let _ = poll_ctx.delete(&self.command_socket);
                 }
             }
             if needs_interrupt {

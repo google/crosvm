@@ -6,7 +6,7 @@ use std::os::raw::c_ulonglong;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use sys_util::{EventFd, Poller};
+use sys_util::{EventFd, PollContext, PollToken};
 use vhost::Vhost;
 
 use super::{Error, Result};
@@ -100,27 +100,28 @@ impl<T: Vhost> Worker<T> {
 
         activate_vqs(&self.vhost_handle)?;
 
-        const VHOST_IRQ: u32 = 1;
-        const KILL: u32 = 2;
+        #[derive(PollToken)]
+        enum Token {
+            VhostIrq,
+            Kill,
+        }
 
-        let mut poller = Poller::new(2);
+        let poll_ctx: PollContext<Token> = PollContext::new()
+                      .and_then(|pc| pc.add(&self.vhost_interrupt, Token::VhostIrq).and(Ok(pc)))
+                      .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+                      .map_err(Error::CreatePollContext)?;
 
         'poll: loop {
-            let tokens = match poller.poll(&[(VHOST_IRQ, &self.vhost_interrupt), (KILL, &kill_evt)])
-            {
-                Ok(v) => v,
-                Err(e) => return Err(Error::PollError(e)),
-            };
+            let events = poll_ctx.wait().map_err(Error::PollError)?;
 
             let mut needs_interrupt = false;
-            for &token in tokens {
-                match token {
-                    VHOST_IRQ => {
+            for event in events.iter_readable() {
+                match event.token() {
+                    Token::VhostIrq => {
                         needs_interrupt = true;
                         self.vhost_interrupt.read().map_err(Error::VhostIrqRead)?;
                     },
-                    KILL => break 'poll,
-                    _ => unreachable!(),
+                    Token::Kill => break 'poll,
                 }
             }
             if needs_interrupt {

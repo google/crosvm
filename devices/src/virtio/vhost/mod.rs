@@ -21,6 +21,8 @@ pub use self::vsock::Vsock;
 pub enum Error {
     /// Creating kill eventfd failed.
     CreateKillEventFd(SysError),
+    /// Creating poll context failed.
+    CreatePollContext(SysError),
     /// Cloning kill eventfd failed.
     CloneKillEventFd(SysError),
     /// Error while polling for events.
