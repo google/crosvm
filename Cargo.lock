@@ -10,7 +10,7 @@ dependencies = [
  "kernel_cmdline 0.1.0",
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -22,7 +22,7 @@ dependencies = [
  "devices 0.1.0",
  "kernel_cmdline 0.1.0",
  "kvm 0.1.0",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -63,7 +63,7 @@ dependencies = [
  "kernel_loader 0.1.0",
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "net_util 0.1.0",
  "p9 0.1.0",
  "plugin_proto 0.14.0",
@@ -83,7 +83,7 @@ version = "0.14.0"
 dependencies = [
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "plugin_proto 0.14.0",
  "protobuf 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
@@ -101,7 +101,7 @@ dependencies = [
  "io_jail 0.1.0",
  "kernel_cmdline 0.1.0",
  "kvm 0.1.0",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -112,7 +112,7 @@ dependencies = [
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
  "io_jail 0.1.0",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "net_sys 0.1.0",
  "net_util 0.1.0",
  "sys_util 0.1.0",
@@ -147,21 +147,21 @@ dependencies = [
 name = "io_jail"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "kernel_cmdline"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "kernel_loader"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -170,7 +170,7 @@ name = "kvm"
 version = "0.1.0"
 dependencies = [
  "kvm_sys 0.1.0",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -178,13 +178,13 @@ dependencies = [
 name = "kvm_sys"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
 [[package]]
 name = "libc"
-version = "0.2.34"
+version = "0.2.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -206,7 +206,7 @@ dependencies = [
 name = "net_util"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "net_sys 0.1.0",
  "sys_util 0.1.0",
 ]
@@ -268,7 +268,7 @@ name = "qcow"
 version = "0.1.0"
 dependencies = [
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -276,7 +276,7 @@ dependencies = [
 name = "qcow_utils"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "qcow 0.1.0",
 ]
 
@@ -294,7 +294,7 @@ version = "0.3.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "fuchsia-zircon 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -313,7 +313,7 @@ version = "0.1.0"
 dependencies = [
  "cc 1.0.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "poll_token_derive 0.1.0",
  "syscall_defines 0.1.0",
 ]
@@ -339,7 +339,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "vhost"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "net_util 0.1.0",
  "sys_util 0.1.0",
  "virtio_sys 0.1.0",
@@ -359,7 +359,7 @@ dependencies = [
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
  "kvm 0.1.0",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -385,7 +385,7 @@ dependencies = [
  "kernel_loader 0.1.0",
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
- "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -396,7 +396,7 @@ dependencies = [
 "checksum cfg-if 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "d4c819a1287eb618df47cc647173c5c4c66ba19d888a6e50d605672aed3140de"
 "checksum fuchsia-zircon 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "2e9763c69ebaae630ba35f74888db465e49e259ba1bc0eda7d06f4a067615d82"
 "checksum fuchsia-zircon-sys 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
-"checksum libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)" = "36fbc8a8929c632868295d0178dd8f63fc423fd7537ad0738372bd010b3ac9b0"
+"checksum libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)" = "6fd41f331ac7c5b8ac259b8bf82c75c0fb2e469bbf37d2becbba9a6a2221965b"
 "checksum log 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "89f010e843f2b1a31dbd316b3b8d443758bc634bed37aabade59c686d644e0a2"
 "checksum proc-macro2 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "cd07deb3c6d1d9ff827999c7f9b04cdfd66b1b17ae508e14fe47b620f2282ae0"
 "checksum protobuf 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bec26e67194b7d991908145fdf21b7cae8b08423d96dcb9e860cd31f854b9506"
