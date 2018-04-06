@@ -43,3 +43,6 @@ restart_syscall: 1
 # Allow F_GETFL only
 fcntl: arg1 == 3
 pipe2: 1
+epoll_create1: 1
+epoll_ctl: 1
+epoll_wait: 1
