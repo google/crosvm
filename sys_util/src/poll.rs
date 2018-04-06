@@ -288,6 +288,16 @@ pub struct PollEvents<'a, T> {
 }
 
 impl<'a, T: PollToken> PollEvents<'a, T> {
+    /// Copies the events to an owned structure so the reference to this (and by extension
+    /// `PollContext`) can be dropped.
+    pub fn to_owned(&self) -> PollEventsOwned<T> {
+        PollEventsOwned {
+            count: self.count,
+            events: RefCell::new(*self.events),
+            tokens: PhantomData,
+        }
+    }
+
     /// Iterates over each event.
     pub fn iter(&self) -> PollEventIter<slice::Iter<epoll_event>, T> {
         PollEventIter {
@@ -311,6 +321,24 @@ impl<'a, T: PollToken> PollEvents<'a, T> {
         PollEventIter {
             mask: EPOLLHUP as u32,
             iter: self.events[..self.count].iter(),
+            tokens: PhantomData,
+        }
+    }
+}
+
+/// A deep copy of the event records from `PollEvents`.
+pub struct PollEventsOwned<T> {
+    count: usize,
+    events: RefCell<[epoll_event; POLL_CONTEXT_MAX_EVENTS]>,
+    tokens: PhantomData<T>, // Needed to satisfy usage of T
+}
+
+impl<T: PollToken> PollEventsOwned<T> {
+    /// Takes a reference to the events so that they can be iterated via methods in `PollEvents`.
+    pub fn as_ref(&self) -> PollEvents<T> {
+        PollEvents {
+            count: self.count,
+            events: self.events.borrow(),
             tokens: PhantomData,
         }
     }
