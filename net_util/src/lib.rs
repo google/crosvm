@@ -18,7 +18,7 @@ use std::str::FromStr;
 
 use libc::EPERM;
 
-use sys_util::{Error as SysError, Pollable};
+use sys_util::{Error as SysError};
 use sys_util::{ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref};
 
 #[derive(Debug)]
@@ -160,7 +160,7 @@ pub struct Tap {
     if_name: [u8; 16usize],
 }
 
-pub trait TapT: Read + Write + AsRawFd + Pollable + Send + Sized {
+pub trait TapT: Read + Write + AsRawFd + Send + Sized {
     /// Create a new tap interface. Set the `vnet_hdr` flag to true to allow offloading on this tap,
     /// which will add an extra 12 byte virtio net header to incoming frames. Offloading cannot
     /// be used if `vnet_hdr` is false.
@@ -449,14 +449,6 @@ impl AsRawFd for Tap {
     }
 }
 
-// Safe since the tap fd's lifetime lasts as long as this trait object, and the
-// tap fd is pollable.
-unsafe impl Pollable for Tap {
-    fn pollable_fd(&self) -> RawFd {
-        self.tap_file.as_raw_fd()
-    }
-}
-
 pub mod fakes {
     use super::*;
     use std::fs::OpenOptions;
@@ -546,12 +538,6 @@ pub mod fakes {
 
     impl AsRawFd for FakeTap {
         fn as_raw_fd(&self) -> RawFd {
-            self.tap_file.as_raw_fd()
-        }
-    }
-
-    unsafe impl Pollable for FakeTap {
-        fn pollable_fd(&self) -> RawFd {
             self.tap_file.as_raw_fd()
         }
     }

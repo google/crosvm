@@ -97,12 +97,6 @@ impl IntoRawFd for EventFd {
     }
 }
 
-unsafe impl ::Pollable for EventFd {
-    fn pollable_fd(&self) -> RawFd {
-        self.eventfd.as_raw_fd()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

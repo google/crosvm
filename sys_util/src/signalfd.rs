@@ -100,14 +100,6 @@ impl SignalFd {
     }
 }
 
-// Safe since the signalfd lifetime lasts as long as this trait object, and the
-// signalfd is pollable.
-unsafe impl ::Pollable for SignalFd {
-    fn pollable_fd(&self) -> RawFd {
-        self.signalfd.as_raw_fd()
-    }
-}
-
 impl AsRawFd for SignalFd {
     fn as_raw_fd(&self) -> RawFd {
         self.signalfd.as_raw_fd()
