@@ -74,6 +74,7 @@ pub enum Error {
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
     OpenKernel(PathBuf, io::Error),
+    P9DeviceNew(devices::virtio::P9Error),
     PollContextAdd(sys_util::Error),
     PollContextDelete(sys_util::Error),
     QcowDeviceCreate(qcow::Error),
@@ -83,6 +84,7 @@ pub enum Error {
     RegisterBlock(MmioRegisterError),
     RegisterGpu(MmioRegisterError),
     RegisterNet(MmioRegisterError),
+    RegisterP9(MmioRegisterError),
     RegisterRng(MmioRegisterError),
     RegisterSignalHandler(sys_util::Error),
     RegisterVsock(MmioRegisterError),
@@ -139,6 +141,7 @@ impl fmt::Display for Error {
             &Error::OpenKernel(ref p, ref e) => {
                 write!(f, "failed to open kernel image {:?}: {}", p, e)
             }
+            &Error::P9DeviceNew(ref e) => write!(f, "failed to create 9p device: {}", e),
             &Error::PollContextAdd(ref e) => write!(f, "failed to add fd to poll context: {:?}", e),
             &Error::PollContextDelete(ref e) => {
                 write!(f, "failed to remove fd from poll context: {:?}", e)
@@ -158,6 +161,7 @@ impl fmt::Display for Error {
             &Error::RegisterBlock(ref e) => write!(f, "error registering block device: {:?}", e),
             &Error::RegisterGpu(ref e) => write!(f, "error registering gpu device: {:?}", e),
             &Error::RegisterNet(ref e) => write!(f, "error registering net device: {:?}", e),
+            &Error::RegisterP9(ref e) => write!(f, "error registering 9p device: {:?}", e),
             &Error::RegisterRng(ref e) => write!(f, "error registering rng device: {:?}", e),
             &Error::RegisterSignalHandler(ref e) => {
                 write!(f, "error registering signal handler: {:?}", e)
@@ -600,6 +604,52 @@ fn setup_mmio_bus(cfg: &Config,
             register_mmio(&mut bus, vm, gpu_box, gpu_jail, resources, cmdline)
                 .map_err(Error::RegisterGpu)?;
         }
+    }
+
+    let chronos_user_group = CStr::from_bytes_with_nul(b"chronos\0").unwrap();
+    let chronos_uid = match get_user_id(&chronos_user_group) {
+        Ok(u) => u,
+        Err(e) => {
+            warn!("falling back to current user id for 9p: {:?}", e);
+            geteuid()
+        }
+    };
+    let chronos_gid = match get_group_id(&chronos_user_group) {
+        Ok(u) => u,
+        Err(e) => {
+            warn!("falling back to current group id for 9p: {:?}", e);
+            getegid()
+        }
+    };
+
+    for &(ref src, ref tag) in &cfg.shared_dirs {
+        let (jail, root) = if cfg.multiprocess {
+            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("9p_device.policy");
+            let mut jail = create_base_minijail(empty_root_path, &policy_path)?;
+
+            //  The shared directory becomes the root of the device's file system.
+            let root = Path::new("/");
+            jail.mount_bind(&src, root, true).unwrap();
+
+            // Set the uid/gid for the jailed process, and give a basic id map. This
+            // is required for the above bind mount to work.
+            jail.change_uid(chronos_uid);
+            jail.change_gid(chronos_gid);
+            jail.uidmap(&format!("{0} {0} 1", chronos_uid))
+                .map_err(Error::SettingUidMap)?;
+            jail.gidmap(&format!("{0} {0} 1", chronos_gid))
+                .map_err(Error::SettingGidMap)?;
+
+            (Some(jail), root)
+        } else {
+            // There's no bind mount so we tell the server to treat the source directory as the
+            // root.  The double deref here converts |src| from a &PathBuf into a &Path.
+            (None, &**src)
+        };
+
+        let p9_box = Box::new(devices::virtio::P9::new(root, tag).map_err(Error::P9DeviceNew)?);
+
+        register_mmio(&mut bus, vm, p9_box, jail, resources, cmdline).map_err(Error::RegisterP9)?;
     }
 
     Ok(bus)

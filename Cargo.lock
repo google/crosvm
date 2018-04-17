@@ -133,6 +133,7 @@ dependencies = [
  "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "net_sys 0.1.0",
  "net_util 0.1.0",
+ "p9 0.1.0",
  "resources 0.1.0",
  "sys_util 0.1.0",
  "vhost 0.1.0",

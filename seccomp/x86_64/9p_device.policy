@@ -1,0 +1,54 @@
+# Copyright 2018 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+write: 1
+writev: 1
+recvfrom: 1
+epoll_wait: 1
+read: 1
+pwrite64: 1
+stat: 1
+lstat: 1
+close: 1
+open: 1
+fstat: 1
+# ioctl(fd, FIOCLEX, 0) is equivalent to fcntl(fd, F_SETFD, FD_CLOEXEC).
+ioctl: arg1 == FIOCLEX
+link: 1
+unlink: 1
+rename: 1
+pread64: 1
+getdents: 1
+# Disallow mmap with PROT_EXEC set.  The syntax here doesn't allow bit
+# negation, thus the manually negated mask constant.
+mmap: arg2 in 0xfffffffb
+mprotect: arg2 in 0xfffffffb
+munmap: 1
+mkdir: 1
+sigaltstack: 1
+epoll_ctl: 1
+mremap: 1
+rmdir: 1
+fsync: 1
+fdatasync: 1
+restart_syscall: 1
+exit: 1
+rt_sigreturn: 1
+epoll_create1: 1
+prctl: arg0 == PR_SET_NAME
+eventfd2: 1
+sched_getaffinity: 1
+dup: 1
+getpid: 1
+# Disallow clone's other than new threads.
+clone: arg0 & 0x00010000
+set_robust_list: 1
+exit_group: 1
+# Allow MADV_DONTDUMP and MADV_DONTNEED only.
+madvise: arg2 == 0x00000010 || arg2 == 0x00000004
+futex: 1
+utimensat: 1
+ftruncate: 1
+fchown: arg1 == 0xffffffff && arg2 == 0xffffffff
+statfs: 1

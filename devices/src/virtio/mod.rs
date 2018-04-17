@@ -12,6 +12,7 @@ mod rng;
 mod net;
 #[cfg(feature = "gpu")]
 mod gpu;
+mod p9;
 mod wl;
 
 pub mod vhost;
@@ -24,6 +25,7 @@ pub use self::rng::*;
 pub use self::net::*;
 #[cfg(feature = "gpu")]
 pub use self::gpu::*;
+pub use self::p9::*;
 pub use self::wl::*;
 
 const DEVICE_ACKNOWLEDGE: u32 = 0x01;
@@ -39,6 +41,7 @@ const TYPE_RNG: u32 = 4;
 const TYPE_BALLOON: u32 = 5;
 #[allow(dead_code)]
 const TYPE_GPU: u32 = 16;
+const TYPE_9P: u32 = 9;
 const TYPE_VSOCK: u32 = 19;
 const TYPE_WL: u32 = 30;
 

@@ -80,6 +80,7 @@ pub struct Config {
     wayland_socket_path: Option<PathBuf>,
     wayland_dmabuf: bool,
     socket_path: Option<PathBuf>,
+    shared_dirs: Vec<(PathBuf, String)>,
     multiprocess: bool,
     seccomp_policy_dir: PathBuf,
     cid: Option<u64>,
@@ -105,6 +106,7 @@ impl Default for Config {
             wayland_dmabuf: false,
             socket_path: None,
             multiprocess: !cfg!(feature = "default-no-sandbox"),
+            shared_dirs: Vec::new(),
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             cid: None,
             gpu: false,
@@ -318,6 +320,32 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 }
             })?);
         }
+        "shared-dir" => {
+            // Formatted as <src:tag>.
+            let param = value.unwrap();
+            let mut components = param.splitn(2, ':');
+            let src = PathBuf::from(components.next().ok_or_else(|| {
+                argument::Error::InvalidValue {
+                    value: param.to_owned(),
+                    expected: "missing source path for `shared-dir`",
+                }
+            })?);
+            let tag = components.next().ok_or_else(|| {
+                argument::Error::InvalidValue {
+                    value: param.to_owned(),
+                    expected: "missing tag for `shared-dir`",
+                }
+            })?.to_owned();
+
+            if !src.is_dir() {
+                return Err(argument::Error::InvalidValue {
+                    value: param.to_owned(),
+                    expected: "source path for `shared-dir` must be a directory",
+                });
+            }
+
+            cfg.shared_dirs.push((src, tag));
+        }
         "seccomp-policy-dir" => {
             // `value` is Some because we are in this match so it's safe to unwrap.
             cfg.seccomp_policy_dir = PathBuf::from(value.unwrap());
@@ -401,7 +429,9 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                                 "Path to put the control socket. If PATH is a directory, a name will be generated."),
           Argument::short_flag('u', "multiprocess", "Run each device in a child process(default)."),
           Argument::flag("disable-sandbox", "Run all devices in one, non-sandboxed process."),
-          Argument::value("cid", "CID", "Context ID for virtual sockets"),
+          Argument::value("cid", "CID", "Context ID for virtual sockets."),
+          Argument::value("shared-dir", "PATH:TAG",
+                          "Directory to be shared with a VM as a source:tag pair. Can be given more than once."),
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
           #[cfg(feature = "plugin")]
           Argument::value("plugin", "PATH", "Absolute path to plugin process to run under crosvm."),
