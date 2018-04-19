@@ -418,10 +418,10 @@ impl<T: PollToken> PollContext<T> {
             // Safe because we give an epoll context and a properly sized epoll_events array
             // pointer, which we trust the kernel to fill in properly.
             unsafe {
-                epoll_wait(self.epoll_ctx.as_raw_fd(),
-                           &mut epoll_events[0],
-                           max_events,
-                           timeout_millis)
+                handle_eintr_errno!(epoll_wait(self.epoll_ctx.as_raw_fd(),
+                                               &mut epoll_events[0],
+                                               max_events,
+                                               timeout_millis))
             }
         };
         if ret < 0 {
