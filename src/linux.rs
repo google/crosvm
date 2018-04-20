@@ -44,6 +44,7 @@ use aarch64::AArch64 as Arch;
 pub enum Error {
     BalloonDeviceNew(devices::virtio::BalloonError),
     BlockDeviceNew(sys_util::Error),
+    BlockSignal(sys_util::signal::Error),
     ChownWaylandRoot(sys_util::Error),
     CloneEventFd(sys_util::Error),
     Cmdline(kernel_cmdline::Error),
@@ -74,6 +75,7 @@ pub enum Error {
     RegisterIrqfd(sys_util::Error),
     RegisterNet(device_manager::Error),
     RegisterRng(device_manager::Error),
+    RegisterSignalHandler(sys_util::Error),
     RegisterVsock(device_manager::Error),
     RegisterWayland(device_manager::Error),
     RngDeviceNew(devices::virtio::RngError),
@@ -98,6 +100,7 @@ impl fmt::Display for Error {
         match self {
             &Error::BalloonDeviceNew(ref e) => write!(f, "failed to create balloon: {:?}", e),
             &Error::BlockDeviceNew(ref e) => write!(f, "failed to create block device: {:?}", e),
+            &Error::BlockSignal(ref e) => write!(f, "failed to block signal: {:?}", e),
             &Error::ChownWaylandRoot(ref e) => {
                 write!(f, "error chowning wayland root directory: {:?}", e)
             }
@@ -142,6 +145,9 @@ impl fmt::Display for Error {
             &Error::RegisterIrqfd(ref e) => write!(f, "error registering irqfd: {:?}", e),
             &Error::RegisterNet(ref e) => write!(f, "error registering net device: {:?}", e),
             &Error::RegisterRng(ref e) => write!(f, "error registering rng device: {:?}", e),
+            &Error::RegisterSignalHandler(ref e) => {
+                write!(f, "error registering signal handler: {:?}", e)
+            }
             &Error::RegisterVsock(ref e) => {
                 write!(f, "error registering virtual socket device: {:?}", e)
             }
@@ -459,6 +465,17 @@ fn setup_vcpu(kvm: &Kvm,
     Ok(vcpu)
 }
 
+fn setup_vcpu_signal_handler() -> Result<()> {
+    unsafe {
+        extern "C" fn handle_signal() {}
+        // Our signal handler does nothing and is trivially async signal safe.
+        register_signal_handler(SIGRTMIN() + 0, handle_signal)
+            .map_err(Error::RegisterSignalHandler)?;
+    }
+    block_signal(SIGRTMIN() + 0).map_err(Error::BlockSignal)?;
+    Ok(())
+}
+
 fn run_vcpu(vcpu: Vcpu,
             cpu_id: u32,
             start_barrier: Arc<Barrier>,
@@ -469,15 +486,30 @@ fn run_vcpu(vcpu: Vcpu,
     thread::Builder::new()
         .name(format!("crosvm_vcpu{}", cpu_id))
         .spawn(move || {
-            unsafe {
-                extern "C" fn handle_signal() {}
-                // Our signal handler does nothing and is trivially async signal safe.
-                register_signal_handler(SIGRTMIN() + 0, handle_signal)
-                    .expect("failed to register vcpu signal handler");
-            }
+            let mut sig_ok = true;
+            match get_blocked_signals() {
+                Ok(mut v) => {
+                    v.retain(|&x| x != SIGRTMIN() + 0);
+                    if let Err(e) = vcpu.set_signal_mask(&v) {
+                        error!(
+                            "Failed to set the KVM_SIGNAL_MASK for vcpu {} : {:?}",
+                            cpu_id, e
+                        );
+                        sig_ok = false;
+                    }
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to retrieve signal mask for vcpu {} : {:?}",
+                        cpu_id, e
+                    );
+                    sig_ok = false;
+                }
+            };
 
             start_barrier.wait();
-            loop {
+
+            while sig_ok {
                 let run_res = vcpu.run();
                 match run_res {
                     Ok(run) => {
@@ -515,6 +547,10 @@ fn run_vcpu(vcpu: Vcpu,
                 if kill_signaled.load(Ordering::SeqCst) {
                     break;
                 }
+
+                // Try to clear the signal that we use to kick VCPU if it is
+                // pending before attempting to handle pause requests.
+                clear_signal(SIGRTMIN() + 0).expect("failed to clear pending signal");
             }
             exit_evt
                 .write(1)
@@ -745,6 +781,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                               &CString::new(cmdline).unwrap()).
         map_err(|e| Error::SetupSystemMemory(e))?;
 
+    setup_vcpu_signal_handler()?;
     for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
         let handle = run_vcpu(vcpu,
                               cpu_id as u32,

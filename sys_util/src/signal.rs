@@ -9,7 +9,7 @@ use libc::{c_int, sigaction, SA_RESTART, timespec,
            SIG_BLOCK, SIG_UNBLOCK, EAGAIN, EINTR, EINVAL };
 
 use std::mem;
-use std::ptr::null_mut;
+use std::ptr::{null, null_mut};
 use std::result;
 use std::thread::JoinHandle;
 use std::os::unix::thread::JoinHandleExt;
@@ -26,6 +26,8 @@ pub enum Error {
     CompareBlockedSignals(errno::Error),
     /// The signal could not be blocked.
     BlockSignal(errno::Error),
+    /// The signal mask could not be retrieved.
+    RetrieveSignalMask(i32),
     /// The signal could not be unblocked.
     UnblockSignal(errno::Error),
     /// Failed to wait for given signal.
@@ -108,6 +110,28 @@ pub fn create_sigset(signals: &[c_int]) -> errno::Result<sigset_t> {
     }
 
     Ok(sigset)
+}
+
+/// Retrieves the signal mask of the current thread as a vector of c_ints.
+pub fn get_blocked_signals() -> SignalResult<Vec<c_int>> {
+    let mut mask = Vec::new();
+
+    // Safe - return values are checked.
+    unsafe {
+        let mut old_sigset: sigset_t = mem::zeroed();
+        let ret = pthread_sigmask(SIG_BLOCK, null(), &mut old_sigset as *mut sigset_t);
+        if ret < 0 {
+            return Err(Error::RetrieveSignalMask(ret));
+        }
+
+        for num in 0..(SIGRTMAX() + 1) {
+            if sigismember(&old_sigset, num) > 0 {
+                mask.push(num);
+            }
+        }
+    }
+
+    Ok(mask)
 }
 
 /// Masks given signal.
