@@ -104,7 +104,7 @@ impl<'a> DeviceManager<'a> {
             .map_err(Error::CreateMmioDevice)?;
         for (i, queue_evt) in mmio_device.queue_evts().iter().enumerate() {
             let io_addr = IoeventAddress::Mmio(self.mmio_base +
-                                               devices::virtio::NOITFY_REG_OFFSET as u64);
+                                               devices::virtio::NOTIFY_REG_OFFSET as u64);
             self.vm
                 .register_ioevent(&queue_evt, io_addr, i as u32)
                 .map_err(Error::RegisterIoevent)?;

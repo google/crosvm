@@ -41,4 +41,4 @@ const INTERRUPT_STATUS_CONFIG_CHANGED: u32 = 0x2;
 
 /// Offset from the base MMIO address of a virtio device used by the guest to notify the device of
 /// queue events.
-pub const NOITFY_REG_OFFSET: u32 = 0x50;
+pub const NOTIFY_REG_OFFSET: u32 = 0x50;
