@@ -18,6 +18,8 @@ use std::thread::JoinHandle;
 
 use libc;
 use libc::c_int;
+#[cfg(feature = "wl-dmabuf")]
+use libc::EINVAL;
 
 use device_manager;
 use devices;
@@ -29,7 +31,9 @@ use qcow::{self, QcowFile};
 use sys_util::*;
 use sys_util;
 use vhost;
-use vm_control::VmRequest;
+use vm_control::{VmRequest, GpuMemoryAllocator};
+#[cfg(feature = "wl-dmabuf")]
+use gpu_buffer;
 
 use Config;
 use DiskType;
@@ -48,6 +52,7 @@ pub enum Error {
     CloneEventFd(sys_util::Error),
     Cmdline(kernel_cmdline::Error),
     CreateEventFd(sys_util::Error),
+    CreateGpuBufferDevice,
     CreateGuestMemory(Box<error::Error>),
     CreateIrqChip(Box<error::Error>),
     CreateKvm(sys_util::Error),
@@ -66,6 +71,7 @@ pub enum Error {
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
     OpenKernel(PathBuf, io::Error),
+    OpenGpuBufferDevice,
     PollContextAdd(sys_util::Error),
     QcowDeviceCreate(qcow::Error),
     RegisterBalloon(device_manager::Error),
@@ -99,6 +105,7 @@ impl fmt::Display for Error {
             &Error::CloneEventFd(ref e) => write!(f, "failed to clone eventfd: {:?}", e),
             &Error::Cmdline(ref e) => write!(f, "the given kernel command line was invalid: {}", e),
             &Error::CreateEventFd(ref e) => write!(f, "failed to create eventfd: {:?}", e),
+            &Error::CreateGpuBufferDevice => write!(f, "failed to create GPU buffer device"),
             &Error::CreateGuestMemory(ref e) => write!(f, "failed to create guest memory: {:?}", e),
             &Error::CreateIrqChip(ref e) => {
                 write!(f, "failed to create in-kernel IRQ chip: {:?}", e)
@@ -123,6 +130,7 @@ impl fmt::Display for Error {
             &Error::OpenKernel(ref p, ref e) => {
                 write!(f, "failed to open kernel image {:?}: {}", p, e)
             }
+            &Error::OpenGpuBufferDevice => write!(f, "failed to open GPU buffer device"),
             &Error::PollContextAdd(ref e) => write!(f, "failed to add fd to poll context: {:?}", e),
             &Error::QcowDeviceCreate(ref e) => {
                 write!(f, "failed to read qcow formatted file {:?}", e)
@@ -543,6 +551,56 @@ fn run_vcpu(vcpu: Vcpu,
         .map_err(Error::SpawnVcpu)
 }
 
+#[cfg(feature = "wl-dmabuf")]
+struct GpuBufferDevice {
+    device: gpu_buffer::Device,
+}
+
+#[cfg(feature = "wl-dmabuf")]
+impl GpuMemoryAllocator for GpuBufferDevice {
+    fn allocate(&self, width: u32, height: u32, format: u32) -> sys_util::Result<(File, u32)> {
+        let buffer = match self.device.create_buffer(
+            width,
+            height,
+            gpu_buffer::Format::from(format),
+            // Linear layout is a requirement as virtio wayland guest expects
+            // this for CPU access to the buffer. Scanout and texturing are
+            // optional as the consumer (wayland compositor) is expected to
+            // fall-back to a less efficient meachnisms for presentation if
+            // neccesary. In practice, linear buffers for commonly used formats
+            // will also support scanout and texturing.
+            gpu_buffer::Flags::empty().use_linear(true)) {
+            Ok(v) => v,
+            Err(_) => return Err(sys_util::Error::new(EINVAL)),
+        };
+        // We only support the first plane. Buffers with more planes are not
+        // a problem but additional planes will not be registered for access
+        // from guest.
+        let fd = match buffer.export_plane_fd(0) {
+            Ok(v) => v,
+            Err(e) => return Err(sys_util::Error::new(e)),
+        };
+
+        Ok((fd, buffer.stride()))
+    }
+}
+
+#[cfg(feature = "wl-dmabuf")]
+fn create_gpu_memory_allocator() -> Result<Option<Box<GpuMemoryAllocator>>> {
+    let undesired: &[&str] = &["vgem"];
+    let fd = gpu_buffer::rendernode::open_device(undesired)
+        .map_err(|_| Error::OpenGpuBufferDevice)?;
+    let device = gpu_buffer::Device::new(fd)
+        .map_err(|_| Error::CreateGpuBufferDevice)?;
+    info!("created GPU buffer device for DMABuf allocations");
+    Ok(Some(Box::new(GpuBufferDevice { device })))
+}
+
+#[cfg(not(feature = "wl-dmabuf"))]
+fn create_gpu_memory_allocator() -> Result<Option<Box<GpuMemoryAllocator>>> {
+    Ok(None)
+}
+
 fn run_control(vm: &mut Vm,
                control_sockets: Vec<UnlinkUnixDatagram>,
                next_dev_pfn: &mut u64,
@@ -552,7 +610,8 @@ fn run_control(vm: &mut Vm,
                kill_signaled: Arc<AtomicBool>,
                vcpu_handles: Vec<JoinHandle<()>>,
                balloon_host_socket: UnixDatagram,
-               _irqchip_fd: Option<File>)
+               _irqchip_fd: Option<File>,
+               gpu_memory_allocator: Option<Box<GpuMemoryAllocator>>)
                -> Result<()> {
     const MAX_VM_FD_RECV: usize = 1;
 
@@ -638,8 +697,13 @@ fn run_control(vm: &mut Vm,
                             Ok(request) => {
                                 let mut running = true;
                                 let response =
-                                    request.execute(vm, next_dev_pfn,
-                                                    &mut running, &balloon_host_socket);
+                                    request.execute(vm,
+                                                    next_dev_pfn,
+                                                    &mut running,
+                                                    &balloon_host_socket,
+                                                    gpu_memory_allocator.as_ref().map(|v| {
+                                                                                          v.as_ref()
+                                                                                      }));
                                 if let Err(e) = response.send(&mut scm, socket.as_ref()) {
                                     error!("failed to send VmResponse: {:?}", e);
                                 }
@@ -751,6 +815,12 @@ pub fn run_config(cfg: Config) -> Result<()> {
                                   &mut control_sockets,
                                   balloon_device_socket)?;
 
+    let gpu_memory_allocator = if cfg.wayland_dmabuf {
+        create_gpu_memory_allocator()?
+    } else {
+        None
+    };
+
     for param in &cfg.params {
         cmdline.insert_str(&param).map_err(Error::Cmdline)?;
     }
@@ -787,5 +857,6 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 kill_signaled,
                 vcpu_handles,
                 balloon_host_socket,
-                irq_chip)
+                irq_chip,
+                gpu_memory_allocator)
 }

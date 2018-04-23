@@ -29,6 +29,8 @@ extern crate data_model;
 extern crate plugin_proto;
 #[cfg(feature = "plugin")]
 extern crate protobuf;
+#[cfg(feature = "wl-dmabuf")]
+extern crate gpu_buffer;
 
 pub mod argument;
 pub mod linux;
@@ -71,6 +73,7 @@ pub struct Config {
     mac_address: Option<net_util::MacAddress>,
     vhost_net: bool,
     wayland_socket_path: Option<PathBuf>,
+    wayland_dmabuf: bool,
     socket_path: Option<PathBuf>,
     multiprocess: bool,
     seccomp_policy_dir: PathBuf,
@@ -92,6 +95,7 @@ impl Default for Config {
             mac_address: None,
             vhost_net: false,
             wayland_socket_path: None,
+            wayland_dmabuf: false,
             socket_path: None,
             multiprocess: !cfg!(feature = "default-no-sandbox"),
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
@@ -269,6 +273,10 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.wayland_socket_path = Some(wayland_socket_path);
         }
+        #[cfg(feature = "wl-dmabuf")]
+        "enable-wayland-dmabuf" => {
+            cfg.wayland_dmabuf = true
+        },
         "socket" => {
             if cfg.socket_path.is_some() {
                 return Err(argument::Error::TooManyArguments("`socket` already given".to_owned()));
@@ -363,6 +371,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("wayland-group",
                           "GROUP",
                           "Name of the group with access to the Wayland socket."),
+          #[cfg(feature = "wl-dmabuf")]
+          Argument::flag("wayland-dmabuf", "Enable support for DMABufs in Wayland device."),
           Argument::short_value('s',
                                 "socket",
                                 "PATH",

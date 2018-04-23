@@ -17,15 +17,16 @@ extern crate libc;
 extern crate sys_util;
 
 use std::fs::File;
+use std::io::{Seek, SeekFrom};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::result;
 
-use libc::{ERANGE, EINVAL};
+use libc::{ERANGE, EINVAL, ENODEV};
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use data_model::{DataInit, Le32, Le64, VolatileMemory};
-use sys_util::{EventFd, Error as SysError, MmapError, MemoryMapping, Scm, GuestAddress};
+use sys_util::{EventFd, Result, Error as SysError, MmapError, MemoryMapping, Scm, GuestAddress};
 use kvm::{IoeventAddress, Vm};
 
 #[derive(Debug, PartialEq)]
@@ -80,13 +81,17 @@ pub enum VmRequest {
     RegisterMemory(MaybeOwnedFd, usize),
     /// Unregister the given memory slot that was previously registereed with `RegisterMemory`.
     UnregisterMemory(u32),
+    /// Allocate GPU buffer of a given size/format and register the memory into guest address space.
+    /// The response variant is `VmResponse::AllocateAndRegisterGpuMemory`
+    AllocateAndRegisterGpuMemory { width: u32, height: u32, format: u32 },
 }
 
 const VM_REQUEST_TYPE_EXIT: u32 = 1;
 const VM_REQUEST_TYPE_REGISTER_MEMORY: u32 = 2;
 const VM_REQUEST_TYPE_UNREGISTER_MEMORY: u32 = 3;
 const VM_REQUEST_TYPE_BALLOON_ADJUST: u32 = 4;
-const VM_REQUEST_SIZE: usize = 24;
+const VM_REQUEST_TYPE_ALLOCATE_AND_REGISTER_GPU_MEMORY: u32 = 5;
+const VM_REQUEST_SIZE: usize = 32;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -95,10 +100,50 @@ struct VmRequestStruct {
     slot: Le32,
     size: Le64,
     num_pages: Le32,
+    width: Le32,
+    height: Le32,
+    format: Le32,
 }
 
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for VmRequestStruct {}
+
+fn register_memory(vm: &mut Vm, next_mem_pfn: &mut u64, fd: &AsRawFd, size: usize) -> Result<(u64, u32)> {
+    let mmap = match MemoryMapping::from_fd(fd, size) {
+        Ok(v) => v,
+        Err(MmapError::SystemCallFailed(e)) => return Err(e),
+        _ => return Err(SysError::new(EINVAL)),
+    };
+    let pfn = *next_mem_pfn;
+    let slot =
+        match vm.add_device_memory(GuestAddress(pfn << 12), mmap, false, false) {
+            Ok(v) => v,
+            Err(e) => return Err(e),
+        };
+    // TODO(zachr): Use a smarter allocation strategy. The current strategy is just
+    // bumping this pointer, meaning the remove operation does not free any address
+    // space. Given enough allocations, device memory may run out of address space and
+    // collide with guest memory or MMIO address space. There is currently nothing in
+    // place to limit the amount of address space used by device memory.
+    *next_mem_pfn += (((size + 0x7ff) >> 12) + 1) as u64;
+
+    Ok((pfn, slot))
+}
+
+/// Trait that needs to be implemented in order to service GPU memory allocation
+/// requests. Implementations are expected to support some set of buffer sizes and
+/// formats but every possible combination is not required.
+pub trait GpuMemoryAllocator {
+    /// Allocates GPU memory for a buffer of a specific size and format. The memory
+    /// layout for the returned buffer must be linear. A file handle and the stride
+    /// for the buffer are returned on success.
+    ///
+    /// # Arguments
+    /// * `width` - Width of buffer.
+    /// * `height` - Height of buffer.
+    /// * `format` - Fourcc format of buffer.
+    fn allocate(&self, width: u32, height: u32, format: u32) -> Result<(File, u32)>;
+}
 
 impl VmRequest {
     /// Receive a `VmRequest` from the given socket.
@@ -127,6 +172,12 @@ impl VmRequest {
             VM_REQUEST_TYPE_UNREGISTER_MEMORY => Ok(VmRequest::UnregisterMemory(req.slot.into())),
             VM_REQUEST_TYPE_BALLOON_ADJUST => {
                 Ok(VmRequest::BalloonAdjust(req.num_pages.to_native() as i32))
+            },
+            VM_REQUEST_TYPE_ALLOCATE_AND_REGISTER_GPU_MEMORY => {
+                Ok(VmRequest::AllocateAndRegisterGpuMemory { width: req.width.to_native(),
+                                                             height: req.height.to_native(),
+                                                             format: req.format.to_native()
+                    })
             },
             _ => Err(VmControlError::InvalidType),
         }
@@ -157,6 +208,12 @@ impl VmRequest {
                 req.type_ = Le32::from(VM_REQUEST_TYPE_BALLOON_ADJUST);
                 req.num_pages = Le32::from(pages as u32);
             },
+            &VmRequest::AllocateAndRegisterGpuMemory { width, height, format } => {
+                req.type_ = Le32::from(VM_REQUEST_TYPE_ALLOCATE_AND_REGISTER_GPU_MEMORY);
+                req.width = Le32::from(width as u32);
+                req.height = Le32::from(height as u32);
+                req.format = Le32::from(format as u32);
+            },
             _ => return Err(VmControlError::InvalidType),
         }
         let mut buf = [0; VM_REQUEST_SIZE];
@@ -178,7 +235,8 @@ impl VmRequest {
     /// `VmResponse` with the intended purpose of sending the response back over the  socket that
     /// received this `VmRequest`.
     pub fn execute(&self, vm: &mut Vm, next_mem_pfn: &mut u64, running: &mut bool,
-                   balloon_host_socket: &UnixDatagram) -> VmResponse {
+                   balloon_host_socket: &UnixDatagram,
+                   gpu_memory_allocator: Option<&GpuMemoryAllocator>) -> VmResponse {
         *running = true;
         match self {
             &VmRequest::Exit => {
@@ -198,26 +256,9 @@ impl VmRequest {
                 }
             }
             &VmRequest::RegisterMemory(ref fd, size) => {
-                let mmap = match MemoryMapping::from_fd(fd, size) {
-                    Ok(v) => v,
-                    Err(MmapError::SystemCallFailed(e)) => return VmResponse::Err(e),
-                    _ => return VmResponse::Err(SysError::new(EINVAL)),
-                };
-                let pfn = *next_mem_pfn;
-                let slot =
-                    match vm.add_device_memory(GuestAddress(pfn << 12), mmap, false, false) {
-                        Ok(slot) => slot,
-                        Err(e) => return VmResponse::Err(e),
-                    };
-                // TODO(zachr): Use a smarter allocation strategy. The current strategy is just
-                // bumping this pointer, meaning the remove operation does not free any address
-                // space. Given enough allocations, device memory may run out of address space and
-                // collide with guest memory or MMIO address space. There is currently nothing in
-                // place to limit the amount of address space used by device memory.
-                *next_mem_pfn += (((size + 0x7ff) >> 12) + 1) as u64;
-                VmResponse::RegisterMemory {
-                    pfn: pfn,
-                    slot: slot,
+                match register_memory(vm, next_mem_pfn, fd, size) {
+                    Ok((pfn, slot)) => VmResponse::RegisterMemory { pfn, slot },
+                    Err(e) => VmResponse::Err(e),
                 }
             }
             &VmRequest::UnregisterMemory(slot) => {
@@ -234,7 +275,31 @@ impl VmRequest {
                     Ok(_) => VmResponse::Ok,
                     Err(_) => VmResponse::Err(SysError::last()),
                 }
-            },
+            }
+            &VmRequest::AllocateAndRegisterGpuMemory {width, height, format} => {
+                let allocator = match gpu_memory_allocator {
+                    Some(v) => v,
+                    None => return VmResponse::Err(SysError::new(ENODEV)),
+                };
+                let (mut fd, stride) = match allocator.allocate(width, height, format) {
+                    Ok(v) => v,
+                    Err(e) => return VmResponse::Err(e),
+                };
+                // Determine size of buffer using 0 byte seek from end. This is preferred over
+                // `stride * height` as it's not limited to packed pixel formats.
+                let size = match fd.seek(SeekFrom::End(0)) {
+                    Ok(v) => v,
+                    Err(e) => return VmResponse::Err(SysError::from(e)),
+                };
+                match register_memory(vm, next_mem_pfn, &fd, size as usize) {
+                    Ok((pfn, slot)) => VmResponse::AllocateAndRegisterGpuMemory {
+                        fd: MaybeOwnedFd::Owned(fd),
+                        pfn,
+                        slot,
+                        stride },
+                    Err(e) => VmResponse::Err(e),
+                }
+            }
         }
     }
 }
@@ -242,7 +307,6 @@ impl VmRequest {
 /// Indication of success or failure of a `VmRequest`.
 ///
 /// Success is usually indicated `VmResponse::Ok` unless there is data associated with the response.
-#[derive(Debug, PartialEq)]
 pub enum VmResponse {
     /// Indicates the request was executed successfully.
     Ok,
@@ -251,11 +315,15 @@ pub enum VmResponse {
     /// The request to register memory into guest address space was successfully done at page frame
     /// number `pfn` and memory slot number `slot`.
     RegisterMemory { pfn: u64, slot: u32 },
+    /// The request to allocate and register GPU memory into guest address space was successfully
+    /// done at page frame number `pfn` and memory slot number `slot` for buffer with `stride`.
+    AllocateAndRegisterGpuMemory { fd: MaybeOwnedFd, pfn: u64, slot: u32, stride: u32 },
 }
 
 const VM_RESPONSE_TYPE_OK: u32 = 1;
 const VM_RESPONSE_TYPE_ERR: u32 = 2;
 const VM_RESPONSE_TYPE_REGISTER_MEMORY: u32 = 3;
+const VM_RESPONSE_TYPE_ALLOCATE_AND_REGISTER_GPU_MEMORY: u32 = 4;
 const VM_RESPONSE_SIZE: usize = 24;
 
 #[repr(C)]
@@ -265,7 +333,7 @@ struct VmResponseStruct {
     errno: Le32,
     pfn: Le64,
     slot: Le32,
-    padding: Le32,
+    stride: Le32,
 }
 
 // Safe because it only has data and has no implicit padding.
@@ -296,6 +364,15 @@ impl VmResponse {
                        slot: resp.slot.into(),
                    })
             }
+            VM_RESPONSE_TYPE_ALLOCATE_AND_REGISTER_GPU_MEMORY => {
+                let fd = fds.pop().ok_or(VmControlError::ExpectFd)?;
+                Ok(VmResponse::AllocateAndRegisterGpuMemory {
+                       fd: MaybeOwnedFd::Owned(fd),
+                       pfn: resp.pfn.into(),
+                       slot: resp.slot.into(),
+                       stride: resp.stride.into()
+                  })
+            }
             _ => Err(VmControlError::InvalidType),
         }
     }
@@ -306,6 +383,8 @@ impl VmResponse {
     /// execution.
     pub fn send(&self, scm: &mut Scm, s: &UnixDatagram) -> VmControlResult<()> {
         let mut resp = VmResponseStruct::default();
+        let mut fd_buf = [0; 1];
+        let mut fd_len = 0;
         match self {
             &VmResponse::Ok => resp.type_ = Le32::from(VM_RESPONSE_TYPE_OK),
             &VmResponse::Err(e) => {
@@ -317,10 +396,18 @@ impl VmResponse {
                 resp.pfn = Le64::from(pfn);
                 resp.slot = Le32::from(slot);
             }
+            &VmResponse::AllocateAndRegisterGpuMemory {ref fd, pfn, slot, stride } => {
+                fd_buf[0] = fd.as_raw_fd();
+                fd_len = 1;
+                resp.type_ = Le32::from(VM_RESPONSE_TYPE_ALLOCATE_AND_REGISTER_GPU_MEMORY);
+                resp.pfn = Le64::from(pfn);
+                resp.slot = Le32::from(slot);
+                resp.stride = Le32::from(stride);
+            }
         }
         let mut buf = [0; VM_RESPONSE_SIZE];
         buf.as_mut().get_ref(0).unwrap().store(resp);
-        scm.send(s, &[buf.as_ref()], &[])
+        scm.send(s, &[buf.as_ref()], &fd_buf[..fd_len])
             .map_err(|e| VmControlError::Send(e))?;
         Ok(())
     }
@@ -419,7 +506,7 @@ mod tests {
     fn request_invalid_type() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
         let mut scm = Scm::new(1);
-        scm.send(&s2, &[[12; VM_RESPONSE_SIZE].as_ref()], &[])
+        scm.send(&s2, &[[12; VM_REQUEST_SIZE].as_ref()], &[])
             .unwrap();
         match VmRequest::recv(&mut scm, &s1) {
             Err(VmControlError::InvalidType) => {}
@@ -428,12 +515,33 @@ mod tests {
     }
 
     #[test]
+    fn request_allocate_and_register_gpu_memory() {
+        let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
+        let mut scm = Scm::new(1);
+        let gpu_width: u32 = 32;
+        let gpu_height: u32 = 32;
+        let gpu_format: u32 = 0x34325258;
+        let r = VmRequest::AllocateAndRegisterGpuMemory { width: gpu_width, height: gpu_height, format: gpu_format };
+        r.send(&mut scm, &s1).unwrap();
+        match VmRequest::recv(&mut scm, &s2).unwrap() {
+            VmRequest::AllocateAndRegisterGpuMemory {width, height, format} => {
+                assert_eq!(width, gpu_width);
+                assert_eq!(height, gpu_width);
+                assert_eq!(format, gpu_format);
+            }
+            _ => panic!("recv wrong request variant"),
+        }
+    }
+
+    #[test]
     fn resp_ok() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
         let mut scm = Scm::new(1);
         VmResponse::Ok.send(&mut scm, &s1).unwrap();
-        let r = VmResponse::recv(&mut scm, &s2).unwrap();
-        assert_eq!(r, VmResponse::Ok);
+        match VmResponse::recv(&mut scm, &s2).unwrap() {
+            VmResponse::Ok => {}
+            _ => panic!("recv wrong response variant"),
+        }
     }
 
     #[test]
@@ -442,18 +550,29 @@ mod tests {
         let mut scm = Scm::new(1);
         let r1 = VmResponse::Err(SysError::new(libc::EDESTADDRREQ));
         r1.send(&mut scm, &s1).unwrap();
-        let r2 = VmResponse::recv(&mut scm, &s2).unwrap();
-        assert_eq!(r1, r2);
+        match VmResponse::recv(&mut scm, &s2).unwrap() {
+            VmResponse::Err(e) => {
+                assert_eq!(e, SysError::new(libc::EDESTADDRREQ));
+            }
+            _ => panic!("recv wrong response variant"),
+        }
     }
 
     #[test]
     fn resp_memory() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
         let mut scm = Scm::new(1);
-        let r1 = VmResponse::RegisterMemory { pfn: 55, slot: 66 };
+        let memory_pfn = 55;
+        let memory_slot = 66;
+        let r1 = VmResponse::RegisterMemory { pfn: memory_pfn, slot: memory_slot };
         r1.send(&mut scm, &s1).unwrap();
-        let r2 = VmResponse::recv(&mut scm, &s2).unwrap();
-        assert_eq!(r1, r2);
+        match VmResponse::recv(&mut scm, &s2).unwrap() {
+            VmResponse::RegisterMemory { pfn, slot } => {
+                assert_eq!(pfn, memory_pfn);
+                assert_eq!(slot, memory_slot);
+            }
+            _ => panic!("recv wrong response variant"),
+        }
     }
 
     #[test]
@@ -461,8 +580,12 @@ mod tests {
         let (s1, _) = UnixDatagram::pair().expect("failed to create socket pair");
         let mut scm = Scm::new(1);
         s1.shutdown(Shutdown::Both).unwrap();
-        let r = VmResponse::recv(&mut scm, &s1);
-        assert_eq!(r, Err(VmControlError::BadSize(0)));
+        match VmResponse::recv(&mut scm, &s1) {
+            Err(e) => {
+                assert_eq!(e, VmControlError::BadSize(0));
+            }
+            _ => panic!("recv wrong response"),
+        }
     }
 
     #[test]
@@ -470,8 +593,12 @@ mod tests {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
         let mut scm = Scm::new(1);
         scm.send(&s2, &[[12; 7].as_ref()], &[]).unwrap();
-        let r = VmResponse::recv(&mut scm, &s1);
-        assert_eq!(r, Err(VmControlError::BadSize(7)));
+        match VmResponse::recv(&mut scm, &s1) {
+            Err(e) => {
+                assert_eq!(e, VmControlError::BadSize(7));
+            }
+            _ => panic!("recv wrong response"),
+        }
     }
 
     #[test]
@@ -480,7 +607,39 @@ mod tests {
         let mut scm = Scm::new(1);
         scm.send(&s2, &[[12; VM_RESPONSE_SIZE].as_ref()], &[])
             .unwrap();
-        let r = VmResponse::recv(&mut scm, &s1);
-        assert_eq!(r, Err(VmControlError::InvalidType));
+        match VmResponse::recv(&mut scm, &s1) {
+            Err(e) => {
+                assert_eq!(e, VmControlError::InvalidType);
+            }
+            _ => panic!("recv wrong response"),
+        }
+    }
+
+    #[test]
+    fn resp_allocate_and_register_gpu_memory() {
+        if !kernel_has_memfd() { return; }
+        let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
+        let mut scm = Scm::new(1);
+        let shm_size: usize = 4096;
+        let mut shm = SharedMemory::new(None).unwrap();
+        shm.set_size(shm_size as u64).unwrap();
+        let memory_pfn = 55;
+        let memory_slot = 66;
+        let gpu_stride = 32;
+        let r1 = VmResponse::AllocateAndRegisterGpuMemory {
+            fd: MaybeOwnedFd::Borrowed(shm.as_raw_fd()),
+            pfn: memory_pfn,
+            slot: memory_slot,
+            stride: gpu_stride };
+        r1.send(&mut scm, &s1).unwrap();
+        match VmResponse::recv(&mut scm, &s2).unwrap() {
+            VmResponse::AllocateAndRegisterGpuMemory { fd, pfn, slot, stride } => {
+                assert!(fd.as_raw_fd() >= 0);
+                assert_eq!(pfn, memory_pfn);
+                assert_eq!(slot, memory_slot);
+                assert_eq!(stride, gpu_stride);
+            }
+            _ => panic!("recv wrong response variant"),
+        }
     }
 }

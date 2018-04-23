@@ -139,6 +139,7 @@ name = "gpu_buffer"
 version = "0.1.0"
 dependencies = [
  "data_model 0.1.0",
+ "sys_util 0.1.0",
 ]
 
 [[package]]

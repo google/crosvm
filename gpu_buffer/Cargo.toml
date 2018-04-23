@@ -5,3 +5,4 @@ authors = ["The Chromium OS Authors"]
 
 [dependencies]
 data_model = { path = "../data_model" }
+sys_util = { path = "../sys_util" }

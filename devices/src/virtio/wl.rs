@@ -39,6 +39,8 @@ use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Read};
 use std::mem::{size_of, size_of_val};
 use std::os::unix::io::{AsRawFd, RawFd};
+#[cfg(feature = "wl-dmabuf")]
+use std::os::unix::io::FromRawFd;
 use std::os::unix::net::{UnixDatagram, UnixStream};
 use std::path::{PathBuf, Path};
 use std::rc::Rc;
@@ -47,6 +49,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
+
+#[cfg(feature = "wl-dmabuf")]
+use libc::dup;
 
 use data_model::*;
 use data_model::VolatileMemoryError;
@@ -65,8 +70,12 @@ const VIRTIO_WL_CMD_VFD_RECV: u32 = 259;
 const VIRTIO_WL_CMD_VFD_NEW_CTX: u32 = 260;
 const VIRTIO_WL_CMD_VFD_NEW_PIPE: u32 = 261;
 const VIRTIO_WL_CMD_VFD_HUP: u32 = 262;
+#[cfg(feature = "wl-dmabuf")]
+const VIRTIO_WL_CMD_VFD_NEW_DMABUF: u32 = 263;
 const VIRTIO_WL_RESP_OK: u32 = 4096;
 const VIRTIO_WL_RESP_VFD_NEW: u32 = 4097;
+#[cfg(feature = "wl-dmabuf")]
+const VIRTIO_WL_RESP_VFD_NEW_DMABUF: u32 = 4098;
 const VIRTIO_WL_RESP_ERR: u32 = 4352;
 const VIRTIO_WL_RESP_OUT_OF_MEMORY: u32 = 4353;
 const VIRTIO_WL_RESP_INVALID_ID: u32 = 4354;
@@ -126,6 +135,30 @@ fn parse_new_pipe(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
        })
 }
 
+#[cfg(feature = "wl-dmabuf")]
+fn parse_new_dmabuf(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
+    const ID_OFFSET: u64 = 8;
+    const WIDTH_OFFSET: u64 = 28;
+    const HEIGHT_OFFSET: u64 = 32;
+    const FORMAT_OFFSET: u64 = 36;
+
+    let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
+                                              .ok_or(WlError::CheckedOffset)?)?;
+    let width: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, WIDTH_OFFSET)
+                                                .ok_or(WlError::CheckedOffset)?)?;
+    let height: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, HEIGHT_OFFSET)
+                                                .ok_or(WlError::CheckedOffset)?)?;
+    let format: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, FORMAT_OFFSET)
+                                                .ok_or(WlError::CheckedOffset)?)?;
+    Ok(WlOp::NewDmabuf {
+           id: id.into(),
+           width: width.into(),
+           height: height.into(),
+           format: format.into(),
+       })
+}
+
+
 fn parse_send(addr: GuestAddress, len: u32, mem: &GuestMemory) -> WlResult<WlOp> {
     const ID_OFFSET: u64 = 8;
     const VFD_COUNT_OFFSET: u64 = 12;
@@ -165,6 +198,8 @@ fn parse_desc(desc: &DescriptorChain, mem: &GuestMemory) -> WlResult<WlOp> {
         VIRTIO_WL_CMD_VFD_SEND => parse_send(desc.addr, desc.len, mem),
         VIRTIO_WL_CMD_VFD_NEW_CTX => Ok(WlOp::NewCtx { id: parse_id(desc.addr, mem)? }),
         VIRTIO_WL_CMD_VFD_NEW_PIPE => parse_new_pipe(desc.addr, mem),
+        #[cfg(feature = "wl-dmabuf")]
+        VIRTIO_WL_CMD_VFD_NEW_DMABUF => parse_new_dmabuf(desc.addr, mem),
         v => Ok(WlOp::InvalidCommand { op_type: v }),
     }
 }
@@ -193,6 +228,38 @@ fn encode_vfd_new(desc_mem: VolatileSlice,
 
     desc_mem.get_ref(0)?.store(ctrl_vfd_new);
     Ok(size_of::<CtrlVfdNew>() as u32)
+}
+
+#[cfg(feature = "wl-dmabuf")]
+fn encode_vfd_new_dmabuf(desc_mem: VolatileSlice,
+                         vfd_id: u32,
+                         flags: u32,
+                         pfn: u64,
+                         size: u32,
+                         stride: u32)
+                  -> WlResult<u32> {
+    let ctrl_vfd_new_dmabuf = CtrlVfdNewDmabuf {
+        hdr: CtrlHeader {
+            type_: Le32::from(VIRTIO_WL_RESP_VFD_NEW_DMABUF),
+            flags: Le32::from(0),
+        },
+        id: Le32::from(vfd_id),
+        flags: Le32::from(flags),
+        pfn: Le64::from(pfn),
+        size: Le32::from(size),
+        width: Le32::from(0),
+        height: Le32::from(0),
+        format: Le32::from(0),
+        stride0: Le32::from(stride),
+        stride1: Le32::from(0),
+        stride2: Le32::from(0),
+        offset0: Le32::from(0),
+        offset1: Le32::from(0),
+        offset2: Le32::from(0),
+    };
+
+    desc_mem.get_ref(0)?.store(ctrl_vfd_new_dmabuf);
+    Ok(size_of::<CtrlVfdNewDmabuf>() as u32)
 }
 
 fn encode_vfd_recv(desc_mem: VolatileSlice,
@@ -249,6 +316,14 @@ fn encode_resp(desc_mem: VolatileSlice, resp: WlResp) -> WlResult<u32> {
             size,
             resp,
         } => encode_vfd_new(desc_mem, resp, id, flags, pfn, size),
+        #[cfg(feature = "wl-dmabuf")]
+        WlResp::VfdNewDmabuf {
+            id,
+            flags,
+            pfn,
+            size,
+            stride,
+        } => encode_vfd_new_dmabuf(desc_mem, id, flags, pfn, size, stride),
         WlResp::VfdRecv { id, data, vfds } => encode_vfd_recv(desc_mem, id, data, vfds),
         WlResp::VfdHup { id } => encode_vfd_hup(desc_mem, id),
         r => {
@@ -360,6 +435,29 @@ unsafe impl DataInit for CtrlVfdNew {}
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+#[cfg(feature = "wl-dmabuf")]
+struct CtrlVfdNewDmabuf {
+    hdr: CtrlHeader,
+    id: Le32,
+    flags: Le32,
+    pfn: Le64,
+    size: Le32,
+    width: Le32,
+    height: Le32,
+    format: Le32,
+    stride0: Le32,
+    stride1: Le32,
+    stride2: Le32,
+    offset0: Le32,
+    offset1: Le32,
+    offset2: Le32,
+}
+
+#[cfg(feature = "wl-dmabuf")]
+unsafe impl DataInit for CtrlVfdNewDmabuf {}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
 struct CtrlVfdRecv {
     hdr: CtrlHeader,
     id: Le32,
@@ -390,6 +488,8 @@ enum WlOp {
     },
     NewCtx { id: u32 },
     NewPipe { id: u32, flags: u32 },
+    #[cfg(feature = "wl-dmabuf")]
+    NewDmabuf { id: u32, width: u32, height: u32, format: u32 },
     InvalidCommand { op_type: u32 },
 }
 
@@ -405,6 +505,14 @@ enum WlResp<'a> {
         // The VfdNew variant can be either a response or a command depending on this `resp`. This
         // is important for the `get_code` method.
         resp: bool,
+    },
+    #[cfg(feature = "wl-dmabuf")]
+    VfdNewDmabuf {
+        id: u32,
+        flags: u32,
+        pfn: u64,
+        size: u32,
+        stride: u32,
     },
     VfdRecv {
         id: u32,
@@ -431,6 +539,8 @@ impl<'a> WlResp<'a> {
                     VIRTIO_WL_CMD_VFD_NEW
                 }
             }
+            #[cfg(feature = "wl-dmabuf")]
+            &WlResp::VfdNewDmabuf { .. } => VIRTIO_WL_RESP_VFD_NEW_DMABUF,
             &WlResp::VfdRecv { .. } => VIRTIO_WL_CMD_VFD_RECV,
             &WlResp::VfdHup { .. } => VIRTIO_WL_CMD_VFD_HUP,
             &WlResp::Err(_) => VIRTIO_WL_RESP_ERR,
@@ -500,6 +610,26 @@ impl WlVfd {
                 vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm.into()));
                 vfd.slot = Some((slot, pfn, vm));
                 Ok(vfd)
+            }
+            _ => Err(WlError::VmBadResponse),
+        }
+    }
+
+    #[cfg(feature = "wl-dmabuf")]
+    fn dmabuf(vm: VmRequester, width: u32, height: u32, format: u32) -> WlResult<(WlVfd, u32)> {
+        let allocate_and_register_gpu_memory_response =
+            vm.request(VmRequest::AllocateAndRegisterGpuMemory { width: width,
+                                                                 height: height,
+                                                                 format: format })?;
+        match allocate_and_register_gpu_memory_response {
+            VmResponse::AllocateAndRegisterGpuMemory { fd, pfn, slot, stride } => {
+                let mut vfd = WlVfd::default();
+                // Duplicate FD for shared memory instance.
+                let raw_fd = unsafe { File::from_raw_fd(dup(fd.as_raw_fd())) };
+                let vfd_shm = SharedMemory::from_raw_fd(raw_fd).map_err(WlError::NewAlloc)?;
+                vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm.into()));
+                vfd.slot = Some((slot, pfn, vm));
+                Ok((vfd, stride))
             }
             _ => Err(WlError::VmBadResponse),
         }
@@ -792,6 +922,32 @@ impl WlState {
         }
     }
 
+    #[cfg(feature = "wl-dmabuf")]
+    fn new_dmabuf(&mut self, id: u32, width: u32, height: u32, format: u32) -> WlResult<WlResp> {
+        if id & VFD_ID_HOST_MASK != 0 {
+            return Ok(WlResp::InvalidId);
+        }
+
+        match self.vfds.entry(id) {
+            Entry::Vacant(entry) => {
+                let (vfd, stride) = WlVfd::dmabuf(self.vm.clone(),
+                                                  width,
+                                                  height,
+                                                  format)?;
+                let resp = WlResp::VfdNewDmabuf {
+                    id: id,
+                    flags: 0,
+                    pfn: vfd.pfn().unwrap_or_default(),
+                    size: vfd.size().unwrap_or_default() as u32,
+                    stride: stride,
+                };
+                entry.insert(vfd);
+                Ok(resp)
+            }
+            Entry::Occupied(_) => Ok(WlResp::InvalidId),
+        }
+    }
+
     fn new_context(&mut self, id: u32) -> WlResult<WlResp> {
         if id & VFD_ID_HOST_MASK != 0 {
             return Ok(WlResp::InvalidId);
@@ -956,6 +1112,8 @@ impl WlState {
             }
             WlOp::NewCtx { id } => self.new_context(id),
             WlOp::NewPipe { id, flags } => self.new_pipe(id, flags),
+            #[cfg(feature = "wl-dmabuf")]
+            WlOp::NewDmabuf { id, width, height, format } => self.new_dmabuf(id, width, height, format),
             WlOp::InvalidCommand { op_type } => {
                 warn!("unexpected command {}", op_type);
                 Ok(WlResp::InvalidCommand)

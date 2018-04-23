@@ -31,7 +31,10 @@
 //! ```
 
 extern crate data_model;
+#[macro_use]
+extern crate sys_util;
 
+pub mod rendernode;
 mod raw;
 
 use std::os::raw::c_void;

@@ -3,6 +3,9 @@ name = "devices"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 
+[features]
+wl-dmabuf = []
+
 [dependencies]
 byteorder = "*"
 data_model = { path = "../data_model" }
