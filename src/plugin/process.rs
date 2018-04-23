@@ -144,8 +144,15 @@ impl Process {
         for _ in 0..cpu_count {
             vcpu_sockets.push(new_seqpacket_pair().map_err(Error::CreateVcpuSocket)?);
         }
-        let mut per_vcpu_states: Vec<Arc<Mutex<PerVcpuState>>> = Vec::new();
-        per_vcpu_states.resize(cpu_count as usize, Default::default());
+        let mut per_vcpu_states: Vec<Arc<Mutex<PerVcpuState>>> = Vec::with_capacity(cpu_count as
+                                                                                    usize);
+        // TODO(zachr): replace with `resize_default` when that stabilizes. Using a plain `resize`
+        // is incorrect because each element in the `Vec` will contain a shared reference to the
+        // same `PerVcpuState` instance. This happens because `resize` fills new slots using clones
+        // of the instance given to `resize`.
+        for _ in 0..cpu_count {
+            per_vcpu_states.push(Default::default());
+        }
 
         let plugin_pid = match jail {
             Some(jail) => {
