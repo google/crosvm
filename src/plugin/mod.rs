@@ -332,8 +332,7 @@ pub fn run_vcpus(kvm: &Kvm,
             }
 
             // We do not really want the signal handler to run...
-            block_signal(SIGRTMIN() + 0)
-                .expect("failed to block signal");
+            block_signal(SIGRTMIN() + 0).expect("failed to block signal");
             // Tell KVM to not block anything when entering kvm run
             // because we will be using first RT signal to kick the VCPU.
             vcpu.set_signal_mask(&[])
@@ -386,8 +385,7 @@ pub fn run_vcpus(kvm: &Kvm,
 
                     // Try to clear the signal that we use to kick VCPU if it is
                     // pending before attempting to handle pause requests.
-                    clear_signal(SIGRTMIN() + 0)
-                        .expect("failed to clear pending signal");
+                    clear_signal(SIGRTMIN() + 0).expect("failed to clear pending signal");
 
                     if let Err(e) = vcpu_plugin.pre_run(&vcpu) {
                         error!("failed to process pause on vcpu {}: {:?}", cpu_id, e);
@@ -443,8 +441,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
             if let Some(mac_address) = cfg.mac_address {
                 let tap = Tap::new(false).map_err(Error::TapOpen)?;
                 tap.set_ip_addr(host_ip).map_err(Error::TapSetIp)?;
-                tap.set_netmask(netmask)
-                    .map_err(Error::TapSetNetmask)?;
+                tap.set_netmask(netmask).map_err(Error::TapSetNetmask)?;
                 tap.set_mac_address(mac_address)
                     .map_err(Error::TapSetMacAddress)?;
 

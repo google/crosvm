@@ -115,8 +115,8 @@ fn set_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet, state: &[u8]) ->
         }
         VcpuRequest_StateSet::MP => {
             vcpu.set_mp_state(&VcpuMpState::from_slice(state)
-                                    .ok_or(SysError::new(EINVAL))?
-                                    .0)
+                                   .ok_or(SysError::new(EINVAL))?
+                                   .0)
         }
     }
 }
@@ -302,7 +302,9 @@ impl PluginVcpu {
     /// to this VCPU.
     pub fn pre_run(&self, vcpu: &Vcpu) -> SysResult<()> {
         let request = {
-            let mut lock = self.per_vcpu_state.lock().map_err(|_| SysError::new(EDEADLK))?;
+            let mut lock = self.per_vcpu_state
+                .lock()
+                .map_err(|_| SysError::new(EDEADLK))?;
             lock.pause_request.take()
         };
 

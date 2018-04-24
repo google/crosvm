@@ -46,17 +46,19 @@ unsafe impl DataInit for VmPitState {}
 fn get_vm_state(vm: &Vm, state_set: MainRequest_StateSet) -> SysResult<Vec<u8>> {
     Ok(match state_set {
            MainRequest_StateSet::PIC0 => {
-               VmPicState(vm.get_pic_state(PicId::Primary)?).as_slice().to_vec()
+               VmPicState(vm.get_pic_state(PicId::Primary)?)
+                   .as_slice()
+                   .to_vec()
            }
            MainRequest_StateSet::PIC1 => {
-               VmPicState(vm.get_pic_state(PicId::Secondary)?).as_slice().to_vec()
+               VmPicState(vm.get_pic_state(PicId::Secondary)?)
+                   .as_slice()
+                   .to_vec()
            }
            MainRequest_StateSet::IOAPIC => {
                VmIoapicState(vm.get_ioapic_state()?).as_slice().to_vec()
            }
-           MainRequest_StateSet::PIT => {
-               VmPitState(vm.get_pit_state()?).as_slice().to_vec()
-           }
+           MainRequest_StateSet::PIT => VmPitState(vm.get_pit_state()?).as_slice().to_vec(),
        })
 }
 
@@ -65,24 +67,24 @@ fn set_vm_state(vm: &Vm, state_set: MainRequest_StateSet, state: &[u8]) -> SysRe
         MainRequest_StateSet::PIC0 => {
             vm.set_pic_state(PicId::Primary,
                              &VmPicState::from_slice(state)
-                                 .ok_or(SysError::new(EINVAL))?
-                                 .0)
+                                  .ok_or(SysError::new(EINVAL))?
+                                  .0)
         }
         MainRequest_StateSet::PIC1 => {
             vm.set_pic_state(PicId::Secondary,
                              &VmPicState::from_slice(state)
-                                 .ok_or(SysError::new(EINVAL))?
-                                 .0)
+                                  .ok_or(SysError::new(EINVAL))?
+                                  .0)
         }
         MainRequest_StateSet::IOAPIC => {
             vm.set_ioapic_state(&VmIoapicState::from_slice(state)
-                                    .ok_or(SysError::new(EINVAL))?
-                                    .0)
+                                     .ok_or(SysError::new(EINVAL))?
+                                     .0)
         }
         MainRequest_StateSet::PIT => {
             vm.set_pit_state(&VmPitState::from_slice(state)
-                                 .ok_or(SysError::new(EINVAL))?
-                                 .0)
+                                  .ok_or(SysError::new(EINVAL))?
+                                  .0)
         }
     }
 }
@@ -404,7 +406,8 @@ impl Process {
     }
 
     fn handle_get_net_config(tap: &net_util::Tap,
-                             config: &mut MainResponse_GetNetConfig) -> SysResult<()> {
+                             config: &mut MainResponse_GetNetConfig)
+                             -> SysResult<()> {
         // Log any NetError so that the cause can be found later, but extract and return the
         // underlying errno for the client as well.
         fn map_net_error(s: &str, e: NetError) -> SysError {
@@ -412,7 +415,8 @@ impl Process {
             e.sys_error()
         }
 
-        let ip_addr = tap.ip_addr().map_err(|e| map_net_error("IP address", e))?;
+        let ip_addr = tap.ip_addr()
+            .map_err(|e| map_net_error("IP address", e))?;
         config.set_host_ipv4_address(u32::from(ip_addr));
 
         let netmask = tap.netmask().map_err(|e| map_net_error("netmask", e))?;
@@ -420,8 +424,8 @@ impl Process {
 
         let result_mac_addr = config.mut_host_mac_address();
         let mac_addr_octets = tap.mac_address()
-                                 .map_err(|e| map_net_error("mac address", e))?
-                                 .octets();
+            .map_err(|e| map_net_error("mac address", e))?
+            .octets();
         result_mac_addr.resize(mac_addr_octets.len(), 0);
         result_mac_addr.clone_from_slice(&mac_addr_octets);
 
@@ -596,7 +600,7 @@ impl Process {
                         Err(e) => Err(e),
                     }
                 }
-                None => Err(SysError::new(-ENODATA)),
+                None => Err(SysError::new(ENODATA)),
             }
         } else if request.has_dirty_log() {
             let dirty_log_response = response.mut_dirty_log();
@@ -617,7 +621,7 @@ impl Process {
                     }
                     Ok(())
                 }
-                Err(e) => Err(e)
+                Err(e) => Err(e),
             }
         } else if request.has_get_emulated_cpuid() {
             let cpuid_response = &mut response.mut_get_emulated_cpuid().entries;
@@ -628,7 +632,7 @@ impl Process {
                     }
                     Ok(())
                 }
-                Err(e) => Err(e)
+                Err(e) => Err(e),
             }
         } else {
             Err(SysError::new(ENOTTY))
