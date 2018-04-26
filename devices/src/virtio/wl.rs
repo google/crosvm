@@ -838,9 +838,16 @@ impl WlState {
 
         for event in events.as_ref().iter_hungup() {
             if !event.readable() {
-                if let Err(e) = self.close(event.token()) {
+                let vfd_id = event.token();
+                if let Err(e) = self.close(vfd_id) {
                     warn!("failed to close vfd: {:?}", e)
                 }
+                // Once the vfd has been hungup and there is nothing left to read, it's time to send
+                // the HUP event over virtio. It's very important that this in_queue entry gets
+                // pushed /after/ we self.close the vfd_id because part of the close operation for a
+                // vfd is removing all pending in_queue entries related to the vfd, regardless of
+                // type.
+                self.in_queue.push_back((vfd_id, WlRecv::Hup));
             }
         }
     }
