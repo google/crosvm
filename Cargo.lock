@@ -52,6 +52,7 @@ dependencies = [
  "data_model 0.1.0",
  "device_manager 0.1.0",
  "devices 0.1.0",
+ "gpu_buffer 0.1.0",
  "io_jail 0.1.0",
  "kernel_cmdline 0.1.0",
  "kernel_loader 0.1.0",
@@ -132,6 +133,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "gcc"
 version = "0.3.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "gpu_buffer"
+version = "0.1.0"
+dependencies = [
+ "data_model 0.1.0",
+]
 
 [[package]]
 name = "io_jail"

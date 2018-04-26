@@ -1,0 +1,7 @@
+[package]
+name = "gpu_buffer"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+
+[dependencies]
+data_model = { path = "../data_model" }
