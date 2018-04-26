@@ -7,7 +7,7 @@ dup: 1
 dup2: 1
 exit_group: 1
 fstat64: 1
-ftruncate: 1
+ftruncate64: 1
 futex: 1
 _llseek: 1
 # Disallow mmap with PROT_EXEC set.  The syntax here doesn't allow bit
