@@ -45,7 +45,6 @@ pub enum Error {
     BalloonDeviceNew(devices::virtio::BalloonError),
     BlockDeviceNew(sys_util::Error),
     BlockSignal(sys_util::signal::Error),
-    ChownWaylandRoot(sys_util::Error),
     CloneEventFd(sys_util::Error),
     Cmdline(kernel_cmdline::Error),
     CreateEventFd(sys_util::Error),
@@ -63,7 +62,6 @@ pub enum Error {
     DiskImageLock(sys_util::Error),
     FailedCLOEXECCheck,
     FailedToDupFd,
-    GetWaylandGroup(sys_util::Error),
     InvalidFdPath,
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
@@ -72,7 +70,6 @@ pub enum Error {
     QcowDeviceCreate(qcow::Error),
     RegisterBalloon(device_manager::Error),
     RegisterBlock(device_manager::Error),
-    RegisterIrqfd(sys_util::Error),
     RegisterNet(device_manager::Error),
     RegisterRng(device_manager::Error),
     RegisterSignalHandler(sys_util::Error),
@@ -81,13 +78,11 @@ pub enum Error {
     RngDeviceNew(devices::virtio::RngError),
     SettingGidMap(io_jail::Error),
     SettingUidMap(io_jail::Error),
-    SetTssAddr(sys_util::Error),
     SignalFd(sys_util::SignalFdError),
     SpawnVcpu(io::Error),
     VhostNetDeviceNew(devices::virtio::vhost::Error),
     VhostVsockDeviceNew(devices::virtio::vhost::Error),
     WaylandDeviceNew(sys_util::Error),
-    WaylandTempDir(sys_util::Error),
     SetupSystemMemory(Box<error::Error>),
     ConfigureVcpu(Box<error::Error>),
     LoadKernel(Box<error::Error>),
@@ -101,9 +96,6 @@ impl fmt::Display for Error {
             &Error::BalloonDeviceNew(ref e) => write!(f, "failed to create balloon: {:?}", e),
             &Error::BlockDeviceNew(ref e) => write!(f, "failed to create block device: {:?}", e),
             &Error::BlockSignal(ref e) => write!(f, "failed to block signal: {:?}", e),
-            &Error::ChownWaylandRoot(ref e) => {
-                write!(f, "error chowning wayland root directory: {:?}", e)
-            }
             &Error::CloneEventFd(ref e) => write!(f, "failed to clone eventfd: {:?}", e),
             &Error::Cmdline(ref e) => write!(f, "the given kernel command line was invalid: {}", e),
             &Error::CreateEventFd(ref e) => write!(f, "failed to create eventfd: {:?}", e),
@@ -125,9 +117,6 @@ impl fmt::Display for Error {
                 write!(f, "/proc/self/fd argument failed check for CLOEXEC")
             }
             &Error::FailedToDupFd => write!(f, "failed to dup fd from /proc/self/fd"),
-            &Error::GetWaylandGroup(ref e) => {
-                write!(f, "could not find gid for wayland group: {:?}", e)
-            }
             &Error::InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
             &Error::NetDeviceNew(ref e) => write!(f, "failed to set up virtio networking: {:?}", e),
             &Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
@@ -142,7 +131,6 @@ impl fmt::Display for Error {
                 write!(f, "error registering balloon device: {:?}", e)
             },
             &Error::RegisterBlock(ref e) => write!(f, "error registering block device: {:?}", e),
-            &Error::RegisterIrqfd(ref e) => write!(f, "error registering irqfd: {:?}", e),
             &Error::RegisterNet(ref e) => write!(f, "error registering net device: {:?}", e),
             &Error::RegisterRng(ref e) => write!(f, "error registering rng device: {:?}", e),
             &Error::RegisterSignalHandler(ref e) => {
@@ -155,7 +143,6 @@ impl fmt::Display for Error {
             &Error::RngDeviceNew(ref e) => write!(f, "failed to set up rng: {:?}", e),
             &Error::SettingGidMap(ref e) => write!(f, "error setting GID map: {}", e),
             &Error::SettingUidMap(ref e) => write!(f, "error setting UID map: {}", e),
-            &Error::SetTssAddr(ref e) => write!(f, "failed to set TSS address: {:?}", e),
             &Error::SignalFd(ref e) => write!(f, "failed to read signal fd: {:?}", e),
             &Error::SpawnVcpu(ref e) => write!(f, "failed to spawn VCPU thread: {:?}", e),
             &Error::VhostNetDeviceNew(ref e) => {
@@ -166,9 +153,6 @@ impl fmt::Display for Error {
             }
             &Error::WaylandDeviceNew(ref e) => {
                 write!(f, "failed to create wayland device: {:?}", e)
-            }
-            &Error::WaylandTempDir(ref e) => {
-                write!(f, "failed to create wayland device jail directroy: {:?}", e)
             }
             &Error::SetupSystemMemory(ref e) => write!(f, "error setting up system memory: {}", e),
             &Error::ConfigureVcpu(ref e) => write!(f, "failed to configure vcpu: {}", e),
