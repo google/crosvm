@@ -302,14 +302,14 @@ impl QcowFile {
         if address.checked_add(count as u64).is_none() || address > self.virtual_size() {
             return 0;
         }
-        min(count, self.virtual_size() as usize - address as usize)
+        min(count as u64, self.virtual_size() - address) as usize
     }
 
     // Limits the range so that it doesn't overflow the end of a cluster.
     fn limit_range_cluster(&self, address: u64, count: usize) -> usize {
         let offset: u64 = address & self.cluster_mask;
         let limit = self.cluster_size - offset;
-        min(count, limit as usize)
+        min(count as u64, limit) as usize
     }
 
     // Gets the maximum virtual size of this image.
