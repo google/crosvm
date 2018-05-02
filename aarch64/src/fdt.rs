@@ -20,6 +20,12 @@ use AARCH64_GIC_CPUI_SIZE;
 use AARCH64_GIC_DIST_BASE;
 use AARCH64_GIC_CPUI_BASE;
 
+// These are RTC related constants
+use AARCH64_RTC_ADDR;
+use AARCH64_RTC_SIZE;
+use AARCH64_RTC_IRQ;
+use devices::pl030::PL030_AMBA_ID;
+
 // These are serial device related constants.
 use AARCH64_SERIAL_ADDR;
 use AARCH64_SERIAL_SIZE;
@@ -42,6 +48,7 @@ const GIC_FDT_IRQ_TYPE_PPI: u32 = 1;
 const GIC_FDT_IRQ_PPI_CPU_SHIFT: u32 = 8;
 const GIC_FDT_IRQ_PPI_CPU_MASK: u32 = (0xff << GIC_FDT_IRQ_PPI_CPU_SHIFT);
 const IRQ_TYPE_EDGE_RISING: u32 = 0x00000001;
+const IRQ_TYPE_LEVEL_HIGH: u32 = 0x00000004;
 const IRQ_TYPE_LEVEL_LOW: u32 = 0x00000008;
 
 // This links to libfdt which handles the creation of the binary blob
@@ -366,6 +373,35 @@ fn create_io_nodes(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
     Ok(())
 }
 
+fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
+    // the kernel driver for pl030 really really wants a clock node
+    // associated with an AMBA device or it will fail to probe, so we
+    // need to make up a clock node to associate with the pl030 rtc
+    // node and an associated handle with a unique phandle value.
+    const CLK_PHANDLE: u32 = 24;
+    begin_node(fdt, "pclk@3M")?;
+    property_u32(fdt, "#clock-cells", 0)?;
+    property_string(fdt, "compatible", "fixed-clock")?;
+    property_u32(fdt, "clock-frequency", 3141592)?;
+    property_u32(fdt, "phandle", CLK_PHANDLE)?;
+    end_node(fdt)?;
+
+    let rtc_name = format!("rtc@{:x}", AARCH64_RTC_ADDR);
+    let reg = generate_prop64(&[AARCH64_RTC_ADDR, AARCH64_RTC_SIZE]);
+    let irq = generate_prop32(&[GIC_FDT_IRQ_TYPE_SPI, AARCH64_RTC_IRQ,
+                                IRQ_TYPE_LEVEL_HIGH]);
+
+    begin_node(fdt, &rtc_name)?;
+    property_string(fdt, "compatible", "arm,primecell")?;
+    property_u32(fdt, "arm,primecell-periphid", PL030_AMBA_ID)?;
+    property(fdt, "reg", &reg)?;
+    property(fdt, "interrupts", &irq)?;
+    property_u32(fdt, "clocks", CLK_PHANDLE)?;
+    property_string(fdt, "clock-names", "apb_pclk")?;
+    end_node(fdt)?;
+    Ok(())
+}
+
 /// Creates a flattened device tree containing all of the parameters for the
 /// kernel and loads it into the guest memory at the specified offset.
 ///
@@ -411,6 +447,7 @@ pub fn create_fdt(fdt_max_size: usize,
     create_serial_node(&mut fdt)?;
     create_psci_node(&mut fdt)?;
     create_io_nodes(&mut fdt)?;
+    create_rtc_node(&mut fdt)?;
     // End giant node
     end_node(&mut fdt)?;
 

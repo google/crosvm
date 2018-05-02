@@ -21,10 +21,12 @@ mod cmos;
 mod i8042;
 mod proxy;
 mod serial;
+pub mod pl030;
 pub mod virtio;
 
 pub use self::bus::{Bus, BusDevice};
 pub use self::cmos::Cmos;
+pub use self::pl030::Pl030;
 pub use self::i8042::I8042Device;
 pub use self::proxy::ProxyDevice;
 pub use self::proxy::Error as ProxyError;

@@ -86,12 +86,20 @@ const AARCH64_SERIAL_SIZE: u64 = 0x8;
 // This was the speed kvmtool used, not sure if it matters.
 const AARCH64_SERIAL_SPEED: u32 = 1843200;
 
+// Place the RTC device at page 2
+const AARCH64_RTC_ADDR: u64 = 0x2000;
+// The RTC device gets one 4k page
+const AARCH64_RTC_SIZE: u64 = 0x1000;
+// The RTC device gets the first interrupt line
+// Which gets mapped to the first SPI interrupt (physical 32).
+const AARCH64_RTC_IRQ: u32  = 0;
+
 // This is the base address of MMIO devices.
 const AARCH64_MMIO_BASE: u64 = 0x10000;
 // Each MMIO device gets a 4k page.
 const AARCH64_MMIO_LEN: u64 = 0x1000;
-// We start at 0 which gets mapped to the first SPI interrupt (physical 32).
-const AARCH64_IRQ_BASE: u32 = 0;
+// Virtio devices start at SPI interrupt number 1
+const AARCH64_IRQ_BASE: u32 = 1;
 
 #[derive(Debug)]
 pub enum Error {
@@ -202,6 +210,9 @@ impl arch::LinuxArch for AArch64 {
     /// * `mem` - A copy of the GuestMemory object for this VM.
     fn get_device_manager(vm: &mut Vm, mem: GuestMemory) ->
         Result<device_manager::DeviceManager> {
+        let rtc_evt = EventFd::new()?;
+        vm.register_irqfd(&rtc_evt, AARCH64_RTC_IRQ)?;
+
         let mut dm = device_manager::DeviceManager::new(vm,
                                                         mem,
                                                         AARCH64_MMIO_LEN,
@@ -211,9 +222,12 @@ impl arch::LinuxArch for AArch64 {
         let serial = Arc::new(Mutex::new(devices::Serial::new_out(
             com_evt_1_3.try_clone()?,
             Box::new(stdout()))));
+        dm.bus.insert(serial.clone(), AARCH64_SERIAL_ADDR,
+                      AARCH64_SERIAL_SIZE).expect("failed to add serial device");
 
-            dm.bus.insert(serial.clone(), AARCH64_SERIAL_ADDR,
-                          AARCH64_SERIAL_SIZE).expect("failed to add serial device");
+        let rtc = Arc::new(Mutex::new(devices::pl030::Pl030::new(rtc_evt)));
+        dm.bus.insert(rtc, AARCH64_RTC_ADDR,
+                      AARCH64_RTC_SIZE).expect("failed to add rtc device");
         Ok(dm)
     }
 
