@@ -1,0 +1,12 @@
+[package]
+name = "gpu_display"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+
+[dependencies]
+data_model = { path = "../data_model" }
+libc = "*"
+sys_util = { path = "../sys_util" }
+
+[build-dependencies]
+cc = "=1.0.15"
