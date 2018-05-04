@@ -14,6 +14,7 @@ const VIRTQ_DESC_F_WRITE: u16 = 0x2;
 const VIRTQ_DESC_F_INDIRECT: u16 = 0x4;
 
 /// A virtio descriptor chain.
+#[derive(Clone)]
 pub struct DescriptorChain<'a> {
     mem: &'a GuestMemory,
     desc_table: GuestAddress,
