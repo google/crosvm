@@ -191,7 +191,7 @@ impl arch::LinuxArch for AArch64 {
     }
 
     fn get_base_dev_pfn(mem_size: u64) -> u64 {
-        AARCH64_PHYS_MEM_START + mem_size
+        (AARCH64_PHYS_MEM_START + mem_size) >> 12
     }
 
     /// This returns a base part of the kernel command for this architecture
