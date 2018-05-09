@@ -26,7 +26,7 @@ pub struct SharedMemory {
 const MFD_CLOEXEC: c_uint = 0x0001;
 
 unsafe fn memfd_create(name: *const c_char, flags: c_uint) -> c_int {
-    syscall(SYS_memfd_create as c_long, name as i64, flags as i64) as c_int
+    syscall(SYS_memfd_create as c_long, name, flags) as c_int
 }
 
 /// A set of memfd seals.
