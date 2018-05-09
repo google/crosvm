@@ -38,7 +38,7 @@ sendmsg: 1
 # Used for sharing memory with wayland. arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING
 memfd_create: arg1 == 3
 # Used to set of size new memfd
-ftruncate: 1
+ftruncate64: 1
 # Used to determine shm size after recvmsg with fd
 _llseek: 1
 # Allow PR_SET_NAME only.
