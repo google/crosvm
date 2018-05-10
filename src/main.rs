@@ -92,7 +92,7 @@ impl Default for Config {
             vhost_net: false,
             wayland_socket_path: None,
             socket_path: None,
-            multiprocess: true,
+            multiprocess: !cfg!(feature = "default-no-sandbox"),
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             cid: None,
             plugin: None,

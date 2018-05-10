@@ -11,6 +11,7 @@ panic = 'abort'
 
 [features]
 plugin = ["plugin_proto", "crosvm_plugin", "protobuf"]
+default-no-sandbox = []
 
 [dependencies]
 arch = { path = "arch" }
