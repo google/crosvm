@@ -60,7 +60,7 @@ pub enum Error {
     MountPlugin(io_jail::Error),
     MountPluginLib(io_jail::Error),
     MountRoot(io_jail::Error),
-    NoVarEmpty,
+    NoRootDir,
     ParsePivotRoot(io_jail::Error),
     ParseSeccomp(io_jail::Error),
     PluginFailed(i32),
@@ -76,6 +76,8 @@ pub enum Error {
     PluginWait(SysError),
     Poll(SysError),
     PollContextAdd(SysError),
+    RootNotAbsolute,
+    RootNotDir,
     SetGidMap(io_jail::Error),
     SetUidMap(io_jail::Error),
     SigChild {
@@ -121,7 +123,7 @@ impl fmt::Display for Error {
             Error::MountPlugin(ref e) => write!(f, "failed to mount: {}", e),
             Error::MountPluginLib(ref e) => write!(f, "failed to mount: {}", e),
             Error::MountRoot(ref e) => write!(f, "failed to mount: {}", e),
-            Error::NoVarEmpty => write!(f, "no /var/empty for jailed process to pivot root into"),
+            Error::NoRootDir => write!(f, "no root directory for jailed process to pivot root into"),
             Error::ParsePivotRoot(ref e) => write!(f, "failed to set jail pivot root: {}", e),
             Error::ParseSeccomp(ref e) => write!(f, "failed to parse jail seccomp filter: {}", e),
             Error::PluginFailed(ref e) => write!(f, "plugin exited with error: {}", e),
@@ -143,6 +145,8 @@ impl fmt::Display for Error {
             Error::PluginWait(ref e) => write!(f, "error waiting for plugin to exit: {:?}", e),
             Error::Poll(ref e) => write!(f, "failed to poll all FDs: {:?}", e),
             Error::PollContextAdd(ref e) => write!(f, "failed to add fd to poll context: {:?}", e),
+            Error::RootNotAbsolute => write!(f, "path to the root directory must be absolute"),
+            Error::RootNotDir => write!(f, "specified root directory is not a directory"),
             Error::SetGidMap(ref e) => write!(f, "failed to set gidmap for jail: {}", e),
             Error::SetUidMap(ref e) => write!(f, "failed to set uidmap for jail: {}", e),
             Error::SigChild {
@@ -423,13 +427,25 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
     let jail = if cfg.multiprocess {
         // An empty directory for jailed plugin pivot root.
-        let empty_root_path = Path::new("/var/empty");
-        if !empty_root_path.exists() {
-            return Err(Error::NoVarEmpty);
+        let root_path = match cfg.plugin_root {
+            Some(ref dir) => Path::new(dir),
+            None => Path::new("/var/empty"),
+        };
+
+        if root_path.is_relative() {
+            return Err(Error::RootNotAbsolute);
+        }
+
+        if !root_path.exists() {
+            return Err(Error::NoRootDir);
+        }
+
+        if !root_path.is_dir() {
+            return Err(Error::RootNotDir);
         }
 
         let policy_path = cfg.seccomp_policy_dir.join("plugin.policy");
-        let jail = create_plugin_jail(empty_root_path, &policy_path)?;
+        let jail = create_plugin_jail(root_path, &policy_path)?;
         Some(jail)
     } else {
         None

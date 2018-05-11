@@ -76,6 +76,7 @@ pub struct Config {
     seccomp_policy_dir: PathBuf,
     cid: Option<u64>,
     plugin: Option<PathBuf>,
+    plugin_root: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -96,6 +97,7 @@ impl Default for Config {
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             cid: None,
             plugin: None,
+            plugin_root: None,
         }
     }
 }
@@ -319,6 +321,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.plugin = Some(plugin);
         },
+        "plugin-root" => {
+            cfg.plugin_root = Some(PathBuf::from(value.unwrap().to_owned()));
+        },
         "vhost-net" => {
             cfg.vhost_net = true
         },
@@ -368,6 +373,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
           #[cfg(feature = "plugin")]
           Argument::value("plugin", "PATH", "Absolute path to plugin process to run under crosvm."),
+          Argument::value("plugin-root", "PATH", "Absolute path to a directory that will become root filesystem for the plugin process."),
           Argument::flag("vhost-net", "Use vhost for networking."),
           Argument::short_flag('h', "help", "Print help message.")];
 
@@ -386,6 +392,9 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
             if cfg.mac_address.is_none() {
                 return Err(argument::Error::ExpectedArgument("`mac` missing from network config".to_owned()));
             }
+        }
+        if cfg.plugin_root.is_some() && cfg.plugin.is_none() {
+            return Err(argument::Error::ExpectedArgument("`plugin-root` requires `plugin`".to_owned()));
         }
         Ok(())
     });
