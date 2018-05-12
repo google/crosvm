@@ -602,7 +602,7 @@ mod tests {
     // Test that open FDs get closed and that FDs in the inherit list are left open.
     fn close_fds() {
         unsafe { // Using libc to open/close FDs for testing.
-            const FILE_PATH: &'static str = "/dev/null";
+            const FILE_PATH: &[u8] = b"/dev/null\0";
             let j = Minijail::new().unwrap();
             let first = libc::open(FILE_PATH.as_ptr() as *const i8, libc::O_RDONLY);
             assert!(first >= 0);
