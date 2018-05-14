@@ -1007,6 +1007,32 @@ impl Vcpu {
         Ok(())
     }
 
+    /// Gets the VCPU extended control registers
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_xcrs(&self) -> Result<kvm_xcrs> {
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut regs = unsafe { std::mem::zeroed() };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_XCRS(), &mut regs) };
+        if ret != 0 {
+            return errno_result();
+        }
+        Ok(regs)
+    }
+
+    /// Sets the VCPU extended control registers
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_xcrs(&self, xcrs: &kvm_xcrs) -> Result<()> {
+        let ret = unsafe {
+            // Here we trust the kernel not to read past the end of the kvm_xcrs struct.
+            ioctl_with_ref(self, KVM_SET_XCRS(), xcrs)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
     /// X86 specific call to get the MSRS
     ///
     /// See the documentation for KVM_SET_MSRS.
@@ -1555,6 +1581,27 @@ mod tests {
         vcpu.set_debugregs(&dregs).unwrap();
         let dregs2 = vcpu.get_debugregs().unwrap();
         assert_eq!(dregs.dr7, dregs2.dr7);
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn xcrs() {
+        let kvm = Kvm::new().unwrap();
+        if kvm.check_extension(Cap::Xcrs) {
+            return;
+        }
+
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        let vcpu = Vcpu::new(0, &kvm, &vm).unwrap();
+        let mut xcrs = vcpu.get_xcrs().unwrap();
+        xcrs.nr_xcrs = 1;
+        xcrs.flags = 0;
+        // We assume anything we run on has SSE (bit 1). FP bit (bit 0) must always be set.
+        xcrs.xcrs[0].value |= 3;
+        vcpu.set_xcrs(&xcrs).unwrap();
+        let xcrs2 = vcpu.get_xcrs().unwrap();
+        assert_eq!(xcrs.xcrs[0].value, xcrs2.xcrs[0].value);
     }
 
     #[test]
