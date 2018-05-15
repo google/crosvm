@@ -446,9 +446,6 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
           Argument::value("mac", "MAC", "MAC address for VM."),
           Argument::value("wayland-sock", "PATH", "Path to the Wayland socket to use."),
-          Argument::value("wayland-group",
-                          "GROUP",
-                          "Name of the group with access to the Wayland socket."),
           #[cfg(feature = "wl-dmabuf")]
           Argument::flag("wayland-dmabuf", "Enable support for DMABufs in Wayland device."),
           Argument::short_value('s',
