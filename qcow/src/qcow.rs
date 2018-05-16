@@ -394,6 +394,8 @@ impl QcowFile {
         let cluster_size: u64 = self.cluster_size;
         let new_cluster_address: u64 = (file_end + cluster_size - 1) & !self.cluster_mask;
         self.file.set_len(new_cluster_address + cluster_size)?;
+        // Ensure the length is set before meta-data is updated.
+        self.file.sync_all()?;
 
         Ok(new_cluster_address)
     }
@@ -405,6 +407,8 @@ impl QcowFile {
         let new_addr: u64 = self.append_new_cluster()?;
         // Save the new block to the table and mark it as used.
         write_u64_to_offset(&mut self.file, entry_addr, new_addr | CLUSTER_USED_FLAG)?;
+        // Ensure that the metadata update is commited before writing data.
+        self.file.sync_data()?;
         // The cluster refcount starts at one indicating it is used but doesn't need COW.
         self.set_cluster_refcount(new_addr, 1)?;
         Ok(new_addr)
@@ -531,7 +535,7 @@ impl Write for QcowFile {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        self.file.flush()
+        self.file.sync_all()
     }
 }
 
