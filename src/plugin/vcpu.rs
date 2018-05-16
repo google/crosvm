@@ -17,7 +17,7 @@ use protobuf::Message;
 
 use data_model::DataInit;
 use kvm::{Vcpu, CpuId};
-use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msrs, kvm_msr_entry,
+use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_xcrs, kvm_msrs, kvm_msr_entry,
               KVM_CPUID_FLAG_SIGNIFCANT_INDEX, kvm_lapic_state, kvm_mp_state};
 use plugin_proto::*;
 
@@ -67,6 +67,9 @@ unsafe impl DataInit for VcpuFpu {}
 struct VcpuDebugregs(kvm_debugregs);
 unsafe impl DataInit for VcpuDebugregs {}
 #[derive(Copy, Clone)]
+struct VcpuXcregs(kvm_xcrs);
+unsafe impl DataInit for VcpuXcregs {}
+#[derive(Copy, Clone)]
 struct VcpuLapicState(kvm_lapic_state);
 unsafe impl DataInit for VcpuLapicState {}
 #[derive(Copy, Clone)]
@@ -81,6 +84,7 @@ fn get_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet) -> SysResult<Vec
            VcpuRequest_StateSet::DEBUGREGS => {
                VcpuDebugregs(vcpu.get_debugregs()?).as_slice().to_vec()
            }
+           VcpuRequest_StateSet::XCREGS => VcpuXcregs(vcpu.get_xcrs()?).as_slice().to_vec(),
            VcpuRequest_StateSet::LAPIC => VcpuLapicState(vcpu.get_lapic()?).as_slice().to_vec(),
            VcpuRequest_StateSet::MP => VcpuMpState(vcpu.get_mp_state()?).as_slice().to_vec(),
        })
@@ -107,6 +111,11 @@ fn set_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet, state: &[u8]) ->
             vcpu.set_debugregs(&VcpuDebugregs::from_slice(state)
                                     .ok_or(SysError::new(EINVAL))?
                                     .0)
+        }
+        VcpuRequest_StateSet::XCREGS => {
+            vcpu.set_xcrs(&VcpuXcregs::from_slice(state)
+                              .ok_or(SysError::new(EINVAL))?
+                              .0)
         }
         VcpuRequest_StateSet::LAPIC => {
             vcpu.set_lapic(&VcpuLapicState::from_slice(state)

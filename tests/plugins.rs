@@ -328,6 +328,64 @@ fn test_debugregs() {
 }
 
 #[test]
+fn test_xcrs() {
+    let mini_plugin = MiniPlugin {
+        assembly_src: "org 0x1000
+             bits 16
+             mov byte [0x3000], 1",
+        src: r#"
+            #define XCR0_VALUE 0x1
+            #define KILL_ADDRESS 0x3000
+
+            int g_kill_evt;
+            struct kvm_xcrs g_xcrs;
+
+            int setup_vm(struct crosvm *crosvm, void *mem) {
+                g_kill_evt = crosvm_get_shutdown_eventfd(crosvm);
+                crosvm_reserve_range(crosvm, CROSVM_ADDRESS_SPACE_MMIO, KILL_ADDRESS, 1);
+                return 0;
+            }
+
+            int handle_vpcu_init(struct crosvm_vcpu *vcpu, struct kvm_regs *regs,
+                                 struct kvm_sregs *sregs)
+            {
+                struct kvm_xcrs xcrs = {};
+                xcrs.nr_xcrs = 1;
+                xcrs.xcrs[0].value = XCR0_VALUE;
+                crosvm_vcpu_set_xcrs(vcpu, &xcrs);
+                return 0;
+            }
+
+            int handle_vpcu_evt(struct crosvm_vcpu *vcpu, struct crosvm_vcpu_event evt) {
+                if (evt.kind == CROSVM_VCPU_EVENT_KIND_IO_ACCESS &&
+                        evt.io_access.address_space == CROSVM_ADDRESS_SPACE_MMIO &&
+                        evt.io_access.address == KILL_ADDRESS &&
+                        evt.io_access.is_write &&
+                        evt.io_access.length == 1 &&
+                        evt.io_access.data[0] == 1)
+                {
+                    uint64_t dummy = 1;
+                    crosvm_vcpu_get_xcrs(vcpu, &g_xcrs);
+                    write(g_kill_evt, &dummy, sizeof(dummy));
+                    return 1;
+                }
+                return 0;
+            }
+
+            int check_result(struct crosvm *vcpu, void *mem) {
+                if (g_xcrs.xcrs[0].value != XCR0_VALUE) {
+                    fprintf(stderr, "xcr0 register has unexpected value: 0x%x\n",
+                            g_xcrs.xcrs[0].value);
+                    return 1;
+                }
+                return 0;
+            }"#,
+        ..Default::default()
+    };
+    test_mini_plugin(&mini_plugin);
+}
+
+#[test]
 fn test_msrs() {
     let mini_plugin = MiniPlugin {
         assembly_src: "org 0x1000

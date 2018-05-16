@@ -44,8 +44,9 @@ use sys_util::Scm;
 
 use kvm::dirty_log_bitmap_size;
 
-use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_msr_entry, kvm_cpuid_entry2,
-              kvm_lapic_state, kvm_mp_state, kvm_pic_state, kvm_ioapic_state, kvm_pit_state2};
+use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_xcrs, kvm_msr_entry,
+              kvm_cpuid_entry2, kvm_lapic_state, kvm_mp_state, kvm_pic_state, kvm_ioapic_state,
+              kvm_pit_state2};
 
 use plugin_proto::*;
 
@@ -162,6 +163,8 @@ enum Stat {
     SetFpu,
     GetDebugRegs,
     SetDebugRegs,
+    GetXCRegs,
+    SetXCRegs,
     VcpuGetMsrs,
     VcpuSetMsrs,
     VcpuSetCpuid,
@@ -1379,6 +1382,28 @@ pub unsafe extern "C" fn crosvm_vcpu_set_debugregs(this: *mut crosvm_vcpu,
     let this = &mut *this;
     let dregs = from_raw_parts(dregs as *mut u8, size_of::<kvm_debugregs>());
     let ret = this.set_state(VcpuRequest_StateSet::DEBUGREGS, dregs);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_get_xcrs(this: *mut crosvm_vcpu,
+                                              xcrs: *mut kvm_xcrs)
+                                              -> c_int {
+    let _u = STATS.record(Stat::GetXCRegs);
+    let this = &mut *this;
+    let xcrs = from_raw_parts_mut(xcrs as *mut u8, size_of::<kvm_xcrs>());
+    let ret = this.get_state(VcpuRequest_StateSet::XCREGS, xcrs);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_set_xcrs(this: *mut crosvm_vcpu,
+                                              xcrs: *const kvm_xcrs)
+                                              -> c_int {
+    let _u = STATS.record(Stat::SetXCRegs);
+    let this = &mut *this;
+    let xcrs = from_raw_parts(xcrs as *mut u8, size_of::<kvm_xcrs>());
+    let ret = this.set_state(VcpuRequest_StateSet::XCREGS, xcrs);
     to_crosvm_rc(ret)
 }
 

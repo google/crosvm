@@ -275,6 +275,8 @@ message VcpuRequest {
         LAPIC = 4;
         // struct kvm_mp_state
         MP = 5;
+        // struct kvm_xcrs
+        XCREGS = 6;
     }
 
     message GetState {

@@ -495,6 +495,11 @@ int crosvm_vcpu_get_debugregs(struct crosvm_vcpu*, struct kvm_debugregs*);
 /* Sets the state of the vcpu's debug registers */
 int crosvm_vcpu_set_debugregs(struct crosvm_vcpu*, const struct kvm_debugregs*);
 
+/* Gets the state of the vcpu's xcr registers. */
+int crosvm_vcpu_get_xcrs(struct crosvm_vcpu*, struct kvm_xcrs*);
+/* Sets the state of the vcpu's xcr registers. */
+int crosvm_vcpu_set_xcrs(struct crosvm_vcpu*, const struct kvm_xcrs*);
+
 /* Gets the MSRs of the vcpu indicated by the index field of each entry. */
 int crosvm_vcpu_get_msrs(struct crosvm_vcpu*, uint32_t __msr_count,
                          struct kvm_msr_entry *__msr_entries);
