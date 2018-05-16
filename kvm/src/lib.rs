@@ -1587,7 +1587,7 @@ mod tests {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn xcrs() {
         let kvm = Kvm::new().unwrap();
-        if kvm.check_extension(Cap::Xcrs) {
+        if !kvm.check_extension(Cap::Xcrs) {
             return;
         }
 
@@ -1595,10 +1595,7 @@ mod tests {
         let vm = Vm::new(&kvm, gm).unwrap();
         let vcpu = Vcpu::new(0, &kvm, &vm).unwrap();
         let mut xcrs = vcpu.get_xcrs().unwrap();
-        xcrs.nr_xcrs = 1;
-        xcrs.flags = 0;
-        // We assume anything we run on has SSE (bit 1). FP bit (bit 0) must always be set.
-        xcrs.xcrs[0].value |= 3;
+        xcrs.xcrs[0].value = 1;
         vcpu.set_xcrs(&xcrs).unwrap();
         let xcrs2 = vcpu.get_xcrs().unwrap();
         assert_eq!(xcrs.xcrs[0].value, xcrs2.xcrs[0].value);
