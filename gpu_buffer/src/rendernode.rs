@@ -4,11 +4,21 @@
 
 use std::ffi::CString;
 use std::fs::{File, OpenOptions};
-use std::os::raw::{c_char, c_int, c_uint, c_ulonglong};
+use std::os::raw::{c_char, c_int, c_uint};
+#[cfg(target_pointer_width = "64")]
+use std::os::raw::c_ulong;
 use std::path::Path;
 use std::ptr::null_mut;
 
 use sys_util::ioctl_with_mut_ref;
+
+// Consistent with __kernel_size_t in include/uapi/asm-generic/posix_types.h.
+#[cfg(not(target_pointer_width = "64"))]
+#[allow(non_camel_case_types)]
+type __kernel_size_t = c_uint;
+#[cfg(target_pointer_width = "64")]
+#[allow(non_camel_case_types)]
+type __kernel_size_t = c_ulong;
 
 const DRM_IOCTL_BASE: c_uint = 0x64;
 
@@ -18,11 +28,11 @@ struct drm_version {
     version_major: c_int,
     version_minor: c_int,
     version_patchlevel: c_int,
-    name_len: c_ulonglong,
+    name_len: __kernel_size_t,
     name: *mut c_char,
-    date_len: c_ulonglong,
+    date_len: __kernel_size_t,
     date: *mut c_char,
-    desc_len: c_ulonglong,
+    desc_len: __kernel_size_t,
     desc: *mut c_char,
 }
 
@@ -52,7 +62,7 @@ fn get_drm_device_name(fd: &File) -> Result<String, ()> {
         version_major: 0,
         version_minor: 0,
         version_patchlevel: 0,
-        name_len: name_bytes.len() as c_ulonglong,
+        name_len: name_bytes.len() as __kernel_size_t,
         name: name_bytes.as_mut_ptr() as *mut c_char,
         date_len: 0,
         date: null_mut(),
