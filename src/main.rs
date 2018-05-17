@@ -274,9 +274,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.wayland_socket_path = Some(wayland_socket_path);
         }
         #[cfg(feature = "wl-dmabuf")]
-        "enable-wayland-dmabuf" => {
+        "wayland-dmabuf" => {
             cfg.wayland_dmabuf = true
-        },
+        }
         "socket" => {
             if cfg.socket_path.is_some() {
                 return Err(argument::Error::TooManyArguments("`socket` already given".to_owned()));
