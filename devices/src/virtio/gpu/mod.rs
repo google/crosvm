@@ -338,7 +338,9 @@ impl Frontend {
                                    &mut self.return_cursor_descriptors);
     }
 
-    fn process_descriptor(&mut self, mem: &GuestMemory, desc: QueueDescriptor) -> ReturnDescriptor {
+    fn process_descriptor(&mut self,
+                          mem: &GuestMemory,
+                          desc: QueueDescriptor) -> Option<ReturnDescriptor> {
         let mut resp = GpuResponse::ErrUnspec;
         let mut gpu_cmd = None;
         let mut len = 0;
@@ -384,10 +386,10 @@ impl Frontend {
                 }
             }
         }
-        ReturnDescriptor {
+        Some(ReturnDescriptor {
             index: desc.index,
             len,
-        }
+        })
     }
 
     fn process_ctrl(&mut self, mem: &GuestMemory) -> Option<ReturnDescriptor> {
@@ -396,7 +398,7 @@ impl Frontend {
             .or_else(|| {
                          self.ctrl_descriptors
                              .pop_front()
-                             .map(|desc| self.process_descriptor(mem, desc))
+                             .and_then(|desc| self.process_descriptor(mem, desc))
                      })
     }
 
@@ -406,7 +408,7 @@ impl Frontend {
             .or_else(|| {
                          self.cursor_descriptors
                              .pop_front()
-                             .map(|desc| self.process_descriptor(mem, desc))
+                             .and_then(|desc| self.process_descriptor(mem, desc))
                      })
     }
 }
