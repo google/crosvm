@@ -920,4 +920,21 @@ impl Backend {
             None => GpuResponse::ErrInvalidContextId,
         }
     }
+
+    pub fn create_fence(&mut self, ctx_id: u32, fence_id: u32) -> GpuResponse {
+        // There is a mismatch of ordering that is intentional.
+        // This create_fence matches the other functions in Backend, yet
+        // the renderer matches the virgl interface.
+        match self.renderer.create_fence(fence_id, ctx_id) {
+            Ok(_) => GpuResponse::OkNoData,
+            Err(e) => {
+                error!("failed to create fence: {}", e);
+                GpuResponse::ErrUnspec
+            }
+        }
+    }
+
+    pub fn fence_poll(&mut self) -> u32 {
+        self.renderer.poll()
+    }
 }

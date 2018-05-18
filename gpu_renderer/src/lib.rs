@@ -12,6 +12,7 @@ mod generated;
 mod pipe_format_fourcc;
 mod command_buffer;
 
+use std::cell::RefCell;
 use std::ffi::CStr;
 use std::fmt;
 use std::fs::File;
@@ -144,10 +145,32 @@ impl Box3 {
     }
 }
 
+struct FenceState {
+    latest_fence: u32,
+}
+impl FenceState {
+    pub fn write(&mut self, latest_fence: u32) {
+        if latest_fence > self.latest_fence {
+            self.latest_fence = latest_fence;
+        }
+    }
+}
+
 struct VirglCookie {
     display: EGLDisplay,
     egl_config: EGLConfig,
     egl_funcs: EGLFunctions,
+    fence_state: Rc<RefCell<FenceState>>,
+}
+
+extern "C" fn write_fence(cookie: *mut c_void,
+                          fence: u32) {
+    assert!(!cookie.is_null());
+    let cookie = unsafe { &*(cookie as *mut VirglCookie) };
+
+    // Track the most recent fence.
+    let mut fence_state = cookie.fence_state.borrow_mut();
+    fence_state.write(fence);
 }
 
 unsafe extern "C" fn create_gl_context(cookie: *mut c_void,
@@ -187,7 +210,7 @@ unsafe extern "C" fn destroy_gl_context(cookie: *mut c_void, ctx: virgl_renderer
 const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks =
     &virgl_renderer_callbacks {
          version: 1,
-         write_fence: None,
+         write_fence: Some(write_fence),
          create_gl_context: Some(create_gl_context),
          destroy_gl_context: Some(destroy_gl_context),
          make_current: Some(make_current),
@@ -305,6 +328,7 @@ pub struct Renderer {
     no_sync_send: PhantomData<*mut ()>,
     egl_funcs: EGLFunctions,
     display: EGLDisplay,
+    fence_state: Rc<RefCell<FenceState>>,
 }
 
 impl Renderer {
@@ -361,10 +385,14 @@ impl Renderer {
         // Otherwise, Resource and Context would become invalid because their lifetime is not tied
         // to the Renderer instance. Doing so greatly simplifies the ownership for users of this
         // library.
+
+        let fence_state = Rc::new(RefCell::new(FenceState { latest_fence: 0 }));
+
         let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
                                                                   display,
                                                                   egl_config,
                                                                   egl_funcs: egl_funcs.clone(),
+                                                                  fence_state: Rc::clone(&fence_state),
                                                               }));
 
         // Safe because EGL was properly initialized before here..
@@ -401,7 +429,8 @@ impl Renderer {
         Ok(Renderer {
                no_sync_send: PhantomData,
                egl_funcs,
-               display
+               display,
+               fence_state
            })
     }
 
@@ -552,6 +581,18 @@ impl Renderer {
             egl_dpy: self.display,
             image
         })
+    }
+
+    pub fn poll(&self) -> u32 {
+        unsafe { virgl_renderer_poll() };
+        self.fence_state.borrow().latest_fence
+    }
+
+    pub fn create_fence(&mut self, fence_id: u32, ctx_id: u32) -> Result<()> {
+        let ret = unsafe {
+            virgl_renderer_create_fence(fence_id as i32, ctx_id)
+        };
+        ret_to_res(ret)
     }
 }
 

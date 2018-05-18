@@ -9,14 +9,16 @@ extern crate gpu_renderer;
 mod protocol;
 mod backend;
 
-use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::i64;
 use std::mem::size_of;
 use std::os::unix::io::RawFd;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::spawn;
+use std::time::Duration;
 
 use data_model::*;
 
@@ -35,6 +37,7 @@ use self::backend::Backend;
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.
 const QUEUE_SIZES: &'static [u16] = &[256, 16];
+const FENCE_POLL_MS: u64 = 1;
 
 struct QueueDescriptor {
     index: u16,
@@ -49,11 +52,18 @@ struct ReturnDescriptor {
     len: u32,
 }
 
+struct FenceDescriptor {
+    fence_id: u32,
+    len: u32,
+    desc: QueueDescriptor,
+}
+
 struct Frontend {
     ctrl_descriptors: VecDeque<QueueDescriptor>,
     cursor_descriptors: VecDeque<QueueDescriptor>,
     return_ctrl_descriptors: VecDeque<ReturnDescriptor>,
     return_cursor_descriptors: VecDeque<ReturnDescriptor>,
+    fence_descriptors: Vec<FenceDescriptor>,
     backend: Backend,
 }
 
@@ -64,6 +74,7 @@ impl Frontend {
             cursor_descriptors: Default::default(),
             return_ctrl_descriptors: Default::default(),
             return_cursor_descriptors: Default::default(),
+            fence_descriptors: Default::default(),
             backend,
         }
     }
@@ -373,17 +384,40 @@ impl Frontend {
                 let mut flags = 0;
                 if let Some(cmd) = gpu_cmd {
                     let ctrl_hdr = cmd.ctrl_hdr();
-                    // TODO: add proper fence support
                     if ctrl_hdr.flags.to_native() & VIRTIO_GPU_FLAG_FENCE != 0 {
                         fence_id = ctrl_hdr.fence_id.to_native();
                         ctx_id = ctrl_hdr.ctx_id.to_native();
                         flags = VIRTIO_GPU_FLAG_FENCE;
+
+                        let fence_resp = self.backend
+                            .create_fence(ctx_id, fence_id as u32);
+                        if fence_resp.is_err() {
+                            warn!("create_fence {} -> {:?}",
+                                  fence_id, fence_resp);
+                            resp = fence_resp;
+                        }
                     }
                 }
+
+
+                // Prepare the response now, even if it is going to wait until
+                // fence is complete.
                 match resp.encode(flags, fence_id, ctx_id, ret_desc_mem) {
                     Ok(l) => len = l,
                     Err(e) => debug!("ctrl queue response encode error: {:?}", e),
                 }
+
+                if flags & VIRTIO_GPU_FLAG_FENCE != 0 {
+                    self.fence_descriptors.push(FenceDescriptor {
+                        fence_id: fence_id as u32,
+                        len,
+                        desc,
+                    });
+
+                    return None
+                }
+
+                // No fence, respond now.
             }
         }
         Some(ReturnDescriptor {
@@ -410,6 +444,22 @@ impl Frontend {
                              .pop_front()
                              .and_then(|desc| self.process_descriptor(mem, desc))
                      })
+    }
+
+    fn fence_poll(&mut self) {
+        let fence_id = self.backend.fence_poll();
+        let return_descs = &mut self.return_ctrl_descriptors;
+        self.fence_descriptors.retain(|f_desc| {
+            if f_desc.fence_id > fence_id {
+                true
+            } else {
+                return_descs.push_back(ReturnDescriptor {
+                                           index: f_desc.desc.index,
+                                           len: f_desc.len
+                                       });
+                false
+            }
+        })
     }
 }
 
@@ -462,7 +512,14 @@ impl Worker {
             };
 
         'poll: loop {
-            let events = match poll_ctx.wait() {
+            // If there are outstanding fences, wake up early to poll them.
+            let duration = if self.state.fence_descriptors.len() != 0 {
+                Duration::from_millis(FENCE_POLL_MS)
+            } else {
+                Duration::new(i64::MAX as u64, 0)
+            };
+
+            let events = match poll_ctx.wait_timeout(duration) {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed polling for events: {:?}", e);
@@ -504,6 +561,8 @@ impl Worker {
                     None => break,
                 }
             }
+
+            self.state.fence_poll();
 
             loop {
                 match self.state.process_ctrl(&self.mem) {
