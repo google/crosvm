@@ -23,7 +23,7 @@ use sys_util::pagesize;
 /// ```
 #[derive(Debug, Eq, PartialEq)]
 pub struct SystemAllocator {
-    io_address_space: AddressAllocator,
+    io_address_space: Option<AddressAllocator>,
     device_address_space: AddressAllocator,
     mmio_address_space: AddressAllocator,
     next_irq: u32,
@@ -41,14 +41,17 @@ impl SystemAllocator {
     /// * `mmio_base` - The starting address of MMIO space.
     /// * `mmio_size` - The size of MMIO space.
     /// * `first_irq` - The first irq number to give out.
-    fn new(io_base: u64, io_size: u64,
-               dev_base: u64, dev_size: u64,
-               mmio_base: u64, mmio_size: u64,
-               first_irq: u32)
-            -> Option<Self> {
+    fn new(io_base: Option<u64>, io_size: Option<u64>,
+           dev_base: u64, dev_size: u64,
+           mmio_base: u64, mmio_size: u64,
+           first_irq: u32) -> Option<Self> {
         let page_size = pagesize() as u64;
         Some(SystemAllocator {
-            io_address_space: AddressAllocator::new(io_base, io_size, Some(0x400))?,
+            io_address_space: if let (Some(b), Some(s)) = (io_base, io_size) {
+                Some(AddressAllocator::new(b, s, Some(0x400))?)
+            } else {
+                None
+            },
             device_address_space: AddressAllocator::new(dev_base, dev_size, Some(page_size))?,
             mmio_address_space: AddressAllocator::new(mmio_base, mmio_size, Some(page_size))?,
             next_irq: first_irq,
@@ -67,7 +70,7 @@ impl SystemAllocator {
 
     /// Reserves a section of `size` bytes of IO address space.
     pub fn allocate_io_addresses(&mut self, size: u64) -> Option<u64> {
-        self.io_address_space.allocate(size)
+        self.io_address_space.as_mut()?.allocate(size)
     }
 
     /// Reserves a section of `size` bytes of device address space.
@@ -122,7 +125,7 @@ impl AddressRanges {
     }
 
     pub fn create_allocator(&self, first_irq: u32) -> Option<SystemAllocator> {
-        SystemAllocator::new(self.io_base?, self.io_size?,
+        SystemAllocator::new(self.io_base, self.io_size,
                              self.device_base?, self.device_size?,
                              self.mmio_base?, self.mmio_size?,
                              first_irq)

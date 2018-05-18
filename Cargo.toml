@@ -17,7 +17,6 @@ wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer"]
 [dependencies]
 arch = { path = "arch" }
 devices = { path = "devices" }
-device_manager = { path = "device_manager" }
 gpu_buffer = { path = "gpu_buffer", optional = true }
 io_jail = { path = "io_jail" }
 kvm = { path = "kvm" }

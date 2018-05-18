@@ -8,7 +8,6 @@ extern crate arch;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 extern crate aarch64;
 extern crate devices;
-extern crate device_manager;
 extern crate libc;
 extern crate io_jail;
 extern crate kvm;
@@ -22,6 +21,7 @@ extern crate net_util;
 extern crate qcow;
 #[macro_use]
 extern crate sys_util;
+extern crate resources;
 extern crate vhost;
 extern crate vm_control;
 extern crate data_model;

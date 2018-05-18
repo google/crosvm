@@ -6,11 +6,11 @@ extern crate arch;
 extern crate byteorder;
 extern crate data_model;
 extern crate devices;
-extern crate device_manager;
 extern crate kvm;
 extern crate kvm_sys;
 extern crate libc;
 extern crate sys_util;
+extern crate resources;
 extern crate kernel_cmdline;
 extern crate kernel_loader;
 
@@ -70,6 +70,7 @@ use std::io::stdout;
 use bootparam::boot_params;
 use bootparam::E820_RAM;
 use sys_util::{EventFd, GuestAddress, GuestMemory};
+use resources::{AddressRanges, SystemAllocator};
 use kvm::*;
 
 #[derive(Debug)]
@@ -132,6 +133,7 @@ const ZERO_PAGE_OFFSET: u64 = 0x7000;
 const KERNEL_START_OFFSET: u64 = 0x200000;
 const CMDLINE_OFFSET: u64 = 0x20000;
 const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
+const X86_64_IRQ_BASE: u32 = 5;
 
 fn configure_system(guest_mem: &GuestMemory,
                     kernel_addr: GuestAddress,
@@ -314,19 +316,15 @@ impl arch::LinuxArch for X8664arch {
         cmdline
     }
 
-    /// This creates and returns a device_manager object for this vm.
-    ///
-    /// # Arguments
-    ///
-    /// * `vm` - the vm object
-    /// * `mem` - A copy of the GuestMemory object for this VM.
-    fn get_device_manager(vm: &mut Vm, mem: GuestMemory) ->
-        Result<device_manager::DeviceManager> {
-        const MMIO_BASE: u64 = 0xd0000000;
-        const MMIO_LEN: u64 = 0x1000;
-        const IRQ_BASE: u32 = 5;
-
-        Ok(device_manager::DeviceManager::new(vm, mem, MMIO_LEN, MMIO_BASE, IRQ_BASE))
+    /// Returns a system resource allocator.
+    fn get_resource_allocator(mem_size: u64) -> SystemAllocator {
+        const MMIO_BASE: u64 = 0xe0000000;
+        let device_addr_start = Self::get_base_dev_pfn(mem_size) * sys_util::pagesize() as u64;
+        AddressRanges::new()
+           .add_io_addresses(0xc000, 0x10000)
+           .add_mmio_addresses(MMIO_BASE, 0x10000)
+           .add_device_addresses(device_addr_start, u64::max_value() - device_addr_start)
+           .create_allocator(X86_64_IRQ_BASE).unwrap()
     }
 
     /// Sets up the IO bus for this platform

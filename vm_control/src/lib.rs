@@ -15,6 +15,7 @@ extern crate data_model;
 extern crate kvm;
 extern crate libc;
 extern crate sys_util;
+extern crate resources;
 
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
@@ -27,6 +28,7 @@ use libc::{ERANGE, EINVAL, ENODEV};
 use byteorder::{LittleEndian, WriteBytesExt};
 use data_model::{DataInit, Le32, Le64, VolatileMemory};
 use sys_util::{EventFd, Result, Error as SysError, MmapError, MemoryMapping, Scm, GuestAddress};
+use resources::SystemAllocator;
 use kvm::{IoeventAddress, Vm};
 
 #[derive(Debug, PartialEq)]
@@ -108,26 +110,24 @@ struct VmRequestStruct {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for VmRequestStruct {}
 
-fn register_memory(vm: &mut Vm, next_mem_pfn: &mut u64, fd: &AsRawFd, size: usize) -> Result<(u64, u32)> {
+fn register_memory(vm: &mut Vm, allocator: &mut SystemAllocator,
+                   fd: &AsRawFd, size: usize) -> Result<(u64, u32)> {
     let mmap = match MemoryMapping::from_fd(fd, size) {
         Ok(v) => v,
         Err(MmapError::SystemCallFailed(e)) => return Err(e),
         _ => return Err(SysError::new(EINVAL)),
     };
-    let pfn = *next_mem_pfn;
+    let addr = match allocator.allocate_device_addresses(size as u64) {
+        Some(a) => a,
+        None => return Err(SysError::new(EINVAL)),
+    };
     let slot =
-        match vm.add_device_memory(GuestAddress(pfn << 12), mmap, false, false) {
+        match vm.add_device_memory(GuestAddress(addr), mmap, false, false) {
             Ok(v) => v,
             Err(e) => return Err(e),
         };
-    // TODO(zachr): Use a smarter allocation strategy. The current strategy is just
-    // bumping this pointer, meaning the remove operation does not free any address
-    // space. Given enough allocations, device memory may run out of address space and
-    // collide with guest memory or MMIO address space. There is currently nothing in
-    // place to limit the amount of address space used by device memory.
-    *next_mem_pfn += (((size + 0x7ff) >> 12) + 1) as u64;
 
-    Ok((pfn, slot))
+    Ok((addr >> 12, slot))
 }
 
 /// Struct that describes the offset and stride of a plane located in GPU memory.
@@ -240,14 +240,13 @@ impl VmRequest {
     ///
     /// # Arguments
     /// * `vm` - The `Vm` to perform the request on.
-    /// * `next_mem_pfn` - In/out argument for the page frame number to put the next chunk of device
-    /// memory into.
+    /// * `allocator` - Used to allocate addresses.
     /// * `running` - Out argument that is set to false if the request was to stop running the VM.
     ///
     /// This does not return a result, instead encapsulating the success or failure in a
     /// `VmResponse` with the intended purpose of sending the response back over the  socket that
     /// received this `VmRequest`.
-    pub fn execute(&self, vm: &mut Vm, next_mem_pfn: &mut u64, running: &mut bool,
+    pub fn execute(&self, vm: &mut Vm, sys_allocator: &mut SystemAllocator, running: &mut bool,
                    balloon_host_socket: &UnixDatagram,
                    gpu_memory_allocator: Option<&GpuMemoryAllocator>) -> VmResponse {
         *running = true;
@@ -269,7 +268,7 @@ impl VmRequest {
                 }
             }
             &VmRequest::RegisterMemory(ref fd, size) => {
-                match register_memory(vm, next_mem_pfn, fd, size) {
+                match register_memory(vm, sys_allocator, fd, size) {
                     Ok((pfn, slot)) => VmResponse::RegisterMemory { pfn, slot },
                     Err(e) => VmResponse::Err(e),
                 }
@@ -290,11 +289,11 @@ impl VmRequest {
                 }
             }
             &VmRequest::AllocateAndRegisterGpuMemory {width, height, format} => {
-                let allocator = match gpu_memory_allocator {
+                let gpu_allocator = match gpu_memory_allocator {
                     Some(v) => v,
                     None => return VmResponse::Err(SysError::new(ENODEV)),
                 };
-                let (mut fd, desc) = match allocator.allocate(width, height, format) {
+                let (mut fd, desc) = match gpu_allocator.allocate(width, height, format) {
                     Ok(v) => v,
                     Err(e) => return VmResponse::Err(e),
                 };
@@ -304,7 +303,7 @@ impl VmRequest {
                     Ok(v) => v,
                     Err(e) => return VmResponse::Err(SysError::from(e)),
                 };
-                match register_memory(vm, next_mem_pfn, &fd, size as usize) {
+                match register_memory(vm, sys_allocator, &fd, size as usize) {
                     Ok((pfn, slot)) => VmResponse::AllocateAndRegisterGpuMemory {
                         fd: MaybeOwnedFd::Owned(fd),
                         pfn,

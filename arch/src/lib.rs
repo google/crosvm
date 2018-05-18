@@ -3,10 +3,10 @@
 // found in the LICENSE file.
 
 extern crate sys_util;
+extern crate resources;
 extern crate kernel_cmdline;
 extern crate kvm;
 extern crate libc;
-extern crate device_manager;
 extern crate devices;
 
 use std::ffi::CStr;
@@ -14,8 +14,10 @@ use std::fs::File;
 use std::result;
 use std::sync::{Arc, Mutex};
 
+use devices::Bus;
 use kvm::{Kvm, Vm, Vcpu};
 use sys_util::{EventFd, GuestMemory};
+use resources::SystemAllocator;
 
 pub type Result<T> = result::Result<T, Box<std::error::Error>>;
 
@@ -52,6 +54,14 @@ pub trait LinuxArch {
     /// * `mem` - The memory to be used by the guest.
     fn create_vm(kvm: &Kvm, mem: GuestMemory) -> Result<Vm>;
 
+    /// This adds any early platform devices for this architecture.
+    ///
+    /// # Arguments
+    ///
+    /// * `vm` - The vm to add irqs to.
+    /// * `bus` - The bus to add devices to.
+    fn add_arch_devs(_vm: &mut Vm, _bus: &mut Bus) -> Result<()> { Ok(()) }
+
     /// This creates a GuestMemory object for this VM
     ///
     /// * `mem_size` - Desired physical memory size in bytes for this VM
@@ -76,14 +86,8 @@ pub trait LinuxArch {
     /// This returns a minimal kernel command for this architecture.
     fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline;
 
-    /// This creates and returns a device_manager object for this vm.
-    ///
-    /// # Arguments
-    ///
-    /// * `vm` - the vm object
-    /// * `mem` - A copy of the GuestMemory object for this VM.
-    fn get_device_manager(vm: &mut Vm, mem: GuestMemory)
-                          -> Result<device_manager::DeviceManager>;
+    /// Returns a system resource allocator.
+    fn get_resource_allocator(mem_size: u64) -> SystemAllocator;
 
     /// Sets up the IO bus for this platform
     ///

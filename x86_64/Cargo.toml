@@ -7,10 +7,10 @@ authors = ["The Chromium OS Authors"]
 arch = { path = "../arch" }
 data_model = { path = "../data_model" }
 devices = { path = "../devices" }
-device_manager = { path = "../device_manager" }
 kvm_sys = { path = "../kvm_sys" }
 kvm = { path = "../kvm" }
 sys_util = { path = "../sys_util" }
+resources = { path = "../resources" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 kernel_loader = { path = "../kernel_loader" }
 libc = "*"

@@ -5,13 +5,13 @@
 extern crate arch;
 extern crate byteorder;
 extern crate data_model;
-extern crate device_manager;
 extern crate devices;
 extern crate kernel_cmdline;
 extern crate kvm;
 extern crate kvm_sys;
 extern crate libc;
 extern crate sys_util;
+extern crate resources;
 
 use std::error::{self, Error as Aarch64Error};
 use std::fmt::{self, Display};
@@ -20,7 +20,9 @@ use std::io::stdout;
 use std::sync::{Arc, Mutex};
 use std::ffi::CStr;
 
+use devices::Bus;
 use sys_util::{EventFd, GuestAddress, GuestMemory};
+use resources::{AddressRanges, SystemAllocator};
 use std::os::unix::io::FromRawFd;
 
 use kvm::*;
@@ -202,33 +204,36 @@ impl arch::LinuxArch for AArch64 {
         cmdline
     }
 
-    /// This creates and returns a device_manager object for this vm.
+    /// Returns a system resource allocator.
+    fn get_resource_allocator(mem_size: u64) -> SystemAllocator {
+        let device_addr_start = Self::get_base_dev_pfn(mem_size) * sys_util::pagesize() as u64;
+        AddressRanges::new()
+            .add_device_addresses(device_addr_start, u64::max_value() - device_addr_start)
+            .add_mmio_addresses(AARCH64_MMIO_BASE, 0x10000)
+            .create_allocator(AARCH64_IRQ_BASE).unwrap()
+    }
+
+    /// This adds any early platform devices for this architecture.
     ///
     /// # Arguments
     ///
-    /// * `vm` - the vm object
-    /// * `mem` - A copy of the GuestMemory object for this VM.
-    fn get_device_manager(vm: &mut Vm, mem: GuestMemory) ->
-        Result<device_manager::DeviceManager> {
+    /// * `vm` - The vm to add irqs to.
+    /// * `bus` - The bus to add devices to.
+    fn add_arch_devs(vm: &mut Vm, bus: &mut Bus) -> Result<()> {
         let rtc_evt = EventFd::new()?;
         vm.register_irqfd(&rtc_evt, AARCH64_RTC_IRQ)?;
 
-        let mut dm = device_manager::DeviceManager::new(vm,
-                                                        mem,
-                                                        AARCH64_MMIO_LEN,
-                                                        AARCH64_MMIO_BASE,
-                                                        AARCH64_IRQ_BASE);
         let com_evt_1_3 = EventFd::new()?;
         let serial = Arc::new(Mutex::new(devices::Serial::new_out(
             com_evt_1_3.try_clone()?,
             Box::new(stdout()))));
-        dm.bus.insert(serial.clone(), AARCH64_SERIAL_ADDR,
-                      AARCH64_SERIAL_SIZE).expect("failed to add serial device");
+        bus.insert(serial.clone(), AARCH64_SERIAL_ADDR, AARCH64_SERIAL_SIZE)
+            .expect("failed to add serial device");
 
         let rtc = Arc::new(Mutex::new(devices::pl030::Pl030::new(rtc_evt)));
-        dm.bus.insert(rtc, AARCH64_RTC_ADDR,
-                      AARCH64_RTC_SIZE).expect("failed to add rtc device");
-        Ok(dm)
+        bus.insert(rtc, AARCH64_RTC_ADDR, AARCH64_RTC_SIZE)
+            .expect("failed to add rtc device");
+        Ok(())
     }
 
     /// The creates the interrupt controller device and optionally returns the fd for it.

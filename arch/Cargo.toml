@@ -5,8 +5,8 @@ authors = ["The Chromium OS Authors"]
 
 [dependencies]
 devices = { path = "../devices" }
-device_manager = { path = "../device_manager" }
 kvm = { path = "../kvm" }
 sys_util = { path = "../sys_util" }
+resources = { path = "../resources" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 libc = "*"

@@ -8,7 +8,7 @@ use std::fmt;
 use std::error;
 use std::fs::{File, OpenOptions, remove_file};
 use std::io::{self, stdin};
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,7 +21,6 @@ use libc::c_int;
 #[cfg(feature = "wl-dmabuf")]
 use libc::EINVAL;
 
-use device_manager;
 use devices;
 use io_jail::{self, Minijail};
 use kernel_cmdline;
@@ -30,6 +29,7 @@ use net_util::Tap;
 use qcow::{self, QcowFile};
 use sys_util::*;
 use sys_util;
+use resources::SystemAllocator;
 use vhost;
 use vm_control::{VmRequest, GpuMemoryAllocator, GpuMemoryPlaneDesc, GpuMemoryDesc};
 #[cfg(feature = "wl-dmabuf")]
@@ -46,6 +46,7 @@ use x86_64::X8664arch as Arch;
 use aarch64::AArch64 as Arch;
 
 pub enum Error {
+    AddingArchDevs(Box<error::Error>),
     BalloonDeviceNew(devices::virtio::BalloonError),
     BlockDeviceNew(sys_util::Error),
     BlockSignal(sys_util::signal::Error),
@@ -74,13 +75,13 @@ pub enum Error {
     OpenGpuBufferDevice,
     PollContextAdd(sys_util::Error),
     QcowDeviceCreate(qcow::Error),
-    RegisterBalloon(device_manager::Error),
-    RegisterBlock(device_manager::Error),
-    RegisterNet(device_manager::Error),
-    RegisterRng(device_manager::Error),
+    RegisterBalloon(MmioRegisterError),
+    RegisterBlock(MmioRegisterError),
+    RegisterNet(MmioRegisterError),
+    RegisterRng(MmioRegisterError),
     RegisterSignalHandler(sys_util::Error),
-    RegisterVsock(device_manager::Error),
-    RegisterWayland(device_manager::Error),
+    RegisterVsock(MmioRegisterError),
+    RegisterWayland(MmioRegisterError),
     RngDeviceNew(devices::virtio::RngError),
     SettingGidMap(io_jail::Error),
     SettingUidMap(io_jail::Error),
@@ -99,6 +100,7 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            &Error::AddingArchDevs(ref e) => write!(f, "Failed to add arch devs {:?}", e),
             &Error::BalloonDeviceNew(ref e) => write!(f, "failed to create balloon: {:?}", e),
             &Error::BlockDeviceNew(ref e) => write!(f, "failed to create block device: {:?}", e),
             &Error::BlockSignal(ref e) => write!(f, "failed to block signal: {:?}", e),
@@ -242,16 +244,120 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     Ok(j)
 }
 
+/// Errors for device manager.
+#[derive(Debug)]
+pub enum MmioRegisterError {
+    /// Could not create the mmio device to wrap a VirtioDevice.
+    CreateMmioDevice(sys_util::Error),
+    /// Failed to register ioevent with VM.
+    RegisterIoevent(sys_util::Error),
+    /// Failed to register irq eventfd with VM.
+    RegisterIrqfd(sys_util::Error),
+    /// Failed to initialize proxy device for jailed device.
+    ProxyDeviceCreation(devices::ProxyError),
+    /// Appending to kernel command line failed.
+    Cmdline(kernel_cmdline::Error),
+    /// No more IRQs are available.
+    IrqsExhausted,
+    /// No more MMIO space available.
+    AddrsExhausted,
+}
+
+impl fmt::Display for MmioRegisterError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &MmioRegisterError::CreateMmioDevice(ref e) => write!(f, "failed to create mmio device: {:?}", e),
+            &MmioRegisterError::Cmdline(ref e) => {
+                write!(f, "unable to add device to kernel command line: {}", e)
+            }
+            &MmioRegisterError::RegisterIoevent(ref e) => {
+                write!(f, "failed to register ioevent to VM: {:?}", e)
+            }
+            &MmioRegisterError::RegisterIrqfd(ref e) => {
+                write!(f, "failed to register irq eventfd to VM: {:?}", e)
+            }
+            &MmioRegisterError::ProxyDeviceCreation(ref e) => write!(f, "failed to create proxy device: {}", e),
+            &MmioRegisterError::IrqsExhausted => write!(f, "no more IRQs are available"),
+            &MmioRegisterError::AddrsExhausted => write!(f, "no more addresses are available"),
+        }
+    }
+}
+
+/// Register a device to be used via MMIO transport.
+fn register_mmio(bus: &mut devices::Bus,
+                 vm: &mut Vm,
+                 device: Box<devices::virtio::VirtioDevice>,
+                 jail: Option<Minijail>,
+                 resources: &mut SystemAllocator,
+                 cmdline: &mut kernel_cmdline::Cmdline)
+                 -> std::result::Result<(), MmioRegisterError> {
+    let irq = match resources.allocate_irq() {
+        None => return Err(MmioRegisterError::IrqsExhausted),
+        Some(i) => i,
+    };
+
+    // List of FDs to keep open in the child after it forks.
+    let mut keep_fds: Vec<RawFd> = device.keep_fds();
+    syslog::push_fds(&mut keep_fds);
+
+    let mmio_device = devices::virtio::MmioDevice::new((*vm.get_memory()).clone(),
+    device)
+        .map_err(MmioRegisterError::CreateMmioDevice)?;
+    let mmio_len = 0x1000; // TODO(dgreid) - configurable per arch?
+    let mmio_base = resources.allocate_mmio_addresses(mmio_len)
+        .ok_or(MmioRegisterError::AddrsExhausted)?;
+    for (i, queue_evt) in mmio_device.queue_evts().iter().enumerate() {
+        let io_addr = IoeventAddress::Mmio(mmio_base +
+                                           devices::virtio::NOTIFY_REG_OFFSET as u64);
+        vm.register_ioevent(&queue_evt, io_addr, i as u32)
+          .map_err(MmioRegisterError::RegisterIoevent)?;
+        keep_fds.push(queue_evt.as_raw_fd());
+    }
+
+    if let Some(interrupt_evt) = mmio_device.interrupt_evt() {
+        vm
+            .register_irqfd(&interrupt_evt, irq)
+            .map_err(MmioRegisterError::RegisterIrqfd)?;
+        keep_fds.push(interrupt_evt.as_raw_fd());
+    }
+
+    if let Some(jail) = jail {
+        let proxy_dev = devices::ProxyDevice::new(mmio_device, &jail, keep_fds)
+            .map_err(MmioRegisterError::ProxyDeviceCreation)?;
+
+        bus
+            .insert(Arc::new(Mutex::new(proxy_dev)),
+            mmio_base,
+            mmio_len)
+            .unwrap();
+    } else {
+        bus
+            .insert(Arc::new(Mutex::new(mmio_device)),
+            mmio_base,
+            mmio_len)
+            .unwrap();
+    }
+
+    cmdline
+        .insert("virtio_mmio.device",
+                &format!("4K@0x{:08x}:{}", mmio_base, irq))
+        .map_err(MmioRegisterError::Cmdline)?;
+
+    Ok(())
+}
+
 fn setup_mmio_bus(cfg: &Config,
                   vm: &mut Vm,
                   mem: &GuestMemory,
                   cmdline: &mut kernel_cmdline::Cmdline,
                   control_sockets: &mut Vec<UnlinkUnixDatagram>,
-                  balloon_device_socket: UnixDatagram)
+                  balloon_device_socket: UnixDatagram,
+                  resources: &mut SystemAllocator)
                   -> Result<devices::Bus> {
     static DEFAULT_PIVOT_ROOT: &'static str = "/var/empty";
-    let mut device_manager = Arch::get_device_manager(vm, mem.clone()).
-        map_err(|e| Error::SetupMMIOBus(e))?;
+    let mut bus = devices::Bus::new();
+
+    Arch::add_arch_devs(vm, &mut bus).map_err(Error::AddingArchDevs)?;
 
     // An empty directory for jailed device's pivot root.
     let empty_root_path = Path::new(DEFAULT_PIVOT_ROOT);
@@ -306,8 +412,7 @@ fn setup_mmio_bus(cfg: &Config,
             None
         };
 
-        device_manager
-            .register_mmio(block_box, jail, cmdline)
+        register_mmio(&mut bus, vm, block_box, jail, resources, cmdline)
             .map_err(Error::RegisterBlock)?;
     }
 
@@ -318,8 +423,7 @@ fn setup_mmio_bus(cfg: &Config,
     } else {
         None
     };
-    device_manager
-        .register_mmio(rng_box, rng_jail, cmdline)
+    register_mmio(&mut bus, vm, rng_box, rng_jail, resources, cmdline)
         .map_err(Error::RegisterRng)?;
 
     let balloon_box = Box::new(devices::virtio::Balloon::new(balloon_device_socket)
@@ -330,7 +434,7 @@ fn setup_mmio_bus(cfg: &Config,
     } else {
         None
     };
-    device_manager.register_mmio(balloon_box, balloon_jail, cmdline)
+    register_mmio(&mut bus, vm, balloon_box, balloon_jail, resources, cmdline)
         .map_err(Error::RegisterBalloon)?;
 
     // We checked above that if the IP is defined, then the netmask is, too.
@@ -348,8 +452,7 @@ fn setup_mmio_bus(cfg: &Config,
             None
         };
 
-        device_manager
-            .register_mmio(net_box, jail, cmdline)
+        register_mmio(&mut bus, vm, net_box, jail, resources, cmdline)
             .map_err(Error::RegisterNet)?;
     } else if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
@@ -377,8 +480,7 @@ fn setup_mmio_bus(cfg: &Config,
                     None
                 };
 
-                device_manager
-                    .register_mmio(net_box, jail, cmdline)
+                register_mmio(&mut bus, vm, net_box, jail, resources, cmdline)
                     .map_err(Error::RegisterNet)?;
             }
         }
@@ -441,8 +543,7 @@ fn setup_mmio_bus(cfg: &Config,
         } else {
             None
         };
-        device_manager
-            .register_mmio(wl_box, jail, cmdline)
+        register_mmio(&mut bus, vm, wl_box, jail, resources, cmdline)
             .map_err(Error::RegisterWayland)?;
     }
 
@@ -458,14 +559,12 @@ fn setup_mmio_bus(cfg: &Config,
             None
         };
 
-        device_manager
-            .register_mmio(vsock_box, jail, cmdline)
+        register_mmio(&mut bus, vm, vsock_box, jail, resources, cmdline)
             .map_err(Error::RegisterVsock)?;
     }
 
-    Ok(device_manager.bus)
+    Ok(bus)
 }
-
 
 fn setup_vcpu(kvm: &Kvm,
               vm: &Vm,
@@ -632,9 +731,9 @@ fn create_gpu_memory_allocator() -> Result<Option<Box<GpuMemoryAllocator>>> {
     Ok(None)
 }
 
-fn run_control(vm: &mut Vm,
+fn run_control(mut vm: Vm,
                control_sockets: Vec<UnlinkUnixDatagram>,
-               next_dev_pfn: &mut u64,
+               mut resources: SystemAllocator,
                stdio_serial: Arc<Mutex<devices::Serial>>,
                exit_evt: EventFd,
                sigchld_fd: SignalFd,
@@ -728,8 +827,8 @@ fn run_control(vm: &mut Vm,
                             Ok(request) => {
                                 let mut running = true;
                                 let response =
-                                    request.execute(vm,
-                                                    next_dev_pfn,
+                                    request.execute(&mut vm,
+                                                    &mut resources,
                                                     &mut running,
                                                     &balloon_host_socket,
                                                     gpu_memory_allocator.as_ref().map(|v| {
@@ -816,6 +915,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
 
     let mem_size = cfg.memory.unwrap_or(256) << 20;
+    let mut resources = Arch::get_resource_allocator(mem_size as u64);
     let mem = Arch::setup_memory(mem_size as u64).map_err(|e| Error::CreateGuestMemory(e))?;
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;
     let mut vm = Arch::create_vm(&kvm, mem.clone()).map_err(|e| Error::CreateVm(e))?;
@@ -831,7 +931,6 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
     let irq_chip = Arch::create_irq_chip(&vm).map_err(|e| Error::CreateIrqChip(e))?;
     let mut cmdline = Arch::get_base_linux_cmdline();
-    let mut next_dev_pfn = Arch::get_base_dev_pfn(mem_size as u64);
     let (io_bus, stdio_serial) = Arch::setup_io_bus(&mut vm,
                                                     exit_evt.try_clone().
                                                     map_err(Error::CloneEventFd)?).
@@ -844,7 +943,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
                                   &mem,
                                   &mut cmdline,
                                   &mut control_sockets,
-                                  balloon_device_socket)?;
+                                  balloon_device_socket,
+                                  &mut resources)?;
 
     let gpu_memory_allocator = if cfg.wayland_dmabuf {
         create_gpu_memory_allocator()?
@@ -879,9 +979,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
     }
     vcpu_thread_barrier.wait();
 
-    run_control(&mut vm,
+    run_control(vm,
                 control_sockets,
-                &mut next_dev_pfn,
+                resources,
                 stdio_serial,
                 exit_evt,
                 sigchld_fd,
