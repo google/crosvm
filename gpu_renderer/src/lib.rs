@@ -466,7 +466,7 @@ impl Renderer {
     /// Imports a resource from an EGLImage.
     pub fn import_resource(&self,
                            mut args: virgl_renderer_resource_create_args,
-                           image: Image)
+                           image: &Image)
                            -> Result<Resource> {
         let ret = unsafe { virgl_renderer_resource_import_eglimage(&mut args, image.image) };
         ret_to_res(ret)?;

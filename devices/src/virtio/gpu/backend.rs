@@ -18,6 +18,7 @@ use sys_util::{GuestAddress, GuestMemory};
 use super::gpu_buffer::{Device, Buffer, Format, Flags};
 use super::gpu_display::*;
 use super::gpu_renderer::{Box3, Renderer, Context as RendererContext,
+                          Image as RendererImage,
                           Resource as GpuRendererResource, ResourceCreateArgs,
                           format_fourcc as renderer_fourcc};
 
@@ -156,16 +157,19 @@ struct BackedBuffer {
     backing: Vec<(GuestAddress, usize)>,
     buffer: Buffer,
     gpu_renderer_resource: Option<GpuRendererResource>,
+    _image: Option<RendererImage>,
 }
 
 impl BackedBuffer {
     fn new_renderer_registered(buffer: Buffer,
-                               gpu_renderer_resource: GpuRendererResource) -> BackedBuffer {
+                               gpu_renderer_resource: GpuRendererResource,
+                               image: RendererImage) -> BackedBuffer {
         BackedBuffer {
             display_import: None,
             backing: Vec::new(),
             buffer,
             gpu_renderer_resource: Some(gpu_renderer_resource),
+            _image: Some(image),
         }
     }
 }
@@ -177,6 +181,7 @@ impl From<Buffer> for BackedBuffer {
             backing: Vec::new(),
             buffer,
             gpu_renderer_resource: None,
+            _image: None,
         }
     }
 }
@@ -748,12 +753,13 @@ impl Backend {
                         };
 
                         let res = self.renderer
-                            .import_resource(create_args, image);
+                            .import_resource(create_args, &image);
                         match res {
                             Ok(res) => {
                                 let mut backed =
                                     BackedBuffer::new_renderer_registered(buffer,
-                                                                          res);
+                                                                          res,
+                                                                          image);
                                 slot.insert(Box::new(backed));
                                 GpuResponse::OkNoData
                             }
