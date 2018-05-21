@@ -13,6 +13,37 @@ const VIRTQ_DESC_F_WRITE: u16 = 0x2;
 #[allow(dead_code)]
 const VIRTQ_DESC_F_INDIRECT: u16 = 0x4;
 
+/// An iterator over a single descriptor chain.  Not to be confused with AvailIter,
+/// which iterates over the descriptor chain heads in a queue.
+pub struct DescIter<'a> {
+    next: Option<DescriptorChain<'a>>,
+}
+
+impl<'a> DescIter<'a> {
+    /// Returns an iterator that only yields the readable descriptors in the chain.
+    pub fn readable(self) -> impl Iterator<Item=DescriptorChain<'a>> {
+        self.take_while(DescriptorChain::is_read_only)
+    }
+
+    /// Returns an iterator that only yields the writable descriptors in the chain.
+    pub fn writable(self) -> impl Iterator<Item=DescriptorChain<'a>> {
+        self.skip_while(DescriptorChain::is_read_only)
+    }
+}
+
+impl<'a> Iterator for DescIter<'a> {
+    type Item = DescriptorChain<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(current) = self.next.take() {
+            self.next = current.next_descriptor();
+            Some(current)
+        } else {
+            None
+        }
+    }
+}
+
 /// A virtio descriptor chain.
 #[derive(Clone)]
 pub struct DescriptorChain<'a> {
@@ -124,6 +155,13 @@ impl<'a> DescriptorChain<'a> {
                      })
         } else {
             None
+        }
+    }
+
+    /// Produces an iterator over all the descriptors in this chain.
+    pub fn into_iter(self) -> DescIter<'a> {
+        DescIter {
+            next: Some(self),
         }
     }
 }
