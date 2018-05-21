@@ -103,6 +103,14 @@ impl<'a> DescriptorChain<'a> {
         self.flags & VIRTQ_DESC_F_WRITE != 0
     }
 
+    /// If the driver designated this as a read only descriptor.
+    ///
+    /// If this is false, this descriptor is write only.
+    /// Read only means the emulated device can read and the driver can write.
+    pub fn is_read_only(&self) -> bool {
+        self.flags & VIRTQ_DESC_F_WRITE == 0
+    }
+
     /// Gets the next descriptor in this descriptor chain, if there is one.
     ///
     /// Note that this is distinct from the next descriptor chain returned by `AvailIter`, which is
