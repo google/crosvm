@@ -301,10 +301,10 @@ impl Frontend {
                     } else {
                         q_desc.data = Some((extra_desc.addr, extra_desc.len));
                     }
-                }
-                if let Some(extra_desc) = desc.next_descriptor() {
-                    if extra_desc.is_write_only() && q_desc.ret.is_none() {
-                        q_desc.ret = Some((extra_desc.addr, extra_desc.len));
+                    if let Some(extra_desc) = extra_desc.next_descriptor() {
+                        if extra_desc.is_write_only() && q_desc.ret.is_none() {
+                            q_desc.ret = Some((extra_desc.addr, extra_desc.len));
+                        }
                     }
                 }
                 descriptors.push_back(q_desc);
