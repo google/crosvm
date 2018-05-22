@@ -27,6 +27,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "bit_field"
+version = "0.1.0"
+dependencies = [
+ "bit_field_derive 0.1.0",
+]
+
+[[package]]
+name = "bit_field_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 0.12.15 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -52,6 +68,7 @@ version = "0.1.0"
 dependencies = [
  "aarch64 0.1.0",
  "arch 0.1.0",
+ "bit_field 0.1.0",
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "crosvm_plugin 0.16.0",
  "data_model 0.1.0",

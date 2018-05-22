@@ -17,6 +17,7 @@ gpu = ["devices/gpu"]
 
 [dependencies]
 arch = { path = "arch" }
+bit_field = { path = "bit_field" }
 devices = { path = "devices" }
 gpu_buffer = { path = "gpu_buffer", optional = true }
 io_jail = { path = "io_jail" }
