@@ -18,7 +18,8 @@ use sys_util::{GuestAddress, GuestMemory};
 use super::gpu_buffer::{Device, Buffer, Format, Flags};
 use super::gpu_display::*;
 use super::gpu_renderer::{Box3, Renderer, Context as RendererContext,
-                          Resource as GpuRendererResource, ResourceCreateArgs};
+                          Resource as GpuRendererResource, ResourceCreateArgs,
+                          format_fourcc as renderer_fourcc};
 
 use super::protocol::GpuResponse;
 
@@ -154,6 +155,19 @@ struct BackedBuffer {
     display_import: Option<(Rc<RefCell<GpuDisplay>>, u32)>,
     backing: Vec<(GuestAddress, usize)>,
     buffer: Buffer,
+    gpu_renderer_resource: Option<GpuRendererResource>,
+}
+
+impl BackedBuffer {
+    fn new_renderer_registered(buffer: Buffer,
+                               gpu_renderer_resource: GpuRendererResource) -> BackedBuffer {
+        BackedBuffer {
+            display_import: None,
+            backing: Vec::new(),
+            buffer,
+            gpu_renderer_resource: Some(gpu_renderer_resource),
+        }
+    }
 }
 
 impl From<Buffer> for BackedBuffer {
@@ -162,6 +176,7 @@ impl From<Buffer> for BackedBuffer {
             display_import: None,
             backing: Vec::new(),
             buffer,
+            gpu_renderer_resource: None,
         }
     }
 }
@@ -181,6 +196,10 @@ impl VirglResource for BackedBuffer {
 
     fn detach_guest_backing(&mut self) {
         self.backing.clear()
+    }
+
+    fn gpu_renderer_resource(&mut self) -> Option<&mut GpuRendererResource> {
+        self.gpu_renderer_resource.as_mut()
     }
 
     fn buffer(&self) -> Option<&Buffer> {
@@ -646,6 +665,17 @@ impl Backend {
         }
     }
 
+    pub fn validate_args_as_fourcc(args: ResourceCreateArgs) -> Option<u32> {
+        if args.depth == 1 &&
+           args.array_size == 1 &&
+           args.last_level == 0 &&
+           args.nr_samples == 0 {
+            renderer_fourcc(args.format)
+        } else {
+            None
+        }
+    }
+
     /// Creates a 3D resource with the given properties and associated it with the given id.
     pub fn resource_create_3d(&mut self,
                               id: u32,
@@ -663,31 +693,90 @@ impl Backend {
         if id == 0 {
             return GpuResponse::ErrInvalidResourceId;
         }
+
+        let create_args = ResourceCreateArgs {
+            handle: id,
+            target,
+            format,
+            bind,
+            width,
+            height,
+            depth,
+            array_size,
+            last_level,
+            nr_samples,
+            flags,
+        };
+
         match self.resources.entry(id) {
             Entry::Occupied(_) => GpuResponse::ErrInvalidResourceId,
             Entry::Vacant(slot) => {
-                let res = self.renderer
-                    .create_resource(ResourceCreateArgs {
-                                         handle: id,
-                                         target,
-                                         format,
-                                         bind,
-                                         width,
-                                         height,
-                                         depth,
-                                         array_size,
-                                         last_level,
-                                         nr_samples,
-                                         flags,
-                                     });
-                match res {
-                    Ok(res) => {
-                        slot.insert(Box::new(res));
-                        GpuResponse::OkNoData
-                    }
-                    Err(e) => {
-                        error!("failed to create renderer resource: {}", e);
-                        GpuResponse::ErrUnspec
+                match Backend::validate_args_as_fourcc(create_args) {
+                    Some(fourcc) => {
+                        let buffer = match self.device
+                            .create_buffer(width,
+                                           height,
+                                           Format::from(fourcc),
+                                           Flags::empty().use_scanout(true).use_linear(true)) {
+                            Ok(buffer) => buffer,
+                            Err(e) => {
+                                error!("failed to create buffer for 3d resource {}: {}", format, e);
+                                return GpuResponse::ErrUnspec;
+                            }
+                        };
+
+                        let dma_buf_fd = match buffer.export_plane_fd(0) {
+                            Ok(dma_buf_fd) => dma_buf_fd,
+                            Err(e) => {
+                                error!("failed to export plane fd: {}", e);
+                                return GpuResponse::ErrUnspec
+                            }
+                        };
+
+                        let image = match self.renderer
+                            .image_from_dmabuf(fourcc,
+                                               width,
+                                               height,
+                                               dma_buf_fd.as_raw_fd(),
+                                               buffer.plane_offset(0),
+                                               buffer.plane_stride(0)) {
+                            Ok(image) => image,
+                            Err(e) => {
+                                error!("failed to create egl image: {}", e);
+                                return GpuResponse::ErrUnspec
+                            }
+                        };
+
+                        let res = self.renderer
+                            .import_resource(create_args, image);
+                        match res {
+                            Ok(res) => {
+                                let mut backed =
+                                    BackedBuffer::new_renderer_registered(buffer,
+                                                                          res);
+                                slot.insert(Box::new(backed));
+                                GpuResponse::OkNoData
+                            }
+                            Err(e) => {
+                                error!("failed to import renderer resource: {}",
+                                       e);
+                                GpuResponse::ErrUnspec
+                            }
+                        }
+                    },
+                    None => {
+                        let res = self.renderer.create_resource(create_args);
+                        match res {
+                            Ok(res) => {
+                                slot.insert(Box::new(res));
+                                GpuResponse::OkNoData
+                            }
+                            Err(e) => {
+                                error!("failed to create renderer resource: {}",
+                                       e);
+                                GpuResponse::ErrUnspec
+                            }
+                        }
                     }
                 }
             }

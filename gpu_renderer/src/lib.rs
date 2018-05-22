@@ -19,7 +19,7 @@ use std::marker::PhantomData;
 use std::mem::{size_of, transmute, uninitialized};
 use std::ops::Deref;
 use std::os::raw::{c_void, c_int, c_uint, c_char};
-use std::os::unix::io::FromRawFd;
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::ptr::{null, null_mut};
 use std::rc::Rc;
 use std::result;
@@ -32,7 +32,10 @@ use generated::virglrenderer::*;
 pub use generated::virglrenderer::{virgl_renderer_resource_create_args,
                                    virgl_renderer_resource_info};
 use generated::epoxy_egl::{EGL_CONTEXT_CLIENT_VERSION, EGL_SURFACE_TYPE, EGL_OPENGL_ES_API,
-                           EGL_NONE, EGL_GL_TEXTURE_2D_KHR, EGLDEBUGPROCKHR, EGLAttrib,
+                           EGL_NONE, EGL_GL_TEXTURE_2D_KHR, EGL_WIDTH, EGL_HEIGHT,
+                           EGL_LINUX_DRM_FOURCC_EXT, EGL_DMA_BUF_PLANE0_FD_EXT,
+                           EGL_DMA_BUF_PLANE0_OFFSET_EXT, EGL_DMA_BUF_PLANE0_PITCH_EXT,
+                           EGL_LINUX_DMA_BUF_EXT, EGLDEBUGPROCKHR, EGLAttrib,
                            EGLuint64KHR, EGLNativeDisplayType, EGLConfig, EGLContext, EGLDisplay,
                            EGLSurface, EGLClientBuffer, EGLBoolean, EGLint, EGLenum, EGLImageKHR};
 use generated::p_defines::{PIPE_TEXTURE_1D, PIPE_TEXTURE_2D, PIPE_BIND_SAMPLER_VIEW};
@@ -301,6 +304,7 @@ impl Deref for EGLFunctions {
 pub struct Renderer {
     no_sync_send: PhantomData<*mut ()>,
     egl_funcs: EGLFunctions,
+    display: EGLDisplay,
 }
 
 impl Renderer {
@@ -397,6 +401,7 @@ impl Renderer {
         Ok(Renderer {
                no_sync_send: PhantomData,
                egl_funcs,
+               display
            })
     }
 
@@ -458,6 +463,22 @@ impl Renderer {
            })
     }
 
+    /// Imports a resource from an EGLImage.
+    pub fn import_resource(&self,
+                           mut args: virgl_renderer_resource_create_args,
+                           image: Image)
+                           -> Result<Resource> {
+        let ret = unsafe { virgl_renderer_resource_import_eglimage(&mut args, image.image) };
+        ret_to_res(ret)?;
+        Ok(Resource {
+               id: args.handle,
+               backing_iovecs: Vec::new(),
+               backing_mem: None,
+               egl_funcs: self.egl_funcs.clone(),
+               no_sync_send: PhantomData,
+           })
+    }
+
     /// Helper that creates a simple 1 dimensional resource with basic metadata.
     pub fn create_tex_1d(&self, id: u32, width: u32) -> Result<Resource> {
         self.create_resource(virgl_renderer_resource_create_args {
@@ -490,6 +511,47 @@ impl Renderer {
                                  bind: PIPE_BIND_SAMPLER_VIEW,
                                  flags: 0,
                              })
+    }
+
+    /// Creates an EGLImage from a DMA buffer.
+    pub fn image_from_dmabuf(&self,
+                             fourcc: u32,
+                             width: u32,
+                             height: u32,
+                             fd: RawFd,
+                             offset: u32,
+                             stride: u32) -> Result<Image> {
+        let mut attrs = [EGL_WIDTH as EGLint,
+                         width as EGLint,
+                         EGL_HEIGHT as EGLint,
+                         height as EGLint,
+                         EGL_LINUX_DRM_FOURCC_EXT as EGLint,
+                         fourcc as EGLint,
+                         EGL_DMA_BUF_PLANE0_FD_EXT as EGLint,
+                         fd as EGLint,
+                         EGL_DMA_BUF_PLANE0_OFFSET_EXT as EGLint,
+                         offset as EGLint,
+                         EGL_DMA_BUF_PLANE0_PITCH_EXT as EGLint,
+                         stride as EGLint,
+                         EGL_NONE as EGLint];
+
+        let image = unsafe {
+            (self.egl_funcs.CreateImageKHR)(self.display,
+                                            0 as EGLContext,
+                                            EGL_LINUX_DMA_BUF_EXT,
+                                            null_mut() as EGLClientBuffer,
+                                            attrs.as_mut_ptr())
+        };
+
+        if image.is_null() {
+            return Err(Error::CreateImage);
+        }
+
+        Ok(Image {
+            egl_funcs: self.egl_funcs.clone(),
+            egl_dpy: self.display,
+            image
+        })
     }
 }
 
@@ -544,6 +606,21 @@ impl Drop for Context {
         // The context is safe to destroy because nothing else can be referencing it.
         unsafe {
             virgl_renderer_context_destroy(self.id);
+        }
+    }
+}
+
+/// A wrapper of an EGLImage to manage its destruction.
+pub struct Image {
+    egl_funcs: EGLFunctions,
+    egl_dpy: EGLDisplay,
+    image: EGLImageKHR,
+}
+
+impl Drop for Image {
+    fn drop(&mut self) {
+        unsafe {
+            (self.egl_funcs.DestroyImageKHR)(self.egl_dpy, self.image);
         }
     }
 }
