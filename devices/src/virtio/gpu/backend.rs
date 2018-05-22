@@ -937,4 +937,8 @@ impl Backend {
     pub fn fence_poll(&mut self) -> u32 {
         self.renderer.poll()
     }
+
+    pub fn force_ctx_0(&mut self) {
+        self.renderer.force_ctx_0();
+    }
 }

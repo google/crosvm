@@ -594,6 +594,10 @@ impl Renderer {
         };
         ret_to_res(ret)
     }
+
+    pub fn force_ctx_0(&self) {
+        unsafe { virgl_renderer_force_ctx_0() };
+    }
 }
 
 /// A context in which resources can be attached/detached and commands can be submitted.

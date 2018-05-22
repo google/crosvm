@@ -92,6 +92,8 @@ impl Frontend {
                            cmd: GpuCommand,
                            data: Option<VolatileSlice>)
                            -> GpuResponse {
+        self.backend.force_ctx_0();
+
         match cmd {
             GpuCommand::GetDisplayInfo(_) => {
                 GpuResponse::OkDisplayInfo(self.backend.display_info().to_vec())
