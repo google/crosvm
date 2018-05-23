@@ -41,10 +41,12 @@ pub trait LinuxArch {
     /// * `mem_size` - The size in bytes of system memory
     /// * `vcpu_count` - Number of virtual CPUs the guest will have
     /// * `cmdline` - the kernel commandline
+    /// * `pci_irqs` - Any PCI irqs that need to be configured (Interrupt Line, PCI pin).
     fn setup_system_memory(mem: &GuestMemory,
                            mem_size: u64,
                            vcpu_count: u32,
-                           cmdline: &CStr) -> Result<()>;
+                           cmdline: &CStr,
+                           pci_irqs: Vec<(u32, devices::PciInterruptPin)>) -> Result<()>;
 
     /// Creates a new VM object and initializes architecture specific devices
     ///

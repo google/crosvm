@@ -69,6 +69,7 @@ use std::io::stdout;
 
 use bootparam::boot_params;
 use bootparam::E820_RAM;
+use devices::PciInterruptPin;
 use sys_util::{EventFd, GuestAddress, GuestMemory};
 use resources::{AddressRanges, SystemAllocator};
 use kvm::*;
@@ -139,7 +140,8 @@ fn configure_system(guest_mem: &GuestMemory,
                     kernel_addr: GuestAddress,
                     cmdline_addr: GuestAddress,
                     cmdline_size: usize,
-                    num_cpus: u8)
+                    num_cpus: u8,
+                    pci_irqs: Vec<(u32, PciInterruptPin)>)
                     -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
@@ -150,7 +152,7 @@ fn configure_system(guest_mem: &GuestMemory,
     let end_32bit_gap_start = GuestAddress(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE);
 
     // Note that this puts the mptable at 0x0 in guest physical memory.
-    mptable::setup_mptable(guest_mem, num_cpus)?;
+    mptable::setup_mptable(guest_mem, num_cpus, pci_irqs)?;
 
     let mut params: boot_params = Default::default();
 
@@ -250,11 +252,12 @@ impl arch::LinuxArch for X8664arch {
     /// * `vcpu_count` - Number of virtual CPUs the guest will have.
     /// * `cmdline` - the kernel commandline
     fn setup_system_memory(mem: &GuestMemory, _mem_size: u64,
-                           vcpu_count: u32, cmdline: &CStr) -> Result<()> {
+                           vcpu_count: u32, cmdline: &CStr,
+                           pci_irqs: Vec<(u32, PciInterruptPin)>) -> Result<()> {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)?;
         configure_system(mem, GuestAddress(KERNEL_START_OFFSET),
                          GuestAddress(CMDLINE_OFFSET),
-                         cmdline.to_bytes().len() + 1, vcpu_count as u8)?;
+                         cmdline.to_bytes().len() + 1, vcpu_count as u8, pci_irqs)?;
         Ok(())
     }
 

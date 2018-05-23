@@ -20,7 +20,7 @@ use std::io::stdout;
 use std::sync::{Arc, Mutex};
 use std::ffi::CStr;
 
-use devices::Bus;
+use devices::{Bus, PciInterruptPin};
 use sys_util::{EventFd, GuestAddress, GuestMemory};
 use resources::{AddressRanges, SystemAllocator};
 use std::os::unix::io::FromRawFd;
@@ -171,8 +171,12 @@ impl arch::LinuxArch for AArch64 {
         Ok(())
     }
 
-    fn setup_system_memory(mem: &GuestMemory, mem_size: u64, vcpu_count: u32,
-                           cmdline: &CStr) -> Result<()> {
+    fn setup_system_memory(mem: &GuestMemory,
+                           mem_size: u64,
+                           vcpu_count: u32,
+                           cmdline: &CStr,
+                           _pci_irqs: Vec<(u32, PciInterruptPin)>) -> Result<()> {
+        // TODO(dgreid) set up PCI in the device tree.
         fdt::create_fdt(AARCH64_FDT_MAX_SIZE as usize,
                         mem,
                         vcpu_count,

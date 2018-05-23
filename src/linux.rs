@@ -910,8 +910,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
     // kernel loading
     Arch::load_kernel(&mem, &mut kernel_image).map_err(|e| Error::LoadKernel(e))?;
     Arch::setup_system_memory(&mem, mem_size as u64, vcpu_count,
-                              &CString::new(cmdline).unwrap()).
-        map_err(|e| Error::SetupSystemMemory(e))?;
+                              &CString::new(cmdline).unwrap(), Vec::new())
+        .map_err(|e| Error::SetupSystemMemory(e))?;
 
     setup_vcpu_signal_handler()?;
     for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
