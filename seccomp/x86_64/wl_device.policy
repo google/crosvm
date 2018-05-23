@@ -1,3 +1,7 @@
+# Copyright 2018 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
 close: 1
 dup: 1
 dup2: 1
@@ -25,8 +29,8 @@ write: 1
 eventfd2: 1
 # Used to connect to wayland. arg0 == AF_UNIX && arg1 == SOCK_STREAM|SOCK_CLOEXEC
 socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
-# arg1 == FIONBIO
-ioctl: arg1 == 0x5421
+# arg1 == FIONBIO || arg1 == DMA_BUF_IOCTL_SYNC
+ioctl: arg1 == 0x5421 || arg1 == 0x40086200
 connect: arg2 == 13
 # Used to communicate with wayland
 recvmsg: 1

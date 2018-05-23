@@ -38,6 +38,8 @@ use std::fmt;
 use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Read};
 use std::mem::{size_of, size_of_val};
+#[cfg(feature = "wl-dmabuf")]
+use std::os::raw::{c_uint, c_ulonglong};
 use std::os::unix::io::{AsRawFd, RawFd};
 #[cfg(feature = "wl-dmabuf")]
 use std::os::unix::io::FromRawFd;
@@ -51,13 +53,16 @@ use std::thread;
 use std::time::Duration;
 
 #[cfg(feature = "wl-dmabuf")]
-use libc::dup;
+use libc::{dup, EBADF, EINVAL};
 
 use data_model::*;
 use data_model::VolatileMemoryError;
 
 use sys_util::{Error, Result, EventFd, Scm, SharedMemory, GuestAddress, GuestMemory,
                GuestMemoryError, PollContext, PollToken, FileFlags, pipe};
+
+#[cfg(feature = "wl-dmabuf")]
+use sys_util::ioctl_with_ref;
 
 use vm_control::{VmControlError, VmRequest, VmResponse, MaybeOwnedFd, GpuMemoryDesc};
 use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_USED_RING, TYPE_WL};
@@ -72,6 +77,8 @@ const VIRTIO_WL_CMD_VFD_NEW_PIPE: u32 = 261;
 const VIRTIO_WL_CMD_VFD_HUP: u32 = 262;
 #[cfg(feature = "wl-dmabuf")]
 const VIRTIO_WL_CMD_VFD_NEW_DMABUF: u32 = 263;
+#[cfg(feature = "wl-dmabuf")]
+const VIRTIO_WL_CMD_VFD_DMABUF_SYNC: u32 = 264;
 const VIRTIO_WL_RESP_OK: u32 = 4096;
 const VIRTIO_WL_RESP_VFD_NEW: u32 = 4097;
 #[cfg(feature = "wl-dmabuf")]
@@ -94,6 +101,22 @@ const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 const NEXT_VFD_ID_BASE: u32 = 0x40000000;
 const VFD_ID_HOST_MASK: u32 = NEXT_VFD_ID_BASE;
 const IN_BUFFER_LEN: usize = 4080;
+
+#[cfg(feature = "wl-dmabuf")]
+const VIRTIO_WL_VFD_DMABUF_SYNC_VALID_FLAG_MASK: u32 = 0x7;
+
+#[cfg(feature = "wl-dmabuf")]
+const DMA_BUF_IOCTL_BASE: c_uint = 0x62;
+
+#[cfg(feature = "wl-dmabuf")]
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct dma_buf_sync {
+    flags: c_ulonglong,
+}
+
+#[cfg(feature = "wl-dmabuf")]
+ioctl_iow_nr!(DMA_BUF_IOCTL_SYNC, DMA_BUF_IOCTL_BASE, 0, dma_buf_sync);
 
 const PAGE_MASK: u64 = 0x0fff;
 
@@ -158,6 +181,20 @@ fn parse_new_dmabuf(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
        })
 }
 
+#[cfg(feature = "wl-dmabuf")]
+fn parse_dmabuf_sync(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
+    const ID_OFFSET: u64 = 8;
+    const FLAGS_OFFSET: u64 = 12;
+    let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
+                                              .ok_or(WlError::CheckedOffset)?)?;
+    let flags: Le32 =
+        mem.read_obj_from_addr(mem.checked_offset(addr, FLAGS_OFFSET)
+                                    .ok_or(WlError::CheckedOffset)?)?;
+    Ok(WlOp::DmabufSync {
+           id: id.into(),
+           flags: flags.into(),
+       })
+}
 
 fn parse_send(addr: GuestAddress, len: u32, mem: &GuestMemory) -> WlResult<WlOp> {
     const ID_OFFSET: u64 = 8;
@@ -200,6 +237,8 @@ fn parse_desc(desc: &DescriptorChain, mem: &GuestMemory) -> WlResult<WlOp> {
         VIRTIO_WL_CMD_VFD_NEW_PIPE => parse_new_pipe(desc.addr, mem),
         #[cfg(feature = "wl-dmabuf")]
         VIRTIO_WL_CMD_VFD_NEW_DMABUF => parse_new_dmabuf(desc.addr, mem),
+        #[cfg(feature = "wl-dmabuf")]
+        VIRTIO_WL_CMD_VFD_DMABUF_SYNC => parse_dmabuf_sync(desc.addr, mem),
         v => Ok(WlOp::InvalidCommand { op_type: v }),
     }
 }
@@ -350,6 +389,7 @@ enum WlError {
     RecvVfd(Error),
     ReadPipe(io::Error),
     PollContextAdd(Error),
+    DmabufSync(io::Error),
 }
 
 impl fmt::Display for WlError {
@@ -376,6 +416,7 @@ impl error::Error for WlError {
             WlError::RecvVfd(_) => "Failed to recv on a socket",
             WlError::ReadPipe(_) => "Failed to read a pipe",
             WlError::PollContextAdd(_) => "Failed to listen to FD on poll context",
+            WlError::DmabufSync(_) => "Failed to synchronize DMABuf access",
         }
     }
 }
@@ -490,6 +531,8 @@ enum WlOp {
     NewPipe { id: u32, flags: u32 },
     #[cfg(feature = "wl-dmabuf")]
     NewDmabuf { id: u32, width: u32, height: u32, format: u32 },
+    #[cfg(feature = "wl-dmabuf")]
+    DmabufSync { id: u32, flags: u32 },
     InvalidCommand { op_type: u32 },
 }
 
@@ -560,6 +603,8 @@ struct WlVfd {
     remote_pipe: Option<File>,
     local_pipe: Option<(u32 /* flags */, File)>,
     slot: Option<(u32 /* slot */, u64 /* pfn */, VmRequester)>,
+    #[cfg(feature = "wl-dmabuf")]
+    is_dmabuf: bool,
 }
 
 impl fmt::Debug for WlVfd {
@@ -630,9 +675,32 @@ impl WlVfd {
                 let vfd_shm = SharedMemory::from_raw_fd(raw_fd).map_err(WlError::NewAlloc)?;
                 vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm.into()));
                 vfd.slot = Some((slot, pfn, vm));
+                vfd.is_dmabuf = true;
                 Ok((vfd, desc))
             }
             _ => Err(WlError::VmBadResponse),
+        }
+    }
+
+    #[cfg(feature = "wl-dmabuf")]
+    fn dmabuf_sync(&self, flags: u32) -> WlResult<()> {
+        if !self.is_dmabuf {
+            return Err(WlError::DmabufSync(io::Error::from_raw_os_error(EINVAL)));
+        }
+
+        match self.guest_shared_memory.as_ref() {
+            Some(&(_, ref fd)) => {
+                let sync = dma_buf_sync {
+                    flags: flags as u64,
+                };
+                // Safe as fd is a valid dmabuf and incorrect flags will return an error.
+                if unsafe { ioctl_with_ref(fd, DMA_BUF_IOCTL_SYNC(), &sync) } < 0 {
+                    Err(WlError::DmabufSync(io::Error::last_os_error()))
+                } else {
+                    Ok(())
+                }
+            }
+            None => Err(WlError::DmabufSync(io::Error::from_raw_os_error(EBADF)))
         }
     }
 
@@ -949,6 +1017,21 @@ impl WlState {
         }
     }
 
+    #[cfg(feature = "wl-dmabuf")]
+    fn dmabuf_sync(&mut self, vfd_id: u32, flags: u32) -> WlResult<WlResp> {
+        if flags & !(VIRTIO_WL_VFD_DMABUF_SYNC_VALID_FLAG_MASK) != 0 {
+            return Ok(WlResp::InvalidFlags);
+        }
+
+        match self.vfds.get_mut(&vfd_id) {
+            Some(vfd) =>  {
+                vfd.dmabuf_sync(flags)?;
+                Ok(WlResp::Ok)
+            }
+            None => Ok(WlResp::InvalidId),
+        }
+    }
+
     fn new_context(&mut self, id: u32) -> WlResult<WlResp> {
         if id & VFD_ID_HOST_MASK != 0 {
             return Ok(WlResp::InvalidId);
@@ -1112,6 +1195,8 @@ impl WlState {
             WlOp::NewPipe { id, flags } => self.new_pipe(id, flags),
             #[cfg(feature = "wl-dmabuf")]
             WlOp::NewDmabuf { id, width, height, format } => self.new_dmabuf(id, width, height, format),
+            #[cfg(feature = "wl-dmabuf")]
+            WlOp::DmabufSync { id, flags } => self.dmabuf_sync(id, flags),
             WlOp::InvalidCommand { op_type } => {
                 warn!("unexpected command {}", op_type);
                 Ok(WlResp::InvalidCommand)
