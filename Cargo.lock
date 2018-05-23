@@ -71,6 +71,7 @@ dependencies = [
  "qcow 0.1.0",
  "qcow_utils 0.1.0",
  "rand 0.3.20 (registry+https://github.com/rust-lang/crates.io-index)",
+ "resources 0.1.0",
  "sys_util 0.1.0",
  "vhost 0.1.0",
  "vm_control 0.1.0",
@@ -296,6 +297,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "fuchsia-zircon 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "resources"
+version = "0.1.0"
+dependencies = [
+ "data_model 0.1.0",
 ]
 
 [[package]]

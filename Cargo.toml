@@ -36,6 +36,7 @@ plugin_proto = { path = "plugin_proto", optional = true }
 crosvm_plugin = { path = "crosvm_plugin", optional = true }
 protobuf = { version = "=1.4.3", optional = true }
 qcow_utils = { path = "qcow_utils" }
+resources = { path = "resources" }
 p9 = { path = "p9" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
