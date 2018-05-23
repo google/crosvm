@@ -188,6 +188,7 @@ const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks =
          create_gl_context: Some(create_gl_context),
          destroy_gl_context: Some(destroy_gl_context),
          make_current: Some(make_current),
+         get_drm_fd: None,
      };
 
 unsafe extern "C" fn error_callback(error: c_uint,
