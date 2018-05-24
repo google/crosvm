@@ -348,37 +348,41 @@ impl arch::LinuxArch for X8664arch {
                                          map_err(|e| Error::CloneEventFd(e))?,
                                          Box::new(stdout()))));
         let nul_device = Arc::new(Mutex::new(NoDevice));
-        io_bus.insert(stdio_serial.clone(), 0x3f8, 0x8).unwrap();
+        io_bus.insert(stdio_serial.clone(), 0x3f8, 0x8, false).unwrap();
         io_bus.insert(Arc::new(Mutex::new(
             devices::Serial::new_sink(com_evt_2_4.try_clone().
                                       map_err(|e| Error::CloneEventFd(e))?))),
                       0x2f8,
-                      0x8)
+                      0x8,
+                      false)
             .unwrap();
         io_bus.insert(Arc::new(Mutex::new(
             devices::Serial::new_sink(com_evt_1_3.try_clone().
                                       map_err(|e| Error::CloneEventFd(e))?))),
                       0x3e8,
-                      0x8)
+                      0x8,
+                      false)
             .unwrap();
         io_bus.insert(Arc::new(Mutex::new(
             devices::Serial::new_sink(com_evt_2_4.try_clone().
                                       map_err(|e| Error::CloneEventFd(e))?))),
                       0x2e8,
-                      0x8)
+                      0x8,
+                      false)
             .unwrap();
-        io_bus.insert(Arc::new(Mutex::new(devices::Cmos::new())), 0x70, 0x2)
+        io_bus.insert(Arc::new(Mutex::new(devices::Cmos::new())), 0x70, 0x2, false)
             .unwrap();
         io_bus.insert(Arc::new(Mutex::new(
             devices::I8042Device::new(exit_evt.try_clone().
                                       map_err(|e| Error::CloneEventFd(e))?))),
                       0x061,
-                      0x4)
+                      0x4,
+                      false)
             .unwrap();
-        io_bus.insert(nul_device.clone(), 0x040, 0x8).unwrap(); // ignore pit
-        io_bus.insert(nul_device.clone(), 0x0ed, 0x1).unwrap(); // most likely this one does nothing
-        io_bus.insert(nul_device.clone(), 0x0f0, 0x2).unwrap(); // ignore fpu
-        io_bus.insert(nul_device.clone(), 0xcf8, 0x8).unwrap(); // ignore pci
+        io_bus.insert(nul_device.clone(), 0x040, 0x8, false).unwrap(); // ignore pit
+        io_bus.insert(nul_device.clone(), 0x0ed, 0x1, false).unwrap(); // most likely this one does nothing
+        io_bus.insert(nul_device.clone(), 0x0f0, 0x2, false).unwrap(); // ignore fpu
+        io_bus.insert(nul_device.clone(), 0xcf8, 0x8, false).unwrap(); // ignore pci
 
         vm.register_irqfd(&com_evt_1_3, 4).map_err(Error::RegisterIrqfd)?;
         vm.register_irqfd(&com_evt_2_4, 3).map_err(Error::RegisterIrqfd)?;

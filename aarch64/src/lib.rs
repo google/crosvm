@@ -227,11 +227,11 @@ impl arch::LinuxArch for AArch64 {
         let serial = Arc::new(Mutex::new(devices::Serial::new_out(
             com_evt_1_3.try_clone()?,
             Box::new(stdout()))));
-        bus.insert(serial.clone(), AARCH64_SERIAL_ADDR, AARCH64_SERIAL_SIZE)
+        bus.insert(serial.clone(), AARCH64_SERIAL_ADDR, AARCH64_SERIAL_SIZE, false)
             .expect("failed to add serial device");
 
         let rtc = Arc::new(Mutex::new(devices::pl030::Pl030::new(rtc_evt)));
-        bus.insert(rtc, AARCH64_RTC_ADDR, AARCH64_RTC_SIZE)
+        bus.insert(rtc, AARCH64_RTC_ADDR, AARCH64_RTC_SIZE, false)
             .expect("failed to add rtc device");
         Ok(())
     }

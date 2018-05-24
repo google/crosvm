@@ -320,13 +320,15 @@ fn register_mmio(bus: &mut devices::Bus,
         bus
             .insert(Arc::new(Mutex::new(proxy_dev)),
             mmio_base,
-            mmio_len)
+            mmio_len,
+            false)
             .unwrap();
     } else {
         bus
             .insert(Arc::new(Mutex::new(mmio_device)),
             mmio_base,
-            mmio_len)
+            mmio_len,
+            false)
             .unwrap();
     }
 

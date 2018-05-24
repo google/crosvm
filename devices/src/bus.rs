@@ -36,26 +36,48 @@ pub enum Error {
 
 pub type Result<T> = result::Result<T, Error>;
 
+/// Holds a base and length representing the address space occupied by a `BusDevice`.
+///
+/// * base - The address at which the range start.
+/// * len - The length of the range in bytes.
+/// * full_addr - If true, return the full address from `get_device`, otherwise return the offset
+///               from `base`
 #[derive(Debug, Copy, Clone)]
-struct BusRange(u64, u64);
+pub struct BusRange {
+    pub base: u64,
+    pub len: u64,
+    pub full_addr: bool,
+}
+
+impl BusRange {
+    /// Returns true if `addr` is within the range.
+    pub fn contains(&self, addr: u64) -> bool {
+        self.base <= addr && addr < self.base + self.len
+    }
+
+    /// Returns true if there is overlap with the given range.
+    pub fn overlaps(&self, base: u64, len: u64) -> bool {
+        self.base < (base + len) && base < self.base + self.len
+    }
+}
 
 impl Eq for BusRange {}
 
 impl PartialEq for BusRange {
     fn eq(&self, other: &BusRange) -> bool {
-        self.0 == other.0
+        self.base == other.base
     }
 }
 
 impl Ord for BusRange {
     fn cmp(&self, other: &BusRange) -> Ordering {
-        self.0.cmp(&other.0)
+        self.base.cmp(&other.base)
     }
 }
 
 impl PartialOrd for BusRange {
     fn partial_cmp(&self, other: &BusRange) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0)
+        self.base.partial_cmp(&other.base)
     }
 }
 
@@ -75,50 +97,41 @@ impl Bus {
     }
 
     fn first_before(&self, addr: u64) -> Option<(BusRange, &Mutex<BusDevice>)> {
-        // for when we switch to rustc 1.17: self.devices.range(..addr).iter().rev().next()
-        for (range, dev) in self.devices.iter().rev() {
-            if range.0 <= addr {
-                return Some((*range, dev));
-            }
-        }
-        None
+        let(range, dev) =  self.devices.range(..=BusRange {base:addr, len:1, full_addr: false})
+                                       .rev()
+                                       .next()?;
+        Some((*range, dev))
     }
 
     fn get_device(&self, addr: u64) -> Option<(u64, &Mutex<BusDevice>)> {
-        if let Some((BusRange(start, len), dev)) = self.first_before(addr) {
-            let offset = addr - start;
-            if offset < len {
-                return Some((offset, dev));
+        if let Some((range, dev)) = self.first_before(addr) {
+            let offset = addr - range.base;
+            if offset < range.len {
+                if range.full_addr {
+                    return Some((addr, dev));
+                } else {
+                    return Some((offset, dev));
+                }
             }
         }
         None
     }
 
     /// Puts the given device at the given address space.
-    pub fn insert(&mut self, device: Arc<Mutex<BusDevice>>, base: u64, len: u64) -> Result<()> {
+    pub fn insert(&mut self, device: Arc<Mutex<BusDevice>>, base: u64, len: u64, full_addr: bool)
+        -> Result<()>
+    {
         if len == 0 {
             return Err(Error::Overlap);
         }
 
-        // Reject all cases where the new device's base is within an old device's range.
-        if self.get_device(base).is_some() {
+        // Reject all cases where the new device's range overlaps with an existing device.
+        if self.devices.iter().any(|(range, _dev)| range.overlaps(base, len)) {
             return Err(Error::Overlap);
         }
 
-        // The above check will miss an overlap in which the new device's base address is before the
-        // range of another device. To catch that case, we search for a device with a range before
-        // the new device's range's end. If there is no existing device in that range that starts
-        // after the new device, then there will be no overlap.
-        if let Some((BusRange(start, _), _)) = self.first_before(base + len - 1) {
-            // Such a device only conflicts with the new device if it also starts after the new
-            // device because of our initial `get_device` check above.
-            if start >= base {
-                return Err(Error::Overlap);
-            }
-        }
-
         if self.devices
-               .insert(BusRange(base, len), device)
+               .insert(BusRange{base, len, full_addr}, device)
                .is_some() {
             return Err(Error::Overlap);
         }
@@ -177,24 +190,41 @@ mod tests {
     fn bus_insert() {
         let mut bus = Bus::new();
         let dummy = Arc::new(Mutex::new(DummyDevice));
-        assert!(bus.insert(dummy.clone(), 0x10, 0).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x0f, 0x10).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x15).is_err());
-        assert!(bus.insert(dummy.clone(), 0x12, 0x15).is_err());
-        assert!(bus.insert(dummy.clone(), 0x12, 0x01).is_err());
-        assert!(bus.insert(dummy.clone(), 0x0, 0x20).is_err());
-        assert!(bus.insert(dummy.clone(), 0x20, 0x05).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x25, 0x05).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x0, 0x10).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x10, 0, false).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10, false).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x0f, 0x10, false).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10, false).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x15, false).is_err());
+        assert!(bus.insert(dummy.clone(), 0x12, 0x15, false).is_err());
+        assert!(bus.insert(dummy.clone(), 0x12, 0x01, false).is_err());
+        assert!(bus.insert(dummy.clone(), 0x0, 0x20, false).is_err());
+        assert!(bus.insert(dummy.clone(), 0x20, 0x05, false).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x25, 0x05, false).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x0, 0x10, false).is_ok());
+    }
+
+    #[test]
+    fn bus_insert_full_addr() {
+        let mut bus = Bus::new();
+        let dummy = Arc::new(Mutex::new(DummyDevice));
+        assert!(bus.insert(dummy.clone(), 0x10, 0, true).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10, true).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x0f, 0x10, true).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10, true).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x15, true).is_err());
+        assert!(bus.insert(dummy.clone(), 0x12, 0x15, true).is_err());
+        assert!(bus.insert(dummy.clone(), 0x12, 0x01, true).is_err());
+        assert!(bus.insert(dummy.clone(), 0x0, 0x20, true).is_err());
+        assert!(bus.insert(dummy.clone(), 0x20, 0x05, true).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x25, 0x05, true).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x0, 0x10, true).is_ok());
     }
 
     #[test]
     fn bus_read_write() {
         let mut bus = Bus::new();
         let dummy = Arc::new(Mutex::new(DummyDevice));
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10, false).is_ok());
         assert!(bus.read(0x10, &mut [0, 0, 0, 0]));
         assert!(bus.write(0x10, &[0, 0, 0, 0]));
         assert!(bus.read(0x11, &mut [0, 0, 0, 0]));
@@ -211,7 +241,7 @@ mod tests {
     fn bus_read_write_values() {
         let mut bus = Bus::new();
         let dummy = Arc::new(Mutex::new(ConstantDevice));
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10, false).is_ok());
 
         let mut values = [0, 1, 2, 3];
         assert!(bus.read(0x10, &mut values));
@@ -220,5 +250,43 @@ mod tests {
         assert!(bus.read(0x15, &mut values));
         assert_eq!(values, [5, 6, 7, 8]);
         assert!(bus.write(0x15, &values));
+    }
+
+    #[test]
+    fn bus_read_write_full_addr_values() {
+        let mut bus = Bus::new();
+        let dummy = Arc::new(Mutex::new(ConstantDevice));
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10, true).is_ok());
+
+        let mut values = [0u8; 4];
+        assert!(bus.read(0x10, &mut values));
+        assert_eq!(values, [0x10, 0x11, 0x12, 0x13]);
+        assert!(bus.write(0x10, &values));
+        assert!(bus.read(0x15, &mut values));
+        assert_eq!(values, [0x15, 0x16, 0x17, 0x18]);
+        assert!(bus.write(0x15, &values));
+    }
+
+    #[test]
+    fn bus_range_contains() {
+        let a = BusRange { base: 0x1000, len: 0x400, full_addr: false };
+        assert!(a.contains(0x1000));
+        assert!(a.contains(0x13ff));
+        assert!(!a.contains(0xfff));
+        assert!(!a.contains(0x1400));
+        assert!(a.contains(0x1200));
+    }
+
+    #[test]
+    fn bus_range_overlap() {
+        let a = BusRange { base: 0x1000, len: 0x400, full_addr: false };
+        assert!(a.overlaps(0x1000, 0x400));
+        assert!(a.overlaps(0xf00, 0x400));
+        assert!(a.overlaps(0x1000, 0x01));
+        assert!(a.overlaps(0xfff, 0x02));
+        assert!(a.overlaps(0x1100, 0x100));
+        assert!(a.overlaps(0x13ff, 0x100));
+        assert!(!a.overlaps(0x1400, 0x100));
+        assert!(!a.overlaps(0xf00, 0x100));
     }
 }
