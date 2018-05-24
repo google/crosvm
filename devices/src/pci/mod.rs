@@ -6,8 +6,11 @@
 
 mod pci_configuration;
 mod pci_device;
+mod pci_root;
 
 pub use self::pci_device::PciDevice;
+pub use self::pci_root::Error as PciRootError;
+pub use self::pci_root::{PciDeviceList, PciRoot};
 
 /// PCI has four interrupt pins A->D.
 #[derive(Copy, Clone)]
