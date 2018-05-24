@@ -5,6 +5,9 @@
 //! Implements pci devices and busses.
 
 mod pci_configuration;
+mod pci_device;
+
+pub use self::pci_device::PciDevice;
 
 /// PCI has four interrupt pins A->D.
 #[derive(Copy, Clone)]

@@ -19,6 +19,13 @@ pub trait BusDevice: Send {
     fn read(&mut self, offset: u64, data: &mut [u8]) {}
     /// Writes at `offset` into this device
     fn write(&mut self, offset: u64, data: &[u8]) {}
+    /// Sets a register in the configuration space. Only used by PCI.
+    /// * `reg_idx` - The index of the config register to modify.
+    /// * `offset` - Offset in to the register.
+    fn config_register_write(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {}
+    /// Gets a register from the configuration space. Only used by PCI.
+    /// * `reg_idx` - The index of the config register to read.
+    fn config_register_read(&self, reg_idx: usize) -> u32 { 0 }
 }
 
 #[derive(Debug)]
