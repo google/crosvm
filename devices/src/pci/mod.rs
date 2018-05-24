@@ -4,6 +4,8 @@
 
 //! Implements pci devices and busses.
 
+mod pci_configuration;
+
 /// PCI has four interrupt pins A->D.
 #[derive(Copy, Clone)]
 pub enum PciInterruptPin {
