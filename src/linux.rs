@@ -31,7 +31,7 @@ use qcow::{self, QcowFile};
 use sys_util::*;
 use sys_util;
 use vhost;
-use vm_control::{VmRequest, GpuMemoryAllocator};
+use vm_control::{VmRequest, GpuMemoryAllocator, GpuMemoryPlaneDesc, GpuMemoryDesc};
 #[cfg(feature = "wl-dmabuf")]
 use gpu_buffer;
 
@@ -558,7 +558,8 @@ struct GpuBufferDevice {
 
 #[cfg(feature = "wl-dmabuf")]
 impl GpuMemoryAllocator for GpuBufferDevice {
-    fn allocate(&self, width: u32, height: u32, format: u32) -> sys_util::Result<(File, u32)> {
+    fn allocate(&self, width: u32, height: u32, format: u32) ->
+        sys_util::Result<(File, GpuMemoryDesc)> {
         let buffer = match self.device.create_buffer(
             width,
             height,
@@ -573,15 +574,23 @@ impl GpuMemoryAllocator for GpuBufferDevice {
             Ok(v) => v,
             Err(_) => return Err(sys_util::Error::new(EINVAL)),
         };
-        // We only support the first plane. Buffers with more planes are not
-        // a problem but additional planes will not be registered for access
-        // from guest.
+        // We only support one FD. Buffers with multiple planes are supported
+        // as long as each plane is associated with the same handle.
         let fd = match buffer.export_plane_fd(0) {
             Ok(v) => v,
             Err(e) => return Err(sys_util::Error::new(e)),
         };
 
-        Ok((fd, buffer.stride()))
+        let mut desc = GpuMemoryDesc::default();
+        for i in 0..buffer.num_planes() {
+            // Use stride and offset for plane if handle matches first plane.
+            if buffer.plane_handle(i) == buffer.plane_handle(0) {
+                desc.planes[i] = GpuMemoryPlaneDesc { stride: buffer.plane_stride(i),
+                                                      offset: buffer.plane_offset(i) }
+            }
+        }
+
+        Ok((fd, desc))
     }
 }
 

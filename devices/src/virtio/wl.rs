@@ -59,7 +59,7 @@ use data_model::VolatileMemoryError;
 use sys_util::{Error, Result, EventFd, Scm, SharedMemory, GuestAddress, GuestMemory,
                GuestMemoryError, PollContext, PollToken, FileFlags, pipe};
 
-use vm_control::{VmControlError, VmRequest, VmResponse, MaybeOwnedFd};
+use vm_control::{VmControlError, VmRequest, VmResponse, MaybeOwnedFd, GpuMemoryDesc};
 use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_USED_RING, TYPE_WL};
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
@@ -236,7 +236,7 @@ fn encode_vfd_new_dmabuf(desc_mem: VolatileSlice,
                          flags: u32,
                          pfn: u64,
                          size: u32,
-                         stride: u32)
+                         desc: GpuMemoryDesc)
                   -> WlResult<u32> {
     let ctrl_vfd_new_dmabuf = CtrlVfdNewDmabuf {
         hdr: CtrlHeader {
@@ -250,12 +250,12 @@ fn encode_vfd_new_dmabuf(desc_mem: VolatileSlice,
         width: Le32::from(0),
         height: Le32::from(0),
         format: Le32::from(0),
-        stride0: Le32::from(stride),
-        stride1: Le32::from(0),
-        stride2: Le32::from(0),
-        offset0: Le32::from(0),
-        offset1: Le32::from(0),
-        offset2: Le32::from(0),
+        stride0: Le32::from(desc.planes[0].stride),
+        stride1: Le32::from(desc.planes[1].stride),
+        stride2: Le32::from(desc.planes[2].stride),
+        offset0: Le32::from(desc.planes[0].offset),
+        offset1: Le32::from(desc.planes[1].offset),
+        offset2: Le32::from(desc.planes[2].offset),
     };
 
     desc_mem.get_ref(0)?.store(ctrl_vfd_new_dmabuf);
@@ -322,8 +322,8 @@ fn encode_resp(desc_mem: VolatileSlice, resp: WlResp) -> WlResult<u32> {
             flags,
             pfn,
             size,
-            stride,
-        } => encode_vfd_new_dmabuf(desc_mem, id, flags, pfn, size, stride),
+            desc,
+        } => encode_vfd_new_dmabuf(desc_mem, id, flags, pfn, size, desc),
         WlResp::VfdRecv { id, data, vfds } => encode_vfd_recv(desc_mem, id, data, vfds),
         WlResp::VfdHup { id } => encode_vfd_hup(desc_mem, id),
         r => {
@@ -512,7 +512,7 @@ enum WlResp<'a> {
         flags: u32,
         pfn: u64,
         size: u32,
-        stride: u32,
+        desc: GpuMemoryDesc,
     },
     VfdRecv {
         id: u32,
@@ -616,20 +616,21 @@ impl WlVfd {
     }
 
     #[cfg(feature = "wl-dmabuf")]
-    fn dmabuf(vm: VmRequester, width: u32, height: u32, format: u32) -> WlResult<(WlVfd, u32)> {
+    fn dmabuf(vm: VmRequester, width: u32, height: u32, format: u32) ->
+        WlResult<(WlVfd, GpuMemoryDesc)> {
         let allocate_and_register_gpu_memory_response =
             vm.request(VmRequest::AllocateAndRegisterGpuMemory { width: width,
                                                                  height: height,
                                                                  format: format })?;
         match allocate_and_register_gpu_memory_response {
-            VmResponse::AllocateAndRegisterGpuMemory { fd, pfn, slot, stride } => {
+            VmResponse::AllocateAndRegisterGpuMemory { fd, pfn, slot, desc } => {
                 let mut vfd = WlVfd::default();
                 // Duplicate FD for shared memory instance.
                 let raw_fd = unsafe { File::from_raw_fd(dup(fd.as_raw_fd())) };
                 let vfd_shm = SharedMemory::from_raw_fd(raw_fd).map_err(WlError::NewAlloc)?;
                 vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm.into()));
                 vfd.slot = Some((slot, pfn, vm));
-                Ok((vfd, stride))
+                Ok((vfd, desc))
             }
             _ => Err(WlError::VmBadResponse),
         }
@@ -930,16 +931,16 @@ impl WlState {
 
         match self.vfds.entry(id) {
             Entry::Vacant(entry) => {
-                let (vfd, stride) = WlVfd::dmabuf(self.vm.clone(),
-                                                  width,
-                                                  height,
-                                                  format)?;
+                let (vfd, desc) = WlVfd::dmabuf(self.vm.clone(),
+                                                width,
+                                                height,
+                                                format)?;
                 let resp = WlResp::VfdNewDmabuf {
                     id: id,
                     flags: 0,
                     pfn: vfd.pfn().unwrap_or_default(),
                     size: vfd.size().unwrap_or_default() as u32,
-                    stride: stride,
+                    desc,
                 };
                 entry.insert(vfd);
                 Ok(resp)

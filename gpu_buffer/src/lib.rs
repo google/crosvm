@@ -292,6 +292,24 @@ impl Buffer {
         unsafe { gbm_bo_get_num_planes(self.0) }
     }
 
+    /// Handle as u64 for the given plane.
+    pub fn plane_handle(&self, plane: usize) -> u64 {
+        // This is always safe to call with a valid gbm_bo pointer.
+        unsafe { gbm_bo_get_plane_handle(self.0, plane).u64 }
+    }
+
+    /// Offset in bytes for the given plane.
+    pub fn plane_offset(&self, plane: usize) -> u32 {
+        // This is always safe to call with a valid gbm_bo pointer.
+        unsafe { gbm_bo_get_plane_offset(self.0, plane) }
+    }
+
+    /// Length in bytes of one row for the given plane.
+    pub fn plane_stride(&self, plane: usize) -> u32 {
+        // This is always safe to call with a valid gbm_bo pointer.
+        unsafe { gbm_bo_get_plane_stride(self.0, plane) }
+    }
+
     /// Exports a new dmabuf/prime file descriptor for the given plane.
     pub fn export_plane_fd(&self, plane: usize) -> Result<File, i32> {
         // This is always safe to call with a valid gbm_bo pointer.

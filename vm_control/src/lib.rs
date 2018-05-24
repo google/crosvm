@@ -130,19 +130,32 @@ fn register_memory(vm: &mut Vm, next_mem_pfn: &mut u64, fd: &AsRawFd, size: usiz
     Ok((pfn, slot))
 }
 
+/// Struct that describes the offset and stride of a plane located in GPU memory.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct GpuMemoryPlaneDesc {
+    pub stride: u32,
+    pub offset: u32,
+}
+
+/// Struct that describes a GPU memory allocation that consists of up to 3 planes.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GpuMemoryDesc {
+    pub planes: [GpuMemoryPlaneDesc; 3],
+}
+
 /// Trait that needs to be implemented in order to service GPU memory allocation
 /// requests. Implementations are expected to support some set of buffer sizes and
 /// formats but every possible combination is not required.
 pub trait GpuMemoryAllocator {
     /// Allocates GPU memory for a buffer of a specific size and format. The memory
-    /// layout for the returned buffer must be linear. A file handle and the stride
-    /// for the buffer are returned on success.
+    /// layout for the returned buffer must be linear. A file handle and the
+    /// description of the planes for the buffer are returned on success.
     ///
     /// # Arguments
     /// * `width` - Width of buffer.
     /// * `height` - Height of buffer.
     /// * `format` - Fourcc format of buffer.
-    fn allocate(&self, width: u32, height: u32, format: u32) -> Result<(File, u32)>;
+    fn allocate(&self, width: u32, height: u32, format: u32) -> Result<(File, GpuMemoryDesc)>;
 }
 
 impl VmRequest {
@@ -281,7 +294,7 @@ impl VmRequest {
                     Some(v) => v,
                     None => return VmResponse::Err(SysError::new(ENODEV)),
                 };
-                let (mut fd, stride) = match allocator.allocate(width, height, format) {
+                let (mut fd, desc) = match allocator.allocate(width, height, format) {
                     Ok(v) => v,
                     Err(e) => return VmResponse::Err(e),
                 };
@@ -296,7 +309,7 @@ impl VmRequest {
                         fd: MaybeOwnedFd::Owned(fd),
                         pfn,
                         slot,
-                        stride },
+                        desc },
                     Err(e) => VmResponse::Err(e),
                 }
             }
@@ -316,15 +329,15 @@ pub enum VmResponse {
     /// number `pfn` and memory slot number `slot`.
     RegisterMemory { pfn: u64, slot: u32 },
     /// The request to allocate and register GPU memory into guest address space was successfully
-    /// done at page frame number `pfn` and memory slot number `slot` for buffer with `stride`.
-    AllocateAndRegisterGpuMemory { fd: MaybeOwnedFd, pfn: u64, slot: u32, stride: u32 },
+    /// done at page frame number `pfn` and memory slot number `slot` for buffer with `desc`.
+    AllocateAndRegisterGpuMemory { fd: MaybeOwnedFd, pfn: u64, slot: u32, desc: GpuMemoryDesc },
 }
 
 const VM_RESPONSE_TYPE_OK: u32 = 1;
 const VM_RESPONSE_TYPE_ERR: u32 = 2;
 const VM_RESPONSE_TYPE_REGISTER_MEMORY: u32 = 3;
 const VM_RESPONSE_TYPE_ALLOCATE_AND_REGISTER_GPU_MEMORY: u32 = 4;
-const VM_RESPONSE_SIZE: usize = 24;
+const VM_RESPONSE_SIZE: usize = 48;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -333,7 +346,12 @@ struct VmResponseStruct {
     errno: Le32,
     pfn: Le64,
     slot: Le32,
-    stride: Le32,
+    stride0: Le32,
+    stride1: Le32,
+    stride2: Le32,
+    offset0: Le32,
+    offset1: Le32,
+    offset2: Le32,
 }
 
 // Safe because it only has data and has no implicit padding.
@@ -370,7 +388,14 @@ impl VmResponse {
                        fd: MaybeOwnedFd::Owned(fd),
                        pfn: resp.pfn.into(),
                        slot: resp.slot.into(),
-                       stride: resp.stride.into()
+                       desc: GpuMemoryDesc {
+                           planes: [ GpuMemoryPlaneDesc { stride: resp.stride0.into(),
+                                                          offset: resp.offset0.into() },
+                                     GpuMemoryPlaneDesc { stride: resp.stride1.into(),
+                                                          offset: resp.offset1.into() },
+                                     GpuMemoryPlaneDesc { stride: resp.stride2.into(),
+                                                          offset: resp.offset2.into() } ],
+                       },
                   })
             }
             _ => Err(VmControlError::InvalidType),
@@ -396,13 +421,18 @@ impl VmResponse {
                 resp.pfn = Le64::from(pfn);
                 resp.slot = Le32::from(slot);
             }
-            &VmResponse::AllocateAndRegisterGpuMemory {ref fd, pfn, slot, stride } => {
+            &VmResponse::AllocateAndRegisterGpuMemory {ref fd, pfn, slot, desc } => {
                 fd_buf[0] = fd.as_raw_fd();
                 fd_len = 1;
                 resp.type_ = Le32::from(VM_RESPONSE_TYPE_ALLOCATE_AND_REGISTER_GPU_MEMORY);
                 resp.pfn = Le64::from(pfn);
                 resp.slot = Le32::from(slot);
-                resp.stride = Le32::from(stride);
+                resp.stride0 = Le32::from(desc.planes[0].stride);
+                resp.stride1 = Le32::from(desc.planes[1].stride);
+                resp.stride2 = Le32::from(desc.planes[2].stride);
+                resp.offset0 = Le32::from(desc.planes[0].offset);
+                resp.offset1 = Le32::from(desc.planes[1].offset);
+                resp.offset2 = Le32::from(desc.planes[2].offset);
             }
         }
         let mut buf = [0; VM_RESPONSE_SIZE];
@@ -625,19 +655,24 @@ mod tests {
         shm.set_size(shm_size as u64).unwrap();
         let memory_pfn = 55;
         let memory_slot = 66;
-        let gpu_stride = 32;
+        let memory_planes = [
+            GpuMemoryPlaneDesc { stride: 32, offset: 84 },
+            GpuMemoryPlaneDesc { stride: 48, offset: 96 },
+            GpuMemoryPlaneDesc { stride: 64, offset: 112 }
+        ];
         let r1 = VmResponse::AllocateAndRegisterGpuMemory {
             fd: MaybeOwnedFd::Borrowed(shm.as_raw_fd()),
             pfn: memory_pfn,
             slot: memory_slot,
-            stride: gpu_stride };
+            desc: GpuMemoryDesc { planes: memory_planes },
+        };
         r1.send(&mut scm, &s1).unwrap();
         match VmResponse::recv(&mut scm, &s2).unwrap() {
-            VmResponse::AllocateAndRegisterGpuMemory { fd, pfn, slot, stride } => {
+            VmResponse::AllocateAndRegisterGpuMemory { fd, pfn, slot, desc } => {
                 assert!(fd.as_raw_fd() >= 0);
                 assert_eq!(pfn, memory_pfn);
                 assert_eq!(slot, memory_slot);
-                assert_eq!(stride, gpu_stride);
+                assert_eq!(desc.planes, memory_planes);
             }
             _ => panic!("recv wrong response variant"),
         }
