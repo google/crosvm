@@ -38,6 +38,7 @@ pub mod linux;
 pub mod plugin;
 
 use std::net;
+use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
 use std::string::String;
@@ -72,6 +73,7 @@ pub struct Config {
     netmask: Option<net::Ipv4Addr>,
     mac_address: Option<net_util::MacAddress>,
     vhost_net: bool,
+    tap_fd: Option<RawFd>,
     wayland_socket_path: Option<PathBuf>,
     wayland_dmabuf: bool,
     socket_path: Option<PathBuf>,
@@ -94,6 +96,7 @@ impl Default for Config {
             netmask: None,
             mac_address: None,
             vhost_net: false,
+            tap_fd: None,
             wayland_socket_path: None,
             wayland_dmabuf: false,
             socket_path: None,
@@ -335,6 +338,17 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "vhost-net" => {
             cfg.vhost_net = true
         },
+        "tap-fd" => {
+            if cfg.tap_fd.is_some() {
+                return Err(argument::Error::TooManyArguments("`tap-fd` alread given".to_owned()));
+            }
+            cfg.tap_fd = Some(value.unwrap().parse().map_err(|_| {
+                argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: "this value for `tap-fd` must be an unsigned integer",
+                }
+            })?);
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -385,6 +399,9 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("plugin", "PATH", "Absolute path to plugin process to run under crosvm."),
           Argument::value("plugin-root", "PATH", "Absolute path to a directory that will become root filesystem for the plugin process."),
           Argument::flag("vhost-net", "Use vhost for networking."),
+          Argument::value("tap-fd",
+                          "fd",
+                          "File descriptor for configured tap device.  Mutually exclusive with `host_ip`, `netmask`, and `mac`."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
@@ -405,6 +422,10 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
         }
         if cfg.plugin_root.is_some() && cfg.plugin.is_none() {
             return Err(argument::Error::ExpectedArgument("`plugin-root` requires `plugin`".to_owned()));
+        }
+        if cfg.tap_fd.is_some() && (cfg.host_ip.is_some() || cfg.netmask.is_some() || cfg.mac_address.is_some()) {
+            return Err(argument::Error::TooManyArguments(
+                "`tap_fd` and any of `host_ip`, `netmask`, or `mac` are mutually exclusive".to_owned()));
         }
         Ok(())
     });

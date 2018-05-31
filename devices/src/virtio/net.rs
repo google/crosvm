@@ -295,22 +295,22 @@ where
 {
     /// Create a new virtio network device with the given IP address and
     /// netmask.
-    pub fn new(ip_addr: Ipv4Addr,
-               netmask: Ipv4Addr,
-               mac_addr: MacAddress) -> Result<Net<T>, NetError> {
-        let kill_evt = EventFd::new().map_err(NetError::CreateKillEventFd)?;
-
+    pub fn new(
+        ip_addr: Ipv4Addr,
+        netmask: Ipv4Addr,
+        mac_addr: MacAddress,
+    ) -> Result<Net<T>, NetError> {
         let tap: T = T::new(true).map_err(NetError::TapOpen)?;
         tap.set_ip_addr(ip_addr).map_err(NetError::TapSetIp)?;
-        tap.set_netmask(netmask)
-            .map_err(NetError::TapSetNetmask)?;
+        tap.set_netmask(netmask).map_err(NetError::TapSetNetmask)?;
         tap.set_mac_address(mac_addr)
             .map_err(NetError::TapSetMacAddress)?;
 
-        // Set offload flags to match the virtio features below.
-        tap.set_offload(net_sys::TUN_F_CSUM | net_sys::TUN_F_UFO | net_sys::TUN_F_TSO4 |
-                         net_sys::TUN_F_TSO6)
-            .map_err(NetError::TapSetOffload)?;
+        // Set offload flags to match the virtio features below.  If you make any
+        // changes to this set, also change the corresponding feature set in vm_concierge.
+        tap.set_offload(
+            net_sys::TUN_F_CSUM | net_sys::TUN_F_UFO | net_sys::TUN_F_TSO4 | net_sys::TUN_F_TSO6,
+        ).map_err(NetError::TapSetOffload)?;
 
         let vnet_hdr_size = mem::size_of::<virtio_net_hdr_v1>() as i32;
         tap.set_vnet_hdr_size(vnet_hdr_size)
@@ -318,13 +318,21 @@ where
 
         tap.enable().map_err(NetError::TapEnable)?;
 
-        let avail_features =
-            1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM | 1 << virtio_net::VIRTIO_NET_F_CSUM |
-                1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4 |
-                1 << virtio_net::VIRTIO_NET_F_GUEST_UFO |
-                1 << virtio_net::VIRTIO_NET_F_HOST_TSO4 |
-                1 << virtio_net::VIRTIO_NET_F_HOST_UFO | 1 << vhost::VIRTIO_F_VERSION_1;
+        Net::from(tap)
+    }
 
+    /// Creates a new virtio network device from a tap device that has already been
+    /// configured.
+    pub fn from(tap: T) -> Result<Net<T>, NetError> {
+        let avail_features = 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
+            | 1 << virtio_net::VIRTIO_NET_F_CSUM
+            | 1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4
+            | 1 << virtio_net::VIRTIO_NET_F_GUEST_UFO
+            | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
+            | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
+            | 1 << vhost::VIRTIO_F_VERSION_1;
+
+        let kill_evt = EventFd::new().map_err(NetError::CreateKillEventFd)?;
         Ok(Net {
             workers_kill_evt: Some(kill_evt.try_clone().map_err(NetError::CloneKillEventFd)?),
             kill_evt: kill_evt,

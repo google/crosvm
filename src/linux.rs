@@ -191,6 +191,27 @@ impl Drop for UnlinkUnixDatagram {
     }
 }
 
+// Verifies that |raw_fd| is actually owned by this process and duplicates it to ensure that
+// we have a unique handle to it.
+fn validate_raw_fd(raw_fd: RawFd) -> Result<RawFd> {
+    // Checking that close-on-exec isn't set helps filter out FDs that were opened by
+    // crosvm as all crosvm FDs are close on exec.
+    // Safe because this doesn't modify any memory and we check the return value.
+    let flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFD) };
+    if flags < 0 || (flags & libc::FD_CLOEXEC) != 0 {
+        return Err(Error::FailedCLOEXECCheck);
+    }
+
+    // Duplicate the fd to ensure that we don't accidentally close an fd previously
+    // opened by another subsystem.  Safe because this doesn't modify any memory and
+    // we check the return value.
+    let dup_fd = unsafe { libc::fcntl(raw_fd, libc::F_DUPFD_CLOEXEC, 0) };
+    if dup_fd < 0 {
+        return Err(Error::FailedToDupFd);
+    }
+    Ok(dup_fd as RawFd)
+}
+
 fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
     // they run as nobody unless otherwise configured.
@@ -248,24 +269,8 @@ fn setup_mmio_bus(cfg: &Config,
                 .and_then(|fd_osstr| fd_osstr.to_str())
                 .and_then(|fd_str| fd_str.parse::<c_int>().ok())
                 .ok_or(Error::InvalidFdPath)?;
-            unsafe {
-                // The FD is valid and this process owns it because it exists in /proc/self/fd.
-                // Ensure |raw_image| is the only owner by first duping it then closing the
-                // original.
-                // Checking that close-on-exec isn't set helps filter out FDs that were opened by
-                // crosvm as all crosvm FDs are close on exec.
-                let flags = libc::fcntl(raw_fd, libc::F_GETFD);
-                if flags < 0 || (flags & libc::FD_CLOEXEC) != 0 {
-                    return Err(Error::FailedCLOEXECCheck);
-                }
-
-                let dup_fd = libc::fcntl(raw_fd, libc::F_DUPFD_CLOEXEC, 0) as RawFd;
-                if dup_fd < 0 {
-                    return Err(Error::FailedToDupFd);
-                }
-                libc::close(raw_fd);
-                File::from_raw_fd(dup_fd)
-            }
+            // Safe because we will validate |raw_fd|.
+            unsafe { File::from_raw_fd(validate_raw_fd(raw_fd)?) }
         } else {
             OpenOptions::new()
                 .read(true)
@@ -329,7 +334,24 @@ fn setup_mmio_bus(cfg: &Config,
         .map_err(Error::RegisterBalloon)?;
 
     // We checked above that if the IP is defined, then the netmask is, too.
-    if let Some(host_ip) = cfg.host_ip {
+    if let Some(tap_fd) = cfg.tap_fd {
+        // Safe because we ensure that we get a unique handle to the fd.
+        let tap = unsafe { Tap::from_raw_fd(validate_raw_fd(tap_fd)?) };
+        let net_box = Box::new(devices::virtio::Net::from(tap)
+            .map_err(|e| Error::NetDeviceNew(e))?);
+
+        let jail = if cfg.multiprocess {
+            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("net_device.policy");
+
+            Some(create_base_minijail(empty_root_path, &policy_path)?)
+        } else {
+            None
+        };
+
+        device_manager
+            .register_mmio(net_box, jail, cmdline)
+            .map_err(Error::RegisterNet)?;
+    } else if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
             if let Some(mac_address) = cfg.mac_address {
                 let net_box: Box<devices::virtio::VirtioDevice> = if cfg.vhost_net {

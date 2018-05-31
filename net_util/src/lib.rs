@@ -449,6 +449,15 @@ impl AsRawFd for Tap {
     }
 }
 
+impl FromRawFd for Tap {
+    unsafe fn from_raw_fd(fd: RawFd) -> Tap {
+        Tap {
+            tap_file: File::from_raw_fd(fd),
+            if_name: [0; 16usize],
+        }
+    }
+}
+
 pub mod fakes {
     use super::*;
     use std::fs::OpenOptions;
