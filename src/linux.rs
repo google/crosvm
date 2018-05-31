@@ -725,17 +725,20 @@ fn file_to_u64<P: AsRef<Path>>(path: P) -> io::Result<u64> {
     content.trim().parse().map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
-fn run_control(mut vm: Vm,
-               control_sockets: Vec<UnlinkUnixDatagram>,
-               mut resources: SystemAllocator,
-               stdio_serial: Arc<Mutex<devices::Serial>>,
-               exit_evt: EventFd,
-               sigchld_fd: SignalFd,
-               kill_signaled: Arc<AtomicBool>,
-               vcpu_handles: Vec<JoinHandle<()>>,
-               balloon_host_socket: UnixDatagram,
-               _irqchip_fd: Option<File>)
-               -> Result<()> {
+struct RunnableLinuxVm {
+    pub vm: Vm,
+    pub control_sockets: Vec<UnlinkUnixDatagram>,
+    pub resources: SystemAllocator,
+    pub stdio_serial: Arc<Mutex<devices::Serial>>,
+    pub exit_evt: EventFd,
+    pub sigchld_fd: SignalFd,
+    pub kill_signaled: Arc<AtomicBool>,
+    pub vcpu_handles: Vec<JoinHandle<()>>,
+    pub balloon_host_socket: UnixDatagram,
+    pub irq_chip: Option<File>,
+}
+
+fn run_control(mut linux: RunnableLinuxVm) -> Result<()> {
     const MAX_VM_FD_RECV: usize = 1;
 
     // Paths to get the currently available memory and the low memory threshold.
@@ -746,7 +749,7 @@ fn run_control(mut vm: Vm,
     // low on memory.
     const ONE_GB: u64 = (1 << 30);
 
-    let max_balloon_memory = match vm.get_memory().memory_size() {
+    let max_balloon_memory = match linux.vm.get_memory().memory_size() {
         // If the VM has at least 1.5 GB, the balloon driver can consume all but the last 1 GB.
         n if n >= (ONE_GB / 2) * 3 => n - ONE_GB,
         // Otherwise, if the VM has at least 500MB the balloon driver will consume at most
@@ -776,12 +779,12 @@ fn run_control(mut vm: Vm,
         .expect("failed to set terminal raw mode");
 
     let poll_ctx = PollContext::new().map_err(Error::CreatePollContext)?;
-    poll_ctx.add(&exit_evt, Token::Exit).map_err(Error::PollContextAdd)?;
+    poll_ctx.add(&linux.exit_evt, Token::Exit).map_err(Error::PollContextAdd)?;
     if let Err(e) = poll_ctx.add(&stdin_handle, Token::Stdin) {
         warn!("failed to add stdin to poll context: {:?}", e);
     }
-    poll_ctx.add(&sigchld_fd, Token::ChildSignal).map_err(Error::PollContextAdd)?;
-    for (index, socket) in control_sockets.iter().enumerate() {
+    poll_ctx.add(&linux.sigchld_fd, Token::ChildSignal).map_err(Error::PollContextAdd)?;
+    for (index, socket) in linux.control_sockets.iter().enumerate() {
         poll_ctx.add(socket.as_ref(), Token::VmControl{ index }).map_err(Error::PollContextAdd)?;
     }
 
@@ -834,7 +837,7 @@ fn run_control(mut vm: Vm,
                             let _ = poll_ctx.delete(&stdin_handle);
                         },
                         Ok(count) => {
-                            stdio_serial
+                            linux.stdio_serial
                                 .lock()
                                 .unwrap()
                                 .queue_input_bytes(&out[..count])
@@ -845,7 +848,7 @@ fn run_control(mut vm: Vm,
                 Token::ChildSignal => {
                     // Print all available siginfo structs, then exit the loop.
                     loop {
-                        let result = sigchld_fd.read().map_err(Error::SignalFd)?;
+                        let result = linux.sigchld_fd.read().map_err(Error::SignalFd)?;
                         if let Some(siginfo) = result {
                             error!("child {} died: signo {}, status {}, code {}",
                                    siginfo.ssi_pid,
@@ -881,7 +884,7 @@ fn run_control(mut vm: Vm,
                         };
                         let mut buf = [0u8; mem::size_of::<u64>()];
                         LittleEndian::write_u64(&mut buf, current_balloon_memory);
-                        if let Err(e) = balloon_host_socket.send(&buf) {
+                        if let Err(e) = linux.balloon_host_socket.send(&buf) {
                             warn!("failed to send memory value to balloon device: {}", e);
                         }
                     }
@@ -892,7 +895,7 @@ fn run_control(mut vm: Vm,
                     if current_balloon_memory != old_balloon_memory {
                         let mut buf = [0u8; mem::size_of::<u64>()];
                         LittleEndian::write_u64(&mut buf, current_balloon_memory);
-                        if let Err(e) = balloon_host_socket.send(&buf) {
+                        if let Err(e) = linux.balloon_host_socket.send(&buf) {
                             warn!("failed to send memory value to balloon device: {}", e);
                         }
                     }
@@ -919,15 +922,15 @@ fn run_control(mut vm: Vm,
                     poll_ctx.add(&low_mem, Token::LowMemory).map_err(Error::PollContextAdd)?;
                 }
                 Token::VmControl { index } => {
-                    if let Some(socket) = control_sockets.get(index as usize) {
+                    if let Some(socket) = linux.control_sockets.get(index as usize) {
                         match VmRequest::recv(&mut scm, socket.as_ref()) {
                             Ok(request) => {
                                 let mut running = true;
                                 let response =
-                                    request.execute(&mut vm,
-                                                    &mut resources,
+                                    request.execute(&mut linux.vm,
+                                                    &mut linux.resources,
                                                     &mut running,
-                                                    &balloon_host_socket);
+                                                    &linux.balloon_host_socket);
                                 if let Err(e) = response.send(&mut scm, socket.as_ref()) {
                                     error!("failed to send VmResponse: {:?}", e);
                                 }
@@ -957,7 +960,7 @@ fn run_control(mut vm: Vm,
                     Token::LowMemory => {},
                     Token::LowmemTimer => {},
                     Token::VmControl { index } => {
-                        if let Some(socket) = control_sockets.get(index as usize) {
+                        if let Some(socket) = linux.control_sockets.get(index as usize) {
                             let _ = poll_ctx.delete(socket.as_ref());
                         }
                     },
@@ -968,8 +971,8 @@ fn run_control(mut vm: Vm,
 
     // vcpu threads MUST see the kill signaled flag, otherwise they may
     // re-enter the VM.
-    kill_signaled.store(true, Ordering::SeqCst);
-    for handle in vcpu_handles {
+    linux.kill_signaled.store(true, Ordering::SeqCst);
+    for handle in linux.vcpu_handles {
         match handle.kill(SIGRTMIN() + 0) {
             Ok(_) => {
                 if let Err(e) = handle.join() {
@@ -1071,14 +1074,17 @@ pub fn run_config(cfg: Config) -> Result<()> {
     }
     vcpu_thread_barrier.wait();
 
-    run_control(vm,
-                control_sockets,
-                resources,
-                stdio_serial,
-                exit_evt,
-                sigchld_fd,
-                kill_signaled,
-                vcpu_handles,
-                balloon_host_socket,
-                irq_chip)
+    let linux = RunnableLinuxVm {
+        vm,
+        control_sockets,
+        resources,
+        stdio_serial,
+        exit_evt,
+        sigchld_fd,
+        kill_signaled,
+        vcpu_handles,
+        balloon_host_socket,
+        irq_chip,
+    };
+    run_control(linux)
 }
