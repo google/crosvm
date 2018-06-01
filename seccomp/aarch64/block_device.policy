@@ -11,6 +11,7 @@ fstat64: 1
 fsync: 1
 ftruncate64: 1
 futex: 1
+gettimeofday: 1
 _llseek: 1
 # Disallow mmap with PROT_EXEC set.  The syntax here doesn't allow bit
 # negation, thus the manually negated mask constant.

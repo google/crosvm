@@ -7,6 +7,7 @@ dup: 1
 dup2: 1
 exit_group: 1
 futex: 1
+gettimeofday: 1
 # Whitelist vhost_net ioctls only.
 # arg1 == VHOST_GET_FEATURES ||
 # arg1 == VHOST_SET_FEATURES ||

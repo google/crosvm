@@ -6,6 +6,7 @@ close: 1
 dup: 1
 dup2: 1
 getpid: 1
+gettimeofday: 1
 exit_group: 1
 futex: 1
 # Disallow mmap with PROT_EXEC set.  The syntax here doesn't allow bit
