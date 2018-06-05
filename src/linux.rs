@@ -618,7 +618,7 @@ impl GpuMemoryAllocator for GpuBufferDevice {
 
 #[cfg(feature = "wl-dmabuf")]
 fn create_gpu_memory_allocator() -> Result<Option<Box<GpuMemoryAllocator>>> {
-    let undesired: &[&str] = &["vgem"];
+    let undesired: &[&str] = &["vgem", "pvr"];
     let fd = gpu_buffer::rendernode::open_device(undesired)
         .map_err(|_| Error::OpenGpuBufferDevice)?;
     let device = gpu_buffer::Device::new(fd)
