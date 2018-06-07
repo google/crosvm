@@ -87,7 +87,7 @@ pub trait LinuxArch {
     fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline;
 
     /// Returns a system resource allocator.
-    fn get_resource_allocator(mem_size: u64) -> SystemAllocator;
+    fn get_resource_allocator(mem_size: u64, gpu_allocation: bool) -> SystemAllocator;
 
     /// Sets up the IO bus for this platform
     ///

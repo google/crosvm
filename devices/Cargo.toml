@@ -13,6 +13,7 @@ libc = "*"
 io_jail = { path = "../io_jail" }
 net_sys = { path = "../net_sys" }
 net_util = { path = "../net_util" }
+resources = { path = "../resources" }
 sys_util = { path = "../sys_util" }
 vhost = { path = "../vhost" }
 virtio_sys = { path = "../virtio_sys" }

@@ -12,7 +12,7 @@ panic = 'abort'
 [features]
 plugin = ["plugin_proto", "crosvm_plugin", "protobuf"]
 default-no-sandbox = []
-wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer"]
+wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
 
 [dependencies]
 arch = { path = "arch" }

@@ -10,6 +10,7 @@ extern crate io_jail;
 extern crate libc;
 extern crate net_sys;
 extern crate net_util;
+extern crate resources;
 #[macro_use]
 extern crate sys_util;
 extern crate vhost;

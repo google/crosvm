@@ -317,14 +317,14 @@ impl arch::LinuxArch for X8664arch {
     }
 
     /// Returns a system resource allocator.
-    fn get_resource_allocator(mem_size: u64) -> SystemAllocator {
+    fn get_resource_allocator(mem_size: u64, gpu_allocation: bool) -> SystemAllocator {
         const MMIO_BASE: u64 = 0xe0000000;
         let device_addr_start = Self::get_base_dev_pfn(mem_size) * sys_util::pagesize() as u64;
         AddressRanges::new()
            .add_io_addresses(0xc000, 0x10000)
            .add_mmio_addresses(MMIO_BASE, 0x10000)
            .add_device_addresses(device_addr_start, u64::max_value() - device_addr_start)
-           .create_allocator(X86_64_IRQ_BASE).unwrap()
+           .create_allocator(X86_64_IRQ_BASE, gpu_allocation).unwrap()
     }
 
     /// Sets up the IO bus for this platform

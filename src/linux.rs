@@ -18,8 +18,6 @@ use std::thread::JoinHandle;
 
 use libc;
 use libc::c_int;
-#[cfg(feature = "wl-dmabuf")]
-use libc::EINVAL;
 
 use devices;
 use io_jail::{self, Minijail};
@@ -31,9 +29,7 @@ use sys_util::*;
 use sys_util;
 use resources::SystemAllocator;
 use vhost;
-use vm_control::{VmRequest, GpuMemoryAllocator, GpuMemoryPlaneDesc, GpuMemoryDesc};
-#[cfg(feature = "wl-dmabuf")]
-use gpu_buffer;
+use vm_control::VmRequest;
 
 use Config;
 use DiskType;
@@ -53,7 +49,6 @@ pub enum Error {
     CloneEventFd(sys_util::Error),
     Cmdline(kernel_cmdline::Error),
     CreateEventFd(sys_util::Error),
-    CreateGpuBufferDevice,
     CreateGuestMemory(Box<error::Error>),
     CreateIrqChip(Box<error::Error>),
     CreateKvm(sys_util::Error),
@@ -72,7 +67,6 @@ pub enum Error {
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
     OpenKernel(PathBuf, io::Error),
-    OpenGpuBufferDevice,
     PollContextAdd(sys_util::Error),
     QcowDeviceCreate(qcow::Error),
     RegisterBalloon(MmioRegisterError),
@@ -107,7 +101,6 @@ impl fmt::Display for Error {
             &Error::CloneEventFd(ref e) => write!(f, "failed to clone eventfd: {:?}", e),
             &Error::Cmdline(ref e) => write!(f, "the given kernel command line was invalid: {}", e),
             &Error::CreateEventFd(ref e) => write!(f, "failed to create eventfd: {:?}", e),
-            &Error::CreateGpuBufferDevice => write!(f, "failed to create GPU buffer device"),
             &Error::CreateGuestMemory(ref e) => write!(f, "failed to create guest memory: {:?}", e),
             &Error::CreateIrqChip(ref e) => {
                 write!(f, "failed to create in-kernel IRQ chip: {:?}", e)
@@ -132,7 +125,6 @@ impl fmt::Display for Error {
             &Error::OpenKernel(ref p, ref e) => {
                 write!(f, "failed to open kernel image {:?}: {}", p, e)
             }
-            &Error::OpenGpuBufferDevice => write!(f, "failed to open GPU buffer device"),
             &Error::PollContextAdd(ref e) => write!(f, "failed to add fd to poll context: {:?}", e),
             &Error::QcowDeviceCreate(ref e) => {
                 write!(f, "failed to read qcow formatted file {:?}", e)
@@ -672,65 +664,6 @@ fn run_vcpu(vcpu: Vcpu,
         .map_err(Error::SpawnVcpu)
 }
 
-#[cfg(feature = "wl-dmabuf")]
-struct GpuBufferDevice {
-    device: gpu_buffer::Device,
-}
-
-#[cfg(feature = "wl-dmabuf")]
-impl GpuMemoryAllocator for GpuBufferDevice {
-    fn allocate(&self, width: u32, height: u32, format: u32) ->
-        sys_util::Result<(File, GpuMemoryDesc)> {
-        let buffer = match self.device.create_buffer(
-            width,
-            height,
-            gpu_buffer::Format::from(format),
-            // Linear layout is a requirement as virtio wayland guest expects
-            // this for CPU access to the buffer. Scanout and texturing are
-            // optional as the consumer (wayland compositor) is expected to
-            // fall-back to a less efficient meachnisms for presentation if
-            // neccesary. In practice, linear buffers for commonly used formats
-            // will also support scanout and texturing.
-            gpu_buffer::Flags::empty().use_linear(true)) {
-            Ok(v) => v,
-            Err(_) => return Err(sys_util::Error::new(EINVAL)),
-        };
-        // We only support one FD. Buffers with multiple planes are supported
-        // as long as each plane is associated with the same handle.
-        let fd = match buffer.export_plane_fd(0) {
-            Ok(v) => v,
-            Err(e) => return Err(sys_util::Error::new(e)),
-        };
-
-        let mut desc = GpuMemoryDesc::default();
-        for i in 0..buffer.num_planes() {
-            // Use stride and offset for plane if handle matches first plane.
-            if buffer.plane_handle(i) == buffer.plane_handle(0) {
-                desc.planes[i] = GpuMemoryPlaneDesc { stride: buffer.plane_stride(i),
-                                                      offset: buffer.plane_offset(i) }
-            }
-        }
-
-        Ok((fd, desc))
-    }
-}
-
-#[cfg(feature = "wl-dmabuf")]
-fn create_gpu_memory_allocator() -> Result<Option<Box<GpuMemoryAllocator>>> {
-    let undesired: &[&str] = &["vgem", "pvr"];
-    let fd = gpu_buffer::rendernode::open_device(undesired)
-        .map_err(|_| Error::OpenGpuBufferDevice)?;
-    let device = gpu_buffer::Device::new(fd)
-        .map_err(|_| Error::CreateGpuBufferDevice)?;
-    info!("created GPU buffer device for DMABuf allocations");
-    Ok(Some(Box::new(GpuBufferDevice { device })))
-}
-
-#[cfg(not(feature = "wl-dmabuf"))]
-fn create_gpu_memory_allocator() -> Result<Option<Box<GpuMemoryAllocator>>> {
-    Ok(None)
-}
-
 fn run_control(mut vm: Vm,
                control_sockets: Vec<UnlinkUnixDatagram>,
                mut resources: SystemAllocator,
@@ -740,8 +673,7 @@ fn run_control(mut vm: Vm,
                kill_signaled: Arc<AtomicBool>,
                vcpu_handles: Vec<JoinHandle<()>>,
                balloon_host_socket: UnixDatagram,
-               _irqchip_fd: Option<File>,
-               gpu_memory_allocator: Option<Box<GpuMemoryAllocator>>)
+               _irqchip_fd: Option<File>)
                -> Result<()> {
     const MAX_VM_FD_RECV: usize = 1;
 
@@ -830,10 +762,7 @@ fn run_control(mut vm: Vm,
                                     request.execute(&mut vm,
                                                     &mut resources,
                                                     &mut running,
-                                                    &balloon_host_socket,
-                                                    gpu_memory_allocator.as_ref().map(|v| {
-                                                                                          v.as_ref()
-                                                                                      }));
+                                                    &balloon_host_socket);
                                 if let Err(e) = response.send(&mut scm, socket.as_ref()) {
                                     error!("failed to send VmResponse: {:?}", e);
                                 }
@@ -915,7 +844,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
 
     let mem_size = cfg.memory.unwrap_or(256) << 20;
-    let mut resources = Arch::get_resource_allocator(mem_size as u64);
+    let mut resources = Arch::get_resource_allocator(mem_size as u64, cfg.wayland_dmabuf);
     let mem = Arch::setup_memory(mem_size as u64).map_err(|e| Error::CreateGuestMemory(e))?;
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;
     let mut vm = Arch::create_vm(&kvm, mem.clone()).map_err(|e| Error::CreateVm(e))?;
@@ -945,12 +874,6 @@ pub fn run_config(cfg: Config) -> Result<()> {
                                   &mut control_sockets,
                                   balloon_device_socket,
                                   &mut resources)?;
-
-    let gpu_memory_allocator = if cfg.wayland_dmabuf {
-        create_gpu_memory_allocator()?
-    } else {
-        None
-    };
 
     for param in &cfg.params {
         cmdline.insert_str(&param).map_err(Error::Cmdline)?;
@@ -988,6 +911,5 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 kill_signaled,
                 vcpu_handles,
                 balloon_host_socket,
-                irq_chip,
-                gpu_memory_allocator)
+                irq_chip)
 }

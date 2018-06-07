@@ -3,6 +3,11 @@ name = "resources"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 
+[features]
+wl-dmabuf = ["gpu_buffer"]
+
 [dependencies]
 data_model = { path = "../data_model" }
+gpu_buffer = { path = "../gpu_buffer", optional = true }
+libc = "*"
 sys_util = { path = "../sys_util" }

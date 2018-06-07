@@ -28,7 +28,7 @@ use libc::{ERANGE, EINVAL, ENODEV};
 use byteorder::{LittleEndian, WriteBytesExt};
 use data_model::{DataInit, Le32, Le64, VolatileMemory};
 use sys_util::{EventFd, Result, Error as SysError, MmapError, MemoryMapping, Scm, GuestAddress};
-use resources::SystemAllocator;
+use resources::{GpuMemoryDesc, GpuMemoryPlaneDesc, SystemAllocator};
 use kvm::{IoeventAddress, Vm};
 
 #[derive(Debug, PartialEq)]
@@ -130,34 +130,6 @@ fn register_memory(vm: &mut Vm, allocator: &mut SystemAllocator,
     Ok((addr >> 12, slot))
 }
 
-/// Struct that describes the offset and stride of a plane located in GPU memory.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub struct GpuMemoryPlaneDesc {
-    pub stride: u32,
-    pub offset: u32,
-}
-
-/// Struct that describes a GPU memory allocation that consists of up to 3 planes.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct GpuMemoryDesc {
-    pub planes: [GpuMemoryPlaneDesc; 3],
-}
-
-/// Trait that needs to be implemented in order to service GPU memory allocation
-/// requests. Implementations are expected to support some set of buffer sizes and
-/// formats but every possible combination is not required.
-pub trait GpuMemoryAllocator {
-    /// Allocates GPU memory for a buffer of a specific size and format. The memory
-    /// layout for the returned buffer must be linear. A file handle and the
-    /// description of the planes for the buffer are returned on success.
-    ///
-    /// # Arguments
-    /// * `width` - Width of buffer.
-    /// * `height` - Height of buffer.
-    /// * `format` - Fourcc format of buffer.
-    fn allocate(&self, width: u32, height: u32, format: u32) -> Result<(File, GpuMemoryDesc)>;
-}
-
 impl VmRequest {
     /// Receive a `VmRequest` from the given socket.
     ///
@@ -247,8 +219,7 @@ impl VmRequest {
     /// `VmResponse` with the intended purpose of sending the response back over the  socket that
     /// received this `VmRequest`.
     pub fn execute(&self, vm: &mut Vm, sys_allocator: &mut SystemAllocator, running: &mut bool,
-                   balloon_host_socket: &UnixDatagram,
-                   gpu_memory_allocator: Option<&GpuMemoryAllocator>) -> VmResponse {
+                   balloon_host_socket: &UnixDatagram) -> VmResponse {
         *running = true;
         match self {
             &VmRequest::Exit => {
@@ -289,13 +260,14 @@ impl VmRequest {
                 }
             }
             &VmRequest::AllocateAndRegisterGpuMemory {width, height, format} => {
-                let gpu_allocator = match gpu_memory_allocator {
-                    Some(v) => v,
+                let (mut fd, desc) = match sys_allocator.gpu_memory_allocator() {
+                    Some(gpu_allocator) => {
+                        match gpu_allocator.allocate(width, height, format) {
+                            Ok(v) => v,
+                            Err(e) => return VmResponse::Err(e),
+                        }
+                    }
                     None => return VmResponse::Err(SysError::new(ENODEV)),
-                };
-                let (mut fd, desc) = match gpu_allocator.allocate(width, height, format) {
-                    Ok(v) => v,
-                    Err(e) => return VmResponse::Err(e),
                 };
                 // Determine size of buffer using 0 byte seek from end. This is preferred over
                 // `stride * height` as it's not limited to packed pixel formats.

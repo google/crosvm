@@ -58,13 +58,14 @@ use libc::{dup, EBADF, EINVAL};
 use data_model::*;
 use data_model::VolatileMemoryError;
 
+use resources::GpuMemoryDesc;
 use sys_util::{Error, Result, EventFd, Scm, SharedMemory, GuestAddress, GuestMemory,
                GuestMemoryError, PollContext, PollToken, FileFlags, pipe, round_up_to_page_size};
 
 #[cfg(feature = "wl-dmabuf")]
 use sys_util::ioctl_with_ref;
 
-use vm_control::{VmControlError, VmRequest, VmResponse, MaybeOwnedFd, GpuMemoryDesc};
+use vm_control::{VmControlError, VmRequest, VmResponse, MaybeOwnedFd};
 use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_USED_RING, TYPE_WL};
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;

@@ -205,12 +205,12 @@ impl arch::LinuxArch for AArch64 {
     }
 
     /// Returns a system resource allocator.
-    fn get_resource_allocator(mem_size: u64) -> SystemAllocator {
+    fn get_resource_allocator(mem_size: u64, gpu_allocation: bool) -> SystemAllocator {
         let device_addr_start = Self::get_base_dev_pfn(mem_size) * sys_util::pagesize() as u64;
         AddressRanges::new()
             .add_device_addresses(device_addr_start, u64::max_value() - device_addr_start)
             .add_mmio_addresses(AARCH64_MMIO_BASE, 0x10000)
-            .create_allocator(AARCH64_IRQ_BASE).unwrap()
+            .create_allocator(AARCH64_IRQ_BASE, gpu_allocation).unwrap()
     }
 
     /// This adds any early platform devices for this architecture.
