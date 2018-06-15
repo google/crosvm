@@ -122,6 +122,7 @@ impl Frontend {
                                              info.r.y.to_native(),
                                              info.r.width.to_native(),
                                              info.r.height.to_native(),
+                                             info.offset.to_native(),
                                              mem)
             }
             GpuCommand::ResourceAttachBacking(info) if data.is_some() => {

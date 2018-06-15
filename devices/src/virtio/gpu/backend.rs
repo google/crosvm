@@ -9,6 +9,7 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
 use std::os::unix::io::AsRawFd;
 use std::rc::Rc;
+use std::usize;
 
 use data_model::*;
 
@@ -60,6 +61,7 @@ trait VirglResource {
                                y: u32,
                                width: u32,
                                height: u32,
+                               src_offset: u64,
                                mem: &GuestMemory);
 
     /// Reads from the given rectangle of pixels in the resource to the `dst` slice of memory.
@@ -99,6 +101,7 @@ impl VirglResource for GpuRendererResource {
                                y: u32,
                                width: u32,
                                height: u32,
+                               src_offset: u64,
                                _mem: &GuestMemory) {
         let res = self.transfer_write(None,
                                       0,
@@ -112,13 +115,14 @@ impl VirglResource for GpuRendererResource {
                                           h: height,
                                           d: 0,
                                       },
-                                      0);
+                                      src_offset);
         if let Err(e) = res {
-            error!("failed to write to resource (x={} y={} w={} h={}): {}",
+            error!("failed to write to resource (x={} y={} w={} h={}, src_offset={}): {}",
                    x,
                    y,
                    width,
                    height,
+                   src_offset,
                    e);
         }
     }
@@ -222,17 +226,23 @@ impl VirglResource for BackedBuffer {
                                y: u32,
                                width: u32,
                                height: u32,
+                               src_offset: u64,
                                mem: &GuestMemory) {
+        if src_offset >= usize::MAX as u64 {
+            error!("failed to write to resource with given offset: {}", src_offset);
+            return
+        }
         let res = self.buffer
             .write_from_sg(x,
                            y,
                            width,
                            height,
-                           0,
+                           0, // plane
+                           src_offset as usize,
                            self.backing
                                .iter()
                                .map(|&(addr, len)| {
-                                        mem.get_slice(addr.offset(), len as u64).unwrap()
+                                        mem.get_slice(addr.offset(), len as u64).unwrap_or_default()
                                     }));
         if let Err(e) = res {
             error!("failed to write to resource from guest memory: {:?}", e)
@@ -447,11 +457,12 @@ impl Backend {
                                    y: u32,
                                    width: u32,
                                    height: u32,
+                                   src_offset: u64,
                                    mem: &GuestMemory)
                                    -> GpuResponse {
         match self.resources.get_mut(&id) {
             Some(res) => {
-                res.write_from_guest_memory(x, y, width, height, mem);
+                res.write_from_guest_memory(x, y, width, height, src_offset, mem);
                 GpuResponse::OkNoData
             }
             None => GpuResponse::ErrInvalidResourceId,

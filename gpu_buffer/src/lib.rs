@@ -38,21 +38,105 @@ pub mod rendernode;
 mod raw;
 mod drm_formats;
 
-use std::os::raw::c_void;
-use std::fmt;
 use std::cmp::min;
+use std::fmt;
 use std::fs::File;
+use std::isize;
+use std::os::raw::c_void;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::ptr::{copy_nonoverlapping, null_mut};
+use std::ptr::null_mut;
 use std::rc::Rc;
 use std::result::Result;
 
-use data_model::VolatileSlice;
+use data_model::{VolatileSlice, VolatileMemory, VolatileMemoryError};
 
 use raw::*;
 use drm_formats::*;
 
 const MAP_FAILED: *mut c_void = (-1isize as *mut _);
+
+#[derive(Debug)]
+pub enum Error {
+    GbmFailed,
+    ExportFailed(sys_util::Error),
+    MapFailed,
+    UnknownFormat(Format),
+    CheckedArithmetic {
+        field1: (&'static str, usize),
+        field2: (&'static str, usize),
+        op: &'static str,
+    },
+    InvalidPrecondition {
+        field1: (&'static str, usize),
+        field2: (&'static str, usize),
+        op: &'static str,
+    },
+    Memcopy(VolatileMemoryError),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::GbmFailed => write!(f, "internal GBM failure"),
+            Error::ExportFailed(e) => write!(f, "export failed: {:?}", e),
+            Error::MapFailed => write!(f, "map failed"),
+            Error::CheckedArithmetic {
+                field1: (label1, value1),
+                field2: (label2, value2),
+                op,
+            } => {
+                write!(f,
+                       "arithmetic failed: {}({}) {} {}({})",
+                       label1,
+                       value1,
+                       op,
+                       label2,
+                       value2)
+            }
+            Error::InvalidPrecondition {
+                field1: (label1, value1),
+                field2: (label2, value2),
+                op,
+            } => {
+                write!(f,
+                       "invalid precondition: {}({}) {} {}({})",
+                       label1,
+                       value1,
+                       op,
+                       label2,
+                       value2)
+            }
+            Error::UnknownFormat(format) => write!(f, "unknown format {:?}", format),
+            Error::Memcopy(ref e) => write!(f, "error copying memory: {}", e),
+        }
+    }
+}
+
+macro_rules! checked_arithmetic {
+    ($x:ident $op:ident $y:ident $op_name:expr) => ($x.$op($y).ok_or_else(||
+        Error::CheckedArithmetic {
+            field1: (stringify!($x), $x as usize),
+            field2: (stringify!($y), $y as usize),
+            op: $op_name,
+        }
+    ));
+    ($x:ident + $y:ident) => (checked_arithmetic!($x checked_add $y "+"));
+    ($x:ident - $y:ident) => (checked_arithmetic!($x checked_sub $y "-"));
+    ($x:ident * $y:ident) => (checked_arithmetic!($x checked_mul $y "*"));
+}
+
+macro_rules! checked_range {
+    ($x:expr; <= $y:expr) => (if $x <= $y {
+            Ok(())
+        } else {
+            Err(Error::InvalidPrecondition {
+                field1: (stringify!($x), $x as usize),
+                field2: (stringify!($y), $y as usize),
+                op: "<="
+            })
+        });
+    ($x:ident <= $y:ident) => (check_range!($x; <= $y));
+}
 
 /// A [fourcc](https://en.wikipedia.org/wiki/FourCC) format identifier.
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -304,11 +388,11 @@ impl Device {
                          height: u32,
                          format: Format,
                          usage: Flags)
-                         -> Result<Buffer, ()> {
+                         -> Result<Buffer, Error> {
         // This is safe because only a valid gbm_device is used and the return value is checked.
         let bo = unsafe { gbm_bo_create(self.0.gbm, width, height, format.0, usage.0) };
         if bo.is_null() {
-            Err(())
+            Err(Error::GbmFailed)
         } else {
             Ok(Buffer(bo, self.clone()))
         }
@@ -393,6 +477,69 @@ impl Buffer {
         }
     }
 
+    fn map(&self,
+           x: u32,
+           y: u32,
+           width: u32,
+           height: u32,
+           plane: usize,
+           flags: u32)
+           -> Result<BufferMapping, Error> {
+        checked_range!(checked_arithmetic!(x + width)?; <= self.width())?;
+        checked_range!(checked_arithmetic!(y + height)?; <= self.height())?;
+        checked_range!(plane; <= self.num_planes())?;
+
+        let bytes_per_pixel = self.format()
+            .bytes_per_pixel(plane)
+            .ok_or(Error::UnknownFormat(self.format()))? as u32;
+
+        let mut stride = 0;
+        let mut map_data = null_mut();
+        // Safe because only a valid gbm_bo object is used and the return value is checked. Only
+        // pointers coerced from stack references are used for returned values, and we trust gbm to
+        // only write as many bytes as the size of the pointed to values.
+        let mapping = unsafe {
+            gbm_bo_map(self.0,
+                       x,
+                       y,
+                       width,
+                       height,
+                       flags,
+                       &mut stride,
+                       &mut map_data,
+                       plane)
+        };
+        if mapping == MAP_FAILED {
+            return Err(Error::MapFailed);
+        }
+
+        // The size of returned slice is equal the size of a row in bytes multiplied by the height
+        // of the mapped region, subtracted by the offset into the first mapped row. The 'x' and
+        // 'y's in the below diagram of a 2D buffer are bytes in the mapping. The first 'y' is what
+        // the mapping points to in memory, and the '-'s are unmapped bytes of the buffer.
+        // |----------|
+        // |--stride--|
+        // |-----yyyyx| h
+        // |xxxxxyyyyx| e
+        // |xxxxxyyyyx| i
+        // |xxxxxyyyyx| g
+        // |xxxxxyyyyx| h
+        // |xxxxxyyyyx| t
+        // |----------|
+        let size = checked_arithmetic!(stride * height)?;
+        let x_offset_bytes = checked_arithmetic!(x * bytes_per_pixel)?;
+        let slice_size = checked_arithmetic!(size - x_offset_bytes)? as u64;
+
+        Ok(BufferMapping {
+            // Safe because the chunk of memory starting at mapping with size `slice_size` is valid
+            // and tied to the lifetime of `buffer_mapping`.
+            slice: unsafe { VolatileSlice::new(mapping as *mut u8, slice_size) },
+            stride,
+            map_data,
+            buffer: self,
+        })
+    }
+
     /// Reads the given subsection of the buffer to `dst`.
     pub fn read_to_volatile(&self,
                             x: u32,
@@ -401,90 +548,33 @@ impl Buffer {
                             height: u32,
                             plane: usize,
                             dst: VolatileSlice)
-                            -> Result<(), ()> {
-        let mut stride = 0;
-        let mut map_data = null_mut();
-        // Safe because only a valid gbm_bo object is used and the return value is checked. Only
-        // pointers coerced from stack references are used for returned values, and we trust gbm to
-        // only write as many bytes as the size of the pointed to values.
-        let mapping = unsafe {
-            gbm_bo_map(self.0,
-                       x,
-                       y,
-                       width,
-                       height,
-                       GBM_BO_TRANSFER_READ,
-                       &mut stride,
-                       &mut map_data,
-                       plane)
-        };
-        if mapping == MAP_FAILED {
-            return Err(());
+                            -> Result<(), Error> {
+        if width == 0 || height == 0 {
+            return Ok(());
         }
 
-        let copy_size = (y as u64) * (stride as u64);
+        let mapping = self.map(x, y, width, height, plane, GBM_BO_TRANSFER_READ)?;
 
-        let res = if copy_size <= dst.size() {
-            // The two buffers can not be overlapping because we just made a new mapping in this
-            // scope.
-            unsafe {
-                copy_nonoverlapping(mapping as *mut u8, dst.as_ptr(), copy_size as usize);
-            }
-            Ok(())
+        if x == 0 && width == self.width() {
+            mapping.as_volatile_slice().copy_to_volatile_slice(dst);
         } else {
-            Err(())
-        };
-
-        // safe because the gbm_bo is assumed to be valid and the map_data is the same one given by
-        // gbm_bo_map.
-        unsafe {
-            gbm_bo_unmap(self.0, map_data);
-        }
-
-        res
-    }
-
-    /// Writes to the given subsection of the buffer from `src`.
-    pub fn write_from_slice(&self,
-                            x: u32,
-                            y: u32,
-                            width: u32,
-                            height: u32,
-                            plane: usize,
-                            src: &[u8])
-                            -> Result<(), ()> {
-        let mut stride = 0;
-        let mut map_data = null_mut();
-        // Safe because only a valid gbm_bo object is used and the return value is checked. Only
-        // pointers coerced from stack references are used for returned values, and we trust gbm to
-        // only write as many bytes as the size of the pointed to values.
-        let mapping = unsafe {
-            gbm_bo_map(self.0,
-                       x,
-                       y,
-                       width,
-                       height,
-                       GBM_BO_TRANSFER_WRITE,
-                       &mut stride,
-                       &mut map_data,
-                       plane)
-        };
-        if mapping == MAP_FAILED {
-            return Err(());
-        }
-
-        let copy_size = (height as u64) * (stride as u64);
-        let copy_sg_size = min(src.len() as u64, copy_size);
-
-        // The two buffers can not be overlapping because we just made a new mapping in this scope.
-        unsafe {
-            copy_nonoverlapping(src.as_ptr(), mapping as *mut u8, copy_sg_size as usize);
-        }
-
-        // safe because the gbm_bo is assumed to be valid and the map_data is the same one given by
-        // gbm_bo_map.
-        unsafe {
-            gbm_bo_unmap(self.0, map_data);
+            // This path is more complicated because there are gaps in the data between lines.
+            let width = width as u64;
+            let stride = mapping.stride() as u64;
+            let bytes_per_pixel = match self.format().bytes_per_pixel(plane) {
+                Some(bpp) => bpp as u64,
+                None => return Err(Error::UnknownFormat(self.format())),
+            };
+            let line_copy_size = checked_arithmetic!(width * bytes_per_pixel)?;
+            let src = mapping.as_volatile_slice();
+            for yy in 0..(height as u64) {
+                let line_offset = checked_arithmetic!(yy * stride)?;
+                let src_line = src.get_slice(line_offset, line_copy_size)
+                    .map_err(|e| Error::Memcopy(e))?;
+                let dst_line = dst.get_slice(line_offset, line_copy_size)
+                    .map_err(|e| Error::Memcopy(e))?;
+                src_line.copy_to_volatile_slice(dst_line);
+            }
         }
 
         Ok(())
@@ -497,49 +587,92 @@ impl Buffer {
                                                                     width: u32,
                                                                     height: u32,
                                                                     plane: usize,
-                                                                    sgs: S)
-                                                                    -> Result<(), ()> {
-        let mut stride = 0;
-        let mut map_data = null_mut();
-        // Safe because only a valid gbm_bo object is used and the return value is checked. Only
-        // pointers coerced from stack references are used for returned values, and we trust gbm to
-        // only write as many bytes as the size of the pointed to values.
-        let mut mapping = unsafe {
-            gbm_bo_map(self.0,
-                       x,
-                       y,
-                       width,
-                       height,
-                       GBM_BO_TRANSFER_WRITE,
-                       &mut stride,
-                       &mut map_data,
-                       plane)
-        };
-        if mapping == MAP_FAILED {
-            return Err(());
+                                                                    src_offset: usize,
+                                                                    mut sgs: S)
+                                                                    -> Result<(), Error> {
+        if width == 0 || height == 0 {
+            return Ok(());
         }
 
-        let mut copy_size = (height as u64) * (stride as u64);
+        checked_range!(src_offset; <= isize::MAX as usize)?;
 
-        for sg in sgs {
-            let copy_sg_size = min(sg.size(), copy_size);
-            // The two buffers can not be overlapping because we just made a new mapping in this
-            // scope.
-            unsafe {
-                copy_nonoverlapping(sg.as_ptr(), mapping as *mut u8, copy_sg_size as usize);
+        let mapping = self.map(x, y, width, height, plane, GBM_BO_TRANSFER_WRITE)?;
+        let mut dst_slice = mapping.as_volatile_slice();
+        let stride = mapping.stride() as u64;
+        let mut height = height as u64;
+        let mut src_offset = src_offset as u64;
+
+        if x == 0 && width == self.width() {
+            // This path is a simple copy from the scatter gather iterator to the buffer objection,
+            // with no gaps in the data.
+            let mut copy_size = checked_arithmetic!(stride * height)?;
+            for sg in sgs {
+                // Skip src_offset into this scatter gather item, or the entire thing if offset is
+                // larger.
+                let sg_size = match sg.size().checked_sub(src_offset) {
+                    Some(sg_remaining_size) => sg_remaining_size,
+                    None => {
+                        src_offset -= sg.size();
+                        continue;
+                    }
+                };
+                let copy_sg_size = min(sg_size, copy_size);
+                let src_slice = sg.get_slice(src_offset, copy_sg_size)
+                    .map_err(|e| Error::Memcopy(e))?;
+                src_slice.copy_to_volatile_slice(dst_slice);
+
+                src_offset = 0;
+                dst_slice = dst_slice
+                    .offset(copy_sg_size)
+                    .map_err(|e| Error::Memcopy(e))?;
+                copy_size -= copy_sg_size;
+                if copy_size == 0 {
+                    break;
+                }
             }
+        } else {
+            let width = width as u64;
+            // This path is more complicated because there are gaps in the data between lines.
+            let bytes_per_pixel = self.format().bytes_per_pixel(plane).unwrap_or(0) as u64;
+            let line_copy_size = checked_arithmetic!(width * bytes_per_pixel)?;
+            let line_end_skip = checked_arithmetic!(stride - line_copy_size)?;
+            let mut remaining_line_copy_size = line_copy_size;
+            let mut sg_opt = sgs.next();
+            while !sg_opt.is_none() {
+                let sg = sg_opt.unwrap();
+                // Skip src_offset into this scatter gather item, or the entire thing if offset is
+                // larger.
+                let sg_size = match sg.size().checked_sub(src_offset) {
+                    None | Some(0) => {
+                        src_offset -= sg.size();
+                        sg_opt = sgs.next();
+                        continue;
+                    }
+                    Some(sg_remaining_size) => sg_remaining_size,
+                };
+                let copy_sg_size = min(sg_size, remaining_line_copy_size);
+                let src_slice = sg.get_slice(src_offset, copy_sg_size)
+                    .map_err(|e| Error::Memcopy(e))?;
+                src_slice.copy_to_volatile_slice(dst_slice);
 
-            mapping = mapping.wrapping_offset(copy_sg_size as isize);
-            copy_size -= copy_sg_size;
-            if copy_size == 0 {
-                break;
+                src_offset += copy_sg_size;
+                dst_slice = dst_slice
+                    .offset(copy_sg_size)
+                    .map_err(|e| Error::Memcopy(e))?;
+                remaining_line_copy_size -= copy_sg_size;
+                if remaining_line_copy_size == 0 {
+                    remaining_line_copy_size = line_copy_size;
+                    height -= 1;
+                    if height == 0 {
+                        break;
+                    }
+
+                    src_offset += line_end_skip;
+                    dst_slice = dst_slice
+                        .offset(line_end_skip)
+                        .map_err(|e| Error::Memcopy(e))?;
+                }
             }
-        }
-
-        // safe because the gbm_bo is assumed to be valid and the map_data is the same one given by
-        // gbm_bo_map.
-        unsafe {
-            gbm_bo_unmap(self.0, map_data);
         }
 
         Ok(())
@@ -560,6 +693,32 @@ impl AsRawFd for Buffer {
     }
 }
 
+struct BufferMapping<'a> {
+    slice: VolatileSlice<'a>,
+    stride: u32,
+    map_data: *mut c_void,
+    buffer: &'a Buffer,
+}
+
+impl<'a> BufferMapping<'a> {
+    fn as_volatile_slice(&self) -> VolatileSlice {
+        self.slice
+    }
+
+    fn stride(&self) -> u32 {
+        self.stride
+    }
+}
+
+impl<'a> Drop for BufferMapping<'a> {
+    fn drop(&mut self) {
+        // safe because the gbm_bo is assumed to be valid and the map_data is the same one given by
+        // gbm_bo_map.
+        unsafe {
+            gbm_bo_unmap(self.buffer.0, self.map_data);
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -656,7 +815,15 @@ mod tests {
         let mut dst: Vec<u8> = Vec::new();
         dst.resize((bo.stride() * bo.height()) as usize, 0x4A);
         let dst_len = dst.len() as u64;
-        bo.write_from_slice(0, 0, 1024, 1024, 0, dst.as_slice())
+        bo.write_from_sg(0,
+                           0,
+                           1024,
+                           1024,
+                           0,
+                           0,
+                           [dst.as_mut_slice().get_slice(0, dst_len).unwrap()]
+                               .iter()
+                               .cloned())
             .expect("failed to read bo");
         bo.read_to_volatile(0,
                               0,
