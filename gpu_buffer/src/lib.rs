@@ -36,6 +36,7 @@ extern crate sys_util;
 
 pub mod rendernode;
 mod raw;
+mod drm_formats;
 
 use std::os::raw::c_void;
 use std::fmt;
@@ -49,6 +50,7 @@ use std::result::Result;
 use data_model::VolatileSlice;
 
 use raw::*;
+use drm_formats::*;
 
 const MAP_FAILED: *mut c_void = (-1isize as *mut _);
 
@@ -77,6 +79,78 @@ impl Format {
     pub fn to_bytes(&self) -> [u8; 4] {
         let f = self.0;
         [f as u8, (f >> 8) as u8, (f >> 16) as u8, (f >> 24) as u8]
+    }
+
+    /// Returns the number of bytes per pixel for the given plane, suitable for making copies
+    /// to/from the plane.
+    pub fn bytes_per_pixel(&self, plane: usize) -> Option<usize> {
+        let b = self.to_bytes();
+
+        // NV12 and NV21 have 2 planes with 1 byte per pixel.
+        if (b == DRM_FORMAT_NV12 || b == DRM_FORMAT_NV21) && plane < 2 {
+            return Some(1);
+        }
+
+        // YVU420 has 3 planes, all with the same 1 byte per pixel.
+        if b == DRM_FORMAT_YVU420 && plane < 3 {
+            return Some(1);
+        }
+
+        if plane != 0 {
+            return None;
+        }
+
+        let bpp = match self.to_bytes() {
+            DRM_FORMAT_BGR233 => 1,
+            DRM_FORMAT_C8 => 1,
+            DRM_FORMAT_R8 => 1,
+            DRM_FORMAT_RGB332 => 1,
+            DRM_FORMAT_ABGR1555 => 2,
+            DRM_FORMAT_ABGR4444 => 2,
+            DRM_FORMAT_ARGB1555 => 2,
+            DRM_FORMAT_ARGB4444 => 2,
+            DRM_FORMAT_BGR565 => 2,
+            DRM_FORMAT_BGRA4444 => 2,
+            DRM_FORMAT_BGRA5551 => 2,
+            DRM_FORMAT_BGRX4444 => 2,
+            DRM_FORMAT_BGRX5551 => 2,
+            DRM_FORMAT_GR88 => 2,
+            DRM_FORMAT_RG88 => 2,
+            DRM_FORMAT_RGB565 => 2,
+            DRM_FORMAT_RGBA4444 => 2,
+            DRM_FORMAT_RGBA5551 => 2,
+            DRM_FORMAT_RGBX4444 => 2,
+            DRM_FORMAT_RGBX5551 => 2,
+            DRM_FORMAT_UYVY => 2,
+            DRM_FORMAT_VYUY => 2,
+            DRM_FORMAT_XBGR1555 => 2,
+            DRM_FORMAT_XBGR4444 => 2,
+            DRM_FORMAT_XRGB1555 => 2,
+            DRM_FORMAT_XRGB4444 => 2,
+            DRM_FORMAT_YUYV => 2,
+            DRM_FORMAT_YVYU => 2,
+            DRM_FORMAT_BGR888 => 3,
+            DRM_FORMAT_RGB888 => 3,
+            DRM_FORMAT_ABGR2101010 => 4,
+            DRM_FORMAT_ABGR8888 => 4,
+            DRM_FORMAT_ARGB2101010 => 4,
+            DRM_FORMAT_ARGB8888 => 4,
+            DRM_FORMAT_AYUV => 4,
+            DRM_FORMAT_BGRA1010102 => 4,
+            DRM_FORMAT_BGRA8888 => 4,
+            DRM_FORMAT_BGRX1010102 => 4,
+            DRM_FORMAT_BGRX8888 => 4,
+            DRM_FORMAT_RGBA1010102 => 4,
+            DRM_FORMAT_RGBA8888 => 4,
+            DRM_FORMAT_RGBX1010102 => 4,
+            DRM_FORMAT_RGBX8888 => 4,
+            DRM_FORMAT_XBGR2101010 => 4,
+            DRM_FORMAT_XBGR8888 => 4,
+            DRM_FORMAT_XRGB2101010 => 4,
+            DRM_FORMAT_XRGB8888 => 4,
+            _ => return None,
+        };
+        return Some(bpp);
     }
 }
 
@@ -504,6 +578,28 @@ mod tests {
         let mut buf = String::new();
         write!(&mut buf, "{:?}", f).unwrap();
         assert_eq!(buf, "fourcc(0x00010210)");
+    }
+
+    #[test]
+    fn format_bytes_per_pixel() {
+        let f = Format::new(b'X', b'R', b'2', b'4');
+        assert_eq!(f.bytes_per_pixel(0), Some(4));
+        assert_eq!(f.bytes_per_pixel(1), None);
+        let f = Format::new(b'N', b'V', b'1', b'2');
+        assert_eq!(f.bytes_per_pixel(0), Some(1));
+        assert_eq!(f.bytes_per_pixel(1), Some(2));
+        assert_eq!(f.bytes_per_pixel(2), None);
+        let f = Format::new(b'R', b'8', b' ', b' ');
+        assert_eq!(f.bytes_per_pixel(0), Some(1));
+        assert_eq!(f.bytes_per_pixel(1), None);
+        let f = Format::new(b'B', b'G', b'2', b'4');
+        assert_eq!(f.bytes_per_pixel(0), Some(3));
+        assert_eq!(f.bytes_per_pixel(1), None);
+        let f = Format::new(b'G', b'R', b'8', b'8');
+        assert_eq!(f.bytes_per_pixel(0), Some(2));
+        assert_eq!(f.bytes_per_pixel(1), None);
+        let f = Format::new(b'Z', b'A', b'C', b'H');
+        assert_eq!(f.bytes_per_pixel(0), None);
     }
 
     #[test]

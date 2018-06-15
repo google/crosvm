@@ -1,0 +1,72 @@
+// Copyright 2018 The Chromium OS Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#![allow(dead_code)]
+
+pub const DRM_FORMAT_C8: [u8; 4] = [b'C', b'8', b' ', b' '];
+pub const DRM_FORMAT_R8: [u8; 4] = [b'R', b'8', b' ', b' '];
+pub const DRM_FORMAT_R16: [u8; 4] = [b'R', b'1', b'6', b' '];
+pub const DRM_FORMAT_RG88: [u8; 4] = [b'R', b'G', b'8', b'8'];
+pub const DRM_FORMAT_GR88: [u8; 4] = [b'G', b'R', b'8', b'8'];
+pub const DRM_FORMAT_RG1616: [u8; 4] = [b'R', b'G', b'3', b'2'];
+pub const DRM_FORMAT_GR1616: [u8; 4] = [b'G', b'R', b'3', b'2'];
+pub const DRM_FORMAT_RGB332: [u8; 4] = [b'R', b'G', b'B', b'8'];
+pub const DRM_FORMAT_BGR233: [u8; 4] = [b'B', b'G', b'R', b'8'];
+pub const DRM_FORMAT_XRGB4444: [u8; 4] = [b'X', b'R', b'1', b'2'];
+pub const DRM_FORMAT_XBGR4444: [u8; 4] = [b'X', b'B', b'1', b'2'];
+pub const DRM_FORMAT_RGBX4444: [u8; 4] = [b'R', b'X', b'1', b'2'];
+pub const DRM_FORMAT_BGRX4444: [u8; 4] = [b'B', b'X', b'1', b'2'];
+pub const DRM_FORMAT_ARGB4444: [u8; 4] = [b'A', b'R', b'1', b'2'];
+pub const DRM_FORMAT_ABGR4444: [u8; 4] = [b'A', b'B', b'1', b'2'];
+pub const DRM_FORMAT_RGBA4444: [u8; 4] = [b'R', b'A', b'1', b'2'];
+pub const DRM_FORMAT_BGRA4444: [u8; 4] = [b'B', b'A', b'1', b'2'];
+pub const DRM_FORMAT_XRGB1555: [u8; 4] = [b'X', b'R', b'1', b'5'];
+pub const DRM_FORMAT_XBGR1555: [u8; 4] = [b'X', b'B', b'1', b'5'];
+pub const DRM_FORMAT_RGBX5551: [u8; 4] = [b'R', b'X', b'1', b'5'];
+pub const DRM_FORMAT_BGRX5551: [u8; 4] = [b'B', b'X', b'1', b'5'];
+pub const DRM_FORMAT_ARGB1555: [u8; 4] = [b'A', b'R', b'1', b'5'];
+pub const DRM_FORMAT_ABGR1555: [u8; 4] = [b'A', b'B', b'1', b'5'];
+pub const DRM_FORMAT_RGBA5551: [u8; 4] = [b'R', b'A', b'1', b'5'];
+pub const DRM_FORMAT_BGRA5551: [u8; 4] = [b'B', b'A', b'1', b'5'];
+pub const DRM_FORMAT_RGB565: [u8; 4] = [b'R', b'G', b'1', b'6'];
+pub const DRM_FORMAT_BGR565: [u8; 4] = [b'B', b'G', b'1', b'6'];
+pub const DRM_FORMAT_RGB888: [u8; 4] = [b'R', b'G', b'2', b'4'];
+pub const DRM_FORMAT_BGR888: [u8; 4] = [b'B', b'G', b'2', b'4'];
+pub const DRM_FORMAT_XRGB8888: [u8; 4] = [b'X', b'R', b'2', b'4'];
+pub const DRM_FORMAT_XBGR8888: [u8; 4] = [b'X', b'B', b'2', b'4'];
+pub const DRM_FORMAT_RGBX8888: [u8; 4] = [b'R', b'X', b'2', b'4'];
+pub const DRM_FORMAT_BGRX8888: [u8; 4] = [b'B', b'X', b'2', b'4'];
+pub const DRM_FORMAT_ARGB8888: [u8; 4] = [b'A', b'R', b'2', b'4'];
+pub const DRM_FORMAT_ABGR8888: [u8; 4] = [b'A', b'B', b'2', b'4'];
+pub const DRM_FORMAT_RGBA8888: [u8; 4] = [b'R', b'A', b'2', b'4'];
+pub const DRM_FORMAT_BGRA8888: [u8; 4] = [b'B', b'A', b'2', b'4'];
+pub const DRM_FORMAT_XRGB2101010: [u8; 4] = [b'X', b'R', b'3', b'0'];
+pub const DRM_FORMAT_XBGR2101010: [u8; 4] = [b'X', b'B', b'3', b'0'];
+pub const DRM_FORMAT_RGBX1010102: [u8; 4] = [b'R', b'X', b'3', b'0'];
+pub const DRM_FORMAT_BGRX1010102: [u8; 4] = [b'B', b'X', b'3', b'0'];
+pub const DRM_FORMAT_ARGB2101010: [u8; 4] = [b'A', b'R', b'3', b'0'];
+pub const DRM_FORMAT_ABGR2101010: [u8; 4] = [b'A', b'B', b'3', b'0'];
+pub const DRM_FORMAT_RGBA1010102: [u8; 4] = [b'R', b'A', b'3', b'0'];
+pub const DRM_FORMAT_BGRA1010102: [u8; 4] = [b'B', b'A', b'3', b'0'];
+pub const DRM_FORMAT_YUYV: [u8; 4] = [b'Y', b'U', b'Y', b'V'];
+pub const DRM_FORMAT_YVYU: [u8; 4] = [b'Y', b'V', b'Y', b'U'];
+pub const DRM_FORMAT_UYVY: [u8; 4] = [b'U', b'Y', b'V', b'Y'];
+pub const DRM_FORMAT_VYUY: [u8; 4] = [b'V', b'Y', b'U', b'Y'];
+pub const DRM_FORMAT_AYUV: [u8; 4] = [b'A', b'Y', b'U', b'V'];
+pub const DRM_FORMAT_NV12: [u8; 4] = [b'N', b'V', b'1', b'2'];
+pub const DRM_FORMAT_NV21: [u8; 4] = [b'N', b'V', b'2', b'1'];
+pub const DRM_FORMAT_NV16: [u8; 4] = [b'N', b'V', b'1', b'6'];
+pub const DRM_FORMAT_NV61: [u8; 4] = [b'N', b'V', b'6', b'1'];
+pub const DRM_FORMAT_NV24: [u8; 4] = [b'N', b'V', b'2', b'4'];
+pub const DRM_FORMAT_NV42: [u8; 4] = [b'N', b'V', b'4', b'2'];
+pub const DRM_FORMAT_YUV410: [u8; 4] = [b'Y', b'U', b'V', b'9'];
+pub const DRM_FORMAT_YVU410: [u8; 4] = [b'Y', b'V', b'U', b'9'];
+pub const DRM_FORMAT_YUV411: [u8; 4] = [b'Y', b'U', b'1', b'1'];
+pub const DRM_FORMAT_YVU411: [u8; 4] = [b'Y', b'V', b'1', b'1'];
+pub const DRM_FORMAT_YUV420: [u8; 4] = [b'Y', b'U', b'1', b'2'];
+pub const DRM_FORMAT_YVU420: [u8; 4] = [b'Y', b'V', b'1', b'2'];
+pub const DRM_FORMAT_YUV422: [u8; 4] = [b'Y', b'U', b'1', b'6'];
+pub const DRM_FORMAT_YVU422: [u8; 4] = [b'Y', b'V', b'1', b'6'];
+pub const DRM_FORMAT_YUV444: [u8; 4] = [b'Y', b'U', b'2', b'4'];
+pub const DRM_FORMAT_YVU444: [u8; 4] = [b'Y', b'V', b'2', b'4'];
