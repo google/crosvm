@@ -19,13 +19,16 @@
 //! done concurrently without synchronization. With volatile access we know that the compiler has
 //! not reordered or elided the access.
 
+use std::cmp::min;
+use std::fmt;
 use std::io::Result as IoResult;
 use std::io::{Read, Write};
+use std::{isize, usize};
 use std::marker::PhantomData;
 use std::mem::size_of;
-use std::ptr::{write_volatile, read_volatile};
+use std::ptr::copy;
+use std::ptr::{write_volatile, read_volatile, null_mut};
 use std::result;
-use std::fmt;
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 
 use DataInit;
@@ -114,11 +117,21 @@ impl<'a> VolatileMemory for &'a mut [u8] {
 }
 
 /// A slice of raw memory that supports volatile access.
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct VolatileSlice<'a> {
     addr: *mut u8,
     size: u64,
     phantom: PhantomData<&'a u8>,
+}
+
+impl<'a> Default for VolatileSlice<'a> {
+    fn default() -> VolatileSlice<'a> {
+        VolatileSlice {
+            addr: null_mut(),
+            size: 0,
+            phantom: PhantomData,
+        }
+    }
 }
 
 impl<'a> VolatileSlice<'a> {
@@ -144,6 +157,29 @@ impl<'a> VolatileSlice<'a> {
     /// Gets the size of this slice.
     pub fn size(&self) -> u64 {
         self.size
+    }
+
+    /// Creates a copy of this slice with the address increased by `count` bytes, and the size
+    /// reduced by `count` bytes.
+    pub fn offset(self, count: u64) -> Result<VolatileSlice<'a>> {
+        let new_addr = (self.addr as u64)
+            .checked_add(count)
+            .ok_or(VolatileMemoryError::Overflow {
+                       base: self.addr as u64,
+                       offset: count,
+                   })?;
+        if new_addr > usize::MAX as u64 {
+            return Err(VolatileMemoryError::Overflow {
+                           base: self.addr as u64,
+                           offset: count,
+                       })?;
+        }
+        let new_size = self.size
+            .checked_sub(count)
+            .ok_or(VolatileMemoryError::OutOfBounds { addr: new_addr })?;
+        // Safe because the memory has the same lifetime and points to a subset of the memory of the
+        // original slice.
+        unsafe { Ok(VolatileSlice::new(new_addr as *mut u8, new_size)) }
     }
 
     /// Copies `self.size()` or `buf.len()` times the size of `T` bytes, whichever is smaller, to
@@ -178,6 +214,27 @@ impl<'a> VolatileSlice<'a> {
                 *v = read_volatile(addr as *const T);
                 addr = addr.offset(size_of::<T>() as isize);
             }
+        }
+    }
+
+    /// Copies `self.size()` or `slice.size()` bytes, whichever is smaller, to `slice`.
+    ///
+    /// The copies happen in an undefined order.
+    /// # Examples
+    ///
+    /// ```
+    /// # use data_model::VolatileMemory;
+    /// # fn test_write_null() -> Result<(), ()> {
+    /// let mut mem = [0u8; 32];
+    /// let mem_ref = &mut mem[..];
+    /// let vslice = mem_ref.get_slice(0, 32).map_err(|_| ())?;
+    /// vslice.copy_to_volatile_slice(vslice.get_slice(16, 16).map_err(|_| ())?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn copy_to_volatile_slice(&self, slice: VolatileSlice) {
+        unsafe {
+            copy(self.addr, slice.addr, min(self.size, slice.size) as usize);
         }
     }
 
