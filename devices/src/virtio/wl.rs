@@ -59,7 +59,7 @@ use data_model::*;
 use data_model::VolatileMemoryError;
 
 use sys_util::{Error, Result, EventFd, Scm, SharedMemory, GuestAddress, GuestMemory,
-               GuestMemoryError, PollContext, PollToken, FileFlags, pipe};
+               GuestMemoryError, PollContext, PollToken, FileFlags, pipe, round_up_to_page_size};
 
 #[cfg(feature = "wl-dmabuf")]
 use sys_util::ioctl_with_ref;
@@ -117,12 +117,6 @@ struct dma_buf_sync {
 
 #[cfg(feature = "wl-dmabuf")]
 ioctl_iow_nr!(DMA_BUF_IOCTL_SYNC, DMA_BUF_IOCTL_BASE, 0, dma_buf_sync);
-
-const PAGE_MASK: u64 = 0x0fff;
-
-fn round_to_page_size(v: u64) -> u64 {
-    (v + PAGE_MASK) & !PAGE_MASK
-}
 
 fn parse_new(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
     const ID_OFFSET: u64 = 8;
@@ -639,7 +633,7 @@ impl WlVfd {
     }
 
     fn allocate(vm: VmRequester, size: u64) -> WlResult<WlVfd> {
-        let size_page_aligned = round_to_page_size(size);
+        let size_page_aligned = round_up_to_page_size(size as usize) as u64;
         let mut vfd_shm = SharedMemory::new(Some(CStr::from_bytes_with_nul(b"virtwl_alloc\0")
                                                      .unwrap()))
                 .map_err(WlError::NewAlloc)?;
@@ -728,7 +722,7 @@ impl WlVfd {
         // fails, we assume it's a socket or pipe with read/write semantics.
         match fd.seek(SeekFrom::End(0)) {
             Ok(fd_size) => {
-                let size = round_to_page_size(fd_size);
+                let size = round_up_to_page_size(fd_size as usize) as u64;
                 let register_response =
                     vm.request(VmRequest::RegisterMemory(MaybeOwnedFd::Borrowed(fd.as_raw_fd()),
                                                            size as usize))?;

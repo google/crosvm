@@ -75,6 +75,14 @@ pub fn pagesize() -> usize {
     unsafe { sysconf(_SC_PAGESIZE) as usize }
 }
 
+
+/// Uses the system's page size in bytes to round the given value up to the nearest page boundary.
+#[inline(always)]
+pub fn round_up_to_page_size(v: usize) -> usize {
+    let page_mask = pagesize() - 1;
+    (v + page_mask) & !page_mask
+}
+
 /// This bypasses `libc`'s caching `getpid(2)` wrapper which can be invalid if a raw clone was used
 /// elsewhere.
 #[inline(always)]
