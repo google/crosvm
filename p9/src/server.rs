@@ -401,22 +401,14 @@ impl Server {
                 data: Data(Vec::new()),
             }),
         }.byte_size();
-        let count = min(self.msize - header_size, read.count);
-        let mut buf = Data(Vec::with_capacity(count as usize));
 
-        // Safe because `buf` is guaranteed to have a capacity of `read.count`.  We do
-        // this because we don't want to spend time zero-initializing a potentially
-        // large buffer.
-        unsafe {
-            buf.set_len(read.count as usize);
-        }
+        let capacity = min(self.msize - header_size, read.count);
+        let mut buf = Data(Vec::with_capacity(capacity as usize));
+        buf.resize(capacity as usize, 0);
+
         let count = file.read_at(&mut buf, read.offset)?;
+        buf.resize(count, 0);
 
-        // Safe because read_at guarantees that `count` bytes have been written
-        // into `buf` and that `count` is less than or equal to `buf.len()`.
-        unsafe {
-            buf.set_len(count);
-        }
         Ok(Rmessage::Read(Rread { data: buf }))
     }
 
