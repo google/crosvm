@@ -14,6 +14,8 @@ mod net;
 mod gpu;
 mod p9;
 mod virtio_device;
+mod virtio_pci_common_config;
+mod virtio_pci_device;
 mod wl;
 
 pub mod vhost;
@@ -28,6 +30,7 @@ pub use self::net::*;
 pub use self::gpu::*;
 pub use self::p9::*;
 pub use self::virtio_device::*;
+pub use self::virtio_pci_device::*;
 pub use self::wl::*;
 
 const DEVICE_ACKNOWLEDGE: u32 = 0x01;

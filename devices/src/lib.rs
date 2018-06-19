@@ -36,3 +36,4 @@ pub use self::pci::{PciConfigIo, PciConfigMmio, PciDevice, PciDeviceError, PciIn
 pub use self::proxy::ProxyDevice;
 pub use self::proxy::Error as ProxyError;
 pub use self::serial::Serial;
+pub use self::virtio::VirtioPciDevice;
