@@ -7,11 +7,16 @@ use pci::PciInterruptPin;
 // The number of 32bit registers in the config space, 256 bytes.
 const NUM_CONFIGURATION_REGISTERS: usize = 64;
 
+const STATUS_REG: usize = 1;
+const STATUS_REG_CAPABILITIES_USED_MASK: u32 = 0x0000_0010;
 const BAR0_REG: usize = 4;
 const BAR_IO_ADDR_MASK: u32 = 0xffff_fffc;
 const BAR_IO_BIT: u32 = 0x0000_0001;
 const BAR_MEM_ADDR_MASK: u32 = 0xffff_fff0;
 const NUM_BAR_REGS: usize = 6;
+const CAPABILITY_LIST_HEAD_OFFSET: usize = 0x34;
+const FIRST_CAPABILITY_OFFSET: usize = 0x40;
+const CAPABILITY_MAX_OFFSET: usize = 192;
 
 const INTERRUPT_LINE_PIN_REG: usize = 15;
 
@@ -116,6 +121,37 @@ impl PciSubclass for PciSerialBusSubClass {
     }
 }
 
+/// Types of PCI capabilities.
+pub enum PciCapabilityID {
+    ListID = 0,
+    PowerManagement = 0x01,
+    AcceleratedGraphicsPort = 0x02,
+    VitalProductData = 0x03,
+    SlotIdentification = 0x04,
+    MessageSignalledInterrupts = 0x05,
+    CompactPCIHotSwap = 0x06,
+    PCIX = 0x07,
+    HyperTransport = 0x08,
+    VendorSpecific = 0x09,
+    Debugport = 0x0A,
+    CompactPCICentralResourceControl = 0x0B,
+    PCIStandardHotPlugController = 0x0C,
+    BridgeSubsystemVendorDeviceID = 0x0D,
+    AGPTargetPCIPCIbridge = 0x0E,
+    SecureDevice = 0x0F,
+    PCIExpress = 0x10,
+    MSIX = 0x11,
+    SATADataIndexConf = 0x12,
+    PCIAdvancedFeatures = 0x13,
+    PCIEnhancedAllocation = 0x14,
+}
+
+/// A PCI capability list. Devices can optionally specify capabilities in their configuration space.
+pub trait PciCapability {
+    fn bytes(&self) -> &[u8];
+    fn id(&self) -> PciCapabilityID;
+}
+
 /// Contains the configuration space of a PCI node.
 /// See the [specification](https://en.wikipedia.org/wiki/PCI_configuration_space).
 /// The configuration space is accessed with DWORD reads and writes from the guest.
@@ -123,6 +159,8 @@ pub struct PciConfiguration {
     registers: [u32; NUM_CONFIGURATION_REGISTERS],
     writable_bits: [u32; NUM_CONFIGURATION_REGISTERS], // writable bits for each register.
     num_bars: usize,
+    // Contains the byte offset and size of the last capability.
+    last_capability: Option<(usize, usize)>,
 }
 
 impl PciConfiguration {
@@ -145,6 +183,7 @@ impl PciConfiguration {
             registers,
             writable_bits: [0xffff_ffff; NUM_CONFIGURATION_REGISTERS],
             num_bars: 0,
+            last_capability: None,
         }
     }
 
@@ -252,5 +291,37 @@ impl PciConfiguration {
         self.registers[INTERRUPT_LINE_PIN_REG] = (self.registers[INTERRUPT_LINE_PIN_REG]
             & 0xffff_0000) | (pin_idx << 8)
             | u32::from(line);
+    }
+
+    /// Adds the capability `cap_data` to the list of capabilities.
+    /// `cap_data` should include the three byte PCI capability header: type, next, length.
+    pub fn add_capability(&mut self, cap_data: &PciCapability) -> Option<usize> {
+        let total_len = cap_data.bytes().len() + 2;
+        // Check that the length is valid.
+        if cap_data.bytes().len() < 1 {
+            return None;
+        }
+        let (cap_offset, tail_offset) = match self.last_capability {
+            Some((offset, len)) => (Self::next_dword(offset, len), offset + 1),
+            None => (FIRST_CAPABILITY_OFFSET, CAPABILITY_LIST_HEAD_OFFSET),
+        };
+        if cap_offset.checked_add(cap_data.bytes().len() + 2)? > CAPABILITY_MAX_OFFSET {
+            return None;
+        }
+        self.registers[STATUS_REG] |= STATUS_REG_CAPABILITIES_USED_MASK;
+        self.write_byte(tail_offset, cap_offset as u8);
+        self.write_byte(cap_offset, cap_data.id() as u8);
+        self.write_byte(cap_offset + 1, 0); // Next pointer.
+        for (i, byte) in cap_data.bytes().iter().enumerate() {
+            self.write_byte(cap_offset + i + 2, *byte);
+        }
+        self.last_capability = Some((cap_offset, total_len));
+        Some(cap_offset)
+    }
+
+    // Find the next aligned offset after the one given.
+    fn next_dword(offset: usize, len: usize) -> usize {
+        let next = offset + len;
+        (next + 3) & !3
     }
 }
