@@ -13,6 +13,7 @@ mod net;
 #[cfg(feature = "gpu")]
 mod gpu;
 mod p9;
+mod virtio_device;
 mod wl;
 
 pub mod vhost;
@@ -26,6 +27,7 @@ pub use self::net::*;
 #[cfg(feature = "gpu")]
 pub use self::gpu::*;
 pub use self::p9::*;
+pub use self::virtio_device::*;
 pub use self::wl::*;
 
 const DEVICE_ACKNOWLEDGE: u32 = 0x01;
