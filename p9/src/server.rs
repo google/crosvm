@@ -541,7 +541,7 @@ impl Server {
             .append((lcreate.flags & P9_APPEND) != 0)
             .create_new((lcreate.flags & P9_EXCL) != 0)
             .custom_flags(custom_flags)
-            .mode(lcreate.mode & 0o777)
+            .mode(lcreate.mode & 0o755)
             .open(&path)?;
 
         fid.metadata = file.metadata()?;
@@ -842,7 +842,7 @@ impl Server {
 
         fs::DirBuilder::new()
             .recursive(false)
-            .mode(mkdir.mode & 0o777)
+            .mode(mkdir.mode & 0o755)
             .create(&newpath)?;
 
         Ok(Rmessage::Mkdir(Rmkdir {
