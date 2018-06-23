@@ -8,6 +8,7 @@ lto = true
 panic = 'abort'
 
 [workspace]
+members = ["9s"]
 
 [features]
 plugin = ["plugin_proto", "crosvm_plugin", "protobuf"]

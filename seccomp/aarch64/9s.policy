@@ -1,0 +1,61 @@
+# Copyright 2018 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+read: 1
+write: 1
+stat64: 1
+open: 1
+close: 1
+fstat64: 1
+lstat64: 1
+getdents64: 1
+ioctl: arg1 == FIOCLEX
+pread64: 1
+pwrite64: 1
+# Disallow mmap with PROT_EXEC set.  The syntax here doesn't allow bit
+# negation, thus the manually negated mask constant.
+mmap2: arg2 in 0xfffffffb
+mprotect: arg2 in 0xfffffffb
+rt_sigaction: 1
+sigaltstack: 1
+munmap: 1
+utimensat: 1
+brk: 1
+uname: 1
+accept4: 1
+mkdir: 1
+sched_getaffinity: 1
+getpid: 1
+ugetrlimit: 1
+set_robust_list: 1
+fcntl64: 1
+socket: arg0 == AF_UNIX || arg0 == AF_VSOCK
+gettimeofday: 1
+restart_syscall: 1
+exit_group: 1
+rt_sigreturn: 1
+rename: 1
+ftruncate64: 1
+connect: 1
+madvise: 1
+rt_sigprocmask: 1
+access: 1
+ARM_set_tls: 1
+_llseek: 1
+exit: 1
+fdatasync: 1
+set_tid_address: 1
+listen: 1
+# Disallow clone's other than new threads.
+clone: arg0 & 0x00010000
+statfs64: 1
+link: 1
+unlink: 1
+fsync: 1
+futex: 1
+bind: 1
+rmdir: 1
+# Calling fchown with -1 as the uid/gid will change the ctime but do nothing else.
+fchown: arg1 == 0xffffffff && arg2 == 0xffffffff
+mremap: 1
