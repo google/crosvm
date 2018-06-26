@@ -91,14 +91,16 @@ const AARCH64_SERIAL_ADDR: u64 = 0x3F8;
 const AARCH64_SERIAL_SIZE: u64 = 0x8;
 // This was the speed kvmtool used, not sure if it matters.
 const AARCH64_SERIAL_SPEED: u32 = 1843200;
+// The serial device gets the first interrupt line
+// Which gets mapped to the first SPI interrupt (physical 32).
+const AARCH64_SERIAL_IRQ: u32 = 0;
 
 // Place the RTC device at page 2
 const AARCH64_RTC_ADDR: u64 = 0x2000;
 // The RTC device gets one 4k page
 const AARCH64_RTC_SIZE: u64 = 0x1000;
-// The RTC device gets the first interrupt line
-// Which gets mapped to the first SPI interrupt (physical 32).
-const AARCH64_RTC_IRQ: u32 = 0;
+// The RTC device gets the second interrupt line
+const AARCH64_RTC_IRQ: u32 = 1;
 
 // PCI MMIO configuration region base address.
 const AARCH64_PCI_CFG_BASE: u64 = 0x10000;
@@ -110,8 +112,8 @@ const AARCH64_MMIO_BASE: u64 = 0x1010000;
 const AARCH64_MMIO_SIZE: u64 = 0x100000;
 // Each MMIO device gets a 4k page.
 const AARCH64_MMIO_LEN: u64 = 0x1000;
-// Virtio devices start at SPI interrupt number 1
-const AARCH64_IRQ_BASE: u32 = 1;
+// Virtio devices start at SPI interrupt number 2
+const AARCH64_IRQ_BASE: u32 = 2;
 
 #[derive(Debug)]
 pub enum Error {
@@ -227,12 +229,14 @@ impl arch::LinuxArch for AArch64 {
         let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci)));
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
-        let (io_bus, stdio_serial) = Self::setup_io_bus()?;
+
+        // ARM doesn't really use the io bus like x86, so just create an empty bus.
+        let io_bus = devices::Bus::new();
 
         // Create a list of mmio devices to be added.
         let mmio_devs = virtio_devs(&mem, &exit_evt)?;
 
-        Self::add_arch_devs(&mut vm, &mut mmio_bus)?;
+        let stdio_serial = Self::add_arch_devs(&mut vm, &mut mmio_bus)?;
 
         for stub in mmio_devs {
             arch::register_mmio(
@@ -357,11 +361,12 @@ impl AArch64 {
     ///
     /// * `vm` - The vm to add irqs to.
     /// * `bus` - The bus to add devices to.
-    fn add_arch_devs(vm: &mut Vm, bus: &mut Bus) -> Result<()> {
+    fn add_arch_devs(vm: &mut Vm, bus: &mut Bus) -> Result<Arc<Mutex<devices::Serial>>> {
         let rtc_evt = EventFd::new()?;
         vm.register_irqfd(&rtc_evt, AARCH64_RTC_IRQ)?;
 
         let com_evt_1_3 = EventFd::new()?;
+        vm.register_irqfd(&com_evt_1_3, AARCH64_SERIAL_IRQ)?;
         let serial = Arc::new(Mutex::new(devices::Serial::new_out(
             com_evt_1_3.try_clone()?,
             Box::new(stdout()),
@@ -376,7 +381,7 @@ impl AArch64 {
         let rtc = Arc::new(Mutex::new(devices::pl030::Pl030::new(rtc_evt)));
         bus.insert(rtc, AARCH64_RTC_ADDR, AARCH64_RTC_SIZE, false)
             .expect("failed to add rtc device");
-        Ok(())
+        Ok(serial)
     }
 
     /// The creates the interrupt controller device and optionally returns the fd for it.
@@ -465,19 +470,6 @@ impl AArch64 {
             return Err(Box::new(sys_util::Error::new(ret)));
         }
         Ok(Some(vgic_fd))
-    }
-
-    fn setup_io_bus() -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)> {
-        // ARM doesn't really use the io bus like x86, instead we have a
-        // separate serial device that is returned as a separate object.
-        let io_bus = devices::Bus::new();
-        let com_evt_1_3 = EventFd::new()?;
-
-        let serial = Arc::new(Mutex::new(devices::Serial::new_out(
-            com_evt_1_3.try_clone()?,
-            Box::new(stdout()),
-        )));
-        Ok((io_bus, serial))
     }
 
     fn configure_vcpu(

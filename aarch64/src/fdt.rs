@@ -29,6 +29,7 @@ use AARCH64_RTC_SIZE;
 
 // These are serial device related constants.
 use AARCH64_SERIAL_ADDR;
+use AARCH64_SERIAL_IRQ;
 use AARCH64_SERIAL_SIZE;
 use AARCH64_SERIAL_SPEED;
 
@@ -324,11 +325,17 @@ fn create_timer_node(fdt: &mut Vec<u8>, num_cpus: u32) -> Result<(), Box<Error>>
 
 fn create_serial_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
     let serial_reg_prop = generate_prop64(&[AARCH64_SERIAL_ADDR, AARCH64_SERIAL_SIZE]);
+    let irq = generate_prop32(&[
+        GIC_FDT_IRQ_TYPE_SPI,
+        AARCH64_SERIAL_IRQ,
+        IRQ_TYPE_EDGE_RISING,
+    ]);
 
     begin_node(fdt, "U6_16550A@3f8")?;
     property_string(fdt, "compatible", "ns16550a")?;
     property(fdt, "reg", &serial_reg_prop)?;
     property_u32(fdt, "clock-frequency", AARCH64_SERIAL_SPEED)?;
+    property(fdt, "interrupts", &irq)?;
     end_node(fdt)?;
 
     Ok(())
