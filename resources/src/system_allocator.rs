@@ -11,12 +11,12 @@ use sys_util::pagesize;
 /// # Example - Use the `SystemAddress` builder.
 ///
 /// ```
-/// # use sys_util::AddressRanges;
+/// # use resources::AddressRanges;
 ///   if let Some(mut a) = AddressRanges::new()
 ///           .add_io_addresses(0x1000, 0x10000)
 ///           .add_device_addresses(0x10000000, 0x10000000)
 ///           .add_mmio_addresses(0x30000000, 0x10000)
-///           .create_allocator(5) {
+///           .create_allocator(5, false) {
 ///       assert_eq!(a.allocate_irq(), Some(5));
 ///       assert_eq!(a.allocate_irq(), Some(6));
 ///       assert_eq!(a.allocate_device_addresses(0x100), Some(0x10000000));
