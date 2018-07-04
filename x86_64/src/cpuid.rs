@@ -9,13 +9,6 @@ use std::error::{self, Error as CpuidError};
 use kvm;
 use sys_util;
 
-// Query the CPU vendor.  ebx/ecx/edx pack an ASCII string into these 3 regs
-// in little endian format.  We set to "crosvmBestVM".
-// https://en.wikipedia.org/wiki/CPUID#EAX=0:_Get_vendor_ID_(including_EAX=1:_Get_CPUID)
-const VENDOR_EBX_VAL: u32 = 0x736f7263;  // sorc
-const VENDOR_ECX_VAL: u32 = 0x4d567473;  // MVts
-const VENDOR_EDX_VAL: u32 = 0x65426d76;  // eBmv
-
 #[derive(Debug, PartialEq)]
 pub enum Error {
     GetSupportedCpusFailed(sys_util::Error),
@@ -40,6 +33,19 @@ impl Display for Error {
     }
 }
 
+// This function is implemented in C because stable rustc does not
+// support inline assembly.
+extern "C" {
+    fn host_cpuid(func: u32,
+                  func2: u32,
+                  rEax: *mut u32,
+                  rEbx: *mut u32,
+                  rEcx: *mut u32,
+                  rEdx: *mut u32)
+                  -> ();
+}
+
+
 // CPUID bits in ebx, ecx, and edx.
 const EBX_CLFLUSH_CACHELINE: u32 = 8; // Flush a cache line size.
 const EBX_CLFLUSH_SIZE_SHIFT: u32 = 8; // Bytes flushed when executing CLFLUSH.
@@ -54,12 +60,6 @@ fn filter_cpuid(cpu_id: u64, cpu_count: u64, kvm_cpuid: &mut kvm::CpuId) -> Resu
 
     for entry in entries.iter_mut() {
         match entry.function {
-            0 => {
-                // Vendor name.
-                entry.ebx = VENDOR_EBX_VAL;
-                entry.ecx = VENDOR_ECX_VAL;
-                entry.edx = VENDOR_EDX_VAL;
-            }
             1 => {
                 // X86 hypervisor feature
                 if entry.index == 0 {
@@ -71,6 +71,27 @@ fn filter_cpuid(cpu_id: u64, cpu_count: u64, kvm_cpuid: &mut kvm::CpuId) -> Resu
                     entry.ebx |= (cpu_count as u32) << EBX_CPU_COUNT_SHIFT;
                     entry.edx |= 1 << EDX_HTT_SHIFT;
                 }
+            }
+            2 | 0x80000005 | 0x80000006 => {
+                unsafe {
+                    host_cpuid(entry.function,
+                               0,
+                               &mut entry.eax as *mut u32,
+                               &mut entry.ebx as *mut u32,
+                               &mut entry.ecx as *mut u32,
+                               &mut entry.edx as *mut u32);
+                }
+            }
+            4 => {
+                unsafe {
+                    host_cpuid(entry.function,
+                               entry.index,
+                               &mut entry.eax as *mut u32,
+                               &mut entry.ebx as *mut u32,
+                               &mut entry.ecx as *mut u32,
+                               &mut entry.edx as *mut u32);
+                }
+                entry.eax &= !0xFC000000;
             }
             6 => {
                 // Clear X86 EPB feature.  No frequency selection in the hypervisor.
@@ -121,9 +142,6 @@ mod tests {
         {
             let entries = cpuid.mut_entries_slice();
             assert_eq!(entries[0].function, 0);
-            assert_eq!(entries[0].ebx, VENDOR_EBX_VAL);
-            assert_eq!(entries[0].ecx, VENDOR_ECX_VAL);
-            assert_eq!(entries[0].edx, VENDOR_EDX_VAL);
             assert_eq!(1, (entries[1].ebx >> EBX_CPUID_SHIFT) & 0x000000ff);
             assert_eq!(2, (entries[1].ebx >> EBX_CPU_COUNT_SHIFT) & 0x000000ff);
             assert_eq!(EBX_CLFLUSH_CACHELINE,

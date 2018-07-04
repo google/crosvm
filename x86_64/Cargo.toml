@@ -2,6 +2,7 @@
 name = "x86_64"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
+build = "build.rs"
 
 [dependencies]
 arch = { path = "../arch" }
@@ -15,3 +16,7 @@ kernel_cmdline = { path = "../kernel_cmdline" }
 kernel_loader = { path = "../kernel_loader" }
 libc = "*"
 byteorder = "*"
+
+[build-dependencies]
+cc = "=1.0.15"
+
