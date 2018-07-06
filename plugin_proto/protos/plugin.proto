@@ -277,6 +277,8 @@ message VcpuRequest {
         MP = 5;
         // struct kvm_xcrs
         XCREGS = 6;
+        // struct kvm_vcpu_events
+        EVENTS = 7;
     }
 
     message GetState {
@@ -285,7 +287,9 @@ message VcpuRequest {
 
     message SetState {
         StateSet set = 1;
-        // The in memory representation of a struct kvm_regs, struct kvm_sregs, or struct kvm_fpu,
+        // The in memory representation of a struct kvm_regs, struct kvm_sregs,
+        // struct kvm_fpu, struct kvm_debugregs, struct kvm_lapic_state,
+        // struct kvm_mp_state, struct kvm_xcrs or struct kvm_vcpu_events
         // depending on the value of the StateSet.
         bytes state = 2;
     }
@@ -355,9 +359,10 @@ message VcpuResponse  {
     message Resume {}
 
     message GetState {
-        // The in memory representation of a struct kvm_regs, struct kvm_sregs, struct kvm_fpu,
-        // struct kvm_lapic_state, or struct kvm_mp_state, depending on what StateSet was
-        // requested in GetState.
+        // The in memory representation of a struct kvm_regs, struct kvm_sregs,
+        // struct kvm_fpu, struct kvm_debugregs, struct kvm_lapic_state,
+        // struct kvm_mp_state, struct kvm_xcrs or struct kvm_vcpu_events
+        // depending on the value of the StateSet.
         bytes state = 1;
     }
 

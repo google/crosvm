@@ -1169,6 +1169,41 @@ impl Vcpu {
         Ok(())
     }
 
+    /// Gets the vcpu's currently pending exceptions, interrupts, NMIs, etc
+    ///
+    /// See the documentation for KVM_GET_VCPU_EVENTS.
+    ///
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_vcpu_events(&self) -> Result<kvm_vcpu_events> {
+        // Safe because we know that our file is a VCPU fd, we know the kernel
+        // will only write correct amount of memory to our pointer, and we
+        // verify the return result.
+        let mut events: kvm_vcpu_events = unsafe { std::mem::zeroed() };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_VCPU_EVENTS(),
+                                              &mut events) };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(events)
+    }
+
+    /// Sets the vcpu's currently pending exceptions, interrupts, NMIs, etc
+    ///
+    /// See the documentation for KVM_SET_VCPU_EVENTS.
+    ///
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_vcpu_events(&self, events: &kvm_vcpu_events) -> Result<()> {
+        let ret = unsafe {
+            // The ioctl is safe because the kernel will only read from the
+            // kvm_vcpu_events.
+            ioctl_with_ref(self, KVM_SET_VCPU_EVENTS(), events)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
     /// Specifies set of signals that are blocked during execution of KVM_RUN.
     /// Signals that are not blocked will will cause KVM_RUN to return
     /// with -EINTR.

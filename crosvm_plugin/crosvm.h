@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 13
+#define CROSVM_API_MINOR 15
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -524,6 +524,14 @@ int crosvm_vcpu_get_mp_state(struct crosvm_vcpu *,
 /* Sets the "multiprocessor state" of given VCPU. */
 int crosvm_vcpu_set_mp_state(struct crosvm_vcpu *,
                              const struct kvm_mp_state *__mp_state);
+
+/* Gets currently pending exceptions, interrupts, NMIs, etc for VCPU. */
+int crosvm_vcpu_get_vcpu_events(struct crosvm_vcpu *,
+                                struct kvm_vcpu_events *);
+
+/* Sets currently pending exceptions, interrupts, NMIs, etc for VCPU. */
+int crosvm_vcpu_set_vcpu_events(struct crosvm_vcpu *,
+                                const struct kvm_vcpu_events *);
 
 #ifdef  __cplusplus
 }

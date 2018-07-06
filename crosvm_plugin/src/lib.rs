@@ -46,7 +46,7 @@ use kvm::dirty_log_bitmap_size;
 
 use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_xcrs, kvm_msr_entry,
               kvm_cpuid_entry2, kvm_lapic_state, kvm_mp_state, kvm_pic_state, kvm_ioapic_state,
-              kvm_pit_state2};
+              kvm_pit_state2, kvm_vcpu_events};
 
 use plugin_proto::*;
 
@@ -172,6 +172,8 @@ enum Stat {
     VcpuSetLapicState,
     VcpuGetMpState,
     VcpuSetMpState,
+    VcpuGetVcpuEvents,
+    VcpuSetVcpuEvents,
     NewConnection,
 
     Count,
@@ -1485,5 +1487,29 @@ pub unsafe extern "C" fn crosvm_vcpu_set_mp_state(this: *mut crosvm_vcpu,
     let this = &mut *this;
     let state = from_raw_parts(state as *mut u8, size_of::<kvm_mp_state>());
     let ret = this.set_state(VcpuRequest_StateSet::MP, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_get_vcpu_events(this: *mut crosvm_vcpu,
+                                                     events: *mut kvm_vcpu_events)
+                                                     -> c_int {
+    let _u = STATS.record(Stat::VcpuGetVcpuEvents);
+    let this = &mut *this;
+    let events = from_raw_parts_mut(events as *mut u8,
+                                    size_of::<kvm_vcpu_events>());
+    let ret = this.get_state(VcpuRequest_StateSet::EVENTS, events);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_set_vcpu_events(this: *mut crosvm_vcpu,
+                                                     events: *const kvm_vcpu_events)
+                                                     -> c_int {
+    let _u = STATS.record(Stat::VcpuSetVcpuEvents);
+    let this = &mut *this;
+    let events = from_raw_parts(events as *mut u8,
+                                size_of::<kvm_vcpu_events>());
+    let ret = this.set_state(VcpuRequest_StateSet::EVENTS, events);
     to_crosvm_rc(ret)
 }

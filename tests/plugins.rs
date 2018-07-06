@@ -644,6 +644,19 @@ fn test_vcpu_state_manipulation() {
                     return 1;
                 }
 
+                struct kvm_vcpu_events events;
+                ret = crosvm_vcpu_get_vcpu_events(vcpu, &events);
+                if (ret < 0) {
+                    fprintf(stderr, "failed to get VCPU events: %d\n", ret);
+                    return 1;
+                }
+
+                ret = crosvm_vcpu_set_vcpu_events(vcpu, &events);
+                if (ret < 0) {
+                    fprintf(stderr, "failed to set VCPU events: %d\n", ret);
+                    return 1;
+                }
+
                 success = true;
                 return 0;
             }
