@@ -209,7 +209,8 @@ impl arch::LinuxArch for AArch64 {
 
         let (pci, pci_irqs) = arch::generate_pci_root(components.pci_devices,
                                                       &mut mmio_bus,
-                                                      &mut resources)
+                                                      &mut resources,
+                                                      &mut vm)
             .map_err(Error::CreatePciRoot)?;
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;

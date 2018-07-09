@@ -37,6 +37,11 @@ pub trait PciDevice: Send {
     ) -> Result<Vec<(u64, u64)>> {
         Ok(Vec::new())
     }
+    /// Gets a list of ioeventfds that should be registered with the running VM. The list is
+    /// returned as a Vec of (eventfd, addr) tuples.
+    fn ioeventfds(&self) -> Vec<(&EventFd, u64)> {
+        Vec::new()
+    }
     /// Gets the configuration registers of the Pci Device.
     fn config_registers(&self) -> &PciConfiguration; // TODO - remove these
     /// Gets the configuration registers of the Pci Device for modification.
@@ -97,6 +102,11 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
         resources: &mut SystemAllocator,
     ) -> Result<Vec<(u64, u64)>> {
         (**self).allocate_io_bars(resources)
+    }
+    /// Gets a list of ioeventfds that should be registered with the running VM. The list is
+    /// returned as a Vec of (eventfd, addr) tuples.
+    fn ioeventfds(&self) -> Vec<(&EventFd, u64)> {
+        (**self).ioeventfds()
     }
     /// Gets the configuration registers of the Pci Device.
     fn config_registers(&self) -> &PciConfiguration {

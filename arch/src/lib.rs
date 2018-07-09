@@ -20,7 +20,7 @@ use devices::{Bus, BusError, PciDevice, PciDeviceError, PciInterruptPin,
               PciRoot, ProxyDevice, Serial};
 use devices::virtio::VirtioDevice;
 use io_jail::Minijail;
-use kvm::{IoeventAddress, Kvm, Vm, Vcpu};
+use kvm::{IoeventAddress, Kvm, NoDatamatch, Vm, Vcpu};
 use sys_util::{EventFd, GuestMemory, syslog};
 use resources::SystemAllocator;
 
@@ -136,7 +136,8 @@ impl fmt::Display for DeviceRegistrationError {
 /// Creates a root PCI device for use by this Vm.
 pub fn generate_pci_root(devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
                          mmio_bus: &mut Bus,
-                         resources: &mut SystemAllocator)
+                         resources: &mut SystemAllocator,
+                         vm: &mut Vm)
     -> std::result::Result<(PciRoot, Vec<(u32, PciInterruptPin)>), DeviceRegistrationError>
 {
     let mut root = PciRoot::new();
@@ -146,7 +147,9 @@ pub fn generate_pci_root(devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
         syslog::push_fds(&mut keep_fds);
 
         let irqfd = EventFd::new().map_err(DeviceRegistrationError::EventFdCreate)?;
-        let irq_num = resources.allocate_irq().ok_or(DeviceRegistrationError::AllocateIrq)? as u32;
+        let irq_num = resources
+            .allocate_irq()
+            .ok_or(DeviceRegistrationError::AllocateIrq)? as u32;
         let pci_irq_pin = match dev_idx % 4 {
             0 => PciInterruptPin::IntA,
             1 => PciInterruptPin::IntB,
@@ -160,6 +163,12 @@ pub fn generate_pci_root(devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
         let ranges = device
             .allocate_io_bars(resources)
             .map_err(DeviceRegistrationError::AllocateIoAddrs)?;
+        for (event, addr) in device.ioeventfds() {
+            let io_addr = IoeventAddress::Mmio(addr);
+            vm.register_ioevent(&event, io_addr, NoDatamatch)
+                .map_err(DeviceRegistrationError::RegisterIoevent)?;
+            keep_fds.push(event.as_raw_fd());
+        }
         let proxy = ProxyDevice::new(device, &jail, keep_fds)
             .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
         let arced_dev = Arc::new(Mutex::new(proxy));
