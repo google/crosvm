@@ -107,8 +107,6 @@ const AARCH64_IRQ_BASE: u32 = 1;
 
 #[derive(Debug)]
 pub enum Error {
-    /// Error Adding a PCI device.
-    AddPciDev(devices::PciRootError),
     /// Unable to clone an EventFd
     CloneEventFd(sys_util::Error),
     /// Error creating kernel command line.
@@ -118,7 +116,7 @@ pub enum Error {
     /// Unable to create Kvm.
     CreateKvm(sys_util::Error),
     /// Unable to create a PciRoot hub.
-    CreatePciRoot(devices::PciRootError),
+    CreatePciRoot(arch::DeviceRegistrationError),
     /// Unable to create socket.
     CreateSocket(io::Error),
     /// Unable to create Vcpu.
@@ -130,7 +128,7 @@ pub enum Error {
     /// Failure to Create GIC
     CreateGICFailure(sys_util::Error),
     /// Couldn't register virtio socket.
-    RegisterVsock(arch::MmioRegisterError),
+    RegisterVsock(arch::DeviceRegistrationError),
     /// VCPU Init failed
     VCPUInitFailure,
     /// VCPU Set one reg failed
@@ -140,7 +138,6 @@ pub enum Error {
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
-            &Error::AddPciDev(_) => "Failed to add device to PCI",
             &Error::CloneEventFd(_) => "Unable to clone an EventFd",
             &Error::Cmdline(_) => "the given kernel command line was invalid",
             &Error::CreateEventFd(_) => "Unable to make an EventFd",
@@ -210,7 +207,9 @@ impl arch::LinuxArch for AArch64 {
 
         let mut mmio_bus = devices::Bus::new();
 
-        let (pci, pci_irqs) = components.pci_devices.generate_root(&mut mmio_bus, &mut resources)
+        let (pci, pci_irqs) = arch::generate_pci_root(components.pci_devices,
+                                                      &mut mmio_bus,
+                                                      &mut resources)
             .map_err(Error::CreatePciRoot)?;
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;

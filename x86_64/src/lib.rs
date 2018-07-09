@@ -77,8 +77,6 @@ use kvm::*;
 
 #[derive(Debug)]
 pub enum Error {
-    /// Error Adding a PCI device.
-    AddPciDev(devices::PciRootError),
     /// Error configuring the system
     ConfigureSystem,
     /// Unable to clone an EventFd
@@ -90,7 +88,7 @@ pub enum Error {
     /// Unable to create Kvm.
     CreateKvm(sys_util::Error),
     /// Unable to create a PciRoot hub.
-    CreatePciRoot(devices::PciRootError),
+    CreatePciRoot(arch::DeviceRegistrationError),
     /// Unable to create socket.
     CreateSocket(io::Error),
     /// Unable to create Vcpu.
@@ -100,7 +98,7 @@ pub enum Error {
     /// Error registering an IrqFd
     RegisterIrqfd(sys_util::Error),
     /// Couldn't register virtio socket.
-    RegisterVsock(arch::MmioRegisterError),
+    RegisterVsock(arch::DeviceRegistrationError),
     LoadCmdline(kernel_loader::Error),
     LoadKernel(kernel_loader::Error),
     /// Error writing the zero page of guest memory.
@@ -114,7 +112,6 @@ pub enum Error {
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
-            &Error::AddPciDev(_) => "Failed to add device to PCI",
             &Error::ConfigureSystem => "Error configuring the system",
             &Error::CloneEventFd(_) => "Unable to clone an EventFd",
             &Error::Cmdline(_) => "the given kernel command line was invalid",
@@ -278,7 +275,9 @@ impl arch::LinuxArch for X8664arch {
 
         let mut mmio_bus = devices::Bus::new();
 
-        let (pci, pci_irqs) = components.pci_devices.generate_root(&mut mmio_bus, &mut resources)
+        let (pci, pci_irqs) = arch::generate_pci_root(components.pci_devices,
+                                                      &mut mmio_bus,
+                                                      &mut resources)
             .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(pci));
 

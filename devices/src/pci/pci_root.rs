@@ -2,73 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std;
 use std::sync::{Arc, Mutex};
 
 use byteorder::{ByteOrder, LittleEndian};
 
-use io_jail::Minijail;
-use sys_util::{self, EventFd};
-use resources::SystemAllocator;
-
-use Bus;
 use BusDevice;
-use bus::Error as BusError;
-use proxy::Error as ProxyError;
 use ProxyDevice;
 
 use pci::pci_configuration::{PciBridgeSubclass, PciClassCode, PciConfiguration,
                              PciHeaderType};
-use pci::pci_device::{self, PciDevice};
-use pci::PciInterruptPin;
-
-#[derive(Debug)]
-pub enum Error {
-    CreateEventFd(sys_util::Error),
-    MmioRegistration(BusError),
-    ProxyCreation(ProxyError),
-    DeviceIoSpaceAllocation(pci_device::Error),
-}
-pub type Result<T> = std::result::Result<T, Error>;
-
-/// Contains the devices that will be on a PCI bus. Used to configure a PCI bus before adding it to
-/// a VM. Use `generate_hub` to produce a PciRoot for use in a Vm.
-pub struct PciDeviceList {
-    devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
-}
-
-impl PciDeviceList {
-    pub fn new() -> Self {
-        PciDeviceList {
-            devices: Vec::new(),
-        }
-    }
-
-    pub fn add_device(&mut self, device: Box<PciDevice + 'static>, jail: Minijail) {
-        self.devices.push((device, jail));
-    }
-
-    pub fn generate_root(self, mmio_bus: &mut Bus, resources: &mut SystemAllocator)
-            -> Result<(PciRoot, Vec<(u32, PciInterruptPin)>)> {
-        let mut root = PciRoot::new();
-        let mut pci_irqs = Vec::new();
-        for (dev_idx, (mut device, jail)) in self.devices.into_iter().enumerate() {
-            let irqfd = EventFd::new().map_err(Error::CreateEventFd)?;
-            let irq_num = resources.allocate_irq().unwrap() as u32;
-            let pci_irq_pin = match dev_idx % 4 {
-                0 => PciInterruptPin::IntA,
-                1 => PciInterruptPin::IntB,
-                2 => PciInterruptPin::IntC,
-                3 => PciInterruptPin::IntD,
-                _ => panic!(""), // Obviously not possible, but the compiler is not smart enough.
-            };
-            device.assign_irq(irqfd, irq_num, pci_irq_pin);
-            pci_irqs.push((irq_num, pci_irq_pin));
-            root.add_device(device, &jail, mmio_bus, resources)?;
-        }
-        Ok((root, pci_irqs))
-    }
-}
+use pci::pci_device::PciDevice;
 
 // A PciDevice that holds the root hub's configuration.
 struct PciRootConfiguration {
@@ -101,7 +44,7 @@ pub struct PciRoot {
 
 impl PciRoot {
     /// Create an empty PCI root bus.
-    fn new() -> Self {
+    pub fn new() -> Self {
         PciRoot {
             root_configuration: PciRootConfiguration {
                 config: PciConfiguration::new(
@@ -120,21 +63,8 @@ impl PciRoot {
     }
 
     /// Add a `device` to this root PCI bus.
-    pub fn add_device<D: PciDevice>(&mut self, mut device: D, jail: &Minijail,
-                      mmio_bus: &mut Bus, // TODO - move to resources or something.
-                      resources: &mut SystemAllocator) -> Result<()> {
-        let ranges = device
-            .allocate_io_bars(resources)
-            .map_err(Error::DeviceIoSpaceAllocation)?;
-        let proxy = ProxyDevice::new(device, &jail, Vec::new())
-            .map_err(Error::ProxyCreation)?;
-        let arced_dev = Arc::new(Mutex::new(proxy));
-        for range in &ranges {
-            mmio_bus.insert(arced_dev.clone(), range.0, range.1, true)
-                .map_err(Error::MmioRegistration)?;
-        }
-        self.devices.push(arced_dev);
-        Ok(())
+    pub fn add_device(&mut self, device: Arc<Mutex<ProxyDevice>>) {
+        self.devices.push(device);
     }
 
     fn config_space_read(&self) -> u32 {
