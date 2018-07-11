@@ -8,7 +8,7 @@ use pci::PciInterruptPin;
 const NUM_CONFIGURATION_REGISTERS: usize = 64;
 
 const STATUS_REG: usize = 1;
-const STATUS_REG_CAPABILITIES_USED_MASK: u32 = 0x0000_0010;
+const STATUS_REG_CAPABILITIES_USED_MASK: u32 = 0x0010_0000;
 const BAR0_REG: usize = 4;
 const BAR_IO_ADDR_MASK: u32 = 0xffff_fffc;
 const BAR_IO_BIT: u32 = 0x0000_0001;
