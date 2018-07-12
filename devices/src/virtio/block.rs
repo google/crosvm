@@ -28,6 +28,8 @@ const VIRTIO_BLK_S_OK: u8 = 0;
 const VIRTIO_BLK_S_IOERR: u8 = 1;
 const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
+const VIRTIO_BLK_F_FLUSH: u32 = 0x200;
+
 pub trait DiskFile: Read + Seek + Write {}
 impl<D: Read + Seek + Write> DiskFile for D {}
 
@@ -131,6 +133,16 @@ impl Request {
         }
 
         let req_type = request_type(&mem, avail_desc.addr)?;
+        if req_type == RequestType::Flush {
+            return Ok(Request {
+                request_type: req_type,
+                sector: 0,
+                data_addr: GuestAddress(0),
+                data_len: 0,
+                status_addr: GuestAddress(0),
+            })
+        }
+
         let sector = sector(&mem, avail_desc.addr)?;
         let data_desc = avail_desc
             .next_descriptor()
@@ -354,6 +366,13 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
         }
 
         keep_fds
+    }
+
+    fn features(&self, page: u32) -> u32 {
+        match page {
+            0 => VIRTIO_BLK_F_FLUSH,
+            _ => 0,
+        }
     }
 
     fn device_type(&self) -> u32 {
