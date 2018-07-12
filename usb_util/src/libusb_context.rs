@@ -3,22 +3,37 @@
 // found in the LICENSE file.
 
 use std;
+use std::os::raw::{c_short, c_void};
+use std::os::unix::io::RawFd;
 
 use bindings;
 use error::{Error, Result};
 use libusb_device::LibUsbDevice;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub struct LibUsbContextInner {
     context: *mut bindings::libusb_context,
+    pollfd_change_handler: Mutex<Option<Box<PollfdChangeHandlerHolder>>>,
 }
 
 // Safe because libusb_context could be accessed from multiple threads safely.
 unsafe impl Send for LibUsbContextInner {}
 unsafe impl Sync for LibUsbContextInner {}
 
+impl LibUsbContextInner {
+    /// Remove the previous registered notifiers.
+    pub fn remove_pollfd_notifiers(&self) {
+        // Safe because 'self.context' is valid.
+        unsafe {
+            bindings::libusb_set_pollfd_notifiers(self.context, None, None, std::ptr::null_mut());
+        }
+    }
+}
+
 impl Drop for LibUsbContextInner {
     fn drop(&mut self) {
+        // Avoid pollfd change handler call when libusb_exit is called.
+        self.remove_pollfd_notifiers();
         // Safe beacuse 'self.context' points to a valid context allocated by libusb_init.
         unsafe {
             bindings::libusb_exit(self.context);
@@ -41,7 +56,10 @@ impl LibUsbContext {
         // Safe because '&mut ctx' points to a valid memory (on stack).
         try_libusb!(unsafe { bindings::libusb_init(&mut ctx) });
         Ok(LibUsbContext {
-            inner: Arc::new(LibUsbContextInner { context: ctx }),
+            inner: Arc::new(LibUsbContextInner {
+                context: ctx,
+                pollfd_change_handler: Mutex::new(None),
+            }),
         })
     }
 
@@ -74,7 +92,7 @@ impl LibUsbContext {
     }
 
     /// Handle libusb events in a non block way.
-    pub fn handle_event_nonblock(&self) {
+    pub fn handle_events_nonblock(&self) {
         static mut zero_time: bindings::timeval = bindings::timeval {
             tv_sec: 0,
             tv_usec: 0,
@@ -87,6 +105,30 @@ impl LibUsbContext {
                 std::ptr::null_mut(),
             );
         }
+    }
+
+    /// Set a handler that could handle pollfd change events.
+    pub fn set_pollfd_notifiers(&self, handler: Box<LibUsbPollfdChangeHandler>) {
+        // LibUsbContext is alive when any libusb related function is called. It owns the handler,
+        // thus the handler memory is always valid when callback is invoked.
+        let holder = Box::new(PollfdChangeHandlerHolder { handler });
+        let raw_holder = Box::into_raw(holder);
+        unsafe {
+            bindings::libusb_set_pollfd_notifiers(
+                self.inner.context,
+                Some(pollfd_added_cb),
+                Some(pollfd_removed_cb),
+                raw_holder as *mut c_void,
+            );
+        }
+        // Safe because raw_holder is from Boxed pointer.
+        let holder = unsafe { Box::from_raw(raw_holder) };
+        *self.inner.pollfd_change_handler.lock().unwrap() = Some(holder);
+    }
+
+    /// Remove the previous registered notifiers.
+    pub fn remove_pollfd_notifiers(&self) {
+        self.inner.remove_pollfd_notifiers();
     }
 }
 
@@ -153,4 +195,30 @@ impl Iterator for PollFdIter {
             Some((**current_ptr).clone())
         }
     }
+}
+
+/// Trait for handler that handles Pollfd Change events.
+pub trait LibUsbPollfdChangeHandler: Send + Sync + 'static {
+    fn add_poll_fd(&self, fd: RawFd, events: c_short);
+    fn remove_poll_fd(&self, fd: RawFd);
+}
+
+// This struct owns LibUsbPollfdChangeHandler. We need it because it's not possible to cast void
+// pointer to trait pointer.
+struct PollfdChangeHandlerHolder {
+    handler: Box<LibUsbPollfdChangeHandler>,
+}
+
+// This function is safe when user_data points to valid PollfdChangeHandlerHolder.
+unsafe extern "C" fn pollfd_added_cb(fd: RawFd, events: c_short, user_data: *mut c_void) {
+    // Safe because user_data was casted from holder.
+    let keeper = &*(user_data as *mut PollfdChangeHandlerHolder);
+    keeper.handler.add_poll_fd(fd, events);
+}
+
+// This function is safe when user_data points to valid PollfdChangeHandlerHolder.
+unsafe extern "C" fn pollfd_removed_cb(fd: RawFd, user_data: *mut c_void) {
+    // Safe because user_data was casted from holder.
+    let keeper = &*(user_data as *mut PollfdChangeHandlerHolder);
+    keeper.handler.remove_poll_fd(fd);
 }
