@@ -411,6 +411,8 @@ impl QcowFile {
         self.file.sync_data()?;
         // The cluster refcount starts at one indicating it is used but doesn't need COW.
         self.set_cluster_refcount(new_addr, 1)?;
+        // Ensure that the refcount is updated before starting to use the cluster.
+        self.file.sync_data()?;
         Ok(new_addr)
     }
 
