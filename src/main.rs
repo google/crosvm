@@ -37,6 +37,7 @@ pub mod linux;
 #[cfg(feature = "plugin")]
 pub mod plugin;
 
+use std::fs::OpenOptions;
 use std::net;
 use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixDatagram;
@@ -46,6 +47,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use sys_util::{Scm, getpid, kill_process_group, reap_child, syslog};
+use qcow::QcowFile;
 
 use argument::{Argument, set_arguments, print_help};
 use vm_control::VmRequest;
@@ -534,11 +536,45 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     return_result
 }
 
+fn create_qcow2(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() != 2 {
+        print_help("crosvm create_qcow2", "PATH SIZE", &[]);
+        println!("Create a new QCOW2 image at `PATH` of the specified `SIZE` in megabytes.");
+    }
+    let file_path = args.nth(0).unwrap();
+    let size: u64 = match args.nth(0).unwrap().parse::<u64>() {
+        Ok(n) => n,
+        Err(_) => {
+            error!("Failed to parse size of the disk.");
+            return Err(());
+        },
+    };
+
+    let file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&file_path)
+        .map_err(|e| {
+            error!("Failed opening qcow file at '{}': {:?}", file_path, e);
+            ()
+        })?;
+
+    QcowFile::new(file, size)
+        .map_err(|e| {
+            error!("Failed to create qcow file at '{}': {:?}", file_path, e);
+            ()
+        })?;
+
+    Ok(())
+}
+
 fn print_usage() {
     print_help("crosvm", "[stop|run]", &[]);
     println!("Commands:");
     println!("    stop - Stops crosvm instances via their control sockets.");
     println!("    run  - Start a new crosvm instance.");
+    println!("    create_qcow2  - Create a new qcow2 disk image file.");
 }
 
 fn crosvm_main() -> std::result::Result<(), ()> {
@@ -567,6 +603,9 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         }
         Some("balloon") => {
             balloon_vms(args)
+        }
+        Some("create_qcow2") => {
+            create_qcow2(args)
         }
         Some(c) => {
             println!("invalid subcommand: {:?}", c);

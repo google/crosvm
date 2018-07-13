@@ -17,13 +17,18 @@ use std::os::unix::io::{AsRawFd, RawFd};
 #[derive(Debug)]
 pub enum Error {
     BackingFilesNotSupported,
+    GettingFileSize(io::Error),
+    GettingRefcount(io::Error),
     InvalidClusterSize,
     InvalidL1TableOffset,
     InvalidMagic,
     InvalidOffset(u64),
     InvalidRefcountTableOffset,
     NoRefcountClusters,
+    OpeningFile(io::Error),
     ReadingHeader(io::Error),
+    SeekingFile(io::Error),
+    SettingRefcountRefcount(io::Error),
     SizeTooSmallForNumberOfClusters,
     WritingHeader(io::Error),
     UnsupportedRefcountOrder,
@@ -297,6 +302,45 @@ impl QcowFile {
         Ok(qcow)
     }
 
+    /// Creates a new QcowFile at the given path.
+    pub fn new(mut file: File, virtual_size: u64) -> Result<QcowFile> {
+        let header = QcowHeader::create_for_size(virtual_size);
+        file.seek(SeekFrom::Start(0)).map_err(Error::SeekingFile)?;
+        header.write_to(&mut file)?;
+
+        let mut qcow = Self::from(file)?;
+
+        // Set the refcount for each refcount table cluster.
+        let cluster_size = 0x01u64 << qcow.header.cluster_bits;
+        let refcount_table_base = qcow.header.refcount_table_offset as u64;
+        let end_cluster_addr = refcount_table_base +
+            u64::from(qcow.header.refcount_table_clusters) * cluster_size;
+
+        let mut cluster_addr = 0;
+        while cluster_addr < end_cluster_addr {
+            qcow.set_cluster_refcount(cluster_addr, 1).map_err(Error::SettingRefcountRefcount)?;
+            cluster_addr += cluster_size;
+        }
+
+        Ok(qcow)
+    }
+
+    /// Returns the first cluster in the file with a 0 refcount. Used for testing.
+    pub fn first_zero_refcount(&mut self) -> Result<Option<u64>> {
+        let file_size = self.file.metadata().map_err(Error::GettingFileSize)?.len();
+        let cluster_size = 0x01u64 << self.header.cluster_bits;
+
+        let mut cluster_addr = 0;
+        while cluster_addr < file_size {
+            match self.get_cluster_refcount(cluster_addr).map_err(Error::GettingRefcount)? {
+                0 => return Ok(Some(cluster_addr)),
+                _ => (),
+            }
+            cluster_addr += cluster_size;
+        }
+        Ok(None)
+    }
+
     // Limits the range so that it doesn't exceed the virtual size of the file.
     fn limit_range_file(&self, address: u64, count: usize) -> usize {
         if address.checked_add(count as u64).is_none() || address > self.virtual_size() {
@@ -416,30 +460,51 @@ impl QcowFile {
         Ok(new_addr)
     }
 
-    // Set the refcount for a cluster with the given address.
-    fn set_cluster_refcount(&mut self, address: u64, refcount: u16) -> std::io::Result<()> {
+    // Gets the address of the refcount block and the index into the block for the given address.
+    fn get_refcount_block(&self, address: u64) -> std::io::Result<(u64, u64)> {
         let cluster_size: u64 = self.cluster_size;
         let refcount_block_entries = cluster_size * size_of::<u64>() as u64 / self.refcount_bits;
-        let refcount_block_index = (address / cluster_size) % refcount_block_entries;
+        let block_index = (address / cluster_size) % refcount_block_entries;
         let refcount_table_index = (address / cluster_size) / refcount_block_entries;
         let refcount_block_entry_addr = self.header.refcount_table_offset
                 .checked_add(refcount_table_index * size_of::<u64>() as u64)
                 .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
-        let refcount_block_address_from_file =
-            read_u64_from_offset(&mut self.file, refcount_block_entry_addr)?;
-        let refcount_block_address = if refcount_block_address_from_file == 0 {
+        Ok((refcount_block_entry_addr, block_index))
+    }
+
+    // Set the refcount for a cluster with the given address.
+    fn set_cluster_refcount(&mut self, address: u64, refcount: u16) -> std::io::Result<()> {
+        let (entry_addr, block_index) = self.get_refcount_block(address)?;
+        let stored_addr = read_u64_from_offset(&mut self.file, entry_addr)?;
+        let refcount_block_address = if stored_addr == 0 {
             let new_addr = self.append_new_cluster()?;
-            write_u64_to_offset(&mut self.file, refcount_block_entry_addr, new_addr)?;
+            write_u64_to_offset(&mut self.file, entry_addr, new_addr)?;
             self.set_cluster_refcount(new_addr, 1)?;
             new_addr
         } else {
-            refcount_block_address_from_file
+            stored_addr
         };
         let refcount_address: u64 = refcount_block_address
-                .checked_add(refcount_block_index * 2)
+                .checked_add(block_index * 2)
                 .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
         self.file.seek(SeekFrom::Start(refcount_address))?;
         self.file.write_u16::<BigEndian>(refcount)
+    }
+
+    // Gets the refcount for a cluster with the given address.
+    fn get_cluster_refcount(&mut self, address: u64) -> std::io::Result<u16> {
+        let (entry_addr, block_index) = self.get_refcount_block(address)?;
+        let stored_addr = read_u64_from_offset(&mut self.file, entry_addr)?;
+        let refcount_block_address = if stored_addr == 0 {
+            return Ok(0);
+        } else {
+            stored_addr
+        };
+        let refcount_address: u64 = refcount_block_address
+                .checked_add(block_index * 2)
+                .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
+        self.file.seek(SeekFrom::Start(refcount_address))?;
+        self.file.read_u16::<BigEndian>()
     }
 }
 
@@ -618,15 +683,12 @@ mod tests {
 
     fn with_default_file<F>(file_size: u64, mut testfn: F)
     where
-        F: FnMut(File),
+        F: FnMut(QcowFile),
     {
         let shm = SharedMemory::new(None).unwrap();
-        let mut disk_file: File = shm.into();
-        let header = QcowHeader::create_for_size(file_size);
-        header.write_to(&mut disk_file).unwrap();
-        disk_file.seek(SeekFrom::Start(0)).unwrap();
+        let qcow_file = QcowFile::new(shm.into(), file_size).unwrap();
 
-        testfn(disk_file); // File closed when the function exits.
+        testfn(qcow_file); // File closed when the function exits.
     }
 
     #[test]
@@ -828,29 +890,28 @@ mod tests {
 
     #[test]
     fn combo_write_read() {
-        with_default_file(1024 * 1024 * 1024 * 256, |disk_file: File| {
+        with_default_file(1024 * 1024 * 1024 * 256, |mut qcow_file| {
             const NUM_BLOCKS: usize = 555;
             const BLOCK_SIZE: usize = 0x1_0000;
             const OFFSET: usize = 0x1_0000_0020;
-            let mut q = QcowFile::from(disk_file).unwrap();
             let data = [0x55u8; BLOCK_SIZE];
             let mut readback = [0u8; BLOCK_SIZE];
             for i in 0..NUM_BLOCKS {
                 let seek_offset = OFFSET + i * BLOCK_SIZE;
-                q.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
-                let nwritten = q.write(&data).expect("Failed to write test data.");
+                qcow_file.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
+                let nwritten = qcow_file.write(&data).expect("Failed to write test data.");
                 assert_eq!(nwritten, BLOCK_SIZE);
                 // Read back the data to check it was written correctly.
-                q.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
-                let nread = q.read(&mut readback).expect("Failed to read.");
+                qcow_file.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
+                let nread = qcow_file.read(&mut readback).expect("Failed to read.");
                 assert_eq!(nread, BLOCK_SIZE);
                 for (orig, read) in data.iter().zip(readback.iter()) {
                     assert_eq!(orig, read);
                 }
             }
             // Check that address 0 is still zeros.
-            q.seek(SeekFrom::Start(0)).expect("Failed to seek.");
-            let nread = q.read(&mut readback).expect("Failed to read.");
+            qcow_file.seek(SeekFrom::Start(0)).expect("Failed to seek.");
+            let nread = qcow_file.read(&mut readback).expect("Failed to read.");
             assert_eq!(nread, BLOCK_SIZE);
             for read in readback.iter() {
                 assert_eq!(*read, 0);
@@ -858,13 +919,15 @@ mod tests {
             // Check the data again after the writes have happened.
             for i in 0..NUM_BLOCKS {
                 let seek_offset = OFFSET + i * BLOCK_SIZE;
-                q.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
-                let nread = q.read(&mut readback).expect("Failed to read.");
+                qcow_file.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
+                let nread = qcow_file.read(&mut readback).expect("Failed to read.");
                 assert_eq!(nread, BLOCK_SIZE);
                 for (orig, read) in data.iter().zip(readback.iter()) {
                     assert_eq!(orig, read);
                 }
             }
+
+            assert_eq!(qcow_file.first_zero_refcount().unwrap(), None);
         });
     }
 }

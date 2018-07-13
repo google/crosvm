@@ -7,12 +7,12 @@
 extern crate libc;
 extern crate qcow;
 
+use libc::EINVAL;
 use std::ffi::CStr;
 use std::fs::OpenOptions;
 use std::os::raw::{c_char, c_int};
-use libc::EINVAL;
 
-use qcow::QcowHeader;
+use qcow::QcowFile;
 
 #[no_mangle]
 pub unsafe extern "C" fn create_qcow_with_size(path: *const c_char, virtual_size: u64) -> c_int {
@@ -27,18 +27,18 @@ pub unsafe extern "C" fn create_qcow_with_size(path: *const c_char, virtual_size
         Err(_) => return -EINVAL,
     };
 
-    let h = QcowHeader::create_for_size(virtual_size);
-    let mut file = match OpenOptions::new()
-                            .create(true)
-                            .read(true)
-                            .write(true)
-                            .open(file_path) {
+    let file = match OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(file_path)
+    {
         Ok(f) => f,
         Err(_) => return -1,
     };
 
-    match h.write_to(&mut file) {
-        Ok(()) => 0,
+    match QcowFile::new(file, virtual_size) {
+        Ok(_) => 0,
         Err(_) => -1,
     }
 }
