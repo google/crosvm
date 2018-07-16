@@ -8,6 +8,7 @@ use std::sync::Arc;
 use bindings;
 use error::{Error, Result};
 use libusb_context::LibUsbContextInner;
+use usb_transfer::{UsbTransfer, UsbTransferBuffer};
 
 /// DeviceHandle wraps libusb_device_handle.
 pub struct DeviceHandle {
@@ -125,5 +126,17 @@ impl DeviceHandle {
         // Safe because 'self.handle' is a valid pointer to device handle.
         try_libusb!(unsafe { bindings::libusb_clear_halt(self.handle, endpoint) });
         Ok(())
+    }
+
+    /// Libusb asynchronous I/O interface has a 5 step process. It gives lots of
+    /// flexibility but makes it hard to manage object life cycle and easy to
+    /// write unsafe code. We wrap this interface to a simple "transfer" and "cancel"
+    /// interface. Resubmission is not supported and deallocation is handled safely
+    /// here.
+    pub fn submit_async_transfer<T: UsbTransferBuffer>(
+        &self,
+        transfer: UsbTransfer<T>,
+    ) -> Result<()> {
+        unsafe { transfer.submit(self.handle) }
     }
 }

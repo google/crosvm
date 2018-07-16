@@ -23,3 +23,4 @@ pub mod interface_descriptor;
 pub mod libusb_context;
 pub mod libusb_device;
 pub mod types;
+pub mod usb_transfer;
