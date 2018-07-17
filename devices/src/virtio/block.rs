@@ -134,15 +134,45 @@ impl Request {
 
         let req_type = request_type(&mem, avail_desc.addr)?;
         if req_type == RequestType::Flush {
-            return Ok(Request {
-                request_type: req_type,
-                sector: 0,
-                data_addr: GuestAddress(0),
-                data_len: 0,
-                status_addr: GuestAddress(0),
-            })
+            Request::parse_flush(avail_desc, mem)
+        } else {
+            Request::parse_read_write(avail_desc, mem, req_type)
+        }
+    }
+
+    fn parse_flush(avail_desc: &DescriptorChain,
+                   mem: &GuestMemory)
+        -> result::Result<Request, ParseError>
+    {
+        let sector = sector(&mem, avail_desc.addr)?;
+        let status_desc = avail_desc
+            .next_descriptor()
+            .ok_or(ParseError::DescriptorChainTooShort)?;
+
+        // The status MUST always be writable
+        if !status_desc.is_write_only() {
+            return Err(ParseError::UnexpectedReadOnlyDescriptor);
         }
 
+        if status_desc.len < 1 {
+            return Err(ParseError::DescriptorLengthTooSmall);
+        }
+
+        Ok(Request {
+               request_type: RequestType::Flush,
+               sector: sector,
+               data_addr: GuestAddress(0),
+               data_len: 0,
+               status_addr: status_desc.addr,
+           })
+    }
+
+
+    fn parse_read_write(avail_desc: &DescriptorChain,
+                        mem: &GuestMemory,
+                        req_type: RequestType)
+        -> result::Result<Request, ParseError>
+    {
         let sector = sector(&mem, avail_desc.addr)?;
         let data_desc = avail_desc
             .next_descriptor()
