@@ -7,4 +7,8 @@ mod mmio_register;
 mod mmio_space;
 
 #[allow(dead_code)]
+mod xhci_abi;
+#[allow(dead_code)]
+mod xhci_abi_schema;
+#[allow(dead_code)]
 mod xhci_regs;

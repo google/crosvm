@@ -8,6 +8,7 @@ wl-dmabuf = []
 gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
 
 [dependencies]
+bit_field = { path = "../bit_field" }
 byteorder = "*"
 data_model = { path = "../data_model" }
 gpu_buffer = { path = "../gpu_buffer", optional = true }
