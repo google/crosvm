@@ -5,3 +5,6 @@
 #[macro_use]
 mod mmio_register;
 mod mmio_space;
+
+#[allow(dead_code)]
+mod xhci_regs;
