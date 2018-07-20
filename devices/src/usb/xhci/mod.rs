@@ -6,6 +6,7 @@
 mod mmio_register;
 mod mmio_space;
 
+mod event_ring;
 #[allow(dead_code)]
 mod xhci_abi;
 #[allow(dead_code)]
