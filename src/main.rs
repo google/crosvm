@@ -546,7 +546,7 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
 fn create_qcow2(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() != 2 {
         print_help("crosvm create_qcow2", "PATH SIZE", &[]);
-        println!("Create a new QCOW2 image at `PATH` of the specified `SIZE` in megabytes.");
+        println!("Create a new QCOW2 image at `PATH` of the specified `SIZE` in bytes.");
     }
     let file_path = args.nth(0).unwrap();
     let size: u64 = match args.nth(0).unwrap().parse::<u64>() {
