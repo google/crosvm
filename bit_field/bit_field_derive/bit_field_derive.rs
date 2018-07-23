@@ -46,7 +46,10 @@ fn bitfield_impl(ast: DeriveInput) -> Tokens {
     };
 
     let ident = Ident::new(struct_name, Span::call_site());
-    let test_mod_ident = Ident::new(format!("test_{}", struct_name).as_str(), Span::call_site());
+    let test_mod_ident = Ident::new(
+        format!("test_{}", struct_name.to_lowercase()).as_str(),
+        Span::call_site(),
+    );
     // Name of the struct
     let name = quote!(#ident);
     let vis = ast.vis.clone();
@@ -72,6 +75,7 @@ fn bitfield_impl(ast: DeriveInput) -> Tokens {
     let bits_impl = get_bits_impl(&name);
     let fields_impl = get_fields_impl(fields.as_slice());
     let tests_impl = get_tests_impl(&name, fields.as_slice());
+    let debug_fmt_impl = get_debug_fmt_impl(&name, fields.as_slice());
     quote!(
         #(#attrs)*
         #struct_def
@@ -79,6 +83,8 @@ fn bitfield_impl(ast: DeriveInput) -> Tokens {
         impl #name {
             #(#fields_impl)*
         }
+
+        #debug_fmt_impl
         #[cfg(test)]
         mod #test_mod_ident {
             use super::*;
@@ -201,6 +207,30 @@ fn get_fields_impl(fields: &[(String, Tokens)]) -> Vec<Tokens> {
     impls
 }
 
+// Implement setter and getter for all fields.
+fn get_debug_fmt_impl(name: &Tokens, fields: &[(String, Tokens)]) -> Tokens {
+    // print fields:
+    let mut impls = Vec::new();
+    for &(ref name, ref _ty) in fields {
+        let getter_ident = Ident::new(format!("get_{}", name).as_str(), Span::call_site());
+        impls.push(quote!(
+                .field(#name, &self.#getter_ident())
+                ));
+    }
+
+    let name_str = format!("{}", name);
+    quote! (
+        impl std::fmt::Debug for #name {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.debug_struct(#name_str)
+                #(#impls)*
+                    .finish()
+            }
+        }
+        )
+}
+
+// Implement test.
 fn get_tests_impl(struct_name: &Tokens, fields: &[(String, Tokens)]) -> Vec<Tokens> {
     let mut field_types = Vec::new();
     for &(ref _name, ref ty) in fields {
@@ -446,8 +476,18 @@ mod tests {
                     return self.set(offset, BitField5::FIELD_WIDTH, val as u64);
                 }
             }
+
+            impl std::fmt::Debug for MyBitField {
+                fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    f.debug_struct("MyBitField")
+                        .field("a", &self.get_a())
+                        .field("b", &self.get_b())
+                        .field("c", &self.get_c())
+                        .finish()
+                }
+            }
             #[cfg(test)]
-            mod test_MyBitField {
+            mod test_mybitfield {
                 use super::*;
                 #[test]
                 fn test_total_size() {
