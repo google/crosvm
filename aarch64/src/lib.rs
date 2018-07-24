@@ -14,16 +14,18 @@ extern crate sys_util;
 extern crate resources;
 
 use std::error::{self, Error as Aarch64Error};
+use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::stdout;
+use std::io::{self, stdout};
 use std::sync::{Arc, Mutex};
-use std::ffi::CStr;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::net::UnixDatagram;
 
+use arch::{RunnableLinuxVm, VirtioDeviceStub, VmComponents};
 use devices::{Bus, PciInterruptPin};
 use sys_util::{EventFd, GuestAddress, GuestMemory};
 use resources::{AddressRanges, SystemAllocator};
-use std::os::unix::io::FromRawFd;
 
 use kvm::*;
 use kvm_sys::kvm_device_attr;
@@ -105,12 +107,30 @@ const AARCH64_IRQ_BASE: u32 = 1;
 
 #[derive(Debug)]
 pub enum Error {
+    /// Error Adding a PCI device.
+    AddPciDev(devices::PciRootError),
+    /// Unable to clone an EventFd
+    CloneEventFd(sys_util::Error),
+    /// Error creating kernel command line.
+    Cmdline(kernel_cmdline::Error),
+    /// Unable to make an EventFd
+    CreateEventFd(sys_util::Error),
+    /// Unable to create Kvm.
+    CreateKvm(sys_util::Error),
+    /// Unable to create a PciRoot hub.
+    CreatePciRoot(devices::PciRootError),
+    /// Unable to create socket.
+    CreateSocket(io::Error),
+    /// Unable to create Vcpu.
+    CreateVcpu(sys_util::Error),
     /// FDT could not be created
     FDTCreateFailure(Box<error::Error>),
     /// Kernel could not be loaded
     KernelLoadFailure,
     /// Failure to Create GIC
     CreateGICFailure(sys_util::Error),
+    /// Couldn't register virtio socket.
+    RegisterVsock(arch::MmioRegisterError),
     /// VCPU Init failed
     VCPUInitFailure,
     /// VCPU Set one reg failed
@@ -120,12 +140,21 @@ pub enum Error {
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
+            &Error::AddPciDev(_) => "Failed to add device to PCI",
+            &Error::CloneEventFd(_) => "Unable to clone an EventFd",
+            &Error::Cmdline(_) => "the given kernel command line was invalid",
+            &Error::CreateEventFd(_) => "Unable to make an EventFd",
+            &Error::CreateKvm(_) => "failed to open /dev/kvm",
+            &Error::CreatePciRoot(_) => "failed to create a PCI root hub",
+            &Error::CreateSocket(_) => "failed to create socket",
+            &Error::CreateVcpu(_) => "failed to create VCPU",
             &Error::FDTCreateFailure(_) =>
                 "FDT could not be created",
             &Error::KernelLoadFailure =>
                 "Kernel cound not be loaded",
             &Error::CreateGICFailure(_) =>
                 "Failure to create GIC",
+            &Error::RegisterVsock(_) => "error registering virtual socket device",
             &Error::VCPUInitFailure =>
                 "Failed to initialize VCPU",
             &Error::VCPUSetRegFailure =>
@@ -156,6 +185,73 @@ fn fdt_offset(mem_size: u64) -> u64 {
 pub struct AArch64;
 
 impl arch::LinuxArch for AArch64 {
+    fn build_vm<F>(mut components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
+        where
+            F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<VirtioDeviceStub>>
+    {
+        let mut resources = Self::get_resource_allocator(components.memory_mb,
+                                                         components.wayland_dmabuf);
+        let mem = Self::setup_memory(components.memory_mb)?;
+        let kvm = Kvm::new().map_err(Error::CreateKvm)?;
+        let mut vm = Self::create_vm(&kvm, mem.clone())?;
+
+        let vcpu_count = components.vcpu_count;
+        let mut vcpus = Vec::with_capacity(vcpu_count as usize);
+        for cpu_id in 0..vcpu_count {
+            let vcpu = Vcpu::new(cpu_id as libc::c_ulong, &kvm, &vm)
+                .map_err(Error::CreateVcpu)?;
+            Self::configure_vcpu(vm.get_memory(), &kvm, &vm, &vcpu,
+                                 cpu_id as u64, vcpu_count as u64)?;
+            vcpus.push(vcpu);
+        }
+
+        let irq_chip = Self::create_irq_chip(&vm)?;
+        let mut cmdline = Self::get_base_linux_cmdline();
+
+        let mut mmio_bus = devices::Bus::new();
+
+        let (pci, pci_irqs) = components.pci_devices.generate_root(&mut mmio_bus, &mut resources)
+            .map_err(Error::CreatePciRoot)?;
+
+        let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+        let (io_bus, stdio_serial) = Self::setup_io_bus()?;
+
+        // Create a list of mmio devices to be added.
+        let mmio_devs = virtio_devs(&mem, &exit_evt)?;
+
+        Self::add_arch_devs(&mut vm, &mut mmio_bus)?;
+
+        for stub in mmio_devs {
+            arch::register_mmio(&mut mmio_bus, &mut vm, stub.dev, stub.jail,
+                                &mut resources, &mut cmdline)
+                .map_err(Error::RegisterVsock)?;
+        }
+
+        for param in components.extra_kernel_params {
+            cmdline.insert_str(&param).map_err(Error::Cmdline)?;
+        }
+
+        // separate out load_kernel from other setup to get a specific error for
+        // kernel loading
+        Self::load_kernel(&mem, &mut components.kernel_image)?;
+        Self::setup_system_memory(&mem, components.memory_mb, vcpu_count,
+                                  &CString::new(cmdline).unwrap(), pci_irqs)?;
+
+        Ok(RunnableLinuxVm {
+            vm,
+            kvm,
+            resources,
+            stdio_serial,
+            exit_evt,
+            vcpus,
+            irq_chip,
+            io_bus,
+            mmio_bus,
+        })
+    }
+}
+
+impl AArch64 {
     /// Loads the kernel from an open file.
     ///
     /// # Arguments
@@ -334,7 +430,7 @@ impl arch::LinuxArch for AArch64 {
         Ok(Some(vgic_fd))
     }
 
-    fn setup_io_bus(_vm: &mut Vm, _exit_evt: EventFd)
+    fn setup_io_bus()
                     -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)> {
         // ARM doesn't really use the io bus like x86, instead we have a
         // separate serial device that is returned as a separate object.
@@ -395,5 +491,4 @@ impl arch::LinuxArch for AArch64 {
         }
         Ok(())
     }
-
 }

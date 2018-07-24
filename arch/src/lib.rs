@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+extern crate io_jail;
 extern crate sys_util;
 extern crate resources;
 extern crate kernel_cmdline;
@@ -9,114 +10,154 @@ extern crate kvm;
 extern crate libc;
 extern crate devices;
 
-use std::ffi::CStr;
+use std::fmt;
 use std::fs::File;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::{Arc, Mutex};
 
-use devices::Bus;
-use kvm::{Kvm, Vm, Vcpu};
-use sys_util::{EventFd, GuestMemory};
+use devices::{Bus, PciDeviceList, Serial};
+use devices::virtio::VirtioDevice;
+use io_jail::Minijail;
+use kvm::{IoeventAddress, Kvm, Vm, Vcpu};
+use sys_util::{EventFd, GuestMemory, syslog};
 use resources::SystemAllocator;
 
 pub type Result<T> = result::Result<T, Box<std::error::Error>>;
 
+/// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
+/// create a `RunnableLinuxVm`.
+pub struct VmComponents {
+    pub pci_devices: PciDeviceList,
+    pub memory_mb: u64,
+    pub vcpu_count: u32,
+    pub kernel_image: File,
+    pub extra_kernel_params: Vec<String>,
+    pub wayland_dmabuf: bool,
+}
+
+/// Holds the elements needed to run a Linux VM. Created by `build_vm`.
+pub struct RunnableLinuxVm {
+    pub vm: Vm,
+    pub kvm: Kvm,
+    pub resources: SystemAllocator,
+    pub stdio_serial: Arc<Mutex<Serial>>,
+    pub exit_evt: EventFd,
+    pub vcpus: Vec<Vcpu>,
+    pub irq_chip: Option<File>,
+    pub io_bus: Bus,
+    pub mmio_bus: Bus,
+}
+
+/// The device and optional jail.
+pub struct VirtioDeviceStub {
+    pub dev: Box<VirtioDevice>,
+    pub jail: Option<Minijail>,
+}
+
 /// Trait which is implemented for each Linux Architecture in order to
 /// set up the memory, cpus, and system devices and to boot the kernel.
 pub trait LinuxArch {
-    /// Loads the kernel from an open file.
+    /// Takes `VmComponents` and generates a `RunnableLinuxVm`.
     ///
     /// # Arguments
     ///
-    /// * `mem` - The memory to be used by the guest.
-    /// * `kernel_image` - the File object for the specified kernel.
-    fn load_kernel(mem: &GuestMemory, kernel_image: &mut File) -> Result<()>;
+    /// * `components` - Parts to use to build the VM.
+    /// * `virtio_devs` - Function to generate a list of virtio devices.
+    fn build_vm<F>(components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
+        where
+            F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<VirtioDeviceStub>>;
+}
 
-    /// Configures the system memory space should be called once per vm before
-    /// starting vcpu threads.
-    ///
-    /// # Arguments
-    ///
-    /// * `mem` - The memory to be used by the guest
-    /// * `mem_size` - The size in bytes of system memory
-    /// * `vcpu_count` - Number of virtual CPUs the guest will have
-    /// * `cmdline` - the kernel commandline
-    /// * `pci_irqs` - Any PCI irqs that need to be configured (Interrupt Line, PCI pin).
-    fn setup_system_memory(mem: &GuestMemory,
-                           mem_size: u64,
-                           vcpu_count: u32,
-                           cmdline: &CStr,
-                           pci_irqs: Vec<(u32, devices::PciInterruptPin)>) -> Result<()>;
+/// Errors for device manager.
+#[derive(Debug)]
+pub enum MmioRegisterError {
+    /// Could not create the mmio device to wrap a VirtioDevice.
+    CreateMmioDevice(sys_util::Error),
+    /// Failed to register ioevent with VM.
+    RegisterIoevent(sys_util::Error),
+    /// Failed to register irq eventfd with VM.
+    RegisterIrqfd(sys_util::Error),
+    /// Failed to initialize proxy device for jailed device.
+    ProxyDeviceCreation(devices::ProxyError),
+    /// Appending to kernel command line failed.
+    Cmdline(kernel_cmdline::Error),
+    /// No more IRQs are available.
+    IrqsExhausted,
+    /// No more MMIO space available.
+    AddrsExhausted,
+}
 
-    /// Creates a new VM object and initializes architecture specific devices
-    ///
-    /// # Arguments
-    ///
-    /// * `kvm` - The opened /dev/kvm object.
-    /// * `mem` - The memory to be used by the guest.
-    fn create_vm(kvm: &Kvm, mem: GuestMemory) -> Result<Vm>;
+impl fmt::Display for MmioRegisterError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &MmioRegisterError::CreateMmioDevice(ref e) => write!(f, "failed to create mmio device: {:?}", e),
+            &MmioRegisterError::Cmdline(ref e) => {
+                write!(f, "unable to add device to kernel command line: {}", e)
+            }
+            &MmioRegisterError::RegisterIoevent(ref e) => {
+                write!(f, "failed to register ioevent to VM: {:?}", e)
+            }
+            &MmioRegisterError::RegisterIrqfd(ref e) => {
+                write!(f, "failed to register irq eventfd to VM: {:?}", e)
+            }
+            &MmioRegisterError::ProxyDeviceCreation(ref e) => write!(f, "failed to create proxy device: {}", e),
+            &MmioRegisterError::IrqsExhausted => write!(f, "no more IRQs are available"),
+            &MmioRegisterError::AddrsExhausted => write!(f, "no more addresses are available"),
+        }
+    }
+}
 
-    /// This adds any early platform devices for this architecture.
-    ///
-    /// # Arguments
-    ///
-    /// * `vm` - The vm to add irqs to.
-    /// * `bus` - The bus to add devices to.
-    fn add_arch_devs(_vm: &mut Vm, _bus: &mut Bus) -> Result<()> { Ok(()) }
+/// Register a device to be used via MMIO transport.
+pub fn register_mmio(bus: &mut devices::Bus,
+                     vm: &mut Vm,
+                     device: Box<devices::virtio::VirtioDevice>,
+                     jail: Option<Minijail>,
+                     resources: &mut SystemAllocator,
+                     cmdline: &mut kernel_cmdline::Cmdline)
+                     -> std::result::Result<(), MmioRegisterError> {
+    let irq = match resources.allocate_irq() {
+        None => return Err(MmioRegisterError::IrqsExhausted),
+        Some(i) => i,
+    };
 
-    /// This creates a GuestMemory object for this VM
-    ///
-    /// * `mem_size` - Desired physical memory size in bytes for this VM
-    fn setup_memory(mem_size: u64) -> Result<GuestMemory>;
+    // List of FDs to keep open in the child after it forks.
+    let mut keep_fds: Vec<RawFd> = device.keep_fds();
+    syslog::push_fds(&mut keep_fds);
 
-    /// The creates the interrupt controller device and optionally returns the fd for it.
-    /// Some architectures may not have a separate descriptor for the interrupt
-    /// controller, so they would return None even on success.
-    ///
-    /// # Arguments
-    ///
-    /// * `vm` - the vm object
-    fn create_irq_chip(vm: &kvm::Vm) -> Result<Option<File>>;
+    let mmio_device = devices::virtio::MmioDevice::new((*vm.get_memory()).clone(),
+    device)
+        .map_err(MmioRegisterError::CreateMmioDevice)?;
+    let mmio_len = 0x1000; // TODO(dgreid) - configurable per arch?
+    let mmio_base = resources.allocate_mmio_addresses(mmio_len)
+        .ok_or(MmioRegisterError::AddrsExhausted)?;
+    for (i, queue_evt) in mmio_device.queue_evts().iter().enumerate() {
+        let io_addr = IoeventAddress::Mmio(mmio_base +
+                                           devices::virtio::NOTIFY_REG_OFFSET as u64);
+        vm.register_ioevent(&queue_evt, io_addr, i as u32)
+          .map_err(MmioRegisterError::RegisterIoevent)?;
+        keep_fds.push(queue_evt.as_raw_fd());
+    }
 
-    /// This returns the first page frame number for use by the balloon driver.
-    ///
-    /// # Arguments
-    ///
-    /// * `mem_size` - the size in bytes of physical ram for the guest
-    fn get_base_dev_pfn(mem_size: u64) -> u64;
+    if let Some(interrupt_evt) = mmio_device.interrupt_evt() {
+        vm.register_irqfd(&interrupt_evt, irq)
+          .map_err(MmioRegisterError::RegisterIrqfd)?;
+        keep_fds.push(interrupt_evt.as_raw_fd());
+    }
 
-    /// This returns a minimal kernel command for this architecture.
-    fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline;
+    if let Some(jail) = jail {
+        let proxy_dev = devices::ProxyDevice::new(mmio_device, &jail, keep_fds)
+            .map_err(MmioRegisterError::ProxyDeviceCreation)?;
 
-    /// Returns a system resource allocator.
-    fn get_resource_allocator(mem_size: u64, gpu_allocation: bool) -> SystemAllocator;
+        bus.insert(Arc::new(Mutex::new(proxy_dev)), mmio_base, mmio_len, false).unwrap();
+    } else {
+        bus.insert(Arc::new(Mutex::new(mmio_device)), mmio_base, mmio_len, false).unwrap();
+    }
 
-    /// Sets up the IO bus for this platform
-    ///
-    /// # Arguments
-    ///
-    /// * - `vm` the vm object
-    /// * - `exit_evt` - the event fd object which should receive exit events
-    fn setup_io_bus(vm: &mut Vm, exit_evt: EventFd)
-                    -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)>;
+    cmdline
+        .insert("virtio_mmio.device",
+                &format!("4K@0x{:08x}:{}", mmio_base, irq))
+        .map_err(MmioRegisterError::Cmdline)?;
 
-    /// Configures the vcpu and should be called once per vcpu from the vcpu's thread.
-    ///
-    /// # Arguments
-    ///
-    /// * `guest_mem` - The memory to be used by the guest.
-    /// * `kernel_load_offset` - Offset in bytes from `guest_mem` at which the
-    ///                          kernel starts.
-    /// * `kvm` - The /dev/kvm object that created vcpu.
-    /// * `vm` - The VM object associated with this VCPU.
-    /// * `vcpu` - The VCPU object to configure.
-    /// * `cpu_id` - The id of the given `vcpu`.
-    /// * `num_cpus` - Number of virtual CPUs the guest will have.
-    fn configure_vcpu(guest_mem: &GuestMemory,
-                      kvm: &Kvm,
-                      vm: &Vm,
-                      vcpu: &Vcpu,
-                      cpu_id: u64,
-                      num_cpus: u64)
-                      -> Result<()>;
+    Ok(())
 }

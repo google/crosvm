@@ -63,10 +63,11 @@ use std::result;
 use std::error::{self, Error as X86Error};
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
+use std::io::{self, stdout};
 use std::sync::{Arc, Mutex};
-use std::io::stdout;
 
+use arch::{RunnableLinuxVm, VirtioDeviceStub, VmComponents};
 use bootparam::boot_params;
 use bootparam::E820_RAM;
 use devices::PciInterruptPin;
@@ -76,16 +77,30 @@ use kvm::*;
 
 #[derive(Debug)]
 pub enum Error {
+    /// Error Adding a PCI device.
+    AddPciDev(devices::PciRootError),
     /// Error configuring the system
     ConfigureSystem,
     /// Unable to clone an EventFd
     CloneEventFd(sys_util::Error),
+    /// Error creating kernel command line.
+    Cmdline(kernel_cmdline::Error),
     /// Unable to make an EventFd
     CreateEventFd(sys_util::Error),
+    /// Unable to create Kvm.
+    CreateKvm(sys_util::Error),
+    /// Unable to create a PciRoot hub.
+    CreatePciRoot(devices::PciRootError),
+    /// Unable to create socket.
+    CreateSocket(io::Error),
+    /// Unable to create Vcpu.
+    CreateVcpu(sys_util::Error),
     /// The kernel extends past the end of RAM
     KernelOffsetPastEnd,
     /// Error registering an IrqFd
     RegisterIrqfd(sys_util::Error),
+    /// Couldn't register virtio socket.
+    RegisterVsock(arch::MmioRegisterError),
     LoadCmdline(kernel_loader::Error),
     LoadKernel(kernel_loader::Error),
     /// Error writing the zero page of guest memory.
@@ -99,12 +114,19 @@ pub enum Error {
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
+            &Error::AddPciDev(_) => "Failed to add device to PCI",
             &Error::ConfigureSystem => "Error configuring the system",
             &Error::CloneEventFd(_) => "Unable to clone an EventFd",
+            &Error::Cmdline(_) => "the given kernel command line was invalid",
             &Error::CreateEventFd(_) => "Unable to make an EventFd",
+            &Error::CreateKvm(_) => "failed to open /dev/kvm",
+            &Error::CreatePciRoot(_) => "failed to create a PCI root hub",
+            &Error::CreateSocket(_) => "failed to create socket",
+            &Error::CreateVcpu(_) => "failed to create VCPU",
             &Error::KernelOffsetPastEnd =>
                 "The kernel extends past the end of RAM",
             &Error::RegisterIrqfd(_) => "Error registering an IrqFd",
+            &Error::RegisterVsock(_) => "error registering virtual socket device",
             &Error::LoadCmdline(_) => "Error Loading command line",
             &Error::LoadKernel(_) => "Error Loading Kernel",
             &Error::ZeroPageSetup =>
@@ -231,6 +253,76 @@ fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
 }
 
 impl arch::LinuxArch for X8664arch {
+    fn build_vm<F>(mut components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
+        where
+            F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<VirtioDeviceStub>>
+    {
+        let mut resources = Self::get_resource_allocator(components.memory_mb,
+                                                         components.wayland_dmabuf);
+        let mem = Self::setup_memory(components.memory_mb)?;
+        let kvm = Kvm::new().map_err(Error::CreateKvm)?;
+        let mut vm = Self::create_vm(&kvm, mem.clone())?;
+
+        let vcpu_count = components.vcpu_count;
+        let mut vcpus = Vec::with_capacity(vcpu_count as usize);
+        for cpu_id in 0..vcpu_count {
+            let vcpu = Vcpu::new(cpu_id as libc::c_ulong, &kvm, &vm)
+                .map_err(Error::CreateVcpu)?;
+            Self::configure_vcpu(vm.get_memory(), &kvm, &vm, &vcpu,
+                                 cpu_id as u64, vcpu_count as u64)?;
+            vcpus.push(vcpu);
+        }
+
+        let irq_chip = Self::create_irq_chip(&vm)?;
+        let mut cmdline = Self::get_base_linux_cmdline();
+
+        let mut mmio_bus = devices::Bus::new();
+
+        let (pci, pci_irqs) = components.pci_devices.generate_root(&mut mmio_bus, &mut resources)
+            .map_err(Error::CreatePciRoot)?;
+        let pci_bus = Arc::new(Mutex::new(pci));
+
+        let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+        let (io_bus, stdio_serial) = Self::setup_io_bus(
+            &mut vm,
+            exit_evt.try_clone().map_err(Error::CloneEventFd)?,
+            Some(pci_bus.clone()))?;
+
+
+        // Create a list of mmio devices to be added.
+        let mmio_devs = virtio_devs(&mem, &exit_evt)?;
+
+        for stub in mmio_devs {
+            arch::register_mmio(&mut mmio_bus, &mut vm, stub.dev, stub.jail,
+                                &mut resources, &mut cmdline)
+                .map_err(Error::RegisterVsock)?;
+        }
+
+        for param in components.extra_kernel_params {
+            cmdline.insert_str(&param).map_err(Error::Cmdline)?;
+        }
+
+        // separate out load_kernel from other setup to get a specific error for
+        // kernel loading
+        Self::load_kernel(&mem, &mut components.kernel_image)?;
+        Self::setup_system_memory(&mem, components.memory_mb, vcpu_count,
+                                  &CString::new(cmdline).unwrap(), pci_irqs)?;
+
+        Ok(RunnableLinuxVm {
+            vm,
+            kvm,
+            resources,
+            stdio_serial,
+            exit_evt,
+            vcpus,
+            irq_chip,
+            io_bus,
+            mmio_bus,
+        })
+    }
+}
+
+impl X8664arch {
     /// Loads the kernel from an open file.
     ///
     /// # Arguments
@@ -337,7 +429,7 @@ impl arch::LinuxArch for X8664arch {
     ///
     /// * - `vm` the vm object
     /// * - `exit_evt` - the event fd object which should receive exit events
-    fn setup_io_bus(vm: &mut Vm, exit_evt: EventFd)
+    fn setup_io_bus(vm: &mut Vm, exit_evt: EventFd, pci: Option<Arc<Mutex<devices::PciRoot>>>)
                     -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)> {
         struct NoDevice;
         impl devices::BusDevice for NoDevice {}
@@ -386,7 +478,13 @@ impl arch::LinuxArch for X8664arch {
         io_bus.insert(nul_device.clone(), 0x040, 0x8, false).unwrap(); // ignore pit
         io_bus.insert(nul_device.clone(), 0x0ed, 0x1, false).unwrap(); // most likely this one does nothing
         io_bus.insert(nul_device.clone(), 0x0f0, 0x2, false).unwrap(); // ignore fpu
-        io_bus.insert(nul_device.clone(), 0xcf8, 0x8, false).unwrap(); // ignore pci
+
+        if let Some(pci_root) = pci {
+            io_bus.insert(pci_root, 0xcf8, 0x8, false).unwrap();
+        } else {
+            // ignore pci.
+            io_bus.insert(nul_device.clone(), 0xcf8, 0x8, false).unwrap();
+        }
 
         vm.register_irqfd(&com_evt_1_3, 4).map_err(Error::RegisterIrqfd)?;
         vm.register_irqfd(&com_evt_2_4, 3).map_err(Error::RegisterIrqfd)?;
