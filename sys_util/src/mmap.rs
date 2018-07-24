@@ -316,8 +316,9 @@ impl MemoryMapping {
         Ok(())
     }
 
-    /// Uses madvise to tell the kernel the specified range won't be needed soon.
-    pub fn dont_need_range(&self, mem_offset: usize, count: usize) -> Result<()> {
+    /// Uses madvise to tell the kernel to remove the specified range.  Subsequent reads
+    /// to the pages in the range will return zero bytes.
+    pub fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()> {
         self.range_end(mem_offset, count)
             .map_err(|_| Error::InvalidRange(mem_offset, count))?;
         let ret = unsafe {
@@ -325,7 +326,7 @@ impl MemoryMapping {
             // Next time it is read, it may return zero pages.
             libc::madvise((self.addr as usize + mem_offset) as *mut _,
                           count,
-                          libc::MADV_DONTNEED)
+                          libc::MADV_REMOVE)
         };
         if ret < 0 {
             Err(Error::InvalidRange(mem_offset, count))

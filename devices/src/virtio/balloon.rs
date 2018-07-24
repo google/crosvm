@@ -5,13 +5,14 @@
 use std;
 use std::cmp;
 use std::io::Write;
+use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
 use sys_util::{self, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 
 use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_CONFIG_CHANGED,
@@ -85,7 +86,7 @@ impl Worker {
                             GuestAddress((guest_input as u64) << VIRTIO_BALLOON_PFN_SHIFT);
 
                         if self.mem
-                            .dont_need_range(guest_address, 1 << VIRTIO_BALLOON_PFN_SHIFT)
+                            .remove_range(guest_address, 1 << VIRTIO_BALLOON_PFN_SHIFT)
                             .is_err()
                         {
                             warn!("Marking pages unused failed {:?}", guest_address);
@@ -174,20 +175,15 @@ impl Worker {
                         needs_interrupt |= self.process_inflate_deflate(false);
                     }
                     Token::CommandSocket => {
-                        let mut buf = [0u8; 4];
+                        let mut buf = [0u8; mem::size_of::<u64>()];
                         if let Ok(count) = self.command_socket.recv(&mut buf) {
-                            if count == 4 {
-                                let mut buf = &buf[0..];
-                                let increment: i32 = buf.read_i32::<LittleEndian>().unwrap();
-                                let num_pages = self.config.num_pages.load(Ordering::Relaxed) as
-                                    i32;
-                                if increment < 0 && increment.abs() > num_pages {
-                                    continue;
-                                }
-                                self.config.num_pages.fetch_add(
-                                    increment as usize,
-                                    Ordering::Relaxed,
-                                );
+                            // Ignore any malformed messages that are not exactly 8 bytes long.
+                            if count == mem::size_of::<u64>() {
+                                let num_bytes = LittleEndian::read_u64(&buf);
+                                let num_pages = (num_bytes >> VIRTIO_BALLOON_PFN_SHIFT) as usize;
+                                info!("ballon config changed to consume {} pages", num_pages);
+
+                                self.config.num_pages.store(num_pages, Ordering::Relaxed);
                                 self.signal_config_changed();
                             }
                         }

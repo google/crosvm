@@ -3,22 +3,28 @@
 // found in the LICENSE file.
 
 use std;
+use std::cmp::min;
 use std::ffi::{CString, CStr};
 use std::fmt;
 use std::error;
 use std::fs::{File, OpenOptions, remove_file};
-use std::io::{self, stdin};
+use std::io::{self, Read, stdin};
+use std::mem;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
+use std::str;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Barrier};
 use std::thread;
+use std::time::Duration;
 use std::thread::JoinHandle;
 
-use libc;
-use libc::c_int;
+use libc::{self, c_int};
+use rand::thread_rng;
+use rand::distributions::{IndependentSample, Range};
 
+use byteorder::{ByteOrder, LittleEndian};
 use devices;
 use io_jail::{self, Minijail};
 use kernel_cmdline;
@@ -55,6 +61,7 @@ pub enum Error {
     CreatePollContext(sys_util::Error),
     CreateSignalFd(sys_util::SignalFdError),
     CreateSocket(io::Error),
+    CreateTimerFd(sys_util::Error),
     CreateVcpu(sys_util::Error),
     CreateVm(Box<error::Error>),
     DeviceJail(io_jail::Error),
@@ -67,8 +74,12 @@ pub enum Error {
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
     OpenKernel(PathBuf, io::Error),
+    OpenLowMem(io::Error),
     PollContextAdd(sys_util::Error),
+    PollContextDelete(sys_util::Error),
     QcowDeviceCreate(qcow::Error),
+    ReadLowmemAvailable(io::Error),
+    ReadLowmemMargin(io::Error),
     RegisterBalloon(MmioRegisterError),
     RegisterBlock(MmioRegisterError),
     RegisterGpu(MmioRegisterError),
@@ -77,11 +88,13 @@ pub enum Error {
     RegisterSignalHandler(sys_util::Error),
     RegisterVsock(MmioRegisterError),
     RegisterWayland(MmioRegisterError),
+    ResetTimerFd(sys_util::Error),
     RngDeviceNew(devices::virtio::RngError),
     SettingGidMap(io_jail::Error),
     SettingUidMap(io_jail::Error),
     SignalFd(sys_util::SignalFdError),
     SpawnVcpu(io::Error),
+    TimerFd(sys_util::Error),
     VhostNetDeviceNew(devices::virtio::vhost::Error),
     VhostVsockDeviceNew(devices::virtio::vhost::Error),
     WaylandDeviceNew(sys_util::Error),
@@ -110,6 +123,7 @@ impl fmt::Display for Error {
             &Error::CreatePollContext(ref e) => write!(f, "failed to create poll context: {:?}", e),
             &Error::CreateSignalFd(ref e) => write!(f, "failed to create signalfd: {:?}", e),
             &Error::CreateSocket(ref e) => write!(f, "failed to create socket: {}", e),
+            &Error::CreateTimerFd(ref e) => write!(f, "failed to create timerfd: {}", e),
             &Error::CreateVcpu(ref e) => write!(f, "failed to create VCPU: {:?}", e),
             &Error::CreateVm(ref e) => write!(f, "failed to create KVM VM object: {:?}", e),
             &Error::DeviceJail(ref e) => write!(f, "failed to jail device: {}", e),
@@ -126,9 +140,19 @@ impl fmt::Display for Error {
             &Error::OpenKernel(ref p, ref e) => {
                 write!(f, "failed to open kernel image {:?}: {}", p, e)
             }
+            &Error::OpenLowMem(ref e) => write!(f, "failed to open /dev/chromeos-low-mem: {}", e),
             &Error::PollContextAdd(ref e) => write!(f, "failed to add fd to poll context: {:?}", e),
+            &Error::PollContextDelete(ref e) => {
+                write!(f, "failed to remove fd from poll context: {:?}", e)
+            }
             &Error::QcowDeviceCreate(ref e) => {
                 write!(f, "failed to read qcow formatted file {:?}", e)
+            }
+            &Error::ReadLowmemAvailable(ref e) => {
+                write!(f, "failed to read /sys/kernel/mm/chromeos-low_mem/available: {}", e)
+            }
+            &Error::ReadLowmemMargin(ref e) => {
+                write!(f, "failed to read /sys/kernel/mm/chromeos-low_mem/margin: {}", e)
             }
             &Error::RegisterBalloon(ref e) => {
                 write!(f, "error registering balloon device: {:?}", e)
@@ -144,11 +168,13 @@ impl fmt::Display for Error {
                 write!(f, "error registering virtual socket device: {:?}", e)
             }
             &Error::RegisterWayland(ref e) => write!(f, "error registering wayland device: {}", e),
+            &Error::ResetTimerFd(ref e) => write!(f, "failed to reset timerfd: {}", e),
             &Error::RngDeviceNew(ref e) => write!(f, "failed to set up rng: {:?}", e),
             &Error::SettingGidMap(ref e) => write!(f, "error setting GID map: {}", e),
             &Error::SettingUidMap(ref e) => write!(f, "error setting UID map: {}", e),
             &Error::SignalFd(ref e) => write!(f, "failed to read signal fd: {:?}", e),
             &Error::SpawnVcpu(ref e) => write!(f, "failed to spawn VCPU thread: {:?}", e),
+            &Error::TimerFd(ref e) => write!(f, "failed to read timer fd: {:?}", e),
             &Error::VhostNetDeviceNew(ref e) => {
                 write!(f, "failed to set up vhost networking: {:?}", e)
             }
@@ -687,6 +713,18 @@ fn run_vcpu(vcpu: Vcpu,
         .map_err(Error::SpawnVcpu)
 }
 
+// Reads the contents of a file and converts them into a u64.
+fn file_to_u64<P: AsRef<Path>>(path: P) -> io::Result<u64> {
+    let mut file = File::open(path)?;
+
+    let mut buf = [0u8; 32];
+    let count = file.read(&mut buf)?;
+
+    let content = str::from_utf8(&buf[..count])
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    content.trim().parse().map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
 fn run_control(mut vm: Vm,
                control_sockets: Vec<UnlinkUnixDatagram>,
                mut resources: SystemAllocator,
@@ -700,11 +738,34 @@ fn run_control(mut vm: Vm,
                -> Result<()> {
     const MAX_VM_FD_RECV: usize = 1;
 
+    // Paths to get the currently available memory and the low memory threshold.
+    const LOWMEM_MARGIN: &'static str = "/sys/kernel/mm/chromeos-low_mem/margin";
+    const LOWMEM_AVAILABLE: &'static str = "/sys/kernel/mm/chromeos-low_mem/available";
+
+    // The amount of additional memory to claim back from the VM whenever the system is
+    // low on memory.
+    const ONE_GB: u64 = (1 << 30);
+
+    let max_balloon_memory = match vm.get_memory().memory_size() {
+        // If the VM has at least 1.5 GB, the balloon driver can consume all but the last 1 GB.
+        n if n >= (ONE_GB / 2) * 3 => n - ONE_GB,
+        // Otherwise, if the VM has at least 500MB the balloon driver will consume at most
+        // half of it.
+        n if n >= (ONE_GB / 2) => n / 2,
+        // Otherwise, the VM is too small for us to take memory away from it.
+        _ => 0,
+    };
+    let mut current_balloon_memory: u64 = 0;
+    let balloon_memory_increment: u64 = max_balloon_memory / 16;
+
     #[derive(PollToken)]
     enum Token {
         Exit,
         Stdin,
         ChildSignal,
+        CheckAvailableMemory,
+        LowMemory,
+        LowmemTimer,
         VmControl { index: usize },
     }
 
@@ -723,6 +784,25 @@ fn run_control(mut vm: Vm,
     for (index, socket) in control_sockets.iter().enumerate() {
         poll_ctx.add(socket.as_ref(), Token::VmControl{ index }).map_err(Error::PollContextAdd)?;
     }
+
+    // Watch for low memory notifications and take memory back from the VM.
+    let low_mem = File::open("/dev/chromeos-low-mem").map_err(Error::OpenLowMem)?;
+    poll_ctx.add(&low_mem, Token::LowMemory).map_err(Error::PollContextAdd)?;
+
+    // Used to rate limit balloon requests.
+    let mut lowmem_timer = TimerFd::new().map_err(Error::CreateTimerFd)?;
+    poll_ctx.add(&lowmem_timer, Token::LowmemTimer).map_err(Error::PollContextAdd)?;
+
+    // Used to check whether it's ok to start giving memory back to the VM.
+    let mut freemem_timer = TimerFd::new().map_err(Error::CreateTimerFd)?;
+    poll_ctx.add(&freemem_timer, Token::CheckAvailableMemory).map_err(Error::PollContextAdd)?;
+
+    // Used to add jitter to timer values so that we don't have a thundering herd problem when
+    // multiple VMs are running.
+    let mut rng = thread_rng();
+    let lowmem_jitter_ms = Range::new(0, 200);
+    let freemem_jitter_secs = Range::new(0, 12);
+    let interval_jitter_secs = Range::new(0, 6);
 
     let mut scm = Scm::new(MAX_VM_FD_RECV);
 
@@ -776,6 +856,68 @@ fn run_control(mut vm: Vm,
                         break 'poll;
                     }
                 }
+                Token::CheckAvailableMemory => {
+                    // Acknowledge the timer.
+                    freemem_timer.wait().map_err(Error::TimerFd)?;
+                    if current_balloon_memory == 0 {
+                        // Nothing to see here.
+                        if let Err(e) = freemem_timer.clear() {
+                            warn!("unable to clear available memory check timer: {}", e);
+                        }
+                        continue;
+                    }
+
+                    // Otherwise see if we can free up some memory.
+                    let margin = file_to_u64(LOWMEM_MARGIN).map_err(Error::ReadLowmemMargin)?;
+                    let available = file_to_u64(LOWMEM_AVAILABLE).map_err(Error::ReadLowmemAvailable)?;
+
+                    // `available` and `margin` are specified in MB while `balloon_memory_increment` is in
+                    // bytes.  So to correctly compare them we need to turn the increment value into MB.
+                    if available >= margin + 2*(balloon_memory_increment >> 20) {
+                        current_balloon_memory = if current_balloon_memory >= balloon_memory_increment {
+                            current_balloon_memory - balloon_memory_increment
+                        } else {
+                            0
+                        };
+                        let mut buf = [0u8; mem::size_of::<u64>()];
+                        LittleEndian::write_u64(&mut buf, current_balloon_memory);
+                        if let Err(e) = balloon_host_socket.send(&buf) {
+                            warn!("failed to send memory value to balloon device: {}", e);
+                        }
+                    }
+                }
+                Token::LowMemory => {
+                    let old_balloon_memory = current_balloon_memory;
+                    current_balloon_memory = min(current_balloon_memory + balloon_memory_increment, max_balloon_memory);
+                    if current_balloon_memory != old_balloon_memory {
+                        let mut buf = [0u8; mem::size_of::<u64>()];
+                        LittleEndian::write_u64(&mut buf, current_balloon_memory);
+                        if let Err(e) = balloon_host_socket.send(&buf) {
+                            warn!("failed to send memory value to balloon device: {}", e);
+                        }
+                    }
+
+                    // Stop polling the lowmem device until the timer fires.
+                    poll_ctx.delete(&low_mem).map_err(Error::PollContextDelete)?;
+
+                    // Add some jitter to the timer so that if there are multiple VMs running they don't
+                    // all start ballooning at exactly the same time.
+                    let lowmem_dur = Duration::from_millis(1000 + lowmem_jitter_ms.ind_sample(&mut rng));
+                    lowmem_timer.reset(lowmem_dur, None).map_err(Error::ResetTimerFd)?;
+
+                    // Also start a timer to check when we can start giving memory back.  Do the first check
+                    // after a minute (with jitter) and subsequent checks after every 30 seconds (with jitter).
+                    let freemem_dur = Duration::from_secs(60 + freemem_jitter_secs.ind_sample(&mut rng));
+                    let freemem_int = Duration::from_secs(30 + interval_jitter_secs.ind_sample(&mut rng));
+                    freemem_timer.reset(freemem_dur, Some(freemem_int)).map_err(Error::ResetTimerFd)?;
+                }
+                Token::LowmemTimer => {
+                    // Acknowledge the timer.
+                    lowmem_timer.wait().map_err(Error::TimerFd)?;
+
+                    // Start polling the lowmem device again.
+                    poll_ctx.add(&low_mem, Token::LowMemory).map_err(Error::PollContextAdd)?;
+                }
                 Token::VmControl { index } => {
                     if let Some(socket) = control_sockets.get(index as usize) {
                         match VmRequest::recv(&mut scm, socket.as_ref()) {
@@ -811,6 +953,9 @@ fn run_control(mut vm: Vm,
                         let _ = poll_ctx.delete(&stdin_handle);
                     },
                     Token::ChildSignal => {},
+                    Token::CheckAvailableMemory => {},
+                    Token::LowMemory => {},
+                    Token::LowmemTimer => {},
                     Token::VmControl { index } => {
                         if let Some(socket) = control_sockets.get(index as usize) {
                             let _ = poll_ctx.delete(socket.as_ref());

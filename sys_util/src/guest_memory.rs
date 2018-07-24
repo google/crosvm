@@ -132,10 +132,10 @@ impl GuestMemory {
     }
 
     /// Madvise away the address range in the host that is associated with the given guest range.
-    pub fn dont_need_range(&self, addr: GuestAddress, count: u64) -> Result<()> {
+    pub fn remove_range(&self, addr: GuestAddress, count: u64) -> Result<()> {
         self.do_in_region(addr, move |mapping, offset| {
             mapping
-                .dont_need_range(offset, count as usize)
+                .remove_range(offset, count as usize)
                 .map_err(|e| Error::MemoryAccess(addr, e))
         })
     }
