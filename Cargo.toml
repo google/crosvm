@@ -38,6 +38,7 @@ protobuf = { version = "=1.4.3", optional = true }
 qcow_utils = { path = "qcow_utils" }
 resources = { path = "resources" }
 p9 = { path = "p9" }
+rand = "=0.3.20"
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { path = "x86_64" }
@@ -46,5 +47,4 @@ x86_64 = { path = "x86_64" }
 aarch64 = { path = "aarch64" }
 
 [dev-dependencies]
-rand = "=0.3.20"
 sys_util = { path = "sys_util" }

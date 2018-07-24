@@ -5,13 +5,11 @@
 close: 1
 exit_group: 1
 futex: 1
-madvise: 1
 # Disallow mmap with PROT_EXEC set.  The syntax here doesn't allow bit
 # negation, thus the manually negated mask constant.
 mmap: arg2 in 0xfffffffb
 mprotect: arg2 in 0xfffffffb
-# Allow MADV_DONTDUMP only.
-madvise: arg2 == 0x00000010
+madvise: arg2 == MADV_DONTDUMP || arg2 == MADV_DONTNEED || arg2 == MADV_REMOVE
 munmap: 1
 read: 1
 recvfrom: 1

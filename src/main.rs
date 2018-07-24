@@ -31,6 +31,7 @@ extern crate plugin_proto;
 extern crate protobuf;
 #[cfg(feature = "wl-dmabuf")]
 extern crate gpu_buffer;
+extern crate rand;
 
 pub mod argument;
 pub mod linux;
