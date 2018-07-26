@@ -139,6 +139,7 @@ enum Stat {
     CheckExtentsion,
     GetSupportedCpuid,
     GetEmulatedCpuid,
+    GetMsrIndexList,
     NetGetConfig,
     ReserveRange,
     SetIrq,
@@ -425,6 +426,30 @@ impl crosvm {
         }
 
         Ok(emulated_cpuids.get_entries().len())
+    }
+
+    fn get_msr_index_list(&mut self, msr_indices: &mut [u32])
+                           -> result::Result<usize, c_int> {
+        let mut r = MainRequest::new();
+        r.mut_get_msr_index_list();
+
+        let (response, _) = self.main_transaction(&r, &[])?;
+        if !response.has_get_msr_index_list() {
+            return Err(EPROTO);
+        }
+
+        let msr_list: &MainResponse_MsrListResponse = response.get_get_msr_index_list();
+        if msr_list.get_indices().len() > msr_indices.len() {
+            return Err(E2BIG);
+        }
+
+        for (proto_entry, kvm_entry) in
+            msr_list.get_indices().iter()
+                .zip(msr_indices.iter_mut()) {
+            *kvm_entry = *proto_entry;
+        }
+
+        Ok(msr_list.get_indices().len())
     }
 
     fn reserve_range(&mut self, space: u32, start: u64, length: u64) -> result::Result<(), c_int> {
@@ -1124,6 +1149,25 @@ fn crosvm_get_emulated_cpuid(this: *mut crosvm,
     }
     to_crosvm_rc(ret)
 }
+
+#[no_mangle]
+pub unsafe extern "C"
+fn crosvm_get_msr_index_list(this: *mut crosvm,
+                             entry_count: u32,
+                             msr_indices: *mut u32,
+                             out_count: *mut u32)
+                             -> c_int {
+    let _u = STATS.record(Stat::GetMsrIndexList);
+    let this = &mut *this;
+    let msr_indices = from_raw_parts_mut(msr_indices, entry_count as usize);
+    let ret = this.get_msr_index_list(msr_indices);
+
+    if let Ok(num) = ret {
+        *out_count = num as u32;
+    }
+    to_crosvm_rc(ret)
+}
+
 
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_net_get_config(self_: *mut crosvm,

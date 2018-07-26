@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 15
+#define CROSVM_API_MINOR 16
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -127,6 +127,13 @@ int crosvm_get_supported_cpuid(struct crosvm*, uint32_t __entry_count,
  */
 int crosvm_get_emulated_cpuid(struct crosvm*, uint32_t __entry_count,
                               struct kvm_cpuid_entry2 *__cpuid_entries,
+                              uint32_t *__out_count);
+
+/*
+ * Queries kvm for list of supported MSRs.
+ */
+int crosvm_get_msr_index_list(struct crosvm*, uint32_t __entry_count,
+                              uint32_t *__msr_indices,
                               uint32_t *__out_count);
 
 /*

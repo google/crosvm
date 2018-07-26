@@ -1,6 +1,6 @@
 [package]
 name = "crosvm_plugin"
-version = "0.15.0"
+version = "0.16.0"
 authors = ["The Chromium OS Authors"]
 
 [lib]

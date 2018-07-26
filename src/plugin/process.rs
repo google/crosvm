@@ -634,6 +634,17 @@ impl Process {
                 }
                 Err(e) => Err(e),
             }
+        } else if request.has_get_msr_index_list() {
+            let msr_list_response = &mut response.mut_get_msr_index_list().indices;
+            match kvm.get_msr_index_list() {
+                Ok(indices) => {
+                    for entry in indices {
+                        msr_list_response.push(entry);
+                    }
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
         } else {
             Err(SysError::new(ENOTTY))
         };

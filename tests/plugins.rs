@@ -242,6 +242,11 @@ fn test_supported_cpuid() {
 }
 
 #[test]
+fn test_msr_index_list() {
+    test_plugin(include_str!("plugin_msr_index_list.c"));
+}
+
+#[test]
 fn test_vm_state_manipulation() {
     test_plugin(include_str!("plugin_vm_state.c"));
 }
