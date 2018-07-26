@@ -100,6 +100,22 @@ impl PciSubclass for PciBridgeSubclass {
     }
 }
 
+/// Subclass of the SerialBus
+#[allow(dead_code)]
+#[derive(Copy, Clone)]
+pub enum PciSerialBusSubClass {
+    Firewire = 0x00,
+    ACCESSbus = 0x01,
+    SSA = 0x02,
+    USB = 0x03,
+}
+
+impl PciSubclass for PciSerialBusSubClass {
+    fn get_register_value(&self) -> u8 {
+        *self as u8
+    }
+}
+
 /// Contains the configuration space of a PCI node.
 /// See the [specification](https://en.wikipedia.org/wiki/PCI_configuration_space).
 /// The configuration space is accessed with DWORD reads and writes from the guest.
