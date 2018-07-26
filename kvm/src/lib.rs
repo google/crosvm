@@ -160,6 +160,45 @@ impl Kvm {
     pub fn get_emulated_cpuid(&self) -> Result<CpuId> {
         self.get_cpuid(KVM_GET_EMULATED_CPUID())
     }
+
+    /// X86 specific call to get list of supported MSRS
+    ///
+    /// See the documentation for KVM_GET_MSR_INDEX_LIST.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_msr_index_list(&self) -> Result<Vec<u32>> {
+        const MAX_KVM_MSR_ENTRIES: usize = 256;
+
+        let vec_size_bytes = size_of::<kvm_msr_list>() +
+            MAX_KVM_MSR_ENTRIES * size_of::<u32>();
+        let bytes: Vec<u8> = vec![0; vec_size_bytes];
+        let msr_list: &mut kvm_msr_list = unsafe {
+            // We have ensured in new that there is enough space for the structure so this
+            // conversion is safe.
+            &mut *(bytes.as_ptr() as *mut kvm_msr_list)
+        };
+        msr_list.nmsrs = MAX_KVM_MSR_ENTRIES as u32;
+
+        let ret = unsafe {
+            // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the memory
+            // allocated for the struct. The limit is read from nmsrs, which is set to the allocated
+            // size (MAX_KVM_MSR_ENTRIES) above.
+            ioctl_with_mut_ref(self, KVM_GET_MSR_INDEX_LIST(), msr_list)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+
+        // Mapping the unsized array to a slice is unsafe because the length isn't known.  Using
+        // the length we originally allocated with eliminates the possibility of overflow.
+        let indices: &[u32] = unsafe {
+            if msr_list.nmsrs > MAX_KVM_MSR_ENTRIES as u32 {
+                msr_list.nmsrs = MAX_KVM_MSR_ENTRIES as u32;
+            }
+            msr_list.indices.as_slice(msr_list.nmsrs as usize)
+        };
+
+        Ok(indices.to_vec())
+    }
 }
 
 impl AsRawFd for Kvm {
@@ -1389,6 +1428,14 @@ mod tests {
     fn get_emulated_cpuid() {
         let kvm = Kvm::new().unwrap();
         kvm.get_emulated_cpuid().unwrap();
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn get_msr_index_list() {
+        let kvm = Kvm::new().unwrap();
+        let msr_list = kvm.get_msr_index_list().unwrap();
+        assert!(msr_list.len() >= 2);
     }
 
     #[test]
