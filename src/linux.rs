@@ -74,7 +74,6 @@ pub enum Error {
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
     OpenKernel(PathBuf, io::Error),
-    OpenLowMem(io::Error),
     PollContextAdd(sys_util::Error),
     PollContextDelete(sys_util::Error),
     QcowDeviceCreate(qcow::Error),
@@ -140,7 +139,6 @@ impl fmt::Display for Error {
             &Error::OpenKernel(ref p, ref e) => {
                 write!(f, "failed to open kernel image {:?}: {}", p, e)
             }
-            &Error::OpenLowMem(ref e) => write!(f, "failed to open /dev/chromeos-low-mem: {}", e),
             &Error::PollContextAdd(ref e) => write!(f, "failed to add fd to poll context: {:?}", e),
             &Error::PollContextDelete(ref e) => {
                 write!(f, "failed to remove fd from poll context: {:?}", e)
@@ -789,8 +787,12 @@ fn run_control(mut linux: RunnableLinuxVm) -> Result<()> {
     }
 
     // Watch for low memory notifications and take memory back from the VM.
-    let low_mem = File::open("/dev/chromeos-low-mem").map_err(Error::OpenLowMem)?;
-    poll_ctx.add(&low_mem, Token::LowMemory).map_err(Error::PollContextAdd)?;
+    let low_mem = File::open("/dev/chromeos-low-mem").ok();
+    if let Some(ref low_mem) = low_mem {
+        poll_ctx.add(low_mem, Token::LowMemory).map_err(Error::PollContextAdd)?;
+    } else {
+        warn!("Unable to open low mem indicator, maybe not a chrome os kernel");
+    }
 
     // Used to rate limit balloon requests.
     let mut lowmem_timer = TimerFd::new().map_err(Error::CreateTimerFd)?;
@@ -890,36 +892,48 @@ fn run_control(mut linux: RunnableLinuxVm) -> Result<()> {
                     }
                 }
                 Token::LowMemory => {
-                    let old_balloon_memory = current_balloon_memory;
-                    current_balloon_memory = min(current_balloon_memory + balloon_memory_increment, max_balloon_memory);
-                    if current_balloon_memory != old_balloon_memory {
-                        let mut buf = [0u8; mem::size_of::<u64>()];
-                        LittleEndian::write_u64(&mut buf, current_balloon_memory);
-                        if let Err(e) = linux.balloon_host_socket.send(&buf) {
-                            warn!("failed to send memory value to balloon device: {}", e);
+                    if let Some(ref low_mem) = low_mem {
+                        let old_balloon_memory = current_balloon_memory;
+                        current_balloon_memory =
+                            min(current_balloon_memory + balloon_memory_increment,
+                                max_balloon_memory);
+                        if current_balloon_memory != old_balloon_memory {
+                            let mut buf = [0u8; mem::size_of::<u64>()];
+                            LittleEndian::write_u64(&mut buf, current_balloon_memory);
+                            if let Err(e) = linux.balloon_host_socket.send(&buf) {
+                                warn!("failed to send memory value to balloon device: {}", e);
+                            }
                         }
+
+                        // Stop polling the lowmem device until the timer fires.
+                        poll_ctx.delete(low_mem).map_err(Error::PollContextDelete)?;
+
+                        // Add some jitter to the timer so that if there are multiple VMs running
+                        // they don't all start ballooning at exactly the same time.
+                        let lowmem_dur =
+                            Duration::from_millis(1000 + lowmem_jitter_ms.ind_sample(&mut rng));
+                        lowmem_timer.reset(lowmem_dur, None).map_err(Error::ResetTimerFd)?;
+
+                        // Also start a timer to check when we can start giving memory back.  Do the
+                        // first check after a minute (with jitter) and subsequent checks after
+                        // every 30 seconds (with jitter).
+                        let freemem_dur =
+                            Duration::from_secs(60 + freemem_jitter_secs.ind_sample(&mut rng));
+                        let freemem_int =
+                            Duration::from_secs(30 + interval_jitter_secs.ind_sample(&mut rng));
+                        freemem_timer
+                            .reset(freemem_dur, Some(freemem_int))
+                            .map_err(Error::ResetTimerFd)?;
                     }
-
-                    // Stop polling the lowmem device until the timer fires.
-                    poll_ctx.delete(&low_mem).map_err(Error::PollContextDelete)?;
-
-                    // Add some jitter to the timer so that if there are multiple VMs running they don't
-                    // all start ballooning at exactly the same time.
-                    let lowmem_dur = Duration::from_millis(1000 + lowmem_jitter_ms.ind_sample(&mut rng));
-                    lowmem_timer.reset(lowmem_dur, None).map_err(Error::ResetTimerFd)?;
-
-                    // Also start a timer to check when we can start giving memory back.  Do the first check
-                    // after a minute (with jitter) and subsequent checks after every 30 seconds (with jitter).
-                    let freemem_dur = Duration::from_secs(60 + freemem_jitter_secs.ind_sample(&mut rng));
-                    let freemem_int = Duration::from_secs(30 + interval_jitter_secs.ind_sample(&mut rng));
-                    freemem_timer.reset(freemem_dur, Some(freemem_int)).map_err(Error::ResetTimerFd)?;
                 }
                 Token::LowmemTimer => {
                     // Acknowledge the timer.
                     lowmem_timer.wait().map_err(Error::TimerFd)?;
 
-                    // Start polling the lowmem device again.
-                    poll_ctx.add(&low_mem, Token::LowMemory).map_err(Error::PollContextAdd)?;
+                    if let Some(ref low_mem) = low_mem {
+                        // Start polling the lowmem device again.
+                        poll_ctx.add(low_mem, Token::LowMemory).map_err(Error::PollContextAdd)?;
+                    }
                 }
                 Token::VmControl { index } => {
                     if let Some(socket) = linux.control_sockets.get(index as usize) {
