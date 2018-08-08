@@ -305,10 +305,11 @@ impl arch::LinuxArch for X8664arch {
     ///
     /// * `mem_size` - the size in bytes of physical ram for the guest
     fn get_base_dev_pfn(mem_size: u64) -> u64 {
-        // Put device memory at nearest 2MB boundary after physical memory
+        // Put device memory at a 2MB boundary after physical memory or 4gb, whichever is greater.
         const MB: u64 = 1024 * 1024;
+        const GB: u64 = 1024 * MB;
         let mem_size_round_2mb = (mem_size + 2*MB - 1) / (2*MB) * (2*MB);
-        mem_size_round_2mb / sys_util::pagesize() as u64
+        std::cmp::max(mem_size_round_2mb, 4 * GB) / sys_util::pagesize() as u64
     }
 
     /// This returns a minimal kernel command for this architecture
