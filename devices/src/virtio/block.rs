@@ -344,6 +344,7 @@ pub struct Block<T: DiskFile> {
     kill_evt: Option<EventFd>,
     disk_image: Option<T>,
     config_space: Vec<u8>,
+    avail_features: u64,
 }
 
 fn build_config_space(disk_size: u64) -> Vec<u8> {
@@ -370,10 +371,14 @@ impl<T: DiskFile> Block<T> {
                   disk_size,
                   SECTOR_SIZE);
         }
+
+        let mut avail_features: u64 = 1 << VIRTIO_BLK_F_FLUSH;
+
         Ok(Block {
                kill_evt: None,
                disk_image: Some(disk_image),
                config_space: build_config_space(disk_size),
+               avail_features,
            })
     }
 }
@@ -400,7 +405,8 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
 
     fn features(&self, page: u32) -> u32 {
         match page {
-            0 => 1 << VIRTIO_BLK_F_FLUSH,
+            0 => self.avail_features as u32,
+            1 => (self.avail_features >> 32) as u32,
             _ => 0,
         }
     }
