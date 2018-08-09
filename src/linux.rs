@@ -405,15 +405,15 @@ fn setup_mmio_bus(cfg: &Config,
         } else {
             OpenOptions::new()
                 .read(true)
-                .write(disk.writable)
+                .write(!disk.read_only)
                 .open(&disk.path)
                 .map_err(|e| Error::Disk(e))?
         };
         // Lock the disk image to prevent other crosvm instances from using it.
-        let lock_op = if disk.writable {
-            FlockOperation::LockExclusive
-        } else {
+        let lock_op = if disk.read_only {
             FlockOperation::LockShared
+        } else {
+            FlockOperation::LockExclusive
         };
         flock(&raw_image, lock_op, true).map_err(Error::DiskImageLock)?;
 

@@ -62,7 +62,7 @@ enum DiskType {
 
 struct DiskOption {
     path: PathBuf,
-    writable: bool,
+    read_only: bool,
     disk_type: DiskType,
 }
 
@@ -216,7 +216,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.disks
                 .push(DiskOption {
                           path: disk_path,
-                          writable: name.starts_with("rw"),
+                          read_only: !name.starts_with("rw"),
                           disk_type: if name.ends_with("qcow") {
                                   DiskType::Qcow
                               } else {
