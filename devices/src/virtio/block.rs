@@ -28,7 +28,7 @@ const VIRTIO_BLK_S_OK: u8 = 0;
 const VIRTIO_BLK_S_IOERR: u8 = 1;
 const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
-const VIRTIO_BLK_F_FLUSH: u32 = 0x200;
+const VIRTIO_BLK_F_FLUSH: u32 = 9;
 
 pub trait DiskFile: Read + Seek + Write {}
 impl<D: Read + Seek + Write> DiskFile for D {}
@@ -400,7 +400,7 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
 
     fn features(&self, page: u32) -> u32 {
         match page {
-            0 => VIRTIO_BLK_F_FLUSH,
+            0 => 1 << VIRTIO_BLK_F_FLUSH,
             _ => 0,
         }
     }
@@ -492,5 +492,18 @@ mod tests {
         b.read_config(4, &mut msw_sectors);
         // size is 0x1000, so msw_sectors is 0.
         assert_eq!([0x00, 0x00, 0x00, 0x00], msw_sectors);
+    }
+
+    #[test]
+    fn read_features() {
+        let tempdir = TempDir::new("/tmp/block_read_test").unwrap();
+        let mut path = PathBuf::from(tempdir.as_path().unwrap());
+        path.push("disk_image");
+
+        let f = File::create(&path).unwrap();
+        let b = Block::new(f).unwrap();
+
+        // VIRTIO_BLK_F_FLUSH should always be set
+        assert_eq!(0x200, b.features(0));
     }
 }
