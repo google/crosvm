@@ -28,6 +28,7 @@ const VIRTIO_BLK_S_OK: u8 = 0;
 const VIRTIO_BLK_S_IOERR: u8 = 1;
 const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
+const VIRTIO_BLK_F_RO: u32 = 5;
 const VIRTIO_BLK_F_FLUSH: u32 = 9;
 
 pub trait DiskFile: Read + Seek + Write {}
@@ -345,6 +346,7 @@ pub struct Block<T: DiskFile> {
     disk_image: Option<T>,
     config_space: Vec<u8>,
     avail_features: u64,
+    read_only: bool,
 }
 
 fn build_config_space(disk_size: u64) -> Vec<u8> {
@@ -363,7 +365,7 @@ impl<T: DiskFile> Block<T> {
     /// Create a new virtio block device that operates on the given file.
     ///
     /// The given file must be seekable and sizable.
-    pub fn new(mut disk_image: T) -> SysResult<Block<T>> {
+    pub fn new(mut disk_image: T, read_only: bool) -> SysResult<Block<T>> {
         let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
         if disk_size % SECTOR_SIZE != 0 {
             warn!("Disk size {} is not a multiple of sector size {}; \
@@ -373,12 +375,16 @@ impl<T: DiskFile> Block<T> {
         }
 
         let mut avail_features: u64 = 1 << VIRTIO_BLK_F_FLUSH;
+        if read_only {
+            avail_features |= 1 << VIRTIO_BLK_F_RO;
+        }
 
         Ok(Block {
                kill_evt: None,
                disk_image: Some(disk_image),
                config_space: build_config_space(disk_size),
                avail_features,
+               read_only,
            })
     }
 }
@@ -489,7 +495,7 @@ mod tests {
         let f = File::create(&path).unwrap();
         f.set_len(0x1000).unwrap();
 
-        let b = Block::new(f).unwrap();
+        let b = Block::new(f, true).unwrap();
         let mut num_sectors = [0u8; 4];
         b.read_config(0, &mut num_sectors);
         // size is 0x1000, so num_sectors is 8 (4096/512).
@@ -506,10 +512,20 @@ mod tests {
         let mut path = PathBuf::from(tempdir.as_path().unwrap());
         path.push("disk_image");
 
-        let f = File::create(&path).unwrap();
-        let b = Block::new(f).unwrap();
+        // read-write block device
+        {
+            let f = File::create(&path).unwrap();
+            let b = Block::new(f, false).unwrap();
+            // writable device should just set VIRTIO_BLK_F_FLUSH
+            assert_eq!(0x200, b.features(0));
+        }
 
-        // VIRTIO_BLK_F_FLUSH should always be set
-        assert_eq!(0x200, b.features(0));
+        // read-only block device
+        {
+            let f = File::create(&path).unwrap();
+            let b = Block::new(f, true).unwrap();
+            // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
+            assert_eq!(0x220, b.features(0));
+        }
     }
 }

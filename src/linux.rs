@@ -419,13 +419,13 @@ fn setup_mmio_bus(cfg: &Config,
 
         let block_box: Box<devices::virtio::VirtioDevice> = match disk.disk_type {
             DiskType::FlatFile => { // Access as a raw block device.
-                Box::new(devices::virtio::Block::new(raw_image)
+                Box::new(devices::virtio::Block::new(raw_image, disk.read_only)
                     .map_err(|e| Error::BlockDeviceNew(e))?)
             }
             DiskType::Qcow => { // Valid qcow header present
                 let qcow_image = QcowFile::from(raw_image)
                     .map_err(|e| Error::QcowDeviceCreate(e))?;
-                Box::new(devices::virtio::Block::new(qcow_image)
+                Box::new(devices::virtio::Block::new(qcow_image, disk.read_only)
                     .map_err(|e| Error::BlockDeviceNew(e))?)
             }
         };
