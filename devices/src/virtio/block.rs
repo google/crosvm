@@ -4,6 +4,7 @@
 
 use std::cmp;
 use std::io::{self, Seek, SeekFrom, Read, Write};
+use std::mem::size_of_val;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::Arc;
@@ -12,6 +13,8 @@ use std::thread;
 
 use sys_util::Result as SysResult;
 use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError, PollContext, PollToken};
+
+use data_model::{DataInit, Le16, Le32, Le64};
 
 use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_USED_RING, TYPE_BLOCK};
 
@@ -30,6 +33,45 @@ const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
 const VIRTIO_BLK_F_RO: u32 = 5;
 const VIRTIO_BLK_F_FLUSH: u32 = 9;
+
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
+struct virtio_blk_geometry {
+    cylinders: Le16,
+    heads: u8,
+    sectors: u8,
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for virtio_blk_geometry {}
+
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
+struct virtio_blk_topology {
+    physical_block_exp: u8,
+    alignment_offset: u8,
+    min_io_size: Le16,
+    opt_io_size: Le32,
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for virtio_blk_topology {}
+
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
+struct virtio_blk_config {
+    capacity: Le64,
+    size_max: Le32,
+    seg_max: Le32,
+    geometry: virtio_blk_geometry,
+    blk_size: Le32,
+    topology: virtio_blk_topology,
+    writeback: u8,
+    unused0: [u8; 3],
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for virtio_blk_config {}
 
 pub trait DiskFile: Read + Seek + Write {}
 impl<D: Read + Seek + Write> DiskFile for D {}
@@ -344,21 +386,19 @@ impl<T: DiskFile> Worker<T> {
 pub struct Block<T: DiskFile> {
     kill_evt: Option<EventFd>,
     disk_image: Option<T>,
-    config_space: Vec<u8>,
+    config_space: virtio_blk_config,
     avail_features: u64,
     read_only: bool,
 }
 
-fn build_config_space(disk_size: u64) -> Vec<u8> {
+fn build_config_space(disk_size: u64) -> virtio_blk_config {
     // We only support disk size, which uses the first two words of the configuration space.
     // If the image is not a multiple of the sector size, the tail bits are not exposed.
     // The config space is little endian.
-    let mut config = Vec::with_capacity(8);
-    let num_sectors = disk_size >> SECTOR_SHIFT;
-    for i in 0..8 {
-        config.push((num_sectors >> (8 * i)) as u8);
+    virtio_blk_config {
+        capacity: Le64::from(disk_size >> SECTOR_SHIFT),
+        ..Default::default()
     }
-    config
 }
 
 impl<T: DiskFile> Block<T> {
@@ -426,13 +466,15 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
     }
 
     fn read_config(&self, offset: u64, mut data: &mut [u8]) {
-        let config_len = self.config_space.len() as u64;
+        let config_len = size_of_val(&self.config_space) as u64;
         if offset >= config_len {
             return;
         }
         if let Some(end) = offset.checked_add(data.len() as u64) {
+            let offset = offset as usize;
+            let end = cmp::min(end, config_len) as usize;
             // This write can't fail, offset and end are checked against config_len.
-            data.write_all(&self.config_space[offset as usize..cmp::min(end, config_len) as usize])
+            data.write_all(&self.config_space.as_slice()[offset..end])
                 .unwrap();
         }
     }
