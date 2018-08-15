@@ -401,9 +401,6 @@ impl QcowFile {
             }
         }
         let l2_addr_disk = read_u64_from_offset(&mut self.file, l1_entry_offset)?;
-        if l2_addr_disk & COMPRESSED_FLAG != 0 {
-            return Err(std::io::Error::from_raw_os_error(ENOTSUP));
-        }
         let l2_addr_from_table: u64 = l2_addr_disk & L1_TABLE_OFFSET_MASK;
         let l2_addr = if l2_addr_from_table == 0 {
             if allocate {
@@ -417,6 +414,9 @@ impl QcowFile {
         let l2_entry_addr: u64 = l2_addr.checked_add(self.l2_address_offset(address))
                 .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
         let cluster_addr_disk: u64 = read_u64_from_offset(&mut self.file, l2_entry_addr)?;
+        if cluster_addr_disk & COMPRESSED_FLAG != 0 {
+            return Err(std::io::Error::from_raw_os_error(ENOTSUP));
+        }
         let cluster_addr_from_table: u64 = cluster_addr_disk & L2_TABLE_OFFSET_MASK;
         let cluster_addr = if cluster_addr_from_table == 0 {
             if allocate {
