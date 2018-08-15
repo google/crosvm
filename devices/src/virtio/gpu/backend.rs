@@ -13,6 +13,7 @@ use std::usize;
 
 use data_model::*;
 
+use msg_socket::{MsgReceiver, MsgSender};
 use sys_util::{GuestAddress, GuestMemory};
 
 use super::gpu_buffer::{Buffer, Device, Flags, Format};
@@ -22,6 +23,7 @@ use super::gpu_renderer::{
     Renderer, Resource as GpuRendererResource, ResourceCreateArgs,
 };
 
+use super::super::resource_bridge::*;
 use super::protocol::GpuResponse;
 use super::protocol::{VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2};
 
@@ -347,6 +349,30 @@ impl Backend {
         self.scanout_surface
             .map(|s| display.close_requested(s))
             .unwrap_or(false)
+    }
+
+    pub fn process_resource_bridge(&self, resource_bridge: &ResourceResponseSocket) {
+        let request = match resource_bridge.recv() {
+            Ok(msg) => msg,
+            Err(e) => {
+                error!("error receiving resource bridge request: {:?}", e);
+                return;
+            }
+        };
+
+        let response = match request {
+            ResourceRequest::GetResource { id } => self
+                .resources
+                .get(&id)
+                .and_then(|resource| resource.buffer())
+                .and_then(|buffer| buffer.export_plane_fd(0).ok())
+                .map(|fd| ResourceResponse::Resource(fd))
+                .unwrap_or(ResourceResponse::Invalid),
+        };
+
+        if let Err(e) = resource_bridge.send(&response) {
+            error!("error sending resource bridge request: {:?}", e);
+        }
     }
 
     /// Gets the list of supported display resolutions as a slice of `(width, height)` tuples.

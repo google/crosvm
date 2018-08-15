@@ -17,6 +17,7 @@ mod virtio_pci_common_config;
 mod virtio_pci_device;
 mod wl;
 
+pub mod resource_bridge;
 pub mod vhost;
 
 pub use self::balloon::*;

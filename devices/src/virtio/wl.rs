@@ -67,6 +67,7 @@ use sys_util::{
 #[cfg(feature = "wl-dmabuf")]
 use sys_util::ioctl_with_ref;
 
+use super::resource_bridge::*;
 use super::{
     DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_WL, VIRTIO_F_VERSION_1,
 };
@@ -84,6 +85,8 @@ const VIRTIO_WL_CMD_VFD_HUP: u32 = 262;
 const VIRTIO_WL_CMD_VFD_NEW_DMABUF: u32 = 263;
 #[cfg(feature = "wl-dmabuf")]
 const VIRTIO_WL_CMD_VFD_DMABUF_SYNC: u32 = 264;
+#[cfg(feature = "gpu")]
+const VIRTIO_WL_CMD_VFD_SEND_FOREIGN_ID: u32 = 265;
 const VIRTIO_WL_RESP_OK: u32 = 4096;
 const VIRTIO_WL_RESP_VFD_NEW: u32 = 4097;
 #[cfg(feature = "wl-dmabuf")]
@@ -122,6 +125,9 @@ struct dma_buf_sync {
 
 #[cfg(feature = "wl-dmabuf")]
 ioctl_iow_nr!(DMA_BUF_IOCTL_SYNC, DMA_BUF_IOCTL_BASE, 0, dma_buf_sync);
+
+const VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL: u32 = 0;
+const VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU: u32 = 1;
 
 fn parse_new(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
     const ID_OFFSET: u64 = 8;
@@ -214,7 +220,7 @@ fn parse_dmabuf_sync(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
     })
 }
 
-fn parse_send(addr: GuestAddress, len: u32, mem: &GuestMemory) -> WlResult<WlOp> {
+fn parse_send(addr: GuestAddress, len: u32, foreign_id: bool, mem: &GuestMemory) -> WlResult<WlOp> {
     const ID_OFFSET: u64 = 8;
     const VFD_COUNT_OFFSET: u64 = 12;
     const VFDS_OFFSET: u64 = 16;
@@ -231,15 +237,21 @@ fn parse_send(addr: GuestAddress, len: u32, mem: &GuestMemory) -> WlResult<WlOp>
     let vfds_addr = mem
         .checked_offset(addr, VFDS_OFFSET)
         .ok_or(WlError::CheckedOffset)?;
+    let vfds_element_size = if foreign_id {
+        size_of::<CtrlVfdSendVfd>()
+    } else {
+        size_of::<Le32>()
+    } as u32;
     let data_addr = mem
-        .checked_offset(vfds_addr, (vfd_count * 4) as u64)
+        .checked_offset(vfds_addr, (vfd_count * vfds_element_size) as u64)
         .ok_or(WlError::CheckedOffset)?;
     Ok(WlOp::Send {
         id: id.into(),
+        foreign_id,
         vfds_addr,
         vfd_count,
         data_addr,
-        data_len: len - (VFDS_OFFSET as u32) - vfd_count * 4,
+        data_len: len - (VFDS_OFFSET as u32) - vfd_count * vfds_element_size,
     })
 }
 
@@ -259,7 +271,7 @@ fn parse_desc(desc: &DescriptorChain, mem: &GuestMemory) -> WlResult<WlOp> {
         VIRTIO_WL_CMD_VFD_CLOSE => Ok(WlOp::Close {
             id: parse_id(desc.addr, mem)?,
         }),
-        VIRTIO_WL_CMD_VFD_SEND => parse_send(desc.addr, desc.len, mem),
+        VIRTIO_WL_CMD_VFD_SEND => parse_send(desc.addr, desc.len, false, mem),
         VIRTIO_WL_CMD_VFD_NEW_CTX => Ok(WlOp::NewCtx {
             id: parse_id(desc.addr, mem)?,
         }),
@@ -268,6 +280,8 @@ fn parse_desc(desc: &DescriptorChain, mem: &GuestMemory) -> WlResult<WlOp> {
         VIRTIO_WL_CMD_VFD_NEW_DMABUF => parse_new_dmabuf(desc.addr, mem),
         #[cfg(feature = "wl-dmabuf")]
         VIRTIO_WL_CMD_VFD_DMABUF_SYNC => parse_dmabuf_sync(desc.addr, mem),
+        #[cfg(feature = "gpu")]
+        VIRTIO_WL_CMD_VFD_SEND_FOREIGN_ID => parse_send(desc.addr, desc.len, true, mem),
         v => Ok(WlOp::InvalidCommand { op_type: v }),
     }
 }
@@ -553,6 +567,15 @@ struct CtrlVfd {
 
 unsafe impl DataInit for CtrlVfd {}
 
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+struct CtrlVfdSendVfd {
+    kind: Le32,
+    id: Le32,
+}
+
+unsafe impl DataInit for CtrlVfdSendVfd {}
+
 #[derive(Debug)]
 enum WlOp {
     NewAlloc {
@@ -565,6 +588,7 @@ enum WlOp {
     },
     Send {
         id: u32,
+        foreign_id: bool,
         vfds_addr: GuestAddress,
         vfd_count: u32,
         data_addr: GuestAddress,
@@ -966,6 +990,7 @@ enum WlRecv {
 struct WlState {
     wayland_path: PathBuf,
     vm: VmRequester,
+    resource_bridge: Option<ResourceRequestSocket>,
     use_transition_flags: bool,
     poll_ctx: PollContext<u32>,
     vfds: Map<u32, WlVfd>,
@@ -977,10 +1002,16 @@ struct WlState {
 }
 
 impl WlState {
-    fn new(wayland_path: PathBuf, vm_socket: UnixDatagram, use_transition_flags: bool) -> WlState {
+    fn new(
+        wayland_path: PathBuf,
+        vm_socket: UnixDatagram,
+        use_transition_flags: bool,
+        resource_bridge: Option<ResourceRequestSocket>,
+    ) -> WlState {
         WlState {
             wayland_path,
             vm: VmRequester::new(vm_socket),
+            resource_bridge,
             poll_ctx: PollContext::new().expect("failed to create PollContext"),
             use_transition_flags,
             vfds: Map::new(),
@@ -1179,21 +1210,96 @@ impl WlState {
         }
     }
 
-    fn send(&mut self, vfd_id: u32, vfds: VolatileSlice, data: VolatileSlice) -> WlResult<WlResp> {
-        let vfd_count = vfds.size() as usize / size_of::<Le32>();
-        let mut vfd_ids = [Le32::from(0); VIRTWL_SEND_MAX_ALLOCS];
-        vfds.copy_to(&mut vfd_ids[..]);
+    fn send(
+        &mut self,
+        vfd_id: u32,
+        foreign_id: bool,
+        vfds: VolatileSlice,
+        data: VolatileSlice,
+    ) -> WlResult<WlResp> {
+        // First stage gathers and normalizes all id information from guest memory.
+        let mut send_vfd_ids = [CtrlVfdSendVfd::default(); VIRTWL_SEND_MAX_ALLOCS];
+        let vfd_count = if foreign_id {
+            vfds.copy_to(&mut send_vfd_ids[..]);
+            vfds.size() as usize / size_of::<CtrlVfdSendVfd>()
+        } else {
+            let vfd_count = vfds.size() as usize / size_of::<Le32>();
+            let mut vfd_ids = [Le32::from(0); VIRTWL_SEND_MAX_ALLOCS];
+            vfds.copy_to(&mut vfd_ids[..]);
+            send_vfd_ids[..vfd_count]
+                .iter_mut()
+                .zip(vfd_ids[..vfd_count].iter())
+                .for_each(|(send_vfd_id, &vfd_id)| {
+                    *send_vfd_id = CtrlVfdSendVfd {
+                        kind: Le32::from(VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL),
+                        id: vfd_id,
+                    }
+                });
+            vfd_count
+        };
+
+        // Next stage collects corresponding file descriptors for each id.
         let mut fds = [0; VIRTWL_SEND_MAX_ALLOCS];
-        for (&id, fd) in vfd_ids[..vfd_count].iter().zip(fds.iter_mut()) {
-            match self.vfds.get(&id.into()) {
-                Some(vfd) => match vfd.send_fd() {
-                    Some(vfd_fd) => *fd = vfd_fd,
-                    None => return Ok(WlResp::InvalidType),
+        #[cfg(feature = "gpu")]
+        let mut bridged_files = Vec::new();
+        for (&send_vfd_id, fd) in send_vfd_ids[..vfd_count].iter().zip(fds.iter_mut()) {
+            let id = send_vfd_id.id.to_native();
+            match send_vfd_id.kind.to_native() {
+                VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL => match self.vfds.get(&id) {
+                    Some(vfd) => match vfd.send_fd() {
+                        Some(vfd_fd) => *fd = vfd_fd,
+                        None => return Ok(WlResp::InvalidType),
+                    },
+                    None => {
+                        warn!("attempt to send non-existant vfd 0x{:08x}", id);
+                        return Ok(WlResp::InvalidId);
+                    }
                 },
-                None => return Ok(WlResp::InvalidId),
+                #[cfg(feature = "gpu")]
+                VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU if self.resource_bridge.is_some() =>
+                {
+                    if let Err(e) = self
+                        .resource_bridge
+                        .as_ref()
+                        .unwrap()
+                        .send(&ResourceRequest::GetResource { id })
+                    {
+                        error!("error sending resource bridge request: {:?}", e);
+                        return Ok(WlResp::InvalidId);
+                    }
+                    match self.resource_bridge.as_ref().unwrap().recv() {
+                        Ok(ResourceResponse::Resource(bridged_file)) => {
+                            *fd = bridged_file.as_raw_fd();
+                            bridged_files.push(bridged_file);
+                        }
+                        Ok(ResourceResponse::Invalid) => {
+                            warn!("attempt to send non-existant gpu resource {}", id);
+                            return Ok(WlResp::InvalidId);
+                        }
+                        Err(e) => {
+                            error!("error receiving resource bridge response: {:?}", e);
+                            // If there was an error with the resource bridge, it can no longer be
+                            // trusted to continue to function.
+                            self.resource_bridge = None;
+                            return Ok(WlResp::InvalidId);
+                        }
+                    }
+                }
+                VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU => {
+                    let _ = self.resource_bridge.as_ref();
+                    warn!("attempt to send foreign resource kind but feature is disabled");
+                }
+                kind => {
+                    warn!(
+                        "attempt to send unknown foreign resource kind: {} id: {:08x}",
+                        kind, id
+                    );
+                    return Ok(WlResp::InvalidId);
+                }
             }
         }
 
+        // Final stage sends file descriptors and data to the target vfd's socket.
         match self.vfds.get_mut(&vfd_id) {
             Some(vfd) => match vfd.send(&fds[..vfd_count], data)? {
                 WlResp::Ok => {}
@@ -1203,10 +1309,12 @@ impl WlState {
         }
         // The vfds with remote FDs need to be closed so that the local side can receive
         // hangup events.
-        for &id in &vfd_ids[..vfd_count] {
-            // The following unwrap can not panic because the IDs were already checked earlier in
-            // this method.
-            self.vfds.get_mut(&id.into()).unwrap().close_remote();
+        for &send_vfd_id in &send_vfd_ids[..vfd_count] {
+            if send_vfd_id.kind == VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL {
+                self.vfds
+                    .get_mut(&send_vfd_id.id.into())
+                    .map(|vfd| vfd.close_remote());
+            }
         }
         Ok(WlResp::Ok)
     }
@@ -1247,15 +1355,20 @@ impl WlState {
             WlOp::Close { id } => self.close(id),
             WlOp::Send {
                 id,
+                foreign_id,
                 vfds_addr,
                 vfd_count,
                 data_addr,
                 data_len,
             } => {
-                let vfd_mem =
-                    mem.get_slice(vfds_addr.0, (vfd_count as u64) * size_of::<Le32>() as u64)?;
+                let vfd_size = if foreign_id {
+                    size_of::<CtrlVfdSendVfd>()
+                } else {
+                    size_of::<Le32>()
+                } as u32;
+                let vfd_mem = mem.get_slice(vfds_addr.0, (vfd_count * vfd_size) as u64)?;
                 let data_mem = mem.get_slice(data_addr.0, data_len as u64)?;
-                self.send(id, vfd_mem, data_mem)
+                self.send(id, foreign_id, vfd_mem, data_mem)
             }
             WlOp::NewCtx { id } => self.new_context(id),
             WlOp::NewPipe { id, flags } => self.new_pipe(id, flags),
@@ -1378,6 +1491,7 @@ impl Worker {
         wayland_path: PathBuf,
         vm_socket: UnixDatagram,
         use_transition_flags: bool,
+        resource_bridge: Option<ResourceRequestSocket>,
     ) -> Worker {
         Worker {
             mem,
@@ -1386,7 +1500,12 @@ impl Worker {
             interrupt_status,
             in_queue,
             out_queue,
-            state: WlState::new(wayland_path, vm_socket, use_transition_flags),
+            state: WlState::new(
+                wayland_path,
+                vm_socket,
+                use_transition_flags,
+                resource_bridge,
+            ),
             in_desc_chains: VecDeque::with_capacity(QUEUE_SIZE as usize),
         }
     }
@@ -1561,17 +1680,21 @@ pub struct Wl {
     kill_evt: Option<EventFd>,
     wayland_path: PathBuf,
     vm_socket: Option<UnixDatagram>,
+    resource_bridge: Option<ResourceRequestSocket>,
     use_transition_flags: bool,
 }
 
 impl Wl {
-    pub fn new<P: AsRef<Path>>(wayland_path: P, vm_socket: UnixDatagram) -> Result<Wl> {
-        // let kill_evt = EventFd::new()?;
-        //     workers_kill_evt: Some(kill_evt.try_clone()?),
+    pub fn new<P: AsRef<Path>>(
+        wayland_path: P,
+        vm_socket: UnixDatagram,
+        resource_bridge: Option<ResourceRequestSocket>,
+    ) -> Result<Wl> {
         Ok(Wl {
             kill_evt: None,
             wayland_path: wayland_path.as_ref().to_owned(),
             vm_socket: Some(vm_socket),
+            resource_bridge,
             use_transition_flags: false,
         })
     }
@@ -1640,6 +1763,7 @@ impl VirtioDevice for Wl {
         if let Some(vm_socket) = self.vm_socket.take() {
             let wayland_path = self.wayland_path.clone();
             let use_transition_flags = self.use_transition_flags;
+            let resource_bridge = self.resource_bridge.take();
             let worker_result =
                 thread::Builder::new()
                     .name("virtio_wl".to_string())
@@ -1654,6 +1778,7 @@ impl VirtioDevice for Wl {
                             wayland_path,
                             vm_socket,
                             use_transition_flags,
+                            resource_bridge,
                         ).run(queue_evts, kill_evt);
                     });
 

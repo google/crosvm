@@ -30,7 +30,8 @@ use self::gpu_display::*;
 use self::gpu_renderer::{format_fourcc, Renderer};
 
 use super::{
-    AvailIter, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_GPU, VIRTIO_F_VERSION_1,
+    resource_bridge::*, AvailIter, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_GPU,
+    VIRTIO_F_VERSION_1,
 };
 
 use self::backend::Backend;
@@ -87,6 +88,10 @@ impl Frontend {
 
     fn process_display(&mut self) -> bool {
         self.backend.process_display()
+    }
+
+    fn process_resource_bridge(&self, resource_bridge: &ResourceResponseSocket) {
+        self.backend.process_resource_bridge(resource_bridge);
     }
 
     fn process_gpu_command(
@@ -462,6 +467,7 @@ struct Worker {
     ctrl_evt: EventFd,
     cursor_queue: Queue,
     cursor_evt: EventFd,
+    resource_bridge: Option<ResourceResponseSocket>,
     kill_evt: EventFd,
     state: Frontend,
 }
@@ -479,6 +485,7 @@ impl Worker {
             CtrlQueue,
             CursorQueue,
             Display,
+            ResourceBridge,
             InterruptResample,
             Kill,
         }
@@ -501,6 +508,12 @@ impl Worker {
             }
         };
 
+        if let Some(ref resource_bridge) = self.resource_bridge {
+            if let Err(e) = poll_ctx.add(resource_bridge, Token::ResourceBridge) {
+                error!("failed to add resource bridge to PollContext: {:?}", e);
+            }
+        }
+
         'poll: loop {
             // If there are outstanding fences, wake up early to poll them.
             let duration = if !self.state.fence_descriptors.is_empty() {
@@ -517,6 +530,7 @@ impl Worker {
                 }
             };
             let mut signal_used = false;
+            let mut process_resource_bridge = false;
             for event in events.iter_readable() {
                 match event.token() {
                     Token::CtrlQueue => {
@@ -535,6 +549,7 @@ impl Worker {
                             let _ = self.exit_evt.write(1);
                         }
                     }
+                    Token::ResourceBridge => process_resource_bridge = true,
                     Token::InterruptResample => {
                         let _ = self.interrupt_resample_evt.read();
                         if self.interrupt_status.load(Ordering::SeqCst) != 0 {
@@ -570,6 +585,15 @@ impl Worker {
                 }
             }
 
+            // Process the entire control queue before the resource bridge in case a resource is
+            // created or destroyed by the control queue. Processing the resource bridge first may
+            // lead to a race condition.
+            if process_resource_bridge {
+                if let Some(ref resource_bridge) = self.resource_bridge {
+                    self.state.process_resource_bridge(resource_bridge);
+                }
+            }
+
             if signal_used {
                 self.signal_used_queue();
             }
@@ -580,15 +604,21 @@ impl Worker {
 pub struct Gpu {
     config_event: bool,
     exit_evt: EventFd,
+    resource_bridge: Option<ResourceResponseSocket>,
     kill_evt: Option<EventFd>,
     wayland_socket_path: PathBuf,
 }
 
 impl Gpu {
-    pub fn new<P: AsRef<Path>>(exit_evt: EventFd, wayland_socket_path: P) -> Gpu {
+    pub fn new<P: AsRef<Path>>(
+        exit_evt: EventFd,
+        resource_bridge: Option<ResourceResponseSocket>,
+        wayland_socket_path: P,
+    ) -> Gpu {
         Gpu {
             config_event: false,
             exit_evt,
+            resource_bridge,
             kill_evt: None,
             wayland_socket_path: wayland_socket_path.as_ref().to_path_buf(),
         }
@@ -695,6 +725,8 @@ impl VirtioDevice for Gpu {
         };
         self.kill_evt = Some(self_kill_evt);
 
+        let resource_bridge = self.resource_bridge.take();
+
         let ctrl_queue = queues.remove(0);
         let ctrl_evt = queue_evts.remove(0);
         let cursor_queue = queues.remove(0);
@@ -744,6 +776,7 @@ impl VirtioDevice for Gpu {
                 ctrl_evt,
                 cursor_queue,
                 cursor_evt,
+                resource_bridge,
                 kill_evt,
                 state: Frontend::new(Backend::new(device, display, renderer)),
             }.run()

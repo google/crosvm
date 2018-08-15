@@ -9,18 +9,18 @@ extern crate data_model;
 extern crate io_jail;
 extern crate kvm;
 extern crate libc;
+extern crate msg_on_socket_derive;
+extern crate msg_socket;
 extern crate net_sys;
 extern crate net_util;
 extern crate p9;
 extern crate resources;
+extern crate sync;
 #[macro_use]
 extern crate sys_util;
 extern crate vhost;
 extern crate virtio_sys;
 extern crate vm_control;
-#[macro_use]
-extern crate msg_socket;
-extern crate sync;
 
 mod bus;
 mod cmos;

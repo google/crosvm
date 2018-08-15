@@ -382,106 +382,23 @@ fn create_virtio_devs(
         }
     }
 
-    if let Some(wayland_socket_path) = cfg.wayland_socket_path.as_ref() {
-        let wayland_socket_dir = wayland_socket_path
-            .parent()
-            .ok_or(Error::InvalidWaylandPath)?;
-        let wayland_socket_name = wayland_socket_path
-            .file_name()
-            .ok_or(Error::InvalidWaylandPath)?;
-        let jailed_wayland_dir = Path::new("/wayland");
-        let jailed_wayland_path = jailed_wayland_dir.join(wayland_socket_name);
-
-        let wl_box = Box::new(
-            devices::virtio::Wl::new(
-                if cfg.multiprocess {
-                    &jailed_wayland_path
-                } else {
-                    wayland_socket_path.as_path()
-                },
-                wayland_device_socket,
-            ).map_err(Error::WaylandDeviceNew)?,
-        );
-
-        let jail = if cfg.multiprocess {
-            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("wl_device.policy");
-            let mut jail = create_base_minijail(empty_root_path, &policy_path)?;
-
-            // Create a tmpfs in the device's root directory so that we can bind mount the wayland
-            // socket directory into it. The size=67108864 is size=64*1024*1024 or size=64MB.
-            jail.mount_with_data(
-                Path::new("none"),
-                Path::new("/"),
-                "tmpfs",
-                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
-                "size=67108864",
-            ).unwrap();
-
-            // Bind mount the wayland socket's directory into jail's root. This is necessary since
-            // each new wayland context must open() the socket. If the wayland socket is ever
-            // destroyed and remade in the same host directory, new connections will be possible
-            // without restarting the wayland device.
-            jail.mount_bind(wayland_socket_dir, jailed_wayland_dir, true)
-                .unwrap();
-
-            // Set the uid/gid for the jailed process, and give a basic id map. This
-            // is required for the above bind mount to work.
-            let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
-            let crosvm_uid = match get_user_id(&crosvm_user_group) {
-                Ok(u) => u,
-                Err(e) => {
-                    warn!("falling back to current user id for Wayland: {:?}", e);
-                    geteuid()
-                }
-            };
-            let crosvm_gid = match get_group_id(&crosvm_user_group) {
-                Ok(u) => u,
-                Err(e) => {
-                    warn!("falling back to current group id for Wayland: {:?}", e);
-                    getegid()
-                }
-            };
-            jail.change_uid(crosvm_uid);
-            jail.change_gid(crosvm_gid);
-            jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
-                .map_err(Error::SettingUidMap)?;
-            jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
-                .map_err(Error::SettingGidMap)?;
-
-            Some(jail)
-        } else {
-            None
-        };
-        devs.push(VirtioDeviceStub { dev: wl_box, jail });
-    }
-
-    if let Some(cid) = cfg.cid {
-        let vsock_box = Box::new(
-            devices::virtio::vhost::Vsock::new(cid, &mem).map_err(Error::VhostVsockDeviceNew)?,
-        );
-
-        let jail = if cfg.multiprocess {
-            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("vhost_vsock_device.policy");
-
-            Some(create_base_minijail(empty_root_path, &policy_path)?)
-        } else {
-            None
-        };
-
-        devs.push(VirtioDeviceStub {
-            dev: vsock_box,
-            jail,
-        });
-    }
-
+    #[cfg(feature = "gpu")]
+    let mut resource_bridge_wl_socket: Option<
+        devices::virtio::resource_bridge::ResourceRequestSocket,
+    > = None;
     #[cfg(feature = "gpu")]
     {
         if cfg.gpu {
             if let Some(wayland_socket_path) = cfg.wayland_socket_path.as_ref() {
+                let (wl_socket, gpu_socket) =
+                    devices::virtio::resource_bridge::pair().map_err(Error::CreateSocket)?;
+                resource_bridge_wl_socket = Some(wl_socket);
+
                 let jailed_wayland_path = Path::new("/wayland-0");
 
                 let gpu_box = Box::new(devices::virtio::Gpu::new(
                     _exit_evt.try_clone().map_err(Error::CloneEventFd)?,
+                    Some(gpu_socket),
                     if cfg.multiprocess {
                         &jailed_wayland_path
                     } else {
@@ -555,6 +472,102 @@ fn create_virtio_devs(
                 devs.push(VirtioDeviceStub { dev: gpu_box, jail });
             }
         }
+    }
+
+    if let Some(wayland_socket_path) = cfg.wayland_socket_path.as_ref() {
+        let wayland_socket_dir = wayland_socket_path
+            .parent()
+            .ok_or(Error::InvalidWaylandPath)?;
+        let wayland_socket_name = wayland_socket_path
+            .file_name()
+            .ok_or(Error::InvalidWaylandPath)?;
+        let jailed_wayland_dir = Path::new("/wayland");
+        let jailed_wayland_path = jailed_wayland_dir.join(wayland_socket_name);
+
+        #[cfg(not(feature = "gpu"))]
+        let resource_bridge_wl_socket = None;
+
+        let wl_box = Box::new(
+            devices::virtio::Wl::new(
+                if cfg.multiprocess {
+                    &jailed_wayland_path
+                } else {
+                    wayland_socket_path.as_path()
+                },
+                wayland_device_socket,
+                resource_bridge_wl_socket,
+            ).map_err(Error::WaylandDeviceNew)?,
+        );
+
+        let jail = if cfg.multiprocess {
+            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("wl_device.policy");
+            let mut jail = create_base_minijail(empty_root_path, &policy_path)?;
+
+            // Create a tmpfs in the device's root directory so that we can bind mount the wayland
+            // socket directory into it. The size=67108864 is size=64*1024*1024 or size=64MB.
+            jail.mount_with_data(
+                Path::new("none"),
+                Path::new("/"),
+                "tmpfs",
+                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                "size=67108864",
+            ).unwrap();
+
+            // Bind mount the wayland socket's directory into jail's root. This is necessary since
+            // each new wayland context must open() the socket. If the wayland socket is ever
+            // destroyed and remade in the same host directory, new connections will be possible
+            // without restarting the wayland device.
+            jail.mount_bind(wayland_socket_dir, jailed_wayland_dir, true)
+                .unwrap();
+
+            // Set the uid/gid for the jailed process, and give a basic id map. This
+            // is required for the above bind mount to work.
+            let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
+            let crosvm_uid = match get_user_id(&crosvm_user_group) {
+                Ok(u) => u,
+                Err(e) => {
+                    warn!("falling back to current user id for Wayland: {:?}", e);
+                    geteuid()
+                }
+            };
+            let crosvm_gid = match get_group_id(&crosvm_user_group) {
+                Ok(u) => u,
+                Err(e) => {
+                    warn!("falling back to current group id for Wayland: {:?}", e);
+                    getegid()
+                }
+            };
+            jail.change_uid(crosvm_uid);
+            jail.change_gid(crosvm_gid);
+            jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
+                .map_err(Error::SettingUidMap)?;
+            jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
+                .map_err(Error::SettingGidMap)?;
+
+            Some(jail)
+        } else {
+            None
+        };
+        devs.push(VirtioDeviceStub { dev: wl_box, jail });
+    }
+
+    if let Some(cid) = cfg.cid {
+        let vsock_box = Box::new(
+            devices::virtio::vhost::Vsock::new(cid, &mem).map_err(Error::VhostVsockDeviceNew)?,
+        );
+
+        let jail = if cfg.multiprocess {
+            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("vhost_vsock_device.policy");
+
+            Some(create_base_minijail(empty_root_path, &policy_path)?)
+        } else {
+            None
+        };
+
+        devs.push(VirtioDeviceStub {
+            dev: vsock_box,
+            jail,
+        });
     }
 
     let chronos_user_group = CStr::from_bytes_with_nul(b"chronos\0").unwrap();
