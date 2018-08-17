@@ -151,6 +151,51 @@ pub fn flock(file: &AsRawFd, op: FlockOperation, nonblocking: bool) -> Result<()
     }
 }
 
+/// The operation to perform with `fallocate`.
+pub enum FallocateMode {
+    PunchHole,
+    ZeroRange,
+}
+
+/// Safe wrapper for `fallocate()`.
+pub fn fallocate(
+    file: &AsRawFd,
+    mode: FallocateMode,
+    keep_size: bool,
+    offset: u64,
+    len: u64
+) -> Result<()> {
+    let offset = if offset > libc::off_t::max_value() as u64 {
+        return Err(Error::new(libc::EINVAL));
+    } else {
+        offset as libc::off_t
+    };
+
+    let len = if len > libc::off_t::max_value() as u64 {
+        return Err(Error::new(libc::EINVAL));
+    } else {
+        len as libc::off_t
+    };
+
+    let mut mode = match mode {
+        FallocateMode::PunchHole => libc::FALLOC_FL_PUNCH_HOLE,
+        FallocateMode::ZeroRange => libc::FALLOC_FL_ZERO_RANGE,
+    };
+
+    if keep_size {
+        mode |= libc::FALLOC_FL_KEEP_SIZE;
+    }
+
+    // Safe since we pass in a valid fd and fallocate mode, validate offset and len,
+    // and check the return value.
+    let ret = unsafe { libc::fallocate(file.as_raw_fd(), mode, offset, len) };
+    if ret < 0 {
+        errno_result()
+    } else {
+        Ok(())
+    }
+}
+
 /// Reaps a child process that has terminated.
 ///
 /// Returns `Ok(pid)` where `pid` is the process that was reaped or `Ok(0)` if none of the children
