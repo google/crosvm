@@ -441,17 +441,85 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
     #[cfg(feature = "gpu")]
     {
         if cfg.gpu {
-            let gpu_box =
-                Box::new(devices::virtio::Gpu::new(_exit_evt
-                                                       .try_clone()
-                                                       .map_err(Error::CloneEventFd)?));
-            let jail = if cfg.multiprocess {
-                error!("jail for virtio-gpu is unimplemented");
-                unimplemented!();
-            } else {
-                None
-            };
-            devs.push(VirtioDeviceStub {dev: gpu_box, jail});
+            if let Some(wayland_socket_path) = cfg.wayland_socket_path.as_ref() {
+                let jailed_wayland_path = Path::new("/wayland-0");
+
+                let gpu_box =
+                    Box::new(devices::virtio::Gpu::new(_exit_evt
+                                                        .try_clone()
+                                                        .map_err(Error::CloneEventFd)?,
+                                                    if cfg.multiprocess {
+                                                        &jailed_wayland_path
+                                                    } else {
+                                                        wayland_socket_path.as_path()
+                                                    }));
+
+                let jail = if cfg.multiprocess {
+                    let policy_path: PathBuf = cfg.seccomp_policy_dir.join("gpu_device.policy");
+                    let mut jail = create_base_minijail(empty_root_path, &policy_path)?;
+
+                    // Create a tmpfs in the device's root directory so that we can bind mount the
+                    // dri directory into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
+                    jail.mount_with_data(Path::new("none"), Path::new("/"), "tmpfs",
+                                         (libc::MS_NOSUID | libc::MS_NODEV |
+                                          libc::MS_NOEXEC) as usize,
+                                         "size=67108864")
+                        .unwrap();
+
+                    // Device nodes required for DRM.
+                    let sys_dev_char_path = Path::new("/sys/dev/char");
+                    jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)
+                        .unwrap();
+                    let sys_devices_path = Path::new("/sys/devices");
+                    jail.mount_bind(sys_devices_path, sys_devices_path, false)
+                        .unwrap();
+                    let drm_dri_path = Path::new("/dev/dri");
+                    jail.mount_bind(drm_dri_path, drm_dri_path, false)
+                        .unwrap();
+
+                    // Libraries that are required when mesa drivers are dynamically loaded.
+                    let lib_path = Path::new("/lib64");
+                    jail.mount_bind(lib_path, lib_path, false)
+                        .unwrap();
+                    let usr_lib_path = Path::new("/usr/lib64");
+                    jail.mount_bind(usr_lib_path, usr_lib_path, false)
+                        .unwrap();
+
+                    // Bind mount the wayland socket into jail's root. This is necessary since each
+                    // new wayland context must open() the socket.
+                    jail.mount_bind(wayland_socket_path.as_path(), jailed_wayland_path, true)
+                        .unwrap();
+
+                    // Set the uid/gid for the jailed process, and give a basic id map. This
+                    // is required for the above bind mount to work.
+                    let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
+                    let crosvm_uid = match get_user_id(&crosvm_user_group) {
+                        Ok(u) => u,
+                        Err(e) => {
+                            warn!("falling back to current user id for gpu: {:?}", e);
+                            geteuid()
+                        }
+                    };
+                    let crosvm_gid = match get_group_id(&crosvm_user_group) {
+                        Ok(u) => u,
+                        Err(e) => {
+                            warn!("falling back to current group id for gpu: {:?}", e);
+                            getegid()
+                        }
+                    };
+                    jail.change_uid(crosvm_uid);
+                    jail.change_gid(crosvm_gid);
+                    jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
+                        .map_err(Error::SettingUidMap)?;
+                    jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
+                        .map_err(Error::SettingGidMap)?;
+
+                    Some(jail)
+                } else {
+                    None
+                };
+                devs.push(VirtioDeviceStub {dev: gpu_box, jail});
+            }
         }
     }
 

@@ -1,0 +1,57 @@
+# Copyright 2018 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+open: 1
+close: 1
+sigaltstack: 1
+munmap: 1
+write: 1
+# Allow mmap to allow loading of GL shared libraries.
+mmap: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ|PROT_EXEC
+restart_syscall: 1
+exit_group: 1
+rt_sigreturn: 1
+# Allow MADV_DONTDUMP only.
+madvise: arg2 == MADV_DONTDUMP || arg2 == MADV_DONTNEED
+# Used to determine shm size after recvmsg with fd.
+lseek: 1
+mprotect: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ
+sched_getaffinity: 1
+set_robust_list: 1
+exit: 1
+getpid: 1
+recvfrom: 1
+dup: 1
+eventfd2: 1
+futex: 1
+# Disallow clone's other than new threads.
+# arg0 is flags. Because kernel.
+clone: arg0 & 0x00010000
+# arg1 == FIONBIO || arg1 == FIOCLEX || arg1 == DMA_BUF_IOCTL_SYNC ||
+#   arg1 & DRM_IOCTL
+ioctl: arg1 == FIONBIO || arg1 == FIOCLEX || arg1 == 0x40086200 || arg1 & 0x6400
+fstat: 1
+# Used to communicate with wayland.
+recvmsg: 1
+sendmsg: 1
+poll: 1
+getrandom: 1
+read: 1
+geteuid: 1
+getuid: 1
+readlink: 1
+getdents: 1
+stat: 1
+epoll_create1: 1
+epoll_ctl: 1
+epoll_wait: 1
+# Used to connect to wayland.
+# arg0 == AF_UNIX && arg1 == SOCK_STREAM|SOCK_CLOEXEC
+socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
+connect: 1
+# Used for sharing memory with wayland. arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING
+memfd_create: arg1 == 3
+# Used to set of size new memfd.
+ftruncate: 1
+fcntl: arg1 == F_DUPFD_CLOEXEC

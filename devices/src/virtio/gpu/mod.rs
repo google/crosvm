@@ -13,7 +13,8 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::i64;
 use std::mem::size_of;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -587,14 +588,16 @@ pub struct Gpu {
     config_event: bool,
     exit_evt: EventFd,
     kill_evt: Option<EventFd>,
+    wayland_socket_path: PathBuf,
 }
 
 impl Gpu {
-    pub fn new(exit_evt: EventFd) -> Gpu {
+    pub fn new<P: AsRef<Path>>(exit_evt: EventFd, wayland_socket_path: P) -> Gpu {
         Gpu {
             config_event: false,
             exit_evt,
             kill_evt: None,
+            wayland_socket_path: wayland_socket_path.as_ref().to_path_buf(),
         }
     }
 
@@ -623,7 +626,9 @@ impl Drop for Gpu {
 
 impl VirtioDevice for Gpu {
     fn keep_fds(&self) -> Vec<RawFd> {
-        Vec::new()
+        let mut keep_fds = Vec::new();
+        keep_fds.push(self.exit_evt.as_raw_fd());
+        keep_fds
     }
 
     fn device_type(&self) -> u32 {
@@ -706,6 +711,7 @@ impl VirtioDevice for Gpu {
         let ctrl_evt = queue_evts.remove(0);
         let cursor_queue = queues.remove(0);
         let cursor_evt = queue_evts.remove(0);
+        let socket_path = self.wayland_socket_path.clone();
         spawn(move || {
             const UNDESIRED_CARDS: &[&str] = &["vgem", "pvr"];
             let drm_card = match gpu_buffer::rendernode::open_device(UNDESIRED_CARDS) {
@@ -724,10 +730,10 @@ impl VirtioDevice for Gpu {
                 }
             };
 
-            let display = match GpuDisplay::new() {
+            let display = match GpuDisplay::new(socket_path) {
                 Ok(c) => c,
                 Err(e) => {
-                    error!("{:?}", e);
+                    error!("failed to open display: {:?}", e);
                     return;
                 }
             };

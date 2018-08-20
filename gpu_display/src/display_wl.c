@@ -374,9 +374,9 @@ void dwl_context_destroy(struct dwl_context **self)
 	*self = NULL;
 }
 
-bool dwl_context_setup(struct dwl_context *self)
+bool dwl_context_setup(struct dwl_context *self, const char *socket_path)
 {
-	struct wl_display *display = wl_display_connect(NULL);
+	struct wl_display *display = wl_display_connect(socket_path);
 	if (!display) {
 		printf("failed to connect to display\n");
 		return false;

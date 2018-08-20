@@ -11,8 +11,9 @@ mod dwl;
 
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::path::Path;
 use std::ptr::null_mut;
 
 use data_model::{VolatileSlice, VolatileMemory};
@@ -40,6 +41,8 @@ pub enum GpuDisplayError {
     FailedImport,
     /// The surface ID is invalid.
     InvalidSurfaceId,
+    /// The path is invalid.
+    InvalidPath,
 }
 
 struct DwlContext(*mut dwl_context);
@@ -108,15 +111,23 @@ pub struct GpuDisplay {
 
 impl GpuDisplay {
     /// Opens a fresh connection to the compositor.
-    pub fn new() -> Result<GpuDisplay, GpuDisplayError> {
+    pub fn new<P: AsRef<Path>>(wayland_path: P) -> Result<GpuDisplay, GpuDisplayError> {
         // The dwl_context_new call should always be safe to call, and we check its result.
         let ctx = DwlContext(unsafe { dwl_context_new() });
         if ctx.0.is_null() {
             return Err(GpuDisplayError::Allocate);
         }
+
         // The dwl_context_setup call is always safe to call given that the supplied context is
         // valid. and we check its result.
-        let setup_success = unsafe { dwl_context_setup(ctx.0) };
+        let cstr_path = match wayland_path.as_ref().as_os_str().to_str() {
+            Some(str) => match CString::new(str) {
+                Ok(cstr) => cstr,
+                Err(_) => return Err(GpuDisplayError::InvalidPath),
+            },
+            None => return Err(GpuDisplayError::InvalidPath),
+        };
+        let setup_success = unsafe { dwl_context_setup(ctx.0, cstr_path.as_ptr() ) };
         if !setup_success {
             return Err(GpuDisplayError::Connect);
         }
@@ -169,17 +180,6 @@ impl GpuDisplay {
         self.dmabufs.insert(next_id, dmabuf);
         self.dmabuf_next_id += 1;
         Ok(next_id)
-    }
-
-    pub fn import_in_use(&mut self, import_id: u32) -> bool {
-        match self.dmabufs.get(&import_id) {
-            // Safe because only a valid dmabuf is used.
-            Some(dmabuf) => unsafe { dwl_dmabuf_in_use(dmabuf.0) },
-            None => {
-                debug_assert!(false, "invalid import_id {}", import_id);
-                false
-            }
-        }
     }
 
     /// Releases a previously imported dmabuf identified by the given handle.
