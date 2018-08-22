@@ -380,8 +380,11 @@ impl crosvm {
         Ok(response.get_check_extension().has_extension)
     }
 
-    fn get_supported_cpuid(&mut self, cpuid_entries: &mut [kvm_cpuid_entry2])
-                           -> result::Result<usize, c_int> {
+    fn get_supported_cpuid(&mut self, cpuid_entries: &mut [kvm_cpuid_entry2],
+                           cpuid_count: &mut usize)
+                           -> result::Result<(), c_int> {
+        *cpuid_count = 0;
+
         let mut r = MainRequest::new();
         r.mut_get_supported_cpuid();
 
@@ -391,7 +394,9 @@ impl crosvm {
         }
 
         let supported_cpuids: &MainResponse_CpuidResponse = response.get_get_supported_cpuid();
-        if supported_cpuids.get_entries().len() > cpuid_entries.len() {
+
+        *cpuid_count = supported_cpuids.get_entries().len();
+        if *cpuid_count > cpuid_entries.len() {
             return Err(E2BIG);
         }
 
@@ -401,11 +406,14 @@ impl crosvm {
             *kvm_entry = cpuid_proto_to_kvm(proto_entry);
         }
 
-        Ok(supported_cpuids.get_entries().len())
+        Ok(())
     }
 
-    fn get_emulated_cpuid(&mut self, cpuid_entries: &mut [kvm_cpuid_entry2])
-                           -> result::Result<usize, c_int> {
+    fn get_emulated_cpuid(&mut self, cpuid_entries: &mut [kvm_cpuid_entry2],
+                          cpuid_count: &mut usize)
+                          -> result::Result<(), c_int> {
+        *cpuid_count = 0;
+
         let mut r = MainRequest::new();
         r.mut_get_emulated_cpuid();
 
@@ -415,7 +423,9 @@ impl crosvm {
         }
 
         let emulated_cpuids: &MainResponse_CpuidResponse = response.get_get_emulated_cpuid();
-        if emulated_cpuids.get_entries().len() > cpuid_entries.len() {
+
+        *cpuid_count = emulated_cpuids.get_entries().len();
+        if *cpuid_count > cpuid_entries.len() {
             return Err(E2BIG);
         }
 
@@ -425,11 +435,13 @@ impl crosvm {
             *kvm_entry = cpuid_proto_to_kvm(proto_entry);
         }
 
-        Ok(emulated_cpuids.get_entries().len())
+        Ok(())
     }
 
-    fn get_msr_index_list(&mut self, msr_indices: &mut [u32])
-                           -> result::Result<usize, c_int> {
+    fn get_msr_index_list(&mut self, msr_indices: &mut [u32], msr_count: &mut usize)
+                          -> result::Result<(), c_int> {
+        *msr_count = 0;
+
         let mut r = MainRequest::new();
         r.mut_get_msr_index_list();
 
@@ -439,7 +451,9 @@ impl crosvm {
         }
 
         let msr_list: &MainResponse_MsrListResponse = response.get_get_msr_index_list();
-        if msr_list.get_indices().len() > msr_indices.len() {
+
+        *msr_count = msr_list.get_indices().len();
+        if *msr_count > msr_indices.len() {
             return Err(E2BIG);
         }
 
@@ -449,7 +463,7 @@ impl crosvm {
             *kvm_entry = *proto_entry;
         }
 
-        Ok(msr_list.get_indices().len())
+        Ok(())
     }
 
     fn reserve_range(&mut self, space: u32, start: u64, length: u64) -> result::Result<(), c_int> {
@@ -1124,11 +1138,9 @@ fn crosvm_get_supported_cpuid(this: *mut crosvm,
     let _u = STATS.record(Stat::GetSupportedCpuid);
     let this = &mut *this;
     let cpuid_entries = from_raw_parts_mut(cpuid_entries, entry_count as usize);
-    let ret = this.get_supported_cpuid(cpuid_entries);
-
-    if let Ok(num) = ret {
-        *out_count = num as u32;
-    }
+    let mut cpuid_count: usize = 0;
+    let ret = this.get_supported_cpuid(cpuid_entries, &mut cpuid_count);
+    *out_count = cpuid_count as u32;
     to_crosvm_rc(ret)
 }
 
@@ -1142,11 +1154,9 @@ fn crosvm_get_emulated_cpuid(this: *mut crosvm,
     let _u = STATS.record(Stat::GetEmulatedCpuid);
     let this = &mut *this;
     let cpuid_entries = from_raw_parts_mut(cpuid_entries, entry_count as usize);
-    let ret = this.get_emulated_cpuid(cpuid_entries);
-
-    if let Ok(num) = ret {
-        *out_count = num as u32;
-    }
+    let mut cpuid_count: usize = 0;
+    let ret = this.get_emulated_cpuid(cpuid_entries, &mut cpuid_count);
+    *out_count = cpuid_count as u32;
     to_crosvm_rc(ret)
 }
 
@@ -1160,11 +1170,9 @@ fn crosvm_get_msr_index_list(this: *mut crosvm,
     let _u = STATS.record(Stat::GetMsrIndexList);
     let this = &mut *this;
     let msr_indices = from_raw_parts_mut(msr_indices, entry_count as usize);
-    let ret = this.get_msr_index_list(msr_indices);
-
-    if let Ok(num) = ret {
-        *out_count = num as u32;
-    }
+    let mut msr_count: usize = 0;
+    let ret = this.get_msr_index_list(msr_indices, &mut msr_count);
+    *out_count = msr_count as u32;
     to_crosvm_rc(ret)
 }
 
