@@ -4,6 +4,7 @@
 
 extern crate byteorder;
 extern crate libc;
+extern crate sys_util;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use libc::{EINVAL, ENOTSUP};
@@ -13,6 +14,8 @@ use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
+
+use sys_util::WriteZeroes;
 
 #[derive(Debug)]
 pub enum Error {
@@ -606,6 +609,32 @@ impl Write for QcowFile {
     }
 }
 
+impl WriteZeroes for QcowFile {
+    fn write_zeroes(&mut self, length: usize) -> std::io::Result<usize> {
+        let address: u64 = self.current_offset as u64;
+        let write_count: usize = self.limit_range_file(address, length);
+
+        let mut nwritten: usize = 0;
+        while nwritten < write_count {
+            let curr_addr = address + nwritten as u64;
+            let count = self.limit_range_cluster(curr_addr, write_count - nwritten);
+
+            // Zero out space that was previously allocated.
+            // Any space in unallocated clusters can be left alone, since
+            // unallocated clusters already read back as zeroes.
+            if let Some(offset) = self.file_offset(curr_addr, false)? {
+                // Space was previously allocated for this offset - zero it out.
+                self.file.seek(SeekFrom::Start(offset))?;
+                self.file.write_zeroes(count)?;
+            }
+
+            nwritten += count;
+        }
+        self.current_offset += length as u64;
+        Ok(length)
+    }
+}
+
 // Returns an Error if the given offset doesn't align to a cluster boundary.
 fn offset_is_cluster_boundary(offset: u64, cluster_bits: u32) -> Result<()> {
     if offset & ((0x01 << cluster_bits) - 1) != 0 {
@@ -635,9 +664,6 @@ fn div_round_up_u64(dividend: u64, divisor: u64) -> u64 {
 fn div_round_up_u32(dividend: u32, divisor: u32) -> u32 {
     (dividend + divisor - 1) / divisor
 }
-
-#[cfg(test)]
-extern crate sys_util;
 
 #[cfg(test)]
 mod tests {
@@ -750,6 +776,53 @@ mod tests {
             q.seek(SeekFrom::Start(0xfff2000)).expect("Failed to seek.");
             q.read(&mut buf).expect("Failed to read.");
             assert_eq!(buf[0], 0x55);
+        });
+    }
+
+    #[test]
+    fn write_zeroes_read() {
+        with_basic_file(&valid_header(), |disk_file: File| {
+            let mut q = QcowFile::from(disk_file).unwrap();
+            // Write some test data.
+            let b = [0x55u8; 0x1000];
+            q.seek(SeekFrom::Start(0xfff2000)).expect("Failed to seek.");
+            q.write(&b).expect("Failed to write test string.");
+            // Overwrite the test data with zeroes.
+            q.seek(SeekFrom::Start(0xfff2000)).expect("Failed to seek.");
+            let nwritten = q.write_zeroes(0x200).expect("Failed to write zeroes.");
+            assert_eq!(nwritten, 0x200);
+            // Verify that the correct part of the data was zeroed out.
+            let mut buf = [0u8; 0x1000];
+            q.seek(SeekFrom::Start(0xfff2000)).expect("Failed to seek.");
+            q.read(&mut buf).expect("Failed to read.");
+            assert_eq!(buf[0], 0);
+            assert_eq!(buf[0x1FF], 0);
+            assert_eq!(buf[0x200], 0x55);
+            assert_eq!(buf[0xFFF], 0x55);
+        });
+    }
+
+    #[test]
+    fn write_zeroes_full_cluster() {
+        // Choose a size that is larger than a cluster.
+        // valid_header uses cluster_bits = 12, which corresponds to a cluster size of 4096.
+        const CHUNK_SIZE: usize = 4096 * 2 + 512;
+        with_basic_file(&valid_header(), |disk_file: File| {
+            let mut q = QcowFile::from(disk_file).unwrap();
+            // Write some test data.
+            let b = [0x55u8; CHUNK_SIZE];
+            q.seek(SeekFrom::Start(0)).expect("Failed to seek.");
+            q.write(&b).expect("Failed to write test string.");
+            // Overwrite the full cluster with zeroes.
+            q.seek(SeekFrom::Start(0)).expect("Failed to seek.");
+            let nwritten = q.write_zeroes(CHUNK_SIZE).expect("Failed to write zeroes.");
+            assert_eq!(nwritten, CHUNK_SIZE);
+            // Verify that the data was zeroed out.
+            let mut buf = [0u8; CHUNK_SIZE];
+            q.seek(SeekFrom::Start(0)).expect("Failed to seek.");
+            q.read(&mut buf).expect("Failed to read.");
+            assert_eq!(buf[0], 0);
+            assert_eq!(buf[CHUNK_SIZE - 1], 0);
         });
     }
 

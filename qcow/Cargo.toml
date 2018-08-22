@@ -9,6 +9,4 @@ path = "src/qcow.rs"
 [dependencies]
 byteorder = "*"
 libc = "*"
-
-[dev-dependencies]
 sys_util = { path = "../sys_util" }
