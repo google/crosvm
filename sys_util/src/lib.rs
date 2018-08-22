@@ -34,6 +34,7 @@ mod sock_ctrl_msg;
 mod passwd;
 mod file_flags;
 mod timerfd;
+mod write_zeroes;
 
 pub use mmap::*;
 pub use shm::*;
@@ -59,6 +60,7 @@ pub use timerfd::*;
 pub use mmap::Error as MmapError;
 pub use guest_memory::Error as GuestMemoryError;
 pub use signalfd::Error as SignalFdError;
+pub use write_zeroes::WriteZeroes as WriteZeroes;
 
 use std::ffi::CStr;
 use std::fs::File;
