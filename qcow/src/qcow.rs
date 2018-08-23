@@ -15,7 +15,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use sys_util::WriteZeroes;
+use sys_util::{fallocate, FallocateMode, WriteZeroes};
 
 #[derive(Debug)]
 pub enum Error {
@@ -463,6 +463,70 @@ impl QcowFile {
         Ok(new_addr)
     }
 
+    // Deallocate the storage for the cluster starting at `address`.
+    // Any future reads of this cluster will return all zeroes.
+    fn deallocate_cluster(&mut self, address: u64) -> std::io::Result<()> {
+        if address >= self.virtual_size() as u64 {
+            return Err(std::io::Error::from_raw_os_error(EINVAL));
+        }
+
+        let l1_entry_offset: u64 = self.header.l1_table_offset + self.l1_address_offset(address);
+        if l1_entry_offset >= self.file.metadata()?.len() {
+            // L1 table is not allocated, so the cluster must also be unallocated.
+            return Ok(());
+        }
+
+        let l2_addr_disk = read_u64_from_offset(&mut self.file, l1_entry_offset)?;
+        let l2_addr: u64 = l2_addr_disk & L1_TABLE_OFFSET_MASK;
+        if l2_addr == 0 {
+            // The whole L2 table for this address is not allocated yet,
+            // so the cluster must also be unallocated.
+            return Ok(());
+        }
+
+        let l2_entry_addr: u64 = l2_addr.checked_add(self.l2_address_offset(address))
+            .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
+        let cluster_addr_disk: u64 = read_u64_from_offset(&mut self.file, l2_entry_addr)?;
+        let cluster_addr: u64 = cluster_addr_disk & L2_TABLE_OFFSET_MASK;
+
+        if cluster_addr_disk & COMPRESSED_FLAG != 0 {
+            // Don't attempt to deallocate compressed sectors
+            return Err(std::io::Error::from_raw_os_error(ENOTSUP));
+        }
+
+        if cluster_addr == 0 {
+            // This cluster was already unallocated; nothing to do.
+            return Ok(());
+        }
+
+        // Decrement the refcount.
+        let refcount = self.get_cluster_refcount(cluster_addr)?;
+        if refcount == 0 {
+            return Err(std::io::Error::from_raw_os_error(EINVAL));
+        }
+
+        let new_refcount = refcount - 1;
+        self.set_cluster_refcount(cluster_addr, new_refcount)?;
+
+        // Rewrite the L2 entry to remove the cluster mapping.
+        write_u64_to_offset(&mut self.file, l2_entry_addr, 0)?;
+        self.file.sync_data()?;
+
+        if new_refcount == 0 {
+            // This cluster is no longer in use; deallocate the storage.
+            if let Err(_) = fallocate(
+                &self.file, FallocateMode::PunchHole, true,
+                cluster_addr, self.cluster_size
+            ) {
+                // The underlying FS may not support FALLOC_FL_PUNCH_HOLE,
+                // so don't treat this error as fatal.  Fall back to zeroing the data.
+                self.file.seek(SeekFrom::Start(cluster_addr))?;
+                self.file.write_zeroes(self.cluster_size as usize)?;
+            };
+        }
+        Ok(())
+    }
+
     // Gets the address of the refcount block and the index into the block for the given address.
     fn get_refcount_block(&self, address: u64) -> std::io::Result<(u64, u64)> {
         let cluster_size: u64 = self.cluster_size;
@@ -619,13 +683,18 @@ impl WriteZeroes for QcowFile {
             let curr_addr = address + nwritten as u64;
             let count = self.limit_range_cluster(curr_addr, write_count - nwritten);
 
-            // Zero out space that was previously allocated.
-            // Any space in unallocated clusters can be left alone, since
-            // unallocated clusters already read back as zeroes.
-            if let Some(offset) = self.file_offset(curr_addr, false)? {
-                // Space was previously allocated for this offset - zero it out.
-                self.file.seek(SeekFrom::Start(offset))?;
-                self.file.write_zeroes(count)?;
+            if count == self.cluster_size as usize {
+                // Full cluster - deallocate the storage.
+                self.deallocate_cluster(curr_addr)?;
+            } else {
+                // Partial cluster - zero out the relevant bytes if it was allocated.
+                // Any space in unallocated clusters can be left alone, since
+                // unallocated clusters already read back as zeroes.
+                if let Some(offset) = self.file_offset(curr_addr, false)? {
+                    // Partial cluster - zero it out.
+                    self.file.seek(SeekFrom::Start(offset))?;
+                    self.file.write_zeroes(count)?;
+                }
             }
 
             nwritten += count;
