@@ -2,41 +2,200 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! Used to send and receive messages with file descriptors on sockets that accept control messages
+//! (e.g. Unix domain sockets).
+
 use std::fs::File;
+use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd, FromRawFd};
 use std::os::unix::net::{UnixDatagram, UnixStream};
+use std::ptr::{copy_nonoverlapping, null_mut, write_unaligned};
 
-use libc::{c_void, iovec};
+use libc::{c_void, c_long, iovec, msghdr, cmsghdr, sendmsg, recvmsg, SOL_SOCKET, SCM_RIGHTS,
+           MSG_NOSIGNAL};
 
 use data_model::VolatileSlice;
 
 use {Result, Error};
 
-// These functions are implemented in C because each of them requires complicated setup with CMSG
-// macros. These macros are part of the system headers and are required to be used for portability
-// reasons. In practice, the control message ABI can't change but using them is much easier and less
-// error prone than trying to port these macros to rust.
-extern "C" {
-    fn scm_cmsg_buffer_len(fd_count: usize) -> usize;
-    fn scm_sendmsg(fd: RawFd,
-                   outv: *const iovec,
-                   outv_count: usize,
-                   cmsg_buffer: *mut u8,
-                   fds: *const RawFd,
-                   fd_count: usize)
-                   -> isize;
-    fn scm_recvmsg(fd: RawFd,
-                   outv: *mut iovec,
-                   outv_count: usize,
-                   cmsg_buffer: *mut u8,
-                   fds: *mut RawFd,
-                   fd_count: *mut usize)
-                   -> isize;
+// Each of the following macros performs the same function as their C counterparts. They are each
+// macros because they are used to size statically allocated arrays.
+
+macro_rules! CMSG_ALIGN {
+    ($len:expr) => (
+        (($len) + size_of::<c_long>() - 1) & !(size_of::<c_long>() - 1)
+    )
 }
 
-fn cmsg_buffer_len(fd_count: usize) -> usize {
-    // Safe because this function has no side effects, touches no pointers, and never fails.
-    unsafe { scm_cmsg_buffer_len(fd_count) }
+macro_rules! CMSG_SPACE {
+    ($len:expr) => (
+        size_of::<cmsghdr>() + CMSG_ALIGN!($len)
+    )
+}
+
+macro_rules! CMSG_LEN {
+    ($len:expr) => (
+        size_of::<cmsghdr>() + ($len)
+    )
+}
+
+
+// This function (macro in the C version) is not used in any compile time constant slots, so is just
+// an ordinary function. The returned pointer is hard coded to be RawFd because that's all that this
+// module supports.
+#[allow(non_snake_case)]
+#[inline(always)]
+fn CMSG_DATA(cmsg_buffer: *mut u8) -> *mut RawFd {
+    // Essentially returns a pointer to just past the header.
+    (cmsg_buffer as *mut cmsghdr).wrapping_offset(1) as *mut RawFd
+}
+
+// This function is like CMSG_NEXT, but safer because it reads only from references, although it
+// does some pointer arithmetic on cmsg_ptr.
+fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut u8) -> *mut u8 {
+    let next_cmsg = cmsg_ptr.wrapping_offset(CMSG_ALIGN!(cmsg.cmsg_len) as isize);
+    if next_cmsg
+           .wrapping_offset(1)
+           .wrapping_sub(msghdr.msg_control as usize) as usize > msghdr.msg_controllen {
+        null_mut()
+    } else {
+        next_cmsg
+    }
+}
+
+
+const CMSG_BUFFER_INLINE_CAPACITY: usize = CMSG_SPACE!(size_of::<RawFd>() * 32);
+
+enum CmsgBuffer {
+    Inline([u8; CMSG_BUFFER_INLINE_CAPACITY]),
+    Heap(Box<[u8]>),
+}
+
+impl CmsgBuffer {
+    fn with_capacity(capacity: usize) -> CmsgBuffer {
+        if capacity <= CMSG_BUFFER_INLINE_CAPACITY {
+            CmsgBuffer::Inline([0u8; CMSG_BUFFER_INLINE_CAPACITY])
+        } else {
+            CmsgBuffer::Heap(vec![0; capacity].into_boxed_slice())
+        }
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        match self {
+            CmsgBuffer::Inline(a) => a.as_mut_ptr(),
+            CmsgBuffer::Heap(a) => a.as_mut_ptr(),
+        }
+    }
+}
+
+fn raw_sendmsg<D: IntoIovec>(fd: RawFd, out_data: D, out_fds: &[RawFd]) -> Result<usize> {
+    let cmsg_capacity = CMSG_SPACE!(size_of::<RawFd>() * out_fds.len());
+    let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
+
+    let mut iovec = iovec {
+        iov_base: out_data.as_ptr() as *mut c_void,
+        iov_len: out_data.size(),
+    };
+
+    let mut msg = msghdr {
+        msg_name: null_mut(),
+        msg_namelen: 0,
+        msg_iov: &mut iovec as *mut iovec,
+        msg_iovlen: 1,
+        msg_control: null_mut(),
+        msg_controllen: 0,
+        msg_flags: 0,
+    };
+
+    if !out_fds.is_empty() {
+        let cmsg = cmsghdr {
+            cmsg_len: CMSG_LEN!(size_of::<RawFd>() * out_fds.len()),
+            cmsg_level: SOL_SOCKET,
+            cmsg_type: SCM_RIGHTS,
+        };
+        unsafe {
+            // Safe because cmsg_buffer was allocated to be large enough to contain cmsghdr.
+            write_unaligned(cmsg_buffer.as_mut_ptr() as *mut cmsghdr, cmsg);
+            // Safe because the cmsg_buffer was allocated to be large enough to hold out_fds.len()
+            // file descriptors.
+            copy_nonoverlapping(out_fds.as_ptr(),
+                                CMSG_DATA(cmsg_buffer.as_mut_ptr()),
+                                out_fds.len());
+        }
+
+        msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut c_void;
+        msg.msg_controllen = cmsg_capacity;
+    }
+
+    // Safe because the msghdr was properly constructed from valid (or null) pointers of the
+    // indicated length and we check the return value.
+    let write_count = unsafe { sendmsg(fd, &msg, MSG_NOSIGNAL) };
+
+    if write_count == -1 {
+        Err(Error::last())
+    } else {
+        Ok(write_count as usize)
+    }
+}
+
+fn raw_recvmsg(fd: RawFd, in_data: &mut [u8], in_fds: &mut [RawFd]) -> Result<(usize, usize)> {
+    let cmsg_capacity = CMSG_SPACE!(size_of::<RawFd>() * in_fds.len());
+    let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
+
+    let mut iovec = iovec {
+        iov_base: in_data.as_mut_ptr() as *mut c_void,
+        iov_len: in_data.len(),
+    };
+
+    let mut msg = msghdr {
+        msg_name: null_mut(),
+        msg_namelen: 0,
+        msg_iov: &mut iovec as *mut iovec,
+        msg_iovlen: 1,
+        msg_control: null_mut(),
+        msg_controllen: 0,
+        msg_flags: 0,
+    };
+
+    if !in_fds.is_empty() {
+        msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut c_void;
+        msg.msg_controllen = cmsg_capacity;
+    }
+
+    // Safe because the msghdr was properly constructed from valid (or null) pointers of the
+    // indicated length and we check the return value.
+    let total_read = unsafe { recvmsg(fd, &mut msg, 0) };
+
+    if total_read == -1 {
+        return Err(Error::last());
+    }
+
+    if total_read == 0 && msg.msg_controllen < size_of::<cmsghdr>() {
+        return Ok((0, 0));
+    }
+
+    let mut cmsg_ptr = msg.msg_control as *mut u8;
+    let mut in_fds_count = 0;
+    while !cmsg_ptr.is_null() {
+        // Safe because we checked that cmsg_ptr was non-null, and the loop is constructed such that
+        // that only happens when there is at least sizeof(cmsghdr) space after the pointer to read.
+        let cmsg = unsafe { (cmsg_ptr as *mut cmsghdr).read_unaligned() };
+
+        if cmsg.cmsg_level == SOL_SOCKET && cmsg.cmsg_type == SCM_RIGHTS {
+            let fd_count = (cmsg.cmsg_len - CMSG_LEN!(0)) / size_of::<RawFd>();
+            unsafe {
+                copy_nonoverlapping(CMSG_DATA(cmsg_ptr),
+                                    in_fds[in_fds_count..(in_fds_count + fd_count)].as_mut_ptr(),
+                                    fd_count);
+            }
+            in_fds_count += fd_count;
+        }
+
+        cmsg_ptr = get_next_cmsg(&msg, &cmsg, cmsg_ptr);
+    }
+
+
+    Ok((total_read as usize, in_fds_count))
 }
 
 /// Trait for file descriptors can send and receive socket control messages via `sendmsg` and
@@ -44,6 +203,69 @@ fn cmsg_buffer_len(fd_count: usize) -> usize {
 pub trait ScmSocket {
     /// Gets the file descriptor of this socket.
     fn socket_fd(&self) -> RawFd;
+
+    /// Sends the given data and file descriptor over the socket.
+    ///
+    /// On success, returns the number of bytes sent.
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - A buffer of data to send on the `socket`.
+    /// * `fd` - A file descriptors to be sent.
+    fn send_with_fd<D: IntoIovec>(&self, buf: D, fd: RawFd) -> Result<usize> {
+        self.send_with_fds(buf, &[fd])
+    }
+
+    /// Sends the given data and file descriptors over the socket.
+    ///
+    /// On success, returns the number of bytes sent.
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - A buffer of data to send on the `socket`.
+    /// * `fds` - A list of file descriptors to be sent.
+    fn send_with_fds<D: IntoIovec>(&self, buf: D, fd: &[RawFd]) -> Result<usize> {
+        raw_sendmsg(self.socket_fd(), buf, fd)
+    }
+
+    /// Receives data and potentially a file descriptor from the socket.
+    ///
+    /// On success, returns the number of bytes and an optional file descriptor.
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - A buffer to receive data from the socket.vm
+    fn recv_with_fd(&self, buf: &mut [u8]) -> Result<(usize, Option<File>)> {
+        let mut fd = [0];
+        let (read_count, fd_count) = self.recv_with_fds(buf, &mut fd)?;
+        let file = if fd_count == 0 {
+            None
+        } else {
+            // Safe because the first fd from recv_with_fds is owned by us and valid because this
+            // branch was taken.
+            Some(unsafe { File::from_raw_fd(fd[0]) })
+        };
+        Ok((read_count, file))
+
+    }
+
+
+    /// Receives data and file descriptors from the socket.
+    ///
+    /// On success, returns the number of bytes and file descriptors received as a tuple
+    /// `(bytes count, files count)`.
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - A buffer to receive data from the socket.
+    /// * `fds` - A slice of `RawFd`s to put the received file descriptors into. On success, the
+    ///           number of valid file descriptors is indicated by the second element of the
+    ///           returned tuple. The caller owns these file descriptors, but they will not be
+    ///           closed on drop like a `File`-like type would be. It is recommended that each valid
+    ///           file descriptor gets wrapped in a drop type that closes it after this returns.
+    fn recv_with_fds(&self, buf: &mut [u8], fds: &mut [RawFd]) -> Result<(usize, usize)> {
+        raw_recvmsg(self.socket_fd(), buf, fds)
+    }
 }
 
 impl ScmSocket for UnixDatagram {
@@ -95,123 +317,6 @@ unsafe impl<'a> IntoIovec for VolatileSlice<'a> {
     }
 }
 
-/// Used to send and receive messages with file descriptors on sockets that accept control messages
-/// (e.g. Unix domain sockets).
-pub struct Scm {
-    cmsg_buffer: Vec<u8>,
-    vecs: Vec<iovec>,
-    fds: Vec<RawFd>,
-}
-
-impl Scm {
-    /// Constructs a new Scm object with pre-allocated structures.
-    ///
-    /// # Arguments
-    ///
-    /// * `fd_count` - The maximum number of files that can be received per `recv` call.
-    pub fn new(fd_count: usize) -> Scm {
-        Scm {
-            cmsg_buffer: Vec::with_capacity(cmsg_buffer_len(fd_count)),
-            vecs: Vec::new(),
-            fds: vec![-1; fd_count],
-        }
-    }
-
-    /// Sends the given data and file descriptors over the given `socket`.
-    ///
-    /// On success, returns the number of bytes sent.
-    ///
-    /// # Arguments
-    ///
-    /// * `socket` - A socket that supports socket control messages.
-    /// * `bufs` - A list of buffers to send on the `socket`.
-    /// * `fds` - A list of file descriptors to be sent.
-    pub fn send<T: ScmSocket, D: IntoIovec>(&mut self,
-                              socket: &T,
-                              bufs: &[D],
-                              fds: &[RawFd])
-                              -> Result<usize> {
-        let cmsg_buf_len = cmsg_buffer_len(fds.len());
-        self.cmsg_buffer.reserve(cmsg_buf_len);
-        self.vecs.clear();
-        for ref buf in bufs {
-            self.vecs
-                .push(iovec {
-                    iov_base: buf.as_ptr() as *mut c_void,
-                    iov_len: buf.size(),
-              });
-        }
-        let write_count = unsafe {
-            // Safe because we are giving scm_sendmsg only valid pointers and lengths and we check
-            // the return value.
-            self.cmsg_buffer.set_len(cmsg_buf_len);
-            scm_sendmsg(socket.socket_fd(),
-                        self.vecs.as_ptr(),
-                        self.vecs.len(),
-                        self.cmsg_buffer.as_mut_ptr(),
-                        fds.as_ptr(),
-                        fds.len())
-        };
-
-        if write_count < 0 {
-            Err(Error::new(-write_count as i32))
-        } else {
-            Ok(write_count as usize)
-        }
-    }
-
-    /// Receives data and file descriptors from the given `socket` into the list of buffers.
-    ///
-    /// On success, returns the number of bytes received.
-    ///
-    /// # Arguments
-    ///
-    /// * `socket` - A socket that supports socket control messages.
-    /// * `bufs` - A list of buffers to receive data from the `socket`. The `recvmsg` call fills
-    ///            these directly.
-    /// * `files` - A vector of `File`s to put the received file descriptors into. This vector is
-    ///             not cleared and will have at most `fd_count` (specified in `Scm::new`) `File`s
-    ///             added to it.
-    pub fn recv<T: ScmSocket>(&mut self,
-                              socket: &T,
-                              bufs: &mut [&mut [u8]],
-                              files: &mut Vec<File>)
-                              -> Result<usize> {
-        let cmsg_buf_len = cmsg_buffer_len(files.len());
-        self.cmsg_buffer.reserve(cmsg_buf_len);
-        self.vecs.clear();
-        for buf in bufs {
-            self.vecs
-                .push(iovec {
-                          iov_base: buf.as_mut_ptr() as *mut c_void,
-                          iov_len: buf.len(),
-                      });
-        }
-        let mut fd_count = self.fds.len();
-        let read_count = unsafe {
-            // Safe because we are giving scm_recvmsg only valid pointers and lengths and we check
-            // the return value.
-            self.cmsg_buffer.set_len(cmsg_buf_len);
-            scm_recvmsg(socket.socket_fd(),
-                        self.vecs.as_mut_ptr(),
-                        self.vecs.len(),
-                        self.cmsg_buffer.as_mut_ptr(),
-                        self.fds.as_mut_ptr(),
-                        &mut fd_count as *mut usize)
-        };
-
-        if read_count < 0 {
-            Err(Error::new(-read_count as i32))
-        } else {
-            // Safe because we have unqiue ownership of each fd we wrap with File.
-            for &fd in &self.fds[0..fd_count] {
-                files.push(unsafe { File::from_raw_fd(fd) });
-            }
-            Ok(read_count as usize)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,22 +333,22 @@ mod tests {
 
     #[test]
     fn buffer_len() {
-        assert_eq!(cmsg_buffer_len(0), size_of::<cmsghdr>());
-        assert_eq!(cmsg_buffer_len(1),
+        assert_eq!(CMSG_SPACE!(0 * size_of::<RawFd>()), size_of::<cmsghdr>());
+        assert_eq!(CMSG_SPACE!(1 * size_of::<RawFd>()),
                    size_of::<cmsghdr>() + size_of::<c_long>());
         if size_of::<RawFd>() == 4 {
-            assert_eq!(cmsg_buffer_len(2),
+            assert_eq!(CMSG_SPACE!(2 * size_of::<RawFd>()),
                        size_of::<cmsghdr>() + size_of::<c_long>());
-            assert_eq!(cmsg_buffer_len(3),
+            assert_eq!(CMSG_SPACE!(3 * size_of::<RawFd>()),
                        size_of::<cmsghdr>() + size_of::<c_long>() * 2);
-            assert_eq!(cmsg_buffer_len(4),
+            assert_eq!(CMSG_SPACE!(4 * size_of::<RawFd>()),
                        size_of::<cmsghdr>() + size_of::<c_long>() * 2);
         } else if size_of::<RawFd>() == 8 {
-            assert_eq!(cmsg_buffer_len(2),
+            assert_eq!(CMSG_SPACE!(2 * size_of::<RawFd>()),
                        size_of::<cmsghdr>() + size_of::<c_long>() * 2);
-            assert_eq!(cmsg_buffer_len(3),
+            assert_eq!(CMSG_SPACE!(3 * size_of::<RawFd>()),
                        size_of::<cmsghdr>() + size_of::<c_long>() * 3);
-            assert_eq!(cmsg_buffer_len(4),
+            assert_eq!(CMSG_SPACE!(4 * size_of::<RawFd>()),
                        size_of::<cmsghdr>() + size_of::<c_long>() * 4);
         }
     }
@@ -252,51 +357,42 @@ mod tests {
     fn send_recv_no_fd() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
 
-        let mut scm = Scm::new(1);
-        let write_count = scm.send(&s1,
-                                   [[1u8, 1, 2].as_ref(), [21, 34, 55].as_ref()].as_ref(),
-                                   &[])
+        let write_count = s1.send_with_fds([1u8, 1, 2, 21, 34, 55].as_ref(), &[])
             .expect("failed to send data");
 
         assert_eq!(write_count, 6);
 
-        let mut buf1 = [0; 3];
-        let mut buf2 = [0; 3];
-        let mut bufs = [buf1.as_mut(), buf2.as_mut()];
-        let mut files = Vec::new();
-        let read_count = scm.recv(&s2, &mut bufs[..], &mut files)
+        let mut buf = [0; 6];
+        let mut files = [0; 1];
+        let (read_count, file_count) = s2.recv_with_fds(&mut buf[..], &mut files)
             .expect("failed to recv data");
 
         assert_eq!(read_count, 6);
-        assert!(files.is_empty());
-        assert_eq!(bufs[0], [1, 1, 2]);
-        assert_eq!(bufs[1], [21, 34, 55]);
+        assert_eq!(file_count, 0);
+        assert_eq!(buf, [1, 1, 2, 21, 34, 55]);
     }
 
     #[test]
     fn send_recv_only_fd() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
 
-        let mut scm = Scm::new(1);
         let evt = EventFd::new().expect("failed to create eventfd");
-        let write_count = scm.send(&s1, &[[].as_ref()], &[evt.as_raw_fd()])
+        let write_count = s1.send_with_fd([].as_ref(), evt.as_raw_fd())
             .expect("failed to send fd");
 
         assert_eq!(write_count, 0);
 
-        let mut files = Vec::new();
-        let read_count = scm.recv(&s2, &mut [&mut []], &mut files)
-            .expect("failed to recv fd");
+        let (read_count, file_opt) = s2.recv_with_fd(&mut []).expect("failed to recv fd");
+
+        let mut file = file_opt.unwrap();
 
         assert_eq!(read_count, 0);
-        assert_eq!(files.len(), 1);
-        assert!(files[0].as_raw_fd() >= 0);
-        assert_ne!(files[0].as_raw_fd(), s1.as_raw_fd());
-        assert_ne!(files[0].as_raw_fd(), s2.as_raw_fd());
-        assert_ne!(files[0].as_raw_fd(), evt.as_raw_fd());
+        assert!(file.as_raw_fd() >= 0);
+        assert_ne!(file.as_raw_fd(), s1.as_raw_fd());
+        assert_ne!(file.as_raw_fd(), s2.as_raw_fd());
+        assert_ne!(file.as_raw_fd(), evt.as_raw_fd());
 
-        files[0]
-            .write(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
+        file.write(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
             .expect("failed to write to sent fd");
 
         assert_eq!(evt.read().expect("failed to read from eventfd"), 1203);
@@ -306,28 +402,28 @@ mod tests {
     fn send_recv_with_fd() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
 
-        let mut scm = Scm::new(1);
         let evt = EventFd::new().expect("failed to create eventfd");
-        let write_count = scm.send(&s1, &[[237].as_ref()], &[evt.as_raw_fd()])
+        let write_count = s1.send_with_fds([237].as_ref(), &[evt.as_raw_fd()])
             .expect("failed to send fd");
 
         assert_eq!(write_count, 1);
 
-        let mut files = Vec::new();
+        let mut files = [0; 2];
         let mut buf = [0u8];
-        let read_count = scm.recv(&s2, &mut [&mut buf], &mut files)
+        let (read_count, file_count) = s2.recv_with_fds(&mut buf, &mut files)
             .expect("failed to recv fd");
 
         assert_eq!(read_count, 1);
         assert_eq!(buf[0], 237);
-        assert_eq!(files.len(), 1);
-        assert!(files[0].as_raw_fd() >= 0);
-        assert_ne!(files[0].as_raw_fd(), s1.as_raw_fd());
-        assert_ne!(files[0].as_raw_fd(), s2.as_raw_fd());
-        assert_ne!(files[0].as_raw_fd(), evt.as_raw_fd());
+        assert_eq!(file_count, 1);
+        assert!(files[0] >= 0);
+        assert_ne!(files[0], s1.as_raw_fd());
+        assert_ne!(files[0], s2.as_raw_fd());
+        assert_ne!(files[0], evt.as_raw_fd());
 
-        files[0]
-            .write(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
+        let mut file = unsafe { File::from_raw_fd(files[0]) };
+
+        file.write(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
             .expect("failed to write to sent fd");
 
         assert_eq!(evt.read().expect("failed to read from eventfd"), 1203);

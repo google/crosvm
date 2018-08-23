@@ -40,7 +40,7 @@ use libc::{E2BIG, ENOTCONN, EINVAL, EPROTO, ENOENT};
 
 use protobuf::{Message, ProtobufEnum, RepeatedField, parse_from_bytes};
 
-use sys_util::Scm;
+use sys_util::ScmSocket;
 
 use kvm::dirty_log_bitmap_size;
 
@@ -250,7 +250,6 @@ impl Drop for StatUpdater {
 pub struct crosvm {
     id_allocator: Arc<IdAllocator>,
     socket: UnixDatagram,
-    fd_messager: Scm,
     request_buffer: Vec<u8>,
     response_buffer: Vec<u8>,
     vcpus: Arc<Vec<crosvm_vcpu>>,
@@ -261,7 +260,6 @@ impl crosvm {
         let mut crosvm = crosvm {
             id_allocator: Default::default(),
             socket,
-            fd_messager: Scm::new(MAX_DATAGRAM_FD),
             request_buffer: Vec::new(),
             response_buffer: vec![0; MAX_DATAGRAM_SIZE],
             vcpus: Default::default(),
@@ -277,7 +275,6 @@ impl crosvm {
         crosvm {
             id_allocator,
             socket,
-            fd_messager: Scm::new(MAX_DATAGRAM_FD),
             request_buffer: Vec::new(),
             response_buffer: vec![0; MAX_DATAGRAM_SIZE],
             vcpus,
@@ -296,16 +293,19 @@ impl crosvm {
         request
             .write_to_vec(&mut self.request_buffer)
             .map_err(proto_error_to_int)?;
-        self.fd_messager
-            .send(&self.socket, &[self.request_buffer.as_slice()], fds)
+        self.socket
+            .send_with_fds(self.request_buffer.as_slice(), fds)
             .map_err(|e| -e.errno())?;
 
-        let mut datagram_files = Vec::new();
-        let msg_size = self.fd_messager
-            .recv(&self.socket,
-                  &mut [&mut self.response_buffer],
-                  &mut datagram_files)
+        let mut datagram_fds = [0; MAX_DATAGRAM_FD];
+        let (msg_size, fd_count) = self.socket
+            .recv_with_fds(&mut self.response_buffer, &mut datagram_fds)
             .map_err(|e| -e.errno())?;
+        // Safe because the first fd_count fds from recv_with_fds are owned by us and valid.
+        let datagram_files = datagram_fds[..fd_count]
+            .iter()
+            .map(|&fd| unsafe { File::from_raw_fd(fd) })
+            .collect();
 
         let response: MainResponse = parse_from_bytes(&self.response_buffer[..msg_size])
             .map_err(proto_error_to_int)?;

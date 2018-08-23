@@ -25,7 +25,7 @@ use protobuf::Message;
 use io_jail::Minijail;
 use kvm::{Vm, IoeventAddress, NoDatamatch, IrqSource, IrqRoute, PicId, dirty_log_bitmap_size};
 use kvm_sys::{kvm_pic_state, kvm_ioapic_state, kvm_pit_state2};
-use sys_util::{EventFd, MemoryMapping, Killable, Scm, SharedMemory, GuestAddress,
+use sys_util::{EventFd, MemoryMapping, Killable, ScmSocket, SharedMemory, GuestAddress,
                Result as SysResult, Error as SysError, SIGRTMIN};
 use plugin_proto::*;
 
@@ -119,9 +119,7 @@ pub struct Process {
     vcpu_sockets: Vec<(UnixDatagram, UnixDatagram)>,
 
     // Socket Transmission
-    scm: Scm,
     request_buffer: Vec<u8>,
-    datagram_files: Vec<File>,
     response_buffer: Vec<u8>,
 }
 
@@ -181,9 +179,7 @@ impl Process {
                per_vcpu_states,
                kill_evt: EventFd::new().map_err(Error::CreateEventFd)?,
                vcpu_sockets,
-               scm: Scm::new(1),
                request_buffer: vec![0; MAX_DATAGRAM_SIZE],
-               datagram_files: Vec::new(),
                response_buffer: Vec::new(),
            })
     }
@@ -444,10 +440,8 @@ impl Process {
                          vcpu_handles: &[JoinHandle<()>],
                          tap: Option<&Tap>)
                          -> Result<()> {
-        let msg_size = self.scm
-            .recv(&self.request_sockets[index],
-                  &mut [&mut self.request_buffer],
-                  &mut self.datagram_files)
+        let (msg_size, request_file) = self.request_sockets[index]
+            .recv_with_fd(&mut self.request_buffer)
             .map_err(Error::PluginSocketRecv)?;
 
         if msg_size == 0 {
@@ -475,7 +469,7 @@ impl Process {
                         }
                     } else if create.has_memory() {
                         let memory = create.get_memory();
-                        match self.datagram_files.pop() {
+                        match request_file {
                             Some(memfd) => {
                                 Self::handle_memory(entry,
                                                     vm,
@@ -653,16 +647,13 @@ impl Process {
             response.errno = e.errno();
         }
 
-        self.datagram_files.clear();
         self.response_buffer.clear();
         response
             .write_to_vec(&mut self.response_buffer)
             .map_err(Error::EncodeResponse)?;
         assert_ne!(self.response_buffer.len(), 0);
-        self.scm
-            .send(&self.request_sockets[index],
-                  &[&self.response_buffer[..]],
-                  &response_fds)
+        self.request_sockets[index]
+            .send_with_fds(&self.response_buffer[..], &response_fds)
             .map_err(Error::PluginSocketSend)?;
 
         Ok(())

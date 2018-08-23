@@ -40,9 +40,7 @@ use std::io::{self, Seek, SeekFrom, Read};
 use std::mem::{size_of, size_of_val};
 #[cfg(feature = "wl-dmabuf")]
 use std::os::raw::{c_uint, c_ulonglong};
-use std::os::unix::io::{AsRawFd, RawFd};
-#[cfg(feature = "wl-dmabuf")]
-use std::os::unix::io::FromRawFd;
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixDatagram, UnixStream};
 use std::path::{PathBuf, Path};
 use std::rc::Rc;
@@ -59,7 +57,7 @@ use data_model::*;
 use data_model::VolatileMemoryError;
 
 use resources::GpuMemoryDesc;
-use sys_util::{Error, Result, EventFd, Scm, SharedMemory, GuestAddress, GuestMemory,
+use sys_util::{Error, Result, EventFd, ScmSocket, SharedMemory, GuestAddress, GuestMemory,
                GuestMemoryError, PollContext, PollToken, FileFlags, pipe, round_up_to_page_size};
 
 #[cfg(feature = "wl-dmabuf")]
@@ -432,21 +430,19 @@ impl From<VolatileMemoryError> for WlError {
 
 #[derive(Clone)]
 struct VmRequester {
-    inner: Rc<RefCell<(Scm, UnixDatagram)>>,
+    inner: Rc<RefCell<UnixDatagram>>,
 }
 
 impl VmRequester {
     fn new(vm_socket: UnixDatagram) -> VmRequester {
-        VmRequester { inner: Rc::new(RefCell::new((Scm::new(1), vm_socket))) }
+        VmRequester { inner: Rc::new(RefCell::new(vm_socket)) }
     }
 
     fn request(&self, request: VmRequest) -> WlResult<VmResponse> {
         let mut inner = self.inner.borrow_mut();
-        let (ref mut scm, ref mut vm_socket) = *inner;
-        request
-            .send(scm, vm_socket)
-            .map_err(WlError::VmControl)?;
-        VmResponse::recv(scm, vm_socket).map_err(WlError::VmControl)
+        let ref mut vm_socket = *inner;
+        request.send(vm_socket).map_err(WlError::VmControl)?;
+        VmResponse::recv(vm_socket).map_err(WlError::VmControl)
     }
 }
 
@@ -803,9 +799,10 @@ impl WlVfd {
     }
 
     // Sends data/files from the guest to the host over this VFD.
-    fn send(&mut self, scm: &mut Scm, fds: &[RawFd], data: VolatileSlice) -> WlResult<WlResp> {
+    fn send(&mut self, fds: &[RawFd], data: VolatileSlice) -> WlResult<WlResp> {
         if let Some(ref socket) = self.socket {
-            scm.send(socket, &[data], fds)
+            socket
+                .send_with_fds(data, fds)
                 .map_err(WlError::SendVfd)?;
             Ok(WlResp::Ok)
         } else if let Some((_, ref mut local_pipe)) = self.local_pipe {
@@ -822,19 +819,24 @@ impl WlVfd {
     }
 
     // Receives data/files from the host for this VFD and queues it for the guest.
-    fn recv(&mut self, scm: &mut Scm, in_file_queue: &mut Vec<File>) -> WlResult<Vec<u8>> {
+    fn recv(&mut self, in_file_queue: &mut Vec<File>) -> WlResult<Vec<u8>> {
         if let Some(socket) = self.socket.take() {
-            let mut buf = Vec::new();
-            buf.resize(IN_BUFFER_LEN, 0);
-            let old_len = in_file_queue.len();
+            let mut buf = vec![0; IN_BUFFER_LEN];
+            let mut fd_buf = [0; VIRTWL_SEND_MAX_ALLOCS];
             // If any errors happen, the socket will get dropped, preventing more reading.
-            let len = scm.recv(&socket, &mut [&mut buf[..]], in_file_queue)
+            let (len, file_count) = socket
+                .recv_with_fds(&mut buf[..], &mut fd_buf)
                 .map_err(WlError::RecvVfd)?;
             // If any data gets read, the put the socket back for future recv operations.
-            if len != 0 || in_file_queue.len() != old_len {
+            if len != 0 || file_count != 0 {
                 buf.truncate(len);
                 buf.shrink_to_fit();
                 self.socket = Some(socket);
+                // Safe because the first file_counts fds from recv_with_fds are owned by us and
+                // valid.
+                in_file_queue.extend(fd_buf[..file_count]
+                                         .iter()
+                                         .map(|&fd| unsafe { File::from_raw_fd(fd) }));
                 return Ok(buf);
             }
             Ok(Vec::new())
@@ -893,7 +895,6 @@ struct WlState {
     poll_ctx: PollContext<u32>,
     vfds: Map<u32, WlVfd>,
     next_vfd_id: u32,
-    scm: Scm,
     in_file_queue: Vec<File>,
     in_queue: VecDeque<(u32 /* vfd_id */, WlRecv)>,
     current_recv_vfd: Option<u32>,
@@ -907,7 +908,6 @@ impl WlState {
             vm: VmRequester::new(vm_socket),
             poll_ctx: PollContext::new().expect("failed to create PollContext"),
             use_transition_flags,
-            scm: Scm::new(VIRTWL_SEND_MAX_ALLOCS),
             vfds: Map::new(),
             next_vfd_id: NEXT_VFD_ID_BASE,
             in_file_queue: Vec::new(),
@@ -1126,7 +1126,7 @@ impl WlState {
 
         match self.vfds.get_mut(&vfd_id) {
             Some(vfd) => {
-                match vfd.send(&mut self.scm, &fds[..vfd_count], data)? {
+                match vfd.send(&fds[..vfd_count], data)? {
                     WlResp::Ok => {}
                     _ => return Ok(WlResp::InvalidType),
                 }
@@ -1145,7 +1145,7 @@ impl WlState {
 
     fn recv(&mut self, vfd_id: u32) -> WlResult<()> {
         let buf = match self.vfds.get_mut(&vfd_id) {
-            Some(vfd) => vfd.recv(&mut self.scm, &mut self.in_file_queue)?,
+            Some(vfd) => vfd.recv(&mut self.in_file_queue)?,
             None => return Ok(()),
         };
         if self.in_file_queue.is_empty() && buf.is_empty() {

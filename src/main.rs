@@ -47,7 +47,7 @@ use std::string::String;
 use std::thread::sleep;
 use std::time::Duration;
 
-use sys_util::{Scm, getpid, kill_process_group, reap_child, syslog};
+use sys_util::{getpid, kill_process_group, reap_child, syslog};
 use qcow::QcowFile;
 
 use argument::{Argument, set_arguments, print_help};
@@ -519,7 +519,6 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
 }
 
 fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
-    let mut scm = Scm::new(1);
     if args.len() == 0 {
         print_help("crosvm stop", "VM_SOCKET...", &[]);
         println!("Stops the crosvm instance listening on each `VM_SOCKET` given.");
@@ -532,7 +531,7 @@ fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
                                                    Ok(s)
                                                }) {
             Ok(s) => {
-                if let Err(e) = VmRequest::Exit.send(&mut scm, &s) {
+                if let Err(e) = VmRequest::Exit.send(&s) {
                     error!("failed to send stop request to socket at '{}': {:?}",
                            socket_path,
                            e);
@@ -549,7 +548,6 @@ fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
 }
 
 fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    let mut scm = Scm::new(1);
     if args.len() < 2 {
         print_help("crosvm balloon", "PAGE_ADJUST VM_SOCKET...", &[]);
         println!("Adjust the ballon size of the crosvm instance by `PAGE_ADJUST` pages, `PAGE_ADJUST` can be negative to shrink the balloon.");
@@ -569,7 +567,7 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
                                                    Ok(s)
                                                }) {
             Ok(s) => {
-                if let Err(e) = VmRequest::BalloonAdjust(num_pages).send(&mut scm, &s) {
+                if let Err(e) = VmRequest::BalloonAdjust(num_pages).send(&s) {
                     error!("failed to send balloon request to socket at '{}': {:?}",
                            socket_path,
                            e);

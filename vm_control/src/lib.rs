@@ -27,7 +27,8 @@ use libc::{ERANGE, EINVAL, ENODEV};
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use data_model::{DataInit, Le32, Le64, VolatileMemory};
-use sys_util::{EventFd, Result, Error as SysError, MmapError, MemoryMapping, Scm, GuestAddress};
+use sys_util::{EventFd, Result, Error as SysError, MmapError, MemoryMapping, ScmSocket,
+               GuestAddress};
 use resources::{GpuMemoryDesc, GpuMemoryPlaneDesc, SystemAllocator};
 use kvm::{IoeventAddress, Vm};
 
@@ -134,11 +135,10 @@ impl VmRequest {
     /// Receive a `VmRequest` from the given socket.
     ///
     /// A `VmResponse` should be sent out over the given socket before another request is received.
-    pub fn recv(scm: &mut Scm, s: &UnixDatagram) -> VmControlResult<VmRequest> {
+    pub fn recv(s: &UnixDatagram) -> VmControlResult<VmRequest> {
         assert_eq!(VM_REQUEST_SIZE, std::mem::size_of::<VmRequestStruct>());
         let mut buf = [0; VM_REQUEST_SIZE];
-        let mut fds = Vec::new();
-        let read = scm.recv(s, &mut [&mut buf], &mut fds)
+        let (read, file) = s.recv_with_fd(&mut buf)
             .map_err(|e| VmControlError::Recv(e))?;
         if read != VM_REQUEST_SIZE {
             return Err(VmControlError::BadSize(read));
@@ -150,7 +150,7 @@ impl VmRequest {
         match req.type_.into() {
             VM_REQUEST_TYPE_EXIT => Ok(VmRequest::Exit),
             VM_REQUEST_TYPE_REGISTER_MEMORY => {
-                let fd = fds.pop().ok_or(VmControlError::ExpectFd)?;
+                let fd = file.ok_or(VmControlError::ExpectFd)?;
                 Ok(VmRequest::RegisterMemory(MaybeOwnedFd::Owned(fd),
                                              req.size.to_native() as usize))
             }
@@ -172,7 +172,7 @@ impl VmRequest {
     ///
     /// After this request is a sent, a `VmResponse` should be received before sending another
     /// request.
-    pub fn send(&self, scm: &mut Scm, s: &UnixDatagram) -> VmControlResult<()> {
+    pub fn send(&self, s: &UnixDatagram) -> VmControlResult<()> {
         assert_eq!(VM_REQUEST_SIZE, std::mem::size_of::<VmRequestStruct>());
         let mut req = VmRequestStruct::default();
         let mut fd_buf = [0; 1];
@@ -203,7 +203,7 @@ impl VmRequest {
         }
         let mut buf = [0; VM_REQUEST_SIZE];
         buf.as_mut().get_ref(0).unwrap().store(req);
-        scm.send(s, &[buf.as_ref()], &fd_buf[..fd_len])
+        s.send_with_fds(buf.as_ref(), &fd_buf[..fd_len])
             .map_err(|e| VmControlError::Send(e))?;
         Ok(())
     }
@@ -332,10 +332,9 @@ impl VmResponse {
     /// Receive a `VmResponse` from the given socket.
     ///
     /// This should be called after the sending a `VmRequest` before sending another request.
-    pub fn recv(scm: &mut Scm, s: &UnixDatagram) -> VmControlResult<VmResponse> {
+    pub fn recv(s: &UnixDatagram) -> VmControlResult<VmResponse> {
         let mut buf = [0; VM_RESPONSE_SIZE];
-        let mut fds = Vec::new();
-        let read = scm.recv(s, &mut [&mut buf], &mut fds)
+        let (read, file) = s.recv_with_fd(&mut buf)
             .map_err(|e| VmControlError::Recv(e))?;
         if read != VM_RESPONSE_SIZE {
             return Err(VmControlError::BadSize(read));
@@ -354,7 +353,7 @@ impl VmResponse {
                    })
             }
             VM_RESPONSE_TYPE_ALLOCATE_AND_REGISTER_GPU_MEMORY => {
-                let fd = fds.pop().ok_or(VmControlError::ExpectFd)?;
+                let fd = file.ok_or(VmControlError::ExpectFd)?;
                 Ok(VmResponse::AllocateAndRegisterGpuMemory {
                        fd: MaybeOwnedFd::Owned(fd),
                        pfn: resp.pfn.into(),
@@ -377,7 +376,7 @@ impl VmResponse {
     ///
     /// This must be called after receiving a `VmRequest` to indicate the outcome of that request's
     /// execution.
-    pub fn send(&self, scm: &mut Scm, s: &UnixDatagram) -> VmControlResult<()> {
+    pub fn send(&self, s: &UnixDatagram) -> VmControlResult<()> {
         let mut resp = VmResponseStruct::default();
         let mut fd_buf = [0; 1];
         let mut fd_len = 0;
@@ -408,7 +407,7 @@ impl VmResponse {
         }
         let mut buf = [0; VM_RESPONSE_SIZE];
         buf.as_mut().get_ref(0).unwrap().store(resp);
-        scm.send(s, &[buf.as_ref()], &fd_buf[..fd_len])
+        s.send_with_fds(buf.as_ref(), &fd_buf[..fd_len])
             .map_err(|e| VmControlError::Send(e))?;
         Ok(())
     }
@@ -427,9 +426,8 @@ mod tests {
     #[test]
     fn request_exit() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
-        VmRequest::Exit.send(&mut scm, &s1).unwrap();
-        match VmRequest::recv(&mut scm, &s2).unwrap() {
+        VmRequest::Exit.send(&s1).unwrap();
+        match VmRequest::recv(&s2).unwrap() {
             VmRequest::Exit => {}
             _ => panic!("recv wrong request variant"),
         }
@@ -439,14 +437,13 @@ mod tests {
     fn request_register_memory() {
         if !kernel_has_memfd() { return; }
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
         let shm_size: usize = 4096;
         let mut shm = SharedMemory::new(None).unwrap();
         shm.set_size(shm_size as u64).unwrap();
         VmRequest::RegisterMemory(MaybeOwnedFd::Borrowed(shm.as_raw_fd()), shm_size)
-            .send(&mut scm, &s1)
+            .send(&s1)
             .unwrap();
-        match VmRequest::recv(&mut scm, &s2).unwrap() {
+        match VmRequest::recv(&s2).unwrap() {
             VmRequest::RegisterMemory(MaybeOwnedFd::Owned(fd), size) => {
                 assert!(fd.as_raw_fd() >= 0);
                 assert_eq!(size, shm_size);
@@ -458,11 +455,8 @@ mod tests {
     #[test]
     fn request_unregister_memory() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
-        VmRequest::UnregisterMemory(77)
-            .send(&mut scm, &s1)
-            .unwrap();
-        match VmRequest::recv(&mut scm, &s2).unwrap() {
+        VmRequest::UnregisterMemory(77).send(&s1).unwrap();
+        match VmRequest::recv(&s2).unwrap() {
             VmRequest::UnregisterMemory(slot) => assert_eq!(slot, 77),
             _ => panic!("recv wrong request variant"),
         }
@@ -471,11 +465,10 @@ mod tests {
     #[test]
     fn request_expect_fd() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
         let mut bad_request = [0; VM_REQUEST_SIZE];
         bad_request[0] = VM_REQUEST_TYPE_REGISTER_MEMORY as u8;
-        scm.send(&s2, &[bad_request.as_ref()], &[]).unwrap();
-        match VmRequest::recv(&mut scm, &s1) {
+        s2.send_with_fds(bad_request.as_ref(), &[]).unwrap();
+        match VmRequest::recv(&s1) {
             Err(VmControlError::ExpectFd) => {}
             _ => panic!("recv wrong error variant"),
         }
@@ -484,9 +477,8 @@ mod tests {
     #[test]
     fn request_no_data() {
         let (s1, _) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
         s1.shutdown(Shutdown::Both).unwrap();
-        match VmRequest::recv(&mut scm, &s1) {
+        match VmRequest::recv(&s1) {
             Err(VmControlError::BadSize(s)) => assert_eq!(s, 0),
             _ => panic!("recv wrong error variant"),
         }
@@ -495,9 +487,8 @@ mod tests {
     #[test]
     fn request_bad_size() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
-        scm.send(&s2, &[[12; 7].as_ref()], &[]).unwrap();
-        match VmRequest::recv(&mut scm, &s1) {
+        s2.send_with_fds([12; 7].as_ref(), &[]).unwrap();
+        match VmRequest::recv(&s1) {
             Err(VmControlError::BadSize(_)) => {}
             _ => panic!("recv wrong error variant"),
         }
@@ -506,10 +497,9 @@ mod tests {
     #[test]
     fn request_invalid_type() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
-        scm.send(&s2, &[[12; VM_REQUEST_SIZE].as_ref()], &[])
+        s2.send_with_fds([12; VM_REQUEST_SIZE].as_ref(), &[])
             .unwrap();
-        match VmRequest::recv(&mut scm, &s1) {
+        match VmRequest::recv(&s1) {
             Err(VmControlError::InvalidType) => {}
             _ => panic!("recv wrong error variant"),
         }
@@ -518,14 +508,21 @@ mod tests {
     #[test]
     fn request_allocate_and_register_gpu_memory() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
         let gpu_width: u32 = 32;
         let gpu_height: u32 = 32;
         let gpu_format: u32 = 0x34325258;
-        let r = VmRequest::AllocateAndRegisterGpuMemory { width: gpu_width, height: gpu_height, format: gpu_format };
-        r.send(&mut scm, &s1).unwrap();
-        match VmRequest::recv(&mut scm, &s2).unwrap() {
-            VmRequest::AllocateAndRegisterGpuMemory {width, height, format} => {
+        let r = VmRequest::AllocateAndRegisterGpuMemory {
+            width: gpu_width,
+            height: gpu_height,
+            format: gpu_format,
+        };
+        r.send(&s1).unwrap();
+        match VmRequest::recv(&s2).unwrap() {
+            VmRequest::AllocateAndRegisterGpuMemory {
+                width,
+                height,
+                format,
+            } => {
                 assert_eq!(width, gpu_width);
                 assert_eq!(height, gpu_width);
                 assert_eq!(format, gpu_format);
@@ -537,9 +534,8 @@ mod tests {
     #[test]
     fn resp_ok() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
-        VmResponse::Ok.send(&mut scm, &s1).unwrap();
-        match VmResponse::recv(&mut scm, &s2).unwrap() {
+        VmResponse::Ok.send(&s1).unwrap();
+        match VmResponse::recv(&s2).unwrap() {
             VmResponse::Ok => {}
             _ => panic!("recv wrong response variant"),
         }
@@ -548,10 +544,9 @@ mod tests {
     #[test]
     fn resp_err() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
         let r1 = VmResponse::Err(SysError::new(libc::EDESTADDRREQ));
-        r1.send(&mut scm, &s1).unwrap();
-        match VmResponse::recv(&mut scm, &s2).unwrap() {
+        r1.send(&s1).unwrap();
+        match VmResponse::recv(&s2).unwrap() {
             VmResponse::Err(e) => {
                 assert_eq!(e, SysError::new(libc::EDESTADDRREQ));
             }
@@ -562,12 +557,14 @@ mod tests {
     #[test]
     fn resp_memory() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
         let memory_pfn = 55;
         let memory_slot = 66;
-        let r1 = VmResponse::RegisterMemory { pfn: memory_pfn, slot: memory_slot };
-        r1.send(&mut scm, &s1).unwrap();
-        match VmResponse::recv(&mut scm, &s2).unwrap() {
+        let r1 = VmResponse::RegisterMemory {
+            pfn: memory_pfn,
+            slot: memory_slot,
+        };
+        r1.send(&s1).unwrap();
+        match VmResponse::recv(&s2).unwrap() {
             VmResponse::RegisterMemory { pfn, slot } => {
                 assert_eq!(pfn, memory_pfn);
                 assert_eq!(slot, memory_slot);
@@ -579,9 +576,8 @@ mod tests {
     #[test]
     fn resp_no_data() {
         let (s1, _) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
         s1.shutdown(Shutdown::Both).unwrap();
-        match VmResponse::recv(&mut scm, &s1) {
+        match VmResponse::recv(&s1) {
             Err(e) => {
                 assert_eq!(e, VmControlError::BadSize(0));
             }
@@ -592,9 +588,8 @@ mod tests {
     #[test]
     fn resp_bad_size() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
-        scm.send(&s2, &[[12; 7].as_ref()], &[]).unwrap();
-        match VmResponse::recv(&mut scm, &s1) {
+        s2.send_with_fds([12; 7].as_ref(), &[]).unwrap();
+        match VmResponse::recv(&s1) {
             Err(e) => {
                 assert_eq!(e, VmControlError::BadSize(7));
             }
@@ -605,10 +600,9 @@ mod tests {
     #[test]
     fn resp_invalid_type() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
-        scm.send(&s2, &[[12; VM_RESPONSE_SIZE].as_ref()], &[])
+        s2.send_with_fds([12; VM_RESPONSE_SIZE].as_ref(), &[])
             .unwrap();
-        match VmResponse::recv(&mut scm, &s1) {
+        match VmResponse::recv(&s1) {
             Err(e) => {
                 assert_eq!(e, VmControlError::InvalidType);
             }
@@ -620,7 +614,6 @@ mod tests {
     fn resp_allocate_and_register_gpu_memory() {
         if !kernel_has_memfd() { return; }
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
-        let mut scm = Scm::new(1);
         let shm_size: usize = 4096;
         let mut shm = SharedMemory::new(None).unwrap();
         shm.set_size(shm_size as u64).unwrap();
@@ -637,9 +630,14 @@ mod tests {
             slot: memory_slot,
             desc: GpuMemoryDesc { planes: memory_planes },
         };
-        r1.send(&mut scm, &s1).unwrap();
-        match VmResponse::recv(&mut scm, &s2).unwrap() {
-            VmResponse::AllocateAndRegisterGpuMemory { fd, pfn, slot, desc } => {
+        r1.send(&s1).unwrap();
+        match VmResponse::recv(&s2).unwrap() {
+            VmResponse::AllocateAndRegisterGpuMemory {
+                fd,
+                pfn,
+                slot,
+                desc,
+            } => {
                 assert!(fd.as_raw_fd() >= 0);
                 assert_eq!(pfn, memory_pfn);
                 assert_eq!(slot, memory_slot);

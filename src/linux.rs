@@ -729,8 +729,6 @@ fn run_control(mut linux: RunnableLinuxVm,
                control_sockets: Vec<UnlinkUnixDatagram>,
                balloon_host_socket: UnixDatagram,
                sigchld_fd: SignalFd) -> Result<()> {
-    const MAX_VM_FD_RECV: usize = 1;
-
     // Paths to get the currently available memory and the low memory threshold.
     const LOWMEM_MARGIN: &'static str = "/sys/kernel/mm/chromeos-low_mem/margin";
     const LOWMEM_AVAILABLE: &'static str = "/sys/kernel/mm/chromeos-low_mem/available";
@@ -816,8 +814,6 @@ fn run_control(mut linux: RunnableLinuxVm,
         vcpu_handles.push(handle);
     }
     vcpu_thread_barrier.wait();
-
-    let mut scm = Scm::new(MAX_VM_FD_RECV);
 
     'poll: loop {
         let events = {
@@ -945,7 +941,7 @@ fn run_control(mut linux: RunnableLinuxVm,
                 }
                 Token::VmControl { index } => {
                     if let Some(socket) = control_sockets.get(index as usize) {
-                        match VmRequest::recv(&mut scm, socket.as_ref()) {
+                        match VmRequest::recv(socket.as_ref()) {
                             Ok(request) => {
                                 let mut running = true;
                                 let response =
@@ -953,7 +949,7 @@ fn run_control(mut linux: RunnableLinuxVm,
                                                     &mut linux.resources,
                                                     &mut running,
                                                     &balloon_host_socket);
-                                if let Err(e) = response.send(&mut scm, socket.as_ref()) {
+                                if let Err(e) = response.send(socket.as_ref()) {
                                     error!("failed to send VmResponse: {:?}", e);
                                 }
                                 if !running {
