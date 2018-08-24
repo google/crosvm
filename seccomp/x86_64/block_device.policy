@@ -6,6 +6,7 @@ close: 1
 dup: 1
 dup2: 1
 exit_group: 1
+fallocate: 1
 fdatasync: 1
 fstat: 1
 fsync: 1

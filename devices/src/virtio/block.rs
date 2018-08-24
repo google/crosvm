@@ -4,15 +4,18 @@
 
 use std::cmp;
 use std::io::{self, Seek, SeekFrom, Read, Write};
-use std::mem::size_of_val;
+use std::mem::{size_of, size_of_val};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
+use std::u32;
 
 use sys_util::Result as SysResult;
-use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError, PollContext, PollToken};
+use sys_util::{
+    EventFd, GuestAddress, GuestMemory, GuestMemoryError, PollContext, PollToken, WriteZeroes,
+};
 
 use data_model::{DataInit, Le16, Le32, Le64};
 
@@ -22,10 +25,17 @@ const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
 const SECTOR_SHIFT: u8 = 9;
 const SECTOR_SIZE: u64 = 0x01 << SECTOR_SHIFT;
+const MAX_DISCARD_SECTORS: u32 = u32::MAX;
+const MAX_WRITE_ZEROES_SECTORS: u32 = u32::MAX;
+// Hard-coded to 64 KiB (in 512-byte sectors) for now,
+// but this should probably be based on cluster size for qcow.
+const DISCARD_SECTOR_ALIGNMENT: u32 = 128;
 
 const VIRTIO_BLK_T_IN: u32 = 0;
 const VIRTIO_BLK_T_OUT: u32 = 1;
 const VIRTIO_BLK_T_FLUSH: u32 = 4;
+const VIRTIO_BLK_T_DISCARD: u32 = 11;
+const VIRTIO_BLK_T_WRITE_ZEROES: u32 = 13;
 
 const VIRTIO_BLK_S_OK: u8 = 0;
 const VIRTIO_BLK_S_IOERR: u8 = 1;
@@ -33,6 +43,8 @@ const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
 const VIRTIO_BLK_F_RO: u32 = 5;
 const VIRTIO_BLK_F_FLUSH: u32 = 9;
+const VIRTIO_BLK_F_DISCARD: u32 = 13;
+const VIRTIO_BLK_F_WRITE_ZEROES: u32 = 14;
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
@@ -68,19 +80,41 @@ struct virtio_blk_config {
     topology: virtio_blk_topology,
     writeback: u8,
     unused0: [u8; 3],
+    max_discard_sectors: Le32,
+    max_discard_seg: Le32,
+    discard_sector_alignment: Le32,
+    max_write_zeroes_sectors: Le32,
+    max_write_zeroes_seg: Le32,
+    write_zeroes_may_unmap: u8,
+    unused1: [u8; 3],
 }
 
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_blk_config {}
 
-pub trait DiskFile: Read + Seek + Write {}
-impl<D: Read + Seek + Write> DiskFile for D {}
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
+struct virtio_blk_discard_write_zeroes {
+    sector: Le64,
+    num_sectors: Le32,
+    flags: Le32,
+}
+
+const VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP: u32 = 1 << 0;
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for virtio_blk_discard_write_zeroes {}
+
+pub trait DiskFile: Read + Seek + Write + WriteZeroes {}
+impl<D: Read + Seek + Write + WriteZeroes> DiskFile for D {}
 
 #[derive(PartialEq)]
 enum RequestType {
     In,
     Out,
     Flush,
+    Discard,
+    WriteZeroes,
     Unsupported(u32),
 }
 
@@ -109,6 +143,8 @@ fn request_type(mem: &GuestMemory,
         VIRTIO_BLK_T_IN => Ok(RequestType::In),
         VIRTIO_BLK_T_OUT => Ok(RequestType::Out),
         VIRTIO_BLK_T_FLUSH => Ok(RequestType::Flush),
+        VIRTIO_BLK_T_DISCARD => Ok(RequestType::Discard),
+        VIRTIO_BLK_T_WRITE_ZEROES => Ok(RequestType::WriteZeroes),
         t => Ok(RequestType::Unsupported(t)),
     }
 }
@@ -121,6 +157,14 @@ fn sector(mem: &GuestMemory, desc_addr: GuestAddress) -> result::Result<u64, Par
     };
 
     mem.read_obj_from_addr(addr)
+        .map_err(ParseError::GuestMemory)
+}
+
+fn discard_write_zeroes_segment(
+    mem: &GuestMemory,
+    seg_addr: GuestAddress,
+) -> result::Result<virtio_blk_discard_write_zeroes, ParseError> {
+    mem.read_obj_from_addr(seg_addr)
         .map_err(ParseError::GuestMemory)
 }
 
@@ -143,6 +187,12 @@ enum ExecuteError {
         sector: u64,
         guestmemerr: GuestMemoryError
     },
+    DiscardWriteZeroes {
+        ioerr: Option<io::Error>,
+        sector: u64,
+        num_sectors: u32,
+        flags: u32,
+    },
     Unsupported(u32),
 }
 
@@ -153,6 +203,7 @@ impl ExecuteError {
             &ExecuteError::Read{ .. } => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Seek{ .. } => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Write{ .. } => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::DiscardWriteZeroes{ .. } => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
         }
     }
@@ -164,6 +215,7 @@ struct Request {
     data_addr: GuestAddress,
     data_len: u32,
     status_addr: GuestAddress,
+    discard_write_zeroes_seg: Option<virtio_blk_discard_write_zeroes>,
 }
 
 impl Request {
@@ -178,6 +230,8 @@ impl Request {
         let req_type = request_type(&mem, avail_desc.addr)?;
         if req_type == RequestType::Flush {
             Request::parse_flush(avail_desc, mem)
+        } else if req_type == RequestType::Discard || req_type == RequestType::WriteZeroes {
+            Request::parse_discard_write_zeroes(avail_desc, mem, req_type)
         } else {
             Request::parse_read_write(avail_desc, mem, req_type)
         }
@@ -207,9 +261,53 @@ impl Request {
                data_addr: GuestAddress(0),
                data_len: 0,
                status_addr: status_desc.addr,
+               discard_write_zeroes_seg: None,
            })
     }
 
+    fn parse_discard_write_zeroes(
+        avail_desc: &DescriptorChain,
+        mem: &GuestMemory,
+        req_type: RequestType,
+    ) -> result::Result<Request, ParseError> {
+        let seg_desc = avail_desc
+            .next_descriptor()
+            .ok_or(ParseError::DescriptorChainTooShort)?;
+        let status_desc = seg_desc
+            .next_descriptor()
+            .ok_or(ParseError::DescriptorChainTooShort)?;
+
+        if seg_desc.is_write_only() {
+            return Err(ParseError::UnexpectedWriteOnlyDescriptor);
+        }
+
+        // For simplicity, we currently only support a single segment
+        // for discard and write zeroes commands.  This allows the
+        // request to be represented as a single Request object.
+        if seg_desc.len < size_of::<virtio_blk_discard_write_zeroes>() as u32 {
+            return Err(ParseError::DescriptorLengthTooSmall);
+        }
+
+        let seg = discard_write_zeroes_segment(&mem, seg_desc.addr)?;
+
+        // The status MUST always be writable
+        if !status_desc.is_write_only() {
+            return Err(ParseError::UnexpectedReadOnlyDescriptor);
+        }
+
+        if status_desc.len < 1 {
+            return Err(ParseError::DescriptorLengthTooSmall);
+        }
+
+        Ok(Request {
+            request_type: req_type,
+            sector: 0,
+            data_addr: GuestAddress(0),
+            data_len: 0,
+            status_addr: status_desc.addr,
+            discard_write_zeroes_seg: Some(seg),
+        })
+    }
 
     fn parse_read_write(avail_desc: &DescriptorChain,
                         mem: &GuestMemory,
@@ -247,6 +345,7 @@ impl Request {
                data_addr: data_desc.addr,
                data_len: data_desc.len,
                status_addr: status_desc.addr,
+               discard_write_zeroes_seg: None,
            })
     }
 
@@ -271,6 +370,38 @@ impl Request {
                                                       length: self.data_len,
                                                       sector: self.sector,
                                                       guestmemerr: e })?;
+            }
+            RequestType::Discard | RequestType::WriteZeroes => {
+                if let Some(seg) = self.discard_write_zeroes_seg {
+                    let sector = seg.sector.to_native();
+                    let num_sectors = seg.num_sectors.to_native();
+                    let flags = seg.flags.to_native();
+
+                    let valid_flags = if self.request_type == RequestType::WriteZeroes {
+                        VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP
+                    } else {
+                        0
+                    };
+
+                    if (flags & !valid_flags) != 0 {
+                        return Err(ExecuteError::DiscardWriteZeroes{
+                                ioerr: None,
+                                sector,
+                                num_sectors,
+                                flags
+                            });
+                    }
+
+                    disk.seek(SeekFrom::Start(sector << SECTOR_SHIFT))
+                        .map_err(|e| ExecuteError::Seek{ ioerr: e, sector })?;
+                    disk.write_zeroes((num_sectors as usize) << SECTOR_SHIFT)
+                        .map_err(|e| ExecuteError::DiscardWriteZeroes {
+                            ioerr: Some(e),
+                            sector,
+                            num_sectors,
+                            flags
+                        })?;
+                }
             }
             RequestType::Flush => disk.flush().map_err(ExecuteError::Flush)?,
             RequestType::Unsupported(t) => return Err(ExecuteError::Unsupported(t)),
@@ -392,11 +523,16 @@ pub struct Block<T: DiskFile> {
 }
 
 fn build_config_space(disk_size: u64) -> virtio_blk_config {
-    // We only support disk size, which uses the first two words of the configuration space.
-    // If the image is not a multiple of the sector size, the tail bits are not exposed.
-    // The config space is little endian.
     virtio_blk_config {
+        // If the image is not a multiple of the sector size, the tail bits are not exposed.
         capacity: Le64::from(disk_size >> SECTOR_SHIFT),
+        max_discard_sectors: Le32::from(MAX_DISCARD_SECTORS),
+        discard_sector_alignment: Le32::from(DISCARD_SECTOR_ALIGNMENT),
+        max_write_zeroes_sectors: Le32::from(MAX_WRITE_ZEROES_SECTORS),
+        write_zeroes_may_unmap: 1,
+        // Limit number of segments to 1 - see parse_discard_write_zeroes()
+        max_discard_seg: Le32::from(1),
+        max_write_zeroes_seg: Le32::from(1),
         ..Default::default()
     }
 }
@@ -417,6 +553,9 @@ impl<T: DiskFile> Block<T> {
         let mut avail_features: u64 = 1 << VIRTIO_BLK_F_FLUSH;
         if read_only {
             avail_features |= 1 << VIRTIO_BLK_F_RO;
+        } else {
+            avail_features |= 1 << VIRTIO_BLK_F_DISCARD;
+            avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
         }
 
         Ok(Block {
@@ -558,8 +697,9 @@ mod tests {
         {
             let f = File::create(&path).unwrap();
             let b = Block::new(f, false).unwrap();
-            // writable device should just set VIRTIO_BLK_F_FLUSH
-            assert_eq!(0x200, b.features(0));
+            // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
+            // + VIRTIO_BLK_F_WRITE_ZEROES
+            assert_eq!(0x6200, b.features(0));
         }
 
         // read-only block device
