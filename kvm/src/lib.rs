@@ -1610,6 +1610,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
         let vm = Vm::new(&kvm, gm).unwrap();
+        vm.create_irq_chip().unwrap();
         vm.set_gsi_routing(&[]).unwrap();
         vm.set_gsi_routing(&[IrqRoute {
             gsi: 1,
