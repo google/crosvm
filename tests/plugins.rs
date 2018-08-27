@@ -411,6 +411,7 @@ fn test_msrs() {
             #define KILL_ADDRESS 0x3000
 
             int g_kill_evt;
+            uint32_t g_msr2_count;
             struct kvm_msr_entry g_msr2;
 
             int setup_vm(struct crosvm *crosvm, void *mem) {
@@ -445,7 +446,7 @@ fn test_msrs() {
                 {
                     uint64_t dummy = 1;
                     g_msr2.index = MSR2_INDEX;
-                    crosvm_vcpu_get_msrs(vcpu, 1, &g_msr2);
+                    crosvm_vcpu_get_msrs(vcpu, 1, &g_msr2, &g_msr2_count);
                     write(g_kill_evt, &dummy, sizeof(dummy));
                     return 1;
                 }
@@ -456,6 +457,10 @@ fn test_msrs() {
                 uint64_t msr1_data = ((uint64_t*)mem)[0];
                 if (msr1_data != MSR1_DATA) {
                     fprintf(stderr, "msr1 has unexpected value: 0x%x\n", msr1_data);
+                    return 1;
+                }
+                if (g_msr2_count != 1) {
+                    fprintf(stderr, "incorrect number of returned MSRSs: %d\n", g_msr2_count);
                     return 1;
                 }
                 if (g_msr2.data != MSR2_DATA) {

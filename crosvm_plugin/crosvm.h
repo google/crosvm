@@ -509,7 +509,8 @@ int crosvm_vcpu_set_xcrs(struct crosvm_vcpu*, const struct kvm_xcrs*);
 
 /* Gets the MSRs of the vcpu indicated by the index field of each entry. */
 int crosvm_vcpu_get_msrs(struct crosvm_vcpu*, uint32_t __msr_count,
-                         struct kvm_msr_entry *__msr_entries);
+                         struct kvm_msr_entry *__msr_entries,
+                         uint32_t *__out_count);
 /* Sets the MSRs of the vcpu indicated by the index field of each entry. */
 int crosvm_vcpu_set_msrs(struct crosvm_vcpu*, uint32_t __msr_count,
                          const struct kvm_msr_entry *__msr_entries);

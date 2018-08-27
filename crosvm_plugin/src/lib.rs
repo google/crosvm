@@ -995,7 +995,9 @@ impl crosvm_vcpu {
         Ok(())
     }
 
-    fn get_msrs(&mut self, msr_entries: &mut [kvm_msr_entry]) -> result::Result<(), c_int> {
+    fn get_msrs(&mut self, msr_entries: &mut [kvm_msr_entry], msr_count: &mut usize)
+                -> result::Result<(), c_int> {
+        *msr_count = 0;
         let mut r = VcpuRequest::new();
         {
             let entry_indices: &mut Vec<u32> = r.mut_get_msrs().mut_entry_indices();
@@ -1008,8 +1010,9 @@ impl crosvm_vcpu {
             return Err(EPROTO);
         }
         let get_msrs: &VcpuResponse_GetMsrs = response.get_get_msrs();
-        if get_msrs.get_entry_data().len() != msr_entries.len() {
-            return Err(EPROTO);
+        *msr_count = get_msrs.get_entry_data().len();
+        if *msr_count > msr_entries.len() {
+            return Err(E2BIG);
         }
         for (&msr_data, msr_entry) in
             get_msrs
@@ -1464,12 +1467,15 @@ pub unsafe extern "C" fn crosvm_vcpu_set_xcrs(this: *mut crosvm_vcpu,
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_vcpu_get_msrs(this: *mut crosvm_vcpu,
                                               msr_count: u32,
-                                              msr_entries: *mut kvm_msr_entry)
+                                              msr_entries: *mut kvm_msr_entry,
+                                              out_count: *mut u32)
                                               -> c_int {
     let _u = STATS.record(Stat::VcpuGetMsrs);
     let this = &mut *this;
     let msr_entries = from_raw_parts_mut(msr_entries, msr_count as usize);
-    let ret = this.get_msrs(msr_entries);
+    let mut count: usize = 0;
+    let ret = this.get_msrs(msr_entries, &mut count);
+    *out_count = count as u32;
     to_crosvm_rc(ret)
 }
 
