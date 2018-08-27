@@ -1076,7 +1076,7 @@ impl Vcpu {
     ///
     /// See the documentation for KVM_SET_MSRS.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_msrs(&self, msr_entries: &mut [kvm_msr_entry]) -> Result<()> {
+    pub fn get_msrs(&self, msr_entries: &mut Vec<kvm_msr_entry>) -> Result<()> {
         let vec_size_bytes = size_of::<kvm_msrs>() +
                              (msr_entries.len() * size_of::<kvm_msr_entry>());
         let vec: Vec<u8> = vec![0; vec_size_bytes];
@@ -1101,7 +1101,10 @@ impl Vcpu {
             return errno_result();
         }
         unsafe {
-            let entries: &mut [kvm_msr_entry] = msrs.entries.as_mut_slice(msr_entries.len());
+            let count = ret as usize;
+            assert!(count <= msr_entries.len());
+            let entries: &mut [kvm_msr_entry] = msrs.entries.as_mut_slice(count);
+            msr_entries.truncate(count);
             msr_entries.copy_from_slice(&entries);
         }
         Ok(())
@@ -1691,15 +1694,14 @@ mod tests {
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
         let vm = Vm::new(&kvm, gm).unwrap();
         let vcpu = Vcpu::new(0, &kvm, &vm).unwrap();
-        vcpu.get_msrs(&mut [kvm_msr_entry {
-                                index: 0x0000011e,
-                                ..Default::default()
-                            },
-                            kvm_msr_entry {
-                                index: 0x000003f1,
-                                ..Default::default()
-                            }])
-            .unwrap();
+        let mut msrs = vec![
+            // This one should succeed
+            kvm_msr_entry { index: 0x0000011e, ..Default::default() },
+            // This one will fail to fetch
+            kvm_msr_entry { index: 0x000003f1, ..Default::default() },
+        ];
+        vcpu.get_msrs(&mut msrs).unwrap();
+        assert_eq!(msrs.len(), 1);
     }
 
     #[test]
