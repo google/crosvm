@@ -22,7 +22,7 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub trait PciDevice: Send + Sync {
+pub trait PciDevice: Send {
     /// Assign a legacy PCI IRQ to this device.
     fn assign_irq(&mut self, _irq_evt: EventFd, _irq_num: u32, _irq_pin: PciInterruptPin) {}
     /// Allocates the needed IO BAR space using the `allocate` function which takes a size and
