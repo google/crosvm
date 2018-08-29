@@ -8,7 +8,7 @@ use libc::{gid_t, pid_t, uid_t};
 use std::os::raw::{c_char, c_int, c_ulong};
 
 /// Struct minijail is an opaque type inside libminijail.
-/// See the minijail man page for a description of funcitons.
+/// See the minijail man page for a description of functions.
 #[derive(Debug, Copy, Clone)]
 pub enum minijail {}
 
