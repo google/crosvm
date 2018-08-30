@@ -635,9 +635,10 @@ impl VirtioDevice for Gpu {
     }
 
     fn features(&self, page: u32) -> u32 {
+        let avail_features: u64 = 1 << VIRTIO_GPU_F_VIRGL | 1 << VIRTIO_F_VERSION_1;
         match page {
-            0 => (1 << VIRTIO_GPU_F_VIRGL),
-            1 => VIRTIO_F_VERSION_1,
+            0 => avail_features as u32,
+            1 => (avail_features >> 32) as u32,
             _ => 0,
         }
     }
