@@ -294,7 +294,8 @@ impl PciConfiguration {
     }
 
     /// Adds the capability `cap_data` to the list of capabilities.
-    /// `cap_data` should include the three byte PCI capability header: type, next, length.
+    /// `cap_data` should not include the two-byte PCI capability header (type, next);
+    /// it will be generated automatically based on `cap_data.id()`.
     pub fn add_capability(&mut self, cap_data: &PciCapability) -> Option<usize> {
         let total_len = cap_data.bytes().len() + 2;
         // Check that the length is valid.
@@ -323,5 +324,69 @@ impl PciConfiguration {
     fn next_dword(offset: usize, len: usize) -> usize {
         let next = offset + len;
         (next + 3) & !3
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use data_model::{DataInit, Le32};
+
+    use super::*;
+
+    #[repr(packed)]
+    #[derive(Clone, Copy)]
+    struct TestCap {
+        len: u8,
+        foo: u8,
+    }
+
+    // It is safe to implement DataInit; all members are simple numbers and any value is valid.
+    unsafe impl DataInit for TestCap {}
+
+    impl PciCapability for TestCap {
+        fn bytes(&self) -> &[u8] {
+            self.as_slice()
+        }
+
+        fn id(&self) -> PciCapabilityID {
+            PciCapabilityID::VendorSpecific
+        }
+    }
+
+    #[test]
+    fn add_capability() {
+        let mut cfg = PciConfiguration::new(
+            0x1234,
+            0x5678,
+            PciClassCode::MultimediaController,
+            &PciMultimediaSubclass::AudioController,
+            PciHeaderType::Device,
+        );
+
+        // Add two capabilities with different contents.
+        let cap1 = TestCap { len: 4, foo: 0xAA };
+        let cap1_offset = cfg.add_capability(&cap1).unwrap();
+        assert_eq!(cap1_offset % 4, 0);
+
+        let cap2 = TestCap { len: 0x04, foo: 0x55 };
+        let cap2_offset = cfg.add_capability(&cap2).unwrap();
+        assert_eq!(cap2_offset % 4, 0);
+
+        // The capability list head should be pointing to cap1.
+        let cap_ptr = cfg.read_reg(CAPABILITY_LIST_HEAD_OFFSET / 4) & 0xFF;
+        assert_eq!(cap1_offset, cap_ptr as usize);
+
+        // Verify the contents of the capabilities.
+        let cap1_data = cfg.read_reg(cap1_offset / 4);
+        assert_eq!(cap1_data & 0xFF, 0x09); // capability ID
+        assert_eq!((cap1_data >> 8) & 0xFF, cap2_offset as u32); // next capability pointer
+        assert_eq!((cap1_data >> 16) & 0xFF, 0x04); // cap1.len
+        assert_eq!((cap1_data >> 24) & 0xFF, 0xAA); // cap1.foo
+
+        let cap2_data = cfg.read_reg(cap2_offset / 4);
+        assert_eq!(cap2_data & 0xFF, 0x09); // capability ID
+        assert_eq!((cap2_data >> 8) & 0xFF, 0x00); // next capability pointer
+        assert_eq!((cap2_data >> 16) & 0xFF, 0x04); // cap2.len
+        assert_eq!((cap2_data >> 24) & 0xFF, 0x55); // cap2.foo
     }
 }
