@@ -31,7 +31,9 @@ pub enum Error {
     CompressedBlocksNotSupported,
     GettingFileSize(io::Error),
     GettingRefcount(refcount::Error),
+    EvictingCache(io::Error),
     InvalidClusterSize,
+    InvalidIndex,
     InvalidL1TableOffset,
     InvalidMagic,
     InvalidOffset(u64),
@@ -39,7 +41,9 @@ pub enum Error {
     NoRefcountClusters,
     OpeningFile(io::Error),
     ReadingHeader(io::Error),
+    ReadingPointers(io::Error),
     ReadingRefCounts(io::Error),
+    ReadingRefCountBlock(refcount::Error),
     SeekingFile(io::Error),
     SettingRefcountRefcount(io::Error),
     SizeTooSmallForNumberOfClusters,
@@ -383,6 +387,60 @@ impl QcowFile {
         }
 
         Ok(qcow)
+    }
+
+    /// Returns the `QcowHeader` for this file.
+    pub fn header(&self) -> &QcowHeader {
+        &self.header
+    }
+
+    /// Returns the L1 lookup table for this file. This is only useful for debugging.
+    pub fn l1_table(&self) -> &[u64] {
+        &self.l1_table
+    }
+
+    /// Returns an L2_table of cluster addresses, only used for debugging.
+    pub fn l2_table(&mut self, l1_index: usize) -> Result<Option<&[u64]>> {
+        let l2_addr_disk = *self.l1_table.get(l1_index).ok_or(Error::InvalidIndex)?;
+
+        if l2_addr_disk == 0 {
+            // Reading from an unallocated cluster will return zeros.
+            return Ok(None);
+        }
+
+        if !self.l2_cache.contains_key(&l1_index) {
+            // Not in the cache.
+            let table = VecCache::from_vec(
+                Self::read_l2_cluster(&mut self.raw_file, l2_addr_disk)
+                    .map_err(Error::ReadingPointers)?,
+            );
+            let l1_table = &mut self.l1_table;
+            let raw_file = &mut self.raw_file;
+            self.l2_cache
+                .insert(l1_index, table, |index, evicted| {
+                    raw_file.write_pointer_table(
+                        l1_table[index],
+                        evicted.get_values(),
+                        CLUSTER_USED_FLAG,
+                    )
+                })
+                .map_err(Error::EvictingCache)?;
+        }
+
+        // The index must exist as it was just inserted if it didn't already.
+        Ok(Some(self.l2_cache.get(&l1_index).unwrap().get_values()))
+    }
+
+    /// Returns the refcount table for this file. This is only useful for debugging.
+    pub fn ref_table(&self) -> &[u64] {
+        &self.refcounts.ref_table()
+    }
+
+    /// Returns the `index`th refcount block from the file.
+    pub fn refcount_block(&mut self, index: usize) -> Result<Option<&[u16]>> {
+        self.refcounts
+            .refcount_block(&mut self.raw_file, index)
+            .map_err(Error::ReadingRefCountBlock)
     }
 
     /// Returns the first cluster in the file with a 0 refcount. Used for testing.
