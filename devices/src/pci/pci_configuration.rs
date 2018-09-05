@@ -170,6 +170,8 @@ impl PciConfiguration {
         class_code: PciClassCode,
         subclass: &PciSubclass,
         header_type: PciHeaderType,
+        subsystem_vendor_id: u16,
+        subsystem_id: u16,
     ) -> Self {
         let mut registers = [0u32; NUM_CONFIGURATION_REGISTERS];
         registers[0] = u32::from(device_id) << 16 | u32::from(vendor_id);
@@ -179,6 +181,7 @@ impl PciConfiguration {
             PciHeaderType::Device => (),
             PciHeaderType::Bridge => registers[3] = 0x0001_0000,
         };
+        registers[11] = u32::from(subsystem_id) << 16 | u32::from(subsystem_vendor_id);
         PciConfiguration {
             registers,
             writable_bits: [0xffff_ffff; NUM_CONFIGURATION_REGISTERS],
@@ -361,6 +364,8 @@ mod tests {
             PciClassCode::MultimediaController,
             &PciMultimediaSubclass::AudioController,
             PciHeaderType::Device,
+            0xABCD,
+            0x2468,
         );
 
         // Add two capabilities with different contents.

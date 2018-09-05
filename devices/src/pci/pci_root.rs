@@ -110,6 +110,8 @@ impl PciRoot {
                             PciClassCode::BridgeDevice,
                             &PciBridgeSubclass::HostBridge,
                             PciHeaderType::Bridge,
+                            0,
+                            0,
                             ),
             },
             config_address: 0,
