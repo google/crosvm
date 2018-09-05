@@ -7,6 +7,12 @@ authors = ["The Chromium OS Authors"]
 path = "src/qcow_utils.rs"
 crate-type = ["cdylib"]
 
+[[bin]]
+name = "qcow_img"
+path = "src/qcow_img.rs"
+
 [dependencies]
+getopts = "*"
 libc = "*"
 qcow = { path = "../qcow" }
+sys_util = { path = "../sys_util" }
