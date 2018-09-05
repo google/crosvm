@@ -44,6 +44,7 @@ pub const VIRTIO_GPU_RESP_OK_NODATA: u32 = 0x1100;
 pub const VIRTIO_GPU_RESP_OK_DISPLAY_INFO: u32 = 0x1101;
 pub const VIRTIO_GPU_RESP_OK_CAPSET_INFO: u32 = 0x1102;
 pub const VIRTIO_GPU_RESP_OK_CAPSET: u32 = 0x1103;
+pub const VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO: u32 = 0x1104;
 
 /* error responses */
 pub const VIRTIO_GPU_RESP_ERR_UNSPEC: u32 = 0x1200;
@@ -79,6 +80,7 @@ pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
         VIRTIO_GPU_RESP_OK_DISPLAY_INFO => "VIRTIO_GPU_RESP_OK_DISPLAY_INFO",
         VIRTIO_GPU_RESP_OK_CAPSET_INFO => "VIRTIO_GPU_RESP_OK_CAPSET_INFO",
         VIRTIO_GPU_RESP_OK_CAPSET => "VIRTIO_GPU_RESP_OK_CAPSET",
+        VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO => "VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO",
         VIRTIO_GPU_RESP_ERR_UNSPEC => "VIRTIO_GPU_RESP_ERR_UNSPEC",
         VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY => "VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY",
         VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID => "VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID",
@@ -417,6 +419,22 @@ pub struct virtio_gpu_resp_capset {
 
 unsafe impl DataInit for virtio_gpu_resp_capset {}
 
+/* VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO */
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+pub struct virtio_gpu_resp_resource_plane_info {
+    pub hdr: virtio_gpu_ctrl_hdr,
+    pub count: Le32,
+    pub padding: Le32,
+    pub format_modifier: Le64,
+    pub strides: [Le32; 4],
+    pub offsets: [Le32; 4],
+}
+
+unsafe impl DataInit for virtio_gpu_resp_resource_plane_info {}
+
+const PLANE_INFO_MAX_COUNT: usize = 4;
+
 pub const VIRTIO_GPU_EVENT_DISPLAY: u32 = 1 << 0;
 
 #[derive(Copy, Clone, Debug)]
@@ -567,13 +585,27 @@ impl GpuCommand {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct GpuResponsePlaneInfo {
+    pub stride: u32,
+    pub offset: u32,
+}
+
 /// A response to a `GpuCommand`. These correspond to `VIRTIO_GPU_RESP_*`.
 #[derive(Debug, PartialEq)]
 pub enum GpuResponse {
     OkNoData,
     OkDisplayInfo(Vec<(u32, u32)>),
-    OkCapsetInfo { id: u32, version: u32, size: u32 },
+    OkCapsetInfo {
+        id: u32,
+        version: u32,
+        size: u32,
+    },
     OkCapset(Vec<u8>),
+    OkResourcePlaneInfo {
+        format_modifier: u64,
+        plane_info: Vec<GpuResponsePlaneInfo>,
+    },
     ErrUnspec,
     ErrOutOfMemory,
     ErrInvalidScanoutId,
@@ -589,6 +621,8 @@ pub enum GpuResponseEncodeError {
     Memory(VolatileMemoryError),
     /// More displays than are valid were in a `OkDisplayInfo`.
     TooManyDisplays(usize),
+    /// More planes than are valid were in a `OkResourcePlaneInfo`.
+    TooManyPlanes(usize),
 }
 
 impl From<VolatileMemoryError> for GpuResponseEncodeError {
@@ -647,6 +681,44 @@ impl GpuResponse {
                 resp_data_slice.copy_from(data);
                 size_of_val(&hdr) + data.len()
             }
+            GpuResponse::OkResourcePlaneInfo {
+                format_modifier,
+                ref plane_info,
+            } => {
+                if plane_info.len() > PLANE_INFO_MAX_COUNT {
+                    return Err(GpuResponseEncodeError::TooManyPlanes(plane_info.len()));
+                }
+                let mut strides = [Le32::default(); PLANE_INFO_MAX_COUNT];
+                let mut offsets = [Le32::default(); PLANE_INFO_MAX_COUNT];
+                for (plane_index, plane) in plane_info.iter().enumerate() {
+                    strides[plane_index] = plane.stride.into();
+                    offsets[plane_index] = plane.offset.into();
+                }
+                let plane_info = virtio_gpu_resp_resource_plane_info {
+                    hdr,
+                    count: Le32::from(plane_info.len() as u32),
+                    padding: 0.into(),
+                    format_modifier: format_modifier.into(),
+                    strides,
+                    offsets,
+                };
+                match resp.get_ref(0) {
+                    Ok(resp_ref) => {
+                        resp_ref.store(plane_info);
+                        size_of_val(&plane_info)
+                    }
+                    _ => {
+                        // In case there is too little room in the response slice to store the
+                        // entire virtio_gpu_resp_resource_plane_info, convert response to a regular
+                        // VIRTIO_GPU_RESP_OK_NODATA and attempt to return that.
+                        resp.get_ref(0)?.store(virtio_gpu_ctrl_hdr {
+                            type_: Le32::from(VIRTIO_GPU_RESP_OK_NODATA),
+                            ..hdr
+                        });
+                        size_of_val(&hdr)
+                    }
+                }
+            }
             _ => {
                 resp.get_ref(0)?.store(hdr);
                 size_of_val(&hdr)
@@ -662,6 +734,7 @@ impl GpuResponse {
             GpuResponse::OkDisplayInfo(_) => VIRTIO_GPU_RESP_OK_DISPLAY_INFO,
             GpuResponse::OkCapsetInfo { .. } => VIRTIO_GPU_RESP_OK_CAPSET_INFO,
             GpuResponse::OkCapset(_) => VIRTIO_GPU_RESP_OK_CAPSET,
+            GpuResponse::OkResourcePlaneInfo { .. } => VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO,
             GpuResponse::ErrUnspec => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrOutOfMemory => VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY,
             GpuResponse::ErrInvalidScanoutId => VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID,
@@ -678,6 +751,7 @@ impl GpuResponse {
             GpuResponse::OkDisplayInfo(_) => true,
             GpuResponse::OkCapsetInfo { .. } => true,
             GpuResponse::OkCapset(_) => true,
+            GpuResponse::OkResourcePlaneInfo { .. } => true,
             _ => false,
         }
     }

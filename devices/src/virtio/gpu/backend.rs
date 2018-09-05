@@ -24,8 +24,9 @@ use super::gpu_renderer::{
 };
 
 use super::super::resource_bridge::*;
-use super::protocol::GpuResponse;
-use super::protocol::{VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2};
+use super::protocol::{
+    GpuResponse, GpuResponsePlaneInfo, VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2,
+};
 
 const DEFAULT_WIDTH: u32 = 1280;
 const DEFAULT_HEIGHT: u32 = 1024;
@@ -798,10 +799,21 @@ impl Backend {
                     let res = self.renderer.import_resource(create_args, &image);
                     match res {
                         Ok(res) => {
+                            let format_modifier = buffer.format_modifier();
+                            let mut plane_info = Vec::with_capacity(buffer.num_planes());
+                            for plane_index in 0..buffer.num_planes() {
+                                plane_info.push(GpuResponsePlaneInfo {
+                                    stride: buffer.plane_stride(plane_index),
+                                    offset: buffer.plane_offset(plane_index),
+                                });
+                            }
                             let mut backed =
                                 BackedBuffer::new_renderer_registered(buffer, res, image);
                             slot.insert(Box::new(backed));
-                            GpuResponse::OkNoData
+                            GpuResponse::OkResourcePlaneInfo {
+                                format_modifier,
+                                plane_info,
+                            }
                         }
                         Err(e) => {
                             error!("failed to import renderer resource: {}", e);
