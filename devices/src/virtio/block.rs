@@ -111,7 +111,7 @@ unsafe impl DataInit for virtio_blk_discard_write_zeroes {}
 pub trait DiskFile: Read + Seek + Write + WriteZeroes {}
 impl<D: Read + Seek + Write + WriteZeroes> DiskFile for D {}
 
-#[derive(PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 enum RequestType {
     In,
     Out,
@@ -199,6 +199,9 @@ enum ExecuteError {
         num_sectors: u32,
         flags: u32,
     },
+    ReadOnly {
+        request_type: RequestType,
+    },
     Unsupported(u32),
 }
 
@@ -212,6 +215,7 @@ impl ExecuteError {
             &ExecuteError::TimerFd(_) => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Write{ .. } => VIRTIO_BLK_S_IOERR,
             &ExecuteError::DiscardWriteZeroes{ .. } => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::ReadOnly{ .. } => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
         }
     }
@@ -359,12 +363,19 @@ impl Request {
 
     fn execute<T: DiskFile>(
         &self,
+        read_only: bool,
         disk: &mut T,
         flush_timer: &mut TimerFd,
         mem: &GuestMemory,
     ) -> result::Result<u32, ExecuteError> {
         // Delay after a write when the file is auto-flushed.
         let flush_delay = Duration::from_secs(60);
+
+        if read_only && self.request_type != RequestType::In {
+            return Err(ExecuteError::ReadOnly {
+                request_type: self.request_type,
+            });
+        }
 
         disk.seek(SeekFrom::Start(self.sector << SECTOR_SHIFT))
             .map_err(|e| ExecuteError::Seek{ ioerr: e, sector: self.sector })?;
@@ -437,6 +448,7 @@ struct Worker<T: DiskFile> {
     queues: Vec<Queue>,
     mem: GuestMemory,
     disk_image: T,
+    read_only: bool,
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
 }
@@ -451,8 +463,12 @@ impl<T: DiskFile> Worker<T> {
             let len;
             match Request::parse(&avail_desc, &self.mem) {
                 Ok(request) => {
-                    let status = match request.execute(&mut self.disk_image, flush_timer, &self.mem)
-                    {
+                    let status = match request.execute(
+                        self.read_only,
+                        &mut self.disk_image,
+                        flush_timer,
+                        &self.mem,
+                    ) {
                         Ok(l) => {
                             len = l;
                             VIRTIO_BLK_S_OK
@@ -682,6 +698,7 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
             };
         self.kill_evt = Some(self_kill_evt);
 
+        let read_only = self.read_only;
         if let Some(disk_image) = self.disk_image.take() {
             let worker_result = thread::Builder::new()
                 .name("virtio_blk".to_string())
@@ -690,6 +707,7 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
                         queues: queues,
                         mem: mem,
                         disk_image: disk_image,
+                        read_only: read_only,
                         interrupt_status: status,
                         interrupt_evt: interrupt_evt,
                     };
