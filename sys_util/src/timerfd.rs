@@ -8,7 +8,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::ptr;
 use std::time::Duration;
 
-use libc::{self, CLOCK_MONOTONIC, TFD_CLOEXEC, timerfd_create, timerfd_settime};
+use libc::{self, CLOCK_MONOTONIC, TFD_CLOEXEC, timerfd_create, timerfd_gettime, timerfd_settime};
 
 use {Result, errno_result};
 
@@ -73,6 +73,20 @@ impl TimerFd {
         Ok(count)
     }
 
+    /// Returns `true` if the timer is currently armed.
+    pub fn is_armed(&self) -> Result<bool> {
+        // Safe because we are zero-initializing a struct with only primitive member fields.
+        let mut spec: libc::itimerspec = unsafe { mem::zeroed() };
+
+        // Safe because timerfd_gettime is trusted to only modify `spec`.
+        let ret = unsafe { timerfd_gettime(self.as_raw_fd(), &mut spec) };
+        if ret < 0 {
+            return errno_result();
+        }
+
+        Ok(spec.it_value.tv_sec != 0 || spec.it_value.tv_nsec != 0)
+    }
+
     /// Disarms the timer.
     pub fn clear(&mut self) -> Result<()> {
         // Safe because we are zero-initializing a struct with only primitive member fields.
@@ -115,10 +129,13 @@ mod tests {
     #[test]
     fn one_shot() {
         let mut tfd = TimerFd::new().expect("failed to create timerfd");
+        assert_eq!(tfd.is_armed().unwrap(), false);
 
         let dur = Duration::from_millis(200);
         let now = Instant::now();
         tfd.reset(dur.clone(), None).expect("failed to arm timer");
+
+        assert_eq!(tfd.is_armed().unwrap(), true);
 
         let count = tfd.wait().expect("unable to wait for timer");
 
