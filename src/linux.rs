@@ -65,6 +65,7 @@ pub enum Error {
     FailedCLOEXECCheck,
     FailedToDupFd,
     InvalidFdPath,
+    InvalidWaylandPath,
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
     OpenKernel(PathBuf, io::Error),
@@ -119,6 +120,9 @@ impl fmt::Display for Error {
             }
             &Error::FailedToDupFd => write!(f, "failed to dup fd from /proc/self/fd"),
             &Error::InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
+            &Error::InvalidWaylandPath => {
+                write!(f, "wayland socket path has no parent or file name")
+            }
             &Error::NetDeviceNew(ref e) => write!(f, "failed to set up virtio networking: {:?}", e),
             &Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
             &Error::OpenKernel(ref p, ref e) => {
@@ -363,7 +367,10 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
     }
 
     if let Some(wayland_socket_path) = cfg.wayland_socket_path.as_ref() {
-        let jailed_wayland_path = Path::new("/wayland-0");
+        let wayland_socket_dir = wayland_socket_path.parent().ok_or(Error::InvalidWaylandPath)?;
+        let wayland_socket_name = wayland_socket_path.file_name().ok_or(Error::InvalidWaylandPath)?;
+        let jailed_wayland_dir = Path::new("/wayland");
+        let jailed_wayland_path = jailed_wayland_dir.join(wayland_socket_name);
 
         let wl_box = Box::new(devices::virtio::Wl::new(if cfg.multiprocess {
                                                            &jailed_wayland_path
@@ -377,16 +384,18 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
             let policy_path: PathBuf = cfg.seccomp_policy_dir.join("wl_device.policy");
             let mut jail = create_base_minijail(empty_root_path, &policy_path)?;
 
-            // Create a tmpfs in the device's root directory so that we can bind mount the
-            // wayland socket into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
+            // Create a tmpfs in the device's root directory so that we can bind mount the wayland
+            // socket directory into it. The size=67108864 is size=64*1024*1024 or size=64MB.
             jail.mount_with_data(Path::new("none"), Path::new("/"), "tmpfs",
                                  (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
                                  "size=67108864")
                 .unwrap();
 
-            // Bind mount the wayland socket into jail's root. This is necessary since each
-            // new wayland context must open() the socket.
-            jail.mount_bind(wayland_socket_path.as_path(), jailed_wayland_path, true)
+            // Bind mount the wayland socket's directory into jail's root. This is necessary since
+            // each new wayland context must open() the socket. If the wayland socket is ever
+            // destroyed and remade in the same host directory, new connections will be possible
+            // without restarting the wayland device.
+            jail.mount_bind(wayland_socket_dir, jailed_wayland_dir, true)
                 .unwrap();
 
             // Set the uid/gid for the jailed process, and give a basic id map. This
