@@ -418,7 +418,7 @@ impl X8664arch {
         let device_addr_start = Self::get_base_dev_pfn(mem_size) * sys_util::pagesize() as u64;
         AddressRanges::new()
            .add_io_addresses(0xc000, 0x10000)
-           .add_mmio_addresses(MMIO_BASE, 0x10000)
+           .add_mmio_addresses(MMIO_BASE, 0x100000)
            .add_device_addresses(device_addr_start, u64::max_value() - device_addr_start)
            .create_allocator(X86_64_IRQ_BASE, gpu_allocation).unwrap()
     }
