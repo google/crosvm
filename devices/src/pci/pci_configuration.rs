@@ -272,14 +272,15 @@ impl PciConfiguration {
                 return None;
         }
 
-        let bar_idx = BAR0_REG + self.num_bars;
+        let this_bar = self.num_bars;
+        let bar_idx = BAR0_REG + this_bar;
 
         self.registers[bar_idx] = addr as u32 & addr_mask | mem_type;
         // The first writable bit represents the size of the region.
         self.writable_bits[bar_idx] = !(size - 1) as u32;
 
         self.num_bars += 1;
-        Some(bar_idx)
+        Some(this_bar)
     }
 
     /// Adds a memory region of `size` at `addr`. Configures the next available BAR register to
