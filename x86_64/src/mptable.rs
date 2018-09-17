@@ -251,7 +251,7 @@ pub fn setup_mptable(mem: &GuestMemory, num_cpus: u8,
         mpc_intsrc.irqtype = mp_irq_source_types_mp_INT as u8;
         mpc_intsrc.irqflag = MP_IRQDIR_DEFAULT as u16;
         mpc_intsrc.srcbus = PCI_BUS_ID;
-        mpc_intsrc.srcbusirq = 1 << 2 | pci_irq.1.to_mask() as u8; // slot <<2 | int A(0)
+        mpc_intsrc.srcbusirq = (pci_irq.0 as u8 + 1) << 2 | pci_irq.1.to_mask() as u8;
         mpc_intsrc.dstapic = ioapicid;
         mpc_intsrc.dstirq = 5 + i as u8;
         mem.write_obj_at_addr(mpc_intsrc, base_mp)

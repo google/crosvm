@@ -157,8 +157,11 @@ pub fn generate_pci_root(devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
             3 => PciInterruptPin::IntD,
             _ => panic!(""), // Obviously not possible, but the compiler is not smart enough.
         };
+        vm.register_irqfd(&irqfd, irq_num)
+            .map_err(DeviceRegistrationError::RegisterIrqfd)?;
+        keep_fds.push(irqfd.as_raw_fd());
         device.assign_irq(irqfd, irq_num, pci_irq_pin);
-        pci_irqs.push((irq_num, pci_irq_pin));
+        pci_irqs.push((dev_idx as u32, pci_irq_pin));
 
         let ranges = device
             .allocate_io_bars(resources)
