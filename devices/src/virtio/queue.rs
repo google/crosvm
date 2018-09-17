@@ -234,7 +234,7 @@ impl Queue {
     pub fn new(max_size: u16) -> Queue {
         Queue {
             max_size: max_size,
-            size: 0,
+            size: max_size,
             ready: false,
             desc_table: GuestAddress(0),
             avail_ring: GuestAddress(0),
