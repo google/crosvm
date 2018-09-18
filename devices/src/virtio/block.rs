@@ -535,6 +535,10 @@ impl<T: DiskFile> Worker<T> {
                             error!("Failed to flush the disk: {:?}", e);
                             break 'poll;
                         }
+                        if let Err(e) = flush_timer.wait() {
+                            error!("Failed to clear flush timer: {:?}", e);
+                            break 'poll;
+                        }
                     }
                     Token::QueueAvailable => {
                         if let Err(e) = queue_evt.read() {
