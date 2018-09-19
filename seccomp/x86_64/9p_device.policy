@@ -52,3 +52,4 @@ utimensat: 1
 ftruncate: 1
 fchown: arg1 == 0xffffffff && arg2 == 0xffffffff
 statfs: 1
+newfstatat: 1

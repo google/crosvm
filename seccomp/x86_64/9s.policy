@@ -58,3 +58,4 @@ ftruncate: 1
 mkdir: 1
 mremap: 1
 rename: 1
+newfstatat: 1

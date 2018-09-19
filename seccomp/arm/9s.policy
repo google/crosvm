@@ -59,3 +59,4 @@ rmdir: 1
 # Calling fchown with -1 as the uid/gid will change the ctime but do nothing else.
 fchown: arg1 == 0xffffffff && arg2 == 0xffffffff
 mremap: 1
+fstatat64: 1
