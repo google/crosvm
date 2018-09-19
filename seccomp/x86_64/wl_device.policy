@@ -31,7 +31,7 @@ eventfd2: 1
 socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
 # arg1 == FIONBIO || arg1 == DMA_BUF_IOCTL_SYNC
 ioctl: arg1 == 0x5421 || arg1 == 0x40086200
-connect: arg2 == 13
+connect: 1
 # Used to communicate with wayland
 recvmsg: 1
 sendmsg: 1
