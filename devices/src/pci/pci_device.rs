@@ -5,6 +5,7 @@
 use byteorder::{ByteOrder, LittleEndian};
 
 use std;
+use std::os::unix::io::RawFd;
 
 use pci::pci_configuration::PciConfiguration;
 use pci::PciInterruptPin;
@@ -23,6 +24,9 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait PciDevice: Send {
+    /// A vector of device-specific file descriptors that must be kept open
+    /// after jailing. Must be called before the process is jailed.
+    fn keep_fds(&self) -> Vec<RawFd>;
     /// Assign a legacy PCI IRQ to this device.
     fn assign_irq(&mut self, _irq_evt: EventFd, _irq_num: u32, _irq_pin: PciInterruptPin) {}
     /// Allocates the needed IO BAR space using the `allocate` function which takes a size and
@@ -80,6 +84,9 @@ impl<T: PciDevice> BusDevice for T {
 }
 
 impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
+    fn keep_fds(&self) -> Vec<RawFd> {
+        (**self).keep_fds()
+    }
     fn assign_irq(&mut self, irq_evt: EventFd, irq_num: u32, irq_pin: PciInterruptPin) {
      (**self).assign_irq(irq_evt, irq_num, irq_pin)
     }

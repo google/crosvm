@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 
 use byteorder::{ByteOrder, LittleEndian};
@@ -19,6 +20,9 @@ struct PciRootConfiguration {
 }
 
 impl PciDevice for PciRootConfiguration {
+    fn keep_fds(&self) -> Vec<RawFd> {
+        Vec::new()
+    }
     fn config_registers(&self) -> &PciConfiguration {
         &self.config
     }

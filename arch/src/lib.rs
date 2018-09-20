@@ -142,7 +142,7 @@ pub fn generate_pci_root(devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
     let mut root = PciRoot::new();
     let mut pci_irqs = Vec::new();
     for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
-        let mut keep_fds = Vec::new();
+        let mut keep_fds = device.keep_fds();
         syslog::push_fds(&mut keep_fds);
 
         let irqfd = EventFd::new().map_err(DeviceRegistrationError::EventFdCreate)?;
