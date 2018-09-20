@@ -626,7 +626,7 @@ fn print_usage() {
 
 fn crosvm_main() -> std::result::Result<(), ()> {
     if let Err(e) = syslog::init() {
-        println!("failed to initiailize syslog: {:?}", e);
+        println!("failed to initialize syslog: {:?}", e);
         return Err(());
     }
 

@@ -55,6 +55,8 @@ fn p9_wire_format_inner(input: DeriveInput) -> Tokens {
             use self::std::io;
             use self::std::result::Result::Ok;
 
+            use super::#name;
+
             #import
 
             impl #wire_format for #name {
@@ -261,6 +263,8 @@ mod tests {
                 extern crate std;
                 use self::std::io;
                 use self::std::result::Result::Ok;
+
+                use super::Niijima_先輩;
 
                 use protocol::WireFormat;
 

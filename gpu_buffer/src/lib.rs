@@ -746,7 +746,7 @@ mod tests {
         assert_eq!(f.bytes_per_pixel(1), None);
         let f = Format::new(b'N', b'V', b'1', b'2');
         assert_eq!(f.bytes_per_pixel(0), Some(1));
-        assert_eq!(f.bytes_per_pixel(1), Some(2));
+        assert_eq!(f.bytes_per_pixel(1), Some(1));
         assert_eq!(f.bytes_per_pixel(2), None);
         let f = Format::new(b'R', b'8', b' ', b' ');
         assert_eq!(f.bytes_per_pixel(0), Some(1));

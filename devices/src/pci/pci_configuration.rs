@@ -332,12 +332,13 @@ impl PciConfiguration {
 
 #[cfg(test)]
 mod tests {
-    use data_model::{DataInit, Le32};
+    use data_model::DataInit;
 
     use super::*;
 
     #[repr(packed)]
     #[derive(Clone, Copy)]
+    #[allow(dead_code)]
     struct TestCap {
         len: u8,
         foo: u8,

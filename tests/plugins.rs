@@ -35,6 +35,16 @@ fn get_target_path() -> PathBuf {
         .ok()
         .map(|mut path| {
                  path.pop();
+                 path
+             })
+        .expect("failed to get crosvm binary directory")
+}
+
+fn get_crosvm_path() -> PathBuf {
+    current_exe()
+        .ok()
+        .map(|mut path| {
+                 path.pop();
                  if path.ends_with("deps") {
                      path.pop();
                  }
@@ -44,8 +54,8 @@ fn get_target_path() -> PathBuf {
 }
 
 fn build_plugin(src: &str) -> RemovePath {
-    let mut out_bin = PathBuf::from("target");
     let libcrosvm_plugin_dir = get_target_path();
+    let mut out_bin = libcrosvm_plugin_dir.clone();
     out_bin.push(thread_rng()
                      .gen_ascii_chars()
                      .take(10)
@@ -77,7 +87,7 @@ fn build_plugin(src: &str) -> RemovePath {
 }
 
 fn run_plugin(bin_path: &Path, with_sandbox: bool) {
-    let mut crosvm_path = get_target_path();
+    let mut crosvm_path = get_crosvm_path();
     crosvm_path.push("crosvm");
     let mut cmd = Command::new(crosvm_path);
     cmd.args(&["run",

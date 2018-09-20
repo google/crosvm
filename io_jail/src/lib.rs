@@ -497,14 +497,12 @@ impl Minijail {
     /// This Function may abort in the child on error because a partially
     /// entered jail isn't recoverable.
     pub unsafe fn fork(&self, inheritable_fds: Option<&[RawFd]>) -> Result<pid_t> {
-        // This test will fail during `cargo test` because the test harness always spawns a test
-        // thread. We will make an exception for that case because the tests for this module should
-        // always be run in a serial fashion using `--test-threads=1`.
-        #[cfg(not(test))]
-        {
-            if !is_single_threaded().map_err(Error::CheckingMultiThreaded)? {
-                return Err(Error::ForkingWhileMultiThreaded);
-            }
+        if !is_single_threaded().map_err(Error::CheckingMultiThreaded)? {
+            // This test will fail during `cargo test` because the test harness always spawns a test
+            // thread. We will make an exception for that case because the tests for this module
+            // should always be run in a serial fashion using `--test-threads=1`.
+            #[cfg(not(test))]
+            return Err(Error::ForkingWhileMultiThreaded);
         }
 
         if let Some(keep_fds) = inheritable_fds {
