@@ -6,14 +6,26 @@
 set -ex
 
 main() {
-    if [ -z "${KOKORO_ARTIFACTS_DIR}" ]; then
-        echo "This script must be run in kokoro"
-        exit 1
-    fi
+  if [ -z "${KOKORO_ARTIFACTS_DIR}" ]; then
+    echo "This script must be run in kokoro"
+    exit 1
+  fi
 
-    local src_root="${KOKORO_ARTIFACTS_DIR}"/git/crosvm
+  local src_root="${KOKORO_ARTIFACTS_DIR}"/git/crosvm
+  local base_image_tarball="${KOKORO_GFILE_DIR}"/crosvm-base.tar.xz
+  local base_image="crosvm-base"
 
-    return 0
+  if [[ "$(docker images -q ${base_image} 2> /dev/null)" == "" ]]; then
+    docker load -i "${base_image_tarball}"
+  fi
+  docker run \
+    --privileged \
+    -e TEST_RUNNER_FLAGS='--format terse' \
+    -v /dev/log:/dev/log \
+    -v "${src_root}":/src:ro \
+    ${base_image}
+
+  return 0
 }
 
 main "$@"
