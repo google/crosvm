@@ -121,6 +121,15 @@ impl PciSubclass for PciSerialBusSubClass {
     }
 }
 
+/// A PCI class programming interface. Each combination of `PciClassCode` and
+/// `PciSubclass` can specify a set of register-level programming interfaces.
+/// This trait is implemented by each programming interface.
+/// It allows use of a trait object to generate configurations.
+pub trait PciProgrammingInterface {
+    /// Convert this programming interface to the value used in the PCI specification.
+    fn get_register_value(&self) -> u8;
+}
+
 /// Types of PCI capabilities.
 pub enum PciCapabilityID {
     ListID = 0,
@@ -169,14 +178,21 @@ impl PciConfiguration {
         device_id: u16,
         class_code: PciClassCode,
         subclass: &PciSubclass,
+        programming_interface: Option<&PciProgrammingInterface>,
         header_type: PciHeaderType,
         subsystem_vendor_id: u16,
         subsystem_id: u16,
     ) -> Self {
         let mut registers = [0u32; NUM_CONFIGURATION_REGISTERS];
         registers[0] = u32::from(device_id) << 16 | u32::from(vendor_id);
+        let pi = if let Some(pi) = programming_interface {
+            pi.get_register_value()
+        } else {
+            0
+        };
         registers[2] = u32::from(class_code.get_register_value()) << 24
-            | u32::from(subclass.get_register_value()) << 16;
+            | u32::from(subclass.get_register_value()) << 16
+            | u32::from(pi) << 8;
         match header_type {
             PciHeaderType::Device => (),
             PciHeaderType::Bridge => registers[3] = 0x0001_0000,
@@ -364,6 +380,7 @@ mod tests {
             0x5678,
             PciClassCode::MultimediaController,
             &PciMultimediaSubclass::AudioController,
+            None,
             PciHeaderType::Device,
             0xABCD,
             0x2468,
@@ -394,5 +411,38 @@ mod tests {
         assert_eq!((cap2_data >> 8) & 0xFF, 0x00); // next capability pointer
         assert_eq!((cap2_data >> 16) & 0xFF, 0x04); // cap2.len
         assert_eq!((cap2_data >> 24) & 0xFF, 0x55); // cap2.foo
+    }
+
+    #[derive(Copy, Clone)]
+    enum TestPI {
+        Test = 0x5a,
+    }
+
+    impl PciProgrammingInterface for TestPI {
+        fn get_register_value(&self) -> u8 {
+            *self as u8
+        }
+    }
+
+    #[test]
+    fn class_code() {
+        let cfg = PciConfiguration::new(
+            0x1234,
+            0x5678,
+            PciClassCode::MultimediaController,
+            &PciMultimediaSubclass::AudioController,
+            Some(&TestPI::Test),
+            PciHeaderType::Device,
+            0xABCD,
+            0x2468,
+        );
+
+        let class_reg = cfg.read_reg(2);
+        let class_code = (class_reg >> 24) & 0xFF;
+        let subclass = (class_reg >> 16) & 0xFF;
+        let prog_if = (class_reg >> 8) & 0xFF;
+        assert_eq!(class_code, 0x04);
+        assert_eq!(subclass, 0x01);
+        assert_eq!(prog_if, 0x5a);
     }
 }
