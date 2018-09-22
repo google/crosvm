@@ -160,6 +160,16 @@ pub enum FallocateMode {
     ZeroRange,
 }
 
+// TODO(dverkamp): Remove this once fallocate64 is available in libc.
+extern {
+    pub fn fallocate64(
+        fd: libc::c_int,
+        mode: libc::c_int,
+        offset: libc::off64_t,
+        len: libc::off64_t
+    ) -> libc::c_int;
+}
+
 /// Safe wrapper for `fallocate()`.
 pub fn fallocate(
     file: &AsRawFd,
@@ -168,16 +178,16 @@ pub fn fallocate(
     offset: u64,
     len: u64
 ) -> Result<()> {
-    let offset = if offset > libc::off_t::max_value() as u64 {
+    let offset = if offset > libc::off64_t::max_value() as u64 {
         return Err(Error::new(libc::EINVAL));
     } else {
-        offset as libc::off_t
+        offset as libc::off64_t
     };
 
-    let len = if len > libc::off_t::max_value() as u64 {
+    let len = if len > libc::off64_t::max_value() as u64 {
         return Err(Error::new(libc::EINVAL));
     } else {
-        len as libc::off_t
+        len as libc::off64_t
     };
 
     let mut mode = match mode {
@@ -191,7 +201,8 @@ pub fn fallocate(
 
     // Safe since we pass in a valid fd and fallocate mode, validate offset and len,
     // and check the return value.
-    let ret = unsafe { libc::fallocate(file.as_raw_fd(), mode, offset, len) };
+    // TODO(dverkamp): Replace this with libc::fallocate64 once it is available.
+    let ret = unsafe { fallocate64(file.as_raw_fd(), mode, offset, len) };
     if ret < 0 {
         errno_result()
     } else {
