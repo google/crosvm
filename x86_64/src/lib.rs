@@ -70,7 +70,7 @@ use std::sync::{Arc, Mutex};
 use arch::{RunnableLinuxVm, VirtioDeviceStub, VmComponents};
 use bootparam::boot_params;
 use bootparam::E820_RAM;
-use devices::PciInterruptPin;
+use devices::{PciConfigIo, PciInterruptPin};
 use sys_util::{EventFd, GuestAddress, GuestMemory};
 use resources::{AddressRanges, SystemAllocator};
 use kvm::*;
@@ -280,7 +280,7 @@ impl arch::LinuxArch for X8664arch {
                                                       &mut resources,
                                                       &mut vm)
             .map_err(Error::CreatePciRoot)?;
-        let pci_bus = Arc::new(Mutex::new(pci));
+        let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
         let (io_bus, stdio_serial) = Self::setup_io_bus(
@@ -429,7 +429,7 @@ impl X8664arch {
     ///
     /// * - `vm` the vm object
     /// * - `exit_evt` - the event fd object which should receive exit events
-    fn setup_io_bus(vm: &mut Vm, exit_evt: EventFd, pci: Option<Arc<Mutex<devices::PciRoot>>>)
+    fn setup_io_bus(vm: &mut Vm, exit_evt: EventFd, pci: Option<Arc<Mutex<devices::PciConfigIo>>>)
                     -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)> {
         struct NoDevice;
         impl devices::BusDevice for NoDevice {}

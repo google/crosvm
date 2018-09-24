@@ -40,8 +40,6 @@ impl PciDevice for PciRootConfiguration {
 pub struct PciRoot {
     /// Bus configuration for the root device.
     root_configuration: PciRootConfiguration,
-    /// Current address to read/write from (0xcf8 register, litte endian).
-    config_address: u32,
     /// Devices attached to this bridge.
     devices: Vec<Arc<Mutex<ProxyDevice>>>,
 }
@@ -62,7 +60,6 @@ impl PciRoot {
                             0,
                             ),
             },
-            config_address: 0,
             devices: Vec::new(),
         }
     }
@@ -72,11 +69,15 @@ impl PciRoot {
         self.devices.push(device);
     }
 
-    fn config_space_read(&self) -> u32 {
-        let (enabled, bus, device, _, register) = parse_config_address(self.config_address);
-
+    pub fn config_space_read(
+        &self,
+        bus: usize,
+        device: usize,
+        _function: usize,
+        register: usize,
+    ) -> u32 {
         // Only support one bus.
-        if !enabled || bus != 0 {
+        if bus != 0 {
             return 0xffff_ffff;
         }
 
@@ -94,15 +95,21 @@ impl PciRoot {
         }
     }
 
-    fn config_space_write(&mut self, offset: u64, data: &[u8]) {
+    pub fn config_space_write(
+        &mut self,
+        bus: usize,
+        device: usize,
+        _function: usize,
+        register: usize,
+        offset: u64,
+        data: &[u8],
+    ) {
         if offset as usize + data.len() > 4 {
             return;
         }
 
-        let (enabled, bus, device, _, register) = parse_config_address(self.config_address);
-
         // Only support one bus.
-        if !enabled || bus != 0 {
+        if bus != 0 {
             return;
         }
 
@@ -118,6 +125,48 @@ impl PciRoot {
                 }
             }
         }
+    }
+
+}
+
+/// Emulates PCI configuration access mechanism #1 (I/O ports 0xcf8 and 0xcfc).
+pub struct PciConfigIo {
+    /// PCI root bridge.
+    pci_root: PciRoot,
+    /// Current address to read/write from (0xcf8 register, litte endian).
+    config_address: u32,
+}
+
+impl PciConfigIo {
+    pub fn new(pci_root: PciRoot) -> Self {
+        PciConfigIo {
+            pci_root,
+            config_address: 0,
+        }
+    }
+
+    fn config_space_read(&self) -> u32 {
+        let enabled = (self.config_address & 0x8000_0000) != 0;
+        if !enabled {
+            return 0xffff_ffff;
+        }
+
+        let (bus, device, function, register) =
+            parse_config_address(self.config_address & !0x8000_0000);
+        self.pci_root
+            .config_space_read(bus, device, function, register)
+    }
+
+    fn config_space_write(&mut self, offset: u64, data: &[u8]) {
+        let enabled = (self.config_address & 0x8000_0000) != 0;
+        if !enabled {
+            return;
+        }
+
+        let (bus, device, function, register) =
+            parse_config_address(self.config_address & !0x8000_0000);
+        self.pci_root
+            .config_space_write(bus, device, function, register, offset, data)
     }
 
     fn set_config_address(&mut self, offset: u64, data: &[u8]) {
@@ -140,7 +189,7 @@ impl PciRoot {
     }
 }
 
-impl BusDevice for PciRoot {
+impl BusDevice for PciConfigIo {
     fn read(&mut self, offset: u64, data: &mut [u8]) {
         // `offset` is relative to 0xcf8
         let value = match offset {
@@ -173,8 +222,8 @@ impl BusDevice for PciRoot {
     }
 }
 
-// Parse the CONFIG_ADDRESS register to a (enabled, bus, device, function, register) tuple.
-fn parse_config_address(config_address: u32) -> (bool, usize, usize, usize, usize) {
+// Parse the CONFIG_ADDRESS register to a (bus, device, function, register) tuple.
+fn parse_config_address(config_address: u32) -> (usize, usize, usize, usize) {
     const BUS_NUMBER_OFFSET: usize = 16;
     const BUS_NUMBER_MASK: u32 = 0x00ff;
     const DEVICE_NUMBER_OFFSET: usize = 11;
@@ -184,7 +233,6 @@ fn parse_config_address(config_address: u32) -> (bool, usize, usize, usize, usiz
     const REGISTER_NUMBER_OFFSET: usize = 2;
     const REGISTER_NUMBER_MASK: u32 = 0x3f;
 
-    let enabled = (config_address & 0x8000_0000) != 0;
     let bus_number = ((config_address >> BUS_NUMBER_OFFSET) & BUS_NUMBER_MASK) as usize;
     let device_number = ((config_address >> DEVICE_NUMBER_OFFSET) & DEVICE_NUMBER_MASK) as usize;
     let function_number =
@@ -193,7 +241,6 @@ fn parse_config_address(config_address: u32) -> (bool, usize, usize, usize, usiz
         ((config_address >> REGISTER_NUMBER_OFFSET) & REGISTER_NUMBER_MASK) as usize;
 
     (
-        enabled,
         bus_number,
         device_number,
         function_number,
