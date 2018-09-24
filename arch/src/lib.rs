@@ -29,7 +29,6 @@ pub type Result<T> = result::Result<T, Box<std::error::Error>>;
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
 /// create a `RunnableLinuxVm`.
 pub struct VmComponents {
-    pub pci_devices: Vec<(Box<PciDevice + 'static>,  Minijail)>,
     pub memory_mb: u64,
     pub vcpu_count: u32,
     pub kernel_image: File,
@@ -67,7 +66,7 @@ pub trait LinuxArch {
     /// * `virtio_devs` - Function to generate a list of virtio devices.
     fn build_vm<F>(components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
         where
-            F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<VirtioDeviceStub>>;
+            F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<(Box<PciDevice + 'static>, Minijail)>>;
 }
 
 /// Errors for device manager.

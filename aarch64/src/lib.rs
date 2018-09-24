@@ -6,6 +6,7 @@ extern crate arch;
 extern crate byteorder;
 extern crate data_model;
 extern crate devices;
+extern crate io_jail;
 extern crate kernel_cmdline;
 extern crate kvm;
 extern crate kvm_sys;
@@ -22,8 +23,9 @@ use std::sync::{Arc, Mutex};
 use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixDatagram;
 
-use arch::{RunnableLinuxVm, VirtioDeviceStub, VmComponents};
-use devices::{Bus, BusError, PciConfigMmio, PciInterruptPin};
+use arch::{RunnableLinuxVm, VmComponents};
+use devices::{Bus, BusError, PciConfigMmio, PciDevice, PciInterruptPin};
+use io_jail::Minijail;
 use sys_util::{EventFd, GuestAddress, GuestMemory};
 use resources::{AddressRanges, SystemAllocator};
 
@@ -193,7 +195,7 @@ pub struct AArch64;
 impl arch::LinuxArch for AArch64 {
     fn build_vm<F>(mut components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
         where
-            F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<VirtioDeviceStub>>
+            F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<(Box<PciDevice + 'static>, Minijail)>>
     {
         let mut resources = Self::get_resource_allocator(components.memory_mb,
                                                          components.wayland_dmabuf);
@@ -216,26 +218,19 @@ impl arch::LinuxArch for AArch64 {
 
         let mut mmio_bus = devices::Bus::new();
 
-        let (pci, pci_irqs) = arch::generate_pci_root(components.pci_devices,
+        let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+
+        let pci_devices = virtio_devs(&mem, &exit_evt)?;
+        let (pci, pci_irqs) = arch::generate_pci_root(pci_devices,
                                                       &mut mmio_bus,
                                                       &mut resources,
                                                       &mut vm)
             .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci)));
 
-        let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
         let (io_bus, stdio_serial) = Self::setup_io_bus()?;
 
-        // Create a list of mmio devices to be added.
-        let mmio_devs = virtio_devs(&mem, &exit_evt)?;
-
         Self::add_arch_devs(&mut vm, &mut mmio_bus)?;
-
-        for stub in mmio_devs {
-            arch::register_mmio(&mut mmio_bus, &mut vm, stub.dev, stub.jail,
-                                &mut resources, &mut cmdline)
-                .map_err(Error::RegisterVsock)?;
-        }
 
         mmio_bus.insert(pci_bus.clone(), AARCH64_PCI_CFG_BASE, AARCH64_PCI_CFG_SIZE, false)
             .map_err(Error::RegisterPci)?;
