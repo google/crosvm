@@ -222,6 +222,56 @@ impl BusDevice for PciConfigIo {
     }
 }
 
+/// Emulates PCI memory-mapped configuration access mechanism.
+pub struct PciConfigMmio {
+    /// PCI root bridge.
+    pci_root: PciRoot,
+}
+
+impl PciConfigMmio {
+    pub fn new(pci_root: PciRoot) -> Self {
+        PciConfigMmio {
+            pci_root,
+        }
+    }
+
+    fn config_space_read(&self, config_address: u32) -> u32 {
+        let (bus, device, function, register) = parse_config_address(config_address);
+        self.pci_root.config_space_read(bus, device, function, register)
+    }
+
+    fn config_space_write(&mut self, config_address: u32, offset: u64, data: &[u8]) {
+        let (bus, device, function, register) = parse_config_address(config_address);
+        self.pci_root.config_space_write(bus, device, function, register, offset, data)
+    }
+}
+
+impl BusDevice for PciConfigMmio {
+    fn read(&mut self, offset: u64, data: &mut [u8]) {
+        // Only allow reads to the register boundary.
+        let start = offset as usize % 4;
+        let end = start + data.len();
+        if end > 4 || offset > u32::max_value() as u64 {
+            for d in data {
+                *d = 0xff;
+            }
+            return;
+        }
+
+        let value = self.config_space_read(offset as u32);
+        for i in start..end {
+            data[i - start] = (value >> (i * 8)) as u8;
+        }
+    }
+
+    fn write(&mut self, offset: u64, data: &[u8]) {
+        if offset > u32::max_value() as u64 {
+            return;
+        }
+        self.config_space_write(offset as u32, offset % 4, data)
+    }
+}
+
 // Parse the CONFIG_ADDRESS register to a (bus, device, function, register) tuple.
 fn parse_config_address(config_address: u32) -> (usize, usize, usize, usize) {
     const BUS_NUMBER_OFFSET: usize = 16;
