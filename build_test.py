@@ -21,7 +21,7 @@ import shutil
 import subprocess
 import sys
 
-ARM_TRIPLE = os.getenv('ARM_TRIPLE', 'armv7a-cros-linux-gnueabi')
+ARM_TRIPLE = os.getenv('ARM_TRIPLE', 'armv7a-cros-linux-gnueabihf')
 AARCH64_TRIPLE = os.getenv('AARCH64_TRIPLE', 'aarch64-cros-linux-gnu')
 X86_64_TRIPLE = os.getenv('X86_64_TRIPLE', 'x86_64-cros-linux-gnu')
 
