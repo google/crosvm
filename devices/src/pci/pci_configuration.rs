@@ -244,11 +244,20 @@ impl PciConfiguration {
 
     /// Writes a byte to `offset`.
     pub fn write_byte(&mut self, offset: usize, value: u8) {
+        self.write_byte_internal(offset, value, true);
+    }
+
+    /// Writes a byte to `offset`, optionally enforcing read-only bits.
+    fn write_byte_internal(&mut self, offset: usize, value: u8, apply_writable_mask: bool) {
         let shift = (offset % 4) * 8;
         let reg_idx = offset / 4;
 
         if let Some(r) = self.registers.get_mut(reg_idx) {
-            let writable_mask = self.writable_bits[reg_idx];
+            let writable_mask = if apply_writable_mask {
+                self.writable_bits[reg_idx]
+            } else {
+                0xffff_ffff
+            };
             let mask = (0xffu32 << shift) & writable_mask;
             let shifted_value = (u32::from(value) << shift) & writable_mask;
             *r = *r & !mask | shifted_value;
@@ -330,11 +339,11 @@ impl PciConfiguration {
             return None;
         }
         self.registers[STATUS_REG] |= STATUS_REG_CAPABILITIES_USED_MASK;
-        self.write_byte(tail_offset, cap_offset as u8);
-        self.write_byte(cap_offset, cap_data.id() as u8);
-        self.write_byte(cap_offset + 1, 0); // Next pointer.
+        self.write_byte_internal(tail_offset, cap_offset as u8, false);
+        self.write_byte_internal(cap_offset, cap_data.id() as u8, false);
+        self.write_byte_internal(cap_offset + 1, 0, false); // Next pointer.
         for (i, byte) in cap_data.bytes().iter().enumerate() {
-            self.write_byte(cap_offset + i + 2, *byte);
+            self.write_byte_internal(cap_offset + i + 2, *byte, false);
         }
         self.last_capability = Some((cap_offset, total_len));
         Some(cap_offset)
