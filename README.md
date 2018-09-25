@@ -74,7 +74,7 @@ inside of a sandbox will run in a jailed child process of crosvm. The
 appropriate minijail seccomp policy files must be present either in
 `/usr/share/policy/crosvm` or in the path specified by the
 `--seccomp-policy-dir` argument. The sandbox can be disabled for testing with
-the '--disable-sandbox` option.
+the `--disable-sandbox` option.
 
 ### Virtio Wayland
 
