@@ -23,7 +23,7 @@ use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixDatagram;
 
 use arch::{RunnableLinuxVm, VirtioDeviceStub, VmComponents};
-use devices::{Bus, PciInterruptPin};
+use devices::{Bus, BusError, PciConfigMmio, PciInterruptPin};
 use sys_util::{EventFd, GuestAddress, GuestMemory};
 use resources::{AddressRanges, SystemAllocator};
 
@@ -98,8 +98,14 @@ const AARCH64_RTC_SIZE: u64 = 0x1000;
 // Which gets mapped to the first SPI interrupt (physical 32).
 const AARCH64_RTC_IRQ: u32  = 0;
 
+// PCI MMIO configuration region base address.
+const AARCH64_PCI_CFG_BASE: u64 = 0x10000;
+// PCI MMIO configuration region size.
+const AARCH64_PCI_CFG_SIZE: u64 = 0x1000000;
 // This is the base address of MMIO devices.
-const AARCH64_MMIO_BASE: u64 = 0x10000;
+const AARCH64_MMIO_BASE: u64 = 0x1010000;
+// Size of the whole MMIO region.
+const AARCH64_MMIO_SIZE: u64 = 0x100000;
 // Each MMIO device gets a 4k page.
 const AARCH64_MMIO_LEN: u64 = 0x1000;
 // Virtio devices start at SPI interrupt number 1
@@ -127,6 +133,8 @@ pub enum Error {
     KernelLoadFailure,
     /// Failure to Create GIC
     CreateGICFailure(sys_util::Error),
+    /// Couldn't register PCI bus.
+    RegisterPci(BusError),
     /// Couldn't register virtio socket.
     RegisterVsock(arch::DeviceRegistrationError),
     /// VCPU Init failed
@@ -151,6 +159,7 @@ impl error::Error for Error {
                 "Kernel cound not be loaded",
             &Error::CreateGICFailure(_) =>
                 "Failure to create GIC",
+            &Error::RegisterPci(_) => "error registering PCI bus",
             &Error::RegisterVsock(_) => "error registering virtual socket device",
             &Error::VCPUInitFailure =>
                 "Failed to initialize VCPU",
@@ -212,6 +221,7 @@ impl arch::LinuxArch for AArch64 {
                                                       &mut resources,
                                                       &mut vm)
             .map_err(Error::CreatePciRoot)?;
+        let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci)));
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
         let (io_bus, stdio_serial) = Self::setup_io_bus()?;
@@ -226,6 +236,9 @@ impl arch::LinuxArch for AArch64 {
                                 &mut resources, &mut cmdline)
                 .map_err(Error::RegisterVsock)?;
         }
+
+        mmio_bus.insert(pci_bus.clone(), AARCH64_PCI_CFG_BASE, AARCH64_PCI_CFG_SIZE, false)
+            .map_err(Error::RegisterPci)?;
 
         for param in components.extra_kernel_params {
             cmdline.insert_str(&param).map_err(Error::Cmdline)?;
@@ -271,10 +284,10 @@ impl AArch64 {
                            mem_size: u64,
                            vcpu_count: u32,
                            cmdline: &CStr,
-                           _pci_irqs: Vec<(u32, PciInterruptPin)>) -> Result<()> {
-        // TODO(dgreid) set up PCI in the device tree.
+                           pci_irqs: Vec<(u32, PciInterruptPin)>) -> Result<()> {
         fdt::create_fdt(AARCH64_FDT_MAX_SIZE as usize,
                         mem,
+                        pci_irqs,
                         vcpu_count,
                         fdt_offset(mem_size),
                         cmdline)?;
@@ -309,7 +322,7 @@ impl AArch64 {
         let device_addr_start = Self::get_base_dev_pfn(mem_size) * sys_util::pagesize() as u64;
         AddressRanges::new()
             .add_device_addresses(device_addr_start, u64::max_value() - device_addr_start)
-            .add_mmio_addresses(AARCH64_MMIO_BASE, 0x10000)
+            .add_mmio_addresses(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
             .create_allocator(AARCH64_IRQ_BASE, gpu_allocation).unwrap()
     }
 

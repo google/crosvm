@@ -9,6 +9,7 @@ use std::fmt;
 use std::ffi::{CString, CStr};
 use std::ptr::null;
 
+use devices::PciInterruptPin;
 use sys_util::{GuestAddress, GuestMemory};
 
 // This is the start of DRAM in the physical address space.
@@ -32,7 +33,10 @@ use AARCH64_SERIAL_SIZE;
 use AARCH64_SERIAL_SPEED;
 
 // These are related to guest virtio devices.
+use AARCH64_PCI_CFG_BASE;
+use AARCH64_PCI_CFG_SIZE;
 use AARCH64_MMIO_BASE;
+use AARCH64_MMIO_SIZE;
 use AARCH64_MMIO_LEN;
 use AARCH64_IRQ_BASE;
 
@@ -373,6 +377,73 @@ fn create_io_nodes(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
     Ok(())
 }
 
+fn create_pci_nodes(
+    fdt: &mut Vec<u8>,
+    pci_irqs: Vec<(u32, PciInterruptPin)>,
+) -> Result<(), Box<Error>> {
+    // Add devicetree nodes describing a PCI generic host controller.
+    // See Documentation/devicetree/bindings/pci/host-generic-pci.txt in the kernel
+    // and "PCI Bus Binding to IEEE Std 1275-1994".
+    let ranges = generate_prop32(&[
+        // bus address (ss = 01: 32-bit memory space)
+        0x2000000, (AARCH64_MMIO_BASE >> 32) as u32, AARCH64_MMIO_BASE as u32,
+        // CPU address
+        (AARCH64_MMIO_BASE >> 32) as u32, AARCH64_MMIO_BASE as u32,
+        // size
+        (AARCH64_MMIO_SIZE >> 32) as u32, AARCH64_MMIO_SIZE as u32]);
+    let bus_range = generate_prop32(&[0, 0]); // Only bus 0
+    let reg = generate_prop64(&[AARCH64_PCI_CFG_BASE, AARCH64_PCI_CFG_SIZE]);
+
+    let mut interrupts: Vec<u32> = Vec::new();
+    let mut masks: Vec<u32> = Vec::new();
+
+    for (i, pci_irq) in pci_irqs.iter().enumerate() {
+        // PCI_DEVICE(3)
+        interrupts.push((pci_irq.0 + 1) << 11);
+        interrupts.push(0);
+        interrupts.push(0);
+
+        // INT#(1)
+        interrupts.push(pci_irq.1.to_mask() + 1);
+
+        // CONTROLLER(PHANDLE)
+        interrupts.push(PHANDLE_GIC);
+        interrupts.push(0);
+        interrupts.push(0);
+
+        // CONTROLLER_DATA(3)
+        interrupts.push(GIC_FDT_IRQ_TYPE_SPI);
+        interrupts.push(AARCH64_IRQ_BASE + i as u32);
+        interrupts.push(IRQ_TYPE_EDGE_RISING);
+
+        // PCI_DEVICE(3)
+        masks.push(0xf800); // bits 11..15 (device)
+        masks.push(0);
+        masks.push(0);
+
+        // INT#(1)
+        masks.push(0x7); // allow INTA#-INTD# (1 | 2 | 3 | 4)
+    }
+
+    let interrupt_map = generate_prop32(&interrupts);
+    let interrupt_map_mask = generate_prop32(&masks);
+
+    begin_node(fdt, "pci")?;
+    property_string(fdt, "compatible", "pci-host-cam-generic")?;
+    property_string(fdt, "device_type", "pci")?;
+    property(fdt, "ranges", &ranges)?;
+    property(fdt, "bus-range", &bus_range)?;
+    property_u32(fdt, "#address-cells", 3)?;
+    property_u32(fdt, "#size-cells", 2)?;
+    property(fdt, "reg", &reg)?;
+    property_u32(fdt, "#interrupt-cells", 1)?;
+    property(fdt, "interrupt-map", &interrupt_map)?;
+    property(fdt, "interrupt-map-mask", &interrupt_map_mask)?;
+    end_node(fdt)?;
+
+    Ok(())
+}
+
 fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
     // the kernel driver for pl030 really really wants a clock node
     // associated with an AMBA device or it will fail to probe, so we
@@ -409,11 +480,13 @@ fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
 ///
 /// * `fdt_max_size` - The amount of space reserved for the device tree
 /// * `guest_mem` - The guest memory object
+/// * `pci_irqs` - List of PCI device number to PCI interrupt pin mappings
 /// * `num_cpus` - Number of virtual CPUs the guest will have
 /// * `fdt_load_offset` - The offset into physical memory for the device tree
 /// * `cmdline` - The kernel commandline
 pub fn create_fdt(fdt_max_size: usize,
                   guest_mem: &GuestMemory,
+                  pci_irqs: Vec<(u32, PciInterruptPin)>,
                   num_cpus: u32,
                   fdt_load_offset: u64,
                   cmdline: &CStr) -> Result<(), Box<Error>> {
@@ -446,7 +519,12 @@ pub fn create_fdt(fdt_max_size: usize,
     create_timer_node(&mut fdt, num_cpus)?;
     create_serial_node(&mut fdt)?;
     create_psci_node(&mut fdt)?;
-    create_io_nodes(&mut fdt)?;
+    // TODO(dverkamp): remove create_io_nodes() once the PCI conversion is complete
+    if !pci_irqs.is_empty() {
+        create_pci_nodes(&mut fdt, pci_irqs)?;
+    } else {
+        create_io_nodes(&mut fdt)?;
+    }
     create_rtc_node(&mut fdt)?;
     // End giant node
     end_node(&mut fdt)?;
