@@ -24,6 +24,7 @@ gpu_buffer = { path = "gpu_buffer", optional = true }
 io_jail = { path = "io_jail" }
 kvm = { path = "kvm" }
 kvm_sys = { path = "kvm_sys" }
+msg_socket = { path = "msg_socket" }
 sys_util = { path = "sys_util" }
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
