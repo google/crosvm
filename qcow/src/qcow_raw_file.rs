@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::fs::File;
-use std::io::{self, Seek, SeekFrom};
+use std::io::{self, BufWriter, Seek, SeekFrom};
 use std::mem::size_of;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
@@ -38,11 +38,13 @@ impl QcowRawFile {
         count: u64,
         mask: Option<u64>,
     ) -> io::Result<Vec<u64>> {
-        let mut table = Vec::with_capacity(count as usize);
+        let mut table = vec![0; count as usize];
         self.file.seek(SeekFrom::Start(offset))?;
-        let mask = mask.unwrap_or(0xffff_ffff_ffff_ffff);
-        for _ in 0..count {
-            table.push(self.file.read_u64::<BigEndian>()? & mask);
+        self.file.read_u64_into::<BigEndian>(&mut table)?;
+        if let Some(m) = mask {
+            for ptr in table.iter_mut() {
+                *ptr &= m;
+            }
         }
         Ok(table)
     }
@@ -64,13 +66,14 @@ impl QcowRawFile {
         non_zero_flags: u64,
     ) -> io::Result<()> {
         self.file.seek(SeekFrom::Start(offset))?;
+        let mut buffer = BufWriter::new(&self.file);
         for addr in table {
             let val = if *addr == 0 {
                 0
             } else {
                 *addr | non_zero_flags
             };
-            self.file.write_u64::<BigEndian>(val)?;
+            buffer.write_u64::<BigEndian>(val)?;
         }
         Ok(())
     }
@@ -79,19 +82,18 @@ impl QcowRawFile {
     /// Always returns a cluster's worth of data.
     pub fn read_refcount_block(&mut self, offset: u64) -> io::Result<Vec<u16>> {
         let count = self.cluster_size / size_of::<u16>() as u64;
-        let mut table = Vec::with_capacity(count as usize);
+        let mut table = vec![0; count as usize];
         self.file.seek(SeekFrom::Start(offset))?;
-        for _ in 0..count {
-            table.push(self.file.read_u16::<BigEndian>()?);
-        }
+        self.file.read_u16_into::<BigEndian>(&mut table)?;
         Ok(table)
     }
 
     /// Writes a refcount block to the file.
     pub fn write_refcount_block(&mut self, offset: u64, table: &[u16]) -> io::Result<()> {
         self.file.seek(SeekFrom::Start(offset))?;
+        let mut buffer = BufWriter::new(&self.file);
         for count in table {
-            self.file.write_u16::<BigEndian>(*count)?;
+            buffer.write_u16::<BigEndian>(*count)?;
         }
         Ok(())
     }
