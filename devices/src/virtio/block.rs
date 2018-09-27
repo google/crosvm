@@ -174,7 +174,6 @@ fn discard_write_zeroes_segment(
 #[derive(Debug)]
 enum ExecuteError {
     /// Error arming the flush timer.
-    ArmingTimer(SysError),
     Flush(io::Error),
     Read {
         addr: GuestAddress,
@@ -208,7 +207,6 @@ enum ExecuteError {
 impl ExecuteError {
     fn status(&self) -> u8 {
         match self {
-            &ExecuteError::ArmingTimer(_) => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Read{ .. } => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Seek{ .. } => VIRTIO_BLK_S_IOERR,
@@ -366,6 +364,7 @@ impl Request {
         read_only: bool,
         disk: &mut T,
         flush_timer: &mut TimerFd,
+        flush_timer_armed: &mut bool,
         mem: &GuestMemory,
     ) -> result::Result<u32, ExecuteError> {
         // Delay after a write when the file is auto-flushed.
@@ -396,10 +395,11 @@ impl Request {
                         sector: self.sector,
                         guestmemerr: e,
                     })?;
-                if !flush_timer.is_armed().map_err(ExecuteError::ArmingTimer)? {
+                if !*flush_timer_armed {
                     flush_timer
                         .reset(flush_delay, None)
                         .map_err(ExecuteError::TimerFd)?;
+                    *flush_timer_armed = true;
                 }
             }
             RequestType::Discard | RequestType::WriteZeroes => {
@@ -437,6 +437,7 @@ impl Request {
             RequestType::Flush => {
                 disk.flush().map_err(ExecuteError::Flush)?;
                 flush_timer.clear().map_err(ExecuteError::TimerFd)?;
+                *flush_timer_armed = false;
             }
             RequestType::Unsupported(t) => return Err(ExecuteError::Unsupported(t)),
         };
@@ -454,7 +455,12 @@ struct Worker<T: DiskFile> {
 }
 
 impl<T: DiskFile> Worker<T> {
-    fn process_queue(&mut self, queue_index: usize, flush_timer: &mut TimerFd) -> bool {
+    fn process_queue(
+        &mut self,
+        queue_index: usize,
+        flush_timer: &mut TimerFd,
+        flush_timer_armed: &mut bool,
+    ) -> bool {
         let queue = &mut self.queues[queue_index];
 
         let mut used_desc_heads = [(0, 0); QUEUE_SIZE as usize];
@@ -467,6 +473,7 @@ impl<T: DiskFile> Worker<T> {
                         self.read_only,
                         &mut self.disk_image,
                         flush_timer,
+                        flush_timer_armed,
                         &self.mem,
                     ) {
                         Ok(l) => {
@@ -521,6 +528,7 @@ impl<T: DiskFile> Worker<T> {
                 return;
             }
         };
+        let mut flush_timer_armed = false;
 
         let poll_ctx: PollContext<Token> =
             match PollContext::new()
@@ -561,7 +569,8 @@ impl<T: DiskFile> Worker<T> {
                             error!("failed reading queue EventFd: {:?}", e);
                             break 'poll;
                         }
-                        needs_interrupt |= self.process_queue(0, &mut flush_timer);
+                        needs_interrupt |=
+                            self.process_queue(0, &mut flush_timer, &mut flush_timer_armed);
                     }
                     Token::Kill => break 'poll,
                 }
