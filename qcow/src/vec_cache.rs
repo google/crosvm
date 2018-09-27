@@ -6,6 +6,7 @@ use std::collections::hash_map::IterMut;
 use std::collections::HashMap;
 use std::io;
 use std::ops::{Index, IndexMut};
+use std::slice::SliceIndex;
 
 /// Trait that allows for checking if an implementor is dirty. Useful for types that are cached so
 /// it can be checked if they need to be committed to disk.
@@ -36,6 +37,13 @@ impl<T: 'static + Copy + Default> VecCache<T> {
             vec: vec.into_boxed_slice(),
             dirty: false,
         }
+    }
+
+    pub fn get<I>(&self, index: I) -> Option<&<I as SliceIndex<[T]>>::Output>
+    where
+        I: SliceIndex<[T]>,
+    {
+        self.vec.get(index)
     }
 
     /// Gets a reference to the underlying vector.

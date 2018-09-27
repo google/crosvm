@@ -257,7 +257,7 @@ fn max_refcount_clusters(refcount_order: u32, cluster_size: u32, num_clusters: u
 pub struct QcowFile {
     raw_file: QcowRawFile,
     header: QcowHeader,
-    l1_table: Vec<u64>,
+    l1_table: VecCache<u64>,
     l2_entries: u64,
     l2_cache: CacheMap<VecCache<u64>>,
     refcounts: RefCount,
@@ -316,13 +316,13 @@ impl QcowFile {
         let l2_size = cluster_size / size_of::<u64>() as u64;
         let num_clusters = div_round_up_u64(header.size, u64::from(cluster_size));
         let num_l2_clusters = div_round_up_u64(num_clusters, l2_size);
-        let l1_table = raw_file
+        let l1_table = VecCache::from_vec(raw_file
             .read_pointer_table(
                 header.l1_table_offset,
                 num_l2_clusters,
                 Some(L1_TABLE_OFFSET_MASK),
             )
-            .map_err(Error::ReadingHeader)?;
+            .map_err(Error::ReadingHeader)?);
 
         let num_clusters = div_round_up_u64(header.size, u64::from(cluster_size)) as u32;
         let refcount_clusters =
@@ -396,7 +396,7 @@ impl QcowFile {
 
     /// Returns the L1 lookup table for this file. This is only useful for debugging.
     pub fn l1_table(&self) -> &[u64] {
-        &self.l1_table
+        &self.l1_table.get_values()
     }
 
     /// Returns an L2_table of cluster addresses, only used for debugging.
@@ -414,7 +414,7 @@ impl QcowFile {
                 Self::read_l2_cluster(&mut self.raw_file, l2_addr_disk)
                     .map_err(Error::ReadingPointers)?,
             );
-            let l1_table = &mut self.l1_table;
+            let l1_table = &self.l1_table;
             let raw_file = &mut self.raw_file;
             self.l2_cache
                 .insert(l1_index, table, |index, evicted| {
@@ -529,7 +529,7 @@ impl QcowFile {
             let table =
                 VecCache::from_vec(Self::read_l2_cluster(&mut self.raw_file, l2_addr_disk)?);
 
-            let l1_table = &mut self.l1_table;
+            let l1_table = &self.l1_table;
             let raw_file = &mut self.raw_file;
             self.l2_cache.insert(l1_index, table, |index, evicted| {
                 raw_file.write_pointer_table(
@@ -577,7 +577,7 @@ impl QcowFile {
             } else {
                 VecCache::from_vec(Self::read_l2_cluster(&mut self.raw_file, l2_addr_disk)?)
             };
-            let l1_table = &mut self.l1_table;
+            let l1_table = &self.l1_table;
             let raw_file = &mut self.raw_file;
             self.l2_cache.insert(l1_index, l2_table, |index, evicted| {
                 raw_file.write_pointer_table(
@@ -690,7 +690,7 @@ impl QcowFile {
             // Not in the cache.
             let table =
                 VecCache::from_vec(Self::read_l2_cluster(&mut self.raw_file, l2_addr_disk)?);
-            let l1_table = &mut self.l1_table;
+            let l1_table = &self.l1_table;
             let raw_file = &mut self.raw_file;
             self.l2_cache.insert(l1_index, table, |index, evicted| {
                 raw_file.write_pointer_table(
@@ -826,10 +826,17 @@ impl QcowFile {
 
         // Push L1 table and refcount table last as all the clusters they point to are now
         // guaranteed to be valid.
-        self.raw_file
-            .write_pointer_table(self.header.l1_table_offset, &self.l1_table, 0)?;
-        self.refcounts.flush_table(&mut self.raw_file)?;
-        self.raw_file.file_mut().sync_data()?;
+        let mut sync_required = false;
+        if self.l1_table.dirty() {
+            self.raw_file
+                .write_pointer_table(self.header.l1_table_offset, &self.l1_table.get_values(), 0)?;
+            self.l1_table.mark_clean();
+            sync_required = true;
+        }
+        sync_required |= self.refcounts.flush_table(&mut self.raw_file)?;
+        if sync_required {
+            self.raw_file.file_mut().sync_data()?;
+        }
         Ok(())
     }
 }

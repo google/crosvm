@@ -29,7 +29,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Represents the refcount entries for an open qcow file.
 #[derive(Debug)]
 pub struct RefCount {
-    ref_table: Vec<u64>,
+    ref_table: VecCache<u64>,
     refcount_table_offset: u64,
     refblock_cache: CacheMap<VecCache<u16>>,
     refcount_block_entries: u64, // number of refcounts in a cluster.
@@ -48,8 +48,11 @@ impl RefCount {
         refcount_block_entries: u64,
         cluster_size: u64,
     ) -> io::Result<RefCount> {
-        let ref_table =
-            raw_file.read_pointer_table(refcount_table_offset, refcount_table_entries, None)?;
+        let ref_table = VecCache::from_vec(raw_file.read_pointer_table(
+            refcount_table_offset,
+            refcount_table_entries,
+            None,
+        )?);
         Ok(RefCount {
             ref_table,
             refcount_table_offset,
@@ -134,8 +137,19 @@ impl RefCount {
     }
 
     /// Flush the refcount table that keeps the address of the refcounts blocks.
-    pub fn flush_table(&mut self, raw_file: &mut QcowRawFile) -> io::Result<()> {
-        raw_file.write_pointer_table(self.refcount_table_offset, &self.ref_table, 0)
+    /// Returns true if the table changed since the previous `flush_table()` call.
+    pub fn flush_table(&mut self, raw_file: &mut QcowRawFile) -> io::Result<bool> {
+        if self.ref_table.dirty() {
+            raw_file.write_pointer_table(
+                self.refcount_table_offset,
+                &self.ref_table.get_values(),
+                0,
+            )?;
+            self.ref_table.mark_clean();
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Gets the refcount for a cluster with the given address.
@@ -167,7 +181,7 @@ impl RefCount {
 
     /// Returns the refcount table for this file. This is only useful for debugging.
     pub fn ref_table(&self) -> &[u64] {
-        &self.ref_table
+        &self.ref_table.get_values()
     }
 
     /// Returns the refcounts stored in the given block.
