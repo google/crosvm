@@ -17,9 +17,9 @@ pub trait WriteZeroes {
 
 impl WriteZeroes for File {
     fn write_zeroes(&mut self, length: usize) -> io::Result<usize> {
-        // Try to use fallocate(FALLOC_FL_ZERO_RANGE) first.
+        // Try to use fallocate(FALLOC_FL_PUNCH_HOLE) first.
         let offset = self.seek(SeekFrom::Current(0))?;
-        match fallocate(self, FallocateMode::ZeroRange, false, offset, length as u64) {
+        match fallocate(self, FallocateMode::PunchHole, true, offset, length as u64) {
             Ok(()) => {
                 // Advance the seek cursor as if we had done a real write().
                 self.seek(SeekFrom::Current(length as i64))?;
