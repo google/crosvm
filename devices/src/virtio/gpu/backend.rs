@@ -23,6 +23,7 @@ use super::gpu_renderer::{Box3, Renderer, Context as RendererContext,
                           format_fourcc as renderer_fourcc};
 
 use super::protocol::GpuResponse;
+use super::protocol::{VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2};
 
 const DEFAULT_WIDTH: u32 = 1280;
 const DEFAULT_HEIGHT: u32 = 1024;
@@ -595,14 +596,13 @@ impl Backend {
 
     /// Gets the renderer's capset information associated with `index`.
     pub fn get_capset_info(&self, index: u32) -> GpuResponse {
-        match index {
-            0 => {
-                let id = 1; // VIRTIO_GPU_CAPSET_VIRGL
-                let (version, size) = self.renderer.get_cap_set_info(id);
-                GpuResponse::OkCapsetInfo { id, version, size }
-            }
-            _ => GpuResponse::ErrInvalidParameter,
-        }
+        let id = match index {
+            0 => VIRTIO_GPU_CAPSET_VIRGL,
+            1 => VIRTIO_GPU_CAPSET_VIRGL2,
+            _ => return GpuResponse::ErrInvalidParameter,
+        };
+        let (version, size) = self.renderer.get_cap_set_info(id);
+        GpuResponse::OkCapsetInfo { id, version, size }
     }
 
     /// Gets the capset of `version` associated with `id`.

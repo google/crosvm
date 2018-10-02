@@ -369,7 +369,8 @@ pub struct virtio_gpu_cmd_submit {
 
 unsafe impl DataInit for virtio_gpu_cmd_submit {}
 
-const VIRTIO_GPU_CAPSET_VIRGL: u32 = 1;
+pub const VIRTIO_GPU_CAPSET_VIRGL: u32 = 1;
+pub const VIRTIO_GPU_CAPSET_VIRGL2: u32 = 2;
 
 /* VIRTIO_GPU_CMD_GET_CAPSET_INFO */
 #[derive(Copy, Clone, Debug)]

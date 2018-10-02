@@ -610,7 +610,7 @@ impl Gpu {
             events_read: Le32::from(events_read),
             events_clear: Le32::from(0),
             num_scanouts: Le32::from(1),
-            num_capsets: Le32::from(1),
+            num_capsets: Le32::from(2),
         }
     }
 }
