@@ -349,7 +349,8 @@ impl PciDevice for VirtioPciDevice {
             }
             o if ISR_CONFIG_BAR_OFFSET <= o && o < ISR_CONFIG_BAR_OFFSET + ISR_CONFIG_SIZE => {
                 if let Some(v) = data.get_mut(0) {
-                    *v = self.interrupt_status.load(Ordering::SeqCst) as u8;
+                    // Reading this register resets it to 0.
+                    *v = self.interrupt_status.swap(0, Ordering::SeqCst) as u8;
                 }
             }
             o if DEVICE_CONFIG_BAR_OFFSET <= o
