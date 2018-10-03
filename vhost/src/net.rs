@@ -93,8 +93,8 @@ impl<T> AsRawFd for Net<T> {
 
 pub mod fakes {
     use super::*;
-    use std::fs::OpenOptions;
     use std::fs::remove_file;
+    use std::fs::OpenOptions;
 
     const TMP_FILE: &str = "/tmp/crosvm_vhost_test_file";
 

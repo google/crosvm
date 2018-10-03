@@ -4,7 +4,7 @@
 
 //! Handles routing to devices in an address space.
 
-use std::cmp::{Ord, PartialOrd, PartialEq, Ordering};
+use std::cmp::{Ord, Ordering, PartialEq, PartialOrd};
 use std::collections::btree_map::BTreeMap;
 use std::result;
 use std::sync::{Arc, Mutex};
@@ -25,7 +25,9 @@ pub trait BusDevice: Send {
     fn config_register_write(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {}
     /// Gets a register from the configuration space. Only used by PCI.
     /// * `reg_idx` - The index of the config register to read.
-    fn config_register_read(&self, reg_idx: usize) -> u32 { 0 }
+    fn config_register_read(&self, reg_idx: usize) -> u32 {
+        0
+    }
 }
 
 #[derive(Debug)]
@@ -93,13 +95,22 @@ pub struct Bus {
 impl Bus {
     /// Constructs an a bus with an empty address space.
     pub fn new() -> Bus {
-        Bus { devices: BTreeMap::new() }
+        Bus {
+            devices: BTreeMap::new(),
+        }
     }
 
     fn first_before(&self, addr: u64) -> Option<(BusRange, &Mutex<BusDevice>)> {
-        let(range, dev) =  self.devices.range(..=BusRange {base:addr, len:1, full_addr: false})
-                                       .rev()
-                                       .next()?;
+        let (range, dev) = self
+            .devices
+            .range(
+                ..=BusRange {
+                    base: addr,
+                    len: 1,
+                    full_addr: false,
+                },
+            ).rev()
+            .next()?;
         Some((*range, dev))
     }
 
@@ -118,21 +129,37 @@ impl Bus {
     }
 
     /// Puts the given device at the given address space.
-    pub fn insert(&mut self, device: Arc<Mutex<BusDevice>>, base: u64, len: u64, full_addr: bool)
-        -> Result<()>
-    {
+    pub fn insert(
+        &mut self,
+        device: Arc<Mutex<BusDevice>>,
+        base: u64,
+        len: u64,
+        full_addr: bool,
+    ) -> Result<()> {
         if len == 0 {
             return Err(Error::Overlap);
         }
 
         // Reject all cases where the new device's range overlaps with an existing device.
-        if self.devices.iter().any(|(range, _dev)| range.overlaps(base, len)) {
+        if self
+            .devices
+            .iter()
+            .any(|(range, _dev)| range.overlaps(base, len))
+        {
             return Err(Error::Overlap);
         }
 
-        if self.devices
-               .insert(BusRange{base, len, full_addr}, device)
-               .is_some() {
+        if self
+            .devices
+            .insert(
+                BusRange {
+                    base,
+                    len,
+                    full_addr,
+                },
+                device,
+            ).is_some()
+        {
             return Err(Error::Overlap);
         }
 
@@ -269,7 +296,11 @@ mod tests {
 
     #[test]
     fn bus_range_contains() {
-        let a = BusRange { base: 0x1000, len: 0x400, full_addr: false };
+        let a = BusRange {
+            base: 0x1000,
+            len: 0x400,
+            full_addr: false,
+        };
         assert!(a.contains(0x1000));
         assert!(a.contains(0x13ff));
         assert!(!a.contains(0xfff));
@@ -279,7 +310,11 @@ mod tests {
 
     #[test]
     fn bus_range_overlap() {
-        let a = BusRange { base: 0x1000, len: 0x400, full_addr: false };
+        let a = BusRange {
+            base: 0x1000,
+            len: 0x400,
+            full_addr: false,
+        };
         assert!(a.overlaps(0x1000, 0x400));
         assert!(a.overlaps(0xf00, 0x400));
         assert!(a.overlaps(0x1000, 0x01));

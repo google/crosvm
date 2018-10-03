@@ -16,8 +16,8 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
 use std::ptr::null_mut;
 
-use data_model::{VolatileSlice, VolatileMemory};
-use sys_util::{Error as SysError, SharedMemory, MemoryMapping, round_up_to_page_size};
+use data_model::{VolatileMemory, VolatileSlice};
+use sys_util::{round_up_to_page_size, Error as SysError, MemoryMapping, SharedMemory};
 
 use dwl::*;
 
@@ -127,18 +127,18 @@ impl GpuDisplay {
             },
             None => return Err(GpuDisplayError::InvalidPath),
         };
-        let setup_success = unsafe { dwl_context_setup(ctx.0, cstr_path.as_ptr() ) };
+        let setup_success = unsafe { dwl_context_setup(ctx.0, cstr_path.as_ptr()) };
         if !setup_success {
             return Err(GpuDisplayError::Connect);
         }
 
         Ok(GpuDisplay {
-               ctx,
-               dmabufs: Default::default(),
-               dmabuf_next_id: 0,
-               surfaces: Default::default(),
-               surface_next_id: 0,
-           })
+            ctx,
+            dmabufs: Default::default(),
+            dmabuf_next_id: 0,
+            surfaces: Default::default(),
+            surface_next_id: 0,
+        })
     }
 
     fn ctx(&self) -> *mut dwl_context {
@@ -150,28 +150,31 @@ impl GpuDisplay {
     }
 
     /// Imports a dmabuf to the compositor for use as a surface buffer and returns a handle to it.
-    pub fn import_dmabuf(&mut self,
-                         fd: RawFd,
-                         offset: u32,
-                         stride: u32,
-                         modifiers: u64,
-                         width: u32,
-                         height: u32,
-                         fourcc: u32)
-                         -> Result<u32, GpuDisplayError> {
+    pub fn import_dmabuf(
+        &mut self,
+        fd: RawFd,
+        offset: u32,
+        stride: u32,
+        modifiers: u64,
+        width: u32,
+        height: u32,
+        fourcc: u32,
+    ) -> Result<u32, GpuDisplayError> {
         // Safe given that the context pointer is valid. Any other invalid parameters would be
         // rejected by dwl_context_dmabuf_new safely. We check that the resulting dmabuf is valid
         // before filing it away.
         let dmabuf = DwlDmabuf(unsafe {
-                                   dwl_context_dmabuf_new(self.ctx(),
-                                                          fd,
-                                                          offset,
-                                                          stride,
-                                                          modifiers,
-                                                          width,
-                                                          height,
-                                                          fourcc)
-                               });
+            dwl_context_dmabuf_new(
+                self.ctx(),
+                fd,
+                offset,
+                stride,
+                modifiers,
+                width,
+                height,
+                fourcc,
+            )
+        });
         if dmabuf.0.is_null() {
             return Err(GpuDisplayError::FailedImport);
         }
@@ -198,26 +201,25 @@ impl GpuDisplay {
 
     /// Creates a surface on the the compositor as either a top level window, or child of another
     /// surface, returning a handle to the new surface.
-    pub fn create_surface(&mut self,
-                          parent_surface_id: Option<u32>,
-                          width: u32,
-                          height: u32)
-                          -> Result<u32, GpuDisplayError> {
+    pub fn create_surface(
+        &mut self,
+        parent_surface_id: Option<u32>,
+        width: u32,
+        height: u32,
+    ) -> Result<u32, GpuDisplayError> {
         let parent_ptr = match parent_surface_id {
-            Some(id) => {
-                match self.get_surface(id).map(|p| p.surface()) {
-                    Some(ptr) => ptr,
-                    None => return Err(GpuDisplayError::InvalidSurfaceId),
-                }
-            }
+            Some(id) => match self.get_surface(id).map(|p| p.surface()) {
+                Some(ptr) => ptr,
+                None => return Err(GpuDisplayError::InvalidSurfaceId),
+            },
             None => null_mut(),
         };
         let row_size = width * BYTES_PER_PIXEL;
         let fb_size = row_size * height;
         let buffer_size = round_up_to_page_size(fb_size as usize * BUFFER_COUNT);
-        let mut buffer_shm =
-            SharedMemory::new(Some(CStr::from_bytes_with_nul(b"GpuDisplaySurface\0").unwrap()))
-                .map_err(GpuDisplayError::CreateShm)?;
+        let mut buffer_shm = SharedMemory::new(Some(
+            CStr::from_bytes_with_nul(b"GpuDisplaySurface\0").unwrap(),
+        )).map_err(GpuDisplayError::CreateShm)?;
         buffer_shm
             .set_size(buffer_size as u64)
             .map_err(GpuDisplayError::SetSize)?;
@@ -226,29 +228,32 @@ impl GpuDisplay {
         // Safe because only a valid context, parent pointer (if not  None), and buffer FD are used.
         // The returned surface is checked for validity before being filed away.
         let surface = DwlSurface(unsafe {
-                                     dwl_context_surface_new(self.ctx(),
-                                                             parent_ptr,
-                                                             buffer_shm.as_raw_fd(),
-                                                             buffer_size,
-                                                             fb_size as usize,
-                                                             width,
-                                                             height,
-                                                             row_size)
-                                 });
+            dwl_context_surface_new(
+                self.ctx(),
+                parent_ptr,
+                buffer_shm.as_raw_fd(),
+                buffer_size,
+                fb_size as usize,
+                width,
+                height,
+                row_size,
+            )
+        });
 
         if surface.0.is_null() {
             return Err(GpuDisplayError::CreateSurface);
         }
 
         let next_id = self.surface_next_id;
-        self.surfaces
-            .insert(next_id,
-                    GpuDisplaySurface {
-                        surface,
-                        buffer_size: fb_size as usize,
-                        buffer_index: Cell::new(0),
-                        buffer_mem,
-                    });
+        self.surfaces.insert(
+            next_id,
+            GpuDisplaySurface {
+                surface,
+                buffer_size: fb_size as usize,
+                buffer_index: Cell::new(0),
+                buffer_mem,
+            },
+        );
 
         self.surface_next_id += 1;
         Ok(next_id)
@@ -265,9 +270,10 @@ impl GpuDisplay {
         let buffer_index = (surface.buffer_index.get() + 1) % BUFFER_COUNT;
         surface
             .buffer_mem
-            .get_slice((buffer_index * surface.buffer_size) as u64,
-                       surface.buffer_size as u64)
-            .ok()
+            .get_slice(
+                (buffer_index * surface.buffer_size) as u64,
+                surface.buffer_size as u64,
+            ).ok()
     }
 
     /// Commits any pending state for the identified surface.
@@ -339,11 +345,9 @@ impl GpuDisplay {
     pub fn close_requested(&self, surface_id: u32) -> bool {
         match self.get_surface(surface_id) {
             Some(surface) =>
-                // Safe because only a valid surface is used.
-                unsafe {
-                    dwl_surface_close_requested(surface.surface())
-                },
-            None => false
+            // Safe because only a valid surface is used.
+            unsafe { dwl_surface_close_requested(surface.surface()) }
+            None => false,
         }
     }
 

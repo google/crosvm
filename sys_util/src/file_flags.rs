@@ -4,9 +4,9 @@
 
 use std::os::unix::io::AsRawFd;
 
-use libc::{fcntl, F_GETFL, O_ACCMODE, O_RDONLY, O_WRONLY, O_RDWR, EINVAL};
+use libc::{fcntl, EINVAL, F_GETFL, O_ACCMODE, O_RDONLY, O_RDWR, O_WRONLY};
 
-use {Error, Result, errno_result};
+use {errno_result, Error, Result};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileFlags {

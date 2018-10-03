@@ -10,7 +10,7 @@ use std::result;
 
 use errno_result;
 
-use libc::{syscall, SIGCHLD, CLONE_NEWUSER, CLONE_NEWPID, c_long, pid_t};
+use libc::{c_long, pid_t, syscall, CLONE_NEWPID, CLONE_NEWUSER, SIGCHLD};
 
 use syscall_defines::linux::LinuxSyscall::SYS_clone;
 
@@ -58,7 +58,8 @@ fn count_dir_entries<P: AsRef<Path>>(path: P) -> io::Result<usize> {
 /// * `ns` - What namespace the new process will have (see NAMESPACES(7)).
 /// * `post_clone_cb` - Callback to run in the new process
 pub fn clone_process<F>(ns: CloneNamespace, post_clone_cb: F) -> result::Result<pid_t, CloneError>
-    where F: FnOnce()
+where
+    F: FnOnce(),
 {
     match count_dir_entries("/proc/self/task") {
         Ok(1) => {}
@@ -119,8 +120,7 @@ mod tests {
             } else {
                 evt_fd_fork.write(2).unwrap()
             }
-        })
-                .expect("failed to clone");
+        }).expect("failed to clone");
         assert_eq!(evt_fd.read(), Ok(1));
     }
 
@@ -131,8 +131,7 @@ mod tests {
 
         clone_process(CloneNamespace::Inherit, || {
             assert!(false);
-        })
-                .expect("failed to clone");
+        }).expect("failed to clone");
 
         // This should never happen;
         if pid != getpid() {

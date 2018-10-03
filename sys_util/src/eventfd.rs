@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::mem;
 use std::fs::File;
+use std::mem;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
-use libc::{read, write, eventfd, dup, c_void};
+use libc::{c_void, dup, eventfd, read, write};
 
-use {Result, errno_result};
+use {errno_result, Result};
 
 /// A safe wrapper around a Linux eventfd (man 2 eventfd).
 ///
@@ -29,7 +29,9 @@ impl EventFd {
         }
         // This is safe because we checked ret for success and know the kernel gave us an fd that we
         // own.
-        Ok(EventFd { eventfd: unsafe { File::from_raw_fd(ret) } })
+        Ok(EventFd {
+            eventfd: unsafe { File::from_raw_fd(ret) },
+        })
     }
 
     /// Adds `v` to the eventfd's count, blocking until this won't overflow the count.
@@ -37,9 +39,11 @@ impl EventFd {
         // This is safe because we made this fd and the pointer we pass can not overflow because we
         // give the syscall's size parameter properly.
         let ret = unsafe {
-            write(self.as_raw_fd(),
-                  &v as *const u64 as *const c_void,
-                  mem::size_of::<u64>())
+            write(
+                self.as_raw_fd(),
+                &v as *const u64 as *const c_void,
+                mem::size_of::<u64>(),
+            )
         };
         if ret <= 0 {
             return errno_result();
@@ -53,9 +57,11 @@ impl EventFd {
         let ret = unsafe {
             // This is safe because we made this fd and the pointer we pass can not overflow because
             // we give the syscall's size parameter properly.
-            read(self.as_raw_fd(),
-                 &mut buf as *mut u64 as *mut c_void,
-                 mem::size_of::<u64>())
+            read(
+                self.as_raw_fd(),
+                &mut buf as *mut u64 as *mut c_void,
+                mem::size_of::<u64>(),
+            )
         };
         if ret <= 0 {
             return errno_result();
@@ -73,7 +79,9 @@ impl EventFd {
         }
         // This is safe because we checked ret for success and know the kernel gave us an fd that we
         // own.
-        Ok(EventFd { eventfd: unsafe { File::from_raw_fd(ret) } })
+        Ok(EventFd {
+            eventfd: unsafe { File::from_raw_fd(ret) },
+        })
     }
 }
 
@@ -86,7 +94,7 @@ impl AsRawFd for EventFd {
 impl FromRawFd for EventFd {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         EventFd {
-            eventfd: File::from_raw_fd(fd)
+            eventfd: File::from_raw_fd(fd),
         }
     }
 }

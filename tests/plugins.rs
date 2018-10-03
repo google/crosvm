@@ -9,17 +9,17 @@ extern crate sys_util;
 
 use rand::{thread_rng, Rng};
 
-use std::ffi::OsString;
-use std::fs::{File, remove_file};
-use std::io::{Write, Read};
 use std::env::{current_exe, var_os};
+use std::ffi::OsString;
+use std::fs::{remove_file, File};
+use std::io::{Read, Write};
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread::sleep;
-use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 
-use sys_util::{SharedMemory, ioctl};
+use sys_util::{ioctl, SharedMemory};
 
 struct RemovePath(PathBuf);
 impl Drop for RemovePath {
@@ -34,32 +34,27 @@ fn get_target_path() -> PathBuf {
     current_exe()
         .ok()
         .map(|mut path| {
-                 path.pop();
-                 path
-             })
-        .expect("failed to get crosvm binary directory")
+            path.pop();
+            path
+        }).expect("failed to get crosvm binary directory")
 }
 
 fn get_crosvm_path() -> PathBuf {
     current_exe()
         .ok()
         .map(|mut path| {
-                 path.pop();
-                 if path.ends_with("deps") {
-                     path.pop();
-                 }
-                 path
-             })
-        .expect("failed to get crosvm binary directory")
+            path.pop();
+            if path.ends_with("deps") {
+                path.pop();
+            }
+            path
+        }).expect("failed to get crosvm binary directory")
 }
 
 fn build_plugin(src: &str) -> RemovePath {
     let libcrosvm_plugin_dir = get_target_path();
     let mut out_bin = libcrosvm_plugin_dir.clone();
-    out_bin.push(thread_rng()
-                     .gen_ascii_chars()
-                     .take(10)
-                     .collect::<String>());
+    out_bin.push(thread_rng().gen_ascii_chars().take(10).collect::<String>());
     let mut child = Command::new(var_os("CC").unwrap_or(OsString::from("cc")))
         .args(&["-Icrosvm_plugin", "-pthread", "-o"]) // crosvm.h location and set output path.
         .arg(&out_bin)
@@ -90,21 +85,24 @@ fn run_plugin(bin_path: &Path, with_sandbox: bool) {
     let mut crosvm_path = get_crosvm_path();
     crosvm_path.push("crosvm");
     let mut cmd = Command::new(crosvm_path);
-    cmd.args(&["run",
-                "-c",
-                "1",
-                "--host_ip",
-                "100.115.92.5",
-                "--netmask",
-                "255.255.255.252",
-                "--mac",
-                "de:21:e8:47:6b:6a",
-                "--seccomp-policy-dir",
-                "tests",
-                "--plugin"])
-        .arg(bin_path
-                 .canonicalize()
-                 .expect("failed to canonicalize plugin path"));
+    cmd.args(&[
+        "run",
+        "-c",
+        "1",
+        "--host_ip",
+        "100.115.92.5",
+        "--netmask",
+        "255.255.255.252",
+        "--mac",
+        "de:21:e8:47:6b:6a",
+        "--seccomp-policy-dir",
+        "tests",
+        "--plugin",
+    ]).arg(
+        bin_path
+            .canonicalize()
+            .expect("failed to canonicalize plugin path"),
+    );
     if !with_sandbox {
         cmd.arg("--disable-sandbox");
     }
@@ -204,20 +202,23 @@ impl Default for MiniPlugin {
 fn test_mini_plugin(plugin: &MiniPlugin) {
     // Adds a preamble to ensure the output opcodes are 16-bit real mode and the lables start at the
     // load address.
-    let assembly_src = format!("org 0x{:x}\nbits 16\n{}",
-                               plugin.load_address,
-                               plugin.assembly_src);
+    let assembly_src = format!(
+        "org 0x{:x}\nbits 16\n{}",
+        plugin.load_address, plugin.assembly_src
+    );
 
     // Builds the assembly and convert it to a C literal array format.
     let assembly = build_assembly(&assembly_src);
     let assembly_hex = format_as_hex(&assembly);
 
     // Glues the pieces of this plugin together and tests the completed plugin.
-    let generated_src = format!(include_str!("mini_plugin_template.c"),
-                                mem_size = plugin.mem_size,
-                                load_address = plugin.load_address,
-                                assembly_code = assembly_hex,
-                                src = plugin.src);
+    let generated_src = format!(
+        include_str!("mini_plugin_template.c"),
+        mem_size = plugin.mem_size,
+        load_address = plugin.load_address,
+        assembly_code = assembly_hex,
+        src = plugin.src
+    );
     test_plugin(&generated_src);
 }
 

@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+extern crate devices;
 extern crate io_jail;
-extern crate sys_util;
-extern crate resources;
 extern crate kernel_cmdline;
 extern crate kvm;
 extern crate libc;
-extern crate devices;
+extern crate resources;
+extern crate sys_util;
 
 use std::fmt;
 use std::fs::File;
@@ -16,20 +16,21 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::{Arc, Mutex};
 
-use devices::{Bus, BusError, PciDevice, PciDeviceError, PciInterruptPin,
-              PciRoot, ProxyDevice, Serial};
 use devices::virtio::VirtioDevice;
+use devices::{
+    Bus, BusError, PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProxyDevice, Serial,
+};
 use io_jail::Minijail;
-use kvm::{IoeventAddress, Kvm, NoDatamatch, Vm, Vcpu};
-use sys_util::{EventFd, GuestMemory, syslog};
+use kvm::{IoeventAddress, Kvm, NoDatamatch, Vcpu, Vm};
 use resources::SystemAllocator;
+use sys_util::{syslog, EventFd, GuestMemory};
 
 pub type Result<T> = result::Result<T, Box<std::error::Error>>;
 
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
 /// create a `RunnableLinuxVm`.
 pub struct VmComponents {
-    pub pci_devices: Vec<(Box<PciDevice + 'static>,  Minijail)>,
+    pub pci_devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
     pub memory_mb: u64,
     pub vcpu_count: u32,
     pub kernel_image: File,
@@ -66,8 +67,8 @@ pub trait LinuxArch {
     /// * `components` - Parts to use to build the VM.
     /// * `virtio_devs` - Function to generate a list of virtio devices.
     fn build_vm<F>(components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
-        where
-            F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<VirtioDeviceStub>>;
+    where
+        F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<VirtioDeviceStub>>;
 }
 
 /// Errors for device manager.
@@ -103,9 +104,7 @@ impl fmt::Display for DeviceRegistrationError {
             &DeviceRegistrationError::AllocateIoAddrs(ref e) => {
                 write!(f, "Allocating IO addresses: {:?}", e)
             }
-            &DeviceRegistrationError::AllocateIrq => {
-                write!(f, "Allocating IRQ number")
-            }
+            &DeviceRegistrationError::AllocateIrq => write!(f, "Allocating IRQ number"),
             &DeviceRegistrationError::CreateMmioDevice(ref e) => {
                 write!(f, "failed to create mmio device: {:?}", e)
             }
@@ -128,18 +127,20 @@ impl fmt::Display for DeviceRegistrationError {
                 write!(f, "failed to create proxy device: {}", e)
             }
             &DeviceRegistrationError::IrqsExhausted => write!(f, "no more IRQs are available"),
-            &DeviceRegistrationError::AddrsExhausted => write!(f, "no more addresses are available"),
+            &DeviceRegistrationError::AddrsExhausted => {
+                write!(f, "no more addresses are available")
+            }
         }
     }
 }
 
 /// Creates a root PCI device for use by this Vm.
-pub fn generate_pci_root(devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
-                         mmio_bus: &mut Bus,
-                         resources: &mut SystemAllocator,
-                         vm: &mut Vm)
-    -> std::result::Result<(PciRoot, Vec<(u32, PciInterruptPin)>), DeviceRegistrationError>
-{
+pub fn generate_pci_root(
+    devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
+    mmio_bus: &mut Bus,
+    resources: &mut SystemAllocator,
+    vm: &mut Vm,
+) -> std::result::Result<(PciRoot, Vec<(u32, PciInterruptPin)>), DeviceRegistrationError> {
     let mut root = PciRoot::new();
     let mut pci_irqs = Vec::new();
     for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
@@ -177,7 +178,8 @@ pub fn generate_pci_root(devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
         let arced_dev = Arc::new(Mutex::new(proxy));
         root.add_device(arced_dev.clone());
         for range in &ranges {
-            mmio_bus.insert(arced_dev.clone(), range.0, range.1, true)
+            mmio_bus
+                .insert(arced_dev.clone(), range.0, range.1, true)
                 .map_err(DeviceRegistrationError::MmioInsert)?;
         }
     }
@@ -185,13 +187,14 @@ pub fn generate_pci_root(devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
 }
 
 /// Register a device to be used via MMIO transport.
-pub fn register_mmio(bus: &mut devices::Bus,
-                     vm: &mut Vm,
-                     device: Box<devices::virtio::VirtioDevice>,
-                     jail: Option<Minijail>,
-                     resources: &mut SystemAllocator,
-                     cmdline: &mut kernel_cmdline::Cmdline)
-                     -> std::result::Result<(), DeviceRegistrationError> {
+pub fn register_mmio(
+    bus: &mut devices::Bus,
+    vm: &mut Vm,
+    device: Box<devices::virtio::VirtioDevice>,
+    jail: Option<Minijail>,
+    resources: &mut SystemAllocator,
+    cmdline: &mut kernel_cmdline::Cmdline,
+) -> std::result::Result<(), DeviceRegistrationError> {
     let irq = match resources.allocate_irq() {
         None => return Err(DeviceRegistrationError::IrqsExhausted),
         Some(i) => i,
@@ -204,19 +207,19 @@ pub fn register_mmio(bus: &mut devices::Bus,
     let mmio_device = devices::virtio::MmioDevice::new((*vm.get_memory()).clone(), device)
         .map_err(DeviceRegistrationError::CreateMmioDevice)?;
     let mmio_len = 0x1000; // TODO(dgreid) - configurable per arch?
-    let mmio_base = resources.allocate_mmio_addresses(mmio_len)
+    let mmio_base = resources
+        .allocate_mmio_addresses(mmio_len)
         .ok_or(DeviceRegistrationError::AddrsExhausted)?;
     for (i, queue_evt) in mmio_device.queue_evts().iter().enumerate() {
-        let io_addr = IoeventAddress::Mmio(mmio_base +
-                                           devices::virtio::NOTIFY_REG_OFFSET as u64);
+        let io_addr = IoeventAddress::Mmio(mmio_base + devices::virtio::NOTIFY_REG_OFFSET as u64);
         vm.register_ioevent(&queue_evt, io_addr, i as u32)
-          .map_err(DeviceRegistrationError::RegisterIoevent)?;
+            .map_err(DeviceRegistrationError::RegisterIoevent)?;
         keep_fds.push(queue_evt.as_raw_fd());
     }
 
     if let Some(interrupt_evt) = mmio_device.interrupt_evt() {
         vm.register_irqfd(&interrupt_evt, irq)
-          .map_err(DeviceRegistrationError::RegisterIrqfd)?;
+            .map_err(DeviceRegistrationError::RegisterIrqfd)?;
         keep_fds.push(interrupt_evt.as_raw_fd());
     }
 
@@ -224,15 +227,22 @@ pub fn register_mmio(bus: &mut devices::Bus,
         let proxy_dev = devices::ProxyDevice::new(mmio_device, &jail, keep_fds)
             .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
 
-        bus.insert(Arc::new(Mutex::new(proxy_dev)), mmio_base, mmio_len, false).unwrap();
+        bus.insert(Arc::new(Mutex::new(proxy_dev)), mmio_base, mmio_len, false)
+            .unwrap();
     } else {
-        bus.insert(Arc::new(Mutex::new(mmio_device)), mmio_base, mmio_len, false).unwrap();
+        bus.insert(
+            Arc::new(Mutex::new(mmio_device)),
+            mmio_base,
+            mmio_len,
+            false,
+        ).unwrap();
     }
 
     cmdline
-        .insert("virtio_mmio.device",
-                &format!("4K@0x{:08x}:{}", mmio_base, irq))
-        .map_err(DeviceRegistrationError::Cmdline)?;
+        .insert(
+            "virtio_mmio.device",
+            &format!("4K@0x{:08x}:{}", mmio_base, irq),
+        ).map_err(DeviceRegistrationError::Cmdline)?;
 
     Ok(())
 }

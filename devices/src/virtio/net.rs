@@ -6,8 +6,8 @@ use std::cmp;
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread;
 
 use libc::EAGAIN;
@@ -15,10 +15,10 @@ use net_sys;
 use net_util::{Error as TapError, MacAddress, TapT};
 use sys_util::Error as SysError;
 use sys_util::{EventFd, GuestMemory, PollContext, PollToken};
-use virtio_sys::{vhost, virtio_net};
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
+use virtio_sys::{vhost, virtio_net};
 
-use super::{VirtioDevice, Queue, INTERRUPT_STATUS_USED_RING, TYPE_NET};
+use super::{Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_NET};
 
 /// The maximum buffer size when segmentation offload is enabled. This
 /// includes the 12-byte virtio net header.
@@ -120,14 +120,17 @@ where
                     next_desc = desc.next_descriptor();
                 }
                 None => {
-                    warn!("net: rx: buffer is too small to hold frame of size {}",
-                          self.rx_count);
+                    warn!(
+                        "net: rx: buffer is too small to hold frame of size {}",
+                        self.rx_count
+                    );
                     break;
                 }
             }
         }
 
-        self.rx_queue.add_used(&self.mem, head_index, write_count as u32);
+        self.rx_queue
+            .add_used(&self.mem, head_index, write_count as u32);
 
         // Interrupt the guest immediately for received frames to
         // reduce latency.
@@ -178,7 +181,8 @@ where
                             break;
                         }
                         let limit = cmp::min(read_count + desc.len as usize, frame.len());
-                        let read_result = self.mem
+                        let read_result = self
+                            .mem
                             .read_slice_at_addr(&mut frame[read_count..limit as usize], desc.addr);
                         match read_result {
                             Ok(sz) => {
@@ -199,7 +203,7 @@ where
 
             let write_result = self.tap.write(&frame[..read_count as usize]);
             match write_result {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     warn!("net: tx: error failed to write to tap: {:?}", e);
                 }
@@ -216,11 +220,12 @@ where
         self.signal_used_queue();
     }
 
-    fn run(&mut self,
-           rx_queue_evt: EventFd,
-           tx_queue_evt: EventFd,
-           kill_evt: EventFd)
-           -> Result<(), NetError> {
+    fn run(
+        &mut self,
+        rx_queue_evt: EventFd,
+        tx_queue_evt: EventFd,
+        kill_evt: EventFd,
+    ) -> Result<(), NetError> {
         #[derive(PollToken)]
         enum Token {
             // A frame is available for reading from the tap device to receive in the guest.
@@ -234,11 +239,11 @@ where
         }
 
         let poll_ctx: PollContext<Token> = PollContext::new()
-                      .and_then(|pc| pc.add(&self.tap, Token::RxTap).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&rx_queue_evt, Token::RxQueue).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&tx_queue_evt, Token::TxQueue).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
-                      .map_err(NetError::CreatePollContext)?;
+            .and_then(|pc| pc.add(&self.tap, Token::RxTap).and(Ok(pc)))
+            .and_then(|pc| pc.add(&rx_queue_evt, Token::RxQueue).and(Ok(pc)))
+            .and_then(|pc| pc.add(&tx_queue_evt, Token::TxQueue).and(Ok(pc)))
+            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            .map_err(NetError::CreatePollContext)?;
 
         'poll: loop {
             let events = poll_ctx.wait().map_err(NetError::PollError)?;
@@ -335,9 +340,9 @@ where
         let kill_evt = EventFd::new().map_err(NetError::CreateKillEventFd)?;
         Ok(Net {
             workers_kill_evt: Some(kill_evt.try_clone().map_err(NetError::CloneKillEventFd)?),
-            kill_evt: kill_evt,
+            kill_evt,
             tap: Some(tap),
-            avail_features: avail_features,
+            avail_features,
             acked_features: 0u64,
         })
     }
@@ -398,8 +403,10 @@ where
             0 => value as u64,
             1 => (value as u64) << 32,
             _ => {
-                warn!("net: virtio net device cannot ack unknown feature page: {}",
-                      page);
+                warn!(
+                    "net: virtio net device cannot ack unknown feature page: {}",
+                    page
+                );
                 0u64
             }
         };
@@ -415,12 +422,14 @@ where
         self.acked_features |= v;
     }
 
-    fn activate(&mut self,
-                mem: GuestMemory,
-                interrupt_evt: EventFd,
-                status: Arc<AtomicUsize>,
-                mut queues: Vec<Queue>,
-                mut queue_evts: Vec<EventFd>) {
+    fn activate(
+        &mut self,
+        mem: GuestMemory,
+        interrupt_evt: EventFd,
+        status: Arc<AtomicUsize>,
+        mut queues: Vec<Queue>,
+        mut queue_evts: Vec<EventFd>,
+    ) {
         if queues.len() != 2 || queue_evts.len() != 2 {
             error!("net: expected 2 queues, got {}", queues.len());
             return;
@@ -429,31 +438,32 @@ where
         if let Some(tap) = self.tap.take() {
             if let Some(kill_evt) = self.workers_kill_evt.take() {
                 let acked_features = self.acked_features;
-                let worker_result = thread::Builder::new()
-                    .name("virtio_net".to_string())
-                    .spawn(move || {
-                        // First queue is rx, second is tx.
-                        let rx_queue = queues.remove(0);
-                        let tx_queue = queues.remove(0);
-                        let mut worker = Worker {
-                            mem: mem,
-                            rx_queue: rx_queue,
-                            tx_queue: tx_queue,
-                            tap: tap,
-                            interrupt_status: status,
-                            interrupt_evt: interrupt_evt,
-                            rx_buf: [0u8; MAX_BUFFER_SIZE],
-                            rx_count: 0,
-                            deferred_rx: false,
-                            acked_features: acked_features,
-                        };
-                        let rx_queue_evt = queue_evts.remove(0);
-                        let tx_queue_evt = queue_evts.remove(0);
-                        let result = worker.run(rx_queue_evt, tx_queue_evt, kill_evt);
-                        if let Err(e) = result {
-                            error!("net worker thread exited with error: {:?}", e);
-                        }
-                    });
+                let worker_result =
+                    thread::Builder::new()
+                        .name("virtio_net".to_string())
+                        .spawn(move || {
+                            // First queue is rx, second is tx.
+                            let rx_queue = queues.remove(0);
+                            let tx_queue = queues.remove(0);
+                            let mut worker = Worker {
+                                mem,
+                                rx_queue,
+                                tx_queue,
+                                tap,
+                                interrupt_status: status,
+                                interrupt_evt,
+                                rx_buf: [0u8; MAX_BUFFER_SIZE],
+                                rx_count: 0,
+                                deferred_rx: false,
+                                acked_features,
+                            };
+                            let rx_queue_evt = queue_evts.remove(0);
+                            let tx_queue_evt = queue_evts.remove(0);
+                            let result = worker.run(rx_queue_evt, tx_queue_evt, kill_evt);
+                            if let Err(e) = result {
+                                error!("net worker thread exited with error: {:?}", e);
+                            }
+                        });
 
                 if let Err(e) = worker_result {
                     error!("failed to spawn virtio_net worker: {}", e);

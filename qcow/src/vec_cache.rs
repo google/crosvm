@@ -146,29 +146,25 @@ mod tests {
             .insert(0, NumCache(5), |index, _| {
                 evicted = Some(index);
                 Ok(())
-            })
-            .unwrap();
+            }).unwrap();
         assert_eq!(evicted, None);
         cache
             .insert(1, NumCache(6), |index, _| {
                 evicted = Some(index);
                 Ok(())
-            })
-            .unwrap();
+            }).unwrap();
         assert_eq!(evicted, None);
         cache
             .insert(2, NumCache(7), |index, _| {
                 evicted = Some(index);
                 Ok(())
-            })
-            .unwrap();
+            }).unwrap();
         assert_eq!(evicted, None);
         cache
             .insert(3, NumCache(8), |index, _| {
                 evicted = Some(index);
                 Ok(())
-            })
-            .unwrap();
+            }).unwrap();
         assert!(evicted.is_some());
 
         // Check that three of the four items inserted are still there and that the most recently

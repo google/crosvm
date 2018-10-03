@@ -34,9 +34,9 @@ extern crate data_model;
 #[macro_use]
 extern crate sys_util;
 
-pub mod rendernode;
-mod raw;
 mod drm_formats;
+mod raw;
+pub mod rendernode;
 
 use std::cmp::min;
 use std::fmt;
@@ -48,10 +48,10 @@ use std::ptr::null_mut;
 use std::rc::Rc;
 use std::result::Result;
 
-use data_model::{VolatileSlice, VolatileMemory, VolatileMemoryError};
+use data_model::{VolatileMemory, VolatileMemoryError, VolatileSlice};
 
-use raw::*;
 use drm_formats::*;
+use raw::*;
 
 const MAP_FAILED: *mut c_void = (-1isize as *mut _);
 
@@ -84,28 +84,20 @@ impl fmt::Display for Error {
                 field1: (label1, value1),
                 field2: (label2, value2),
                 op,
-            } => {
-                write!(f,
-                       "arithmetic failed: {}({}) {} {}({})",
-                       label1,
-                       value1,
-                       op,
-                       label2,
-                       value2)
-            }
+            } => write!(
+                f,
+                "arithmetic failed: {}({}) {} {}({})",
+                label1, value1, op, label2, value2
+            ),
             Error::InvalidPrecondition {
                 field1: (label1, value1),
                 field2: (label2, value2),
                 op,
-            } => {
-                write!(f,
-                       "invalid precondition: {}({}) {} {}({})",
-                       label1,
-                       value1,
-                       op,
-                       label2,
-                       value2)
-            }
+            } => write!(
+                f,
+                "invalid precondition: {}({}) {} {}({})",
+                label1, value1, op, label2, value2
+            ),
             Error::UnknownFormat(format) => write!(f, "unknown format {:?}", format),
             Error::Memcopy(ref e) => write!(f, "error copying memory: {}", e),
         }
@@ -113,29 +105,39 @@ impl fmt::Display for Error {
 }
 
 macro_rules! checked_arithmetic {
-    ($x:ident $op:ident $y:ident $op_name:expr) => ($x.$op($y).ok_or_else(||
-        Error::CheckedArithmetic {
+    ($x:ident $op:ident $y:ident $op_name:expr) => {
+        $x.$op($y).ok_or_else(|| Error::CheckedArithmetic {
             field1: (stringify!($x), $x as usize),
             field2: (stringify!($y), $y as usize),
             op: $op_name,
-        }
-    ));
-    ($x:ident + $y:ident) => (checked_arithmetic!($x checked_add $y "+"));
-    ($x:ident - $y:ident) => (checked_arithmetic!($x checked_sub $y "-"));
-    ($x:ident * $y:ident) => (checked_arithmetic!($x checked_mul $y "*"));
+        })
+    };
+    ($x:ident + $y:ident) => {
+        checked_arithmetic!($x checked_add $y "+")
+    };
+    ($x:ident - $y:ident) => {
+        checked_arithmetic!($x checked_sub $y "-")
+    };
+    ($x:ident * $y:ident) => {
+        checked_arithmetic!($x checked_mul $y "*")
+    };
 }
 
 macro_rules! checked_range {
-    ($x:expr; <= $y:expr) => (if $x <= $y {
+    ($x:expr; <= $y:expr) => {
+        if $x <= $y {
             Ok(())
         } else {
             Err(Error::InvalidPrecondition {
                 field1: (stringify!($x), $x as usize),
                 field2: (stringify!($y), $y as usize),
-                op: "<="
+                op: "<=",
             })
-        });
-    ($x:ident <= $y:ident) => (check_range!($x; <= $y));
+        }
+    };
+    ($x:ident <= $y:ident) => {
+        check_range!($x; <= $y)
+    };
 }
 
 /// A [fourcc](https://en.wikipedia.org/wiki/FourCC) format identifier.
@@ -254,19 +256,17 @@ impl fmt::Debug for Format {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let b = self.to_bytes();
         if b.iter().all(u8::is_ascii_graphic) {
-            write!(f,
-                   "fourcc({}{}{}{})",
-                   b[0] as char,
-                   b[1] as char,
-                   b[2] as char,
-                   b[3] as char)
+            write!(
+                f,
+                "fourcc({}{}{}{})",
+                b[0] as char, b[1] as char, b[2] as char, b[3] as char
+            )
         } else {
-            write!(f,
-                   "fourcc(0x{:02x}{:02x}{:02x}{:02x})",
-                   b[0],
-                   b[1],
-                   b[2],
-                   b[3])
+            write!(
+                f,
+                "fourcc(0x{:02x}{:02x}{:02x}{:02x})",
+                b[0], b[1], b[2], b[3]
+            )
         }
     }
 }
@@ -349,7 +349,6 @@ impl Flags {
     }
 }
 
-
 struct DeviceInner {
     _fd: File,
     gbm: *mut gbm_device,
@@ -383,12 +382,13 @@ impl Device {
     }
 
     /// Creates a new buffer with the given metadata.
-    pub fn create_buffer(&self,
-                         width: u32,
-                         height: u32,
-                         format: Format,
-                         usage: Flags)
-                         -> Result<Buffer, Error> {
+    pub fn create_buffer(
+        &self,
+        width: u32,
+        height: u32,
+        format: Format,
+        usage: Flags,
+    ) -> Result<Buffer, Error> {
         // This is safe because only a valid gbm_device is used and the return value is checked.
         let bo = unsafe { gbm_bo_create(self.0.gbm, width, height, format.0, usage.0) };
         if bo.is_null() {
@@ -477,19 +477,21 @@ impl Buffer {
         }
     }
 
-    fn map(&self,
-           x: u32,
-           y: u32,
-           width: u32,
-           height: u32,
-           plane: usize,
-           flags: u32)
-           -> Result<BufferMapping, Error> {
+    fn map(
+        &self,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        plane: usize,
+        flags: u32,
+    ) -> Result<BufferMapping, Error> {
         checked_range!(checked_arithmetic!(x + width)?; <= self.width())?;
         checked_range!(checked_arithmetic!(y + height)?; <= self.height())?;
         checked_range!(plane; <= self.num_planes())?;
 
-        let bytes_per_pixel = self.format()
+        let bytes_per_pixel = self
+            .format()
             .bytes_per_pixel(plane)
             .ok_or(Error::UnknownFormat(self.format()))? as u32;
 
@@ -499,15 +501,17 @@ impl Buffer {
         // pointers coerced from stack references are used for returned values, and we trust gbm to
         // only write as many bytes as the size of the pointed to values.
         let mapping = unsafe {
-            gbm_bo_map(self.0,
-                       x,
-                       y,
-                       width,
-                       height,
-                       flags,
-                       &mut stride,
-                       &mut map_data,
-                       plane)
+            gbm_bo_map(
+                self.0,
+                x,
+                y,
+                width,
+                height,
+                flags,
+                &mut stride,
+                &mut map_data,
+                plane,
+            )
         };
         if mapping == MAP_FAILED {
             return Err(Error::MapFailed);
@@ -541,14 +545,15 @@ impl Buffer {
     }
 
     /// Reads the given subsection of the buffer to `dst`.
-    pub fn read_to_volatile(&self,
-                            x: u32,
-                            y: u32,
-                            width: u32,
-                            height: u32,
-                            plane: usize,
-                            dst: VolatileSlice)
-                            -> Result<(), Error> {
+    pub fn read_to_volatile(
+        &self,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        plane: usize,
+        dst: VolatileSlice,
+    ) -> Result<(), Error> {
         if width == 0 || height == 0 {
             return Ok(());
         }
@@ -569,9 +574,11 @@ impl Buffer {
             let src = mapping.as_volatile_slice();
             for yy in 0..(height as u64) {
                 let line_offset = checked_arithmetic!(yy * stride)?;
-                let src_line = src.get_slice(line_offset, line_copy_size)
+                let src_line = src
+                    .get_slice(line_offset, line_copy_size)
                     .map_err(|e| Error::Memcopy(e))?;
-                let dst_line = dst.get_slice(line_offset, line_copy_size)
+                let dst_line = dst
+                    .get_slice(line_offset, line_copy_size)
                     .map_err(|e| Error::Memcopy(e))?;
                 src_line.copy_to_volatile_slice(dst_line);
             }
@@ -581,15 +588,16 @@ impl Buffer {
     }
 
     /// Writes to the given subsection of the buffer from `sgs`.
-    pub fn write_from_sg<'a, S: Iterator<Item = VolatileSlice<'a>>>(&self,
-                                                                    x: u32,
-                                                                    y: u32,
-                                                                    width: u32,
-                                                                    height: u32,
-                                                                    plane: usize,
-                                                                    src_offset: usize,
-                                                                    mut sgs: S)
-                                                                    -> Result<(), Error> {
+    pub fn write_from_sg<'a, S: Iterator<Item = VolatileSlice<'a>>>(
+        &self,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        plane: usize,
+        src_offset: usize,
+        mut sgs: S,
+    ) -> Result<(), Error> {
         if width == 0 || height == 0 {
             return Ok(());
         }
@@ -617,7 +625,8 @@ impl Buffer {
                     }
                 };
                 let copy_sg_size = min(sg_size, copy_size);
-                let src_slice = sg.get_slice(src_offset, copy_sg_size)
+                let src_slice = sg
+                    .get_slice(src_offset, copy_sg_size)
                     .map_err(|e| Error::Memcopy(e))?;
                 src_slice.copy_to_volatile_slice(dst_slice);
 
@@ -651,7 +660,8 @@ impl Buffer {
                     Some(sg_remaining_size) => sg_remaining_size,
                 };
                 let copy_sg_size = min(sg_size, remaining_line_copy_size);
-                let src_slice = sg.get_slice(src_offset, copy_sg_size)
+                let src_slice = sg
+                    .get_slice(src_offset, copy_sg_size)
                     .map_err(|e| Error::Memcopy(e))?;
                 src_slice.copy_to_volatile_slice(dst_slice);
 
@@ -723,8 +733,8 @@ impl<'a> Drop for BufferMapping<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fmt::Write;
     use data_model::VolatileMemory;
+    use std::fmt::Write;
 
     #[test]
     fn format_debug() {
@@ -774,11 +784,12 @@ mod tests {
         let drm_card = File::open("/dev/dri/card0").expect("failed to open card");
         let device = Device::new(drm_card).expect("failed to create device with card");
         let bo = device
-            .create_buffer(1024,
-                           512,
-                           Format::new(b'X', b'R', b'2', b'4'),
-                           Flags::empty().use_scanout(true))
-            .expect("failed to create buffer");
+            .create_buffer(
+                1024,
+                512,
+                Format::new(b'X', b'R', b'2', b'4'),
+                Flags::empty().use_scanout(true),
+            ).expect("failed to create buffer");
 
         assert_eq!(bo.width(), 1024);
         assert_eq!(bo.height(), 512);
@@ -792,14 +803,14 @@ mod tests {
         let drm_card = File::open("/dev/dri/card0").expect("failed to open card");
         let device = Device::new(drm_card).expect("failed to create device with card");
         let bo = device
-            .create_buffer(1024,
-                           1024,
-                           Format::new(b'X', b'R', b'2', b'4'),
-                           Flags::empty().use_scanout(true))
-            .expect("failed to create buffer");
+            .create_buffer(
+                1024,
+                1024,
+                Format::new(b'X', b'R', b'2', b'4'),
+                Flags::empty().use_scanout(true),
+            ).expect("failed to create buffer");
         bo.export_plane_fd(0).expect("failed to export plane");
     }
-
 
     #[test]
     #[ignore] // no access to /dev/dri
@@ -807,31 +818,34 @@ mod tests {
         let drm_card = File::open("/dev/dri/card0").expect("failed to open card");
         let device = Device::new(drm_card).expect("failed to create device with card");
         let bo = device
-            .create_buffer(1024,
-                           1024,
-                           Format::new(b'X', b'R', b'2', b'4'),
-                           Flags::empty().use_scanout(true).use_linear(true))
-            .expect("failed to create buffer");
+            .create_buffer(
+                1024,
+                1024,
+                Format::new(b'X', b'R', b'2', b'4'),
+                Flags::empty().use_scanout(true).use_linear(true),
+            ).expect("failed to create buffer");
         let mut dst: Vec<u8> = Vec::new();
         dst.resize((bo.stride() * bo.height()) as usize, 0x4A);
         let dst_len = dst.len() as u64;
-        bo.write_from_sg(0,
-                           0,
-                           1024,
-                           1024,
-                           0,
-                           0,
-                           [dst.as_mut_slice().get_slice(0, dst_len).unwrap()]
-                               .iter()
-                               .cloned())
-            .expect("failed to read bo");
-        bo.read_to_volatile(0,
-                              0,
-                              1024,
-                              1024,
-                              0,
-                              dst.as_mut_slice().get_slice(0, dst_len).unwrap())
-            .expect("failed to read bo");
+        bo.write_from_sg(
+            0,
+            0,
+            1024,
+            1024,
+            0,
+            0,
+            [dst.as_mut_slice().get_slice(0, dst_len).unwrap()]
+                .iter()
+                .cloned(),
+        ).expect("failed to read bo");
+        bo.read_to_volatile(
+            0,
+            0,
+            1024,
+            1024,
+            0,
+            dst.as_mut_slice().get_slice(0, dst_len).unwrap(),
+        ).expect("failed to read bo");
         assert!(dst.iter().all(|&x| x == 0x4A));
     }
 }

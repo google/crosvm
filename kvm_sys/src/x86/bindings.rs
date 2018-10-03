@@ -607,7 +607,9 @@ fn bindgen_test_layout_kvm_memory_alias() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_memory_alias>())).guest_phys_addr as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_memory_alias>())).guest_phys_addr as *const _ as usize
+        },
         8usize,
         concat!(
             "Offset of field: ",
@@ -627,7 +629,9 @@ fn bindgen_test_layout_kvm_memory_alias() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_memory_alias>())).target_phys_addr as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_memory_alias>())).target_phys_addr as *const _ as usize
+        },
         24usize,
         concat!(
             "Offset of field: ",
@@ -780,7 +784,9 @@ fn bindgen_test_layout_kvm_pic_state() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_pic_state>())).rotate_on_auto_eoi as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_pic_state>())).rotate_on_auto_eoi as *const _ as usize
+        },
         11usize,
         concat!(
             "Offset of field: ",
@@ -877,8 +883,8 @@ fn bindgen_test_layout_kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1>())).vector as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1>())).vector
+                as *const _ as usize
         },
         0usize,
         concat!(
@@ -890,8 +896,8 @@ fn bindgen_test_layout_kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1>()))
-                .reserved as *const _ as usize
+            &(*(::std::ptr::null::<kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1>())).reserved
+                as *const _ as usize
         },
         3usize,
         concat!(
@@ -903,8 +909,8 @@ fn bindgen_test_layout_kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1>())).dest_id as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_ioapic_state__bindgen_ty_1__bindgen_ty_1>())).dest_id
+                as *const _ as usize
         },
         7usize,
         concat!(
@@ -1065,7 +1071,9 @@ fn bindgen_test_layout_kvm_ioapic_state__bindgen_ty_1() {
         concat!("Alignment of ", stringify!(kvm_ioapic_state__bindgen_ty_1))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_ioapic_state__bindgen_ty_1>())).bits as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_ioapic_state__bindgen_ty_1>())).bits as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -2450,7 +2458,9 @@ fn bindgen_test_layout_kvm_pit_channel_state() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_pit_channel_state>())).latched_count as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_pit_channel_state>())).latched_count as *const _ as usize
+        },
         4usize,
         concat!(
             "Offset of field: ",
@@ -2460,7 +2470,9 @@ fn bindgen_test_layout_kvm_pit_channel_state() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_pit_channel_state>())).count_latched as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_pit_channel_state>())).count_latched as *const _ as usize
+        },
         6usize,
         concat!(
             "Offset of field: ",
@@ -2492,7 +2504,9 @@ fn bindgen_test_layout_kvm_pit_channel_state() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_pit_channel_state>())).read_state as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_pit_channel_state>())).read_state as *const _ as usize
+        },
         9usize,
         concat!(
             "Offset of field: ",
@@ -2502,7 +2516,9 @@ fn bindgen_test_layout_kvm_pit_channel_state() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_pit_channel_state>())).write_state as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_pit_channel_state>())).write_state as *const _ as usize
+        },
         10usize,
         concat!(
             "Offset of field: ",
@@ -2512,7 +2528,9 @@ fn bindgen_test_layout_kvm_pit_channel_state() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_pit_channel_state>())).write_latch as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_pit_channel_state>())).write_latch as *const _ as usize
+        },
         11usize,
         concat!(
             "Offset of field: ",
@@ -2771,7 +2789,9 @@ fn bindgen_test_layout_kvm_reinject_control() {
         concat!("Alignment of ", stringify!(kvm_reinject_control))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_reinject_control>())).pit_reinject as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_reinject_control>())).pit_reinject as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -2836,7 +2856,9 @@ fn bindgen_test_layout_kvm_vcpu_events__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_1>())).nr as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_1>())).nr as *const _ as usize
+        },
         1usize,
         concat!(
             "Offset of field: ",
@@ -2847,8 +2869,8 @@ fn bindgen_test_layout_kvm_vcpu_events__bindgen_ty_1() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_1>())).has_error_code as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_1>())).has_error_code as *const _
+                as usize
         },
         2usize,
         concat!(
@@ -2859,7 +2881,9 @@ fn bindgen_test_layout_kvm_vcpu_events__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_1>())).pad as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_1>())).pad as *const _ as usize
+        },
         3usize,
         concat!(
             "Offset of field: ",
@@ -2870,8 +2894,8 @@ fn bindgen_test_layout_kvm_vcpu_events__bindgen_ty_1() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_1>())).error_code as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_1>())).error_code as *const _
+                as usize
         },
         4usize,
         concat!(
@@ -2915,7 +2939,9 @@ fn bindgen_test_layout_kvm_vcpu_events__bindgen_ty_2() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_2>())).nr as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_2>())).nr as *const _ as usize
+        },
         1usize,
         concat!(
             "Offset of field: ",
@@ -2925,7 +2951,9 @@ fn bindgen_test_layout_kvm_vcpu_events__bindgen_ty_2() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_2>())).soft as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_2>())).soft as *const _ as usize
+        },
         2usize,
         concat!(
             "Offset of field: ",
@@ -3004,7 +3032,9 @@ fn bindgen_test_layout_kvm_vcpu_events__bindgen_ty_3() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_3>())).pad as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_3>())).pad as *const _ as usize
+        },
         3usize,
         concat!(
             "Offset of field: ",
@@ -3035,7 +3065,9 @@ fn bindgen_test_layout_kvm_vcpu_events__bindgen_ty_4() {
         concat!("Alignment of ", stringify!(kvm_vcpu_events__bindgen_ty_4))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_4>())).smm as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_4>())).smm as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -3058,8 +3090,8 @@ fn bindgen_test_layout_kvm_vcpu_events__bindgen_ty_4() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_4>())).smm_inside_nmi as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_4>())).smm_inside_nmi as *const _
+                as usize
         },
         2usize,
         concat!(
@@ -3071,8 +3103,8 @@ fn bindgen_test_layout_kvm_vcpu_events__bindgen_ty_4() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_4>())).latched_init as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_vcpu_events__bindgen_ty_4>())).latched_init as *const _
+                as usize
         },
         3usize,
         concat!(
@@ -3589,7 +3621,9 @@ fn bindgen_test_layout_kvm_memory_region() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_memory_region>())).guest_phys_addr as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_memory_region>())).guest_phys_addr as *const _ as usize
+        },
         8usize,
         concat!(
             "Offset of field: ",
@@ -3631,7 +3665,9 @@ fn bindgen_test_layout_kvm_userspace_memory_region() {
         concat!("Alignment of ", stringify!(kvm_userspace_memory_region))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_userspace_memory_region>())).slot as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_userspace_memory_region>())).slot as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -3641,7 +3677,9 @@ fn bindgen_test_layout_kvm_userspace_memory_region() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_userspace_memory_region>())).flags as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_userspace_memory_region>())).flags as *const _ as usize
+        },
         4usize,
         concat!(
             "Offset of field: ",
@@ -3652,8 +3690,8 @@ fn bindgen_test_layout_kvm_userspace_memory_region() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_userspace_memory_region>())).guest_phys_addr as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_userspace_memory_region>())).guest_phys_addr as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -3677,8 +3715,8 @@ fn bindgen_test_layout_kvm_userspace_memory_region() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_userspace_memory_region>())).userspace_addr as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_userspace_memory_region>())).userspace_addr as *const _
+                as usize
         },
         24usize,
         concat!(
@@ -3725,7 +3763,9 @@ fn bindgen_test_layout_kvm_irq_level__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_irq_level__bindgen_ty_1>())).status as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_irq_level__bindgen_ty_1>())).status as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -3816,7 +3856,9 @@ fn bindgen_test_layout_kvm_irqchip__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_irqchip__bindgen_ty_1>())).ioapic as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_irqchip__bindgen_ty_1>())).ioapic as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -4036,7 +4078,7 @@ pub union kvm_run__bindgen_ty_1 {
     pub eoi: kvm_run__bindgen_ty_1__bindgen_ty_19,
     pub padding: [::std::os::raw::c_char; 256usize],
     _bindgen_union_align: [u64; 32usize],
-} 
+}
 #[test]
 fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_1() {
     assert_eq!(
@@ -4054,8 +4096,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_1() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_1>()))
-                .hardware_exit_reason as *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_1>())).hardware_exit_reason
+                as *const _ as usize
         },
         0usize,
         concat!(
@@ -4123,8 +4165,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_3() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_3>())).exception as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_3>())).exception as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -4136,8 +4178,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_3() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_3>())).error_code as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_3>())).error_code as *const _
+                as usize
         },
         4usize,
         concat!(
@@ -4174,8 +4216,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_4() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_4>())).direction as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_4>())).direction as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -4187,8 +4229,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_4() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_4>())).size as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_4>())).size as *const _
+                as usize
         },
         1usize,
         concat!(
@@ -4200,8 +4242,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_4() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_4>())).port as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_4>())).port as *const _
+                as usize
         },
         2usize,
         concat!(
@@ -4213,8 +4255,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_4() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_4>())).count as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_4>())).count as *const _
+                as usize
         },
         4usize,
         concat!(
@@ -4226,8 +4268,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_4() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_4>())).data_offset as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_4>())).data_offset as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -4260,8 +4302,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_5() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_5>())).arch as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_5>())).arch as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -4297,8 +4339,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_6() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_6>())).phys_addr as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_6>())).phys_addr as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -4310,8 +4352,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_6() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_6>())).data as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_6>())).data as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -4335,8 +4377,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_6() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_6>())).is_write as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_6>())).is_write as *const _
+                as usize
         },
         20usize,
         concat!(
@@ -4385,8 +4427,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_7() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_7>())).args as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_7>())).args as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -4410,8 +4452,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_7() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_7>())).longmode as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_7>())).longmode as *const _
+                as usize
         },
         64usize,
         concat!(
@@ -4470,8 +4512,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_8() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_8>())).is_write as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_8>())).is_write as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -4518,8 +4560,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_9() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_9>())).icptcode as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_9>())).icptcode as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -4580,8 +4622,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_10() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_10>())).trans_exc_code as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_10>())).trans_exc_code
+                as *const _ as usize
         },
         0usize,
         concat!(
@@ -4593,8 +4635,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_10() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_10>())).pgm_code as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_10>())).pgm_code as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -4632,8 +4674,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_11() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_11>())).dcrn as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_11>())).dcrn as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -4645,8 +4687,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_11() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_11>())).data as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_11>())).data as *const _
+                as usize
         },
         4usize,
         concat!(
@@ -4658,8 +4700,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_11() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_11>())).is_write as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_11>())).is_write as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -4697,8 +4739,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_12() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_12>())).suberror as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_12>())).suberror as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -4710,8 +4752,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_12() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_12>())).ndata as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_12>())).ndata as *const _
+                as usize
         },
         4usize,
         concat!(
@@ -4723,8 +4765,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_12() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_12>())).data as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_12>())).data as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -4760,8 +4802,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_13() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_13>())).gprs as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_13>())).gprs as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -4811,8 +4853,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_14() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_14>())).ret as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_14>())).ret as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -4824,8 +4866,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_14() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_14>())).args as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_14>())).args as *const _
+                as usize
         },
         16usize,
         concat!(
@@ -4866,8 +4908,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_15() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).subchannel_id as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).subchannel_id
+                as *const _ as usize
         },
         0usize,
         concat!(
@@ -4879,8 +4921,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_15() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).subchannel_nr as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).subchannel_nr
+                as *const _ as usize
         },
         2usize,
         concat!(
@@ -4892,8 +4934,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_15() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).io_int_parm as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).io_int_parm as *const _
+                as usize
         },
         4usize,
         concat!(
@@ -4905,8 +4947,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_15() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).io_int_word as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).io_int_word as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -4918,8 +4960,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_15() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).ipb as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).ipb as *const _
+                as usize
         },
         12usize,
         concat!(
@@ -4931,8 +4973,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_15() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).dequeued as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_15>())).dequeued as *const _
+                as usize
         },
         16usize,
         concat!(
@@ -4968,8 +5010,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_16() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_16>())).epr as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_16>())).epr as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -5006,8 +5048,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_17() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_17>())).type_ as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_17>())).type_ as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -5019,8 +5061,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_17() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_17>())).flags as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_17>())).flags as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -5061,8 +5103,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_18() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_18>())).addr as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_18>())).addr as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -5086,8 +5128,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_18() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_18>())).reserved as
-                *const _ as usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_18>())).reserved as *const _
+                as usize
         },
         9usize,
         concat!(
@@ -5111,8 +5153,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_18() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_18>())).sel1 as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_18>())).sel1 as *const _
+                as usize
         },
         11usize,
         concat!(
@@ -5124,8 +5166,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_18() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_18>())).sel2 as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_18>())).sel2 as *const _
+                as usize
         },
         12usize,
         concat!(
@@ -5161,8 +5203,8 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_19() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_19>())).vector as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1__bindgen_ty_19>())).vector as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -5197,7 +5239,9 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).fail_entry as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).fail_entry as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -5257,7 +5301,9 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).tpr_access as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).tpr_access as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -5267,7 +5313,9 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).s390_sieic as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).s390_sieic as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -5289,7 +5337,9 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).s390_ucontrol as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).s390_ucontrol as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -5329,7 +5379,9 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).papr_hcall as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).papr_hcall as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -5359,7 +5411,9 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).system_event as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_run__bindgen_ty_1>())).system_event as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -5462,7 +5516,9 @@ fn bindgen_test_layout_kvm_run() {
         concat!("Alignment of ", stringify!(kvm_run))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_run>())).request_interrupt_window as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_run>())).request_interrupt_window as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -5777,7 +5833,9 @@ fn bindgen_test_layout_kvm_translation() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_translation>())).physical_address as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_translation>())).physical_address as *const _ as usize
+        },
         8usize,
         concat!(
             "Offset of field: ",
@@ -5959,7 +6017,7 @@ pub struct kvm_dirty_log {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union kvm_dirty_log__bindgen_ty_1 {
-    pub dirty_bitmap: *mut::std::os::raw::c_void,
+    pub dirty_bitmap: *mut ::std::os::raw::c_void,
     pub padding2: __u64,
     _bindgen_union_align: u64,
 }
@@ -5977,8 +6035,8 @@ fn bindgen_test_layout_kvm_dirty_log__bindgen_ty_1() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_dirty_log__bindgen_ty_1>())).dirty_bitmap as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_dirty_log__bindgen_ty_1>())).dirty_bitmap as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -6418,7 +6476,9 @@ fn bindgen_test_layout_kvm_s390_pgm_info() {
         concat!("Alignment of ", stringify!(kvm_s390_pgm_info))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_s390_pgm_info>())).trans_exc_code as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_s390_pgm_info>())).trans_exc_code as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -6694,8 +6754,8 @@ fn bindgen_test_layout_kvm_s390_mchk_info() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_s390_mchk_info>())).failing_storage_address as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_s390_mchk_info>())).failing_storage_address as *const _
+                as usize
         },
         16usize,
         concat!(
@@ -6706,7 +6766,9 @@ fn bindgen_test_layout_kvm_s390_mchk_info() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_s390_mchk_info>())).ext_damage_code as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_s390_mchk_info>())).ext_damage_code as *const _ as usize
+        },
         24usize,
         concat!(
             "Offset of field: ",
@@ -6799,7 +6861,9 @@ fn bindgen_test_layout_kvm_s390_irq__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_s390_irq__bindgen_ty_1>())).emerg as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_s390_irq__bindgen_ty_1>())).emerg as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -6809,7 +6873,9 @@ fn bindgen_test_layout_kvm_s390_irq__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_s390_irq__bindgen_ty_1>())).extcall as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_s390_irq__bindgen_ty_1>())).extcall as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -6819,7 +6885,9 @@ fn bindgen_test_layout_kvm_s390_irq__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_s390_irq__bindgen_ty_1>())).prefix as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_s390_irq__bindgen_ty_1>())).prefix as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -6849,7 +6917,9 @@ fn bindgen_test_layout_kvm_s390_irq__bindgen_ty_1() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_s390_irq__bindgen_ty_1>())).reserved as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_s390_irq__bindgen_ty_1>())).reserved as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -7248,7 +7318,9 @@ fn bindgen_test_layout_kvm_ppc_one_page_size() {
         concat!("Alignment of ", stringify!(kvm_ppc_one_page_size))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_ppc_one_page_size>())).page_shift as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_ppc_one_page_size>())).page_shift as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -7300,7 +7372,9 @@ fn bindgen_test_layout_kvm_ppc_one_seg_page_size() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_ppc_one_seg_page_size>())).slb_enc as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_ppc_one_seg_page_size>())).slb_enc as *const _ as usize
+        },
         4usize,
         concat!(
             "Offset of field: ",
@@ -7516,8 +7590,8 @@ fn bindgen_test_layout_kvm_irq_routing_s390_adapter() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_irq_routing_s390_adapter>())).summary_addr as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_irq_routing_s390_adapter>())).summary_addr as *const _
+                as usize
         },
         8usize,
         concat!(
@@ -7541,8 +7615,8 @@ fn bindgen_test_layout_kvm_irq_routing_s390_adapter() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_irq_routing_s390_adapter>())).summary_offset as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_irq_routing_s390_adapter>())).summary_offset as *const _
+                as usize
         },
         24usize,
         concat!(
@@ -7600,8 +7674,8 @@ fn bindgen_test_layout_kvm_irq_routing_entry__bindgen_ty_1() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_irq_routing_entry__bindgen_ty_1>())).irqchip as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_irq_routing_entry__bindgen_ty_1>())).irqchip as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -7625,8 +7699,8 @@ fn bindgen_test_layout_kvm_irq_routing_entry__bindgen_ty_1() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_irq_routing_entry__bindgen_ty_1>())).adapter as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_irq_routing_entry__bindgen_ty_1>())).adapter as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -8580,8 +8654,8 @@ fn bindgen_test_layout_kvm_assigned_pci_dev__bindgen_ty_1() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<kvm_assigned_pci_dev__bindgen_ty_1>())).reserved as *const _ as
-                usize
+            &(*(::std::ptr::null::<kvm_assigned_pci_dev__bindgen_ty_1>())).reserved as *const _
+                as usize
         },
         0usize,
         concat!(
@@ -8725,7 +8799,9 @@ fn bindgen_test_layout_kvm_assigned_irq() {
         concat!("Alignment of ", stringify!(kvm_assigned_irq))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_assigned_irq>())).assigned_dev_id as *const _ as usize },
+        unsafe {
+            &(*(::std::ptr::null::<kvm_assigned_irq>())).assigned_dev_id as *const _ as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",

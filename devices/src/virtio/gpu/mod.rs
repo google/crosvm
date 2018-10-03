@@ -6,8 +6,8 @@ extern crate gpu_buffer;
 extern crate gpu_display;
 extern crate gpu_renderer;
 
-mod protocol;
 mod backend;
+mod protocol;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -16,24 +16,25 @@ use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread::spawn;
 use std::time::Duration;
 
 use data_model::*;
 
-use sys_util::{EventFd, PollContext, PollToken, GuestAddress, GuestMemory};
+use sys_util::{EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 
 use self::gpu_buffer::Device;
 use self::gpu_display::*;
-use self::gpu_renderer::{Renderer, format_fourcc};
+use self::gpu_renderer::{format_fourcc, Renderer};
 
-use super::{VirtioDevice, Queue, AvailIter, VIRTIO_F_VERSION_1, INTERRUPT_STATUS_USED_RING,
-            TYPE_GPU};
+use super::{
+    AvailIter, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_GPU, VIRTIO_F_VERSION_1,
+};
 
-use self::protocol::*;
 use self::backend::Backend;
+use self::protocol::*;
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.
@@ -88,11 +89,12 @@ impl Frontend {
         self.backend.process_display()
     }
 
-    fn process_gpu_command(&mut self,
-                           mem: &GuestMemory,
-                           cmd: GpuCommand,
-                           data: Option<VolatileSlice>)
-                           -> GpuResponse {
+    fn process_gpu_command(
+        &mut self,
+        mem: &GuestMemory,
+        cmd: GpuCommand,
+        data: Option<VolatileSlice>,
+    ) -> GpuResponse {
         self.backend.force_ctx_0();
 
         match cmd {
@@ -102,50 +104,49 @@ impl Frontend {
             GpuCommand::ResourceCreate2d(info) => {
                 let format = info.format.to_native();
                 match format_fourcc(format) {
-                    Some(fourcc) => {
-                        self.backend
-                            .create_resource_2d(info.resource_id.to_native(),
-                                                info.width.to_native(),
-                                                info.height.to_native(),
-                                                fourcc)
-                    }
+                    Some(fourcc) => self.backend.create_resource_2d(
+                        info.resource_id.to_native(),
+                        info.width.to_native(),
+                        info.height.to_native(),
+                        fourcc,
+                    ),
                     None => {
-                        warn!("failed to create resource with unrecognized pipe format {}",
-                              format);
+                        warn!(
+                            "failed to create resource with unrecognized pipe format {}",
+                            format
+                        );
                         GpuResponse::ErrInvalidParameter
                     }
                 }
-
             }
             GpuCommand::ResourceUnref(info) => {
                 self.backend.unref_resource(info.resource_id.to_native())
             }
             GpuCommand::SetScanout(info) => self.backend.set_scanout(info.resource_id.to_native()),
-            GpuCommand::ResourceFlush(info) => {
-                self.backend
-                    .flush_resource(info.resource_id.to_native(),
-                                    info.r.x.to_native(),
-                                    info.r.y.to_native(),
-                                    info.r.width.to_native(),
-                                    info.r.height.to_native())
-            }
-            GpuCommand::TransferToHost2d(info) => {
-                self.backend
-                    .transfer_to_resource_2d(info.resource_id.to_native(),
-                                             info.r.x.to_native(),
-                                             info.r.y.to_native(),
-                                             info.r.width.to_native(),
-                                             info.r.height.to_native(),
-                                             info.offset.to_native(),
-                                             mem)
-            }
+            GpuCommand::ResourceFlush(info) => self.backend.flush_resource(
+                info.resource_id.to_native(),
+                info.r.x.to_native(),
+                info.r.y.to_native(),
+                info.r.width.to_native(),
+                info.r.height.to_native(),
+            ),
+            GpuCommand::TransferToHost2d(info) => self.backend.transfer_to_resource_2d(
+                info.resource_id.to_native(),
+                info.r.x.to_native(),
+                info.r.y.to_native(),
+                info.r.width.to_native(),
+                info.r.height.to_native(),
+                info.offset.to_native(),
+                mem,
+            ),
             GpuCommand::ResourceAttachBacking(info) if data.is_some() => {
                 let data = data.unwrap();
                 let entry_count = info.nr_entries.to_native() as usize;
                 let mut iovecs = Vec::with_capacity(entry_count);
                 for i in 0..entry_count {
-                    if let Ok(entry_ref) = data.get_ref((i * size_of::<virtio_gpu_mem_entry>()) as
-                                                        u64) {
+                    if let Ok(entry_ref) =
+                        data.get_ref((i * size_of::<virtio_gpu_mem_entry>()) as u64)
+                    {
                         let entry: virtio_gpu_mem_entry = entry_ref.load();
                         let addr = GuestAddress(entry.addr.to_native());
                         let len = entry.length.to_native() as usize;
@@ -160,42 +161,32 @@ impl Frontend {
             GpuCommand::ResourceDetachBacking(info) => {
                 self.backend.detach_backing(info.resource_id.to_native())
             }
-            GpuCommand::UpdateCursor(info) => {
-                self.backend
-                    .update_cursor(info.resource_id.to_native(),
-                                   info.pos.x.into(),
-                                   info.pos.y.into())
-            }
-            GpuCommand::MoveCursor(info) => {
-                self.backend
-                    .move_cursor(info.pos.x.into(), info.pos.y.into())
-            }
+            GpuCommand::UpdateCursor(info) => self.backend.update_cursor(
+                info.resource_id.to_native(),
+                info.pos.x.into(),
+                info.pos.y.into(),
+            ),
+            GpuCommand::MoveCursor(info) => self
+                .backend
+                .move_cursor(info.pos.x.into(), info.pos.y.into()),
             GpuCommand::GetCapsetInfo(info) => {
-                self.backend
-                    .get_capset_info(info.capset_index.to_native())
+                self.backend.get_capset_info(info.capset_index.to_native())
             }
-            GpuCommand::GetCapset(info) => {
-                self.backend
-                    .get_capset(info.capset_id.to_native(), info.capset_version.to_native())
-            }
-            GpuCommand::CtxCreate(info) => {
-                self.backend
-                    .create_renderer_context(info.hdr.ctx_id.to_native())
-            }
-            GpuCommand::CtxDestroy(info) => {
-                self.backend
-                    .destroy_renderer_context(info.hdr.ctx_id.to_native())
-            }
-            GpuCommand::CtxAttachResource(info) => {
-                self.backend
-                    .context_attach_resource(info.hdr.ctx_id.to_native(),
-                                             info.resource_id.to_native())
-            }
-            GpuCommand::CtxDetachResource(info) => {
-                self.backend
-                    .context_detach_resource(info.hdr.ctx_id.to_native(),
-                                             info.resource_id.to_native())
-            }
+            GpuCommand::GetCapset(info) => self
+                .backend
+                .get_capset(info.capset_id.to_native(), info.capset_version.to_native()),
+            GpuCommand::CtxCreate(info) => self
+                .backend
+                .create_renderer_context(info.hdr.ctx_id.to_native()),
+            GpuCommand::CtxDestroy(info) => self
+                .backend
+                .destroy_renderer_context(info.hdr.ctx_id.to_native()),
+            GpuCommand::CtxAttachResource(info) => self
+                .backend
+                .context_attach_resource(info.hdr.ctx_id.to_native(), info.resource_id.to_native()),
+            GpuCommand::CtxDetachResource(info) => self
+                .backend
+                .context_detach_resource(info.hdr.ctx_id.to_native(), info.resource_id.to_native()),
             GpuCommand::ResourceCreate3d(info) => {
                 let id = info.resource_id.to_native();
                 let target = info.target.to_native();
@@ -208,18 +199,10 @@ impl Frontend {
                 let last_level = info.last_level.to_native();
                 let nr_samples = info.nr_samples.to_native();
                 let flags = info.flags.to_native();
-                self.backend
-                    .resource_create_3d(id,
-                                        target,
-                                        format,
-                                        bind,
-                                        width,
-                                        height,
-                                        depth,
-                                        array_size,
-                                        last_level,
-                                        nr_samples,
-                                        flags)
+                self.backend.resource_create_3d(
+                    id, target, format, bind, width, height, depth, array_size, last_level,
+                    nr_samples, flags,
+                )
             }
             GpuCommand::TransferToHost3d(info) => {
                 let ctx_id = info.hdr.ctx_id.to_native();
@@ -234,20 +217,20 @@ impl Frontend {
                 let stride = info.stride.to_native();
                 let layer_stride = info.layer_stride.to_native();
                 let offset = info.offset.to_native();
-                self.backend
-                    .transfer_to_resource_3d(ctx_id,
-                                             res_id,
-                                             x,
-                                             y,
-                                             z,
-                                             width,
-                                             height,
-                                             depth,
-                                             level,
-                                             stride,
-                                             layer_stride,
-                                             offset)
-
+                self.backend.transfer_to_resource_3d(
+                    ctx_id,
+                    res_id,
+                    x,
+                    y,
+                    z,
+                    width,
+                    height,
+                    depth,
+                    level,
+                    stride,
+                    layer_stride,
+                    offset,
+                )
             }
             GpuCommand::TransferFromHost3d(info) => {
                 let ctx_id = info.hdr.ctx_id.to_native();
@@ -262,19 +245,20 @@ impl Frontend {
                 let stride = info.stride.to_native();
                 let layer_stride = info.layer_stride.to_native();
                 let offset = info.offset.to_native();
-                self.backend
-                    .transfer_from_resource_3d(ctx_id,
-                                               res_id,
-                                               x,
-                                               y,
-                                               z,
-                                               width,
-                                               height,
-                                               depth,
-                                               level,
-                                               stride,
-                                               layer_stride,
-                                               offset)
+                self.backend.transfer_from_resource_3d(
+                    ctx_id,
+                    res_id,
+                    x,
+                    y,
+                    z,
+                    width,
+                    height,
+                    depth,
+                    level,
+                    stride,
+                    layer_stride,
+                    offset,
+                )
             }
             GpuCommand::CmdSubmit3d(info) if data.is_some() => {
                 let data = data.unwrap(); // guarded by this match arm
@@ -296,10 +280,12 @@ impl Frontend {
         }
     }
 
-    fn take_descriptors(mem: &GuestMemory,
-                        desc_iter: AvailIter,
-                        descriptors: &mut VecDeque<QueueDescriptor>,
-                        return_descriptors: &mut VecDeque<ReturnDescriptor>) {
+    fn take_descriptors(
+        mem: &GuestMemory,
+        desc_iter: AvailIter,
+        descriptors: &mut VecDeque<QueueDescriptor>,
+        return_descriptors: &mut VecDeque<ReturnDescriptor>,
+    ) {
         for desc in desc_iter {
             if desc.len as usize >= size_of::<virtio_gpu_ctrl_hdr>() && !desc.is_write_only() {
                 let mut q_desc = QueueDescriptor {
@@ -323,38 +309,45 @@ impl Frontend {
                 }
                 descriptors.push_back(q_desc);
             } else {
-                let likely_type = mem.read_obj_from_addr(desc.addr)
-                    .unwrap_or(Le32::from(0));
-                debug!("ctrl queue bad descriptor index = {} len = {} write = {} type = {}",
-                       desc.index,
-                       desc.len,
-                       desc.is_write_only(),
-                       virtio_gpu_cmd_str(likely_type.to_native()));
+                let likely_type = mem.read_obj_from_addr(desc.addr).unwrap_or(Le32::from(0));
+                debug!(
+                    "ctrl queue bad descriptor index = {} len = {} write = {} type = {}",
+                    desc.index,
+                    desc.len,
+                    desc.is_write_only(),
+                    virtio_gpu_cmd_str(likely_type.to_native())
+                );
                 return_descriptors.push_back(ReturnDescriptor {
-                                                 index: desc.index,
-                                                 len: 0,
-                                             });
+                    index: desc.index,
+                    len: 0,
+                });
             }
         }
     }
 
     fn take_ctrl_descriptors(&mut self, mem: &GuestMemory, desc_iter: AvailIter) {
-        Frontend::take_descriptors(mem,
-                                   desc_iter,
-                                   &mut self.ctrl_descriptors,
-                                   &mut self.return_ctrl_descriptors);
+        Frontend::take_descriptors(
+            mem,
+            desc_iter,
+            &mut self.ctrl_descriptors,
+            &mut self.return_ctrl_descriptors,
+        );
     }
 
     fn take_cursor_descriptors(&mut self, mem: &GuestMemory, desc_iter: AvailIter) {
-        Frontend::take_descriptors(mem,
-                                   desc_iter,
-                                   &mut self.cursor_descriptors,
-                                   &mut self.return_cursor_descriptors);
+        Frontend::take_descriptors(
+            mem,
+            desc_iter,
+            &mut self.cursor_descriptors,
+            &mut self.return_cursor_descriptors,
+        );
     }
 
-    fn process_descriptor(&mut self,
-                          mem: &GuestMemory,
-                          desc: QueueDescriptor) -> Option<ReturnDescriptor> {
+    fn process_descriptor(
+        &mut self,
+        mem: &GuestMemory,
+        desc: QueueDescriptor,
+    ) -> Option<ReturnDescriptor> {
         let mut resp = GpuResponse::ErrUnspec;
         let mut gpu_cmd = None;
         let mut len = 0;
@@ -392,16 +385,13 @@ impl Frontend {
                         ctx_id = ctrl_hdr.ctx_id.to_native();
                         flags = VIRTIO_GPU_FLAG_FENCE;
 
-                        let fence_resp = self.backend
-                            .create_fence(ctx_id, fence_id as u32);
+                        let fence_resp = self.backend.create_fence(ctx_id, fence_id as u32);
                         if fence_resp.is_err() {
-                            warn!("create_fence {} -> {:?}",
-                                  fence_id, fence_resp);
+                            warn!("create_fence {} -> {:?}", fence_id, fence_resp);
                             resp = fence_resp;
                         }
                     }
                 }
-
 
                 // Prepare the response now, even if it is going to wait until
                 // fence is complete.
@@ -417,7 +407,7 @@ impl Frontend {
                         desc,
                     });
 
-                    return None
+                    return None;
                 }
 
                 // No fence, respond now.
@@ -430,23 +420,19 @@ impl Frontend {
     }
 
     fn process_ctrl(&mut self, mem: &GuestMemory) -> Option<ReturnDescriptor> {
-        self.return_ctrl_descriptors
-            .pop_front()
-            .or_else(|| {
-                         self.ctrl_descriptors
-                             .pop_front()
-                             .and_then(|desc| self.process_descriptor(mem, desc))
-                     })
+        self.return_ctrl_descriptors.pop_front().or_else(|| {
+            self.ctrl_descriptors
+                .pop_front()
+                .and_then(|desc| self.process_descriptor(mem, desc))
+        })
     }
 
     fn process_cursor(&mut self, mem: &GuestMemory) -> Option<ReturnDescriptor> {
-        self.return_cursor_descriptors
-            .pop_front()
-            .or_else(|| {
-                         self.cursor_descriptors
-                             .pop_front()
-                             .and_then(|desc| self.process_descriptor(mem, desc))
-                     })
+        self.return_cursor_descriptors.pop_front().or_else(|| {
+            self.cursor_descriptors
+                .pop_front()
+                .and_then(|desc| self.process_descriptor(mem, desc))
+        })
     }
 
     fn fence_poll(&mut self) {
@@ -457,9 +443,9 @@ impl Frontend {
                 true
             } else {
                 return_descs.push_back(ReturnDescriptor {
-                                           index: f_desc.desc.index,
-                                           len: f_desc.len
-                                       });
+                    index: f_desc.desc.index,
+                    len: f_desc.len,
+                });
                 false
             }
         })
@@ -486,7 +472,6 @@ impl Worker {
         let _ = self.interrupt_evt.write(1);
     }
 
-
     fn run(&mut self) {
         #[derive(PollToken)]
         enum Token {
@@ -496,23 +481,20 @@ impl Worker {
             Kill,
         }
 
-        let poll_ctx: PollContext<Token> =
-            match PollContext::new()
-                      .and_then(|pc| pc.add(&self.ctrl_evt, Token::CtrlQueue).and(Ok(pc)))
-                      .and_then(|pc| {
-                                    pc.add(&self.cursor_evt, Token::CursorQueue).and(Ok(pc))
-                                })
-                      .and_then(|pc| {
-                                    pc.add(&*self.state.display().borrow(), Token::Display)
-                                        .and(Ok(pc))
-                                })
-                      .and_then(|pc| pc.add(&self.kill_evt, Token::Kill).and(Ok(pc))) {
-                Ok(pc) => pc,
-                Err(e) => {
-                    error!("failed creating PollContext: {:?}", e);
-                    return;
-                }
-            };
+        let poll_ctx: PollContext<Token> = match PollContext::new()
+            .and_then(|pc| pc.add(&self.ctrl_evt, Token::CtrlQueue).and(Ok(pc)))
+            .and_then(|pc| pc.add(&self.cursor_evt, Token::CursorQueue).and(Ok(pc)))
+            .and_then(|pc| {
+                pc.add(&*self.state.display().borrow(), Token::Display)
+                    .and(Ok(pc))
+            }).and_then(|pc| pc.add(&self.kill_evt, Token::Kill).and(Ok(pc)))
+        {
+            Ok(pc) => pc,
+            Err(e) => {
+                error!("failed creating PollContext: {:?}", e);
+                return;
+            }
+        };
 
         'poll: loop {
             // If there are outstanding fences, wake up early to poll them.
@@ -653,7 +635,6 @@ impl VirtioDevice for Gpu {
         let _ = value;
     }
 
-
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let offset = offset as usize;
         let len = data.len();
@@ -679,12 +660,14 @@ impl VirtioDevice for Gpu {
         }
     }
 
-    fn activate(&mut self,
-                mem: GuestMemory,
-                interrupt_evt: EventFd,
-                interrupt_status: Arc<AtomicUsize>,
-                mut queues: Vec<Queue>,
-                mut queue_evts: Vec<EventFd>) {
+    fn activate(
+        &mut self,
+        mem: GuestMemory,
+        interrupt_evt: EventFd,
+        interrupt_status: Arc<AtomicUsize>,
+        mut queues: Vec<Queue>,
+        mut queue_evts: Vec<EventFd>,
+    ) {
         if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
             return;
         }
@@ -697,14 +680,13 @@ impl VirtioDevice for Gpu {
             }
         };
 
-        let (self_kill_evt, kill_evt) =
-            match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("error creating kill EventFd pair: {:?}", e);
-                    return;
-                }
-            };
+        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("error creating kill EventFd pair: {:?}", e);
+                return;
+            }
+        };
         self.kill_evt = Some(self_kill_evt);
 
         let ctrl_queue = queues.remove(0);
@@ -726,7 +708,7 @@ impl VirtioDevice for Gpu {
                 Ok(d) => d,
                 Err(()) => {
                     error!("failed to open device");
-                    return
+                    return;
                 }
             };
 
@@ -747,18 +729,17 @@ impl VirtioDevice for Gpu {
             };
 
             Worker {
-                    exit_evt,
-                    mem,
-                    interrupt_evt,
-                    interrupt_status,
-                    ctrl_queue,
-                    ctrl_evt,
-                    cursor_queue,
-                    cursor_evt,
-                    kill_evt,
-                    state: Frontend::new(Backend::new(device, display, renderer)),
-                }
-                .run()
+                exit_evt,
+                mem,
+                interrupt_evt,
+                interrupt_status,
+                ctrl_queue,
+                ctrl_evt,
+                cursor_queue,
+                cursor_evt,
+                kill_evt,
+                state: Frontend::new(Backend::new(device, display, renderer)),
+            }.run()
         });
     }
 }

@@ -9,9 +9,9 @@ use std::mem;
 use std::ptr;
 
 use libc;
-use libc::{c_char, gid_t, uid_t, getgrnam_r, getpwnam_r};
+use libc::{c_char, getgrnam_r, getpwnam_r, gid_t, uid_t};
 
-use {Result, errno_result};
+use {errno_result, Result};
 
 /// Safe wrapper for getting a uid from a user name with `getpwnam_r(3)`.
 #[inline(always)]
@@ -29,11 +29,13 @@ pub fn get_user_id(user_name: &CStr) -> Result<uid_t> {
     // This call is safe as long as it behaves as described in the man page. We pass in valid
     // pointers to stack-allocated buffers, and the length check for the scratch buffer is correct.
     unsafe {
-        handle_eintr_rc!(getpwnam_r(user_name.as_ptr(),
-                                    &mut passwd,
-                                    buf.as_mut_ptr(),
-                                    buf.len(),
-                                    &mut passwd_result))
+        handle_eintr_rc!(getpwnam_r(
+            user_name.as_ptr(),
+            &mut passwd,
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut passwd_result
+        ))
     };
 
     if passwd_result.is_null() {
@@ -59,11 +61,13 @@ pub fn get_group_id(group_name: &CStr) -> Result<gid_t> {
     // This call is safe as long as it behaves as described in the man page. We pass in valid
     // pointers to stack-allocated buffers, and the length check for the scratch buffer is correct.
     unsafe {
-        handle_eintr_rc!(getgrnam_r(group_name.as_ptr(),
-                                    &mut group,
-                                    buf.as_mut_ptr(),
-                                    buf.len(),
-                                    &mut group_result))
+        handle_eintr_rc!(getgrnam_r(
+            group_name.as_ptr(),
+            &mut group,
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut group_result
+        ))
     };
 
     if group_result.is_null() {

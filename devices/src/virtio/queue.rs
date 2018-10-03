@@ -21,12 +21,12 @@ pub struct DescIter<'a> {
 
 impl<'a> DescIter<'a> {
     /// Returns an iterator that only yields the readable descriptors in the chain.
-    pub fn readable(self) -> impl Iterator<Item=DescriptorChain<'a>> {
+    pub fn readable(self) -> impl Iterator<Item = DescriptorChain<'a>> {
         self.take_while(DescriptorChain::is_read_only)
     }
 
     /// Returns an iterator that only yields the writable descriptors in the chain.
-    pub fn writable(self) -> impl Iterator<Item=DescriptorChain<'a>> {
+    pub fn writable(self) -> impl Iterator<Item = DescriptorChain<'a>> {
         self.skip_while(DescriptorChain::is_read_only)
     }
 }
@@ -70,11 +70,12 @@ pub struct DescriptorChain<'a> {
 }
 
 impl<'a> DescriptorChain<'a> {
-    fn checked_new(mem: &GuestMemory,
-                   desc_table: GuestAddress,
-                   queue_size: u16,
-                   index: u16)
-                   -> Option<DescriptorChain> {
+    fn checked_new(
+        mem: &GuestMemory,
+        desc_table: GuestAddress,
+        queue_size: u16,
+        index: u16,
+    ) -> Option<DescriptorChain> {
         if index >= queue_size {
             return None;
         }
@@ -88,31 +89,34 @@ impl<'a> DescriptorChain<'a> {
         if mem.checked_offset(desc_head, 16).is_none() {
             return None;
         }
-        let len: u32 = mem.read_obj_from_addr(desc_head.unchecked_add(8))
-            .unwrap();
-        let flags: u16 = mem.read_obj_from_addr(desc_head.unchecked_add(12))
-            .unwrap();
-        let next: u16 = mem.read_obj_from_addr(desc_head.unchecked_add(14))
-            .unwrap();
+        let len: u32 = mem.read_obj_from_addr(desc_head.unchecked_add(8)).unwrap();
+        let flags: u16 = mem.read_obj_from_addr(desc_head.unchecked_add(12)).unwrap();
+        let next: u16 = mem.read_obj_from_addr(desc_head.unchecked_add(14)).unwrap();
         let chain = DescriptorChain {
-            mem: mem,
-            desc_table: desc_table,
-            queue_size: queue_size,
+            mem,
+            desc_table,
+            queue_size,
             ttl: queue_size,
-            index: index,
-            addr: addr,
-            len: len,
-            flags: flags,
-            next: next,
+            index,
+            addr,
+            len,
+            flags,
+            next,
         };
 
-        if chain.is_valid() { Some(chain) } else { None }
+        if chain.is_valid() {
+            Some(chain)
+        } else {
+            None
+        }
     }
 
     fn is_valid(&self) -> bool {
-        if self.mem
-               .checked_offset(self.addr, self.len as u64)
-               .is_none() {
+        if self
+            .mem
+            .checked_offset(self.addr, self.len as u64)
+            .is_none()
+        {
             false
         } else if self.has_next() && self.next >= self.queue_size {
             false
@@ -148,11 +152,12 @@ impl<'a> DescriptorChain<'a> {
     /// the head of the next _available_ descriptor chain.
     pub fn next_descriptor(&self) -> Option<DescriptorChain<'a>> {
         if self.has_next() {
-            DescriptorChain::checked_new(self.mem, self.desc_table, self.queue_size, self.next)
-                .map(|mut c| {
-                         c.ttl = self.ttl - 1;
-                         c
-                     })
+            DescriptorChain::checked_new(self.mem, self.desc_table, self.queue_size, self.next).map(
+                |mut c| {
+                    c.ttl = self.ttl - 1;
+                    c
+                },
+            )
         } else {
             None
         }
@@ -160,9 +165,7 @@ impl<'a> DescriptorChain<'a> {
 
     /// Produces an iterator over all the descriptors in this chain.
     pub fn into_iter(self) -> DescIter<'a> {
-        DescIter {
-            next: Some(self),
-        }
+        DescIter { next: Some(self) }
     }
 }
 
@@ -233,7 +236,7 @@ impl Queue {
     /// Constructs an empty virtio queue with the given `max_size`.
     pub fn new(max_size: u16) -> Queue {
         Queue {
-            max_size: max_size,
+            max_size,
             size: max_size,
             ready: false,
             desc_table: GuestAddress(0),
@@ -261,49 +264,57 @@ impl Queue {
         if !self.ready {
             error!("attempt to use virtio queue that is not marked ready");
             false
-        } else if self.size > self.max_size || self.size == 0 ||
-                  (self.size & (self.size - 1)) != 0 {
+        } else if self.size > self.max_size || self.size == 0 || (self.size & (self.size - 1)) != 0
+        {
             error!("virtio queue with invalid size: {}", self.size);
             false
         } else if desc_table
-                      .checked_add(desc_table_size as u64)
-                      .map_or(true, |v| !mem.address_in_range(v)) {
-            error!("virtio queue descriptor table goes out of bounds: start:0x{:08x} size:0x{:08x}",
-                   desc_table.offset(),
-                   desc_table_size);
+            .checked_add(desc_table_size as u64)
+            .map_or(true, |v| !mem.address_in_range(v))
+        {
+            error!(
+                "virtio queue descriptor table goes out of bounds: start:0x{:08x} size:0x{:08x}",
+                desc_table.offset(),
+                desc_table_size
+            );
             false
         } else if avail_ring
-                      .checked_add(avail_ring_size as u64)
-                      .map_or(true, |v| !mem.address_in_range(v)) {
-            error!("virtio queue available ring goes out of bounds: start:0x{:08x} size:0x{:08x}",
-                   avail_ring.offset(),
-                   avail_ring_size);
+            .checked_add(avail_ring_size as u64)
+            .map_or(true, |v| !mem.address_in_range(v))
+        {
+            error!(
+                "virtio queue available ring goes out of bounds: start:0x{:08x} size:0x{:08x}",
+                avail_ring.offset(),
+                avail_ring_size
+            );
             false
         } else if used_ring
-                      .checked_add(used_ring_size as u64)
-                      .map_or(true, |v| !mem.address_in_range(v)) {
-            error!("virtio queue used ring goes out of bounds: start:0x{:08x} size:0x{:08x}",
-                   used_ring.offset(),
-                   used_ring_size);
+            .checked_add(used_ring_size as u64)
+            .map_or(true, |v| !mem.address_in_range(v))
+        {
+            error!(
+                "virtio queue used ring goes out of bounds: start:0x{:08x} size:0x{:08x}",
+                used_ring.offset(),
+                used_ring_size
+            );
             false
         } else {
             true
         }
-
     }
 
     /// A consuming iterator over all available descriptor chain heads offered by the driver.
     pub fn iter<'a, 'b>(&'b mut self, mem: &'a GuestMemory) -> AvailIter<'a, 'b> {
         if !self.is_valid(mem) {
             return AvailIter {
-                       mem: mem,
-                       desc_table: GuestAddress(0),
-                       avail_ring: GuestAddress(0),
-                       next_index: Wrapping(0),
-                       last_index: Wrapping(0),
-                       queue_size: 0,
-                       next_avail: &mut self.next_avail,
-                   };
+                mem,
+                desc_table: GuestAddress(0),
+                avail_ring: GuestAddress(0),
+                next_index: Wrapping(0),
+                last_index: Wrapping(0),
+                queue_size: 0,
+                next_avail: &mut self.next_avail,
+            };
         }
         let queue_size = self.actual_size();
         let avail_ring = self.avail_ring;
@@ -315,7 +326,7 @@ impl Queue {
 
         if queue_len.0 > queue_size {
             return AvailIter {
-                mem: mem,
+                mem,
                 desc_table: GuestAddress(0),
                 avail_ring: GuestAddress(0),
                 next_index: Wrapping(0),
@@ -326,12 +337,12 @@ impl Queue {
         }
 
         AvailIter {
-            mem: mem,
+            mem,
             desc_table: self.desc_table,
-            avail_ring: avail_ring,
+            avail_ring,
             next_index: self.next_avail,
             last_index: Wrapping(last_index),
-            queue_size: queue_size,
+            queue_size,
             next_avail: &mut self.next_avail,
         }
     }
@@ -339,8 +350,10 @@ impl Queue {
     /// Puts an available descriptor head into the used ring for use by the guest.
     pub fn add_used(&mut self, mem: &GuestMemory, desc_index: u16, len: u32) {
         if desc_index >= self.actual_size() {
-            error!("attempted to add out of bounds descriptor to used ring: {}",
-                   desc_index);
+            error!(
+                "attempted to add out of bounds descriptor to used ring: {}",
+                desc_index
+            );
             return;
         }
 
@@ -349,8 +362,7 @@ impl Queue {
         let used_elem = used_ring.unchecked_add((4 + next_used * 8) as u64);
 
         // These writes can't fail as we are guaranteed to be within the descriptor ring.
-        mem.write_obj_at_addr(desc_index as u32, used_elem)
-            .unwrap();
+        mem.write_obj_at_addr(desc_index as u32, used_elem).unwrap();
         mem.write_obj_at_addr(len as u32, used_elem.unchecked_add(4))
             .unwrap();
 

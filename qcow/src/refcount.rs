@@ -92,8 +92,7 @@ impl RefCount {
                 self.refblock_cache
                     .insert(table_index, table, |index, evicted| {
                         raw_file.write_refcount_block(ref_table[index], evicted.get_values())
-                    })
-                    .map_err(Error::EvictingRefCounts)?;
+                    }).map_err(Error::EvictingRefCounts)?;
             } else {
                 if block_addr_disk == 0 {
                     return Err(Error::NeedNewCluster);
@@ -173,8 +172,7 @@ impl RefCount {
             self.refblock_cache
                 .insert(table_index, table, |index, evicted| {
                     raw_file.write_refcount_block(ref_table[index], evicted.get_values())
-                })
-                .map_err(Error::EvictingRefCounts)?;
+                }).map_err(Error::EvictingRefCounts)?;
         }
         Ok(self.refblock_cache.get(&table_index).unwrap()[block_index])
     }
@@ -205,8 +203,7 @@ impl RefCount {
             self.refblock_cache
                 .insert(table_index, table, |index, evicted| {
                     raw_file.write_refcount_block(ref_table[index], evicted.get_values())
-                })
-                .map_err(Error::EvictingRefCounts)?;
+                }).map_err(Error::EvictingRefCounts)?;
         }
         // The index must exist as it was just inserted if it didn't already.
         Ok(Some(

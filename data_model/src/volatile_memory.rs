@@ -23,13 +23,13 @@ use std::cmp::min;
 use std::fmt;
 use std::io::Result as IoResult;
 use std::io::{Read, Write};
-use std::{isize, usize};
 use std::marker::PhantomData;
 use std::mem::size_of;
 use std::ptr::copy;
-use std::ptr::{write_volatile, read_volatile, null_mut};
+use std::ptr::{null_mut, read_volatile, write_volatile};
 use std::result;
 use std::slice::{from_raw_parts, from_raw_parts_mut};
+use std::{isize, usize};
 
 use DataInit;
 
@@ -47,12 +47,11 @@ impl fmt::Display for VolatileMemoryError {
             &VolatileMemoryError::OutOfBounds { addr } => {
                 write!(f, "address 0x{:x} is out of bounds", addr)
             }
-            &VolatileMemoryError::Overflow { base, offset } => {
-                write!(f,
-                       "address 0x{:x} offset by 0x{:x} would overflow",
-                       base,
-                       offset)
-            }
+            &VolatileMemoryError::Overflow { base, offset } => write!(
+                f,
+                "address 0x{:x} offset by 0x{:x} would overflow",
+                base, offset
+            ),
         }
     }
 }
@@ -80,12 +79,7 @@ type Result<T> = VolatileMemoryResult<T>;
 /// ```
 pub fn calc_offset(base: u64, offset: u64) -> Result<u64> {
     match base.checked_add(offset) {
-        None => {
-            Err(Error::Overflow {
-                    base: base,
-                    offset: offset,
-                })
-        }
+        None => Err(Error::Overflow { base, offset }),
         Some(m) => Ok(m),
     }
 }
@@ -100,9 +94,9 @@ pub trait VolatileMemory {
     fn get_ref<T: DataInit>(&self, offset: u64) -> Result<VolatileRef<T>> {
         let slice = self.get_slice(offset, size_of::<T>() as u64)?;
         Ok(VolatileRef {
-               addr: slice.addr as *mut T,
-               phantom: PhantomData,
-           })
+            addr: slice.addr as *mut T,
+            phantom: PhantomData,
+        })
     }
 }
 
@@ -143,8 +137,8 @@ impl<'a> VolatileSlice<'a> {
     /// accesses.
     pub unsafe fn new(addr: *mut u8, size: u64) -> VolatileSlice<'a> {
         VolatileSlice {
-            addr: addr,
-            size: size,
+            addr,
+            size,
             phantom: PhantomData,
         }
     }
@@ -162,19 +156,21 @@ impl<'a> VolatileSlice<'a> {
     /// Creates a copy of this slice with the address increased by `count` bytes, and the size
     /// reduced by `count` bytes.
     pub fn offset(self, count: u64) -> Result<VolatileSlice<'a>> {
-        let new_addr = (self.addr as u64)
-            .checked_add(count)
-            .ok_or(VolatileMemoryError::Overflow {
-                       base: self.addr as u64,
-                       offset: count,
-                   })?;
+        let new_addr =
+            (self.addr as u64)
+                .checked_add(count)
+                .ok_or(VolatileMemoryError::Overflow {
+                    base: self.addr as u64,
+                    offset: count,
+                })?;
         if new_addr > usize::MAX as u64 {
             return Err(VolatileMemoryError::Overflow {
-                           base: self.addr as u64,
-                           offset: count,
-                       })?;
+                base: self.addr as u64,
+                offset: count,
+            })?;
         }
-        let new_size = self.size
+        let new_size = self
+            .size
             .checked_sub(count)
             .ok_or(VolatileMemoryError::OutOfBounds { addr: new_addr })?;
         // Safe because the memory has the same lifetime and points to a subset of the memory of the
@@ -206,7 +202,8 @@ impl<'a> VolatileSlice<'a> {
     /// # }
     /// ```
     pub fn copy_to<T>(&self, buf: &mut [T])
-        where T: DataInit
+    where
+        T: DataInit,
     {
         let mut addr = self.addr;
         for v in buf.iter_mut().take(self.size as usize / size_of::<T>()) {
@@ -262,7 +259,8 @@ impl<'a> VolatileSlice<'a> {
     /// # }
     /// ```
     pub fn copy_from<T>(&self, buf: &[T])
-        where T: DataInit
+    where
+        T: DataInit,
     {
         let mut addr = self.addr;
         for &v in buf.iter().take(self.size as usize / size_of::<T>()) {
@@ -325,7 +323,6 @@ impl<'a> VolatileSlice<'a> {
     pub fn write_all_to<T: Write>(&self, w: &mut T) -> IoResult<()> {
         w.write_all(unsafe { self.as_slice() })
     }
-
 
     /// Reads up to this slice's size to memory from a readable object and returns how many bytes
     /// were actually read on success.
@@ -397,10 +394,10 @@ impl<'a> VolatileMemory for VolatileSlice<'a> {
             return Err(Error::OutOfBounds { addr: mem_end });
         }
         Ok(VolatileSlice {
-               addr: (self.addr as u64 + offset) as *mut _,
-               size: count,
-               phantom: PhantomData,
-           })
+            addr: (self.addr as u64 + offset) as *mut _,
+            size: count,
+            phantom: PhantomData,
+        })
     }
 }
 
@@ -418,7 +415,8 @@ impl<'a> VolatileMemory for VolatileSlice<'a> {
 ///   assert_eq!(v, 500);
 #[derive(Debug)]
 pub struct VolatileRef<'a, T: DataInit>
-    where T: 'a
+where
+    T: 'a,
 {
     addr: *mut T,
     phantom: PhantomData<&'a T>,
@@ -433,7 +431,7 @@ impl<'a, T: DataInit> VolatileRef<'a, T> {
     /// accesses.
     pub unsafe fn new(addr: *mut T) -> VolatileRef<'a, T> {
         VolatileRef {
-            addr: addr,
+            addr,
             phantom: PhantomData,
         }
     }
@@ -483,7 +481,7 @@ mod tests {
     use super::*;
 
     use std::sync::Arc;
-    use std::thread::{spawn, sleep};
+    use std::thread::{sleep, spawn};
     use std::time::Duration;
 
     #[derive(Clone)]
@@ -505,9 +503,7 @@ mod tests {
             if mem_end > self.mem.len() as u64 {
                 return Err(Error::OutOfBounds { addr: mem_end });
             }
-            Ok(unsafe {
-                   VolatileSlice::new((self.mem.as_ptr() as u64 + offset) as *mut _, count)
-               })
+            Ok(unsafe { VolatileSlice::new((self.mem.as_ptr() as u64 + offset) as *mut _, count) })
         }
     }
 
@@ -558,10 +554,10 @@ mod tests {
         let v_ref = a.get_ref::<u8>(0).unwrap();
         v_ref.store(99);
         spawn(move || {
-                  sleep(Duration::from_millis(10));
-                  let clone_v_ref = a_clone.get_ref::<u8>(0).unwrap();
-                  clone_v_ref.store(0);
-              });
+            sleep(Duration::from_millis(10));
+            let clone_v_ref = a_clone.get_ref::<u8>(0).unwrap();
+            clone_v_ref.store(0);
+        });
 
         // Technically this is a race condition but we have to observe the v_ref's value changing
         // somehow and this helps to ensure the sleep actually happens before the store rather then
@@ -607,11 +603,13 @@ mod tests {
         use std::u64::MAX;
         let a = VecMem::new(1);
         let res = a.get_slice(MAX, 1).unwrap_err();
-        assert_eq!(res,
-                   Error::Overflow {
-                       base: MAX,
-                       offset: 1,
-                   });
+        assert_eq!(
+            res,
+            Error::Overflow {
+                base: MAX,
+                offset: 1,
+            }
+        );
     }
 
     #[test]
@@ -627,11 +625,13 @@ mod tests {
         use std::u64::MAX;
         let a = VecMem::new(1);
         let res = a.get_ref::<u8>(MAX).unwrap_err();
-        assert_eq!(res,
-                   Error::Overflow {
-                       base: MAX,
-                       offset: 1,
-                   });
+        assert_eq!(
+            res,
+            Error::Overflow {
+                base: MAX,
+                offset: 1,
+            }
+        );
     }
 
     #[test]

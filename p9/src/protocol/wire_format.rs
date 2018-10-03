@@ -59,7 +59,7 @@ macro_rules! uint_wire_format_impl {
                 Ok(result)
             }
         }
-    }
+    };
 }
 uint_wire_format_impl!(u8);
 uint_wire_format_impl!(u16);
@@ -127,7 +127,6 @@ impl<T: WireFormat> WireFormat for Vec<T> {
         Ok(result)
     }
 }
-
 
 /// A type that encodes an arbitrary number of bytes of data.  Typically used for Rread
 /// Twrite messages.  This differs from a `Vec<u8>` in that it encodes the number of bytes
@@ -384,24 +383,24 @@ mod test {
     #[test]
     fn invalid_string_decode() {
         let _ = <String as WireFormat>::decode(&mut Cursor::new(&[
-            0x06, 0x00, 0xed, 0xa0, 0x80, 0xed, 0xbf, 0xbf
+            0x06, 0x00, 0xed, 0xa0, 0x80, 0xed, 0xbf, 0xbf,
         ])).expect_err("surrogate code point");
 
         let _ = <String as WireFormat>::decode(&mut Cursor::new(&[
-            0x05, 0x00, 0xf8, 0x80, 0x80, 0x80, 0xbf
+            0x05, 0x00, 0xf8, 0x80, 0x80, 0x80, 0xbf,
         ])).expect_err("overlong sequence");
 
-        let _ = <String as WireFormat>::decode(&mut Cursor::new(&[
-            0x04, 0x00, 0xf4, 0x90, 0x80, 0x80
-        ])).expect_err("out of range");
+        let _ =
+            <String as WireFormat>::decode(&mut Cursor::new(&[0x04, 0x00, 0xf4, 0x90, 0x80, 0x80]))
+                .expect_err("out of range");
 
-        let _ = <String as WireFormat>::decode(&mut Cursor::new(&[
-            0x04, 0x00, 0x63, 0x61, 0x66, 0xe9
-        ])).expect_err("ISO-8859-1");
+        let _ =
+            <String as WireFormat>::decode(&mut Cursor::new(&[0x04, 0x00, 0x63, 0x61, 0x66, 0xe9]))
+                .expect_err("ISO-8859-1");
 
-        let _ = <String as WireFormat>::decode(&mut Cursor::new(&[
-            0x04, 0x00, 0xb0, 0xa1, 0xb0, 0xa2
-        ])).expect_err("EUC-KR");
+        let _ =
+            <String as WireFormat>::decode(&mut Cursor::new(&[0x04, 0x00, 0xb0, 0xa1, 0xb0, 0xa2]))
+                .expect_err("EUC-KR");
     }
 
     #[test]

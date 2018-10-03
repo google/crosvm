@@ -147,7 +147,7 @@ impl VsockListener {
             return Err(io::Error::last_os_error());
         }
 
-        Ok(VsockListener { fd: fd })
+        Ok(VsockListener { fd })
     }
 
     /// Accepts a new incoming connection on this listener.  Blocks the calling thread until a
@@ -179,7 +179,7 @@ impl VsockListener {
         }
 
         Ok((
-            VsockStream { fd: fd },
+            VsockStream { fd },
             SocketAddr {
                 cid: svm.svm_cid,
                 port: svm.svm_port,

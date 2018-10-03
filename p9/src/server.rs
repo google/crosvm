@@ -121,7 +121,7 @@ fn metadata_to_qid(metadata: &fs::Metadata) -> Qid {
     };
 
     Qid {
-        ty: ty,
+        ty,
         // TODO: deal with the 2038 problem before 2038
         version: metadata.st_mtime() as u32,
         path: metadata.st_ino(),
@@ -345,7 +345,8 @@ impl Server {
         }
 
         // We need to walk the tree.  First get the starting path.
-        let (buf, oldmd) = self.fids
+        let (buf, oldmd) = self
+            .fids
             .get(&walk.fid)
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))
             .map(|fid| (fid.path.to_path_buf(), fid.metadata.clone()))?;
@@ -389,7 +390,8 @@ impl Server {
 
     fn read(&mut self, read: &Tread) -> io::Result<Rmessage> {
         // Thankfully, `read` cannot be used to read directories in 9P2000.L.
-        let file = self.fids
+        let file = self
+            .fids
             .get_mut(&read.fid)
             .and_then(|fid| fid.file.as_mut())
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
@@ -413,7 +415,8 @@ impl Server {
     }
 
     fn write(&mut self, write: &Twrite) -> io::Result<Rmessage> {
-        let file = self.fids
+        let file = self
+            .fids
             .get_mut(&write.fid)
             .and_then(|fid| fid.file.as_mut())
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
@@ -452,10 +455,12 @@ impl Server {
     }
 
     fn statfs(&mut self, statfs: &Tstatfs) -> io::Result<Rmessage> {
-        let fid = self.fids
+        let fid = self
+            .fids
             .get(&statfs.fid)
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
-        let path = fid.path
+        let path = fid
+            .path
             .to_str()
             .and_then(|path| CString::new(path).ok())
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EINVAL))?;
@@ -484,7 +489,8 @@ impl Server {
     }
 
     fn lopen(&mut self, lopen: &Tlopen) -> io::Result<Rmessage> {
-        let fid = self.fids
+        let fid = self
+            .fids
             .get_mut(&lopen.fid)
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
         // We always open files with O_CLOEXEC.
@@ -515,7 +521,8 @@ impl Server {
     }
 
     fn lcreate(&mut self, lcreate: &Tlcreate) -> io::Result<Rmessage> {
-        let fid = self.fids
+        let fid = self
+            .fids
             .get_mut(&lcreate.fid)
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
 
@@ -566,13 +573,15 @@ impl Server {
 
     fn rename(&mut self, rename: &Trename) -> io::Result<Rmessage> {
         let newname = Path::new(&rename.name);
-        let buf = self.fids
+        let buf = self
+            .fids
             .get(&rename.dfid)
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))
             .map(|dfid| dfid.path.to_path_buf())?;
         let newpath = join_path(buf, newname, &*self.root)?;
 
-        let fid = self.fids
+        let fid = self
+            .fids
             .get_mut(&rename.fid)
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EINVAL))?;
 
@@ -590,7 +599,8 @@ impl Server {
     }
 
     fn get_attr(&mut self, get_attr: &Tgetattr) -> io::Result<Rmessage> {
-        let fid = self.fids
+        let fid = self
+            .fids
             .get_mut(&get_attr.fid)
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
 
@@ -627,7 +637,8 @@ impl Server {
             return Err(io::Error::from_raw_os_error(libc::EPERM));
         }
 
-        let fid = self.fids
+        let fid = self
+            .fids
             .get_mut(&set_attr.fid)
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
         let file = fs::OpenOptions::new().write(true).open(&fid.path)?;
@@ -696,7 +707,8 @@ impl Server {
     }
 
     fn readdir(&mut self, readdir: &Treaddir) -> io::Result<Rmessage> {
-        let fid = self.fids
+        let fid = self
+            .fids
             .get_mut(&readdir.fid)
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
 
@@ -735,10 +747,10 @@ impl Server {
                     .map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))?;
 
                 let mut out = Dirent {
-                    qid: qid,
+                    qid,
                     offset: 0, // set below
-                    ty: ty,
-                    name: name,
+                    ty,
+                    name,
                 };
 
                 offset += out.byte_size() as u64;
@@ -752,7 +764,8 @@ impl Server {
             fid.dirents = Some(dirents.collect::<io::Result<Vec<Dirent>>>()?);
         }
 
-        let mut entries = fid.dirents
+        let mut entries = fid
+            .dirents
             .as_ref()
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?
             .iter()
@@ -793,7 +806,8 @@ impl Server {
     }
 
     fn fsync(&mut self, fsync: &Tfsync) -> io::Result<Rmessage> {
-        let file = self.fids
+        let file = self
+            .fids
             .get(&fsync.fid)
             .and_then(|fid| fid.file.as_ref())
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
@@ -817,13 +831,15 @@ impl Server {
 
     fn link(&mut self, link: &Tlink) -> io::Result<Rmessage> {
         let newname = Path::new(&link.name);
-        let buf = self.fids
+        let buf = self
+            .fids
             .get(&link.dfid)
             .map(|dfid| dfid.path.to_path_buf())
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
         let newpath = join_path(buf, newname, &*self.root)?;
 
-        let path = self.fids
+        let path = self
+            .fids
             .get(&link.fid)
             .map(|fid| &fid.path)
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
@@ -833,7 +849,8 @@ impl Server {
     }
 
     fn mkdir(&mut self, mkdir: &Tmkdir) -> io::Result<Rmessage> {
-        let fid = self.fids
+        let fid = self
+            .fids
             .get(&mkdir.dfid)
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
 
@@ -852,14 +869,16 @@ impl Server {
 
     fn rename_at(&mut self, rename_at: &Trenameat) -> io::Result<Rmessage> {
         let oldname = Path::new(&rename_at.oldname);
-        let oldbuf = self.fids
+        let oldbuf = self
+            .fids
             .get(&rename_at.olddirfid)
             .map(|dfid| dfid.path.to_path_buf())
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
         let oldpath = join_path(oldbuf, oldname, &*self.root)?;
 
         let newname = Path::new(&rename_at.newname);
-        let newbuf = self.fids
+        let newbuf = self
+            .fids
             .get(&rename_at.newdirfid)
             .map(|dfid| dfid.path.to_path_buf())
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;
@@ -871,7 +890,8 @@ impl Server {
 
     fn unlink_at(&mut self, unlink_at: &Tunlinkat) -> io::Result<Rmessage> {
         let name = Path::new(&unlink_at.name);
-        let buf = self.fids
+        let buf = self
+            .fids
             .get(&unlink_at.dirfd)
             .map(|fid| fid.path.to_path_buf())
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EBADF))?;

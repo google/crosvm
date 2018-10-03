@@ -8,9 +8,9 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::ptr;
 use std::time::Duration;
 
-use libc::{self, CLOCK_MONOTONIC, TFD_CLOEXEC, timerfd_create, timerfd_gettime, timerfd_settime};
+use libc::{self, timerfd_create, timerfd_gettime, timerfd_settime, CLOCK_MONOTONIC, TFD_CLOEXEC};
 
-use {Result, errno_result};
+use {errno_result, Result};
 
 /// A safe wrapper around a Linux timerfd (man 2 timerfd_create).
 pub struct TimerFd(File);
@@ -26,7 +26,7 @@ impl TimerFd {
         }
 
         // Safe because we uniquely own the file descriptor.
-        Ok(TimerFd(unsafe { File::from_raw_fd(ret) } ))
+        Ok(TimerFd(unsafe { File::from_raw_fd(ret) }))
     }
 
     /// Sets the timer to expire after `dur`.  If `interval` is not `None` it represents
@@ -60,9 +60,11 @@ impl TimerFd {
 
         // Safe because this will only modify |buf| and we check the return value.
         let ret = unsafe {
-            libc::read(self.as_raw_fd(),
-                       &mut count as *mut _ as *mut libc::c_void,
-                       mem::size_of_val(&count))
+            libc::read(
+                self.as_raw_fd(),
+                &mut count as *mut _ as *mut libc::c_void,
+                mem::size_of_val(&count),
+            )
         };
         if ret < 0 {
             return errno_result();
@@ -93,7 +95,7 @@ impl TimerFd {
         let spec: libc::itimerspec = unsafe { mem::zeroed() };
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let ret = unsafe { timerfd_settime(self.as_raw_fd(),  0, &spec, ptr::null_mut()) };
+        let ret = unsafe { timerfd_settime(self.as_raw_fd(), 0, &spec, ptr::null_mut()) };
         if ret < 0 {
             return errno_result();
         }
@@ -149,7 +151,8 @@ mod tests {
 
         let dur = Duration::from_millis(200);
         let interval = Duration::from_millis(100);
-        tfd.reset(dur.clone(), Some(interval)).expect("failed to arm timer");
+        tfd.reset(dur.clone(), Some(interval))
+            .expect("failed to arm timer");
 
         sleep(dur * 3);
 

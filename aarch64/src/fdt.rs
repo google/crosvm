@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use byteorder::{ByteOrder, BigEndian};
+use byteorder::{BigEndian, ByteOrder};
 use libc::{c_char, c_int, c_void};
 use std::error::{self, Error as FdtError};
+use std::ffi::{CStr, CString};
 use std::fmt;
-use std::ffi::{CString, CStr};
 use std::ptr::null;
 
 use devices::PciInterruptPin;
@@ -16,16 +16,16 @@ use sys_util::{GuestAddress, GuestMemory};
 use AARCH64_PHYS_MEM_START;
 
 // These are GIC address-space location constants.
-use AARCH64_GIC_DIST_SIZE;
+use AARCH64_GIC_CPUI_BASE;
 use AARCH64_GIC_CPUI_SIZE;
 use AARCH64_GIC_DIST_BASE;
-use AARCH64_GIC_CPUI_BASE;
+use AARCH64_GIC_DIST_SIZE;
 
 // These are RTC related constants
-use AARCH64_RTC_ADDR;
-use AARCH64_RTC_SIZE;
-use AARCH64_RTC_IRQ;
 use devices::pl030::PL030_AMBA_ID;
+use AARCH64_RTC_ADDR;
+use AARCH64_RTC_IRQ;
+use AARCH64_RTC_SIZE;
 
 // These are serial device related constants.
 use AARCH64_SERIAL_ADDR;
@@ -33,12 +33,12 @@ use AARCH64_SERIAL_SIZE;
 use AARCH64_SERIAL_SPEED;
 
 // These are related to guest virtio devices.
+use AARCH64_IRQ_BASE;
+use AARCH64_MMIO_BASE;
+use AARCH64_MMIO_LEN;
+use AARCH64_MMIO_SIZE;
 use AARCH64_PCI_CFG_BASE;
 use AARCH64_PCI_CFG_SIZE;
-use AARCH64_MMIO_BASE;
-use AARCH64_MMIO_SIZE;
-use AARCH64_MMIO_LEN;
-use AARCH64_IRQ_BASE;
 
 // This is an arbitrary number to specify the node for the GIC.
 // If we had a more complex interrupt architecture, then we'd need an enum for
@@ -59,15 +59,14 @@ const IRQ_TYPE_LEVEL_LOW: u32 = 0x00000008;
 // flattened device tree (fdt) that is passed to the kernel and indicates
 // the hardware configuration of the machine.
 #[link(name = "fdt")]
-extern {
+extern "C" {
     fn fdt_create(buf: *mut c_void, bufsize: c_int) -> c_int;
     fn fdt_finish_reservemap(fdt: *mut c_void) -> c_int;
     fn fdt_begin_node(fdt: *mut c_void, name: *const c_char) -> c_int;
-    fn fdt_property(fdt: *mut c_void, name: *const c_char, val: *const c_void,
-                    len: c_int) -> c_int;
+    fn fdt_property(fdt: *mut c_void, name: *const c_char, val: *const c_void, len: c_int)
+        -> c_int;
     fn fdt_end_node(fdt: *mut c_void) -> c_int;
-    fn fdt_open_into(fdt: *const c_void, buf: *mut c_void, bufsize: c_int)
-                     -> c_int;
+    fn fdt_open_into(fdt: *const c_void, buf: *mut c_void, bufsize: c_int) -> c_int;
     fn fdt_finish(fdt: *const c_void) -> c_int;
     fn fdt_pack(fdt: *mut c_void) -> c_int;
 }
@@ -96,8 +95,7 @@ impl error::Error for Error {
             &Error::FdtOpenIntoError(_) => "Error copying FDT to Guest",
             &Error::FdtFinishError(_) => "Error performing FDT finish",
             &Error::FdtPackError(_) => "Error packing FDT",
-            &Error::FdtGuestMemoryWriteError =>
-                "Error writing FDT to Guest Memory",
+            &Error::FdtGuestMemoryWriteError => "Error writing FDT to Guest Memory",
         }
     }
 }
@@ -106,19 +104,23 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let prefix = "Libfdt Error: ";
         match self {
-            &Error::FdtCreateError(fdt_ret) |
-            &Error::FdtFinishReservemapError(fdt_ret) |
-            &Error::FdtBeginNodeError(fdt_ret) |
-            &Error::FdtPropertyError(fdt_ret) |
-            &Error::FdtEndNodeError(fdt_ret) |
-            &Error::FdtOpenIntoError(fdt_ret) |
-            &Error::FdtFinishError(fdt_ret) |
-            &Error::FdtPackError(fdt_ret) =>  {
-                write!(f, "{} {} code: {}", prefix,
-                       Error::description(self), fdt_ret)
-            },
-            &Error::FdtGuestMemoryWriteError =>
-                write!(f, "{} {}", prefix, Error::description(self)),
+            &Error::FdtCreateError(fdt_ret)
+            | &Error::FdtFinishReservemapError(fdt_ret)
+            | &Error::FdtBeginNodeError(fdt_ret)
+            | &Error::FdtPropertyError(fdt_ret)
+            | &Error::FdtEndNodeError(fdt_ret)
+            | &Error::FdtOpenIntoError(fdt_ret)
+            | &Error::FdtFinishError(fdt_ret)
+            | &Error::FdtPackError(fdt_ret) => write!(
+                f,
+                "{} {} code: {}",
+                prefix,
+                Error::description(self),
+                fdt_ret
+            ),
+            &Error::FdtGuestMemoryWriteError => {
+                write!(f, "{} {}", prefix, Error::description(self))
+            }
         }
     }
 }
@@ -141,8 +143,7 @@ fn begin_node(fdt: &mut Vec<u8>, name: &str) -> Result<(), Box<Error>> {
     let cstr_name = CString::new(name).unwrap();
 
     // Safe because we allocated fdt and converted name to a CString
-    let fdt_ret = unsafe { fdt_begin_node(fdt.as_mut_ptr() as *mut c_void,
-                                          cstr_name.as_ptr()) };
+    let fdt_ret = unsafe { fdt_begin_node(fdt.as_mut_ptr() as *mut c_void, cstr_name.as_ptr()) };
     if fdt_ret != 0 {
         return Err(Box::new(Error::FdtBeginNodeError(fdt_ret)));
     }
@@ -158,31 +159,38 @@ fn end_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
     Ok(())
 }
 
-fn property(fdt: &mut Vec<u8>, name: &str, val: &[u8])
-            -> Result<(), Box<Error>> {
+fn property(fdt: &mut Vec<u8>, name: &str, val: &[u8]) -> Result<(), Box<Error>> {
     let cstr_name = CString::new(name).unwrap();
     let val_ptr = val.as_ptr() as *const c_void;
 
     // Safe because we allocated fdt and converted name to a CString
-    let fdt_ret = unsafe { fdt_property(fdt.as_mut_ptr() as *mut c_void,
-                                        cstr_name.as_ptr(),
-                                        val_ptr, val.len() as i32) };
+    let fdt_ret = unsafe {
+        fdt_property(
+            fdt.as_mut_ptr() as *mut c_void,
+            cstr_name.as_ptr(),
+            val_ptr,
+            val.len() as i32,
+        )
+    };
     if fdt_ret != 0 {
         return Err(Box::new(Error::FdtPropertyError(fdt_ret)));
     }
     Ok(())
 }
 
-fn property_cstring(fdt: &mut Vec<u8>, name: &str, cstr_value: &CStr)
-                    -> Result<(), Box<Error>> {
+fn property_cstring(fdt: &mut Vec<u8>, name: &str, cstr_value: &CStr) -> Result<(), Box<Error>> {
     let value_bytes = cstr_value.to_bytes_with_nul();
-    let cstr_name  = CString::new(name).unwrap();
+    let cstr_name = CString::new(name).unwrap();
 
     // Safe because we allocated fdt, converted name and value to CStrings
-    let fdt_ret = unsafe { fdt_property(fdt.as_mut_ptr() as *mut c_void,
-                                        cstr_name.as_ptr(),
-                                        value_bytes.as_ptr() as *mut c_void,
-                                        value_bytes.len() as i32) };
+    let fdt_ret = unsafe {
+        fdt_property(
+            fdt.as_mut_ptr() as *mut c_void,
+            cstr_name.as_ptr(),
+            value_bytes.as_ptr() as *mut c_void,
+            value_bytes.len() as i32,
+        )
+    };
     if fdt_ret != 0 {
         return Err(Box::new(Error::FdtPropertyError(fdt_ret)));
     }
@@ -190,31 +198,33 @@ fn property_cstring(fdt: &mut Vec<u8>, name: &str, cstr_value: &CStr)
 }
 
 fn property_null(fdt: &mut Vec<u8>, name: &str) -> Result<(), Box<Error>> {
-    let cstr_name  = CString::new(name).unwrap();
+    let cstr_name = CString::new(name).unwrap();
 
     // Safe because we allocated fdt, converted name to a CString
-    let fdt_ret = unsafe { fdt_property(fdt.as_mut_ptr() as *mut c_void,
-                                        cstr_name.as_ptr(),
-                                        null(), 0) };
+    let fdt_ret = unsafe {
+        fdt_property(
+            fdt.as_mut_ptr() as *mut c_void,
+            cstr_name.as_ptr(),
+            null(),
+            0,
+        )
+    };
     if fdt_ret != 0 {
         return Err(Box::new(Error::FdtPropertyError(fdt_ret)));
     }
     Ok(())
 }
 
-fn property_string(fdt: &mut Vec<u8>, name: &str, value: &str)
-                   -> Result<(), Box<Error>> {
+fn property_string(fdt: &mut Vec<u8>, name: &str, value: &str) -> Result<(), Box<Error>> {
     let cstr_value = CString::new(value).unwrap();
     property_cstring(fdt, name, &cstr_value)
 }
 
-fn property_u32(fdt: &mut Vec<u8>, name: &str, val: u32)
-                 -> Result<(), Box<Error>> {
+fn property_u32(fdt: &mut Vec<u8>, name: &str, val: u32) -> Result<(), Box<Error>> {
     property(fdt, name, &cpu_to_fdt32(val))
 }
 
-fn property_u64(fdt: &mut Vec<u8>, name: &str, val: u64)
-                -> Result<(), Box<Error>> {
+fn property_u64(fdt: &mut Vec<u8>, name: &str, val: u64) -> Result<(), Box<Error>> {
     property(fdt, name, &cpu_to_fdt64(val))
 }
 
@@ -236,8 +246,7 @@ fn generate_prop64(cells: &[u64]) -> Vec<u8> {
     ret
 }
 
-fn create_memory_node(fdt: &mut Vec<u8>, guest_mem: &GuestMemory)
-                      -> Result<(), Box<Error>> {
+fn create_memory_node(fdt: &mut Vec<u8>, guest_mem: &GuestMemory) -> Result<(), Box<Error>> {
     let mem_size = guest_mem.memory_size();
     let mem_reg_prop = generate_prop64(&[AARCH64_PHYS_MEM_START, mem_size]);
 
@@ -273,7 +282,8 @@ fn create_gic_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
         AARCH64_GIC_DIST_BASE,
         AARCH64_GIC_DIST_SIZE,
         AARCH64_GIC_CPUI_BASE,
-        AARCH64_GIC_CPUI_SIZE]);
+        AARCH64_GIC_CPUI_SIZE,
+    ]);
 
     begin_node(fdt, "intc")?;
     property_string(fdt, "compatible", "arm,cortex-a15-gic")?;
@@ -292,8 +302,8 @@ fn create_timer_node(fdt: &mut Vec<u8>, num_cpus: u32) -> Result<(), Box<Error>>
     // These are fixed interrupt numbers for the timer device.
     let irqs = [13, 14, 11, 10];
     let compatible = "arm,armv8-timer";
-    let cpu_mask: u32 = (((1 << num_cpus) - 1) << GIC_FDT_IRQ_PPI_CPU_SHIFT) &
-        GIC_FDT_IRQ_PPI_CPU_MASK;
+    let cpu_mask: u32 =
+        (((1 << num_cpus) - 1) << GIC_FDT_IRQ_PPI_CPU_SHIFT) & GIC_FDT_IRQ_PPI_CPU_MASK;
 
     let mut timer_reg_cells = Vec::new();
     for &irq in irqs.iter() {
@@ -313,14 +323,12 @@ fn create_timer_node(fdt: &mut Vec<u8>, num_cpus: u32) -> Result<(), Box<Error>>
 }
 
 fn create_serial_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
-    let serial_reg_prop = generate_prop64(&[
-        AARCH64_SERIAL_ADDR, AARCH64_SERIAL_SIZE]);
+    let serial_reg_prop = generate_prop64(&[AARCH64_SERIAL_ADDR, AARCH64_SERIAL_SIZE]);
 
     begin_node(fdt, "U6_16550A@3f8")?;
     property_string(fdt, "compatible", "ns16550a")?;
     property(fdt, "reg", &serial_reg_prop)?;
-    property_u32(fdt, "clock-frequency",
-                  AARCH64_SERIAL_SPEED)?;
+    property_u32(fdt, "clock-frequency", AARCH64_SERIAL_SPEED)?;
     end_node(fdt)?;
 
     Ok(())
@@ -343,8 +351,7 @@ fn create_psci_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
     Ok(())
 }
 
-fn create_chosen_node(fdt: &mut Vec<u8>, cmdline: &CStr)
-                      -> Result<(), Box<Error>> {
+fn create_chosen_node(fdt: &mut Vec<u8>, cmdline: &CStr) -> Result<(), Box<Error>> {
     begin_node(fdt, "chosen")?;
     property_u32(fdt, "linux,pci-probe-only", 1)?;
     property_cstring(fdt, "bootargs", cmdline)?;
@@ -365,7 +372,8 @@ fn create_io_nodes(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
         let irq = generate_prop32(&[
             GIC_FDT_IRQ_TYPE_SPI,
             AARCH64_IRQ_BASE + i as u32,
-            IRQ_TYPE_EDGE_RISING]);
+            IRQ_TYPE_EDGE_RISING,
+        ]);
 
         begin_node(fdt, &node)?;
         property_string(fdt, "compatible", "virtio,mmio")?;
@@ -386,11 +394,16 @@ fn create_pci_nodes(
     // and "PCI Bus Binding to IEEE Std 1275-1994".
     let ranges = generate_prop32(&[
         // bus address (ss = 01: 32-bit memory space)
-        0x2000000, (AARCH64_MMIO_BASE >> 32) as u32, AARCH64_MMIO_BASE as u32,
+        0x2000000,
+        (AARCH64_MMIO_BASE >> 32) as u32,
+        AARCH64_MMIO_BASE as u32,
         // CPU address
-        (AARCH64_MMIO_BASE >> 32) as u32, AARCH64_MMIO_BASE as u32,
+        (AARCH64_MMIO_BASE >> 32) as u32,
+        AARCH64_MMIO_BASE as u32,
         // size
-        (AARCH64_MMIO_SIZE >> 32) as u32, AARCH64_MMIO_SIZE as u32]);
+        (AARCH64_MMIO_SIZE >> 32) as u32,
+        AARCH64_MMIO_SIZE as u32,
+    ]);
     let bus_range = generate_prop32(&[0, 0]); // Only bus 0
     let reg = generate_prop64(&[AARCH64_PCI_CFG_BASE, AARCH64_PCI_CFG_SIZE]);
 
@@ -459,8 +472,7 @@ fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
 
     let rtc_name = format!("rtc@{:x}", AARCH64_RTC_ADDR);
     let reg = generate_prop64(&[AARCH64_RTC_ADDR, AARCH64_RTC_SIZE]);
-    let irq = generate_prop32(&[GIC_FDT_IRQ_TYPE_SPI, AARCH64_RTC_IRQ,
-                                IRQ_TYPE_LEVEL_HIGH]);
+    let irq = generate_prop32(&[GIC_FDT_IRQ_TYPE_SPI, AARCH64_RTC_IRQ, IRQ_TYPE_LEVEL_HIGH]);
 
     begin_node(fdt, &rtc_name)?;
     property_string(fdt, "compatible", "arm,primecell")?;
@@ -484,17 +496,18 @@ fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
 /// * `num_cpus` - Number of virtual CPUs the guest will have
 /// * `fdt_load_offset` - The offset into physical memory for the device tree
 /// * `cmdline` - The kernel commandline
-pub fn create_fdt(fdt_max_size: usize,
-                  guest_mem: &GuestMemory,
-                  pci_irqs: Vec<(u32, PciInterruptPin)>,
-                  num_cpus: u32,
-                  fdt_load_offset: u64,
-                  cmdline: &CStr) -> Result<(), Box<Error>> {
+pub fn create_fdt(
+    fdt_max_size: usize,
+    guest_mem: &GuestMemory,
+    pci_irqs: Vec<(u32, PciInterruptPin)>,
+    num_cpus: u32,
+    fdt_load_offset: u64,
+    cmdline: &CStr,
+) -> Result<(), Box<Error>> {
     let mut fdt = vec![0; fdt_max_size];
 
     // Safe since we allocated this array with fdt_max_size
-    let mut fdt_ret = unsafe { fdt_create(fdt.as_mut_ptr() as *mut c_void,
-                                      fdt_max_size as c_int) };
+    let mut fdt_ret = unsafe { fdt_create(fdt.as_mut_ptr() as *mut c_void, fdt_max_size as c_int) };
 
     if fdt_ret != 0 {
         return Err(Box::new(Error::FdtCreateError(fdt_ret)));
@@ -539,9 +552,13 @@ pub fn create_fdt(fdt_max_size: usize,
     let mut fdt_final = vec![0; fdt_max_size];
 
     // Safe because we allocated both arrays with the correct size
-    fdt_ret = unsafe { fdt_open_into(fdt.as_mut_ptr() as *mut c_void,
-                                     fdt_final.as_mut_ptr() as *mut c_void,
-                                     fdt_max_size as i32) };
+    fdt_ret = unsafe {
+        fdt_open_into(
+            fdt.as_mut_ptr() as *mut c_void,
+            fdt_final.as_mut_ptr() as *mut c_void,
+            fdt_max_size as i32,
+        )
+    };
     if fdt_ret != 0 {
         return Err(Box::new(Error::FdtOpenIntoError(fdt_ret)));
     }
@@ -552,9 +569,9 @@ pub fn create_fdt(fdt_max_size: usize,
         return Err(Box::new(Error::FdtPackError(fdt_ret)));
     }
     let fdt_address = GuestAddress(AARCH64_PHYS_MEM_START + fdt_load_offset);
-    let written = guest_mem.write_slice_at_addr(fdt_final.as_slice(),
-                                                fdt_address).
-        map_err(|_| Error::FdtGuestMemoryWriteError)?;
+    let written = guest_mem
+        .write_slice_at_addr(fdt_final.as_slice(), fdt_address)
+        .map_err(|_| Error::FdtGuestMemoryWriteError)?;
     if written < fdt_max_size {
         return Err(Box::new(Error::FdtGuestMemoryWriteError));
     }

@@ -281,7 +281,7 @@ impl WireFormat for Tframe {
             )),
         }?;
 
-        Ok(Tframe { tag: tag, msg: msg })
+        Ok(Tframe { tag, msg })
     }
 }
 
@@ -691,7 +691,7 @@ impl WireFormat for Rframe {
             )),
         }?;
 
-        Ok(Rframe { tag: tag, msg: msg })
+        Ok(Rframe { tag, msg })
     }
 }
 

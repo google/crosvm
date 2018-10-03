@@ -30,41 +30,43 @@
 
 use std::cell::RefCell;
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeSet as Set, BTreeMap as Map, VecDeque};
+use std::collections::{BTreeMap as Map, BTreeSet as Set, VecDeque};
 use std::convert::From;
-use std::ffi::CStr;
 use std::error::{self, Error as StdError};
+use std::ffi::CStr;
 use std::fmt;
 use std::fs::File;
-use std::io::{self, Seek, SeekFrom, Read};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::mem::{size_of, size_of_val};
 #[cfg(feature = "wl-dmabuf")]
 use std::os::raw::{c_uint, c_ulonglong};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixDatagram, UnixStream};
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::result;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
 #[cfg(feature = "wl-dmabuf")]
 use libc::{dup, EBADF, EINVAL};
 
-use data_model::*;
 use data_model::VolatileMemoryError;
+use data_model::*;
 
 use resources::GpuMemoryDesc;
-use sys_util::{Error, Result, EventFd, ScmSocket, SharedMemory, GuestAddress, GuestMemory,
-               GuestMemoryError, PollContext, PollToken, FileFlags, pipe, round_up_to_page_size};
+use sys_util::{
+    pipe, round_up_to_page_size, Error, EventFd, FileFlags, GuestAddress, GuestMemory,
+    GuestMemoryError, PollContext, PollToken, Result, ScmSocket, SharedMemory,
+};
 
 #[cfg(feature = "wl-dmabuf")]
 use sys_util::ioctl_with_ref;
 
-use vm_control::{VmControlError, VmRequest, VmResponse, MaybeOwnedFd};
-use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_USED_RING, TYPE_WL};
+use super::{DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_WL};
+use vm_control::{MaybeOwnedFd, VmControlError, VmRequest, VmResponse};
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
 const VIRTIO_WL_CMD_VFD_NEW: u32 = 256;
@@ -122,33 +124,41 @@ fn parse_new(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
     const FLAGS_OFFSET: u64 = 12;
     const SIZE_OFFSET: u64 = 24;
 
-    let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
-                                              .ok_or(WlError::CheckedOffset)?)?;
-    let flags: Le32 =
-        mem.read_obj_from_addr(mem.checked_offset(addr, FLAGS_OFFSET)
-                                    .ok_or(WlError::CheckedOffset)?)?;
-    let size: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, SIZE_OFFSET)
-                                                .ok_or(WlError::CheckedOffset)?)?;
+    let id: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, ID_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
+    let flags: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, FLAGS_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
+    let size: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, SIZE_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
     Ok(WlOp::NewAlloc {
-           id: id.into(),
-           flags: flags.into(),
-           size: size.into(),
-       })
+        id: id.into(),
+        flags: flags.into(),
+        size: size.into(),
+    })
 }
 
 fn parse_new_pipe(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
     const ID_OFFSET: u64 = 8;
     const FLAGS_OFFSET: u64 = 12;
 
-    let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
-                                              .ok_or(WlError::CheckedOffset)?)?;
-    let flags: Le32 =
-        mem.read_obj_from_addr(mem.checked_offset(addr, FLAGS_OFFSET)
-                                    .ok_or(WlError::CheckedOffset)?)?;
+    let id: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, ID_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
+    let flags: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, FLAGS_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
     Ok(WlOp::NewPipe {
-           id: id.into(),
-           flags: flags.into(),
-       })
+        id: id.into(),
+        flags: flags.into(),
+    })
 }
 
 #[cfg(feature = "wl-dmabuf")]
@@ -158,35 +168,46 @@ fn parse_new_dmabuf(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
     const HEIGHT_OFFSET: u64 = 32;
     const FORMAT_OFFSET: u64 = 36;
 
-    let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
-                                              .ok_or(WlError::CheckedOffset)?)?;
-    let width: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, WIDTH_OFFSET)
-                                                .ok_or(WlError::CheckedOffset)?)?;
-    let height: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, HEIGHT_OFFSET)
-                                                .ok_or(WlError::CheckedOffset)?)?;
-    let format: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, FORMAT_OFFSET)
-                                                .ok_or(WlError::CheckedOffset)?)?;
+    let id: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, ID_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
+    let width: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, WIDTH_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
+    let height: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, HEIGHT_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
+    let format: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, FORMAT_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
     Ok(WlOp::NewDmabuf {
-           id: id.into(),
-           width: width.into(),
-           height: height.into(),
-           format: format.into(),
-       })
+        id: id.into(),
+        width: width.into(),
+        height: height.into(),
+        format: format.into(),
+    })
 }
 
 #[cfg(feature = "wl-dmabuf")]
 fn parse_dmabuf_sync(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
     const ID_OFFSET: u64 = 8;
     const FLAGS_OFFSET: u64 = 12;
-    let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
-                                              .ok_or(WlError::CheckedOffset)?)?;
-    let flags: Le32 =
-        mem.read_obj_from_addr(mem.checked_offset(addr, FLAGS_OFFSET)
-                                    .ok_or(WlError::CheckedOffset)?)?;
+    let id: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, ID_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
+    let flags: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, FLAGS_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
     Ok(WlOp::DmabufSync {
-           id: id.into(),
-           flags: flags.into(),
-       })
+        id: id.into(),
+        flags: flags.into(),
+    })
 }
 
 fn parse_send(addr: GuestAddress, len: u32, mem: &GuestMemory) -> WlResult<WlOp> {
@@ -194,29 +215,36 @@ fn parse_send(addr: GuestAddress, len: u32, mem: &GuestMemory) -> WlResult<WlOp>
     const VFD_COUNT_OFFSET: u64 = 12;
     const VFDS_OFFSET: u64 = 16;
 
-    let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
-                                              .ok_or(WlError::CheckedOffset)?)?;
-    let vfd_count: Le32 =
-        mem.read_obj_from_addr(mem.checked_offset(addr, VFD_COUNT_OFFSET)
-                                    .ok_or(WlError::CheckedOffset)?)?;
+    let id: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, ID_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
+    let vfd_count: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, VFD_COUNT_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
     let vfd_count: u32 = vfd_count.into();
-    let vfds_addr = mem.checked_offset(addr, VFDS_OFFSET)
+    let vfds_addr = mem
+        .checked_offset(addr, VFDS_OFFSET)
         .ok_or(WlError::CheckedOffset)?;
-    let data_addr = mem.checked_offset(vfds_addr, (vfd_count * 4) as u64)
+    let data_addr = mem
+        .checked_offset(vfds_addr, (vfd_count * 4) as u64)
         .ok_or(WlError::CheckedOffset)?;
     Ok(WlOp::Send {
-           id: id.into(),
-           vfds_addr: vfds_addr,
-           vfd_count: vfd_count,
-           data_addr: data_addr,
-           data_len: len - (VFDS_OFFSET as u32) - vfd_count * 4,
-       })
+        id: id.into(),
+        vfds_addr,
+        vfd_count,
+        data_addr,
+        data_len: len - (VFDS_OFFSET as u32) - vfd_count * 4,
+    })
 }
 
 fn parse_id(addr: GuestAddress, mem: &GuestMemory) -> WlResult<u32> {
     const ID_OFFSET: u64 = 8;
-    let id: Le32 = mem.read_obj_from_addr(mem.checked_offset(addr, ID_OFFSET)
-                                              .ok_or(WlError::CheckedOffset)?)?;
+    let id: Le32 = mem.read_obj_from_addr(
+        mem.checked_offset(addr, ID_OFFSET)
+            .ok_or(WlError::CheckedOffset)?,
+    )?;
     Ok(id.into())
 }
 
@@ -224,9 +252,13 @@ fn parse_desc(desc: &DescriptorChain, mem: &GuestMemory) -> WlResult<WlOp> {
     let type_: Le32 = mem.read_obj_from_addr(desc.addr)?;
     match type_.into() {
         VIRTIO_WL_CMD_VFD_NEW => parse_new(desc.addr, mem),
-        VIRTIO_WL_CMD_VFD_CLOSE => Ok(WlOp::Close { id: parse_id(desc.addr, mem)? }),
+        VIRTIO_WL_CMD_VFD_CLOSE => Ok(WlOp::Close {
+            id: parse_id(desc.addr, mem)?,
+        }),
         VIRTIO_WL_CMD_VFD_SEND => parse_send(desc.addr, desc.len, mem),
-        VIRTIO_WL_CMD_VFD_NEW_CTX => Ok(WlOp::NewCtx { id: parse_id(desc.addr, mem)? }),
+        VIRTIO_WL_CMD_VFD_NEW_CTX => Ok(WlOp::NewCtx {
+            id: parse_id(desc.addr, mem)?,
+        }),
         VIRTIO_WL_CMD_VFD_NEW_PIPE => parse_new_pipe(desc.addr, mem),
         #[cfg(feature = "wl-dmabuf")]
         VIRTIO_WL_CMD_VFD_NEW_DMABUF => parse_new_dmabuf(desc.addr, mem),
@@ -236,20 +268,21 @@ fn parse_desc(desc: &DescriptorChain, mem: &GuestMemory) -> WlResult<WlOp> {
     }
 }
 
-fn encode_vfd_new(desc_mem: VolatileSlice,
-                  resp: bool,
-                  vfd_id: u32,
-                  flags: u32,
-                  pfn: u64,
-                  size: u32)
-                  -> WlResult<u32> {
+fn encode_vfd_new(
+    desc_mem: VolatileSlice,
+    resp: bool,
+    vfd_id: u32,
+    flags: u32,
+    pfn: u64,
+    size: u32,
+) -> WlResult<u32> {
     let ctrl_vfd_new = CtrlVfdNew {
         hdr: CtrlHeader {
             type_: Le32::from(if resp {
-                                  VIRTIO_WL_RESP_VFD_NEW
-                              } else {
-                                  VIRTIO_WL_CMD_VFD_NEW
-                              }),
+                VIRTIO_WL_RESP_VFD_NEW
+            } else {
+                VIRTIO_WL_CMD_VFD_NEW
+            }),
             flags: Le32::from(0),
         },
         id: Le32::from(vfd_id),
@@ -263,13 +296,14 @@ fn encode_vfd_new(desc_mem: VolatileSlice,
 }
 
 #[cfg(feature = "wl-dmabuf")]
-fn encode_vfd_new_dmabuf(desc_mem: VolatileSlice,
-                         vfd_id: u32,
-                         flags: u32,
-                         pfn: u64,
-                         size: u32,
-                         desc: GpuMemoryDesc)
-                  -> WlResult<u32> {
+fn encode_vfd_new_dmabuf(
+    desc_mem: VolatileSlice,
+    vfd_id: u32,
+    flags: u32,
+    pfn: u64,
+    size: u32,
+    desc: GpuMemoryDesc,
+) -> WlResult<u32> {
     let ctrl_vfd_new_dmabuf = CtrlVfdNewDmabuf {
         hdr: CtrlHeader {
             type_: Le32::from(VIRTIO_WL_RESP_VFD_NEW_DMABUF),
@@ -294,11 +328,12 @@ fn encode_vfd_new_dmabuf(desc_mem: VolatileSlice,
     Ok(size_of::<CtrlVfdNewDmabuf>() as u32)
 }
 
-fn encode_vfd_recv(desc_mem: VolatileSlice,
-                   vfd_id: u32,
-                   data: &[u8],
-                   vfd_ids: &[u32])
-                   -> WlResult<u32> {
+fn encode_vfd_recv(
+    desc_mem: VolatileSlice,
+    vfd_id: u32,
+    data: &[u8],
+    vfd_ids: &[u32],
+) -> WlResult<u32> {
     let ctrl_vfd_recv = CtrlVfdRecv {
         hdr: CtrlHeader {
             type_: Le32::from(VIRTIO_WL_CMD_VFD_RECV),
@@ -309,18 +344,20 @@ fn encode_vfd_recv(desc_mem: VolatileSlice,
     };
     desc_mem.get_ref(0)?.store(ctrl_vfd_recv);
 
-    let vfd_slice = desc_mem
-        .get_slice(size_of::<CtrlVfdRecv>() as u64,
-                   (vfd_ids.len() * size_of::<Le32>()) as u64)?;
+    let vfd_slice = desc_mem.get_slice(
+        size_of::<CtrlVfdRecv>() as u64,
+        (vfd_ids.len() * size_of::<Le32>()) as u64,
+    )?;
     for (i, &recv_vfd_id) in vfd_ids.iter().enumerate() {
         vfd_slice
             .get_ref((size_of::<Le32>() * i) as u64)?
             .store(recv_vfd_id);
     }
 
-    let data_slice = desc_mem
-        .get_slice((size_of::<CtrlVfdRecv>() + vfd_ids.len() * size_of::<Le32>()) as u64,
-                   data.len() as u64)?;
+    let data_slice = desc_mem.get_slice(
+        (size_of::<CtrlVfdRecv>() + vfd_ids.len() * size_of::<Le32>()) as u64,
+        data.len() as u64,
+    )?;
     data_slice.copy_from(data);
 
     Ok((size_of::<CtrlVfdRecv>() + vfd_ids.len() * size_of::<Le32>() + data.len()) as u32)
@@ -435,7 +472,9 @@ struct VmRequester {
 
 impl VmRequester {
     fn new(vm_socket: UnixDatagram) -> VmRequester {
-        VmRequester { inner: Rc::new(RefCell::new(vm_socket)) }
+        VmRequester {
+            inner: Rc::new(RefCell::new(vm_socket)),
+        }
     }
 
     fn request(&self, request: VmRequest) -> WlResult<VmResponse> {
@@ -509,8 +548,14 @@ unsafe impl DataInit for CtrlVfd {}
 
 #[derive(Debug)]
 enum WlOp {
-    NewAlloc { id: u32, flags: u32, size: u32 },
-    Close { id: u32 },
+    NewAlloc {
+        id: u32,
+        flags: u32,
+        size: u32,
+    },
+    Close {
+        id: u32,
+    },
     Send {
         id: u32,
         vfds_addr: GuestAddress,
@@ -518,13 +563,28 @@ enum WlOp {
         data_addr: GuestAddress,
         data_len: u32,
     },
-    NewCtx { id: u32 },
-    NewPipe { id: u32, flags: u32 },
+    NewCtx {
+        id: u32,
+    },
+    NewPipe {
+        id: u32,
+        flags: u32,
+    },
     #[cfg(feature = "wl-dmabuf")]
-    NewDmabuf { id: u32, width: u32, height: u32, format: u32 },
+    NewDmabuf {
+        id: u32,
+        width: u32,
+        height: u32,
+        format: u32,
+    },
     #[cfg(feature = "wl-dmabuf")]
-    DmabufSync { id: u32, flags: u32 },
-    InvalidCommand { op_type: u32 },
+    DmabufSync {
+        id: u32,
+        flags: u32,
+    },
+    InvalidCommand {
+        op_type: u32,
+    },
 }
 
 #[derive(Debug)]
@@ -553,7 +613,9 @@ enum WlResp<'a> {
         data: &'a [u8],
         vfds: &'a [u32],
     },
-    VfdHup { id: u32 },
+    VfdHup {
+        id: u32,
+    },
     Err(Box<error::Error>),
     OutOfMemory,
     InvalidId,
@@ -619,8 +681,7 @@ impl fmt::Debug for WlVfd {
 
 impl WlVfd {
     fn connect<P: AsRef<Path>>(path: P) -> WlResult<WlVfd> {
-        let socket = UnixStream::connect(path)
-            .map_err(WlError::SocketConnect)?;
+        let socket = UnixStream::connect(path).map_err(WlError::SocketConnect)?;
         socket
             .set_nonblocking(true)
             .map_err(WlError::SocketNonBlock)?;
@@ -631,15 +692,16 @@ impl WlVfd {
 
     fn allocate(vm: VmRequester, size: u64) -> WlResult<WlVfd> {
         let size_page_aligned = round_up_to_page_size(size as usize) as u64;
-        let mut vfd_shm = SharedMemory::new(Some(CStr::from_bytes_with_nul(b"virtwl_alloc\0")
-                                                     .unwrap()))
+        let mut vfd_shm =
+            SharedMemory::new(Some(CStr::from_bytes_with_nul(b"virtwl_alloc\0").unwrap()))
                 .map_err(WlError::NewAlloc)?;
         vfd_shm
             .set_size(size_page_aligned)
             .map_err(WlError::AllocSetSize)?;
-        let register_response =
-            vm.request(VmRequest::RegisterMemory(MaybeOwnedFd::Borrowed(vfd_shm.as_raw_fd()),
-                                                   vfd_shm.size() as usize))?;
+        let register_response = vm.request(VmRequest::RegisterMemory(
+            MaybeOwnedFd::Borrowed(vfd_shm.as_raw_fd()),
+            vfd_shm.size() as usize,
+        ))?;
         match register_response {
             VmResponse::RegisterMemory { pfn, slot } => {
                 let mut vfd = WlVfd::default();
@@ -652,14 +714,25 @@ impl WlVfd {
     }
 
     #[cfg(feature = "wl-dmabuf")]
-    fn dmabuf(vm: VmRequester, width: u32, height: u32, format: u32) ->
-        WlResult<(WlVfd, GpuMemoryDesc)> {
+    fn dmabuf(
+        vm: VmRequester,
+        width: u32,
+        height: u32,
+        format: u32,
+    ) -> WlResult<(WlVfd, GpuMemoryDesc)> {
         let allocate_and_register_gpu_memory_response =
-            vm.request(VmRequest::AllocateAndRegisterGpuMemory { width: width,
-                                                                 height: height,
-                                                                 format: format })?;
+            vm.request(VmRequest::AllocateAndRegisterGpuMemory {
+                width,
+                height,
+                format,
+            })?;
         match allocate_and_register_gpu_memory_response {
-            VmResponse::AllocateAndRegisterGpuMemory { fd, pfn, slot, desc } => {
+            VmResponse::AllocateAndRegisterGpuMemory {
+                fd,
+                pfn,
+                slot,
+                desc,
+            } => {
                 let mut vfd = WlVfd::default();
                 // Duplicate FD for shared memory instance.
                 let raw_fd = unsafe { File::from_raw_fd(dup(fd.as_raw_fd())) };
@@ -691,7 +764,7 @@ impl WlVfd {
                     Ok(())
                 }
             }
-            None => Err(WlError::DmabufSync(io::Error::from_raw_os_error(EBADF)))
+            None => Err(WlError::DmabufSync(io::Error::from_raw_os_error(EBADF))),
         }
     }
 
@@ -720,9 +793,10 @@ impl WlVfd {
         match fd.seek(SeekFrom::End(0)) {
             Ok(fd_size) => {
                 let size = round_up_to_page_size(fd_size as usize) as u64;
-                let register_response =
-                    vm.request(VmRequest::RegisterMemory(MaybeOwnedFd::Borrowed(fd.as_raw_fd()),
-                                                           size as usize))?;
+                let register_response = vm.request(VmRequest::RegisterMemory(
+                    MaybeOwnedFd::Borrowed(fd.as_raw_fd()),
+                    size as usize,
+                ))?;
 
                 match register_response {
                     VmResponse::RegisterMemory { pfn, slot } => {
@@ -792,26 +866,20 @@ impl WlVfd {
         self.socket
             .as_ref()
             .map(|s| s as &AsRawFd)
-            .or(self.local_pipe
-                    .as_ref()
-                    .map(|&(_, ref p)| p as &AsRawFd))
-
+            .or(self.local_pipe.as_ref().map(|&(_, ref p)| p as &AsRawFd))
     }
 
     // Sends data/files from the guest to the host over this VFD.
     fn send(&mut self, fds: &[RawFd], data: VolatileSlice) -> WlResult<WlResp> {
         if let Some(ref socket) = self.socket {
-            socket
-                .send_with_fds(data, fds)
-                .map_err(WlError::SendVfd)?;
+            socket.send_with_fds(data, fds).map_err(WlError::SendVfd)?;
             Ok(WlResp::Ok)
         } else if let Some((_, ref mut local_pipe)) = self.local_pipe {
             // Impossible to send fds over a simple pipe.
             if !fds.is_empty() {
                 return Ok(WlResp::InvalidType);
             }
-            data.write_all_to(local_pipe)
-                .map_err(WlError::WritePipe)?;
+            data.write_all_to(local_pipe).map_err(WlError::WritePipe)?;
             Ok(WlResp::Ok)
         } else {
             Ok(WlResp::InvalidType)
@@ -834,18 +902,18 @@ impl WlVfd {
                 self.socket = Some(socket);
                 // Safe because the first file_counts fds from recv_with_fds are owned by us and
                 // valid.
-                in_file_queue.extend(fd_buf[..file_count]
-                                         .iter()
-                                         .map(|&fd| unsafe { File::from_raw_fd(fd) }));
+                in_file_queue.extend(
+                    fd_buf[..file_count]
+                        .iter()
+                        .map(|&fd| unsafe { File::from_raw_fd(fd) }),
+                );
                 return Ok(buf);
             }
             Ok(Vec::new())
         } else if let Some((flags, mut local_pipe)) = self.local_pipe.take() {
             let mut buf = Vec::new();
             buf.resize(IN_BUFFER_LEN, 0);
-            let len = local_pipe
-                .read(&mut buf[..])
-                .map_err(WlError::ReadPipe)?;
+            let len = local_pipe.read(&mut buf[..]).map_err(WlError::ReadPipe)?;
             if len != 0 {
                 buf.truncate(len);
                 buf.shrink_to_fit();
@@ -904,7 +972,7 @@ struct WlState {
 impl WlState {
     fn new(wayland_path: PathBuf, vm_socket: UnixDatagram, use_transition_flags: bool) -> WlState {
         WlState {
-            wayland_path: wayland_path,
+            wayland_path,
             vm: VmRequester::new(vm_socket),
             poll_ctx: PollContext::new().expect("failed to create PollContext"),
             use_transition_flags,
@@ -943,7 +1011,7 @@ impl WlState {
                     .add(vfd.poll_fd().unwrap(), id)
                     .map_err(WlError::PollContextAdd)?;
                 let resp = WlResp::VfdNew {
-                    id: id,
+                    id,
                     flags: 0,
                     pfn: 0,
                     size: 0,
@@ -973,7 +1041,7 @@ impl WlState {
             Entry::Vacant(entry) => {
                 let vfd = WlVfd::allocate(self.vm.clone(), size as u64)?;
                 let resp = WlResp::VfdNew {
-                    id: id,
+                    id,
                     flags,
                     pfn: vfd.pfn().unwrap_or_default(),
                     size: vfd.size().unwrap_or_default() as u32,
@@ -994,12 +1062,9 @@ impl WlState {
 
         match self.vfds.entry(id) {
             Entry::Vacant(entry) => {
-                let (vfd, desc) = WlVfd::dmabuf(self.vm.clone(),
-                                                width,
-                                                height,
-                                                format)?;
+                let (vfd, desc) = WlVfd::dmabuf(self.vm.clone(), width, height, format)?;
                 let resp = WlResp::VfdNewDmabuf {
-                    id: id,
+                    id,
                     flags: 0,
                     pfn: vfd.pfn().unwrap_or_default(),
                     size: vfd.size().unwrap_or_default() as u32,
@@ -1019,7 +1084,7 @@ impl WlState {
         }
 
         match self.vfds.get_mut(&vfd_id) {
-            Some(vfd) =>  {
+            Some(vfd) => {
                 vfd.dmabuf_sync(flags)?;
                 Ok(WlResp::Ok)
             }
@@ -1045,12 +1110,12 @@ impl WlState {
                     .add(vfd.poll_fd().unwrap(), id)
                     .map_err(WlError::PollContextAdd)?;
                 Ok(WlResp::VfdNew {
-                       id: id,
-                       flags,
-                       pfn: 0,
-                       size: 0,
-                       resp: true,
-                   })
+                    id,
+                    flags,
+                    pfn: 0,
+                    size: 0,
+                    resp: true,
+                })
             }
             Entry::Occupied(_) => Ok(WlResp::InvalidId),
         }
@@ -1114,23 +1179,19 @@ impl WlState {
         let mut fds = [0; VIRTWL_SEND_MAX_ALLOCS];
         for (&id, fd) in vfd_ids[..vfd_count].iter().zip(fds.iter_mut()) {
             match self.vfds.get(&id.into()) {
-                Some(vfd) => {
-                    match vfd.send_fd() {
-                        Some(vfd_fd) => *fd = vfd_fd,
-                        None => return Ok(WlResp::InvalidType),
-                    }
-                }
+                Some(vfd) => match vfd.send_fd() {
+                    Some(vfd_fd) => *fd = vfd_fd,
+                    None => return Ok(WlResp::InvalidType),
+                },
                 None => return Ok(WlResp::InvalidId),
             }
         }
 
         match self.vfds.get_mut(&vfd_id) {
-            Some(vfd) => {
-                match vfd.send(&fds[..vfd_count], data)? {
-                    WlResp::Ok => {}
-                    _ => return Ok(WlResp::InvalidType),
-                }
-            }
+            Some(vfd) => match vfd.send(&fds[..vfd_count], data)? {
+                WlResp::Ok => {}
+                _ => return Ok(WlResp::InvalidType),
+            },
             None => return Ok(WlResp::InvalidId),
         }
         // The vfds with remote FDs need to be closed so that the local side can receive
@@ -1160,12 +1221,15 @@ impl WlState {
                     .map_err(WlError::PollContextAdd)?;
             }
             self.vfds.insert(self.next_vfd_id, vfd);
-            self.in_queue
-                .push_back((vfd_id, WlRecv::Vfd { id: self.next_vfd_id }));
+            self.in_queue.push_back((
+                vfd_id,
+                WlRecv::Vfd {
+                    id: self.next_vfd_id,
+                },
+            ));
             self.next_vfd_id += 1;
         }
-        self.in_queue
-            .push_back((vfd_id, WlRecv::Data { buf: buf }));
+        self.in_queue.push_back((vfd_id, WlRecv::Data { buf }));
 
         Ok(())
     }
@@ -1189,7 +1253,12 @@ impl WlState {
             WlOp::NewCtx { id } => self.new_context(id),
             WlOp::NewPipe { id, flags } => self.new_pipe(id, flags),
             #[cfg(feature = "wl-dmabuf")]
-            WlOp::NewDmabuf { id, width, height, format } => self.new_dmabuf(id, width, height, format),
+            WlOp::NewDmabuf {
+                id,
+                width,
+                height,
+                format,
+            } => self.new_dmabuf(id, width, height, format),
             #[cfg(feature = "wl-dmabuf")]
             WlOp::DmabufSync { id, flags } => self.dmabuf_sync(id, flags),
             WlOp::InvalidCommand { op_type } => {
@@ -1205,53 +1274,48 @@ impl WlState {
                 &(vfd_id, WlRecv::Vfd { id }) => {
                     if self.current_recv_vfd.is_none() || self.current_recv_vfd == Some(vfd_id) {
                         match self.vfds.get(&id) {
-                            Some(vfd) => {
-                                Some(WlResp::VfdNew {
-                                         id: id,
-                                         flags: vfd.flags(self.use_transition_flags),
-                                         pfn: vfd.pfn().unwrap_or_default(),
-                                         size: vfd.size().unwrap_or_default() as u32,
-                                         resp: false,
-                                     })
-                            }
-                            _ => {
-                                Some(WlResp::VfdNew {
-                                         id: id,
-                                         flags: 0,
-                                         pfn: 0,
-                                         size: 0,
-                                         resp: false,
-                                     })
-                            }
+                            Some(vfd) => Some(WlResp::VfdNew {
+                                id,
+                                flags: vfd.flags(self.use_transition_flags),
+                                pfn: vfd.pfn().unwrap_or_default(),
+                                size: vfd.size().unwrap_or_default() as u32,
+                                resp: false,
+                            }),
+                            _ => Some(WlResp::VfdNew {
+                                id,
+                                flags: 0,
+                                pfn: 0,
+                                size: 0,
+                                resp: false,
+                            }),
                         }
                     } else {
                         Some(WlResp::VfdRecv {
-                                 id: self.current_recv_vfd.unwrap(),
-                                 data: &[],
-                                 vfds: &self.recv_vfds[..],
-                             })
+                            id: self.current_recv_vfd.unwrap(),
+                            data: &[],
+                            vfds: &self.recv_vfds[..],
+                        })
                     }
                 }
                 &(vfd_id, WlRecv::Data { ref buf }) => {
                     if self.current_recv_vfd.is_none() || self.current_recv_vfd == Some(vfd_id) {
                         Some(WlResp::VfdRecv {
-                                 id: vfd_id,
-                                 data: &buf[..],
-                                 vfds: &self.recv_vfds[..],
-                             })
+                            id: vfd_id,
+                            data: &buf[..],
+                            vfds: &self.recv_vfds[..],
+                        })
                     } else {
                         Some(WlResp::VfdRecv {
-                                 id: self.current_recv_vfd.unwrap(),
-                                 data: &[],
-                                 vfds: &self.recv_vfds[..],
-                             })
+                            id: self.current_recv_vfd.unwrap(),
+                            data: &[],
+                            vfds: &self.recv_vfds[..],
+                        })
                     }
                 }
                 &(vfd_id, WlRecv::Hup) => Some(WlResp::VfdHup { id: vfd_id }),
             }
         } else {
             None
-
         }
     }
 
@@ -1296,21 +1360,22 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(mem: GuestMemory,
-           interrupt_evt: EventFd,
-           interrupt_status: Arc<AtomicUsize>,
-           in_queue: Queue,
-           out_queue: Queue,
-           wayland_path: PathBuf,
-           vm_socket: UnixDatagram,
-           use_transition_flags: bool)
-           -> Worker {
+    fn new(
+        mem: GuestMemory,
+        interrupt_evt: EventFd,
+        interrupt_status: Arc<AtomicUsize>,
+        in_queue: Queue,
+        out_queue: Queue,
+        wayland_path: PathBuf,
+        vm_socket: UnixDatagram,
+        use_transition_flags: bool,
+    ) -> Worker {
         Worker {
-            mem: mem,
-            interrupt_evt: interrupt_evt,
-            interrupt_status: interrupt_status,
-            in_queue: in_queue,
-            out_queue: out_queue,
+            mem,
+            interrupt_evt,
+            interrupt_status,
+            in_queue,
+            out_queue,
             state: WlState::new(wayland_path, vm_socket, use_transition_flags),
             in_desc_chains: VecDeque::with_capacity(QUEUE_SIZE as usize),
         }
@@ -1333,18 +1398,18 @@ impl Worker {
             State,
         }
 
-        let poll_ctx: PollContext<Token> =
-            match PollContext::new()
-                      .and_then(|pc| pc.add(&in_queue_evt, Token::InQueue).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&out_queue_evt, Token::OutQueue).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&self.state.poll_ctx, Token::State).and(Ok(pc))) {
-                Ok(pc) => pc,
-                Err(e) => {
-                    error!("failed creating PollContext: {:?}", e);
-                    return;
-                }
-            };
+        let poll_ctx: PollContext<Token> = match PollContext::new()
+            .and_then(|pc| pc.add(&in_queue_evt, Token::InQueue).and(Ok(pc)))
+            .and_then(|pc| pc.add(&out_queue_evt, Token::OutQueue).and(Ok(pc)))
+            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            .and_then(|pc| pc.add(&self.state.poll_ctx, Token::State).and(Ok(pc)))
+        {
+            Ok(pc) => pc,
+            Err(e) => {
+                error!("failed creating PollContext: {:?}", e);
+                return;
+            }
+        };
 
         'poll: loop {
             let mut signal_used = false;
@@ -1363,10 +1428,11 @@ impl Worker {
                         // Used to buffer descriptor indexes that are invalid for our uses.
                         let mut rejects = [0u16; QUEUE_SIZE as usize];
                         let mut rejects_len = 0;
-                        let min_in_desc_len = (size_of::<CtrlVfdRecv>() +
-                                               size_of::<Le32>() * VIRTWL_SEND_MAX_ALLOCS) as
-                                              u32;
-                        self.in_desc_chains.extend(self.in_queue.iter(&self.mem).filter_map(|d| {
+                        let min_in_desc_len = (size_of::<CtrlVfdRecv>()
+                            + size_of::<Le32>() * VIRTWL_SEND_MAX_ALLOCS)
+                            as u32;
+                        self.in_desc_chains
+                            .extend(self.in_queue.iter(&self.mem).filter_map(|d| {
                             if d.len >= min_in_desc_len && d.is_write_only() {
                                 Some((d.index, d.addr, d.len))
                             } else {
@@ -1395,23 +1461,23 @@ impl Worker {
                             // one "out" descriptor.
                             if !desc.is_write_only() {
                                 if let Some(resp_desc) = desc.next_descriptor() {
-                                    if resp_desc.is_write_only() &&
-                                       resp_desc.len >= min_resp_desc_len {
+                                    if resp_desc.is_write_only()
+                                        && resp_desc.len >= min_resp_desc_len
+                                    {
                                         let resp = match parse_desc(&desc, &self.mem) {
-                                            Ok(op) => {
-                                                match self.state.execute(&self.mem, op) {
-                                                    Ok(r) => r,
-                                                    Err(e) => WlResp::Err(Box::new(e)),
-                                                }
-                                            }
+                                            Ok(op) => match self.state.execute(&self.mem, op) {
+                                                Ok(r) => r,
+                                                Err(e) => WlResp::Err(Box::new(e)),
+                                            },
                                             Err(e) => WlResp::Err(Box::new(e)),
                                         };
 
-                                        let resp_mem = self.mem
+                                        let resp_mem = self
+                                            .mem
                                             .get_slice(resp_desc.addr.0, resp_desc.len as u64)
                                             .unwrap();
-                                        let used_len = encode_resp(resp_mem, resp)
-                                            .unwrap_or_default();
+                                        let used_len =
+                                            encode_resp(resp_mem, resp).unwrap_or_default();
 
                                         used_descs[used_descs_len] = (desc.index, used_len);
                                     }
@@ -1483,11 +1549,11 @@ impl Wl {
         // let kill_evt = EventFd::new()?;
         //     workers_kill_evt: Some(kill_evt.try_clone()?),
         Ok(Wl {
-               kill_evt: None,
-               wayland_path: wayland_path.as_ref().to_owned(),
-               vm_socket: Some(vm_socket),
-               use_transition_flags: false,
-           })
+            kill_evt: None,
+            wayland_path: wayland_path.as_ref().to_owned(),
+            vm_socket: Some(vm_socket),
+            use_transition_flags: false,
+        })
     }
 }
 
@@ -1532,42 +1598,45 @@ impl VirtioDevice for Wl {
         }
     }
 
-    fn activate(&mut self,
-                mem: GuestMemory,
-                interrupt_evt: EventFd,
-                status: Arc<AtomicUsize>,
-                mut queues: Vec<Queue>,
-                queue_evts: Vec<EventFd>) {
+    fn activate(
+        &mut self,
+        mem: GuestMemory,
+        interrupt_evt: EventFd,
+        status: Arc<AtomicUsize>,
+        mut queues: Vec<Queue>,
+        queue_evts: Vec<EventFd>,
+    ) {
         if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
             return;
         }
 
-        let (self_kill_evt, kill_evt) =
-            match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("failed creating kill EventFd pair: {:?}", e);
-                    return;
-                }
-            };
+        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("failed creating kill EventFd pair: {:?}", e);
+                return;
+            }
+        };
         self.kill_evt = Some(self_kill_evt);
 
         if let Some(vm_socket) = self.vm_socket.take() {
             let wayland_path = self.wayland_path.clone();
             let use_transition_flags = self.use_transition_flags;
-            let worker_result = thread::Builder::new()
-                .name("virtio_wl".to_string())
-                .spawn(move || {
-                    Worker::new(mem,
-                                interrupt_evt,
-                                status,
-                                queues.remove(0),
-                                queues.remove(0),
-                                wayland_path,
-                                vm_socket,
-                                use_transition_flags)
-                            .run(queue_evts, kill_evt);
-                });
+            let worker_result =
+                thread::Builder::new()
+                    .name("virtio_wl".to_string())
+                    .spawn(move || {
+                        Worker::new(
+                            mem,
+                            interrupt_evt,
+                            status,
+                            queues.remove(0),
+                            queues.remove(0),
+                            wayland_path,
+                            vm_socket,
+                            use_transition_flags,
+                        ).run(queue_evts, kill_evt);
+                    });
 
             if let Err(e) = worker_result {
                 error!("failed to spawn virtio_wl worker: {}", e);

@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::result;
-use std::fmt::{self, Display};
 use std::error::{self, Error as CpuidError};
+use std::fmt::{self, Display};
+use std::result;
 
 use kvm;
 use sys_util;
@@ -19,10 +19,8 @@ pub type Result<T> = result::Result<T, Error>;
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
-            &Error::GetSupportedCpusFailed(_) =>
-                "GetSupportedCpus ioctl failed",
-            &Error::SetSupportedCpusFailed(_) =>
-                "SetSupportedCpus ioctl failed",
+            &Error::GetSupportedCpusFailed(_) => "GetSupportedCpus ioctl failed",
+            &Error::SetSupportedCpusFailed(_) => "SetSupportedCpus ioctl failed",
         }
     }
 }
@@ -36,15 +34,15 @@ impl Display for Error {
 // This function is implemented in C because stable rustc does not
 // support inline assembly.
 extern "C" {
-    fn host_cpuid(func: u32,
-                  func2: u32,
-                  rEax: *mut u32,
-                  rEbx: *mut u32,
-                  rEcx: *mut u32,
-                  rEdx: *mut u32)
-                  -> ();
+    fn host_cpuid(
+        func: u32,
+        func2: u32,
+        rEax: *mut u32,
+        rEbx: *mut u32,
+        rEcx: *mut u32,
+        rEdx: *mut u32,
+    ) -> ();
 }
-
 
 // CPUID bits in ebx, ecx, and edx.
 const EBX_CLFLUSH_CACHELINE: u32 = 8; // Flush a cache line size.
@@ -65,31 +63,33 @@ fn filter_cpuid(cpu_id: u64, cpu_count: u64, kvm_cpuid: &mut kvm::CpuId) -> Resu
                 if entry.index == 0 {
                     entry.ecx |= 1 << ECX_HYPERVISOR_SHIFT;
                 }
-                entry.ebx = (cpu_id << EBX_CPUID_SHIFT) as u32 |
-                            (EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT);
+                entry.ebx = (cpu_id << EBX_CPUID_SHIFT) as u32
+                    | (EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT);
                 if cpu_count > 1 {
                     entry.ebx |= (cpu_count as u32) << EBX_CPU_COUNT_SHIFT;
                     entry.edx |= 1 << EDX_HTT_SHIFT;
                 }
             }
-            2 | 0x80000005 | 0x80000006 => {
-                unsafe {
-                    host_cpuid(entry.function,
-                               0,
-                               &mut entry.eax as *mut u32,
-                               &mut entry.ebx as *mut u32,
-                               &mut entry.ecx as *mut u32,
-                               &mut entry.edx as *mut u32);
-                }
-            }
+            2 | 0x80000005 | 0x80000006 => unsafe {
+                host_cpuid(
+                    entry.function,
+                    0,
+                    &mut entry.eax as *mut u32,
+                    &mut entry.ebx as *mut u32,
+                    &mut entry.ecx as *mut u32,
+                    &mut entry.edx as *mut u32,
+                );
+            },
             4 => {
                 unsafe {
-                    host_cpuid(entry.function,
-                               entry.index,
-                               &mut entry.eax as *mut u32,
-                               &mut entry.ebx as *mut u32,
-                               &mut entry.ecx as *mut u32,
-                               &mut entry.edx as *mut u32);
+                    host_cpuid(
+                        entry.function,
+                        entry.index,
+                        &mut entry.eax as *mut u32,
+                        &mut entry.ebx as *mut u32,
+                        &mut entry.ecx as *mut u32,
+                        &mut entry.edx as *mut u32,
+                    );
                 }
                 entry.eax &= !0xFC000000;
             }
@@ -114,7 +114,8 @@ fn filter_cpuid(cpu_id: u64, cpu_count: u64, kvm_cpuid: &mut kvm::CpuId) -> Resu
 /// * `cpu_id` - The index of the CPU `vcpu` is for.
 /// * `nrcpus` - The number of vcpus being used by this VM.
 pub fn setup_cpuid(kvm: &kvm::Kvm, vcpu: &kvm::Vcpu, cpu_id: u64, nrcpus: u64) -> Result<()> {
-    let mut kvm_cpuid = kvm.get_supported_cpuid()
+    let mut kvm_cpuid = kvm
+        .get_supported_cpuid()
         .map_err(Error::GetSupportedCpusFailed)?;
 
     filter_cpuid(cpu_id, nrcpus, &mut kvm_cpuid)?;
@@ -144,8 +145,10 @@ mod tests {
             assert_eq!(entries[0].function, 0);
             assert_eq!(1, (entries[1].ebx >> EBX_CPUID_SHIFT) & 0x000000ff);
             assert_eq!(2, (entries[1].ebx >> EBX_CPU_COUNT_SHIFT) & 0x000000ff);
-            assert_eq!(EBX_CLFLUSH_CACHELINE,
-                       (entries[1].ebx >> EBX_CLFLUSH_SIZE_SHIFT) & 0x000000ff);
+            assert_eq!(
+                EBX_CLFLUSH_CACHELINE,
+                (entries[1].ebx >> EBX_CLFLUSH_SIZE_SHIFT) & 0x000000ff
+            );
             assert_ne!(0, entries[1].ecx & (1 << ECX_HYPERVISOR_SHIFT));
             assert_ne!(0, entries[1].edx & (1 << EDX_HTT_SHIFT));
         }

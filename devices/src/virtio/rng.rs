@@ -6,13 +6,13 @@ use std;
 use std::fs::File;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread;
 
 use sys_util::{EventFd, GuestMemory, PollContext, PollToken};
 
-use super::{VirtioDevice, Queue, INTERRUPT_STATUS_USED_RING, TYPE_RNG};
+use super::{Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_RNG};
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
@@ -44,10 +44,14 @@ impl Worker {
             // Drivers can only read from the random device.
             if avail_desc.is_write_only() {
                 // Fill the read with data from the random device on the host.
-                if self.mem.read_to_memory(avail_desc.addr,
-                                           &mut self.random_file,
-                                           avail_desc.len as usize)
-                        .is_ok() {
+                if self
+                    .mem
+                    .read_to_memory(
+                        avail_desc.addr,
+                        &mut self.random_file,
+                        avail_desc.len as usize,
+                    ).is_ok()
+                {
                     len = avail_desc.len;
                 }
             }
@@ -75,16 +79,16 @@ impl Worker {
             Kill,
         }
 
-        let poll_ctx: PollContext<Token> =
-            match PollContext::new()
-                      .and_then(|pc| pc.add(&queue_evt, Token::QueueAvailable).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc))) {
-                Ok(pc) => pc,
-                Err(e) => {
-                    error!("failed creating PollContext: {:?}", e);
-                    return;
-                }
-            };
+        let poll_ctx: PollContext<Token> = match PollContext::new()
+            .and_then(|pc| pc.add(&queue_evt, Token::QueueAvailable).and(Ok(pc)))
+            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+        {
+            Ok(pc) => pc,
+            Err(e) => {
+                error!("failed creating PollContext: {:?}", e);
+                return;
+            }
+        };
 
         'poll: loop {
             let events = match poll_ctx.wait() {
@@ -124,12 +128,11 @@ pub struct Rng {
 impl Rng {
     /// Create a new virtio rng device that gets random data from /dev/urandom.
     pub fn new() -> Result<Rng> {
-        let random_file = File::open("/dev/urandom")
-            .map_err(RngError::AccessingRandomDev)?;
+        let random_file = File::open("/dev/urandom").map_err(RngError::AccessingRandomDev)?;
         Ok(Rng {
-               kill_evt: None,
-               random_file: Some(random_file),
-           })
+            kill_evt: None,
+            random_file: Some(random_file),
+        })
     }
 }
 
@@ -161,41 +164,43 @@ impl VirtioDevice for Rng {
         QUEUE_SIZES
     }
 
-    fn activate(&mut self,
-                mem: GuestMemory,
-                interrupt_evt: EventFd,
-                status: Arc<AtomicUsize>,
-                mut queues: Vec<Queue>,
-                mut queue_evts: Vec<EventFd>) {
+    fn activate(
+        &mut self,
+        mem: GuestMemory,
+        interrupt_evt: EventFd,
+        status: Arc<AtomicUsize>,
+        mut queues: Vec<Queue>,
+        mut queue_evts: Vec<EventFd>,
+    ) {
         if queues.len() != 1 || queue_evts.len() != 1 {
             return;
         }
 
-        let (self_kill_evt, kill_evt) =
-            match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("failed to create kill EventFd pair: {:?}", e);
-                    return;
-                }
-            };
+        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("failed to create kill EventFd pair: {:?}", e);
+                return;
+            }
+        };
         self.kill_evt = Some(self_kill_evt);
 
         let queue = queues.remove(0);
 
         if let Some(random_file) = self.random_file.take() {
-            let worker_result = thread::Builder::new()
-                .name("virtio_rng".to_string())
-                .spawn(move || {
-                    let mut worker = Worker {
-                        queue: queue,
-                        mem: mem,
-                        random_file: random_file,
-                        interrupt_status: status,
-                        interrupt_evt: interrupt_evt,
-                    };
-                    worker.run(queue_evts.remove(0), kill_evt);
-                });
+            let worker_result =
+                thread::Builder::new()
+                    .name("virtio_rng".to_string())
+                    .spawn(move || {
+                        let mut worker = Worker {
+                            queue,
+                            mem,
+                            random_file,
+                            interrupt_status: status,
+                            interrupt_evt,
+                        };
+                        worker.run(queue_evts.remove(0), kill_evt);
+                    });
 
             if let Err(e) = worker_result {
                 error!("failed to spawn virtio_rng worker: {}", e);

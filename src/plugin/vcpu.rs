@@ -4,21 +4,23 @@
 
 use std::cell::{Cell, RefCell};
 use std::cmp::min;
-use std::cmp::{self, Ord, PartialOrd, PartialEq};
+use std::cmp::{self, Ord, PartialEq, PartialOrd};
 use std::collections::btree_set::BTreeSet;
 use std::mem::size_of;
 use std::os::unix::net::UnixDatagram;
 use std::sync::{Arc, Mutex, RwLock};
 
-use libc::{EINVAL, EPROTO, ENOENT, EPERM, EPIPE, EDEADLK, ENOTTY};
+use libc::{EDEADLK, EINVAL, ENOENT, ENOTTY, EPERM, EPIPE, EPROTO};
 
 use protobuf;
 use protobuf::Message;
 
 use data_model::DataInit;
-use kvm::{Vcpu, CpuId};
-use kvm_sys::{kvm_regs, kvm_sregs, kvm_fpu, kvm_debugregs, kvm_xcrs, kvm_msrs, kvm_msr_entry,
-              KVM_CPUID_FLAG_SIGNIFCANT_INDEX, kvm_lapic_state, kvm_mp_state, kvm_vcpu_events};
+use kvm::{CpuId, Vcpu};
+use kvm_sys::{
+    kvm_debugregs, kvm_fpu, kvm_lapic_state, kvm_mp_state, kvm_msr_entry, kvm_msrs, kvm_regs,
+    kvm_sregs, kvm_vcpu_events, kvm_xcrs, KVM_CPUID_FLAG_SIGNIFCANT_INDEX,
+};
 use plugin_proto::*;
 
 use super::*;
@@ -81,64 +83,55 @@ unsafe impl DataInit for VcpuEvents {}
 
 fn get_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet) -> SysResult<Vec<u8>> {
     Ok(match state_set {
-           VcpuRequest_StateSet::REGS => VcpuRegs(vcpu.get_regs()?).as_slice().to_vec(),
-           VcpuRequest_StateSet::SREGS => VcpuSregs(vcpu.get_sregs()?).as_slice().to_vec(),
-           VcpuRequest_StateSet::FPU => VcpuFpu(vcpu.get_fpu()?).as_slice().to_vec(),
-           VcpuRequest_StateSet::DEBUGREGS => {
-               VcpuDebugregs(vcpu.get_debugregs()?).as_slice().to_vec()
-           }
-           VcpuRequest_StateSet::XCREGS => VcpuXcregs(vcpu.get_xcrs()?).as_slice().to_vec(),
-           VcpuRequest_StateSet::LAPIC => VcpuLapicState(vcpu.get_lapic()?).as_slice().to_vec(),
-           VcpuRequest_StateSet::MP => VcpuMpState(vcpu.get_mp_state()?).as_slice().to_vec(),
-           VcpuRequest_StateSet::EVENTS => VcpuEvents(vcpu.get_vcpu_events()?).as_slice().to_vec(),
-       })
+        VcpuRequest_StateSet::REGS => VcpuRegs(vcpu.get_regs()?).as_slice().to_vec(),
+        VcpuRequest_StateSet::SREGS => VcpuSregs(vcpu.get_sregs()?).as_slice().to_vec(),
+        VcpuRequest_StateSet::FPU => VcpuFpu(vcpu.get_fpu()?).as_slice().to_vec(),
+        VcpuRequest_StateSet::DEBUGREGS => VcpuDebugregs(vcpu.get_debugregs()?).as_slice().to_vec(),
+        VcpuRequest_StateSet::XCREGS => VcpuXcregs(vcpu.get_xcrs()?).as_slice().to_vec(),
+        VcpuRequest_StateSet::LAPIC => VcpuLapicState(vcpu.get_lapic()?).as_slice().to_vec(),
+        VcpuRequest_StateSet::MP => VcpuMpState(vcpu.get_mp_state()?).as_slice().to_vec(),
+        VcpuRequest_StateSet::EVENTS => VcpuEvents(vcpu.get_vcpu_events()?).as_slice().to_vec(),
+    })
 }
 
 fn set_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet, state: &[u8]) -> SysResult<()> {
     match state_set {
         VcpuRequest_StateSet::REGS => {
-            vcpu.set_regs(&VcpuRegs::from_slice(state)
-                               .ok_or(SysError::new(EINVAL))?
-                               .0)
+            vcpu.set_regs(&VcpuRegs::from_slice(state).ok_or(SysError::new(EINVAL))?.0)
         }
         VcpuRequest_StateSet::SREGS => {
-            vcpu.set_sregs(&VcpuSregs::from_slice(state)
-                                .ok_or(SysError::new(EINVAL))?
-                                .0)
+            vcpu.set_sregs(&VcpuSregs::from_slice(state).ok_or(SysError::new(EINVAL))?.0)
         }
         VcpuRequest_StateSet::FPU => {
-            vcpu.set_fpu(&VcpuFpu::from_slice(state)
-                              .ok_or(SysError::new(EINVAL))?
-                              .0)
+            vcpu.set_fpu(&VcpuFpu::from_slice(state).ok_or(SysError::new(EINVAL))?.0)
         }
-        VcpuRequest_StateSet::DEBUGREGS => {
-            vcpu.set_debugregs(&VcpuDebugregs::from_slice(state)
-                                    .ok_or(SysError::new(EINVAL))?
-                                    .0)
-        }
-        VcpuRequest_StateSet::XCREGS => {
-            vcpu.set_xcrs(&VcpuXcregs::from_slice(state)
-                              .ok_or(SysError::new(EINVAL))?
-                              .0)
-        }
-        VcpuRequest_StateSet::LAPIC => {
-            vcpu.set_lapic(&VcpuLapicState::from_slice(state)
-                                .ok_or(SysError::new(EINVAL))?
-                                .0)
-        }
-        VcpuRequest_StateSet::MP => {
-            vcpu.set_mp_state(&VcpuMpState::from_slice(state)
-                                   .ok_or(SysError::new(EINVAL))?
-                                   .0)
-        }
-        VcpuRequest_StateSet::EVENTS => {
-            vcpu.set_vcpu_events(&VcpuEvents::from_slice(state)
-                                    .ok_or(SysError::new(EINVAL))?
-                                    .0)
-        }
+        VcpuRequest_StateSet::DEBUGREGS => vcpu.set_debugregs(
+            &VcpuDebugregs::from_slice(state)
+                .ok_or(SysError::new(EINVAL))?
+                .0,
+        ),
+        VcpuRequest_StateSet::XCREGS => vcpu.set_xcrs(
+            &VcpuXcregs::from_slice(state)
+                .ok_or(SysError::new(EINVAL))?
+                .0,
+        ),
+        VcpuRequest_StateSet::LAPIC => vcpu.set_lapic(
+            &VcpuLapicState::from_slice(state)
+                .ok_or(SysError::new(EINVAL))?
+                .0,
+        ),
+        VcpuRequest_StateSet::MP => vcpu.set_mp_state(
+            &VcpuMpState::from_slice(state)
+                .ok_or(SysError::new(EINVAL))?
+                .0,
+        ),
+        VcpuRequest_StateSet::EVENTS => vcpu.set_vcpu_events(
+            &VcpuEvents::from_slice(state)
+                .ok_or(SysError::new(EINVAL))?
+                .0,
+        ),
     }
 }
-
 
 /// State shared by every VCPU, grouped together to make edits to the state coherent across VCPUs.
 #[derive(Default)]
@@ -171,10 +164,7 @@ impl SharedVcpuState {
             IoSpace::Mmio => &mut self.mmio_regions,
         };
 
-        match space
-                  .range(..Range(last_address, 0))
-                  .next_back()
-                  .cloned() {
+        match space.range(..Range(last_address, 0)).next_back().cloned() {
             Some(Range(existing_start, _)) if existing_start >= start => Err(SysError::new(EPERM)),
             _ => {
                 space.insert(Range(start, length));
@@ -291,10 +281,11 @@ pub struct PluginVcpu {
 
 impl PluginVcpu {
     /// Creates the plugin state and connection container for a VCPU thread.
-    pub fn new(shared_vcpu_state: Arc<RwLock<SharedVcpuState>>,
-               per_vcpu_state: Arc<Mutex<PerVcpuState>>,
-               connection: UnixDatagram)
-               -> PluginVcpu {
+    pub fn new(
+        shared_vcpu_state: Arc<RwLock<SharedVcpuState>>,
+        per_vcpu_state: Arc<Mutex<PerVcpuState>>,
+        connection: UnixDatagram,
+    ) -> PluginVcpu {
         PluginVcpu {
             shared_vcpu_state,
             per_vcpu_state,
@@ -320,7 +311,8 @@ impl PluginVcpu {
     /// to this VCPU.
     pub fn pre_run(&self, vcpu: &Vcpu) -> SysResult<()> {
         let request = {
-            let mut lock = self.per_vcpu_state
+            let mut lock = self
+                .per_vcpu_state
                 .lock()
                 .map_err(|_| SysError::new(EDEADLK))?;
             lock.pause_request.take()
@@ -403,10 +395,10 @@ impl PluginVcpu {
         let mut request_buffer = self.request_buffer.borrow_mut();
         request_buffer.resize(MAX_VCPU_DATAGRAM_SIZE, 0);
 
-        let msg_size = self.connection
+        let msg_size = self
+            .connection
             .recv(&mut request_buffer)
             .map_err(io_to_sys_err)?;
-
 
         let mut request = protobuf::parse_from_bytes::<VcpuRequest>(&request_buffer[..msg_size])
             .map_err(proto_to_sys_err)?;
@@ -449,9 +441,9 @@ impl PluginVcpu {
             let mut msr_entries = Vec::with_capacity(entry_indices.len());
             for &index in entry_indices {
                 msr_entries.push(kvm_msr_entry {
-                                     index,
-                                     ..Default::default()
-                                 });
+                    index,
+                    ..Default::default()
+                });
             }
             match vcpu.get_msrs(&mut msr_entries) {
                 Ok(()) => {
@@ -465,8 +457,8 @@ impl PluginVcpu {
         } else if request.has_set_msrs() {
             response.mut_set_msrs();
             let request_entries = &request.get_set_msrs().entries;
-            let vec_size_bytes = size_of::<kvm_msrs>() +
-                                 (request_entries.len() * size_of::<kvm_msr_entry>());
+            let vec_size_bytes =
+                size_of::<kvm_msrs>() + (request_entries.len() * size_of::<kvm_msr_entry>());
             let vec: Vec<u8> = vec![0; vec_size_bytes];
             let kvm_msrs: &mut kvm_msrs = unsafe {
                 // Converting the vector's memory to a struct is unsafe.  Carefully using the read-
@@ -493,7 +485,8 @@ impl PluginVcpu {
             {
                 let cpuid_entries = cpuid.mut_entries_slice();
                 for (request_entry, cpuid_entry) in
-                    request_entries.iter().zip(cpuid_entries.iter_mut()) {
+                    request_entries.iter().zip(cpuid_entries.iter_mut())
+                {
                     cpuid_entry.function = request_entry.function;
                     if request_entry.has_index {
                         cpuid_entry.index = request_entry.index;

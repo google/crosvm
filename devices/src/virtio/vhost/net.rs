@@ -5,8 +5,8 @@
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
 use std::thread;
 
 use net_sys;
@@ -16,9 +16,9 @@ use sys_util::{EventFd, GuestMemory};
 use vhost::NetT as VhostNetT;
 use virtio_sys::{vhost, virtio_net};
 
-use super::{Error, Result};
 use super::super::{Queue, VirtioDevice, TYPE_NET};
 use super::worker::Worker;
+use super::{Error, Result};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -41,16 +41,19 @@ where
 {
     /// Create a new virtio network device with the given IP address and
     /// netmask.
-    pub fn new(ip_addr: Ipv4Addr,
-               netmask: Ipv4Addr,
-               mac_addr: MacAddress,
-               mem: &GuestMemory) -> Result<Net<T, U>> {
+    pub fn new(
+        ip_addr: Ipv4Addr,
+        netmask: Ipv4Addr,
+        mac_addr: MacAddress,
+        mem: &GuestMemory,
+    ) -> Result<Net<T, U>> {
         let kill_evt = EventFd::new().map_err(Error::CreateKillEventFd)?;
 
         let tap: T = T::new(true).map_err(Error::TapOpen)?;
         tap.set_ip_addr(ip_addr).map_err(Error::TapSetIp)?;
         tap.set_netmask(netmask).map_err(Error::TapSetNetmask)?;
-        tap.set_mac_address(mac_addr).map_err(Error::TapSetMacAddress)?;
+        tap.set_mac_address(mac_addr)
+            .map_err(Error::TapSetMacAddress)?;
 
         // Set offload flags to match the virtio features below.
         tap.set_offload(
@@ -59,29 +62,31 @@ where
 
         // We declare VIRTIO_NET_F_MRG_RXBUF, so set the vnet hdr size to match.
         let vnet_hdr_size = mem::size_of::<virtio_net::virtio_net_hdr_mrg_rxbuf>() as i32;
-        tap.set_vnet_hdr_size(vnet_hdr_size).map_err(Error::TapSetVnetHdrSize)?;
+        tap.set_vnet_hdr_size(vnet_hdr_size)
+            .map_err(Error::TapSetVnetHdrSize)?;
 
         tap.enable().map_err(Error::TapEnable)?;
         let vhost_net_handle = U::new(mem).map_err(Error::VhostOpen)?;
 
-        let avail_features =
-            1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM | 1 << virtio_net::VIRTIO_NET_F_CSUM |
-                1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4 |
-                1 << virtio_net::VIRTIO_NET_F_GUEST_UFO |
-                1 << virtio_net::VIRTIO_NET_F_HOST_TSO4 |
-                1 << virtio_net::VIRTIO_NET_F_HOST_UFO |
-                1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF |
-                1 << vhost::VIRTIO_RING_F_INDIRECT_DESC |
-                1 << vhost::VIRTIO_RING_F_EVENT_IDX |
-                1 << vhost::VIRTIO_F_NOTIFY_ON_EMPTY | 1 << vhost::VIRTIO_F_VERSION_1;
+        let avail_features = 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
+            | 1 << virtio_net::VIRTIO_NET_F_CSUM
+            | 1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4
+            | 1 << virtio_net::VIRTIO_NET_F_GUEST_UFO
+            | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
+            | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
+            | 1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF
+            | 1 << vhost::VIRTIO_RING_F_INDIRECT_DESC
+            | 1 << vhost::VIRTIO_RING_F_EVENT_IDX
+            | 1 << vhost::VIRTIO_F_NOTIFY_ON_EMPTY
+            | 1 << vhost::VIRTIO_F_VERSION_1;
 
         Ok(Net {
             workers_kill_evt: Some(kill_evt.try_clone().map_err(Error::CloneKillEventFd)?),
-            kill_evt: kill_evt,
+            kill_evt,
             tap: Some(tap),
             vhost_net_handle: Some(vhost_net_handle),
             vhost_interrupt: Some(EventFd::new().map_err(Error::VhostIrqCreate)?),
-            avail_features: avail_features,
+            avail_features,
             acked_features: 0u64,
         })
     }
@@ -143,7 +148,7 @@ where
             _ => {
                 warn!("net: virtio net got request for features page: {}", page);
                 0u32
-            },
+            }
         }
     }
 
@@ -157,7 +162,7 @@ where
                     page
                 );
                 0u64
-            },
+            }
         };
 
         // Check if the guest is ACK'ing a feature that we didn't claim to have.
@@ -192,12 +197,14 @@ where
                         let worker_result = thread::Builder::new()
                             .name("vhost_net".to_string())
                             .spawn(move || {
-                                let mut worker = Worker::new(queues,
-                                                             vhost_net_handle,
-                                                             vhost_interrupt,
-                                                             status,
-                                                             interrupt_evt,
-                                                             acked_features);
+                                let mut worker = Worker::new(
+                                    queues,
+                                    vhost_net_handle,
+                                    vhost_interrupt,
+                                    status,
+                                    interrupt_evt,
+                                    acked_features,
+                                );
                                 let activate_vqs = |handle: &U| -> Result<()> {
                                     for idx in 0..NUM_QUEUES {
                                         handle
@@ -227,8 +234,8 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use std::result;
     use net_util::fakes::FakeTap;
+    use std::result;
     use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
     use vhost::net::fakes::FakeNet;
 

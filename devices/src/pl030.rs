@@ -9,17 +9,17 @@ use BusDevice;
 
 // Register offsets
 // Data register
-const RTCDR:   u64 = 0x0;
+const RTCDR: u64 = 0x0;
 // Match register
-const RTCMR:   u64 = 0x4;
+const RTCMR: u64 = 0x4;
 // Interrupt status register
 const RTCSTAT: u64 = 0x8;
 // Interrupt clear register
-const RTCEOI:  u64 = 0x8;
+const RTCEOI: u64 = 0x8;
 // Counter load register
-const RTCLR:   u64 = 0xC;
+const RTCLR: u64 = 0xC;
 // Counter register
-const RTCCR:   u64 = 0x10;
+const RTCCR: u64 = 0x10;
 
 // A single 4K page is mapped for this device
 pub const PL030_AMBA_IOMEM_SIZE: u64 = 0x1000;
@@ -29,7 +29,7 @@ const AMBA_ID_OFFSET: u64 = PL030_AMBA_IOMEM_SIZE - 0x20;
 const AMBA_MASK_OFFSET: u64 = PL030_AMBA_IOMEM_SIZE - 0x28;
 
 // This is the AMBA id for this device
-pub const PL030_AMBA_ID:   u32 = 0x00041030;
+pub const PL030_AMBA_ID: u32 = 0x00041030;
 pub const PL030_AMBA_MASK: u32 = 0x000FFFFF;
 
 /// An emulated ARM pl030 RTC
@@ -51,12 +51,11 @@ pub struct Pl030 {
 }
 
 fn get_epoch_time() -> u32 {
-    let epoch_time =
-        SystemTime::now().duration_since(UNIX_EPOCH).
-        expect("SystemTime::duration_since failed");
+    let epoch_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("SystemTime::duration_since failed");
     epoch_time.as_secs() as u32
 }
-
 
 impl Pl030 {
     /// Constructs a Pl030 device
@@ -77,19 +76,21 @@ impl BusDevice for Pl030 {
             return;
         }
 
-        let reg_val: u32 = (data[0] as u32) << 24 | (data[1] as u32) << 16 |
-                           (data[2] as u32) << 8 | (data[3] as u32);
+        let reg_val: u32 = (data[0] as u32) << 24
+            | (data[1] as u32) << 16
+            | (data[2] as u32) << 8
+            | (data[3] as u32);
         match offset {
             RTCDR => {
                 warn!("invalid write to read-only RTCDR register");
-            },
+            }
             RTCMR => {
                 self.match_value = reg_val;
                 // TODO(sonnyrao): here we need to set up a timer for
                 // when host time equals the value written here and
                 // fire the interrupt
                 warn!("Not implemented: VM tried to set an RTC alarm");
-            },
+            }
             RTCEOI => {
                 if reg_val == 0 {
                     self.interrupt_active = false;
@@ -97,18 +98,18 @@ impl BusDevice for Pl030 {
                     self.alarm_evt.write(1).unwrap();
                     self.interrupt_active = true;
                 }
-            },
+            }
             RTCLR => {
                 // TODO(sonnyrao): if we ever need to let the VM set it's own time
                 // then we'll need to keep track of the delta between
                 // the rtc time it sets and the host's rtc time and
                 // record that here
                 warn!("Not implemented: VM tried to set the RTC");
-            },
+            }
             RTCCR => {
                 self.counter_delta_time = get_epoch_time();
-            },
-            o => panic!("pl030: bad write offset {}", o)
+            }
+            o => panic!("pl030: bad write offset {}", o),
         }
     }
 
@@ -119,30 +120,18 @@ impl BusDevice for Pl030 {
         }
 
         let reg_content: u32 = match offset {
-            RTCDR => {
-                get_epoch_time()
-            },
-            RTCMR => {
-                self.match_value
-            },
-            RTCSTAT => {
-                self.interrupt_active as u32
-            },
+            RTCDR => get_epoch_time(),
+            RTCMR => self.match_value,
+            RTCSTAT => self.interrupt_active as u32,
             RTCLR => {
                 warn!("invalid read of RTCLR register");
                 0
-            },
-            RTCCR => {
-                get_epoch_time() - self.counter_delta_time
-            },
-            AMBA_ID_OFFSET => {
-                PL030_AMBA_ID
-            },
-            AMBA_MASK_OFFSET => {
-                PL030_AMBA_MASK
-            },
+            }
+            RTCCR => get_epoch_time() - self.counter_delta_time,
+            AMBA_ID_OFFSET => PL030_AMBA_ID,
+            AMBA_MASK_OFFSET => PL030_AMBA_MASK,
 
-            o => panic!("pl030: bad read offset {}", o)
+            o => panic!("pl030: bad read offset {}", o),
         };
         data[0] = reg_content as u8;
         data[1] = (reg_content >> 8) as u8;

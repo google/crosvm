@@ -4,9 +4,9 @@
 
 use std::ffi::CString;
 use std::fs::{File, OpenOptions};
-use std::os::raw::{c_char, c_int, c_uint};
 #[cfg(target_pointer_width = "64")]
 use std::os::raw::c_ulong;
+use std::os::raw::{c_char, c_int, c_uint};
 use std::path::Path;
 use std::ptr::null_mut;
 
@@ -76,10 +76,10 @@ fn get_drm_device_name(fd: &File) -> Result<String, ()> {
     }
 
     Ok(CString::new(&name_bytes[..(version.name_len as usize)])
-       .map_err(|_| ())?
-       .into_string().map_err(|_| ())?)
+        .map_err(|_| ())?
+        .into_string()
+        .map_err(|_| ())?)
 }
-
 
 /// Returns a `fd` for an opened rendernode device, while filtering out specified
 /// undesired drivers.

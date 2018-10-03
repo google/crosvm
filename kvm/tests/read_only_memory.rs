@@ -4,13 +4,13 @@
 
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 
-extern crate sys_util;
-extern crate kvm_sys;
 extern crate kvm;
+extern crate kvm_sys;
+extern crate sys_util;
 
 use kvm::*;
 use kvm_sys::kvm_regs;
-use sys_util::{GuestAddress, GuestMemory, SharedMemory, MemoryMapping};
+use sys_util::{GuestAddress, GuestMemory, MemoryMapping, SharedMemory};
 
 #[test]
 fn test_run() {
@@ -49,12 +49,12 @@ fn test_run() {
     vcpu_regs.rax = 0x66;
     vcpu_regs.rbx = 0;
     vcpu.set_regs(&vcpu_regs).expect("set regs failed");
-    vm.add_device_memory(GuestAddress(0),
-        MemoryMapping::from_fd(&mem, mem_size as usize)
-            .expect("failed to create memory mapping"),
+    vm.add_device_memory(
+        GuestAddress(0),
+        MemoryMapping::from_fd(&mem, mem_size as usize).expect("failed to create memory mapping"),
         false,
-        false)
-        .expect("failed to register memory");
+        false,
+    ).expect("failed to register memory");
 
     // Give some read only memory for the test code to read from and force a vcpu exit when it reads
     // from it.
@@ -66,12 +66,12 @@ fn test_run() {
     mmap_ro
         .write_obj(vcpu_regs.rax as u8, 0)
         .expect("failed writing data to ro memory");
-    vm.add_device_memory(GuestAddress(vcpu_sregs.es.base),
-        MemoryMapping::from_fd(&mem_ro, 0x1000)
-            .expect("failed to create memory mapping"),
+    vm.add_device_memory(
+        GuestAddress(vcpu_sregs.es.base),
+        MemoryMapping::from_fd(&mem_ro, 0x1000).expect("failed to create memory mapping"),
         true,
-        false)
-        .expect("failed to register memory");
+        false,
+    ).expect("failed to register memory");
 
     // Ensure we get exactly 1 exit from attempting to write to read only memory.
     let mut exits = 0;
@@ -91,8 +91,10 @@ fn test_run() {
     // Check that exactly 1 attempt to write to read only memory was made, and that the memory is
     // unchanged after that attempt.
     assert_eq!(exits, 1);
-    assert_eq!(mmap_ro
-                   .read_obj::<u8>(0)
-                   .expect("failed to read data from ro memory"),
-               vcpu_regs.rax as u8);
+    assert_eq!(
+        mmap_ro
+            .read_obj::<u8>(0)
+            .expect("failed to read data from ro memory"),
+        vcpu_regs.rax as u8
+    );
 }

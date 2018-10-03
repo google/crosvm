@@ -45,9 +45,11 @@ fn find_protocol(name: &str) -> PathBuf {
 
     // Use bundled protocols as a fallback.
     let protocol_path = Path::new("protocol").join(protocol_file_name);
-    assert!(protocol_path.is_file(),
-            "unable to locate wayland protocol specification for `{}`",
-            name);
+    assert!(
+        protocol_path.is_file(),
+        "unable to locate wayland protocol specification for `{}`",
+        name
+    );
     protocol_path
 }
 
@@ -84,10 +86,12 @@ fn main() {
     build.file("src/display_wl.c");
     println!("cargo:rerun-if-changed=src/display_wl.c");
 
-    for protocol in &["aura-shell",
-                      "linux-dmabuf-unstable-v1",
-                      "xdg-shell-unstable-v6",
-                      "viewporter"] {
+    for protocol in &[
+        "aura-shell",
+        "linux-dmabuf-unstable-v1",
+        "xdg-shell-unstable-v6",
+        "viewporter",
+    ] {
         build.file(compile_protocol(protocol, &out_dir));
     }
     build.compile("display_wl");

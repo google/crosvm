@@ -120,22 +120,20 @@ impl<T> InterruptibleResult for io::Result<T> {
 /// ```
 #[macro_export]
 macro_rules! handle_eintr {
-    ($x:expr) => (
-        {
-            use $crate::handle_eintr::InterruptibleResult;
-            let res;
-            loop {
-                match $x {
-                    ref v if v.is_interrupted() => continue,
-                    v => {
-                        res = v;
-                        break;
-                    }
+    ($x:expr) => {{
+        use $crate::handle_eintr::InterruptibleResult;
+        let res;
+        loop {
+            match $x {
+                ref v if v.is_interrupted() => continue,
+                v => {
+                    res = v;
+                    break;
                 }
             }
-            res
         }
-    )
+        res
+    }};
 }
 
 /// Macro that retries the given expression every time its result indicates it was interrupted.
@@ -144,19 +142,17 @@ macro_rules! handle_eintr {
 /// Most of reentrant functions use this way of signalling errors.
 #[macro_export]
 macro_rules! handle_eintr_rc {
-    ($x:expr) => (
-        {
-            use libc::EINTR;
-            let mut res;
-            loop {
-                res = $x;
-                if res != EINTR {
-                    break;
-                }
+    ($x:expr) => {{
+        use libc::EINTR;
+        let mut res;
+        loop {
+            res = $x;
+            if res != EINTR {
+                break;
             }
-            res
         }
-    )
+        res
+    }};
 }
 
 /// Macro that retries the given expression every time its result indicates it was interrupted.
@@ -165,20 +161,18 @@ macro_rules! handle_eintr_rc {
 /// Most of standard non-reentrant libc functions use this way of signalling errors.
 #[macro_export]
 macro_rules! handle_eintr_errno {
-    ($x:expr) => (
-        {
-            use $crate::Error;
-            use libc::EINTR;
-            let mut res;
-            loop {
-                res = $x;
-                if res != -1 || Error::last() != Error::new(EINTR) {
-                    break;
-                }
+    ($x:expr) => {{
+        use libc::EINTR;
+        use $crate::Error;
+        let mut res;
+        loop {
+            res = $x;
+            if res != -1 || Error::last() != Error::new(EINTR) {
+                break;
             }
-            res
         }
-    )
+        res
+    }};
 }
 
 #[cfg(test)]
@@ -194,7 +188,11 @@ mod tests {
         {
             let mut dummy = || {
                 count -= 1;
-                if count > 0 { EINTR } else { 0 }
+                if count > 0 {
+                    EINTR
+                } else {
+                    0
+                }
             };
             let res = handle_eintr_rc!(dummy());
             assert_eq!(res, 0);
@@ -208,7 +206,12 @@ mod tests {
         {
             let mut dummy = || {
                 count -= 1;
-                if count > 0 { set_errno(EINTR); -1 } else { 56 }
+                if count > 0 {
+                    set_errno(EINTR);
+                    -1
+                } else {
+                    56
+                }
             };
             let res = handle_eintr_errno!(dummy());
             assert_eq!(res, 56);
@@ -241,7 +244,10 @@ mod tests {
             let mut dummy = || {
                 count -= 1;
                 if count > 99 {
-                    Err(io::Error::new(io::ErrorKind::Interrupted, "interrupted again :("))
+                    Err(io::Error::new(
+                        io::ErrorKind::Interrupted,
+                        "interrupted again :(",
+                    ))
                 } else {
                     Ok(32)
                 }

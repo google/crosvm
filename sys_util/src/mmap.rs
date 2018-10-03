@@ -7,8 +7,8 @@
 
 use std;
 use std::io::{Read, Write};
-use std::ptr::null_mut;
 use std::os::unix::io::AsRawFd;
+use std::ptr::null_mut;
 
 use libc;
 
@@ -59,12 +59,14 @@ impl MemoryMapping {
         // This is safe because we are creating an anonymous mapping in a place not already used by
         // any other area in this process.
         let addr = unsafe {
-            libc::mmap(null_mut(),
-                       size,
-                       libc::PROT_READ | libc::PROT_WRITE,
-                       libc::MAP_ANONYMOUS | libc::MAP_SHARED | libc::MAP_NORESERVE,
-                       -1,
-                       0)
+            libc::mmap(
+                null_mut(),
+                size,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_ANONYMOUS | libc::MAP_SHARED | libc::MAP_NORESERVE,
+                -1,
+                0,
+            )
         };
         if addr == libc::MAP_FAILED {
             return Err(Error::SystemCallFailed(errno::Error::last()));
@@ -72,13 +74,15 @@ impl MemoryMapping {
         // This is safe because we call madvise with a valid address and size, and we check the
         // return value. We only warn about an error because failure here is not fatal to the mmap.
         if unsafe { libc::madvise(addr, size, libc::MADV_DONTDUMP) } == -1 {
-            warn!("failed madvise(MADV_DONTDUMP) on mmap: {:?}",
-                  errno::Error::last());
+            warn!(
+                "failed madvise(MADV_DONTDUMP) on mmap: {:?}",
+                errno::Error::last()
+            );
         }
         Ok(MemoryMapping {
-               addr: addr as *mut u8,
-               size: size,
-           })
+            addr: addr as *mut u8,
+            size,
+        })
     }
 
     /// Maps the first `size` bytes of the given `fd`.
@@ -103,12 +107,14 @@ impl MemoryMapping {
         // This is safe because we are creating a mapping in a place not already used by any other
         // area in this process.
         let addr = unsafe {
-            libc::mmap(null_mut(),
-                       size,
-                       libc::PROT_READ | libc::PROT_WRITE,
-                       libc::MAP_SHARED,
-                       fd.as_raw_fd(),
-                       offset as libc::off_t)
+            libc::mmap(
+                null_mut(),
+                size,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_SHARED,
+                fd.as_raw_fd(),
+                offset as libc::off_t,
+            )
         };
         if addr == libc::MAP_FAILED {
             return Err(Error::SystemCallFailed(errno::Error::last()));
@@ -116,13 +122,15 @@ impl MemoryMapping {
         // This is safe because we call madvise with a valid address and size, and we check the
         // return value. We only warn about an error because failure here is not fatal to the mmap.
         if unsafe { libc::madvise(addr, size, libc::MADV_DONTDUMP) } == -1 {
-            warn!("failed madvise(MADV_DONTDUMP) on mmap: {:?}",
-                  errno::Error::last());
+            warn!(
+                "failed madvise(MADV_DONTDUMP) on mmap: {:?}",
+                errno::Error::last()
+            );
         }
         Ok(MemoryMapping {
-               addr: addr as *mut u8,
-               size: size,
-           })
+            addr: addr as *mut u8,
+            size,
+        })
     }
 
     /// Returns a pointer to the begining of the memory region.  Should only be
@@ -237,7 +245,9 @@ impl MemoryMapping {
         unsafe {
             // This is safe because by definition Copy types can have their bits
             // set arbitrarily and still be valid.
-            Ok(std::ptr::read_volatile(&self.as_slice()[offset..] as *const _ as *const T))
+            Ok(std::ptr::read_volatile(
+                &self.as_slice()[offset..] as *const _ as *const T,
+            ))
         }
     }
 
@@ -265,9 +275,11 @@ impl MemoryMapping {
     /// # }
     /// ```
     pub fn read_to_memory<F>(&self, mem_offset: usize, src: &mut F, count: usize) -> Result<()>
-        where F: Read
+    where
+        F: Read,
     {
-        let mem_end = self.range_end(mem_offset, count)
+        let mem_end = self
+            .range_end(mem_offset, count)
             .map_err(|_| Error::InvalidRange(mem_offset, count))?;
         unsafe {
             // It is safe to overwrite the volatile memory.  Acessing the guest
@@ -302,9 +314,11 @@ impl MemoryMapping {
     /// # }
     /// ```
     pub fn write_from_memory<F>(&self, mem_offset: usize, dst: &mut F, count: usize) -> Result<()>
-        where F: Write
+    where
+        F: Write,
     {
-        let mem_end = self.range_end(mem_offset, count)
+        let mem_end = self
+            .range_end(mem_offset, count)
             .map_err(|_| Error::InvalidRange(mem_offset, count))?;
         unsafe {
             // It is safe to read from volatile memory.  Acessing the guest
@@ -324,9 +338,11 @@ impl MemoryMapping {
         let ret = unsafe {
             // madvising away the region is the same as the guest changing it.
             // Next time it is read, it may return zero pages.
-            libc::madvise((self.addr as usize + mem_offset) as *mut _,
-                          count,
-                          libc::MADV_REMOVE)
+            libc::madvise(
+                (self.addr as usize + mem_offset) as *mut _,
+                count,
+                libc::MADV_REMOVE,
+            )
         };
         if ret < 0 {
             Err(Error::InvalidRange(mem_offset, count))
@@ -349,8 +365,7 @@ impl MemoryMapping {
 
     // Check that offset+count is valid and return the sum.
     fn range_end(&self, offset: usize, count: usize) -> Result<usize> {
-        let mem_end = offset.checked_add(count)
-            .ok_or(Error::InvalidAddress)?;
+        let mem_end = offset.checked_add(count).ok_or(Error::InvalidAddress)?;
         if mem_end > self.size() {
             return Err(Error::InvalidAddress);
         }
@@ -448,12 +463,13 @@ mod tests {
     fn slice_overflow_error() {
         let m = MemoryMapping::new(5).unwrap();
         let res = m.get_slice(std::u64::MAX, 3).unwrap_err();
-        assert_eq!(res,
-                   VolatileMemoryError::Overflow {
-                       base: std::u64::MAX,
-                       offset: 3,
-                   });
-
+        assert_eq!(
+            res,
+            VolatileMemoryError::Overflow {
+                base: std::u64::MAX,
+                offset: 3,
+            }
+        );
     }
     #[test]
     fn slice_oob_error() {

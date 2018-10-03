@@ -15,12 +15,12 @@ use data_model::*;
 
 use sys_util::{GuestAddress, GuestMemory};
 
-use super::gpu_buffer::{Device, Buffer, Format, Flags};
+use super::gpu_buffer::{Buffer, Device, Flags, Format};
 use super::gpu_display::*;
-use super::gpu_renderer::{Box3, Renderer, Context as RendererContext,
-                          Image as RendererImage,
-                          Resource as GpuRendererResource, ResourceCreateArgs,
-                          format_fourcc as renderer_fourcc};
+use super::gpu_renderer::{
+    format_fourcc as renderer_fourcc, Box3, Context as RendererContext, Image as RendererImage,
+    Renderer, Resource as GpuRendererResource, ResourceCreateArgs,
+};
 
 use super::protocol::GpuResponse;
 use super::protocol::{VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2};
@@ -59,13 +59,15 @@ trait VirglResource {
 
     /// Copies the given rectangle of pixels from guest memory, using the backing specified from a
     /// call to `attach_guest_backing`.
-    fn write_from_guest_memory(&mut self,
-                               x: u32,
-                               y: u32,
-                               width: u32,
-                               height: u32,
-                               src_offset: u64,
-                               mem: &GuestMemory);
+    fn write_from_guest_memory(
+        &mut self,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        src_offset: u64,
+        mem: &GuestMemory,
+    );
 
     /// Reads from the given rectangle of pixels in the resource to the `dst` slice of memory.
     fn read_to_volatile(&mut self, x: u32, y: u32, width: u32, height: u32, dst: VolatileSlice);
@@ -99,53 +101,56 @@ impl VirglResource for GpuRendererResource {
         Some(self)
     }
 
-    fn write_from_guest_memory(&mut self,
-                               x: u32,
-                               y: u32,
-                               width: u32,
-                               height: u32,
-                               src_offset: u64,
-                               _mem: &GuestMemory) {
-        let res = self.transfer_write(None,
-                                      0,
-                                      0,
-                                      0,
-                                      Box3 {
-                                          x,
-                                          y,
-                                          z: 0,
-                                          w: width,
-                                          h: height,
-                                          d: 0,
-                                      },
-                                      src_offset);
+    fn write_from_guest_memory(
+        &mut self,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        src_offset: u64,
+        _mem: &GuestMemory,
+    ) {
+        let res = self.transfer_write(
+            None,
+            0,
+            0,
+            0,
+            Box3 {
+                x,
+                y,
+                z: 0,
+                w: width,
+                h: height,
+                d: 0,
+            },
+            src_offset,
+        );
         if let Err(e) = res {
-            error!("failed to write to resource (x={} y={} w={} h={}, src_offset={}): {}",
-                   x,
-                   y,
-                   width,
-                   height,
-                   src_offset,
-                   e);
+            error!(
+                "failed to write to resource (x={} y={} w={} h={}, src_offset={}): {}",
+                x, y, width, height, src_offset, e
+            );
         }
     }
 
     fn read_to_volatile(&mut self, x: u32, y: u32, width: u32, height: u32, dst: VolatileSlice) {
-        let res = GpuRendererResource::read_to_volatile(self,
-                                                        None,
-                                                        0,
-                                                        0,
-                                                        0,
-                                                        Box3 {
-                                                            x,
-                                                            y,
-                                                            z: 0,
-                                                            w: width,
-                                                            h: height,
-                                                            d: 0,
-                                                        },
-                                                        0,
-                                                        dst);
+        let res = GpuRendererResource::read_to_volatile(
+            self,
+            None,
+            0,
+            0,
+            0,
+            Box3 {
+                x,
+                y,
+                z: 0,
+                w: width,
+                h: height,
+                d: 0,
+            },
+            0,
+            dst,
+        );
         if let Err(e) = res {
             error!("failed to read from resource: {}", e);
         }
@@ -162,9 +167,11 @@ struct BackedBuffer {
 }
 
 impl BackedBuffer {
-    fn new_renderer_registered(buffer: Buffer,
-                               gpu_renderer_resource: GpuRendererResource,
-                               image: RendererImage) -> BackedBuffer {
+    fn new_renderer_registered(
+        buffer: Buffer,
+        gpu_renderer_resource: GpuRendererResource,
+        image: RendererImage,
+    ) -> BackedBuffer {
         BackedBuffer {
             display_import: None,
             backing: Vec::new(),
@@ -226,15 +233,15 @@ impl VirglResource for BackedBuffer {
             }
         };
 
-        match display
-                  .borrow_mut()
-                  .import_dmabuf(dmabuf.as_raw_fd(),
-                                 0, /* offset */
-                                 self.buffer.stride(),
-                                 self.buffer.format_modifier(),
-                                 self.buffer.width(),
-                                 self.buffer.height(),
-                                 self.buffer.format().into()) {
+        match display.borrow_mut().import_dmabuf(
+            dmabuf.as_raw_fd(),
+            0, /* offset */
+            self.buffer.stride(),
+            self.buffer.format_modifier(),
+            self.buffer.width(),
+            self.buffer.height(),
+            self.buffer.format().into(),
+        ) {
             Ok(import_id) => {
                 self.display_import = Some((display.clone(), import_id));
                 Some(import_id)
@@ -246,29 +253,33 @@ impl VirglResource for BackedBuffer {
         }
     }
 
-    fn write_from_guest_memory(&mut self,
-                               x: u32,
-                               y: u32,
-                               width: u32,
-                               height: u32,
-                               src_offset: u64,
-                               mem: &GuestMemory) {
+    fn write_from_guest_memory(
+        &mut self,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        src_offset: u64,
+        mem: &GuestMemory,
+    ) {
         if src_offset >= usize::MAX as u64 {
-            error!("failed to write to resource with given offset: {}", src_offset);
-            return
+            error!(
+                "failed to write to resource with given offset: {}",
+                src_offset
+            );
+            return;
         }
-        let res = self.buffer
-            .write_from_sg(x,
-                           y,
-                           width,
-                           height,
-                           0, // plane
-                           src_offset as usize,
-                           self.backing
-                               .iter()
-                               .map(|&(addr, len)| {
-                                        mem.get_slice(addr.offset(), len as u64).unwrap_or_default()
-                                    }));
+        let res = self.buffer.write_from_sg(
+            x,
+            y,
+            width,
+            height,
+            0, // plane
+            src_offset as usize,
+            self.backing
+                .iter()
+                .map(|&(addr, len)| mem.get_slice(addr.offset(), len as u64).unwrap_or_default()),
+        );
         if let Err(e) = res {
             error!("failed to write to resource from guest memory: {:?}", e)
         }
@@ -336,22 +347,24 @@ impl Backend {
     }
 
     /// Creates a 2D resource with the given properties and associated it with the given id.
-    pub fn create_resource_2d(&mut self,
-                              id: u32,
-                              width: u32,
-                              height: u32,
-                              fourcc: u32)
-                              -> GpuResponse {
+    pub fn create_resource_2d(
+        &mut self,
+        id: u32,
+        width: u32,
+        height: u32,
+        fourcc: u32,
+    ) -> GpuResponse {
         if id == 0 {
             return GpuResponse::ErrInvalidResourceId;
         }
         match self.resources.entry(id) {
             Entry::Vacant(slot) => {
-                let res = self.device
-                    .create_buffer(width,
-                                   height,
-                                   Format::from(fourcc),
-                                   Flags::empty().use_scanout(true).use_linear(true));
+                let res = self.device.create_buffer(
+                    width,
+                    height,
+                    Format::from(fourcc),
+                    Flags::empty().use_scanout(true).use_linear(true),
+                );
                 match res {
                     Ok(res) => {
                         slot.insert(Box::from(BackedBuffer::from(res)));
@@ -403,14 +416,15 @@ impl Backend {
         }
     }
 
-    fn flush_resource_to_surface(&mut self,
-                                 resource_id: u32,
-                                 surface_id: u32,
-                                 x: u32,
-                                 y: u32,
-                                 width: u32,
-                                 height: u32)
-                                 -> GpuResponse {
+    fn flush_resource_to_surface(
+        &mut self,
+        resource_id: u32,
+        surface_id: u32,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) -> GpuResponse {
         let resource = match self.resources.get_mut(&resource_id) {
             Some(r) => r,
             None => return GpuResponse::ErrInvalidResourceId,
@@ -442,13 +456,14 @@ impl Backend {
     }
 
     /// Flushes the given rectangle of pixels of the given resource to the display.
-    pub fn flush_resource(&mut self,
-                          id: u32,
-                          x: u32,
-                          y: u32,
-                          width: u32,
-                          height: u32)
-                          -> GpuResponse {
+    pub fn flush_resource(
+        &mut self,
+        id: u32,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) -> GpuResponse {
         if id == 0 {
             return GpuResponse::OkNoData;
         }
@@ -476,15 +491,16 @@ impl Backend {
 
     /// Copes the given rectangle of pixels of the given resource's backing memory to the host side
     /// resource.
-    pub fn transfer_to_resource_2d(&mut self,
-                                   id: u32,
-                                   x: u32,
-                                   y: u32,
-                                   width: u32,
-                                   height: u32,
-                                   src_offset: u64,
-                                   mem: &GuestMemory)
-                                   -> GpuResponse {
+    pub fn transfer_to_resource_2d(
+        &mut self,
+        id: u32,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        src_offset: u64,
+        mem: &GuestMemory,
+    ) -> GpuResponse {
         match self.resources.get_mut(&id) {
             Some(res) => {
                 res.write_from_guest_memory(x, y, width, height, src_offset, mem);
@@ -496,11 +512,12 @@ impl Backend {
 
     /// Attaches backing memory to the given resource, represented by a `Vec` of `(address, size)`
     /// tuples in the guest's physical address space.
-    pub fn attach_backing(&mut self,
-                          id: u32,
-                          mem: &GuestMemory,
-                          vecs: Vec<(GuestAddress, usize)>)
-                          -> GpuResponse {
+    pub fn attach_backing(
+        &mut self,
+        id: u32,
+        mem: &GuestMemory,
+        vecs: Vec<(GuestAddress, usize)>,
+    ) -> GpuResponse {
         match self.resources.get_mut(&id) {
             Some(resource) => {
                 resource.attach_guest_backing(mem, vecs);
@@ -532,11 +549,11 @@ impl Backend {
         } else if let Some(resource) = self.resources.get_mut(&id) {
             self.cursor_resource = id;
             if self.cursor_surface.is_none() {
-                match self.display
-                          .borrow_mut()
-                          .create_surface(self.scanout_surface,
-                                          resource.width(),
-                                          resource.height()) {
+                match self.display.borrow_mut().create_surface(
+                    self.scanout_surface,
+                    resource.width(),
+                    resource.height(),
+                ) {
                     Ok(surface) => self.cursor_surface = Some(surface),
                     Err(e) => {
                         error!("failed to create cursor surface: {:?}", e);
@@ -546,30 +563,21 @@ impl Backend {
             }
 
             let cursor_surface = self.cursor_surface.unwrap();
-            self.display
-                .borrow_mut()
-                .set_position(cursor_surface, x, y);
+            self.display.borrow_mut().set_position(cursor_surface, x, y);
 
             // Gets the resource's pixels into the display by importing the buffer.
             if let Some(import_id) = resource.import_to_display(&self.display) {
-                self.display
-                    .borrow_mut()
-                    .flip_to(cursor_surface, import_id);
+                self.display.borrow_mut().flip_to(cursor_surface, import_id);
                 return GpuResponse::OkNoData;
             }
 
             // Importing failed, so try copying the pixels into the surface's slower shared memory
             // framebuffer.
             if let Some(buffer) = resource.buffer() {
-                if let Some(fb) = self.display
-                       .borrow_mut()
-                       .framebuffer_memory(cursor_surface) {
-                    if let Err(e) = buffer.read_to_volatile(0,
-                                                            0,
-                                                            buffer.width(),
-                                                            buffer.height(),
-                                                            0,
-                                                            fb) {
+                if let Some(fb) = self.display.borrow_mut().framebuffer_memory(cursor_surface) {
+                    if let Err(e) =
+                        buffer.read_to_volatile(0, 0, buffer.width(), buffer.height(), 0, fb)
+                    {
                         error!("failed to copy resource to cursor: {:?}", e);
                         return GpuResponse::ErrInvalidParameter;
                     }
@@ -617,18 +625,16 @@ impl Backend {
         }
         match self.contexts.entry(id) {
             Entry::Occupied(_) => GpuResponse::ErrInvalidContextId,
-            Entry::Vacant(slot) => {
-                match self.renderer.create_context(id) {
-                    Ok(ctx) => {
-                        slot.insert(ctx);
-                        GpuResponse::OkNoData
-                    }
-                    Err(e) => {
-                        error!("failed to create renderer ctx: {}", e);
-                        GpuResponse::ErrUnspec
-                    }
+            Entry::Vacant(slot) => match self.renderer.create_context(id) {
+                Ok(ctx) => {
+                    slot.insert(ctx);
+                    GpuResponse::OkNoData
                 }
-            }
+                Err(e) => {
+                    error!("failed to create renderer ctx: {}", e);
+                    GpuResponse::ErrUnspec
+                }
+            },
         }
     }
 
@@ -642,10 +648,12 @@ impl Backend {
 
     /// Attaches the indicated resource to the given context.
     pub fn context_attach_resource(&mut self, ctx_id: u32, res_id: u32) -> GpuResponse {
-        match (self.contexts.get_mut(&ctx_id),
-               self.resources
-                   .get_mut(&res_id)
-                   .and_then(|res| res.gpu_renderer_resource())) {
+        match (
+            self.contexts.get_mut(&ctx_id),
+            self.resources
+                .get_mut(&res_id)
+                .and_then(|res| res.gpu_renderer_resource()),
+        ) {
             (Some(ctx), Some(res)) => {
                 ctx.attach(res);
                 GpuResponse::OkNoData
@@ -657,10 +665,12 @@ impl Backend {
 
     /// detaches the indicated resource to the given context.
     pub fn context_detach_resource(&mut self, ctx_id: u32, res_id: u32) -> GpuResponse {
-        match (self.contexts.get_mut(&ctx_id),
-               self.resources
-                   .get_mut(&res_id)
-                   .and_then(|res| res.gpu_renderer_resource())) {
+        match (
+            self.contexts.get_mut(&ctx_id),
+            self.resources
+                .get_mut(&res_id)
+                .and_then(|res| res.gpu_renderer_resource()),
+        ) {
             (Some(ctx), Some(res)) => {
                 ctx.detach(res);
                 GpuResponse::OkNoData
@@ -671,10 +681,7 @@ impl Backend {
     }
 
     pub fn validate_args_as_fourcc(args: ResourceCreateArgs) -> Option<u32> {
-        if args.depth == 1 &&
-           args.array_size == 1 &&
-           args.last_level == 0 &&
-           args.nr_samples == 0 {
+        if args.depth == 1 && args.array_size == 1 && args.last_level == 0 && args.nr_samples == 0 {
             renderer_fourcc(args.format)
         } else {
             None
@@ -682,19 +689,20 @@ impl Backend {
     }
 
     /// Creates a 3D resource with the given properties and associated it with the given id.
-    pub fn resource_create_3d(&mut self,
-                              id: u32,
-                              target: u32,
-                              format: u32,
-                              bind: u32,
-                              width: u32,
-                              height: u32,
-                              depth: u32,
-                              array_size: u32,
-                              last_level: u32,
-                              nr_samples: u32,
-                              flags: u32)
-                              -> GpuResponse {
+    pub fn resource_create_3d(
+        &mut self,
+        id: u32,
+        target: u32,
+        format: u32,
+        bind: u32,
+        width: u32,
+        height: u32,
+        depth: u32,
+        array_size: u32,
+        last_level: u32,
+        nr_samples: u32,
+        flags: u32,
+    ) -> GpuResponse {
         if id == 0 {
             return GpuResponse::ErrInvalidResourceId;
         }
@@ -715,192 +723,173 @@ impl Backend {
 
         match self.resources.entry(id) {
             Entry::Occupied(_) => GpuResponse::ErrInvalidResourceId,
-            Entry::Vacant(slot) => {
-                match Backend::validate_args_as_fourcc(create_args) {
-                    Some(fourcc) => {
-                        let buffer = match self.device
-                            .create_buffer(width,
-                                           height,
-                                           Format::from(fourcc),
-                                           Flags::empty().use_scanout(true).use_linear(true)) {
-                            Ok(buffer) => buffer,
-                            Err(e) => {
-                                error!("failed to create buffer for 3d resource {}: {}", format, e);
-                                return GpuResponse::ErrUnspec;
-                            }
-                        };
-
-                        let dma_buf_fd = match buffer.export_plane_fd(0) {
-                            Ok(dma_buf_fd) => dma_buf_fd,
-                            Err(e) => {
-                                error!("failed to export plane fd: {}", e);
-                                return GpuResponse::ErrUnspec
-                            }
-                        };
-
-                        let image = match self.renderer
-                            .image_from_dmabuf(fourcc,
-                                               width,
-                                               height,
-                                               dma_buf_fd.as_raw_fd(),
-                                               buffer.plane_offset(0),
-                                               buffer.plane_stride(0)) {
-                            Ok(image) => image,
-                            Err(e) => {
-                                error!("failed to create egl image: {}", e);
-                                return GpuResponse::ErrUnspec
-                            }
-                        };
-
-                        let res = self.renderer
-                            .import_resource(create_args, &image);
-                        match res {
-                            Ok(res) => {
-                                let mut backed =
-                                    BackedBuffer::new_renderer_registered(buffer,
-                                                                          res,
-                                                                          image);
-                                slot.insert(Box::new(backed));
-                                GpuResponse::OkNoData
-                            }
-                            Err(e) => {
-                                error!("failed to import renderer resource: {}",
-                                       e);
-                                GpuResponse::ErrUnspec
-                            }
+            Entry::Vacant(slot) => match Backend::validate_args_as_fourcc(create_args) {
+                Some(fourcc) => {
+                    let buffer = match self.device.create_buffer(
+                        width,
+                        height,
+                        Format::from(fourcc),
+                        Flags::empty().use_scanout(true).use_linear(true),
+                    ) {
+                        Ok(buffer) => buffer,
+                        Err(e) => {
+                            error!("failed to create buffer for 3d resource {}: {}", format, e);
+                            return GpuResponse::ErrUnspec;
                         }
-                    },
-                    None => {
-                        let res = self.renderer.create_resource(create_args);
-                        match res {
-                            Ok(res) => {
-                                slot.insert(Box::new(res));
-                                GpuResponse::OkNoData
-                            }
-                            Err(e) => {
-                                error!("failed to create renderer resource: {}",
-                                       e);
-                                GpuResponse::ErrUnspec
-                            }
+                    };
+
+                    let dma_buf_fd = match buffer.export_plane_fd(0) {
+                        Ok(dma_buf_fd) => dma_buf_fd,
+                        Err(e) => {
+                            error!("failed to export plane fd: {}", e);
+                            return GpuResponse::ErrUnspec;
+                        }
+                    };
+
+                    let image = match self.renderer.image_from_dmabuf(
+                        fourcc,
+                        width,
+                        height,
+                        dma_buf_fd.as_raw_fd(),
+                        buffer.plane_offset(0),
+                        buffer.plane_stride(0),
+                    ) {
+                        Ok(image) => image,
+                        Err(e) => {
+                            error!("failed to create egl image: {}", e);
+                            return GpuResponse::ErrUnspec;
+                        }
+                    };
+
+                    let res = self.renderer.import_resource(create_args, &image);
+                    match res {
+                        Ok(res) => {
+                            let mut backed =
+                                BackedBuffer::new_renderer_registered(buffer, res, image);
+                            slot.insert(Box::new(backed));
+                            GpuResponse::OkNoData
+                        }
+                        Err(e) => {
+                            error!("failed to import renderer resource: {}", e);
+                            GpuResponse::ErrUnspec
                         }
                     }
                 }
-            }
+                None => {
+                    let res = self.renderer.create_resource(create_args);
+                    match res {
+                        Ok(res) => {
+                            slot.insert(Box::new(res));
+                            GpuResponse::OkNoData
+                        }
+                        Err(e) => {
+                            error!("failed to create renderer resource: {}", e);
+                            GpuResponse::ErrUnspec
+                        }
+                    }
+                }
+            },
         }
     }
 
     /// Copes the given 3D rectangle of pixels of the given resource's backing memory to the host
     /// side resource.
-    pub fn transfer_to_resource_3d(&mut self,
-                                   ctx_id: u32,
-                                   res_id: u32,
-                                   x: u32,
-                                   y: u32,
-                                   z: u32,
-                                   width: u32,
-                                   height: u32,
-                                   depth: u32,
-                                   level: u32,
-                                   stride: u32,
-                                   layer_stride: u32,
-                                   offset: u64)
-                                   -> GpuResponse {
+    pub fn transfer_to_resource_3d(
+        &mut self,
+        ctx_id: u32,
+        res_id: u32,
+        x: u32,
+        y: u32,
+        z: u32,
+        width: u32,
+        height: u32,
+        depth: u32,
+        level: u32,
+        stride: u32,
+        layer_stride: u32,
+        offset: u64,
+    ) -> GpuResponse {
         let ctx = match ctx_id {
             0 => None,
-            id => {
-                match self.contexts.get(&id) {
-                    None => return GpuResponse::ErrInvalidContextId,
-                    ctx => ctx,
-                }
-            }
+            id => match self.contexts.get(&id) {
+                None => return GpuResponse::ErrInvalidContextId,
+                ctx => ctx,
+            },
         };
         match self.resources.get_mut(&res_id) {
-            Some(res) => {
-                match res.gpu_renderer_resource() {
-                    Some(res) => {
-                        let transfer_box = Box3 {
-                            x,
-                            y,
-                            z,
-                            w: width,
-                            h: height,
-                            d: depth,
-                        };
-                        let res = res.transfer_write(ctx,
-                                                     level,
-                                                     stride,
-                                                     layer_stride,
-                                                     transfer_box,
-                                                     offset);
-                        match res {
-                            Ok(_) => GpuResponse::OkNoData,
-                            Err(e) => {
-                                error!("failed to transfer to host: {}", e);
-                                GpuResponse::ErrUnspec
-                            }
+            Some(res) => match res.gpu_renderer_resource() {
+                Some(res) => {
+                    let transfer_box = Box3 {
+                        x,
+                        y,
+                        z,
+                        w: width,
+                        h: height,
+                        d: depth,
+                    };
+                    let res =
+                        res.transfer_write(ctx, level, stride, layer_stride, transfer_box, offset);
+                    match res {
+                        Ok(_) => GpuResponse::OkNoData,
+                        Err(e) => {
+                            error!("failed to transfer to host: {}", e);
+                            GpuResponse::ErrUnspec
                         }
                     }
-                    None => GpuResponse::ErrInvalidResourceId,
                 }
-            }
+                None => GpuResponse::ErrInvalidResourceId,
+            },
             None => GpuResponse::ErrInvalidResourceId,
         }
     }
 
     /// Copes the given rectangle of pixels from the resource to the given resource's backing
     /// memory.
-    pub fn transfer_from_resource_3d(&mut self,
-                                     ctx_id: u32,
-                                     res_id: u32,
-                                     x: u32,
-                                     y: u32,
-                                     z: u32,
-                                     width: u32,
-                                     height: u32,
-                                     depth: u32,
-                                     level: u32,
-                                     stride: u32,
-                                     layer_stride: u32,
-                                     offset: u64)
-                                     -> GpuResponse {
+    pub fn transfer_from_resource_3d(
+        &mut self,
+        ctx_id: u32,
+        res_id: u32,
+        x: u32,
+        y: u32,
+        z: u32,
+        width: u32,
+        height: u32,
+        depth: u32,
+        level: u32,
+        stride: u32,
+        layer_stride: u32,
+        offset: u64,
+    ) -> GpuResponse {
         let ctx = match ctx_id {
             0 => None,
-            id => {
-                match self.contexts.get(&id) {
-                    None => return GpuResponse::ErrInvalidContextId,
-                    ctx => ctx,
-                }
-            }
+            id => match self.contexts.get(&id) {
+                None => return GpuResponse::ErrInvalidContextId,
+                ctx => ctx,
+            },
         };
         match self.resources.get_mut(&res_id) {
-            Some(res) => {
-                match res.gpu_renderer_resource() {
-                    Some(res) => {
-                        let transfer_box = Box3 {
-                            x,
-                            y,
-                            z,
-                            w: width,
-                            h: height,
-                            d: depth,
-                        };
-                        let res = res.transfer_read(ctx,
-                                                    level,
-                                                    stride,
-                                                    layer_stride,
-                                                    transfer_box,
-                                                    offset);
-                        match res {
-                            Ok(_) => GpuResponse::OkNoData,
-                            Err(e) => {
-                                error!("failed to transfer from host: {}", e);
-                                GpuResponse::ErrUnspec
-                            }
+            Some(res) => match res.gpu_renderer_resource() {
+                Some(res) => {
+                    let transfer_box = Box3 {
+                        x,
+                        y,
+                        z,
+                        w: width,
+                        h: height,
+                        d: depth,
+                    };
+                    let res =
+                        res.transfer_read(ctx, level, stride, layer_stride, transfer_box, offset);
+                    match res {
+                        Ok(_) => GpuResponse::OkNoData,
+                        Err(e) => {
+                            error!("failed to transfer from host: {}", e);
+                            GpuResponse::ErrUnspec
                         }
                     }
-                    None => GpuResponse::ErrInvalidResourceId,
                 }
-            }
+                None => GpuResponse::ErrInvalidResourceId,
+            },
             None => GpuResponse::ErrInvalidResourceId,
         }
     }
@@ -908,15 +897,13 @@ impl Backend {
     /// Submits a command buffer to the given rendering context.
     pub fn submit_command(&mut self, ctx_id: u32, commands: &mut [u8]) -> GpuResponse {
         match self.contexts.get_mut(&ctx_id) {
-            Some(ctx) => {
-                match ctx.submit(&mut commands[..]) {
-                    Ok(_) => GpuResponse::OkNoData,
-                    Err(e) => {
-                        error!("failed to submit command buffer: {}", e);
-                        GpuResponse::ErrUnspec
-                    }
+            Some(ctx) => match ctx.submit(&mut commands[..]) {
+                Ok(_) => GpuResponse::OkNoData,
+                Err(e) => {
+                    error!("failed to submit command buffer: {}", e);
+                    GpuResponse::ErrUnspec
                 }
-            }
+            },
             None => GpuResponse::ErrInvalidContextId,
         }
     }

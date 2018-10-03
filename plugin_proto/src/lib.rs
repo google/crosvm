@@ -1,5 +1,5 @@
-extern crate protobuf;
 extern crate kvm_sys;
+extern crate protobuf;
 include!(concat!(env!("OUT_DIR"), "/proto_include.rs"));
 
 /// Converts protobuf representation of CpuId data into KVM format.

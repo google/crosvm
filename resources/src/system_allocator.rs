@@ -43,11 +43,16 @@ impl SystemAllocator {
     /// * `mmio_size` - The size of MMIO space.
     /// * `create_gpu_allocator` - If true, enable gpu memory allocation.
     /// * `first_irq` - The first irq number to give out.
-    fn new(io_base: Option<u64>, io_size: Option<u64>,
-           dev_base: u64, dev_size: u64,
-           mmio_base: u64, mmio_size: u64,
-           create_gpu_allocator: bool,
-           first_irq: u32) -> Option<Self> {
+    fn new(
+        io_base: Option<u64>,
+        io_size: Option<u64>,
+        dev_base: u64,
+        dev_size: u64,
+        mmio_base: u64,
+        mmio_size: u64,
+        create_gpu_allocator: bool,
+        first_irq: u32,
+    ) -> Option<Self> {
         let page_size = pagesize() as u64;
         Some(SystemAllocator {
             io_address_space: if let (Some(b), Some(s)) = (io_base, io_size) {
@@ -137,12 +142,20 @@ impl AddressRanges {
         self
     }
 
-    pub fn create_allocator(&self, first_irq: u32,
-                            gpu_allocation: bool) -> Option<SystemAllocator> {
-        SystemAllocator::new(self.io_base, self.io_size,
-                             self.device_base?, self.device_size?,
-                             self.mmio_base?, self.mmio_size?,
-                             gpu_allocation,
-                             first_irq)
+    pub fn create_allocator(
+        &self,
+        first_irq: u32,
+        gpu_allocation: bool,
+    ) -> Option<SystemAllocator> {
+        SystemAllocator::new(
+            self.io_base,
+            self.io_size,
+            self.device_base?,
+            self.device_size?,
+            self.mmio_base?,
+            self.mmio_size?,
+            gpu_allocation,
+            first_irq,
+        )
     }
 }

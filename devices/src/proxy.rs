@@ -6,16 +6,16 @@
 
 use libc::pid_t;
 
-use std::{self, fmt, io};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::process;
 use std::time::Duration;
+use std::{self, fmt, io};
 
-use byteorder::{LittleEndian, NativeEndian, ByteOrder};
+use byteorder::{ByteOrder, LittleEndian, NativeEndian};
 
-use BusDevice;
 use io_jail::{self, Minijail};
+use BusDevice;
 
 /// Errors for proxy devices.
 #[derive(Debug)]
@@ -52,9 +52,11 @@ fn child_proc(sock: UnixDatagram, device: &mut BusDevice) {
         let mut buf = [0; MSG_SIZE];
         match handle_eintr!(sock.recv(&mut buf)) {
             Ok(c) if c != buf.len() => {
-                error!("child device process incorrect recv size: got {}, expected {}",
-                       c,
-                       buf.len());
+                error!(
+                    "child device process incorrect recv size: got {}, expected {}",
+                    c,
+                    buf.len()
+                );
                 break;
             }
             Err(e) => {
@@ -123,9 +125,11 @@ impl ProxyDevice {
     /// # Arguments
     /// * `device` - The device to isolate to another process.
     /// * `keep_fds` - File descriptors that will be kept open in the child
-    pub fn new<D: BusDevice>(mut device: D, jail: &Minijail, mut keep_fds: Vec<RawFd>)
-            -> Result<ProxyDevice>
-    {
+    pub fn new<D: BusDevice>(
+        mut device: D,
+        jail: &Minijail,
+        mut keep_fds: Vec<RawFd>,
+    ) -> Result<ProxyDevice> {
         let (child_sock, parent_sock) = UnixDatagram::pair().map_err(Error::Io)?;
 
         keep_fds.push(child_sock.as_raw_fd());
@@ -136,7 +140,7 @@ impl ProxyDevice {
                     child_proc(child_sock, &mut device);
                     // ! Never returns
                     process::exit(0);
-                },
+                }
                 p => p,
             }
         };
@@ -148,9 +152,9 @@ impl ProxyDevice {
             .set_read_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))
             .map_err(Error::Io)?;
         Ok(ProxyDevice {
-               sock: parent_sock,
-               pid: pid,
-           })
+            sock: parent_sock,
+            pid,
+        })
     }
 
     pub fn pid(&self) -> pid_t {
@@ -163,12 +167,12 @@ impl ProxyDevice {
         NativeEndian::write_u32(&mut buf[4..], len);
         NativeEndian::write_u64(&mut buf[8..], offset);
         buf[16..16 + data.len()].clone_from_slice(data);
-        handle_eintr!(self.sock.send(&buf)).map(|_| ()).map_err(Error::Io)
+        handle_eintr!(self.sock.send(&buf))
+            .map(|_| ())
+            .map_err(Error::Io)
     }
 
-    fn send_config_cmd(&self, cmd: Command, reg_idx: u32, offset: u64, data: &[u8])
-        -> Result<()>
-    {
+    fn send_config_cmd(&self, cmd: Command, reg_idx: u32, offset: u64, data: &[u8]) -> Result<()> {
         let mut buf = [0; MSG_SIZE];
         NativeEndian::write_u32(&mut buf[0..], cmd as u32);
         NativeEndian::write_u32(&mut buf[4..], reg_idx);
@@ -190,7 +194,9 @@ impl ProxyDevice {
 
     fn wait(&self) -> Result<()> {
         let mut buf = [0; MSG_SIZE];
-        handle_eintr!(self.sock.recv(&mut buf)).map(|_| ()).map_err(Error::Io)
+        handle_eintr!(self.sock.recv(&mut buf))
+            .map(|_| ())
+            .map_err(Error::Io)
     }
 
     pub fn config_register_write(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
@@ -216,7 +222,8 @@ impl ProxyDevice {
 
 impl BusDevice for ProxyDevice {
     fn read(&mut self, offset: u64, data: &mut [u8]) {
-        let res = self.send_cmd(Command::Read, offset, data.len() as u32, &[])
+        let res = self
+            .send_cmd(Command::Read, offset, data.len() as u32, &[])
             .and_then(|_| self.recv_resp(data));
         if let Err(e) = res {
             error!("failed read from child device process: {}", e);
@@ -224,7 +231,8 @@ impl BusDevice for ProxyDevice {
     }
 
     fn write(&mut self, offset: u64, data: &[u8]) {
-        let res = self.send_cmd(Command::Write, offset, data.len() as u32, data)
+        let res = self
+            .send_cmd(Command::Write, offset, data.len() as u32, data)
             .and_then(|_| self.wait());
         if let Err(e) = res {
             error!("failed write to child device process: {}", e);

@@ -19,8 +19,8 @@ use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::ptr::null;
 
-use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 use sys_util::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
+use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 
 #[derive(Debug)]
 pub enum Error {
@@ -71,9 +71,7 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
         let ret = unsafe {
-            ioctl_with_mut_ref(self,
-                               virtio_sys::VHOST_GET_FEATURES(),
-                               &mut avail_features)
+            ioctl_with_mut_ref(self, virtio_sys::VHOST_GET_FEATURES(), &mut avail_features)
         };
         if ret < 0 {
             return ioctl_result();
@@ -89,8 +87,7 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
     fn set_features(&self, features: u64) -> Result<()> {
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
-        let ret =
-            unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_FEATURES(), &features) };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_FEATURES(), &features) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -100,8 +97,8 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
     /// Set the guest memory mappings for vhost to use.
     fn set_mem_table(&self) -> Result<()> {
         let num_regions = self.mem().num_regions() as usize;
-        let vec_size_bytes = mem::size_of::<virtio_sys::vhost_memory>() +
-                             (num_regions * mem::size_of::<virtio_sys::vhost_memory_region>());
+        let vec_size_bytes = mem::size_of::<virtio_sys::vhost_memory>()
+            + (num_regions * mem::size_of::<virtio_sys::vhost_memory_region>());
         let mut bytes: Vec<u8> = vec![0; vec_size_bytes];
         // Convert bytes pointer to a vhost_memory mut ref. The vector has been
         // sized correctly to ensure it can hold vhost_memory and N regions.
@@ -112,26 +109,23 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
         // we correctly specify the size to match the amount of backing memory.
         let vhost_regions = unsafe { vhost_memory.regions.as_mut_slice(num_regions as usize) };
 
-        let _ = self.mem()
-                .with_regions_mut::<_, ()>(|index, guest_addr, size, host_addr| {
-                    vhost_regions[index] = virtio_sys::vhost_memory_region {
-                        guest_phys_addr: guest_addr.offset() as u64,
-                        memory_size: size as u64,
-                        userspace_addr: host_addr as u64,
-                        flags_padding: 0u64,
-                    };
-                    Ok(())
-                });
-
+        let _ = self
+            .mem()
+            .with_regions_mut::<_, ()>(|index, guest_addr, size, host_addr| {
+                vhost_regions[index] = virtio_sys::vhost_memory_region {
+                    guest_phys_addr: guest_addr.offset() as u64,
+                    memory_size: size as u64,
+                    userspace_addr: host_addr as u64,
+                    flags_padding: 0u64,
+                };
+                Ok(())
+            });
 
         // This ioctl is called with a pointer that is valid for the lifetime
         // of this function. The kernel will make its own copy of the memory
         // tables. As always, check the return value.
-        let ret = unsafe {
-            ioctl_with_ptr(self,
-                           virtio_sys::VHOST_SET_MEM_TABLE(),
-                           bytes.as_ptr())
-        };
+        let ret =
+            unsafe { ioctl_with_ptr(self, virtio_sys::VHOST_SET_MEM_TABLE(), bytes.as_ptr()) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -151,11 +145,7 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
 
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
-        let ret = unsafe {
-            ioctl_with_ref(self,
-                           virtio_sys::VHOST_SET_VRING_NUM(),
-                           &vring_state)
-        };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_NUM(), &vring_state) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -163,34 +153,37 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
     }
 
     // TODO(smbarber): This is copypasta. Eliminate the copypasta.
-    fn is_valid(&self,
-                queue_max_size: u16,
-                queue_size: u16,
-                desc_addr: GuestAddress,
-                avail_addr: GuestAddress,
-                used_addr: GuestAddress) -> bool {
+    fn is_valid(
+        &self,
+        queue_max_size: u16,
+        queue_size: u16,
+        desc_addr: GuestAddress,
+        avail_addr: GuestAddress,
+        used_addr: GuestAddress,
+    ) -> bool {
         let desc_table_size = 16 * queue_size as usize;
         let avail_ring_size = 6 + 2 * queue_size as usize;
         let used_ring_size = 6 + 8 * queue_size as usize;
-        if queue_size > queue_max_size || queue_size == 0 ||
-                  (queue_size & (queue_size - 1)) != 0 {
+        if queue_size > queue_max_size || queue_size == 0 || (queue_size & (queue_size - 1)) != 0 {
             false
         } else if desc_addr
-                      .checked_add(desc_table_size as u64)
-                      .map_or(true, |v| !self.mem().address_in_range(v)) {
+            .checked_add(desc_table_size as u64)
+            .map_or(true, |v| !self.mem().address_in_range(v))
+        {
             false
         } else if avail_addr
-                      .checked_add(avail_ring_size as u64)
-                      .map_or(true, |v| !self.mem().address_in_range(v)) {
+            .checked_add(avail_ring_size as u64)
+            .map_or(true, |v| !self.mem().address_in_range(v))
+        {
             false
         } else if used_addr
-                      .checked_add(used_ring_size as u64)
-                      .map_or(true, |v| !self.mem().address_in_range(v)) {
+            .checked_add(used_ring_size as u64)
+            .map_or(true, |v| !self.mem().address_in_range(v))
+        {
             false
         } else {
             true
         }
-
     }
 
     /// Set the addresses for a given vring.
@@ -204,43 +197,43 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
     /// * `used_addr` - Used ring buffer address.
     /// * `avail_addr` - Available ring buffer address.
     /// * `log_addr` - Optional address for logging.
-    fn set_vring_addr(&self,
-                      queue_max_size: u16,
-                      queue_size: u16,
-                      queue_index: usize,
-                      flags: u32,
-                      desc_addr: GuestAddress,
-                      used_addr: GuestAddress,
-                      avail_addr: GuestAddress,
-                      log_addr: Option<GuestAddress>)
-                      -> Result<()> {
+    fn set_vring_addr(
+        &self,
+        queue_max_size: u16,
+        queue_size: u16,
+        queue_index: usize,
+        flags: u32,
+        desc_addr: GuestAddress,
+        used_addr: GuestAddress,
+        avail_addr: GuestAddress,
+        log_addr: Option<GuestAddress>,
+    ) -> Result<()> {
         // TODO(smbarber): Refactor out virtio from crosvm so we can
         // validate a Queue struct directly.
         if !self.is_valid(queue_max_size, queue_size, desc_addr, used_addr, avail_addr) {
             return Err(Error::InvalidQueue);
         }
 
-        let desc_addr = self.mem()
+        let desc_addr = self
+            .mem()
             .get_host_address(desc_addr)
             .map_err(Error::DescriptorTableAddress)?;
-        let used_addr = self.mem()
+        let used_addr = self
+            .mem()
             .get_host_address(used_addr)
             .map_err(Error::UsedAddress)?;
-        let avail_addr = self.mem()
+        let avail_addr = self
+            .mem()
             .get_host_address(avail_addr)
             .map_err(Error::AvailAddress)?;
         let log_addr = match log_addr {
             None => null(),
-            Some(a) => {
-                self.mem()
-                .get_host_address(a)
-                .map_err(Error::LogAddress)?
-            },
+            Some(a) => self.mem().get_host_address(a).map_err(Error::LogAddress)?,
         };
 
         let vring_addr = virtio_sys::vhost_vring_addr {
             index: queue_index as u32,
-            flags: flags,
+            flags,
             desc_user_addr: desc_addr as u64,
             used_user_addr: used_addr as u64,
             avail_user_addr: avail_addr as u64,
@@ -249,11 +242,7 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
 
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
-        let ret = unsafe {
-            ioctl_with_ref(self,
-                           virtio_sys::VHOST_SET_VRING_ADDR(),
-                           &vring_addr)
-        };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_ADDR(), &vring_addr) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -273,11 +262,7 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
 
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
-        let ret = unsafe {
-            ioctl_with_ref(self,
-                           virtio_sys::VHOST_SET_VRING_BASE(),
-                           &vring_state)
-        };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_BASE(), &vring_state) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -297,11 +282,7 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
 
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
-        let ret = unsafe {
-            ioctl_with_ref(self,
-                           virtio_sys::VHOST_SET_VRING_CALL(),
-                           &vring_file)
-        };
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_CALL(), &vring_file) };
         if ret < 0 {
             return ioctl_result();
         }
@@ -410,7 +391,8 @@ mod tests {
             GuestAddress(0x0),
             GuestAddress(0x0),
             GuestAddress(0x0),
-            None);
+            None,
+        );
         assert_ok_or_known_failure(res);
     }
 

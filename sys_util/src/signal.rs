@@ -2,17 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{c_int, sigaction, SA_RESTART, timespec,
-           sigset_t, siginfo_t,
-           sigaddset, sigemptyset, sigismember, sigpending, sigtimedwait,
-           pthread_t, pthread_kill, pthread_sigmask,
-           SIG_BLOCK, SIG_UNBLOCK, EAGAIN, EINTR, EINVAL };
+use libc::{
+    c_int, pthread_kill, pthread_sigmask, pthread_t, sigaction, sigaddset, sigemptyset, siginfo_t,
+    sigismember, sigpending, sigset_t, sigtimedwait, timespec, EAGAIN, EINTR, EINVAL, SA_RESTART,
+    SIG_BLOCK, SIG_UNBLOCK,
+};
 
 use std::mem;
+use std::os::unix::thread::JoinHandleExt;
 use std::ptr::{null, null_mut};
 use std::result;
 use std::thread::JoinHandle;
-use std::os::unix::thread::JoinHandleExt;
 
 use {errno, errno_result};
 
@@ -179,7 +179,10 @@ pub fn clear_signal(num: c_int) -> SignalResult<()> {
         // of libc calls.
         unsafe {
             let mut siginfo: siginfo_t = mem::zeroed();
-            let ts = timespec { tv_sec: 0, tv_nsec: 0 };
+            let ts = timespec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            };
             // Attempt to consume one instance of pending signal. If signal
             // is not pending, the call will fail with EAGAIN or EINTR.
             let ret = sigtimedwait(&sigset, &mut siginfo, &ts);
@@ -209,8 +212,7 @@ pub fn clear_signal(num: c_int) -> SignalResult<()> {
             // This is do-while loop condition.
             ret != 0
         }
-    }
-    {}
+    } {}
 
     Ok(())
 }

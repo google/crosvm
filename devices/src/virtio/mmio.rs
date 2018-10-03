@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use byteorder::{ByteOrder, LittleEndian};
 
 use super::*;
+use sys_util::{EventFd, GuestAddress, GuestMemory, Result};
 use BusDevice;
-use sys_util::{Result, EventFd, GuestAddress, GuestMemory};
 
 const VENDOR_ID: u32 = 0;
 
@@ -59,19 +59,19 @@ impl MmioDevice {
             .map(|&s| Queue::new(s))
             .collect();
         Ok(MmioDevice {
-               device: device,
-               device_activated: false,
-               features_select: 0,
-               acked_features_select: 0,
-               queue_select: 0,
-               interrupt_status: Arc::new(AtomicUsize::new(0)),
-               interrupt_evt: Some(EventFd::new()?),
-               driver_status: 0,
-               config_generation: 0,
-               queues: queues,
-               queue_evts: queue_evts,
-               mem: Some(mem),
-           })
+            device,
+            device_activated: false,
+            features_select: 0,
+            acked_features_select: 0,
+            queue_select: 0,
+            interrupt_status: Arc::new(AtomicUsize::new(0)),
+            interrupt_evt: Some(EventFd::new()?),
+            driver_status: 0,
+            config_generation: 0,
+            queues,
+            queue_evts,
+            mem: Some(mem),
+        })
     }
 
     /// Gets the list of queue events that must be triggered whenever the VM writes to
@@ -100,7 +100,8 @@ impl MmioDevice {
     }
 
     fn with_queue<U, F>(&self, d: U, f: F) -> U
-        where F: FnOnce(&Queue) -> U
+    where
+        F: FnOnce(&Queue) -> U,
     {
         match self.queues.get(self.queue_select as usize) {
             Some(queue) => f(queue),
@@ -128,8 +129,8 @@ impl BusDevice for MmioDevice {
                     0x08 => self.device.device_type(),
                     0x0c => VENDOR_ID, // vendor id
                     0x10 => {
-                        self.device.features(self.features_select) |
-                        if self.features_select == 1 { 0x1 } else { 0x0 }
+                        self.device.features(self.features_select)
+                            | if self.features_select == 1 { 0x1 } else { 0x0 }
                     }
                     0x34 => self.with_queue(0, |q| q.max_size as u32),
                     0x44 => self.with_queue(0, |q| q.ready as u32),
@@ -145,10 +146,13 @@ impl BusDevice for MmioDevice {
             }
             0x100...0xfff => self.device.read_config(offset - 0x100, data),
             _ => {
-                warn!("invalid virtio mmio read: 0x{:x}:0x{:x}", offset, data.len());
+                warn!(
+                    "invalid virtio mmio read: 0x{:x}:0x{:x}",
+                    offset,
+                    data.len()
+                );
             }
         };
-
     }
 
     fn write(&mut self, offset: u64, data: &[u8]) {
@@ -190,7 +194,11 @@ impl BusDevice for MmioDevice {
             }
             0x100...0xfff => return self.device.write_config(offset - 0x100, data),
             _ => {
-                warn!("invalid virtio mmio write: 0x{:x}:0x{:x}", offset, data.len());
+                warn!(
+                    "invalid virtio mmio write: 0x{:x}:0x{:x}",
+                    offset,
+                    data.len()
+                );
                 return;
             }
         }
@@ -202,12 +210,13 @@ impl BusDevice for MmioDevice {
         if !self.device_activated && self.is_driver_ready() && self.are_queues_valid() {
             if let Some(interrupt_evt) = self.interrupt_evt.take() {
                 if let Some(mem) = self.mem.take() {
-                    self.device
-                        .activate(mem,
-                                  interrupt_evt,
-                                  self.interrupt_status.clone(),
-                                  self.queues.clone(),
-                                  self.queue_evts.split_off(0));
+                    self.device.activate(
+                        mem,
+                        interrupt_evt,
+                        self.interrupt_status.clone(),
+                        self.queues.clone(),
+                        self.queue_evts.split_off(0),
+                    );
                     self.device_activated = true;
                 }
             }

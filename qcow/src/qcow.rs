@@ -182,19 +182,21 @@ impl QcowHeader {
             autoclear_features: 0,
             refcount_order: DEFAULT_REFCOUNT_ORDER,
             header_size: V3_BARE_HEADER_SIZE,
-       }
+        }
     }
 
     /// Write the header to `file`.
     pub fn write_to<F: Write + Seek>(&self, file: &mut F) -> Result<()> {
         // Writes the next u32 to the file.
         fn write_u32_to_file<F: Write>(f: &mut F, value: u32) -> Result<()> {
-            f.write_u32::<BigEndian>(value).map_err(Error::WritingHeader)
+            f.write_u32::<BigEndian>(value)
+                .map_err(Error::WritingHeader)
         }
 
         // Writes the next u64 to the file.
         fn write_u64_to_file<F: Write>(f: &mut F, value: u64) -> Result<()> {
-            f.write_u64::<BigEndian>(value).map_err(Error::WritingHeader)
+            f.write_u64::<BigEndian>(value)
+                .map_err(Error::WritingHeader)
         }
 
         write_u32_to_file(file, self.magic)?;
@@ -221,10 +223,10 @@ impl QcowHeader {
         // Zeros out the l1 and refcount table clusters.
         let cluster_size = 0x01u64 << self.cluster_bits;
         let refcount_blocks_size = u64::from(self.refcount_table_clusters) * cluster_size;
-        file.seek(SeekFrom::Start(self.refcount_table_offset + refcount_blocks_size - 2))
-            .map_err(Error::WritingHeader)?;
-        file.write(&[0u8])
-            .map_err(Error::WritingHeader)?;
+        file.seek(SeekFrom::Start(
+            self.refcount_table_offset + refcount_blocks_size - 2,
+        )).map_err(Error::WritingHeader)?;
+        file.write(&[0u8]).map_err(Error::WritingHeader)?;
 
         Ok(())
     }
@@ -311,18 +313,20 @@ impl QcowFile {
         offset_is_cluster_boundary(header.refcount_table_offset, header.cluster_bits)?;
         offset_is_cluster_boundary(header.snapshots_offset, header.cluster_bits)?;
 
-        let mut raw_file = QcowRawFile::from(file, cluster_size).ok_or(Error::InvalidClusterSize)?;
+        let mut raw_file =
+            QcowRawFile::from(file, cluster_size).ok_or(Error::InvalidClusterSize)?;
 
         let l2_size = cluster_size / size_of::<u64>() as u64;
         let num_clusters = div_round_up_u64(header.size, u64::from(cluster_size));
         let num_l2_clusters = div_round_up_u64(num_clusters, l2_size);
-        let l1_table = VecCache::from_vec(raw_file
-            .read_pointer_table(
-                header.l1_table_offset,
-                num_l2_clusters,
-                Some(L1_TABLE_OFFSET_MASK),
-            )
-            .map_err(Error::ReadingHeader)?);
+        let l1_table = VecCache::from_vec(
+            raw_file
+                .read_pointer_table(
+                    header.l1_table_offset,
+                    num_l2_clusters,
+                    Some(L1_TABLE_OFFSET_MASK),
+                ).map_err(Error::ReadingHeader)?,
+        );
 
         let num_clusters = div_round_up_u64(header.size, u64::from(cluster_size)) as u32;
         let refcount_clusters =
@@ -374,8 +378,8 @@ impl QcowFile {
         // Set the refcount for each refcount table cluster.
         let cluster_size = 0x01u64 << qcow.header.cluster_bits;
         let refcount_table_base = qcow.header.refcount_table_offset as u64;
-        let end_cluster_addr = refcount_table_base +
-            u64::from(qcow.header.refcount_table_clusters) * cluster_size;
+        let end_cluster_addr =
+            refcount_table_base + u64::from(qcow.header.refcount_table_clusters) * cluster_size;
 
         let mut cluster_addr = 0;
         while cluster_addr < end_cluster_addr {
@@ -423,8 +427,7 @@ impl QcowFile {
                         evicted.get_values(),
                         CLUSTER_USED_FLAG,
                     )
-                })
-                .map_err(Error::EvictingCache)?;
+                }).map_err(Error::EvictingCache)?;
         }
 
         // The index must exist as it was just inserted if it didn't already.
@@ -729,9 +732,13 @@ impl QcowFile {
             // This cluster is no longer in use; deallocate the storage.
             // The underlying FS may not support FALLOC_FL_PUNCH_HOLE,
             // so don't treat an error as fatal.  Future reads will return zeros anyways.
-            let _ = fallocate(self.raw_file.file_mut(),
-                              FallocateMode::PunchHole, true,
-                              cluster_addr, cluster_size);
+            let _ = fallocate(
+                self.raw_file.file_mut(),
+                FallocateMode::PunchHole,
+                true,
+                cluster_addr,
+                cluster_size,
+            );
             self.unref_clusters.push(cluster_addr);
         }
         Ok(())
@@ -813,8 +820,11 @@ impl QcowFile {
             // The index must be valid from when we insterted it.
             let addr = self.l1_table[*l1_index];
             if addr != 0 {
-                self.raw_file
-                    .write_pointer_table(addr, l2_table.get_values(), CLUSTER_USED_FLAG)?;
+                self.raw_file.write_pointer_table(
+                    addr,
+                    l2_table.get_values(),
+                    CLUSTER_USED_FLAG,
+                )?;
             } else {
                 return Err(std::io::Error::from_raw_os_error(EINVAL));
             }
@@ -829,8 +839,11 @@ impl QcowFile {
         // guaranteed to be valid.
         let mut sync_required = false;
         if self.l1_table.dirty() {
-            self.raw_file
-                .write_pointer_table(self.header.l1_table_offset, &self.l1_table.get_values(), 0)?;
+            self.raw_file.write_pointer_table(
+                self.header.l1_table_offset,
+                &self.l1_table.get_values(),
+                0,
+            )?;
             self.l1_table.mark_clean();
             sync_required = true;
         }
@@ -890,18 +903,16 @@ impl Seek for QcowFile {
             SeekFrom::Start(off) => Some(off),
             SeekFrom::End(off) => {
                 if off < 0 {
-                    0i64.checked_sub(off).and_then(|increment| {
-                        self.virtual_size().checked_sub(increment as u64)
-                    })
+                    0i64.checked_sub(off)
+                        .and_then(|increment| self.virtual_size().checked_sub(increment as u64))
                 } else {
                     self.virtual_size().checked_add(off as u64)
                 }
             }
             SeekFrom::Current(off) => {
                 if off < 0 {
-                    0i64.checked_sub(off).and_then(|increment| {
-                        self.current_offset.checked_sub(increment as u64)
-                    })
+                    0i64.checked_sub(off)
+                        .and_then(|increment| self.current_offset.checked_sub(increment as u64))
                 } else {
                     self.current_offset.checked_add(off as u64)
                 }
@@ -1004,9 +1015,9 @@ fn div_round_up_u32(dividend: u32, divisor: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::fs::File;
     use std::io::{Read, Seek, SeekFrom, Write};
-    use super::*;
     use sys_util::SharedMemory;
 
     fn valid_header() -> Vec<u8> {
@@ -1060,7 +1071,9 @@ mod tests {
         let header = QcowHeader::create_for_size(0x10_0000);
         let shm = SharedMemory::new(None).unwrap();
         let mut disk_file: File = shm.into();
-        header.write_to(&mut disk_file).expect("Failed to write header to shm.");
+        header
+            .write_to(&mut disk_file)
+            .expect("Failed to write header to shm.");
         disk_file.seek(SeekFrom::Start(0)).unwrap();
         QcowFile::from(disk_file).expect("Failed to create Qcow from default Header");
     }
@@ -1093,9 +1106,8 @@ mod tests {
     fn write_read_start() {
         with_basic_file(&valid_header(), |disk_file: File| {
             let mut q = QcowFile::from(disk_file).unwrap();
-            q.write(b"test first bytes").expect(
-                "Failed to write test string.",
-            );
+            q.write(b"test first bytes")
+                .expect("Failed to write test string.");
             let mut buf = [0u8; 4];
             q.seek(SeekFrom::Start(0)).expect("Failed to seek.");
             q.read(&mut buf).expect("Failed to read.");
@@ -1198,93 +1210,354 @@ mod tests {
 
             // Write transactions from mkfs.ext4.
             let xfers: Vec<Transfer> = vec![
-                Transfer {write: false, addr: 0xfff0000},
-                Transfer {write: false, addr: 0xfffe000},
-                Transfer {write: false, addr: 0x0},
-                Transfer {write: false, addr: 0x1000},
-                Transfer {write: false, addr: 0xffff000},
-                Transfer {write: false, addr: 0xffdf000},
-                Transfer {write: false, addr: 0xfff8000},
-                Transfer {write: false, addr: 0xffe0000},
-                Transfer {write: false, addr: 0xffce000},
-                Transfer {write: false, addr: 0xffb6000},
-                Transfer {write: false, addr: 0xffab000},
-                Transfer {write: false, addr: 0xffa4000},
-                Transfer {write: false, addr: 0xff8e000},
-                Transfer {write: false, addr: 0xff86000},
-                Transfer {write: false, addr: 0xff84000},
-                Transfer {write: false, addr: 0xff89000},
-                Transfer {write: false, addr: 0xfe7e000},
-                Transfer {write: false, addr: 0x100000},
-                Transfer {write: false, addr: 0x3000},
-                Transfer {write: false, addr: 0x7000},
-                Transfer {write: false, addr: 0xf000},
-                Transfer {write: false, addr: 0x2000},
-                Transfer {write: false, addr: 0x4000},
-                Transfer {write: false, addr: 0x5000},
-                Transfer {write: false, addr: 0x6000},
-                Transfer {write: false, addr: 0x8000},
-                Transfer {write: false, addr: 0x9000},
-                Transfer {write: false, addr: 0xa000},
-                Transfer {write: false, addr: 0xb000},
-                Transfer {write: false, addr: 0xc000},
-                Transfer {write: false, addr: 0xd000},
-                Transfer {write: false, addr: 0xe000},
-                Transfer {write: false, addr: 0x10000},
-                Transfer {write: false, addr: 0x11000},
-                Transfer {write: false, addr: 0x12000},
-                Transfer {write: false, addr: 0x13000},
-                Transfer {write: false, addr: 0x14000},
-                Transfer {write: false, addr: 0x15000},
-                Transfer {write: false, addr: 0x16000},
-                Transfer {write: false, addr: 0x17000},
-                Transfer {write: false, addr: 0x18000},
-                Transfer {write: false, addr: 0x19000},
-                Transfer {write: false, addr: 0x1a000},
-                Transfer {write: false, addr: 0x1b000},
-                Transfer {write: false, addr: 0x1c000},
-                Transfer {write: false, addr: 0x1d000},
-                Transfer {write: false, addr: 0x1e000},
-                Transfer {write: false, addr: 0x1f000},
-                Transfer {write: false, addr: 0x21000},
-                Transfer {write: false, addr: 0x22000},
-                Transfer {write: false, addr: 0x24000},
-                Transfer {write: false, addr: 0x40000},
-                Transfer {write: false, addr: 0x0},
-                Transfer {write: false, addr: 0x3000},
-                Transfer {write: false, addr: 0x7000},
-                Transfer {write: false, addr: 0x0},
-                Transfer {write: false, addr: 0x1000},
-                Transfer {write: false, addr: 0x2000},
-                Transfer {write: false, addr: 0x3000},
-                Transfer {write: false, addr: 0x0},
-                Transfer {write: false, addr: 0x449000},
-                Transfer {write: false, addr: 0x48000},
-                Transfer {write: false, addr: 0x48000},
-                Transfer {write: false, addr: 0x448000},
-                Transfer {write: false, addr: 0x44a000},
-                Transfer {write: false, addr: 0x48000},
-                Transfer {write: false, addr: 0x48000},
-                Transfer {write: true, addr: 0x0},
-                Transfer {write: true, addr: 0x448000},
-                Transfer {write: true, addr: 0x449000},
-                Transfer {write: true, addr: 0x44a000},
-                Transfer {write: true, addr: 0xfff0000},
-                Transfer {write: true, addr: 0xfff1000},
-                Transfer {write: true, addr: 0xfff2000},
-                Transfer {write: true, addr: 0xfff3000},
-                Transfer {write: true, addr: 0xfff4000},
-                Transfer {write: true, addr: 0xfff5000},
-                Transfer {write: true, addr: 0xfff6000},
-                Transfer {write: true, addr: 0xfff7000},
-                Transfer {write: true, addr: 0xfff8000},
-                Transfer {write: true, addr: 0xfff9000},
-                Transfer {write: true, addr: 0xfffa000},
-                Transfer {write: true, addr: 0xfffb000},
-                Transfer {write: true, addr: 0xfffc000},
-                Transfer {write: true, addr: 0xfffd000},
-                Transfer {write: true, addr: 0xfffe000},
-                Transfer {write: true, addr: 0xffff000},
+                Transfer {
+                    write: false,
+                    addr: 0xfff0000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xfffe000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x0,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x1000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xffff000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xffdf000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xfff8000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xffe0000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xffce000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xffb6000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xffab000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xffa4000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xff8e000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xff86000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xff84000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xff89000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xfe7e000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x100000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x3000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x7000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xf000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x2000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x4000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x5000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x6000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x8000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x9000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xa000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xb000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xc000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xd000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0xe000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x10000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x11000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x12000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x13000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x14000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x15000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x16000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x17000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x18000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x19000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x1a000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x1b000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x1c000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x1d000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x1e000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x1f000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x21000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x22000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x24000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x40000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x0,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x3000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x7000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x0,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x1000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x2000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x3000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x0,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x449000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x48000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x48000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x448000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x44a000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x48000,
+                },
+                Transfer {
+                    write: false,
+                    addr: 0x48000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0x0,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0x448000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0x449000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0x44a000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfff0000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfff1000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfff2000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfff3000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfff4000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfff5000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfff6000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfff7000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfff8000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfff9000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfffa000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfffb000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfffc000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfffd000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xfffe000,
+                },
+                Transfer {
+                    write: true,
+                    addr: 0xffff000,
+                },
             ];
 
             for xfer in xfers.iter() {
@@ -1309,11 +1582,15 @@ mod tests {
             let mut readback = [0u8; BLOCK_SIZE];
             for i in 0..NUM_BLOCKS {
                 let seek_offset = OFFSET + i * BLOCK_SIZE;
-                qcow_file.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
+                qcow_file
+                    .seek(SeekFrom::Start(seek_offset as u64))
+                    .expect("Failed to seek.");
                 let nwritten = qcow_file.write(&data).expect("Failed to write test data.");
                 assert_eq!(nwritten, BLOCK_SIZE);
                 // Read back the data to check it was written correctly.
-                qcow_file.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
+                qcow_file
+                    .seek(SeekFrom::Start(seek_offset as u64))
+                    .expect("Failed to seek.");
                 let nread = qcow_file.read(&mut readback).expect("Failed to read.");
                 assert_eq!(nread, BLOCK_SIZE);
                 for (orig, read) in data.iter().zip(readback.iter()) {
@@ -1330,7 +1607,9 @@ mod tests {
             // Check the data again after the writes have happened.
             for i in 0..NUM_BLOCKS {
                 let seek_offset = OFFSET + i * BLOCK_SIZE;
-                qcow_file.seek(SeekFrom::Start(seek_offset as u64)).expect("Failed to seek.");
+                qcow_file
+                    .seek(SeekFrom::Start(seek_offset as u64))
+                    .expect("Failed to seek.");
                 let nread = qcow_file.read(&mut readback).expect("Failed to read.");
                 assert_eq!(nread, BLOCK_SIZE);
                 for (orig, read) in data.iter().zip(readback.iter()) {

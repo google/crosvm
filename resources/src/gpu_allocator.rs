@@ -42,8 +42,12 @@ pub trait GpuMemoryAllocator {
     /// * `width` - Width of buffer.
     /// * `height` - Height of buffer.
     /// * `format` - Fourcc format of buffer.
-    fn allocate(&self, width: u32, height: u32, format: u32)
-        -> sys_util::Result<(File, GpuMemoryDesc)>;
+    fn allocate(
+        &self,
+        width: u32,
+        height: u32,
+        format: u32,
+    ) -> sys_util::Result<(File, GpuMemoryDesc)>;
 }
 
 #[cfg(feature = "wl-dmabuf")]
@@ -53,9 +57,12 @@ pub struct GpuBufferDevice {
 
 #[cfg(feature = "wl-dmabuf")]
 impl GpuMemoryAllocator for GpuBufferDevice {
-    fn allocate(&self, width: u32, height: u32, format: u32) ->
-        sys_util::Result<(File, GpuMemoryDesc)>
-    {
+    fn allocate(
+        &self,
+        width: u32,
+        height: u32,
+        format: u32,
+    ) -> sys_util::Result<(File, GpuMemoryDesc)> {
         let buffer = match self.device.create_buffer(
             width,
             height,
@@ -66,7 +73,8 @@ impl GpuMemoryAllocator for GpuBufferDevice {
             // fall-back to a less efficient meachnisms for presentation if
             // neccesary. In practice, linear buffers for commonly used formats
             // will also support scanout and texturing.
-            gpu_buffer::Flags::empty().use_linear(true)) {
+            gpu_buffer::Flags::empty().use_linear(true),
+        ) {
             Ok(v) => v,
             Err(_) => return Err(sys_util::Error::new(EINVAL)),
         };
@@ -81,8 +89,10 @@ impl GpuMemoryAllocator for GpuBufferDevice {
         for i in 0..buffer.num_planes() {
             // Use stride and offset for plane if handle matches first plane.
             if buffer.plane_handle(i) == buffer.plane_handle(0) {
-                desc.planes[i] = GpuMemoryPlaneDesc { stride: buffer.plane_stride(i),
-                                                      offset: buffer.plane_offset(i) }
+                desc.planes[i] = GpuMemoryPlaneDesc {
+                    stride: buffer.plane_stride(i),
+                    offset: buffer.plane_offset(i),
+                }
             }
         }
 
@@ -95,8 +105,8 @@ pub fn create_gpu_memory_allocator() -> Result<Option<Box<GpuMemoryAllocator>>, 
     let undesired: &[&str] = &["vgem", "pvr"];
     let fd = gpu_buffer::rendernode::open_device(undesired)
         .map_err(|_| GpuAllocatorError::OpenGpuBufferDevice)?;
-    let device = gpu_buffer::Device::new(fd)
-        .map_err(|_| GpuAllocatorError::CreateGpuBufferDevice)?;
+    let device =
+        gpu_buffer::Device::new(fd).map_err(|_| GpuAllocatorError::CreateGpuBufferDevice)?;
     Ok(Some(Box::new(GpuBufferDevice { device })))
 }
 

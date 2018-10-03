@@ -8,7 +8,7 @@ mod vcpu;
 use std::fmt;
 use std::fs::File;
 use std::io;
-use std::os::unix::io::{IntoRawFd, FromRawFd};
+use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
 use std::result;
@@ -17,17 +17,21 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use libc::{socketpair, ioctl, c_ulong, AF_UNIX, SOCK_SEQPACKET, FIOCLEX, EAGAIN, EINTR, EINVAL,
-           ENOENT, EPERM, EDEADLK, EEXIST, EBADF, EOVERFLOW, SIGCHLD, MS_NOSUID, MS_NODEV};
+use libc::{
+    c_ulong, ioctl, socketpair, AF_UNIX, EAGAIN, EBADF, EDEADLK, EEXIST, EINTR, EINVAL, ENOENT,
+    EOVERFLOW, EPERM, FIOCLEX, MS_NODEV, MS_NOSUID, SIGCHLD, SOCK_SEQPACKET,
+};
 
 use protobuf::ProtobufError;
 
 use io_jail::{self, Minijail};
-use kvm::{Kvm, Vm, Vcpu, VcpuExit, IoeventAddress, NoDatamatch};
+use kvm::{IoeventAddress, Kvm, NoDatamatch, Vcpu, VcpuExit, Vm};
 use net_util::{Error as TapError, Tap, TapT};
-use sys_util::{EventFd, MmapError, Killable, SignalFd, SignalFdError, PollContext, PollToken,
-               GuestMemory, Result as SysResult, Error as SysError, block_signal, clear_signal,
-               SIGRTMIN, register_signal_handler, geteuid, getegid};
+use sys_util::{
+    block_signal, clear_signal, getegid, geteuid, register_signal_handler, Error as SysError,
+    EventFd, GuestMemory, Killable, MmapError, PollContext, PollToken, Result as SysResult,
+    SignalFd, SignalFdError, SIGRTMIN,
+};
 
 use Config;
 
@@ -123,7 +127,9 @@ impl fmt::Display for Error {
             Error::MountPlugin(ref e) => write!(f, "failed to mount: {}", e),
             Error::MountPluginLib(ref e) => write!(f, "failed to mount: {}", e),
             Error::MountRoot(ref e) => write!(f, "failed to mount: {}", e),
-            Error::NoRootDir => write!(f, "no root directory for jailed process to pivot root into"),
+            Error::NoRootDir => {
+                write!(f, "no root directory for jailed process to pivot root into")
+            }
             Error::ParsePivotRoot(ref e) => write!(f, "failed to set jail pivot root: {}", e),
             Error::ParseSeccomp(ref e) => write!(f, "failed to parse jail seccomp filter: {}", e),
             Error::PluginFailed(ref e) => write!(f, "plugin exited with error: {}", e),
@@ -154,14 +160,11 @@ impl fmt::Display for Error {
                 signo,
                 status,
                 code,
-            } => {
-                write!(f,
-                       "process {} died with signal {}, status {}, and code {}",
-                       pid,
-                       signo,
-                       status,
-                       code)
-            }
+            } => write!(
+                f,
+                "process {} died with signal {}, status {}, and code {}",
+                pid, signo, status, code
+            ),
             Error::SignalFd(ref e) => write!(f, "failed to read signal fd: {:?}", e),
             Error::SpawnVcpu(ref e) => write!(f, "error spawning vcpu thread: {}", e),
             Error::TapOpen(ref e) => write!(f, "error opening tap device: {:?}", e),
@@ -185,7 +188,10 @@ fn new_seqpacket_pair() -> SysResult<(UnixDatagram, UnixDatagram)> {
         let ret = socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds.as_mut_ptr());
         if ret == 0 {
             ioctl(fds[0], FIOCLEX);
-            Ok((UnixDatagram::from_raw_fd(fds[0]), UnixDatagram::from_raw_fd(fds[1])))
+            Ok((
+                UnixDatagram::from_raw_fd(fds[0]),
+                UnixDatagram::from_raw_fd(fds[1]),
+            ))
         } else {
             Err(SysError::last())
         }
@@ -242,12 +248,13 @@ fn create_plugin_jail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
 
     // Create a tmpfs in the plugin's root directory so that we can bind mount it's executable
     // file into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
-    j.mount_with_data(Path::new("none"),
-                         Path::new("/"),
-                         "tmpfs",
-                         (MS_NOSUID | MS_NODEV) as usize,
-                         "size=67108864")
-        .map_err(Error::MountRoot)?;
+    j.mount_with_data(
+        Path::new("none"),
+        Path::new("/"),
+        "tmpfs",
+        (MS_NOSUID | MS_NODEV) as usize,
+        "size=67108864",
+    ).map_err(Error::MountRoot)?;
 
     Ok(j)
 }
@@ -277,8 +284,14 @@ enum PluginObject {
         length: u32,
         datamatch: u64,
     },
-    Memory { slot: u32, length: usize },
-    IrqEvent { irq_id: u32, evt: EventFd },
+    Memory {
+        slot: u32,
+        length: usize,
+    },
+    IrqEvent {
+        irq_id: u32,
+        evt: EventFd,
+    },
 }
 
 impl PluginObject {
@@ -289,119 +302,114 @@ impl PluginObject {
                 addr,
                 length,
                 datamatch,
-            } => {
-                match length {
-                    0 => vm.unregister_ioevent(&evt, addr, NoDatamatch),
-                    1 => vm.unregister_ioevent(&evt, addr, datamatch as u8),
-                    2 => vm.unregister_ioevent(&evt, addr, datamatch as u16),
-                    4 => vm.unregister_ioevent(&evt, addr, datamatch as u32),
-                    8 => vm.unregister_ioevent(&evt, addr, datamatch as u64),
-                    _ => Err(SysError::new(EINVAL)),
-                }
-            }
+            } => match length {
+                0 => vm.unregister_ioevent(&evt, addr, NoDatamatch),
+                1 => vm.unregister_ioevent(&evt, addr, datamatch as u8),
+                2 => vm.unregister_ioevent(&evt, addr, datamatch as u16),
+                4 => vm.unregister_ioevent(&evt, addr, datamatch as u32),
+                8 => vm.unregister_ioevent(&evt, addr, datamatch as u64),
+                _ => Err(SysError::new(EINVAL)),
+            },
             PluginObject::Memory { slot, .. } => vm.remove_device_memory(slot).and(Ok(())),
             PluginObject::IrqEvent { irq_id, evt } => vm.unregister_irqfd(&evt, irq_id),
         }
     }
 }
 
-pub fn run_vcpus(kvm: &Kvm,
-                 vm: &Vm,
-                 plugin: &Process,
-                 vcpu_count: u32,
-                 kill_signaled: &Arc<AtomicBool>,
-                 exit_evt: &EventFd,
-                 vcpu_handles: &mut Vec<thread::JoinHandle<()>>)
-                 -> Result<()> {
+pub fn run_vcpus(
+    kvm: &Kvm,
+    vm: &Vm,
+    plugin: &Process,
+    vcpu_count: u32,
+    kill_signaled: &Arc<AtomicBool>,
+    exit_evt: &EventFd,
+    vcpu_handles: &mut Vec<thread::JoinHandle<()>>,
+) -> Result<()> {
     let vcpu_thread_barrier = Arc::new(Barrier::new((vcpu_count) as usize));
     for cpu_id in 0..vcpu_count {
         let kill_signaled = kill_signaled.clone();
         let vcpu_thread_barrier = vcpu_thread_barrier.clone();
         let vcpu_exit_evt = exit_evt.try_clone().map_err(Error::CloneEventFd)?;
         let vcpu_plugin = plugin.create_vcpu(cpu_id)?;
-        let vcpu = Vcpu::new(cpu_id as c_ulong, kvm, vm)
-            .map_err(Error::CreateVcpu)?;
+        let vcpu = Vcpu::new(cpu_id as c_ulong, kvm, vm).map_err(Error::CreateVcpu)?;
 
-        vcpu_handles.push(thread::Builder::new()
-                              .name(format!("crosvm_vcpu{}", cpu_id))
-                              .spawn(move || {
-            unsafe {
-                extern "C" fn handle_signal() {}
-                // Our signal handler does nothing and is trivially async signal safe.
-                // We need to install this signal handler even though we do block
-                // the signal below, to ensure that this signal will interrupt
-                // execution of KVM_RUN (this is implementation issue).
-                register_signal_handler(SIGRTMIN() + 0, handle_signal)
-                    .expect("failed to register vcpu signal handler");
-            }
+        vcpu_handles.push(
+            thread::Builder::new()
+                .name(format!("crosvm_vcpu{}", cpu_id))
+                .spawn(move || {
+                    unsafe {
+                        extern "C" fn handle_signal() {}
+                        // Our signal handler does nothing and is trivially async signal safe.
+                        // We need to install this signal handler even though we do block
+                        // the signal below, to ensure that this signal will interrupt
+                        // execution of KVM_RUN (this is implementation issue).
+                        register_signal_handler(SIGRTMIN() + 0, handle_signal)
+                            .expect("failed to register vcpu signal handler");
+                    }
 
-            // We do not really want the signal handler to run...
-            block_signal(SIGRTMIN() + 0).expect("failed to block signal");
-            // Tell KVM to not block anything when entering kvm run
-            // because we will be using first RT signal to kick the VCPU.
-            vcpu.set_signal_mask(&[])
-                .expect("failed to set up KVM VCPU signal mask");
+                    // We do not really want the signal handler to run...
+                    block_signal(SIGRTMIN() + 0).expect("failed to block signal");
+                    // Tell KVM to not block anything when entering kvm run
+                    // because we will be using first RT signal to kick the VCPU.
+                    vcpu.set_signal_mask(&[])
+                        .expect("failed to set up KVM VCPU signal mask");
 
-            let res = vcpu_plugin.init(&vcpu);
-            vcpu_thread_barrier.wait();
-            if let Err(e) = res {
-                error!("failed to initialize vcpu {}: {:?}", cpu_id, e);
-            } else {
-                loop {
-                    let run_res = vcpu.run();
-                    match run_res {
-                        Ok(run) => {
-                            match run {
-                                VcpuExit::IoIn(addr, data) => {
-                                    vcpu_plugin.io_read(addr as u64, data, &vcpu);
-                                }
-                                VcpuExit::IoOut(addr, data) => {
-                                    vcpu_plugin.io_write(addr as u64, data, &vcpu);
-                                }
-                                VcpuExit::MmioRead(addr, data) => {
-                                    vcpu_plugin.mmio_read(addr as u64, data, &vcpu);
-                                }
-                                VcpuExit::MmioWrite(addr, data) => {
-                                    vcpu_plugin.mmio_write(addr as u64, data, &vcpu);
-                                }
-                                VcpuExit::Hlt => break,
-                                VcpuExit::Shutdown => break,
-                                VcpuExit::InternalError => {
-                                    error!("vcpu {} has internal error", cpu_id);
-                                    break;
-                                }
-                                r => warn!("unexpected vcpu exit: {:?}", r),
+                    let res = vcpu_plugin.init(&vcpu);
+                    vcpu_thread_barrier.wait();
+                    if let Err(e) = res {
+                        error!("failed to initialize vcpu {}: {:?}", cpu_id, e);
+                    } else {
+                        loop {
+                            let run_res = vcpu.run();
+                            match run_res {
+                                Ok(run) => match run {
+                                    VcpuExit::IoIn(addr, data) => {
+                                        vcpu_plugin.io_read(addr as u64, data, &vcpu);
+                                    }
+                                    VcpuExit::IoOut(addr, data) => {
+                                        vcpu_plugin.io_write(addr as u64, data, &vcpu);
+                                    }
+                                    VcpuExit::MmioRead(addr, data) => {
+                                        vcpu_plugin.mmio_read(addr as u64, data, &vcpu);
+                                    }
+                                    VcpuExit::MmioWrite(addr, data) => {
+                                        vcpu_plugin.mmio_write(addr as u64, data, &vcpu);
+                                    }
+                                    VcpuExit::Hlt => break,
+                                    VcpuExit::Shutdown => break,
+                                    VcpuExit::InternalError => {
+                                        error!("vcpu {} has internal error", cpu_id);
+                                        break;
+                                    }
+                                    r => warn!("unexpected vcpu exit: {:?}", r),
+                                },
+                                Err(e) => match e.errno() {
+                                    EAGAIN | EINTR => {}
+                                    _ => {
+                                        error!("vcpu hit unknown error: {:?}", e);
+                                        break;
+                                    }
+                                },
+                            }
+                            if kill_signaled.load(Ordering::SeqCst) {
+                                break;
+                            }
+
+                            // Try to clear the signal that we use to kick VCPU if it is
+                            // pending before attempting to handle pause requests.
+                            clear_signal(SIGRTMIN() + 0).expect("failed to clear pending signal");
+
+                            if let Err(e) = vcpu_plugin.pre_run(&vcpu) {
+                                error!("failed to process pause on vcpu {}: {:?}", cpu_id, e);
+                                break;
                             }
                         }
-                        Err(e) => {
-                            match e.errno() {
-                                EAGAIN | EINTR => {}
-                                _ => {
-                                    error!("vcpu hit unknown error: {:?}", e);
-                                    break;
-                                }
-                            }
-                        }
                     }
-                    if kill_signaled.load(Ordering::SeqCst) {
-                        break;
-                    }
-
-                    // Try to clear the signal that we use to kick VCPU if it is
-                    // pending before attempting to handle pause requests.
-                    clear_signal(SIGRTMIN() + 0).expect("failed to clear pending signal");
-
-                    if let Err(e) = vcpu_plugin.pre_run(&vcpu) {
-                        error!("failed to process pause on vcpu {}: {:?}", cpu_id, e);
-                        break;
-                    }
-                }
-            }
-            vcpu_exit_evt
-                .write(1)
-                .expect("failed to signal vcpu exit eventfd");
-        })
-                              .map_err(Error::SpawnVcpu)?);
+                    vcpu_exit_evt
+                        .write(1)
+                        .expect("failed to signal vcpu exit eventfd");
+                }).map_err(Error::SpawnVcpu)?,
+        );
     }
     Ok(())
 }
@@ -504,8 +512,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
     'poll: loop {
         // After we have waited long enough, it's time to give up and exit.
         if dying_instant
-               .map(|i| i.elapsed() >= duration_to_die)
-               .unwrap_or(false) {
+            .map(|i| i.elapsed() >= duration_to_die)
+            .unwrap_or(false)
+        {
             break;
         }
 
@@ -559,11 +568,11 @@ pub fn run_config(cfg: Config) -> Result<()> {
                                 // plugin process, report it as an error.
                                 if res.is_ok() {
                                     res = Err(Error::SigChild {
-                                                  pid: siginfo.ssi_pid,
-                                                  signo: siginfo.ssi_signo,
-                                                  status: siginfo.ssi_status,
-                                                  code: siginfo.ssi_code,
-                                              })
+                                        pid: siginfo.ssi_pid,
+                                        signo: siginfo.ssi_signo,
+                                        status: siginfo.ssi_status,
+                                        code: siginfo.ssi_code,
+                                    })
                                 }
                             }
                             Ok(None) => break, // No more signals to read.
@@ -586,11 +595,13 @@ pub fn run_config(cfg: Config) -> Result<()> {
                     }
                 }
                 Token::Plugin { index } => {
-                    match plugin.handle_socket(index,
-                                               &kvm,
-                                               &mut vm,
-                                               &vcpu_handles,
-                                               tap_opt.as_ref()) {
+                    match plugin.handle_socket(
+                        index,
+                        &kvm,
+                        &mut vm,
+                        &vcpu_handles,
+                        tap_opt.as_ref(),
+                    ) {
                         Ok(_) => {}
                         // A HUP is an expected event for a socket, so don't bother warning about
                         // it.
@@ -608,21 +619,23 @@ pub fn run_config(cfg: Config) -> Result<()> {
         }
 
         if vcpu_handles.is_empty() && dying_instant.is_none() && plugin.is_started() {
-            let res = run_vcpus(&kvm,
-                                &vm,
-                                &plugin,
-                                vcpu_count,
-                                &kill_signaled,
-                                &exit_evt,
-                                &mut vcpu_handles);
+            let res = run_vcpus(
+                &kvm,
+                &vm,
+                &plugin,
+                vcpu_count,
+                &kill_signaled,
+                &exit_evt,
+                &mut vcpu_handles,
+            );
             if let Err(e) = res {
                 dying_instant.get_or_insert(Instant::now());
                 error!("failed to start vcpus: {}", e);
             }
         }
 
-        redo_poll_ctx_sockets = !sockets_to_drop.is_empty() ||
-                                plugin.sockets().len() != plugin_socket_count;
+        redo_poll_ctx_sockets =
+            !sockets_to_drop.is_empty() || plugin.sockets().len() != plugin_socket_count;
 
         // Cleanup all of the sockets that we have determined were disconnected or suffered some
         // other error.

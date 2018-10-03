@@ -60,7 +60,8 @@ mod tests {
             .read(true)
             .write(true)
             .create(true)
-            .open(&path).unwrap();
+            .open(&path)
+            .unwrap();
         f.set_len(16384).unwrap();
 
         // Write buffer of non-zero bytes to offset 1234
@@ -125,7 +126,8 @@ mod tests {
             .read(true)
             .write(true)
             .create(true)
-            .open(&path).unwrap();
+            .open(&path)
+            .unwrap();
         f.set_len(16384).unwrap();
 
         // Write buffer of non-zero bytes

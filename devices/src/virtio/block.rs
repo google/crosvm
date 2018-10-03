@@ -3,12 +3,12 @@
 // found in the LICENSE file.
 
 use std::cmp;
-use std::io::{self, Seek, SeekFrom, Read, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::{size_of, size_of_val};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use std::u32;
@@ -22,7 +22,7 @@ use sys_util::{
 
 use data_model::{DataInit, Le16, Le32, Le64};
 
-use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_USED_RING, TYPE_BLOCK};
+use super::{DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_BLOCK};
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
@@ -137,10 +137,12 @@ enum ParseError {
     DescriptorLengthTooSmall,
 }
 
-fn request_type(mem: &GuestMemory,
-                desc_addr: GuestAddress)
-                -> result::Result<RequestType, ParseError> {
-    let type_ = mem.read_obj_from_addr(desc_addr)
+fn request_type(
+    mem: &GuestMemory,
+    desc_addr: GuestAddress,
+) -> result::Result<RequestType, ParseError> {
+    let type_ = mem
+        .read_obj_from_addr(desc_addr)
         .map_err(ParseError::GuestMemory)?;
     match type_ {
         VIRTIO_BLK_T_IN => Ok(RequestType::In),
@@ -179,18 +181,18 @@ enum ExecuteError {
         addr: GuestAddress,
         length: u32,
         sector: u64,
-        guestmemerr: GuestMemoryError
+        guestmemerr: GuestMemoryError,
     },
     Seek {
         ioerr: io::Error,
-        sector: u64
+        sector: u64,
     },
     TimerFd(SysError),
     Write {
         addr: GuestAddress,
         length: u32,
         sector: u64,
-        guestmemerr: GuestMemoryError
+        guestmemerr: GuestMemoryError,
     },
     DiscardWriteZeroes {
         ioerr: Option<io::Error>,
@@ -208,12 +210,12 @@ impl ExecuteError {
     fn status(&self) -> u8 {
         match self {
             &ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::Read{ .. } => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::Seek{ .. } => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::Read { .. } => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::Seek { .. } => VIRTIO_BLK_S_IOERR,
             &ExecuteError::TimerFd(_) => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::Write{ .. } => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::DiscardWriteZeroes{ .. } => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::ReadOnly{ .. } => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::Write { .. } => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::DiscardWriteZeroes { .. } => VIRTIO_BLK_S_IOERR,
+            &ExecuteError::ReadOnly { .. } => VIRTIO_BLK_S_IOERR,
             &ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
         }
     }
@@ -229,9 +231,10 @@ struct Request {
 }
 
 impl Request {
-    fn parse(avail_desc: &DescriptorChain,
-             mem: &GuestMemory)
-             -> result::Result<Request, ParseError> {
+    fn parse(
+        avail_desc: &DescriptorChain,
+        mem: &GuestMemory,
+    ) -> result::Result<Request, ParseError> {
         // The head contains the request type which MUST be readable.
         if avail_desc.is_write_only() {
             return Err(ParseError::UnexpectedWriteOnlyDescriptor);
@@ -247,10 +250,10 @@ impl Request {
         }
     }
 
-    fn parse_flush(avail_desc: &DescriptorChain,
-                   mem: &GuestMemory)
-        -> result::Result<Request, ParseError>
-    {
+    fn parse_flush(
+        avail_desc: &DescriptorChain,
+        mem: &GuestMemory,
+    ) -> result::Result<Request, ParseError> {
         let sector = sector(&mem, avail_desc.addr)?;
         let status_desc = avail_desc
             .next_descriptor()
@@ -266,13 +269,13 @@ impl Request {
         }
 
         Ok(Request {
-               request_type: RequestType::Flush,
-               sector: sector,
-               data_addr: GuestAddress(0),
-               data_len: 0,
-               status_addr: status_desc.addr,
-               discard_write_zeroes_seg: None,
-           })
+            request_type: RequestType::Flush,
+            sector,
+            data_addr: GuestAddress(0),
+            data_len: 0,
+            status_addr: status_desc.addr,
+            discard_write_zeroes_seg: None,
+        })
     }
 
     fn parse_discard_write_zeroes(
@@ -319,11 +322,11 @@ impl Request {
         })
     }
 
-    fn parse_read_write(avail_desc: &DescriptorChain,
-                        mem: &GuestMemory,
-                        req_type: RequestType)
-        -> result::Result<Request, ParseError>
-    {
+    fn parse_read_write(
+        avail_desc: &DescriptorChain,
+        mem: &GuestMemory,
+        req_type: RequestType,
+    ) -> result::Result<Request, ParseError> {
         let sector = sector(&mem, avail_desc.addr)?;
         let data_desc = avail_desc
             .next_descriptor()
@@ -350,13 +353,13 @@ impl Request {
         }
 
         Ok(Request {
-               request_type: req_type,
-               sector: sector,
-               data_addr: data_desc.addr,
-               data_len: data_desc.len,
-               status_addr: status_desc.addr,
-               discard_write_zeroes_seg: None,
-           })
+            request_type: req_type,
+            sector,
+            data_addr: data_desc.addr,
+            data_len: data_desc.len,
+            status_addr: status_desc.addr,
+            discard_write_zeroes_seg: None,
+        })
     }
 
     fn execute<T: DiskFile>(
@@ -377,14 +380,19 @@ impl Request {
         }
 
         disk.seek(SeekFrom::Start(self.sector << SECTOR_SHIFT))
-            .map_err(|e| ExecuteError::Seek{ ioerr: e, sector: self.sector })?;
+            .map_err(|e| ExecuteError::Seek {
+                ioerr: e,
+                sector: self.sector,
+            })?;
         match self.request_type {
             RequestType::In => {
                 mem.read_to_memory(self.data_addr, disk, self.data_len as usize)
-                    .map_err(|e| ExecuteError::Read{ addr: self.data_addr,
-                                                     length: self.data_len,
-                                                     sector: self.sector,
-                                                     guestmemerr: e })?;
+                    .map_err(|e| ExecuteError::Read {
+                        addr: self.data_addr,
+                        length: self.data_len,
+                        sector: self.sector,
+                        guestmemerr: e,
+                    })?;
                 return Ok(self.data_len);
             }
             RequestType::Out => {
@@ -415,22 +423,22 @@ impl Request {
                     };
 
                     if (flags & !valid_flags) != 0 {
-                        return Err(ExecuteError::DiscardWriteZeroes{
-                                ioerr: None,
-                                sector,
-                                num_sectors,
-                                flags
-                            });
+                        return Err(ExecuteError::DiscardWriteZeroes {
+                            ioerr: None,
+                            sector,
+                            num_sectors,
+                            flags,
+                        });
                     }
 
                     disk.seek(SeekFrom::Start(sector << SECTOR_SHIFT))
-                        .map_err(|e| ExecuteError::Seek{ ioerr: e, sector })?;
+                        .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
                     disk.write_zeroes((num_sectors as usize) << SECTOR_SHIFT)
                         .map_err(|e| ExecuteError::DiscardWriteZeroes {
                             ioerr: Some(e),
                             sector,
                             num_sectors,
-                            flags
+                            flags,
                         })?;
                 }
             }
@@ -530,17 +538,17 @@ impl<T: DiskFile> Worker<T> {
         };
         let mut flush_timer_armed = false;
 
-        let poll_ctx: PollContext<Token> =
-            match PollContext::new()
-                      .and_then(|pc| pc.add(&flush_timer, Token::FlushTimer).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&queue_evt, Token::QueueAvailable).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc))) {
-                Ok(pc) => pc,
-                Err(e) => {
-                    error!("failed creating PollContext: {:?}", e);
-                    return;
-                }
-            };
+        let poll_ctx: PollContext<Token> = match PollContext::new()
+            .and_then(|pc| pc.add(&flush_timer, Token::FlushTimer).and(Ok(pc)))
+            .and_then(|pc| pc.add(&queue_evt, Token::QueueAvailable).and(Ok(pc)))
+            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+        {
+            Ok(pc) => pc,
+            Err(e) => {
+                error!("failed creating PollContext: {:?}", e);
+                return;
+            }
+        };
 
         'poll: loop {
             let events = match poll_ctx.wait() {
@@ -613,10 +621,11 @@ impl<T: DiskFile> Block<T> {
     pub fn new(mut disk_image: T, read_only: bool) -> SysResult<Block<T>> {
         let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
         if disk_size % SECTOR_SIZE != 0 {
-            warn!("Disk size {} is not a multiple of sector size {}; \
-                         the remainder will not be visible to the guest.",
-                  disk_size,
-                  SECTOR_SIZE);
+            warn!(
+                "Disk size {} is not a multiple of sector size {}; \
+                 the remainder will not be visible to the guest.",
+                disk_size, SECTOR_SIZE
+            );
         }
 
         let mut avail_features: u64 = 1 << VIRTIO_BLK_F_FLUSH;
@@ -628,12 +637,12 @@ impl<T: DiskFile> Block<T> {
         }
 
         Ok(Block {
-               kill_evt: None,
-               disk_image: Some(disk_image),
-               config_space: build_config_space(disk_size),
-               avail_features,
-               read_only,
-           })
+            kill_evt: None,
+            disk_image: Some(disk_image),
+            config_space: build_config_space(disk_size),
+            avail_features,
+            read_only,
+        })
     }
 }
 
@@ -687,41 +696,43 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
         }
     }
 
-    fn activate(&mut self,
-                mem: GuestMemory,
-                interrupt_evt: EventFd,
-                status: Arc<AtomicUsize>,
-                queues: Vec<Queue>,
-                mut queue_evts: Vec<EventFd>) {
+    fn activate(
+        &mut self,
+        mem: GuestMemory,
+        interrupt_evt: EventFd,
+        status: Arc<AtomicUsize>,
+        queues: Vec<Queue>,
+        mut queue_evts: Vec<EventFd>,
+    ) {
         if queues.len() != 1 || queue_evts.len() != 1 {
             return;
         }
 
-        let (self_kill_evt, kill_evt) =
-            match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("failed creating kill EventFd pair: {:?}", e);
-                    return;
-                }
-            };
+        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("failed creating kill EventFd pair: {:?}", e);
+                return;
+            }
+        };
         self.kill_evt = Some(self_kill_evt);
 
         let read_only = self.read_only;
         if let Some(disk_image) = self.disk_image.take() {
-            let worker_result = thread::Builder::new()
-                .name("virtio_blk".to_string())
-                .spawn(move || {
-                    let mut worker = Worker {
-                        queues: queues,
-                        mem: mem,
-                        disk_image: disk_image,
-                        read_only: read_only,
-                        interrupt_status: status,
-                        interrupt_evt: interrupt_evt,
-                    };
-                    worker.run(queue_evts.remove(0), kill_evt);
-                });
+            let worker_result =
+                thread::Builder::new()
+                    .name("virtio_blk".to_string())
+                    .spawn(move || {
+                        let mut worker = Worker {
+                            queues,
+                            mem,
+                            disk_image,
+                            read_only,
+                            interrupt_status: status,
+                            interrupt_evt,
+                        };
+                        worker.run(queue_evts.remove(0), kill_evt);
+                    });
 
             if let Err(e) = worker_result {
                 error!("failed to spawn virtio_blk worker: {}", e);

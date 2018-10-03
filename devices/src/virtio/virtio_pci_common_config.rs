@@ -138,9 +138,12 @@ impl VirtioPciCommonConfig {
                 // TODO(dverkamp): This hack (copied from MmioDevice) unconditionally
                 // reports support for VIRTIO_F_VERSION_1; once all devices have been
                 // fixed to report VIRTIO_F_VERSION_1, remove this workaround.
-                device.features(self.device_feature_select) |
-                        if self.device_feature_select == 1 { 0x1 } else { 0x0 }
-            },
+                device.features(self.device_feature_select) | if self.device_feature_select == 1 {
+                    0x1
+                } else {
+                    0x0
+                }
+            }
             0x08 => self.driver_feature_select,
             _ => 0,
         }
@@ -211,8 +214,8 @@ mod tests {
     use super::*;
 
     use std::os::unix::io::RawFd;
-    use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
+    use std::sync::Arc;
     use sys_util::{EventFd, GuestMemory};
 
     struct DummyDevice(u32);
@@ -229,12 +232,14 @@ mod tests {
         fn queue_max_sizes(&self) -> &[u16] {
             QUEUE_SIZES
         }
-        fn activate(&mut self,
-                    _mem: GuestMemory,
-                    _interrupt_evt: EventFd,
-                    _status: Arc<AtomicUsize>,
-                    _queues: Vec<Queue>,
-                    _queue_evts: Vec<EventFd>) {
+        fn activate(
+            &mut self,
+            _mem: GuestMemory,
+            _interrupt_evt: EventFd,
+            _status: Arc<AtomicUsize>,
+            _queues: Vec<Queue>,
+            _queue_evts: Vec<EventFd>,
+        ) {
         }
         fn features(&self, _page: u32) -> u32 {
             DUMMY_FEATURES

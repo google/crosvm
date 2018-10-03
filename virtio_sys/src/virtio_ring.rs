@@ -3,13 +3,15 @@
 #[repr(C)]
 #[derive(Default)]
 pub struct __IncompleteArrayField<T>(::std::marker::PhantomData<T>);
-impl <T> __IncompleteArrayField<T> {
+impl<T> __IncompleteArrayField<T> {
     #[inline]
     pub fn new() -> Self {
         __IncompleteArrayField(::std::marker::PhantomData)
     }
     #[inline]
-    pub unsafe fn as_ptr(&self) -> *const T { ::std::mem::transmute(self) }
+    pub unsafe fn as_ptr(&self) -> *const T {
+        ::std::mem::transmute(self)
+    }
     #[inline]
     pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
         ::std::mem::transmute(self)
@@ -23,16 +25,18 @@ impl <T> __IncompleteArrayField<T> {
         ::std::slice::from_raw_parts_mut(self.as_mut_ptr(), len)
     }
 }
-impl <T> ::std::fmt::Debug for __IncompleteArrayField<T> {
+impl<T> ::std::fmt::Debug for __IncompleteArrayField<T> {
     fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         fmt.write_str("__IncompleteArrayField")
     }
 }
-impl <T> ::std::clone::Clone for __IncompleteArrayField<T> {
+impl<T> ::std::clone::Clone for __IncompleteArrayField<T> {
     #[inline]
-    fn clone(&self) -> Self { Self::new() }
+    fn clone(&self) -> Self {
+        Self::new()
+    }
 }
-impl <T> ::std::marker::Copy for __IncompleteArrayField<T> { }
+impl<T> ::std::marker::Copy for __IncompleteArrayField<T> {}
 pub const _STDINT_H: ::std::os::raw::c_uint = 1;
 pub const _FEATURES_H: ::std::os::raw::c_uint = 1;
 pub const _DEFAULT_SOURCE: ::std::os::raw::c_uint = 1;
@@ -147,18 +151,31 @@ pub struct __kernel_fd_set {
 }
 #[test]
 fn bindgen_test_layout___kernel_fd_set() {
-    assert_eq!(::std::mem::size_of::<__kernel_fd_set>() , 128usize , concat !
-               ( "Size of: " , stringify ! ( __kernel_fd_set ) ));
-    assert_eq! (::std::mem::align_of::<__kernel_fd_set>() , 8usize , concat !
-                ( "Alignment of " , stringify ! ( __kernel_fd_set ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const __kernel_fd_set ) ) . fds_bits as * const
-                _ as usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( __kernel_fd_set ) ,
-                "::" , stringify ! ( fds_bits ) ));
+    assert_eq!(
+        ::std::mem::size_of::<__kernel_fd_set>(),
+        128usize,
+        concat!("Size of: ", stringify!(__kernel_fd_set))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__kernel_fd_set>(),
+        8usize,
+        concat!("Alignment of ", stringify!(__kernel_fd_set))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const __kernel_fd_set)).fds_bits as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(__kernel_fd_set),
+            "::",
+            stringify!(fds_bits)
+        )
+    );
 }
 impl Clone for __kernel_fd_set {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 pub type __kernel_sighandler_t =
     ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>;
@@ -189,18 +206,31 @@ pub struct __kernel_fsid_t {
 }
 #[test]
 fn bindgen_test_layout___kernel_fsid_t() {
-    assert_eq!(::std::mem::size_of::<__kernel_fsid_t>() , 8usize , concat ! (
-               "Size of: " , stringify ! ( __kernel_fsid_t ) ));
-    assert_eq! (::std::mem::align_of::<__kernel_fsid_t>() , 4usize , concat !
-                ( "Alignment of " , stringify ! ( __kernel_fsid_t ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const __kernel_fsid_t ) ) . val as * const _ as
-                usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( __kernel_fsid_t ) ,
-                "::" , stringify ! ( val ) ));
+    assert_eq!(
+        ::std::mem::size_of::<__kernel_fsid_t>(),
+        8usize,
+        concat!("Size of: ", stringify!(__kernel_fsid_t))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__kernel_fsid_t>(),
+        4usize,
+        concat!("Alignment of ", stringify!(__kernel_fsid_t))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const __kernel_fsid_t)).val as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(__kernel_fsid_t),
+            "::",
+            stringify!(val)
+        )
+    );
 }
 impl Clone for __kernel_fsid_t {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 pub type __kernel_off_t = __kernel_long_t;
 pub type __kernel_loff_t = ::std::os::raw::c_longlong;
@@ -232,33 +262,61 @@ pub struct vring_desc {
 }
 #[test]
 fn bindgen_test_layout_vring_desc() {
-    assert_eq!(::std::mem::size_of::<vring_desc>() , 16usize , concat ! (
-               "Size of: " , stringify ! ( vring_desc ) ));
-    assert_eq! (::std::mem::align_of::<vring_desc>() , 8usize , concat ! (
-                "Alignment of " , stringify ! ( vring_desc ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const vring_desc ) ) . addr as * const _ as
-                usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( vring_desc ) , "::" ,
-                stringify ! ( addr ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const vring_desc ) ) . len as * const _ as
-                usize } , 8usize , concat ! (
-                "Alignment of field: " , stringify ! ( vring_desc ) , "::" ,
-                stringify ! ( len ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const vring_desc ) ) . flags as * const _ as
-                usize } , 12usize , concat ! (
-                "Alignment of field: " , stringify ! ( vring_desc ) , "::" ,
-                stringify ! ( flags ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const vring_desc ) ) . next as * const _ as
-                usize } , 14usize , concat ! (
-                "Alignment of field: " , stringify ! ( vring_desc ) , "::" ,
-                stringify ! ( next ) ));
+    assert_eq!(
+        ::std::mem::size_of::<vring_desc>(),
+        16usize,
+        concat!("Size of: ", stringify!(vring_desc))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<vring_desc>(),
+        8usize,
+        concat!("Alignment of ", stringify!(vring_desc))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const vring_desc)).addr as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(vring_desc),
+            "::",
+            stringify!(addr)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const vring_desc)).len as *const _ as usize },
+        8usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(vring_desc),
+            "::",
+            stringify!(len)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const vring_desc)).flags as *const _ as usize },
+        12usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(vring_desc),
+            "::",
+            stringify!(flags)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const vring_desc)).next as *const _ as usize },
+        14usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(vring_desc),
+            "::",
+            stringify!(next)
+        )
+    );
 }
 impl Clone for vring_desc {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C)]
 #[derive(Debug, Copy)]
@@ -269,13 +327,21 @@ pub struct vring_avail {
 }
 #[test]
 fn bindgen_test_layout_vring_avail() {
-    assert_eq!(::std::mem::size_of::<vring_avail>() , 4usize , concat ! (
-               "Size of: " , stringify ! ( vring_avail ) ));
-    assert_eq! (::std::mem::align_of::<vring_avail>() , 2usize , concat ! (
-                "Alignment of " , stringify ! ( vring_avail ) ));
+    assert_eq!(
+        ::std::mem::size_of::<vring_avail>(),
+        4usize,
+        concat!("Size of: ", stringify!(vring_avail))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<vring_avail>(),
+        2usize,
+        concat!("Alignment of ", stringify!(vring_avail))
+    );
 }
 impl Clone for vring_avail {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C)]
 #[derive(Debug, Copy)]
@@ -285,23 +351,41 @@ pub struct vring_used_elem {
 }
 #[test]
 fn bindgen_test_layout_vring_used_elem() {
-    assert_eq!(::std::mem::size_of::<vring_used_elem>() , 8usize , concat ! (
-               "Size of: " , stringify ! ( vring_used_elem ) ));
-    assert_eq! (::std::mem::align_of::<vring_used_elem>() , 4usize , concat !
-                ( "Alignment of " , stringify ! ( vring_used_elem ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const vring_used_elem ) ) . id as * const _ as
-                usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( vring_used_elem ) ,
-                "::" , stringify ! ( id ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const vring_used_elem ) ) . len as * const _ as
-                usize } , 4usize , concat ! (
-                "Alignment of field: " , stringify ! ( vring_used_elem ) ,
-                "::" , stringify ! ( len ) ));
+    assert_eq!(
+        ::std::mem::size_of::<vring_used_elem>(),
+        8usize,
+        concat!("Size of: ", stringify!(vring_used_elem))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<vring_used_elem>(),
+        4usize,
+        concat!("Alignment of ", stringify!(vring_used_elem))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const vring_used_elem)).id as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(vring_used_elem),
+            "::",
+            stringify!(id)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const vring_used_elem)).len as *const _ as usize },
+        4usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(vring_used_elem),
+            "::",
+            stringify!(len)
+        )
+    );
 }
 impl Clone for vring_used_elem {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C)]
 #[derive(Debug, Copy)]
@@ -313,13 +397,21 @@ pub struct vring_used {
 }
 #[test]
 fn bindgen_test_layout_vring_used() {
-    assert_eq!(::std::mem::size_of::<vring_used>() , 4usize , concat ! (
-               "Size of: " , stringify ! ( vring_used ) ));
-    assert_eq! (::std::mem::align_of::<vring_used>() , 4usize , concat ! (
-                "Alignment of " , stringify ! ( vring_used ) ));
+    assert_eq!(
+        ::std::mem::size_of::<vring_used>(),
+        4usize,
+        concat!("Size of: ", stringify!(vring_used))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<vring_used>(),
+        4usize,
+        concat!("Alignment of ", stringify!(vring_used))
+    );
 }
 impl Clone for vring_used {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C)]
 #[derive(Debug, Copy)]
@@ -331,31 +423,59 @@ pub struct vring {
 }
 #[test]
 fn bindgen_test_layout_vring() {
-    assert_eq!(::std::mem::size_of::<vring>() , 32usize , concat ! (
-               "Size of: " , stringify ! ( vring ) ));
-    assert_eq! (::std::mem::align_of::<vring>() , 8usize , concat ! (
-                "Alignment of " , stringify ! ( vring ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const vring ) ) . num as * const _ as usize } ,
-                0usize , concat ! (
-                "Alignment of field: " , stringify ! ( vring ) , "::" ,
-                stringify ! ( num ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const vring ) ) . desc as * const _ as usize }
-                , 8usize , concat ! (
-                "Alignment of field: " , stringify ! ( vring ) , "::" ,
-                stringify ! ( desc ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const vring ) ) . avail as * const _ as usize }
-                , 16usize , concat ! (
-                "Alignment of field: " , stringify ! ( vring ) , "::" ,
-                stringify ! ( avail ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const vring ) ) . used as * const _ as usize }
-                , 24usize , concat ! (
-                "Alignment of field: " , stringify ! ( vring ) , "::" ,
-                stringify ! ( used ) ));
+    assert_eq!(
+        ::std::mem::size_of::<vring>(),
+        32usize,
+        concat!("Size of: ", stringify!(vring))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<vring>(),
+        8usize,
+        concat!("Alignment of ", stringify!(vring))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const vring)).num as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(vring),
+            "::",
+            stringify!(num)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const vring)).desc as *const _ as usize },
+        8usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(vring),
+            "::",
+            stringify!(desc)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const vring)).avail as *const _ as usize },
+        16usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(vring),
+            "::",
+            stringify!(avail)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const vring)).used as *const _ as usize },
+        24usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(vring),
+            "::",
+            stringify!(used)
+        )
+    );
 }
 impl Clone for vring {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }

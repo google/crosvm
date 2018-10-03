@@ -9,8 +9,8 @@ use std::os::unix::io::RawFd;
 
 use pci::pci_configuration::PciConfiguration;
 use pci::PciInterruptPin;
-use sys_util::EventFd;
 use resources::SystemAllocator;
+use sys_util::EventFd;
 
 use BusDevice;
 
@@ -31,10 +31,7 @@ pub trait PciDevice: Send {
     fn assign_irq(&mut self, _irq_evt: EventFd, _irq_num: u32, _irq_pin: PciInterruptPin) {}
     /// Allocates the needed IO BAR space using the `allocate` function which takes a size and
     /// returns an address. Returns a Vec of (address, length) tuples.
-    fn allocate_io_bars(
-        &mut self,
-        _resources: &mut SystemAllocator,
-    ) -> Result<Vec<(u64, u64)>> {
+    fn allocate_io_bars(&mut self, _resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
         Ok(Vec::new())
     }
     /// Gets a list of ioeventfds that should be registered with the running VM. The list is
@@ -93,14 +90,11 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
         (**self).keep_fds()
     }
     fn assign_irq(&mut self, irq_evt: EventFd, irq_num: u32, irq_pin: PciInterruptPin) {
-     (**self).assign_irq(irq_evt, irq_num, irq_pin)
+        (**self).assign_irq(irq_evt, irq_num, irq_pin)
     }
     /// Allocates the needed IO BAR space using the `allocate` function which takes a size and
     /// returns an address. Returns a Vec of (address, length) tuples.
-    fn allocate_io_bars(
-        &mut self,
-        resources: &mut SystemAllocator,
-    ) -> Result<Vec<(u64, u64)>> {
+    fn allocate_io_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
         (**self).allocate_io_bars(resources)
     }
     /// Gets a list of ioeventfds that should be registered with the running VM. The list is

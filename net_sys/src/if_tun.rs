@@ -3,13 +3,15 @@
 #[repr(C)]
 #[derive(Default)]
 pub struct __IncompleteArrayField<T>(::std::marker::PhantomData<T>);
-impl <T> __IncompleteArrayField<T> {
+impl<T> __IncompleteArrayField<T> {
     #[inline]
     pub fn new() -> Self {
         __IncompleteArrayField(::std::marker::PhantomData)
     }
     #[inline]
-    pub unsafe fn as_ptr(&self) -> *const T { ::std::mem::transmute(self) }
+    pub unsafe fn as_ptr(&self) -> *const T {
+        ::std::mem::transmute(self)
+    }
     #[inline]
     pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
         ::std::mem::transmute(self)
@@ -23,16 +25,18 @@ impl <T> __IncompleteArrayField<T> {
         ::std::slice::from_raw_parts_mut(self.as_mut_ptr(), len)
     }
 }
-impl <T> ::std::fmt::Debug for __IncompleteArrayField<T> {
+impl<T> ::std::fmt::Debug for __IncompleteArrayField<T> {
     fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         fmt.write_str("__IncompleteArrayField")
     }
 }
-impl <T> ::std::clone::Clone for __IncompleteArrayField<T> {
+impl<T> ::std::clone::Clone for __IncompleteArrayField<T> {
     #[inline]
-    fn clone(&self) -> Self { Self::new() }
+    fn clone(&self) -> Self {
+        Self::new()
+    }
 }
-impl <T> ::std::marker::Copy for __IncompleteArrayField<T> { }
+impl<T> ::std::marker::Copy for __IncompleteArrayField<T> {}
 pub const __BITS_PER_LONG: ::std::os::raw::c_uint = 64;
 pub const __FD_SETSIZE: ::std::os::raw::c_uint = 1024;
 pub const ETH_ALEN: ::std::os::raw::c_uint = 6;
@@ -222,18 +226,31 @@ pub struct __kernel_fd_set {
 }
 #[test]
 fn bindgen_test_layout___kernel_fd_set() {
-    assert_eq!(::std::mem::size_of::<__kernel_fd_set>() , 128usize , concat !
-               ( "Size of: " , stringify ! ( __kernel_fd_set ) ));
-    assert_eq! (::std::mem::align_of::<__kernel_fd_set>() , 8usize , concat !
-                ( "Alignment of " , stringify ! ( __kernel_fd_set ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const __kernel_fd_set ) ) . fds_bits as * const
-                _ as usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( __kernel_fd_set ) ,
-                "::" , stringify ! ( fds_bits ) ));
+    assert_eq!(
+        ::std::mem::size_of::<__kernel_fd_set>(),
+        128usize,
+        concat!("Size of: ", stringify!(__kernel_fd_set))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__kernel_fd_set>(),
+        8usize,
+        concat!("Alignment of ", stringify!(__kernel_fd_set))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const __kernel_fd_set)).fds_bits as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(__kernel_fd_set),
+            "::",
+            stringify!(fds_bits)
+        )
+    );
 }
 impl Clone for __kernel_fd_set {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 pub type __kernel_sighandler_t =
     ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>;
@@ -264,18 +281,31 @@ pub struct __kernel_fsid_t {
 }
 #[test]
 fn bindgen_test_layout___kernel_fsid_t() {
-    assert_eq!(::std::mem::size_of::<__kernel_fsid_t>() , 8usize , concat ! (
-               "Size of: " , stringify ! ( __kernel_fsid_t ) ));
-    assert_eq! (::std::mem::align_of::<__kernel_fsid_t>() , 4usize , concat !
-                ( "Alignment of " , stringify ! ( __kernel_fsid_t ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const __kernel_fsid_t ) ) . val as * const _ as
-                usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( __kernel_fsid_t ) ,
-                "::" , stringify ! ( val ) ));
+    assert_eq!(
+        ::std::mem::size_of::<__kernel_fsid_t>(),
+        8usize,
+        concat!("Size of: ", stringify!(__kernel_fsid_t))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__kernel_fsid_t>(),
+        4usize,
+        concat!("Alignment of ", stringify!(__kernel_fsid_t))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const __kernel_fsid_t)).val as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(__kernel_fsid_t),
+            "::",
+            stringify!(val)
+        )
+    );
 }
 impl Clone for __kernel_fsid_t {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 pub type __kernel_off_t = __kernel_long_t;
 pub type __kernel_loff_t = ::std::os::raw::c_longlong;
@@ -303,28 +333,51 @@ pub struct ethhdr {
 }
 #[test]
 fn bindgen_test_layout_ethhdr() {
-    assert_eq!(::std::mem::size_of::<ethhdr>() , 14usize , concat ! (
-               "Size of: " , stringify ! ( ethhdr ) ));
-    assert_eq! (::std::mem::align_of::<ethhdr>() , 1usize , concat ! (
-                "Alignment of " , stringify ! ( ethhdr ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const ethhdr ) ) . h_dest as * const _ as usize
-                } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( ethhdr ) , "::" ,
-                stringify ! ( h_dest ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const ethhdr ) ) . h_source as * const _ as
-                usize } , 6usize , concat ! (
-                "Alignment of field: " , stringify ! ( ethhdr ) , "::" ,
-                stringify ! ( h_source ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const ethhdr ) ) . h_proto as * const _ as
-                usize } , 12usize , concat ! (
-                "Alignment of field: " , stringify ! ( ethhdr ) , "::" ,
-                stringify ! ( h_proto ) ));
+    assert_eq!(
+        ::std::mem::size_of::<ethhdr>(),
+        14usize,
+        concat!("Size of: ", stringify!(ethhdr))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<ethhdr>(),
+        1usize,
+        concat!("Alignment of ", stringify!(ethhdr))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const ethhdr)).h_dest as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(ethhdr),
+            "::",
+            stringify!(h_dest)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const ethhdr)).h_source as *const _ as usize },
+        6usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(ethhdr),
+            "::",
+            stringify!(h_source)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const ethhdr)).h_proto as *const _ as usize },
+        12usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(ethhdr),
+            "::",
+            stringify!(h_proto)
+        )
+    );
 }
 impl Clone for ethhdr {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy)]
@@ -336,33 +389,61 @@ pub struct sock_filter {
 }
 #[test]
 fn bindgen_test_layout_sock_filter() {
-    assert_eq!(::std::mem::size_of::<sock_filter>() , 8usize , concat ! (
-               "Size of: " , stringify ! ( sock_filter ) ));
-    assert_eq! (::std::mem::align_of::<sock_filter>() , 4usize , concat ! (
-                "Alignment of " , stringify ! ( sock_filter ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const sock_filter ) ) . code as * const _ as
-                usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( sock_filter ) , "::" ,
-                stringify ! ( code ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const sock_filter ) ) . jt as * const _ as
-                usize } , 2usize , concat ! (
-                "Alignment of field: " , stringify ! ( sock_filter ) , "::" ,
-                stringify ! ( jt ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const sock_filter ) ) . jf as * const _ as
-                usize } , 3usize , concat ! (
-                "Alignment of field: " , stringify ! ( sock_filter ) , "::" ,
-                stringify ! ( jf ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const sock_filter ) ) . k as * const _ as usize
-                } , 4usize , concat ! (
-                "Alignment of field: " , stringify ! ( sock_filter ) , "::" ,
-                stringify ! ( k ) ));
+    assert_eq!(
+        ::std::mem::size_of::<sock_filter>(),
+        8usize,
+        concat!("Size of: ", stringify!(sock_filter))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<sock_filter>(),
+        4usize,
+        concat!("Alignment of ", stringify!(sock_filter))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const sock_filter)).code as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(sock_filter),
+            "::",
+            stringify!(code)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const sock_filter)).jt as *const _ as usize },
+        2usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(sock_filter),
+            "::",
+            stringify!(jt)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const sock_filter)).jf as *const _ as usize },
+        3usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(sock_filter),
+            "::",
+            stringify!(jf)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const sock_filter)).k as *const _ as usize },
+        4usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(sock_filter),
+            "::",
+            stringify!(k)
+        )
+    );
 }
 impl Clone for sock_filter {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C)]
 #[derive(Debug, Copy)]
@@ -372,26 +453,46 @@ pub struct sock_fprog {
 }
 #[test]
 fn bindgen_test_layout_sock_fprog() {
-    assert_eq!(::std::mem::size_of::<sock_fprog>() , 16usize , concat ! (
-               "Size of: " , stringify ! ( sock_fprog ) ));
-    assert_eq! (::std::mem::align_of::<sock_fprog>() , 8usize , concat ! (
-                "Alignment of " , stringify ! ( sock_fprog ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const sock_fprog ) ) . len as * const _ as
-                usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( sock_fprog ) , "::" ,
-                stringify ! ( len ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const sock_fprog ) ) . filter as * const _ as
-                usize } , 8usize , concat ! (
-                "Alignment of field: " , stringify ! ( sock_fprog ) , "::" ,
-                stringify ! ( filter ) ));
+    assert_eq!(
+        ::std::mem::size_of::<sock_fprog>(),
+        16usize,
+        concat!("Size of: ", stringify!(sock_fprog))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<sock_fprog>(),
+        8usize,
+        concat!("Alignment of ", stringify!(sock_fprog))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const sock_fprog)).len as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(sock_fprog),
+            "::",
+            stringify!(len)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const sock_fprog)).filter as *const _ as usize },
+        8usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(sock_fprog),
+            "::",
+            stringify!(filter)
+        )
+    );
 }
 impl Clone for sock_fprog {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 impl Default for sock_fprog {
-    fn default() -> Self { unsafe { ::std::mem::zeroed() } }
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy)]
@@ -401,23 +502,41 @@ pub struct tun_pi {
 }
 #[test]
 fn bindgen_test_layout_tun_pi() {
-    assert_eq!(::std::mem::size_of::<tun_pi>() , 4usize , concat ! (
-               "Size of: " , stringify ! ( tun_pi ) ));
-    assert_eq! (::std::mem::align_of::<tun_pi>() , 2usize , concat ! (
-                "Alignment of " , stringify ! ( tun_pi ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const tun_pi ) ) . flags as * const _ as usize
-                } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( tun_pi ) , "::" ,
-                stringify ! ( flags ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const tun_pi ) ) . proto as * const _ as usize
-                } , 2usize , concat ! (
-                "Alignment of field: " , stringify ! ( tun_pi ) , "::" ,
-                stringify ! ( proto ) ));
+    assert_eq!(
+        ::std::mem::size_of::<tun_pi>(),
+        4usize,
+        concat!("Size of: ", stringify!(tun_pi))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<tun_pi>(),
+        2usize,
+        concat!("Alignment of ", stringify!(tun_pi))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const tun_pi)).flags as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(tun_pi),
+            "::",
+            stringify!(flags)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const tun_pi)).proto as *const _ as usize },
+        2usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(tun_pi),
+            "::",
+            stringify!(proto)
+        )
+    );
 }
 impl Clone for tun_pi {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy)]
@@ -428,26 +547,49 @@ pub struct tun_filter {
 }
 #[test]
 fn bindgen_test_layout_tun_filter() {
-    assert_eq!(::std::mem::size_of::<tun_filter>() , 4usize , concat ! (
-               "Size of: " , stringify ! ( tun_filter ) ));
-    assert_eq! (::std::mem::align_of::<tun_filter>() , 2usize , concat ! (
-                "Alignment of " , stringify ! ( tun_filter ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const tun_filter ) ) . flags as * const _ as
-                usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( tun_filter ) , "::" ,
-                stringify ! ( flags ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const tun_filter ) ) . count as * const _ as
-                usize } , 2usize , concat ! (
-                "Alignment of field: " , stringify ! ( tun_filter ) , "::" ,
-                stringify ! ( count ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const tun_filter ) ) . addr as * const _ as
-                usize } , 4usize , concat ! (
-                "Alignment of field: " , stringify ! ( tun_filter ) , "::" ,
-                stringify ! ( addr ) ));
+    assert_eq!(
+        ::std::mem::size_of::<tun_filter>(),
+        4usize,
+        concat!("Size of: ", stringify!(tun_filter))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<tun_filter>(),
+        2usize,
+        concat!("Alignment of ", stringify!(tun_filter))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const tun_filter)).flags as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(tun_filter),
+            "::",
+            stringify!(flags)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const tun_filter)).count as *const _ as usize },
+        2usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(tun_filter),
+            "::",
+            stringify!(count)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const tun_filter)).addr as *const _ as usize },
+        4usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(tun_filter),
+            "::",
+            stringify!(addr)
+        )
+    );
 }
 impl Clone for tun_filter {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }

@@ -4,13 +4,13 @@
 
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 
-extern crate sys_util;
-extern crate kvm_sys;
 extern crate kvm;
+extern crate kvm_sys;
+extern crate sys_util;
 
 use kvm::*;
 use kvm_sys::kvm_regs;
-use sys_util::{GuestAddress, GuestMemory, SharedMemory, MemoryMapping};
+use sys_util::{GuestAddress, GuestMemory, MemoryMapping, SharedMemory};
 
 #[test]
 fn test_run() {
@@ -25,8 +25,8 @@ fn test_run() {
     let mut mem = SharedMemory::new(None).expect("failed to create shared memory");
     mem.set_size(mem_size)
         .expect("failed to set shared memory size");
-    let mmap = MemoryMapping::from_fd(&mem, mem_size as usize)
-        .expect("failed to create memory mapping");
+    let mmap =
+        MemoryMapping::from_fd(&mem, mem_size as usize).expect("failed to create memory mapping");
 
     mmap.write_slice(&code[..], load_addr.offset() as usize)
         .expect("Writing code to memory failed.");
@@ -46,13 +46,14 @@ fn test_run() {
     vcpu_regs.rsi = 0x8000;
     vcpu_regs.rbx = 0x12;
     vcpu.set_regs(&vcpu_regs).expect("set regs failed");
-    let slot = vm.add_device_memory(GuestAddress(0),
-        MemoryMapping::from_fd(&mem, mem_size as usize)
-            .expect("failed to create memory mapping"),
-        false,
-        true)
-        .expect("failed to register memory");
-
+    let slot = vm
+        .add_device_memory(
+            GuestAddress(0),
+            MemoryMapping::from_fd(&mem, mem_size as usize)
+                .expect("failed to create memory mapping"),
+            false,
+            true,
+        ).expect("failed to register memory");
 
     loop {
         match vcpu.run().expect("run failed") {
@@ -66,6 +67,8 @@ fn test_run() {
         .expect("failed to get dirty log");
     // Tests the 9th page was written to.
     assert_eq!(dirty_log[1], 0x1);
-    assert_eq!(mmap.read_obj::<u64>(vcpu_regs.rsi as usize).unwrap(),
-               vcpu_regs.rbx);
+    assert_eq!(
+        mmap.read_obj::<u64>(vcpu_regs.rsi as usize).unwrap(),
+        vcpu_regs.rbx
+    );
 }

@@ -21,8 +21,10 @@ impl AsRef<[u8]> for CommandBufferBuilder {
         // Safe because the returned slice is a trivial reinterpretation of the same number of
         // bytes.
         unsafe {
-            from_raw_parts(self.cbuf.as_ptr() as *const u8,
-                           self.cbuf.len() * size_of::<u32>())
+            from_raw_parts(
+                self.cbuf.as_ptr() as *const u8,
+                self.cbuf.len() * size_of::<u32>(),
+            )
         }
     }
 }
@@ -32,12 +34,13 @@ impl AsMut<[u8]> for CommandBufferBuilder {
         // Safe because the returned slice is a trivial reinterpretation of the same number of
         // bytes.
         unsafe {
-            from_raw_parts_mut(self.cbuf.as_mut_ptr() as *mut u8,
-                               self.cbuf.len() * size_of::<u32>())
+            from_raw_parts_mut(
+                self.cbuf.as_mut_ptr() as *mut u8,
+                self.cbuf.len() * size_of::<u32>(),
+            )
         }
     }
 }
-
 
 impl CommandBufferBuilder {
     /// Constructs an empty command
@@ -55,7 +58,8 @@ impl CommandBufferBuilder {
     }
 
     fn push_cmd(&mut self, cmd: u32, obj_type: u32, len: u32) {
-        self.cbuf.push((cmd & 0xff) | ((obj_type & 0xff) << 8) | ((len & 0xffff) << 16));
+        self.cbuf
+            .push((cmd & 0xff) | ((obj_type & 0xff) << 8) | ((len & 0xffff) << 16));
     }
 
     /// Gets the command buffer as a pointer to the beginning.
@@ -95,16 +99,20 @@ impl CommandBufferBuilder {
     }
 
     /// Pushes a create surface command to this command buffer.
-    pub fn e_create_surface(&mut self,
-                            new_id: u32,
-                            res: &Resource,
-                            format: u32,
-                            level: u32,
-                            first_layer: u32,
-                            last_layer: u32) {
-        self.push_cmd(VIRGL_CCMD_CREATE_OBJECT,
-                      VIRGL_OBJECT_SURFACE,
-                      VIRGL_OBJ_SURFACE_SIZE);
+    pub fn e_create_surface(
+        &mut self,
+        new_id: u32,
+        res: &Resource,
+        format: u32,
+        level: u32,
+        first_layer: u32,
+        last_layer: u32,
+    ) {
+        self.push_cmd(
+            VIRGL_CCMD_CREATE_OBJECT,
+            VIRGL_OBJECT_SURFACE,
+            VIRGL_OBJ_SURFACE_SIZE,
+        );
         self.push(new_id);
         self.push(res.id());
         self.push(format);
@@ -118,9 +126,11 @@ impl CommandBufferBuilder {
         fn cmd_set_fb_state_size(surface_count: u32) -> u32 {
             2 + surface_count
         }
-        self.push_cmd(VIRGL_CCMD_SET_FRAMEBUFFER_STATE,
-                      0,
-                      cmd_set_fb_state_size(surface_handles.len() as u32));
+        self.push_cmd(
+            VIRGL_CCMD_SET_FRAMEBUFFER_STATE,
+            0,
+            cmd_set_fb_state_size(surface_handles.len() as u32),
+        );
         self.push(surface_handles.len() as u32);
         self.push(zbuf.unwrap_or(0));
         for &surface_handle in surface_handles {

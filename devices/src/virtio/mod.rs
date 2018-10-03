@@ -5,14 +5,14 @@
 //! Implements virtio devices, queues, and transport mechanisms.
 
 mod balloon;
-mod queue;
-mod mmio;
 mod block;
-mod rng;
-mod net;
 #[cfg(feature = "gpu")]
 mod gpu;
+mod mmio;
+mod net;
 mod p9;
+mod queue;
+mod rng;
 mod virtio_device;
 mod virtio_pci_common_config;
 mod virtio_pci_device;
@@ -21,14 +21,14 @@ mod wl;
 pub mod vhost;
 
 pub use self::balloon::*;
-pub use self::queue::*;
-pub use self::mmio::*;
 pub use self::block::*;
-pub use self::rng::*;
-pub use self::net::*;
 #[cfg(feature = "gpu")]
 pub use self::gpu::*;
+pub use self::mmio::*;
+pub use self::net::*;
 pub use self::p9::*;
+pub use self::queue::*;
+pub use self::rng::*;
 pub use self::virtio_device::*;
 pub use self::virtio_pci_device::*;
 pub use self::wl::*;

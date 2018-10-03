@@ -7,7 +7,7 @@
 
 #![allow(dead_code)]
 
-use std::os::raw::{c_int, c_char, c_void};
+use std::os::raw::{c_char, c_int, c_void};
 
 /// \file gbm.h
 /// \brief Generic Buffer Manager
@@ -96,23 +96,25 @@ extern "C" {
     pub fn gbm_device_is_format_supported(gbm: *mut gbm_device, format: u32, usage: u32) -> c_int;
     pub fn gbm_device_destroy(gbm: *mut gbm_device);
     pub fn gbm_create_device(fd: c_int) -> *mut gbm_device;
-    pub fn gbm_bo_create(gbm: *mut gbm_device,
-                         width: u32,
-                         height: u32,
-                         format: u32,
-                         flags: u32)
-                         -> *mut gbm_bo;
-    pub fn gbm_bo_create_with_modifiers(gbm: *mut gbm_device,
-                                        width: u32,
-                                        height: u32,
-                                        format: u32,
-                                        modifiers: *const u64,
-                                        count: u32)
-                                        -> *mut gbm_bo;
+    pub fn gbm_bo_create(
+        gbm: *mut gbm_device,
+        width: u32,
+        height: u32,
+        format: u32,
+        flags: u32,
+    ) -> *mut gbm_bo;
+    pub fn gbm_bo_create_with_modifiers(
+        gbm: *mut gbm_device,
+        width: u32,
+        height: u32,
+        format: u32,
+        modifiers: *const u64,
+        count: u32,
+    ) -> *mut gbm_bo;
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone )]
+#[derive(Debug, Copy, Clone)]
 pub struct gbm_import_fd_data {
     pub fd: c_int,
     pub width: u32,
@@ -122,7 +124,7 @@ pub struct gbm_import_fd_data {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone )]
+#[derive(Debug, Copy, Clone)]
 pub struct gbm_import_fd_planar_data {
     pub fds: [c_int; 4usize],
     pub width: u32,
@@ -134,11 +136,12 @@ pub struct gbm_import_fd_planar_data {
 }
 
 extern "C" {
-    pub fn gbm_bo_import(gbm: *mut gbm_device,
-                         type_: u32,
-                         buffer: *mut c_void,
-                         usage: u32)
-                         -> *mut gbm_bo;
+    pub fn gbm_bo_import(
+        gbm: *mut gbm_device,
+        type_: u32,
+        buffer: *mut c_void,
+        usage: u32,
+    ) -> *mut gbm_bo;
 }
 
 /// Buffer contents read back (or accessed directly) at transfer
@@ -162,16 +165,17 @@ pub const GBM_BO_TRANSFER_READ_WRITE: gbm_bo_transfer_flags = 3;
 pub type gbm_bo_transfer_flags = u32;
 
 extern "C" {
-    pub fn gbm_bo_map(bo: *mut gbm_bo,
-                      x: u32,
-                      y: u32,
-                      width: u32,
-                      height: u32,
-                      flags: u32,
-                      stride: *mut u32,
-                      map_data: *mut *mut c_void,
-                      plane: usize)
-                      -> *mut c_void;
+    pub fn gbm_bo_map(
+        bo: *mut gbm_bo,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        flags: u32,
+        stride: *mut u32,
+        map_data: *mut *mut c_void,
+        plane: usize,
+    ) -> *mut c_void;
     pub fn gbm_bo_unmap(bo: *mut gbm_bo, map_data: *mut c_void);
     pub fn gbm_bo_get_width(bo: *mut gbm_bo) -> u32;
     pub fn gbm_bo_get_height(bo: *mut gbm_bo) -> u32;
@@ -190,18 +194,20 @@ extern "C" {
     pub fn gbm_bo_get_plane_stride(bo: *mut gbm_bo, plane: usize) -> u32;
     pub fn gbm_bo_get_plane_format_modifier(bo: *mut gbm_bo, plane: usize) -> u64;
     // Did not generate cleanly by bindgen. Redone manually by zachr.
-    pub fn gbm_bo_set_user_data(bo: *mut gbm_bo,
-                                data: *mut c_void,
-                                destroy_user_data: extern "C" fn(bo: *mut gbm_bo,
-                                                                 data: *mut c_void));
+    pub fn gbm_bo_set_user_data(
+        bo: *mut gbm_bo,
+        data: *mut c_void,
+        destroy_user_data: extern "C" fn(bo: *mut gbm_bo, data: *mut c_void),
+    );
     pub fn gbm_bo_get_user_data(bo: *mut gbm_bo) -> *mut c_void;
     pub fn gbm_bo_destroy(bo: *mut gbm_bo);
-    pub fn gbm_surface_create(gbm: *mut gbm_device,
-                              width: u32,
-                              height: u32,
-                              format: u32,
-                              flags: u32)
-                              -> *mut gbm_surface;
+    pub fn gbm_surface_create(
+        gbm: *mut gbm_device,
+        width: u32,
+        height: u32,
+        format: u32,
+        flags: u32,
+    ) -> *mut gbm_surface;
     pub fn gbm_surface_lock_front_buffer(surface: *mut gbm_surface) -> *mut gbm_bo;
     pub fn gbm_surface_release_buffer(surface: *mut gbm_surface, bo: *mut gbm_bo);
     pub fn gbm_surface_has_free_buffers(surface: *mut gbm_surface) -> c_int;

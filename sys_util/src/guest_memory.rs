@@ -4,14 +4,14 @@
 
 //! Track memory regions that are mapped to the guest VM.
 
+use std::error::{self, Error as GuestMemoryError};
+use std::fmt::{self, Display};
 use std::io::{Read, Write};
 use std::result;
 use std::sync::Arc;
-use std::error::{self, Error as GuestMemoryError};
-use std::fmt::{self, Display};
 
-use data_model::DataInit;
 use data_model::volatile_memory::*;
+use data_model::DataInit;
 use guest_address::GuestAddress;
 use mmap::{self, MemoryMapping};
 
@@ -27,14 +27,10 @@ pub type Result<T> = result::Result<T, Error>;
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
-            &Error::InvalidGuestAddress(_) =>
-                "Invalid Guest Address",
-            &Error::MemoryAccess(_, _) =>
-                "Invalid Guest Memory Access",
-            &Error::MemoryMappingFailed(_) =>
-                "Failed to map guest memory",
-            &Error::MemoryRegionOverlap =>
-                "Memory regions overlap",
+            &Error::InvalidGuestAddress(_) => "Invalid Guest Address",
+            &Error::MemoryAccess(_, _) => "Invalid Guest Memory Access",
+            &Error::MemoryMappingFailed(_) => "Failed to map guest memory",
+            &Error::MemoryRegionOverlap => "Memory regions overlap",
         }
     }
 }
@@ -52,7 +48,9 @@ struct MemoryRegion {
 
 fn region_end(region: &MemoryRegion) -> GuestAddress {
     // unchecked_add is safe as the region bounds were checked when it was created.
-    region.guest_base.unchecked_add(region.mapping.size() as u64)
+    region
+        .guest_base
+        .unchecked_add(region.mapping.size() as u64)
 }
 
 /// Tracks a memory region and where it is mapped in the guest.
@@ -68,22 +66,26 @@ impl GuestMemory {
         let mut regions = Vec::<MemoryRegion>::new();
         for range in ranges.iter() {
             if let Some(last) = regions.last() {
-                if last.guest_base
-                       .checked_add(last.mapping.size() as u64)
-                       .map_or(true, |a| a > range.0) {
+                if last
+                    .guest_base
+                    .checked_add(last.mapping.size() as u64)
+                    .map_or(true, |a| a > range.0)
+                {
                     return Err(Error::MemoryRegionOverlap);
                 }
             }
 
-            let mapping = MemoryMapping::new(range.1 as usize)
-                .map_err(Error::MemoryMappingFailed)?;
+            let mapping =
+                MemoryMapping::new(range.1 as usize).map_err(Error::MemoryMappingFailed)?;
             regions.push(MemoryRegion {
-                             mapping: mapping,
-                             guest_base: range.0,
-                         });
+                mapping,
+                guest_base: range.0,
+            });
         }
 
-        Ok(GuestMemory { regions: Arc::new(regions) })
+        Ok(GuestMemory {
+            regions: Arc::new(regions),
+        })
     }
 
     /// Returns the end address of memory.
@@ -107,8 +109,7 @@ impl GuestMemory {
     }
 
     /// Returns the total size of memory in bytes.
-    pub fn memory_size(&self) -> u64
-    {
+    pub fn memory_size(&self) -> u64 {
         self.regions
             .iter()
             .map(|region| region.mapping.size() as u64)
@@ -142,26 +143,32 @@ impl GuestMemory {
 
     /// Perform the specified action on each region's addresses.
     pub fn with_regions<F, E>(&self, cb: F) -> result::Result<(), E>
-        where F: Fn(usize, GuestAddress, usize, usize) -> result::Result<(), E>
+    where
+        F: Fn(usize, GuestAddress, usize, usize) -> result::Result<(), E>,
     {
         for (index, region) in self.regions.iter().enumerate() {
-            cb(index,
-               region.guest_base,
-               region.mapping.size(),
-               region.mapping.as_ptr() as usize)?;
+            cb(
+                index,
+                region.guest_base,
+                region.mapping.size(),
+                region.mapping.as_ptr() as usize,
+            )?;
         }
         Ok(())
     }
 
     /// Perform the specified action on each region's addresses mutably.
     pub fn with_regions_mut<F, E>(&self, mut cb: F) -> result::Result<(), E>
-        where F: FnMut(usize, GuestAddress, usize, usize) -> result::Result<(), E>
+    where
+        F: FnMut(usize, GuestAddress, usize, usize) -> result::Result<(), E>,
     {
         for (index, region) in self.regions.iter().enumerate() {
-            cb(index,
-               region.guest_base,
-               region.mapping.size(),
-               region.mapping.as_ptr() as usize)?;
+            cb(
+                index,
+                region.guest_base,
+                region.mapping.size(),
+                region.mapping.as_ptr() as usize,
+            )?;
         }
         Ok(())
     }
@@ -210,10 +217,11 @@ impl GuestMemory {
     ///     Ok(())
     /// # }
     /// ```
-    pub fn read_slice_at_addr(&self,
-                              mut buf: &mut [u8],
-                              guest_addr: GuestAddress)
-                              -> Result<usize> {
+    pub fn read_slice_at_addr(
+        &self,
+        mut buf: &mut [u8],
+        guest_addr: GuestAddress,
+    ) -> Result<usize> {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
                 .read_slice(buf, offset)
@@ -298,12 +306,14 @@ impl GuestMemory {
     /// #     Ok(rand_val)
     /// # }
     /// ```
-    pub fn read_to_memory<F>(&self,
-                             guest_addr: GuestAddress,
-                             src: &mut F,
-                             count: usize)
-                             -> Result<()>
-        where F: Read
+    pub fn read_to_memory<F>(
+        &self,
+        guest_addr: GuestAddress,
+        src: &mut F,
+        count: usize,
+    ) -> Result<()>
+    where
+        F: Read,
     {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
@@ -336,12 +346,14 @@ impl GuestMemory {
     /// #     Ok(())
     /// # }
     /// ```
-    pub fn write_from_memory<F>(&self,
-                                guest_addr: GuestAddress,
-                                dst: &mut F,
-                                count: usize)
-                                -> Result<()>
-        where F: Write
+    pub fn write_from_memory<F>(
+        &self,
+        guest_addr: GuestAddress,
+        dst: &mut F,
+        count: usize,
+    ) -> Result<()>
+    where
+        F: Write,
     {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
@@ -379,11 +391,15 @@ impl GuestMemory {
     }
 
     pub fn do_in_region<F, T>(&self, guest_addr: GuestAddress, cb: F) -> Result<T>
-        where F: FnOnce(&MemoryMapping, usize) -> Result<T>
+    where
+        F: FnOnce(&MemoryMapping, usize) -> Result<T>,
     {
         for region in self.regions.iter() {
             if guest_addr >= region.guest_base && guest_addr < region_end(region) {
-                return cb(&region.mapping, guest_addr.offset_from(region.guest_base) as usize);
+                return cb(
+                    &region.mapping,
+                    guest_addr.offset_from(region.guest_base) as usize,
+                );
             }
         }
         Err(Error::InvalidGuestAddress(guest_addr))
@@ -395,8 +411,8 @@ impl VolatileMemory for GuestMemory {
         for region in self.regions.iter() {
             if offset >= region.guest_base.0 && offset < region_end(region).0 {
                 return region
-                           .mapping
-                           .get_slice(offset - region.guest_base.0, count);
+                    .mapping
+                    .get_slice(offset - region.guest_base.0, count);
             }
         }
         Err(VolatileMemoryError::OutOfBounds { addr: offset })
@@ -477,13 +493,14 @@ mod tests {
         let size_region1 = 0x1000;
         let start_region2 = GuestAddress(0x10000);
         let size_region2 = 0x2000;
-        let gm = GuestMemory::new(&vec![(start_region1, size_region1),
-                                        (start_region2, size_region2)]).unwrap();
+        let gm = GuestMemory::new(&vec![
+            (start_region1, size_region1),
+            (start_region2, size_region2),
+        ]).unwrap();
 
         let mem_size = gm.memory_size();
         assert_eq!(mem_size, size_region1 + size_region2);
     }
-
 
     // Get the base address of the mapping for a GuestAddress.
     fn get_mapping(mem: &GuestMemory, addr: GuestAddress) -> Result<*const u8> {

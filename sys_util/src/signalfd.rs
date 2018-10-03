@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::mem;
-use std::result;
 use std::fs::File;
+use std::mem;
 use std::os::raw::c_int;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::result;
 
-use libc::{read, c_void, signalfd, signalfd_siginfo};
-use libc::{EAGAIN, SFD_NONBLOCK, SFD_CLOEXEC};
+use libc::{c_void, read, signalfd, signalfd_siginfo};
+use libc::{EAGAIN, SFD_CLOEXEC, SFD_NONBLOCK};
 
 use errno;
 use signal;
@@ -63,7 +63,7 @@ impl SignalFd {
         unsafe {
             Ok(SignalFd {
                 signalfd: File::from_raw_fd(fd),
-                signal: signal,
+                signal,
             })
         }
     }
@@ -80,9 +80,11 @@ impl SignalFd {
         // was specified. signalfds will always read in increments of
         // sizeof(signalfd_siginfo); see man 2 signalfd.
         let ret = unsafe {
-            read(self.signalfd.as_raw_fd(),
-                 &mut siginfo as *mut signalfd_siginfo as *mut c_void,
-                 siginfo_size)
+            read(
+                self.signalfd.as_raw_fd(),
+                &mut siginfo as *mut signalfd_siginfo as *mut c_void,
+                siginfo_size,
+            )
         };
 
         if ret < 0 {
@@ -121,7 +123,7 @@ impl Drop for SignalFd {
 mod tests {
     use super::*;
 
-    use libc::{raise, sigset_t, sigismember, pthread_sigmask};
+    use libc::{pthread_sigmask, raise, sigismember, sigset_t};
     use signal::SIGRTMIN;
     use std::ptr::null;
 
@@ -147,7 +149,8 @@ mod tests {
         let sigid = SIGRTMIN() + 2;
 
         // Put the SignalFd in a block where it will be dropped at the end.
-        #[allow(unused_variables)] {
+        #[allow(unused_variables)]
+        {
             let sigrt_fd = SignalFd::new(sigid).unwrap();
             unsafe {
                 let mut sigset: sigset_t = mem::zeroed();

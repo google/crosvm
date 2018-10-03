@@ -22,18 +22,20 @@ mod bus;
 mod cmos;
 mod i8042;
 mod pci;
+pub mod pl030;
 mod proxy;
 mod serial;
-pub mod pl030;
 pub mod virtio;
 
-pub use self::bus::{Bus, BusDevice, BusRange};
 pub use self::bus::Error as BusError;
+pub use self::bus::{Bus, BusDevice, BusRange};
 pub use self::cmos::Cmos;
-pub use self::pl030::Pl030;
 pub use self::i8042::I8042Device;
-pub use self::pci::{PciConfigIo, PciConfigMmio, PciDevice, PciDeviceError, PciInterruptPin, PciRoot};
-pub use self::proxy::ProxyDevice;
+pub use self::pci::{
+    PciConfigIo, PciConfigMmio, PciDevice, PciDeviceError, PciInterruptPin, PciRoot,
+};
+pub use self::pl030::Pl030;
 pub use self::proxy::Error as ProxyError;
+pub use self::proxy::ProxyDevice;
 pub use self::serial::Serial;
 pub use self::virtio::VirtioPciDevice;

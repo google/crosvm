@@ -8,9 +8,9 @@ extern crate data_model;
 extern crate libc;
 extern crate sys_util;
 
+mod command_buffer;
 mod generated;
 mod pipe_format_fourcc;
-mod command_buffer;
 
 use std::cell::RefCell;
 use std::ffi::CStr;
@@ -19,7 +19,7 @@ use std::fs::File;
 use std::marker::PhantomData;
 use std::mem::{size_of, transmute, uninitialized};
 use std::ops::Deref;
-use std::os::raw::{c_void, c_int, c_uint, c_char};
+use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::ptr::{null, null_mut};
 use std::rc::Rc;
@@ -29,20 +29,21 @@ use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
 use data_model::{VolatileMemory, VolatileSlice};
 use sys_util::{GuestAddress, GuestMemory};
 
-use generated::virglrenderer::*;
-pub use generated::virglrenderer::{virgl_renderer_resource_create_args,
-                                   virgl_renderer_resource_info};
-use generated::epoxy_egl::{EGL_CONTEXT_CLIENT_VERSION, EGL_SURFACE_TYPE, EGL_OPENGL_ES_API,
-                           EGL_NONE, EGL_GL_TEXTURE_2D_KHR, EGL_WIDTH, EGL_HEIGHT,
-                           EGL_LINUX_DRM_FOURCC_EXT, EGL_DMA_BUF_PLANE0_FD_EXT,
-                           EGL_DMA_BUF_PLANE0_OFFSET_EXT, EGL_DMA_BUF_PLANE0_PITCH_EXT,
-                           EGL_LINUX_DMA_BUF_EXT, EGLDEBUGPROCKHR, EGLAttrib,
-                           EGLuint64KHR, EGLNativeDisplayType, EGLConfig, EGLContext, EGLDisplay,
-                           EGLSurface, EGLClientBuffer, EGLBoolean, EGLint, EGLenum, EGLImageKHR};
-use generated::p_defines::{PIPE_TEXTURE_1D, PIPE_TEXTURE_2D, PIPE_BIND_SAMPLER_VIEW};
-use generated::p_format::PIPE_FORMAT_B8G8R8X8_UNORM;
-pub use pipe_format_fourcc::pipe_format_fourcc as format_fourcc;
 pub use command_buffer::CommandBufferBuilder;
+use generated::epoxy_egl::{
+    EGLAttrib, EGLBoolean, EGLClientBuffer, EGLConfig, EGLContext, EGLDisplay, EGLImageKHR,
+    EGLNativeDisplayType, EGLSurface, EGLenum, EGLint, EGLuint64KHR, EGLDEBUGPROCKHR,
+    EGL_CONTEXT_CLIENT_VERSION, EGL_DMA_BUF_PLANE0_FD_EXT, EGL_DMA_BUF_PLANE0_OFFSET_EXT,
+    EGL_DMA_BUF_PLANE0_PITCH_EXT, EGL_GL_TEXTURE_2D_KHR, EGL_HEIGHT, EGL_LINUX_DMA_BUF_EXT,
+    EGL_LINUX_DRM_FOURCC_EXT, EGL_NONE, EGL_OPENGL_ES_API, EGL_SURFACE_TYPE, EGL_WIDTH,
+};
+use generated::p_defines::{PIPE_BIND_SAMPLER_VIEW, PIPE_TEXTURE_1D, PIPE_TEXTURE_2D};
+use generated::p_format::PIPE_FORMAT_B8G8R8X8_UNORM;
+use generated::virglrenderer::*;
+pub use generated::virglrenderer::{
+    virgl_renderer_resource_create_args, virgl_renderer_resource_info,
+};
+pub use pipe_format_fourcc::pipe_format_fourcc as format_fourcc;
 
 /// Arguments used in `Renderer::create_resource`..
 pub type ResourceCreateArgs = virgl_renderer_resource_create_args;
@@ -163,8 +164,7 @@ struct VirglCookie {
     fence_state: Rc<RefCell<FenceState>>,
 }
 
-extern "C" fn write_fence(cookie: *mut c_void,
-                          fence: u32) {
+extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
     assert!(!cookie.is_null());
     let cookie = unsafe { &*(cookie as *mut VirglCookie) };
 
@@ -173,10 +173,11 @@ extern "C" fn write_fence(cookie: *mut c_void,
     fence_state.write(fence);
 }
 
-unsafe extern "C" fn create_gl_context(cookie: *mut c_void,
-                                       scanout_idx: c_int,
-                                       param: *mut virgl_renderer_gl_ctx_param)
-                                       -> virgl_renderer_gl_context {
+unsafe extern "C" fn create_gl_context(
+    cookie: *mut c_void,
+    scanout_idx: c_int,
+    param: *mut virgl_renderer_gl_ctx_param,
+) -> virgl_renderer_gl_context {
     let _ = scanout_idx;
     let cookie = &*(cookie as *mut VirglCookie);
 
@@ -186,16 +187,19 @@ unsafe extern "C" fn create_gl_context(cookie: *mut c_void,
         null_mut()
     };
     let context_attribs = [EGL_CONTEXT_CLIENT_VERSION as i32, 3, EGL_NONE as i32];
-    (cookie.egl_funcs.CreateContext)(cookie.display,
-                                     cookie.egl_config,
-                                     shared,
-                                     context_attribs.as_ptr())
+    (cookie.egl_funcs.CreateContext)(
+        cookie.display,
+        cookie.egl_config,
+        shared,
+        context_attribs.as_ptr(),
+    )
 }
 
-unsafe extern "C" fn make_current(cookie: *mut c_void,
-                                  scanout_idx: c_int,
-                                  ctx: virgl_renderer_gl_context)
-                                  -> c_int {
+unsafe extern "C" fn make_current(
+    cookie: *mut c_void,
+    scanout_idx: c_int,
+    ctx: virgl_renderer_gl_context,
+) -> c_int {
     let _ = scanout_idx;
     let cookie = &*(cookie as *mut VirglCookie);
 
@@ -207,22 +211,23 @@ unsafe extern "C" fn destroy_gl_context(cookie: *mut c_void, ctx: virgl_renderer
     (cookie.egl_funcs.DestroyContext)(cookie.display, ctx);
 }
 
-const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks =
-    &virgl_renderer_callbacks {
-         version: 1,
-         write_fence: Some(write_fence),
-         create_gl_context: Some(create_gl_context),
-         destroy_gl_context: Some(destroy_gl_context),
-         make_current: Some(make_current),
-         get_drm_fd: None,
-     };
+const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks = &virgl_renderer_callbacks {
+    version: 1,
+    write_fence: Some(write_fence),
+    create_gl_context: Some(create_gl_context),
+    destroy_gl_context: Some(destroy_gl_context),
+    make_current: Some(make_current),
+    get_drm_fd: None,
+};
 
-unsafe extern "C" fn error_callback(error: c_uint,
-                                    command: *const c_char,
-                                    _: c_int,
-                                    _: *mut c_void,
-                                    _: *mut c_void,
-                                    message: *const c_char) {
+unsafe extern "C" fn error_callback(
+    error: c_uint,
+    command: *const c_char,
+    _: c_int,
+    _: *mut c_void,
+    _: *mut c_void,
+    message: *const c_char,
+) {
     eprint!("EGL ERROR {}: {:?}", error, CStr::from_ptr(command));
     if !message.is_null() {
         eprint!(": {:?}", CStr::from_ptr(message));
@@ -233,49 +238,52 @@ unsafe extern "C" fn error_callback(error: c_uint,
 #[allow(non_snake_case)]
 struct EGLFunctionsInner {
     BindAPI: unsafe extern "C" fn(api: EGLenum) -> EGLBoolean,
-    ChooseConfig: unsafe extern "C" fn(dpy: EGLDisplay,
-                                       attrib_list: *const EGLint,
-                                       configs: *mut EGLConfig,
-                                       config_size: EGLint,
-                                       num_config: *mut EGLint)
-                                       -> EGLBoolean,
-    CreateContext: unsafe extern "C" fn(dpy: EGLDisplay,
-                                        config: EGLConfig,
-                                        share_context: EGLContext,
-                                        attrib_list: *const EGLint)
-                                        -> EGLContext,
-    CreateImageKHR: unsafe extern "C" fn(dpy: EGLDisplay,
-                                         ctx: EGLContext,
-                                         target: EGLenum,
-                                         buffer: EGLClientBuffer,
-                                         attrib_list: *const EGLint)
-                                         -> EGLImageKHR,
+    ChooseConfig: unsafe extern "C" fn(
+        dpy: EGLDisplay,
+        attrib_list: *const EGLint,
+        configs: *mut EGLConfig,
+        config_size: EGLint,
+        num_config: *mut EGLint,
+    ) -> EGLBoolean,
+    CreateContext: unsafe extern "C" fn(
+        dpy: EGLDisplay,
+        config: EGLConfig,
+        share_context: EGLContext,
+        attrib_list: *const EGLint,
+    ) -> EGLContext,
+    CreateImageKHR: unsafe extern "C" fn(
+        dpy: EGLDisplay,
+        ctx: EGLContext,
+        target: EGLenum,
+        buffer: EGLClientBuffer,
+        attrib_list: *const EGLint,
+    ) -> EGLImageKHR,
     DebugMessageControlKHR:
         unsafe extern "C" fn(callback: EGLDEBUGPROCKHR, attrib_list: *const EGLAttrib) -> EGLint,
     DestroyContext: unsafe extern "C" fn(dpy: EGLDisplay, ctx: EGLContext) -> EGLBoolean,
     DestroyImageKHR: unsafe extern "C" fn(dpy: EGLDisplay, image: EGLImageKHR) -> EGLBoolean,
-    ExportDRMImageMESA: unsafe extern "C" fn(dpy: EGLDisplay,
-                                             image: EGLImageKHR,
-                                             fds: *mut ::std::os::raw::c_int,
-                                             strides: *mut EGLint,
-                                             offsets: *mut EGLint)
-                                             -> EGLBoolean,
-    ExportDMABUFImageQueryMESA: unsafe extern "C" fn(dpy: EGLDisplay,
-                                                     image: EGLImageKHR,
-                                                     fourcc: *mut ::std::os::raw::c_int,
-                                                     num_planes: *mut ::std::os::raw::c_int,
-                                                     modifiers: *mut EGLuint64KHR)
-                                                     -> EGLBoolean,
+    ExportDRMImageMESA: unsafe extern "C" fn(
+        dpy: EGLDisplay,
+        image: EGLImageKHR,
+        fds: *mut ::std::os::raw::c_int,
+        strides: *mut EGLint,
+        offsets: *mut EGLint,
+    ) -> EGLBoolean,
+    ExportDMABUFImageQueryMESA: unsafe extern "C" fn(
+        dpy: EGLDisplay,
+        image: EGLImageKHR,
+        fourcc: *mut ::std::os::raw::c_int,
+        num_planes: *mut ::std::os::raw::c_int,
+        modifiers: *mut EGLuint64KHR,
+    ) -> EGLBoolean,
     GetCurrentContext: unsafe extern "C" fn() -> EGLContext,
     GetCurrentDisplay: unsafe extern "C" fn() -> EGLDisplay,
     GetDisplay: unsafe extern "C" fn(display_id: EGLNativeDisplayType) -> EGLDisplay,
     Initialize:
         unsafe extern "C" fn(dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> EGLBoolean,
-    MakeCurrent: unsafe extern "C" fn(dpy: EGLDisplay,
-                                      draw: EGLSurface,
-                                      read: EGLSurface,
-                                      ctx: EGLContext)
-                                      -> EGLBoolean,
+    MakeCurrent:
+        unsafe extern "C" fn(dpy: EGLDisplay, draw: EGLSurface, read: EGLSurface, ctx: EGLContext)
+            -> EGLBoolean,
     no_sync_send: PhantomData<*mut ()>,
 }
 
@@ -284,32 +292,45 @@ struct EGLFunctions(Rc<EGLFunctionsInner>);
 
 impl EGLFunctions {
     fn new() -> Result<EGLFunctions> {
-        use generated::epoxy_egl::{epoxy_eglBindAPI, epoxy_eglChooseConfig,
-                                   epoxy_eglCreateContext, epoxy_eglCreateImageKHR,
-                                   epoxy_eglDebugMessageControlKHR, epoxy_eglDestroyContext,
-                                   epoxy_eglDestroyImageKHR, epoxy_eglExportDRMImageMESA,
-                                   epoxy_eglExportDMABUFImageQueryMESA,
-                                   epoxy_eglGetCurrentContext, epoxy_eglGetCurrentDisplay,
-                                   epoxy_eglGetDisplay, epoxy_eglInitialize, epoxy_eglMakeCurrent};
+        use generated::epoxy_egl::{
+            epoxy_eglBindAPI, epoxy_eglChooseConfig, epoxy_eglCreateContext,
+            epoxy_eglCreateImageKHR, epoxy_eglDebugMessageControlKHR, epoxy_eglDestroyContext,
+            epoxy_eglDestroyImageKHR, epoxy_eglExportDMABUFImageQueryMESA,
+            epoxy_eglExportDRMImageMESA, epoxy_eglGetCurrentContext, epoxy_eglGetCurrentDisplay,
+            epoxy_eglGetDisplay, epoxy_eglInitialize, epoxy_eglMakeCurrent,
+        };
         // This is unsafe because it is reading mutable static variables exported by epoxy. These
         // variables are initialized during the binary's init and never modified again, so it should
         // be safe to read them now.
         unsafe {
             Ok(EGLFunctions(Rc::new(EGLFunctionsInner {
                 BindAPI: epoxy_eglBindAPI.ok_or(Error::MissingEGLFunction("eglBindAPI"))?,
-                ChooseConfig: epoxy_eglChooseConfig.ok_or(Error::MissingEGLFunction("eglChooseConfig"))?,
-                CreateContext: epoxy_eglCreateContext.ok_or(Error::MissingEGLFunction("eglCreateContext"))?,
-                CreateImageKHR: epoxy_eglCreateImageKHR.ok_or(Error::MissingEGLFunction("eglCreateImageKHR"))?,
-                DebugMessageControlKHR: epoxy_eglDebugMessageControlKHR.ok_or(Error::MissingEGLFunction("eglDebugMessageControlKHR"))?,
-                DestroyContext: epoxy_eglDestroyContext.ok_or(Error::MissingEGLFunction("eglDestroyContext"))?,
-                DestroyImageKHR: epoxy_eglDestroyImageKHR.ok_or(Error::MissingEGLFunction("eglDestroyImageKHR"))?,
-                ExportDRMImageMESA: epoxy_eglExportDRMImageMESA.ok_or(Error::MissingEGLFunction("eglExportDRMImageMESA"))?,
-                ExportDMABUFImageQueryMESA: epoxy_eglExportDMABUFImageQueryMESA.ok_or(Error::MissingEGLFunction("eglExportDMABUFImageQueryMESA"))?,
-                GetCurrentContext: epoxy_eglGetCurrentContext.ok_or(Error::MissingEGLFunction("eglGetCurrentContext"))?,
-                GetCurrentDisplay: epoxy_eglGetCurrentDisplay.ok_or(Error::MissingEGLFunction("eglGetCurrentDisplay"))?,
-                GetDisplay: epoxy_eglGetDisplay.ok_or(Error::MissingEGLFunction("eglGetDisplay"))?,
-                Initialize: epoxy_eglInitialize.ok_or(Error::MissingEGLFunction("eglInitialize"))?,
-                MakeCurrent: epoxy_eglMakeCurrent.ok_or(Error::MissingEGLFunction("eglMakeCurrent"))?,
+                ChooseConfig: epoxy_eglChooseConfig
+                    .ok_or(Error::MissingEGLFunction("eglChooseConfig"))?,
+                CreateContext: epoxy_eglCreateContext
+                    .ok_or(Error::MissingEGLFunction("eglCreateContext"))?,
+                CreateImageKHR: epoxy_eglCreateImageKHR
+                    .ok_or(Error::MissingEGLFunction("eglCreateImageKHR"))?,
+                DebugMessageControlKHR: epoxy_eglDebugMessageControlKHR
+                    .ok_or(Error::MissingEGLFunction("eglDebugMessageControlKHR"))?,
+                DestroyContext: epoxy_eglDestroyContext
+                    .ok_or(Error::MissingEGLFunction("eglDestroyContext"))?,
+                DestroyImageKHR: epoxy_eglDestroyImageKHR
+                    .ok_or(Error::MissingEGLFunction("eglDestroyImageKHR"))?,
+                ExportDRMImageMESA: epoxy_eglExportDRMImageMESA
+                    .ok_or(Error::MissingEGLFunction("eglExportDRMImageMESA"))?,
+                ExportDMABUFImageQueryMESA: epoxy_eglExportDMABUFImageQueryMESA
+                    .ok_or(Error::MissingEGLFunction("eglExportDMABUFImageQueryMESA"))?,
+                GetCurrentContext: epoxy_eglGetCurrentContext
+                    .ok_or(Error::MissingEGLFunction("eglGetCurrentContext"))?,
+                GetCurrentDisplay: epoxy_eglGetCurrentDisplay
+                    .ok_or(Error::MissingEGLFunction("eglGetCurrentDisplay"))?,
+                GetDisplay: epoxy_eglGetDisplay
+                    .ok_or(Error::MissingEGLFunction("eglGetDisplay"))?,
+                Initialize: epoxy_eglInitialize
+                    .ok_or(Error::MissingEGLFunction("eglInitialize"))?,
+                MakeCurrent: epoxy_eglMakeCurrent
+                    .ok_or(Error::MissingEGLFunction("eglMakeCurrent"))?,
                 no_sync_send: PhantomData,
             })))
         }
@@ -371,11 +392,13 @@ impl Renderer {
         // Safe because only a valid, initialized display is used, along with validly sized
         // pointers to stack variables.
         let ret = unsafe {
-            (egl_funcs.ChooseConfig)(display,
-                                     config_attribs.as_ptr(),
-                                     &mut egl_config,
-                                     1,
-                                     &mut num_configs /* unused but can't be null */)
+            (egl_funcs.ChooseConfig)(
+                display,
+                config_attribs.as_ptr(),
+                &mut egl_config,
+                1,
+                &mut num_configs, /* unused but can't be null */
+            )
         };
         if ret == 0 {
             return Err(Error::EGLChooseConfig);
@@ -389,11 +412,11 @@ impl Renderer {
         let fence_state = Rc::new(RefCell::new(FenceState { latest_fence: 0 }));
 
         let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
-                                                                  display,
-                                                                  egl_config,
-                                                                  egl_funcs: egl_funcs.clone(),
-                                                                  fence_state: Rc::clone(&fence_state),
-                                                              }));
+            display,
+            egl_config,
+            egl_funcs: egl_funcs.clone(),
+            fence_state: Rc::clone(&fence_state),
+        }));
 
         // Safe because EGL was properly initialized before here..
         let ret = unsafe { (egl_funcs.BindAPI)(EGL_OPENGL_ES_API) };
@@ -420,18 +443,20 @@ impl Renderer {
         // Safe because a valid cookie and set of callbacks is used and the result is checked for
         // error.
         let ret = unsafe {
-            virgl_renderer_init(cookie as *mut c_void,
-                                0,
-                                transmute(VIRGL_RENDERER_CALLBACKS))
+            virgl_renderer_init(
+                cookie as *mut c_void,
+                0,
+                transmute(VIRGL_RENDERER_CALLBACKS),
+            )
         };
         ret_to_res(ret)?;
 
         Ok(Renderer {
-               no_sync_send: PhantomData,
-               egl_funcs,
-               display,
-               fence_state
-           })
+            no_sync_send: PhantomData,
+            egl_funcs,
+            display,
+            fence_state,
+        })
     }
 
     /// Gets the version and size for the given capability set ID.
@@ -464,112 +489,122 @@ impl Renderer {
         // Safe because virglrenderer is initialized by now and the context name is statically
         // allocated. The return value is checked before returning a new context.
         let ret = unsafe {
-            virgl_renderer_context_create(id,
-                                          CONTEXT_NAME.len() as u32,
-                                          CONTEXT_NAME.as_ptr() as *const c_char)
+            virgl_renderer_context_create(
+                id,
+                CONTEXT_NAME.len() as u32,
+                CONTEXT_NAME.as_ptr() as *const c_char,
+            )
         };
         ret_to_res(ret)?;
         Ok(Context {
-               id,
-               no_sync_send: PhantomData,
-           })
+            id,
+            no_sync_send: PhantomData,
+        })
     }
 
     /// Creates a resource with the given arguments.
-    pub fn create_resource(&self,
-                           mut args: virgl_renderer_resource_create_args)
-                           -> Result<Resource> {
+    pub fn create_resource(
+        &self,
+        mut args: virgl_renderer_resource_create_args,
+    ) -> Result<Resource> {
         // Safe because virglrenderer is initialized by now, and the return value is checked before
         // returning a new resource. The backing buffers are not supplied with this call.
         let ret = unsafe { virgl_renderer_resource_create(&mut args, null_mut(), 0) };
         ret_to_res(ret)?;
         Ok(Resource {
-               id: args.handle,
-               backing_iovecs: Vec::new(),
-               backing_mem: None,
-               egl_funcs: self.egl_funcs.clone(),
-               no_sync_send: PhantomData,
-           })
+            id: args.handle,
+            backing_iovecs: Vec::new(),
+            backing_mem: None,
+            egl_funcs: self.egl_funcs.clone(),
+            no_sync_send: PhantomData,
+        })
     }
 
     /// Imports a resource from an EGLImage.
-    pub fn import_resource(&self,
-                           mut args: virgl_renderer_resource_create_args,
-                           image: &Image)
-                           -> Result<Resource> {
+    pub fn import_resource(
+        &self,
+        mut args: virgl_renderer_resource_create_args,
+        image: &Image,
+    ) -> Result<Resource> {
         let ret = unsafe { virgl_renderer_resource_import_eglimage(&mut args, image.image) };
         ret_to_res(ret)?;
         Ok(Resource {
-               id: args.handle,
-               backing_iovecs: Vec::new(),
-               backing_mem: None,
-               egl_funcs: self.egl_funcs.clone(),
-               no_sync_send: PhantomData,
-           })
+            id: args.handle,
+            backing_iovecs: Vec::new(),
+            backing_mem: None,
+            egl_funcs: self.egl_funcs.clone(),
+            no_sync_send: PhantomData,
+        })
     }
 
     /// Helper that creates a simple 1 dimensional resource with basic metadata.
     pub fn create_tex_1d(&self, id: u32, width: u32) -> Result<Resource> {
         self.create_resource(virgl_renderer_resource_create_args {
-                                 handle: id,
-                                 target: PIPE_TEXTURE_1D,
-                                 format: PIPE_FORMAT_B8G8R8X8_UNORM,
-                                 width,
-                                 height: 1,
-                                 depth: 1,
-                                 array_size: 1,
-                                 last_level: 0,
-                                 nr_samples: 0,
-                                 bind: PIPE_BIND_SAMPLER_VIEW,
-                                 flags: 0,
-                             })
+            handle: id,
+            target: PIPE_TEXTURE_1D,
+            format: PIPE_FORMAT_B8G8R8X8_UNORM,
+            width,
+            height: 1,
+            depth: 1,
+            array_size: 1,
+            last_level: 0,
+            nr_samples: 0,
+            bind: PIPE_BIND_SAMPLER_VIEW,
+            flags: 0,
+        })
     }
 
     /// Helper that creates a simple 2 dimensional resource with basic metadata.
     pub fn create_tex_2d(&self, id: u32, width: u32, height: u32) -> Result<Resource> {
         self.create_resource(virgl_renderer_resource_create_args {
-                                 handle: id,
-                                 target: PIPE_TEXTURE_2D,
-                                 format: PIPE_FORMAT_B8G8R8X8_UNORM,
-                                 width,
-                                 height,
-                                 depth: 1,
-                                 array_size: 1,
-                                 last_level: 0,
-                                 nr_samples: 0,
-                                 bind: PIPE_BIND_SAMPLER_VIEW,
-                                 flags: 0,
-                             })
+            handle: id,
+            target: PIPE_TEXTURE_2D,
+            format: PIPE_FORMAT_B8G8R8X8_UNORM,
+            width,
+            height,
+            depth: 1,
+            array_size: 1,
+            last_level: 0,
+            nr_samples: 0,
+            bind: PIPE_BIND_SAMPLER_VIEW,
+            flags: 0,
+        })
     }
 
     /// Creates an EGLImage from a DMA buffer.
-    pub fn image_from_dmabuf(&self,
-                             fourcc: u32,
-                             width: u32,
-                             height: u32,
-                             fd: RawFd,
-                             offset: u32,
-                             stride: u32) -> Result<Image> {
-        let mut attrs = [EGL_WIDTH as EGLint,
-                         width as EGLint,
-                         EGL_HEIGHT as EGLint,
-                         height as EGLint,
-                         EGL_LINUX_DRM_FOURCC_EXT as EGLint,
-                         fourcc as EGLint,
-                         EGL_DMA_BUF_PLANE0_FD_EXT as EGLint,
-                         fd as EGLint,
-                         EGL_DMA_BUF_PLANE0_OFFSET_EXT as EGLint,
-                         offset as EGLint,
-                         EGL_DMA_BUF_PLANE0_PITCH_EXT as EGLint,
-                         stride as EGLint,
-                         EGL_NONE as EGLint];
+    pub fn image_from_dmabuf(
+        &self,
+        fourcc: u32,
+        width: u32,
+        height: u32,
+        fd: RawFd,
+        offset: u32,
+        stride: u32,
+    ) -> Result<Image> {
+        let mut attrs = [
+            EGL_WIDTH as EGLint,
+            width as EGLint,
+            EGL_HEIGHT as EGLint,
+            height as EGLint,
+            EGL_LINUX_DRM_FOURCC_EXT as EGLint,
+            fourcc as EGLint,
+            EGL_DMA_BUF_PLANE0_FD_EXT as EGLint,
+            fd as EGLint,
+            EGL_DMA_BUF_PLANE0_OFFSET_EXT as EGLint,
+            offset as EGLint,
+            EGL_DMA_BUF_PLANE0_PITCH_EXT as EGLint,
+            stride as EGLint,
+            EGL_NONE as EGLint,
+        ];
 
         let image = unsafe {
-            (self.egl_funcs.CreateImageKHR)(self.display,
-                                            0 as EGLContext,
-                                            EGL_LINUX_DMA_BUF_EXT,
-                                            null_mut() as EGLClientBuffer,
-                                            attrs.as_mut_ptr())
+            (self.egl_funcs.CreateImageKHR)(
+                self.display,
+                0 as EGLContext,
+                EGL_LINUX_DMA_BUF_EXT,
+                null_mut() as EGLClientBuffer,
+                attrs.as_mut_ptr(),
+            )
         };
 
         if image.is_null() {
@@ -579,7 +614,7 @@ impl Renderer {
         Ok(Image {
             egl_funcs: self.egl_funcs.clone(),
             egl_dpy: self.display,
-            image
+            image,
         })
     }
 
@@ -589,9 +624,7 @@ impl Renderer {
     }
 
     pub fn create_fence(&mut self, fence_id: u32, ctx_id: u32) -> Result<()> {
-        let ret = unsafe {
-            virgl_renderer_create_fence(fence_id as i32, ctx_id)
-        };
+        let ret = unsafe { virgl_renderer_create_fence(fence_id as i32, ctx_id) };
         ret_to_res(ret)
     }
 
@@ -734,11 +767,13 @@ impl Resource {
         // Safe because a valid display, context, and texture ID are given. The attribute list is
         // not needed. The result is checked to ensure the returned image is valid.
         let image = unsafe {
-            (self.egl_funcs.CreateImageKHR)(egl_dpy,
-                                            egl_ctx,
-                                            EGL_GL_TEXTURE_2D_KHR,
-                                            res_info.tex_id as EGLClientBuffer,
-                                            null())
+            (self.egl_funcs.CreateImageKHR)(
+                egl_dpy,
+                egl_ctx,
+                EGL_GL_TEXTURE_2D_KHR,
+                res_info.tex_id as EGLClientBuffer,
+                null(),
+            )
         };
 
         if image.is_null() {
@@ -748,16 +783,20 @@ impl Resource {
         // Safe because the display and image are valid and each function call is checked for
         // success. The returned image parameters are stored in stack variables of the correct type.
         let export_success = unsafe {
-            (self.egl_funcs.ExportDMABUFImageQueryMESA)(egl_dpy,
-                                                        image,
-                                                        &mut fourcc,
-                                                        null_mut(),
-                                                        &mut modifiers) != 0 &&
-            (self.egl_funcs.ExportDRMImageMESA)(egl_dpy,
-                                                image,
-                                                &mut fd,
-                                                &mut stride,
-                                                &mut offset) != 0
+            (self.egl_funcs.ExportDMABUFImageQueryMESA)(
+                egl_dpy,
+                image,
+                &mut fourcc,
+                null_mut(),
+                &mut modifiers,
+            ) != 0
+                && (self.egl_funcs.ExportDRMImageMESA)(
+                    egl_dpy,
+                    image,
+                    &mut fd,
+                    &mut stride,
+                    &mut offset,
+                ) != 0
         };
 
         // Safe because we checked that the image was valid and nobody else owns it. The image does
@@ -774,24 +813,26 @@ impl Resource {
         // owned by us.
         let dmabuf = unsafe { File::from_raw_fd(fd) };
         Ok(ExportedResource {
-               dmabuf,
-               width: res_info.width,
-               height: res_info.height,
-               fourcc: fourcc as u32,
-               modifiers: modifiers,
-               stride: stride as u32,
-               offset: offset as u32,
-           })
+            dmabuf,
+            width: res_info.width,
+            height: res_info.height,
+            fourcc: fourcc as u32,
+            modifiers,
+            stride: stride as u32,
+            offset: offset as u32,
+        })
     }
 
     /// Attaches a scatter-gather mapping of guest memory to this resource which used for transfers.
-    pub fn attach_backing(&mut self,
-                          iovecs: &[(GuestAddress, usize)],
-                          mem: &GuestMemory)
-                          -> Result<()> {
+    pub fn attach_backing(
+        &mut self,
+        iovecs: &[(GuestAddress, usize)],
+        mem: &GuestMemory,
+    ) -> Result<()> {
         if iovecs
-               .iter()
-               .any(|&(addr, len)| mem.get_slice(addr.offset(), len as u64).is_err()) {
+            .iter()
+            .any(|&(addr, len)| mem.get_slice(addr.offset(), len as u64).is_err())
+        {
             return Err(Error::InvalidIovec);
         }
         self.detach_backing();
@@ -799,17 +840,18 @@ impl Resource {
         for &(addr, len) in iovecs.iter() {
             // Unwrap will not panic because we already checked the slices.
             let slice = mem.get_slice(addr.offset(), len as u64).unwrap();
-            self.backing_iovecs
-                .push(VirglVec {
-                          base: slice.as_ptr() as *mut c_void,
-                          len,
-                      });
+            self.backing_iovecs.push(VirglVec {
+                base: slice.as_ptr() as *mut c_void,
+                len,
+            });
         }
         // Safe because the backing is into guest memory that we store a reference count for.
         let ret = unsafe {
-            virgl_renderer_resource_attach_iov(self.id as i32,
-                                               self.backing_iovecs.as_mut_ptr() as *mut iovec,
-                                               self.backing_iovecs.len() as i32)
+            virgl_renderer_resource_attach_iov(
+                self.id as i32,
+                self.backing_iovecs.as_mut_ptr() as *mut iovec,
+                self.backing_iovecs.len() as i32,
+            )
         };
         let res = ret_to_res(ret);
         if res.is_err() {
@@ -833,63 +875,70 @@ impl Resource {
     }
 
     /// Performs a transfer to the given resource from its backing in guest memory.
-    pub fn transfer_write(&self,
-                          ctx: Option<&Context>,
-                          level: u32,
-                          stride: u32,
-                          layer_stride: u32,
-                          mut transfer_box: Box3,
-                          offset: u64)
-                          -> Result<()> {
+    pub fn transfer_write(
+        &self,
+        ctx: Option<&Context>,
+        level: u32,
+        stride: u32,
+        layer_stride: u32,
+        mut transfer_box: Box3,
+        offset: u64,
+    ) -> Result<()> {
         // Safe because only stack variables of the appropriate type are used.
         let ret = unsafe {
-            virgl_renderer_transfer_write_iov(self.id,
-                                              ctx.map(Context::id).unwrap_or(0),
-                                              level as i32,
-                                              stride,
-                                              layer_stride,
-                                              &mut transfer_box as *mut Box3 as *mut virgl_box,
-                                              offset,
-                                              null_mut(),
-                                              0)
+            virgl_renderer_transfer_write_iov(
+                self.id,
+                ctx.map(Context::id).unwrap_or(0),
+                level as i32,
+                stride,
+                layer_stride,
+                &mut transfer_box as *mut Box3 as *mut virgl_box,
+                offset,
+                null_mut(),
+                0,
+            )
         };
         ret_to_res(ret)
     }
 
     /// Performs a transfer from the given resource to its backing in guest memory.
-    pub fn transfer_read(&self,
-                         ctx: Option<&Context>,
-                         level: u32,
-                         stride: u32,
-                         layer_stride: u32,
-                         mut transfer_box: Box3,
-                         offset: u64)
-                         -> Result<()> {
+    pub fn transfer_read(
+        &self,
+        ctx: Option<&Context>,
+        level: u32,
+        stride: u32,
+        layer_stride: u32,
+        mut transfer_box: Box3,
+        offset: u64,
+    ) -> Result<()> {
         // Safe because only stack variables of the appropriate type are used.
         let ret = unsafe {
-            virgl_renderer_transfer_read_iov(self.id,
-                                             ctx.map(Context::id).unwrap_or(0),
-                                             level,
-                                             stride,
-                                             layer_stride,
-                                             &mut transfer_box as *mut Box3 as *mut virgl_box,
-                                             offset,
-                                             null_mut(),
-                                             0)
+            virgl_renderer_transfer_read_iov(
+                self.id,
+                ctx.map(Context::id).unwrap_or(0),
+                level,
+                stride,
+                layer_stride,
+                &mut transfer_box as *mut Box3 as *mut virgl_box,
+                offset,
+                null_mut(),
+                0,
+            )
         };
         ret_to_res(ret)
     }
 
     /// Performs a transfer from the given resource to the provided `buf`
-    pub fn transfer_read_buf(&self,
-                             ctx: Option<&Context>,
-                             level: u32,
-                             stride: u32,
-                             layer_stride: u32,
-                             mut transfer_box: Box3,
-                             offset: u64,
-                             buf: &mut [u8])
-                             -> Result<()> {
+    pub fn transfer_read_buf(
+        &self,
+        ctx: Option<&Context>,
+        level: u32,
+        stride: u32,
+        layer_stride: u32,
+        mut transfer_box: Box3,
+        offset: u64,
+        buf: &mut [u8],
+    ) -> Result<()> {
         let mut iov = VirglVec {
             base: buf.as_mut_ptr() as *mut c_void,
             len: buf.len(),
@@ -897,29 +946,32 @@ impl Resource {
         // Safe because only stack variables of the appropriate type are used, along with a properly
         // sized buffer.
         let ret = unsafe {
-            virgl_renderer_transfer_read_iov(self.id,
-                                             ctx.map(Context::id).unwrap_or(0),
-                                             level,
-                                             stride,
-                                             layer_stride,
-                                             &mut transfer_box as *mut Box3 as *mut virgl_box,
-                                             offset,
-                                             &mut iov as *mut VirglVec as *mut iovec,
-                                             1)
+            virgl_renderer_transfer_read_iov(
+                self.id,
+                ctx.map(Context::id).unwrap_or(0),
+                level,
+                stride,
+                layer_stride,
+                &mut transfer_box as *mut Box3 as *mut virgl_box,
+                offset,
+                &mut iov as *mut VirglVec as *mut iovec,
+                1,
+            )
         };
         ret_to_res(ret)
     }
 
     /// Reads from this resource to a volatile slice of memory.
-    pub fn read_to_volatile(&self,
-                            ctx: Option<&Context>,
-                            level: u32,
-                            stride: u32,
-                            layer_stride: u32,
-                            mut transfer_box: Box3,
-                            offset: u64,
-                            buf: VolatileSlice)
-                            -> Result<()> {
+    pub fn read_to_volatile(
+        &self,
+        ctx: Option<&Context>,
+        level: u32,
+        stride: u32,
+        layer_stride: u32,
+        mut transfer_box: Box3,
+        offset: u64,
+        buf: VolatileSlice,
+    ) -> Result<()> {
         let mut iov = VirglVec {
             base: buf.as_ptr() as *mut c_void,
             len: buf.size() as usize,
@@ -927,15 +979,17 @@ impl Resource {
         // Safe because only stack variables of the appropriate type are used, along with a properly
         // sized buffer.
         let ret = unsafe {
-            virgl_renderer_transfer_read_iov(self.id,
-                                             ctx.map(Context::id).unwrap_or(0),
-                                             level,
-                                             stride,
-                                             layer_stride,
-                                             &mut transfer_box as *mut Box3 as *mut virgl_box,
-                                             offset,
-                                             &mut iov as *mut VirglVec as *mut iovec,
-                                             1)
+            virgl_renderer_transfer_read_iov(
+                self.id,
+                ctx.map(Context::id).unwrap_or(0),
+                level,
+                stride,
+                layer_stride,
+                &mut transfer_box as *mut Box3 as *mut virgl_box,
+                offset,
+                &mut iov as *mut VirglVec as *mut iovec,
+                1,
+            )
         };
         ret_to_res(ret)
     }
@@ -961,9 +1015,7 @@ mod tests {
     // Make sure a simple buffer clear works by using a command stream.
     fn simple_clear() {
         let render = Renderer::init().expect("failed to initialize virglrenderer");
-        let mut ctx = render
-            .create_context(1)
-            .expect("failed to create context");
+        let mut ctx = render.create_context(1).expect("failed to create context");
 
         // Create a 50x50 texture with id=2.
         let resource = render
@@ -983,14 +1035,15 @@ mod tests {
         // Read the result of the rendering into a buffer.
         let mut pix_buf = [0; 50 * 50 * 4];
         resource
-            .transfer_read_buf(Some(&ctx),
-                               0,
-                               50,
-                               0,
-                               Box3::new_2d(0, 5, 0, 1),
-                               0,
-                               &mut pix_buf[..])
-            .expect("failed to read back resource data");
+            .transfer_read_buf(
+                Some(&ctx),
+                0,
+                50,
+                0,
+                Box3::new_2d(0, 5, 0, 1),
+                0,
+                &mut pix_buf[..],
+            ).expect("failed to read back resource data");
 
         // Check that the pixels are the color we cleared to. The red and blue channels are switched
         // because the surface was created with the BGR format, but the colors are RGB order in the

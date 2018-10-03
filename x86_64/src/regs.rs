@@ -2,17 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{mem, result};
 use std::error::{self, Error as RegsError};
 use std::fmt::{self, Display};
+use std::{mem, result};
 
+use gdt;
 use kvm;
 use kvm_sys::kvm_fpu;
 use kvm_sys::kvm_msr_entry;
 use kvm_sys::kvm_msrs;
 use kvm_sys::kvm_regs;
 use kvm_sys::kvm_sregs;
-use gdt;
 use sys_util;
 use sys_util::{GuestAddress, GuestMemory};
 
@@ -44,27 +44,16 @@ pub type Result<T> = result::Result<T, Error>;
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
-            &Error::MsrIoctlFailed(_) =>
-                "Setting up msrs failed",
-            &Error::FpuIoctlFailed(_) =>
-                "Failed to configure the FPU",
-            &Error::GetSRegsIoctlFailed(_) =>
-                "Failed to get sregs for this cpu",
-            &Error::SettingRegistersIoctl(_) =>
-                "Failed to set base registers for this cpu",
-            &Error::SetSRegsIoctlFailed(_) =>
-                "Failed to set sregs for this cpu",
-            &Error::WriteGDTFailure =>
-                "Writing the GDT to RAM failed",
-            &Error::WriteIDTFailure =>
-                "Writing the IDT to RAM failed",
-            &Error::WritePML4Address =>
-                "Writing PML4 to RAM failed",
-            &Error::WritePDPTEAddress =>
-                "Writing PDPTE to RAM failed",
-            &Error::WritePDEAddress =>
-                "Writing PDE to RAM failed",
-
+            &Error::MsrIoctlFailed(_) => "Setting up msrs failed",
+            &Error::FpuIoctlFailed(_) => "Failed to configure the FPU",
+            &Error::GetSRegsIoctlFailed(_) => "Failed to get sregs for this cpu",
+            &Error::SettingRegistersIoctl(_) => "Failed to set base registers for this cpu",
+            &Error::SetSRegsIoctlFailed(_) => "Failed to set sregs for this cpu",
+            &Error::WriteGDTFailure => "Writing the GDT to RAM failed",
+            &Error::WriteIDTFailure => "Writing the IDT to RAM failed",
+            &Error::WritePML4Address => "Writing PML4 to RAM failed",
+            &Error::WritePDPTEAddress => "Writing PDPTE to RAM failed",
+            &Error::WritePDEAddress => "Writing PDE to RAM failed",
         }
     }
 }
@@ -79,57 +68,57 @@ fn create_msr_entries() -> Vec<kvm_msr_entry> {
     let mut entries = Vec::<kvm_msr_entry>::new();
 
     entries.push(kvm_msr_entry {
-                     index: ::msr_index::MSR_IA32_SYSENTER_CS,
-                     data: 0x0,
-                     ..Default::default()
-                 });
+        index: ::msr_index::MSR_IA32_SYSENTER_CS,
+        data: 0x0,
+        ..Default::default()
+    });
     entries.push(kvm_msr_entry {
-                     index: ::msr_index::MSR_IA32_SYSENTER_ESP,
-                     data: 0x0,
-                     ..Default::default()
-                 });
+        index: ::msr_index::MSR_IA32_SYSENTER_ESP,
+        data: 0x0,
+        ..Default::default()
+    });
     entries.push(kvm_msr_entry {
-                     index: ::msr_index::MSR_IA32_SYSENTER_EIP,
-                     data: 0x0,
-                     ..Default::default()
-                 });
+        index: ::msr_index::MSR_IA32_SYSENTER_EIP,
+        data: 0x0,
+        ..Default::default()
+    });
     // x86_64 specific msrs, we only run on x86_64 not x86
     entries.push(kvm_msr_entry {
-                     index: ::msr_index::MSR_STAR,
-                     data: 0x0,
-                     ..Default::default()
-                 });
+        index: ::msr_index::MSR_STAR,
+        data: 0x0,
+        ..Default::default()
+    });
     entries.push(kvm_msr_entry {
-                     index: ::msr_index::MSR_CSTAR,
-                     data: 0x0,
-                     ..Default::default()
-                 });
+        index: ::msr_index::MSR_CSTAR,
+        data: 0x0,
+        ..Default::default()
+    });
     entries.push(kvm_msr_entry {
-                     index: ::msr_index::MSR_KERNEL_GS_BASE,
-                     data: 0x0,
-                     ..Default::default()
-                 });
+        index: ::msr_index::MSR_KERNEL_GS_BASE,
+        data: 0x0,
+        ..Default::default()
+    });
     entries.push(kvm_msr_entry {
-                     index: ::msr_index::MSR_SYSCALL_MASK,
-                     data: 0x0,
-                     ..Default::default()
-                 });
+        index: ::msr_index::MSR_SYSCALL_MASK,
+        data: 0x0,
+        ..Default::default()
+    });
     entries.push(kvm_msr_entry {
-                     index: ::msr_index::MSR_LSTAR,
-                     data: 0x0,
-                     ..Default::default()
-                 });
+        index: ::msr_index::MSR_LSTAR,
+        data: 0x0,
+        ..Default::default()
+    });
     // end of x86_64 specific code
     entries.push(kvm_msr_entry {
-                     index: ::msr_index::MSR_IA32_TSC,
-                     data: 0x0,
-                     ..Default::default()
-                 });
+        index: ::msr_index::MSR_IA32_TSC,
+        data: 0x0,
+        ..Default::default()
+    });
     entries.push(kvm_msr_entry {
-                     index: ::msr_index::MSR_IA32_MISC_ENABLE,
-                     data: ::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
-                     ..Default::default()
-                 });
+        index: ::msr_index::MSR_IA32_MISC_ENABLE,
+        data: ::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
+        ..Default::default()
+    });
 
     entries
 }
@@ -141,8 +130,8 @@ fn create_msr_entries() -> Vec<kvm_msr_entry> {
 /// * `vcpu` - Structure for the vcpu that holds the vcpu fd.
 pub fn setup_msrs(vcpu: &kvm::Vcpu) -> Result<()> {
     let entry_vec = create_msr_entries();
-    let vec_size_bytes = mem::size_of::<kvm_msrs>() +
-                         (entry_vec.len() * mem::size_of::<kvm_msr_entry>());
+    let vec_size_bytes =
+        mem::size_of::<kvm_msrs>() + (entry_vec.len() * mem::size_of::<kvm_msr_entry>());
     let vec: Vec<u8> = Vec::with_capacity(vec_size_bytes);
     let msrs: &mut kvm_msrs = unsafe {
         // Converting the vector's memory to a struct is unsafe.  Carefully using the read-only
@@ -198,8 +187,7 @@ pub fn setup_regs(vcpu: &kvm::Vcpu, boot_ip: u64, boot_sp: u64, boot_si: u64) ->
         ..Default::default()
     };
 
-    vcpu.set_regs(&regs)
-        .map_err(Error::SettingRegistersIoctl)?;
+    vcpu.set_regs(&regs).map_err(Error::SettingRegistersIoctl)?;
 
     Ok(())
 }
@@ -219,9 +207,11 @@ const BOOT_GDT_MAX: usize = 4;
 fn write_gdt_table(table: &[u64], guest_mem: &GuestMemory) -> Result<()> {
     let boot_gdt_addr = GuestAddress(BOOT_GDT_OFFSET);
     for (index, entry) in table.iter().enumerate() {
-        let addr = guest_mem.checked_offset(boot_gdt_addr, (index * mem::size_of::<u64>()) as u64)
+        let addr = guest_mem
+            .checked_offset(boot_gdt_addr, (index * mem::size_of::<u64>()) as u64)
             .ok_or(Error::WriteGDTFailure)?;
-        guest_mem.write_obj_at_addr(*entry, addr)
+        guest_mem
+            .write_obj_at_addr(*entry, addr)
             .map_err(|_| Error::WriteGDTFailure)?;
     }
     Ok(())
@@ -236,7 +226,7 @@ fn write_idt_value(val: u64, guest_mem: &GuestMemory) -> Result<()> {
 
 fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut kvm_sregs) -> Result<()> {
     let gdt_table: [u64; BOOT_GDT_MAX as usize] = [
-        gdt::gdt_entry(0, 0, 0), // NULL
+        gdt::gdt_entry(0, 0, 0),            // NULL
         gdt::gdt_entry(0xa09b, 0, 0xfffff), // CODE
         gdt::gdt_entry(0xc093, 0, 0xfffff), // DATA
         gdt::gdt_entry(0x808b, 0, 0xfffff), // TSS

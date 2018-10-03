@@ -6,13 +6,13 @@ extern crate arch;
 extern crate byteorder;
 extern crate data_model;
 extern crate devices;
+extern crate kernel_cmdline;
+extern crate kernel_loader;
 extern crate kvm;
 extern crate kvm_sys;
 extern crate libc;
-extern crate sys_util;
 extern crate resources;
-extern crate kernel_cmdline;
-extern crate kernel_loader;
+extern crate sys_util;
 
 #[allow(dead_code)]
 #[allow(non_upper_case_globals)]
@@ -58,22 +58,22 @@ mod interrupts;
 mod mptable;
 mod regs;
 
-use std::mem;
-use std::result;
 use std::error::{self, Error as X86Error};
+use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::ffi::{CStr, CString};
 use std::io::{self, stdout};
+use std::mem;
+use std::result;
 use std::sync::{Arc, Mutex};
 
 use arch::{RunnableLinuxVm, VirtioDeviceStub, VmComponents};
 use bootparam::boot_params;
 use bootparam::E820_RAM;
 use devices::{PciConfigIo, PciInterruptPin};
-use sys_util::{EventFd, GuestAddress, GuestMemory};
-use resources::{AddressRanges, SystemAllocator};
 use kvm::*;
+use resources::{AddressRanges, SystemAllocator};
+use sys_util::{EventFd, GuestAddress, GuestMemory};
 
 #[derive(Debug)]
 pub enum Error {
@@ -120,16 +120,13 @@ impl error::Error for Error {
             &Error::CreatePciRoot(_) => "failed to create a PCI root hub",
             &Error::CreateSocket(_) => "failed to create socket",
             &Error::CreateVcpu(_) => "failed to create VCPU",
-            &Error::KernelOffsetPastEnd =>
-                "The kernel extends past the end of RAM",
+            &Error::KernelOffsetPastEnd => "The kernel extends past the end of RAM",
             &Error::RegisterIrqfd(_) => "Error registering an IrqFd",
             &Error::RegisterVsock(_) => "error registering virtual socket device",
             &Error::LoadCmdline(_) => "Error Loading command line",
             &Error::LoadKernel(_) => "Error Loading Kernel",
-            &Error::ZeroPageSetup =>
-                "Error writing the zero page of guest memory",
-            &Error::ZeroPagePastRamEnd =>
-                "The zero page extends past the end of guest_mem",
+            &Error::ZeroPageSetup => "Error writing the zero page of guest memory",
+            &Error::ZeroPagePastRamEnd => "The zero page extends past the end of guest_mem",
             &Error::E820Configuration => "Invalid e820 setup params",
         }
     }
@@ -155,13 +152,14 @@ const CMDLINE_OFFSET: u64 = 0x20000;
 const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
 const X86_64_IRQ_BASE: u32 = 5;
 
-fn configure_system(guest_mem: &GuestMemory,
-                    kernel_addr: GuestAddress,
-                    cmdline_addr: GuestAddress,
-                    cmdline_size: usize,
-                    num_cpus: u8,
-                    pci_irqs: Vec<(u32, PciInterruptPin)>)
-                    -> Result<()> {
+fn configure_system(
+    guest_mem: &GuestMemory,
+    kernel_addr: GuestAddress,
+    cmdline_addr: GuestAddress,
+    cmdline_size: usize,
+    num_cpus: u8,
+    pci_irqs: Vec<(u32, PciInterruptPin)>,
+) -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
     const KERNEL_HDR_MAGIC: u32 = 0x53726448;
@@ -186,27 +184,35 @@ fn configure_system(guest_mem: &GuestMemory,
 
     let mem_end = guest_mem.end_addr();
     if mem_end < end_32bit_gap_start {
-        add_e820_entry(&mut params,
-                       kernel_addr.offset() as u64,
-                       mem_end.offset_from(kernel_addr) as u64,
-                       E820_RAM)?;
+        add_e820_entry(
+            &mut params,
+            kernel_addr.offset() as u64,
+            mem_end.offset_from(kernel_addr) as u64,
+            E820_RAM,
+        )?;
     } else {
-        add_e820_entry(&mut params,
-                       kernel_addr.offset() as u64,
-                       end_32bit_gap_start.offset_from(kernel_addr) as u64,
-                       E820_RAM)?;
+        add_e820_entry(
+            &mut params,
+            kernel_addr.offset() as u64,
+            end_32bit_gap_start.offset_from(kernel_addr) as u64,
+            E820_RAM,
+        )?;
         if mem_end > first_addr_past_32bits {
-            add_e820_entry(&mut params,
-                           first_addr_past_32bits.offset() as u64,
-                           mem_end.offset_from(first_addr_past_32bits) as u64,
-                           E820_RAM)?;
+            add_e820_entry(
+                &mut params,
+                first_addr_past_32bits.offset() as u64,
+                mem_end.offset_from(first_addr_past_32bits) as u64,
+                E820_RAM,
+            )?;
         }
     }
 
     let zero_page_addr = GuestAddress(ZERO_PAGE_OFFSET);
-    guest_mem.checked_offset(zero_page_addr, mem::size_of::<boot_params>() as u64)
+    guest_mem
+        .checked_offset(zero_page_addr, mem::size_of::<boot_params>() as u64)
         .ok_or(Error::ZeroPagePastRamEnd)?;
-    guest_mem.write_obj_at_addr(params, zero_page_addr)
+    guest_mem
+        .write_obj_at_addr(params, zero_page_addr)
         .map_err(|_| Error::ZeroPageSetup)?;
 
     Ok(())
@@ -242,7 +248,10 @@ fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
     } else {
         regions.push((GuestAddress(0), end_32bit_gap_start.offset()));
         if mem_end > first_addr_past_32bits {
-            regions.push((first_addr_past_32bits, mem_end.offset_from(first_addr_past_32bits)));
+            regions.push((
+                first_addr_past_32bits,
+                mem_end.offset_from(first_addr_past_32bits),
+            ));
         }
     }
 
@@ -251,11 +260,11 @@ fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
 
 impl arch::LinuxArch for X8664arch {
     fn build_vm<F>(mut components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
-        where
-            F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<VirtioDeviceStub>>
+    where
+        F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<VirtioDeviceStub>>,
     {
-        let mut resources = Self::get_resource_allocator(components.memory_mb,
-                                                         components.wayland_dmabuf);
+        let mut resources =
+            Self::get_resource_allocator(components.memory_mb, components.wayland_dmabuf);
         let mem = Self::setup_memory(components.memory_mb)?;
         let kvm = Kvm::new().map_err(Error::CreateKvm)?;
         let mut vm = Self::create_vm(&kvm, mem.clone())?;
@@ -263,10 +272,15 @@ impl arch::LinuxArch for X8664arch {
         let vcpu_count = components.vcpu_count;
         let mut vcpus = Vec::with_capacity(vcpu_count as usize);
         for cpu_id in 0..vcpu_count {
-            let vcpu = Vcpu::new(cpu_id as libc::c_ulong, &kvm, &vm)
-                .map_err(Error::CreateVcpu)?;
-            Self::configure_vcpu(vm.get_memory(), &kvm, &vm, &vcpu,
-                                 cpu_id as u64, vcpu_count as u64)?;
+            let vcpu = Vcpu::new(cpu_id as libc::c_ulong, &kvm, &vm).map_err(Error::CreateVcpu)?;
+            Self::configure_vcpu(
+                vm.get_memory(),
+                &kvm,
+                &vm,
+                &vcpu,
+                cpu_id as u64,
+                vcpu_count as u64,
+            )?;
             vcpus.push(vcpu);
         }
 
@@ -275,27 +289,33 @@ impl arch::LinuxArch for X8664arch {
 
         let mut mmio_bus = devices::Bus::new();
 
-        let (pci, pci_irqs) = arch::generate_pci_root(components.pci_devices,
-                                                      &mut mmio_bus,
-                                                      &mut resources,
-                                                      &mut vm)
-            .map_err(Error::CreatePciRoot)?;
+        let (pci, pci_irqs) = arch::generate_pci_root(
+            components.pci_devices,
+            &mut mmio_bus,
+            &mut resources,
+            &mut vm,
+        ).map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
         let (io_bus, stdio_serial) = Self::setup_io_bus(
             &mut vm,
             exit_evt.try_clone().map_err(Error::CloneEventFd)?,
-            Some(pci_bus.clone()))?;
-
+            Some(pci_bus.clone()),
+        )?;
 
         // Create a list of mmio devices to be added.
         let mmio_devs = virtio_devs(&mem, &exit_evt)?;
 
         for stub in mmio_devs {
-            arch::register_mmio(&mut mmio_bus, &mut vm, stub.dev, stub.jail,
-                                &mut resources, &mut cmdline)
-                .map_err(Error::RegisterVsock)?;
+            arch::register_mmio(
+                &mut mmio_bus,
+                &mut vm,
+                stub.dev,
+                stub.jail,
+                &mut resources,
+                &mut cmdline,
+            ).map_err(Error::RegisterVsock)?;
         }
 
         for param in components.extra_kernel_params {
@@ -305,8 +325,13 @@ impl arch::LinuxArch for X8664arch {
         // separate out load_kernel from other setup to get a specific error for
         // kernel loading
         Self::load_kernel(&mem, &mut components.kernel_image)?;
-        Self::setup_system_memory(&mem, components.memory_mb, vcpu_count,
-                                  &CString::new(cmdline).unwrap(), pci_irqs)?;
+        Self::setup_system_memory(
+            &mem,
+            components.memory_mb,
+            vcpu_count,
+            &CString::new(cmdline).unwrap(),
+            pci_irqs,
+        )?;
 
         Ok(RunnableLinuxVm {
             vm,
@@ -330,8 +355,7 @@ impl X8664arch {
     /// * `mem` - The memory to be used by the guest.
     /// * `kernel_image` - the File object for the specified kernel.
     fn load_kernel(mem: &GuestMemory, mut kernel_image: &mut File) -> Result<()> {
-        kernel_loader::load_kernel(mem, GuestAddress(KERNEL_START_OFFSET),
-                                   &mut kernel_image)?;
+        kernel_loader::load_kernel(mem, GuestAddress(KERNEL_START_OFFSET), &mut kernel_image)?;
         Ok(())
     }
 
@@ -343,13 +367,22 @@ impl X8664arch {
     /// * `mem` - The memory to be used by the guest.
     /// * `vcpu_count` - Number of virtual CPUs the guest will have.
     /// * `cmdline` - the kernel commandline
-    fn setup_system_memory(mem: &GuestMemory, _mem_size: u64,
-                           vcpu_count: u32, cmdline: &CStr,
-                           pci_irqs: Vec<(u32, PciInterruptPin)>) -> Result<()> {
+    fn setup_system_memory(
+        mem: &GuestMemory,
+        _mem_size: u64,
+        vcpu_count: u32,
+        cmdline: &CStr,
+        pci_irqs: Vec<(u32, PciInterruptPin)>,
+    ) -> Result<()> {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)?;
-        configure_system(mem, GuestAddress(KERNEL_START_OFFSET),
-                         GuestAddress(CMDLINE_OFFSET),
-                         cmdline.to_bytes().len() + 1, vcpu_count as u8, pci_irqs)?;
+        configure_system(
+            mem,
+            GuestAddress(KERNEL_START_OFFSET),
+            GuestAddress(CMDLINE_OFFSET),
+            cmdline.to_bytes().len() + 1,
+            vcpu_count as u8,
+            pci_irqs,
+        )?;
         Ok(())
     }
 
@@ -400,15 +433,16 @@ impl X8664arch {
         // Put device memory at a 2MB boundary after physical memory or 4gb, whichever is greater.
         const MB: u64 = 1024 * 1024;
         const GB: u64 = 1024 * MB;
-        let mem_size_round_2mb = (mem_size + 2*MB - 1) / (2*MB) * (2*MB);
+        let mem_size_round_2mb = (mem_size + 2 * MB - 1) / (2 * MB) * (2 * MB);
         std::cmp::max(mem_size_round_2mb, 4 * GB) / sys_util::pagesize() as u64
     }
 
     /// This returns a minimal kernel command for this architecture
     fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
-        cmdline.insert_str("console=ttyS0 noacpi reboot=k panic=1").
-            unwrap();
+        cmdline
+            .insert_str("console=ttyS0 noacpi reboot=k panic=1")
+            .unwrap();
         cmdline
     }
 
@@ -417,10 +451,11 @@ impl X8664arch {
         const MMIO_BASE: u64 = 0xe0000000;
         let device_addr_start = Self::get_base_dev_pfn(mem_size) * sys_util::pagesize() as u64;
         AddressRanges::new()
-           .add_io_addresses(0xc000, 0x10000)
-           .add_mmio_addresses(MMIO_BASE, 0x100000)
-           .add_device_addresses(device_addr_start, u64::max_value() - device_addr_start)
-           .create_allocator(X86_64_IRQ_BASE, gpu_allocation).unwrap()
+            .add_io_addresses(0xc000, 0x10000)
+            .add_mmio_addresses(MMIO_BASE, 0x100000)
+            .add_device_addresses(device_addr_start, u64::max_value() - device_addr_start)
+            .create_allocator(X86_64_IRQ_BASE, gpu_allocation)
+            .unwrap()
     }
 
     /// Sets up the IO bus for this platform
@@ -429,8 +464,11 @@ impl X8664arch {
     ///
     /// * - `vm` the vm object
     /// * - `exit_evt` - the event fd object which should receive exit events
-    fn setup_io_bus(vm: &mut Vm, exit_evt: EventFd, pci: Option<Arc<Mutex<devices::PciConfigIo>>>)
-                    -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)> {
+    fn setup_io_bus(
+        vm: &mut Vm,
+        exit_evt: EventFd,
+        pci: Option<Arc<Mutex<devices::PciConfigIo>>>,
+    ) -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)> {
         struct NoDevice;
         impl devices::BusDevice for NoDevice {}
 
@@ -438,56 +476,84 @@ impl X8664arch {
 
         let com_evt_1_3 = EventFd::new().map_err(|e| Error::CreateEventFd(e))?;
         let com_evt_2_4 = EventFd::new().map_err(|e| Error::CreateEventFd(e))?;
-        let stdio_serial =
-            Arc::new(Mutex::new(
-                devices::Serial::new_out(com_evt_1_3.try_clone().
-                                         map_err(|e| Error::CloneEventFd(e))?,
-                                         Box::new(stdout()))));
+        let stdio_serial = Arc::new(Mutex::new(devices::Serial::new_out(
+            com_evt_1_3
+                .try_clone()
+                .map_err(|e| Error::CloneEventFd(e))?,
+            Box::new(stdout()),
+        )));
         let nul_device = Arc::new(Mutex::new(NoDevice));
-        io_bus.insert(stdio_serial.clone(), 0x3f8, 0x8, false).unwrap();
-        io_bus.insert(Arc::new(Mutex::new(
-            devices::Serial::new_sink(com_evt_2_4.try_clone().
-                                      map_err(|e| Error::CloneEventFd(e))?))),
-                      0x2f8,
-                      0x8,
-                      false)
+        io_bus
+            .insert(stdio_serial.clone(), 0x3f8, 0x8, false)
             .unwrap();
-        io_bus.insert(Arc::new(Mutex::new(
-            devices::Serial::new_sink(com_evt_1_3.try_clone().
-                                      map_err(|e| Error::CloneEventFd(e))?))),
-                      0x3e8,
-                      0x8,
-                      false)
+        io_bus
+            .insert(
+                Arc::new(Mutex::new(devices::Serial::new_sink(
+                    com_evt_2_4
+                        .try_clone()
+                        .map_err(|e| Error::CloneEventFd(e))?,
+                ))),
+                0x2f8,
+                0x8,
+                false,
+            ).unwrap();
+        io_bus
+            .insert(
+                Arc::new(Mutex::new(devices::Serial::new_sink(
+                    com_evt_1_3
+                        .try_clone()
+                        .map_err(|e| Error::CloneEventFd(e))?,
+                ))),
+                0x3e8,
+                0x8,
+                false,
+            ).unwrap();
+        io_bus
+            .insert(
+                Arc::new(Mutex::new(devices::Serial::new_sink(
+                    com_evt_2_4
+                        .try_clone()
+                        .map_err(|e| Error::CloneEventFd(e))?,
+                ))),
+                0x2e8,
+                0x8,
+                false,
+            ).unwrap();
+        io_bus
+            .insert(Arc::new(Mutex::new(devices::Cmos::new())), 0x70, 0x2, false)
             .unwrap();
-        io_bus.insert(Arc::new(Mutex::new(
-            devices::Serial::new_sink(com_evt_2_4.try_clone().
-                                      map_err(|e| Error::CloneEventFd(e))?))),
-                      0x2e8,
-                      0x8,
-                      false)
-            .unwrap();
-        io_bus.insert(Arc::new(Mutex::new(devices::Cmos::new())), 0x70, 0x2, false)
-            .unwrap();
-        io_bus.insert(Arc::new(Mutex::new(
-            devices::I8042Device::new(exit_evt.try_clone().
-                                      map_err(|e| Error::CloneEventFd(e))?))),
-                      0x061,
-                      0x4,
-                      false)
-            .unwrap();
-        io_bus.insert(nul_device.clone(), 0x040, 0x8, false).unwrap(); // ignore pit
-        io_bus.insert(nul_device.clone(), 0x0ed, 0x1, false).unwrap(); // most likely this one does nothing
-        io_bus.insert(nul_device.clone(), 0x0f0, 0x2, false).unwrap(); // ignore fpu
+        io_bus
+            .insert(
+                Arc::new(Mutex::new(devices::I8042Device::new(
+                    exit_evt.try_clone().map_err(|e| Error::CloneEventFd(e))?,
+                ))),
+                0x061,
+                0x4,
+                false,
+            ).unwrap();
+        io_bus
+            .insert(nul_device.clone(), 0x040, 0x8, false)
+            .unwrap(); // ignore pit
+        io_bus
+            .insert(nul_device.clone(), 0x0ed, 0x1, false)
+            .unwrap(); // most likely this one does nothing
+        io_bus
+            .insert(nul_device.clone(), 0x0f0, 0x2, false)
+            .unwrap(); // ignore fpu
 
         if let Some(pci_root) = pci {
             io_bus.insert(pci_root, 0xcf8, 0x8, false).unwrap();
         } else {
             // ignore pci.
-            io_bus.insert(nul_device.clone(), 0xcf8, 0x8, false).unwrap();
+            io_bus
+                .insert(nul_device.clone(), 0xcf8, 0x8, false)
+                .unwrap();
         }
 
-        vm.register_irqfd(&com_evt_1_3, 4).map_err(Error::RegisterIrqfd)?;
-        vm.register_irqfd(&com_evt_2_4, 3).map_err(Error::RegisterIrqfd)?;
+        vm.register_irqfd(&com_evt_1_3, 4)
+            .map_err(Error::RegisterIrqfd)?;
+        vm.register_irqfd(&com_evt_2_4, 3)
+            .map_err(Error::RegisterIrqfd)?;
 
         Ok((io_bus, stdio_serial))
     }
@@ -504,28 +570,31 @@ impl X8664arch {
     /// * `vcpu` - The VCPU object to configure.
     /// * `cpu_id` - The id of the given `vcpu`.
     /// * `num_cpus` - Number of virtual CPUs the guest will have.
-    fn configure_vcpu(guest_mem: &GuestMemory,
-                      kvm: &Kvm,
-                      _vm: &Vm,
-                      vcpu: &Vcpu,
-                      cpu_id: u64,
-                      num_cpus: u64)
-                      -> Result<()> {
+    fn configure_vcpu(
+        guest_mem: &GuestMemory,
+        kvm: &Kvm,
+        _vm: &Vm,
+        vcpu: &Vcpu,
+        cpu_id: u64,
+        num_cpus: u64,
+    ) -> Result<()> {
         let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
         cpuid::setup_cpuid(kvm, vcpu, cpu_id, num_cpus)?;
         regs::setup_msrs(vcpu)?;
-        let kernel_end = guest_mem.checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
+        let kernel_end = guest_mem
+            .checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
             .ok_or(Error::KernelOffsetPastEnd)?;
-        regs::setup_regs(vcpu,
-                         (kernel_end).offset() as u64,
-                         BOOT_STACK_POINTER as u64,
-                         ZERO_PAGE_OFFSET as u64)?;
+        regs::setup_regs(
+            vcpu,
+            (kernel_end).offset() as u64,
+            BOOT_STACK_POINTER as u64,
+            ZERO_PAGE_OFFSET as u64,
+        )?;
         regs::setup_fpu(vcpu)?;
         regs::setup_sregs(guest_mem, vcpu)?;
         interrupts::set_lint(vcpu)?;
         Ok(())
     }
-
 }
 #[cfg(test)]
 mod tests {

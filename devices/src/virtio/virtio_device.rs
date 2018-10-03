@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::os::unix::io::RawFd;
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
 
 use super::*;
 use sys_util::{EventFd, GuestMemory};
@@ -52,12 +52,14 @@ pub trait VirtioDevice: Send {
     }
 
     /// Activates this device for real usage.
-    fn activate(&mut self,
-                mem: GuestMemory,
-                interrupt_evt: EventFd,
-                status: Arc<AtomicUsize>,
-                queues: Vec<Queue>,
-                queue_evts: Vec<EventFd>);
+    fn activate(
+        &mut self,
+        mem: GuestMemory,
+        interrupt_evt: EventFd,
+        status: Arc<AtomicUsize>,
+        queues: Vec<Queue>,
+        queue_evts: Vec<EventFd>,
+    );
 
     /// Optionally deactivates this device and returns ownership of the guest memory map, interrupt
     /// event, and queue events.

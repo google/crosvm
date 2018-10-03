@@ -201,12 +201,12 @@ impl PciConfiguration {
             PciHeaderType::Device => {
                 registers[3] = 0x0000_0000; // Header type 0 (device)
                 writable_bits[15] = 0x0000_00ff; // Interrupt line (r/w)
-            },
+            }
             PciHeaderType::Bridge => {
                 registers[3] = 0x0001_0000; // Header type 1 (bridge)
                 writable_bits[9] = 0xfff0_fff0; // Memory base and limit
                 writable_bits[15] = 0xffff_00ff; // Bridge control (r/w), interrupt line (r/w)
-            },
+            }
         };
         registers[11] = u32::from(subsystem_id) << 16 | u32::from(subsystem_vendor_id);
 
@@ -290,7 +290,7 @@ impl PciConfiguration {
 
         // TODO(dgreid) Allow 64 bit address and size.
         if addr.checked_add(size)? > u64::from(u32::max_value()) {
-                return None;
+            return None;
         }
 
         let this_bar = self.num_bars;
@@ -330,7 +330,8 @@ impl PciConfiguration {
         // `pin` is 1-based in the pci config space.
         let pin_idx = (pin as u32) + 1;
         self.registers[INTERRUPT_LINE_PIN_REG] = (self.registers[INTERRUPT_LINE_PIN_REG]
-            & 0xffff_0000) | (pin_idx << 8)
+            & 0xffff_0000)
+            | (pin_idx << 8)
             | u32::from(line);
     }
 
@@ -413,7 +414,10 @@ mod tests {
         let cap1_offset = cfg.add_capability(&cap1).unwrap();
         assert_eq!(cap1_offset % 4, 0);
 
-        let cap2 = TestCap { len: 0x04, foo: 0x55 };
+        let cap2 = TestCap {
+            len: 0x04,
+            foo: 0x55,
+        };
         let cap2_offset = cfg.add_capability(&cap2).unwrap();
         assert_eq!(cap2_offset % 4, 0);
 

@@ -2,22 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::{RefCell, Cell, Ref};
+use std::cell::{Cell, Ref, RefCell};
 use std::cmp::min;
 use std::fs::File;
 use std::i32;
 use std::i64;
 use std::marker::PhantomData;
-use std::os::unix::io::{RawFd, AsRawFd, IntoRawFd, FromRawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::ptr::null_mut;
 use std::slice;
 use std::thread;
 use std::time::Duration;
 
-use libc::{c_int, EPOLL_CLOEXEC, EPOLLIN, EPOLLOUT, EPOLLHUP, EPOLL_CTL_ADD, EPOLL_CTL_MOD,
-           EPOLL_CTL_DEL, epoll_create1, epoll_ctl, epoll_wait, epoll_event};
+use libc::{
+    c_int, epoll_create1, epoll_ctl, epoll_event, epoll_wait, EPOLLHUP, EPOLLIN, EPOLLOUT,
+    EPOLL_CLOEXEC, EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD,
+};
 
-use {Result, errno_result};
+use {errno_result, Result};
 
 const POLL_CONTEXT_MAX_EVENTS: usize = 16;
 
@@ -121,7 +123,8 @@ impl<'a, T: PollToken> PollEvent<'a, T> {
 
 /// An iterator over some (sub)set of events returned by `PollContext::wait`.
 pub struct PollEventIter<'a, I, T>
-    where I: Iterator<Item = &'a epoll_event>
+where
+    I: Iterator<Item = &'a epoll_event>,
 {
     mask: u32,
     iter: I,
@@ -129,20 +132,19 @@ pub struct PollEventIter<'a, I, T>
 }
 
 impl<'a, I, T> Iterator for PollEventIter<'a, I, T>
-    where I: Iterator<Item = &'a epoll_event>,
-          T: PollToken
+where
+    I: Iterator<Item = &'a epoll_event>,
+    T: PollToken,
 {
     type Item = PollEvent<'a, T>;
     fn next(&mut self) -> Option<Self::Item> {
         let mask = self.mask;
         self.iter
             .find(|event| (event.events & mask) != 0)
-            .map(|event| {
-                     PollEvent {
-                         event,
-                         token: PhantomData,
-                     }
-                 })
+            .map(|event| PollEvent {
+                event,
+                token: PhantomData,
+            })
     }
 }
 
@@ -293,13 +295,13 @@ impl<T: PollToken> PollContext<T> {
             return errno_result();
         }
         Ok(PollContext {
-               epoll_ctx: unsafe { File::from_raw_fd(epoll_fd) },
-               events: RefCell::new([epoll_event { events: 0, u64: 0 }; POLL_CONTEXT_MAX_EVENTS]),
-               hangups: Cell::new(0),
-               max_hangups: Cell::new(0),
-               // Safe because the `epoll_fd` is valid and we hold unique ownership.
-               tokens: PhantomData,
-           })
+            epoll_ctx: unsafe { File::from_raw_fd(epoll_fd) },
+            events: RefCell::new([epoll_event { events: 0, u64: 0 }; POLL_CONTEXT_MAX_EVENTS]),
+            hangups: Cell::new(0),
+            max_hangups: Cell::new(0),
+            // Safe because the `epoll_fd` is valid and we hold unique ownership.
+            tokens: PhantomData,
+        })
     }
 
     /// Adds the given `fd` to this context and associates the given `token` with the `fd`'s
@@ -326,10 +328,12 @@ impl<T: PollToken> PollContext<T> {
         // Safe because we give a valid epoll FD and FD to watch, as well as a valid epoll_event
         // structure. Then we check the return value.
         let ret = unsafe {
-            epoll_ctl(self.epoll_ctx.as_raw_fd(),
-                      EPOLL_CTL_ADD,
-                      fd.as_raw_fd(),
-                      &mut evt)
+            epoll_ctl(
+                self.epoll_ctx.as_raw_fd(),
+                EPOLL_CTL_ADD,
+                fd.as_raw_fd(),
+                &mut evt,
+            )
         };
         if ret < 0 {
             return errno_result();
@@ -351,10 +355,12 @@ impl<T: PollToken> PollContext<T> {
         // Safe because we give a valid epoll FD and FD to modify, as well as a valid epoll_event
         // structure. Then we check the return value.
         let ret = unsafe {
-            epoll_ctl(self.epoll_ctx.as_raw_fd(),
-                      EPOLL_CTL_MOD,
-                      fd.as_raw_fd(),
-                      &mut evt)
+            epoll_ctl(
+                self.epoll_ctx.as_raw_fd(),
+                EPOLL_CTL_MOD,
+                fd.as_raw_fd(),
+                &mut evt,
+            )
         };
         if ret < 0 {
             return errno_result();
@@ -372,10 +378,12 @@ impl<T: PollToken> PollContext<T> {
         // Safe because we give a valid epoll FD and FD to stop watching. Then we check the return
         // value.
         let ret = unsafe {
-            epoll_ctl(self.epoll_ctx.as_raw_fd(),
-                      EPOLL_CTL_DEL,
-                      fd.as_raw_fd(),
-                      null_mut())
+            epoll_ctl(
+                self.epoll_ctx.as_raw_fd(),
+                EPOLL_CTL_DEL,
+                fd.as_raw_fd(),
+                null_mut(),
+            )
         };
         if ret < 0 {
             return errno_result();
@@ -415,8 +423,10 @@ impl<T: PollToken> PollContext<T> {
         let old_hangups = self.hangups.get();
         let max_hangups = self.max_hangups.get();
         if old_hangups <= max_hangups && old_hangups + new_hangups > max_hangups {
-            warn!("busy poll wait loop with hungup FDs detected on thread {}",
-                  thread::current().name().unwrap_or(""));
+            warn!(
+                "busy poll wait loop with hungup FDs detected on thread {}",
+                thread::current().name().unwrap_or("")
+            );
             // This panic is helpful for tests of this functionality.
             #[cfg(test)]
             panic!("hungup busy loop detected");
@@ -463,10 +473,12 @@ impl<T: PollToken> PollContext<T> {
             // Safe because we give an epoll context and a properly sized epoll_events array
             // pointer, which we trust the kernel to fill in properly.
             unsafe {
-                handle_eintr_errno!(epoll_wait(self.epoll_ctx.as_raw_fd(),
-                                               &mut epoll_events[0],
-                                               max_events,
-                                               timeout_millis))
+                handle_eintr_errno!(epoll_wait(
+                    self.epoll_ctx.as_raw_fd(),
+                    &mut epoll_events[0],
+                    max_events,
+                    timeout_millis
+                ))
             }
         };
         if ret < 0 {
@@ -496,12 +508,11 @@ impl<T: PollToken> IntoRawFd for PollContext<T> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Instant;
     use std::os::unix::net::UnixStream;
+    use std::time::Instant;
     use EventFd;
 
     #[test]
@@ -596,15 +607,25 @@ mod tests {
             Omega,
         }
 
-        assert_eq!(Token::from_raw_token(Token::Alpha.as_raw_token()),
-                   Token::Alpha);
-        assert_eq!(Token::from_raw_token(Token::Beta.as_raw_token()),
-                   Token::Beta);
-        assert_eq!(Token::from_raw_token(Token::Gamma(55).as_raw_token()),
-                   Token::Gamma(55));
-        assert_eq!(Token::from_raw_token(Token::Delta { index: 100 }.as_raw_token()),
-                   Token::Delta { index: 100 });
-        assert_eq!(Token::from_raw_token(Token::Omega.as_raw_token()),
-                   Token::Omega);
+        assert_eq!(
+            Token::from_raw_token(Token::Alpha.as_raw_token()),
+            Token::Alpha
+        );
+        assert_eq!(
+            Token::from_raw_token(Token::Beta.as_raw_token()),
+            Token::Beta
+        );
+        assert_eq!(
+            Token::from_raw_token(Token::Gamma(55).as_raw_token()),
+            Token::Gamma(55)
+        );
+        assert_eq!(
+            Token::from_raw_token(Token::Delta { index: 100 }.as_raw_token()),
+            Token::Delta { index: 100 }
+        );
+        assert_eq!(
+            Token::from_raw_token(Token::Omega.as_raw_token()),
+            Token::Omega
+        );
     }
 }

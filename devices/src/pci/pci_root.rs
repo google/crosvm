@@ -10,8 +10,7 @@ use byteorder::{ByteOrder, LittleEndian};
 use BusDevice;
 use ProxyDevice;
 
-use pci::pci_configuration::{PciBridgeSubclass, PciClassCode, PciConfiguration,
-                             PciHeaderType};
+use pci::pci_configuration::{PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType};
 use pci::pci_device::PciDevice;
 
 // A PciDevice that holds the root hub's configuration.
@@ -50,15 +49,15 @@ impl PciRoot {
         PciRoot {
             root_configuration: PciRootConfiguration {
                 config: PciConfiguration::new(
-                            0,
-                            0,
-                            PciClassCode::BridgeDevice,
-                            &PciBridgeSubclass::HostBridge,
-                            None,
-                            PciHeaderType::Bridge,
-                            0,
-                            0,
-                            ),
+                    0,
+                    0,
+                    PciClassCode::BridgeDevice,
+                    &PciBridgeSubclass::HostBridge,
+                    None,
+                    PciHeaderType::Bridge,
+                    0,
+                    0,
+                ),
             },
             devices: Vec::new(),
         }
@@ -86,12 +85,9 @@ impl PciRoot {
                 // If bus and device are both zero, then read from the root config.
                 self.root_configuration.config_register_read(register)
             }
-            dev_num => self
-                .devices
-                .get(dev_num - 1)
-                .map_or(0xffff_ffff, |d| {
-                    d.lock().unwrap().config_register_read(register)
-                }),
+            dev_num => self.devices.get(dev_num - 1).map_or(0xffff_ffff, |d| {
+                d.lock().unwrap().config_register_read(register)
+            }),
         }
     }
 
@@ -116,17 +112,19 @@ impl PciRoot {
         match device {
             0 => {
                 // If bus and device are both zero, then read from the root config.
-                self.root_configuration.config_register_write(register, offset, data);
+                self.root_configuration
+                    .config_register_write(register, offset, data);
             }
             dev_num => {
                 // dev_num is 1-indexed here.
                 if let Some(d) = self.devices.get(dev_num - 1) {
-                    d.lock().unwrap().config_register_write(register, offset, data);
+                    d.lock()
+                        .unwrap()
+                        .config_register_write(register, offset, data);
                 }
             }
         }
     }
-
 }
 
 /// Emulates PCI configuration access mechanism #1 (I/O ports 0xcf8 and 0xcfc).
@@ -230,19 +228,19 @@ pub struct PciConfigMmio {
 
 impl PciConfigMmio {
     pub fn new(pci_root: PciRoot) -> Self {
-        PciConfigMmio {
-            pci_root,
-        }
+        PciConfigMmio { pci_root }
     }
 
     fn config_space_read(&self, config_address: u32) -> u32 {
         let (bus, device, function, register) = parse_config_address(config_address);
-        self.pci_root.config_space_read(bus, device, function, register)
+        self.pci_root
+            .config_space_read(bus, device, function, register)
     }
 
     fn config_space_write(&mut self, config_address: u32, offset: u64, data: &[u8]) {
         let (bus, device, function, register) = parse_config_address(config_address);
-        self.pci_root.config_space_write(bus, device, function, register, offset, data)
+        self.pci_root
+            .config_space_write(bus, device, function, register, offset, data)
     }
 }
 
@@ -290,10 +288,5 @@ fn parse_config_address(config_address: u32) -> (usize, usize, usize, usize) {
     let register_number =
         ((config_address >> REGISTER_NUMBER_OFFSET) & REGISTER_NUMBER_MASK) as usize;
 
-    (
-        bus_number,
-        device_number,
-        function_number,
-        register_number,
-    )
+    (bus_number, device_number, function_number, register_number)
 }

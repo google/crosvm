@@ -266,8 +266,7 @@ impl VirtioPciDevice {
 
         //TODO(dgreid) - How will the configuration_cap work?
         let configuration_cap = VirtioPciCap::new(PciCapabilityType::PciConfig, 0, 0, 0);
-        self.config_regs
-            .add_capability(&configuration_cap);
+        self.config_regs.add_capability(&configuration_cap);
 
         self.settings_bar = settings_bar;
     }
@@ -335,8 +334,12 @@ impl PciDevice for VirtioPciDevice {
             o if COMMON_CONFIG_BAR_OFFSET <= o
                 && o < COMMON_CONFIG_BAR_OFFSET + COMMON_CONFIG_SIZE =>
             {
-                self.common_config
-                    .read(o - COMMON_CONFIG_BAR_OFFSET, data, &mut self.queues, &mut self.device)
+                self.common_config.read(
+                    o - COMMON_CONFIG_BAR_OFFSET,
+                    data,
+                    &mut self.queues,
+                    &mut self.device,
+                )
             }
             o if ISR_CONFIG_BAR_OFFSET <= o && o < ISR_CONFIG_BAR_OFFSET + ISR_CONFIG_SIZE => {
                 if let Some(v) = data.get_mut(0) {
@@ -364,8 +367,12 @@ impl PciDevice for VirtioPciDevice {
             o if COMMON_CONFIG_BAR_OFFSET <= o
                 && o < COMMON_CONFIG_BAR_OFFSET + COMMON_CONFIG_SIZE =>
             {
-                self.common_config
-                    .write(o - COMMON_CONFIG_BAR_OFFSET, data, &mut self.queues, &mut self.device)
+                self.common_config.write(
+                    o - COMMON_CONFIG_BAR_OFFSET,
+                    data,
+                    &mut self.queues,
+                    &mut self.device,
+                )
             }
             o if ISR_CONFIG_BAR_OFFSET <= o && o < ISR_CONFIG_BAR_OFFSET + ISR_CONFIG_SIZE => {
                 if let Some(v) = data.get(0) {

@@ -71,9 +71,9 @@ impl fmt::Display for Error {
             &Error::UnknownArgument(ref s) => write!(f, "unknown argument: {}", s),
             &Error::ExpectedArgument(ref s) => write!(f, "expected argument: {}", s),
             &Error::InvalidValue {
-                 ref value,
-                 expected,
-             } => write!(f, "invalid value {:?}: {}", value, expected),
+                ref value,
+                expected,
+            } => write!(f, "invalid value {:?}: {}", value, expected),
             &Error::TooManyArguments(ref s) => write!(f, "too many arguments: {}", s),
             &Error::ExpectedValue(ref s) => write!(f, "expected parameter value: {}", s),
             &Error::PrintHelp => write!(f, "help was requested"),
@@ -132,7 +132,7 @@ impl Argument {
         Argument {
             value: Some(value),
             long: "",
-            help: help,
+            help,
             ..Default::default()
         }
     }
@@ -140,29 +140,30 @@ impl Argument {
     pub fn value(long: &'static str, value: &'static str, help: &'static str) -> Argument {
         Argument {
             value: Some(value),
-            long: long,
-            help: help,
+            long,
+            help,
             ..Default::default()
         }
     }
 
-    pub fn short_value(short: char,
-                       long: &'static str,
-                       value: &'static str,
-                       help: &'static str)
-                       -> Argument {
+    pub fn short_value(
+        short: char,
+        long: &'static str,
+        value: &'static str,
+        help: &'static str,
+    ) -> Argument {
         Argument {
             value: Some(value),
             short: Some(short),
-            long: long,
-            help: help,
+            long,
+            help,
         }
     }
 
     pub fn flag(long: &'static str, help: &'static str) -> Argument {
         Argument {
-            long: long,
-            help: help,
+            long,
+            help,
             ..Default::default()
         }
     }
@@ -170,17 +171,18 @@ impl Argument {
     pub fn short_flag(short: char, long: &'static str, help: &'static str) -> Argument {
         Argument {
             short: Some(short),
-            long: long,
-            help: help,
+            long,
+            help,
             ..Default::default()
         }
     }
 }
 
 fn parse_arguments<I, R, F>(args: I, mut f: F) -> Result<()>
-    where I: Iterator<Item = R>,
-          R: AsRef<str>,
-          F: FnMut(&str, Option<&str>) -> Result<()>
+where
+    I: Iterator<Item = R>,
+    R: AsRef<str>,
+    F: FnMut(&str, Option<&str>) -> Result<()>,
 {
     enum State {
         // Initial state at the start and after finishing a single argument/value.
@@ -204,19 +206,23 @@ fn parse_arguments<I, R, F>(args: I, mut f: F) -> Result<()>
                         let name = iter.next().unwrap();
                         let value = iter.next().unwrap();
                         if name.is_empty() {
-                            return Err(Error::Syntax("expected parameter name before `=`"
-                                                         .to_owned()));
+                            return Err(Error::Syntax(
+                                "expected parameter name before `=`".to_owned(),
+                            ));
                         }
                         if value.is_empty() {
-                            return Err(Error::Syntax("expected parameter value after `=`"
-                                                         .to_owned()));
+                            return Err(Error::Syntax(
+                                "expected parameter value after `=`".to_owned(),
+                            ));
                         }
                         f(name, Some(value))?;
                         State::Top
                     } else {
                         if let Err(e) = f(param, None) {
                             if let Error::ExpectedValue(_) = e {
-                                State::Value { name: param.to_owned() }
+                                State::Value {
+                                    name: param.to_owned(),
+                                }
                             } else {
                                 return Err(e);
                             }
@@ -226,14 +232,17 @@ fn parse_arguments<I, R, F>(args: I, mut f: F) -> Result<()>
                     }
                 } else if arg.starts_with("-") {
                     if arg.len() == 1 {
-                        return Err(Error::Syntax("expected argument short name after `-`"
-                                                     .to_owned()));
+                        return Err(Error::Syntax(
+                            "expected argument short name after `-`".to_owned(),
+                        ));
                     }
                     let name = &arg[1..2];
                     let value = if arg.len() > 2 { Some(&arg[2..]) } else { None };
                     if let Err(e) = f(name, value) {
                         if let Error::ExpectedValue(_) = e {
-                            State::Value { name: name.to_owned() }
+                            State::Value {
+                                name: name.to_owned(),
+                            }
                         } else {
                             return Err(e);
                         }
@@ -268,9 +277,10 @@ fn parse_arguments<I, R, F>(args: I, mut f: F) -> Result<()>
 ///
 /// See the [module level](index.html) example for a usage example.
 pub fn set_arguments<I, R, F>(args: I, arg_list: &[Argument], mut f: F) -> Result<()>
-    where I: Iterator<Item = R>,
-          R: AsRef<str>,
-          F: FnMut(&str, Option<&str>) -> Result<()>
+where
+    I: Iterator<Item = R>,
+    R: AsRef<str>,
+    F: FnMut(&str, Option<&str>) -> Result<()>,
 {
     parse_arguments(args, |name, value| {
         let mut matches = None;
@@ -302,10 +312,12 @@ pub fn set_arguments<I, R, F>(args: I, arg_list: &[Argument], mut f: F) -> Resul
 /// Usage information is printed according to the help fields in `args` with a leading usage line.
 /// The usage line is of the format "`program_name` [ARGUMENTS] `required_arg`".
 pub fn print_help(program_name: &str, required_arg: &str, args: &[Argument]) {
-    println!("Usage: {} {}{}\n",
-             program_name,
-             if args.is_empty() { "" } else { "[ARGUMENTS] " },
-             required_arg);
+    println!(
+        "Usage: {} {}{}\n",
+        program_name,
+        if args.is_empty() { "" } else { "[ARGUMENTS] " },
+        required_arg
+    );
     if args.is_empty() {
         return;
     }
@@ -357,54 +369,57 @@ mod tests {
 
     #[test]
     fn mixed_args() {
-        let arguments =
-            [Argument::positional("FILES", "files to operate on"),
-             Argument::short_value('p', "program", "PROGRAM", "Program to apply to each file"),
-             Argument::short_value('c', "cpus", "N", "Number of CPUs to use. (default: 1)"),
-             Argument::flag("unmount", "Unmount the root"),
-             Argument::short_flag('h', "help", "Print help message.")];
+        let arguments = [
+            Argument::positional("FILES", "files to operate on"),
+            Argument::short_value('p', "program", "PROGRAM", "Program to apply to each file"),
+            Argument::short_value('c', "cpus", "N", "Number of CPUs to use. (default: 1)"),
+            Argument::flag("unmount", "Unmount the root"),
+            Argument::short_flag('h', "help", "Print help message."),
+        ];
 
         let mut unmount = false;
-        let match_res = set_arguments(["--cpus", "3", "--program", "hello", "--unmount", "file"]
-                                          .iter(),
-                                      &arguments[..],
-                                      |name, value| {
-            match name {
-                "" => assert_eq!(value.unwrap(), "file"),
-                "program" => assert_eq!(value.unwrap(), "hello"),
-                "cpus" => {
-                    let c: u32 = value
-                        .unwrap()
-                        .parse()
-                        .map_err(|_| {
-                                     Error::InvalidValue {
-                                         value: value.unwrap().to_owned(),
-                                         expected: "this value for `cpus` needs to be integer",
-                                     }
-                                 })?;
-                    assert_eq!(c, 3);
-                }
-                "unmount" => unmount = true,
-                "help" => return Err(Error::PrintHelp),
-                _ => unreachable!(),
-            };
-            Ok(())
-        });
+        let match_res = set_arguments(
+            ["--cpus", "3", "--program", "hello", "--unmount", "file"].iter(),
+            &arguments[..],
+            |name, value| {
+                match name {
+                    "" => assert_eq!(value.unwrap(), "file"),
+                    "program" => assert_eq!(value.unwrap(), "hello"),
+                    "cpus" => {
+                        let c: u32 = value.unwrap().parse().map_err(|_| Error::InvalidValue {
+                            value: value.unwrap().to_owned(),
+                            expected: "this value for `cpus` needs to be integer",
+                        })?;
+                        assert_eq!(c, 3);
+                    }
+                    "unmount" => unmount = true,
+                    "help" => return Err(Error::PrintHelp),
+                    _ => unreachable!(),
+                };
+                Ok(())
+            },
+        );
         assert!(match_res.is_ok());
         assert!(unmount);
     }
 
     #[test]
     fn name_value_pair() {
-        let arguments =
-            [Argument::short_value('c', "cpus", "N", "Number of CPUs to use. (default: 1)")];
-        let match_res = set_arguments(["-c", "5", "--cpus", "5", "-c5", "--cpus=5"].iter(),
-                                      &arguments[..],
-                                      |name, value| {
-                                          assert_eq!(name, "cpus");
-                                          assert_eq!(value, Some("5"));
-                                          Ok(())
-                                      });
+        let arguments = [Argument::short_value(
+            'c',
+            "cpus",
+            "N",
+            "Number of CPUs to use. (default: 1)",
+        )];
+        let match_res = set_arguments(
+            ["-c", "5", "--cpus", "5", "-c5", "--cpus=5"].iter(),
+            &arguments[..],
+            |name, value| {
+                assert_eq!(name, "cpus");
+                assert_eq!(value, Some("5"));
+                Ok(())
+            },
+        );
         assert!(match_res.is_ok());
     }
 }

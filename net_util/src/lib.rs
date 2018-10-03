@@ -8,7 +8,7 @@ extern crate sys_util;
 
 use std::fmt;
 use std::fs::File;
-use std::io::{Read, Write, Result as IoResult};
+use std::io::{Read, Result as IoResult, Write};
 use std::mem;
 use std::net;
 use std::num::ParseIntError;
@@ -18,8 +18,8 @@ use std::str::FromStr;
 
 use libc::EPERM;
 
-use sys_util::{Error as SysError};
-use sys_util::{ioctl_with_val, ioctl_with_ref, ioctl_with_mut_ref};
+use sys_util::Error as SysError;
+use sys_util::{ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val};
 
 #[derive(Debug)]
 pub enum Error {
@@ -86,7 +86,6 @@ pub enum MacAddressError {
     InvalidNumOctets(usize),
     /// Failed to parse octet.
     ParseOctet(ParseIntError),
-
 }
 
 impl fmt::Display for MacAddressError {
@@ -137,14 +136,11 @@ impl FromStr for MacAddress {
 
 impl fmt::Display for MacAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
-               self.addr[0],
-               self.addr[1],
-               self.addr[2],
-               self.addr[3],
-               self.addr[4],
-               self.addr[5])
+        write!(
+            f,
+            "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+            self.addr[0], self.addr[1], self.addr[2], self.addr[3], self.addr[4], self.addr[5]
+        )
     }
 }
 
@@ -201,8 +197,10 @@ impl TapT for Tap {
         // Open calls are safe because we give a constant nul-terminated
         // string and verify the result.
         let fd = unsafe {
-            libc::open(b"/dev/net/tun\0".as_ptr() as *const c_char,
-                       libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC)
+            libc::open(
+                b"/dev/net/tun\0".as_ptr() as *const c_char,
+                libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC,
+            )
         };
         if fd < 0 {
             return Err(Error::OpenTun(SysError::last()));
@@ -222,9 +220,10 @@ impl TapT for Tap {
             let ifru_flags = ifreq.ifr_ifru.ifru_flags.as_mut();
             let name_slice = &mut ifrn_name[..TUNTAP_DEV_FORMAT.len()];
             name_slice.copy_from_slice(TUNTAP_DEV_FORMAT);
-            *ifru_flags = (net_sys::IFF_TAP |
-                           net_sys::IFF_NO_PI |
-                           if vnet_hdr { net_sys::IFF_VNET_HDR } else { 0 }) as c_short;
+            *ifru_flags = (net_sys::IFF_TAP
+                | net_sys::IFF_NO_PI
+                | if vnet_hdr { net_sys::IFF_VNET_HDR } else { 0 })
+                as c_short;
         }
 
         // ioctl is safe since we call it with a valid tap fd and check the return
@@ -242,9 +241,9 @@ impl TapT for Tap {
 
         // Safe since only the name is accessed, and it's cloned out.
         Ok(Tap {
-               tap_file: tuntap,
-               if_name: unsafe { ifreq.ifr_ifrn.ifrn_name.as_ref().clone() },
-           })
+            tap_file: tuntap,
+            if_name: unsafe { ifreq.ifr_ifrn.ifrn_name.as_ref().clone() },
+        })
     }
 
     fn ip_addr(&self) -> Result<net::Ipv4Addr> {
@@ -252,9 +251,9 @@ impl TapT for Tap {
         let mut ifreq = self.get_ifreq();
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
-        let ret = unsafe { ioctl_with_mut_ref(&sock,
-                                              net_sys::sockios::SIOCGIFADDR as c_ulong,
-                                              &mut ifreq) };
+        let ret = unsafe {
+            ioctl_with_mut_ref(&sock, net_sys::sockios::SIOCGIFADDR as c_ulong, &mut ifreq)
+        };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
         }
@@ -292,9 +291,13 @@ impl TapT for Tap {
         let mut ifreq = self.get_ifreq();
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
-        let ret = unsafe { ioctl_with_mut_ref(&sock,
-                                              net_sys::sockios::SIOCGIFNETMASK as c_ulong,
-                                              &mut ifreq) };
+        let ret = unsafe {
+            ioctl_with_mut_ref(
+                &sock,
+                net_sys::sockios::SIOCGIFNETMASK as c_ulong,
+                &mut ifreq,
+            )
+        };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
         }
@@ -332,9 +335,13 @@ impl TapT for Tap {
         let mut ifreq = self.get_ifreq();
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
-        let ret = unsafe { ioctl_with_mut_ref(&sock,
-                                              net_sys::sockios::SIOCGIFHWADDR as c_ulong,
-                                              &mut ifreq) };
+        let ret = unsafe {
+            ioctl_with_mut_ref(
+                &sock,
+                net_sys::sockios::SIOCGIFHWADDR as c_ulong,
+                &mut ifreq,
+            )
+        };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
         }
@@ -344,7 +351,7 @@ impl TapT for Tap {
 
         // This is safe since the MacAddress struct is already sized to match the C sockaddr
         // struct. The address family has also been checked.
-        Ok(unsafe { mem::transmute(*ifru_hwaddr)} )
+        Ok(unsafe { mem::transmute(*ifru_hwaddr) })
     }
 
     fn set_mac_address(&self, mac_addr: MacAddress) -> Result<()> {
@@ -389,8 +396,8 @@ impl TapT for Tap {
         // We only access one field of the ifru union, hence this is safe.
         unsafe {
             let ifru_flags = ifreq.ifr_ifru.ifru_flags.as_mut();
-            *ifru_flags = (net_sys::net_device_flags_IFF_UP |
-                           net_sys::net_device_flags_IFF_RUNNING) as i16;
+            *ifru_flags =
+                (net_sys::net_device_flags_IFF_UP | net_sys::net_device_flags_IFF_RUNNING) as i16;
         }
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
@@ -460,8 +467,8 @@ impl FromRawFd for Tap {
 
 pub mod fakes {
     use super::*;
-    use std::fs::OpenOptions;
     use std::fs::remove_file;
+    use std::fs::OpenOptions;
 
     const TMP_FILE: &str = "/tmp/crosvm_tap_test_file";
 
@@ -477,7 +484,7 @@ pub mod fakes {
                     .append(true)
                     .create(true)
                     .open(TMP_FILE)
-                    .unwrap()
+                    .unwrap(),
             })
         }
 
@@ -608,14 +615,17 @@ mod tests {
     fn tap_get_ifreq() {
         let tap = Tap::new(true).unwrap();
         let ret = tap.get_ifreq();
-        assert_eq!("__BindgenUnionField", format!("{:?}", ret.ifr_ifrn.ifrn_name));
+        assert_eq!(
+            "__BindgenUnionField",
+            format!("{:?}", ret.ifr_ifrn.ifrn_name)
+        );
     }
 
     fn assert_ok_or_perm_denied<T>(res: Result<T>) {
         match res {
             // We won't have permission in test environments; allow that
-            Ok(_t) => {},
-            Err(Error::IoctlError(ref e)) if e.errno() == EPERM => {},
+            Ok(_t) => {}
+            Err(Error::IoctlError(ref e)) if e.errno() == EPERM => {}
             Err(e) => panic!("Unexpected Error:\n{:?}", e),
         }
     }

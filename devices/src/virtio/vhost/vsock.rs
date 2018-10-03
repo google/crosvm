@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
 use std::thread;
 
 use byteorder::{ByteOrder, LittleEndian};
@@ -13,9 +13,9 @@ use sys_util::{EventFd, GuestMemory};
 use vhost::Vsock as VhostVsockHandle;
 use virtio_sys::vhost;
 
-use super::{Error, Result};
 use super::super::{Queue, VirtioDevice, TYPE_VSOCK};
 use super::worker::Worker;
+use super::{Error, Result};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 3;
@@ -37,18 +37,20 @@ impl Vsock {
         let kill_evt = EventFd::new().map_err(Error::CreateKillEventFd)?;
         let handle = VhostVsockHandle::new(mem).map_err(Error::VhostOpen)?;
 
-        let avail_features =
-            1 << vhost::VIRTIO_F_NOTIFY_ON_EMPTY | 1 << vhost::VIRTIO_RING_F_INDIRECT_DESC |
-                1 << vhost::VIRTIO_RING_F_EVENT_IDX | 1 << vhost::VHOST_F_LOG_ALL |
-                1 << vhost::VIRTIO_F_ANY_LAYOUT | 1 << vhost::VIRTIO_F_VERSION_1;
+        let avail_features = 1 << vhost::VIRTIO_F_NOTIFY_ON_EMPTY
+            | 1 << vhost::VIRTIO_RING_F_INDIRECT_DESC
+            | 1 << vhost::VIRTIO_RING_F_EVENT_IDX
+            | 1 << vhost::VHOST_F_LOG_ALL
+            | 1 << vhost::VIRTIO_F_ANY_LAYOUT
+            | 1 << vhost::VIRTIO_F_VERSION_1;
 
         Ok(Vsock {
             worker_kill_evt: Some(kill_evt.try_clone().map_err(Error::CloneKillEventFd)?),
             kill_evt: Some(kill_evt),
             vhost_handle: Some(handle),
-            cid: cid,
+            cid,
             interrupt: Some(EventFd::new().map_err(Error::VhostIrqCreate)?),
-            avail_features: avail_features,
+            avail_features,
             acked_features: 0,
         })
     }
@@ -58,7 +60,7 @@ impl Vsock {
             worker_kill_evt: None,
             kill_evt: None,
             vhost_handle: None,
-            cid: cid,
+            cid,
             interrupt: None,
             avail_features: features,
             acked_features: 0,
@@ -121,7 +123,7 @@ impl VirtioDevice for Vsock {
                     page
                 );
                 0u32
-            },
+            }
         }
     }
 
@@ -131,7 +133,7 @@ impl VirtioDevice for Vsock {
             0 if data.len() == 4 => LittleEndian::write_u32(data, (self.cid & 0xffffffff) as u32),
             4 if data.len() == 4 => {
                 LittleEndian::write_u32(data, ((self.cid >> 32) & 0xffffffff) as u32)
-            },
+            }
             _ => warn!(
                 "vsock: virtio-vsock received invalid read request of {} bytes at offset {}",
                 data.len(),
@@ -150,7 +152,7 @@ impl VirtioDevice for Vsock {
                     page
                 );
                 0u64
-            },
+            }
         };
 
         // Check if the guest is ACK'ing a feature that we didn't claim to have.
@@ -188,12 +190,14 @@ impl VirtioDevice for Vsock {
                             // The third vq is an event-only vq that is not handled by the vhost
                             // subsystem (but still needs to exist).  Split it off here.
                             let vhost_queues = queues[..2].to_vec();
-                            let mut worker = Worker::new(vhost_queues,
-                                                         vhost_handle,
-                                                         interrupt,
-                                                         status,
-                                                         interrupt_evt,
-                                                         acked_features);
+                            let mut worker = Worker::new(
+                                vhost_queues,
+                                vhost_handle,
+                                interrupt,
+                                status,
+                                interrupt_evt,
+                                acked_features,
+                            );
                             let activate_vqs = |handle: &VhostVsockHandle| -> Result<()> {
                                 handle.set_cid(cid).map_err(Error::VhostVsockSetCid)?;
                                 handle.start().map_err(Error::VhostVsockStart)?;
@@ -242,12 +246,18 @@ mod tests {
         acked_features |= 1 << 60;
         unavailable_features |= 1 << 60;
         vsock.ack_features(1, (acked_features >> 32) as u32);
-        assert_eq!(acked_features & !unavailable_features, vsock.acked_features());
+        assert_eq!(
+            acked_features & !unavailable_features,
+            vsock.acked_features()
+        );
 
         acked_features |= 1 << 1;
         unavailable_features |= 1 << 1;
         vsock.ack_features(0, (acked_features & 0xffffffff) as u32);
-        assert_eq!(acked_features & !unavailable_features, vsock.acked_features());
+        assert_eq!(
+            acked_features & !unavailable_features,
+            vsock.acked_features()
+        );
     }
 
     #[test]

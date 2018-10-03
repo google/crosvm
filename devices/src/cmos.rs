@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use libc::{gmtime_r, time, time_t, tm};
 use std::mem;
-use libc::{tm, time_t, time, gmtime_r};
 
 use BusDevice;
 

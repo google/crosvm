@@ -11,15 +11,15 @@ use std::mem;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::result;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread;
 
 use p9;
 use sys_util::{Error as SysError, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
 
-use super::{DescriptorChain, Queue, TYPE_9P, VirtioDevice, INTERRUPT_STATUS_USED_RING};
+use super::{DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_9P};
 
 const QUEUE_SIZE: u16 = 128;
 const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
@@ -137,7 +137,8 @@ where
                     )
                 })?;
             let len = min(buf.len(), (current.len - self.offset) as usize);
-            let count = self.mem
+            let count = self
+                .mem
                 .read_slice_at_addr(&mut buf[..len], addr)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
@@ -192,7 +193,8 @@ where
                 })?;
 
             let len = min(buf.len(), (current.len - self.offset) as usize);
-            let count = self.mem
+            let count = self
+                .mem
                 .write_slice_at_addr(&buf[..len], addr)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
@@ -237,21 +239,13 @@ impl Worker {
             let mut reader = Reader {
                 mem: &self.mem,
                 offset: 0,
-                iter: avail_desc
-                    .clone()
-                    .into_iter()
-                    .readable()
-                    .peekable(),
+                iter: avail_desc.clone().into_iter().readable().peekable(),
             };
             let mut writer = Writer {
                 mem: &self.mem,
                 bytes_written: 0,
                 offset: 0,
-                iter: avail_desc
-                    .clone()
-                    .into_iter()
-                    .writable()
-                    .peekable(),
+                iter: avail_desc.clone().into_iter().writable().peekable(),
             };
 
             self.server
@@ -422,19 +416,20 @@ impl VirtioDevice for P9 {
         self.kill_evt = Some(self_kill_evt);
 
         if let Some(server) = self.server.take() {
-            let worker_result = thread::Builder::new().name("virtio_9p".to_string()).spawn(
-                move || {
-                    let mut worker = Worker {
-                        mem: guest_mem,
-                        queue: queues.remove(0),
-                        server: server,
-                        irq_status: status,
-                        irq_evt: interrupt_evt,
-                    };
+            let worker_result =
+                thread::Builder::new()
+                    .name("virtio_9p".to_string())
+                    .spawn(move || {
+                        let mut worker = Worker {
+                            mem: guest_mem,
+                            queue: queues.remove(0),
+                            server,
+                            irq_status: status,
+                            irq_evt: interrupt_evt,
+                        };
 
-                    worker.run(queue_evts.remove(0), kill_evt)
-                },
-            );
+                        worker.run(queue_evts.remove(0), kill_evt)
+                    });
 
             match worker_result {
                 Ok(worker) => self.worker = Some(worker),

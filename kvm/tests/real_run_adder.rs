@@ -4,9 +4,9 @@
 
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 
-extern crate sys_util;
-extern crate kvm_sys;
 extern crate kvm;
+extern crate kvm_sys;
+extern crate sys_util;
 
 use kvm::*;
 use kvm_sys::kvm_regs;
@@ -17,13 +17,13 @@ fn test_run() {
     // This example based on https://lwn.net/Articles/658511/
     let code = [
         0xba, 0xf8, 0x03, /* mov $0x3f8, %dx */
-        0x00, 0xd8,       /* add %bl, %al */
-        0x04, '0' as u8,  /* add $'0', %al */
-        0xee,             /* out %al, (%dx) */
+        0x00, 0xd8, /* add %bl, %al */
+        0x04, '0' as u8, /* add $'0', %al */
+        0xee,      /* out %al, (%dx) */
         0xb0, '\n' as u8, /* mov $'\n', %al */
-        0xee,             /* out %al, (%dx) */
+        0xee,       /* out %al, (%dx) */
         0x2e, 0xc6, 0x06, 0xf1, 0x10, 0x13, /* movb $0x13, %cs:0xf1 */
-        0xf4,             /* hlt */
+        0xf4, /* hlt */
     ];
 
     let mem_size = 0x1000;
@@ -58,16 +58,16 @@ fn test_run() {
             VcpuExit::IoOut(0x3f8, data) => {
                 assert_eq!(data.len(), 1);
                 out.push(data[0] as char);
-            },
+            }
             VcpuExit::Hlt => break,
             r => panic!("unexpected exit reason: {:?}", r),
         }
     }
 
     assert_eq!(out, "9\n");
-    let result: u8 =
-        vm.get_memory()
-            .read_obj_from_addr(load_addr.checked_add(0xf1).unwrap())
-            .expect("Error reading the result.");
+    let result: u8 = vm
+        .get_memory()
+        .read_obj_from_addr(load_addr.checked_add(0xf1).unwrap())
+        .expect("Error reading the result.");
     assert_eq!(result, 0x13);
 }

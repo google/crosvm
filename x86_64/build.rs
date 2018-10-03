@@ -5,7 +5,5 @@
 extern crate cc;
 
 fn main() {
-    cc::Build::new()
-           .file("host_cpuid.c")
-           .compile("host_cpuid");
+    cc::Build::new().file("host_cpuid.c").compile("host_cpuid");
 }

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::hash_map::{HashMap, Entry, VacantEntry};
+use std::collections::hash_map::{Entry, HashMap, VacantEntry};
 use std::env::set_var;
 use std::fs::File;
 use std::mem::transmute;
@@ -17,17 +17,19 @@ use std::thread::JoinHandle;
 use net_util;
 use net_util::Error as NetError;
 
-use libc::{waitpid, pid_t, EINVAL, ENODATA, ENOTTY, WNOHANG, WIFEXITED, WEXITSTATUS, WTERMSIG};
+use libc::{pid_t, waitpid, EINVAL, ENODATA, ENOTTY, WEXITSTATUS, WIFEXITED, WNOHANG, WTERMSIG};
 
 use protobuf;
 use protobuf::Message;
 
 use io_jail::Minijail;
-use kvm::{Vm, IoeventAddress, NoDatamatch, IrqSource, IrqRoute, PicId, dirty_log_bitmap_size};
-use kvm_sys::{kvm_pic_state, kvm_ioapic_state, kvm_pit_state2};
-use sys_util::{EventFd, MemoryMapping, Killable, ScmSocket, SharedMemory, GuestAddress,
-               Result as SysResult, Error as SysError, SIGRTMIN};
+use kvm::{dirty_log_bitmap_size, IoeventAddress, IrqRoute, IrqSource, NoDatamatch, PicId, Vm};
+use kvm_sys::{kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
 use plugin_proto::*;
+use sys_util::{
+    Error as SysError, EventFd, GuestAddress, Killable, MemoryMapping, Result as SysResult,
+    ScmSocket, SharedMemory, SIGRTMIN,
+};
 
 use super::*;
 
@@ -45,47 +47,41 @@ unsafe impl DataInit for VmPitState {}
 
 fn get_vm_state(vm: &Vm, state_set: MainRequest_StateSet) -> SysResult<Vec<u8>> {
     Ok(match state_set {
-           MainRequest_StateSet::PIC0 => {
-               VmPicState(vm.get_pic_state(PicId::Primary)?)
-                   .as_slice()
-                   .to_vec()
-           }
-           MainRequest_StateSet::PIC1 => {
-               VmPicState(vm.get_pic_state(PicId::Secondary)?)
-                   .as_slice()
-                   .to_vec()
-           }
-           MainRequest_StateSet::IOAPIC => {
-               VmIoapicState(vm.get_ioapic_state()?).as_slice().to_vec()
-           }
-           MainRequest_StateSet::PIT => VmPitState(vm.get_pit_state()?).as_slice().to_vec(),
-       })
+        MainRequest_StateSet::PIC0 => VmPicState(vm.get_pic_state(PicId::Primary)?)
+            .as_slice()
+            .to_vec(),
+        MainRequest_StateSet::PIC1 => VmPicState(vm.get_pic_state(PicId::Secondary)?)
+            .as_slice()
+            .to_vec(),
+        MainRequest_StateSet::IOAPIC => VmIoapicState(vm.get_ioapic_state()?).as_slice().to_vec(),
+        MainRequest_StateSet::PIT => VmPitState(vm.get_pit_state()?).as_slice().to_vec(),
+    })
 }
 
 fn set_vm_state(vm: &Vm, state_set: MainRequest_StateSet, state: &[u8]) -> SysResult<()> {
     match state_set {
-        MainRequest_StateSet::PIC0 => {
-            vm.set_pic_state(PicId::Primary,
-                             &VmPicState::from_slice(state)
-                                  .ok_or(SysError::new(EINVAL))?
-                                  .0)
-        }
-        MainRequest_StateSet::PIC1 => {
-            vm.set_pic_state(PicId::Secondary,
-                             &VmPicState::from_slice(state)
-                                  .ok_or(SysError::new(EINVAL))?
-                                  .0)
-        }
-        MainRequest_StateSet::IOAPIC => {
-            vm.set_ioapic_state(&VmIoapicState::from_slice(state)
-                                     .ok_or(SysError::new(EINVAL))?
-                                     .0)
-        }
-        MainRequest_StateSet::PIT => {
-            vm.set_pit_state(&VmPitState::from_slice(state)
-                                  .ok_or(SysError::new(EINVAL))?
-                                  .0)
-        }
+        MainRequest_StateSet::PIC0 => vm.set_pic_state(
+            PicId::Primary,
+            &VmPicState::from_slice(state)
+                .ok_or(SysError::new(EINVAL))?
+                .0,
+        ),
+        MainRequest_StateSet::PIC1 => vm.set_pic_state(
+            PicId::Secondary,
+            &VmPicState::from_slice(state)
+                .ok_or(SysError::new(EINVAL))?
+                .0,
+        ),
+        MainRequest_StateSet::IOAPIC => vm.set_ioapic_state(
+            &VmIoapicState::from_slice(state)
+                .ok_or(SysError::new(EINVAL))?
+                .0,
+        ),
+        MainRequest_StateSet::PIT => vm.set_pit_state(
+            &VmPitState::from_slice(state)
+                .ok_or(SysError::new(EINVAL))?
+                .0,
+        ),
     }
 }
 
@@ -132,20 +128,22 @@ impl Process {
     /// Set the `jail` argument to spawn the plugin process within the preconfigured jail.
     /// Due to an API limitation in libminijail necessitating that this function set an environment
     /// variable, this function is not thread-safe.
-    pub fn new(cpu_count: u32,
-               cmd: &Path,
-               args: &[&str],
-               jail: Option<Minijail>)
-               -> Result<Process> {
-        let (request_socket, child_socket) = new_seqpacket_pair().map_err(Error::CreateMainSocket)?;
+    pub fn new(
+        cpu_count: u32,
+        cmd: &Path,
+        args: &[&str],
+        jail: Option<Minijail>,
+    ) -> Result<Process> {
+        let (request_socket, child_socket) =
+            new_seqpacket_pair().map_err(Error::CreateMainSocket)?;
 
-        let mut vcpu_sockets: Vec<(UnixDatagram, UnixDatagram)> = Vec::with_capacity(cpu_count as
-                                                                                     usize);
+        let mut vcpu_sockets: Vec<(UnixDatagram, UnixDatagram)> =
+            Vec::with_capacity(cpu_count as usize);
         for _ in 0..cpu_count {
             vcpu_sockets.push(new_seqpacket_pair().map_err(Error::CreateVcpuSocket)?);
         }
-        let mut per_vcpu_states: Vec<Arc<Mutex<PerVcpuState>>> = Vec::with_capacity(cpu_count as
-                                                                                    usize);
+        let mut per_vcpu_states: Vec<Arc<Mutex<PerVcpuState>>> =
+            Vec::with_capacity(cpu_count as usize);
         // TODO(zachr): replace with `resize_default` when that stabilizes. Using a plain `resize`
         // is incorrect because each element in the `Vec` will contain a shared reference to the
         // same `PerVcpuState` instance. This happens because `resize` fills new slots using clones
@@ -160,28 +158,26 @@ impl Process {
                 jail.run(cmd, &[0, 1, 2, child_socket.as_raw_fd()], args)
                     .map_err(Error::PluginRunJail)?
             }
-            None => {
-                Command::new(cmd)
-                    .args(args)
-                    .env("CROSVM_SOCKET", child_socket.as_raw_fd().to_string())
-                    .spawn()
-                    .map_err(Error::PluginSpawn)?
-                    .id() as pid_t
-            }
+            None => Command::new(cmd)
+                .args(args)
+                .env("CROSVM_SOCKET", child_socket.as_raw_fd().to_string())
+                .spawn()
+                .map_err(Error::PluginSpawn)?
+                .id() as pid_t,
         };
 
         Ok(Process {
-               started: false,
-               plugin_pid,
-               request_sockets: vec![request_socket],
-               objects: Default::default(),
-               shared_vcpu_state: Default::default(),
-               per_vcpu_states,
-               kill_evt: EventFd::new().map_err(Error::CreateEventFd)?,
-               vcpu_sockets,
-               request_buffer: vec![0; MAX_DATAGRAM_SIZE],
-               response_buffer: Vec::new(),
-           })
+            started: false,
+            plugin_pid,
+            request_sockets: vec![request_socket],
+            objects: Default::default(),
+            shared_vcpu_state: Default::default(),
+            per_vcpu_states,
+            kill_evt: EventFd::new().map_err(Error::CreateEventFd)?,
+            vcpu_sockets,
+            request_buffer: vec![0; MAX_DATAGRAM_SIZE],
+            response_buffer: Vec::new(),
+        })
     }
 
     /// Creates a VCPU plugin connection object, used by a VCPU run loop to communicate with the
@@ -195,9 +191,11 @@ impl Process {
             .0
             .try_clone()
             .map_err(Error::CloneVcpuSocket)?;
-        Ok(PluginVcpu::new(self.shared_vcpu_state.clone(),
-                           self.per_vcpu_states[cpu_id as usize].clone(),
-                           vcpu_socket))
+        Ok(PluginVcpu::new(
+            self.shared_vcpu_state.clone(),
+            self.per_vcpu_states[cpu_id as usize].clone(),
+            vcpu_socket,
+        ))
     }
 
     /// Returns if the plugin process indicated the VM was ready to start.
@@ -267,7 +265,8 @@ impl Process {
             _ => {
                 // Trivially safe
                 if unsafe { WIFEXITED(status) } {
-                    match unsafe { WEXITSTATUS(status) } { // Trivially safe
+                    match unsafe { WEXITSTATUS(status) } {
+                        // Trivially safe
                         0 => Ok(ProcessStatus::Success),
                         code => Ok(ProcessStatus::Fail(code)),
                     }
@@ -279,10 +278,11 @@ impl Process {
         }
     }
 
-    fn handle_io_event(entry: VacantEntry<u32, PluginObject>,
-                       vm: &mut Vm,
-                       io_event: &MainRequest_Create_IoEvent)
-                       -> SysResult<RawFd> {
+    fn handle_io_event(
+        entry: VacantEntry<u32, PluginObject>,
+        vm: &mut Vm,
+        io_event: &MainRequest_Create_IoEvent,
+    ) -> SysResult<RawFd> {
         let evt = EventFd::new()?;
         let addr = match io_event.space {
             AddressSpace::IOPORT => IoeventAddress::Pio(io_event.address),
@@ -299,24 +299,24 @@ impl Process {
 
         let fd = evt.as_raw_fd();
         entry.insert(PluginObject::IoEvent {
-                         evt,
-                         addr,
-                         length: io_event.length,
-                         datamatch: io_event.datamatch,
-                     });
+            evt,
+            addr,
+            length: io_event.length,
+            datamatch: io_event.datamatch,
+        });
         Ok(fd)
     }
 
-
-    fn handle_memory(entry: VacantEntry<u32, PluginObject>,
-                     vm: &mut Vm,
-                     memfd: File,
-                     offset: u64,
-                     start: u64,
-                     length: u64,
-                     read_only: bool,
-                     dirty_log: bool)
-                     -> SysResult<()> {
+    fn handle_memory(
+        entry: VacantEntry<u32, PluginObject>,
+        vm: &mut Vm,
+        memfd: File,
+        offset: u64,
+        start: u64,
+        length: u64,
+        read_only: bool,
+        dirty_log: bool,
+    ) -> SysResult<()> {
         let shm = SharedMemory::from_raw_fd(memfd)?;
         // Checking the seals ensures the plugin process won't shrink the mmapped file, causing us
         // to SIGBUS in the future.
@@ -334,9 +334,9 @@ impl Process {
             .map_err(mmap_to_sys_err)?;
         let slot = vm.add_device_memory(GuestAddress(start), mem, read_only, dirty_log)?;
         entry.insert(PluginObject::Memory {
-                         slot,
-                         length: length as usize,
-                     });
+            slot,
+            length: length as usize,
+        });
         Ok(())
     }
 
@@ -356,42 +356,43 @@ impl Process {
         }
     }
 
-    fn handle_set_irq_routing(vm: &mut Vm,
-                              irq_routing: &MainRequest_SetIrqRouting)
-                              -> SysResult<()> {
+    fn handle_set_irq_routing(
+        vm: &mut Vm,
+        irq_routing: &MainRequest_SetIrqRouting,
+    ) -> SysResult<()> {
         let mut routes = Vec::with_capacity(irq_routing.routes.len());
         for route in irq_routing.routes.iter() {
             routes.push(IrqRoute {
-                            gsi: route.irq_id,
-                            source: if route.has_irqchip() {
-                                let irqchip = route.get_irqchip();
-                                IrqSource::Irqchip {
-                                    chip: irqchip.irqchip,
-                                    pin: irqchip.pin,
-                                }
-                            } else if route.has_msi() {
-                let msi = route.get_msi();
-                IrqSource::Msi {
-                    address: msi.address,
-                    data: msi.data,
-                }
-            } else {
-                // Because route is a oneof field in the proto definition, this should
-                // only happen if a new variant gets added without updating this chained
-                // if block.
-                return Err(SysError::new(EINVAL));
-            },
-                        });
+                gsi: route.irq_id,
+                source: if route.has_irqchip() {
+                    let irqchip = route.get_irqchip();
+                    IrqSource::Irqchip {
+                        chip: irqchip.irqchip,
+                        pin: irqchip.pin,
+                    }
+                } else if route.has_msi() {
+                    let msi = route.get_msi();
+                    IrqSource::Msi {
+                        address: msi.address,
+                        data: msi.data,
+                    }
+                } else {
+                    // Because route is a oneof field in the proto definition, this should
+                    // only happen if a new variant gets added without updating this chained
+                    // if block.
+                    return Err(SysError::new(EINVAL));
+                },
+            });
         }
         vm.set_gsi_routing(&routes[..])
     }
 
     fn handle_pause_vcpus(&self, vcpu_handles: &[JoinHandle<()>], cpu_mask: u64, user_data: u64) {
-        for (cpu_id, (handle, per_cpu_state)) in
-            vcpu_handles
-                .iter()
-                .zip(self.per_vcpu_states.iter())
-                .enumerate() {
+        for (cpu_id, (handle, per_cpu_state)) in vcpu_handles
+            .iter()
+            .zip(self.per_vcpu_states.iter())
+            .enumerate()
+        {
             if cpu_mask & (1 << cpu_id) != 0 {
                 per_cpu_state.lock().unwrap().request_pause(user_data);
                 if let Err(e) = handle.kill(SIGRTMIN() + 0) {
@@ -401,9 +402,10 @@ impl Process {
         }
     }
 
-    fn handle_get_net_config(tap: &net_util::Tap,
-                             config: &mut MainResponse_GetNetConfig)
-                             -> SysResult<()> {
+    fn handle_get_net_config(
+        tap: &net_util::Tap,
+        config: &mut MainResponse_GetNetConfig,
+    ) -> SysResult<()> {
         // Log any NetError so that the cause can be found later, but extract and return the
         // underlying errno for the client as well.
         fn map_net_error(s: &str, e: NetError) -> SysError {
@@ -411,15 +413,15 @@ impl Process {
             e.sys_error()
         }
 
-        let ip_addr = tap.ip_addr()
-            .map_err(|e| map_net_error("IP address", e))?;
+        let ip_addr = tap.ip_addr().map_err(|e| map_net_error("IP address", e))?;
         config.set_host_ipv4_address(u32::from(ip_addr));
 
         let netmask = tap.netmask().map_err(|e| map_net_error("netmask", e))?;
         config.set_netmask(u32::from(netmask));
 
         let result_mac_addr = config.mut_host_mac_address();
-        let mac_addr_octets = tap.mac_address()
+        let mac_addr_octets = tap
+            .mac_address()
             .map_err(|e| map_net_error("mac address", e))?
             .octets();
         result_mac_addr.resize(mac_addr_octets.len(), 0);
@@ -433,13 +435,14 @@ impl Process {
     ///
     /// The `vm` is used to service request that affect the VM. The `vcpu_handles` slice is used to
     /// interrupt a VCPU thread currently running in the VM if the socket request it.
-    pub fn handle_socket(&mut self,
-                         index: usize,
-                         kvm: &Kvm,
-                         vm: &mut Vm,
-                         vcpu_handles: &[JoinHandle<()>],
-                         tap: Option<&Tap>)
-                         -> Result<()> {
+    pub fn handle_socket(
+        &mut self,
+        index: usize,
+        kvm: &Kvm,
+        vm: &mut Vm,
+        vcpu_handles: &[JoinHandle<()>],
+        tap: Option<&Tap>,
+    ) -> Result<()> {
         let (msg_size, request_file) = self.request_sockets[index]
             .recv_with_fd(&mut self.request_buffer)
             .map_err(Error::PluginSocketRecv)?;
@@ -470,38 +473,38 @@ impl Process {
                     } else if create.has_memory() {
                         let memory = create.get_memory();
                         match request_file {
-                            Some(memfd) => {
-                                Self::handle_memory(entry,
-                                                    vm,
-                                                    memfd,
-                                                    memory.offset,
-                                                    memory.start,
-                                                    memory.length,
-                                                    memory.read_only,
-                                                    memory.dirty_log)
-                            }
+                            Some(memfd) => Self::handle_memory(
+                                entry,
+                                vm,
+                                memfd,
+                                memory.offset,
+                                memory.start,
+                                memory.length,
+                                memory.read_only,
+                                memory.dirty_log,
+                            ),
                             None => Err(SysError::new(EBADF)),
                         }
                     } else if create.has_irq_event() {
                         let irq_event = create.get_irq_event();
                         match (EventFd::new(), EventFd::new()) {
-                            (Ok(evt), Ok(resample_evt)) => {
-                                match vm.register_irqfd_resample(&evt,
-                                                                 &resample_evt,
-                                                                 irq_event.irq_id) {
-                                    Ok(()) => {
-                                        response_fds.push(evt.as_raw_fd());
-                                        response_fds.push(resample_evt.as_raw_fd());
-                                        response_files.push(downcast_file(resample_evt));
-                                        entry.insert(PluginObject::IrqEvent {
-                                            irq_id: irq_event.irq_id,
-                                            evt,
-                                        });
-                                        Ok(())
-                                    }
-                                    Err(e) => Err(e),
+                            (Ok(evt), Ok(resample_evt)) => match vm.register_irqfd_resample(
+                                &evt,
+                                &resample_evt,
+                                irq_event.irq_id,
+                            ) {
+                                Ok(()) => {
+                                    response_fds.push(evt.as_raw_fd());
+                                    response_fds.push(resample_evt.as_raw_fd());
+                                    response_files.push(downcast_file(resample_evt));
+                                    entry.insert(PluginObject::IrqEvent {
+                                        irq_id: irq_event.irq_id,
+                                        evt,
+                                    });
+                                    Ok(())
                                 }
-                            }
+                                Err(e) => Err(e),
+                            },
                             (Err(e), _) | (_, Err(e)) => Err(e),
                         }
                     } else {

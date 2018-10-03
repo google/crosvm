@@ -3,14 +3,14 @@
 // found in the LICENSE file.
 
 use std::os::raw::c_ulonglong;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use sys_util::{EventFd, PollContext, PollToken};
 use vhost::Vhost;
 
-use super::{Error, Result};
 use super::super::{Queue, INTERRUPT_STATUS_USED_RING};
+use super::{Error, Result};
 
 /// Worker that takes care of running the vhost device.  This mainly involves forwarding interrupts
 /// from the vhost driver to the guest VM because crosvm only supports the virtio-mmio transport,
@@ -35,12 +35,12 @@ impl<T: Vhost> Worker<T> {
         acked_features: u64,
     ) -> Worker<T> {
         Worker {
-            queues: queues,
-            vhost_handle: vhost_handle,
-            vhost_interrupt: vhost_interrupt,
-            interrupt_status: interrupt_status,
-            interrupt_evt: interrupt_evt,
-            acked_features: acked_features,
+            queues,
+            vhost_handle,
+            vhost_interrupt,
+            interrupt_status,
+            interrupt_evt,
+            acked_features,
         }
     }
 
@@ -61,14 +61,23 @@ impl<T: Vhost> Worker<T> {
         F: FnOnce(&T) -> Result<()>,
     {
         // Preliminary setup for vhost net.
-        self.vhost_handle.set_owner().map_err(Error::VhostSetOwner)?;
+        self.vhost_handle
+            .set_owner()
+            .map_err(Error::VhostSetOwner)?;
 
-        let avail_features = self.vhost_handle.get_features().map_err(Error::VhostGetFeatures)?;
+        let avail_features = self
+            .vhost_handle
+            .get_features()
+            .map_err(Error::VhostGetFeatures)?;
 
         let features: c_ulonglong = self.acked_features & avail_features;
-        self.vhost_handle.set_features(features).map_err(Error::VhostSetFeatures)?;
+        self.vhost_handle
+            .set_features(features)
+            .map_err(Error::VhostSetFeatures)?;
 
-        self.vhost_handle.set_mem_table().map_err(Error::VhostSetMemTable)?;
+        self.vhost_handle
+            .set_mem_table()
+            .map_err(Error::VhostSetMemTable)?;
 
         for (queue_index, ref queue) in self.queues.iter().enumerate() {
             self.vhost_handle
@@ -85,8 +94,7 @@ impl<T: Vhost> Worker<T> {
                     queue.used_ring,
                     queue.avail_ring,
                     None,
-                )
-                .map_err(Error::VhostSetVringAddr)?;
+                ).map_err(Error::VhostSetVringAddr)?;
             self.vhost_handle
                 .set_vring_base(queue_index, 0)
                 .map_err(Error::VhostSetVringBase)?;
@@ -107,9 +115,9 @@ impl<T: Vhost> Worker<T> {
         }
 
         let poll_ctx: PollContext<Token> = PollContext::new()
-                      .and_then(|pc| pc.add(&self.vhost_interrupt, Token::VhostIrq).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
-                      .map_err(Error::CreatePollContext)?;
+            .and_then(|pc| pc.add(&self.vhost_interrupt, Token::VhostIrq).and(Ok(pc)))
+            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            .map_err(Error::CreatePollContext)?;
 
         'poll: loop {
             let events = poll_ctx.wait().map_err(Error::PollError)?;
@@ -120,7 +128,7 @@ impl<T: Vhost> Worker<T> {
                     Token::VhostIrq => {
                         needs_interrupt = true;
                         self.vhost_interrupt.read().map_err(Error::VhostIrqRead)?;
-                    },
+                    }
                     Token::Kill => break 'poll,
                 }
             }

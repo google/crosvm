@@ -7,38 +7,38 @@
 
 use std::fs::File;
 use std::mem::size_of;
-use std::os::unix::io::{AsRawFd, RawFd, FromRawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixDatagram, UnixStream};
 use std::ptr::{copy_nonoverlapping, null_mut, write_unaligned};
 
-use libc::{c_void, c_long, iovec, msghdr, cmsghdr, sendmsg, recvmsg, SOL_SOCKET, SCM_RIGHTS,
-           MSG_NOSIGNAL};
+use libc::{
+    c_long, c_void, cmsghdr, iovec, msghdr, recvmsg, sendmsg, MSG_NOSIGNAL, SCM_RIGHTS, SOL_SOCKET,
+};
 
 use data_model::VolatileSlice;
 
-use {Result, Error};
+use {Error, Result};
 
 // Each of the following macros performs the same function as their C counterparts. They are each
 // macros because they are used to size statically allocated arrays.
 
 macro_rules! CMSG_ALIGN {
-    ($len:expr) => (
+    ($len:expr) => {
         (($len) + size_of::<c_long>() - 1) & !(size_of::<c_long>() - 1)
-    )
+    };
 }
 
 macro_rules! CMSG_SPACE {
-    ($len:expr) => (
+    ($len:expr) => {
         size_of::<cmsghdr>() + CMSG_ALIGN!($len)
-    )
+    };
 }
 
 macro_rules! CMSG_LEN {
-    ($len:expr) => (
+    ($len:expr) => {
         size_of::<cmsghdr>() + ($len)
-    )
+    };
 }
-
 
 // This function (macro in the C version) is not used in any compile time constant slots, so is just
 // an ordinary function. The returned pointer is hard coded to be RawFd because that's all that this
@@ -55,14 +55,15 @@ fn CMSG_DATA(cmsg_buffer: *mut u8) -> *mut RawFd {
 fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut u8) -> *mut u8 {
     let next_cmsg = cmsg_ptr.wrapping_offset(CMSG_ALIGN!(cmsg.cmsg_len) as isize);
     if next_cmsg
-           .wrapping_offset(1)
-           .wrapping_sub(msghdr.msg_control as usize) as usize > msghdr.msg_controllen {
+        .wrapping_offset(1)
+        .wrapping_sub(msghdr.msg_control as usize) as usize
+        > msghdr.msg_controllen
+    {
         null_mut()
     } else {
         next_cmsg
     }
 }
-
 
 const CMSG_BUFFER_INLINE_CAPACITY: usize = CMSG_SPACE!(size_of::<RawFd>() * 32);
 
@@ -118,9 +119,11 @@ fn raw_sendmsg<D: IntoIovec>(fd: RawFd, out_data: D, out_fds: &[RawFd]) -> Resul
             write_unaligned(cmsg_buffer.as_mut_ptr() as *mut cmsghdr, cmsg);
             // Safe because the cmsg_buffer was allocated to be large enough to hold out_fds.len()
             // file descriptors.
-            copy_nonoverlapping(out_fds.as_ptr(),
-                                CMSG_DATA(cmsg_buffer.as_mut_ptr()),
-                                out_fds.len());
+            copy_nonoverlapping(
+                out_fds.as_ptr(),
+                CMSG_DATA(cmsg_buffer.as_mut_ptr()),
+                out_fds.len(),
+            );
         }
 
         msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut c_void;
@@ -184,16 +187,17 @@ fn raw_recvmsg(fd: RawFd, in_data: &mut [u8], in_fds: &mut [RawFd]) -> Result<(u
         if cmsg.cmsg_level == SOL_SOCKET && cmsg.cmsg_type == SCM_RIGHTS {
             let fd_count = (cmsg.cmsg_len - CMSG_LEN!(0)) / size_of::<RawFd>();
             unsafe {
-                copy_nonoverlapping(CMSG_DATA(cmsg_ptr),
-                                    in_fds[in_fds_count..(in_fds_count + fd_count)].as_mut_ptr(),
-                                    fd_count);
+                copy_nonoverlapping(
+                    CMSG_DATA(cmsg_ptr),
+                    in_fds[in_fds_count..(in_fds_count + fd_count)].as_mut_ptr(),
+                    fd_count,
+                );
             }
             in_fds_count += fd_count;
         }
 
         cmsg_ptr = get_next_cmsg(&msg, &cmsg, cmsg_ptr);
     }
-
 
     Ok((total_read as usize, in_fds_count))
 }
@@ -246,9 +250,7 @@ pub trait ScmSocket {
             Some(unsafe { File::from_raw_fd(fd[0]) })
         };
         Ok((read_count, file))
-
     }
-
 
     /// Receives data and file descriptors from the socket.
     ///
@@ -334,22 +336,36 @@ mod tests {
     #[test]
     fn buffer_len() {
         assert_eq!(CMSG_SPACE!(0 * size_of::<RawFd>()), size_of::<cmsghdr>());
-        assert_eq!(CMSG_SPACE!(1 * size_of::<RawFd>()),
-                   size_of::<cmsghdr>() + size_of::<c_long>());
+        assert_eq!(
+            CMSG_SPACE!(1 * size_of::<RawFd>()),
+            size_of::<cmsghdr>() + size_of::<c_long>()
+        );
         if size_of::<RawFd>() == 4 {
-            assert_eq!(CMSG_SPACE!(2 * size_of::<RawFd>()),
-                       size_of::<cmsghdr>() + size_of::<c_long>());
-            assert_eq!(CMSG_SPACE!(3 * size_of::<RawFd>()),
-                       size_of::<cmsghdr>() + size_of::<c_long>() * 2);
-            assert_eq!(CMSG_SPACE!(4 * size_of::<RawFd>()),
-                       size_of::<cmsghdr>() + size_of::<c_long>() * 2);
+            assert_eq!(
+                CMSG_SPACE!(2 * size_of::<RawFd>()),
+                size_of::<cmsghdr>() + size_of::<c_long>()
+            );
+            assert_eq!(
+                CMSG_SPACE!(3 * size_of::<RawFd>()),
+                size_of::<cmsghdr>() + size_of::<c_long>() * 2
+            );
+            assert_eq!(
+                CMSG_SPACE!(4 * size_of::<RawFd>()),
+                size_of::<cmsghdr>() + size_of::<c_long>() * 2
+            );
         } else if size_of::<RawFd>() == 8 {
-            assert_eq!(CMSG_SPACE!(2 * size_of::<RawFd>()),
-                       size_of::<cmsghdr>() + size_of::<c_long>() * 2);
-            assert_eq!(CMSG_SPACE!(3 * size_of::<RawFd>()),
-                       size_of::<cmsghdr>() + size_of::<c_long>() * 3);
-            assert_eq!(CMSG_SPACE!(4 * size_of::<RawFd>()),
-                       size_of::<cmsghdr>() + size_of::<c_long>() * 4);
+            assert_eq!(
+                CMSG_SPACE!(2 * size_of::<RawFd>()),
+                size_of::<cmsghdr>() + size_of::<c_long>() * 2
+            );
+            assert_eq!(
+                CMSG_SPACE!(3 * size_of::<RawFd>()),
+                size_of::<cmsghdr>() + size_of::<c_long>() * 3
+            );
+            assert_eq!(
+                CMSG_SPACE!(4 * size_of::<RawFd>()),
+                size_of::<cmsghdr>() + size_of::<c_long>() * 4
+            );
         }
     }
 
@@ -357,14 +373,16 @@ mod tests {
     fn send_recv_no_fd() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
 
-        let write_count = s1.send_with_fds([1u8, 1, 2, 21, 34, 55].as_ref(), &[])
+        let write_count = s1
+            .send_with_fds([1u8, 1, 2, 21, 34, 55].as_ref(), &[])
             .expect("failed to send data");
 
         assert_eq!(write_count, 6);
 
         let mut buf = [0; 6];
         let mut files = [0; 1];
-        let (read_count, file_count) = s2.recv_with_fds(&mut buf[..], &mut files)
+        let (read_count, file_count) = s2
+            .recv_with_fds(&mut buf[..], &mut files)
             .expect("failed to recv data");
 
         assert_eq!(read_count, 6);
@@ -377,7 +395,8 @@ mod tests {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
 
         let evt = EventFd::new().expect("failed to create eventfd");
-        let write_count = s1.send_with_fd([].as_ref(), evt.as_raw_fd())
+        let write_count = s1
+            .send_with_fd([].as_ref(), evt.as_raw_fd())
             .expect("failed to send fd");
 
         assert_eq!(write_count, 0);
@@ -403,14 +422,16 @@ mod tests {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
 
         let evt = EventFd::new().expect("failed to create eventfd");
-        let write_count = s1.send_with_fds([237].as_ref(), &[evt.as_raw_fd()])
+        let write_count = s1
+            .send_with_fds([237].as_ref(), &[evt.as_raw_fd()])
             .expect("failed to send fd");
 
         assert_eq!(write_count, 1);
 
         let mut files = [0; 2];
         let mut buf = [0u8];
-        let (read_count, file_count) = s2.recv_with_fds(&mut buf, &mut files)
+        let (read_count, file_count) = s2
+            .recv_with_fds(&mut buf, &mut files)
             .expect("failed to recv fd");
 
         assert_eq!(read_count, 1);

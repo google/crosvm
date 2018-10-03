@@ -8,15 +8,17 @@ use std::io::Write;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread;
 
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
 use sys_util::{self, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 
-use super::{VirtioDevice, Queue, DescriptorChain, INTERRUPT_STATUS_CONFIG_CHANGED,
-            INTERRUPT_STATUS_USED_RING, TYPE_BALLOON};
+use super::{
+    DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_CONFIG_CHANGED,
+    INTERRUPT_STATUS_USED_RING, TYPE_BALLOON,
+};
 
 #[derive(Debug)]
 pub enum BalloonError {
@@ -85,7 +87,8 @@ impl Worker {
                         let guest_address =
                             GuestAddress((guest_input as u64) << VIRTIO_BALLOON_PFN_SHIFT);
 
-                        if self.mem
+                        if self
+                            .mem
                             .remove_range(guest_address, 1 << VIRTIO_BALLOON_PFN_SHIFT)
                             .is_err()
                         {
@@ -107,19 +110,14 @@ impl Worker {
     }
 
     fn signal_used_queue(&self) {
-        self.interrupt_status.fetch_or(
-            INTERRUPT_STATUS_USED_RING as usize,
-            Ordering::SeqCst,
-        );
+        self.interrupt_status
+            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
         self.interrupt_evt.write(1).unwrap();
     }
 
     fn signal_config_changed(&self) {
-        self.interrupt_status.fetch_or(
-            INTERRUPT_STATUS_CONFIG_CHANGED as
-                usize,
-            Ordering::SeqCst,
-        );
+        self.interrupt_status
+            .fetch_or(INTERRUPT_STATUS_CONFIG_CHANGED as usize, Ordering::SeqCst);
         self.interrupt_evt.write(1).unwrap();
     }
 
@@ -135,18 +133,20 @@ impl Worker {
         let inflate_queue_evt = queue_evts.remove(0);
         let deflate_queue_evt = queue_evts.remove(0);
 
-        let poll_ctx: PollContext<Token> =
-            match PollContext::new()
-                      .and_then(|pc| pc.add(&inflate_queue_evt, Token::Inflate).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&deflate_queue_evt, Token::Deflate).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&self.command_socket, Token::CommandSocket).and(Ok(pc)))
-                      .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc))) {
-                Ok(pc) => pc,
-                Err(e) => {
-                    error!("failed creating PollContext: {:?}", e);
-                    return;
-                }
-            };
+        let poll_ctx: PollContext<Token> = match PollContext::new()
+            .and_then(|pc| pc.add(&inflate_queue_evt, Token::Inflate).and(Ok(pc)))
+            .and_then(|pc| pc.add(&deflate_queue_evt, Token::Deflate).and(Ok(pc)))
+            .and_then(|pc| {
+                pc.add(&self.command_socket, Token::CommandSocket)
+                    .and(Ok(pc))
+            }).and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+        {
+            Ok(pc) => pc,
+            Err(e) => {
+                error!("failed creating PollContext: {:?}", e);
+                return;
+            }
+        };
 
         'poll: loop {
             let events = match poll_ctx.wait() {
@@ -279,10 +279,9 @@ impl VirtioDevice for Balloon {
         }
         // This read can't fail as it fits in the declared array so unwrap is fine.
         let new_actual: u32 = data.read_u32::<LittleEndian>().unwrap();
-        self.config.actual_pages.store(
-            new_actual as usize,
-            Ordering::Relaxed,
-        );
+        self.config
+            .actual_pages
+            .store(new_actual as usize, Ordering::Relaxed);
     }
 
     fn features(&self, page: u32) -> u32 {
@@ -311,14 +310,13 @@ impl VirtioDevice for Balloon {
             return;
         }
 
-        let (self_kill_evt, kill_evt) =
-            match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("failed to create kill EventFd pair: {:?}", e);
-                    return;
-                }
-            };
+        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("failed to create kill EventFd pair: {:?}", e);
+                return;
+            }
+        };
         self.kill_evt = Some(self_kill_evt);
 
         let config = self.config.clone();
@@ -327,13 +325,13 @@ impl VirtioDevice for Balloon {
             .name("virtio_balloon".to_string())
             .spawn(move || {
                 let mut worker = Worker {
-                    mem: mem,
+                    mem,
                     inflate_queue: queues.remove(0),
                     deflate_queue: queues.remove(0),
                     interrupt_status: status,
-                    interrupt_evt: interrupt_evt,
-                    command_socket: command_socket,
-                    config: config,
+                    interrupt_evt,
+                    command_socket,
+                    config,
                 };
                 worker.run(queue_evts, kill_evt);
             });

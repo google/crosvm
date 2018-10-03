@@ -3,13 +3,15 @@
 #[repr(C)]
 #[derive(Default)]
 pub struct __IncompleteArrayField<T>(::std::marker::PhantomData<T>);
-impl <T> __IncompleteArrayField<T> {
+impl<T> __IncompleteArrayField<T> {
     #[inline]
     pub fn new() -> Self {
         __IncompleteArrayField(::std::marker::PhantomData)
     }
     #[inline]
-    pub unsafe fn as_ptr(&self) -> *const T { ::std::mem::transmute(self) }
+    pub unsafe fn as_ptr(&self) -> *const T {
+        ::std::mem::transmute(self)
+    }
     #[inline]
     pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
         ::std::mem::transmute(self)
@@ -23,16 +25,18 @@ impl <T> __IncompleteArrayField<T> {
         ::std::slice::from_raw_parts_mut(self.as_mut_ptr(), len)
     }
 }
-impl <T> ::std::fmt::Debug for __IncompleteArrayField<T> {
+impl<T> ::std::fmt::Debug for __IncompleteArrayField<T> {
     fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         fmt.write_str("__IncompleteArrayField")
     }
 }
-impl <T> ::std::clone::Clone for __IncompleteArrayField<T> {
+impl<T> ::std::clone::Clone for __IncompleteArrayField<T> {
     #[inline]
-    fn clone(&self) -> Self { Self::new() }
+    fn clone(&self) -> Self {
+        Self::new()
+    }
 }
-impl <T> ::std::marker::Copy for __IncompleteArrayField<T> { }
+impl<T> ::std::marker::Copy for __IncompleteArrayField<T> {}
 pub const __BITS_PER_LONG: ::std::os::raw::c_uint = 64;
 pub const __FD_SETSIZE: ::std::os::raw::c_uint = 1024;
 pub const VIRTIO_ID_NET: ::std::os::raw::c_uint = 1;
@@ -214,18 +218,31 @@ pub struct __kernel_fd_set {
 }
 #[test]
 fn bindgen_test_layout___kernel_fd_set() {
-    assert_eq!(::std::mem::size_of::<__kernel_fd_set>() , 128usize , concat !
-               ( "Size of: " , stringify ! ( __kernel_fd_set ) ));
-    assert_eq! (::std::mem::align_of::<__kernel_fd_set>() , 8usize , concat !
-                ( "Alignment of " , stringify ! ( __kernel_fd_set ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const __kernel_fd_set ) ) . fds_bits as * const
-                _ as usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( __kernel_fd_set ) ,
-                "::" , stringify ! ( fds_bits ) ));
+    assert_eq!(
+        ::std::mem::size_of::<__kernel_fd_set>(),
+        128usize,
+        concat!("Size of: ", stringify!(__kernel_fd_set))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__kernel_fd_set>(),
+        8usize,
+        concat!("Alignment of ", stringify!(__kernel_fd_set))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const __kernel_fd_set)).fds_bits as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(__kernel_fd_set),
+            "::",
+            stringify!(fds_bits)
+        )
+    );
 }
 impl Clone for __kernel_fd_set {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 pub type __kernel_sighandler_t =
     ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>;
@@ -256,18 +273,31 @@ pub struct __kernel_fsid_t {
 }
 #[test]
 fn bindgen_test_layout___kernel_fsid_t() {
-    assert_eq!(::std::mem::size_of::<__kernel_fsid_t>() , 8usize , concat ! (
-               "Size of: " , stringify ! ( __kernel_fsid_t ) ));
-    assert_eq! (::std::mem::align_of::<__kernel_fsid_t>() , 4usize , concat !
-                ( "Alignment of " , stringify ! ( __kernel_fsid_t ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const __kernel_fsid_t ) ) . val as * const _ as
-                usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( __kernel_fsid_t ) ,
-                "::" , stringify ! ( val ) ));
+    assert_eq!(
+        ::std::mem::size_of::<__kernel_fsid_t>(),
+        8usize,
+        concat!("Size of: ", stringify!(__kernel_fsid_t))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__kernel_fsid_t>(),
+        4usize,
+        concat!("Alignment of ", stringify!(__kernel_fsid_t))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const __kernel_fsid_t)).val as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(__kernel_fsid_t),
+            "::",
+            stringify!(val)
+        )
+    );
 }
 impl Clone for __kernel_fsid_t {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 pub type __kernel_off_t = __kernel_long_t;
 pub type __kernel_loff_t = ::std::os::raw::c_longlong;
@@ -298,28 +328,51 @@ pub struct ethhdr {
 }
 #[test]
 fn bindgen_test_layout_ethhdr() {
-    assert_eq!(::std::mem::size_of::<ethhdr>() , 14usize , concat ! (
-               "Size of: " , stringify ! ( ethhdr ) ));
-    assert_eq! (::std::mem::align_of::<ethhdr>() , 1usize , concat ! (
-                "Alignment of " , stringify ! ( ethhdr ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const ethhdr ) ) . h_dest as * const _ as usize
-                } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( ethhdr ) , "::" ,
-                stringify ! ( h_dest ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const ethhdr ) ) . h_source as * const _ as
-                usize } , 6usize , concat ! (
-                "Alignment of field: " , stringify ! ( ethhdr ) , "::" ,
-                stringify ! ( h_source ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const ethhdr ) ) . h_proto as * const _ as
-                usize } , 12usize , concat ! (
-                "Alignment of field: " , stringify ! ( ethhdr ) , "::" ,
-                stringify ! ( h_proto ) ));
+    assert_eq!(
+        ::std::mem::size_of::<ethhdr>(),
+        14usize,
+        concat!("Size of: ", stringify!(ethhdr))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<ethhdr>(),
+        1usize,
+        concat!("Alignment of ", stringify!(ethhdr))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const ethhdr)).h_dest as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(ethhdr),
+            "::",
+            stringify!(h_dest)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const ethhdr)).h_source as *const _ as usize },
+        6usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(ethhdr),
+            "::",
+            stringify!(h_source)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const ethhdr)).h_proto as *const _ as usize },
+        12usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(ethhdr),
+            "::",
+            stringify!(h_proto)
+        )
+    );
 }
 impl Clone for ethhdr {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C, packed)]
 #[derive(Debug, Copy)]
@@ -331,34 +384,61 @@ pub struct virtio_net_config {
 }
 #[test]
 fn bindgen_test_layout_virtio_net_config() {
-    assert_eq!(::std::mem::size_of::<virtio_net_config>() , 12usize , concat !
-               ( "Size of: " , stringify ! ( virtio_net_config ) ));
-    assert_eq! (::std::mem::align_of::<virtio_net_config>() , 1usize , concat
-                ! ( "Alignment of " , stringify ! ( virtio_net_config ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_config ) ) . mac as * const _
-                as usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_config ) ,
-                "::" , stringify ! ( mac ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_config ) ) . status as * const
-                _ as usize } , 6usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_config ) ,
-                "::" , stringify ! ( status ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_config ) ) .
-                max_virtqueue_pairs as * const _ as usize } , 8usize , concat
-                ! (
-                "Alignment of field: " , stringify ! ( virtio_net_config ) ,
-                "::" , stringify ! ( max_virtqueue_pairs ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_config ) ) . mtu as * const _
-                as usize } , 10usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_config ) ,
-                "::" , stringify ! ( mtu ) ));
+    assert_eq!(
+        ::std::mem::size_of::<virtio_net_config>(),
+        12usize,
+        concat!("Size of: ", stringify!(virtio_net_config))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<virtio_net_config>(),
+        1usize,
+        concat!("Alignment of ", stringify!(virtio_net_config))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_config)).mac as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_config),
+            "::",
+            stringify!(mac)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_config)).status as *const _ as usize },
+        6usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_config),
+            "::",
+            stringify!(status)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_config)).max_virtqueue_pairs as *const _ as usize },
+        8usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_config),
+            "::",
+            stringify!(max_virtqueue_pairs)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_config)).mtu as *const _ as usize },
+        10usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_config),
+            "::",
+            stringify!(mtu)
+        )
+    );
 }
 impl Clone for virtio_net_config {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C)]
 #[derive(Debug, Copy)]
@@ -373,48 +453,91 @@ pub struct virtio_net_hdr_v1 {
 }
 #[test]
 fn bindgen_test_layout_virtio_net_hdr_v1() {
-    assert_eq!(::std::mem::size_of::<virtio_net_hdr_v1>() , 12usize , concat !
-               ( "Size of: " , stringify ! ( virtio_net_hdr_v1 ) ));
-    assert_eq! (::std::mem::align_of::<virtio_net_hdr_v1>() , 2usize , concat
-                ! ( "Alignment of " , stringify ! ( virtio_net_hdr_v1 ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr_v1 ) ) . flags as * const
-                _ as usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr_v1 ) ,
-                "::" , stringify ! ( flags ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr_v1 ) ) . gso_type as *
-                const _ as usize } , 1usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr_v1 ) ,
-                "::" , stringify ! ( gso_type ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr_v1 ) ) . hdr_len as *
-                const _ as usize } , 2usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr_v1 ) ,
-                "::" , stringify ! ( hdr_len ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr_v1 ) ) . gso_size as *
-                const _ as usize } , 4usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr_v1 ) ,
-                "::" , stringify ! ( gso_size ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr_v1 ) ) . csum_start as *
-                const _ as usize } , 6usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr_v1 ) ,
-                "::" , stringify ! ( csum_start ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr_v1 ) ) . csum_offset as *
-                const _ as usize } , 8usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr_v1 ) ,
-                "::" , stringify ! ( csum_offset ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr_v1 ) ) . num_buffers as *
-                const _ as usize } , 10usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr_v1 ) ,
-                "::" , stringify ! ( num_buffers ) ));
+    assert_eq!(
+        ::std::mem::size_of::<virtio_net_hdr_v1>(),
+        12usize,
+        concat!("Size of: ", stringify!(virtio_net_hdr_v1))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<virtio_net_hdr_v1>(),
+        2usize,
+        concat!("Alignment of ", stringify!(virtio_net_hdr_v1))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr_v1)).flags as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr_v1),
+            "::",
+            stringify!(flags)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr_v1)).gso_type as *const _ as usize },
+        1usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr_v1),
+            "::",
+            stringify!(gso_type)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr_v1)).hdr_len as *const _ as usize },
+        2usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr_v1),
+            "::",
+            stringify!(hdr_len)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr_v1)).gso_size as *const _ as usize },
+        4usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr_v1),
+            "::",
+            stringify!(gso_size)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr_v1)).csum_start as *const _ as usize },
+        6usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr_v1),
+            "::",
+            stringify!(csum_start)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr_v1)).csum_offset as *const _ as usize },
+        8usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr_v1),
+            "::",
+            stringify!(csum_offset)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr_v1)).num_buffers as *const _ as usize },
+        10usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr_v1),
+            "::",
+            stringify!(num_buffers)
+        )
+    );
 }
 impl Clone for virtio_net_hdr_v1 {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C)]
 #[derive(Debug, Copy)]
@@ -428,43 +551,81 @@ pub struct virtio_net_hdr {
 }
 #[test]
 fn bindgen_test_layout_virtio_net_hdr() {
-    assert_eq!(::std::mem::size_of::<virtio_net_hdr>() , 10usize , concat ! (
-               "Size of: " , stringify ! ( virtio_net_hdr ) ));
-    assert_eq! (::std::mem::align_of::<virtio_net_hdr>() , 2usize , concat ! (
-                "Alignment of " , stringify ! ( virtio_net_hdr ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr ) ) . flags as * const _
-                as usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr ) , "::"
-                , stringify ! ( flags ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr ) ) . gso_type as * const
-                _ as usize } , 1usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr ) , "::"
-                , stringify ! ( gso_type ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr ) ) . hdr_len as * const _
-                as usize } , 2usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr ) , "::"
-                , stringify ! ( hdr_len ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr ) ) . gso_size as * const
-                _ as usize } , 4usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr ) , "::"
-                , stringify ! ( gso_size ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr ) ) . csum_start as *
-                const _ as usize } , 6usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr ) , "::"
-                , stringify ! ( csum_start ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr ) ) . csum_offset as *
-                const _ as usize } , 8usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_hdr ) , "::"
-                , stringify ! ( csum_offset ) ));
+    assert_eq!(
+        ::std::mem::size_of::<virtio_net_hdr>(),
+        10usize,
+        concat!("Size of: ", stringify!(virtio_net_hdr))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<virtio_net_hdr>(),
+        2usize,
+        concat!("Alignment of ", stringify!(virtio_net_hdr))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr)).flags as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr),
+            "::",
+            stringify!(flags)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr)).gso_type as *const _ as usize },
+        1usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr),
+            "::",
+            stringify!(gso_type)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr)).hdr_len as *const _ as usize },
+        2usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr),
+            "::",
+            stringify!(hdr_len)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr)).gso_size as *const _ as usize },
+        4usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr),
+            "::",
+            stringify!(gso_size)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr)).csum_start as *const _ as usize },
+        6usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr),
+            "::",
+            stringify!(csum_start)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr)).csum_offset as *const _ as usize },
+        8usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr),
+            "::",
+            stringify!(csum_offset)
+        )
+    );
 }
 impl Clone for virtio_net_hdr {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C)]
 #[derive(Debug, Copy)]
@@ -474,26 +635,41 @@ pub struct virtio_net_hdr_mrg_rxbuf {
 }
 #[test]
 fn bindgen_test_layout_virtio_net_hdr_mrg_rxbuf() {
-    assert_eq!(::std::mem::size_of::<virtio_net_hdr_mrg_rxbuf>() , 12usize ,
-               concat ! (
-               "Size of: " , stringify ! ( virtio_net_hdr_mrg_rxbuf ) ));
-    assert_eq! (::std::mem::align_of::<virtio_net_hdr_mrg_rxbuf>() , 2usize ,
-                concat ! (
-                "Alignment of " , stringify ! ( virtio_net_hdr_mrg_rxbuf ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr_mrg_rxbuf ) ) . hdr as *
-                const _ as usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! (
-                virtio_net_hdr_mrg_rxbuf ) , "::" , stringify ! ( hdr ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_hdr_mrg_rxbuf ) ) .
-                num_buffers as * const _ as usize } , 10usize , concat ! (
-                "Alignment of field: " , stringify ! (
-                virtio_net_hdr_mrg_rxbuf ) , "::" , stringify ! ( num_buffers
-                ) ));
+    assert_eq!(
+        ::std::mem::size_of::<virtio_net_hdr_mrg_rxbuf>(),
+        12usize,
+        concat!("Size of: ", stringify!(virtio_net_hdr_mrg_rxbuf))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<virtio_net_hdr_mrg_rxbuf>(),
+        2usize,
+        concat!("Alignment of ", stringify!(virtio_net_hdr_mrg_rxbuf))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr_mrg_rxbuf)).hdr as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr_mrg_rxbuf),
+            "::",
+            stringify!(hdr)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_hdr_mrg_rxbuf)).num_buffers as *const _ as usize },
+        10usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_hdr_mrg_rxbuf),
+            "::",
+            stringify!(num_buffers)
+        )
+    );
 }
 impl Clone for virtio_net_hdr_mrg_rxbuf {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C, packed)]
 #[derive(Debug, Copy)]
@@ -503,24 +679,41 @@ pub struct virtio_net_ctrl_hdr {
 }
 #[test]
 fn bindgen_test_layout_virtio_net_ctrl_hdr() {
-    assert_eq!(::std::mem::size_of::<virtio_net_ctrl_hdr>() , 2usize , concat
-               ! ( "Size of: " , stringify ! ( virtio_net_ctrl_hdr ) ));
-    assert_eq! (::std::mem::align_of::<virtio_net_ctrl_hdr>() , 1usize ,
-                concat ! (
-                "Alignment of " , stringify ! ( virtio_net_ctrl_hdr ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_ctrl_hdr ) ) . class as *
-                const _ as usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_ctrl_hdr ) ,
-                "::" , stringify ! ( class ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_ctrl_hdr ) ) . cmd as * const
-                _ as usize } , 1usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_ctrl_hdr ) ,
-                "::" , stringify ! ( cmd ) ));
+    assert_eq!(
+        ::std::mem::size_of::<virtio_net_ctrl_hdr>(),
+        2usize,
+        concat!("Size of: ", stringify!(virtio_net_ctrl_hdr))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<virtio_net_ctrl_hdr>(),
+        1usize,
+        concat!("Alignment of ", stringify!(virtio_net_ctrl_hdr))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_ctrl_hdr)).class as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_ctrl_hdr),
+            "::",
+            stringify!(class)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_ctrl_hdr)).cmd as *const _ as usize },
+        1usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_ctrl_hdr),
+            "::",
+            stringify!(cmd)
+        )
+    );
 }
 impl Clone for virtio_net_ctrl_hdr {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 pub type virtio_net_ctrl_ack = __u8;
 #[repr(C, packed)]
@@ -531,14 +724,21 @@ pub struct virtio_net_ctrl_mac {
 }
 #[test]
 fn bindgen_test_layout_virtio_net_ctrl_mac() {
-    assert_eq!(::std::mem::size_of::<virtio_net_ctrl_mac>() , 4usize , concat
-               ! ( "Size of: " , stringify ! ( virtio_net_ctrl_mac ) ));
-    assert_eq! (::std::mem::align_of::<virtio_net_ctrl_mac>() , 1usize ,
-                concat ! (
-                "Alignment of " , stringify ! ( virtio_net_ctrl_mac ) ));
+    assert_eq!(
+        ::std::mem::size_of::<virtio_net_ctrl_mac>(),
+        4usize,
+        concat!("Size of: ", stringify!(virtio_net_ctrl_mac))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<virtio_net_ctrl_mac>(),
+        1usize,
+        concat!("Alignment of ", stringify!(virtio_net_ctrl_mac))
+    );
 }
 impl Clone for virtio_net_ctrl_mac {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 #[repr(C)]
 #[derive(Debug, Copy)]
@@ -547,16 +747,29 @@ pub struct virtio_net_ctrl_mq {
 }
 #[test]
 fn bindgen_test_layout_virtio_net_ctrl_mq() {
-    assert_eq!(::std::mem::size_of::<virtio_net_ctrl_mq>() , 2usize , concat !
-               ( "Size of: " , stringify ! ( virtio_net_ctrl_mq ) ));
-    assert_eq! (::std::mem::align_of::<virtio_net_ctrl_mq>() , 2usize , concat
-                ! ( "Alignment of " , stringify ! ( virtio_net_ctrl_mq ) ));
-    assert_eq! (unsafe {
-                & ( * ( 0 as * const virtio_net_ctrl_mq ) ) . virtqueue_pairs
-                as * const _ as usize } , 0usize , concat ! (
-                "Alignment of field: " , stringify ! ( virtio_net_ctrl_mq ) ,
-                "::" , stringify ! ( virtqueue_pairs ) ));
+    assert_eq!(
+        ::std::mem::size_of::<virtio_net_ctrl_mq>(),
+        2usize,
+        concat!("Size of: ", stringify!(virtio_net_ctrl_mq))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<virtio_net_ctrl_mq>(),
+        2usize,
+        concat!("Alignment of ", stringify!(virtio_net_ctrl_mq))
+    );
+    assert_eq!(
+        unsafe { &(*(0 as *const virtio_net_ctrl_mq)).virtqueue_pairs as *const _ as usize },
+        0usize,
+        concat!(
+            "Alignment of field: ",
+            stringify!(virtio_net_ctrl_mq),
+            "::",
+            stringify!(virtqueue_pairs)
+        )
+    );
 }
 impl Clone for virtio_net_ctrl_mq {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }

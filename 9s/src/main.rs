@@ -70,23 +70,23 @@ impl FromStr for ListenAddress {
     fn from_str(s: &str) -> result::Result<Self, Self::Err> {
         if s.starts_with(VSOCK) {
             if s.len() > VSOCK.len() {
-                Ok(ListenAddress::Vsock(s[VSOCK.len()..]
-                    .parse()
-                    .map_err(ParseAddressError::Vsock)?))
+                Ok(ListenAddress::Vsock(
+                    s[VSOCK.len()..].parse().map_err(ParseAddressError::Vsock)?,
+                ))
             } else {
                 Err(ParseAddressError::MissingVsockPort)
             }
         } else if s.starts_with(UNIX) {
             if s.len() > UNIX.len() {
-                Ok(ListenAddress::Unix(s[UNIX.len()..]
-                    .parse()
-                    .map_err(ParseAddressError::Unix)?))
+                Ok(ListenAddress::Unix(
+                    s[UNIX.len()..].parse().map_err(ParseAddressError::Unix)?,
+                ))
             } else {
                 Err(ParseAddressError::MissingUnixPath)
             }
         } else {
             Ok(ListenAddress::Net(
-                s.parse().map_err(ParseAddressError::Net)?
+                s.parse().map_err(ParseAddressError::Net)?,
             ))
         }
     }
@@ -171,7 +171,8 @@ fn main() -> Result<()> {
     );
     opts.optflag("h", "help", "print this help menu");
 
-    let matches = opts.parse(std::env::args_os().skip(1))
+    let matches = opts
+        .parse(std::env::args_os().skip(1))
         .map_err(Error::Argument)?;
 
     if matches.opt_present("h") || matches.free.len() == 0 {

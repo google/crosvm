@@ -5,9 +5,9 @@
 use generated::p_format;
 
 macro_rules! fourcc {
-    ($a:expr, $b:expr, $c:expr, $d:expr) => (
+    ($a:expr, $b:expr, $c:expr, $d:expr) => {
         Some($a as u32 | ($b as u32) << 8 | ($c as u32) << 16 | ($d as u32) << 24)
-    )
+    };
 }
 
 /// Gets the fourcc that corresponds to the given pipe format, or `None` if the format is

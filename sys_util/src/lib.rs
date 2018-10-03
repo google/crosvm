@@ -17,59 +17,61 @@ pub mod handle_eintr;
 pub mod ioctl;
 #[macro_use]
 pub mod syslog;
-mod mmap;
-mod shm;
-mod eventfd;
 mod errno;
+mod eventfd;
+mod file_flags;
+mod fork;
 mod guest_address;
 mod guest_memory;
+mod mmap;
+mod passwd;
 mod poll;
+mod shm;
+pub mod signal;
+mod signalfd;
+mod sock_ctrl_msg;
 mod struct_util;
 mod tempdir;
 mod terminal;
-pub mod signal;
-mod fork;
-mod signalfd;
-mod sock_ctrl_msg;
-mod passwd;
-mod file_flags;
 mod timerfd;
 mod write_zeroes;
 
-pub use mmap::*;
-pub use shm::*;
-pub use eventfd::*;
-pub use errno::{Error, Result};
 use errno::errno_result;
+pub use errno::{Error, Result};
+pub use eventfd::*;
+pub use file_flags::*;
+pub use fork::*;
 pub use guest_address::*;
 pub use guest_memory::*;
+pub use ioctl::*;
+pub use mmap::*;
+pub use passwd::*;
 pub use poll::*;
+pub use poll_token_derive::*;
+pub use shm::*;
+pub use signal::*;
+pub use signalfd::*;
+pub use sock_ctrl_msg::*;
 pub use struct_util::*;
 pub use tempdir::*;
 pub use terminal::*;
-pub use signal::*;
-pub use fork::*;
-pub use signalfd::*;
-pub use ioctl::*;
-pub use sock_ctrl_msg::*;
-pub use passwd::*;
-pub use poll_token_derive::*;
-pub use file_flags::*;
 pub use timerfd::*;
 
-pub use mmap::Error as MmapError;
 pub use guest_memory::Error as GuestMemoryError;
+pub use mmap::Error as MmapError;
 pub use signalfd::Error as SignalFdError;
-pub use write_zeroes::WriteZeroes as WriteZeroes;
+pub use write_zeroes::WriteZeroes;
 
 use std::ffi::CStr;
-use std::fs::{File, remove_file};
+use std::fs::{remove_file, File};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixDatagram;
 use std::ptr;
 
-use libc::{kill, syscall, sysconf, waitpid, pipe2, c_long, pid_t, uid_t, gid_t, _SC_PAGESIZE,
-           SIGKILL, WNOHANG, O_CLOEXEC};
+use libc::{
+    c_long, gid_t, kill, pid_t, pipe2, syscall, sysconf, uid_t, waitpid, O_CLOEXEC, SIGKILL,
+    WNOHANG, _SC_PAGESIZE,
+};
 
 use syscall_defines::linux::LinuxSyscall::SYS_getpid;
 
@@ -79,7 +81,6 @@ pub fn pagesize() -> usize {
     // Trivially safe
     unsafe { sysconf(_SC_PAGESIZE) as usize }
 }
-
 
 /// Uses the system's page size in bytes to round the given value up to the nearest page boundary.
 #[inline(always)]
@@ -161,12 +162,12 @@ pub enum FallocateMode {
 }
 
 // TODO(dverkamp): Remove this once fallocate64 is available in libc.
-extern {
+extern "C" {
     pub fn fallocate64(
         fd: libc::c_int,
         mode: libc::c_int,
         offset: libc::off64_t,
-        len: libc::off64_t
+        len: libc::off64_t,
     ) -> libc::c_int;
 }
 
@@ -176,7 +177,7 @@ pub fn fallocate(
     mode: FallocateMode,
     keep_size: bool,
     offset: u64,
-    len: u64
+    len: u64,
 ) -> Result<()> {
     let offset = if offset > libc::off64_t::max_value() as u64 {
         return Err(Error::new(libc::EINVAL));
@@ -278,7 +279,7 @@ pub fn pipe(close_on_exec: bool) -> Result<(File, File)> {
         Ok(unsafe {
             (
                 File::from_raw_fd(pipe_fds[0]),
-                File::from_raw_fd(pipe_fds[1])
+                File::from_raw_fd(pipe_fds[1]),
             )
         })
     }
@@ -302,4 +303,3 @@ impl Drop for UnlinkUnixDatagram {
         }
     }
 }
-

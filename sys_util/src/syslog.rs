@@ -28,8 +28,8 @@ use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::fs::File;
-use std::io::{Write, Cursor, ErrorKind, stderr};
 use std::io;
+use std::io::{stderr, Cursor, ErrorKind, Write};
 use std::mem;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
@@ -38,8 +38,10 @@ use std::ptr::null;
 use std::str::from_utf8;
 use std::sync::{Mutex, MutexGuard, Once, ONCE_INIT};
 
-use libc::{tm, time, time_t, localtime_r, gethostname, openlog, closelog, fcntl, c_char, LOG_NDELAY,
-           LOG_PERROR, LOG_PID, LOG_USER, F_GETFD};
+use libc::{
+    c_char, closelog, fcntl, gethostname, localtime_r, openlog, time, time_t, tm, F_GETFD,
+    LOG_NDELAY, LOG_PERROR, LOG_PID, LOG_USER,
+};
 
 use getpid;
 
@@ -151,7 +153,9 @@ fn openlog_and_get_socket() -> Result<UnixDatagram, Error> {
     // closelog first in case there was already a file descriptor open.  Safe because it takes no
     // arguments and just closes an open file descriptor.  Does nothing if the file descriptor
     // was not already open.
-    unsafe { closelog(); }
+    unsafe {
+        closelog();
+    }
 
     // Ordinarily libc's FD for the syslog connection can't be accessed, but we can guess that the
     // FD that openlog will be getting is the lowest unused FD. To guarantee that an FD is opened in
@@ -189,12 +193,12 @@ impl State {
     fn new() -> Result<State, Error> {
         let s = openlog_and_get_socket()?;
         Ok(State {
-               stderr: true,
-               socket: Some(s),
-               file: None,
-               hostname: get_hostname().ok(),
-               proc_name: get_proc_name(),
-           })
+            stderr: true,
+            socket: Some(s),
+            file: None,
+            hostname: get_hostname().ok(),
+            proc_name: get_proc_name(),
+        })
     }
 }
 
@@ -213,10 +217,10 @@ fn new_mutex_ptr<T>(inner: T) -> *const Mutex<T> {
 pub fn init() -> Result<(), Error> {
     let mut err = Error::Poisoned;
     STATE_ONCE.call_once(|| match State::new() {
-                             // Safe because STATE mutation is guarded by `Once`.
-                             Ok(state) => unsafe { STATE = new_mutex_ptr(state) },
-                             Err(e) => err = e,
-                         });
+        // Safe because STATE mutation is guarded by `Once`.
+        Ok(state) => unsafe { STATE = new_mutex_ptr(state) },
+        Err(e) => err = e,
+    });
 
     if unsafe { STATE.is_null() } {
         Err(err)
@@ -238,12 +242,12 @@ fn lock() -> Result<MutexGuard<'static, State>, Error> {
 
 // Attempts to lock and retrieve the state. Returns from the function silently on failure.
 macro_rules! lock {
-    () => (
+    () => {
         match lock() {
             Ok(s) => s,
             _ => return,
         };
-    )
+    };
 }
 
 /// Replaces the hostname reported in each syslog message.
@@ -294,7 +298,7 @@ pub fn echo_syslog(enable: bool) -> Result<(), Error> {
     let mut state = lock().map_err(|_| Error::Poisoned)?;
 
     match state.socket.take() {
-        Some(_) if enable => {},
+        Some(_) if enable => {}
         Some(s) => {
             // Because `openlog_and_get_socket` actually just "borrows" the syslog FD, this module
             // does not own the syslog connection and therefore should not destroy it.
@@ -355,20 +359,18 @@ fn send_buf(socket: &UnixDatagram, buf: &[u8]) {
     for _ in 0..SEND_RETRY {
         match socket.send(&buf[..]) {
             Ok(_) => break,
-            Err(e) => {
-                match e.kind() {
-                    ErrorKind::ConnectionRefused |
-                    ErrorKind::ConnectionReset |
-                    ErrorKind::ConnectionAborted |
-                    ErrorKind::NotConnected => {
-                        let res = socket.connect(SYSLOG_PATH);
-                        if res.is_err() {
-                            break;
-                        }
+            Err(e) => match e.kind() {
+                ErrorKind::ConnectionRefused
+                | ErrorKind::ConnectionReset
+                | ErrorKind::ConnectionAborted
+                | ErrorKind::NotConnected => {
+                    let res = socket.connect(SYSLOG_PATH);
+                    if res.is_err() {
+                        break;
                     }
-                    _ => {}
                 }
-            }
+                _ => {}
+            },
         }
     }
 }
@@ -415,8 +417,9 @@ fn get_localtime() -> tm {
 /// # }
 /// ```
 pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::Arguments) {
-    const MONTHS: [&'static str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
-                                        "Sep", "Oct", "Nov", "Dec"];
+    const MONTHS: [&'static str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
 
     let mut state = lock!();
     let mut buf = [0u8; 1024];
@@ -425,7 +428,9 @@ pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::
         let prifac = (pri as u8) | (fac as u8);
         let (res, len) = {
             let mut buf_cursor = Cursor::new(&mut buf[..]);
-            (write!(&mut buf_cursor,
+            (
+                write!(
+                    &mut buf_cursor,
                     "<{}>{} {:02} {:02}:{:02}:{:02} {} {}[{}]: [{}:{}] {}",
                     prifac,
                     MONTHS[tm.tm_mon as usize],
@@ -433,21 +438,15 @@ pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::
                     tm.tm_hour,
                     tm.tm_min,
                     tm.tm_sec,
-                    state
-                        .hostname
-                        .as_ref()
-                        .map(|s| s.as_ref())
-                        .unwrap_or("-"),
-                    state
-                        .proc_name
-                        .as_ref()
-                        .map(|s| s.as_ref())
-                        .unwrap_or("-"),
+                    state.hostname.as_ref().map(|s| s.as_ref()).unwrap_or("-"),
+                    state.proc_name.as_ref().map(|s| s.as_ref()).unwrap_or("-"),
                     getpid(),
                     file_name,
                     line,
-                    args),
-             buf_cursor.position() as usize)
+                    args
+                ),
+                buf_cursor.position() as usize,
+            )
         };
 
         if res.is_ok() {
@@ -457,13 +456,14 @@ pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::
 
     let (res, len) = {
         let mut buf_cursor = Cursor::new(&mut buf[..]);
-        (write!(&mut buf_cursor,
+        (
+            write!(
+                &mut buf_cursor,
                 "[{}:{}:{}] {}\n",
-                pri,
-                file_name,
-                line,
-                args),
-         buf_cursor.position() as usize)
+                pri, file_name, line, args
+            ),
+            buf_cursor.position() as usize,
+        )
     };
     if res.is_ok() {
         if let Some(ref mut file) = state.file {
@@ -521,11 +521,11 @@ macro_rules! debug {
 mod tests {
     use super::*;
 
-    use libc::{shm_unlink, shm_open, O_RDWR, O_CREAT, O_EXCL};
+    use libc::{shm_open, shm_unlink, O_CREAT, O_EXCL, O_RDWR};
 
-    use std::os::unix::io::FromRawFd;
     use std::ffi::CStr;
     use std::io::{Read, Seek, SeekFrom};
+    use std::os::unix::io::FromRawFd;
 
     #[test]
     fn init_syslog() {
@@ -540,34 +540,39 @@ mod tests {
         assert!(fds.len() >= 1);
         for fd in fds {
             assert!(fd >= 0);
-
         }
     }
 
     #[test]
     fn syslog_log() {
         init().unwrap();
-        log(Priority::Error,
+        log(
+            Priority::Error,
             Facility::User,
             file!(),
             line!(),
-            format_args!("hello syslog"));
+            format_args!("hello syslog"),
+        );
     }
 
     #[test]
     fn proc_name() {
         init().unwrap();
-        log(Priority::Error,
+        log(
+            Priority::Error,
             Facility::User,
             file!(),
             line!(),
-            format_args!("before proc name"));
+            format_args!("before proc name"),
+        );
         set_proc_name("sys_util-test");
-        log(Priority::Error,
+        log(
+            Priority::Error,
             Facility::User,
             file!(),
             line!(),
-            format_args!("after proc name"));
+            format_args!("after proc name"),
+        );
     }
 
     #[test]
@@ -581,16 +586,17 @@ mod tests {
             File::from_raw_fd(fd)
         };
 
-        let syslog_file = file.try_clone()
-            .expect("error cloning shared memory file");
+        let syslog_file = file.try_clone().expect("error cloning shared memory file");
         echo_file(Some(syslog_file));
 
         const TEST_STR: &'static str = "hello shared memory file";
-        log(Priority::Error,
+        log(
+            Priority::Error,
             Facility::User,
             file!(),
             line!(),
-            format_args!("{}", TEST_STR));
+            format_args!("{}", TEST_STR),
+        );
 
         file.seek(SeekFrom::Start(0))
             .expect("error seeking shared memory file");

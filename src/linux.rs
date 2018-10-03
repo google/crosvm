@@ -4,11 +4,11 @@
 
 use std;
 use std::cmp::min;
+use std::error;
 use std::ffi::CStr;
 use std::fmt;
-use std::error;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, stdin};
+use std::io::{self, stdin, Read};
 use std::mem;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
@@ -17,12 +17,12 @@ use std::str;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
-use std::time::Duration;
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use libc::{self, c_int};
-use rand::thread_rng;
 use rand::distributions::{IndependentSample, Range};
+use rand::thread_rng;
 
 use byteorder::{ByteOrder, LittleEndian};
 use devices::{self, PciDevice};
@@ -30,8 +30,8 @@ use io_jail::{self, Minijail};
 use kvm::*;
 use net_util::Tap;
 use qcow::{self, QcowFile};
-use sys_util::*;
 use sys_util;
+use sys_util::*;
 use vhost;
 use vm_control::VmRequest;
 
@@ -41,10 +41,10 @@ use VirtIoDeviceInfo;
 
 use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents};
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use x86_64::X8664arch as Arch;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use aarch64::AArch64 as Arch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::X8664arch as Arch;
 
 #[derive(Debug)]
 pub enum Error {
@@ -136,15 +136,19 @@ impl fmt::Display for Error {
             &Error::QcowDeviceCreate(ref e) => {
                 write!(f, "failed to read qcow formatted file {:?}", e)
             }
-            &Error::ReadLowmemAvailable(ref e) => {
-                write!(f, "failed to read /sys/kernel/mm/chromeos-low_mem/available: {}", e)
-            }
-            &Error::ReadLowmemMargin(ref e) => {
-                write!(f, "failed to read /sys/kernel/mm/chromeos-low_mem/margin: {}", e)
-            }
+            &Error::ReadLowmemAvailable(ref e) => write!(
+                f,
+                "failed to read /sys/kernel/mm/chromeos-low_mem/available: {}",
+                e
+            ),
+            &Error::ReadLowmemMargin(ref e) => write!(
+                f,
+                "failed to read /sys/kernel/mm/chromeos-low_mem/margin: {}",
+                e
+            ),
             &Error::RegisterBalloon(ref e) => {
                 write!(f, "error registering balloon device: {:?}", e)
-            },
+            }
             &Error::RegisterBlock(ref e) => write!(f, "error registering block device: {:?}", e),
             &Error::RegisterGpu(ref e) => write!(f, "error registering gpu device: {:?}", e),
             &Error::RegisterNet(ref e) => write!(f, "error registering net device: {:?}", e),
@@ -234,12 +238,13 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     Ok(j)
 }
 
-fn create_virtio_devs(cfg: VirtIoDeviceInfo,
-                      mem: &GuestMemory,
-                      _exit_evt: &EventFd,
-                      wayland_device_socket: UnixDatagram,
-                      balloon_device_socket: UnixDatagram)
-                      -> std::result::Result<Vec<VirtioDeviceStub>, Box<error::Error>> {
+fn create_virtio_devs(
+    cfg: VirtIoDeviceInfo,
+    mem: &GuestMemory,
+    _exit_evt: &EventFd,
+    wayland_device_socket: UnixDatagram,
+    balloon_device_socket: UnixDatagram,
+) -> std::result::Result<Vec<VirtioDeviceStub>, Box<error::Error>> {
     static DEFAULT_PIVOT_ROOT: &'static str = "/var/empty";
 
     let mut devs = Vec::new();
@@ -256,7 +261,9 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
             if !disk.path.is_file() {
                 return Err(Box::new(Error::InvalidFdPath));
             }
-            let raw_fd = disk.path.file_name()
+            let raw_fd = disk
+                .path
+                .file_name()
                 .and_then(|fd_osstr| fd_osstr.to_str())
                 .and_then(|fd_str| fd_str.parse::<c_int>().ok())
                 .ok_or(Error::InvalidFdPath)?;
@@ -278,26 +285,34 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
         flock(&raw_image, lock_op, true).map_err(Error::DiskImageLock)?;
 
         let block_box: Box<devices::virtio::VirtioDevice> = match disk.disk_type {
-            DiskType::FlatFile => { // Access as a raw block device.
-                Box::new(devices::virtio::Block::new(raw_image, disk.read_only)
-                    .map_err(|e| Error::BlockDeviceNew(e))?)
+            DiskType::FlatFile => {
+                // Access as a raw block device.
+                Box::new(
+                    devices::virtio::Block::new(raw_image, disk.read_only)
+                        .map_err(|e| Error::BlockDeviceNew(e))?,
+                )
             }
-            DiskType::Qcow => { // Valid qcow header present
-                let qcow_image = QcowFile::from(raw_image)
-                    .map_err(|e| Error::QcowDeviceCreate(e))?;
-                Box::new(devices::virtio::Block::new(qcow_image, disk.read_only)
-                    .map_err(|e| Error::BlockDeviceNew(e))?)
+            DiskType::Qcow => {
+                // Valid qcow header present
+                let qcow_image =
+                    QcowFile::from(raw_image).map_err(|e| Error::QcowDeviceCreate(e))?;
+                Box::new(
+                    devices::virtio::Block::new(qcow_image, disk.read_only)
+                        .map_err(|e| Error::BlockDeviceNew(e))?,
+                )
             }
         };
         let jail = if cfg.multiprocess {
             let policy_path: PathBuf = cfg.seccomp_policy_dir.join("block_device.policy");
             Some(create_base_minijail(empty_root_path, &policy_path)?)
-        }
-        else {
+        } else {
             None
         };
 
-        devs.push(VirtioDeviceStub {dev: block_box, jail});
+        devs.push(VirtioDeviceStub {
+            dev: block_box,
+            jail,
+        });
     }
 
     let rng_box = Box::new(devices::virtio::Rng::new().map_err(Error::RngDeviceNew)?);
@@ -307,24 +322,31 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
     } else {
         None
     };
-    devs.push(VirtioDeviceStub {dev: rng_box, jail: rng_jail});
+    devs.push(VirtioDeviceStub {
+        dev: rng_box,
+        jail: rng_jail,
+    });
 
-    let balloon_box = Box::new(devices::virtio::Balloon::new(balloon_device_socket)
-                                   .map_err(Error::BalloonDeviceNew)?);
+    let balloon_box = Box::new(
+        devices::virtio::Balloon::new(balloon_device_socket).map_err(Error::BalloonDeviceNew)?,
+    );
     let balloon_jail = if cfg.multiprocess {
         let policy_path: PathBuf = cfg.seccomp_policy_dir.join("balloon_device.policy");
         Some(create_base_minijail(empty_root_path, &policy_path)?)
     } else {
         None
     };
-    devs.push(VirtioDeviceStub {dev: balloon_box, jail: balloon_jail});
+    devs.push(VirtioDeviceStub {
+        dev: balloon_box,
+        jail: balloon_jail,
+    });
 
     // We checked above that if the IP is defined, then the netmask is, too.
     if let Some(tap_fd) = cfg.tap_fd {
         // Safe because we ensure that we get a unique handle to the fd.
         let tap = unsafe { Tap::from_raw_fd(validate_raw_fd(tap_fd)?) };
-        let net_box = Box::new(devices::virtio::Net::from(tap)
-            .map_err(|e| Error::NetDeviceNew(e))?);
+        let net_box =
+            Box::new(devices::virtio::Net::from(tap).map_err(|e| Error::NetDeviceNew(e))?);
 
         let jail = if cfg.multiprocess {
             let policy_path: PathBuf = cfg.seccomp_policy_dir.join("net_device.policy");
@@ -334,19 +356,24 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
             None
         };
 
-        devs.push(VirtioDeviceStub {dev: net_box, jail});
+        devs.push(VirtioDeviceStub { dev: net_box, jail });
     } else if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
             if let Some(mac_address) = cfg.mac_address {
                 let net_box: Box<devices::virtio::VirtioDevice> = if cfg.vhost_net {
-                    Box::new(devices::virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(host_ip,
-                                                                                      netmask,
-                                                                                      mac_address,
-                                                                                      &mem)
-                                       .map_err(|e| Error::VhostNetDeviceNew(e))?)
+                    Box::new(
+                        devices::virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(
+                            host_ip,
+                            netmask,
+                            mac_address,
+                            &mem,
+                        ).map_err(|e| Error::VhostNetDeviceNew(e))?,
+                    )
                 } else {
-                    Box::new(devices::virtio::Net::<Tap>::new(host_ip, netmask, mac_address)
-                                       .map_err(|e| Error::NetDeviceNew(e))?)
+                    Box::new(
+                        devices::virtio::Net::<Tap>::new(host_ip, netmask, mac_address)
+                            .map_err(|e| Error::NetDeviceNew(e))?,
+                    )
                 };
 
                 let jail = if cfg.multiprocess {
@@ -361,24 +388,31 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
                     None
                 };
 
-                devs.push(VirtioDeviceStub {dev: net_box, jail});
+                devs.push(VirtioDeviceStub { dev: net_box, jail });
             }
         }
     }
 
     if let Some(wayland_socket_path) = cfg.wayland_socket_path.as_ref() {
-        let wayland_socket_dir = wayland_socket_path.parent().ok_or(Error::InvalidWaylandPath)?;
-        let wayland_socket_name = wayland_socket_path.file_name().ok_or(Error::InvalidWaylandPath)?;
+        let wayland_socket_dir = wayland_socket_path
+            .parent()
+            .ok_or(Error::InvalidWaylandPath)?;
+        let wayland_socket_name = wayland_socket_path
+            .file_name()
+            .ok_or(Error::InvalidWaylandPath)?;
         let jailed_wayland_dir = Path::new("/wayland");
         let jailed_wayland_path = jailed_wayland_dir.join(wayland_socket_name);
 
-        let wl_box = Box::new(devices::virtio::Wl::new(if cfg.multiprocess {
-                                                           &jailed_wayland_path
-                                                       } else {
-                                                           wayland_socket_path.as_path()
-                                                       },
-                                                       wayland_device_socket)
-                                      .map_err(Error::WaylandDeviceNew)?);
+        let wl_box = Box::new(
+            devices::virtio::Wl::new(
+                if cfg.multiprocess {
+                    &jailed_wayland_path
+                } else {
+                    wayland_socket_path.as_path()
+                },
+                wayland_device_socket,
+            ).map_err(Error::WaylandDeviceNew)?,
+        );
 
         let jail = if cfg.multiprocess {
             let policy_path: PathBuf = cfg.seccomp_policy_dir.join("wl_device.policy");
@@ -386,10 +420,13 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
 
             // Create a tmpfs in the device's root directory so that we can bind mount the wayland
             // socket directory into it. The size=67108864 is size=64*1024*1024 or size=64MB.
-            jail.mount_with_data(Path::new("none"), Path::new("/"), "tmpfs",
-                                 (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
-                                 "size=67108864")
-                .unwrap();
+            jail.mount_with_data(
+                Path::new("none"),
+                Path::new("/"),
+                "tmpfs",
+                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                "size=67108864",
+            ).unwrap();
 
             // Bind mount the wayland socket's directory into jail's root. This is necessary since
             // each new wayland context must open() the socket. If the wayland socket is ever
@@ -426,15 +463,13 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
         } else {
             None
         };
-        devs.push(VirtioDeviceStub {
-                dev: wl_box,
-                jail,
-        });
+        devs.push(VirtioDeviceStub { dev: wl_box, jail });
     }
 
     if let Some(cid) = cfg.cid {
-        let vsock_box = Box::new(devices::virtio::vhost::Vsock::new(cid, &mem)
-                                     .map_err(Error::VhostVsockDeviceNew)?);
+        let vsock_box = Box::new(
+            devices::virtio::vhost::Vsock::new(cid, &mem).map_err(Error::VhostVsockDeviceNew)?,
+        );
 
         let jail = if cfg.multiprocess {
             let policy_path: PathBuf = cfg.seccomp_policy_dir.join("vhost_vsock_device.policy");
@@ -444,7 +479,10 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
             None
         };
 
-        devs.push(VirtioDeviceStub {dev: vsock_box, jail});
+        devs.push(VirtioDeviceStub {
+            dev: vsock_box,
+            jail,
+        });
     }
 
     #[cfg(feature = "gpu")]
@@ -453,15 +491,14 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
             if let Some(wayland_socket_path) = cfg.wayland_socket_path.as_ref() {
                 let jailed_wayland_path = Path::new("/wayland-0");
 
-                let gpu_box =
-                    Box::new(devices::virtio::Gpu::new(_exit_evt
-                                                        .try_clone()
-                                                        .map_err(Error::CloneEventFd)?,
-                                                    if cfg.multiprocess {
-                                                        &jailed_wayland_path
-                                                    } else {
-                                                        wayland_socket_path.as_path()
-                                                    }));
+                let gpu_box = Box::new(devices::virtio::Gpu::new(
+                    _exit_evt.try_clone().map_err(Error::CloneEventFd)?,
+                    if cfg.multiprocess {
+                        &jailed_wayland_path
+                    } else {
+                        wayland_socket_path.as_path()
+                    },
+                ));
 
                 let jail = if cfg.multiprocess {
                     let policy_path: PathBuf = cfg.seccomp_policy_dir.join("gpu_device.policy");
@@ -469,11 +506,13 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
 
                     // Create a tmpfs in the device's root directory so that we can bind mount the
                     // dri directory into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
-                    jail.mount_with_data(Path::new("none"), Path::new("/"), "tmpfs",
-                                         (libc::MS_NOSUID | libc::MS_NODEV |
-                                          libc::MS_NOEXEC) as usize,
-                                         "size=67108864")
-                        .unwrap();
+                    jail.mount_with_data(
+                        Path::new("none"),
+                        Path::new("/"),
+                        "tmpfs",
+                        (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                        "size=67108864",
+                    ).unwrap();
 
                     // Device nodes required for DRM.
                     let sys_dev_char_path = Path::new("/sys/dev/char");
@@ -483,16 +522,13 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
                     jail.mount_bind(sys_devices_path, sys_devices_path, false)
                         .unwrap();
                     let drm_dri_path = Path::new("/dev/dri");
-                    jail.mount_bind(drm_dri_path, drm_dri_path, false)
-                        .unwrap();
+                    jail.mount_bind(drm_dri_path, drm_dri_path, false).unwrap();
 
                     // Libraries that are required when mesa drivers are dynamically loaded.
                     let lib_path = Path::new("/lib64");
-                    jail.mount_bind(lib_path, lib_path, false)
-                        .unwrap();
+                    jail.mount_bind(lib_path, lib_path, false).unwrap();
                     let usr_lib_path = Path::new("/usr/lib64");
-                    jail.mount_bind(usr_lib_path, usr_lib_path, false)
-                        .unwrap();
+                    jail.mount_bind(usr_lib_path, usr_lib_path, false).unwrap();
 
                     // Bind mount the wayland socket into jail's root. This is necessary since each
                     // new wayland context must open() the socket.
@@ -527,7 +563,7 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
                 } else {
                     None
                 };
-                devs.push(VirtioDeviceStub {dev: gpu_box, jail});
+                devs.push(VirtioDeviceStub { dev: gpu_box, jail });
             }
         }
     }
@@ -575,7 +611,7 @@ fn create_virtio_devs(cfg: VirtIoDeviceInfo,
 
         let p9_box = Box::new(devices::virtio::P9::new(root, tag).map_err(Error::P9DeviceNew)?);
 
-        devs.push(VirtioDeviceStub {dev: p9_box, jail});
+        devs.push(VirtioDeviceStub { dev: p9_box, jail });
     }
 
     Ok(devs)
@@ -592,13 +628,15 @@ fn setup_vcpu_signal_handler() -> Result<()> {
     Ok(())
 }
 
-fn run_vcpu(vcpu: Vcpu,
-            cpu_id: u32,
-            start_barrier: Arc<Barrier>,
-            io_bus: devices::Bus,
-            mmio_bus: devices::Bus,
-            exit_evt: EventFd,
-            kill_signaled: Arc<AtomicBool>) -> Result<JoinHandle<()>> {
+fn run_vcpu(
+    vcpu: Vcpu,
+    cpu_id: u32,
+    start_barrier: Arc<Barrier>,
+    io_bus: devices::Bus,
+    mmio_bus: devices::Bus,
+    exit_evt: EventFd,
+    kill_signaled: Arc<AtomicBool>,
+) -> Result<JoinHandle<()>> {
     thread::Builder::new()
         .name(format!("crosvm_vcpu{}", cpu_id))
         .spawn(move || {
@@ -645,20 +683,20 @@ fn run_vcpu(vcpu: Vcpu,
                             VcpuExit::Hlt => break,
                             VcpuExit::Shutdown => break,
                             VcpuExit::SystemEvent(_, _) =>
-                                //TODO handle reboot and crash events
-                                kill_signaled.store(true, Ordering::SeqCst),
+                            //TODO handle reboot and crash events
+                            {
+                                kill_signaled.store(true, Ordering::SeqCst)
+                            }
                             r => warn!("unexpected vcpu exit: {:?}", r),
                         }
                     }
-                    Err(e) => {
-                        match e.errno() {
-                            libc::EAGAIN | libc::EINTR => {},
-                            _ => {
-                                error!("vcpu hit unknown error: {:?}", e);
-                                break;
-                            }
+                    Err(e) => match e.errno() {
+                        libc::EAGAIN | libc::EINTR => {}
+                        _ => {
+                            error!("vcpu hit unknown error: {:?}", e);
+                            break;
                         }
-                    }
+                    },
                 }
                 if kill_signaled.load(Ordering::SeqCst) {
                     break;
@@ -671,8 +709,7 @@ fn run_vcpu(vcpu: Vcpu,
             exit_evt
                 .write(1)
                 .expect("failed to signal vcpu exit eventfd");
-        })
-        .map_err(Error::SpawnVcpu)
+        }).map_err(Error::SpawnVcpu)
 }
 
 // Reads the contents of a file and converts them into a u64.
@@ -682,9 +719,12 @@ fn file_to_u64<P: AsRef<Path>>(path: P) -> io::Result<u64> {
     let mut buf = [0u8; 32];
     let count = file.read(&mut buf)?;
 
-    let content = str::from_utf8(&buf[..count])
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    content.trim().parse().map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    let content =
+        str::from_utf8(&buf[..count]).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    content
+        .trim()
+        .parse()
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
 pub fn run_config(cfg: Config) -> Result<()> {
@@ -718,26 +758,32 @@ pub fn run_config(cfg: Config) -> Result<()> {
         let dgram = UnixDatagram::bind(path).map_err(Error::CreateSocket)?;
         control_sockets.push(UnlinkUnixDatagram(dgram));
     };
-    let (wayland_host_socket, wayland_device_socket) = UnixDatagram::pair()
-        .map_err(Error::CreateSocket)?;
+    let (wayland_host_socket, wayland_device_socket) =
+        UnixDatagram::pair().map_err(Error::CreateSocket)?;
     control_sockets.push(UnlinkUnixDatagram(wayland_host_socket));
     // Balloon gets a special socket so balloon requests can be forwarded from the main process.
-    let (balloon_host_socket, balloon_device_socket) = UnixDatagram::pair()
-        .map_err(Error::CreateSocket)?;
+    let (balloon_host_socket, balloon_device_socket) =
+        UnixDatagram::pair().map_err(Error::CreateSocket)?;
 
     let virtio_dev_info = cfg.virtio_dev_info;
-    let linux = Arch::build_vm(components,
-                               |m, e| create_virtio_devs(virtio_dev_info, m, e,
-                                                         wayland_device_socket,
-                                                         balloon_device_socket))
-        .map_err(Error::BuildingVm)?;
+    let linux = Arch::build_vm(components, |m, e| {
+        create_virtio_devs(
+            virtio_dev_info,
+            m,
+            e,
+            wayland_device_socket,
+            balloon_device_socket,
+        )
+    }).map_err(Error::BuildingVm)?;
     run_control(linux, control_sockets, balloon_host_socket, sigchld_fd)
 }
 
-fn run_control(mut linux: RunnableLinuxVm,
-               control_sockets: Vec<UnlinkUnixDatagram>,
-               balloon_host_socket: UnixDatagram,
-               sigchld_fd: SignalFd) -> Result<()> {
+fn run_control(
+    mut linux: RunnableLinuxVm,
+    control_sockets: Vec<UnlinkUnixDatagram>,
+    balloon_host_socket: UnixDatagram,
+    sigchld_fd: SignalFd,
+) -> Result<()> {
     // Paths to get the currently available memory and the low memory threshold.
     const LOWMEM_MARGIN: &'static str = "/sys/kernel/mm/chromeos-low_mem/margin";
     const LOWMEM_AVAILABLE: &'static str = "/sys/kernel/mm/chromeos-low_mem/available";
@@ -776,30 +822,42 @@ fn run_control(mut linux: RunnableLinuxVm,
         .expect("failed to set terminal raw mode");
 
     let poll_ctx = PollContext::new().map_err(Error::CreatePollContext)?;
-    poll_ctx.add(&linux.exit_evt, Token::Exit).map_err(Error::PollContextAdd)?;
+    poll_ctx
+        .add(&linux.exit_evt, Token::Exit)
+        .map_err(Error::PollContextAdd)?;
     if let Err(e) = poll_ctx.add(&stdin_handle, Token::Stdin) {
         warn!("failed to add stdin to poll context: {:?}", e);
     }
-    poll_ctx.add(&sigchld_fd, Token::ChildSignal).map_err(Error::PollContextAdd)?;
+    poll_ctx
+        .add(&sigchld_fd, Token::ChildSignal)
+        .map_err(Error::PollContextAdd)?;
     for (index, socket) in control_sockets.iter().enumerate() {
-        poll_ctx.add(socket.as_ref(), Token::VmControl{ index }).map_err(Error::PollContextAdd)?;
+        poll_ctx
+            .add(socket.as_ref(), Token::VmControl { index })
+            .map_err(Error::PollContextAdd)?;
     }
 
     // Watch for low memory notifications and take memory back from the VM.
     let low_mem = File::open("/dev/chromeos-low-mem").ok();
     if let Some(ref low_mem) = low_mem {
-        poll_ctx.add(low_mem, Token::LowMemory).map_err(Error::PollContextAdd)?;
+        poll_ctx
+            .add(low_mem, Token::LowMemory)
+            .map_err(Error::PollContextAdd)?;
     } else {
         warn!("Unable to open low mem indicator, maybe not a chrome os kernel");
     }
 
     // Used to rate limit balloon requests.
     let mut lowmem_timer = TimerFd::new().map_err(Error::CreateTimerFd)?;
-    poll_ctx.add(&lowmem_timer, Token::LowmemTimer).map_err(Error::PollContextAdd)?;
+    poll_ctx
+        .add(&lowmem_timer, Token::LowmemTimer)
+        .map_err(Error::PollContextAdd)?;
 
     // Used to check whether it's ok to start giving memory back to the VM.
     let mut freemem_timer = TimerFd::new().map_err(Error::CreateTimerFd)?;
-    poll_ctx.add(&freemem_timer, Token::CheckAvailableMemory).map_err(Error::PollContextAdd)?;
+    poll_ctx
+        .add(&freemem_timer, Token::CheckAvailableMemory)
+        .map_err(Error::PollContextAdd)?;
 
     // Used to add jitter to timer values so that we don't have a thundering herd problem when
     // multiple VMs are running.
@@ -813,13 +871,15 @@ fn run_control(mut linux: RunnableLinuxVm,
     let kill_signaled = Arc::new(AtomicBool::new(false));
     setup_vcpu_signal_handler()?;
     for (cpu_id, vcpu) in linux.vcpus.into_iter().enumerate() {
-        let handle = run_vcpu(vcpu,
-                              cpu_id as u32,
-                              vcpu_thread_barrier.clone(),
-                              linux.io_bus.clone(),
-                              linux.mmio_bus.clone(),
-                              linux.exit_evt.try_clone().map_err(Error::CloneEventFd)?,
-                              kill_signaled.clone())?;
+        let handle = run_vcpu(
+            vcpu,
+            cpu_id as u32,
+            vcpu_thread_barrier.clone(),
+            linux.io_bus.clone(),
+            linux.mmio_bus.clone(),
+            linux.exit_evt.try_clone().map_err(Error::CloneEventFd)?,
+            kill_signaled.clone(),
+        )?;
         vcpu_handles.push(handle);
     }
     vcpu_thread_barrier.wait();
@@ -846,18 +906,19 @@ fn run_control(mut linux: RunnableLinuxVm,
                         Ok(0) => {
                             // Zero-length read indicates EOF. Remove from pollables.
                             let _ = poll_ctx.delete(&stdin_handle);
-                        },
+                        }
                         Err(e) => {
                             warn!("error while reading stdin: {:?}", e);
                             let _ = poll_ctx.delete(&stdin_handle);
-                        },
+                        }
                         Ok(count) => {
-                            linux.stdio_serial
+                            linux
+                                .stdio_serial
                                 .lock()
                                 .unwrap()
                                 .queue_input_bytes(&out[..count])
                                 .expect("failed to queue bytes into serial port");
-                        },
+                        }
                     }
                 }
                 Token::ChildSignal => {
@@ -865,11 +926,13 @@ fn run_control(mut linux: RunnableLinuxVm,
                     loop {
                         let result = sigchld_fd.read().map_err(Error::SignalFd)?;
                         if let Some(siginfo) = result {
-                            error!("child {} died: signo {}, status {}, code {}",
-                                   siginfo.ssi_pid,
-                                   siginfo.ssi_signo,
-                                   siginfo.ssi_status,
-                                   siginfo.ssi_code);
+                            error!(
+                                "child {} died: signo {}, status {}, code {}",
+                                siginfo.ssi_pid,
+                                siginfo.ssi_signo,
+                                siginfo.ssi_status,
+                                siginfo.ssi_code
+                            );
                         }
                         break 'poll;
                     }
@@ -887,16 +950,18 @@ fn run_control(mut linux: RunnableLinuxVm,
 
                     // Otherwise see if we can free up some memory.
                     let margin = file_to_u64(LOWMEM_MARGIN).map_err(Error::ReadLowmemMargin)?;
-                    let available = file_to_u64(LOWMEM_AVAILABLE).map_err(Error::ReadLowmemAvailable)?;
+                    let available =
+                        file_to_u64(LOWMEM_AVAILABLE).map_err(Error::ReadLowmemAvailable)?;
 
                     // `available` and `margin` are specified in MB while `balloon_memory_increment` is in
                     // bytes.  So to correctly compare them we need to turn the increment value into MB.
-                    if available >= margin + 2*(balloon_memory_increment >> 20) {
-                        current_balloon_memory = if current_balloon_memory >= balloon_memory_increment {
-                            current_balloon_memory - balloon_memory_increment
-                        } else {
-                            0
-                        };
+                    if available >= margin + 2 * (balloon_memory_increment >> 20) {
+                        current_balloon_memory =
+                            if current_balloon_memory >= balloon_memory_increment {
+                                current_balloon_memory - balloon_memory_increment
+                            } else {
+                                0
+                            };
                         let mut buf = [0u8; mem::size_of::<u64>()];
                         LittleEndian::write_u64(&mut buf, current_balloon_memory);
                         if let Err(e) = balloon_host_socket.send(&buf) {
@@ -907,9 +972,10 @@ fn run_control(mut linux: RunnableLinuxVm,
                 Token::LowMemory => {
                     if let Some(ref low_mem) = low_mem {
                         let old_balloon_memory = current_balloon_memory;
-                        current_balloon_memory =
-                            min(current_balloon_memory + balloon_memory_increment,
-                                max_balloon_memory);
+                        current_balloon_memory = min(
+                            current_balloon_memory + balloon_memory_increment,
+                            max_balloon_memory,
+                        );
                         if current_balloon_memory != old_balloon_memory {
                             let mut buf = [0u8; mem::size_of::<u64>()];
                             LittleEndian::write_u64(&mut buf, current_balloon_memory);
@@ -925,7 +991,9 @@ fn run_control(mut linux: RunnableLinuxVm,
                         // they don't all start ballooning at exactly the same time.
                         let lowmem_dur =
                             Duration::from_millis(1000 + lowmem_jitter_ms.ind_sample(&mut rng));
-                        lowmem_timer.reset(lowmem_dur, None).map_err(Error::ResetTimerFd)?;
+                        lowmem_timer
+                            .reset(lowmem_dur, None)
+                            .map_err(Error::ResetTimerFd)?;
 
                         // Also start a timer to check when we can start giving memory back.  Do the
                         // first check after a minute (with jitter) and subsequent checks after
@@ -945,7 +1013,9 @@ fn run_control(mut linux: RunnableLinuxVm,
 
                     if let Some(ref low_mem) = low_mem {
                         // Start polling the lowmem device again.
-                        poll_ctx.add(low_mem, Token::LowMemory).map_err(Error::PollContextAdd)?;
+                        poll_ctx
+                            .add(low_mem, Token::LowMemory)
+                            .map_err(Error::PollContextAdd)?;
                     }
                 }
                 Token::VmControl { index } => {
@@ -953,11 +1023,12 @@ fn run_control(mut linux: RunnableLinuxVm,
                         match VmRequest::recv(socket.as_ref()) {
                             Ok(request) => {
                                 let mut running = true;
-                                let response =
-                                    request.execute(&mut linux.vm,
-                                                    &mut linux.resources,
-                                                    &mut running,
-                                                    &balloon_host_socket);
+                                let response = request.execute(
+                                    &mut linux.vm,
+                                    &mut linux.resources,
+                                    &mut running,
+                                    &balloon_host_socket,
+                                );
                                 if let Err(e) = response.send(socket.as_ref()) {
                                     error!("failed to send VmResponse: {:?}", e);
                                 }
@@ -978,19 +1049,19 @@ fn run_control(mut linux: RunnableLinuxVm,
             // read.
             if !event.readable() {
                 match event.token() {
-                    Token::Exit => {},
+                    Token::Exit => {}
                     Token::Stdin => {
                         let _ = poll_ctx.delete(&stdin_handle);
-                    },
-                    Token::ChildSignal => {},
-                    Token::CheckAvailableMemory => {},
-                    Token::LowMemory => {},
-                    Token::LowmemTimer => {},
+                    }
+                    Token::ChildSignal => {}
+                    Token::CheckAvailableMemory => {}
+                    Token::LowMemory => {}
+                    Token::LowmemTimer => {}
                     Token::VmControl { index } => {
                         if let Some(socket) = control_sockets.get(index as usize) {
                             let _ = poll_ctx.delete(socket.as_ref());
                         }
-                    },
+                    }
                 }
             }
         }
