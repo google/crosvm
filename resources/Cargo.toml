@@ -11,3 +11,4 @@ data_model = { path = "../data_model" }
 gpu_buffer = { path = "../gpu_buffer", optional = true }
 libc = "*"
 sys_util = { path = "../sys_util" }
+msg_socket = { path = "../msg_socket" }

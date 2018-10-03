@@ -24,6 +24,7 @@ extern crate sys_util;
 extern crate data_model;
 #[cfg(feature = "wl-dmabuf")]
 extern crate gpu_buffer;
+extern crate msg_socket;
 #[cfg(feature = "plugin")]
 extern crate plugin_proto;
 #[cfg(feature = "plugin")]
@@ -51,6 +52,7 @@ use qcow::QcowFile;
 use sys_util::{getpid, kill_process_group, reap_child, syslog};
 
 use argument::{print_help, set_arguments, Argument};
+use msg_socket::{MsgSender, Sender};
 use vm_control::VmRequest;
 
 static SECCOMP_POLICY_DIR: &'static str = "/usr/share/policy/crosvm";
@@ -549,7 +551,8 @@ fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
             Ok(s)
         }) {
             Ok(s) => {
-                if let Err(e) = VmRequest::Exit.send(&s) {
+                let sender = Sender::<VmRequest>::new(s);
+                if let Err(e) = sender.send(&VmRequest::Exit) {
                     error!(
                         "failed to send stop request to socket at '{}': {:?}",
                         socket_path, e
@@ -586,7 +589,8 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
             Ok(s)
         }) {
             Ok(s) => {
-                if let Err(e) = VmRequest::BalloonAdjust(num_pages).send(&s) {
+                let sender = Sender::<VmRequest>::new(s);
+                if let Err(e) = sender.send(&VmRequest::BalloonAdjust(num_pages)) {
                     error!(
                         "failed to send balloon request to socket at '{}': {:?}",
                         socket_path, e

@@ -8,6 +8,8 @@
 extern crate gpu_buffer;
 extern crate libc;
 extern crate sys_util;
+#[macro_use]
+extern crate msg_socket;
 
 mod address_allocator;
 mod gpu_allocator;

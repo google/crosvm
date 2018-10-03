@@ -56,6 +56,7 @@ use libc::{dup, EBADF, EINVAL};
 use data_model::VolatileMemoryError;
 use data_model::*;
 
+use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 use resources::GpuMemoryDesc;
 use sys_util::{
     pipe, round_up_to_page_size, Error, EventFd, FileFlags, GuestAddress, GuestMemory,
@@ -66,7 +67,7 @@ use sys_util::{
 use sys_util::ioctl_with_ref;
 
 use super::{DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_WL};
-use vm_control::{MaybeOwnedFd, VmControlError, VmRequest, VmResponse};
+use vm_control::{MaybeOwnedFd, VmRequest, VmResponse};
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
 const VIRTIO_WL_CMD_VFD_NEW: u32 = 256;
@@ -409,7 +410,7 @@ enum WlError {
     AllocSetSize(Error),
     SocketConnect(io::Error),
     SocketNonBlock(io::Error),
-    VmControl(VmControlError),
+    VmControl(MsgError),
     VmBadResponse,
     CheckedOffset,
     GuestMemory(GuestMemoryError),
@@ -467,21 +468,23 @@ impl From<VolatileMemoryError> for WlError {
 
 #[derive(Clone)]
 struct VmRequester {
-    inner: Rc<RefCell<UnixDatagram>>,
+    inner: Rc<RefCell<MsgSocket<VmRequest, VmResponse>>>,
 }
 
 impl VmRequester {
     fn new(vm_socket: UnixDatagram) -> VmRequester {
         VmRequester {
-            inner: Rc::new(RefCell::new(vm_socket)),
+            inner: Rc::new(RefCell::new(MsgSocket::<VmRequest, VmResponse>::new(
+                vm_socket,
+            ))),
         }
     }
 
     fn request(&self, request: VmRequest) -> WlResult<VmResponse> {
         let mut inner = self.inner.borrow_mut();
         let ref mut vm_socket = *inner;
-        request.send(vm_socket).map_err(WlError::VmControl)?;
-        VmResponse::recv(vm_socket).map_err(WlError::VmControl)
+        vm_socket.send(&request).map_err(WlError::VmControl)?;
+        vm_socket.recv().map_err(WlError::VmControl)
     }
 }
 
