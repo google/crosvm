@@ -19,6 +19,7 @@ mmap: arg2 in 0xfffffffb
 mprotect: arg2 in 0xfffffffb
 # Allow MADV_DONTDUMP only.
 madvise: arg2 == 0x00000010
+mremap: 1
 munmap: 1
 read: 1
 recvfrom: 1

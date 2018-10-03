@@ -732,6 +732,7 @@ impl QcowFile {
             let _ = fallocate(self.raw_file.file_mut(),
                               FallocateMode::PunchHole, true,
                               cluster_addr, cluster_size);
+            self.unref_clusters.push(cluster_addr);
         }
         Ok(())
     }
