@@ -6,6 +6,7 @@ extern crate arch;
 extern crate byteorder;
 extern crate data_model;
 extern crate devices;
+extern crate io_jail;
 extern crate kernel_cmdline;
 extern crate kernel_loader;
 extern crate kvm;
@@ -67,10 +68,11 @@ use std::mem;
 use std::result;
 use std::sync::{Arc, Mutex};
 
-use arch::{RunnableLinuxVm, VirtioDeviceStub, VmComponents};
+use arch::{RunnableLinuxVm, VmComponents};
 use bootparam::boot_params;
 use bootparam::E820_RAM;
-use devices::{PciConfigIo, PciInterruptPin};
+use devices::{PciConfigIo, PciDevice, PciInterruptPin};
+use io_jail::Minijail;
 use kvm::*;
 use resources::{AddressRanges, SystemAllocator};
 use sys_util::{EventFd, GuestAddress, GuestMemory};
@@ -261,7 +263,7 @@ fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
 impl arch::LinuxArch for X8664arch {
     fn build_vm<F>(mut components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
     where
-        F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<VirtioDeviceStub>>,
+        F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<(Box<PciDevice + 'static>, Minijail)>>,
     {
         let mut resources =
             Self::get_resource_allocator(components.memory_mb, components.wayland_dmabuf);
@@ -289,34 +291,19 @@ impl arch::LinuxArch for X8664arch {
 
         let mut mmio_bus = devices::Bus::new();
 
-        let (pci, pci_irqs) = arch::generate_pci_root(
-            components.pci_devices,
-            &mut mmio_bus,
-            &mut resources,
-            &mut vm,
-        ).map_err(Error::CreatePciRoot)?;
+        let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+
+        let pci_devices = virtio_devs(&mem, &exit_evt)?;
+        let (pci, pci_irqs) =
+            arch::generate_pci_root(pci_devices, &mut mmio_bus, &mut resources, &mut vm)
+                .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
 
-        let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
         let (io_bus, stdio_serial) = Self::setup_io_bus(
             &mut vm,
             exit_evt.try_clone().map_err(Error::CloneEventFd)?,
             Some(pci_bus.clone()),
         )?;
-
-        // Create a list of mmio devices to be added.
-        let mmio_devs = virtio_devs(&mem, &exit_evt)?;
-
-        for stub in mmio_devs {
-            arch::register_mmio(
-                &mut mmio_bus,
-                &mut vm,
-                stub.dev,
-                stub.jail,
-                &mut resources,
-                &mut cmdline,
-            ).map_err(Error::RegisterVsock)?;
-        }
 
         for param in components.extra_kernel_params {
             cmdline.insert_str(&param).map_err(Error::Cmdline)?;

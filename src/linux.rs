@@ -25,7 +25,7 @@ use rand::distributions::{IndependentSample, Range};
 use rand::thread_rng;
 
 use byteorder::{ByteOrder, LittleEndian};
-use devices::{self, PciDevice};
+use devices::{self, PciDevice, VirtioPciDevice};
 use io_jail::{self, Minijail};
 use kvm::*;
 use net_util::Tap;
@@ -92,6 +92,7 @@ pub enum Error {
     TimerFd(sys_util::Error),
     VhostNetDeviceNew(devices::virtio::vhost::Error),
     VhostVsockDeviceNew(devices::virtio::vhost::Error),
+    VirtioPciDev(sys_util::Error),
     WaylandDeviceNew(sys_util::Error),
     LoadKernel(Box<error::Error>),
 }
@@ -171,6 +172,7 @@ impl fmt::Display for Error {
             &Error::VhostVsockDeviceNew(ref e) => {
                 write!(f, "failed to set up virtual socket device: {:?}", e)
             }
+            &Error::VirtioPciDev(ref e) => write!(f, "failed to create virtio pci dev: {}", e),
             &Error::WaylandDeviceNew(ref e) => {
                 write!(f, "failed to create wayland device: {:?}", e)
             }
@@ -244,7 +246,7 @@ fn create_virtio_devs(
     _exit_evt: &EventFd,
     wayland_device_socket: UnixDatagram,
     balloon_device_socket: UnixDatagram,
-) -> std::result::Result<Vec<VirtioDeviceStub>, Box<error::Error>> {
+) -> std::result::Result<Vec<(Box<PciDevice + 'static>, Minijail)>, Box<error::Error>> {
     static DEFAULT_PIVOT_ROOT: &'static str = "/var/empty";
 
     let mut devs = Vec::new();
@@ -614,7 +616,20 @@ fn create_virtio_devs(
         devs.push(VirtioDeviceStub { dev: p9_box, jail });
     }
 
-    Ok(devs)
+    let mut pci_devices: Vec<(Box<PciDevice + 'static>, Minijail)> = Vec::new();
+    for stub in devs {
+        let pci_dev =
+            Box::new(VirtioPciDevice::new((*mem).clone(), stub.dev).map_err(Error::VirtioPciDev)?);
+
+        // TODO(dverkamp): Make this work in non-multiprocess mode without creating an empty jail
+        let jail = match stub.jail {
+            Some(j) => j,
+            None => Minijail::new().unwrap(),
+        };
+        pci_devices.push((pci_dev, jail));
+    }
+
+    Ok(pci_devices)
 }
 
 fn setup_vcpu_signal_handler() -> Result<()> {
@@ -758,15 +773,12 @@ pub fn run_config(cfg: Config) -> Result<()> {
         info!("crosvm entering multiprocess mode");
     }
 
-    let pci_devices: Vec<(Box<PciDevice + 'static>, Minijail)> = Vec::new();
-
     // Masking signals is inherently dangerous, since this can persist across clones/execs. Do this
     // before any jailed devices have been spawned, so that we can catch any of them that fail very
     // quickly.
     let sigchld_fd = SignalFd::new(libc::SIGCHLD).map_err(Error::CreateSignalFd)?;
 
     let components = VmComponents {
-        pci_devices,
         memory_mb: (cfg.memory.unwrap_or(256) << 20) as u64,
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         kernel_image: File::open(cfg.kernel_path.as_path())
