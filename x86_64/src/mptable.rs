@@ -85,6 +85,7 @@ const CPU_STEPPING: u32 = 0x600;
 const CPU_FEATURE_APIC: u32 = 0x200;
 const CPU_FEATURE_FPU: u32 = 0x001;
 const MPTABLE_START: u64 = 0x400 * 639; // Last 1k of Linux's 640k base RAM.
+const MP_IRQTRIG_EDGE: u16 = 4;
 
 fn compute_checksum<T: Copy>(v: &T) -> u8 {
     // Safe because we are only reading the bytes within the size of the `T` reference `v`.
@@ -250,7 +251,7 @@ pub fn setup_mptable(
         let mut mpc_intsrc = mpc_intsrc::default();
         mpc_intsrc.type_ = MP_INTSRC as u8;
         mpc_intsrc.irqtype = mp_irq_source_types_mp_INT as u8;
-        mpc_intsrc.irqflag = MP_IRQDIR_DEFAULT as u16;
+        mpc_intsrc.irqflag = MP_IRQTRIG_EDGE | MP_IRQDIR_DEFAULT as u16;
         mpc_intsrc.srcbus = PCI_BUS_ID;
         mpc_intsrc.srcbusirq = (pci_irq.0 as u8 + 1) << 2 | pci_irq.1.to_mask() as u8;
         mpc_intsrc.dstapic = ioapicid;
