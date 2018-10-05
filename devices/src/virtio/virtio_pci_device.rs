@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use super::*;
 use data_model::{DataInit, Le32};
+use kvm::Datamatch;
 use pci::{
     PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciDevice, PciDeviceError,
     PciHeaderType, PciInterruptPin, PciSubclass,
@@ -308,14 +309,19 @@ impl PciDevice for VirtioPciDevice {
         Ok(ranges)
     }
 
-    fn ioeventfds(&self) -> Vec<(&EventFd, u64)> {
+    fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize) as u64;
         let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
         self.queue_evts()
             .iter()
             .enumerate()
-            .map(|(i, event)| (event, notify_base + i as u64 * NOTIFY_OFF_MULTIPLIER as u64))
-            .collect()
+            .map(|(i, event)| {
+                (
+                    event,
+                    notify_base + i as u64 * NOTIFY_OFF_MULTIPLIER as u64,
+                    Datamatch::U16(Some(i as u16)),
+                )
+            }).collect()
     }
 
     fn config_registers(&self) -> &PciConfiguration {

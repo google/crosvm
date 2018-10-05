@@ -132,6 +132,7 @@ dependencies = [
  "gpu_display 0.1.0",
  "gpu_renderer 0.1.0",
  "io_jail 0.1.0",
+ "kvm 0.1.0",
  "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "net_sys 0.1.0",
  "net_util 0.1.0",

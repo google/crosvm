@@ -7,6 +7,7 @@ use byteorder::{ByteOrder, LittleEndian};
 use std;
 use std::os::unix::io::RawFd;
 
+use kvm::Datamatch;
 use pci::pci_configuration::PciConfiguration;
 use pci::PciInterruptPin;
 use resources::SystemAllocator;
@@ -35,8 +36,8 @@ pub trait PciDevice: Send {
         Ok(Vec::new())
     }
     /// Gets a list of ioeventfds that should be registered with the running VM. The list is
-    /// returned as a Vec of (eventfd, addr) tuples.
-    fn ioeventfds(&self) -> Vec<(&EventFd, u64)> {
+    /// returned as a Vec of (eventfd, addr, datamatch) tuples.
+    fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
         Vec::new()
     }
     /// Gets the configuration registers of the Pci Device.
@@ -98,8 +99,8 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
         (**self).allocate_io_bars(resources)
     }
     /// Gets a list of ioeventfds that should be registered with the running VM. The list is
-    /// returned as a Vec of (eventfd, addr) tuples.
-    fn ioeventfds(&self) -> Vec<(&EventFd, u64)> {
+    /// returned as a Vec of (eventfd, addr, datamatch) tuples.
+    fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
         (**self).ioeventfds()
     }
     /// Gets the configuration registers of the Pci Device.

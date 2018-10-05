@@ -167,9 +167,9 @@ pub fn generate_pci_root(
         let ranges = device
             .allocate_io_bars(resources)
             .map_err(DeviceRegistrationError::AllocateIoAddrs)?;
-        for (event, addr) in device.ioeventfds() {
+        for (event, addr, datamatch) in device.ioeventfds() {
             let io_addr = IoeventAddress::Mmio(addr);
-            vm.register_ioevent(&event, io_addr, Datamatch::AnyLength)
+            vm.register_ioevent(&event, io_addr, datamatch)
                 .map_err(DeviceRegistrationError::RegisterIoevent)?;
             keep_fds.push(event.as_raw_fd());
         }

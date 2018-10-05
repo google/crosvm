@@ -13,6 +13,7 @@ data_model = { path = "../data_model" }
 gpu_buffer = { path = "../gpu_buffer", optional = true }
 gpu_display = { path = "../gpu_display", optional = true }
 gpu_renderer = { path = "../gpu_renderer", optional = true }
+kvm = { path = "../kvm" }
 libc = "*"
 io_jail = { path = "../io_jail" }
 net_sys = { path = "../net_sys" }

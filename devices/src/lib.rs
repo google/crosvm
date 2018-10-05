@@ -7,6 +7,7 @@
 extern crate byteorder;
 extern crate data_model;
 extern crate io_jail;
+extern crate kvm;
 extern crate libc;
 extern crate net_sys;
 extern crate net_util;
