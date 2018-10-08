@@ -41,6 +41,10 @@ fn show_usage(program_name: &str) {
         "{} dd <file_name> <source_file> - Write bytes from the raw source_file to the file.",
         program_name
     );
+    println!(
+        "{} convert <src_file> <dst_file> - Convert from src_file to dst_file.",
+        program_name
+    );
 }
 
 fn main() -> std::result::Result<(), ()> {
@@ -94,6 +98,14 @@ fn main() -> std::result::Result<(), ()> {
                 None
             };
             dd(&matches.free[1], &matches.free[2], count)
+        }
+        "convert" => {
+            if matches.free.len() < 2 {
+                println!("Source and destination files are required.");
+                show_usage(&args[0]);
+                return Err(());
+            }
+            convert(&matches.free[1], &matches.free[2])
         }
         c => {
             println!("invalid subcommand: {:?}", c);
@@ -269,4 +281,46 @@ fn dd(file_path: &str, source_path: &str, count: Option<usize>) -> std::result::
     println!("wrote {} bytes", read_count);
 
     Ok(())
+}
+
+// Reads the file at `src_path` and writes it to `dst_path`.
+// The output format is detected based on the `dst_path` file extension.
+fn convert(src_path: &str, dst_path: &str) -> std::result::Result<(), ()> {
+    let src_file = match OpenOptions::new().read(true).open(src_path) {
+        Ok(f) => f,
+        Err(_) => {
+            println!("Failed to open source file {}", src_path);
+            return Err(());
+        }
+    };
+
+    let dst_file = match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(dst_path)
+    {
+        Ok(f) => f,
+        Err(_) => {
+            println!("Failed to open destination file {}", dst_path);
+            return Err(());
+        }
+    };
+
+    let dst_type = if dst_path.ends_with("qcow2") {
+        qcow::ImageType::Qcow2
+    } else {
+        qcow::ImageType::Raw
+    };
+
+    match qcow::convert(src_file, dst_file, dst_type) {
+        Ok(_) => {
+            println!("Converted {} to {}", src_path, dst_path);
+            Ok(())
+        }
+        Err(_) => {
+            println!("Failed to copy from {} to {}", src_path, dst_path);
+            Err(())
+        }
+    }
 }
