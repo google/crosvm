@@ -23,7 +23,7 @@ use protobuf;
 use protobuf::Message;
 
 use io_jail::Minijail;
-use kvm::{dirty_log_bitmap_size, IoeventAddress, IrqRoute, IrqSource, NoDatamatch, PicId, Vm};
+use kvm::{dirty_log_bitmap_size, Datamatch, IoeventAddress, IrqRoute, IrqSource, PicId, Vm};
 use kvm_sys::{kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
 use plugin_proto::*;
 use sys_util::{
@@ -289,11 +289,17 @@ impl Process {
             AddressSpace::MMIO => IoeventAddress::Mmio(io_event.address),
         };
         match io_event.length {
-            0 => vm.register_ioevent(&evt, addr, NoDatamatch)?,
-            1 => vm.register_ioevent(&evt, addr, io_event.datamatch as u8)?,
-            2 => vm.register_ioevent(&evt, addr, io_event.datamatch as u16)?,
-            4 => vm.register_ioevent(&evt, addr, io_event.datamatch as u32)?,
-            8 => vm.register_ioevent(&evt, addr, io_event.datamatch as u64)?,
+            0 => vm.register_ioevent(&evt, addr, Datamatch::AnyLength)?,
+            1 => vm.register_ioevent(&evt, addr, Datamatch::U8(Some(io_event.datamatch as u8)))?,
+            2 => {
+                vm.register_ioevent(&evt, addr, Datamatch::U16(Some(io_event.datamatch as u16)))?
+            }
+            4 => {
+                vm.register_ioevent(&evt, addr, Datamatch::U32(Some(io_event.datamatch as u32)))?
+            }
+            8 => {
+                vm.register_ioevent(&evt, addr, Datamatch::U64(Some(io_event.datamatch as u64)))?
+            }
             _ => return Err(SysError::new(EINVAL)),
         };
 

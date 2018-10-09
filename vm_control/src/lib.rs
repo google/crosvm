@@ -27,7 +27,7 @@ use libc::{EINVAL, ENODEV, ERANGE};
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use data_model::{DataInit, Le32, Le64, VolatileMemory};
-use kvm::{IoeventAddress, Vm};
+use kvm::{Datamatch, IoeventAddress, Vm};
 use resources::{GpuMemoryDesc, GpuMemoryPlaneDesc, SystemAllocator};
 use sys_util::{
     Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError, Result, ScmSocket,
@@ -248,7 +248,7 @@ impl VmRequest {
                 VmResponse::Ok
             }
             &VmRequest::RegisterIoevent(ref evt, addr, datamatch) => {
-                match vm.register_ioevent(evt, addr, datamatch) {
+                match vm.register_ioevent(evt, addr, Datamatch::U32(Some(datamatch))) {
                     Ok(_) => VmResponse::Ok,
                     Err(e) => VmResponse::Err(e),
                 }

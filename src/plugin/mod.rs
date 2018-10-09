@@ -25,7 +25,7 @@ use libc::{
 use protobuf::ProtobufError;
 
 use io_jail::{self, Minijail};
-use kvm::{IoeventAddress, Kvm, NoDatamatch, Vcpu, VcpuExit, Vm};
+use kvm::{Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use net_util::{Error as TapError, Tap, TapT};
 use sys_util::{
     block_signal, clear_signal, getegid, geteuid, register_signal_handler, Error as SysError,
@@ -303,11 +303,11 @@ impl PluginObject {
                 length,
                 datamatch,
             } => match length {
-                0 => vm.unregister_ioevent(&evt, addr, NoDatamatch),
-                1 => vm.unregister_ioevent(&evt, addr, datamatch as u8),
-                2 => vm.unregister_ioevent(&evt, addr, datamatch as u16),
-                4 => vm.unregister_ioevent(&evt, addr, datamatch as u32),
-                8 => vm.unregister_ioevent(&evt, addr, datamatch as u64),
+                0 => vm.unregister_ioevent(&evt, addr, Datamatch::AnyLength),
+                1 => vm.unregister_ioevent(&evt, addr, Datamatch::U8(Some(datamatch as u8))),
+                2 => vm.unregister_ioevent(&evt, addr, Datamatch::U16(Some(datamatch as u16))),
+                4 => vm.unregister_ioevent(&evt, addr, Datamatch::U32(Some(datamatch as u32))),
+                8 => vm.unregister_ioevent(&evt, addr, Datamatch::U64(Some(datamatch as u64))),
                 _ => Err(SysError::new(EINVAL)),
             },
             PluginObject::Memory { slot, .. } => vm.remove_device_memory(slot).and(Ok(())),

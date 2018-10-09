@@ -21,7 +21,7 @@ use devices::{
     Bus, BusError, PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProxyDevice, Serial,
 };
 use io_jail::Minijail;
-use kvm::{IoeventAddress, Kvm, NoDatamatch, Vcpu, Vm};
+use kvm::{Datamatch, IoeventAddress, Kvm, Vcpu, Vm};
 use resources::SystemAllocator;
 use sys_util::{syslog, EventFd, GuestMemory};
 
@@ -169,7 +169,7 @@ pub fn generate_pci_root(
             .map_err(DeviceRegistrationError::AllocateIoAddrs)?;
         for (event, addr) in device.ioeventfds() {
             let io_addr = IoeventAddress::Mmio(addr);
-            vm.register_ioevent(&event, io_addr, NoDatamatch)
+            vm.register_ioevent(&event, io_addr, Datamatch::AnyLength)
                 .map_err(DeviceRegistrationError::RegisterIoevent)?;
             keep_fds.push(event.as_raw_fd());
         }
@@ -212,7 +212,7 @@ pub fn register_mmio(
         .ok_or(DeviceRegistrationError::AddrsExhausted)?;
     for (i, queue_evt) in mmio_device.queue_evts().iter().enumerate() {
         let io_addr = IoeventAddress::Mmio(mmio_base + devices::virtio::NOTIFY_REG_OFFSET as u64);
-        vm.register_ioevent(&queue_evt, io_addr, i as u32)
+        vm.register_ioevent(&queue_evt, io_addr, Datamatch::U32(Some(i as u32)))
             .map_err(DeviceRegistrationError::RegisterIoevent)?;
         keep_fds.push(queue_evt.as_raw_fd());
     }

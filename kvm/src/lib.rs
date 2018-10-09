@@ -216,12 +216,13 @@ pub enum IoeventAddress {
     Mmio(u64),
 }
 
-/// Used in `Vm::register_ioevent` to indicate that no datamatch is requested.
-pub struct NoDatamatch;
-impl Into<u64> for NoDatamatch {
-    fn into(self) -> u64 {
-        0
-    }
+/// Used in `Vm::register_ioevent` to indicate a size and optionally value to match.
+pub enum Datamatch {
+    AnyLength,
+    U8(Option<u8>),
+    U16(Option<u16>),
+    U32(Option<u32>),
+    U64(Option<u64>),
 }
 
 /// A source of IRQs in an `IrqRoute`.
@@ -621,53 +622,59 @@ impl Vm {
     ///
     /// In all cases where `evt` is signaled, the ordinary vmexit to userspace that would be
     /// triggered is prevented.
-    pub fn register_ioevent<T: Into<u64>>(
+    pub fn register_ioevent(
         &self,
         evt: &EventFd,
         addr: IoeventAddress,
-        datamatch: T,
+        datamatch: Datamatch,
     ) -> Result<()> {
-        self.ioeventfd(
-            evt,
-            addr,
-            datamatch.into(),
-            std::mem::size_of::<T>() as u32,
-            false,
-        )
+        self.ioeventfd(evt, addr, datamatch, false)
     }
 
     /// Unregisters an event previously registered with `register_ioevent`.
     ///
     /// The `evt`, `addr`, and `datamatch` set must be the same as the ones passed into
     /// `register_ioevent`.
-    pub fn unregister_ioevent<T: Into<u64>>(
+    pub fn unregister_ioevent(
         &self,
         evt: &EventFd,
         addr: IoeventAddress,
-        datamatch: T,
+        datamatch: Datamatch,
     ) -> Result<()> {
-        self.ioeventfd(
-            evt,
-            addr,
-            datamatch.into(),
-            std::mem::size_of::<T>() as u32,
-            true,
-        )
+        self.ioeventfd(evt, addr, datamatch, true)
     }
 
     fn ioeventfd(
         &self,
         evt: &EventFd,
         addr: IoeventAddress,
-        datamatch: u64,
-        datamatch_len: u32,
+        datamatch: Datamatch,
         deassign: bool,
     ) -> Result<()> {
+        let (do_datamatch, datamatch_value, datamatch_len) = match datamatch {
+            Datamatch::AnyLength => (false, 0, 0),
+            Datamatch::U8(v) => match v {
+                Some(u) => (true, u as u64, 1),
+                None => (false, 0, 1),
+            },
+            Datamatch::U16(v) => match v {
+                Some(u) => (true, u as u64, 2),
+                None => (false, 0, 2),
+            },
+            Datamatch::U32(v) => match v {
+                Some(u) => (true, u as u64, 4),
+                None => (false, 0, 4),
+            },
+            Datamatch::U64(v) => match v {
+                Some(u) => (true, u as u64, 8),
+                None => (false, 0, 8),
+            },
+        };
         let mut flags = 0;
         if deassign {
             flags |= 1 << kvm_ioeventfd_flag_nr_deassign;
         }
-        if datamatch_len > 0 {
+        if do_datamatch {
             flags |= 1 << kvm_ioeventfd_flag_nr_datamatch
         }
         match addr {
@@ -675,7 +682,7 @@ impl Vm {
             _ => {}
         };
         let ioeventfd = kvm_ioeventfd {
-            datamatch,
+            datamatch: datamatch_value,
             len: datamatch_len,
             addr: match addr {
                 IoeventAddress::Pio(p) => p as u64,
@@ -1623,24 +1630,34 @@ mod tests {
 
     #[test]
     fn register_ioevent() {
-        assert_eq!(std::mem::size_of::<NoDatamatch>(), 0);
-
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
         let vm = Vm::new(&kvm, gm).unwrap();
         let evtfd = EventFd::new().unwrap();
-        vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xf4), NoDatamatch)
+        vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();
-        vm.register_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), NoDatamatch)
+        vm.register_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), Datamatch::AnyLength)
             .unwrap();
-        vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xc1), 0x7fu8)
-            .unwrap();
-        vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xc2), 0x1337u16)
-            .unwrap();
-        vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xc4), 0xdeadbeefu32)
-            .unwrap();
-        vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xc8), 0xdeadbeefdeadbeefu64)
-            .unwrap();
+        vm.register_ioevent(
+            &evtfd,
+            IoeventAddress::Pio(0xc1),
+            Datamatch::U8(Some(0x7fu8)),
+        ).unwrap();
+        vm.register_ioevent(
+            &evtfd,
+            IoeventAddress::Pio(0xc2),
+            Datamatch::U16(Some(0x1337u16)),
+        ).unwrap();
+        vm.register_ioevent(
+            &evtfd,
+            IoeventAddress::Pio(0xc4),
+            Datamatch::U32(Some(0xdeadbeefu32)),
+        ).unwrap();
+        vm.register_ioevent(
+            &evtfd,
+            IoeventAddress::Pio(0xc8),
+            Datamatch::U64(Some(0xdeadbeefdeadbeefu64)),
+        ).unwrap();
     }
 
     #[test]
@@ -1649,18 +1666,24 @@ mod tests {
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
         let vm = Vm::new(&kvm, gm).unwrap();
         let evtfd = EventFd::new().unwrap();
-        vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xf4), NoDatamatch)
+        vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();
-        vm.register_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), NoDatamatch)
+        vm.register_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), Datamatch::AnyLength)
             .unwrap();
-        vm.register_ioevent(&evtfd, IoeventAddress::Mmio(0x1004), 0x7fu8)
+        vm.register_ioevent(
+            &evtfd,
+            IoeventAddress::Mmio(0x1004),
+            Datamatch::U8(Some(0x7fu8)),
+        ).unwrap();
+        vm.unregister_ioevent(&evtfd, IoeventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();
-        vm.unregister_ioevent(&evtfd, IoeventAddress::Pio(0xf4), NoDatamatch)
+        vm.unregister_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), Datamatch::AnyLength)
             .unwrap();
-        vm.unregister_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), NoDatamatch)
-            .unwrap();
-        vm.unregister_ioevent(&evtfd, IoeventAddress::Mmio(0x1004), 0x7fu8)
-            .unwrap();
+        vm.unregister_ioevent(
+            &evtfd,
+            IoeventAddress::Mmio(0x1004),
+            Datamatch::U8(Some(0x7fu8)),
+        ).unwrap();
     }
 
     #[test]
