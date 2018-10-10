@@ -23,7 +23,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use sys_util::{fallocate, FallocateMode, WriteZeroes};
+use sys_util::{fallocate, FallocateMode, SeekHole, WriteZeroes};
 
 #[derive(Debug)]
 pub enum Error {
@@ -669,6 +669,77 @@ impl QcowFile {
         Ok(new_addr)
     }
 
+    // Returns true if the cluster containing `address` is already allocated.
+    fn cluster_allocated(&mut self, address: u64) -> std::io::Result<bool> {
+        if address >= self.virtual_size() as u64 {
+            return Err(std::io::Error::from_raw_os_error(EINVAL));
+        }
+
+        let l1_index = self.l1_table_index(address) as usize;
+        let l2_addr_disk = *self
+            .l1_table
+            .get(l1_index)
+            .ok_or(std::io::Error::from_raw_os_error(EINVAL))?;
+        let l2_index = self.l2_table_index(address) as usize;
+
+        if l2_addr_disk == 0 {
+            // The whole L2 table for this address is not allocated yet,
+            // so the cluster must also be unallocated.
+            return Ok(false);
+        }
+
+        if !self.l2_cache.contains_key(&l1_index) {
+            // Not in the cache.
+            let table =
+                VecCache::from_vec(Self::read_l2_cluster(&mut self.raw_file, l2_addr_disk)?);
+            let l1_table = &self.l1_table;
+            let raw_file = &mut self.raw_file;
+            self.l2_cache.insert(l1_index, table, |index, evicted| {
+                raw_file.write_pointer_table(
+                    l1_table[index],
+                    evicted.get_values(),
+                    CLUSTER_USED_FLAG,
+                )
+            })?;
+        }
+
+        let cluster_addr = self.l2_cache.get(&l1_index).unwrap()[l2_index];
+        // If cluster_addr != 0, the cluster is allocated.
+        Ok(cluster_addr != 0)
+    }
+
+    // Find the first guest address greater than or equal to `address` whose allocation state
+    // matches `allocated`.
+    fn find_allocated_cluster(
+        &mut self,
+        address: u64,
+        allocated: bool,
+    ) -> std::io::Result<Option<u64>> {
+        let size = self.virtual_size();
+        if address >= size {
+            return Ok(None);
+        }
+
+        // If offset is already within a hole, return it.
+        if self.cluster_allocated(address)? == allocated {
+            return Ok(Some(address));
+        }
+
+        // Skip to the next cluster boundary.
+        let cluster_size = self.raw_file.cluster_size();
+        let mut cluster_addr = (address / cluster_size + 1) * cluster_size;
+
+        // Search for clusters with the desired allocation state.
+        while cluster_addr < size {
+            if self.cluster_allocated(cluster_addr)? == allocated {
+                return Ok(Some(cluster_addr));
+            }
+            cluster_addr += cluster_size;
+        }
+
+        Ok(None)
+    }
+
     // Deallocate the storage for the cluster starting at `address`.
     // Any future reads of this cluster will return all zeroes.
     fn deallocate_cluster(&mut self, address: u64) -> std::io::Result<()> {
@@ -992,6 +1063,36 @@ impl WriteZeroes for QcowFile {
         }
         self.current_offset += length as u64;
         Ok(length)
+    }
+}
+
+impl SeekHole for QcowFile {
+    fn seek_hole(&mut self, offset: u64) -> io::Result<Option<u64>> {
+        match self.find_allocated_cluster(offset, false) {
+            Err(e) => Err(e),
+            Ok(None) => {
+                if offset < self.virtual_size() {
+                    Ok(Some(self.seek(SeekFrom::End(0))?))
+                } else {
+                    Ok(None)
+                }
+            }
+            Ok(Some(o)) => {
+                self.seek(SeekFrom::Start(o))?;
+                Ok(Some(o))
+            }
+        }
+    }
+
+    fn seek_data(&mut self, offset: u64) -> io::Result<Option<u64>> {
+        match self.find_allocated_cluster(offset, true) {
+            Err(e) => Err(e),
+            Ok(None) => Ok(None),
+            Ok(Some(o)) => {
+                self.seek(SeekFrom::Start(o))?;
+                Ok(Some(o))
+            }
+        }
     }
 }
 
@@ -1618,6 +1719,117 @@ mod tests {
             }
 
             assert_eq!(qcow_file.first_zero_refcount().unwrap(), None);
+        });
+    }
+
+    fn seek_cur(file: &mut QcowFile) -> u64 {
+        file.seek(SeekFrom::Current(0)).unwrap()
+    }
+
+    #[test]
+    fn seek_data() {
+        with_default_file(0x30000, |mut file| {
+            // seek_data at or after the end of the file should return None
+            assert_eq!(file.seek_data(0x10000).unwrap(), None);
+            assert_eq!(seek_cur(&mut file), 0);
+            assert_eq!(file.seek_data(0x10001).unwrap(), None);
+            assert_eq!(seek_cur(&mut file), 0);
+
+            // Write some data to [0x10000, 0x20000)
+            let b = [0x55u8; 0x10000];
+            file.seek(SeekFrom::Start(0x10000)).unwrap();
+            file.write_all(&b).unwrap();
+            assert_eq!(file.seek_data(0).unwrap(), Some(0x10000));
+            assert_eq!(seek_cur(&mut file), 0x10000);
+
+            // seek_data within data should return the same offset
+            assert_eq!(file.seek_data(0x10000).unwrap(), Some(0x10000));
+            assert_eq!(seek_cur(&mut file), 0x10000);
+            assert_eq!(file.seek_data(0x10001).unwrap(), Some(0x10001));
+            assert_eq!(seek_cur(&mut file), 0x10001);
+            assert_eq!(file.seek_data(0x1FFFF).unwrap(), Some(0x1FFFF));
+            assert_eq!(seek_cur(&mut file), 0x1FFFF);
+
+            assert_eq!(file.seek_data(0).unwrap(), Some(0x10000));
+            assert_eq!(seek_cur(&mut file), 0x10000);
+            assert_eq!(file.seek_data(0x1FFFF).unwrap(), Some(0x1FFFF));
+            assert_eq!(seek_cur(&mut file), 0x1FFFF);
+            assert_eq!(file.seek_data(0x20000).unwrap(), None);
+            assert_eq!(seek_cur(&mut file), 0x1FFFF);
+        });
+    }
+
+    #[test]
+    fn seek_hole() {
+        with_default_file(0x30000, |mut file| {
+            // File consisting entirely of a hole
+            assert_eq!(file.seek_hole(0).unwrap(), Some(0));
+            assert_eq!(seek_cur(&mut file), 0);
+            assert_eq!(file.seek_hole(0xFFFF).unwrap(), Some(0xFFFF));
+            assert_eq!(seek_cur(&mut file), 0xFFFF);
+
+            // seek_hole at or after the end of the file should return None
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0x30000).unwrap(), None);
+            assert_eq!(seek_cur(&mut file), 0);
+            assert_eq!(file.seek_hole(0x30001).unwrap(), None);
+            assert_eq!(seek_cur(&mut file), 0);
+
+            // Write some data to [0x10000, 0x20000)
+            let b = [0x55u8; 0x10000];
+            file.seek(SeekFrom::Start(0x10000)).unwrap();
+            file.write_all(&b).unwrap();
+
+            // seek_hole within a hole should return the same offset
+            assert_eq!(file.seek_hole(0).unwrap(), Some(0));
+            assert_eq!(seek_cur(&mut file), 0);
+            assert_eq!(file.seek_hole(0xFFFF).unwrap(), Some(0xFFFF));
+            assert_eq!(seek_cur(&mut file), 0xFFFF);
+
+            // seek_hole within data should return the next hole
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0x10000).unwrap(), Some(0x20000));
+            assert_eq!(seek_cur(&mut file), 0x20000);
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0x10001).unwrap(), Some(0x20000));
+            assert_eq!(seek_cur(&mut file), 0x20000);
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0x1FFFF).unwrap(), Some(0x20000));
+            assert_eq!(seek_cur(&mut file), 0x20000);
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0xFFFF).unwrap(), Some(0xFFFF));
+            assert_eq!(seek_cur(&mut file), 0xFFFF);
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0x10000).unwrap(), Some(0x20000));
+            assert_eq!(seek_cur(&mut file), 0x20000);
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0x1FFFF).unwrap(), Some(0x20000));
+            assert_eq!(seek_cur(&mut file), 0x20000);
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0x20000).unwrap(), Some(0x20000));
+            assert_eq!(seek_cur(&mut file), 0x20000);
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0x20001).unwrap(), Some(0x20001));
+            assert_eq!(seek_cur(&mut file), 0x20001);
+
+            // seek_hole at EOF should return None
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0x30000).unwrap(), None);
+            assert_eq!(seek_cur(&mut file), 0);
+
+            // Write some data to [0x20000, 0x30000)
+            file.seek(SeekFrom::Start(0x20000)).unwrap();
+            file.write_all(&b).unwrap();
+
+            // seek_hole within [0x20000, 0x30000) should now find the hole at EOF
+            assert_eq!(file.seek_hole(0x20000).unwrap(), Some(0x30000));
+            assert_eq!(seek_cur(&mut file), 0x30000);
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0x20001).unwrap(), Some(0x30000));
+            assert_eq!(seek_cur(&mut file), 0x30000);
+            file.seek(SeekFrom::Start(0)).unwrap();
+            assert_eq!(file.seek_hole(0x30000).unwrap(), None);
+            assert_eq!(seek_cur(&mut file), 0);
         });
     }
 }

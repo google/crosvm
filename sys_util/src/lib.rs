@@ -26,6 +26,7 @@ mod guest_memory;
 mod mmap;
 mod passwd;
 mod poll;
+mod seek_hole;
 mod shm;
 pub mod signal;
 mod signalfd;
@@ -59,6 +60,7 @@ pub use timerfd::*;
 
 pub use guest_memory::Error as GuestMemoryError;
 pub use mmap::Error as MmapError;
+pub use seek_hole::SeekHole;
 pub use signalfd::Error as SignalFdError;
 pub use write_zeroes::WriteZeroes;
 
