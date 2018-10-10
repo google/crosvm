@@ -207,7 +207,6 @@ impl ParseState {
             Tokenized::Enum => States::Ident,
             Tokenized::Visiblity => States::Start,
             _ => panic!("derives for enum types only"),
-
         };
     }
 
@@ -237,9 +236,9 @@ impl ParseState {
         self.current_state = match tok {
             Tokenized::Ident(ident) => {
                 let mut variant = Some(EnumVariant {
-                                           name: ident,
-                                           data: None,
-                                       });
+                    name: ident,
+                    data: None,
+                });
                 mem::swap(&mut variant, &mut self.current_variant);
                 if let Some(variant) = variant {
                     self.model.variants.push(variant);
@@ -247,14 +246,11 @@ impl ParseState {
                 States::VariantIdent
             }
             Tokenized::IdentAndType(ident, type_) => {
-                let variant_data = EnumVariantData {
-                    type_: type_,
-                    name: None,
-                };
+                let variant_data = EnumVariantData { type_, name: None };
                 let mut variant = Some(EnumVariant {
-                                           name: ident,
-                                           data: Some(variant_data),
-                                       });
+                    name: ident,
+                    data: Some(variant_data),
+                });
                 mem::swap(&mut variant, &mut self.current_variant);
                 if let Some(variant) = variant {
                     self.model.variants.push(variant);
@@ -278,12 +274,14 @@ impl ParseState {
         let variant = self.current_variant.as_mut().unwrap();
         self.current_state = match tok {
             Tokenized::FieldIdent(ident) => {
-                assert!(variant.data.is_none(),
-                        "enum variant can only have one field");
+                assert!(
+                    variant.data.is_none(),
+                    "enum variant can only have one field"
+                );
                 variant.data = Some(EnumVariantData {
-                                        type_: "".to_owned(),
-                                        name: Some(ident),
-                                    });
+                    type_: "".to_owned(),
+                    name: Some(ident),
+                });
                 States::VariantDataType
             }
             Tokenized::CloseBrace => States::VariantIdent,
@@ -339,9 +337,10 @@ impl EnumModel {
             // The capture string is for everything between the variant identifier and the `=>` in
             // the match arm: the variant's data capture.
             let capture = match variant.data.as_ref() {
-                Some(&EnumVariantData { name: Some(ref name), .. }) => {
-                    format!("{{ {}: data }}", name)
-                }
+                Some(&EnumVariantData {
+                    name: Some(ref name),
+                    ..
+                }) => format!("{{ {}: data }}", name),
                 Some(&EnumVariantData { .. }) => "(data)".to_owned(),
                 None => "".to_owned(),
             };
@@ -355,14 +354,11 @@ impl EnumModel {
             };
 
             // Assembly of the match arm.
-            write!(match_statement,
-                   "{}::{}{} => {}{},\n",
-                   self.name,
-                   variant.name,
-                   capture,
-                   index,
-                   modifer)
-                    .unwrap();
+            write!(
+                match_statement,
+                "{}::{}{} => {}{},\n",
+                self.name, variant.name, capture, index, modifer
+            ).unwrap();
         }
         match_statement.push_str("}");
         match_statement
@@ -382,24 +378,22 @@ impl EnumModel {
             // data, which includes both variant index and data bits.
             let data = match variant.data.as_ref() {
                 Some(&EnumVariantData {
-                          name: Some(ref name),
-                          ref type_,
-                      }) => format!("{{ {}: (data >> {}) as {} }}", name, variant_bits, type_),
+                    name: Some(ref name),
+                    ref type_,
+                }) => format!("{{ {}: (data >> {}) as {} }}", name, variant_bits, type_),
                 Some(&EnumVariantData {
-                          name: None,
-                          ref type_,
-                      }) => format!("((data >> {}) as {})", variant_bits, type_),
+                    name: None,
+                    ref type_,
+                }) => format!("((data >> {}) as {})", variant_bits, type_),
                 None => "".to_owned(),
             };
 
             // Assembly of the match arm.
-            write!(match_statement,
-                   "{} => {}::{}{},\n",
-                   index,
-                   self.name,
-                   variant.name,
-                   data)
-                    .unwrap();
+            write!(
+                match_statement,
+                "{} => {}::{}{},\n",
+                index, self.name, variant.name, data
+            ).unwrap();
         }
         match_statement.push_str("_ => unreachable!()\n}");
         match_statement
@@ -419,9 +413,11 @@ fn poll_token_inner(src: &str) -> String {
         state.handle_token(tok);
     }
 
-    assert_eq!(state.current_state,
-               States::End,
-               "unexpected end after parsing source enum");
+    assert_eq!(
+        state.current_state,
+        States::End,
+        "unexpected end after parsing source enum"
+    );
 
     // Given our basic model of a user given enum that is suitable as a token, we generate the
     // implementation. The implementation is NOT always well formed, such as when a variant's data
@@ -429,7 +425,8 @@ fn poll_token_inner(src: &str) -> String {
     // would be difficult to detect every kind of error. Importantly, every implementation that we
     // generate here and goes on to compile succesfully is sound.
     let model = state.model;
-    format!("impl PollToken for {} {{
+    format!(
+        "impl PollToken for {} {{
     fn as_raw_token(&self) -> u64 {{
 {}
     }}
@@ -438,9 +435,10 @@ fn poll_token_inner(src: &str) -> String {
 {}
     }}
 }}",
-            model.name,
-            model.generate_as_raw_token(),
-            model.generate_from_raw_token())
+        model.name,
+        model.generate_as_raw_token(),
+        model.generate_from_raw_token()
+    )
 }
 
 /// Implements the PollToken trait for a given `enum`.

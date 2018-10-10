@@ -8,8 +8,8 @@
 
 #![recursion_limit = "256"]
 
-extern crate proc_macro2;
 extern crate proc_macro;
+extern crate proc_macro2;
 
 #[macro_use]
 extern crate quote;
@@ -20,8 +20,8 @@ extern crate syn;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::Tokens;
-use syn::{Data, DeriveInput, Fields, Ident};
 use syn::spanned::Spanned;
+use syn::{Data, DeriveInput, Fields, Ident};
 
 /// The function that derives the actual implementation.
 #[proc_macro_derive(P9WireFormat)]
