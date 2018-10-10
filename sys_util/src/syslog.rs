@@ -65,14 +65,14 @@ pub enum Priority {
 impl fmt::Display for Priority {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Priority::Emergency => write!(f, "{}", "EMERGENCY"),
-            &Priority::Alert => write!(f, "{}", "ALERT"),
-            &Priority::Critical => write!(f, "{}", "CRITICAL"),
-            &Priority::Error => write!(f, "{}", "ERROR"),
-            &Priority::Warning => write!(f, "{}", "WARNING"),
-            &Priority::Notice => write!(f, "{}", "NOTICE"),
-            &Priority::Info => write!(f, "{}", "INFO"),
-            &Priority::Debug => write!(f, "{}", "DEBUG"),
+            &Priority::Emergency => write!(f, "EMERGENCY"),
+            &Priority::Alert => write!(f, "ALERT"),
+            &Priority::Critical => write!(f, "CRITICAL"),
+            &Priority::Error => write!(f, "ERROR"),
+            &Priority::Warning => write!(f, "WARNING"),
+            &Priority::Notice => write!(f, "NOTICE"),
+            &Priority::Info => write!(f, "INFO"),
+            &Priority::Debug => write!(f, "DEBUG"),
         }
     }
 }
