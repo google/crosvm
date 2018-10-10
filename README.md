@@ -138,9 +138,8 @@ for each architecture. See `build_test -h` for more information.
 
 #### `rustfmt`
 
-New code should be run with `rustfmt`, but not all currently checked in code has
-already been autoformatted. If running `rustfmt` causes a lot of churn for a
-file, do not check in lines unrelated to your change.
+All code should be formatted with `rustfmt`.  Run `cargo fmt --all` to autoformat
+your code before checking in a change.
 
 #### Dependencies
 
