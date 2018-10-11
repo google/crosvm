@@ -11,7 +11,7 @@ extern crate sys_util;
 
 mod cap;
 
-use std::cmp::min;
+use std::cmp::{min, Ordering};
 use std::collections::hash_map::Entry;
 use std::collections::{BinaryHeap, HashMap};
 use std::fs::File;
@@ -37,6 +37,37 @@ pub use cap::*;
 
 fn errno_result<T>() -> Result<T> {
     Err(Error::last())
+}
+
+// Returns a `Vec<T>` with a size in ytes at least as large as `size_in_bytes`.
+fn vec_with_size_in_bytes<T: Default>(size_in_bytes: usize) -> Vec<T> {
+    let rounded_size = (size_in_bytes + size_of::<T>() - 1) / size_of::<T>();
+    let mut v = Vec::with_capacity(rounded_size);
+    for _ in 0..rounded_size {
+        v.push(T::default())
+    }
+    v
+}
+
+// The kvm API has many structs that resemble the following `Foo` structure:
+//
+// ```
+// #[repr(C)]
+// struct Foo {
+//    some_data: u32
+//    entries: __IncompleteArrayField<__u32>,
+// }
+// ```
+//
+// In order to allocate such a structure, `size_of::<Foo>()` would be too small because it would not
+// include any space for `entries`. To make the allocation large enough while still being aligned
+// for `Foo`, a `Vec<Foo>` is created. Only the first element of `Vec<Foo>` would actually be used
+// as a `Foo`. The remaining memory in the `Vec<Foo>` is for `entries`, which must be contiguous
+// with `Foo`. This function is used to make the `Vec<Foo>` with enough space for `count` entries.
+fn vec_with_array_field<T: Default, F>(count: usize) -> Vec<T> {
+    let element_space = count * size_of::<F>();
+    let vec_size_bytes = size_of::<T>() + element_space;
+    vec_with_size_in_bytes(vec_size_bytes)
 }
 
 unsafe fn set_user_memory_region<F: AsRawFd>(
@@ -173,32 +204,28 @@ impl Kvm {
     pub fn get_msr_index_list(&self) -> Result<Vec<u32>> {
         const MAX_KVM_MSR_ENTRIES: usize = 256;
 
-        let vec_size_bytes = size_of::<kvm_msr_list>() + MAX_KVM_MSR_ENTRIES * size_of::<u32>();
-        let bytes: Vec<u8> = vec![0; vec_size_bytes];
-        let msr_list: &mut kvm_msr_list = unsafe {
-            // We have ensured in new that there is enough space for the structure so this
-            // conversion is safe.
-            &mut *(bytes.as_ptr() as *mut kvm_msr_list)
-        };
-        msr_list.nmsrs = MAX_KVM_MSR_ENTRIES as u32;
+        let mut msr_list = vec_with_array_field::<kvm_msr_list, u32>(MAX_KVM_MSR_ENTRIES);
+        msr_list[0].nmsrs = MAX_KVM_MSR_ENTRIES as u32;
 
         let ret = unsafe {
             // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the memory
             // allocated for the struct. The limit is read from nmsrs, which is set to the allocated
             // size (MAX_KVM_MSR_ENTRIES) above.
-            ioctl_with_mut_ref(self, KVM_GET_MSR_INDEX_LIST(), msr_list)
+            ioctl_with_mut_ref(self, KVM_GET_MSR_INDEX_LIST(), &mut msr_list[0])
         };
         if ret < 0 {
             return errno_result();
         }
 
+        let mut nmsrs = msr_list[0].nmsrs;
+
         // Mapping the unsized array to a slice is unsafe because the length isn't known.  Using
         // the length we originally allocated with eliminates the possibility of overflow.
         let indices: &[u32] = unsafe {
-            if msr_list.nmsrs > MAX_KVM_MSR_ENTRIES as u32 {
-                msr_list.nmsrs = MAX_KVM_MSR_ENTRIES as u32;
+            if nmsrs > MAX_KVM_MSR_ENTRIES as u32 {
+                nmsrs = MAX_KVM_MSR_ENTRIES as u32;
             }
-            msr_list.indices.as_slice(msr_list.nmsrs as usize)
+            msr_list[0].indices.as_slice(nmsrs as usize)
         };
 
         Ok(indices.to_vec())
@@ -245,12 +272,30 @@ pub enum PicId {
     Secondary = 1,
 }
 
+// Used to invert the order when stored in a max-heap.
+#[derive(Copy, Clone, Eq, PartialEq)]
+struct MemSlot(u32);
+
+impl Ord for MemSlot {
+    fn cmp(&self, other: &MemSlot) -> Ordering {
+        // Notice the order is inverted so the lowest magnitude slot has the highest priority in a
+        // max-heap.
+        other.0.cmp(&self.0)
+    }
+}
+
+impl PartialOrd for MemSlot {
+    fn partial_cmp(&self, other: &MemSlot) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// A wrapper around creating and using a VM.
 pub struct Vm {
     vm: File,
     guest_mem: GuestMemory,
     device_memory: HashMap<u32, MemoryMapping>,
-    mem_slot_gaps: BinaryHeap<i32>,
+    mem_slot_gaps: BinaryHeap<MemSlot>,
 }
 
 impl Vm {
@@ -324,14 +369,13 @@ impl Vm {
             return Err(Error::new(ENOSPC));
         }
 
-        // The slot gaps are stored negated because `mem_slot_gaps` is a max-heap, so we negate the
-        // popped value from the heap to get the lowest slot. If there are no gaps, the lowest slot
-        // number is equal to the number of slots we are currently using between guest memory and
-        // device memory. For example, if 2 slots are used by guest memory, 3 slots are used for
-        // device memory, and there are no gaps, it follows that the lowest unused slot is 2+3=5.
+        // If there are no gaps, the lowest slot number is equal to the number of slots we are
+        // currently using between guest memory and device memory. For example, if 2 slots are used
+        // by guest memory, 3 slots are used for device memory, and there are no gaps, it follows
+        // that the lowest unused slot is 2+3=5.
         let slot = match self.mem_slot_gaps.pop() {
-            Some(gap) => (-gap) as u32,
-            None => (self.device_memory.len() + self.guest_mem.num_regions() as usize) as u32,
+            Some(gap) => gap.0,
+            None => (self.device_memory.len() + (self.guest_mem.num_regions() as usize)) as u32,
         };
 
         // Safe because we check that the given guest address is valid and has no overlaps. We also
@@ -364,9 +408,7 @@ impl Vm {
                 unsafe {
                     set_user_memory_region(&self.vm, slot, false, false, 0, 0, 0)?;
                 }
-                // Because `mem_slot_gaps` is a max-heap, but we want to pop the min slots, we
-                // negate the slot value before insertion.
-                self.mem_slot_gaps.push(-(slot as i32));
+                self.mem_slot_gaps.push(MemSlot(slot));
                 Ok(entry.remove())
             }
             _ => Err(Error::new(ENOENT)),
@@ -796,20 +838,14 @@ impl Vm {
     /// `set_gsi_routing`.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn set_gsi_routing(&self, routes: &[IrqRoute]) -> Result<()> {
-        let vec_size_bytes =
-            size_of::<kvm_irq_routing>() + (routes.len() * size_of::<kvm_irq_routing_entry>());
-        let bytes: Vec<u8> = vec![0; vec_size_bytes];
-        let irq_routing: &mut kvm_irq_routing = unsafe {
-            // We have ensured in new that there is enough space for the structure so this
-            // conversion is safe.
-            &mut *(bytes.as_ptr() as *mut kvm_irq_routing)
-        };
-        irq_routing.nr = routes.len() as u32;
+        let mut irq_routing =
+            vec_with_array_field::<kvm_irq_routing, kvm_irq_routing_entry>(routes.len());
+        irq_routing[0].nr = routes.len() as u32;
 
         {
             // Safe because we ensured there is enough space in irq_routing to hold the number of
             // route entries.
-            let irq_routes = unsafe { irq_routing.entries.as_mut_slice(routes.len()) };
+            let irq_routes = unsafe { irq_routing[0].entries.as_mut_slice(routes.len()) };
             for (route, irq_route) in routes.iter().zip(irq_routes.iter_mut()) {
                 irq_route.gsi = route.gsi;
                 match route.source {
@@ -830,7 +866,7 @@ impl Vm {
             }
         }
 
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_GSI_ROUTING(), irq_routing) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_GSI_ROUTING(), &irq_routing[0]) };
         if ret == 0 {
             Ok(())
         } else {
@@ -1233,24 +1269,17 @@ impl Vcpu {
     /// See the documentation for KVM_SET_MSRS.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn get_msrs(&self, msr_entries: &mut Vec<kvm_msr_entry>) -> Result<()> {
-        let vec_size_bytes =
-            size_of::<kvm_msrs>() + (msr_entries.len() * size_of::<kvm_msr_entry>());
-        let vec: Vec<u8> = vec![0; vec_size_bytes];
-        let msrs: &mut kvm_msrs = unsafe {
-            // Converting the vector's memory to a struct is unsafe.  Carefully using the read-only
-            // vector to size and set the members ensures no out-of-bounds errors below.
-            &mut *(vec.as_ptr() as *mut kvm_msrs)
-        };
+        let mut msrs = vec_with_array_field::<kvm_msrs, kvm_msr_entry>(msr_entries.len());
         unsafe {
             // Mapping the unsized array to a slice is unsafe because the length isn't known.
             // Providing the length used to create the struct guarantees the entire slice is valid.
-            let entries: &mut [kvm_msr_entry] = msrs.entries.as_mut_slice(msr_entries.len());
+            let entries: &mut [kvm_msr_entry] = msrs[0].entries.as_mut_slice(msr_entries.len());
             entries.copy_from_slice(&msr_entries);
         }
-        msrs.nmsrs = msr_entries.len() as u32;
+        msrs[0].nmsrs = msr_entries.len() as u32;
         let ret = unsafe {
             // Here we trust the kernel not to read or write past the end of the kvm_msrs struct.
-            ioctl_with_ref(self, KVM_GET_MSRS(), msrs)
+            ioctl_with_ref(self, KVM_GET_MSRS(), &msrs[0])
         };
         if ret < 0 {
             // KVM_SET_MSRS actually returns the number of msr entries written.
@@ -1259,7 +1288,7 @@ impl Vcpu {
         unsafe {
             let count = ret as usize;
             assert!(count <= msr_entries.len());
-            let entries: &mut [kvm_msr_entry] = msrs.entries.as_mut_slice(count);
+            let entries: &mut [kvm_msr_entry] = msrs[0].entries.as_mut_slice(count);
             msr_entries.truncate(count);
             msr_entries.copy_from_slice(&entries);
         }
@@ -1410,31 +1439,27 @@ impl Vcpu {
     pub fn set_signal_mask(&self, signals: &[c_int]) -> Result<()> {
         let sigset = signal::create_sigset(signals)?;
 
-        let vec_size_bytes = size_of::<kvm_signal_mask>() + size_of::<sigset_t>();
-        let vec: Vec<u8> = vec![0; vec_size_bytes];
-        let kvm_sigmask: &mut kvm_signal_mask = unsafe {
-            // Converting the vector's memory to a struct is unsafe.
-            // Carefully using the read-only vector to size and set the members
-            // ensures no out-of-bounds errors below.
-            &mut *(vec.as_ptr() as *mut kvm_signal_mask)
-        };
-
+        let mut kvm_sigmask = vec_with_array_field::<kvm_signal_mask, sigset_t>(1);
         // Rust definition of sigset_t takes 128 bytes, but the kernel only
         // expects 8-bytes structure, so we can't write
         // kvm_sigmask.len  = size_of::<sigset_t>() as u32;
-        kvm_sigmask.len = 8;
+        kvm_sigmask[0].len = 8;
         // Ensure the length is not too big.
-        const _ASSERT: usize = size_of::<sigset_t>() - 8 as usize;
+         const _ASSERT: usize = size_of::<sigset_t>() - 8 as usize;
 
         // Safe as we allocated exactly the needed space
         unsafe {
-            std::ptr::copy(&sigset, kvm_sigmask.sigset.as_mut_ptr() as *mut sigset_t, 1);
+            copy_nonoverlapping(
+                &sigset as *const sigset_t as *const u8,
+                kvm_sigmask[0].sigset.as_mut_ptr(),
+                8,
+            );
         }
 
         let ret = unsafe {
             // The ioctl is safe because the kernel will only read from the
             // kvm_signal_mask structure.
-            ioctl_with_ref(self, KVM_SET_SIGNAL_MASK(), kvm_sigmask)
+            ioctl_with_ref(self, KVM_SET_SIGNAL_MASK(), &kvm_sigmask[0])
         };
         if ret < 0 {
             return errno_result();
@@ -1484,54 +1509,41 @@ impl AsRawFd for Vcpu {
 /// Hides the zero length array behind a bounds check.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub struct CpuId {
-    bytes: Vec<u8>,       // Actually accessed as a kvm_cpuid2 struct.
+    kvm_cpuid: Vec<kvm_cpuid2>,
     allocated_len: usize, // Number of kvm_cpuid_entry2 structs at the end of kvm_cpuid2.
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 impl CpuId {
     pub fn new(array_len: usize) -> CpuId {
-        use std::mem::size_of;
-
-        let vec_size_bytes = size_of::<kvm_cpuid2>() + (array_len * size_of::<kvm_cpuid_entry2>());
-        let bytes: Vec<u8> = vec![0; vec_size_bytes];
-        let kvm_cpuid: &mut kvm_cpuid2 = unsafe {
-            // We have ensured in new that there is enough space for the structure so this
-            // conversion is safe.
-            &mut *(bytes.as_ptr() as *mut kvm_cpuid2)
-        };
-        kvm_cpuid.nent = array_len as u32;
+        let mut kvm_cpuid = vec_with_array_field::<kvm_cpuid2, kvm_cpuid_entry2>(array_len);
+        kvm_cpuid[0].nent = array_len as u32;
 
         CpuId {
-            bytes,
+            kvm_cpuid,
             allocated_len: array_len,
         }
     }
 
     /// Get the entries slice so they can be modified before passing to the VCPU.
     pub fn mut_entries_slice(&mut self) -> &mut [kvm_cpuid_entry2] {
-        unsafe {
-            // We have ensured in new that there is enough space for the structure so this
-            // conversion is safe.
-            let kvm_cpuid: &mut kvm_cpuid2 = &mut *(self.bytes.as_ptr() as *mut kvm_cpuid2);
-
-            // Mapping the unsized array to a slice is unsafe because the length isn't known.  Using
-            // the length we originally allocated with eliminates the possibility of overflow.
-            if kvm_cpuid.nent as usize > self.allocated_len {
-                kvm_cpuid.nent = self.allocated_len as u32;
-            }
-            kvm_cpuid.entries.as_mut_slice(kvm_cpuid.nent as usize)
+        // Mapping the unsized array to a slice is unsafe because the length isn't known.  Using
+        // the length we originally allocated with eliminates the possibility of overflow.
+        if self.kvm_cpuid[0].nent as usize > self.allocated_len {
+            self.kvm_cpuid[0].nent = self.allocated_len as u32;
         }
+        let nent = self.kvm_cpuid[0].nent as usize;
+        unsafe { self.kvm_cpuid[0].entries.as_mut_slice(nent) }
     }
 
     /// Get a  pointer so it can be passed to the kernel.  Using this pointer is unsafe.
     pub fn as_ptr(&self) -> *const kvm_cpuid2 {
-        self.bytes.as_ptr() as *const kvm_cpuid2
+        &self.kvm_cpuid[0]
     }
 
     /// Get a mutable pointer so it can be passed to the kernel.  Using this pointer is unsafe.
     pub fn as_mut_ptr(&mut self) -> *mut kvm_cpuid2 {
-        self.bytes.as_mut_ptr() as *mut kvm_cpuid2
+        &mut self.kvm_cpuid[0]
     }
 }
 
