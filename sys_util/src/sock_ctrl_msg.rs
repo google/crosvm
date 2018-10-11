@@ -45,15 +45,17 @@ macro_rules! CMSG_LEN {
 // module supports.
 #[allow(non_snake_case)]
 #[inline(always)]
-fn CMSG_DATA(cmsg_buffer: *mut u8) -> *mut RawFd {
+fn CMSG_DATA(cmsg_buffer: *mut cmsghdr) -> *mut RawFd {
     // Essentially returns a pointer to just past the header.
-    (cmsg_buffer as *mut cmsghdr).wrapping_offset(1) as *mut RawFd
+    cmsg_buffer.wrapping_offset(1) as *mut RawFd
 }
 
 // This function is like CMSG_NEXT, but safer because it reads only from references, although it
 // does some pointer arithmetic on cmsg_ptr.
-fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut u8) -> *mut u8 {
-    let next_cmsg = cmsg_ptr.wrapping_offset(CMSG_ALIGN!(cmsg.cmsg_len) as isize);
+#[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut cmsghdr) -> *mut cmsghdr {
+    let next_cmsg =
+        (cmsg_ptr as *mut u8).wrapping_offset(CMSG_ALIGN!(cmsg.cmsg_len) as isize) as *mut cmsghdr;
     if next_cmsg
         .wrapping_offset(1)
         .wrapping_sub(msghdr.msg_control as usize) as usize
@@ -68,22 +70,33 @@ fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut u8) -> *mut u8 
 const CMSG_BUFFER_INLINE_CAPACITY: usize = CMSG_SPACE!(size_of::<RawFd>() * 32);
 
 enum CmsgBuffer {
-    Inline([u8; CMSG_BUFFER_INLINE_CAPACITY]),
-    Heap(Box<[u8]>),
+    Inline([u64; (CMSG_BUFFER_INLINE_CAPACITY + 7) / 8]),
+    Heap(Box<[cmsghdr]>),
 }
 
 impl CmsgBuffer {
     fn with_capacity(capacity: usize) -> CmsgBuffer {
+        let cap_in_cmsghdr_units =
+            (capacity.checked_add(size_of::<cmsghdr>()).unwrap() - 1) / size_of::<cmsghdr>();
         if capacity <= CMSG_BUFFER_INLINE_CAPACITY {
-            CmsgBuffer::Inline([0u8; CMSG_BUFFER_INLINE_CAPACITY])
+            CmsgBuffer::Inline([0u64; (CMSG_BUFFER_INLINE_CAPACITY + 7) / 8])
         } else {
-            CmsgBuffer::Heap(vec![0; capacity].into_boxed_slice())
+            CmsgBuffer::Heap(
+                vec![
+                    cmsghdr {
+                        cmsg_len: 0,
+                        cmsg_level: 0,
+                        cmsg_type: 0,
+                    };
+                    cap_in_cmsghdr_units
+                ].into_boxed_slice(),
+            )
         }
     }
 
-    fn as_mut_ptr(&mut self) -> *mut u8 {
+    fn as_mut_ptr(&mut self) -> *mut cmsghdr {
         match self {
-            CmsgBuffer::Inline(a) => a.as_mut_ptr(),
+            CmsgBuffer::Inline(a) => a.as_mut_ptr() as *mut cmsghdr,
             CmsgBuffer::Heap(a) => a.as_mut_ptr(),
         }
     }
@@ -177,7 +190,7 @@ fn raw_recvmsg(fd: RawFd, in_data: &mut [u8], in_fds: &mut [RawFd]) -> Result<(u
         return Ok((0, 0));
     }
 
-    let mut cmsg_ptr = msg.msg_control as *mut u8;
+    let mut cmsg_ptr = msg.msg_control as *mut cmsghdr;
     let mut in_fds_count = 0;
     while !cmsg_ptr.is_null() {
         // Safe because we checked that cmsg_ptr was non-null, and the loop is constructed such that
