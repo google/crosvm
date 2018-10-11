@@ -29,14 +29,13 @@ use devices::{self, PciDevice, VirtioPciDevice};
 use io_jail::{self, Minijail};
 use kvm::*;
 use net_util::Tap;
-use qcow::{self, QcowFile};
+use qcow::{self, ImageType, QcowFile};
 use sys_util;
 use sys_util::*;
 use vhost;
 use vm_control::VmRequest;
 
 use Config;
-use DiskType;
 use VirtIoDeviceInfo;
 
 use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents};
@@ -58,6 +57,7 @@ pub enum Error {
     CreateSignalFd(sys_util::SignalFdError),
     CreateSocket(io::Error),
     CreateTimerFd(sys_util::Error),
+    DetectImageType(qcow::Error),
     DeviceJail(io_jail::Error),
     DevicePivotRoot(io_jail::Error),
     Disk(io::Error),
@@ -112,6 +112,9 @@ impl fmt::Display for Error {
             &Error::CreateSignalFd(ref e) => write!(f, "failed to create signalfd: {:?}", e),
             &Error::CreateSocket(ref e) => write!(f, "failed to create socket: {}", e),
             &Error::CreateTimerFd(ref e) => write!(f, "failed to create timerfd: {}", e),
+            &Error::DetectImageType(ref e) => {
+                write!(f, "failed to detect disk image type: {:?}", e)
+            }
             &Error::DeviceJail(ref e) => write!(f, "failed to jail device: {}", e),
             &Error::DevicePivotRoot(ref e) => write!(f, "failed to pivot root device: {}", e),
             &Error::Disk(ref e) => write!(f, "failed to load disk image: {}", e),
@@ -286,15 +289,16 @@ fn create_virtio_devs(
         };
         flock(&raw_image, lock_op, true).map_err(Error::DiskImageLock)?;
 
-        let block_box: Box<devices::virtio::VirtioDevice> = match disk.disk_type {
-            DiskType::FlatFile => {
+        let image_type = qcow::detect_image_type(&raw_image).map_err(Error::DetectImageType)?;
+        let block_box: Box<devices::virtio::VirtioDevice> = match image_type {
+            ImageType::Raw => {
                 // Access as a raw block device.
                 Box::new(
                     devices::virtio::Block::new(raw_image, disk.read_only)
                         .map_err(|e| Error::BlockDeviceNew(e))?,
                 )
             }
-            DiskType::Qcow => {
+            ImageType::Qcow2 => {
                 // Valid qcow header present
                 let qcow_image =
                     QcowFile::from(raw_image).map_err(|e| Error::QcowDeviceCreate(e))?;

@@ -1239,7 +1239,7 @@ pub fn convert(src_file: File, dst_file: File, dst_type: ImageType) -> Result<()
 }
 
 /// Detect the type of an image file by checking for a valid qcow2 header.
-fn detect_image_type(file: &File) -> Result<ImageType> {
+pub fn detect_image_type(file: &File) -> Result<ImageType> {
     let mut f = file;
     let orig_seek = f.seek(SeekFrom::Current(0)).map_err(Error::SeekingFile)?;
     f.seek(SeekFrom::Start(0)).map_err(Error::SeekingFile)?;
