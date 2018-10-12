@@ -79,8 +79,12 @@ fn test_run() {
     loop {
         match vcpu.run().expect("run failed") {
             VcpuExit::Hlt => break,
-            VcpuExit::MmioWrite(addr, data) => {
-                assert_eq!(addr, vcpu_sregs.es.base);
+            VcpuExit::MmioWrite {
+                address,
+                size: 1,
+                data,
+            } => {
+                assert_eq!(address, vcpu_sregs.es.base);
                 assert_eq!(data[0] as u64, vcpu_regs.rax + 1);
                 exits += 1;
             }

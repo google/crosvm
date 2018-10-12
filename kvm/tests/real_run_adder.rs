@@ -55,8 +55,12 @@ fn test_run() {
     let mut out = String::new();
     loop {
         match vcpu.run().expect("run failed") {
-            VcpuExit::IoOut(0x3f8, data) => {
-                assert_eq!(data.len(), 1);
+            VcpuExit::IoOut {
+                port: 0x3f8,
+                size,
+                data,
+            } => {
+                assert_eq!(size, 1);
                 out.push(data[0] as char);
             }
             VcpuExit::Hlt => break,

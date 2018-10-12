@@ -363,17 +363,48 @@ pub fn run_vcpus(
                             let run_res = vcpu.run();
                             match run_res {
                                 Ok(run) => match run {
-                                    VcpuExit::IoIn(addr, data) => {
-                                        vcpu_plugin.io_read(addr as u64, data, &vcpu);
+                                    VcpuExit::IoIn { port, mut size } => {
+                                        let mut data = [0; 8];
+                                        if size > data.len() {
+                                            error!("unsupported IoIn size of {} bytes", size);
+                                            size = data.len();
+                                        }
+                                        vcpu_plugin.io_read(port as u64, &mut data[..size], &vcpu);
+                                        if let Err(e) = vcpu.set_data(&data[..size]) {
+                                            error!("failed to set return data for IoIn: {:?}", e);
+                                        }
                                     }
-                                    VcpuExit::IoOut(addr, data) => {
-                                        vcpu_plugin.io_write(addr as u64, data, &vcpu);
+                                    VcpuExit::IoOut {
+                                        port,
+                                        mut size,
+                                        data,
+                                    } => {
+                                        if size > data.len() {
+                                            error!("unsupported IoOut size of {} bytes", size);
+                                            size = data.len();
+                                        }
+                                        vcpu_plugin.io_write(port as u64, &data[..size], &vcpu);
                                     }
-                                    VcpuExit::MmioRead(addr, data) => {
-                                        vcpu_plugin.mmio_read(addr as u64, data, &vcpu);
+                                    VcpuExit::MmioRead { address, mut size } => {
+                                        let mut data = [0; 8];
+                                        vcpu_plugin.mmio_read(
+                                            address as u64,
+                                            &mut data[..size],
+                                            &vcpu,
+                                        );
+                                        // Setting data for mmio can not fail.
+                                        let _ = vcpu.set_data(&data[..size]);
                                     }
-                                    VcpuExit::MmioWrite(addr, data) => {
-                                        vcpu_plugin.mmio_write(addr as u64, data, &vcpu);
+                                    VcpuExit::MmioWrite {
+                                        address,
+                                        size,
+                                        data,
+                                    } => {
+                                        vcpu_plugin.mmio_write(
+                                            address as u64,
+                                            &data[..size],
+                                            &vcpu,
+                                        );
                                     }
                                     VcpuExit::Hlt => break,
                                     VcpuExit::Shutdown => break,

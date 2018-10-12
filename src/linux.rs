@@ -668,17 +668,40 @@ fn run_vcpu(
                 match run_res {
                     Ok(run) => {
                         match run {
-                            VcpuExit::IoIn(addr, data) => {
-                                io_bus.read(addr as u64, data);
+                            VcpuExit::IoIn { port, mut size } => {
+                                let mut data = [0; 8];
+                                if size > data.len() {
+                                    error!("unsupported IoIn size of {} bytes", size);
+                                    size = data.len();
+                                }
+                                io_bus.read(port as u64, &mut data[..size]);
+                                if let Err(e) = vcpu.set_data(&data[..size]) {
+                                    error!("failed to set return data for IoIn: {:?}", e);
+                                }
                             }
-                            VcpuExit::IoOut(addr, data) => {
-                                io_bus.write(addr as u64, data);
+                            VcpuExit::IoOut {
+                                port,
+                                mut size,
+                                data,
+                            } => {
+                                if size > data.len() {
+                                    error!("unsupported IoOut size of {} bytes", size);
+                                    size = data.len();
+                                }
+                                io_bus.write(port as u64, &data[..size]);
                             }
-                            VcpuExit::MmioRead(addr, data) => {
-                                mmio_bus.read(addr, data);
+                            VcpuExit::MmioRead { address, mut size } => {
+                                let mut data = [0; 8];
+                                mmio_bus.read(address, &mut data[..size]);
+                                // Setting data for mmio can not fail.
+                                let _ = vcpu.set_data(&data[..size]);
                             }
-                            VcpuExit::MmioWrite(addr, data) => {
-                                mmio_bus.write(addr, data);
+                            VcpuExit::MmioWrite {
+                                address,
+                                size,
+                                data,
+                            } => {
+                                mmio_bus.write(address, &data[..size]);
                             }
                             VcpuExit::Hlt => break,
                             VcpuExit::Shutdown => break,

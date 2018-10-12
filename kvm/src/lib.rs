@@ -11,12 +11,14 @@ extern crate sys_util;
 
 mod cap;
 
+use std::cmp::min;
 use std::collections::hash_map::Entry;
 use std::collections::{BinaryHeap, HashMap};
 use std::fs::File;
 use std::mem::size_of;
 use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::ptr::copy_nonoverlapping;
 
 use libc::sigset_t;
 use libc::{open, EINVAL, ENOENT, ENOSPC, O_CLOEXEC, O_RDWR};
@@ -865,21 +867,37 @@ impl AsRawFd for Vm {
     }
 }
 
-/// A reason why a VCPU exited. One of these returns everytim `Vcpu::run` is called.
+/// A reason why a VCPU exited. One of these returns every time `Vcpu::run` is called.
 #[derive(Debug)]
-pub enum VcpuExit<'a> {
+pub enum VcpuExit {
     /// An out port instruction was run on the given port with the given data.
-    IoOut(u16 /* port */, &'a [u8] /* data */),
+    IoOut {
+        port: u16,
+        size: usize,
+        data: [u8; 8],
+    },
     /// An in port instruction was run on the given port.
     ///
-    /// The given slice should be filled in before `Vcpu::run` is called again.
-    IoIn(u16 /* port */, &'a mut [u8] /* data */),
+    /// The date that the instruction receives should be set with `set_data` before `Vcpu::run` is
+    /// called again.
+    IoIn {
+        port: u16,
+        size: usize,
+    },
     /// A read instruction was run against the given MMIO address.
     ///
-    /// The given slice should be filled in before `Vcpu::run` is called again.
-    MmioRead(u64 /* address */, &'a mut [u8]),
+    /// The date that the instruction receives should be set with `set_data` before `Vcpu::run` is
+    /// called again.
+    MmioRead {
+        address: u64,
+        size: usize,
+    },
     /// A write instruction was run against the given MMIO address with the given data.
-    MmioWrite(u64 /* address */, &'a [u8]),
+    MmioWrite {
+        address: u64,
+        size: usize,
+        data: [u8; 8],
+    },
     Unknown,
     Exception,
     Hypercall,
@@ -938,54 +956,110 @@ impl Vcpu {
         Ok(Vcpu { vcpu, run_mmap })
     }
 
-    fn get_run(&self) -> &mut kvm_run {
+    /// Sets the data received by an mmio or ioport read/in instruction.
+    ///
+    /// This function should be called after `Vcpu::run` returns an `VcpuExit::IoIn` or
+    /// `Vcpu::MmioRead`.
+    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+    pub fn set_data(&self, data: &[u8]) -> Result<()> {
         // Safe because we know we mapped enough memory to hold the kvm_run struct because the
-        // kernel told us how large it was.
-        unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) }
+        // kernel told us how large it was. The pointer is page aligned so casting to a different
+        // type is well defined, hence the clippy allow attribute.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        match run.exit_reason {
+            KVM_EXIT_IO => {
+                let run_start = run as *mut kvm_run as *mut u8;
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let io = unsafe { run.__bindgen_anon_1.io };
+                if io.direction as u32 != KVM_EXIT_IO_IN {
+                    return Err(Error::new(EINVAL));
+                }
+                let data_size = (io.count as usize) * (io.size as usize);
+                if data_size != data.len() {
+                    return Err(Error::new(EINVAL));
+                }
+                // The data_offset is defined by the kernel to be some number of bytes into the
+                // kvm_run structure, which we have fully mmap'd.
+                unsafe {
+                    let data_ptr = run_start.offset(io.data_offset as isize);
+                    copy_nonoverlapping(data.as_ptr(), data_ptr, data_size);
+                }
+                Ok(())
+            }
+            KVM_EXIT_MMIO => {
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let mmio = unsafe { &mut run.__bindgen_anon_1.mmio };
+                if mmio.is_write != 0 {
+                    return Err(Error::new(EINVAL));
+                }
+                let len = mmio.len as usize;
+                if len != data.len() {
+                    return Err(Error::new(EINVAL));
+                }
+                mmio.data[..len].copy_from_slice(data);
+                Ok(())
+            }
+            _ => Err(Error::new(EINVAL)),
+        }
     }
 
     /// Runs the VCPU until it exits, returning the reason.
     ///
     /// Note that the state of the VCPU and associated VM must be setup first for this to do
     /// anything useful.
+    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+    // The pointer is page aligned so casting to a different type is well defined, hence the clippy
+    // allow attribute.
     pub fn run(&self) -> Result<VcpuExit> {
         // Safe because we know that our file is a VCPU fd and we verify the return result.
         let ret = unsafe { ioctl(self, KVM_RUN()) };
         if ret == 0 {
-            let run = self.get_run();
+            // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+            // kernel told us how large it was.
+            let run = unsafe { &*(self.run_mmap.as_ptr() as *const kvm_run) };
             match run.exit_reason {
                 KVM_EXIT_IO => {
-                    let run_start = run as *mut kvm_run as *mut u8;
                     // Safe because the exit_reason (which comes from the kernel) told us which
                     // union field to use.
                     let io = unsafe { run.__bindgen_anon_1.io };
                     let port = io.port;
-                    let data_size = io.count as usize * io.size as usize;
-                    // The data_offset is defined by the kernel to be some number of bytes into the
-                    // kvm_run stucture, which we have fully mmap'd.
-                    let data_ptr = unsafe { run_start.offset(io.data_offset as isize) };
-                    // The slice's lifetime is limited to the lifetime of this Vcpu, which is equal
-                    // to the mmap of the kvm_run struct that this is slicing from
-                    let data_slice = unsafe {
-                        std::slice::from_raw_parts_mut::<u8>(data_ptr as *mut u8, data_size)
-                    };
+                    let size = (io.count as usize) * (io.size as usize);
                     match io.direction as u32 {
-                        KVM_EXIT_IO_IN => Ok(VcpuExit::IoIn(port, data_slice)),
-                        KVM_EXIT_IO_OUT => Ok(VcpuExit::IoOut(port, data_slice)),
+                        KVM_EXIT_IO_IN => Ok(VcpuExit::IoIn { port, size }),
+                        KVM_EXIT_IO_OUT => {
+                            let mut data = [0; 8];
+                            let run_start = run as *const kvm_run as *const u8;
+                            // The data_offset is defined by the kernel to be some number of bytes
+                            // into the kvm_run structure, which we have fully mmap'd.
+                            unsafe {
+                                let data_ptr = run_start.offset(io.data_offset as isize);
+                                copy_nonoverlapping(
+                                    data_ptr,
+                                    data.as_mut_ptr(),
+                                    min(size, data.len()),
+                                );
+                            }
+                            Ok(VcpuExit::IoOut { port, size, data })
+                        }
                         _ => Err(Error::new(EINVAL)),
                     }
                 }
                 KVM_EXIT_MMIO => {
                     // Safe because the exit_reason (which comes from the kernel) told us which
                     // union field to use.
-                    let mmio = unsafe { &mut run.__bindgen_anon_1.mmio };
-                    let addr = mmio.phys_addr;
-                    let len = mmio.len as usize;
-                    let data_slice = &mut mmio.data[..len];
+                    let mmio = unsafe { &run.__bindgen_anon_1.mmio };
+                    let address = mmio.phys_addr;
+                    let size = min(mmio.len as usize, mmio.data.len());
                     if mmio.is_write != 0 {
-                        Ok(VcpuExit::MmioWrite(addr, data_slice))
+                        Ok(VcpuExit::MmioWrite {
+                            address,
+                            size,
+                            data: mmio.data,
+                        })
                     } else {
-                        Ok(VcpuExit::MmioRead(addr, data_slice))
+                        Ok(VcpuExit::MmioRead { address, size })
                     }
                 }
                 KVM_EXIT_UNKNOWN => Ok(VcpuExit::Unknown),
