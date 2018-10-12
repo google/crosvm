@@ -326,7 +326,7 @@ impl AArch64 {
     fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(sys_util::pagesize());
         cmdline
-            .insert_str("console=ttyS0 reboot=k panic=1")
+            .insert_str("console=ttyS0 panic=1")
             .unwrap();
         cmdline
     }
