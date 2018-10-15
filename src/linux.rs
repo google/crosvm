@@ -36,7 +36,6 @@ use vhost;
 use vm_control::VmRequest;
 
 use Config;
-use VirtIoDeviceInfo;
 
 use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents};
 
@@ -244,7 +243,7 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
 }
 
 fn create_virtio_devs(
-    cfg: VirtIoDeviceInfo,
+    cfg: Config,
     mem: &GuestMemory,
     _exit_evt: &EventFd,
     wayland_device_socket: UnixDatagram,
@@ -764,7 +763,7 @@ fn file_to_u64<P: AsRef<Path>>(path: P) -> io::Result<u64> {
 }
 
 pub fn run_config(cfg: Config) -> Result<()> {
-    if cfg.virtio_dev_info.multiprocess {
+    if cfg.multiprocess {
         // Printing something to the syslog before entering minijail so that libc's syslogger has a
         // chance to open files necessary for its operation, like `/etc/localtime`. After jailing,
         // access to those files will not be possible.
@@ -781,8 +780,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         kernel_image: File::open(cfg.kernel_path.as_path())
             .map_err(|e| Error::OpenKernel(cfg.kernel_path.clone(), e))?,
-        extra_kernel_params: cfg.params,
-        wayland_dmabuf: cfg.virtio_dev_info.wayland_dmabuf,
+        extra_kernel_params: cfg.params.clone(),
+        wayland_dmabuf: cfg.wayland_dmabuf,
     };
 
     let mut control_sockets = Vec::new();
@@ -798,15 +797,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let (balloon_host_socket, balloon_device_socket) =
         UnixDatagram::pair().map_err(Error::CreateSocket)?;
 
-    let virtio_dev_info = cfg.virtio_dev_info;
     let linux = Arch::build_vm(components, |m, e| {
-        create_virtio_devs(
-            virtio_dev_info,
-            m,
-            e,
-            wayland_device_socket,
-            balloon_device_socket,
-        )
+        create_virtio_devs(cfg, m, e, wayland_device_socket, balloon_device_socket)
     }).map_err(Error::BuildingVm)?;
     run_control(linux, control_sockets, balloon_host_socket, sigchld_fd)
 }

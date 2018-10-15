@@ -60,9 +60,14 @@ struct DiskOption {
     read_only: bool,
 }
 
-/// Contains all the info needed to create the system's virtio devices.
-/// TODO(dgreid) - remove this once all devices are PCI based instead of MMIO.
-pub struct VirtIoDeviceInfo {
+pub struct Config {
+    vcpu_count: Option<u32>,
+    memory: Option<usize>,
+    kernel_path: PathBuf,
+    params: Vec<String>,
+    socket_path: Option<PathBuf>,
+    plugin: Option<PathBuf>,
+    plugin_root: Option<PathBuf>,
     disks: Vec<DiskOption>,
     host_ip: Option<net::Ipv4Addr>,
     netmask: Option<net::Ipv4Addr>,
@@ -78,17 +83,6 @@ pub struct VirtIoDeviceInfo {
     gpu: bool,
 }
 
-pub struct Config {
-    vcpu_count: Option<u32>,
-    memory: Option<usize>,
-    kernel_path: PathBuf,
-    params: Vec<String>,
-    socket_path: Option<PathBuf>,
-    plugin: Option<PathBuf>,
-    plugin_root: Option<PathBuf>,
-    virtio_dev_info: VirtIoDeviceInfo,
-}
-
 impl Default for Config {
     fn default() -> Config {
         Config {
@@ -99,21 +93,19 @@ impl Default for Config {
             socket_path: None,
             plugin: None,
             plugin_root: None,
-            virtio_dev_info: VirtIoDeviceInfo {
-                disks: Vec::new(),
-                host_ip: None,
-                netmask: None,
-                mac_address: None,
-                vhost_net: false,
-                tap_fd: None,
-                cid: None,
-                gpu: false,
-                wayland_socket_path: None,
-                wayland_dmabuf: false,
-                shared_dirs: Vec::new(),
-                multiprocess: !cfg!(feature = "default-no-sandbox"),
-                seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
-            },
+            disks: Vec::new(),
+            host_ip: None,
+            netmask: None,
+            mac_address: None,
+            vhost_net: false,
+            tap_fd: None,
+            cid: None,
+            gpu: false,
+            wayland_socket_path: None,
+            wayland_dmabuf: false,
+            shared_dirs: Vec::new(),
+            multiprocess: !cfg!(feature = "default-no-sandbox"),
+            seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
         }
     }
 }
@@ -214,28 +206,28 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 });
             }
             if name == "root" {
-                if cfg.virtio_dev_info.disks.len() >= 26 {
+                if cfg.disks.len() >= 26 {
                     return Err(argument::Error::TooManyArguments(
                         "ran out of letters for to assign to root disk".to_owned(),
                     ));
                 }
                 cfg.params.push(format!(
                     "root=/dev/vd{} ro",
-                    char::from('a' as u8 + cfg.virtio_dev_info.disks.len() as u8)
+                    char::from('a' as u8 + cfg.disks.len() as u8)
                 ));
             }
-            cfg.virtio_dev_info.disks.push(DiskOption {
+            cfg.disks.push(DiskOption {
                 path: disk_path,
                 read_only: !name.starts_with("rw"),
             });
         }
         "host_ip" => {
-            if cfg.virtio_dev_info.host_ip.is_some() {
+            if cfg.host_ip.is_some() {
                 return Err(argument::Error::TooManyArguments(
                     "`host_ip` already given".to_owned(),
                 ));
             }
-            cfg.virtio_dev_info.host_ip =
+            cfg.host_ip =
                 Some(
                     value
                         .unwrap()
@@ -247,12 +239,12 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 )
         }
         "netmask" => {
-            if cfg.virtio_dev_info.netmask.is_some() {
+            if cfg.netmask.is_some() {
                 return Err(argument::Error::TooManyArguments(
                     "`netmask` already given".to_owned(),
                 ));
             }
-            cfg.virtio_dev_info.netmask =
+            cfg.netmask =
                 Some(
                     value
                         .unwrap()
@@ -264,12 +256,12 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 )
         }
         "mac" => {
-            if cfg.virtio_dev_info.mac_address.is_some() {
+            if cfg.mac_address.is_some() {
                 return Err(argument::Error::TooManyArguments(
                     "`mac` already given".to_owned(),
                 ));
             }
-            cfg.virtio_dev_info.mac_address =
+            cfg.mac_address =
                 Some(
                     value
                         .unwrap()
@@ -281,7 +273,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 )
         }
         "wayland-sock" => {
-            if cfg.virtio_dev_info.wayland_socket_path.is_some() {
+            if cfg.wayland_socket_path.is_some() {
                 return Err(argument::Error::TooManyArguments(
                     "`wayland-sock` already given".to_owned(),
                 ));
@@ -293,10 +285,10 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     expected: "Wayland socket does not exist",
                 });
             }
-            cfg.virtio_dev_info.wayland_socket_path = Some(wayland_socket_path);
+            cfg.wayland_socket_path = Some(wayland_socket_path);
         }
         #[cfg(feature = "wl-dmabuf")]
-        "wayland-dmabuf" => cfg.virtio_dev_info.wayland_dmabuf = true,
+        "wayland-dmabuf" => cfg.wayland_dmabuf = true,
         "socket" => {
             if cfg.socket_path.is_some() {
                 return Err(argument::Error::TooManyArguments(
@@ -316,27 +308,26 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.socket_path = Some(socket_path);
         }
         "multiprocess" => {
-            cfg.virtio_dev_info.multiprocess = true;
+            cfg.multiprocess = true;
         }
         "disable-sandbox" => {
-            cfg.virtio_dev_info.multiprocess = false;
+            cfg.multiprocess = false;
         }
         "cid" => {
-            if cfg.virtio_dev_info.cid.is_some() {
+            if cfg.cid.is_some() {
                 return Err(argument::Error::TooManyArguments(
                     "`cid` alread given".to_owned(),
                 ));
             }
-            cfg.virtio_dev_info.cid =
-                Some(
-                    value
-                        .unwrap()
-                        .parse()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: value.unwrap().to_owned(),
-                            expected: "this value for `cid` must be an unsigned integer",
-                        })?,
-                );
+            cfg.cid = Some(
+                value
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| argument::Error::InvalidValue {
+                        value: value.unwrap().to_owned(),
+                        expected: "this value for `cid` must be an unsigned integer",
+                    })?,
+            );
         }
         "shared-dir" => {
             // Formatted as <src:tag>.
@@ -365,11 +356,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 });
             }
 
-            cfg.virtio_dev_info.shared_dirs.push((src, tag));
+            cfg.shared_dirs.push((src, tag));
         }
         "seccomp-policy-dir" => {
             // `value` is Some because we are in this match so it's safe to unwrap.
-            cfg.virtio_dev_info.seccomp_policy_dir = PathBuf::from(value.unwrap());
+            cfg.seccomp_policy_dir = PathBuf::from(value.unwrap());
         }
         "plugin" => {
             if !cfg.kernel_path.as_os_str().is_empty() {
@@ -393,14 +384,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "plugin-root" => {
             cfg.plugin_root = Some(PathBuf::from(value.unwrap().to_owned()));
         }
-        "vhost-net" => cfg.virtio_dev_info.vhost_net = true,
+        "vhost-net" => cfg.vhost_net = true,
         "tap-fd" => {
-            if cfg.virtio_dev_info.tap_fd.is_some() {
+            if cfg.tap_fd.is_some() {
                 return Err(argument::Error::TooManyArguments(
                     "`tap-fd` alread given".to_owned(),
                 ));
             }
-            cfg.virtio_dev_info.tap_fd =
+            cfg.tap_fd =
                 Some(
                     value
                         .unwrap()
@@ -412,7 +403,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 );
         }
         "gpu" => {
-            cfg.virtio_dev_info.gpu = true;
+            cfg.gpu = true;
         }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
@@ -476,21 +467,18 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
         if cfg.kernel_path.as_os_str().is_empty() && cfg.plugin.is_none() {
             return Err(argument::Error::ExpectedArgument("`KERNEL`".to_owned()));
         }
-        if cfg.virtio_dev_info.host_ip.is_some()
-            || cfg.virtio_dev_info.netmask.is_some()
-            || cfg.virtio_dev_info.mac_address.is_some()
-        {
-            if cfg.virtio_dev_info.host_ip.is_none() {
+        if cfg.host_ip.is_some() || cfg.netmask.is_some() || cfg.mac_address.is_some() {
+            if cfg.host_ip.is_none() {
                 return Err(argument::Error::ExpectedArgument(
                     "`host_ip` missing from network config".to_owned(),
                 ));
             }
-            if cfg.virtio_dev_info.netmask.is_none() {
+            if cfg.netmask.is_none() {
                 return Err(argument::Error::ExpectedArgument(
                     "`netmask` missing from network config".to_owned(),
                 ));
             }
-            if cfg.virtio_dev_info.mac_address.is_none() {
+            if cfg.mac_address.is_none() {
                 return Err(argument::Error::ExpectedArgument(
                     "`mac` missing from network config".to_owned(),
                 ));
@@ -501,10 +489,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                 "`plugin-root` requires `plugin`".to_owned(),
             ));
         }
-        if cfg.virtio_dev_info.tap_fd.is_some()
-            && (cfg.virtio_dev_info.host_ip.is_some()
-                || cfg.virtio_dev_info.netmask.is_some()
-                || cfg.virtio_dev_info.mac_address.is_some())
+        if cfg.tap_fd.is_some()
+            && (cfg.host_ip.is_some() || cfg.netmask.is_some() || cfg.mac_address.is_some())
         {
             return Err(argument::Error::TooManyArguments(
                 "`tap_fd` and any of `host_ip`, `netmask`, or `mac` are mutually exclusive"

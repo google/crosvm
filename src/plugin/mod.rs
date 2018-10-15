@@ -464,7 +464,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     // quickly.
     let sigchld_fd = SignalFd::new(SIGCHLD).map_err(Error::CreateSignalFd)?;
 
-    let jail = if cfg.virtio_dev_info.multiprocess {
+    let jail = if cfg.multiprocess {
         // An empty directory for jailed plugin pivot root.
         let root_path = match cfg.plugin_root {
             Some(ref dir) => Path::new(dir),
@@ -483,7 +483,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
             return Err(Error::RootNotDir);
         }
 
-        let policy_path = cfg.virtio_dev_info.seccomp_policy_dir.join("plugin.policy");
+        let policy_path = cfg.seccomp_policy_dir.join("plugin.policy");
         let jail = create_plugin_jail(root_path, &policy_path)?;
         Some(jail)
     } else {
@@ -491,9 +491,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
     };
 
     let mut tap_opt: Option<Tap> = None;
-    if let Some(host_ip) = cfg.virtio_dev_info.host_ip {
-        if let Some(netmask) = cfg.virtio_dev_info.netmask {
-            if let Some(mac_address) = cfg.virtio_dev_info.mac_address {
+    if let Some(host_ip) = cfg.host_ip {
+        if let Some(netmask) = cfg.netmask {
+            if let Some(mac_address) = cfg.mac_address {
                 let tap = Tap::new(false).map_err(Error::TapOpen)?;
                 tap.set_ip_addr(host_ip).map_err(Error::TapSetIp)?;
                 tap.set_netmask(netmask).map_err(Error::TapSetNetmask)?;
