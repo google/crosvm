@@ -111,8 +111,6 @@ const AARCH64_PCI_CFG_SIZE: u64 = 0x1000000;
 const AARCH64_MMIO_BASE: u64 = 0x1010000;
 // Size of the whole MMIO region.
 const AARCH64_MMIO_SIZE: u64 = 0x100000;
-// Each MMIO device gets a 4k page.
-const AARCH64_MMIO_LEN: u64 = 0x1000;
 // Virtio devices start at SPI interrupt number 2
 const AARCH64_IRQ_BASE: u32 = 2;
 

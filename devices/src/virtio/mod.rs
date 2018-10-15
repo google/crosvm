@@ -8,7 +8,6 @@ mod balloon;
 mod block;
 #[cfg(feature = "gpu")]
 mod gpu;
-mod mmio;
 mod net;
 mod p9;
 mod queue;
@@ -24,7 +23,6 @@ pub use self::balloon::*;
 pub use self::block::*;
 #[cfg(feature = "gpu")]
 pub use self::gpu::*;
-pub use self::mmio::*;
 pub use self::net::*;
 pub use self::p9::*;
 pub use self::queue::*;

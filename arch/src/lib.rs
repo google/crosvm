@@ -12,7 +12,7 @@ extern crate sys_util;
 
 use std::fmt;
 use std::fs::File;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::AsRawFd;
 use std::result;
 use std::sync::{Arc, Mutex};
 
@@ -22,7 +22,7 @@ use devices::{
     Serial,
 };
 use io_jail::Minijail;
-use kvm::{Datamatch, IoeventAddress, Kvm, Vcpu, Vm};
+use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
 use resources::SystemAllocator;
 use sys_util::{syslog, EventFd, GuestMemory};
 
@@ -191,65 +191,4 @@ pub fn generate_pci_root(
         }
     }
     Ok((root, pci_irqs))
-}
-
-/// Register a device to be used via MMIO transport.
-pub fn register_mmio(
-    bus: &mut devices::Bus,
-    vm: &mut Vm,
-    device: Box<devices::virtio::VirtioDevice>,
-    jail: Option<Minijail>,
-    resources: &mut SystemAllocator,
-    cmdline: &mut kernel_cmdline::Cmdline,
-) -> std::result::Result<(), DeviceRegistrationError> {
-    let irq = match resources.allocate_irq() {
-        None => return Err(DeviceRegistrationError::IrqsExhausted),
-        Some(i) => i,
-    };
-
-    // List of FDs to keep open in the child after it forks.
-    let mut keep_fds: Vec<RawFd> = device.keep_fds();
-    syslog::push_fds(&mut keep_fds);
-
-    let mmio_device = devices::virtio::MmioDevice::new((*vm.get_memory()).clone(), device)
-        .map_err(DeviceRegistrationError::CreateMmioDevice)?;
-    let mmio_len = 0x1000; // TODO(dgreid) - configurable per arch?
-    let mmio_base = resources
-        .allocate_mmio_addresses(mmio_len)
-        .ok_or(DeviceRegistrationError::AddrsExhausted)?;
-    for (i, queue_evt) in mmio_device.queue_evts().iter().enumerate() {
-        let io_addr = IoeventAddress::Mmio(mmio_base + devices::virtio::NOTIFY_REG_OFFSET as u64);
-        vm.register_ioevent(&queue_evt, io_addr, Datamatch::U32(Some(i as u32)))
-            .map_err(DeviceRegistrationError::RegisterIoevent)?;
-        keep_fds.push(queue_evt.as_raw_fd());
-    }
-
-    if let Some(interrupt_evt) = mmio_device.interrupt_evt() {
-        vm.register_irqfd(&interrupt_evt, irq)
-            .map_err(DeviceRegistrationError::RegisterIrqfd)?;
-        keep_fds.push(interrupt_evt.as_raw_fd());
-    }
-
-    if let Some(jail) = jail {
-        let proxy_dev = devices::ProxyDevice::new(mmio_device, &jail, keep_fds)
-            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
-
-        bus.insert(Arc::new(Mutex::new(proxy_dev)), mmio_base, mmio_len, false)
-            .unwrap();
-    } else {
-        bus.insert(
-            Arc::new(Mutex::new(mmio_device)),
-            mmio_base,
-            mmio_len,
-            false,
-        ).unwrap();
-    }
-
-    cmdline
-        .insert(
-            "virtio_mmio.device",
-            &format!("4K@0x{:08x}:{}", mmio_base, irq),
-        ).map_err(DeviceRegistrationError::Cmdline)?;
-
-    Ok(())
 }

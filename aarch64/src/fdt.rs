@@ -36,7 +36,6 @@ use AARCH64_SERIAL_SPEED;
 // These are related to guest virtio devices.
 use AARCH64_IRQ_BASE;
 use AARCH64_MMIO_BASE;
-use AARCH64_MMIO_LEN;
 use AARCH64_MMIO_SIZE;
 use AARCH64_PCI_CFG_BASE;
 use AARCH64_PCI_CFG_SIZE;
@@ -368,30 +367,6 @@ fn create_chosen_node(fdt: &mut Vec<u8>, cmdline: &CStr) -> Result<(), Box<Error
     Ok(())
 }
 
-fn create_io_nodes(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
-    // TODO(sonnyrao) Pass in bus to get number of devices
-    // HACK -- this is creating a static number of device nodes
-    // the unused nodes just throw a warning when the guest boots
-    for i in 0..8 {
-        let addr = AARCH64_MMIO_BASE + i * AARCH64_MMIO_LEN;
-        let node = format!("virtio@{:x}", addr);
-        let reg = generate_prop64(&[addr, AARCH64_MMIO_LEN]);
-        let irq = generate_prop32(&[
-            GIC_FDT_IRQ_TYPE_SPI,
-            AARCH64_IRQ_BASE + i as u32,
-            IRQ_TYPE_EDGE_RISING,
-        ]);
-
-        begin_node(fdt, &node)?;
-        property_string(fdt, "compatible", "virtio,mmio")?;
-        property(fdt, "reg", &reg)?;
-        property_null(fdt, "dma-coherent")?;
-        property(fdt, "interrupts", &irq)?;
-        end_node(fdt)?;
-    }
-    Ok(())
-}
-
 fn create_pci_nodes(
     fdt: &mut Vec<u8>,
     pci_irqs: Vec<(u32, PciInterruptPin)>,
@@ -539,12 +514,7 @@ pub fn create_fdt(
     create_timer_node(&mut fdt, num_cpus)?;
     create_serial_node(&mut fdt)?;
     create_psci_node(&mut fdt)?;
-    // TODO(dverkamp): remove create_io_nodes() once the PCI conversion is complete
-    if !pci_irqs.is_empty() {
-        create_pci_nodes(&mut fdt, pci_irqs)?;
-    } else {
-        create_io_nodes(&mut fdt)?;
-    }
+    create_pci_nodes(&mut fdt, pci_irqs)?;
     create_rtc_node(&mut fdt)?;
     // End giant node
     end_node(&mut fdt)?;
