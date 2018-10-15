@@ -6,6 +6,7 @@ authors = ["The Chromium OS Authors"]
 [profile.release]
 lto = true
 panic = 'abort'
+overflow-checks = true
 
 [workspace]
 members = ["9s"]
