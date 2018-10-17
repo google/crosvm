@@ -62,7 +62,7 @@ pub use guest_memory::Error as GuestMemoryError;
 pub use mmap::Error as MmapError;
 pub use seek_hole::SeekHole;
 pub use signalfd::Error as SignalFdError;
-pub use write_zeroes::WriteZeroes;
+pub use write_zeroes::{PunchHole, WriteZeroes};
 
 use std::ffi::CStr;
 use std::fs::{remove_file, File};

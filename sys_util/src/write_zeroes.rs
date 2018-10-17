@@ -9,17 +9,30 @@ use std::io::{self, Seek, SeekFrom, Write};
 use fallocate;
 use FallocateMode;
 
+/// A trait for deallocating space in a file.
+pub trait PunchHole {
+    /// Replace a range of bytes with a hole.
+    fn punch_hole(&mut self, offset: u64, length: u64) -> io::Result<()>;
+}
+
+impl PunchHole for File {
+    fn punch_hole(&mut self, offset: u64, length: u64) -> io::Result<()> {
+        fallocate(self, FallocateMode::PunchHole, true, offset, length as u64)
+            .map_err(|e| io::Error::from_raw_os_error(e.errno()))
+    }
+}
+
 /// A trait for writing zeroes to a stream.
 pub trait WriteZeroes {
     /// Write `length` bytes of zeroes to the stream, returning how many bytes were written.
     fn write_zeroes(&mut self, length: usize) -> io::Result<usize>;
 }
 
-impl WriteZeroes for File {
+impl<T: PunchHole + Seek + Write> WriteZeroes for T {
     fn write_zeroes(&mut self, length: usize) -> io::Result<usize> {
-        // Try to use fallocate(FALLOC_FL_PUNCH_HOLE) first.
+        // Try to punch a hole first.
         let offset = self.seek(SeekFrom::Current(0))?;
-        match fallocate(self, FallocateMode::PunchHole, true, offset, length as u64) {
+        match self.punch_hole(offset, length as u64) {
             Ok(()) => {
                 // Advance the seek cursor as if we had done a real write().
                 self.seek(SeekFrom::Current(length as i64))?;
@@ -28,7 +41,7 @@ impl WriteZeroes for File {
             Err(_) => {} // fall back to write()
         }
 
-        // fallocate() failed; fall back to writing a buffer of zeroes
+        // punch_hole() failed; fall back to writing a buffer of zeroes
         // until we have written up to length.
         let buf_size = min(length, 0x10000);
         let buf = vec![0u8; buf_size];

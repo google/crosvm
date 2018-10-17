@@ -23,7 +23,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use sys_util::{fallocate, FallocateMode, SeekHole, WriteZeroes};
+use sys_util::{PunchHole, SeekHole, WriteZeroes};
 
 #[derive(Debug)]
 pub enum Error {
@@ -811,14 +811,40 @@ impl QcowFile {
             // This cluster is no longer in use; deallocate the storage.
             // The underlying FS may not support FALLOC_FL_PUNCH_HOLE,
             // so don't treat an error as fatal.  Future reads will return zeros anyways.
-            let _ = fallocate(
-                self.raw_file.file_mut(),
-                FallocateMode::PunchHole,
-                true,
-                cluster_addr,
-                cluster_size,
-            );
+            let _ = self
+                .raw_file
+                .file_mut()
+                .punch_hole(cluster_addr, cluster_size);
             self.unref_clusters.push(cluster_addr);
+        }
+        Ok(())
+    }
+
+    // Deallocate the storage for `length` bytes starting at `address`.
+    // Any future reads of this range will return all zeroes.
+    fn deallocate_bytes(&mut self, address: u64, length: usize) -> std::io::Result<()> {
+        let write_count: usize = self.limit_range_file(address, length);
+
+        let mut nwritten: usize = 0;
+        while nwritten < write_count {
+            let curr_addr = address + nwritten as u64;
+            let count = self.limit_range_cluster(curr_addr, write_count - nwritten);
+
+            if count == self.raw_file.cluster_size() as usize {
+                // Full cluster - deallocate the storage.
+                self.deallocate_cluster(curr_addr)?;
+            } else {
+                // Partial cluster - zero out the relevant bytes if it was allocated.
+                // Any space in unallocated clusters can be left alone, since
+                // unallocated clusters already read back as zeroes.
+                if let Some(offset) = self.file_offset_read(curr_addr)? {
+                    // Partial cluster - zero it out.
+                    self.raw_file.file_mut().seek(SeekFrom::Start(offset))?;
+                    self.raw_file.file_mut().write_zeroes(count)?;
+                }
+            }
+
+            nwritten += count;
         }
         Ok(())
     }
@@ -1043,34 +1069,17 @@ impl Write for QcowFile {
     }
 }
 
-impl WriteZeroes for QcowFile {
-    fn write_zeroes(&mut self, length: usize) -> std::io::Result<usize> {
-        let address: u64 = self.current_offset as u64;
-        let write_count: usize = self.limit_range_file(address, length);
-
-        let mut nwritten: usize = 0;
-        while nwritten < write_count {
-            let curr_addr = address + nwritten as u64;
-            let count = self.limit_range_cluster(curr_addr, write_count - nwritten);
-
-            if count == self.raw_file.cluster_size() as usize {
-                // Full cluster - deallocate the storage.
-                self.deallocate_cluster(curr_addr)?;
-            } else {
-                // Partial cluster - zero out the relevant bytes if it was allocated.
-                // Any space in unallocated clusters can be left alone, since
-                // unallocated clusters already read back as zeroes.
-                if let Some(offset) = self.file_offset_read(curr_addr)? {
-                    // Partial cluster - zero it out.
-                    self.raw_file.file_mut().seek(SeekFrom::Start(offset))?;
-                    self.raw_file.file_mut().write_zeroes(count)?;
-                }
-            }
-
-            nwritten += count;
+impl PunchHole for QcowFile {
+    fn punch_hole(&mut self, offset: u64, length: u64) -> std::io::Result<()> {
+        let mut remaining = length;
+        let mut offset = offset;
+        while remaining > 0 {
+            let chunk_length = min(remaining, std::usize::MAX as u64) as usize;
+            self.deallocate_bytes(offset, chunk_length)?;
+            remaining -= chunk_length as u64;
+            offset += chunk_length as u64;
         }
-        self.current_offset += length as u64;
-        Ok(length)
+        Ok(())
     }
 }
 

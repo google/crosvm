@@ -16,8 +16,8 @@ use std::u32;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
 use sys_util::{
-    EventFd, GuestAddress, GuestMemory, GuestMemoryError, PollContext, PollToken, TimerFd,
-    WriteZeroes,
+    EventFd, GuestAddress, GuestMemory, GuestMemoryError, PollContext, PollToken, PunchHole,
+    TimerFd, WriteZeroes,
 };
 
 use data_model::{DataInit, Le16, Le32, Le64};
@@ -108,8 +108,8 @@ const VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP: u32 = 1 << 0;
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_blk_discard_write_zeroes {}
 
-pub trait DiskFile: Read + Seek + Write + WriteZeroes {}
-impl<D: Read + Seek + Write + WriteZeroes> DiskFile for D {}
+pub trait DiskFile: PunchHole + Read + Seek + Write + WriteZeroes {}
+impl<D: PunchHole + Read + Seek + Write + WriteZeroes> DiskFile for D {}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum RequestType {
@@ -431,15 +431,24 @@ impl Request {
                         });
                     }
 
-                    disk.seek(SeekFrom::Start(sector << SECTOR_SHIFT))
-                        .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
-                    disk.write_zeroes((num_sectors as usize) << SECTOR_SHIFT)
-                        .map_err(|e| ExecuteError::DiscardWriteZeroes {
-                            ioerr: Some(e),
-                            sector,
-                            num_sectors,
-                            flags,
-                        })?;
+                    if self.request_type == RequestType::Discard {
+                        // Since Discard is just a hint and some filesystems may not implement
+                        // FALLOC_FL_PUNCH_HOLE, ignore punch_hole errors.
+                        let _ = disk.punch_hole(
+                            sector << SECTOR_SHIFT,
+                            (num_sectors as u64) << SECTOR_SHIFT,
+                        );
+                    } else {
+                        disk.seek(SeekFrom::Start(sector << SECTOR_SHIFT))
+                            .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
+                        disk.write_zeroes((num_sectors as usize) << SECTOR_SHIFT)
+                            .map_err(|e| ExecuteError::DiscardWriteZeroes {
+                                ioerr: Some(e),
+                                sector,
+                                num_sectors,
+                                flags,
+                            })?;
+                    }
                 }
             }
             RequestType::Flush => {
