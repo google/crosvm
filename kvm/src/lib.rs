@@ -1445,7 +1445,7 @@ impl Vcpu {
         // kvm_sigmask.len  = size_of::<sigset_t>() as u32;
         kvm_sigmask[0].len = 8;
         // Ensure the length is not too big.
-         const _ASSERT: usize = size_of::<sigset_t>() - 8 as usize;
+        const _ASSERT: usize = size_of::<sigset_t>() - 8 as usize;
 
         // Safe as we allocated exactly the needed space
         unsafe {
