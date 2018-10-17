@@ -203,12 +203,20 @@ impl VirglResource for BackedBuffer {
         self.buffer.height()
     }
 
-    fn attach_guest_backing(&mut self, _mem: &GuestMemory, vecs: Vec<(GuestAddress, usize)>) {
-        self.backing = vecs;
+    fn attach_guest_backing(&mut self, mem: &GuestMemory, vecs: Vec<(GuestAddress, usize)>) {
+        self.backing = vecs.clone();
+        if let Some(ref mut resource) = self.gpu_renderer_resource {
+            if let Err(e) = resource.attach_backing(&vecs[..], mem) {
+                error!("failed to attach backing to BackBuffer resource: {}", e);
+            }
+        }
     }
 
     fn detach_guest_backing(&mut self) {
-        self.backing.clear()
+        if let Some(ref mut resource) = self.gpu_renderer_resource {
+            resource.detach_backing();
+        }
+        self.backing.clear();
     }
 
     fn gpu_renderer_resource(&mut self) -> Option<&mut GpuRendererResource> {
