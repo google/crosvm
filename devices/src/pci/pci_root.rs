@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 use byteorder::{ByteOrder, LittleEndian};
 
 use BusDevice;
-use ProxyDevice;
 
 use pci::pci_configuration::{PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType};
 use pci::pci_device::PciDevice;
@@ -40,7 +39,7 @@ pub struct PciRoot {
     /// Bus configuration for the root device.
     root_configuration: PciRootConfiguration,
     /// Devices attached to this bridge.
-    devices: Vec<Arc<Mutex<ProxyDevice>>>,
+    devices: Vec<Arc<Mutex<BusDevice>>>,
 }
 
 impl PciRoot {
@@ -64,7 +63,7 @@ impl PciRoot {
     }
 
     /// Add a `device` to this root PCI bus.
-    pub fn add_device(&mut self, device: Arc<Mutex<ProxyDevice>>) {
+    pub fn add_device(&mut self, device: Arc<Mutex<BusDevice>>) {
         self.devices.push(device);
     }
 

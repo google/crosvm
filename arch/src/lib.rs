@@ -18,7 +18,8 @@ use std::sync::{Arc, Mutex};
 
 use devices::virtio::VirtioDevice;
 use devices::{
-    Bus, BusError, PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProxyDevice, Serial,
+    Bus, BusDevice, BusError, PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProxyDevice,
+    Serial,
 };
 use io_jail::Minijail;
 use kvm::{Datamatch, IoeventAddress, Kvm, Vcpu, Vm};
@@ -67,7 +68,8 @@ pub trait LinuxArch {
     /// * `virtio_devs` - Function to generate a list of virtio devices.
     fn build_vm<F>(components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
     where
-        F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<(Box<PciDevice + 'static>, Minijail)>>;
+        F: FnOnce(&GuestMemory, &EventFd)
+            -> Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>>;
 }
 
 /// Errors for device manager.
@@ -135,7 +137,7 @@ impl fmt::Display for DeviceRegistrationError {
 
 /// Creates a root PCI device for use by this Vm.
 pub fn generate_pci_root(
-    devices: Vec<(Box<PciDevice + 'static>, Minijail)>,
+    devices: Vec<(Box<PciDevice + 'static>, Option<Minijail>)>,
     mmio_bus: &mut Bus,
     resources: &mut SystemAllocator,
     vm: &mut Vm,
@@ -172,9 +174,13 @@ pub fn generate_pci_root(
                 .map_err(DeviceRegistrationError::RegisterIoevent)?;
             keep_fds.push(event.as_raw_fd());
         }
-        let proxy = ProxyDevice::new(device, &jail, keep_fds)
-            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
-        let arced_dev = Arc::new(Mutex::new(proxy));
+        let arced_dev: Arc<Mutex<BusDevice>> = if let Some(jail) = jail {
+            let proxy = ProxyDevice::new(device, &jail, keep_fds)
+                .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
+            Arc::new(Mutex::new(proxy))
+        } else {
+            Arc::new(Mutex::new(device))
+        };
         root.add_device(arced_dev.clone());
         for range in &ranges {
             mmio_bus

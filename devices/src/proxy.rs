@@ -198,8 +198,10 @@ impl ProxyDevice {
             .map(|_| ())
             .map_err(Error::Io)
     }
+}
 
-    pub fn config_register_write(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+impl BusDevice for ProxyDevice {
+    fn config_register_write(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
         let res = self
             .send_config_cmd(Command::WriteConfig, reg_idx as u32, offset, data)
             .and_then(|_| self.wait());
@@ -208,7 +210,7 @@ impl ProxyDevice {
         }
     }
 
-    pub fn config_register_read(&self, reg_idx: usize) -> u32 {
+    fn config_register_read(&self, reg_idx: usize) -> u32 {
         let mut data = [0u8; 4];
         let res = self
             .send_config_cmd(Command::ReadConfig, reg_idx as u32, 0, &[])
@@ -218,9 +220,7 @@ impl ProxyDevice {
         }
         LittleEndian::read_u32(&data)
     }
-}
 
-impl BusDevice for ProxyDevice {
     fn read(&mut self, offset: u64, data: &mut [u8]) {
         let res = self
             .send_cmd(Command::Read, offset, data.len() as u32, &[])

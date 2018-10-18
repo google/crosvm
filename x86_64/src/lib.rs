@@ -263,7 +263,8 @@ fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
 impl arch::LinuxArch for X8664arch {
     fn build_vm<F>(mut components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
     where
-        F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<(Box<PciDevice + 'static>, Minijail)>>,
+        F: FnOnce(&GuestMemory, &EventFd)
+            -> Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>>,
     {
         let mut resources =
             Self::get_resource_allocator(components.memory_mb, components.wayland_dmabuf);

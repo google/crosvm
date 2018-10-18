@@ -249,7 +249,7 @@ fn create_virtio_devs(
     _exit_evt: &EventFd,
     wayland_device_socket: UnixDatagram,
     balloon_device_socket: UnixDatagram,
-) -> std::result::Result<Vec<(Box<PciDevice + 'static>, Minijail)>, Box<error::Error>> {
+) -> std::result::Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>, Box<error::Error>> {
     static DEFAULT_PIVOT_ROOT: &'static str = "/var/empty";
 
     let mut devs = Vec::new();
@@ -620,17 +620,11 @@ fn create_virtio_devs(
         devs.push(VirtioDeviceStub { dev: p9_box, jail });
     }
 
-    let mut pci_devices: Vec<(Box<PciDevice + 'static>, Minijail)> = Vec::new();
+    let mut pci_devices: Vec<(Box<PciDevice + 'static>, Option<Minijail>)> = Vec::new();
     for stub in devs {
         let pci_dev =
             Box::new(VirtioPciDevice::new((*mem).clone(), stub.dev).map_err(Error::VirtioPciDev)?);
-
-        // TODO(dverkamp): Make this work in non-multiprocess mode without creating an empty jail
-        let jail = match stub.jail {
-            Some(j) => j,
-            None => Minijail::new().unwrap(),
-        };
-        pci_devices.push((pci_dev, jail));
+        pci_devices.push((pci_dev, stub.jail));
     }
 
     Ok(pci_devices)
