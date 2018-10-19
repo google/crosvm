@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <syslog.h>
 #include <unistd.h>
 
 #include "aura-shell.h"
@@ -378,7 +379,7 @@ bool dwl_context_setup(struct dwl_context *self, const char *socket_path)
 {
 	struct wl_display *display = wl_display_connect(socket_path);
 	if (!display) {
-		printf("failed to connect to display\n");
+		syslog(LOG_ERR, "failed to connect to display");
 		return false;
 	}
 	self->display = display;
@@ -386,7 +387,7 @@ bool dwl_context_setup(struct dwl_context *self, const char *socket_path)
 
 	struct wl_registry *registry = wl_display_get_registry(display);
 	if (!registry) {
-		printf("failed to get registry\n");
+		syslog(LOG_ERR, "failed to get registry");
 		goto fail;
 	}
 
@@ -396,27 +397,27 @@ bool dwl_context_setup(struct dwl_context *self, const char *socket_path)
 	dwl_context_output_get_aura(self);
 
 	if (!ifaces->shm) {
-		printf("missing interface shm\n");
+		syslog(LOG_ERR, "missing interface shm");
 		goto fail;
 	}
 	if (!ifaces->compositor) {
-		printf("missing interface compositor\n");
+		syslog(LOG_ERR, "missing interface compositor");
 		goto fail;
 	}
 	if (!ifaces->subcompositor) {
-		printf("missing interface subcompositor\n");
+		syslog(LOG_ERR, "missing interface subcompositor");
 		goto fail;
 	}
 	if (!ifaces->seat) {
-		printf("missing interface seat\n");
+		syslog(LOG_ERR, "missing interface seat");
 		goto fail;
 	}
 	if (!ifaces->linux_dmabuf) {
-		printf("missing interface linux_dmabuf\n");
+		syslog(LOG_ERR, "missing interface linux_dmabuf");
 		goto fail;
 	}
 	if (!ifaces->xdg_shell) {
-		printf("missing interface xdg_shell\n");
+		syslog(LOG_ERR, "missing interface xdg_shell");
 		goto fail;
 	}
 
@@ -479,7 +480,7 @@ struct dwl_dmabuf *dwl_context_dmabuf_new(struct dwl_context *self, int fd,
 {
 	struct dwl_dmabuf *dmabuf = calloc(1, sizeof(struct dwl_dmabuf));
 	if (!dmabuf) {
-		printf("failed to allocate dwl_dmabuf\n");
+		syslog(LOG_ERR, "failed to allocate dwl_dmabuf");
 		return NULL;
 	}
 	dmabuf->width = width;
@@ -488,7 +489,8 @@ struct dwl_dmabuf *dwl_context_dmabuf_new(struct dwl_context *self, int fd,
 	struct zwp_linux_buffer_params_v1 *params =
 	    zwp_linux_dmabuf_v1_create_params(self->ifaces.linux_dmabuf);
 	if (!params) {
-		printf("failed to allocate zwp_linux_buffer_params_v1\n");
+		syslog(LOG_ERR,
+		       "failed to allocate zwp_linux_buffer_params_v1");
 		free(dmabuf);
 		return NULL;
 	}
@@ -503,7 +505,7 @@ struct dwl_dmabuf *dwl_context_dmabuf_new(struct dwl_context *self, int fd,
 	zwp_linux_buffer_params_v1_destroy(params);
 
 	if (!dmabuf->buffer) {
-		printf("failed to get wl_buffer for dmabuf\n");
+		syslog(LOG_ERR, "failed to get wl_buffer for dmabuf");
 		free(dmabuf);
 		return NULL;
 	}
@@ -566,7 +568,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 	struct wl_shm_pool *shm_pool =
 	    wl_shm_create_pool(self->ifaces.shm, shm_fd, shm_size);
 	if (!shm_pool) {
-		printf("failed to make shm pool\n");
+		syslog(LOG_ERR, "failed to make shm pool");
 		goto fail;
 	}
 
@@ -576,7 +578,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		    shm_pool, buffer_size * i, width, height, stride,
 		    WL_SHM_FORMAT_ARGB8888);
 		if (!buffer) {
-			printf("failed to create buffer\n");
+			syslog(LOG_ERR, "failed to create buffer");
 			goto fail;
 		}
 		disp_surface->buffers[i] = buffer;
@@ -589,7 +591,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 	disp_surface->surface =
 	    wl_compositor_create_surface(self->ifaces.compositor);
 	if (!disp_surface->surface) {
-		printf("failed to make surface\n");
+		syslog(LOG_ERR, "failed to make surface");
 		goto fail;
 	}
 
@@ -598,7 +600,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 
 	region = wl_compositor_create_region(self->ifaces.compositor);
 	if (!region) {
-		printf("failed to make region\n");
+		syslog(LOG_ERR, "failed to make region");
 		goto fail;
 	}
 	wl_region_add(region, 0, 0, width, height);
@@ -608,14 +610,15 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		disp_surface->xdg = zxdg_shell_v6_get_xdg_surface(
 		    self->ifaces.xdg_shell, disp_surface->surface);
 		if (!disp_surface->xdg) {
-			printf("failed to make xdg shell surface\n");
+			syslog(LOG_ERR, "failed to make xdg shell surface");
 			goto fail;
 		}
 
 		disp_surface->toplevel =
 		    zxdg_surface_v6_get_toplevel(disp_surface->xdg);
 		if (!disp_surface->toplevel) {
-			printf("failed to make toplevel xdg shell surface\n");
+			syslog(LOG_ERR,
+			       "failed to make toplevel xdg shell surface");
 			goto fail;
 		}
 		zxdg_toplevel_v6_set_title(disp_surface->toplevel, "crosvm");
@@ -626,7 +629,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 			disp_surface->aura = zaura_shell_get_aura_surface(
 			    self->ifaces.aura, disp_surface->surface);
 			if (!disp_surface->aura) {
-				printf("failed to make aura surface\n");
+				syslog(LOG_ERR, "failed to make aura surface");
 				goto fail;
 			}
 			zaura_surface_set_frame(
@@ -638,7 +641,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		    self->ifaces.subcompositor, disp_surface->surface,
 		    parent->surface);
 		if (!disp_surface->subsurface) {
-			printf("failed to make subsurface\n");
+			syslog(LOG_ERR, "failed to make subsurface");
 			goto fail;
 		}
 		wl_subsurface_set_desync(disp_surface->subsurface);
@@ -648,7 +651,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		disp_surface->viewport = wp_viewporter_get_viewport(
 		    self->ifaces.viewporter, disp_surface->surface);
 		if (!disp_surface->viewport) {
-			printf("faled to make surface viewport\n");
+			syslog(LOG_ERR, "failed to make surface viewport");
 			goto fail;
 		}
 	}
