@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 open: 1
+openat: 1
 close: 1
 sigaltstack: 1
 munmap: 1

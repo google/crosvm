@@ -7,6 +7,7 @@ write: 1
 lstat: 1
 stat: 1
 open: 1
+openat: 1
 close: 1
 fstat: 1
 getdents: 1
