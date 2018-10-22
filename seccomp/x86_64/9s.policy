@@ -60,3 +60,4 @@ mkdir: 1
 mremap: 1
 rename: 1
 newfstatat: 1
+prlimit64: arg2 == 0 && arg3 != 0

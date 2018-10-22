@@ -54,3 +54,4 @@ ftruncate64: 1
 fchown: arg1 == 0xffffffff && arg2 == 0xffffffff
 statfs64: 1
 fstatat64: 1
+getpid: 1

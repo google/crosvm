@@ -1,6 +1,7 @@
 close: 1
 exit: 1
 futex: 1
+getpid: 1
 lseek: 1
 read: 1
 write: 1
