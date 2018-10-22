@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 mod protocol;
+mod udmabuf;
+mod udmabuf_bindings;
 mod virtio_gpu;
 
 use std::cell::RefCell;
