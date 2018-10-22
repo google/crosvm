@@ -20,7 +20,6 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, stdout};
 use std::os::unix::io::FromRawFd;
-use std::os::unix::net::UnixDatagram;
 use std::sync::{Arc, Mutex};
 
 use arch::{RunnableLinuxVm, VmComponents};
