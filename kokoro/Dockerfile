@@ -1,3 +1,7 @@
+# Copyright 2018 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
 FROM debian:stretch
 LABEL description="Test crosvm using a command like the following: \
 docker run --privileged -v /dev/log:/dev/log -v <path to crosvm>:/src:ro <crosvm base image>"
@@ -34,6 +38,7 @@ RUN curl -LO "https://static.rust-lang.org/rustup/archive/1.13.0/x86_64-unknown-
     && echo "f69dafcca62fe70d7882113e21bb96a2cbdf4fc4636d25337d6de9191bdec8da *rustup-init" | sha256sum -c - \
     && chmod +x rustup-init \
     && ./rustup-init -y --no-modify-path --default-toolchain $RUST_VERSION \
+    && rustup component add rustfmt-preview \
     && rm rustup-init \
     && chmod -R a+w $RUSTUP_HOME $CARGO_HOME \
     && rustup --version \
@@ -93,4 +98,5 @@ ENV CARGO_TARGET_DIR=/build
 RUN mkdir -p $CARGO_TARGET_DIR
 WORKDIR /src
 CMD cargo test --no-fail-fast --all-features --all --exclude aarch64 $TEST_FLAGS -- \
-    --test-threads=1 $TEST_RUNNER_FLAGS
+    --test-threads=1 $TEST_RUNNER_FLAGS && \
+    cargo fmt --all -- --check
