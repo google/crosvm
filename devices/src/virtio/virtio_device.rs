@@ -29,7 +29,7 @@ pub trait VirtioDevice: Send {
 
     /// The set of feature bits that this device supports.
     fn features(&self) -> u64 {
-        0
+        1 << VIRTIO_F_VERSION_1
     }
 
     /// Acknowledges that this set of features should be enabled.

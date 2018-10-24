@@ -22,7 +22,10 @@ use sys_util::{
 
 use data_model::{DataInit, Le16, Le32, Le64};
 
-use super::{DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_BLOCK};
+use super::{
+    DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_BLOCK,
+    VIRTIO_F_VERSION_1,
+};
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
@@ -655,6 +658,7 @@ impl<T: DiskFile> Block<T> {
             avail_features |= 1 << VIRTIO_BLK_F_DISCARD;
             avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
         }
+        avail_features |= 1 << VIRTIO_F_VERSION_1;
 
         Ok(Block {
             kill_evt: None,
@@ -798,8 +802,8 @@ mod tests {
             let f = File::create(&path).unwrap();
             let b = Block::new(f, false).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
-            // + VIRTIO_BLK_F_WRITE_ZEROES
-            assert_eq!(0x6200, b.features());
+            // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1
+            assert_eq!(0x100006200, b.features());
         }
 
         // read-only block device
@@ -807,7 +811,8 @@ mod tests {
             let f = File::create(&path).unwrap();
             let b = Block::new(f, true).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
-            assert_eq!(0x220, b.features());
+            // + VIRTIO_F_VERSION_1
+            assert_eq!(0x100000220, b.features());
         }
     }
 }

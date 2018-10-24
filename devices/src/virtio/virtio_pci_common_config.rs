@@ -135,14 +135,10 @@ impl VirtioPciCommonConfig {
         match offset {
             0x00 => self.device_feature_select,
             0x04 => {
-                // TODO(dverkamp): This hack (copied from MmioDevice) unconditionally
-                // reports support for VIRTIO_F_VERSION_1; once all devices have been
-                // fixed to report VIRTIO_F_VERSION_1, remove this workaround.
-                let features = device.features() | 1 << VIRTIO_F_VERSION_1;
                 // Only 64 bits of features (2 pages) are defined for now, so limit
                 // device_feature_select to avoid shifting by 64 or more bits.
                 if self.device_feature_select < 2 {
-                    (features >> (self.device_feature_select * 32)) as u32
+                    (device.features() >> (self.device_feature_select * 32)) as u32
                 } else {
                     0
                 }

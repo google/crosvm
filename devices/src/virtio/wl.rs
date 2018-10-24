@@ -67,7 +67,9 @@ use sys_util::{
 #[cfg(feature = "wl-dmabuf")]
 use sys_util::ioctl_with_ref;
 
-use super::{DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_WL};
+use super::{
+    DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_WL, VIRTIO_F_VERSION_1,
+};
 use vm_control::{MaybeOwnedFd, VmRequest, VmResponse};
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
@@ -1604,7 +1606,7 @@ impl VirtioDevice for Wl {
     }
 
     fn features(&self) -> u64 {
-        1 << VIRTIO_WL_F_TRANS_FLAGS
+        1 << VIRTIO_WL_F_TRANS_FLAGS | 1 << VIRTIO_F_VERSION_1
     }
 
     fn ack_features(&mut self, value: u64) {

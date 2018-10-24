@@ -17,7 +17,7 @@ use sys_util::{self, EventFd, GuestAddress, GuestMemory, PollContext, PollToken}
 
 use super::{
     DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_CONFIG_CHANGED,
-    INTERRUPT_STATUS_USED_RING, TYPE_BALLOON,
+    INTERRUPT_STATUS_USED_RING, TYPE_BALLOON, VIRTIO_F_VERSION_1,
 };
 
 #[derive(Debug)]
@@ -296,7 +296,9 @@ impl VirtioDevice for Balloon {
     }
 
     fn features(&self) -> u64 {
-        1 << VIRTIO_BALLOON_F_MUST_TELL_HOST | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM
+        1 << VIRTIO_BALLOON_F_MUST_TELL_HOST
+            | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM
+            | 1 << VIRTIO_F_VERSION_1
     }
 
     fn ack_features(&mut self, value: u64) {
