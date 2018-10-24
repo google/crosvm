@@ -23,7 +23,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use sys_util::{PunchHole, SeekHole, WriteZeroes};
+use sys_util::{FileSync, PunchHole, SeekHole, WriteZeroes};
 
 #[derive(Debug)]
 pub enum Error {
@@ -1066,6 +1066,12 @@ impl Write for QcowFile {
         self.sync_caches()?;
         self.avail_clusters.append(&mut self.unref_clusters);
         Ok(())
+    }
+}
+
+impl FileSync for QcowFile {
+    fn fsync(&mut self) -> std::io::Result<()> {
+        self.flush()
     }
 }
 

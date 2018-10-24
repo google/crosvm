@@ -16,8 +16,8 @@ use std::u32;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
 use sys_util::{
-    EventFd, GuestAddress, GuestMemory, GuestMemoryError, PollContext, PollToken, PunchHole,
-    TimerFd, WriteZeroes,
+    EventFd, FileSync, GuestAddress, GuestMemory, GuestMemoryError, PollContext, PollToken,
+    PunchHole, TimerFd, WriteZeroes,
 };
 
 use data_model::{DataInit, Le16, Le32, Le64};
@@ -108,8 +108,8 @@ const VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP: u32 = 1 << 0;
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_blk_discard_write_zeroes {}
 
-pub trait DiskFile: PunchHole + Read + Seek + Write + WriteZeroes {}
-impl<D: PunchHole + Read + Seek + Write + WriteZeroes> DiskFile for D {}
+pub trait DiskFile: FileSync + PunchHole + Read + Seek + Write + WriteZeroes {}
+impl<D: FileSync + PunchHole + Read + Seek + Write + WriteZeroes> DiskFile for D {}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum RequestType {
@@ -452,7 +452,7 @@ impl Request {
                 }
             }
             RequestType::Flush => {
-                disk.flush().map_err(ExecuteError::Flush)?;
+                disk.fsync().map_err(ExecuteError::Flush)?;
                 flush_timer.clear().map_err(ExecuteError::TimerFd)?;
                 *flush_timer_armed = false;
             }

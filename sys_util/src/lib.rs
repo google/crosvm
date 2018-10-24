@@ -20,6 +20,7 @@ pub mod syslog;
 mod errno;
 mod eventfd;
 mod file_flags;
+mod file_sync;
 mod fork;
 mod guest_address;
 mod guest_memory;
@@ -58,6 +59,7 @@ pub use tempdir::*;
 pub use terminal::*;
 pub use timerfd::*;
 
+pub use file_sync::FileSync;
 pub use guest_memory::Error as GuestMemoryError;
 pub use mmap::Error as MmapError;
 pub use seek_hole::SeekHole;
