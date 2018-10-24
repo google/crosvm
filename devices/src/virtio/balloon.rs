@@ -37,8 +37,8 @@ const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 const VIRTIO_BALLOON_PFN_SHIFT: u32 = 12;
 
 // The feature bitmap for virtio balloon
-const VIRTIO_BALLOON_F_MUST_TELL_HOST: u32 = 0x01; // Tell before reclaiming pages
-const VIRTIO_BALLOON_F_DEFLATE_ON_OOM: u32 = 0x04; // Deflate balloon on OOM
+const VIRTIO_BALLOON_F_MUST_TELL_HOST: u32 = 0; // Tell before reclaiming pages
+const VIRTIO_BALLOON_F_DEFLATE_ON_OOM: u32 = 2; // Deflate balloon on OOM
 
 // BalloonConfig is modified by the worker and read from the device thread.
 #[derive(Default)]
@@ -235,7 +235,7 @@ impl Balloon {
             }),
             kill_evt: None,
             // TODO(dgreid) - Add stats queue feature.
-            features: VIRTIO_BALLOON_F_MUST_TELL_HOST | VIRTIO_BALLOON_F_DEFLATE_ON_OOM,
+            features: 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM,
         })
     }
 }
@@ -297,7 +297,7 @@ impl VirtioDevice for Balloon {
 
     fn features(&self, page: u32) -> u32 {
         match page {
-            0 => VIRTIO_BALLOON_F_MUST_TELL_HOST | VIRTIO_BALLOON_F_DEFLATE_ON_OOM,
+            0 => 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM,
             _ => 0u32,
         }
     }
