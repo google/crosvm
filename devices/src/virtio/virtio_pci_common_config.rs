@@ -138,10 +138,13 @@ impl VirtioPciCommonConfig {
                 // TODO(dverkamp): This hack (copied from MmioDevice) unconditionally
                 // reports support for VIRTIO_F_VERSION_1; once all devices have been
                 // fixed to report VIRTIO_F_VERSION_1, remove this workaround.
-                device.features(self.device_feature_select) | if self.device_feature_select == 1 {
-                    0x1
+                let features = device.features() | 1 << VIRTIO_F_VERSION_1;
+                // Only 64 bits of features (2 pages) are defined for now, so limit
+                // device_feature_select to avoid shifting by 64 or more bits.
+                if self.device_feature_select < 2 {
+                    (features >> (self.device_feature_select * 32)) as u32
                 } else {
-                    0x0
+                    0
                 }
             }
             0x08 => self.driver_feature_select,
@@ -167,7 +170,16 @@ impl VirtioPciCommonConfig {
         match offset {
             0x00 => self.device_feature_select = value,
             0x08 => self.driver_feature_select = value,
-            0x0c => device.ack_features(self.driver_feature_select, value),
+            0x0c => {
+                if self.driver_feature_select < 2 {
+                    device.ack_features((value as u64) << (self.driver_feature_select * 32));
+                } else {
+                    warn!(
+                        "invalid ack_features (page {}, value 0x{:x})",
+                        self.driver_feature_select, value
+                    );
+                }
+            }
             0x20 => self.with_queue_mut(queues, |q| lo(&mut q.desc_table, value)),
             0x24 => self.with_queue_mut(queues, |q| hi(&mut q.desc_table, value)),
             0x28 => self.with_queue_mut(queues, |q| lo(&mut q.avail_ring, value)),
@@ -221,7 +233,7 @@ mod tests {
     struct DummyDevice(u32);
     const QUEUE_SIZE: u16 = 256;
     const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
-    const DUMMY_FEATURES: u32 = 0x5555_aaaa;
+    const DUMMY_FEATURES: u64 = 0x5555_aaaa;
     impl VirtioDevice for DummyDevice {
         fn keep_fds(&self) -> Vec<RawFd> {
             Vec::new()
@@ -242,7 +254,7 @@ mod tests {
             _queue_evts: Vec<EventFd>,
         ) {
         }
-        fn features(&self, _page: u32) -> u32 {
+        fn features(&self) -> u64 {
             DUMMY_FEATURES
         }
     }
@@ -276,7 +288,7 @@ mod tests {
         regs.write(0x04, &[0, 0, 0, 0], &mut queues, &mut dev);
         let mut read_back = vec![0, 0, 0, 0];
         regs.read(0x04, &mut read_back, &mut queues, &mut dev);
-        assert_eq!(LittleEndian::read_u32(&read_back), DUMMY_FEATURES);
+        assert_eq!(LittleEndian::read_u32(&read_back), DUMMY_FEATURES as u32);
 
         // Feature select registers are read/write.
         regs.write(0x00, &[1, 2, 3, 4], &mut queues, &mut dev);

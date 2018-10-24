@@ -1601,15 +1601,12 @@ impl VirtioDevice for Wl {
         QUEUE_SIZES
     }
 
-    fn features(&self, page: u32) -> u32 {
-        match page {
-            0 => (1 << VIRTIO_WL_F_TRANS_FLAGS),
-            _ => 0x0,
-        }
+    fn features(&self) -> u64 {
+        1 << VIRTIO_WL_F_TRANS_FLAGS
     }
 
-    fn ack_features(&mut self, page: u32, value: u32) {
-        if page == 0 && value & (1 << VIRTIO_WL_F_TRANS_FLAGS) != 0 {
+    fn ack_features(&mut self, value: u64) {
+        if value & (1 << VIRTIO_WL_F_TRANS_FLAGS) != 0 {
             self.use_transition_flags = true;
         }
     }

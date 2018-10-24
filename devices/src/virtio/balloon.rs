@@ -220,7 +220,7 @@ impl Worker {
 pub struct Balloon {
     command_socket: Option<UnixDatagram>,
     config: Arc<BalloonConfig>,
-    features: u32,
+    features: u64,
     kill_evt: Option<EventFd>,
 }
 
@@ -295,18 +295,12 @@ impl VirtioDevice for Balloon {
             .store(new_actual as usize, Ordering::Relaxed);
     }
 
-    fn features(&self, page: u32) -> u32 {
-        match page {
-            0 => 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM,
-            _ => 0u32,
-        }
+    fn features(&self) -> u64 {
+        1 << VIRTIO_BALLOON_F_MUST_TELL_HOST | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM
     }
 
-    fn ack_features(&mut self, page: u32, value: u32) {
-        match page {
-            0 => self.features = self.features & value,
-            _ => (),
-        };
+    fn ack_features(&mut self, value: u64) {
+        self.features = self.features & value;
     }
 
     fn activate(

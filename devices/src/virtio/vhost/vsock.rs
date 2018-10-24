@@ -111,20 +111,8 @@ impl VirtioDevice for Vsock {
         QUEUE_SIZES
     }
 
-    fn features(&self, page: u32) -> u32 {
-        match page {
-            // Get the lower 32-bits of the features bitfield.
-            0 => self.avail_features as u32,
-            // Get the upper 32-bits of the features bitfield.
-            1 => (self.avail_features >> 32) as u32,
-            _ => {
-                warn!(
-                    "vsock: virtio-vsock got request for features page: {}",
-                    page
-                );
-                0u32
-            }
-        }
+    fn features(&self) -> u64 {
+        self.avail_features
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
@@ -142,18 +130,8 @@ impl VirtioDevice for Vsock {
         }
     }
 
-    fn ack_features(&mut self, page: u32, value: u32) {
-        let mut v = match page {
-            0 => value as u64,
-            1 => (value as u64) << 32,
-            _ => {
-                warn!(
-                    "vsock: virtio-vsock device cannot ack unknown feature page: {}",
-                    page
-                );
-                0u64
-            }
-        };
+    fn ack_features(&mut self, value: u64) {
+        let mut v = value;
 
         // Check if the guest is ACK'ing a feature that we didn't claim to have.
         let unrequested_features = v & !self.avail_features;
@@ -238,16 +216,16 @@ mod tests {
         assert_eq!(acked_features, vsock.acked_features());
 
         acked_features |= 1 << 2;
-        vsock.ack_features(0, (acked_features & 0xffffffff) as u32);
+        vsock.ack_features(acked_features);
         assert_eq!(acked_features, vsock.acked_features());
 
         acked_features |= 1 << 49;
-        vsock.ack_features(1, (acked_features >> 32) as u32);
+        vsock.ack_features(acked_features);
         assert_eq!(acked_features, vsock.acked_features());
 
         acked_features |= 1 << 60;
         unavailable_features |= 1 << 60;
-        vsock.ack_features(1, (acked_features >> 32) as u32);
+        vsock.ack_features(acked_features);
         assert_eq!(
             acked_features & !unavailable_features,
             vsock.acked_features()
@@ -255,7 +233,7 @@ mod tests {
 
         acked_features |= 1 << 1;
         unavailable_features |= 1 << 1;
-        vsock.ack_features(0, (acked_features & 0xffffffff) as u32);
+        vsock.ack_features(acked_features);
         assert_eq!(
             acked_features & !unavailable_features,
             vsock.acked_features()
@@ -290,9 +268,6 @@ mod tests {
         let features: u64 = 0xfc195ae8db88cff9;
 
         let vsock = Vsock::new_for_testing(cid, features);
-        assert_eq!((features & 0xffffffff) as u32, vsock.features(0));
-        assert_eq!((features >> 32) as u32, vsock.features(1));
-        assert_eq!(0, vsock.features(559));
-        assert_eq!(0, vsock.features(3));
+        assert_eq!(features, vsock.features());
     }
 }

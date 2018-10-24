@@ -686,12 +686,8 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
         keep_fds
     }
 
-    fn features(&self, page: u32) -> u32 {
-        match page {
-            0 => self.avail_features as u32,
-            1 => (self.avail_features >> 32) as u32,
-            _ => 0,
-        }
+    fn features(&self) -> u64 {
+        self.avail_features
     }
 
     fn device_type(&self) -> u32 {
@@ -803,7 +799,7 @@ mod tests {
             let b = Block::new(f, false).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES
-            assert_eq!(0x6200, b.features(0));
+            assert_eq!(0x6200, b.features());
         }
 
         // read-only block device
@@ -811,7 +807,7 @@ mod tests {
             let f = File::create(&path).unwrap();
             let b = Block::new(f, true).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
-            assert_eq!(0x220, b.features(0));
+            assert_eq!(0x220, b.features());
         }
     }
 }

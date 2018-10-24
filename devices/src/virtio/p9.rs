@@ -357,34 +357,17 @@ impl VirtioDevice for P9 {
         QUEUE_SIZES
     }
 
-    fn features(&self, page: u32) -> u32 {
-        match page {
-            0 => self.avail_features as u32,
-            1 => (self.avail_features >> 32) as u32,
-            _ => {
-                warn!("virtio_9p got request for features page: {}", page);
-                0u32
-            }
-        }
+    fn features(&self) -> u64 {
+        self.avail_features
     }
 
-    fn ack_features(&mut self, page: u32, value: u32) {
-        let mut v = match page {
-            0 => value as u64,
-            1 => (value as u64) << 32,
-            _ => {
-                warn!("virtio_9p device cannot ack unknown feature page: {}", page);
-                0u64
-            }
-        };
+    fn ack_features(&mut self, value: u64) {
+        let mut v = value;
 
         // Check if the guest is ACK'ing a feature that we didn't claim to have.
         let unrequested_features = v & !self.avail_features;
         if unrequested_features != 0 {
-            warn!(
-                "virtio_9p got unknown feature ack: {:x}, page = {}, value = {:x}",
-                v, page, value
-            );
+            warn!("virtio_9p got unknown feature ack: {:x}", v);
 
             // Don't count these features as acked.
             v &= !unrequested_features;

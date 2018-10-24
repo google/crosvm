@@ -632,17 +632,11 @@ impl VirtioDevice for Gpu {
         QUEUE_SIZES
     }
 
-    fn features(&self, page: u32) -> u32 {
-        let avail_features: u64 = 1 << VIRTIO_GPU_F_VIRGL | 1 << VIRTIO_F_VERSION_1;
-        match page {
-            0 => avail_features as u32,
-            1 => (avail_features >> 32) as u32,
-            _ => 0,
-        }
+    fn features(&self) -> u64 {
+        1 << VIRTIO_GPU_F_VIRGL | 1 << VIRTIO_F_VERSION_1
     }
 
-    fn ack_features(&mut self, page: u32, value: u32) {
-        let _ = page;
+    fn ack_features(&mut self, value: u64) {
         let _ = value;
     }
 
