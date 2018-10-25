@@ -469,6 +469,7 @@ struct Worker<T: DiskFile> {
     read_only: bool,
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
+    interrupt_resample_evt: EventFd,
 }
 
 impl<T: DiskFile> Worker<T> {
@@ -535,6 +536,7 @@ impl<T: DiskFile> Worker<T> {
         enum Token {
             FlushTimer,
             QueueAvailable,
+            InterruptResample,
             Kill,
         }
 
@@ -550,7 +552,10 @@ impl<T: DiskFile> Worker<T> {
         let poll_ctx: PollContext<Token> = match PollContext::new()
             .and_then(|pc| pc.add(&flush_timer, Token::FlushTimer).and(Ok(pc)))
             .and_then(|pc| pc.add(&queue_evt, Token::QueueAvailable).and(Ok(pc)))
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            .and_then(|pc| {
+                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
+                    .and(Ok(pc))
+            }).and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
         {
             Ok(pc) => pc,
             Err(e) => {
@@ -588,6 +593,12 @@ impl<T: DiskFile> Worker<T> {
                         }
                         needs_interrupt |=
                             self.process_queue(0, &mut flush_timer, &mut flush_timer_armed);
+                    }
+                    Token::InterruptResample => {
+                        let _ = self.interrupt_resample_evt.read();
+                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
+                            self.interrupt_evt.write(1).unwrap();
+                        }
                     }
                     Token::Kill => break 'poll,
                 }
@@ -709,6 +720,7 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
         &mut self,
         mem: GuestMemory,
         interrupt_evt: EventFd,
+        interrupt_resample_evt: EventFd,
         status: Arc<AtomicUsize>,
         queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
@@ -739,6 +751,7 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
                             read_only,
                             interrupt_status: status,
                             interrupt_evt,
+                            interrupt_resample_evt,
                         };
                         worker.run(queue_evts.remove(0), kill_evt);
                     });

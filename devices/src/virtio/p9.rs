@@ -222,6 +222,7 @@ struct Worker {
     server: p9::Server,
     irq_status: Arc<AtomicUsize>,
     irq_evt: EventFd,
+    interrupt_resample_evt: EventFd,
 }
 
 impl Worker {
@@ -270,13 +271,18 @@ impl Worker {
         enum Token {
             // A request is ready on the queue.
             QueueReady,
+            // Check if any interrupts need to be re-asserted.
+            InterruptResample,
             // The parent thread requested an exit.
             Kill,
         }
 
         let poll_ctx: PollContext<Token> = PollContext::new()
             .and_then(|pc| pc.add(&queue_evt, Token::QueueReady).and(Ok(pc)))
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            .and_then(|pc| {
+                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
+                    .and(Ok(pc))
+            }).and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
             .map_err(P9Error::CreatePollContext)?;
 
         loop {
@@ -286,6 +292,12 @@ impl Worker {
                     Token::QueueReady => {
                         queue_evt.read().map_err(P9Error::ReadQueueEventFd)?;
                         self.process_queue()?;
+                    }
+                    Token::InterruptResample => {
+                        let _ = self.interrupt_resample_evt.read();
+                        if self.irq_status.load(Ordering::SeqCst) != 0 {
+                            self.irq_evt.write(1).unwrap();
+                        }
                     }
                     Token::Kill => return Ok(()),
                 }
@@ -398,6 +410,7 @@ impl VirtioDevice for P9 {
         &mut self,
         guest_mem: GuestMemory,
         interrupt_evt: EventFd,
+        interrupt_resample_evt: EventFd,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
@@ -426,6 +439,7 @@ impl VirtioDevice for P9 {
                             server,
                             irq_status: status,
                             irq_evt: interrupt_evt,
+                            interrupt_resample_evt,
                         };
 
                         worker.run(queue_evts.remove(0), kill_evt)

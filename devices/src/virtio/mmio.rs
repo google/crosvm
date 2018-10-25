@@ -39,6 +39,7 @@ pub struct MmioDevice {
     queue_select: u32,
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: Option<EventFd>,
+    interrupt_resample_evt: Option<EventFd>,
     driver_status: u32,
     config_generation: u32,
     queues: Vec<Queue>,
@@ -66,6 +67,7 @@ impl MmioDevice {
             queue_select: 0,
             interrupt_status: Arc::new(AtomicUsize::new(0)),
             interrupt_evt: Some(EventFd::new()?),
+            interrupt_resample_evt: Some(EventFd::new()?),
             driver_status: 0,
             config_generation: 0,
             queues,
@@ -209,15 +211,18 @@ impl BusDevice for MmioDevice {
 
         if !self.device_activated && self.is_driver_ready() && self.are_queues_valid() {
             if let Some(interrupt_evt) = self.interrupt_evt.take() {
-                if let Some(mem) = self.mem.take() {
-                    self.device.activate(
-                        mem,
-                        interrupt_evt,
-                        self.interrupt_status.clone(),
-                        self.queues.clone(),
-                        self.queue_evts.split_off(0),
-                    );
-                    self.device_activated = true;
+                if let Some(interrupt_resample_evt) = self.interrupt_resample_evt.take() {
+                    if let Some(mem) = self.mem.take() {
+                        self.device.activate(
+                            mem,
+                            interrupt_evt,
+                            interrupt_resample_evt,
+                            self.interrupt_status.clone(),
+                            self.queues.clone(),
+                            self.queue_evts.split_off(0),
+                        );
+                        self.device_activated = true;
+                    }
                 }
             }
         }

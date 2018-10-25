@@ -53,6 +53,7 @@ struct Worker {
     deflate_queue: Queue,
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
+    interrupt_resample_evt: EventFd,
     config: Arc<BalloonConfig>,
     command_socket: UnixDatagram,
 }
@@ -127,6 +128,7 @@ impl Worker {
             Inflate,
             Deflate,
             CommandSocket,
+            InterruptResample,
             Kill,
         }
 
@@ -138,6 +140,9 @@ impl Worker {
             .and_then(|pc| pc.add(&deflate_queue_evt, Token::Deflate).and(Ok(pc)))
             .and_then(|pc| {
                 pc.add(&self.command_socket, Token::CommandSocket)
+                    .and(Ok(pc))
+            }).and_then(|pc| {
+                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
                     .and(Ok(pc))
             }).and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
         {
@@ -186,6 +191,12 @@ impl Worker {
                                 self.config.num_pages.store(num_pages, Ordering::Relaxed);
                                 self.signal_config_changed();
                             }
+                        }
+                    }
+                    Token::InterruptResample => {
+                        let _ = self.interrupt_resample_evt.read();
+                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
+                            self.interrupt_evt.write(1).unwrap();
                         }
                     }
                     Token::Kill => break 'poll,
@@ -302,6 +313,7 @@ impl VirtioDevice for Balloon {
         &mut self,
         mem: GuestMemory,
         interrupt_evt: EventFd,
+        interrupt_resample_evt: EventFd,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
@@ -330,6 +342,7 @@ impl VirtioDevice for Balloon {
                     deflate_queue: queues.remove(0),
                     interrupt_status: status,
                     interrupt_evt,
+                    interrupt_resample_evt,
                     command_socket,
                     config,
                 };

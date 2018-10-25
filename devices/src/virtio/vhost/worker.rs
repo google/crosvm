@@ -22,6 +22,7 @@ pub struct Worker<T: Vhost> {
     vhost_interrupt: EventFd,
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
+    interrupt_resample_evt: EventFd,
     acked_features: u64,
 }
 
@@ -32,6 +33,7 @@ impl<T: Vhost> Worker<T> {
         vhost_interrupt: EventFd,
         interrupt_status: Arc<AtomicUsize>,
         interrupt_evt: EventFd,
+        interrupt_resample_evt: EventFd,
         acked_features: u64,
     ) -> Worker<T> {
         Worker {
@@ -40,6 +42,7 @@ impl<T: Vhost> Worker<T> {
             vhost_interrupt,
             interrupt_status,
             interrupt_evt,
+            interrupt_resample_evt,
             acked_features,
         }
     }
@@ -111,12 +114,16 @@ impl<T: Vhost> Worker<T> {
         #[derive(PollToken)]
         enum Token {
             VhostIrq,
+            InterruptResample,
             Kill,
         }
 
         let poll_ctx: PollContext<Token> = PollContext::new()
             .and_then(|pc| pc.add(&self.vhost_interrupt, Token::VhostIrq).and(Ok(pc)))
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            .and_then(|pc| {
+                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
+                    .and(Ok(pc))
+            }).and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
             .map_err(Error::CreatePollContext)?;
 
         'poll: loop {
@@ -128,6 +135,12 @@ impl<T: Vhost> Worker<T> {
                     Token::VhostIrq => {
                         needs_interrupt = true;
                         self.vhost_interrupt.read().map_err(Error::VhostIrqRead)?;
+                    }
+                    Token::InterruptResample => {
+                        let _ = self.interrupt_resample_evt.read();
+                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
+                            self.interrupt_evt.write(1).unwrap();
+                        }
                     }
                     Token::Kill => break 'poll,
                 }

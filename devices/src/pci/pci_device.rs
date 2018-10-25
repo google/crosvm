@@ -29,7 +29,16 @@ pub trait PciDevice: Send {
     /// after jailing. Must be called before the process is jailed.
     fn keep_fds(&self) -> Vec<RawFd>;
     /// Assign a legacy PCI IRQ to this device.
-    fn assign_irq(&mut self, _irq_evt: EventFd, _irq_num: u32, _irq_pin: PciInterruptPin) {}
+    /// The device may write to `irq_evt` to trigger an interrupt.
+    /// When `irq_resample_evt` is signaled, the device should re-assert `irq_evt` if necessary.
+    fn assign_irq(
+        &mut self,
+        _irq_evt: EventFd,
+        _irq_resample_evt: EventFd,
+        _irq_num: u32,
+        _irq_pin: PciInterruptPin,
+    ) {
+    }
     /// Allocates the needed IO BAR space using the `allocate` function which takes a size and
     /// returns an address. Returns a Vec of (address, length) tuples.
     fn allocate_io_bars(&mut self, _resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
@@ -90,8 +99,14 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     fn keep_fds(&self) -> Vec<RawFd> {
         (**self).keep_fds()
     }
-    fn assign_irq(&mut self, irq_evt: EventFd, irq_num: u32, irq_pin: PciInterruptPin) {
-        (**self).assign_irq(irq_evt, irq_num, irq_pin)
+    fn assign_irq(
+        &mut self,
+        irq_evt: EventFd,
+        irq_resample_evt: EventFd,
+        irq_num: u32,
+        irq_pin: PciInterruptPin,
+    ) {
+        (**self).assign_irq(irq_evt, irq_resample_evt, irq_num, irq_pin)
     }
     /// Allocates the needed IO BAR space using the `allocate` function which takes a size and
     /// returns an address. Returns a Vec of (address, length) tuples.

@@ -148,6 +148,7 @@ pub struct VirtioPciDevice {
 
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: Option<EventFd>,
+    interrupt_resample_evt: Option<EventFd>,
     queues: Vec<Queue>,
     queue_evts: Vec<EventFd>,
     mem: Option<GuestMemory>,
@@ -188,6 +189,7 @@ impl VirtioPciDevice {
             device_activated: false,
             interrupt_status: Arc::new(AtomicUsize::new(0)),
             interrupt_evt: None,
+            interrupt_resample_evt: None,
             queues,
             queue_evts,
             mem: Some(mem),
@@ -279,12 +281,22 @@ impl PciDevice for VirtioPciDevice {
         if let Some(ref interrupt_evt) = self.interrupt_evt {
             fds.push(interrupt_evt.as_raw_fd());
         }
+        if let Some(ref interrupt_resample_evt) = self.interrupt_resample_evt {
+            fds.push(interrupt_resample_evt.as_raw_fd());
+        }
         fds
     }
 
-    fn assign_irq(&mut self, irq_evt: EventFd, irq_num: u32, irq_pin: PciInterruptPin) {
+    fn assign_irq(
+        &mut self,
+        irq_evt: EventFd,
+        irq_resample_evt: EventFd,
+        irq_num: u32,
+        irq_pin: PciInterruptPin,
+    ) {
         self.config_regs.set_irq(irq_num as u8, irq_pin);
         self.interrupt_evt = Some(irq_evt);
+        self.interrupt_resample_evt = Some(irq_resample_evt);
     }
 
     fn allocate_io_bars(
@@ -402,15 +414,18 @@ impl PciDevice for VirtioPciDevice {
 
         if !self.device_activated && self.is_driver_ready() && self.are_queues_valid() {
             if let Some(interrupt_evt) = self.interrupt_evt.take() {
-                if let Some(mem) = self.mem.take() {
-                    self.device.activate(
-                        mem,
-                        interrupt_evt,
-                        self.interrupt_status.clone(),
-                        self.queues.clone(),
-                        self.queue_evts.split_off(0),
-                    );
-                    self.device_activated = true;
+                if let Some(interrupt_resample_evt) = self.interrupt_resample_evt.take() {
+                    if let Some(mem) = self.mem.take() {
+                        self.device.activate(
+                            mem,
+                            interrupt_evt,
+                            interrupt_resample_evt,
+                            self.interrupt_status.clone(),
+                            self.queues.clone(),
+                            self.queue_evts.split_off(0),
+                        );
+                        self.device_activated = true;
+                    }
                 }
             }
         }

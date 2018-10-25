@@ -456,6 +456,7 @@ struct Worker {
     exit_evt: EventFd,
     mem: GuestMemory,
     interrupt_evt: EventFd,
+    interrupt_resample_evt: EventFd,
     interrupt_status: Arc<AtomicUsize>,
     ctrl_queue: Queue,
     ctrl_evt: EventFd,
@@ -478,6 +479,7 @@ impl Worker {
             CtrlQueue,
             CursorQueue,
             Display,
+            InterruptResample,
             Kill,
         }
 
@@ -486,6 +488,9 @@ impl Worker {
             .and_then(|pc| pc.add(&self.cursor_evt, Token::CursorQueue).and(Ok(pc)))
             .and_then(|pc| {
                 pc.add(&*self.state.display().borrow(), Token::Display)
+                    .and(Ok(pc))
+            }).and_then(|pc| {
+                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
                     .and(Ok(pc))
             }).and_then(|pc| pc.add(&self.kill_evt, Token::Kill).and(Ok(pc)))
         {
@@ -528,6 +533,12 @@ impl Worker {
                         let close_requested = self.state.process_display();
                         if close_requested {
                             let _ = self.exit_evt.write(1);
+                        }
+                    }
+                    Token::InterruptResample => {
+                        let _ = self.interrupt_resample_evt.read();
+                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
+                            self.interrupt_evt.write(1).unwrap();
                         }
                     }
                     Token::Kill => {
@@ -664,6 +675,7 @@ impl VirtioDevice for Gpu {
         &mut self,
         mem: GuestMemory,
         interrupt_evt: EventFd,
+        interrupt_resample_evt: EventFd,
         interrupt_status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
@@ -732,6 +744,7 @@ impl VirtioDevice for Gpu {
                 exit_evt,
                 mem,
                 interrupt_evt,
+                interrupt_resample_evt,
                 interrupt_status,
                 ctrl_queue,
                 ctrl_evt,

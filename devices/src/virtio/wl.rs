@@ -1352,6 +1352,7 @@ impl WlState {
 struct Worker {
     mem: GuestMemory,
     interrupt_evt: EventFd,
+    interrupt_resample_evt: EventFd,
     interrupt_status: Arc<AtomicUsize>,
     in_queue: Queue,
     out_queue: Queue,
@@ -1363,6 +1364,7 @@ impl Worker {
     fn new(
         mem: GuestMemory,
         interrupt_evt: EventFd,
+        interrupt_resample_evt: EventFd,
         interrupt_status: Arc<AtomicUsize>,
         in_queue: Queue,
         out_queue: Queue,
@@ -1373,6 +1375,7 @@ impl Worker {
         Worker {
             mem,
             interrupt_evt,
+            interrupt_resample_evt,
             interrupt_status,
             in_queue,
             out_queue,
@@ -1396,6 +1399,7 @@ impl Worker {
             OutQueue,
             Kill,
             State,
+            InterruptResample,
         }
 
         let poll_ctx: PollContext<Token> = match PollContext::new()
@@ -1403,7 +1407,10 @@ impl Worker {
             .and_then(|pc| pc.add(&out_queue_evt, Token::OutQueue).and(Ok(pc)))
             .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
             .and_then(|pc| pc.add(&self.state.poll_ctx, Token::State).and(Ok(pc)))
-        {
+            .and_then(|pc| {
+                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
+                    .and(Ok(pc))
+            }) {
             Ok(pc) => pc,
             Err(e) => {
                 error!("failed creating PollContext: {:?}", e);
@@ -1496,6 +1503,12 @@ impl Worker {
                     }
                     Token::Kill => break 'poll,
                     Token::State => self.state.process_poll_context(),
+                    Token::InterruptResample => {
+                        let _ = self.interrupt_resample_evt.read();
+                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
+                            self.interrupt_evt.write(1).unwrap();
+                        }
+                    }
                 }
             }
 
@@ -1602,6 +1615,7 @@ impl VirtioDevice for Wl {
         &mut self,
         mem: GuestMemory,
         interrupt_evt: EventFd,
+        interrupt_resample_evt: EventFd,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
@@ -1629,6 +1643,7 @@ impl VirtioDevice for Wl {
                         Worker::new(
                             mem,
                             interrupt_evt,
+                            interrupt_resample_evt,
                             status,
                             queues.remove(0),
                             queues.remove(0),

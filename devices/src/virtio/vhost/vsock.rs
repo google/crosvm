@@ -170,6 +170,7 @@ impl VirtioDevice for Vsock {
         &mut self,
         _: GuestMemory,
         interrupt_evt: EventFd,
+        interrupt_resample_evt: EventFd,
         status: Arc<AtomicUsize>,
         queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
@@ -196,6 +197,7 @@ impl VirtioDevice for Vsock {
                                 interrupt,
                                 status,
                                 interrupt_evt,
+                                interrupt_resample_evt,
                                 acked_features,
                             );
                             let activate_vqs = |handle: &VhostVsockHandle| -> Result<()> {

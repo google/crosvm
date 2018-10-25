@@ -236,6 +236,7 @@ mod tests {
             &mut self,
             _mem: GuestMemory,
             _interrupt_evt: EventFd,
+            _interrupt_resample_evt: EventFd,
             _status: Arc<AtomicUsize>,
             _queues: Vec<Queue>,
             _queue_evts: Vec<EventFd>,

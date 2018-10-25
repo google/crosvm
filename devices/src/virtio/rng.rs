@@ -30,6 +30,7 @@ struct Worker {
     random_file: File,
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
+    interrupt_resample_evt: EventFd,
 }
 
 impl Worker {
@@ -76,12 +77,16 @@ impl Worker {
         #[derive(PollToken)]
         enum Token {
             QueueAvailable,
+            InterruptResample,
             Kill,
         }
 
         let poll_ctx: PollContext<Token> = match PollContext::new()
             .and_then(|pc| pc.add(&queue_evt, Token::QueueAvailable).and(Ok(pc)))
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            .and_then(|pc| {
+                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
+                    .and(Ok(pc))
+            }).and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
         {
             Ok(pc) => pc,
             Err(e) => {
@@ -108,6 +113,12 @@ impl Worker {
                             break 'poll;
                         }
                         needs_interrupt |= self.process_queue();
+                    }
+                    Token::InterruptResample => {
+                        let _ = self.interrupt_resample_evt.read();
+                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
+                            self.interrupt_evt.write(1).unwrap();
+                        }
                     }
                     Token::Kill => break 'poll,
                 }
@@ -168,6 +179,7 @@ impl VirtioDevice for Rng {
         &mut self,
         mem: GuestMemory,
         interrupt_evt: EventFd,
+        interrupt_resample_evt: EventFd,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
@@ -198,6 +210,7 @@ impl VirtioDevice for Rng {
                             random_file,
                             interrupt_status: status,
                             interrupt_evt,
+                            interrupt_resample_evt,
                         };
                         worker.run(queue_evts.remove(0), kill_evt);
                     });

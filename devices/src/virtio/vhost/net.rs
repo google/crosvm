@@ -180,6 +180,7 @@ where
         &mut self,
         _: GuestMemory,
         interrupt_evt: EventFd,
+        interrupt_resample_evt: EventFd,
         status: Arc<AtomicUsize>,
         queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
@@ -203,6 +204,7 @@ where
                                     vhost_interrupt,
                                     status,
                                     interrupt_evt,
+                                    interrupt_resample_evt,
                                     acked_features,
                                 );
                                 let activate_vqs = |handle: &U| -> Result<()> {
@@ -290,6 +292,7 @@ pub mod tests {
         // Just testing that we don't panic, for now
         net.activate(
             guest_memory,
+            EventFd::new().unwrap(),
             EventFd::new().unwrap(),
             Arc::new(AtomicUsize::new(0)),
             vec![Queue::new(1)],

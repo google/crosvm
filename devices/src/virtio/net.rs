@@ -60,6 +60,7 @@ struct Worker<T: TapT> {
     tap: T,
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
+    interrupt_resample_evt: EventFd,
     rx_buf: [u8; MAX_BUFFER_SIZE],
     rx_count: usize,
     deferred_rx: bool,
@@ -234,6 +235,8 @@ where
             RxQueue,
             // The transmit queue has a frame that is ready to send from the guest.
             TxQueue,
+            // Check if any interrupts need to be re-asserted.
+            InterruptResample,
             // crosvm has requested the device to shut down.
             Kill,
         }
@@ -242,7 +245,10 @@ where
             .and_then(|pc| pc.add(&self.tap, Token::RxTap).and(Ok(pc)))
             .and_then(|pc| pc.add(&rx_queue_evt, Token::RxQueue).and(Ok(pc)))
             .and_then(|pc| pc.add(&tx_queue_evt, Token::TxQueue).and(Ok(pc)))
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            .and_then(|pc| {
+                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
+                    .and(Ok(pc))
+            }).and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
             .map_err(NetError::CreatePollContext)?;
 
         'poll: loop {
@@ -277,6 +283,12 @@ where
                             break 'poll;
                         }
                         self.process_tx();
+                    }
+                    Token::InterruptResample => {
+                        let _ = self.interrupt_resample_evt.read();
+                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
+                            self.interrupt_evt.write(1).unwrap();
+                        }
                     }
                     Token::Kill => break 'poll,
                 }
@@ -426,6 +438,7 @@ where
         &mut self,
         mem: GuestMemory,
         interrupt_evt: EventFd,
+        interrupt_resample_evt: EventFd,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
@@ -452,6 +465,7 @@ where
                                 tap,
                                 interrupt_status: status,
                                 interrupt_evt,
+                                interrupt_resample_evt,
                                 rx_buf: [0u8; MAX_BUFFER_SIZE],
                                 rx_count: 0,
                                 deferred_rx: false,

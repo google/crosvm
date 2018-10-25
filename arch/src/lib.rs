@@ -149,6 +149,7 @@ pub fn generate_pci_root(
         syslog::push_fds(&mut keep_fds);
 
         let irqfd = EventFd::new().map_err(DeviceRegistrationError::EventFdCreate)?;
+        let irq_resample_fd = EventFd::new().map_err(DeviceRegistrationError::EventFdCreate)?;
         let irq_num = resources
             .allocate_irq()
             .ok_or(DeviceRegistrationError::AllocateIrq)? as u32;
@@ -159,10 +160,11 @@ pub fn generate_pci_root(
             3 => PciInterruptPin::IntD,
             _ => panic!(""), // Obviously not possible, but the compiler is not smart enough.
         };
-        vm.register_irqfd(&irqfd, irq_num)
+        vm.register_irqfd_resample(&irqfd, &irq_resample_fd, irq_num)
             .map_err(DeviceRegistrationError::RegisterIrqfd)?;
         keep_fds.push(irqfd.as_raw_fd());
-        device.assign_irq(irqfd, irq_num, pci_irq_pin);
+        keep_fds.push(irq_resample_fd.as_raw_fd());
+        device.assign_irq(irqfd, irq_resample_fd, irq_num, pci_irq_pin);
         pci_irqs.push((dev_idx as u32, pci_irq_pin));
 
         let ranges = device
