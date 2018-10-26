@@ -55,6 +55,11 @@ impl<T: 'static + Copy + Default> VecCache<T> {
     pub fn mark_clean(&mut self) {
         self.dirty = false;
     }
+
+    /// Returns the number of elements in the vector.
+    pub fn len(&self) -> usize {
+        self.vec.len()
+    }
 }
 
 impl<T: 'static + Copy + Default> Cacheable for VecCache<T> {

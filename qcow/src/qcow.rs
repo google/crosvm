@@ -4,6 +4,7 @@
 
 extern crate byteorder;
 extern crate libc;
+#[macro_use]
 extern crate sys_util;
 
 mod qcow_raw_file;
@@ -15,7 +16,7 @@ use refcount::RefCount;
 use vec_cache::{CacheMap, Cacheable, VecCache};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use libc::{EINVAL, ENOTSUP};
+use libc::{EINVAL, ENOSPC, ENOTSUP};
 
 use std::cmp::min;
 use std::fs::File;
@@ -38,6 +39,7 @@ pub enum Error {
     InvalidMagic,
     InvalidOffset(u64),
     InvalidRefcountTableOffset,
+    NoFreeClusters,
     NoRefcountClusters,
     OpeningFile(io::Error),
     ReadingData(io::Error),
@@ -158,6 +160,7 @@ impl QcowHeader {
         let num_clusters: u32 = div_round_up_u64(size, u64::from(cluster_size)) as u32;
         let num_l2_clusters: u32 = div_round_up_u32(num_clusters, l2_size);
         let l1_clusters: u32 = div_round_up_u32(num_l2_clusters, cluster_size);
+        let header_clusters = div_round_up_u32(size_of::<QcowHeader>() as u32, cluster_size);
         QcowHeader {
             magic: QCOW_MAGIC,
             version: 3,
@@ -174,9 +177,11 @@ impl QcowHeader {
                 // Pre-allocate enough clusters for the entire refcount table as it must be
                 // continuous in the file. Allocate enough space to refcount all clusters, including
                 // the refcount clusters.
-                let max_refcount_clusters =
-                    max_refcount_clusters(DEFAULT_REFCOUNT_ORDER, cluster_size, num_clusters)
-                        as u32;
+                let max_refcount_clusters = max_refcount_clusters(
+                    DEFAULT_REFCOUNT_ORDER,
+                    cluster_size,
+                    num_clusters + l1_clusters + num_l2_clusters + header_clusters,
+                ) as u32;
                 // The refcount table needs to store the offset of each refcount cluster.
                 div_round_up_u32(
                     max_refcount_clusters * size_of::<u64>() as u32,
@@ -311,6 +316,7 @@ impl QcowFile {
         if refcount_bits != 16 {
             return Err(Error::UnsupportedRefcountOrder);
         }
+        let refcount_bytes = (refcount_bits + 7) / 8;
 
         // Need at least one refcount cluster
         if header.refcount_table_clusters == 0 {
@@ -327,6 +333,9 @@ impl QcowFile {
         let l2_size = cluster_size / size_of::<u64>() as u64;
         let num_clusters = div_round_up_u64(header.size, u64::from(cluster_size));
         let num_l2_clusters = div_round_up_u64(num_clusters, l2_size);
+        let l1_clusters = div_round_up_u64(num_l2_clusters, u64::from(cluster_size));
+        let header_clusters =
+            div_round_up_u64(size_of::<QcowHeader>() as u64, u64::from(cluster_size));
         let l1_table = VecCache::from_vec(
             raw_file
                 .read_pointer_table(
@@ -336,10 +345,13 @@ impl QcowFile {
                 ).map_err(Error::ReadingHeader)?,
         );
 
-        let num_clusters = div_round_up_u64(header.size, u64::from(cluster_size)) as u32;
-        let refcount_clusters =
-            max_refcount_clusters(header.refcount_order, cluster_size as u32, num_clusters) as u64;
-        let refcount_block_entries = cluster_size * size_of::<u64>() as u64 / refcount_bits;
+        let num_clusters = div_round_up_u64(header.size, u64::from(cluster_size));
+        let refcount_clusters = max_refcount_clusters(
+            header.refcount_order,
+            cluster_size as u32,
+            (num_clusters + l1_clusters + num_l2_clusters + header_clusters) as u32,
+        ) as u64;
+        let refcount_block_entries = cluster_size / refcount_bytes;
         let refcounts = RefCount::new(
             &mut raw_file,
             header.refcount_table_offset,
@@ -579,8 +591,7 @@ impl QcowFile {
             let l2_table = if l2_addr_disk == 0 {
                 // Allocate a new cluster to store the L2 table and update the L1 table to point
                 // to the new table.
-                let new_addr: u64 =
-                    Self::get_new_cluster(&mut self.raw_file, &mut self.avail_clusters)?;
+                let new_addr: u64 = self.get_new_cluster()?;
                 // The cluster refcount starts at one meaning it is used but doesn't need COW.
                 set_refcounts.push((new_addr, 1));
                 self.l1_table[l1_index] = new_addr;
@@ -639,8 +650,7 @@ impl QcowFile {
             // Allocate a new cluster to store the L2 table and update the L1 table to point
             // to the new table. The cluster will be written when the cache is flushed, no
             // need to copy the data now.
-            let new_addr: u64 =
-                Self::get_new_cluster(&mut self.raw_file, &mut self.avail_clusters)?;
+            let new_addr: u64 = self.get_new_cluster()?;
             // The cluster refcount starts at one indicating it is used but doesn't need
             // COW.
             set_refcounts.push((new_addr, 1));
@@ -651,26 +661,31 @@ impl QcowFile {
         Ok(())
     }
 
-    // Allocate a new cluster at the end of the current file, return the address.
-    fn get_new_cluster(
-        raw_file: &mut QcowRawFile,
-        avail_clusters: &mut Vec<u64>,
-    ) -> std::io::Result<u64> {
+    // Allocate a new cluster and return its offset within the raw file.
+    fn get_new_cluster(&mut self) -> std::io::Result<u64> {
         // First use a pre allocated cluster if one is available.
-        if let Some(free_cluster) = avail_clusters.pop() {
-            let cluster_size = raw_file.cluster_size() as usize;
-            raw_file.file_mut().seek(SeekFrom::Start(free_cluster))?;
-            raw_file.file_mut().write_zeroes(cluster_size)?;
+        if let Some(free_cluster) = self.avail_clusters.pop() {
+            let cluster_size = self.raw_file.cluster_size() as usize;
+            self.raw_file
+                .file_mut()
+                .seek(SeekFrom::Start(free_cluster))?;
+            self.raw_file.file_mut().write_zeroes(cluster_size)?;
             return Ok(free_cluster);
         }
 
-        raw_file.add_cluster_end()
+        let max_valid_cluster_offset = self.refcounts.max_valid_cluster_offset();
+        if let Some(new_cluster) = self.raw_file.add_cluster_end(max_valid_cluster_offset)? {
+            return Ok(new_cluster);
+        } else {
+            error!("No free clusters in get_new_cluster()");
+            return Err(std::io::Error::from_raw_os_error(ENOSPC));
+        }
     }
 
     // Allocate and initialize a new data cluster. Returns the offset of the
     // cluster in to the file on success.
     fn append_data_cluster(&mut self) -> std::io::Result<u64> {
-        let new_addr: u64 = Self::get_new_cluster(&mut self.raw_file, &mut self.avail_clusters)?;
+        let new_addr: u64 = self.get_new_cluster()?;
         // The cluster refcount starts at one indicating it is used but doesn't need COW.
         let mut newly_unref = self.set_cluster_refcount(new_addr, 1)?;
         self.unref_clusters.append(&mut newly_unref);
@@ -900,7 +915,7 @@ impl QcowFile {
                 }
                 Err(refcount::Error::NeedNewCluster) => {
                     // Allocate the cluster and call set_cluster_refcount again.
-                    let addr = Self::get_new_cluster(&mut self.raw_file, &mut self.avail_clusters)?;
+                    let addr = self.get_new_cluster()?;
                     added_clusters.push(addr);
                     new_cluster = Some((
                         addr,

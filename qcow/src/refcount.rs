@@ -34,6 +34,7 @@ pub struct RefCount {
     refblock_cache: CacheMap<VecCache<u16>>,
     refcount_block_entries: u64, // number of refcounts in a cluster.
     cluster_size: u64,
+    max_valid_cluster_offset: u64,
 }
 
 impl RefCount {
@@ -53,18 +54,26 @@ impl RefCount {
             refcount_table_entries,
             None,
         )?);
+        let max_valid_cluster_index = (ref_table.len() as u64) * refcount_block_entries - 1;
+        let max_valid_cluster_offset = max_valid_cluster_index * cluster_size;
         Ok(RefCount {
             ref_table,
             refcount_table_offset,
             refblock_cache: CacheMap::new(50),
             refcount_block_entries,
             cluster_size,
+            max_valid_cluster_offset,
         })
     }
 
     /// Returns the number of refcounts per block.
     pub fn refcounts_per_block(&self) -> u64 {
         self.refcount_block_entries
+    }
+
+    /// Returns the maximum valid cluster offset in the raw file for this refcount table.
+    pub fn max_valid_cluster_offset(&self) -> u64 {
+        self.max_valid_cluster_offset
     }
 
     /// Returns `NeedNewCluster` if a new cluster needs to be allocated for refcounts. If an

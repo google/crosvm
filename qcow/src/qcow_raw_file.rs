@@ -99,14 +99,19 @@ impl QcowRawFile {
     }
 
     /// Allocates a new cluster at the end of the current file, return the address.
-    pub fn add_cluster_end(&mut self) -> io::Result<u64> {
+    pub fn add_cluster_end(&mut self, max_valid_cluster_offset: u64) -> io::Result<Option<u64>> {
         // Determine where the new end of the file should be and set_len, which
         // translates to truncate(2).
         let file_end: u64 = self.file.seek(SeekFrom::End(0))?;
         let new_cluster_address: u64 = (file_end + self.cluster_size - 1) & !self.cluster_mask;
+
+        if new_cluster_address > max_valid_cluster_offset {
+            return Ok(None);
+        }
+
         self.file.set_len(new_cluster_address + self.cluster_size)?;
 
-        Ok(new_cluster_address)
+        Ok(Some(new_cluster_address))
     }
 
     /// Returns a reference to the underlying file.
