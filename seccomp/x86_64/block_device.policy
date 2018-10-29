@@ -17,8 +17,7 @@ lseek: 1
 # negation, thus the manually negated mask constant.
 mmap: arg2 in 0xfffffffb
 mprotect: arg2 in 0xfffffffb
-# Allow MADV_DONTDUMP only.
-madvise: arg2 == 0x00000010
+madvise: arg2 == MADV_DONTDUMP || arg2 == MADV_DONTNEED
 mremap: 1
 munmap: 1
 read: 1
@@ -42,3 +41,6 @@ epoll_wait: 1
 timerfd_create: 1
 timerfd_gettime: 1
 timerfd_settime: 1
+# libc free() attempts to open /proc/sys/vm/overcommit_memory
+open: return ENOENT
+openat: return ENOENT
