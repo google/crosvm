@@ -1440,17 +1440,17 @@ impl Worker {
                             as u32;
                         self.in_desc_chains
                             .extend(self.in_queue.iter(&self.mem).filter_map(|d| {
-                            if d.len >= min_in_desc_len && d.is_write_only() {
-                                Some((d.index, d.addr, d.len))
-                            } else {
-                                // Can not use queue.add_used directly because it's being borrowed
-                                // for the iterator chain, so we buffer the descriptor index in
-                                // rejects.
-                                rejects[rejects_len] = d.index;
-                                rejects_len += 1;
-                                None
-                            }
-                        }));
+                                if d.len >= min_in_desc_len && d.is_write_only() {
+                                    Some((d.index, d.addr, d.len))
+                                } else {
+                                    // Can not use queue.add_used directly because it's being borrowed
+                                    // for the iterator chain, so we buffer the descriptor index in
+                                    // rejects.
+                                    rejects[rejects_len] = d.index;
+                                    rejects_len += 1;
+                                    None
+                                }
+                            }));
                         for &reject in &rejects[..rejects_len] {
                             signal_used = true;
                             self.in_queue.add_used(&self.mem, reject, 0);

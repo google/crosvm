@@ -487,14 +487,12 @@ impl Vm {
     /// Crates an in kernel interrupt controller.
     ///
     /// See the documentation on the KVM_CREATE_IRQCHIP ioctl.
-    #[cfg(
-        any(
-            target_arch = "x86",
-            target_arch = "x86_64",
-            target_arch = "arm",
-            target_arch = "aarch64"
-        )
-    )]
+    #[cfg(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "arm",
+        target_arch = "aarch64"
+    ))]
     pub fn create_irq_chip(&self) -> Result<()> {
         // Safe because we know that our file is a VM fd and we verify the return result.
         let ret = unsafe { ioctl(self, KVM_CREATE_IRQCHIP()) };
@@ -588,14 +586,12 @@ impl Vm {
     }
 
     /// Sets the level on the given irq to 1 if `active` is true, and 0 otherwise.
-    #[cfg(
-        any(
-            target_arch = "x86",
-            target_arch = "x86_64",
-            target_arch = "arm",
-            target_arch = "aarch64"
-        )
-    )]
+    #[cfg(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "arm",
+        target_arch = "aarch64"
+    ))]
     pub fn set_irq_line(&self, irq: u32, active: bool) -> Result<()> {
         let mut irq_level = kvm_irq_level::default();
         irq_level.__bindgen_anon_1.irq = irq;
@@ -747,14 +743,12 @@ impl Vm {
     }
 
     /// Registers an event that will, when signalled, trigger the `gsi` irq.
-    #[cfg(
-        any(
-            target_arch = "x86",
-            target_arch = "x86_64",
-            target_arch = "arm",
-            target_arch = "aarch64"
-        )
-    )]
+    #[cfg(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "arm",
+        target_arch = "aarch64"
+    ))]
     pub fn register_irqfd(&self, evt: &EventFd, gsi: u32) -> Result<()> {
         let irqfd = kvm_irqfd {
             fd: evt.as_raw_fd() as u32,
@@ -773,14 +767,12 @@ impl Vm {
 
     /// Registers an event that will, when signalled, trigger the `gsi` irq, and `resample_evt` will
     /// get triggered when the irqchip is resampled.
-    #[cfg(
-        any(
-            target_arch = "x86",
-            target_arch = "x86_64",
-            target_arch = "arm",
-            target_arch = "aarch64"
-        )
-    )]
+    #[cfg(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "arm",
+        target_arch = "aarch64"
+    ))]
     pub fn register_irqfd_resample(
         &self,
         evt: &EventFd,
@@ -809,14 +801,12 @@ impl Vm {
     ///
     /// The `evt` and `gsi` pair must be the same as the ones passed into
     /// `register_irqfd`/`register_irqfd_resample`.
-    #[cfg(
-        any(
-            target_arch = "x86",
-            target_arch = "x86_64",
-            target_arch = "arm",
-            target_arch = "aarch64"
-        )
-    )]
+    #[cfg(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "arm",
+        target_arch = "aarch64"
+    ))]
     pub fn unregister_irqfd(&self, evt: &EventFd, gsi: u32) -> Result<()> {
         let irqfd = kvm_irqfd {
             fd: evt.as_raw_fd() as u32,
