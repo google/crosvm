@@ -121,7 +121,7 @@ impl Default for Config {
 // Wait for all children to exit. Return true if they have all exited, false
 // otherwise.
 fn wait_all_children() -> bool {
-    const CHILD_WAIT_MAX_ITER: isize = 10;
+    const CHILD_WAIT_MAX_ITER: isize = 100;
     const CHILD_WAIT_MS: u64 = 10;
     for _ in 0..CHILD_WAIT_MAX_ITER {
         loop {
