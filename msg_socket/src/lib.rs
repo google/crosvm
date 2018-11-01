@@ -6,14 +6,16 @@
 #[macro_use]
 extern crate msg_on_socket_derive;
 extern crate data_model;
+#[macro_use]
 extern crate sys_util;
 
 mod msg_on_socket;
 
+use std::io::Result;
 use std::marker::PhantomData;
 use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixDatagram;
-use sys_util::{ScmSocket, UnlinkUnixDatagram};
+use sys_util::{Error as SysError, ScmSocket, UnlinkUnixDatagram};
 
 pub use msg_on_socket::*;
 pub use msg_on_socket_derive::*;
@@ -143,8 +145,13 @@ pub trait MsgSender<M: MsgOnSocket>: AsRef<UnixDatagram> {
 
         let fd_size = msg.write_to_buffer(&mut msg_buffer, &mut fd_buffer)?;
         let sock: &UnixDatagram = self.as_ref();
-        sock.send_with_fds(&msg_buffer[..], &fd_buffer[0..fd_size])
-            .map_err(|e| MsgError::Send(e))?;
+        if fd_size == 0 {
+            handle_eintr!(sock.send(&msg_buffer))
+                .map_err(|e| MsgError::Send(SysError::new(e.raw_os_error().unwrap_or(0))))?;
+        } else {
+            sock.send_with_fds(&msg_buffer[..], &fd_buffer[0..fd_size])
+                .map_err(|e| MsgError::Send(e))?;
+        }
         Ok(())
     }
 }
@@ -158,9 +165,18 @@ pub trait MsgReceiver<M: MsgOnSocket>: AsRef<UnixDatagram> {
         let mut fd_buffer: Vec<RawFd> = vec![0; fd_size];
 
         let sock: &UnixDatagram = self.as_ref();
-        let (recv_msg_size, recv_fd_size) = sock
-            .recv_with_fds(&mut msg_buffer, &mut fd_buffer)
-            .map_err(|e| MsgError::Recv(e))?;
+
+        let (recv_msg_size, recv_fd_size) = {
+            if fd_size == 0 {
+                let size = sock
+                    .recv(&mut msg_buffer)
+                    .map_err(|e| MsgError::Recv(SysError::new(e.raw_os_error().unwrap_or(0))))?;
+                (size, 0)
+            } else {
+                sock.recv_with_fds(&mut msg_buffer, &mut fd_buffer)
+                    .map_err(|e| MsgError::Recv(e))?
+            }
+        };
         if msg_size != recv_msg_size {
             return Err(MsgError::BadRecvSize(msg_size));
         }
