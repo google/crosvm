@@ -135,7 +135,6 @@ dependencies = [
  "io_jail 0.1.0",
  "kvm 0.1.0",
  "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
- "msg_socket 0.1.0",
  "net_sys 0.1.0",
  "net_util 0.1.0",
  "p9 0.1.0",

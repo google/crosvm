@@ -15,7 +15,6 @@ gpu_display = { path = "../gpu_display", optional = true }
 gpu_renderer = { path = "../gpu_renderer", optional = true }
 kvm = { path = "../kvm" }
 libc = "*"
-msg_socket = { path = "../msg_socket" }
 io_jail = { path = "../io_jail" }
 net_sys = { path = "../net_sys" }
 net_util = { path = "../net_util" }
