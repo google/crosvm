@@ -180,3 +180,6 @@ pub use crate::endian::*;
 
 pub mod volatile_memory;
 pub use crate::volatile_memory::*;
+
+mod flexible_array;
+pub use flexible_array::vec_with_array_field;

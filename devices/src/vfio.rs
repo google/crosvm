@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use data_model::vec_with_array_field;
 use std::ffi::CString;
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -14,8 +15,8 @@ use std::u32;
 
 use kvm::Vm;
 use sys_util::{
-    ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
-    vec_with_array_field, warn, Error, EventFd, GuestMemory,
+    ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn, Error,
+    EventFd, GuestMemory,
 };
 
 use vfio_sys::*;

@@ -7,6 +7,7 @@ use crate::{
     ControlRequestDataPhaseTransferDirection, ControlRequestRecipient, ControlRequestType,
     DeviceDescriptor, DeviceDescriptorTree, Error, Result, StandardControlRequest,
 };
+use data_model::vec_with_array_field;
 use libc::{EAGAIN, ENODEV, ENOENT};
 use std::convert::TryInto;
 use std::fs::File;
@@ -14,7 +15,7 @@ use std::io::{Seek, SeekFrom};
 use std::mem::size_of_val;
 use std::os::raw::{c_int, c_uint, c_ulong, c_void};
 use std::sync::Arc;
-use sys_util::{handle_eintr_errno, vec_with_array_field};
+use sys_util::handle_eintr_errno;
 
 /// Device represents a USB device.
 pub struct Device {

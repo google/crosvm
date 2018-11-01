@@ -5,6 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
+data_model = { path = "../data_model" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 msg_socket = { path = "../msg_socket" }

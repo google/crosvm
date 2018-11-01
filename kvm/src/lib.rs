@@ -16,6 +16,8 @@ use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr::copy_nonoverlapping;
 
+use data_model::vec_with_array_field;
+
 use libc::sigset_t;
 use libc::{open, EBUSY, EINVAL, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
 
@@ -25,8 +27,8 @@ use msg_socket::MsgOnSocket;
 #[allow(unused_imports)]
 use sys_util::{
     block_signal, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
-    ioctl_with_val, pagesize, signal, unblock_signal, vec_with_array_field, warn, Error, EventFd,
-    GuestAddress, GuestMemory, MemoryMapping, MemoryMappingArena, Result, SIGRTMIN,
+    ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, EventFd, GuestAddress,
+    GuestMemory, MemoryMapping, MemoryMappingArena, Result, SIGRTMIN,
 };
 
 pub use crate::cap::*;
