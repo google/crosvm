@@ -21,6 +21,9 @@ use sync::Mutex;
 use base::{AsRawDescriptor, RawDescriptor};
 use data_model::vec_with_array_field;
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use data_model::FlexibleArrayWrapper;
+
 use libc::sigset_t;
 use libc::{open, EBUSY, EINVAL, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
 
@@ -1648,56 +1651,7 @@ impl Drop for RunnableVcpu {
 /// Wrapper for kvm_cpuid2 which has a zero length array at the end.
 /// Hides the zero length array behind a bounds check.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub struct CpuId {
-    kvm_cpuid: Vec<kvm_cpuid2>,
-    allocated_len: usize, // Number of kvm_cpuid_entry2 structs at the end of kvm_cpuid2.
-}
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-impl CpuId {
-    pub fn new(array_len: usize) -> CpuId {
-        let mut kvm_cpuid = vec_with_array_field::<kvm_cpuid2, kvm_cpuid_entry2>(array_len);
-        kvm_cpuid[0].nent = array_len as u32;
-
-        CpuId {
-            kvm_cpuid,
-            allocated_len: array_len,
-        }
-    }
-
-    /// Get the entries slice so they can be modified before passing to the VCPU.
-    pub fn mut_entries_slice(&mut self) -> &mut [kvm_cpuid_entry2] {
-        // Mapping the unsized array to a slice is unsafe because the length isn't known.  Using
-        // the length we originally allocated with eliminates the possibility of overflow.
-        if self.kvm_cpuid[0].nent as usize > self.allocated_len {
-            self.kvm_cpuid[0].nent = self.allocated_len as u32;
-        }
-        let nent = self.kvm_cpuid[0].nent as usize;
-        unsafe { self.kvm_cpuid[0].entries.as_mut_slice(nent) }
-    }
-
-    /// Get the entries slice, for inspecting. To modify, use mut_entries_slice instead.
-    pub fn entries_slice(&self) -> &[kvm_cpuid_entry2] {
-        // Mapping the unsized array to a slice is unsafe because the length isn't known.  Using
-        // the length we originally allocated with eliminates the possibility of overflow.
-        let slice_size = if self.kvm_cpuid[0].nent as usize > self.allocated_len {
-            self.allocated_len
-        } else {
-            self.kvm_cpuid[0].nent as usize
-        };
-        unsafe { self.kvm_cpuid[0].entries.as_slice(slice_size) }
-    }
-
-    /// Get a  pointer so it can be passed to the kernel.  Using this pointer is unsafe.
-    pub fn as_ptr(&self) -> *const kvm_cpuid2 {
-        &self.kvm_cpuid[0]
-    }
-
-    /// Get a mutable pointer so it can be passed to the kernel.  Using this pointer is unsafe.
-    pub fn as_mut_ptr(&mut self) -> *mut kvm_cpuid2 {
-        &mut self.kvm_cpuid[0]
-    }
-}
+pub type CpuId = FlexibleArrayWrapper<kvm_cpuid2, kvm_cpuid_entry2>;
 
 // Represents a temporarily blocked signal. It will unblock the signal when dropped.
 struct BlockedSignal {

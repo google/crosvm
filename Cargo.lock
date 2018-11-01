@@ -444,6 +444,7 @@ name = "kvm_sys"
 version = "0.1.0"
 dependencies = [
  "base 0.1.0",
+ "data_model 0.1.0",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
