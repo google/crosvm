@@ -16,6 +16,7 @@ plugin = ["plugin_proto", "crosvm_plugin", "protobuf"]
 default-no-sandbox = []
 wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
 gpu = ["devices/gpu"]
+usb-emulation = ["usb_util"]
 
 [dependencies]
 arch = { path = "arch" }
@@ -27,6 +28,7 @@ kvm = { path = "kvm" }
 kvm_sys = { path = "kvm_sys" }
 msg_socket = { path = "msg_socket" }
 sys_util = { path = "sys_util" }
+usb_util = { path = "usb_util", optional = true }
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
 libc = "=0.2.44"

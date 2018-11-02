@@ -101,6 +101,7 @@ dependencies = [
  "rand 0.3.20 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
  "sys_util 0.1.0",
+ "usb_util 0.1.0",
  "vhost 0.1.0",
  "vm_control 0.1.0",
  "x86_64 0.1.0",
@@ -287,6 +288,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "pkg-config"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "plugin_proto"
 version = "0.16.0"
 dependencies = [
@@ -416,6 +422,14 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "usb_util"
+version = "0.1.0"
+dependencies = [
+ "data_model 0.1.0",
+ "pkg-config 0.3.11 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "vhost"
 version = "0.1.0"
 dependencies = [
@@ -483,6 +497,7 @@ dependencies = [
 "checksum getopts 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)" = "b900c08c1939860ce8b54dc6a89e26e00c04c380fd0e09796799bd7f12861e05"
 "checksum libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)" = "10923947f84a519a45c8fefb7dd1b3e8c08747993381adee176d7a82b4195311"
 "checksum log 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "89f010e843f2b1a31dbd316b3b8d443758bc634bed37aabade59c686d644e0a2"
+"checksum pkg-config 0.3.11 (registry+https://github.com/rust-lang/crates.io-index)" = "110d5ee3593dbb73f56294327fe5668bcc997897097cbc76b51e7aed3f52452f"
 "checksum proc-macro2 0.4.24 (registry+https://github.com/rust-lang/crates.io-index)" = "77619697826f31a02ae974457af0b29b723e5619e113e9397b8b82c6bd253f09"
 "checksum protobuf 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bec26e67194b7d991908145fdf21b7cae8b08423d96dcb9e860cd31f854b9506"
 "checksum protoc 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "5379c34ea2f9c69b99e6f25f6d0e6619876195ae7a3dcaf69f66bdb6c2e4dceb"

@@ -1,0 +1,11 @@
+[package]
+name = "usb_util"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+build = "build.rs"
+
+[dependencies]
+data_model = { path = "../data_model" }
+
+[build-dependencies]
+pkg-config = "=0.3.11"
