@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use super::interface_descriptor::InterfaceDescriptor;
 use bindings;
 use bindings::libusb_config_descriptor;
+use std::ops::Deref;
 
 /// ConfigDescriptor wraps libusb_config_descriptor.
-/// TODO(jkwang) Add utility functions to make ConfigDescriptor actually useful.
 pub struct ConfigDescriptor {
     descriptor: *mut libusb_config_descriptor,
 }
@@ -28,5 +29,38 @@ impl ConfigDescriptor {
     pub unsafe fn new(descriptor: *mut libusb_config_descriptor) -> ConfigDescriptor {
         assert!(!descriptor.is_null());
         ConfigDescriptor { descriptor }
+    }
+
+    /// Get interface by number and alt setting.
+    pub fn get_interface_descriptor(
+        &self,
+        interface_num: u8,
+        alt_setting: i32,
+    ) -> Option<InterfaceDescriptor> {
+        let config_descriptor = self.deref();
+        if interface_num >= config_descriptor.bNumInterfaces {
+            return None;
+        }
+        // Safe because interface num is checked.
+        let interface = unsafe { &*(config_descriptor.interface.offset(interface_num as isize)) };
+
+        if alt_setting >= interface.num_altsetting {
+            return None;
+        }
+        // Safe because setting num is checked.
+        unsafe {
+            Some(InterfaceDescriptor::new(
+                &*(interface.altsetting.offset(alt_setting as isize)),
+            ))
+        }
+    }
+}
+
+impl Deref for ConfigDescriptor {
+    type Target = libusb_config_descriptor;
+
+    fn deref(&self) -> &libusb_config_descriptor {
+        // Safe because 'self.descriptor' is valid.
+        unsafe { &*(self.descriptor) }
     }
 }
