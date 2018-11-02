@@ -18,6 +18,8 @@ extern crate sys_util;
 extern crate vhost;
 extern crate virtio_sys;
 extern crate vm_control;
+#[macro_use]
+extern crate msg_socket;
 
 mod bus;
 mod cmos;
