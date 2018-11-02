@@ -13,7 +13,7 @@ mod msg_on_socket;
 
 use std::io::Result;
 use std::marker::PhantomData;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use sys_util::{Error as SysError, ScmSocket, UnlinkUnixDatagram};
 
@@ -117,9 +117,21 @@ impl<I: MsgOnSocket, O: MsgOnSocket> AsRef<UnixDatagram> for MsgSocket<I, O> {
     }
 }
 
+impl<I: MsgOnSocket, O: MsgOnSocket> AsRawFd for MsgSocket<I, O> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.sock.as_raw_fd()
+    }
+}
+
 impl<I: MsgOnSocket, O: MsgOnSocket> AsRef<UnixDatagram> for UnlinkMsgSocket<I, O> {
     fn as_ref(&self) -> &UnixDatagram {
         self.sock.as_ref()
+    }
+}
+
+impl<I: MsgOnSocket, O: MsgOnSocket> AsRawFd for UnlinkMsgSocket<I, O> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.as_ref().as_raw_fd()
     }
 }
 
@@ -129,9 +141,21 @@ impl<M: MsgOnSocket> AsRef<UnixDatagram> for Sender<M> {
     }
 }
 
+impl<M: MsgOnSocket> AsRawFd for Sender<M> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.sock.as_raw_fd()
+    }
+}
+
 impl<M: MsgOnSocket> AsRef<UnixDatagram> for Receiver<M> {
     fn as_ref(&self) -> &UnixDatagram {
         &self.sock
+    }
+}
+
+impl<M: MsgOnSocket> AsRawFd for Receiver<M> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.sock.as_raw_fd()
     }
 }
 
