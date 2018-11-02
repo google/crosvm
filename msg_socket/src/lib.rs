@@ -23,13 +23,8 @@ pub use msg_on_socket_derive::*;
 /// Create a pair of socket. Request is send in one direction while response is in the other
 /// direction.
 pub fn pair<Request: MsgOnSocket, Response: MsgOnSocket>(
-) -> Option<(MsgSocket<Request, Response>, MsgSocket<Response, Request>)> {
-    let (sock1, sock2) = match UnixDatagram::pair() {
-        Ok((sock1, sock2)) => (sock1, sock2),
-        _ => {
-            return None;
-        }
-    };
+) -> Result<(MsgSocket<Request, Response>, MsgSocket<Response, Request>)> {
+    let (sock1, sock2) = UnixDatagram::pair()?;
     let requester = MsgSocket {
         sock: sock1,
         _i: PhantomData,
@@ -40,7 +35,7 @@ pub fn pair<Request: MsgOnSocket, Response: MsgOnSocket>(
         _i: PhantomData,
         _o: PhantomData,
     };
-    Some((requester, responder))
+    Ok((requester, responder))
 }
 
 /// Bidirection sock that support both send and recv.
