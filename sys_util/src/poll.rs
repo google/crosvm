@@ -23,6 +23,17 @@ use {errno_result, Result};
 
 const POLL_CONTEXT_MAX_EVENTS: usize = 16;
 
+/// EpollEvents wraps raw epoll_events, it should only be used with EpollContext.
+pub struct EpollEvents(RefCell<[epoll_event; POLL_CONTEXT_MAX_EVENTS]>);
+
+impl EpollEvents {
+    pub fn new() -> EpollEvents {
+        EpollEvents(RefCell::new(
+            [epoll_event { events: 0, u64: 0 }; POLL_CONTEXT_MAX_EVENTS],
+        ))
+    }
+}
+
 /// Trait for a token that can be associated with an `fd` in a `PollContext`.
 ///
 /// Simple enums that have no or primitive variant data data can use the `#[derive(PollToken)]`
@@ -246,60 +257,26 @@ impl WatchingEvents {
     }
 }
 
-/// Used to poll multiple objects that have file descriptors.
-///
-/// # Example
-///
-/// ```
-/// # use sys_util::{Result, EventFd, PollContext, PollEvents};
-/// # fn test() -> Result<()> {
-///     let evt1 = EventFd::new()?;
-///     let evt2 = EventFd::new()?;
-///     evt2.write(1)?;
-///
-///     let ctx: PollContext<u32> = PollContext::new()?;
-///     ctx.add(&evt1, 1)?;
-///     ctx.add(&evt2, 2)?;
-///
-///     let pollevents: PollEvents<u32> = ctx.wait()?;
-///     let tokens: Vec<u32> = pollevents.iter_readable().map(|e| e.token()).collect();
-///     assert_eq!(&tokens[..], &[2]);
-/// #   Ok(())
-/// # }
-/// ```
-pub struct PollContext<T> {
+/// EpollContext wraps linux epoll. It provides similar interface to PollContext.
+/// It is thread safe while PollContext is not. It requires user to pass in a reference of
+/// EpollEvents while PollContext does not. Always use PollContext if you don't need to access the
+/// same epoll from different threads.
+pub struct EpollContext<T> {
     epoll_ctx: File,
-
-    // We use a RefCell here so that the `wait` method only requires an immutable self reference
-    // while returning the events (encapsulated by PollEvents). Without the RefCell, `wait` would
-    // hold a mutable reference that lives as long as its returned reference (i.e. the PollEvents),
-    // even though that reference is immutable. This is terribly inconvenient for the caller because
-    // the borrow checking would prevent them from using `delete` and `add` while the events are in
-    // scope.
-    events: RefCell<[epoll_event; POLL_CONTEXT_MAX_EVENTS]>,
-
-    // Hangup busy loop detection variables. See `check_for_hungup_busy_loop`.
-    hangups: Cell<usize>,
-    max_hangups: Cell<usize>,
-
     // Needed to satisfy usage of T
     tokens: PhantomData<[T]>,
 }
 
-impl<T: PollToken> PollContext<T> {
-    /// Creates a new `PollContext`.
-    pub fn new() -> Result<PollContext<T>> {
+impl<T: PollToken> EpollContext<T> {
+    /// Creates a new `EpollContext`.
+    pub fn new() -> Result<EpollContext<T>> {
         // Safe because we check the return value.
         let epoll_fd = unsafe { epoll_create1(EPOLL_CLOEXEC) };
         if epoll_fd < 0 {
             return errno_result();
         }
-        Ok(PollContext {
+        Ok(EpollContext {
             epoll_ctx: unsafe { File::from_raw_fd(epoll_fd) },
-            events: RefCell::new([epoll_event { events: 0, u64: 0 }; POLL_CONTEXT_MAX_EVENTS]),
-            hangups: Cell::new(0),
-            max_hangups: Cell::new(0),
-            // Safe because the `epoll_fd` is valid and we hold unique ownership.
             tokens: PhantomData,
         })
     }
@@ -338,10 +315,6 @@ impl<T: PollToken> PollContext<T> {
         if ret < 0 {
             return errno_result();
         };
-
-        // Used to detect busy loop waits caused by unhandled hangup events.
-        self.hangups.set(0);
-        self.max_hangups.set(self.max_hangups.get() + 1);
         Ok(())
     }
 
@@ -388,8 +361,167 @@ impl<T: PollToken> PollContext<T> {
         if ret < 0 {
             return errno_result();
         };
+        Ok(())
+    }
 
-        // Used to detect busy loop waits caused by unhandled hangup events.
+    /// Waits for any events to occur in FDs that were previously added to this context.
+    ///
+    /// The events are level-triggered, meaning that if any events are unhandled (i.e. not reading
+    /// for readable events and not closing for hungup events), subsequent calls to `wait` will
+    /// return immediately. The consequence of not handling an event perpetually while calling
+    /// `wait` is that the callers loop will degenerated to busy loop polling, pinning a CPU to
+    /// ~100% usage.
+    pub fn wait<'a>(&self, events: &'a EpollEvents) -> Result<PollEvents<'a, T>> {
+        self.wait_timeout(events, Duration::new(i64::MAX as u64, 0))
+    }
+
+    /// Like `wait` except will only block for a maximum of the given `timeout`.
+    ///
+    /// This may return earlier than `timeout` with zero events if the duration indicated exceeds
+    /// system limits.
+    pub fn wait_timeout<'a>(
+        &self,
+        events: &'a EpollEvents,
+        timeout: Duration,
+    ) -> Result<PollEvents<'a, T>> {
+        let timeout_millis = if timeout.as_secs() as i64 == i64::max_value() {
+            // We make the convenient assumption that 2^63 seconds is an effectively unbounded time
+            // frame. This is meant to mesh with `wait` calling us with no timeout.
+            -1
+        } else {
+            // In cases where we the number of milliseconds would overflow an i32, we substitute the
+            // maximum timeout which is ~24.8 days.
+            let millis = timeout
+                .as_secs()
+                .checked_mul(1_000)
+                .and_then(|ms| ms.checked_add(timeout.subsec_nanos() as u64 / 1_000_000))
+                .unwrap_or(i32::max_value() as u64);
+            min(i32::max_value() as u64, millis) as i32
+        };
+        let ret = {
+            let mut epoll_events = events.0.borrow_mut();
+            let max_events = epoll_events.len() as c_int;
+            // Safe because we give an epoll context and a properly sized epoll_events array
+            // pointer, which we trust the kernel to fill in properly.
+            unsafe {
+                handle_eintr_errno!(epoll_wait(
+                    self.epoll_ctx.as_raw_fd(),
+                    &mut epoll_events[0],
+                    max_events,
+                    timeout_millis
+                ))
+            }
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        let epoll_events = events.0.borrow();
+        let events = PollEvents {
+            count: ret as usize,
+            events: epoll_events,
+            tokens: PhantomData,
+        };
+        Ok(events)
+    }
+}
+
+impl<T: PollToken> AsRawFd for EpollContext<T> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.epoll_ctx.as_raw_fd()
+    }
+}
+
+impl<T: PollToken> IntoRawFd for EpollContext<T> {
+    fn into_raw_fd(self) -> RawFd {
+        self.epoll_ctx.into_raw_fd()
+    }
+}
+
+/// Used to poll multiple objects that have file descriptors.
+///
+/// # Example
+///
+/// ```
+/// # use sys_util::{Result, EventFd, PollContext, PollEvents};
+/// # fn test() -> Result<()> {
+///     let evt1 = EventFd::new()?;
+///     let evt2 = EventFd::new()?;
+///     evt2.write(1)?;
+///
+///     let ctx: PollContext<u32> = PollContext::new()?;
+///     ctx.add(&evt1, 1)?;
+///     ctx.add(&evt2, 2)?;
+///
+///     let pollevents: PollEvents<u32> = ctx.wait()?;
+///     let tokens: Vec<u32> = pollevents.iter_readable().map(|e| e.token()).collect();
+///     assert_eq!(&tokens[..], &[2]);
+/// #   Ok(())
+/// # }
+/// ```
+pub struct PollContext<T> {
+    epoll_ctx: EpollContext<T>,
+
+    // We use a RefCell here so that the `wait` method only requires an immutable self reference
+    // while returning the events (encapsulated by PollEvents). Without the RefCell, `wait` would
+    // hold a mutable reference that lives as long as its returned reference (i.e. the PollEvents),
+    // even though that reference is immutable. This is terribly inconvenient for the caller because
+    // the borrow checking would prevent them from using `delete` and `add` while the events are in
+    // scope.
+    events: EpollEvents,
+
+    // Hangup busy loop detection variables. See `check_for_hungup_busy_loop`.
+    hangups: Cell<usize>,
+    max_hangups: Cell<usize>,
+}
+
+impl<T: PollToken> PollContext<T> {
+    /// Creates a new `PollContext`.
+    pub fn new() -> Result<PollContext<T>> {
+        Ok(PollContext {
+            epoll_ctx: EpollContext::new()?,
+            events: EpollEvents::new(),
+            hangups: Cell::new(0),
+            max_hangups: Cell::new(0),
+        })
+    }
+
+    /// Adds the given `fd` to this context and associates the given `token` with the `fd`'s
+    /// readable events.
+    ///
+    /// A `fd` can only be added once and does not need to be kept open. If the `fd` is dropped and
+    /// there were no duplicated file descriptors (i.e. adding the same descriptor with a different
+    /// FD number) added to this context, events will not be reported by `wait` anymore.
+    pub fn add(&self, fd: &AsRawFd, token: T) -> Result<()> {
+        self.add_fd_with_events(fd, WatchingEvents::empty().set_read(), token)
+    }
+
+    /// Adds the given `fd` to this context, watching for the specified events and associates the
+    /// given 'token' with those events.
+    ///
+    /// A `fd` can only be added once and does not need to be kept open. If the `fd` is dropped and
+    /// there were no duplicated file descriptors (i.e. adding the same descriptor with a different
+    /// FD number) added to this context, events will not be reported by `wait` anymore.
+    pub fn add_fd_with_events(&self, fd: &AsRawFd, events: WatchingEvents, token: T) -> Result<()> {
+        self.epoll_ctx.add_fd_with_events(fd, events, token)?;
+        self.hangups.set(0);
+        self.max_hangups.set(self.max_hangups.get() + 1);
+        Ok(())
+    }
+
+    /// If `fd` was previously added to this context, the watched events will be replaced with
+    /// `events` and the token associated with it will be replaced with the given `token`.
+    pub fn modify(&self, fd: &AsRawFd, events: WatchingEvents, token: T) -> Result<()> {
+        self.epoll_ctx.modify(fd, events, token)
+    }
+
+    /// Deletes the given `fd` from this context.
+    ///
+    /// If an `fd`'s token shows up in the list of hangup events, it should be removed using this
+    /// method or by closing/dropping (if and only if the fd was never dup()'d/fork()'d) the `fd`.
+    /// Failure to do so will cause the `wait` method to always return immediately, causing ~100%
+    /// CPU load.
+    pub fn delete(&self, fd: &AsRawFd) -> Result<()> {
+        self.epoll_ctx.delete(fd)?;
         self.hangups.set(0);
         self.max_hangups.set(self.max_hangups.get() - 1);
         Ok(())
@@ -453,43 +585,7 @@ impl<T: PollToken> PollContext<T> {
     /// This may return earlier than `timeout` with zero events if the duration indicated exceeds
     /// system limits.
     pub fn wait_timeout(&self, timeout: Duration) -> Result<PollEvents<T>> {
-        let timeout_millis = if timeout.as_secs() as i64 == i64::max_value() {
-            // We make the convenient assumption that 2^63 seconds is an effectively unbounded time
-            // frame. This is meant to mesh with `wait` calling us with no timeout.
-            -1
-        } else {
-            // In cases where we the number of milliseconds would overflow an i32, we substitute the
-            // maximum timeout which is ~24.8 days.
-            let millis = timeout
-                .as_secs()
-                .checked_mul(1_000)
-                .and_then(|ms| ms.checked_add(timeout.subsec_nanos() as u64 / 1_000_000))
-                .unwrap_or(i32::max_value() as u64);
-            min(i32::max_value() as u64, millis) as i32
-        };
-        let ret = {
-            let mut epoll_events = self.events.borrow_mut();
-            let max_events = epoll_events.len() as c_int;
-            // Safe because we give an epoll context and a properly sized epoll_events array
-            // pointer, which we trust the kernel to fill in properly.
-            unsafe {
-                handle_eintr_errno!(epoll_wait(
-                    self.epoll_ctx.as_raw_fd(),
-                    &mut epoll_events[0],
-                    max_events,
-                    timeout_millis
-                ))
-            }
-        };
-        if ret < 0 {
-            return errno_result();
-        }
-        let epoll_events = self.events.borrow();
-        let events = PollEvents {
-            count: ret as usize,
-            events: epoll_events,
-            tokens: PhantomData,
-        };
+        let events = self.epoll_ctx.wait_timeout(&self.events, timeout)?;
         let hangups = events.iter_hungup().count();
         self.check_for_hungup_busy_loop(hangups);
         Ok(events)
