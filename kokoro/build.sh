@@ -19,6 +19,7 @@ main() {
     docker load -i "${base_image_tarball}"
   fi
   docker run \
+    --rm \
     --privileged \
     -e TEST_RUNNER_FLAGS='--format terse' \
     -v /dev/log:/dev/log \
