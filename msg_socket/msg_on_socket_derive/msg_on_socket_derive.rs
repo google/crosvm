@@ -504,8 +504,8 @@ fn write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> Tokens {
 
 #[cfg(test)]
 mod tests {
-    use syn::DeriveInput;
     use socket_msg_impl;
+    use syn::DeriveInput;
 
     #[test]
     fn end_to_end_struct_test() {
