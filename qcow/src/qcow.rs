@@ -388,7 +388,7 @@ impl QcowFile {
 
         let l2_entries = cluster_size / size_of::<u64>() as u64;
 
-        let qcow = QcowFile {
+        let mut qcow = QcowFile {
             raw_file,
             header,
             l1_table,
@@ -409,6 +409,8 @@ impl QcowFile {
             .refcount_table_offset
             .checked_add(u64::from(qcow.header.refcount_table_clusters) * cluster_size)
             .ok_or(Error::InvalidRefcountTableOffset)?;
+
+        qcow.find_avail_clusters()?;
 
         Ok(qcow)
     }
@@ -515,6 +517,29 @@ impl QcowFile {
             cluster_addr += cluster_size;
         }
         Ok(None)
+    }
+
+    fn find_avail_clusters(&mut self) -> Result<()> {
+        let cluster_size = self.raw_file.cluster_size();
+
+        let file_size = self
+            .raw_file
+            .file_mut()
+            .metadata()
+            .map_err(Error::GettingFileSize)?
+            .len();
+
+        for i in (0..file_size).step_by(cluster_size as usize) {
+            let refcount = self
+                .refcounts
+                .get_cluster_refcount(&mut self.raw_file, i)
+                .map_err(Error::GettingRefcount)?;
+            if refcount == 0 {
+                self.avail_clusters.push(i);
+            }
+        }
+
+        Ok(())
     }
 
     /// Rebuild the reference count tables.
