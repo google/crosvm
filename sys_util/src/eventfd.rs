@@ -14,6 +14,7 @@ use {errno_result, Result};
 ///
 /// An eventfd is useful because it is sendable across processes and can be used for signaling in
 /// and out of the KVM API. They can also be polled like any other file descriptor.
+#[derive(Debug)]
 pub struct EventFd {
     eventfd: File,
 }
