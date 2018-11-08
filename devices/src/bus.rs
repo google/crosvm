@@ -30,6 +30,8 @@ pub trait BusDevice: Send {
     fn config_register_read(&self, reg_idx: usize) -> u32 {
         0
     }
+    /// Invoked when the device is sandboxed.
+    fn on_sandboxed(&mut self) {}
 }
 
 #[derive(Debug)]

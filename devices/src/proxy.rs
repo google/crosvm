@@ -143,6 +143,7 @@ impl ProxyDevice {
         let pid = unsafe {
             match jail.fork(Some(&keep_fds)).map_err(Error::ForkingJail)? {
                 0 => {
+                    device.on_sandboxed();
                     child_proc(child_sock, &mut device);
                     // ! Never returns
                     process::exit(0);
