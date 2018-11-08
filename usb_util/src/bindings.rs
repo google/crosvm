@@ -4185,6 +4185,13 @@ extern "C" {
     ) -> ::std::os::raw::c_int;
 }
 extern "C" {
+    pub fn libusb_open_fd(
+        dev: *mut libusb_device,
+        fd: ::std::os::raw::c_int,
+        handle: *mut *mut libusb_device_handle,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
     pub fn libusb_close(dev_handle: *mut libusb_device_handle);
 }
 extern "C" {
