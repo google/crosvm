@@ -57,6 +57,7 @@ use data_model::VolatileMemoryError;
 use data_model::*;
 
 use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
+#[cfg(feature = "wl-dmabuf")]
 use resources::GpuMemoryDesc;
 use sys_util::{
     pipe, round_up_to_page_size, Error, EventFd, FileFlags, GuestAddress, GuestMemory,
@@ -403,6 +404,7 @@ fn encode_resp(desc_mem: VolatileSlice, resp: WlResp) -> WlResult<u32> {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 enum WlError {
     NewAlloc(Error),

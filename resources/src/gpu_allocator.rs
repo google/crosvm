@@ -12,6 +12,7 @@ use gpu_buffer;
 use msg_socket::MsgOnSocket;
 use sys_util;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum GpuAllocatorError {
     OpenGpuBufferDevice,
