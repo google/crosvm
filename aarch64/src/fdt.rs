@@ -409,7 +409,7 @@ fn create_pci_nodes(
         // CONTROLLER_DATA(3)
         interrupts.push(GIC_FDT_IRQ_TYPE_SPI);
         interrupts.push(AARCH64_IRQ_BASE + i as u32);
-        interrupts.push(IRQ_TYPE_EDGE_RISING);
+        interrupts.push(IRQ_TYPE_LEVEL_HIGH);
 
         // PCI_DEVICE(3)
         masks.push(0xf800); // bits 11..15 (device)
