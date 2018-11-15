@@ -75,13 +75,13 @@ fn impl_for_named_struct(name: Ident, ds: DataStruct) -> TokenStream {
 
     let read_buffer = define_read_buffer_for_struct(&name, &fields);
     let write_buffer = define_write_buffer_for_struct(&name, &fields);
-    quote!(
+    quote! {
         impl _msg_socket::MsgOnSocket for #name {
             #buffer_sizes_impls
             #read_buffer
             #write_buffer
         }
-        )
+    }
 }
 
 fn get_types_from_fields_vec(v: &[(Ident, syn::Type)]) -> Vec<syn::Type> {
@@ -132,11 +132,13 @@ fn define_read_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) -
         let read_field = read_from_buffer_and_move_offset(&f.0, &f.1);
         read_fields.push(read_field);
         let name = f.0.clone();
-        init_fields.push(quote!( #name ));
+        init_fields.push(quote!(#name));
     }
-    quote!{
-        unsafe fn read_from_buffer(buffer: &[u8], fds: &[std::os::unix::io::RawFd])
-            -> _msg_socket::MsgResult<(Self, usize)> {
+    quote! {
+        unsafe fn read_from_buffer(
+            buffer: &[u8],
+            fds: &[std::os::unix::io::RawFd],
+        ) -> _msg_socket::MsgResult<(Self, usize)> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
             #(#read_fields)*
@@ -156,9 +158,12 @@ fn define_write_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) 
         let write_field = write_to_buffer_and_move_offset(&f.0, &f.1);
         write_fields.push(write_field);
     }
-    quote!{
-        fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [std::os::unix::io::RawFd])
-            -> _msg_socket::MsgResult<usize> {
+    quote! {
+        fn write_to_buffer(
+            &self,
+            buffer: &mut [u8],
+            fds: &mut [std::os::unix::io::RawFd],
+        ) -> _msg_socket::MsgResult<usize> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
             #(#write_fields)*
@@ -174,13 +179,13 @@ fn impl_for_enum(name: Ident, de: DataEnum) -> TokenStream {
 
     let read_buffer = define_read_buffer_for_enum(&name, &de);
     let write_buffer = define_write_buffer_for_enum(&name, &de);
-    quote!(
+    quote! {
         impl _msg_socket::MsgOnSocket for #name {
             #buffer_sizes_impls
             #read_buffer
             #write_buffer
         }
-        )
+    }
 }
 
 fn define_buffer_size_for_enum(variants: &[(Ident, Vec<syn::Type>)]) -> TokenStream {
@@ -249,14 +254,14 @@ fn define_read_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
                     let read_tmp = read_from_buffer_and_move_offset(&f.ident.unwrap(), &f.ty);
                     read_tmps.push(read_tmp);
                 }
-                let v = quote!(
+                let v = quote! {
                     #i => {
                         let mut __offset = 1usize;
                         let mut __fd_offset = 0usize;
                         #(#read_tmps)*
-                        Ok((#name::#variant_name{ #(#tmp_names),*}, __fd_offset))
+                        Ok((#name::#variant_name { #(#tmp_names),* }, __fd_offset))
                     }
-                    );
+                };
                 match_variants.push(v);
             }
             Fields::Unnamed(fields) => {
@@ -272,37 +277,37 @@ fn define_read_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
                     j += 1;
                 }
 
-                let v = quote!(
+                let v = quote! {
                     #i => {
                         let mut __offset = 1usize;
                         let mut __fd_offset = 0usize;
                         #(#read_tmps)*
                         Ok((#name::#variant_name( #(#tmp_names),*), __fd_offset))
                     }
-                    );
+                };
                 match_variants.push(v);
             }
             Fields::Unit => {
-                let v = quote!(
+                let v = quote! {
                     #i => Ok((#name::#variant_name, 0)),
-                    );
+                };
                 match_variants.push(v);
             }
         }
         i += 1;
     }
-    quote!(
-        unsafe fn read_from_buffer(buffer: &[u8], fds: &[std::os::unix::io::RawFd])
-        -> _msg_socket::MsgResult<(Self, usize)> {
+    quote! {
+        unsafe fn read_from_buffer(
+            buffer: &[u8],
+            fds: &[std::os::unix::io::RawFd],
+        ) -> _msg_socket::MsgResult<(Self, usize)> {
             let v = buffer[0];
             match v {
                 #(#match_variants)*
-                _ => {
-                    Err(_msg_socket::MsgError::InvalidType)
-                }
+                _ => Err(_msg_socket::MsgError::InvalidType),
             }
         }
-        )
+    }
 }
 
 fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
@@ -321,15 +326,15 @@ fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
                     write_tmps.push(write_tmp);
                 }
 
-                let v = quote!(
-                    #name::#variant_name{#(#tmp_names),*} => {
+                let v = quote! {
+                    #name::#variant_name { #(#tmp_names),* } => {
                         buffer[0] = #i;
                         let mut __offset = 1usize;
                         let mut __fd_offset = 0usize;
                         #(#write_tmps)*
                         Ok(__fd_offset)
                     }
-                    );
+                };
                 match_variants.push(v);
             }
             Fields::Unnamed(fields) => {
@@ -345,7 +350,7 @@ fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
                     j += 1;
                 }
 
-                let v = quote!(
+                let v = quote! {
                     #name::#variant_name(#(#tmp_names),*) => {
                         buffer[0] = #i;
                         let mut __offset = 1usize;
@@ -353,34 +358,37 @@ fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
                         #(#write_tmps)*
                         Ok(__fd_offset)
                     }
-                    );
+                };
                 match_variants.push(v);
             }
             Fields::Unit => {
-                let v = quote!(
+                let v = quote! {
                     #name::#variant_name => {
                         buffer[0] = #i;
                         Ok(0)
                     }
-                    );
+                };
                 match_variants.push(v);
             }
         }
         i += 1;
     }
 
-    quote!(
-        fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [std::os::unix::io::RawFd])
-        -> _msg_socket::MsgResult<usize> {
+    quote! {
+        fn write_to_buffer(
+            &self,
+            buffer: &mut [u8],
+            fds: &mut [std::os::unix::io::RawFd],
+        ) -> _msg_socket::MsgResult<usize> {
             match self {
                 #(#match_variants)*
             }
         }
-    )
+    }
 }
 
 fn enum_write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream {
-    quote!{
+    quote! {
         let o = #name.write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
         __offset += <#ty>::msg_size();
         __fd_offset += o;
@@ -395,13 +403,13 @@ fn impl_for_tuple_struct(name: Ident, ds: DataStruct) -> TokenStream {
 
     let read_buffer = define_read_buffer_for_tuples(&name, &types);
     let write_buffer = define_write_buffer_for_tuples(&name, &types);
-    quote!(
+    quote! {
         impl _msg_socket::MsgOnSocket for #name {
             #buffer_sizes_impls
             #read_buffer
             #write_buffer
         }
-        )
+    }
 }
 
 fn get_tuple_types(ds: DataStruct) -> Vec<syn::Type> {
@@ -427,12 +435,14 @@ fn define_read_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> TokenStr
         let tmp_name = Ident::new(&tmp_name, Span::call_site());
         let read_field = read_from_buffer_and_move_offset(&tmp_name, &fields[i]);
         read_fields.push(read_field);
-        init_fields.push(quote!( #tmp_name ));
+        init_fields.push(quote!(#tmp_name));
     }
 
-    quote!{
-        unsafe fn read_from_buffer(buffer: &[u8], fds: &[std::os::unix::io::RawFd])
-            -> _msg_socket::MsgResult<(Self, usize)> {
+    quote! {
+        unsafe fn read_from_buffer(
+            buffer: &[u8],
+            fds: &[std::os::unix::io::RawFd],
+        ) -> _msg_socket::MsgResult<(Self, usize)> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
             #(#read_fields)*
@@ -456,9 +466,12 @@ fn define_write_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> TokenSt
         write_fields.push(write_field);
         tmp_names.push(tmp_name);
     }
-    quote!{
-        fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [std::os::unix::io::RawFd])
-            -> _msg_socket::MsgResult<usize> {
+    quote! {
+        fn write_to_buffer(
+            &self,
+            buffer: &mut [u8],
+            fds: &mut [std::os::unix::io::RawFd],
+        ) -> _msg_socket::MsgResult<usize> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
             let #name( #(#tmp_names),* ) = self;
@@ -471,12 +484,12 @@ fn define_write_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> TokenSt
 fn get_fields_buffer_size_sum(field_types: &[syn::Type]) -> (TokenStream, TokenStream) {
     if field_types.len() > 0 {
         (
-            quote!(
+            quote! {
                 #( <#field_types>::msg_size() as usize )+*
-              ),
-            quote!(
+            },
+            quote! {
                 #( <#field_types>::max_fd_count() as usize )+*
-            ),
+            },
         )
     } else {
         (quote!(0), quote!(0))
@@ -484,7 +497,7 @@ fn get_fields_buffer_size_sum(field_types: &[syn::Type]) -> (TokenStream, TokenS
 }
 
 fn read_from_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream {
-    quote!{
+    quote! {
         let t = <#ty>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
         __offset += <#ty>::msg_size();
         __fd_offset += t.1;
@@ -493,7 +506,7 @@ fn read_from_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream
 }
 
 fn write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream {
-    quote!{
+    quote! {
         let o = self.#name.write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
         __offset += <#ty>::msg_size();
         __fd_offset += o;
@@ -518,17 +531,19 @@ mod tests {
         let expected = quote! {
             impl _msg_socket::MsgOnSocket for MyMsg {
                 fn msg_size() -> usize {
-                        <u8>::msg_size() as usize
+                    <u8>::msg_size() as usize
                         + <RawFd>::msg_size() as usize
                         + <u32>::msg_size() as usize
                 }
                 fn max_fd_count() -> usize {
-                        <u8>::max_fd_count() as usize
+                    <u8>::max_fd_count() as usize
                         + <RawFd>::max_fd_count() as usize
                         + <u32>::max_fd_count() as usize
                 }
-                unsafe fn read_from_buffer(buffer: &[u8], fds: &[std::os::unix::io::RawFd])
-                    -> _msg_socket::MsgResult<(Self, usize)> {
+                unsafe fn read_from_buffer(
+                    buffer: &[u8],
+                    fds: &[std::os::unix::io::RawFd],
+                ) -> _msg_socket::MsgResult<(Self, usize)> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
                     let t = <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
@@ -545,20 +560,23 @@ mod tests {
                     let c = t.0;
                     Ok((Self { a, b, c }, __fd_offset))
                 }
-                fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [std::os::unix::io::RawFd])
-                    -> _msg_socket::MsgResult<usize> {
+                fn write_to_buffer(
+                    &self,
+                    buffer: &mut [u8],
+                    fds: &mut [std::os::unix::io::RawFd],
+                ) -> _msg_socket::MsgResult<usize> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
-                    let o = self.a.write_to_buffer(&mut buffer[__offset..],
-                                                   &mut fds[__fd_offset..])?;
+                    let o = self.a
+                        .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
                     __offset += <u8>::msg_size();
                     __fd_offset += o;
-                    let o = self.b.write_to_buffer(&mut buffer[__offset..],
-                                                   &mut fds[__fd_offset..])?;
+                    let o = self.b
+                        .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
                     __offset += <RawFd>::msg_size();
                     __fd_offset += o;
-                    let o = self.c.write_to_buffer(&mut buffer[__offset..],
-                                                   &mut fds[__fd_offset..])?;
+                    let o = self.c
+                        .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
                     __offset += <u32>::msg_size();
                     __fd_offset += o;
                     Ok(__fd_offset)
@@ -578,16 +596,19 @@ mod tests {
         let expected = quote! {
             impl _msg_socket::MsgOnSocket for MyMsg {
                 fn msg_size() -> usize {
-                    <u8>::msg_size() as usize +
-                        <u32>::msg_size() as usize + <File>::msg_size() as usize
+                    <u8>::msg_size() as usize
+                        + <u32>::msg_size() as usize
+                        + <File>::msg_size() as usize
                 }
                 fn max_fd_count() -> usize {
                     <u8>::max_fd_count() as usize
                         + <u32>::max_fd_count() as usize
                         + <File>::max_fd_count() as usize
                 }
-                unsafe fn read_from_buffer(buffer: &[u8], fds: &[std::os::unix::io::RawFd])
-                    -> _msg_socket::MsgResult<(Self, usize)> {
+                unsafe fn read_from_buffer(
+                    buffer: &[u8],
+                    fds: &[std::os::unix::io::RawFd],
+                ) -> _msg_socket::MsgResult<(Self, usize)> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
                     let t = <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
@@ -604,21 +625,24 @@ mod tests {
                     let tuple_tmp2 = t.0;
                     Ok((MyMsg(tuple_tmp0, tuple_tmp1, tuple_tmp2), __fd_offset))
                 }
-                fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [std::os::unix::io::RawFd])
-                    -> _msg_socket::MsgResult<usize> {
+                fn write_to_buffer(
+                    &self,
+                    buffer: &mut [u8],
+                    fds: &mut [std::os::unix::io::RawFd],
+                ) -> _msg_socket::MsgResult<usize> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
                     let MyMsg(tuple_tmp0, tuple_tmp1, tuple_tmp2) = self;
-                    let o = tuple_tmp0.
-                        write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
+                    let o = tuple_tmp0
+                        .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
                     __offset += <u8>::msg_size();
                     __fd_offset += o;
-                    let o = tuple_tmp1.
-                        write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
+                    let o = tuple_tmp1
+                        .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
                     __offset += <u32>::msg_size();
                     __fd_offset += o;
-                    let o = tuple_tmp2.
-                        write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
+                    let o = tuple_tmp2
+                        .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
                     __offset += <File>::msg_size();
                     __fd_offset += o;
                     Ok(__fd_offset)
@@ -635,7 +659,10 @@ mod tests {
             enum MyMsg {
                 A(u8),
                 B,
-                C{f0: u8, f1: RawFd},
+                C {
+                    f0: u8,
+                    f1: RawFd,
+                },
             }
         };
 
@@ -657,15 +684,17 @@ mod tests {
                     ].iter()
                         .max().unwrap().clone() as usize
                 }
-                unsafe fn read_from_buffer(buffer: &[u8], fds: &[std::os::unix::io::RawFd]) ->
-                    _msg_socket::MsgResult<(Self, usize)> {
+                unsafe fn read_from_buffer(
+                    buffer: &[u8],
+                    fds: &[std::os::unix::io::RawFd],
+                ) -> _msg_socket::MsgResult<(Self, usize)> {
                     let v = buffer[0];
                     match v {
                         0u8 => {
                             let mut __offset = 1usize;
                             let mut __fd_offset = 0usize;
-                            let t = <u8>::read_from_buffer(&buffer[__offset..],
-                                                           &fds[__fd_offset..])?;
+                            let t =
+                                <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
                             __offset += <u8>::msg_size();
                             __fd_offset += t.1;
                             let enum_variant_tmp0 = t.0;
@@ -675,34 +704,35 @@ mod tests {
                         2u8 => {
                             let mut __offset = 1usize;
                             let mut __fd_offset = 0usize;
-                            let t = <u8>::read_from_buffer(&buffer[__offset..],
-                                                           &fds[__fd_offset..])?;
+                            let t =
+                                <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
                             __offset += <u8>::msg_size();
                             __fd_offset += t.1;
                             let f0 = t.0;
-                            let t = <RawFd>::read_from_buffer(&buffer[__offset..],
-                                                              &fds[__fd_offset..])?;
+                            let t = <RawFd>::read_from_buffer(
+                                &buffer[__offset..],
+                                &fds[__fd_offset..]
+                            )?;
                             __offset += <RawFd>::msg_size();
                             __fd_offset += t.1;
                             let f1 = t.0;
-                            Ok((MyMsg::C{f0, f1}, __fd_offset))
+                            Ok((MyMsg::C { f0, f1 }, __fd_offset))
                         }
-                        _ => {
-                            Err(_msg_socket::MsgError::InvalidType)
-                        }
+                        _ => Err(_msg_socket::MsgError::InvalidType),
                     }
                 }
-                fn write_to_buffer(&self,
-                                   buffer: &mut [u8],
-                                   fds: &mut [std::os::unix::io::RawFd])
-                    -> _msg_socket::MsgResult<usize> {
+                fn write_to_buffer(
+                    &self,
+                    buffer: &mut [u8],
+                    fds: &mut [std::os::unix::io::RawFd],
+                ) -> _msg_socket::MsgResult<usize> {
                     match self {
                         MyMsg::A(enum_variant_tmp0) => {
                             buffer[0] = 0u8;
                             let mut __offset = 1usize;
                             let mut __fd_offset = 0usize;
-                            let o = enum_variant_tmp0.
-                                write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
+                            let o = enum_variant_tmp0
+                                .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
                             __offset += <u8>::msg_size();
                             __fd_offset += o;
                             Ok(__fd_offset)
@@ -711,16 +741,16 @@ mod tests {
                             buffer[0] = 1u8;
                             Ok(0)
                         }
-                        MyMsg::C{f0, f1} => {
+                        MyMsg::C { f0, f1 } => {
                             buffer[0] = 2u8;
                             let mut __offset = 1usize;
                             let mut __fd_offset = 0usize;
-                            let o = f0.
-                                write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
+                            let o = f0
+                                .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
                             __offset += <u8>::msg_size();
                             __fd_offset += o;
-                            let o = f1.write_to_buffer(
-                                &mut buffer[__offset..], &mut fds[__fd_offset..])?;
+                            let o = f1
+                                .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
                             __offset += <RawFd>::msg_size();
                             __fd_offset += o;
                             Ok(__fd_offset)
