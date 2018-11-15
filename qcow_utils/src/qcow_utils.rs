@@ -7,11 +7,13 @@
 extern crate libc;
 extern crate qcow;
 
-use libc::{EINVAL, EIO};
+use libc::{EBADFD, EINVAL, EIO};
 use std::ffi::CStr;
 use std::fs::{File, OpenOptions};
+use std::mem::forget;
 use std::os::raw::{c_char, c_int};
 use std::os::unix::io::FromRawFd;
+use std::panic::catch_unwind;
 
 use qcow::{ImageType, QcowFile};
 
@@ -47,23 +49,47 @@ pub unsafe extern "C" fn create_qcow_with_size(path: *const c_char, virtual_size
 #[no_mangle]
 pub unsafe extern "C" fn convert_to_qcow2(src_fd: c_int, dst_fd: c_int) -> c_int {
     // The caller is responsible for passing valid file descriptors.
+    // The caller retains ownership of the file descriptors.
     let src_file = File::from_raw_fd(src_fd);
-    let dst_file = File::from_raw_fd(dst_fd);
+    let src_file_owned = src_file.try_clone();
+    forget(src_file);
 
-    match qcow::convert(src_file, dst_file, ImageType::Qcow2) {
-        Ok(_) => 0,
-        Err(_) => -EIO,
+    let dst_file = File::from_raw_fd(dst_fd);
+    let dst_file_owned = dst_file.try_clone();
+    forget(dst_file);
+
+    match (src_file_owned, dst_file_owned) {
+        (Ok(src_file), Ok(dst_file)) => {
+            catch_unwind(
+                || match qcow::convert(src_file, dst_file, ImageType::Qcow2) {
+                    Ok(_) => 0,
+                    Err(_) => -EIO,
+                },
+            ).unwrap_or(-EIO)
+        }
+        _ => -EBADFD,
     }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn convert_to_raw(src_fd: c_int, dst_fd: c_int) -> c_int {
     // The caller is responsible for passing valid file descriptors.
+    // The caller retains ownership of the file descriptors.
     let src_file = File::from_raw_fd(src_fd);
-    let dst_file = File::from_raw_fd(dst_fd);
+    let src_file_owned = src_file.try_clone();
+    forget(src_file);
 
-    match qcow::convert(src_file, dst_file, ImageType::Raw) {
-        Ok(_) => 0,
-        Err(_) => -EIO,
+    let dst_file = File::from_raw_fd(dst_fd);
+    let dst_file_owned = dst_file.try_clone();
+    forget(dst_file);
+
+    match (src_file_owned, dst_file_owned) {
+        (Ok(src_file), Ok(dst_file)) => {
+            catch_unwind(|| match qcow::convert(src_file, dst_file, ImageType::Raw) {
+                Ok(_) => 0,
+                Err(_) => -EIO,
+            }).unwrap_or(-EIO)
+        }
+        _ => -EBADFD,
     }
 }
