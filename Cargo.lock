@@ -98,7 +98,6 @@ dependencies = [
  "plugin_proto 0.16.0",
  "protobuf 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "qcow 0.1.0",
- "qcow_utils 0.1.0",
  "rand 0.3.20 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
  "sys_util 0.1.0",
