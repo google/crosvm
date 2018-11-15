@@ -9,27 +9,25 @@ extern crate proc_macro2;
 #[macro_use]
 extern crate quote;
 
-#[cfg_attr(test, macro_use)]
+#[macro_use]
 extern crate syn;
 
 use std::vec::Vec;
 
-use proc_macro::TokenStream;
-use proc_macro2::Span;
-use quote::Tokens;
+use proc_macro2::{Span, TokenStream};
 use syn::{Data, DataEnum, DataStruct, DeriveInput, Fields, Ident};
 
 /// The function that derives the recursive implementation for struct or enum.
 #[proc_macro_derive(MsgOnSocket)]
-pub fn msg_on_socket_derive(input: TokenStream) -> TokenStream {
-    let ast: DeriveInput = syn::parse(input).unwrap();
+pub fn msg_on_socket_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
 
     let const_namespace = Ident::new(
-        &format!("__MSG_ON_SOCKET_IMPL_{}", ast.ident),
+        &format!("__MSG_ON_SOCKET_IMPL_{}", input.ident),
         Span::call_site(),
     );
 
-    let impl_for_input = socket_msg_impl(ast);
+    let impl_for_input = socket_msg_impl(input);
 
     let wrapped_impl = quote! {
         const #const_namespace: () = {
@@ -41,21 +39,21 @@ pub fn msg_on_socket_derive(input: TokenStream) -> TokenStream {
     wrapped_impl.into()
 }
 
-fn socket_msg_impl(ast: DeriveInput) -> Tokens {
-    if !ast.generics.params.is_empty() {
+fn socket_msg_impl(input: DeriveInput) -> TokenStream {
+    if !input.generics.params.is_empty() {
         return quote! {
             compile_error!("derive(SocketMsg) does not support generic parameters");
         };
     }
-    match ast.data {
+    match input.data {
         Data::Struct(ds) => {
             if is_named_struct(&ds) {
-                impl_for_named_struct(ast.ident, ds)
+                impl_for_named_struct(input.ident, ds)
             } else {
-                impl_for_tuple_struct(ast.ident, ds)
+                impl_for_tuple_struct(input.ident, ds)
             }
         }
-        Data::Enum(de) => impl_for_enum(ast.ident, de),
+        Data::Enum(de) => impl_for_enum(input.ident, de),
         _ => quote! {
             compile_error!("derive(SocketMsg) only support struct and enum");
         },
@@ -70,7 +68,7 @@ fn is_named_struct(ds: &DataStruct) -> bool {
 }
 
 /************************** Named Struct Impls ********************************************/
-fn impl_for_named_struct(name: Ident, ds: DataStruct) -> Tokens {
+fn impl_for_named_struct(name: Ident, ds: DataStruct) -> TokenStream {
     let fields = get_struct_fields(ds);
     let fields_types = get_types_from_fields_vec(&fields);
     let buffer_sizes_impls = define_buffer_size_for_struct(&fields_types);
@@ -115,7 +113,7 @@ fn get_struct_fields(ds: DataStruct) -> Vec<(Ident, syn::Type)> {
     vec
 }
 
-fn define_buffer_size_for_struct(field_types: &[syn::Type]) -> Tokens {
+fn define_buffer_size_for_struct(field_types: &[syn::Type]) -> TokenStream {
     let (msg_size, max_fd_count) = get_fields_buffer_size_sum(field_types);
     quote! {
         fn msg_size() -> usize {
@@ -127,7 +125,7 @@ fn define_buffer_size_for_struct(field_types: &[syn::Type]) -> Tokens {
     }
 }
 
-fn define_read_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) -> Tokens {
+fn define_read_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) -> TokenStream {
     let mut read_fields = Vec::new();
     let mut init_fields = Vec::new();
     for f in fields {
@@ -152,7 +150,7 @@ fn define_read_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) -
     }
 }
 
-fn define_write_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) -> Tokens {
+fn define_write_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) -> TokenStream {
     let mut write_fields = Vec::new();
     for f in fields {
         let write_field = write_to_buffer_and_move_offset(&f.0, &f.1);
@@ -170,7 +168,7 @@ fn define_write_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) 
 }
 
 /************************** Enum Impls ********************************************/
-fn impl_for_enum(name: Ident, de: DataEnum) -> Tokens {
+fn impl_for_enum(name: Ident, de: DataEnum) -> TokenStream {
     let variants = get_enum_variant_types(&de);
     let buffer_sizes_impls = define_buffer_size_for_enum(&variants);
 
@@ -185,7 +183,7 @@ fn impl_for_enum(name: Ident, de: DataEnum) -> Tokens {
         )
 }
 
-fn define_buffer_size_for_enum(variants: &[(Ident, Vec<syn::Type>)]) -> Tokens {
+fn define_buffer_size_for_enum(variants: &[(Ident, Vec<syn::Type>)]) -> TokenStream {
     let mut variant_buffer_sizes = Vec::new();
     let mut variant_fd_sizes = Vec::new();
     for v in variants {
@@ -236,7 +234,7 @@ fn get_enum_variant_types(de: &DataEnum) -> Vec<(Ident, Vec<syn::Type>)> {
     variants
 }
 
-fn define_read_buffer_for_enum(name: &Ident, de: &DataEnum) -> Tokens {
+fn define_read_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
     let mut match_variants = Vec::new();
     let de = de.clone();
     let mut i = 0u8;
@@ -307,7 +305,7 @@ fn define_read_buffer_for_enum(name: &Ident, de: &DataEnum) -> Tokens {
         )
 }
 
-fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> Tokens {
+fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
     let mut match_variants = Vec::new();
     let mut i = 0u8;
     let de = de.clone();
@@ -318,7 +316,7 @@ fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> Tokens {
                 let mut tmp_names = Vec::new();
                 let mut write_tmps = Vec::new();
                 for f in fields.named {
-                    tmp_names.push(f.ident.unwrap().clone());
+                    tmp_names.push(f.ident.clone().unwrap());
                     let write_tmp = enum_write_to_buffer_and_move_offset(&f.ident.unwrap(), &f.ty);
                     write_tmps.push(write_tmp);
                 }
@@ -381,7 +379,7 @@ fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> Tokens {
     )
 }
 
-fn enum_write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> Tokens {
+fn enum_write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream {
     quote!{
         let o = #name.write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
         __offset += <#ty>::msg_size();
@@ -390,7 +388,7 @@ fn enum_write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> Tokens 
 }
 
 /************************** Tuple Impls ********************************************/
-fn impl_for_tuple_struct(name: Ident, ds: DataStruct) -> Tokens {
+fn impl_for_tuple_struct(name: Ident, ds: DataStruct) -> TokenStream {
     let types = get_tuple_types(ds);
 
     let buffer_sizes_impls = define_buffer_size_for_struct(&types);
@@ -421,7 +419,7 @@ fn get_tuple_types(ds: DataStruct) -> Vec<syn::Type> {
     types
 }
 
-fn define_read_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> Tokens {
+fn define_read_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> TokenStream {
     let mut read_fields = Vec::new();
     let mut init_fields = Vec::new();
     for i in 0..fields.len() {
@@ -448,7 +446,7 @@ fn define_read_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> Tokens {
     }
 }
 
-fn define_write_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> Tokens {
+fn define_write_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> TokenStream {
     let mut write_fields = Vec::new();
     let mut tmp_names = Vec::new();
     for i in 0..fields.len() {
@@ -470,7 +468,7 @@ fn define_write_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> Tokens 
     }
 }
 /************************** Helpers ********************************************/
-fn get_fields_buffer_size_sum(field_types: &[syn::Type]) -> (Tokens, Tokens) {
+fn get_fields_buffer_size_sum(field_types: &[syn::Type]) -> (TokenStream, TokenStream) {
     if field_types.len() > 0 {
         (
             quote!(
@@ -485,7 +483,7 @@ fn get_fields_buffer_size_sum(field_types: &[syn::Type]) -> (Tokens, Tokens) {
     }
 }
 
-fn read_from_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> Tokens {
+fn read_from_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream {
     quote!{
         let t = <#ty>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
         __offset += <#ty>::msg_size();
@@ -494,7 +492,7 @@ fn read_from_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> Tokens {
     }
 }
 
-fn write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> Tokens {
+fn write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream {
     quote!{
         let o = self.#name.write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
         __offset += <#ty>::msg_size();
@@ -568,7 +566,7 @@ mod tests {
             }
         };
 
-        assert_eq!(socket_msg_impl(input), expected);
+        assert_eq!(socket_msg_impl(input).to_string(), expected.to_string());
     }
 
     #[test]
@@ -628,7 +626,7 @@ mod tests {
             }
         };
 
-        assert_eq!(socket_msg_impl(input), expected);
+        assert_eq!(socket_msg_impl(input).to_string(), expected.to_string());
     }
 
     #[test]
@@ -733,6 +731,6 @@ mod tests {
 
         };
 
-        assert_eq!(socket_msg_impl(input), expected);
+        assert_eq!(socket_msg_impl(input).to_string(), expected.to_string());
     }
 }

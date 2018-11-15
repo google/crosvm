@@ -9,26 +9,25 @@ extern crate proc_macro2;
 #[macro_use]
 extern crate quote;
 
-#[cfg_attr(test, macro_use)]
+#[macro_use]
 extern crate syn;
 
 use std::string::String;
 use std::vec::Vec;
 
-use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenNode};
-use quote::Tokens;
+use proc_macro2::{Span, TokenStream, TokenTree};
 use syn::{Attribute, Data, DeriveInput, Fields, Ident};
 
 type Result<T> = std::result::Result<T, String>;
 
 /// The function that derives the actual implementation.
 #[proc_macro_derive(BitField, attributes(passthrough))]
-pub fn bitfield(input: TokenStream) -> TokenStream {
-    bitfield_impl(syn::parse(input).unwrap()).into()
+pub fn bitfield(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let derive_input = parse_macro_input!(input as DeriveInput);
+    bitfield_impl(derive_input).into()
 }
 
-fn bitfield_impl(ast: DeriveInput) -> Tokens {
+fn bitfield_impl(ast: DeriveInput) -> TokenStream {
     if !ast.generics.params.is_empty() {
         return quote! {
             compile_error!("derive(BitField) does not support generic parameters");
@@ -109,7 +108,7 @@ fn get_struct_name(schema_name: &str) -> Option<&str> {
 // error.
 // We only care about field names and types.
 // "myfield : BitField3" -> ("myfield", Token(BitField3))
-fn get_struct_fields(ast: DeriveInput) -> Result<Vec<(String, Tokens)>> {
+fn get_struct_fields(ast: DeriveInput) -> Result<Vec<(String, TokenStream)>> {
     let fields = match ast.data {
         Data::Struct(data_struct) => match data_struct.fields {
             Fields::Named(fields_named) => fields_named.named,
@@ -140,13 +139,16 @@ fn get_struct_fields(ast: DeriveInput) -> Result<Vec<(String, Tokens)>> {
 
 // We only support attributes of the form #[passthrough(derive(Clone))].
 // Any other attribute will cause undefined behavior.
-fn get_attrs(attrs: &[Attribute]) -> Result<Vec<Tokens>> {
+fn get_attrs(attrs: &[Attribute]) -> Result<Vec<TokenStream>> {
     let mut attr_tokens = Vec::new();
     for a in attrs {
         let tts = a.tts.clone();
         for t in tts {
-            match t.kind {
-                TokenNode::Group(_d, g) => attr_tokens.push(quote!(#[#g])),
+            match t {
+                TokenTree::Group(group) => {
+                    let nested = group.stream();
+                    attr_tokens.push(quote!(#[#nested]))
+                }
                 _ => return Err(format!("Unsupported attribute.")),
             }
         }
@@ -154,7 +156,11 @@ fn get_attrs(attrs: &[Attribute]) -> Result<Vec<Tokens>> {
     Ok(attr_tokens)
 }
 
-fn get_struct_def(vis: &Tokens, name: &Tokens, fields: &[(String, Tokens)]) -> Tokens {
+fn get_struct_def(
+    vis: &TokenStream,
+    name: &TokenStream,
+    fields: &[(String, TokenStream)],
+) -> TokenStream {
     let mut field_types = Vec::new();
     for &(ref _name, ref ty) in fields {
         field_types.push(ty.clone());
@@ -178,7 +184,7 @@ fn get_struct_def(vis: &Tokens, name: &Tokens, fields: &[(String, Tokens)]) -> T
 }
 
 // Implement setter and getter for all fields.
-fn get_fields_impl(fields: &[(String, Tokens)]) -> Vec<Tokens> {
+fn get_fields_impl(fields: &[(String, TokenStream)]) -> Vec<TokenStream> {
     let mut impls = Vec::new();
     // This vec keeps track of types before this field, used to generate the offset.
     let mut current_types = vec![quote!(BitField0)];
@@ -208,7 +214,7 @@ fn get_fields_impl(fields: &[(String, Tokens)]) -> Vec<Tokens> {
 }
 
 // Implement setter and getter for all fields.
-fn get_debug_fmt_impl(name: &Tokens, fields: &[(String, Tokens)]) -> Tokens {
+fn get_debug_fmt_impl(name: &TokenStream, fields: &[(String, TokenStream)]) -> TokenStream {
     // print fields:
     let mut impls = Vec::new();
     for &(ref name, ref _ty) in fields {
@@ -231,7 +237,7 @@ fn get_debug_fmt_impl(name: &Tokens, fields: &[(String, Tokens)]) -> Tokens {
 }
 
 // Implement test.
-fn get_tests_impl(struct_name: &Tokens, fields: &[(String, Tokens)]) -> Vec<Tokens> {
+fn get_tests_impl(struct_name: &TokenStream, fields: &[(String, TokenStream)]) -> Vec<TokenStream> {
     let mut field_types = Vec::new();
     for &(ref _name, ref ty) in fields {
         field_types.push(ty.clone());
@@ -280,7 +286,7 @@ fn get_tests_impl(struct_name: &Tokens, fields: &[(String, Tokens)]) -> Vec<Toke
     impls
 }
 
-fn get_bits_impl(name: &Tokens) -> Tokens {
+fn get_bits_impl(name: &TokenStream) -> TokenStream {
     quote!(
         impl #name {
             #[inline]
@@ -542,6 +548,6 @@ mod tests {
             }
         };
 
-        assert_eq!(bitfield_impl(input), expected);
+        assert_eq!(bitfield_impl(input).to_string(), expected.to_string());
     }
 }

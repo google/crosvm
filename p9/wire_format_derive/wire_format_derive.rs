@@ -14,57 +14,51 @@ extern crate proc_macro2;
 #[macro_use]
 extern crate quote;
 
-#[cfg_attr(test, macro_use)]
+#[macro_use]
 extern crate syn;
 
-use proc_macro::TokenStream;
-use proc_macro2::Span;
-use quote::Tokens;
+use proc_macro2::{Span, TokenStream};
 use syn::spanned::Spanned;
 use syn::{Data, DeriveInput, Fields, Ident};
 
 /// The function that derives the actual implementation.
 #[proc_macro_derive(P9WireFormat)]
-pub fn p9_wire_format(input: TokenStream) -> TokenStream {
-    p9_wire_format_inner(syn::parse(input).unwrap()).into()
+pub fn p9_wire_format(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    p9_wire_format_inner(input).into()
 }
 
-fn p9_wire_format_inner(input: DeriveInput) -> Tokens {
+fn p9_wire_format_inner(input: DeriveInput) -> TokenStream {
     if !input.generics.params.is_empty() {
         return quote! {
             compile_error!("derive(P9WireFormat) does not support generic parameters");
         };
     }
 
-    let var = quote!(self);
-    let ident = input.ident;
-    let name = quote!(#ident);
+    let container = input.ident;
 
-    let call_site = Span::call_site();
-    let import = quote_spanned!(call_site=> use protocol::WireFormat; );
-    let wire_format = quote_spanned!(call_site=> WireFormat);
+    let byte_size_impl = byte_size_sum(&input.data);
+    let encode_impl = encode_wire_format(&input.data);
+    let decode_impl = decode_wire_format(&input.data, &container);
 
-    let byte_size_impl = byte_size_sum(&input.data, &wire_format, &var);
-    let encode_impl = encode_wire_format(&input.data, &wire_format, &var);
-    let decode_impl = decode_wire_format(&input.data, &wire_format, &name);
-
-    let scope = Ident::from(format!("wire_format_{}", ident).to_lowercase());
+    let scope = format!("wire_format_{}", container).to_lowercase();
+    let scope = Ident::new(&scope, Span::call_site());
     quote! {
         mod #scope {
             extern crate std;
             use self::std::io;
             use self::std::result::Result::Ok;
 
-            use super::#name;
+            use super::#container;
 
-            #import
+            use protocol::WireFormat;
 
-            impl #wire_format for #name {
-                fn byte_size(&#var) -> u32 {
+            impl WireFormat for #container {
+                fn byte_size(&self) -> u32 {
                     #byte_size_impl
                 }
 
-                fn encode<W: io::Write>(&#var, _writer: &mut W) -> io::Result<()> {
+                fn encode<W: io::Write>(&self, _writer: &mut W) -> io::Result<()> {
                     #encode_impl
                 }
 
@@ -77,17 +71,15 @@ fn p9_wire_format_inner(input: DeriveInput) -> Tokens {
 }
 
 // Generate code that recursively calls byte_size on every field in the struct.
-fn byte_size_sum(data: &Data, wire_format: &Tokens, var: &Tokens) -> Tokens {
-    let def_site = Span::def_site();
-    let call_site = Span::call_site();
-
+fn byte_size_sum(data: &Data) -> TokenStream {
     if let Data::Struct(ref data) = *data {
         if let Fields::Named(ref fields) = data.fields {
             let fields = fields.named.iter().map(|f| {
-                let name = f.ident;
-                let access = quote_spanned!(call_site=> #var.#name);
-                let span = f.span().resolved_at(def_site);
-                quote_spanned!(span=> #wire_format::byte_size(&#access) )
+                let field = &f.ident;
+                let span = field.span();
+                quote_spanned! {span=>
+                    WireFormat::byte_size(&self.#field)
+                }
             });
 
             quote! {
@@ -102,17 +94,15 @@ fn byte_size_sum(data: &Data, wire_format: &Tokens, var: &Tokens) -> Tokens {
 }
 
 // Generate code that recursively calls encode on every field in the struct.
-fn encode_wire_format(data: &Data, wire_format: &Tokens, var: &Tokens) -> Tokens {
-    let def_site = Span::def_site();
-    let call_site = Span::call_site();
-
+fn encode_wire_format(data: &Data) -> TokenStream {
     if let Data::Struct(ref data) = *data {
         if let Fields::Named(ref fields) = data.fields {
             let fields = fields.named.iter().map(|f| {
-                let name = f.ident;
-                let access = quote_spanned!(call_site=> #var.#name);
-                let span = f.span().resolved_at(def_site);
-                quote_spanned!(span=> #wire_format::encode(&#access, _writer)?; )
+                let field = &f.ident;
+                let span = field.span();
+                quote_spanned! {span=>
+                    WireFormat::encode(&self.#field, _writer)?;
+                }
             });
 
             quote! {
@@ -129,30 +119,28 @@ fn encode_wire_format(data: &Data, wire_format: &Tokens, var: &Tokens) -> Tokens
 }
 
 // Generate code that recursively calls decode on every field in the struct.
-fn decode_wire_format(data: &Data, wire_format: &Tokens, name: &Tokens) -> Tokens {
-    let def_site = Span::def_site();
-    let call_site = Span::call_site();
-
+fn decode_wire_format(data: &Data, container: &Ident) -> TokenStream {
     if let Data::Struct(ref data) = *data {
         if let Fields::Named(ref fields) = data.fields {
             let values = fields.named.iter().map(|f| {
-                let name = f.ident;
-                let access = quote_spanned!(call_site=> #name);
-                let span = f.span().resolved_at(def_site);
-                quote_spanned!(span=> let #access = #wire_format::decode(_reader)?; )
+                let field = &f.ident;
+                let span = field.span();
+                quote_spanned! {span=>
+                    let #field = WireFormat::decode(_reader)?;
+                }
             });
 
             let members = fields.named.iter().map(|f| {
-                let name = f.ident;
-                quote_spanned!(call_site=>
-                    #name: #name,
-                )
+                let field = &f.ident;
+                quote! {
+                    #field: #field,
+                }
             });
 
             quote! {
                 #(#values)*
 
-                Ok(#name {
+                Ok(#container {
                     #(#members)*
                 })
             }
@@ -178,8 +166,6 @@ mod tests {
             }
         };
 
-        let var = quote!(self);
-        let wire_format = quote!(WireFormat);
         let expected = quote! {
             0
                 + WireFormat::byte_size(&self.ident)
@@ -187,7 +173,7 @@ mod tests {
                 + WireFormat::byte_size(&self.other)
         };
 
-        assert_eq!(byte_size_sum(&input.data, &wire_format, &var), expected);
+        assert_eq!(byte_size_sum(&input.data).to_string(), expected.to_string());
     }
 
     #[test]
@@ -200,8 +186,6 @@ mod tests {
             }
         };
 
-        let var = quote!(self);
-        let wire_format = quote!(WireFormat);
         let expected = quote! {
             WireFormat::encode(&self.ident, _writer)?;
             WireFormat::encode(&self.with_underscores, _writer)?;
@@ -210,8 +194,8 @@ mod tests {
         };
 
         assert_eq!(
-            encode_wire_format(&input.data, &wire_format, &var),
-            expected
+            encode_wire_format(&input.data).to_string(),
+            expected.to_string(),
         );
     }
 
@@ -225,8 +209,7 @@ mod tests {
             }
         };
 
-        let name = quote!(Item);
-        let wire_format = quote!(WireFormat);
+        let container = Ident::new("Item", Span::call_site());
         let expected = quote! {
             let ident = WireFormat::decode(_reader)?;
             let with_underscores = WireFormat::decode(_reader)?;
@@ -239,8 +222,8 @@ mod tests {
         };
 
         assert_eq!(
-            decode_wire_format(&input.data, &wire_format, &name),
-            expected
+            decode_wire_format(&input.data, &container).to_string(),
+            expected.to_string(),
         );
     }
 
@@ -312,6 +295,9 @@ mod tests {
             }
         };
 
-        assert_eq!(p9_wire_format_inner(input), expected);
+        assert_eq!(
+            p9_wire_format_inner(input).to_string(),
+            expected.to_string(),
+        );
     }
 }
