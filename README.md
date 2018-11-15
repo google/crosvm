@@ -155,8 +155,8 @@ project. Currently allowed crates are:
 
 ### Code Overview
 
-The crosvm source code is written in Rust and C. To build, crosvm requires rustc
-v1.20 or later.
+The crosvm source code is written in Rust and C. To build, crosvm generally
+requires the most recent stable version of rustc.
 
 Source code is organized into crates, each with their own unit tests. These
 crates are:
