@@ -222,9 +222,9 @@ fn create_plugin_jail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
     let mut j = Minijail::new().map_err(Error::CreateJail)?;
     j.namespace_pids();
     j.namespace_user();
-    j.uidmap(&format!("{0} {0} 1", geteuid()))
+    j.uidmap(&format!("0 {0} 1", geteuid()))
         .map_err(Error::SetUidMap)?;
-    j.gidmap(&format!("{0} {0} 1", getegid()))
+    j.gidmap(&format!("0 {0} 1", getegid()))
         .map_err(Error::SetGidMap)?;
     j.namespace_user_disable_setgroups();
     // Don't need any capabilities.
