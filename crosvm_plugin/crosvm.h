@@ -112,7 +112,7 @@ int crosvm_get_shutdown_eventfd(struct crosvm*);
  * Gets a bool indicating if a KVM_CAP_* enum is supported on this VM
  */
 int crosvm_check_extension(struct crosvm*, uint32_t __extension,
-                           bool *__has_extension);
+                           bool *has_extension);
 
 /*
  * Queries x86 cpuid features which are supported by the hardware and
