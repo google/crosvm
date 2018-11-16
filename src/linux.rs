@@ -29,7 +29,7 @@ use devices::{self, PciDevice, VirtioPciDevice};
 use io_jail::{self, Minijail};
 use kvm::*;
 use msg_socket::{MsgReceiver, MsgSender, UnlinkMsgSocket};
-use net_util::Tap;
+use net_util::{Error as NetError, Tap};
 use qcow::{self, ImageType, QcowFile};
 use sys_util;
 use sys_util::*;
@@ -56,6 +56,7 @@ pub enum Error {
     CreatePollContext(sys_util::Error),
     CreateSignalFd(sys_util::SignalFdError),
     CreateSocket(io::Error),
+    CreateTapDevice(NetError),
     CreateTimerFd(sys_util::Error),
     DetectImageType(qcow::Error),
     DeviceJail(io_jail::Error),
@@ -108,6 +109,7 @@ impl fmt::Display for Error {
             Error::CreatePollContext(e) => write!(f, "failed to create poll context: {:?}", e),
             Error::CreateSignalFd(e) => write!(f, "failed to create signalfd: {:?}", e),
             Error::CreateSocket(e) => write!(f, "failed to create socket: {}", e),
+            Error::CreateTapDevice(e) => write!(f, "failed to create tap device: {:?}", e),
             Error::CreateTimerFd(e) => write!(f, "failed to create timerfd: {}", e),
             Error::DetectImageType(e) => write!(f, "failed to detect disk image type: {:?}", e),
             Error::DeviceJail(e) => write!(f, "failed to jail device: {}", e),
@@ -309,7 +311,10 @@ fn create_virtio_devs(
     // We checked above that if the IP is defined, then the netmask is, too.
     if let Some(tap_fd) = cfg.tap_fd {
         // Safe because we ensure that we get a unique handle to the fd.
-        let tap = unsafe { Tap::from_raw_fd(validate_raw_fd(tap_fd)?) };
+        let tap = unsafe {
+            Tap::from_raw_fd(validate_raw_fd(tap_fd).map_err(Error::ValidateRawFd)?)
+                .map_err(Error::CreateTapDevice)?
+        };
         let net_box = Box::new(devices::virtio::Net::from(tap).map_err(Error::NetDeviceNew)?);
 
         let jail = if cfg.multiprocess {

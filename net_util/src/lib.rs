@@ -156,6 +156,25 @@ pub struct Tap {
     if_name: [u8; 16usize],
 }
 
+impl Tap {
+    pub unsafe fn from_raw_fd(fd: RawFd) -> Result<Tap> {
+        let tap_file = File::from_raw_fd(fd);
+
+        // Get the interface name since we will need it for some ioctls.
+        let mut ifreq: net_sys::ifreq = Default::default();
+        let ret = ioctl_with_mut_ref(&tap_file, net_sys::TUNGETIFF(), &mut ifreq);
+
+        if ret < 0 {
+            return Err(Error::IoctlError(SysError::last()));
+        }
+
+        Ok(Tap {
+            tap_file,
+            if_name: ifreq.ifr_ifrn.ifrn_name.as_ref().clone(),
+        })
+    }
+}
+
 pub trait TapT: Read + Write + AsRawFd + Send + Sized {
     /// Create a new tap interface. Set the `vnet_hdr` flag to true to allow offloading on this tap,
     /// which will add an extra 12 byte virtio net header to incoming frames. Offloading cannot
@@ -453,15 +472,6 @@ impl Write for Tap {
 impl AsRawFd for Tap {
     fn as_raw_fd(&self) -> RawFd {
         self.tap_file.as_raw_fd()
-    }
-}
-
-impl FromRawFd for Tap {
-    unsafe fn from_raw_fd(fd: RawFd) -> Tap {
-        Tap {
-            tap_file: File::from_raw_fd(fd),
-            if_name: [0; 16usize],
-        }
     }
 }
 
