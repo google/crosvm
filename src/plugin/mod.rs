@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 
 use libc::{
     c_ulong, ioctl, socketpair, AF_UNIX, EAGAIN, EBADF, EDEADLK, EEXIST, EINTR, EINVAL, ENOENT,
-    EOVERFLOW, EPERM, FIOCLEX, MS_NODEV, MS_NOSUID, SIGCHLD, SOCK_SEQPACKET,
+    EOVERFLOW, EPERM, FIOCLEX, MS_NODEV, MS_NOEXEC, MS_NOSUID, SIGCHLD, SOCK_SEQPACKET,
 };
 
 use protobuf::ProtobufError;
@@ -252,7 +252,7 @@ fn create_plugin_jail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
         Path::new("none"),
         Path::new("/"),
         "tmpfs",
-        (MS_NOSUID | MS_NODEV) as usize,
+        (MS_NOSUID | MS_NODEV | MS_NOEXEC) as usize,
         "size=67108864",
     )
     .map_err(Error::MountRoot)?;
