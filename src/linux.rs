@@ -10,7 +10,7 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, Read};
 use std::mem;
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::str;
@@ -62,8 +62,6 @@ pub enum Error {
     DevicePivotRoot(io_jail::Error),
     Disk(io::Error),
     DiskImageLock(sys_util::Error),
-    FailedCLOEXECCheck,
-    FailedToDupFd,
     InvalidFdPath,
     InvalidWaylandPath,
     NetDeviceNew(devices::virtio::NetError),
@@ -90,6 +88,7 @@ pub enum Error {
     SignalFd(sys_util::SignalFdError),
     SpawnVcpu(io::Error),
     TimerFd(sys_util::Error),
+    ValidateRawFd(sys_util::Error),
     VhostNetDeviceNew(devices::virtio::vhost::Error),
     VhostVsockDeviceNew(devices::virtio::vhost::Error),
     VirtioPciDev(sys_util::Error),
@@ -115,10 +114,6 @@ impl fmt::Display for Error {
             Error::DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
             Error::Disk(e) => write!(f, "failed to load disk image: {}", e),
             Error::DiskImageLock(e) => write!(f, "failed to lock disk image: {:?}", e),
-            Error::FailedCLOEXECCheck => {
-                write!(f, "/proc/self/fd argument failed check for CLOEXEC")
-            }
-            Error::FailedToDupFd => write!(f, "failed to dup fd from /proc/self/fd"),
             Error::InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
             Error::InvalidWaylandPath => {
                 write!(f, "wayland socket path has no parent or file name")
@@ -159,6 +154,7 @@ impl fmt::Display for Error {
             Error::SignalFd(e) => write!(f, "failed to read signal fd: {:?}", e),
             Error::SpawnVcpu(e) => write!(f, "failed to spawn VCPU thread: {:?}", e),
             Error::TimerFd(e) => write!(f, "failed to read timer fd: {:?}", e),
+            Error::ValidateRawFd(e) => write!(f, "failed to validate raw fd: {:?}", e),
             Error::VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {:?}", e),
             Error::VhostVsockDeviceNew(e) => {
                 write!(f, "failed to set up virtual socket device: {:?}", e)
@@ -177,27 +173,6 @@ impl std::error::Error for Error {
 }
 
 type Result<T> = std::result::Result<T, Error>;
-
-// Verifies that |raw_fd| is actually owned by this process and duplicates it to ensure that
-// we have a unique handle to it.
-fn validate_raw_fd(raw_fd: RawFd) -> std::result::Result<RawFd, Box<error::Error>> {
-    // Checking that close-on-exec isn't set helps filter out FDs that were opened by
-    // crosvm as all crosvm FDs are close on exec.
-    // Safe because this doesn't modify any memory and we check the return value.
-    let flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFD) };
-    if flags < 0 || (flags & libc::FD_CLOEXEC) != 0 {
-        return Err(Box::new(Error::FailedCLOEXECCheck));
-    }
-
-    // Duplicate the fd to ensure that we don't accidentally close an fd previously
-    // opened by another subsystem.  Safe because this doesn't modify any memory and
-    // we check the return value.
-    let dup_fd = unsafe { libc::fcntl(raw_fd, libc::F_DUPFD_CLOEXEC, 0) };
-    if dup_fd < 0 {
-        return Err(Box::new(Error::FailedToDupFd));
-    }
-    Ok(dup_fd as RawFd)
-}
 
 fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
@@ -258,7 +233,7 @@ fn create_virtio_devs(
                 .and_then(|fd_str| fd_str.parse::<c_int>().ok())
                 .ok_or(Error::InvalidFdPath)?;
             // Safe because we will validate |raw_fd|.
-            unsafe { File::from_raw_fd(validate_raw_fd(raw_fd)?) }
+            unsafe { File::from_raw_fd(validate_raw_fd(raw_fd).map_err(Error::ValidateRawFd)?) }
         } else {
             OpenOptions::new()
                 .read(true)
