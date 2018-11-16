@@ -28,9 +28,9 @@ use io_jail::{self, Minijail};
 use kvm::{Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use net_util::{Error as TapError, Tap, TapT};
 use sys_util::{
-    block_signal, clear_signal, getegid, geteuid, register_signal_handler, Error as SysError,
-    EventFd, GuestMemory, Killable, MmapError, PollContext, PollToken, Result as SysResult,
-    SignalFd, SignalFdError, SIGRTMIN,
+    block_signal, clear_signal, getegid, geteuid, register_signal_handler, validate_raw_fd,
+    Error as SysError, EventFd, GuestMemory, Killable, MmapError, PollContext, PollToken,
+    Result as SysResult, SignalFd, SignalFdError, SIGRTMIN,
 };
 
 use Config;
@@ -54,6 +54,7 @@ pub enum Error {
     CreatePollContext(SysError),
     CreateSignalFd(SignalFdError),
     CreateSocketPair(io::Error),
+    CreateTapFd(TapError),
     CreateVcpu(SysError),
     CreateVcpuSocket(SysError),
     CreateVm(SysError),
@@ -97,6 +98,7 @@ pub enum Error {
     TapSetNetmask(TapError),
     TapSetMacAddress(TapError),
     TapEnable(TapError),
+    ValidateTapFd(SysError),
 }
 
 impl fmt::Display for Error {
@@ -115,6 +117,9 @@ impl fmt::Display for Error {
             Error::CreatePollContext(ref e) => write!(f, "failed to create poll context: {:?}", e),
             Error::CreateSignalFd(ref e) => write!(f, "failed to create signalfd: {:?}", e),
             Error::CreateSocketPair(ref e) => write!(f, "failed to create socket pair: {}", e),
+            Error::CreateTapFd(ref e) => {
+                write!(f, "failed to create tap device from raw fd: {:?}", e)
+            }
             Error::CreateVcpu(ref e) => write!(f, "error creating vcpu: {:?}", e),
             Error::CreateVcpuSocket(ref e) => {
                 write!(f, "error creating vcpu request socket: {:?}", e)
@@ -172,6 +177,7 @@ impl fmt::Display for Error {
             Error::TapSetNetmask(ref e) => write!(f, "error setting tap netmask: {:?}", e),
             Error::TapSetMacAddress(ref e) => write!(f, "error setting tap mac address: {:?}", e),
             Error::TapEnable(ref e) => write!(f, "error enabling tap device: {:?}", e),
+            Error::ValidateTapFd(ref e) => write!(f, "failed to validate raw tap fd: {:?}", e),
         }
     }
 }
@@ -506,6 +512,14 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 tap_opt = Some(tap);
             }
         }
+    }
+    if let Some(tap_fd) = cfg.tap_fd {
+        // Safe because we ensure that we get a unique handle to the fd.
+        let tap = unsafe {
+            Tap::from_raw_fd(validate_raw_fd(tap_fd).map_err(Error::ValidateTapFd)?)
+                .map_err(Error::CreateTapFd)?
+        };
+        tap_opt = Some(tap);
     }
 
     let plugin_args: Vec<&str> = cfg.params.iter().map(|s| &s[..]).collect();
