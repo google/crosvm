@@ -60,6 +60,7 @@ pub enum Error {
     CreateVm(SysError),
     DecodeRequest(ProtobufError),
     EncodeResponse(ProtobufError),
+    Mount(io_jail::Error),
     MountLib(io_jail::Error),
     MountLib64(io_jail::Error),
     MountPlugin(io_jail::Error),
@@ -127,6 +128,7 @@ impl fmt::Display for Error {
             Error::CreateVm(ref e) => write!(f, "error creating vm: {:?}", e),
             Error::DecodeRequest(ref e) => write!(f, "failed to decode plugin request: {}", e),
             Error::EncodeResponse(ref e) => write!(f, "failed to encode plugin response: {}", e),
+            Error::Mount(ref e) => write!(f, "failed to mount: {}", e),
             Error::MountLib(ref e) => write!(f, "failed to mount: {}", e),
             Error::MountLib64(ref e) => write!(f, "failed to mount: {}", e),
             Error::MountPlugin(ref e) => write!(f, "failed to mount: {}", e),
@@ -492,7 +494,13 @@ pub fn run_config(cfg: Config) -> Result<()> {
         }
 
         let policy_path = cfg.seccomp_policy_dir.join("plugin.policy");
-        let jail = create_plugin_jail(root_path, &policy_path)?;
+        let mut jail = create_plugin_jail(root_path, &policy_path)?;
+
+        for bind_mount in &cfg.plugin_mounts {
+            jail.mount_bind(&bind_mount.src, &bind_mount.dst, bind_mount.writable)
+                .map_err(Error::Mount)?;
+        }
+
         Some(jail)
     } else {
         None

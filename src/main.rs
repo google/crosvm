@@ -63,6 +63,12 @@ struct DiskOption {
     read_only: bool,
 }
 
+struct BindMount {
+    src: PathBuf,
+    dst: PathBuf,
+    writable: bool,
+}
+
 pub struct Config {
     vcpu_count: Option<u32>,
     memory: Option<usize>,
@@ -71,6 +77,7 @@ pub struct Config {
     socket_path: Option<PathBuf>,
     plugin: Option<PathBuf>,
     plugin_root: Option<PathBuf>,
+    plugin_mounts: Vec<BindMount>,
     disks: Vec<DiskOption>,
     host_ip: Option<net::Ipv4Addr>,
     netmask: Option<net::Ipv4Addr>,
@@ -96,6 +103,7 @@ impl Default for Config {
             socket_path: None,
             plugin: None,
             plugin_root: None,
+            plugin_mounts: Vec::new(),
             disks: Vec::new(),
             host_ip: None,
             netmask: None,
@@ -388,6 +396,48 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "plugin-root" => {
             cfg.plugin_root = Some(PathBuf::from(value.unwrap().to_owned()));
         }
+        "plugin-mount" => {
+            let components: Vec<&str> = value.unwrap().split(":").collect();
+            if components.len() != 3 {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected:
+                        "`plugin-mount` must have exactly 3 components: <src>:<dst>:<writable>",
+                });
+            }
+
+            let src = PathBuf::from(components[0]);
+            if src.is_relative() {
+                return Err(argument::Error::InvalidValue {
+                    value: components[0].to_owned(),
+                    expected: "the source path for `plugin-mount` must be absolute",
+                });
+            }
+            if !src.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: components[0].to_owned(),
+                    expected: "the source path for `plugin-mount` does not exist",
+                });
+            }
+
+            let dst = PathBuf::from(components[1]);
+            if dst.is_relative() {
+                return Err(argument::Error::InvalidValue {
+                    value: components[1].to_owned(),
+                    expected: "the destination path for `plugin-mount` must be absolute",
+                });
+            }
+
+            let writable: bool =
+                components[2]
+                    .parse()
+                    .map_err(|_| argument::Error::InvalidValue {
+                        value: components[2].to_owned(),
+                        expected: "the <writable> component for `plugin-mount` is not valid bool",
+                    })?;
+
+            cfg.plugin_mounts.push(BindMount { src, dst, writable });
+        }
         "vhost-net" => cfg.vhost_net = true,
         "tap-fd" => {
             if cfg.tap_fd.is_some() {
@@ -456,6 +506,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           #[cfg(feature = "plugin")]
           Argument::value("plugin", "PATH", "Absolute path to plugin process to run under crosvm."),
           Argument::value("plugin-root", "PATH", "Absolute path to a directory that will become root filesystem for the plugin process."),
+          Argument::value("plugin-mount", "PATH:PATH:BOOL", "Path to be mounted into the plugin's root filesystem.  Can be given more than once."),
           Argument::flag("vhost-net", "Use vhost for networking."),
           Argument::value("tap-fd",
                           "fd",
