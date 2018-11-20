@@ -151,6 +151,31 @@ rawfd_impl!(UdpSocket);
 rawfd_impl!(UnixListener);
 rawfd_impl!(UnixDatagram);
 
+// This trait is unsafe as it use uninitialized memory.
+// Please only implement it for primitive types.
+unsafe trait AlignedNew: Sized + DataInit {
+    unsafe fn from_unaligned(buffer: &[u8]) -> Option<Self> {
+        let mut value = std::mem::uninitialized::<Self>();
+        {
+            let value_mem = value.as_mut_slice();
+            if value_mem.len() != buffer.len() {
+                return None;
+            }
+            value_mem.copy_from_slice(buffer);
+        }
+        Some(value)
+    }
+}
+
+unsafe impl AlignedNew for u8 {}
+unsafe impl AlignedNew for u16 {}
+unsafe impl AlignedNew for u32 {}
+unsafe impl AlignedNew for u64 {}
+
+unsafe impl AlignedNew for Le16 {}
+unsafe impl AlignedNew for Le32 {}
+unsafe impl AlignedNew for Le64 {}
+
 // usize could be different sizes on different targets. We always use u64.
 impl MsgOnSocket for usize {
     fn msg_size() -> usize {
@@ -160,9 +185,8 @@ impl MsgOnSocket for usize {
         if buffer.len() < std::mem::size_of::<u64>() {
             return Err(MsgError::WrongMsgBufferSize);
         }
-        let t: u64 = Le64::from_slice(&buffer[0..Self::msg_size()])
+        let t: u64 = Le64::from_unaligned(&buffer[0..Self::msg_size()])
             .unwrap()
-            .clone()
             .into();
         Ok((t as usize, 0))
     }
@@ -187,9 +211,8 @@ macro_rules! le_impl {
                 if buffer.len() < std::mem::size_of::<$le_type>() {
                     return Err(MsgError::WrongMsgBufferSize);
                 }
-                let t = $le_type::from_slice(&buffer[0..Self::msg_size()])
-                    .unwrap()
-                    .clone();
+                let t = $le_type::from_unaligned(&buffer[0..Self::msg_size()])
+                    .unwrap();
                 Ok((t.into(), 0))
             }
 
