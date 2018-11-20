@@ -19,17 +19,22 @@ pub unsafe trait DataInit: Copy + Send + Sync {
     /// value of `Self` will depend on the representation of the type in memory, and may change in
     /// an unstable fashion.
     ///
-    /// This will return `None` if the length of data does not match the size of `Self`.
+    /// This will return `None` if the length of data does not match the size of `Self`, or if the
+    /// data is not aligned for the type of `Self`.
     fn from_slice(data: &[u8]) -> Option<&Self> {
-        if data.len() == size_of::<Self>() {
-            // Safe because the DataInit trait asserts any data is valid for this type, and we
-            // ensured the size of the pointer's buffer is the correct size. This aliases a pointer,
-            // but because the pointer is from a const slice reference, there are no mutable
-            // aliases. Finally, the reference returned can not outlive data because they have equal
-            // implicit lifetime constraints.
-            Some(unsafe { &*(data.as_ptr() as *const Self) })
-        } else {
-            None
+        // Early out to avoid an unneeded `align_to` call.
+        if data.len() != size_of::<Self>() {
+            return None;
+        }
+
+        // Safe because the DataInit trait asserts any data is valid for this type, and we ensured
+        // the size of the pointer's buffer is the correct size. The `align_to` method ensures that
+        // we don't have any unaligned references. This aliases a pointer, but because the pointer
+        // is from a const slice reference, there are no mutable aliases. Finally, the reference
+        // returned can not outlive data because they have equal implicit lifetime constraints.
+        match unsafe { data.align_to::<Self>() } {
+            ([], [mid], []) => Some(mid),
+            _ => None,
         }
     }
 
@@ -39,17 +44,23 @@ pub unsafe trait DataInit: Copy + Send + Sync {
     /// reference are immediately reflected in `data`. The value of the returned `Self` will depend
     /// on the representation of the type in memory, and may change in an unstable fashion.
     ///
-    /// This will return `None` if the length of data does not match the size of `Self`.
+    /// This will return `None` if the length of data does not match the size of `Self`, or if the
+    /// data is not aligned for the type of `Self`.
     fn from_mut_slice(data: &mut [u8]) -> Option<&mut Self> {
-        if data.len() == size_of::<Self>() {
-            // Safe because the DataInit trait asserts any data is valid for this type, and we
-            // ensured the size of the pointer's buffer is the correct size. This aliases a pointer,
-            // but because the pointer is from a const slice reference, there are no mutable
-            // aliases. Finally, the reference returned can not outlive data because they have equal
-            // implicit lifetime constraints.
-            Some(unsafe { &mut *(data.as_mut_ptr() as *mut Self) })
-        } else {
-            None
+        // Early out to avoid an unneeded `align_to_mut` call.
+        if data.len() != size_of::<Self>() {
+            return None;
+        }
+
+        // Safe because the DataInit trait asserts any data is valid for this type, and we ensured
+        // the size of the pointer's buffer is the correct size. The `align_to` method ensures that
+        // we don't have any unaligned references. This aliases a pointer, but because the pointer
+        // is from a mut slice reference, we borrow the passed in mutable reference. Finally, the
+        // reference returned can not outlive data because they have equal implicit lifetime
+        // constraints.
+        match unsafe { data.align_to_mut::<Self>() } {
+            ([], [mid], []) => Some(mid),
+            _ => None,
         }
     }
 
@@ -90,27 +101,65 @@ macro_rules! array_data_init {
     }
 }
 macro_rules! data_init_type {
-    ($T:ty) => {
-        unsafe impl DataInit for $T {}
-        array_data_init! {
-            $T,
-            0  1  2  3  4  5  6  7  8  9
-            10 11 12 13 14 15 16 17 18 19
-            20 21 22 23 24 25 26 27 28 29
-            30 31 32
+    ($($T:ident),*) => {
+        $(
+            unsafe impl DataInit for $T {}
+            array_data_init! {
+                $T,
+                0  1  2  3  4  5  6  7  8  9
+                10 11 12 13 14 15 16 17 18 19
+                20 21 22 23 24 25 26 27 28 29
+                30 31 32
+            }
+        )*
+        #[cfg(test)]
+        mod data_init_tests {
+            use std::mem::{size_of, align_of};
+            use DataInit;
+
+            #[test]
+            fn from_slice_alignment() {
+                let mut v = [0u8; 32];
+                $(
+                    let pre_len =  {
+                        let (pre, _, _) = unsafe { v.align_to::<$T>() };
+                        pre.len()
+                    };
+                    {
+                        let aligned_v = &mut v[pre_len..pre_len + size_of::<$T>()];
+                        {
+                            let from_aligned = $T::from_slice(aligned_v);
+                            assert_eq!(from_aligned, Some(&0));
+                        }
+                        {
+                            let from_aligned_mut = $T::from_mut_slice(aligned_v);
+                            assert_eq!(from_aligned_mut, Some(&mut 0));
+                        }
+                    }
+                    for i in 1..size_of::<$T>() {
+                        let begin = pre_len + i;
+                        let end = begin + size_of::<$T>();
+                        let unaligned_v = &mut v[begin..end];
+                        {
+                            let from_unaligned = $T::from_slice(unaligned_v);
+                            if align_of::<$T>() != 1 {
+                                assert_eq!(from_unaligned, None);
+                            }
+                        }
+                        {
+                            let from_unaligned_mut = $T::from_mut_slice(unaligned_v);
+                            if align_of::<$T>() != 1 {
+                                assert_eq!(from_unaligned_mut, None);
+                            }
+                        }
+                    }
+                )*
+
+            }
         }
     };
 }
-data_init_type!(u8);
-data_init_type!(u16);
-data_init_type!(u32);
-data_init_type!(u64);
-data_init_type!(usize);
-data_init_type!(i8);
-data_init_type!(i16);
-data_init_type!(i32);
-data_init_type!(i64);
-data_init_type!(isize);
+data_init_type!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 
 pub mod endian;
 pub use endian::*;
