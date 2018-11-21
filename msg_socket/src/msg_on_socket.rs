@@ -211,8 +211,7 @@ macro_rules! le_impl {
                 if buffer.len() < std::mem::size_of::<$le_type>() {
                     return Err(MsgError::WrongMsgBufferSize);
                 }
-                let t = $le_type::from_unaligned(&buffer[0..Self::msg_size()])
-                    .unwrap();
+                let t = $le_type::from_unaligned(&buffer[0..Self::msg_size()]).unwrap();
                 Ok((t.into(), 0))
             }
 
