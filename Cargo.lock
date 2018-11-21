@@ -104,6 +104,7 @@ dependencies = [
  "protobuf 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "qcow 0.1.0",
  "rand_ish 0.1.0",
+ "render_node_forward 0.1.0",
  "resources 0.1.0",
  "sync 0.1.0",
  "sys_util 0.1.0",
@@ -404,6 +405,13 @@ dependencies = [
 [[package]]
 name = "rand_ish"
 version = "0.1.0"
+
+[[package]]
+name = "render_node_forward"
+version = "0.1.0"
+dependencies = [
+ "sys_util 0.1.0",
+]
 
 [[package]]
 name = "resources"
