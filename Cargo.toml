@@ -29,7 +29,7 @@ msg_socket = { path = "msg_socket" }
 sys_util = { path = "sys_util" }
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
-libc = "=0.2.40"
+libc = "=0.2.44"
 byteorder = "=1.1.0"
 net_util = { path = "net_util" }
 vhost = { path = "vhost" }

@@ -3,7 +3,7 @@ name = "9s"
 version = "0.1.0"
 dependencies = [
  "getopts 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "p9 0.1.0",
  "sys_util 0.1.0",
 ]
@@ -20,7 +20,7 @@ dependencies = [
  "kernel_cmdline 0.1.0",
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
  "sys_util 0.1.0",
 ]
@@ -33,7 +33,7 @@ dependencies = [
  "io_jail 0.1.0",
  "kernel_cmdline 0.1.0",
  "kvm 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
  "sys_util 0.1.0",
 ]
@@ -91,7 +91,7 @@ dependencies = [
  "kernel_loader 0.1.0",
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "msg_socket 0.1.0",
  "net_util 0.1.0",
  "p9 0.1.0",
@@ -112,7 +112,7 @@ version = "0.16.0"
 dependencies = [
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "plugin_proto 0.16.0",
  "protobuf 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
@@ -133,7 +133,7 @@ dependencies = [
  "gpu_renderer 0.1.0",
  "io_jail 0.1.0",
  "kvm 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "msg_socket 0.1.0",
  "net_sys 0.1.0",
  "net_util 0.1.0",
@@ -178,7 +178,7 @@ version = "0.1.0"
 dependencies = [
  "cc 1.0.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -187,7 +187,7 @@ name = "gpu_renderer"
 version = "0.1.0"
 dependencies = [
  "data_model 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -195,21 +195,21 @@ dependencies = [
 name = "io_jail"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "kernel_cmdline"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "kernel_loader"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -218,7 +218,7 @@ name = "kvm"
 version = "0.1.0"
 dependencies = [
  "kvm_sys 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "msg_socket 0.1.0",
  "sys_util 0.1.0",
 ]
@@ -227,13 +227,13 @@ dependencies = [
 name = "kvm_sys"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
 [[package]]
 name = "libc"
-version = "0.2.40"
+version = "0.2.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -273,7 +273,7 @@ dependencies = [
 name = "net_util"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "net_sys 0.1.0",
  "sys_util 0.1.0",
 ]
@@ -282,7 +282,7 @@ dependencies = [
 name = "p9"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "wire_format_derive 0.1.0",
 ]
 
@@ -336,7 +336,7 @@ name = "qcow"
 version = "0.1.0"
 dependencies = [
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
 ]
 
@@ -345,7 +345,7 @@ name = "qcow_utils"
 version = "0.1.0"
 dependencies = [
  "getopts 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "qcow 0.1.0",
  "sys_util 0.1.0",
 ]
@@ -364,7 +364,7 @@ version = "0.3.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "fuchsia-zircon 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -373,7 +373,7 @@ version = "0.1.0"
 dependencies = [
  "data_model 0.1.0",
  "gpu_buffer 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "msg_socket 0.1.0",
  "sys_util 0.1.0",
 ]
@@ -393,7 +393,7 @@ name = "sys_util"
 version = "0.1.0"
 dependencies = [
  "data_model 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "poll_token_derive 0.1.0",
  "syscall_defines 0.1.0",
 ]
@@ -419,7 +419,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "vhost"
 version = "0.1.0"
 dependencies = [
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "net_util 0.1.0",
  "sys_util 0.1.0",
  "virtio_sys 0.1.0",
@@ -439,7 +439,7 @@ dependencies = [
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
  "kvm 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "msg_socket 0.1.0",
  "resources 0.1.0",
  "sys_util 0.1.0",
@@ -468,7 +468,7 @@ dependencies = [
  "kernel_loader 0.1.0",
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
- "libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
  "sys_util 0.1.0",
 ]
@@ -481,7 +481,7 @@ dependencies = [
 "checksum fuchsia-zircon 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "2e9763c69ebaae630ba35f74888db465e49e259ba1bc0eda7d06f4a067615d82"
 "checksum fuchsia-zircon-sys 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
 "checksum getopts 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)" = "b900c08c1939860ce8b54dc6a89e26e00c04c380fd0e09796799bd7f12861e05"
-"checksum libc 0.2.40 (registry+https://github.com/rust-lang/crates.io-index)" = "6fd41f331ac7c5b8ac259b8bf82c75c0fb2e469bbf37d2becbba9a6a2221965b"
+"checksum libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)" = "10923947f84a519a45c8fefb7dd1b3e8c08747993381adee176d7a82b4195311"
 "checksum log 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "89f010e843f2b1a31dbd316b3b8d443758bc634bed37aabade59c686d644e0a2"
 "checksum proc-macro2 0.4.24 (registry+https://github.com/rust-lang/crates.io-index)" = "77619697826f31a02ae974457af0b29b723e5619e113e9397b8b82c6bd253f09"
 "checksum protobuf 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bec26e67194b7d991908145fdf21b7cae8b08423d96dcb9e860cd31f854b9506"
