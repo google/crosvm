@@ -673,7 +673,7 @@ impl Drop for Process {
     fn drop(&mut self) {
         // Ignore the result because there is nothing we can do about it.
         if let Err(e) = self.signal_kill() {
-            error!("failed to singal kill event for plugin: {:?}", e);
+            error!("failed to signal kill event for plugin: {:?}", e);
         }
     }
 }

@@ -538,7 +538,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let mut redo_poll_ctx_sockets = true;
     // In this loop, make every attempt to not return early. If an error is encountered, set `res`
     // to the error, set `dying_instant` to now, and signal the plugin that it will be killed soon.
-    // If the plugin cannot be singaled because it is dead of `signal_kill` failed, simply break
+    // If the plugin cannot be signaled because it is dead of `signal_kill` failed, simply break
     // from the poll loop so that the VCPU threads can be cleaned up.
     'poll: loop {
         // After we have waited long enough, it's time to give up and exit.
