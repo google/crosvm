@@ -165,16 +165,6 @@ pub enum FallocateMode {
     ZeroRange,
 }
 
-// TODO(dverkamp): Remove this once fallocate64 is available in libc.
-extern "C" {
-    pub fn fallocate64(
-        fd: libc::c_int,
-        mode: libc::c_int,
-        offset: libc::off64_t,
-        len: libc::off64_t,
-    ) -> libc::c_int;
-}
-
 /// Safe wrapper for `fallocate()`.
 pub fn fallocate(
     file: &AsRawFd,
@@ -206,8 +196,7 @@ pub fn fallocate(
 
     // Safe since we pass in a valid fd and fallocate mode, validate offset and len,
     // and check the return value.
-    // TODO(dverkamp): Replace this with libc::fallocate64 once it is available.
-    let ret = unsafe { fallocate64(file.as_raw_fd(), mode, offset, len) };
+    let ret = unsafe { libc::fallocate64(file.as_raw_fd(), mode, offset, len) };
     if ret < 0 {
         errno_result()
     } else {
