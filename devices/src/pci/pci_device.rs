@@ -108,33 +108,21 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     ) {
         (**self).assign_irq(irq_evt, irq_resample_evt, irq_num, irq_pin)
     }
-    /// Allocates the needed IO BAR space using the `allocate` function which takes a size and
-    /// returns an address. Returns a Vec of (address, length) tuples.
     fn allocate_io_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
         (**self).allocate_io_bars(resources)
     }
-    /// Gets a list of ioeventfds that should be registered with the running VM. The list is
-    /// returned as a Vec of (eventfd, addr, datamatch) tuples.
     fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
         (**self).ioeventfds()
     }
-    /// Gets the configuration registers of the Pci Device.
     fn config_registers(&self) -> &PciConfiguration {
         (**self).config_registers()
     }
-    /// Gets the configuration registers of the Pci Device for modification.
     fn config_registers_mut(&mut self) -> &mut PciConfiguration {
         (**self).config_registers_mut()
     }
-    /// Reads from a BAR region mapped in to the device.
-    /// * `addr` - The guest address inside the BAR.
-    /// * `data` - Filled with the data from `addr`.
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
         (**self).read_bar(addr, data)
     }
-    /// Writes to a BAR region mapped in to the device.
-    /// * `addr` - The guest address inside the BAR.
-    /// * `data` - The data to write.
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
         (**self).write_bar(addr, data)
     }
