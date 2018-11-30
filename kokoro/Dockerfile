@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     libgles1-mesa-dev \
     libgles2-mesa-dev \
     libtool \
+    libusb-1.0-0-dev \
     libwayland-dev \
     make \
     nasm \
