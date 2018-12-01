@@ -659,71 +659,68 @@ fn run_vcpu(
 
             start_barrier.wait();
 
-            while sig_ok {
-                let run_res = vcpu.run();
-                match run_res {
-                    Ok(run) => {
-                        match run {
-                            VcpuExit::IoIn { port, mut size } => {
-                                let mut data = [0; 8];
-                                if size > data.len() {
-                                    error!("unsupported IoIn size of {} bytes", size);
-                                    size = data.len();
-                                }
-                                io_bus.read(port as u64, &mut data[..size]);
-                                if let Err(e) = vcpu.set_data(&data[..size]) {
-                                    error!("failed to set return data for IoIn: {:?}", e);
-                                }
+            if sig_ok {
+                loop {
+                    match vcpu.run() {
+                        Ok(VcpuExit::IoIn { port, mut size }) => {
+                            let mut data = [0; 8];
+                            if size > data.len() {
+                                error!("unsupported IoIn size of {} bytes", size);
+                                size = data.len();
                             }
-                            VcpuExit::IoOut {
-                                port,
-                                mut size,
-                                data,
-                            } => {
-                                if size > data.len() {
-                                    error!("unsupported IoOut size of {} bytes", size);
-                                    size = data.len();
-                                }
-                                io_bus.write(port as u64, &data[..size]);
+                            io_bus.read(port as u64, &mut data[..size]);
+                            if let Err(e) = vcpu.set_data(&data[..size]) {
+                                error!("failed to set return data for IoIn: {:?}", e);
                             }
-                            VcpuExit::MmioRead { address, mut size } => {
-                                let mut data = [0; 8];
-                                mmio_bus.read(address, &mut data[..size]);
-                                // Setting data for mmio can not fail.
-                                let _ = vcpu.set_data(&data[..size]);
-                            }
-                            VcpuExit::MmioWrite {
-                                address,
-                                size,
-                                data,
-                            } => {
-                                mmio_bus.write(address, &data[..size]);
-                            }
-                            VcpuExit::Hlt => break,
-                            VcpuExit::Shutdown => break,
-                            VcpuExit::SystemEvent(_, _) =>
-                            //TODO handle reboot and crash events
-                            {
-                                kill_signaled.store(true, Ordering::SeqCst)
-                            }
-                            r => warn!("unexpected vcpu exit: {:?}", r),
                         }
+                        Ok(VcpuExit::IoOut {
+                            port,
+                            mut size,
+                            data,
+                        }) => {
+                            if size > data.len() {
+                                error!("unsupported IoOut size of {} bytes", size);
+                                size = data.len();
+                            }
+                            io_bus.write(port as u64, &data[..size]);
+                        }
+                        Ok(VcpuExit::MmioRead { address, size }) => {
+                            let mut data = [0; 8];
+                            mmio_bus.read(address, &mut data[..size]);
+                            // Setting data for mmio can not fail.
+                            let _ = vcpu.set_data(&data[..size]);
+                        }
+                        Ok(VcpuExit::MmioWrite {
+                            address,
+                            size,
+                            data,
+                        }) => {
+                            mmio_bus.write(address, &data[..size]);
+                        }
+                        Ok(VcpuExit::Hlt) => break,
+                        Ok(VcpuExit::Shutdown) => break,
+                        Ok(VcpuExit::SystemEvent(_, _)) =>
+                        //TODO handle reboot and crash events
+                        {
+                            kill_signaled.store(true, Ordering::SeqCst)
+                        }
+                        Ok(r) => warn!("unexpected vcpu exit: {:?}", r),
+                        Err(e) => match e.errno() {
+                            libc::EAGAIN | libc::EINTR => {}
+                            _ => {
+                                error!("vcpu hit unknown error: {:?}", e);
+                                break;
+                            }
+                        },
                     }
-                    Err(e) => match e.errno() {
-                        libc::EAGAIN | libc::EINTR => {}
-                        _ => {
-                            error!("vcpu hit unknown error: {:?}", e);
-                            break;
-                        }
-                    },
-                }
-                if kill_signaled.load(Ordering::SeqCst) {
-                    break;
-                }
+                    if kill_signaled.load(Ordering::SeqCst) {
+                        break;
+                    }
 
-                // Try to clear the signal that we use to kick VCPU if it is
-                // pending before attempting to handle pause requests.
-                clear_signal(SIGRTMIN() + 0).expect("failed to clear pending signal");
+                    // Try to clear the signal that we use to kick VCPU if it is
+                    // pending before attempting to handle pause requests.
+                    clear_signal(SIGRTMIN() + 0).expect("failed to clear pending signal");
+                }
             }
             exit_evt
                 .write(1)
