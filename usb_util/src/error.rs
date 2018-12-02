@@ -27,24 +27,24 @@ pub enum Error {
 
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Error::Success(_v) => write!(f, "Success (no error)"),
-            &Error::IO => write!(f, "Input/output error"),
-            &Error::InvalidParam => write!(f, "Invalid parameter"),
-            &Error::Access => write!(f, "Access denied (insufficient permissions)"),
-            &Error::NoDevice => write!(f, "No such device (it may have been disconnected)"),
-            &Error::NotFound => write!(f, "Entity not found"),
-            &Error::Busy => write!(f, "Resource busy"),
-            &Error::Timeout => write!(f, "Operation timed out"),
-            &Error::Overflow => write!(f, "Overflow"),
-            &Error::Pipe => write!(f, "Pipe error"),
-            &Error::Interrupted => write!(f, "System call interrupted (perhaps due to signal)"),
-            &Error::NoMem => write!(f, "Insufficient memory"),
-            &Error::NotSupported => write!(
+        match *self {
+            Error::Success(_v) => write!(f, "Success (no error)"),
+            Error::IO => write!(f, "Input/output error"),
+            Error::InvalidParam => write!(f, "Invalid parameter"),
+            Error::Access => write!(f, "Access denied (insufficient permissions)"),
+            Error::NoDevice => write!(f, "No such device (it may have been disconnected)"),
+            Error::NotFound => write!(f, "Entity not found"),
+            Error::Busy => write!(f, "Resource busy"),
+            Error::Timeout => write!(f, "Operation timed out"),
+            Error::Overflow => write!(f, "Overflow"),
+            Error::Pipe => write!(f, "Pipe error"),
+            Error::Interrupted => write!(f, "System call interrupted (perhaps due to signal)"),
+            Error::NoMem => write!(f, "Insufficient memory"),
+            Error::NotSupported => write!(
                 f,
                 "Operation not supported or unimplemented on this platform"
             ),
-            &Error::Other => write!(f, "Other error"),
+            Error::Other => write!(f, "Other error"),
         }
     }
 }

@@ -358,11 +358,10 @@ impl QcowFile {
         }
 
         let l2_size = cluster_size / size_of::<u64>() as u64;
-        let num_clusters = div_round_up_u64(header.size, u64::from(cluster_size));
+        let num_clusters = div_round_up_u64(header.size, cluster_size);
         let num_l2_clusters = div_round_up_u64(num_clusters, l2_size);
-        let l1_clusters = div_round_up_u64(num_l2_clusters, u64::from(cluster_size));
-        let header_clusters =
-            div_round_up_u64(size_of::<QcowHeader>() as u64, u64::from(cluster_size));
+        let l1_clusters = div_round_up_u64(num_l2_clusters, cluster_size);
+        let header_clusters = div_round_up_u64(size_of::<QcowHeader>() as u64, cluster_size);
         let l1_table = VecCache::from_vec(
             raw_file
                 .read_pointer_table(
@@ -372,7 +371,7 @@ impl QcowFile {
                 ).map_err(Error::ReadingHeader)?,
         );
 
-        let num_clusters = div_round_up_u64(header.size, u64::from(cluster_size));
+        let num_clusters = div_round_up_u64(header.size, cluster_size);
         let refcount_clusters = max_refcount_clusters(
             header.refcount_order,
             cluster_size as u32,
@@ -699,7 +698,7 @@ impl QcowFile {
         let refcount_bytes = div_round_up_u64(refcount_bits, 8);
         let refcount_block_entries = cluster_size / refcount_bytes;
         let pointers_per_cluster = cluster_size / size_of::<u64>() as u64;
-        let data_clusters = div_round_up_u64(header.size, u64::from(cluster_size));
+        let data_clusters = div_round_up_u64(header.size, cluster_size);
         let l2_clusters = div_round_up_u64(data_clusters, pointers_per_cluster);
         let l1_clusters = div_round_up_u64(l2_clusters, cluster_size);
         let header_clusters = div_round_up_u64(size_of::<QcowHeader>() as u64, cluster_size);
@@ -1433,7 +1432,7 @@ where
             .read(&mut buf[..this_count])
             .map_err(Error::ReadingData)?;
         writer.write(&buf[..nread]).map_err(Error::WritingData)?;
-        read_count = read_count + nread as u64;
+        read_count += nread as u64;
         if nread == 0 || read_count == size {
             break;
         }

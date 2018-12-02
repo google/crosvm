@@ -19,8 +19,8 @@ pub type Result<T> = result::Result<T, Error>;
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
-            &Error::GetSupportedCpusFailed(_) => "GetSupportedCpus ioctl failed",
-            &Error::SetSupportedCpusFailed(_) => "SetSupportedCpus ioctl failed",
+            Error::GetSupportedCpusFailed(_) => "GetSupportedCpus ioctl failed",
+            Error::SetSupportedCpusFailed(_) => "SetSupportedCpus ioctl failed",
         }
     }
 }

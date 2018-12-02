@@ -15,7 +15,7 @@ use sys_util::{EventFd, GuestMemory, PollContext, PollToken};
 use super::{Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_RNG};
 
 const QUEUE_SIZE: u16 = 256;
-const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
+const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
 
 #[derive(Debug)]
 pub enum RngError {

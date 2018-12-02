@@ -16,6 +16,7 @@ use sys_util::{GuestAddress, GuestMemory};
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
 #[allow(non_upper_case_globals)]
+#[cfg_attr(feature = "cargo-clippy", allow(clippy))]
 mod elf;
 
 #[derive(Debug, PartialEq)]
@@ -39,21 +40,21 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
-            &Error::BigEndianElfOnLittle => {
+            Error::BigEndianElfOnLittle => {
                 "Trying to load big-endian binary on little-endian machine"
             }
-            &Error::CommandLineCopy => "Failed writing command line to guest memory",
-            &Error::CommandLineOverflow => "Command line overflowed guest memory",
-            &Error::InvalidElfMagicNumber => "Invalid Elf magic number",
-            &Error::InvalidProgramHeaderSize => "Invalid program header size",
-            &Error::InvalidProgramHeaderOffset => "Invalid program header offset",
-            &Error::InvalidProgramHeaderAddress => "Invalid Program Header Address",
-            &Error::ReadElfHeader => "Unable to read elf header",
-            &Error::ReadKernelImage => "Unable to read kernel image",
-            &Error::ReadProgramHeader => "Unable to read program header",
-            &Error::SeekKernelStart => "Unable to seek to kernel start",
-            &Error::SeekElfStart => "Unable to seek to elf start",
-            &Error::SeekProgramHeader => "Unable to seek to program header",
+            Error::CommandLineCopy => "Failed writing command line to guest memory",
+            Error::CommandLineOverflow => "Command line overflowed guest memory",
+            Error::InvalidElfMagicNumber => "Invalid Elf magic number",
+            Error::InvalidProgramHeaderSize => "Invalid program header size",
+            Error::InvalidProgramHeaderOffset => "Invalid program header offset",
+            Error::InvalidProgramHeaderAddress => "Invalid Program Header Address",
+            Error::ReadElfHeader => "Unable to read elf header",
+            Error::ReadKernelImage => "Unable to read kernel image",
+            Error::ReadProgramHeader => "Unable to read program header",
+            Error::SeekKernelStart => "Unable to seek to kernel start",
+            Error::SeekElfStart => "Unable to seek to elf start",
+            Error::SeekProgramHeader => "Unable to seek to program header",
         }
     }
 }

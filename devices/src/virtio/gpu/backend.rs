@@ -494,7 +494,7 @@ impl Backend {
             }
         }
 
-        return response;
+        response
     }
 
     /// Copes the given rectangle of pixels of the given resource's backing memory to the host side

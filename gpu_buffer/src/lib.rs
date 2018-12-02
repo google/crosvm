@@ -236,7 +236,7 @@ impl Format {
             DRM_FORMAT_XRGB8888 => 4,
             _ => return None,
         };
-        return Some(bpp);
+        Some(bpp)
     }
 }
 
@@ -576,10 +576,10 @@ impl Buffer {
                 let line_offset = checked_arithmetic!(yy * stride)?;
                 let src_line = src
                     .get_slice(line_offset, line_copy_size)
-                    .map_err(|e| Error::Memcopy(e))?;
+                    .map_err(Error::Memcopy)?;
                 let dst_line = dst
                     .get_slice(line_offset, line_copy_size)
-                    .map_err(|e| Error::Memcopy(e))?;
+                    .map_err(Error::Memcopy)?;
                 src_line.copy_to_volatile_slice(dst_line);
             }
         }
@@ -627,13 +627,11 @@ impl Buffer {
                 let copy_sg_size = min(sg_size, copy_size);
                 let src_slice = sg
                     .get_slice(src_offset, copy_sg_size)
-                    .map_err(|e| Error::Memcopy(e))?;
+                    .map_err(Error::Memcopy)?;
                 src_slice.copy_to_volatile_slice(dst_slice);
 
                 src_offset = 0;
-                dst_slice = dst_slice
-                    .offset(copy_sg_size)
-                    .map_err(|e| Error::Memcopy(e))?;
+                dst_slice = dst_slice.offset(copy_sg_size).map_err(Error::Memcopy)?;
                 copy_size -= copy_sg_size;
                 if copy_size == 0 {
                     break;
@@ -647,8 +645,7 @@ impl Buffer {
             let line_end_skip = checked_arithmetic!(stride - line_copy_size)?;
             let mut remaining_line_copy_size = line_copy_size;
             let mut sg_opt = sgs.next();
-            while !sg_opt.is_none() {
-                let sg = sg_opt.unwrap();
+            while let Some(sg) = sg_opt {
                 // Skip src_offset into this scatter gather item, or the entire thing if offset is
                 // larger.
                 let sg_size = match sg.size().checked_sub(src_offset) {
@@ -662,13 +659,11 @@ impl Buffer {
                 let copy_sg_size = min(sg_size, remaining_line_copy_size);
                 let src_slice = sg
                     .get_slice(src_offset, copy_sg_size)
-                    .map_err(|e| Error::Memcopy(e))?;
+                    .map_err(Error::Memcopy)?;
                 src_slice.copy_to_volatile_slice(dst_slice);
 
                 src_offset += copy_sg_size;
-                dst_slice = dst_slice
-                    .offset(copy_sg_size)
-                    .map_err(|e| Error::Memcopy(e))?;
+                dst_slice = dst_slice.offset(copy_sg_size).map_err(Error::Memcopy)?;
                 remaining_line_copy_size -= copy_sg_size;
                 if remaining_line_copy_size == 0 {
                     remaining_line_copy_size = line_copy_size;
@@ -678,9 +673,7 @@ impl Buffer {
                     }
 
                     src_offset += line_end_skip;
-                    dst_slice = dst_slice
-                        .offset(line_end_skip)
-                        .map_err(|e| Error::Memcopy(e))?;
+                    dst_slice = dst_slice.offset(line_end_skip).map_err(Error::Memcopy)?;
                 }
             }
         }

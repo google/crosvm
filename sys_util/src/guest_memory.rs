@@ -27,10 +27,10 @@ pub type Result<T> = result::Result<T, Error>;
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
-            &Error::InvalidGuestAddress(_) => "Invalid Guest Address",
-            &Error::MemoryAccess(_, _) => "Invalid Guest Memory Access",
-            &Error::MemoryMappingFailed(_) => "Failed to map guest memory",
-            &Error::MemoryRegionOverlap => "Memory regions overlap",
+            Error::InvalidGuestAddress(_) => "Invalid Guest Address",
+            Error::MemoryAccess(_, _) => "Invalid Guest Memory Access",
+            Error::MemoryMappingFailed(_) => "Failed to map guest memory",
+            Error::MemoryRegionOverlap => "Memory regions overlap",
         }
     }
 }
@@ -386,7 +386,7 @@ impl GuestMemory {
         self.do_in_region(guest_addr, |mapping, offset| {
             // This is safe; `do_in_region` already checks that offset is in
             // bounds.
-            Ok(unsafe { mapping.as_ptr().offset(offset as isize) } as *const u8)
+            Ok(unsafe { mapping.as_ptr().add(offset) } as *const u8)
         })
     }
 

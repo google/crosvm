@@ -100,86 +100,72 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Error::BalloonDeviceNew(ref e) => write!(f, "failed to create balloon: {:?}", e),
-            &Error::BlockDeviceNew(ref e) => write!(f, "failed to create block device: {:?}", e),
-            &Error::BlockSignal(ref e) => write!(f, "failed to block signal: {:?}", e),
-            &Error::BuildingVm(ref e) => {
-                write!(f, "The architecture failed to build the vm: {:?}", e)
-            }
-            &Error::CloneEventFd(ref e) => write!(f, "failed to clone eventfd: {:?}", e),
-            &Error::CreateEventFd(ref e) => write!(f, "failed to create eventfd: {:?}", e),
-            &Error::CreatePollContext(ref e) => write!(f, "failed to create poll context: {:?}", e),
-            &Error::CreateSignalFd(ref e) => write!(f, "failed to create signalfd: {:?}", e),
-            &Error::CreateSocket(ref e) => write!(f, "failed to create socket: {}", e),
-            &Error::CreateTimerFd(ref e) => write!(f, "failed to create timerfd: {}", e),
-            &Error::DetectImageType(ref e) => {
-                write!(f, "failed to detect disk image type: {:?}", e)
-            }
-            &Error::DeviceJail(ref e) => write!(f, "failed to jail device: {}", e),
-            &Error::DevicePivotRoot(ref e) => write!(f, "failed to pivot root device: {}", e),
-            &Error::Disk(ref e) => write!(f, "failed to load disk image: {}", e),
-            &Error::DiskImageLock(ref e) => write!(f, "failed to lock disk image: {:?}", e),
-            &Error::FailedCLOEXECCheck => {
+            Error::BalloonDeviceNew(e) => write!(f, "failed to create balloon: {:?}", e),
+            Error::BlockDeviceNew(e) => write!(f, "failed to create block device: {:?}", e),
+            Error::BlockSignal(e) => write!(f, "failed to block signal: {:?}", e),
+            Error::BuildingVm(e) => write!(f, "The architecture failed to build the vm: {:?}", e),
+            Error::CloneEventFd(e) => write!(f, "failed to clone eventfd: {:?}", e),
+            Error::CreateEventFd(e) => write!(f, "failed to create eventfd: {:?}", e),
+            Error::CreatePollContext(e) => write!(f, "failed to create poll context: {:?}", e),
+            Error::CreateSignalFd(e) => write!(f, "failed to create signalfd: {:?}", e),
+            Error::CreateSocket(e) => write!(f, "failed to create socket: {}", e),
+            Error::CreateTimerFd(e) => write!(f, "failed to create timerfd: {}", e),
+            Error::DetectImageType(e) => write!(f, "failed to detect disk image type: {:?}", e),
+            Error::DeviceJail(e) => write!(f, "failed to jail device: {}", e),
+            Error::DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
+            Error::Disk(e) => write!(f, "failed to load disk image: {}", e),
+            Error::DiskImageLock(e) => write!(f, "failed to lock disk image: {:?}", e),
+            Error::FailedCLOEXECCheck => {
                 write!(f, "/proc/self/fd argument failed check for CLOEXEC")
             }
-            &Error::FailedToDupFd => write!(f, "failed to dup fd from /proc/self/fd"),
-            &Error::InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
-            &Error::InvalidWaylandPath => {
+            Error::FailedToDupFd => write!(f, "failed to dup fd from /proc/self/fd"),
+            Error::InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
+            Error::InvalidWaylandPath => {
                 write!(f, "wayland socket path has no parent or file name")
             }
-            &Error::NetDeviceNew(ref e) => write!(f, "failed to set up virtio networking: {:?}", e),
-            &Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
-            &Error::OpenKernel(ref p, ref e) => {
-                write!(f, "failed to open kernel image {:?}: {}", p, e)
-            }
-            &Error::P9DeviceNew(ref e) => write!(f, "failed to create 9p device: {}", e),
-            &Error::PollContextAdd(ref e) => write!(f, "failed to add fd to poll context: {:?}", e),
-            &Error::PollContextDelete(ref e) => {
+            Error::NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {:?}", e),
+            Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
+            Error::OpenKernel(p, e) => write!(f, "failed to open kernel image {:?}: {}", p, e),
+            Error::P9DeviceNew(e) => write!(f, "failed to create 9p device: {}", e),
+            Error::PollContextAdd(e) => write!(f, "failed to add fd to poll context: {:?}", e),
+            Error::PollContextDelete(e) => {
                 write!(f, "failed to remove fd from poll context: {:?}", e)
             }
-            &Error::QcowDeviceCreate(ref e) => {
-                write!(f, "failed to read qcow formatted file {:?}", e)
-            }
-            &Error::ReadLowmemAvailable(ref e) => write!(
+            Error::QcowDeviceCreate(e) => write!(f, "failed to read qcow formatted file {:?}", e),
+            Error::ReadLowmemAvailable(e) => write!(
                 f,
                 "failed to read /sys/kernel/mm/chromeos-low_mem/available: {}",
                 e
             ),
-            &Error::ReadLowmemMargin(ref e) => write!(
+            Error::ReadLowmemMargin(e) => write!(
                 f,
                 "failed to read /sys/kernel/mm/chromeos-low_mem/margin: {}",
                 e
             ),
-            &Error::RegisterBalloon(ref e) => {
-                write!(f, "error registering balloon device: {:?}", e)
-            }
-            &Error::RegisterBlock(ref e) => write!(f, "error registering block device: {:?}", e),
-            &Error::RegisterGpu(ref e) => write!(f, "error registering gpu device: {:?}", e),
-            &Error::RegisterNet(ref e) => write!(f, "error registering net device: {:?}", e),
-            &Error::RegisterP9(ref e) => write!(f, "error registering 9p device: {:?}", e),
-            &Error::RegisterRng(ref e) => write!(f, "error registering rng device: {:?}", e),
-            &Error::RegisterSignalHandler(ref e) => {
+            Error::RegisterBalloon(e) => write!(f, "error registering balloon device: {:?}", e),
+            Error::RegisterBlock(e) => write!(f, "error registering block device: {:?}", e),
+            Error::RegisterGpu(e) => write!(f, "error registering gpu device: {:?}", e),
+            Error::RegisterNet(e) => write!(f, "error registering net device: {:?}", e),
+            Error::RegisterP9(e) => write!(f, "error registering 9p device: {:?}", e),
+            Error::RegisterRng(e) => write!(f, "error registering rng device: {:?}", e),
+            Error::RegisterSignalHandler(e) => {
                 write!(f, "error registering signal handler: {:?}", e)
             }
-            &Error::RegisterWayland(ref e) => write!(f, "error registering wayland device: {}", e),
-            &Error::ResetTimerFd(ref e) => write!(f, "failed to reset timerfd: {}", e),
-            &Error::RngDeviceNew(ref e) => write!(f, "failed to set up rng: {:?}", e),
-            &Error::SettingGidMap(ref e) => write!(f, "error setting GID map: {}", e),
-            &Error::SettingUidMap(ref e) => write!(f, "error setting UID map: {}", e),
-            &Error::SignalFd(ref e) => write!(f, "failed to read signal fd: {:?}", e),
-            &Error::SpawnVcpu(ref e) => write!(f, "failed to spawn VCPU thread: {:?}", e),
-            &Error::TimerFd(ref e) => write!(f, "failed to read timer fd: {:?}", e),
-            &Error::VhostNetDeviceNew(ref e) => {
-                write!(f, "failed to set up vhost networking: {:?}", e)
-            }
-            &Error::VhostVsockDeviceNew(ref e) => {
+            Error::RegisterWayland(e) => write!(f, "error registering wayland device: {}", e),
+            Error::ResetTimerFd(e) => write!(f, "failed to reset timerfd: {}", e),
+            Error::RngDeviceNew(e) => write!(f, "failed to set up rng: {:?}", e),
+            Error::SettingGidMap(e) => write!(f, "error setting GID map: {}", e),
+            Error::SettingUidMap(e) => write!(f, "error setting UID map: {}", e),
+            Error::SignalFd(e) => write!(f, "failed to read signal fd: {:?}", e),
+            Error::SpawnVcpu(e) => write!(f, "failed to spawn VCPU thread: {:?}", e),
+            Error::TimerFd(e) => write!(f, "failed to read timer fd: {:?}", e),
+            Error::VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {:?}", e),
+            Error::VhostVsockDeviceNew(e) => {
                 write!(f, "failed to set up virtual socket device: {:?}", e)
             }
-            &Error::VirtioPciDev(ref e) => write!(f, "failed to create virtio pci dev: {}", e),
-            &Error::WaylandDeviceNew(ref e) => {
-                write!(f, "failed to create wayland device: {:?}", e)
-            }
-            &Error::LoadKernel(ref e) => write!(f, "failed to load kernel: {}", e),
+            Error::VirtioPciDev(e) => write!(f, "failed to create virtio pci dev: {}", e),
+            Error::WaylandDeviceNew(e) => write!(f, "failed to create wayland device: {:?}", e),
+            Error::LoadKernel(e) => write!(f, "failed to load kernel: {}", e),
         }
     }
 }
@@ -216,7 +202,7 @@ fn validate_raw_fd(raw_fd: RawFd) -> std::result::Result<RawFd, Box<error::Error
 fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
     // they run as nobody unless otherwise configured.
-    let mut j = Minijail::new().map_err(|e| Error::DeviceJail(e))?;
+    let mut j = Minijail::new().map_err(Error::DeviceJail)?;
     j.namespace_pids();
     j.namespace_user();
     j.namespace_user_disable_setgroups();
@@ -224,8 +210,7 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     j.use_caps(0);
     // Create a new mount namespace with an empty root FS.
     j.namespace_vfs();
-    j.enter_pivot_root(root)
-        .map_err(|e| Error::DevicePivotRoot(e))?;
+    j.enter_pivot_root(root).map_err(Error::DevicePivotRoot)?;
     // Run in an empty network namespace.
     j.namespace_net();
     // Apply the block device seccomp policy.
@@ -236,7 +221,7 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     #[cfg(debug_assertions)]
     j.log_seccomp_filter_failures();
     j.parse_seccomp_filters(seccomp_policy)
-        .map_err(|e| Error::DeviceJail(e))?;
+        .map_err(Error::DeviceJail)?;
     j.use_seccomp_filter();
     // Don't do init setup.
     j.run_as_init();
@@ -250,7 +235,7 @@ fn create_virtio_devs(
     wayland_device_socket: UnixDatagram,
     balloon_device_socket: UnixDatagram,
 ) -> std::result::Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>, Box<error::Error>> {
-    static DEFAULT_PIVOT_ROOT: &'static str = "/var/empty";
+    static DEFAULT_PIVOT_ROOT: &str = "/var/empty";
 
     let mut devs = Vec::new();
 
@@ -279,7 +264,7 @@ fn create_virtio_devs(
                 .read(true)
                 .write(!disk.read_only)
                 .open(&disk.path)
-                .map_err(|e| Error::Disk(e))?
+                .map_err(Error::Disk)?
         };
         // Lock the disk image to prevent other crosvm instances from using it.
         let lock_op = if disk.read_only {
@@ -295,16 +280,15 @@ fn create_virtio_devs(
                 // Access as a raw block device.
                 Box::new(
                     devices::virtio::Block::new(raw_image, disk.read_only)
-                        .map_err(|e| Error::BlockDeviceNew(e))?,
+                        .map_err(Error::BlockDeviceNew)?,
                 )
             }
             ImageType::Qcow2 => {
                 // Valid qcow header present
-                let qcow_image =
-                    QcowFile::from(raw_image).map_err(|e| Error::QcowDeviceCreate(e))?;
+                let qcow_image = QcowFile::from(raw_image).map_err(Error::QcowDeviceCreate)?;
                 Box::new(
                     devices::virtio::Block::new(qcow_image, disk.read_only)
-                        .map_err(|e| Error::BlockDeviceNew(e))?,
+                        .map_err(Error::BlockDeviceNew)?,
                 )
             }
         };
@@ -351,8 +335,7 @@ fn create_virtio_devs(
     if let Some(tap_fd) = cfg.tap_fd {
         // Safe because we ensure that we get a unique handle to the fd.
         let tap = unsafe { Tap::from_raw_fd(validate_raw_fd(tap_fd)?) };
-        let net_box =
-            Box::new(devices::virtio::Net::from(tap).map_err(|e| Error::NetDeviceNew(e))?);
+        let net_box = Box::new(devices::virtio::Net::from(tap).map_err(Error::NetDeviceNew)?);
 
         let jail = if cfg.multiprocess {
             let policy_path: PathBuf = cfg.seccomp_policy_dir.join("net_device.policy");
@@ -373,12 +356,12 @@ fn create_virtio_devs(
                             netmask,
                             mac_address,
                             &mem,
-                        ).map_err(|e| Error::VhostNetDeviceNew(e))?,
+                        ).map_err(Error::VhostNetDeviceNew)?,
                     )
                 } else {
                     Box::new(
                         devices::virtio::Net::<Tap>::new(host_ip, netmask, mac_address)
-                            .map_err(|e| Error::NetDeviceNew(e))?,
+                            .map_err(Error::NetDeviceNew)?,
                     )
                 };
 
@@ -815,8 +798,8 @@ fn run_control(
     sigchld_fd: SignalFd,
 ) -> Result<()> {
     // Paths to get the currently available memory and the low memory threshold.
-    const LOWMEM_MARGIN: &'static str = "/sys/kernel/mm/chromeos-low_mem/margin";
-    const LOWMEM_AVAILABLE: &'static str = "/sys/kernel/mm/chromeos-low_mem/available";
+    const LOWMEM_MARGIN: &str = "/sys/kernel/mm/chromeos-low_mem/margin";
+    const LOWMEM_AVAILABLE: &str = "/sys/kernel/mm/chromeos-low_mem/available";
 
     // The amount of additional memory to claim back from the VM whenever the system is
     // low on memory.

@@ -22,7 +22,7 @@ use super::{Error, Result};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
-const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE; NUM_QUEUES];
+const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 
 pub struct Net<T: TapT, U: VhostNetT<T>> {
     workers_kill_evt: Option<EventFd>,

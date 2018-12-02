@@ -17,6 +17,7 @@ pub const KVM_EXIT_IO_OUT: ::std::os::raw::c_uint = 1;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86 {
     // generated with bindgen /usr/include/linux/kvm.h --no-unstable-rust --constified-enum '*' --with-derive-default
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy))]
     pub mod bindings;
     pub use bindings::*;
 

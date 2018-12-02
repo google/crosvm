@@ -25,7 +25,7 @@ use super::{Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_NET};
 /// http://docs.oasis-open.org/virtio/virtio/v1.0/virtio-v1.0.html#x1-1740003
 const MAX_BUFFER_SIZE: usize = 65562;
 const QUEUE_SIZE: u16 = 256;
-const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE, QUEUE_SIZE];
+const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 
 #[derive(Debug)]
 pub enum NetError {
@@ -175,31 +175,24 @@ where
             let mut read_count = 0;
 
             // Copy buffer from across multiple descriptors.
-            loop {
-                match next_desc {
-                    Some(desc) => {
-                        if desc.is_write_only() {
-                            break;
-                        }
-                        let limit = cmp::min(read_count + desc.len as usize, frame.len());
-                        let read_result = self
-                            .mem
-                            .read_slice_at_addr(&mut frame[read_count..limit as usize], desc.addr);
-                        match read_result {
-                            Ok(sz) => {
-                                read_count += sz;
-                            }
-                            Err(e) => {
-                                warn!("net: tx: failed to read slice: {:?}", e);
-                                break;
-                            }
-                        }
-                        next_desc = desc.next_descriptor();
+            while let Some(desc) = next_desc {
+                if desc.is_write_only() {
+                    break;
+                }
+                let limit = cmp::min(read_count + desc.len as usize, frame.len());
+                let read_result = self
+                    .mem
+                    .read_slice_at_addr(&mut frame[read_count..limit as usize], desc.addr);
+                match read_result {
+                    Ok(sz) => {
+                        read_count += sz;
                     }
-                    None => {
+                    Err(e) => {
+                        warn!("net: tx: failed to read slice: {:?}", e);
                         break;
                     }
                 }
+                next_desc = desc.next_descriptor();
             }
 
             let write_result = self.tap.write(&frame[..read_count as usize]);

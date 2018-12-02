@@ -22,7 +22,7 @@ use virtio_sys::vhost::VIRTIO_F_VERSION_1;
 use super::{DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_9P};
 
 const QUEUE_SIZE: u16 = 128;
-const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
+const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
 
 // The only virtio_9p feature.
 const VIRTIO_9P_MOUNT_TAG: u8 = 0;
@@ -61,39 +61,35 @@ impl error::Error for P9Error {
 impl fmt::Display for P9Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &P9Error::TagTooLong(len) => write!(
+            P9Error::TagTooLong(len) => write!(
                 f,
                 "P9 device tag is too long: len = {}, max = {}",
                 len,
                 ::std::u16::MAX
             ),
-            &P9Error::RootNotAbsolute(ref buf) => write!(
+            P9Error::RootNotAbsolute(buf) => write!(
                 f,
                 "P9 root directory is not absolute: root = {}",
                 buf.display()
             ),
-            &P9Error::CreatePollContext(ref err) => {
-                write!(f, "failed to create PollContext: {:?}", err)
-            }
-            &P9Error::PollError(ref err) => write!(f, "failed to poll events: {:?}", err),
-            &P9Error::ReadQueueEventFd(ref err) => {
+            P9Error::CreatePollContext(err) => write!(f, "failed to create PollContext: {:?}", err),
+            P9Error::PollError(err) => write!(f, "failed to poll events: {:?}", err),
+            P9Error::ReadQueueEventFd(err) => {
                 write!(f, "failed to read from virtio queue EventFd: {:?}", err)
             }
-            &P9Error::NoReadableDescriptors => {
+            P9Error::NoReadableDescriptors => {
                 write!(f, "request does not have any readable descriptors")
             }
-            &P9Error::NoWritableDescriptors => {
+            P9Error::NoWritableDescriptors => {
                 write!(f, "request does not have any writable descriptors")
             }
-            &P9Error::InvalidGuestAddress(addr, len) => write!(
+            P9Error::InvalidGuestAddress(addr, len) => write!(
                 f,
                 "descriptor contained invalid guest address range: address = {:?}, len = {}",
                 addr, len
             ),
-            &P9Error::SignalUsedQueue(ref err) => {
-                write!(f, "failed to signal used queue: {:?}", err)
-            }
-            &P9Error::Internal(ref err) => write!(f, "P9 internal server error: {}", err),
+            P9Error::SignalUsedQueue(err) => write!(f, "failed to signal used queue: {:?}", err),
+            P9Error::Internal(err) => write!(f, "P9 internal server error: {}", err),
         }
     }
 }

@@ -137,7 +137,7 @@ fn wait_all_children() -> bool {
     }
 
     // If we've made it to this point, not all of the children have exited.
-    return false;
+    false
 }
 
 fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::Result<()> {
@@ -215,7 +215,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 }
                 cfg.params.push(format!(
                     "root=/dev/vd{} ro",
-                    char::from('a' as u8 + cfg.disks.len() as u8)
+                    char::from(b'a' + cfg.disks.len() as u8)
                 ));
             }
             cfg.disks.push(DiskOption {
@@ -628,12 +628,10 @@ fn create_qcow2(mut args: std::env::Args) -> std::result::Result<(), ()> {
         .open(&file_path)
         .map_err(|e| {
             error!("Failed opening qcow file at '{}': {:?}", file_path, e);
-            ()
         })?;
 
     QcowFile::new(file, size).map_err(|e| {
         error!("Failed to create qcow file at '{}': {:?}", file_path, e);
-        ()
     })?;
 
     Ok(())

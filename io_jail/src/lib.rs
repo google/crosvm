@@ -73,74 +73,62 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Error::BindMount {
-                ref src,
-                ref dst,
-                errno,
-            } => write!(
+            Error::BindMount { src, dst, errno } => write!(
                 f,
                 "failed to accept bind mount {:?} -> {:?}: {}",
                 src, dst, errno
             ),
-            &Error::Mount {
+            Error::Mount {
                 errno,
-                ref src,
-                ref dest,
-                ref fstype,
+                src,
+                dest,
+                fstype,
                 flags,
-                ref data,
+                data,
             } => write!(
                 f,
                 "failed to accept mount {:?} -> {:?} of type {:?} with flags 0x{:x} \
                  and data {:?}: {}",
                 src, dest, fstype, flags, data, errno
             ),
-            &Error::CheckingMultiThreaded(ref e) => write!(
+            Error::CheckingMultiThreaded(e) => write!(
                 f,
                 "Failed to count the number of threads from /proc/self/tasks {}",
                 e
             ),
-            &Error::CreatingMinijail => {
-                write!(f, "minjail_new failed due to an allocation failure")
-            }
-            &Error::ForkingMinijail(ref e) => write!(f, "minijail_fork failed with error {}", e),
-            &Error::ForkingWhileMultiThreaded => {
+            Error::CreatingMinijail => write!(f, "minjail_new failed due to an allocation failure"),
+            Error::ForkingMinijail(e) => write!(f, "minijail_fork failed with error {}", e),
+            Error::ForkingWhileMultiThreaded => {
                 write!(f, "Attempt to call fork() while multithreaded")
             }
-            &Error::SeccompPath(ref p) => write!(f, "missing seccomp policy path: {:?}", p),
-            &Error::StrToCString(ref s) => {
-                write!(f, "failed to convert string into CString: {:?}", s)
-            }
-            &Error::PathToCString(ref s) => {
-                write!(f, "failed to convert path into CString: {:?}", s)
-            }
-            &Error::DupDevNull(errno) => write!(
+            Error::SeccompPath(p) => write!(f, "missing seccomp policy path: {:?}", p),
+            Error::StrToCString(s) => write!(f, "failed to convert string into CString: {:?}", s),
+            Error::PathToCString(s) => write!(f, "failed to convert path into CString: {:?}", s),
+            Error::DupDevNull(errno) => write!(
                 f,
                 "failed to call dup2 to set stdin, stdout, or stderr to /dev/null: {}",
                 errno
             ),
-            &Error::OpenDevNull(ref e) => write!(
+            Error::OpenDevNull(e) => write!(
                 f,
                 "fail to open /dev/null for setting FDs 0, 1, or 2: {}",
                 e
             ),
-            &Error::SetAltSyscallTable { ref name, errno } => {
+            Error::SetAltSyscallTable { name, errno } => {
                 write!(f, "failed to set alt-syscall table {:?}: {}", name, errno)
             }
-            &Error::SettingChrootDirectory(errno, ref p) => {
+            Error::SettingChrootDirectory(errno, p) => {
                 write!(f, "failed to set chroot {:?}: {}", p, errno)
             }
-            &Error::SettingPivotRootDirectory(errno, ref p) => {
+            Error::SettingPivotRootDirectory(errno, p) => {
                 write!(f, "failed to set pivot root {:?}: {}", p, errno)
             }
-            &Error::ReadFdDirEntry(ref e) => {
+            Error::ReadFdDirEntry(e) => {
                 write!(f, "failed to read an entry in /proc/self/fd: {}", e)
             }
-            &Error::ReadFdDir(ref e) => write!(f, "failed to open /proc/self/fd: {}", e),
-            &Error::ProcFd(ref s) => {
-                write!(f, "an entry in /proc/self/fd is not an integer: {}", s)
-            }
-            &Error::PreservingFd(ref e) => {
+            Error::ReadFdDir(e) => write!(f, "failed to open /proc/self/fd: {}", e),
+            Error::ProcFd(s) => write!(f, "an entry in /proc/self/fd is not an integer: {}", s),
+            Error::PreservingFd(e) => {
                 write!(f, "fork failed in minijail_preserve_fd with error {}", e)
             }
         }

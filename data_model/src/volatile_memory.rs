@@ -44,10 +44,10 @@ pub enum VolatileMemoryError {
 impl fmt::Display for VolatileMemoryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &VolatileMemoryError::OutOfBounds { addr } => {
+            VolatileMemoryError::OutOfBounds { addr } => {
                 write!(f, "address 0x{:x} is out of bounds", addr)
             }
-            &VolatileMemoryError::Overflow { base, offset } => write!(
+            VolatileMemoryError::Overflow { base, offset } => write!(
                 f,
                 "address 0x{:x} offset by 0x{:x} would overflow",
                 base, offset
@@ -209,7 +209,7 @@ impl<'a> VolatileSlice<'a> {
         for v in buf.iter_mut().take(self.size as usize / size_of::<T>()) {
             unsafe {
                 *v = read_volatile(addr as *const T);
-                addr = addr.offset(size_of::<T>() as isize);
+                addr = addr.add(size_of::<T>());
             }
         }
     }
@@ -266,7 +266,7 @@ impl<'a> VolatileSlice<'a> {
         for &v in buf.iter().take(self.size as usize / size_of::<T>()) {
             unsafe {
                 write_volatile(addr as *mut T, v);
-                addr = addr.offset(size_of::<T>() as isize);
+                addr = addr.add(size_of::<T>());
             }
         }
     }

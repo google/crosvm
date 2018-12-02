@@ -45,7 +45,7 @@ use libc::{
 
 use getpid;
 
-const SYSLOG_PATH: &'static str = "/dev/log";
+const SYSLOG_PATH: &str = "/dev/log";
 
 /// The priority (i.e. severity) of a syslog message.
 ///
@@ -65,14 +65,14 @@ pub enum Priority {
 impl fmt::Display for Priority {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Priority::Emergency => write!(f, "EMERGENCY"),
-            &Priority::Alert => write!(f, "ALERT"),
-            &Priority::Critical => write!(f, "CRITICAL"),
-            &Priority::Error => write!(f, "ERROR"),
-            &Priority::Warning => write!(f, "WARNING"),
-            &Priority::Notice => write!(f, "NOTICE"),
-            &Priority::Info => write!(f, "INFO"),
-            &Priority::Debug => write!(f, "DEBUG"),
+            Priority::Emergency => write!(f, "EMERGENCY"),
+            Priority::Alert => write!(f, "ALERT"),
+            Priority::Critical => write!(f, "CRITICAL"),
+            Priority::Error => write!(f, "ERROR"),
+            Priority::Warning => write!(f, "WARNING"),
+            Priority::Notice => write!(f, "NOTICE"),
+            Priority::Info => write!(f, "INFO"),
+            Priority::Debug => write!(f, "DEBUG"),
         }
     }
 }
@@ -417,7 +417,7 @@ fn get_localtime() -> tm {
 /// # }
 /// ```
 pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::Arguments) {
-    const MONTHS: [&'static str; 12] = [
+    const MONTHS: [&str; 12] = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ];
 
@@ -457,11 +457,7 @@ pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::
     let (res, len) = {
         let mut buf_cursor = Cursor::new(&mut buf[..]);
         (
-            write!(
-                &mut buf_cursor,
-                "[{}:{}:{}] {}\n",
-                pri, file_name, line, args
-            ),
+            writeln!(&mut buf_cursor, "[{}:{}:{}] {}", pri, file_name, line, args),
             buf_cursor.position() as usize,
         )
     };

@@ -102,35 +102,33 @@ pub enum DeviceRegistrationError {
 impl fmt::Display for DeviceRegistrationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &DeviceRegistrationError::AllocateIoAddrs(ref e) => {
+            DeviceRegistrationError::AllocateIoAddrs(e) => {
                 write!(f, "Allocating IO addresses: {:?}", e)
             }
-            &DeviceRegistrationError::AllocateIrq => write!(f, "Allocating IRQ number"),
-            &DeviceRegistrationError::CreateMmioDevice(ref e) => {
+            DeviceRegistrationError::AllocateIrq => write!(f, "Allocating IRQ number"),
+            DeviceRegistrationError::CreateMmioDevice(e) => {
                 write!(f, "failed to create mmio device: {:?}", e)
             }
-            &DeviceRegistrationError::Cmdline(ref e) => {
+            DeviceRegistrationError::Cmdline(e) => {
                 write!(f, "unable to add device to kernel command line: {}", e)
             }
-            &DeviceRegistrationError::EventFdCreate(ref e) => {
+            DeviceRegistrationError::EventFdCreate(e) => {
                 write!(f, "failed to create eventfd: {:?}", e)
             }
-            &DeviceRegistrationError::MmioInsert(ref e) => {
+            DeviceRegistrationError::MmioInsert(e) => {
                 write!(f, "failed to add to mmio bus: {:?}", e)
             }
-            &DeviceRegistrationError::RegisterIoevent(ref e) => {
+            DeviceRegistrationError::RegisterIoevent(e) => {
                 write!(f, "failed to register ioevent to VM: {:?}", e)
             }
-            &DeviceRegistrationError::RegisterIrqfd(ref e) => {
+            DeviceRegistrationError::RegisterIrqfd(e) => {
                 write!(f, "failed to register irq eventfd to VM: {:?}", e)
             }
-            &DeviceRegistrationError::ProxyDeviceCreation(ref e) => {
+            DeviceRegistrationError::ProxyDeviceCreation(e) => {
                 write!(f, "failed to create proxy device: {}", e)
             }
-            &DeviceRegistrationError::IrqsExhausted => write!(f, "no more IRQs are available"),
-            &DeviceRegistrationError::AddrsExhausted => {
-                write!(f, "no more addresses are available")
-            }
+            DeviceRegistrationError::IrqsExhausted => write!(f, "no more IRQs are available"),
+            DeviceRegistrationError::AddrsExhausted => write!(f, "no more addresses are available"),
         }
     }
 }

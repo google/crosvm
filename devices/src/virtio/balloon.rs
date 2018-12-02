@@ -32,7 +32,7 @@ pub type Result<T> = std::result::Result<T, BalloonError>;
 // Balloon has three virt IO queues: Inflate, Deflate, and Stats.
 // Stats is currently not used.
 const QUEUE_SIZE: u16 = 128;
-const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE, QUEUE_SIZE];
+const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 
 const VIRTIO_BALLOON_PFN_SHIFT: u32 = 12;
 
@@ -73,29 +73,27 @@ impl Worker {
         let mut used_desc_heads = [0; QUEUE_SIZE as usize];
         let mut used_count = 0;
         for avail_desc in queue.iter(&self.mem) {
-            if inflate {
-                if valid_inflate_desc(&avail_desc) {
-                    let num_addrs = avail_desc.len / 4;
-                    'addr_loop: for i in 0..num_addrs as usize {
-                        let addr = match avail_desc.addr.checked_add((i * 4) as u64) {
-                            Some(a) => a,
-                            None => break,
-                        };
-                        let guest_input: u32 = match self.mem.read_obj_from_addr(addr) {
-                            Ok(a) => a,
-                            Err(_) => continue,
-                        };
-                        let guest_address =
-                            GuestAddress((guest_input as u64) << VIRTIO_BALLOON_PFN_SHIFT);
+            if inflate && valid_inflate_desc(&avail_desc) {
+                let num_addrs = avail_desc.len / 4;
+                for i in 0..num_addrs as usize {
+                    let addr = match avail_desc.addr.checked_add((i * 4) as u64) {
+                        Some(a) => a,
+                        None => break,
+                    };
+                    let guest_input: u32 = match self.mem.read_obj_from_addr(addr) {
+                        Ok(a) => a,
+                        Err(_) => continue,
+                    };
+                    let guest_address =
+                        GuestAddress((guest_input as u64) << VIRTIO_BALLOON_PFN_SHIFT);
 
-                        if self
-                            .mem
-                            .remove_range(guest_address, 1 << VIRTIO_BALLOON_PFN_SHIFT)
-                            .is_err()
-                        {
-                            warn!("Marking pages unused failed {:?}", guest_address);
-                            continue;
-                        }
+                    if self
+                        .mem
+                        .remove_range(guest_address, 1 << VIRTIO_BALLOON_PFN_SHIFT)
+                        .is_err()
+                    {
+                        warn!("Marking pages unused failed {:?}", guest_address);
+                        continue;
                     }
                 }
             }
@@ -302,7 +300,7 @@ impl VirtioDevice for Balloon {
     }
 
     fn ack_features(&mut self, value: u64) {
-        self.features = self.features & value;
+        self.features &= value;
     }
 
     fn activate(

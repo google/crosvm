@@ -38,7 +38,7 @@ use self::protocol::*;
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.
-const QUEUE_SIZES: &'static [u16] = &[256, 16];
+const QUEUE_SIZES: &[u16] = &[256, 16];
 const FENCE_POLL_MS: u64 = 1;
 
 struct QueueDescriptor {
@@ -503,7 +503,7 @@ impl Worker {
 
         'poll: loop {
             // If there are outstanding fences, wake up early to poll them.
-            let duration = if self.state.fence_descriptors.len() != 0 {
+            let duration = if !self.state.fence_descriptors.is_empty() {
                 Duration::from_millis(FENCE_POLL_MS)
             } else {
                 Duration::new(i64::MAX as u64, 0)

@@ -36,11 +36,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
     pub fn sys_error(&self) -> SysError {
-        match self {
-            &Error::CreateSocket(e) => e,
-            &Error::OpenTun(e) => e,
-            &Error::CreateTap(e) => e,
-            &Error::IoctlError(e) => e,
+        match *self {
+            Error::CreateSocket(e) => e,
+            Error::OpenTun(e) => e,
+            Error::CreateTap(e) => e,
+            Error::IoctlError(e) => e,
         }
     }
 }
@@ -107,7 +107,7 @@ pub struct MacAddress {
 
 impl MacAddress {
     pub fn octets(&self) -> [u8; 6usize] {
-        self.addr.clone()
+        self.addr
     }
 }
 
@@ -115,7 +115,7 @@ impl FromStr for MacAddress {
     type Err = MacAddressError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let octets: Vec<&str> = s.split(":").collect();
+        let octets: Vec<&str> = s.split(':').collect();
         if octets.len() != 6usize {
             return Err(MacAddressError::InvalidNumOctets(octets.len()));
         }
@@ -209,7 +209,7 @@ impl TapT for Tap {
         // We just checked that the fd is valid.
         let tuntap = unsafe { File::from_raw_fd(fd) };
 
-        const TUNTAP_DEV_FORMAT: &'static [u8; 8usize] = b"vmtap%d\0";
+        const TUNTAP_DEV_FORMAT: &[u8; 8usize] = b"vmtap%d\0";
 
         // This is pretty messy because of the unions used by ifreq. Since we
         // don't call as_mut on the same union field more than once, this block
@@ -239,10 +239,10 @@ impl TapT for Tap {
             }
         }
 
-        // Safe since only the name is accessed, and it's cloned out.
+        // Safe since only the name is accessed, and it's copied out.
         Ok(Tap {
             tap_file: tuntap,
-            if_name: unsafe { ifreq.ifr_ifrn.ifrn_name.as_ref().clone() },
+            if_name: unsafe { *ifreq.ifr_ifrn.ifrn_name.as_ref() },
         })
     }
 

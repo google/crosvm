@@ -341,7 +341,7 @@ impl PciConfiguration {
     pub fn add_capability(&mut self, cap_data: &PciCapability) -> Option<usize> {
         let total_len = cap_data.bytes().len() + 2;
         // Check that the length is valid.
-        if cap_data.bytes().len() < 1 {
+        if cap_data.bytes().is_empty() {
             return None;
         }
         let (cap_offset, tail_offset) = match self.last_capability {

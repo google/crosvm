@@ -54,8 +54,7 @@ fn CMSG_DATA(cmsg_buffer: *mut cmsghdr) -> *mut RawFd {
 // does some pointer arithmetic on cmsg_ptr.
 #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
 fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut cmsghdr) -> *mut cmsghdr {
-    let next_cmsg =
-        (cmsg_ptr as *mut u8).wrapping_offset(CMSG_ALIGN!(cmsg.cmsg_len) as isize) as *mut cmsghdr;
+    let next_cmsg = (cmsg_ptr as *mut u8).wrapping_add(CMSG_ALIGN!(cmsg.cmsg_len)) as *mut cmsghdr;
     if next_cmsg
         .wrapping_offset(1)
         .wrapping_sub(msghdr.msg_control as usize) as usize
@@ -311,6 +310,8 @@ pub unsafe trait IntoIovec {
 // Safe because this slice can not have another mutable reference and it's pointer and size are
 // guaranteed to be valid.
 unsafe impl<'a> IntoIovec for &'a [u8] {
+    // Clippy false positive: https://github.com/rust-lang/rust-clippy/issues/3480
+    #[cfg_attr(feature = "cargo-clippy", allow(useless_asref))]
     fn as_ptr(&self) -> *const c_void {
         self.as_ref().as_ptr() as *const c_void
     }

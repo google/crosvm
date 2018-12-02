@@ -43,16 +43,16 @@ pub enum Error {
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
-            &Error::NotEnoughMemory => "There was too little guest memory to store the MP table",
-            &Error::AddressOverflow => "The MP table has too little address space to be stored",
-            &Error::Clear => "Failure while zeroing out the memory for the MP table",
-            &Error::WriteMpfIntel => "Failure to write the MP floating pointer",
-            &Error::WriteMpcCpu => "Failure to write MP CPU entry",
-            &Error::WriteMpcIoapic => "Failure to write MP ioapic entry",
-            &Error::WriteMpcBus => "Failure to write MP bus entry",
-            &Error::WriteMpcIntsrc => "Failure to write MP interrupt source entry",
-            &Error::WriteMpcLintsrc => "Failure to write MP local interrupt source entry",
-            &Error::WriteMpcTable => "Failure to write MP table header",
+            Error::NotEnoughMemory => "There was too little guest memory to store the MP table",
+            Error::AddressOverflow => "The MP table has too little address space to be stored",
+            Error::Clear => "Failure while zeroing out the memory for the MP table",
+            Error::WriteMpfIntel => "Failure to write the MP floating pointer",
+            Error::WriteMpcCpu => "Failure to write MP CPU entry",
+            Error::WriteMpcIoapic => "Failure to write MP ioapic entry",
+            Error::WriteMpcBus => "Failure to write MP bus entry",
+            Error::WriteMpcIntsrc => "Failure to write MP interrupt source entry",
+            Error::WriteMpcLintsrc => "Failure to write MP local interrupt source entry",
+            Error::WriteMpcTable => "Failure to write MP table header",
         }
     }
 }

@@ -88,7 +88,7 @@ pub fn open_device(undesired: &[&str]) -> Result<File, ()> {
     const DRM_MAX_MINOR: u32 = 15;
     const RENDER_NODE_START: u32 = 128;
 
-    for n in RENDER_NODE_START..(RENDER_NODE_START + DRM_MAX_MINOR + 1) {
+    for n in RENDER_NODE_START..=RENDER_NODE_START + DRM_MAX_MINOR {
         let path = Path::new(DRM_DIR_NAME).join(format!("renderD{}", n));
 
         if let Ok(fd) = OpenOptions::new().read(true).write(true).open(path) {

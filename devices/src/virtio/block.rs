@@ -28,7 +28,7 @@ use super::{
 };
 
 const QUEUE_SIZE: u16 = 256;
-const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
+const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
 const SECTOR_SHIFT: u8 = 9;
 const SECTOR_SIZE: u64 = 0x01 << SECTOR_SHIFT;
 const MAX_DISCARD_SECTORS: u32 = u32::MAX;
@@ -212,14 +212,14 @@ enum ExecuteError {
 impl ExecuteError {
     fn status(&self) -> u8 {
         match self {
-            &ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::Read { .. } => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::Seek { .. } => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::TimerFd(_) => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::Write { .. } => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::DiscardWriteZeroes { .. } => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::ReadOnly { .. } => VIRTIO_BLK_S_IOERR,
-            &ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
+            ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
+            ExecuteError::Read { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::Seek { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::TimerFd(_) => VIRTIO_BLK_S_IOERR,
+            ExecuteError::Write { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::DiscardWriteZeroes { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::ReadOnly { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
         }
     }
 }

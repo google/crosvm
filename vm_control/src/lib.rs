@@ -41,8 +41,8 @@ pub enum MaybeOwnedFd {
 impl AsRawFd for MaybeOwnedFd {
     fn as_raw_fd(&self) -> RawFd {
         match self {
-            &MaybeOwnedFd::Owned(ref f) => f.as_raw_fd(),
-            &MaybeOwnedFd::Borrowed(fd) => fd,
+            MaybeOwnedFd::Owned(f) => f.as_raw_fd(),
+            MaybeOwnedFd::Borrowed(fd) => *fd,
         }
     }
 }
@@ -135,32 +135,32 @@ impl VmRequest {
         balloon_host_socket: &UnixDatagram,
     ) -> VmResponse {
         *running = true;
-        match self {
-            &VmRequest::Exit => {
+        match *self {
+            VmRequest::Exit => {
                 *running = false;
                 VmResponse::Ok
             }
-            &VmRequest::RegisterIoevent(ref evt, addr, datamatch) => {
+            VmRequest::RegisterIoevent(ref evt, addr, datamatch) => {
                 match vm.register_ioevent(evt, addr, Datamatch::U32(Some(datamatch))) {
                     Ok(_) => VmResponse::Ok,
                     Err(e) => VmResponse::Err(e),
                 }
             }
-            &VmRequest::RegisterIrqfd(ref evt, irq) => match vm.register_irqfd(evt, irq) {
+            VmRequest::RegisterIrqfd(ref evt, irq) => match vm.register_irqfd(evt, irq) {
                 Ok(_) => VmResponse::Ok,
-                Err(e) => return VmResponse::Err(e),
+                Err(e) => VmResponse::Err(e),
             },
-            &VmRequest::RegisterMemory(ref fd, size) => {
+            VmRequest::RegisterMemory(ref fd, size) => {
                 match register_memory(vm, sys_allocator, fd, size) {
                     Ok((pfn, slot)) => VmResponse::RegisterMemory { pfn, slot },
                     Err(e) => VmResponse::Err(e),
                 }
             }
-            &VmRequest::UnregisterMemory(slot) => match vm.remove_device_memory(slot) {
+            VmRequest::UnregisterMemory(slot) => match vm.remove_device_memory(slot) {
                 Ok(_) => VmResponse::Ok,
                 Err(e) => VmResponse::Err(e),
             },
-            &VmRequest::BalloonAdjust(num_pages) => {
+            VmRequest::BalloonAdjust(num_pages) => {
                 let mut buf = [0u8; 4];
                 // write_i32 can't fail as the buffer is 4 bytes long.
                 (&mut buf[0..])
@@ -171,7 +171,7 @@ impl VmRequest {
                     Err(_) => VmResponse::Err(SysError::last()),
                 }
             }
-            &VmRequest::AllocateAndRegisterGpuMemory {
+            VmRequest::AllocateAndRegisterGpuMemory {
                 width,
                 height,
                 format,

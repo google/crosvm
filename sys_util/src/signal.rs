@@ -124,7 +124,7 @@ pub fn get_blocked_signals() -> SignalResult<Vec<c_int>> {
             return Err(Error::RetrieveSignalMask(ret));
         }
 
-        for num in 0..(SIGRTMAX() + 1) {
+        for num in 0..=SIGRTMAX() {
             if sigismember(&old_sigset, num) > 0 {
                 mask.push(num);
             }

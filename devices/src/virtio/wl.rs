@@ -101,7 +101,7 @@ const VIRTIO_WL_VFD_CONTROL: u32 = 0x4;
 const VIRTIO_WL_F_TRANS_FLAGS: u32 = 0x01;
 
 const QUEUE_SIZE: u16 = 16;
-const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE, QUEUE_SIZE];
+const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 
 const NEXT_VFD_ID_BASE: u32 = 0x40000000;
 const VFD_ID_HOST_MASK: u32 = NEXT_VFD_ID_BASE;
@@ -486,7 +486,7 @@ impl VmRequester {
 
     fn request(&self, request: VmRequest) -> WlResult<VmResponse> {
         let mut inner = self.inner.borrow_mut();
-        let ref mut vm_socket = *inner;
+        let vm_socket = &mut *inner;
         vm_socket.send(&request).map_err(WlError::VmControl)?;
         vm_socket.recv().map_err(WlError::VmControl)
     }
@@ -633,9 +633,9 @@ enum WlResp<'a> {
 
 impl<'a> WlResp<'a> {
     fn get_code(&self) -> u32 {
-        match self {
-            &WlResp::Ok => VIRTIO_WL_RESP_OK,
-            &WlResp::VfdNew { resp, .. } => {
+        match *self {
+            WlResp::Ok => VIRTIO_WL_RESP_OK,
+            WlResp::VfdNew { resp, .. } => {
                 if resp {
                     VIRTIO_WL_RESP_VFD_NEW
                 } else {
@@ -643,15 +643,15 @@ impl<'a> WlResp<'a> {
                 }
             }
             #[cfg(feature = "wl-dmabuf")]
-            &WlResp::VfdNewDmabuf { .. } => VIRTIO_WL_RESP_VFD_NEW_DMABUF,
-            &WlResp::VfdRecv { .. } => VIRTIO_WL_CMD_VFD_RECV,
-            &WlResp::VfdHup { .. } => VIRTIO_WL_CMD_VFD_HUP,
-            &WlResp::Err(_) => VIRTIO_WL_RESP_ERR,
-            &WlResp::OutOfMemory => VIRTIO_WL_RESP_OUT_OF_MEMORY,
-            &WlResp::InvalidId => VIRTIO_WL_RESP_INVALID_ID,
-            &WlResp::InvalidType => VIRTIO_WL_RESP_INVALID_TYPE,
-            &WlResp::InvalidFlags => VIRTIO_WL_RESP_INVALID_FLAGS,
-            &WlResp::InvalidCommand => VIRTIO_WL_RESP_INVALID_CMD,
+            WlResp::VfdNewDmabuf { .. } => VIRTIO_WL_RESP_VFD_NEW_DMABUF,
+            WlResp::VfdRecv { .. } => VIRTIO_WL_CMD_VFD_RECV,
+            WlResp::VfdHup { .. } => VIRTIO_WL_CMD_VFD_HUP,
+            WlResp::Err(_) => VIRTIO_WL_RESP_ERR,
+            WlResp::OutOfMemory => VIRTIO_WL_RESP_OUT_OF_MEMORY,
+            WlResp::InvalidId => VIRTIO_WL_RESP_INVALID_ID,
+            WlResp::InvalidType => VIRTIO_WL_RESP_INVALID_TYPE,
+            WlResp::InvalidFlags => VIRTIO_WL_RESP_INVALID_FLAGS,
+            WlResp::InvalidCommand => VIRTIO_WL_RESP_INVALID_CMD,
         }
     }
 }
@@ -1160,7 +1160,7 @@ impl WlState {
         let mut to_delete = Set::new();
         for &(dest_vfd_id, ref q) in self.in_queue.iter() {
             if dest_vfd_id == vfd_id {
-                if let &WlRecv::Vfd { id } = q {
+                if let WlRecv::Vfd { id } = *q {
                     to_delete.insert(id);
                 }
             }
@@ -1277,8 +1277,8 @@ impl WlState {
 
     fn next_recv(&self) -> Option<WlResp> {
         if let Some(q) = self.in_queue.front() {
-            match q {
-                &(vfd_id, WlRecv::Vfd { id }) => {
+            match *q {
+                (vfd_id, WlRecv::Vfd { id }) => {
                     if self.current_recv_vfd.is_none() || self.current_recv_vfd == Some(vfd_id) {
                         match self.vfds.get(&id) {
                             Some(vfd) => Some(WlResp::VfdNew {
@@ -1304,7 +1304,7 @@ impl WlState {
                         })
                     }
                 }
-                &(vfd_id, WlRecv::Data { ref buf }) => {
+                (vfd_id, WlRecv::Data { ref buf }) => {
                     if self.current_recv_vfd.is_none() || self.current_recv_vfd == Some(vfd_id) {
                         Some(WlResp::VfdRecv {
                             id: vfd_id,
@@ -1319,7 +1319,7 @@ impl WlState {
                         })
                     }
                 }
-                &(vfd_id, WlRecv::Hup) => Some(WlResp::VfdHup { id: vfd_id }),
+                (vfd_id, WlRecv::Hup) => Some(WlResp::VfdHup { id: vfd_id }),
             }
         } else {
             None
@@ -1328,8 +1328,8 @@ impl WlState {
 
     fn pop_recv(&mut self) {
         if let Some(q) = self.in_queue.front() {
-            match q {
-                &(vfd_id, WlRecv::Vfd { id }) => {
+            match *q {
+                (vfd_id, WlRecv::Vfd { id }) => {
                     if self.current_recv_vfd.is_none() || self.current_recv_vfd == Some(vfd_id) {
                         self.recv_vfds.push(id);
                         self.current_recv_vfd = Some(vfd_id);
@@ -1339,14 +1339,14 @@ impl WlState {
                         return;
                     }
                 }
-                &(vfd_id, WlRecv::Data { .. }) => {
+                (vfd_id, WlRecv::Data { .. }) => {
                     self.recv_vfds.clear();
                     self.current_recv_vfd = None;
                     if !(self.current_recv_vfd.is_none() || self.current_recv_vfd == Some(vfd_id)) {
                         return;
                     }
                 }
-                &(_, WlRecv::Hup) => {
+                (_, WlRecv::Hup) => {
                     self.recv_vfds.clear();
                     self.current_recv_vfd = None;
                 }

@@ -18,7 +18,7 @@ pub trait InterruptibleResult {
 impl<T> InterruptibleResult for ::Result<T> {
     fn is_interrupted(&self) -> bool {
         match self {
-            &Err(e) if e.errno() == EINTR => true,
+            Err(e) if e.errno() == EINTR => true,
             _ => false,
         }
     }
@@ -27,7 +27,7 @@ impl<T> InterruptibleResult for ::Result<T> {
 impl<T> InterruptibleResult for io::Result<T> {
     fn is_interrupted(&self) -> bool {
         match self {
-            &Err(ref e) if e.kind() == io::ErrorKind::Interrupted => true,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => true,
             _ => false,
         }
     }

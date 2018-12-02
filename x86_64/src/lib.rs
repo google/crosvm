@@ -43,6 +43,7 @@ mod msr_index;
 #[allow(dead_code)]
 #[allow(non_upper_case_globals)]
 #[allow(non_camel_case_types)]
+#[cfg_attr(feature = "cargo-clippy", allow(clippy))]
 mod mpspec;
 // These mpspec types are only data, reading them from data is a safe initialization.
 unsafe impl data_model::DataInit for mpspec::mpc_bus {}
@@ -114,22 +115,22 @@ pub enum Error {
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
-            &Error::ConfigureSystem => "Error configuring the system",
-            &Error::CloneEventFd(_) => "Unable to clone an EventFd",
-            &Error::Cmdline(_) => "the given kernel command line was invalid",
-            &Error::CreateEventFd(_) => "Unable to make an EventFd",
-            &Error::CreateKvm(_) => "failed to open /dev/kvm",
-            &Error::CreatePciRoot(_) => "failed to create a PCI root hub",
-            &Error::CreateSocket(_) => "failed to create socket",
-            &Error::CreateVcpu(_) => "failed to create VCPU",
-            &Error::KernelOffsetPastEnd => "The kernel extends past the end of RAM",
-            &Error::RegisterIrqfd(_) => "Error registering an IrqFd",
-            &Error::RegisterVsock(_) => "error registering virtual socket device",
-            &Error::LoadCmdline(_) => "Error Loading command line",
-            &Error::LoadKernel(_) => "Error Loading Kernel",
-            &Error::ZeroPageSetup => "Error writing the zero page of guest memory",
-            &Error::ZeroPagePastRamEnd => "The zero page extends past the end of guest_mem",
-            &Error::E820Configuration => "Invalid e820 setup params",
+            Error::ConfigureSystem => "Error configuring the system",
+            Error::CloneEventFd(_) => "Unable to clone an EventFd",
+            Error::Cmdline(_) => "the given kernel command line was invalid",
+            Error::CreateEventFd(_) => "Unable to make an EventFd",
+            Error::CreateKvm(_) => "failed to open /dev/kvm",
+            Error::CreatePciRoot(_) => "failed to create a PCI root hub",
+            Error::CreateSocket(_) => "failed to create socket",
+            Error::CreateVcpu(_) => "failed to create VCPU",
+            Error::KernelOffsetPastEnd => "The kernel extends past the end of RAM",
+            Error::RegisterIrqfd(_) => "Error registering an IrqFd",
+            Error::RegisterVsock(_) => "error registering virtual socket device",
+            Error::LoadCmdline(_) => "Error Loading command line",
+            Error::LoadKernel(_) => "Error Loading Kernel",
+            Error::ZeroPageSetup => "Error writing the zero page of guest memory",
+            Error::ZeroPagePastRamEnd => "The zero page extends past the end of guest_mem",
+            Error::E820Configuration => "Invalid e820 setup params",
         }
     }
 }
@@ -462,12 +463,10 @@ impl X8664arch {
 
         let mut io_bus = devices::Bus::new();
 
-        let com_evt_1_3 = EventFd::new().map_err(|e| Error::CreateEventFd(e))?;
-        let com_evt_2_4 = EventFd::new().map_err(|e| Error::CreateEventFd(e))?;
+        let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
+        let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
         let stdio_serial = Arc::new(Mutex::new(devices::Serial::new_out(
-            com_evt_1_3
-                .try_clone()
-                .map_err(|e| Error::CloneEventFd(e))?,
+            com_evt_1_3.try_clone().map_err(Error::CloneEventFd)?,
             Box::new(stdout()),
         )));
         let nul_device = Arc::new(Mutex::new(NoDevice));
@@ -477,9 +476,7 @@ impl X8664arch {
         io_bus
             .insert(
                 Arc::new(Mutex::new(devices::Serial::new_sink(
-                    com_evt_2_4
-                        .try_clone()
-                        .map_err(|e| Error::CloneEventFd(e))?,
+                    com_evt_2_4.try_clone().map_err(Error::CloneEventFd)?,
                 ))),
                 0x2f8,
                 0x8,
@@ -488,9 +485,7 @@ impl X8664arch {
         io_bus
             .insert(
                 Arc::new(Mutex::new(devices::Serial::new_sink(
-                    com_evt_1_3
-                        .try_clone()
-                        .map_err(|e| Error::CloneEventFd(e))?,
+                    com_evt_1_3.try_clone().map_err(Error::CloneEventFd)?,
                 ))),
                 0x3e8,
                 0x8,
@@ -499,9 +494,7 @@ impl X8664arch {
         io_bus
             .insert(
                 Arc::new(Mutex::new(devices::Serial::new_sink(
-                    com_evt_2_4
-                        .try_clone()
-                        .map_err(|e| Error::CloneEventFd(e))?,
+                    com_evt_2_4.try_clone().map_err(Error::CloneEventFd)?,
                 ))),
                 0x2e8,
                 0x8,
@@ -513,7 +506,7 @@ impl X8664arch {
         io_bus
             .insert(
                 Arc::new(Mutex::new(devices::I8042Device::new(
-                    exit_evt.try_clone().map_err(|e| Error::CloneEventFd(e))?,
+                    exit_evt.try_clone().map_err(Error::CloneEventFd)?,
                 ))),
                 0x061,
                 0x4,

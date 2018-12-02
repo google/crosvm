@@ -24,8 +24,8 @@ pub type Result<T> = result::Result<T, Error>;
 impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
-            &Error::GetLapic(_) => "GetLapic ioctl failed",
-            &Error::SetLapic(_) => "SetLapic ioctl failed",
+            Error::GetLapic(_) => "GetLapic ioctl failed",
+            Error::SetLapic(_) => "SetLapic ioctl failed",
         }
     }
 }

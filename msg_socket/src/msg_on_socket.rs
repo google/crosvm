@@ -102,16 +102,16 @@ impl MsgOnSocket for RawFd {
         1
     }
     unsafe fn read_from_buffer(_buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
-        if fds.len() < 1 {
+        if fds.is_empty() {
             return Err(MsgError::ExpectFd);
         }
         Ok((fds[0], 1))
     }
     fn write_to_buffer(&self, _buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
-        if fds.len() < 1 {
+        if fds.is_empty() {
             return Err(MsgError::WrongFdBufferSize);
         }
-        fds[0] = self.clone();
+        fds[0] = *self;
         Ok(1)
     }
 }

@@ -7,6 +7,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
+#[cfg_attr(feature = "cargo-clippy", allow(clippy))]
 mod bindings;
 
 extern crate data_model;

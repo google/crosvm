@@ -169,7 +169,7 @@ pub trait MsgSender<M: MsgOnSocket>: AsRef<UnixDatagram> {
                 .map_err(|e| MsgError::Send(SysError::new(e.raw_os_error().unwrap_or(0))))?;
         } else {
             sock.send_with_fds(&msg_buffer[..], &fd_buffer[0..fd_size])
-                .map_err(|e| MsgError::Send(e))?;
+                .map_err(MsgError::Send)?;
         }
         Ok(())
     }
@@ -193,7 +193,7 @@ pub trait MsgReceiver<M: MsgOnSocket>: AsRef<UnixDatagram> {
                 (size, 0)
             } else {
                 sock.recv_with_fds(&mut msg_buffer, &mut fd_buffer)
-                    .map_err(|e| MsgError::Recv(e))?
+                    .map_err(MsgError::Recv)?
             }
         };
         if msg_size != recv_msg_size {

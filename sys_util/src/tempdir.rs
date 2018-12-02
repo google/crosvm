@@ -60,7 +60,7 @@ impl TempDir {
     /// will also remove the directory.  Calling remove explicitly allows for better error handling.
     pub fn remove(mut self) -> Result<()> {
         let path = self.path.take();
-        path.map_or(Ok(()), |ref p| fs::remove_dir_all(p))?;
+        path.map_or(Ok(()), fs::remove_dir_all)?;
         Ok(())
     }
 

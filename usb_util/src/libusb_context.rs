@@ -191,8 +191,8 @@ impl Iterator for PollFdIter {
             }
 
             self.index += 1;
-            // Safe because 'current_ptr' is not null.
-            Some((**current_ptr).clone())
+            // Safe because '*current_ptr' is not null.
+            Some(**current_ptr)
         }
     }
 }

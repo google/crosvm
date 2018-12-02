@@ -67,16 +67,15 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Error::Syntax(ref s) => write!(f, "syntax error: {}", s),
-            &Error::UnknownArgument(ref s) => write!(f, "unknown argument: {}", s),
-            &Error::ExpectedArgument(ref s) => write!(f, "expected argument: {}", s),
-            &Error::InvalidValue {
-                ref value,
-                expected,
-            } => write!(f, "invalid value {:?}: {}", value, expected),
-            &Error::TooManyArguments(ref s) => write!(f, "too many arguments: {}", s),
-            &Error::ExpectedValue(ref s) => write!(f, "expected parameter value: {}", s),
-            &Error::PrintHelp => write!(f, "help was requested"),
+            Error::Syntax(s) => write!(f, "syntax error: {}", s),
+            Error::UnknownArgument(s) => write!(f, "unknown argument: {}", s),
+            Error::ExpectedArgument(s) => write!(f, "expected argument: {}", s),
+            Error::InvalidValue { value, expected } => {
+                write!(f, "invalid value {:?}: {}", value, expected)
+            }
+            Error::TooManyArguments(s) => write!(f, "too many arguments: {}", s),
+            Error::ExpectedValue(s) => write!(f, "expected parameter value: {}", s),
+            Error::PrintHelp => write!(f, "help was requested"),
         }
     }
 }
@@ -217,20 +216,18 @@ where
                         }
                         f(name, Some(value))?;
                         State::Top
-                    } else {
-                        if let Err(e) = f(param, None) {
-                            if let Error::ExpectedValue(_) = e {
-                                State::Value {
-                                    name: param.to_owned(),
-                                }
-                            } else {
-                                return Err(e);
+                    } else if let Err(e) = f(param, None) {
+                        if let Error::ExpectedValue(_) = e {
+                            State::Value {
+                                name: param.to_owned(),
                             }
                         } else {
-                            State::Top
+                            return Err(e);
                         }
+                    } else {
+                        State::Top
                     }
-                } else if arg.starts_with("-") {
+                } else if arg.starts_with('-') {
                     if arg.len() == 1 {
                         return Err(Error::Syntax(
                             "expected argument short name after `-`".to_owned(),

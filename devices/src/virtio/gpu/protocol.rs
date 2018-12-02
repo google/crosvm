@@ -613,8 +613,8 @@ impl GpuResponse {
             ctx_id: Le32::from(ctx_id),
             padding: Le32::from(0),
         };
-        let len = match self {
-            &GpuResponse::OkDisplayInfo(ref info) => {
+        let len = match *self {
+            GpuResponse::OkDisplayInfo(ref info) => {
                 if info.len() > VIRTIO_GPU_MAX_SCANOUTS {
                     return Err(GpuResponseEncodeError::TooManyDisplays(info.len()));
                 }
@@ -630,7 +630,7 @@ impl GpuResponse {
                 resp.get_ref(0)?.store(disp_info);
                 size_of_val(&disp_info)
             }
-            &GpuResponse::OkCapsetInfo { id, version, size } => {
+            GpuResponse::OkCapsetInfo { id, version, size } => {
                 resp.get_ref(0)?.store(virtio_gpu_resp_capset_info {
                     hdr,
                     capset_id: Le32::from(id),
@@ -640,7 +640,7 @@ impl GpuResponse {
                 });
                 size_of::<virtio_gpu_resp_capset_info>()
             }
-            &GpuResponse::OkCapset(ref data) => {
+            GpuResponse::OkCapset(ref data) => {
                 resp.get_ref(0)?.store(hdr);
                 let resp_data_slice =
                     resp.get_slice(size_of_val(&hdr) as u64, data.len() as u64)?;
@@ -658,26 +658,26 @@ impl GpuResponse {
     /// Gets the `VIRTIO_GPU_*` enum value that corresponds to this variant.
     pub fn get_type(&self) -> u32 {
         match self {
-            &GpuResponse::OkNoData => VIRTIO_GPU_RESP_OK_NODATA,
-            &GpuResponse::OkDisplayInfo(_) => VIRTIO_GPU_RESP_OK_DISPLAY_INFO,
-            &GpuResponse::OkCapsetInfo { .. } => VIRTIO_GPU_RESP_OK_CAPSET_INFO,
-            &GpuResponse::OkCapset(_) => VIRTIO_GPU_RESP_OK_CAPSET,
-            &GpuResponse::ErrUnspec => VIRTIO_GPU_RESP_ERR_UNSPEC,
-            &GpuResponse::ErrOutOfMemory => VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY,
-            &GpuResponse::ErrInvalidScanoutId => VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID,
-            &GpuResponse::ErrInvalidResourceId => VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID,
-            &GpuResponse::ErrInvalidContextId => VIRTIO_GPU_RESP_ERR_INVALID_CONTEXT_ID,
-            &GpuResponse::ErrInvalidParameter => VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER,
+            GpuResponse::OkNoData => VIRTIO_GPU_RESP_OK_NODATA,
+            GpuResponse::OkDisplayInfo(_) => VIRTIO_GPU_RESP_OK_DISPLAY_INFO,
+            GpuResponse::OkCapsetInfo { .. } => VIRTIO_GPU_RESP_OK_CAPSET_INFO,
+            GpuResponse::OkCapset(_) => VIRTIO_GPU_RESP_OK_CAPSET,
+            GpuResponse::ErrUnspec => VIRTIO_GPU_RESP_ERR_UNSPEC,
+            GpuResponse::ErrOutOfMemory => VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY,
+            GpuResponse::ErrInvalidScanoutId => VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID,
+            GpuResponse::ErrInvalidResourceId => VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID,
+            GpuResponse::ErrInvalidContextId => VIRTIO_GPU_RESP_ERR_INVALID_CONTEXT_ID,
+            GpuResponse::ErrInvalidParameter => VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER,
         }
     }
 
     /// Returns true if this response indicates success.
     pub fn is_ok(&self) -> bool {
         match self {
-            &GpuResponse::OkNoData => true,
-            &GpuResponse::OkDisplayInfo(_) => true,
-            &GpuResponse::OkCapsetInfo { .. } => true,
-            &GpuResponse::OkCapset(_) => true,
+            GpuResponse::OkNoData => true,
+            GpuResponse::OkDisplayInfo(_) => true,
+            GpuResponse::OkCapsetInfo { .. } => true,
+            GpuResponse::OkCapset(_) => true,
             _ => false,
         }
     }
