@@ -933,19 +933,16 @@ fn run_control(
                 }
                 Token::ChildSignal => {
                     // Print all available siginfo structs, then exit the loop.
-                    loop {
-                        let result = sigchld_fd.read().map_err(Error::SignalFd)?;
-                        if let Some(siginfo) = result {
-                            error!(
-                                "child {} died: signo {}, status {}, code {}",
-                                siginfo.ssi_pid,
-                                siginfo.ssi_signo,
-                                siginfo.ssi_status,
-                                siginfo.ssi_code
-                            );
-                        }
-                        break 'poll;
+                    while let Some(siginfo) = sigchld_fd.read().map_err(Error::SignalFd)? {
+                        error!(
+                            "child {} died: signo {}, status {}, code {}",
+                            siginfo.ssi_pid,
+                            siginfo.ssi_signo,
+                            siginfo.ssi_status,
+                            siginfo.ssi_code
+                        );
                     }
+                    break 'poll;
                 }
                 Token::CheckAvailableMemory => {
                     // Acknowledge the timer.
