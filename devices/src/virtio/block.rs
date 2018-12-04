@@ -618,7 +618,7 @@ impl<T: DiskFile> Worker<T> {
 pub struct Block<T: DiskFile> {
     kill_evt: Option<EventFd>,
     disk_image: Option<T>,
-    config_space: virtio_blk_config,
+    disk_size: u64,
     avail_features: u64,
     read_only: bool,
 }
@@ -664,7 +664,7 @@ impl<T: DiskFile> Block<T> {
         Ok(Block {
             kill_evt: None,
             disk_image: Some(disk_image),
-            config_space: build_config_space(disk_size),
+            disk_size,
             avail_features,
             read_only,
         })
@@ -704,15 +704,17 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
     }
 
     fn read_config(&self, offset: u64, mut data: &mut [u8]) {
-        let config_len = size_of_val(&self.config_space) as u64;
+        let config_space = build_config_space(self.disk_size);
+        let config_len = size_of_val(&config_space) as u64;
         if offset >= config_len {
             return;
         }
+
         if let Some(end) = offset.checked_add(data.len() as u64) {
             let offset = offset as usize;
             let end = cmp::min(end, config_len) as usize;
             // This write can't fail, offset and end are checked against config_len.
-            data.write_all(&self.config_space.as_slice()[offset..end])
+            data.write_all(&config_space.as_slice()[offset..end])
                 .unwrap();
         }
     }
