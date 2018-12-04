@@ -28,7 +28,7 @@ use byteorder::{ByteOrder, LittleEndian};
 use devices::{self, PciDevice, VirtioPciDevice};
 use io_jail::{self, Minijail};
 use kvm::*;
-use msg_socket::{MsgReceiver, MsgSender, UnlinkMsgSocket};
+use msg_socket::{MsgReceiver, MsgSender, MsgSocket, UnlinkMsgSocket};
 use net_util::{Error as NetError, Tap};
 use qcow::{self, ImageType, QcowFile};
 use sys_util;
@@ -211,6 +211,7 @@ fn create_virtio_devs(
     _exit_evt: &EventFd,
     wayland_device_socket: UnixDatagram,
     balloon_device_socket: UnixDatagram,
+    disk_device_sockets: &mut Vec<UnixDatagram>,
 ) -> std::result::Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>, Box<error::Error>> {
     static DEFAULT_PIVOT_ROOT: &str = "/var/empty";
 
@@ -223,6 +224,8 @@ fn create_virtio_devs(
     }
 
     for disk in &cfg.disks {
+        let disk_device_socket = disk_device_sockets.remove(0);
+
         // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
         let mut raw_image: File = if disk.path.parent() == Some(Path::new("/proc/self/fd")) {
             if !disk.path.is_file() {
@@ -256,16 +259,24 @@ fn create_virtio_devs(
             ImageType::Raw => {
                 // Access as a raw block device.
                 Box::new(
-                    devices::virtio::Block::new(raw_image, disk.read_only)
-                        .map_err(Error::BlockDeviceNew)?,
+                    devices::virtio::Block::new(
+                        raw_image,
+                        disk.read_only,
+                        Some(disk_device_socket),
+                    )
+                    .map_err(Error::BlockDeviceNew)?,
                 )
             }
             ImageType::Qcow2 => {
                 // Valid qcow header present
                 let qcow_image = QcowFile::from(raw_image).map_err(Error::QcowDeviceCreate)?;
                 Box::new(
-                    devices::virtio::Block::new(qcow_image, disk.read_only)
-                        .map_err(Error::BlockDeviceNew)?,
+                    devices::virtio::Block::new(
+                        qcow_image,
+                        disk.read_only,
+                        Some(disk_device_socket),
+                    )
+                    .map_err(Error::BlockDeviceNew)?,
                 )
             }
         };
@@ -780,17 +791,43 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let (balloon_host_socket, balloon_device_socket) =
         UnixDatagram::pair().map_err(Error::CreateSocket)?;
 
+    // Create one control socket per disk.
+    let mut disk_device_sockets = Vec::new();
+    let mut disk_host_sockets = Vec::new();
+    let disk_count = cfg.disks.len();
+    for _ in 0..disk_count {
+        let (disk_host_socket, disk_device_socket) =
+            UnixDatagram::pair().map_err(Error::CreateSocket)?;
+        disk_device_sockets.push(disk_device_socket);
+        let disk_host_socket = MsgSocket::<VmRequest, VmResponse>::new(disk_host_socket);
+        disk_host_sockets.push(disk_host_socket);
+    }
+
     let linux = Arch::build_vm(components, |m, e| {
-        create_virtio_devs(cfg, m, e, wayland_device_socket, balloon_device_socket)
+        create_virtio_devs(
+            cfg,
+            m,
+            e,
+            wayland_device_socket,
+            balloon_device_socket,
+            &mut disk_device_sockets,
+        )
     })
     .map_err(Error::BuildingVm)?;
-    run_control(linux, control_sockets, balloon_host_socket, sigchld_fd)
+    run_control(
+        linux,
+        control_sockets,
+        balloon_host_socket,
+        &disk_host_sockets,
+        sigchld_fd,
+    )
 }
 
 fn run_control(
     mut linux: RunnableLinuxVm,
     control_sockets: Vec<UnlinkMsgSocket<VmResponse, VmRequest>>,
     balloon_host_socket: UnixDatagram,
+    disk_host_sockets: &[MsgSocket<VmRequest, VmResponse>],
     sigchld_fd: SignalFd,
 ) -> Result<()> {
     // Paths to get the currently available memory and the low memory threshold.
@@ -1033,6 +1070,7 @@ fn run_control(
                                     &mut linux.resources,
                                     &mut running,
                                     &balloon_host_socket,
+                                    disk_host_sockets,
                                 );
                                 if let Err(e) = socket.send(&response) {
                                     error!("failed to send VmResponse: {:?}", e);

@@ -691,12 +691,76 @@ fn create_qcow2(mut args: std::env::Args) -> std::result::Result<(), ()> {
     Ok(())
 }
 
+fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() < 2 {
+        print_help("crosvm disk", "SUBCOMMAND VM_SOCKET...", &[]);
+        println!("Manage attached virtual disk devices.");
+        println!("Subcommands:");
+        println!("  resize DISK_INDEX NEW_SIZE VM_SOCKET");
+    }
+    let subcommand: &str = &args.nth(0).unwrap();
+
+    let request = match subcommand {
+        "resize" => {
+            let disk_index = match args.nth(0).unwrap().parse::<usize>() {
+                Ok(n) => n,
+                Err(_) => {
+                    error!("Failed to parse disk index");
+                    return Err(());
+                }
+            };
+
+            let new_size = match args.nth(0).unwrap().parse::<u64>() {
+                Ok(n) => n,
+                Err(_) => {
+                    error!("Failed to parse disk size");
+                    return Err(());
+                }
+            };
+
+            VmRequest::DiskResize {
+                disk_index,
+                new_size,
+            }
+        }
+        _ => {
+            error!("Unknown disk subcommand '{}'", subcommand);
+            return Err(());
+        }
+    };
+
+    let mut return_result = Ok(());
+    for socket_path in args {
+        match UnixDatagram::unbound().and_then(|s| {
+            s.connect(&socket_path)?;
+            Ok(s)
+        }) {
+            Ok(s) => {
+                let sender = Sender::<VmRequest>::new(s);
+                if let Err(e) = sender.send(&request) {
+                    error!(
+                        "failed to send disk request to socket at '{}': {:?}",
+                        socket_path, e
+                    );
+                }
+            }
+            Err(e) => {
+                error!("failed to connect to socket at '{}': {}", socket_path, e);
+                return_result = Err(());
+            }
+        }
+    }
+
+    return_result
+}
+
 fn print_usage() {
     print_help("crosvm", "[stop|run]", &[]);
     println!("Commands:");
     println!("    stop - Stops crosvm instances via their control sockets.");
     println!("    run  - Start a new crosvm instance.");
     println!("    create_qcow2  - Create a new qcow2 disk image file.");
+    println!("    disk - Manage attached virtual disk devices.")
 }
 
 fn crosvm_main() -> std::result::Result<(), ()> {
@@ -721,6 +785,7 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         Some("run") => run_vm(args),
         Some("balloon") => balloon_vms(args),
         Some("create_qcow2") => create_qcow2(args),
+        Some("disk") => disk_cmd(args),
         Some(c) => {
             println!("invalid subcommand: {:?}", c);
             print_usage();

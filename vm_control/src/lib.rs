@@ -15,6 +15,7 @@ extern crate kvm;
 extern crate libc;
 extern crate msg_socket;
 extern crate resources;
+#[macro_use]
 extern crate sys_util;
 
 use std::fs::File;
@@ -26,7 +27,7 @@ use libc::{EINVAL, ENODEV};
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use kvm::{Datamatch, IoeventAddress, Vm};
-use msg_socket::{MsgOnSocket, MsgResult};
+use msg_socket::{MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{GpuMemoryDesc, SystemAllocator};
 use sys_util::{Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError, Result};
 
@@ -91,6 +92,9 @@ pub enum VmRequest {
         height: u32,
         format: u32,
     },
+    /// Resize a disk chosen by `disk_index` to `new_size` in bytes.
+    /// `disk_index` is a 0-based count of `--disk`, `--rwdisk`, and `-r` command-line options.
+    DiskResize { disk_index: usize, new_size: u64 },
 }
 
 fn register_memory(
@@ -133,6 +137,7 @@ impl VmRequest {
         sys_allocator: &mut SystemAllocator,
         running: &mut bool,
         balloon_host_socket: &UnixDatagram,
+        disk_host_sockets: &[MsgSocket<VmRequest, VmResponse>],
     ) -> VmResponse {
         *running = true;
         match *self {
@@ -197,6 +202,28 @@ impl VmRequest {
                         desc,
                     },
                     Err(e) => VmResponse::Err(e),
+                }
+            }
+            VmRequest::DiskResize {
+                disk_index,
+                new_size: _,
+            } => {
+                // Forward the request to the block device process via its control socket.
+                if let Some(sock) = disk_host_sockets.get(disk_index) {
+                    if let Err(e) = sock.send(self) {
+                        error!("disk socket send failed: {:?}", e);
+                        VmResponse::Err(SysError::new(EINVAL))
+                    } else {
+                        match sock.recv() {
+                            Ok(result) => result,
+                            Err(e) => {
+                                error!("disk socket recv failed: {:?}", e);
+                                VmResponse::Err(SysError::new(EINVAL))
+                            }
+                        }
+                    }
+                } else {
+                    VmResponse::Err(SysError::new(ENODEV))
                 }
             }
         }

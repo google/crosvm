@@ -6,6 +6,7 @@ use std::cmp;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::{size_of, size_of_val};
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::net::UnixDatagram;
 use std::result;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -17,15 +18,17 @@ use sync::Mutex;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
 use sys_util::{
-    EventFd, FileSync, GuestAddress, GuestMemory, GuestMemoryError, PollContext, PollToken,
-    PunchHole, TimerFd, WriteZeroes,
+    EventFd, FileSetLen, FileSync, GuestAddress, GuestMemory, GuestMemoryError, PollContext,
+    PollToken, PunchHole, TimerFd, WriteZeroes,
 };
 
 use data_model::{DataInit, Le16, Le32, Le64};
+use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
+use vm_control::{VmRequest, VmResponse};
 
 use super::{
-    DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_BLOCK,
-    VIRTIO_F_VERSION_1,
+    DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_CONFIG_CHANGED,
+    INTERRUPT_STATUS_USED_RING, TYPE_BLOCK, VIRTIO_F_VERSION_1,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -112,8 +115,8 @@ const VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP: u32 = 1 << 0;
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_blk_discard_write_zeroes {}
 
-pub trait DiskFile: FileSync + PunchHole + Read + Seek + Write + WriteZeroes {}
-impl<D: FileSync + PunchHole + Read + Seek + Write + WriteZeroes> DiskFile for D {}
+pub trait DiskFile: FileSetLen + FileSync + PunchHole + Read + Seek + Write + WriteZeroes {}
+impl<D: FileSetLen + FileSync + PunchHole + Read + Seek + Write + WriteZeroes> DiskFile for D {}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum RequestType {
@@ -470,6 +473,7 @@ struct Worker<T: DiskFile> {
     queues: Vec<Queue>,
     mem: GuestMemory,
     disk_image: T,
+    disk_size: Arc<Mutex<u64>>,
     read_only: bool,
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
@@ -529,17 +533,44 @@ impl<T: DiskFile> Worker<T> {
         used_count > 0
     }
 
+    fn resize(&mut self, new_size: u64) -> VmResponse {
+        if self.read_only {
+            error!("Attempted to resize read-only block device");
+            return VmResponse::Err(SysError::new(libc::EROFS));
+        }
+
+        info!("Resizing block device to {} bytes", new_size);
+
+        if let Err(e) = self.disk_image.set_len(new_size) {
+            error!("Resizing disk failed! {}", e);
+            return VmResponse::Err(SysError::new(libc::EIO));
+        }
+
+        if let Ok(new_disk_size) = self.disk_image.seek(SeekFrom::End(0)) {
+            let mut disk_size = self.disk_size.lock();
+            *disk_size = new_disk_size;
+        }
+        VmResponse::Ok
+    }
+
     fn signal_used_queue(&self) {
         self.interrupt_status
             .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
         self.interrupt_evt.write(1).unwrap();
     }
 
-    fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd) {
+    fn signal_config_changed(&self) {
+        self.interrupt_status
+            .fetch_or(INTERRUPT_STATUS_CONFIG_CHANGED as usize, Ordering::SeqCst);
+        self.interrupt_evt.write(1).unwrap();
+    }
+
+    fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd, control_socket: UnixDatagram) {
         #[derive(PollToken)]
         enum Token {
             FlushTimer,
             QueueAvailable,
+            ControlRequest,
             InterruptResample,
             Kill,
         }
@@ -553,9 +584,12 @@ impl<T: DiskFile> Worker<T> {
         };
         let mut flush_timer_armed = false;
 
+        let control_socket = MsgSocket::<VmResponse, VmRequest>::new(control_socket);
+
         let poll_ctx: PollContext<Token> = match PollContext::new()
             .and_then(|pc| pc.add(&flush_timer, Token::FlushTimer).and(Ok(pc)))
             .and_then(|pc| pc.add(&queue_evt, Token::QueueAvailable).and(Ok(pc)))
+            .and_then(|pc| pc.add(&control_socket, Token::ControlRequest).and(Ok(pc)))
             .and_then(|pc| {
                 pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
                     .and(Ok(pc))
@@ -579,6 +613,7 @@ impl<T: DiskFile> Worker<T> {
             };
 
             let mut needs_interrupt = false;
+            let mut needs_config_interrupt = false;
             for event in events.iter_readable() {
                 match event.token() {
                     Token::FlushTimer => {
@@ -599,6 +634,35 @@ impl<T: DiskFile> Worker<T> {
                         needs_interrupt |=
                             self.process_queue(0, &mut flush_timer, &mut flush_timer_armed);
                     }
+                    Token::ControlRequest => {
+                        let req = match control_socket.recv() {
+                            Ok(req) => req,
+                            Err(e) => {
+                                error!("control socket failed recv: {:?}", e);
+                                break 'poll;
+                            }
+                        };
+
+                        let resp = match req {
+                            VmRequest::DiskResize {
+                                disk_index: _,
+                                new_size,
+                            } => {
+                                needs_config_interrupt = true;
+                                self.resize(new_size)
+                            }
+                            // Only DiskResize makes sense - fail any other requests
+                            _ => {
+                                error!("block device received unexpected VmRequest");
+                                VmResponse::Err(SysError::new(libc::EINVAL))
+                            }
+                        };
+
+                        if let Err(e) = control_socket.send(&resp) {
+                            error!("control socket failed send: {:?}", e);
+                            break 'poll;
+                        }
+                    }
                     Token::InterruptResample => {
                         let _ = self.interrupt_resample_evt.read();
                         if self.interrupt_status.load(Ordering::SeqCst) != 0 {
@@ -611,6 +675,9 @@ impl<T: DiskFile> Worker<T> {
             if needs_interrupt {
                 self.signal_used_queue();
             }
+            if needs_config_interrupt {
+                self.signal_config_changed();
+            }
         }
     }
 }
@@ -622,6 +689,7 @@ pub struct Block<T: DiskFile> {
     disk_size: Arc<Mutex<u64>>,
     avail_features: u64,
     read_only: bool,
+    control_socket: Option<UnixDatagram>,
 }
 
 fn build_config_space(disk_size: u64) -> virtio_blk_config {
@@ -643,7 +711,11 @@ impl<T: DiskFile> Block<T> {
     /// Create a new virtio block device that operates on the given file.
     ///
     /// The given file must be seekable and sizable.
-    pub fn new(mut disk_image: T, read_only: bool) -> SysResult<Block<T>> {
+    pub fn new(
+        mut disk_image: T,
+        read_only: bool,
+        control_socket: Option<UnixDatagram>,
+    ) -> SysResult<Block<T>> {
         let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
         if disk_size % SECTOR_SIZE != 0 {
             warn!(
@@ -668,6 +740,7 @@ impl<T: DiskFile> Block<T> {
             disk_size: Arc::new(Mutex::new(disk_size)),
             avail_features,
             read_only,
+            control_socket,
         })
     }
 }
@@ -687,6 +760,10 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
 
         if let Some(ref disk_image) = self.disk_image {
             keep_fds.push(disk_image.as_raw_fd());
+        }
+
+        if let Some(ref control_socket) = self.control_socket {
+            keep_fds.push(control_socket.as_raw_fd());
         }
 
         keep_fds
@@ -746,26 +823,30 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
         self.kill_evt = Some(self_kill_evt);
 
         let read_only = self.read_only;
+        let disk_size = self.disk_size.clone();
         if let Some(disk_image) = self.disk_image.take() {
-            let worker_result =
-                thread::Builder::new()
-                    .name("virtio_blk".to_string())
-                    .spawn(move || {
-                        let mut worker = Worker {
-                            queues,
-                            mem,
-                            disk_image,
-                            read_only,
-                            interrupt_status: status,
-                            interrupt_evt,
-                            interrupt_resample_evt,
-                        };
-                        worker.run(queue_evts.remove(0), kill_evt);
-                    });
+            if let Some(control_socket) = self.control_socket.take() {
+                let worker_result =
+                    thread::Builder::new()
+                        .name("virtio_blk".to_string())
+                        .spawn(move || {
+                            let mut worker = Worker {
+                                queues,
+                                mem,
+                                disk_image,
+                                disk_size,
+                                read_only,
+                                interrupt_status: status,
+                                interrupt_evt,
+                                interrupt_resample_evt,
+                            };
+                            worker.run(queue_evts.remove(0), kill_evt, control_socket);
+                        });
 
-            if let Err(e) = worker_result {
-                error!("failed to spawn virtio_blk worker: {}", e);
-                return;
+                if let Err(e) = worker_result {
+                    error!("failed to spawn virtio_blk worker: {}", e);
+                    return;
+                }
             }
         }
     }
@@ -787,7 +868,7 @@ mod tests {
         let f = File::create(&path).unwrap();
         f.set_len(0x1000).unwrap();
 
-        let b = Block::new(f, true).unwrap();
+        let b = Block::new(f, true, None).unwrap();
         let mut num_sectors = [0u8; 4];
         b.read_config(0, &mut num_sectors);
         // size is 0x1000, so num_sectors is 8 (4096/512).
@@ -807,7 +888,7 @@ mod tests {
         // read-write block device
         {
             let f = File::create(&path).unwrap();
-            let b = Block::new(f, false).unwrap();
+            let b = Block::new(f, false, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1
             assert_eq!(0x100006200, b.features());
@@ -816,7 +897,7 @@ mod tests {
         // read-only block device
         {
             let f = File::create(&path).unwrap();
-            let b = Block::new(f, true).unwrap();
+            let b = Block::new(f, true, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1
             assert_eq!(0x100000220, b.features());
