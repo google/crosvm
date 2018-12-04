@@ -110,11 +110,11 @@ impl LibUsbDevice {
 
     /// Get device handle of this device. Take an external fd. This function is only safe when fd
     /// is an fd of this usb device.
+    #[cfg(feature = "sandboxed-libusb")]
     pub unsafe fn open_fd(&self, fd: RawFd) -> Result<DeviceHandle> {
         let mut handle: *mut bindings::libusb_device_handle = std::ptr::null_mut();
-        // Safe because 'self.device' is constructed from libusb device list and handle is on stack.
-        try_libusb!(unsafe { bindings::libusb_open_fd(self.device, fd, &mut handle) });
-        // Safe because handle is successfully initialized with libusb_open_fd.
-        Ok(unsafe { DeviceHandle::new(self._context.clone(), handle) })
+        // Safe when 'self.device' is constructed from libusb device list and handle is on stack.
+        try_libusb!(bindings::libusb_open_fd(self.device, fd, &mut handle));
+        Ok(DeviceHandle::new(self._context.clone(), handle))
     }
 }

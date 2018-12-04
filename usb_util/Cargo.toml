@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 build = "build.rs"
 
+[features]
+sandboxed-libusb = []
+
 [dependencies]
 assertions = { path = "../assertions" }
 data_model = { path = "../data_model" }
