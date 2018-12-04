@@ -11,6 +11,8 @@
 mod bindings;
 
 extern crate data_model;
+extern crate sync;
+
 #[macro_use]
 pub mod error;
 pub mod config_descriptor;

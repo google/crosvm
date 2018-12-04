@@ -8,13 +8,14 @@ extern crate kernel_cmdline;
 extern crate kvm;
 extern crate libc;
 extern crate resources;
+extern crate sync;
 extern crate sys_util;
 
 use std::fmt;
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
 use std::result;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use devices::virtio::VirtioDevice;
 use devices::{
@@ -24,6 +25,7 @@ use devices::{
 use io_jail::Minijail;
 use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
 use resources::SystemAllocator;
+use sync::Mutex;
 use sys_util::{syslog, EventFd, GuestMemory};
 
 pub type Result<T> = result::Result<T, Box<std::error::Error>>;

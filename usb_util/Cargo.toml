@@ -6,6 +6,7 @@ build = "build.rs"
 
 [dependencies]
 data_model = { path = "../data_model" }
+sync = { path = "../sync" }
 
 [build-dependencies]
 pkg-config = "=0.3.11"

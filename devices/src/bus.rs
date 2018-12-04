@@ -7,7 +7,9 @@
 use std::cmp::{Ord, Ordering, PartialEq, PartialOrd};
 use std::collections::btree_map::BTreeMap;
 use std::result;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use sync::Mutex;
 
 /// Trait for devices that respond to reads or writes in an arbitrary address space.
 ///
@@ -171,7 +173,7 @@ impl Bus {
     /// Returns true on success, otherwise `data` is untouched.
     pub fn read(&self, addr: u64, data: &mut [u8]) -> bool {
         if let Some((offset, dev)) = self.get_device(addr) {
-            dev.lock().unwrap().read(offset, data);
+            dev.lock().read(offset, data);
             true
         } else {
             false
@@ -183,7 +185,7 @@ impl Bus {
     /// Returns true on success, otherwise `data` is untouched.
     pub fn write(&self, addr: u64, data: &[u8]) -> bool {
         if let Some((offset, dev)) = self.get_device(addr) {
-            dev.lock().unwrap().write(offset, data);
+            dev.lock().write(offset, data);
             true
         } else {
             false

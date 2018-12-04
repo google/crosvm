@@ -9,7 +9,9 @@ use std::os::unix::io::RawFd;
 use bindings;
 use error::{Error, Result};
 use libusb_device::LibUsbDevice;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use sync::Mutex;
 
 pub struct LibUsbContextInner {
     context: *mut bindings::libusb_context,
@@ -123,7 +125,7 @@ impl LibUsbContext {
         }
         // Safe because raw_holder is from Boxed pointer.
         let holder = unsafe { Box::from_raw(raw_holder) };
-        *self.inner.pollfd_change_handler.lock().unwrap() = Some(holder);
+        *self.inner.pollfd_change_handler.lock() = Some(holder);
     }
 
     /// Remove the previous registered notifiers.

@@ -8,7 +8,7 @@ use std::cmp::{self, Ord, PartialEq, PartialOrd};
 use std::collections::btree_set::BTreeSet;
 use std::mem::size_of;
 use std::os::unix::net::UnixDatagram;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 use libc::{EDEADLK, EINVAL, ENOENT, ENOTTY, EPERM, EPIPE, EPROTO};
 
@@ -22,6 +22,7 @@ use kvm_sys::{
     kvm_sregs, kvm_vcpu_events, kvm_xcrs, KVM_CPUID_FLAG_SIGNIFCANT_INDEX,
 };
 use plugin_proto::*;
+use sync::Mutex;
 
 use super::*;
 
@@ -311,10 +312,7 @@ impl PluginVcpu {
     /// to this VCPU.
     pub fn pre_run(&self, vcpu: &Vcpu) -> SysResult<()> {
         let request = {
-            let mut lock = self
-                .per_vcpu_state
-                .lock()
-                .map_err(|_| SysError::new(EDEADLK))?;
+            let mut lock = self.per_vcpu_state.lock();
             lock.pause_request.take()
         };
 

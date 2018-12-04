@@ -11,7 +11,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
 use std::process::Command;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
 
 use net_util;
@@ -26,6 +26,7 @@ use io_jail::Minijail;
 use kvm::{dirty_log_bitmap_size, Datamatch, IoeventAddress, IrqRoute, IrqSource, PicId, Vm};
 use kvm_sys::{kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
 use plugin_proto::*;
+use sync::Mutex;
 use sys_util::{
     Error as SysError, EventFd, GuestAddress, Killable, MemoryMapping, Result as SysResult,
     ScmSocket, SharedMemory, SIGRTMIN,
@@ -400,7 +401,7 @@ impl Process {
             .enumerate()
         {
             if cpu_mask & (1 << cpu_id) != 0 {
-                per_cpu_state.lock().unwrap().request_pause(user_data);
+                per_cpu_state.lock().request_pause(user_data);
                 if let Err(e) = handle.kill(SIGRTMIN() + 0) {
                     error!("failed to interrupt vcpu {}: {:?}", cpu_id, e);
                 }

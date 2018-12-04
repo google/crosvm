@@ -230,7 +230,9 @@ impl BusDevice for Serial {
 mod tests {
     use super::*;
     use std::io;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
+
+    use sync::Mutex;
 
     #[derive(Clone)]
     struct SharedBuffer {
@@ -247,10 +249,10 @@ mod tests {
 
     impl io::Write for SharedBuffer {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.buf.lock().unwrap().write(buf)
+            self.buf.lock().write(buf)
         }
         fn flush(&mut self) -> io::Result<()> {
-            self.buf.lock().unwrap().flush()
+            self.buf.lock().flush()
         }
     }
 
@@ -265,7 +267,7 @@ mod tests {
         serial.write(DATA as u64, &['b' as u8]);
         serial.write(DATA as u64, &['c' as u8]);
         assert_eq!(
-            serial_out.buf.lock().unwrap().as_slice(),
+            serial_out.buf.lock().as_slice(),
             &['a' as u8, 'b' as u8, 'c' as u8]
         );
     }

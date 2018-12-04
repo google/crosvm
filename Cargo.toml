@@ -44,6 +44,7 @@ protobuf = { version = "=1.4.3", optional = true }
 resources = { path = "resources" }
 p9 = { path = "p9" }
 rand = "=0.3.20"
+sync = { path = "sync" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { path = "x86_64" }

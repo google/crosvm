@@ -11,6 +11,7 @@ devices = { path = "../devices" }
 io_jail = { path = "../io_jail" }
 kvm_sys = { path = "../kvm_sys" }
 kvm = { path = "../kvm" }
+sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
 resources = { path = "../resources" }
 kernel_cmdline = { path = "../kernel_cmdline" }

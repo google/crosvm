@@ -13,5 +13,6 @@ kvm_sys = { path = "../kvm_sys" }
 kvm = { path = "../kvm" }
 sys_util = { path = "../sys_util" }
 resources = { path = "../resources" }
+sync = { path = "../sync" }
 libc = "*"
 byteorder = "*"

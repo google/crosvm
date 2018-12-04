@@ -20,6 +20,7 @@ extern crate virtio_sys;
 extern crate vm_control;
 #[macro_use]
 extern crate msg_socket;
+extern crate sync;
 
 mod bus;
 mod cmos;

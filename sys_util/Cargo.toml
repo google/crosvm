@@ -8,3 +8,4 @@ data_model = { path = "../data_model" }
 libc = "*"
 syscall_defines = { path = "../syscall_defines" }
 poll_token_derive = { path = "poll_token_derive" }
+sync = { path = "../sync" }

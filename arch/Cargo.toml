@@ -11,3 +11,4 @@ sys_util = { path = "../sys_util" }
 resources = { path = "../resources" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 libc = "*"
+sync = { path = "../sync" }

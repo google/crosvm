@@ -22,6 +22,7 @@ dependencies = [
  "kvm_sys 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
+ "sync 0.1.0",
  "sys_util 0.1.0",
 ]
 
@@ -35,6 +36,7 @@ dependencies = [
  "kvm 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
+ "sync 0.1.0",
  "sys_util 0.1.0",
 ]
 
@@ -100,6 +102,7 @@ dependencies = [
  "qcow 0.1.0",
  "rand 0.3.20 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
+ "sync 0.1.0",
  "sys_util 0.1.0",
  "usb_util 0.1.0",
  "vhost 0.1.0",
@@ -140,6 +143,7 @@ dependencies = [
  "net_util 0.1.0",
  "p9 0.1.0",
  "resources 0.1.0",
+ "sync 0.1.0",
  "sys_util 0.1.0",
  "vhost 0.1.0",
  "virtio_sys 0.1.0",
@@ -395,12 +399,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sync"
+version = "0.1.0"
+
+[[package]]
 name = "sys_util"
 version = "0.1.0"
 dependencies = [
  "data_model 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "poll_token_derive 0.1.0",
+ "sync 0.1.0",
  "syscall_defines 0.1.0",
 ]
 
@@ -427,6 +436,7 @@ version = "0.1.0"
 dependencies = [
  "data_model 0.1.0",
  "pkg-config 0.3.11 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sync 0.1.0",
 ]
 
 [[package]]
@@ -484,6 +494,7 @@ dependencies = [
  "kvm_sys 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
+ "sync 0.1.0",
  "sys_util 0.1.0",
 ]
 

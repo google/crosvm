@@ -12,6 +12,7 @@ extern crate kvm;
 extern crate kvm_sys;
 extern crate libc;
 extern crate resources;
+extern crate sync;
 extern crate sys_util;
 
 use std::error::{self, Error as Aarch64Error};
@@ -20,12 +21,13 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, stdout};
 use std::os::unix::io::FromRawFd;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use arch::{RunnableLinuxVm, VmComponents};
 use devices::{Bus, BusError, PciConfigMmio, PciDevice, PciInterruptPin};
 use io_jail::Minijail;
 use resources::{AddressRanges, SystemAllocator};
+use sync::Mutex;
 use sys_util::{EventFd, GuestAddress, GuestMemory};
 
 use kvm::*;

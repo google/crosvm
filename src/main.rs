@@ -31,6 +31,7 @@ extern crate plugin_proto;
 extern crate protobuf;
 extern crate rand;
 extern crate resources;
+extern crate sync;
 extern crate vhost;
 extern crate vm_control;
 

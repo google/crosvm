@@ -925,7 +925,6 @@ fn run_control(
                             linux
                                 .stdio_serial
                                 .lock()
-                                .unwrap()
                                 .queue_input_bytes(&out[..count])
                                 .expect("failed to queue bytes into serial port");
                         }

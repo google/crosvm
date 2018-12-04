@@ -3,9 +3,11 @@
 // found in the LICENSE file.
 
 use std::os::unix::io::RawFd;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use byteorder::{ByteOrder, LittleEndian};
+
+use sync::Mutex;
 
 use BusDevice;
 
@@ -84,9 +86,10 @@ impl PciRoot {
                 // If bus and device are both zero, then read from the root config.
                 self.root_configuration.config_register_read(register)
             }
-            dev_num => self.devices.get(dev_num - 1).map_or(0xffff_ffff, |d| {
-                d.lock().unwrap().config_register_read(register)
-            }),
+            dev_num => self
+                .devices
+                .get(dev_num - 1)
+                .map_or(0xffff_ffff, |d| d.lock().config_register_read(register)),
         }
     }
 
@@ -117,9 +120,7 @@ impl PciRoot {
             dev_num => {
                 // dev_num is 1-indexed here.
                 if let Some(d) = self.devices.get(dev_num - 1) {
-                    d.lock()
-                        .unwrap()
-                        .config_register_write(register, offset, data);
+                    d.lock().config_register_write(register, offset, data);
                 }
             }
         }

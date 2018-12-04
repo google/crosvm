@@ -13,6 +13,7 @@ extern crate kvm;
 extern crate kvm_sys;
 extern crate libc;
 extern crate resources;
+extern crate sync;
 extern crate sys_util;
 
 #[allow(dead_code)]
@@ -67,7 +68,7 @@ use std::fs::File;
 use std::io::{self, stdout};
 use std::mem;
 use std::result;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use arch::{RunnableLinuxVm, VmComponents};
 use bootparam::boot_params;
@@ -76,6 +77,7 @@ use devices::{PciConfigIo, PciDevice, PciInterruptPin};
 use io_jail::Minijail;
 use kvm::*;
 use resources::{AddressRanges, SystemAllocator};
+use sync::Mutex;
 use sys_util::{EventFd, GuestAddress, GuestMemory};
 
 #[derive(Debug)]

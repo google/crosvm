@@ -36,12 +36,14 @@ use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
 use std::ptr::null;
 use std::str::from_utf8;
-use std::sync::{Mutex, MutexGuard, Once, ONCE_INIT};
+use std::sync::{MutexGuard, Once, ONCE_INIT};
 
 use libc::{
     c_char, closelog, fcntl, gethostname, localtime_r, openlog, time, time_t, tm, F_GETFD,
     LOG_NDELAY, LOG_PERROR, LOG_PID, LOG_USER,
 };
+
+use sync::Mutex;
 
 use getpid;
 
@@ -237,7 +239,8 @@ fn lock() -> Result<MutexGuard<'static, State>, Error> {
     }
     // Safe because STATE only mutates once and we checked for NULL.
     let state = unsafe { &*state_ptr };
-    state.lock().map_err(|_| Error::Poisoned)
+    let guard = state.lock();
+    Ok(guard)
 }
 
 // Attempts to lock and retrieve the state. Returns from the function silently on failure.

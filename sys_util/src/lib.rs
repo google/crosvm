@@ -10,6 +10,7 @@ extern crate syscall_defines;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate poll_token_derive;
+extern crate sync;
 
 #[macro_use]
 pub mod handle_eintr;
