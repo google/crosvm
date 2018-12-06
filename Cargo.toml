@@ -68,6 +68,7 @@ sys_util = "*"
 
 [patch.crates-io]
 assertions = { path = "assertions" }
+audio_streams = { path = "../../third_party/adhd/audio_streams" } # ignored by ebuild
 data_model = { path = "data_model" }
 poll_token_derive = { path = "sys_util/poll_token_derive" }
 sync = { path = "sync" }

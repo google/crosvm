@@ -9,6 +9,7 @@ gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
 tpm = ["tpm2"]
 
 [dependencies]
+audio_streams = "*"
 bit_field = { path = "../bit_field" }
 byteorder = "*"
 data_model = { path = "../data_model" }

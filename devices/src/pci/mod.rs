@@ -4,10 +4,15 @@
 
 //! Implements pci devices and busses.
 
+mod ac97;
+mod ac97_bus_master;
+mod ac97_mixer;
+mod ac97_regs;
 mod pci_configuration;
 mod pci_device;
 mod pci_root;
 
+pub use self::ac97::Ac97Dev;
 pub use self::pci_configuration::{
     PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciHeaderType,
     PciProgrammingInterface, PciSubclass,
