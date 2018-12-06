@@ -15,14 +15,14 @@ extern crate syn;
 use std::string::String;
 use std::vec::Vec;
 
-use proc_macro2::{Span, TokenStream, TokenTree};
-use syn::{Attribute, Data, DeriveInput, Fields, Ident};
+use proc_macro2::{Span, TokenStream};
+use syn::{Data, DeriveInput, Fields, Ident};
 
 type Result<T> = std::result::Result<T, String>;
 
 /// The function that derives the actual implementation.
-#[proc_macro_derive(BitField, attributes(passthrough))]
-pub fn bitfield(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+#[proc_macro_attribute]
+pub fn bitfield(_args: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let derive_input = parse_macro_input!(input as DeriveInput);
     bitfield_impl(derive_input).into()
 }
@@ -30,36 +30,17 @@ pub fn bitfield(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 fn bitfield_impl(ast: DeriveInput) -> TokenStream {
     if !ast.generics.params.is_empty() {
         return quote! {
-            compile_error!("derive(BitField) does not support generic parameters");
+            compile_error!("#[bitfield] does not support generic parameters");
         };
     }
 
-    let name = ast.ident.to_string();
-    let struct_name = match get_struct_name(name.as_str()) {
-        Some(name) => name,
-        None => {
-            return quote! {
-                compile_error!("Check schema name, it should end with Schema.");
-            };
-        }
-    };
-
-    let ident = Ident::new(struct_name, Span::call_site());
+    let name = ast.ident.clone();
     let test_mod_ident = Ident::new(
-        format!("test_{}", struct_name.to_lowercase()).as_str(),
+        format!("test_{}", name.to_string().to_lowercase()).as_str(),
         Span::call_site(),
     );
-    // Name of the struct
-    let name = quote!(#ident);
     let vis = ast.vis.clone();
-    let attrs = match get_attrs(ast.attrs.as_slice()) {
-        Ok(attrs) => attrs,
-        Err(err_str) => {
-            return quote! {
-                compile_error!(#err_str);
-            };
-        }
-    };
+    let attrs = ast.attrs.clone();
     // Visibility.
     let vis = quote!(#vis);
     let fields = match get_struct_fields(ast) {
@@ -90,18 +71,6 @@ fn bitfield_impl(ast: DeriveInput) -> TokenStream {
             #(#tests_impl)*
         }
     }
-}
-
-// Generate struct name from schema_name. "MyTypeSchema" -> "MyType".
-fn get_struct_name(schema_name: &str) -> Option<&str> {
-    let struct_name = schema_name.trim_right_matches("Schema");
-    if struct_name.len() + "Schema".len() != schema_name.len() {
-        return None;
-    }
-    if struct_name.len() == 0 {
-        return None;
-    }
-    Some(struct_name)
 }
 
 // Unwrap ast to get the named fields. Anything unexpected will be treated as an
@@ -137,28 +106,9 @@ fn get_struct_fields(ast: DeriveInput) -> Result<Vec<(String, TokenStream)>> {
     Ok(vec)
 }
 
-// We only support attributes of the form #[passthrough(derive(Clone))].
-// Any other attribute will cause undefined behavior.
-fn get_attrs(attrs: &[Attribute]) -> Result<Vec<TokenStream>> {
-    let mut attr_tokens = Vec::new();
-    for a in attrs {
-        let tts = a.tts.clone();
-        for t in tts {
-            match t {
-                TokenTree::Group(group) => {
-                    let nested = group.stream();
-                    attr_tokens.push(quote!(#[#nested]))
-                }
-                _ => return Err(format!("Unsupported attribute.")),
-            }
-        }
-    }
-    Ok(attr_tokens)
-}
-
 fn get_struct_def(
     vis: &TokenStream,
-    name: &TokenStream,
+    name: &Ident,
     fields: &[(String, TokenStream)],
 ) -> TokenStream {
     let mut field_types = Vec::new();
@@ -216,7 +166,7 @@ fn get_fields_impl(fields: &[(String, TokenStream)]) -> Vec<TokenStream> {
 }
 
 // Implement setter and getter for all fields.
-fn get_debug_fmt_impl(name: &TokenStream, fields: &[(String, TokenStream)]) -> TokenStream {
+fn get_debug_fmt_impl(name: &Ident, fields: &[(String, TokenStream)]) -> TokenStream {
     // print fields:
     let mut impls = Vec::new();
     for &(ref name, ref _ty) in fields {
@@ -239,7 +189,7 @@ fn get_debug_fmt_impl(name: &TokenStream, fields: &[(String, TokenStream)]) -> T
 }
 
 // Implement test.
-fn get_tests_impl(struct_name: &TokenStream, fields: &[(String, TokenStream)]) -> Vec<TokenStream> {
+fn get_tests_impl(struct_name: &Ident, fields: &[(String, TokenStream)]) -> Vec<TokenStream> {
     let mut field_types = Vec::new();
     for &(ref _name, ref ty) in fields {
         field_types.push(ty.clone());
@@ -291,7 +241,7 @@ fn get_tests_impl(struct_name: &TokenStream, fields: &[(String, TokenStream)]) -
     impls
 }
 
-fn get_bits_impl(name: &TokenStream) -> TokenStream {
+fn get_bits_impl(name: &Ident) -> TokenStream {
     quote! {
         impl #name {
             #[inline]
@@ -364,20 +314,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn struct_name_parsing_valid() {
-        assert_eq!(get_struct_name("MyBitFieldSchema"), Some("MyBitField"));
-    }
-
-    #[test]
-    fn struct_name_parsing_invalid() {
-        assert_eq!(get_struct_name("MyBitFieldS"), None);
-    }
-
-    #[test]
     fn end_to_end() {
         let input: DeriveInput = parse_quote! {
-            #[passthrough(derive(Clone))]
-            struct MyBitFieldSchema {
+            #[derive(Clone)]
+            struct MyBitField {
                 a: BitField1,
                 b: BitField2,
                 c: BitField5,

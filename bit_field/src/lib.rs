@@ -9,9 +9,9 @@ extern crate bit_field_derive;
 pub use bit_field_derive::*;
 
 /// BitFieldSpecifier is a group of structs help defining bitfield. It should only
-/// be used with bit_field custom derive. (#[derive(BitField)]).
+/// be used with the #[bitfield] attribute macro.
 /// Example:
-/// #[derive(BitField)]
+/// #[bitfield]
 /// pub struct MyBitFieldSchema {
 ///     field_a : BitField1,
 ///     field_b : BitField3,
@@ -30,8 +30,7 @@ pub use bit_field_derive::*;
 ///     fn set_field_d(&self, val: u32)
 ///
 /// You can also pass attributes to the defined bitfield structs. Simply do this:
-/// #[passthrough(derive(Clone))]
-/// Any attributes other than #[passthrough(*)] will cause undefined behavior.
+/// #[derive(Clone)]
 /// For more details, refer to bit_field_derive.
 pub trait BitFieldSpecifier {
     /// Width of this field in bits.
