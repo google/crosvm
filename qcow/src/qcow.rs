@@ -24,7 +24,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use sys_util::{FileSync, PunchHole, SeekHole, WriteZeroes};
+use sys_util::{FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes};
 
 #[derive(Debug)]
 pub enum Error {
@@ -1379,6 +1379,15 @@ impl Write for QcowFile {
 impl FileSync for QcowFile {
     fn fsync(&mut self) -> std::io::Result<()> {
         self.flush()
+    }
+}
+
+impl FileSetLen for QcowFile {
+    fn set_len(&self, _len: u64) -> std::io::Result<()> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "set_len() not supported for QcowFile",
+        ))
     }
 }
 
