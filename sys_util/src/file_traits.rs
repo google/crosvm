@@ -19,3 +19,19 @@ impl FileSync for File {
         self.sync_all()
     }
 }
+
+/// A trait for setting the size of a file.
+/// This is equivalent to File's `set_len` method, but
+/// wrapped in a trait so that it can be implemented for
+/// other types.
+pub trait FileSetLen {
+    // Set the size of this file.
+    // This is the moral equivalent of `ftruncate()`.
+    fn set_len(&self, _len: u64) -> Result<()>;
+}
+
+impl FileSetLen for File {
+    fn set_len(&self, len: u64) -> Result<()> {
+        File::set_len(self, len)
+    }
+}
