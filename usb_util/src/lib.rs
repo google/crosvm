@@ -10,6 +10,7 @@
 #[cfg_attr(feature = "cargo-clippy", allow(clippy))]
 mod bindings;
 
+extern crate assertions;
 extern crate data_model;
 extern crate sync;
 

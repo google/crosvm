@@ -8,6 +8,7 @@ use std::mem::{self, size_of};
 use std::os::raw::{c_int, c_uchar, c_uint, c_ushort};
 use std::os::unix::io::RawFd;
 
+use assertions::const_assert;
 use libc::{self, c_void, sa_family_t, size_t, sockaddr, socklen_t};
 
 // The domain for vsock sockets.
@@ -113,8 +114,7 @@ impl VsockListener {
     /// Creates a new `VsockListener` bound to the specified port on the current virtual socket
     /// endpoint.
     pub fn bind(port: c_uint) -> io::Result<VsockListener> {
-        // The compiler should optimize this out since these are both compile-time constants.
-        assert_eq!(size_of::<sockaddr_vm>(), size_of::<sockaddr>());
+        const_assert!(size_of::<sockaddr_vm>() == size_of::<sockaddr>());
 
         // Safe because this doesn't modify any memory and we check the return value.
         let fd: RawFd =

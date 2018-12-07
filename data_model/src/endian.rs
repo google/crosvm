@@ -30,6 +30,9 @@
 //!   assert_ne!(b_trans, l_trans);
 //! ```
 
+use assertions::const_assert;
+use std::mem::{align_of, size_of};
+
 use DataInit;
 
 macro_rules! endian_type {
@@ -41,6 +44,11 @@ macro_rules! endian_type {
         pub struct $new_type($old_type);
 
         impl $new_type {
+            fn _assert() {
+                const_assert!(align_of::<$new_type>() == align_of::<$old_type>());
+                const_assert!(size_of::<$new_type>() == size_of::<$old_type>());
+            }
+
             /// Converts `self` to the native endianness.
             pub fn to_native(self) -> $old_type {
                 $old_type::$from_new(self.0)
@@ -89,7 +97,7 @@ mod tests {
     use super::*;
 
     use std::convert::From;
-    use std::mem::{align_of, size_of, transmute};
+    use std::mem::transmute;
 
     #[cfg(target_endian = "little")]
     const NATIVE_LITTLE: bool = true;
@@ -101,16 +109,6 @@ mod tests {
         ($old_type:ty, $new_type:ty, $test_name:ident, $native:expr) => {
             mod $test_name {
                 use super::*;
-
-                #[test]
-                fn align() {
-                    assert_eq!(align_of::<$new_type>(), align_of::<$old_type>());
-                }
-
-                #[test]
-                fn size() {
-                    assert_eq!(size_of::<$new_type>(), size_of::<$old_type>());
-                }
 
                 #[allow(overflowing_literals)]
                 #[test]

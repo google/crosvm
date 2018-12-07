@@ -5,6 +5,7 @@
 /// Runs a [9P] server.
 ///
 /// [9P]: http://man.cat-v.org/plan_9/5/0intro
+extern crate assertions;
 extern crate getopts;
 extern crate libc;
 extern crate p9;

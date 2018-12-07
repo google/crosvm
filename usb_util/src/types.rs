@@ -2,8 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use assertions::const_assert;
 use bindings;
 use data_model::DataInit;
+
+use std::mem::size_of;
 
 /// Speed of usb device. See usb spec for more details.
 #[derive(Debug)]
@@ -114,6 +117,10 @@ pub struct UsbRequestSetup {
     pub length: u16,      // wLength
 }
 
+fn _assert() {
+    const_assert!(size_of::<UsbRequestSetup>() == 8);
+}
+
 unsafe impl DataInit for UsbRequestSetup {}
 
 impl UsbRequestSetup {
@@ -183,16 +190,5 @@ impl UsbRequestSetup {
             0x12 => Some(StandardControlRequest::SynchFrame),
             _ => None,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::mem::size_of;
-
-    #[test]
-    fn check_request_setup_size() {
-        assert_eq!(size_of::<UsbRequestSetup>(), 8);
     }
 }
