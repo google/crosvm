@@ -22,7 +22,10 @@ type Result<T> = std::result::Result<T, String>;
 
 /// The function that derives the actual implementation.
 #[proc_macro_attribute]
-pub fn bitfield(_args: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn bitfield(
+    _args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
     let derive_input = parse_macro_input!(input as DeriveInput);
     bitfield_impl(derive_input).into()
 }
