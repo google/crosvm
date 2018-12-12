@@ -7290,22 +7290,31 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_glAreProgramsResidentNV"]
     pub static mut epoxy_glAreProgramsResidentNV: ::std::option::Option<
-        unsafe extern "C" fn(n: GLsizei, programs: *const GLuint, residences: *mut GLboolean)
-            -> GLboolean,
+        unsafe extern "C" fn(
+            n: GLsizei,
+            programs: *const GLuint,
+            residences: *mut GLboolean,
+        ) -> GLboolean,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_glAreTexturesResident"]
     pub static mut epoxy_glAreTexturesResident: ::std::option::Option<
-        unsafe extern "C" fn(n: GLsizei, textures: *const GLuint, residences: *mut GLboolean)
-            -> GLboolean,
+        unsafe extern "C" fn(
+            n: GLsizei,
+            textures: *const GLuint,
+            residences: *mut GLboolean,
+        ) -> GLboolean,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_glAreTexturesResidentEXT"]
     pub static mut epoxy_glAreTexturesResidentEXT: ::std::option::Option<
-        unsafe extern "C" fn(n: GLsizei, textures: *const GLuint, residences: *mut GLboolean)
-            -> GLboolean,
+        unsafe extern "C" fn(
+            n: GLsizei,
+            textures: *const GLuint,
+            residences: *mut GLboolean,
+        ) -> GLboolean,
     >;
 }
 extern "C" {
@@ -10640,8 +10649,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_glCreateShaderProgramv"]
     pub static mut epoxy_glCreateShaderProgramv: ::std::option::Option<
-        unsafe extern "C" fn(type_: GLenum, count: GLsizei, strings: *const *const GLchar)
-            -> GLuint,
+        unsafe extern "C" fn(
+            type_: GLenum,
+            count: GLsizei,
+            strings: *const *const GLchar,
+        ) -> GLuint,
     >;
 }
 extern "C" {
@@ -10658,8 +10670,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_glCreateSyncFromCLeventARB"]
     pub static mut epoxy_glCreateSyncFromCLeventARB: ::std::option::Option<
-        unsafe extern "C" fn(context: *mut _cl_context, event: *mut _cl_event, flags: GLbitfield)
-            -> GLsync,
+        unsafe extern "C" fn(
+            context: *mut _cl_context,
+            event: *mut _cl_event,
+            flags: GLbitfield,
+        ) -> GLsync,
     >;
 }
 extern "C" {
@@ -15351,29 +15366,41 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_glGetProgramResourceIndex"]
     pub static mut epoxy_glGetProgramResourceIndex: ::std::option::Option<
-        unsafe extern "C" fn(program: GLuint, programInterface: GLenum, name: *const GLchar)
-            -> GLuint,
+        unsafe extern "C" fn(
+            program: GLuint,
+            programInterface: GLenum,
+            name: *const GLchar,
+        ) -> GLuint,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_glGetProgramResourceLocation"]
     pub static mut epoxy_glGetProgramResourceLocation: ::std::option::Option<
-        unsafe extern "C" fn(program: GLuint, programInterface: GLenum, name: *const GLchar)
-            -> GLint,
+        unsafe extern "C" fn(
+            program: GLuint,
+            programInterface: GLenum,
+            name: *const GLchar,
+        ) -> GLint,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_glGetProgramResourceLocationIndex"]
     pub static mut epoxy_glGetProgramResourceLocationIndex: ::std::option::Option<
-        unsafe extern "C" fn(program: GLuint, programInterface: GLenum, name: *const GLchar)
-            -> GLint,
+        unsafe extern "C" fn(
+            program: GLuint,
+            programInterface: GLenum,
+            name: *const GLchar,
+        ) -> GLint,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_glGetProgramResourceLocationIndexEXT"]
     pub static mut epoxy_glGetProgramResourceLocationIndexEXT: ::std::option::Option<
-        unsafe extern "C" fn(program: GLuint, programInterface: GLenum, name: *const GLchar)
-            -> GLint,
+        unsafe extern "C" fn(
+            program: GLuint,
+            programInterface: GLenum,
+            name: *const GLchar,
+        ) -> GLint,
     >;
 }
 extern "C" {
@@ -20047,8 +20074,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_glNewObjectBufferATI"]
     pub static mut epoxy_glNewObjectBufferATI: ::std::option::Option<
-        unsafe extern "C" fn(size: GLsizei, pointer: *const ::std::os::raw::c_void, usage: GLenum)
-            -> GLuint,
+        unsafe extern "C" fn(
+            size: GLsizei,
+            pointer: *const ::std::os::raw::c_void,
+            usage: GLenum,
+        ) -> GLuint,
     >;
 }
 extern "C" {
@@ -30301,15 +30331,23 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglClientWaitSync"]
     pub static mut epoxy_eglClientWaitSync: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, sync: EGLSync, flags: EGLint, timeout: EGLTime)
-            -> EGLint,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            sync: EGLSync,
+            flags: EGLint,
+            timeout: EGLTime,
+        ) -> EGLint,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_eglClientWaitSyncKHR"]
     pub static mut epoxy_eglClientWaitSyncKHR: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, sync: EGLSyncKHR, flags: EGLint, timeout: EGLTimeKHR)
-            -> EGLint,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            sync: EGLSyncKHR,
+            flags: EGLint,
+            timeout: EGLTimeKHR,
+        ) -> EGLint,
     >;
 }
 extern "C" {
@@ -30321,8 +30359,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglCopyBuffers"]
     pub static mut epoxy_eglCopyBuffers: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, surface: EGLSurface, target: EGLNativePixmapType)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            surface: EGLSurface,
+            target: EGLNativePixmapType,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
@@ -30345,8 +30386,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglCreateFenceSyncNV"]
     pub static mut epoxy_eglCreateFenceSyncNV: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, condition: EGLenum, attrib_list: *const EGLint)
-            -> EGLSyncNV,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            condition: EGLenum,
+            attrib_list: *const EGLint,
+        ) -> EGLSyncNV,
     >;
 }
 extern "C" {
@@ -30393,8 +30437,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglCreatePbufferSurface"]
     pub static mut epoxy_eglCreatePbufferSurface: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, config: EGLConfig, attrib_list: *const EGLint)
-            -> EGLSurface,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            config: EGLConfig,
+            attrib_list: *const EGLint,
+        ) -> EGLSurface,
     >;
 }
 extern "C" {
@@ -30411,8 +30458,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglCreatePixmapSurfaceHI"]
     pub static mut epoxy_eglCreatePixmapSurfaceHI: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, config: EGLConfig, pixmap: *mut EGLClientPixmapHI)
-            -> EGLSurface,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            config: EGLConfig,
+            pixmap: *mut EGLClientPixmapHI,
+        ) -> EGLSurface,
     >;
 }
 extern "C" {
@@ -30468,8 +30518,10 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglCreateStreamFromFileDescriptorKHR"]
     pub static mut epoxy_eglCreateStreamFromFileDescriptorKHR: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, file_descriptor: EGLNativeFileDescriptorKHR)
-            -> EGLStreamKHR,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            file_descriptor: EGLNativeFileDescriptorKHR,
+        ) -> EGLStreamKHR,
     >;
 }
 extern "C" {
@@ -30503,22 +30555,31 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglCreateSync"]
     pub static mut epoxy_eglCreateSync: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, type_: EGLenum, attrib_list: *const EGLAttrib)
-            -> EGLSync,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            type_: EGLenum,
+            attrib_list: *const EGLAttrib,
+        ) -> EGLSync,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_eglCreateSync64KHR"]
     pub static mut epoxy_eglCreateSync64KHR: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, type_: EGLenum, attrib_list: *const EGLAttribKHR)
-            -> EGLSyncKHR,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            type_: EGLenum,
+            attrib_list: *const EGLAttribKHR,
+        ) -> EGLSyncKHR,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_eglCreateSyncKHR"]
     pub static mut epoxy_eglCreateSyncKHR: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, type_: EGLenum, attrib_list: *const EGLint)
-            -> EGLSyncKHR,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            type_: EGLenum,
+            attrib_list: *const EGLint,
+        ) -> EGLSyncKHR,
     >;
 }
 extern "C" {
@@ -30721,8 +30782,9 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglGetProcAddress"]
     pub static mut epoxy_eglGetProcAddress: ::std::option::Option<
-        unsafe extern "C" fn(procname: *const ::std::os::raw::c_char)
-            -> __eglMustCastToProperFunctionPointerType,
+        unsafe extern "C" fn(
+            procname: *const ::std::os::raw::c_char,
+        ) -> __eglMustCastToProperFunctionPointerType,
     >;
 }
 extern "C" {
@@ -30789,15 +30851,22 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglLockSurfaceKHR"]
     pub static mut epoxy_eglLockSurfaceKHR: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, surface: EGLSurface, attrib_list: *const EGLint)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            surface: EGLSurface,
+            attrib_list: *const EGLint,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_eglMakeCurrent"]
     pub static mut epoxy_eglMakeCurrent: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, draw: EGLSurface, read: EGLSurface, ctx: EGLContext)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            draw: EGLSurface,
+            read: EGLSurface,
+            ctx: EGLContext,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
@@ -30838,8 +30907,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglPresentationTimeANDROID"]
     pub static mut epoxy_eglPresentationTimeANDROID: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, surface: EGLSurface, time: EGLnsecsANDROID)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            surface: EGLSurface,
+            time: EGLnsecsANDROID,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
@@ -30866,8 +30938,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglQueryDeviceAttribEXT"]
     pub static mut epoxy_eglQueryDeviceAttribEXT: ::std::option::Option<
-        unsafe extern "C" fn(device: EGLDeviceEXT, attribute: EGLint, value: *mut EGLAttrib)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            device: EGLDeviceEXT,
+            attribute: EGLint,
+            value: *mut EGLAttrib,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
@@ -30889,15 +30964,21 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglQueryDisplayAttribEXT"]
     pub static mut epoxy_eglQueryDisplayAttribEXT: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, attribute: EGLint, value: *mut EGLAttrib)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            attribute: EGLint,
+            value: *mut EGLAttrib,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_eglQueryDisplayAttribNV"]
     pub static mut epoxy_eglQueryDisplayAttribNV: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, attribute: EGLint, value: *mut EGLAttrib)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            attribute: EGLint,
+            value: *mut EGLAttrib,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
@@ -30933,15 +31014,21 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglQueryNativePixmapNV"]
     pub static mut epoxy_eglQueryNativePixmapNV: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, surf: EGLSurface, pixmap: *mut EGLNativePixmapType)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            surf: EGLSurface,
+            pixmap: *mut EGLNativePixmapType,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_eglQueryNativeWindowNV"]
     pub static mut epoxy_eglQueryNativeWindowNV: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, surf: EGLSurface, window: *mut EGLNativeWindowType)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            surf: EGLSurface,
+            window: *mut EGLNativeWindowType,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
@@ -30958,8 +31045,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglQueryOutputLayerStringEXT"]
     pub static mut epoxy_eglQueryOutputLayerStringEXT: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, layer: EGLOutputLayerEXT, name: EGLint)
-            -> *const ::std::os::raw::c_char,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            layer: EGLOutputLayerEXT,
+            name: EGLint,
+        ) -> *const ::std::os::raw::c_char,
     >;
 }
 extern "C" {
@@ -30976,8 +31066,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglQueryOutputPortStringEXT"]
     pub static mut epoxy_eglQueryOutputPortStringEXT: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, port: EGLOutputPortEXT, name: EGLint)
-            -> *const ::std::os::raw::c_char,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            port: EGLOutputPortEXT,
+            name: EGLint,
+        ) -> *const ::std::os::raw::c_char,
     >;
 }
 extern "C" {
@@ -31164,8 +31257,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglStreamConsumerAcquireAttribKHR"]
     pub static mut epoxy_eglStreamConsumerAcquireAttribKHR: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, stream: EGLStreamKHR, attrib_list: *const EGLAttrib)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            stream: EGLStreamKHR,
+            attrib_list: *const EGLAttrib,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
@@ -31177,8 +31273,11 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglStreamConsumerGLTextureExternalAttribsNV"]
     pub static mut epoxy_eglStreamConsumerGLTextureExternalAttribsNV: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, stream: EGLStreamKHR, attrib_list: *mut EGLAttrib)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            stream: EGLStreamKHR,
+            attrib_list: *mut EGLAttrib,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
@@ -31190,15 +31289,21 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}epoxy_eglStreamConsumerOutputEXT"]
     pub static mut epoxy_eglStreamConsumerOutputEXT: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, stream: EGLStreamKHR, layer: EGLOutputLayerEXT)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            stream: EGLStreamKHR,
+            layer: EGLOutputLayerEXT,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {
     #[link_name = "\u{1}epoxy_eglStreamConsumerReleaseAttribKHR"]
     pub static mut epoxy_eglStreamConsumerReleaseAttribKHR: ::std::option::Option<
-        unsafe extern "C" fn(dpy: EGLDisplay, stream: EGLStreamKHR, attrib_list: *const EGLAttrib)
-            -> EGLBoolean,
+        unsafe extern "C" fn(
+            dpy: EGLDisplay,
+            stream: EGLStreamKHR,
+            attrib_list: *const EGLAttrib,
+        ) -> EGLBoolean,
     >;
 }
 extern "C" {

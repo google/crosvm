@@ -53,7 +53,8 @@ fn test_run() {
                 .expect("failed to create memory mapping"),
             false,
             true,
-        ).expect("failed to register memory");
+        )
+        .expect("failed to register memory");
 
     loop {
         match vcpu.run().expect("run failed") {

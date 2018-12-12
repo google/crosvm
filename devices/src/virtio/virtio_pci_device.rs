@@ -333,7 +333,8 @@ impl PciDevice for VirtioPciDevice {
                     notify_base + i as u64 * NOTIFY_OFF_MULTIPLIER as u64,
                     Datamatch::U16(Some(i as u16)),
                 )
-            }).collect()
+            })
+            .collect()
     }
 
     fn config_registers(&self) -> &PciConfiguration {

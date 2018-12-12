@@ -111,7 +111,8 @@ impl Bus {
                     len: 1,
                     full_addr: false,
                 },
-            ).rev()
+            )
+            .rev()
             .next()?;
         Some((*range, dev))
     }
@@ -160,7 +161,8 @@ impl Bus {
                     full_addr,
                 },
                 device,
-            ).is_some()
+            )
+            .is_some()
         {
             return Err(Error::Overlap);
         }

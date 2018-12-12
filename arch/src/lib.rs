@@ -70,8 +70,10 @@ pub trait LinuxArch {
     /// * `virtio_devs` - Function to generate a list of virtio devices.
     fn build_vm<F>(components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
     where
-        F: FnOnce(&GuestMemory, &EventFd)
-            -> Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>>;
+        F: FnOnce(
+            &GuestMemory,
+            &EventFd,
+        ) -> Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>>;
 }
 
 /// Errors for device manager.

@@ -25,7 +25,8 @@ fn sock_send_recv_struct() {
         field0: 2,
         field1: e0,
         field2: 0xf0f0,
-    }).unwrap();
+    })
+    .unwrap();
     let r = res.recv().unwrap();
     assert_eq!(r.field0, 2);
     assert_eq!(r.field2, 0xf0f0);

@@ -241,7 +241,8 @@ where
             .and_then(|pc| {
                 pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
                     .and(Ok(pc))
-            }).and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            })
+            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
             .map_err(NetError::CreatePollContext)?;
 
         'poll: loop {
@@ -320,7 +321,8 @@ where
         // changes to this set, also change the corresponding feature set in vm_concierge.
         tap.set_offload(
             net_sys::TUN_F_CSUM | net_sys::TUN_F_UFO | net_sys::TUN_F_TSO4 | net_sys::TUN_F_TSO6,
-        ).map_err(NetError::TapSetOffload)?;
+        )
+        .map_err(NetError::TapSetOffload)?;
 
         let vnet_hdr_size = mem::size_of::<virtio_net_hdr_v1>() as i32;
         tap.set_vnet_hdr_size(vnet_hdr_size)

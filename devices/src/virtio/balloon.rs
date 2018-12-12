@@ -139,10 +139,12 @@ impl Worker {
             .and_then(|pc| {
                 pc.add(&self.command_socket, Token::CommandSocket)
                     .and(Ok(pc))
-            }).and_then(|pc| {
+            })
+            .and_then(|pc| {
                 pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
                     .and(Ok(pc))
-            }).and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            })
+            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
         {
             Ok(pc) => pc,
             Err(e) => {

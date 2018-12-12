@@ -55,7 +55,8 @@ fn sock_send_recv_enum() {
     res.send(&Response::E {
         f0: 0x12,
         f1: 0x0f0f,
-    }).unwrap();
+    })
+    .unwrap();
     match req.recv().unwrap() {
         Response::E { f0, f1 } => {
             assert_eq!(f0, 0x12);

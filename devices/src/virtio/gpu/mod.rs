@@ -496,10 +496,12 @@ impl Worker {
             .and_then(|pc| {
                 pc.add(&*self.state.display().borrow(), Token::Display)
                     .and(Ok(pc))
-            }).and_then(|pc| {
+            })
+            .and_then(|pc| {
                 pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
                     .and(Ok(pc))
-            }).and_then(|pc| pc.add(&self.kill_evt, Token::Kill).and(Ok(pc)))
+            })
+            .and_then(|pc| pc.add(&self.kill_evt, Token::Kill).and(Ok(pc)))
         {
             Ok(pc) => pc,
             Err(e) => {
@@ -779,7 +781,8 @@ impl VirtioDevice for Gpu {
                 resource_bridge,
                 kill_evt,
                 state: Frontend::new(Backend::new(device, display, renderer)),
-            }.run()
+            }
+            .run()
         });
     }
 }

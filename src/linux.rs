@@ -356,7 +356,8 @@ fn create_virtio_devs(
                             netmask,
                             mac_address,
                             &mem,
-                        ).map_err(Error::VhostNetDeviceNew)?,
+                        )
+                        .map_err(Error::VhostNetDeviceNew)?,
                     )
                 } else {
                     Box::new(
@@ -418,7 +419,8 @@ fn create_virtio_devs(
                         "tmpfs",
                         (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
                         "size=67108864",
-                    ).unwrap();
+                    )
+                    .unwrap();
 
                     // Device nodes required for DRM.
                     let sys_dev_char_path = Path::new("/sys/dev/char");
@@ -496,7 +498,8 @@ fn create_virtio_devs(
                 },
                 wayland_device_socket,
                 resource_bridge_wl_socket,
-            ).map_err(Error::WaylandDeviceNew)?,
+            )
+            .map_err(Error::WaylandDeviceNew)?,
         );
 
         let jail = if cfg.multiprocess {
@@ -511,7 +514,8 @@ fn create_virtio_devs(
                 "tmpfs",
                 (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
                 "size=67108864",
-            ).unwrap();
+            )
+            .unwrap();
 
             // Bind mount the wayland socket's directory into jail's root. This is necessary since
             // each new wayland context must open() the socket. If the wayland socket is ever
@@ -738,7 +742,8 @@ fn run_vcpu(
             exit_evt
                 .write(1)
                 .expect("failed to signal vcpu exit eventfd");
-        }).map_err(Error::SpawnVcpu)
+        })
+        .map_err(Error::SpawnVcpu)
 }
 
 // Reads the contents of a file and converts them into a u64.
@@ -797,7 +802,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
     let linux = Arch::build_vm(components, |m, e| {
         create_virtio_devs(cfg, m, e, wayland_device_socket, balloon_device_socket)
-    }).map_err(Error::BuildingVm)?;
+    })
+    .map_err(Error::BuildingVm)?;
     run_control(linux, control_sockets, balloon_host_socket, sigchld_fd)
 }
 

@@ -54,7 +54,8 @@ fn test_run() {
         MemoryMapping::from_fd(&mem, mem_size as usize).expect("failed to create memory mapping"),
         false,
         false,
-    ).expect("failed to register memory");
+    )
+    .expect("failed to register memory");
 
     // Give some read only memory for the test code to read from and force a vcpu exit when it reads
     // from it.
@@ -71,7 +72,8 @@ fn test_run() {
         MemoryMapping::from_fd(&mem_ro, 0x1000).expect("failed to create memory mapping"),
         true,
         false,
-    ).expect("failed to register memory");
+    )
+    .expect("failed to register memory");
 
     // Ensure we get exactly 1 exit from attempting to write to read only memory.
     let mut exits = 0;

@@ -88,7 +88,8 @@ impl CmsgBuffer {
                         cmsg_type: 0,
                     };
                     cap_in_cmsghdr_units
-                ].into_boxed_slice(),
+                ]
+                .into_boxed_slice(),
             )
         }
     }

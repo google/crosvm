@@ -97,7 +97,8 @@ impl<T: Vhost> Worker<T> {
                     queue.used_ring,
                     queue.avail_ring,
                     None,
-                ).map_err(Error::VhostSetVringAddr)?;
+                )
+                .map_err(Error::VhostSetVringAddr)?;
             self.vhost_handle
                 .set_vring_base(queue_index, 0)
                 .map_err(Error::VhostSetVringBase)?;
@@ -123,7 +124,8 @@ impl<T: Vhost> Worker<T> {
             .and_then(|pc| {
                 pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
                     .and(Ok(pc))
-            }).and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            })
+            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
             .map_err(Error::CreatePollContext)?;
 
         'poll: loop {

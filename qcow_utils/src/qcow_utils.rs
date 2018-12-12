@@ -65,7 +65,8 @@ pub unsafe extern "C" fn convert_to_qcow2(src_fd: c_int, dst_fd: c_int) -> c_int
                     Ok(_) => 0,
                     Err(_) => -EIO,
                 },
-            ).unwrap_or(-EIO)
+            )
+            .unwrap_or(-EIO)
         }
         _ => -EBADFD,
     }
@@ -88,7 +89,8 @@ pub unsafe extern "C" fn convert_to_raw(src_fd: c_int, dst_fd: c_int) -> c_int {
             catch_unwind(|| match qcow::convert(src_file, dst_file, ImageType::Raw) {
                 Ok(_) => 0,
                 Err(_) => -EIO,
-            }).unwrap_or(-EIO)
+            })
+            .unwrap_or(-EIO)
         }
         _ => -EBADFD,
     }

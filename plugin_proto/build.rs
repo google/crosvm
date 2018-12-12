@@ -16,12 +16,14 @@ fn main() {
         out_dir: out_dir.as_os_str().to_str().unwrap(),
         input: &["protos/plugin.proto"],
         includes: &["protos"],
-    }).expect("protoc");
+    })
+    .expect("protoc");
 
     let mut mod_out = fs::File::create(out_dir.join("proto_include.rs")).unwrap();
     writeln!(
         mod_out,
         "#[path = \"{}\"] pub mod plugin_proto;\npub use plugin_proto::*;",
         out_dir.join("plugin.rs").display()
-    ).unwrap();
+    )
+    .unwrap();
 }

@@ -193,8 +193,10 @@ pub struct AArch64;
 impl arch::LinuxArch for AArch64 {
     fn build_vm<F>(mut components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
     where
-        F: FnOnce(&GuestMemory, &EventFd)
-            -> Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>>,
+        F: FnOnce(
+            &GuestMemory,
+            &EventFd,
+        ) -> Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>>,
     {
         let mut resources =
             Self::get_resource_allocator(components.memory_mb, components.wayland_dmabuf);
@@ -241,7 +243,8 @@ impl arch::LinuxArch for AArch64 {
                 AARCH64_PCI_CFG_BASE,
                 AARCH64_PCI_CFG_SIZE,
                 false,
-            ).map_err(Error::RegisterPci)?;
+            )
+            .map_err(Error::RegisterPci)?;
 
         for param in components.extra_kernel_params {
             cmdline.insert_str(&param).map_err(Error::Cmdline)?;
@@ -360,7 +363,8 @@ impl AArch64 {
             AARCH64_SERIAL_ADDR,
             AARCH64_SERIAL_SIZE,
             false,
-        ).expect("failed to add serial device");
+        )
+        .expect("failed to add serial device");
 
         let rtc = Arc::new(Mutex::new(devices::pl030::Pl030::new(rtc_evt)));
         bus.insert(rtc, AARCH64_RTC_ADDR, AARCH64_RTC_SIZE, false)

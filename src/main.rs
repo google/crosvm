@@ -350,7 +350,8 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 .ok_or_else(|| argument::Error::InvalidValue {
                     value: param.to_owned(),
                     expected: "missing tag for `shared-dir`",
-                })?.to_owned();
+                })?
+                .to_owned();
 
             if !src.is_dir() {
                 return Err(argument::Error::InvalidValue {
@@ -466,7 +467,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
     let mut cfg = Config::default();
     let match_res = set_arguments(args, &arguments[..], |name, value| {
         set_argument(&mut cfg, name, value)
-    }).and_then(|_| {
+    })
+    .and_then(|_| {
         if cfg.kernel_path.as_os_str().is_empty() && cfg.plugin.is_none() {
             return Err(argument::Error::ExpectedArgument("`KERNEL`".to_owned()));
         }
@@ -505,19 +507,16 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
 
     match match_res {
         #[cfg(feature = "plugin")]
-        Ok(()) if cfg.plugin.is_some() =>
-        {
-            match plugin::run_config(cfg) {
-                Ok(_) => {
-                    info!("crosvm and plugin have exited normally");
-                    Ok(())
-                }
-                Err(e) => {
-                    error!("{}", e);
-                    Err(())
-                }
+        Ok(()) if cfg.plugin.is_some() => match plugin::run_config(cfg) {
+            Ok(_) => {
+                info!("crosvm and plugin have exited normally");
+                Ok(())
             }
-        }
+            Err(e) => {
+                error!("{}", e);
+                Err(())
+            }
+        },
         Ok(()) => match linux::run_config(cfg) {
             Ok(_) => {
                 info!("crosvm has exited normally");

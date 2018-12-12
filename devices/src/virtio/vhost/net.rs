@@ -58,7 +58,8 @@ where
         // Set offload flags to match the virtio features below.
         tap.set_offload(
             net_sys::TUN_F_CSUM | net_sys::TUN_F_UFO | net_sys::TUN_F_TSO4 | net_sys::TUN_F_TSO6,
-        ).map_err(Error::TapSetOffload)?;
+        )
+        .map_err(Error::TapSetOffload)?;
 
         // We declare VIRTIO_NET_F_MRG_RXBUF, so set the vnet hdr size to match.
         let vnet_hdr_size = mem::size_of::<virtio_net::virtio_net_hdr_mrg_rxbuf>() as i32;
@@ -237,7 +238,8 @@ pub mod tests {
             Ipv4Addr::new(255, 255, 255, 0),
             "de:21:e8:47:6b:6a".parse().unwrap(),
             &guest_memory,
-        ).unwrap()
+        )
+        .unwrap()
     }
 
     #[test]

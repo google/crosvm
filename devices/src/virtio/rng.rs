@@ -51,7 +51,8 @@ impl Worker {
                         avail_desc.addr,
                         &mut self.random_file,
                         avail_desc.len as usize,
-                    ).is_ok()
+                    )
+                    .is_ok()
                 {
                     len = avail_desc.len;
                 }
@@ -86,7 +87,8 @@ impl Worker {
             .and_then(|pc| {
                 pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
                     .and(Ok(pc))
-            }).and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
+            })
+            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
         {
             Ok(pc) => pc,
             Err(e) => {

@@ -242,7 +242,8 @@ impl QcowHeader {
         let refcount_blocks_size = u64::from(self.refcount_table_clusters) * cluster_size;
         file.seek(SeekFrom::Start(
             self.refcount_table_offset + refcount_blocks_size - 2,
-        )).map_err(Error::WritingHeader)?;
+        ))
+        .map_err(Error::WritingHeader)?;
         file.write(&[0u8]).map_err(Error::WritingHeader)?;
 
         Ok(())
@@ -368,7 +369,8 @@ impl QcowFile {
                     header.l1_table_offset,
                     num_l2_clusters,
                     Some(L1_TABLE_OFFSET_MASK),
-                ).map_err(Error::ReadingHeader)?,
+                )
+                .map_err(Error::ReadingHeader)?,
         );
 
         let num_clusters = div_round_up_u64(header.size, cluster_size);
@@ -384,7 +386,8 @@ impl QcowFile {
             refcount_clusters,
             refcount_block_entries,
             cluster_size,
-        ).map_err(Error::ReadingRefCounts)?;
+        )
+        .map_err(Error::ReadingRefCounts)?;
 
         let l2_entries = cluster_size / size_of::<u64>() as u64;
 
@@ -475,7 +478,8 @@ impl QcowFile {
                         evicted.get_values(),
                         CLUSTER_USED_FLAG,
                     )
-                }).map_err(Error::EvictingCache)?;
+                })
+                .map_err(Error::EvictingCache)?;
         }
 
         // The index must exist as it was just inserted if it didn't already.
@@ -584,7 +588,8 @@ impl QcowFile {
                     header.l1_table_offset,
                     header.l1_size as u64,
                     Some(L1_TABLE_OFFSET_MASK),
-                ).map_err(Error::ReadingPointers)?;
+                )
+                .map_err(Error::ReadingPointers)?;
             for l1_index in 0..header.l1_size as usize {
                 let l2_addr_disk = *l1_table.get(l1_index).ok_or(Error::InvalidIndex)?;
                 if l2_addr_disk != 0 {
@@ -597,7 +602,8 @@ impl QcowFile {
                             l2_addr_disk,
                             cluster_size / size_of::<u64>() as u64,
                             Some(L2_TABLE_OFFSET_MASK),
-                        ).map_err(Error::ReadingPointers)?;
+                        )
+                        .map_err(Error::ReadingPointers)?;
                     for data_cluster_addr in l2_table {
                         if data_cluster_addr != 0 {
                             add_ref(refcounts, cluster_size, data_cluster_addr)?;
@@ -691,7 +697,8 @@ impl QcowFile {
                         .write_refcount_block(
                             *refblock_addr + refblock.len() as u64 * 2,
                             &refblock_padding,
-                        ).map_err(Error::WritingHeader)?;
+                        )
+                        .map_err(Error::WritingHeader)?;
                 }
             }
 

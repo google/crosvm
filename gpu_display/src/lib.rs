@@ -219,7 +219,8 @@ impl GpuDisplay {
         let buffer_size = round_up_to_page_size(fb_size as usize * BUFFER_COUNT);
         let mut buffer_shm = SharedMemory::new(Some(
             CStr::from_bytes_with_nul(b"GpuDisplaySurface\0").unwrap(),
-        )).map_err(GpuDisplayError::CreateShm)?;
+        ))
+        .map_err(GpuDisplayError::CreateShm)?;
         buffer_shm
             .set_size(buffer_size as u64)
             .map_err(GpuDisplayError::SetSize)?;
@@ -273,7 +274,8 @@ impl GpuDisplay {
             .get_slice(
                 (buffer_index * surface.buffer_size) as u64,
                 surface.buffer_size as u64,
-            ).ok()
+            )
+            .ok()
     }
 
     /// Commits any pending state for the identified surface.

@@ -36,7 +36,8 @@ fn get_target_path() -> PathBuf {
         .map(|mut path| {
             path.pop();
             path
-        }).expect("failed to get crosvm binary directory")
+        })
+        .expect("failed to get crosvm binary directory")
 }
 
 fn get_crosvm_path() -> PathBuf {
@@ -48,7 +49,8 @@ fn get_crosvm_path() -> PathBuf {
                 path.pop();
             }
             path
-        }).expect("failed to get crosvm binary directory")
+        })
+        .expect("failed to get crosvm binary directory")
 }
 
 fn build_plugin(src: &str) -> RemovePath {
@@ -98,7 +100,8 @@ fn run_plugin(bin_path: &Path, with_sandbox: bool) {
         "--seccomp-policy-dir",
         "tests",
         "--plugin",
-    ]).arg(
+    ])
+    .arg(
         bin_path
             .canonicalize()
             .expect("failed to canonicalize plugin path"),

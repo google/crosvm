@@ -281,9 +281,12 @@ struct EGLFunctionsInner {
     GetDisplay: unsafe extern "C" fn(display_id: EGLNativeDisplayType) -> EGLDisplay,
     Initialize:
         unsafe extern "C" fn(dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> EGLBoolean,
-    MakeCurrent:
-        unsafe extern "C" fn(dpy: EGLDisplay, draw: EGLSurface, read: EGLSurface, ctx: EGLContext)
-            -> EGLBoolean,
+    MakeCurrent: unsafe extern "C" fn(
+        dpy: EGLDisplay,
+        draw: EGLSurface,
+        read: EGLSurface,
+        ctx: EGLContext,
+    ) -> EGLBoolean,
     no_sync_send: PhantomData<*mut ()>,
 }
 
@@ -1043,7 +1046,8 @@ mod tests {
                 Box3::new_2d(0, 5, 0, 1),
                 0,
                 &mut pix_buf[..],
-            ).expect("failed to read back resource data");
+            )
+            .expect("failed to read back resource data");
 
         // Check that the pixels are the color we cleared to. The red and blue channels are switched
         // because the surface was created with the BGR format, but the colors are RGB order in the

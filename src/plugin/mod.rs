@@ -254,7 +254,8 @@ fn create_plugin_jail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
         "tmpfs",
         (MS_NOSUID | MS_NODEV) as usize,
         "size=67108864",
-    ).map_err(Error::MountRoot)?;
+    )
+    .map_err(Error::MountRoot)?;
 
     Ok(j)
 }
@@ -439,7 +440,8 @@ pub fn run_vcpus(
                     vcpu_exit_evt
                         .write(1)
                         .expect("failed to signal vcpu exit eventfd");
-                }).map_err(Error::SpawnVcpu)?,
+                })
+                .map_err(Error::SpawnVcpu)?,
         );
     }
     Ok(())

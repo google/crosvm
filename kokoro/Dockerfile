@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.30.0
+    RUST_VERSION=1.31.0
 
 # Debian usually has an old rust version in the repository. Instead of using that, we use rustup to
 # pull in a toolchain versions of our choosing.

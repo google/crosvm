@@ -496,7 +496,8 @@ mod tests {
         let gm = GuestMemory::new(&vec![
             (start_region1, size_region1),
             (start_region2, size_region2),
-        ]).unwrap();
+        ])
+        .unwrap();
 
         let mem_size = gm.memory_size();
         assert_eq!(mem_size, size_region1 + size_region2);

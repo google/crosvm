@@ -1658,10 +1658,9 @@ mod tests {
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x2000;
         let mem = MemoryMapping::new(mem_size).unwrap();
-        assert!(
-            vm.add_device_memory(GuestAddress(0x2000), mem, false, false)
-                .is_err()
-        );
+        assert!(vm
+            .add_device_memory(GuestAddress(0x2000), mem, false, false)
+            .is_err());
     }
 
     #[test]
@@ -1720,22 +1719,26 @@ mod tests {
             &evtfd,
             IoeventAddress::Pio(0xc1),
             Datamatch::U8(Some(0x7fu8)),
-        ).unwrap();
+        )
+        .unwrap();
         vm.register_ioevent(
             &evtfd,
             IoeventAddress::Pio(0xc2),
             Datamatch::U16(Some(0x1337u16)),
-        ).unwrap();
+        )
+        .unwrap();
         vm.register_ioevent(
             &evtfd,
             IoeventAddress::Pio(0xc4),
             Datamatch::U32(Some(0xdeadbeefu32)),
-        ).unwrap();
+        )
+        .unwrap();
         vm.register_ioevent(
             &evtfd,
             IoeventAddress::Pio(0xc8),
             Datamatch::U64(Some(0xdeadbeefdeadbeefu64)),
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1752,7 +1755,8 @@ mod tests {
             &evtfd,
             IoeventAddress::Mmio(0x1004),
             Datamatch::U8(Some(0x7fu8)),
-        ).unwrap();
+        )
+        .unwrap();
         vm.unregister_ioevent(&evtfd, IoeventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();
         vm.unregister_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), Datamatch::AnyLength)
@@ -1761,7 +1765,8 @@ mod tests {
             &evtfd,
             IoeventAddress::Mmio(0x1004),
             Datamatch::U8(Some(0x7fu8)),
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1821,14 +1826,16 @@ mod tests {
                 chip: KVM_IRQCHIP_IOAPIC,
                 pin: 3,
             },
-        }]).unwrap();
+        }])
+        .unwrap();
         vm.set_gsi_routing(&[IrqRoute {
             gsi: 1,
             source: IrqSource::Msi {
                 address: 0xf000000,
                 data: 0xa0,
             },
-        }]).unwrap();
+        }])
+        .unwrap();
         vm.set_gsi_routing(&[
             IrqRoute {
                 gsi: 1,
@@ -1844,7 +1851,8 @@ mod tests {
                     data: 0xa0,
                 },
             },
-        ]).unwrap();
+        ])
+        .unwrap();
     }
 
     #[test]

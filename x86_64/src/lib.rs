@@ -266,8 +266,10 @@ fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
 impl arch::LinuxArch for X8664arch {
     fn build_vm<F>(mut components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
     where
-        F: FnOnce(&GuestMemory, &EventFd)
-            -> Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>>,
+        F: FnOnce(
+            &GuestMemory,
+            &EventFd,
+        ) -> Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>>,
     {
         let mut resources =
             Self::get_resource_allocator(components.memory_mb, components.wayland_dmabuf);
@@ -483,7 +485,8 @@ impl X8664arch {
                 0x2f8,
                 0x8,
                 false,
-            ).unwrap();
+            )
+            .unwrap();
         io_bus
             .insert(
                 Arc::new(Mutex::new(devices::Serial::new_sink(
@@ -492,7 +495,8 @@ impl X8664arch {
                 0x3e8,
                 0x8,
                 false,
-            ).unwrap();
+            )
+            .unwrap();
         io_bus
             .insert(
                 Arc::new(Mutex::new(devices::Serial::new_sink(
@@ -501,7 +505,8 @@ impl X8664arch {
                 0x2e8,
                 0x8,
                 false,
-            ).unwrap();
+            )
+            .unwrap();
         io_bus
             .insert(Arc::new(Mutex::new(devices::Cmos::new())), 0x70, 0x2, false)
             .unwrap();
@@ -513,7 +518,8 @@ impl X8664arch {
                 0x061,
                 0x4,
                 false,
-            ).unwrap();
+            )
+            .unwrap();
         io_bus
             .insert(nul_device.clone(), 0x040, 0x8, false)
             .unwrap(); // ignore pit

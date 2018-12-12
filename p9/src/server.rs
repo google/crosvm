@@ -402,7 +402,8 @@ impl Server {
             msg: Rmessage::Read(Rread {
                 data: Data(Vec::new()),
             }),
-        }.byte_size();
+        }
+        .byte_size();
 
         let capacity = min(self.msize - header_size, read.count);
         let mut buf = Data(Vec::with_capacity(capacity as usize));
@@ -779,7 +780,8 @@ impl Server {
             msg: Rmessage::Readdir(Rreaddir {
                 data: Data(Vec::new()),
             }),
-        }.byte_size();
+        }
+        .byte_size();
         let count = min(self.msize - header_size, readdir.count);
         let mut cursor = Cursor::new(Vec::with_capacity(count as usize));
 

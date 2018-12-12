@@ -1256,8 +1256,7 @@ impl WlState {
                     }
                 },
                 #[cfg(feature = "gpu")]
-                VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU if self.resource_bridge.is_some() =>
-                {
+                VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU if self.resource_bridge.is_some() => {
                     if let Err(e) = self
                         .resource_bridge
                         .as_ref()
@@ -1779,7 +1778,8 @@ impl VirtioDevice for Wl {
                             vm_socket,
                             use_transition_flags,
                             resource_bridge,
-                        ).run(queue_evts, kill_evt);
+                        )
+                        .run(queue_evts, kill_evt);
                     });
 
             if let Err(e) = worker_result {

@@ -336,7 +336,8 @@ mod test {
                     0x0c, 0x00, 0x47, 0x6F, 0x6F, 0x67, 0x6C, 0x65, 0x20, 0x56, 0x69, 0x64, 0x65,
                     0x6F,
                 ][..]
-            )).unwrap()
+            ))
+            .unwrap()
         );
         assert_eq!(
             String::from("网页 图片 资讯更多 »"),
@@ -346,7 +347,8 @@ mod test {
                     0x89, 0x87, 0x20, 0xE8, 0xB5, 0x84, 0xE8, 0xAE, 0xAF, 0xE6, 0x9B, 0xB4, 0xE5,
                     0xA4, 0x9A, 0x20, 0xC2, 0xBB,
                 ][..]
-            )).unwrap()
+            ))
+            .unwrap()
         );
         assert_eq!(
             String::from("Παγκόσμιος Ιστός"),
@@ -356,7 +358,8 @@ mod test {
                     0x83, 0xCE, 0xBC, 0xCE, 0xB9, 0xCE, 0xBF, 0xCF, 0x82, 0x20, 0xCE, 0x99, 0xCF,
                     0x83, 0xCF, 0x84, 0xCF, 0x8C, 0xCF, 0x82,
                 ][..]
-            )).unwrap()
+            ))
+            .unwrap()
         );
         assert_eq!(
             String::from("Поиск страниц на русском"),
@@ -367,7 +370,8 @@ mod test {
                     0x86, 0x20, 0xD0, 0xBD, 0xD0, 0xB0, 0x20, 0xD1, 0x80, 0xD1, 0x83, 0xD1, 0x81,
                     0xD1, 0x81, 0xD0, 0xBA, 0xD0, 0xBE, 0xD0, 0xBC,
                 ][..]
-            )).unwrap()
+            ))
+            .unwrap()
         );
         assert_eq!(
             String::from("전체서비스"),
@@ -376,7 +380,8 @@ mod test {
                     0x0f, 0x00, 0xEC, 0xA0, 0x84, 0xEC, 0xB2, 0xB4, 0xEC, 0x84, 0x9C, 0xEB, 0xB9,
                     0x84, 0xEC, 0x8A, 0xA4,
                 ][..]
-            )).unwrap()
+            ))
+            .unwrap()
         );
     }
 
@@ -384,11 +389,13 @@ mod test {
     fn invalid_string_decode() {
         let _ = <String as WireFormat>::decode(&mut Cursor::new(&[
             0x06, 0x00, 0xed, 0xa0, 0x80, 0xed, 0xbf, 0xbf,
-        ])).expect_err("surrogate code point");
+        ]))
+        .expect_err("surrogate code point");
 
         let _ = <String as WireFormat>::decode(&mut Cursor::new(&[
             0x05, 0x00, 0xf8, 0x80, 0x80, 0x80, 0xbf,
-        ])).expect_err("overlong sequence");
+        ]))
+        .expect_err("overlong sequence");
 
         let _ =
             <String as WireFormat>::decode(&mut Cursor::new(&[0x04, 0x00, 0xf4, 0x90, 0x80, 0x80]))

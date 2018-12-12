@@ -782,7 +782,8 @@ mod tests {
                 512,
                 Format::new(b'X', b'R', b'2', b'4'),
                 Flags::empty().use_scanout(true),
-            ).expect("failed to create buffer");
+            )
+            .expect("failed to create buffer");
 
         assert_eq!(bo.width(), 1024);
         assert_eq!(bo.height(), 512);
@@ -801,7 +802,8 @@ mod tests {
                 1024,
                 Format::new(b'X', b'R', b'2', b'4'),
                 Flags::empty().use_scanout(true),
-            ).expect("failed to create buffer");
+            )
+            .expect("failed to create buffer");
         bo.export_plane_fd(0).expect("failed to export plane");
     }
 
@@ -816,7 +818,8 @@ mod tests {
                 1024,
                 Format::new(b'X', b'R', b'2', b'4'),
                 Flags::empty().use_scanout(true).use_linear(true),
-            ).expect("failed to create buffer");
+            )
+            .expect("failed to create buffer");
         let mut dst: Vec<u8> = Vec::new();
         dst.resize((bo.stride() * bo.height()) as usize, 0x4A);
         let dst_len = dst.len() as u64;
@@ -830,7 +833,8 @@ mod tests {
             [dst.as_mut_slice().get_slice(0, dst_len).unwrap()]
                 .iter()
                 .cloned(),
-        ).expect("failed to read bo");
+        )
+        .expect("failed to read bo");
         bo.read_to_volatile(
             0,
             0,
@@ -838,7 +842,8 @@ mod tests {
             1024,
             0,
             dst.as_mut_slice().get_slice(0, dst_len).unwrap(),
-        ).expect("failed to read bo");
+        )
+        .expect("failed to read bo");
         assert!(dst.iter().all(|&x| x == 0x4A));
     }
 }

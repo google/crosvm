@@ -120,7 +120,8 @@ mod tests {
             } else {
                 evt_fd_fork.write(2).unwrap()
             }
-        }).expect("failed to clone");
+        })
+        .expect("failed to clone");
         assert_eq!(evt_fd.read(), Ok(1));
     }
 
@@ -131,7 +132,8 @@ mod tests {
 
         clone_process(CloneNamespace::Inherit, || {
             assert!(false);
-        }).expect("failed to clone");
+        })
+        .expect("failed to clone");
 
         // This should never happen;
         if pid != getpid() {
