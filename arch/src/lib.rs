@@ -13,6 +13,7 @@ extern crate sys_util;
 
 use std::fmt;
 use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::io::AsRawFd;
 use std::result;
 use std::sync::Arc;
@@ -26,7 +27,7 @@ use io_jail::Minijail;
 use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
 use resources::SystemAllocator;
 use sync::Mutex;
-use sys_util::{syslog, EventFd, GuestMemory};
+use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 
 pub type Result<T> = result::Result<T, Box<std::error::Error>>;
 
@@ -193,4 +194,65 @@ pub fn generate_pci_root(
         }
     }
     Ok((root, pci_irqs))
+}
+
+/// Errors for image loading.
+#[derive(Debug)]
+pub enum LoadImageError {
+    Seek(std::io::Error),
+    ImageSizeTooLarge(u64),
+    ReadToMemory(GuestMemoryError),
+}
+
+impl fmt::Display for LoadImageError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            LoadImageError::Seek(e) => write!(f, "Seek failed: {:?}", e),
+            LoadImageError::ImageSizeTooLarge(size) => {
+                write!(f, "Image size too large: {:?}", size)
+            }
+            LoadImageError::ReadToMemory(e) => {
+                write!(f, "Reading image into memory failed: {:?}", e)
+            }
+        }
+    }
+}
+
+/// Load an image from a file into guest memory.
+///
+/// # Arguments
+///
+/// * `guest_mem` - The memory to be used by the guest.
+/// * `guest_addr` - The starting address to load the image in the guest memory.
+/// * `max_size` - The amount of space in bytes available in the guest memory for the image.
+/// * `image` - The file containing the image to be loaded.
+///
+/// The size in bytes of the loaded image is returned.
+pub fn load_image<F>(
+    guest_mem: &GuestMemory,
+    image: &mut F,
+    guest_addr: GuestAddress,
+    max_size: u64,
+) -> std::result::Result<usize, LoadImageError>
+where
+    F: Read + Seek,
+{
+    let size = image.seek(SeekFrom::End(0)).map_err(LoadImageError::Seek)?;
+
+    if size > usize::max_value() as u64 || size > max_size {
+        return Err(LoadImageError::ImageSizeTooLarge(size));
+    }
+
+    // This is safe due to the bounds check above.
+    let size = size as usize;
+
+    image
+        .seek(SeekFrom::Start(0))
+        .map_err(LoadImageError::Seek)?;
+
+    guest_mem
+        .read_to_memory(guest_addr, image, size)
+        .map_err(LoadImageError::ReadToMemory)?;
+
+    Ok(size)
 }

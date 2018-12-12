@@ -135,7 +135,7 @@ pub enum Error {
     /// FDT could not be created
     FDTCreateFailure(Box<error::Error>),
     /// Kernel could not be loaded
-    KernelLoadFailure,
+    KernelLoadFailure(arch::LoadImageError),
     /// Failure to Create GIC
     CreateGICFailure(sys_util::Error),
     /// Couldn't register PCI bus.
@@ -159,7 +159,7 @@ impl error::Error for Error {
             &Error::CreateSocket(_) => "failed to create socket",
             &Error::CreateVcpu(_) => "failed to create VCPU",
             &Error::FDTCreateFailure(_) => "FDT could not be created",
-            &Error::KernelLoadFailure => "Kernel cound not be loaded",
+            &Error::KernelLoadFailure(_) => "Kernel cound not be loaded",
             &Error::CreateGICFailure(_) => "Failure to create GIC",
             &Error::RegisterPci(_) => "error registering PCI bus",
             &Error::RegisterVsock(_) => "error registering virtual socket device",
@@ -250,9 +250,15 @@ impl arch::LinuxArch for AArch64 {
             cmdline.insert_str(&param).map_err(Error::Cmdline)?;
         }
 
-        // separate out load_kernel from other setup to get a specific error for
+        // separate out kernel loading from other setup to get a specific error for
         // kernel loading
-        Self::load_kernel(&mem, &mut components.kernel_image)?;
+        arch::load_image(
+            &mem,
+            &mut components.kernel_image,
+            get_kernel_addr(),
+            u64::max_value(),
+        )
+        .map_err(Error::KernelLoadFailure)?;
         Self::setup_system_memory(
             &mem,
             components.memory_mb,
@@ -276,22 +282,6 @@ impl arch::LinuxArch for AArch64 {
 }
 
 impl AArch64 {
-    /// Loads the kernel from an open file.
-    ///
-    /// # Arguments
-    ///
-    /// * `mem` - The memory to be used by the guest.
-    /// * `kernel_image` - the File object for the specified kernel.
-    fn load_kernel(guest_mem: &GuestMemory, mut kernel_image: &mut File) -> Result<()> {
-        let kernel_addr = get_kernel_addr();
-        let kernel_meta = kernel_image.metadata()?;
-        let kernel_size = kernel_meta.len();
-        guest_mem
-            .read_to_memory(kernel_addr, &mut kernel_image, kernel_size as usize)
-            .map_err(|_| Error::KernelLoadFailure)?;
-        Ok(())
-    }
-
     fn setup_system_memory(
         mem: &GuestMemory,
         mem_size: u64,
