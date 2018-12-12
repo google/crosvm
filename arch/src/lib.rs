@@ -42,6 +42,7 @@ pub struct VmComponents {
     pub vcpu_count: u32,
     pub kernel_image: File,
     pub android_fstab: Option<File>,
+    pub initrd_image: Option<File>,
     pub extra_kernel_params: Vec<String>,
     pub wayland_dmabuf: bool,
 }

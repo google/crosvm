@@ -96,6 +96,7 @@ pub struct Config {
     memory: Option<usize>,
     kernel_path: PathBuf,
     android_fstab: Option<PathBuf>,
+    initrd_path: Option<PathBuf>,
     params: Vec<String>,
     socket_path: Option<PathBuf>,
     plugin: Option<PathBuf>,
@@ -130,6 +131,7 @@ impl Default for Config {
             memory: None,
             kernel_path: PathBuf::default(),
             android_fstab: None,
+            initrd_path: None,
             params: Vec::new(),
             socket_path: None,
             plugin: None,
@@ -569,6 +571,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "split-irqchip" => {
             cfg.split_irqchip = true;
         }
+        "initrd" => {
+            cfg.initrd_path = Some(PathBuf::from(value.unwrap().to_owned()));
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -579,6 +584,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
     let arguments =
         &[Argument::positional("KERNEL", "bzImage of kernel to run"),
           Argument::value("android-fstab", "PATH", "Path to Android fstab"),
+          Argument::short_value('i', "initrd", "PATH", "Initial ramdisk to load."),
           Argument::short_value('p',
                                 "params",
                                 "PARAMS",

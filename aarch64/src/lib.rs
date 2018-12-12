@@ -38,6 +38,7 @@ mod fdt;
 // We place the kernel at offset 8MB
 const AARCH64_KERNEL_OFFSET: u64 = 0x80000;
 const AARCH64_FDT_MAX_SIZE: u64 = 0x200000;
+const AARCH64_INITRD_ALIGN: u64 = 0x1000000;
 
 // These constants indicate the address space used by the ARM vGIC.
 const AARCH64_GIC_DIST_SIZE: u64 = 0x10000;
@@ -135,6 +136,8 @@ pub enum Error {
     FDTCreateFailure(Box<error::Error>),
     /// Kernel could not be loaded
     KernelLoadFailure(arch::LoadImageError),
+    /// Initrd could not be loaded
+    InitrdLoadFailure(arch::LoadImageError),
     /// Failure to Create GIC
     CreateGICFailure(sys_util::Error),
     /// Couldn't register PCI bus.
@@ -159,6 +162,7 @@ impl error::Error for Error {
             &Error::CreateVcpu(_) => "failed to create VCPU",
             &Error::FDTCreateFailure(_) => "FDT could not be created",
             &Error::KernelLoadFailure(_) => "Kernel cound not be loaded",
+            &Error::InitrdLoadFailure(_) => "initrd cound not be loaded",
             &Error::CreateGICFailure(_) => "Failure to create GIC",
             &Error::RegisterPci(_) => "error registering PCI bus",
             &Error::RegisterVsock(_) => "error registering virtual socket device",
@@ -255,19 +259,22 @@ impl arch::LinuxArch for AArch64 {
 
         // separate out kernel loading from other setup to get a specific error for
         // kernel loading
-        arch::load_image(
+        let kernel_size = arch::load_image(
             &mem,
             &mut components.kernel_image,
             get_kernel_addr(),
             u64::max_value(),
         )
         .map_err(Error::KernelLoadFailure)?;
+        let kernel_end = get_kernel_addr().offset() + kernel_size as u64;
         Self::setup_system_memory(
             &mem,
             components.memory_mb,
             vcpu_count,
             &CString::new(cmdline).unwrap(),
+            components.initrd_image,
             pci_irqs,
+            kernel_end,
         )?;
 
         Ok(RunnableLinuxVm {
@@ -291,8 +298,24 @@ impl AArch64 {
         mem_size: u64,
         vcpu_count: u32,
         cmdline: &CStr,
+        initrd_file: Option<File>,
         pci_irqs: Vec<(u32, PciInterruptPin)>,
+        kernel_end: u64,
     ) -> Result<()> {
+        let initrd = match initrd_file {
+            Some(initrd_file) => {
+                let mut initrd_file = initrd_file;
+                let initrd_addr =
+                    (kernel_end + (AARCH64_INITRD_ALIGN - 1)) & !(AARCH64_INITRD_ALIGN - 1);
+                let initrd_max_size = mem_size - (initrd_addr - AARCH64_PHYS_MEM_START);
+                let initrd_addr = GuestAddress(initrd_addr);
+                let initrd_size =
+                    arch::load_image(mem, &mut initrd_file, initrd_addr, initrd_max_size)
+                        .map_err(Error::InitrdLoadFailure)?;
+                Some((initrd_addr, initrd_size))
+            }
+            None => None,
+        };
         fdt::create_fdt(
             AARCH64_FDT_MAX_SIZE as usize,
             mem,
@@ -300,6 +323,7 @@ impl AArch64 {
             vcpu_count,
             fdt_offset(mem_size),
             cmdline,
+            initrd,
         )?;
         Ok(())
     }

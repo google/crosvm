@@ -165,11 +165,21 @@ fn create_psci_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
     Ok(())
 }
 
-fn create_chosen_node(fdt: &mut Vec<u8>, cmdline: &CStr) -> Result<(), Box<Error>> {
+fn create_chosen_node(
+    fdt: &mut Vec<u8>,
+    cmdline: &CStr,
+    initrd: Option<(GuestAddress, usize)>,
+) -> Result<(), Box<Error>> {
     begin_node(fdt, "chosen")?;
     property_u32(fdt, "linux,pci-probe-only", 1)?;
     property_cstring(fdt, "bootargs", cmdline)?;
     property_u64(fdt, "kaslr", 0)?;
+    if let Some((initrd_addr, initrd_size)) = initrd {
+        let initrd_start = initrd_addr.offset() as u32;
+        let initrd_end = initrd_start + initrd_size as u32;
+        property_u32(fdt, "linux,initrd-start", initrd_start)?;
+        property_u32(fdt, "linux,initrd-end", initrd_end)?;
+    }
     end_node(fdt)?;
 
     Ok(())
@@ -286,6 +296,7 @@ fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
 /// * `num_cpus` - Number of virtual CPUs the guest will have
 /// * `fdt_load_offset` - The offset into physical memory for the device tree
 /// * `cmdline` - The kernel commandline
+/// * `initrd` - An optional tuple of initrd guest physical address and size
 pub fn create_fdt(
     fdt_max_size: usize,
     guest_mem: &GuestMemory,
@@ -293,6 +304,7 @@ pub fn create_fdt(
     num_cpus: u32,
     fdt_load_offset: u64,
     cmdline: &CStr,
+    initrd: Option<(GuestAddress, usize)>,
 ) -> Result<(), Box<Error>> {
     let mut fdt = vec![0; fdt_max_size];
     start_fdt(&mut fdt, fdt_max_size)?;
@@ -304,7 +316,7 @@ pub fn create_fdt(
     property_u32(&mut fdt, "#address-cells", 0x2)?;
     property_u32(&mut fdt, "#size-cells", 0x2)?;
 
-    create_chosen_node(&mut fdt, cmdline)?;
+    create_chosen_node(&mut fdt, cmdline, initrd)?;
     create_memory_node(&mut fdt, guest_mem)?;
     create_cpu_nodes(&mut fdt, num_cpus)?;
     create_gic_node(&mut fdt)?;

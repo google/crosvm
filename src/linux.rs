@@ -69,6 +69,7 @@ pub enum Error {
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
     OpenAndroidFstab(PathBuf, io::Error),
+    OpenInitrd(PathBuf, io::Error),
     OpenKernel(PathBuf, io::Error),
     P9DeviceNew(devices::virtio::P9Error),
     PollContextAdd(sys_util::Error),
@@ -126,6 +127,7 @@ impl fmt::Display for Error {
             }
             Error::NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {:?}", e),
             Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
+            Error::OpenInitrd(p, e) => write!(f, "failed to open initrd {:?}: {}", p, e),
             Error::OpenKernel(p, e) => write!(f, "failed to open kernel image {:?}: {}", p, e),
             Error::OpenAndroidFstab(ref p, ref e) => {
                 write!(f, "failed to open android fstab file {:?}: {}", p, e)
@@ -966,6 +968,15 @@ pub fn run_config(cfg: Config) -> Result<()> {
     // quickly.
     let sigchld_fd = SignalFd::new(libc::SIGCHLD).map_err(Error::CreateSignalFd)?;
 
+    let initrd_image = if let Some(ref initrd_path) = cfg.initrd_path {
+        Some(
+            File::open(initrd_path.as_path())
+                .map_err(|e| Error::OpenInitrd(initrd_path.clone(), e))?,
+        )
+    } else {
+        None
+    };
+
     let components = VmComponents {
         memory_mb: (cfg.memory.unwrap_or(256) << 20) as u64,
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
@@ -978,6 +989,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 File::open(x.as_path()).map_err(|e| Error::OpenAndroidFstab(x.to_path_buf(), e))
             })
             .map_or(Ok(None), |v| v.map(Some))?,
+        initrd_image,
         extra_kernel_params: cfg.params.clone(),
         wayland_dmabuf: cfg.wayland_dmabuf,
     };

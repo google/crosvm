@@ -113,6 +113,7 @@ pub enum Error {
     RegisterVsock(arch::DeviceRegistrationError),
     LoadCmdline(kernel_loader::Error),
     LoadKernel(kernel_loader::Error),
+    LoadInitrd(arch::LoadImageError),
     /// Error writing the zero page of guest memory.
     ZeroPageSetup,
     /// The zero page extends past the end of guest_mem.
@@ -138,6 +139,7 @@ impl error::Error for Error {
             Error::RegisterVsock(_) => "error registering virtual socket device",
             Error::LoadCmdline(_) => "Error Loading command line",
             Error::LoadKernel(_) => "Error Loading Kernel",
+            Error::LoadInitrd(_) => "Error loading initrd",
             Error::ZeroPageSetup => "Error writing the zero page of guest memory",
             Error::ZeroPagePastRamEnd => "The zero page extends past the end of guest_mem",
             Error::E820Configuration => "Invalid e820 setup params",
@@ -174,6 +176,7 @@ fn configure_system(
     num_cpus: u8,
     pci_irqs: Vec<(u32, PciInterruptPin)>,
     setup_data: Option<GuestAddress>,
+    initrd: Option<(GuestAddress, usize)>,
 ) -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
@@ -196,6 +199,10 @@ fn configure_system(
     params.hdr.kernel_alignment = KERNEL_MIN_ALIGNMENT_BYTES;
     if let Some(setup_data) = setup_data {
         params.hdr.setup_data = setup_data.offset();
+    }
+    if let Some((initrd_addr, initrd_size)) = initrd {
+        params.hdr.ramdisk_image = initrd_addr.offset() as u32;
+        params.hdr.ramdisk_size = initrd_size as u32;
     }
 
     add_e820_entry(&mut params, 0, EBDA_START, E820_RAM)?;
@@ -341,6 +348,7 @@ impl arch::LinuxArch for X8664arch {
             components.memory_mb,
             vcpu_count,
             &CString::new(cmdline).unwrap(),
+            components.initrd_image,
             pci_irqs,
             components.android_fstab,
             kernel_end,
@@ -384,11 +392,13 @@ impl X8664arch {
     /// * `mem` - The memory to be used by the guest.
     /// * `vcpu_count` - Number of virtual CPUs the guest will have.
     /// * `cmdline` - the kernel commandline
+    /// * `initrd_file` - an initial ramdisk image
     fn setup_system_memory(
         mem: &GuestMemory,
         mem_size: u64,
         vcpu_count: u32,
         cmdline: &CStr,
+        initrd_file: Option<File>,
         pci_irqs: Vec<(u32, PciInterruptPin)>,
         android_fstab: Option<File>,
         kernel_end: u64,
@@ -396,22 +406,39 @@ impl X8664arch {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)?;
 
         // Track the first free address after the kernel - this is where extra
-        // data like the device tree blob will be loaded.
-        let free_addr = kernel_end;
+        // data like the device tree blob and initrd will be loaded.
+        let mut free_addr = kernel_end;
 
         let setup_data = if let Some(fstab) = android_fstab {
             let mut fstab = fstab;
             let free_addr_aligned = (((free_addr + 64 - 1) / 64) * 64) + 64;
             let dtb_start = GuestAddress(free_addr_aligned);
-            let _dtb_size = fdt::create_fdt(
+            let dtb_size = fdt::create_fdt(
                 X86_64_FDT_MAX_SIZE as usize,
                 mem,
                 dtb_start.offset(),
                 &mut fstab,
             )?;
+            free_addr = dtb_start.offset() + dtb_size as u64;
             Some(dtb_start)
         } else {
             None
+        };
+
+        let initrd = match initrd_file {
+            Some(mut initrd_file) => {
+                let initrd_start = free_addr;
+                let initrd_max_size = mem_size - initrd_start;
+                let initrd_size = arch::load_image(
+                    mem,
+                    &mut initrd_file,
+                    GuestAddress(initrd_start),
+                    initrd_max_size,
+                )
+                .map_err(Error::LoadInitrd)?;
+                Some((GuestAddress(initrd_start), initrd_size))
+            }
+            None => None,
         };
 
         configure_system(
@@ -423,6 +450,7 @@ impl X8664arch {
             vcpu_count as u8,
             pci_irqs,
             setup_data,
+            initrd,
         )?;
         Ok(())
     }
