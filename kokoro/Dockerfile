@@ -137,7 +137,8 @@ CMD rustup default "$(cat rust-toolchain)" && \
     rustup component add rustfmt-preview && \
     cargo --version && rustc --version && rustfmt --version && \
     echo "Running cargo test" && \
-    cargo test --no-fail-fast --all-features --all --exclude aarch64 $TEST_FLAGS -- \
+    cargo test --no-fail-fast --features plugin,default-no-sandbox,wl-dmabuf,gpu,tpm,gpu-forward \
+    --all --exclude aarch64 $TEST_FLAGS -- \
     --test-threads=1 $TEST_RUNNER_FLAGS && \
     echo "Running cargo fmt" && \
     bin/fmt --check
