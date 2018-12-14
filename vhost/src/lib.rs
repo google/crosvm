@@ -111,7 +111,7 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
 
         let _ = self
             .mem()
-            .with_regions_mut::<_, ()>(|index, guest_addr, size, host_addr| {
+            .with_regions::<_, ()>(|index, guest_addr, size, host_addr| {
                 vhost_regions[index] = virtio_sys::vhost_memory_region {
                     guest_phys_addr: guest_addr.offset() as u64,
                     memory_size: size as u64,
