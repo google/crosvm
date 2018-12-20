@@ -10,6 +10,13 @@ overflow-checks = true
 
 [workspace]
 members = ["9s", "qcow_utils"]
+exclude = [
+    "assertions",
+    "data_model",
+    "sync",
+    "sys_util",
+    "syscall_defines",
+]
 
 [features]
 plugin = ["plugin_proto", "crosvm_plugin", "protobuf"]
@@ -28,7 +35,7 @@ io_jail = { path = "io_jail" }
 kvm = { path = "kvm" }
 kvm_sys = { path = "kvm_sys" }
 msg_socket = { path = "msg_socket" }
-sys_util = { path = "sys_util" }
+sys_util = "*"
 usb_util = { path = "usb_util", optional = true }
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
@@ -37,7 +44,7 @@ byteorder = "=1.1.0"
 net_util = { path = "net_util" }
 vhost = { path = "vhost" }
 vm_control = { path = "vm_control" }
-data_model = { path = "data_model" }
+data_model = "*"
 qcow = { path = "qcow" }
 plugin_proto = { path = "plugin_proto", optional = true }
 crosvm_plugin = { path = "crosvm_plugin", optional = true }
@@ -54,4 +61,12 @@ x86_64 = { path = "x86_64" }
 aarch64 = { path = "aarch64" }
 
 [dev-dependencies]
+sys_util = "*"
+
+[patch.crates-io]
+assertions = { path = "assertions" }
+data_model = { path = "data_model" }
+poll_token_derive = { path = "sys_util/poll_token_derive" }
+sync = { path = "sync" }
 sys_util = { path = "sys_util" }
+syscall_defines = { path = "syscall_defines" }

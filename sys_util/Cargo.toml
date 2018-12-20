@@ -2,10 +2,16 @@
 name = "sys_util"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
+include = ["src/**/*", "Cargo.toml"]
 
 [dependencies]
-data_model = { path = "../data_model" }
+data_model = "*"
 libc = "*"
-syscall_defines = { path = "../syscall_defines" }
+syscall_defines = "*"
+poll_token_derive = "*"
+sync = "*"
+
+[workspace]
+
+[patch.crates-io]
 poll_token_derive = { path = "poll_token_derive" }
-sync = { path = "../sync" }
