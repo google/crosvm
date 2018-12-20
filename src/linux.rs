@@ -304,6 +304,21 @@ fn create_virtio_devs(
         jail: rng_jail,
     });
 
+    #[cfg(feature = "tpm")]
+    {
+        let tpm_box = Box::new(devices::virtio::Tpm::new());
+        let tpm_jail = if cfg.multiprocess {
+            let policy_path = cfg.seccomp_policy_dir.join("tpm_device.policy");
+            Some(create_base_minijail(empty_root_path, &policy_path)?)
+        } else {
+            None
+        };
+        devs.push(VirtioDeviceStub {
+            dev: tpm_box,
+            jail: tpm_jail,
+        });
+    }
+
     let balloon_box = Box::new(
         devices::virtio::Balloon::new(balloon_device_socket).map_err(Error::BalloonDeviceNew)?,
     );

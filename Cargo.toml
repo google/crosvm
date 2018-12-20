@@ -27,6 +27,7 @@ wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
 gpu = ["devices/gpu"]
 usb-emulation = ["usb_util"]
 sandboxed-libusb = ["usb_util/sandboxed-libusb"]
+tpm = ["devices/tpm"]
 
 [dependencies]
 arch = { path = "arch" }

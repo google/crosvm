@@ -6,6 +6,7 @@ authors = ["The Chromium OS Authors"]
 [features]
 wl-dmabuf = []
 gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
+tpm = ["tpm2"]
 
 [dependencies]
 bit_field = { path = "../bit_field" }
@@ -25,6 +26,7 @@ p9 = { path = "../p9" }
 resources = { path = "../resources" }
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
+tpm2 = { path = "../tpm2", optional = true }
 vhost = { path = "../vhost" }
 virtio_sys = { path = "../virtio_sys" }
 vm_control = { path = "../vm_control" }

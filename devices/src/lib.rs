@@ -19,6 +19,8 @@ extern crate resources;
 extern crate sync;
 #[macro_use]
 extern crate sys_util;
+#[cfg(feature = "tpm")]
+extern crate tpm2;
 extern crate vhost;
 extern crate virtio_sys;
 extern crate vm_control;

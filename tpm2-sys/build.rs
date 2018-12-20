@@ -8,10 +8,11 @@ use std::path::Path;
 use std::process::{self, Command};
 
 fn main() -> io::Result<()> {
-    println!("cargo:rustc-link-lib=ssl");
-    println!("cargo:rustc-link-lib=crypto");
-
-    if pkg_config::probe_library("libtpm2").is_ok() {
+    if pkg_config::Config::new()
+        .statik(true)
+        .probe("libtpm2")
+        .is_ok()
+    {
         // Use tpm2 package from the standard system location if available.
         return Ok(());
     }
@@ -44,5 +45,7 @@ fn main() -> io::Result<()> {
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     println!("cargo:rustc-link-search={}/libtpm2/build", dir);
     println!("cargo:rustc-link-lib=static=tpm2");
+    println!("cargo:rustc-link-lib=ssl");
+    println!("cargo:rustc-link-lib=crypto");
     Ok(())
 }

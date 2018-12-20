@@ -8,5 +8,3 @@ links = "tpm2"
 [build-dependencies]
 num_cpus = "*"
 pkg-config = "*"
-
-[workspace]

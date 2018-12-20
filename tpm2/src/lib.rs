@@ -165,9 +165,7 @@ fn tpm_manufacture(first_time: bool) {
     // Unsafe only because this is over FFI and we need to know that the
     // signature declared by tpm2-sys is ABI-compatible with the symbol provided
     // by libtpm2. There are no other invariants to uphold.
-    let ret: c_int = unsafe {
-        tpm2_sys::TPM_Manufacture(first_time as c_int)
-    };
+    let ret: c_int = unsafe { tpm2_sys::TPM_Manufacture(first_time as c_int) };
 
     // We expect that the TPM must not already have been manufactured. The
     // SIMULATOR_EXISTS atomic flag guards calls to this function such that only
