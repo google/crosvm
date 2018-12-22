@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 
 [dependencies]
+byteorder = "*"
 devices = { path = "../devices" }
 io_jail = { path = "../io_jail" }
 kvm = { path = "../kvm" }

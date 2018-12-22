@@ -3,7 +3,6 @@ name = "aarch64"
 version = "0.1.0"
 dependencies = [
  "arch 0.1.0",
- "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
  "devices 0.1.0",
  "io_jail 0.1.0",
@@ -20,6 +19,7 @@ dependencies = [
 name = "arch"
 version = "0.1.0"
 dependencies = [
+ "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "devices 0.1.0",
  "io_jail 0.1.0",
  "kernel_cmdline 0.1.0",

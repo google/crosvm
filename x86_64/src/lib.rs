@@ -16,6 +16,10 @@ extern crate resources;
 extern crate sync;
 extern crate sys_util;
 
+mod fdt;
+
+const X86_64_FDT_MAX_SIZE: u64 = 0x200000;
+
 #[allow(dead_code)]
 #[allow(non_upper_case_globals)]
 #[allow(non_camel_case_types)]
@@ -36,6 +40,7 @@ impl Clone for bootparam::boot_params {
 }
 // boot_params is just a series of ints, it is safe to initialize it.
 unsafe impl data_model::DataInit for bootparam::boot_params {}
+unsafe impl data_model::DataInit for bootparam::setup_data {}
 
 #[allow(dead_code)]
 #[allow(non_upper_case_globals)]
@@ -159,11 +164,14 @@ const X86_64_IRQ_BASE: u32 = 5;
 
 fn configure_system(
     guest_mem: &GuestMemory,
+    _mem_size: u64,
     kernel_addr: GuestAddress,
     cmdline_addr: GuestAddress,
     cmdline_size: usize,
     num_cpus: u8,
     pci_irqs: Vec<(u32, PciInterruptPin)>,
+    android_fstab: &mut Option<File>,
+    kernel_end: u64,
 ) -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
@@ -178,12 +186,18 @@ fn configure_system(
 
     let mut params: boot_params = Default::default();
 
+    let kernel_end_aligned = (((kernel_end + 64 - 1) / 64) * 64) + 64;
+    let dtb_start = GuestAddress(kernel_end_aligned);
+
     params.hdr.type_of_loader = KERNEL_LOADER_OTHER;
     params.hdr.boot_flag = KERNEL_BOOT_FLAG_MAGIC;
     params.hdr.header = KERNEL_HDR_MAGIC;
     params.hdr.cmd_line_ptr = cmdline_addr.offset() as u32;
     params.hdr.cmdline_size = cmdline_size as u32;
     params.hdr.kernel_alignment = KERNEL_MIN_ALIGNMENT_BYTES;
+    if android_fstab.is_some() {
+        params.hdr.setup_data = dtb_start.offset();
+    }
 
     add_e820_entry(&mut params, 0, EBDA_START, E820_RAM)?;
 
@@ -220,6 +234,14 @@ fn configure_system(
         .write_obj_at_addr(params, zero_page_addr)
         .map_err(|_| Error::ZeroPageSetup)?;
 
+    if let Some(fstab) = android_fstab {
+        fdt::create_fdt(
+            X86_64_FDT_MAX_SIZE as usize,
+            guest_mem,
+            dtb_start.offset(),
+            fstab,
+        )?;
+    }
     Ok(())
 }
 
@@ -317,13 +339,16 @@ impl arch::LinuxArch for X8664arch {
 
         // separate out load_kernel from other setup to get a specific error for
         // kernel loading
-        Self::load_kernel(&mem, &mut components.kernel_image)?;
+        let kernel_end = Self::load_kernel(&mem, &mut components.kernel_image)?;
+
         Self::setup_system_memory(
             &mem,
             components.memory_mb,
             vcpu_count,
             &CString::new(cmdline).unwrap(),
             pci_irqs,
+            components.android_fstab,
+            kernel_end,
         )?;
 
         Ok(RunnableLinuxVm {
@@ -348,9 +373,12 @@ impl X8664arch {
     ///
     /// * `mem` - The memory to be used by the guest.
     /// * `kernel_image` - the File object for the specified kernel.
-    fn load_kernel(mem: &GuestMemory, mut kernel_image: &mut File) -> Result<()> {
-        kernel_loader::load_kernel(mem, GuestAddress(KERNEL_START_OFFSET), &mut kernel_image)?;
-        Ok(())
+    fn load_kernel(mem: &GuestMemory, mut kernel_image: &mut File) -> Result<u64> {
+        Ok(kernel_loader::load_kernel(
+            mem,
+            GuestAddress(KERNEL_START_OFFSET),
+            &mut kernel_image,
+        )?)
     }
 
     /// Configures the system memory space should be called once per vm before
@@ -363,19 +391,24 @@ impl X8664arch {
     /// * `cmdline` - the kernel commandline
     fn setup_system_memory(
         mem: &GuestMemory,
-        _mem_size: u64,
+        mem_size: u64,
         vcpu_count: u32,
         cmdline: &CStr,
         pci_irqs: Vec<(u32, PciInterruptPin)>,
+        mut android_fstab: Option<File>,
+        kernel_end: u64,
     ) -> Result<()> {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)?;
         configure_system(
             mem,
+            mem_size,
             GuestAddress(KERNEL_START_OFFSET),
             GuestAddress(CMDLINE_OFFSET),
             cmdline.to_bytes().len() + 1,
             vcpu_count as u8,
             pci_irqs,
+            &mut android_fstab,
+            kernel_end,
         )?;
         Ok(())
     }

@@ -15,4 +15,3 @@ sys_util = { path = "../sys_util" }
 resources = { path = "../resources" }
 sync = { path = "../sync" }
 libc = "*"
-byteorder = "*"

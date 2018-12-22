@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+pub mod fdt;
+
+extern crate byteorder;
 extern crate devices;
 extern crate io_jail;
 extern crate kernel_cmdline;
@@ -38,6 +41,7 @@ pub struct VmComponents {
     pub memory_mb: u64,
     pub vcpu_count: u32,
     pub kernel_image: File,
+    pub android_fstab: Option<File>,
     pub extra_kernel_params: Vec<String>,
     pub wayland_dmabuf: bool,
 }

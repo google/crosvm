@@ -76,6 +76,7 @@ pub struct Config {
     vcpu_count: Option<u32>,
     memory: Option<usize>,
     kernel_path: PathBuf,
+    android_fstab: Option<PathBuf>,
     params: Vec<String>,
     socket_path: Option<PathBuf>,
     plugin: Option<PathBuf>,
@@ -104,6 +105,7 @@ impl Default for Config {
             vcpu_count: None,
             memory: None,
             kernel_path: PathBuf::default(),
+            android_fstab: None,
             params: Vec::new(),
             socket_path: None,
             plugin: None,
@@ -176,6 +178,24 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     });
                 }
                 cfg.kernel_path = kernel_path;
+            }
+        }
+        "android-fstab" => {
+            if cfg.android_fstab.is_some()
+                && !cfg.android_fstab.as_ref().unwrap().as_os_str().is_empty()
+            {
+                return Err(argument::Error::TooManyArguments(
+                    "expected exactly one android fstab path".to_owned(),
+                ));
+            } else {
+                let android_fstab = PathBuf::from(value.unwrap());
+                if !android_fstab.exists() {
+                    return Err(argument::Error::InvalidValue {
+                        value: value.unwrap().to_owned(),
+                        expected: "this android fstab path does not exist",
+                    });
+                }
+                cfg.android_fstab = Some(android_fstab);
             }
         }
         "params" => {
@@ -481,6 +501,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
 fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
     let arguments =
         &[Argument::positional("KERNEL", "bzImage of kernel to run"),
+          Argument::value("android-fstab", "PATH", "Path to Android fstab"),
           Argument::short_value('p',
                                 "params",
                                 "PARAMS",

@@ -76,7 +76,7 @@ pub fn load_kernel<F>(
     guest_mem: &GuestMemory,
     kernel_start: GuestAddress,
     kernel_image: &mut F,
-) -> Result<()>
+) -> Result<u64>
 where
     F: Read + Seek,
 {
@@ -117,6 +117,8 @@ where
             .map_err(|_| Error::ReadProgramHeader)?
     };
 
+    let mut kernel_end = 0;
+
     // Read in each section pointed to by the program headers.
     for phdr in &phdrs {
         if phdr.p_type != elf::PT_LOAD || phdr.p_filesz == 0 {
@@ -133,9 +135,11 @@ where
         guest_mem
             .read_to_memory(mem_offset, kernel_image, phdr.p_filesz as usize)
             .map_err(|_| Error::ReadKernelImage)?;
+
+        kernel_end = mem_offset.offset() + phdr.p_memsz;
     }
 
-    Ok(())
+    Ok(kernel_end)
 }
 
 /// Writes the command line string to the given memory slice.
@@ -236,7 +240,7 @@ mod test {
         let kernel_addr = GuestAddress(0x0);
         let image = make_elf_bin();
         assert_eq!(
-            Ok(()),
+            Ok(16613),
             load_kernel(&gm, kernel_addr, &mut Cursor::new(&image))
         );
     }

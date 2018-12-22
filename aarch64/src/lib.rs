@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 extern crate arch;
-extern crate byteorder;
 extern crate data_model;
 extern crate devices;
 extern crate io_jail;

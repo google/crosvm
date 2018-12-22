@@ -68,6 +68,7 @@ pub enum Error {
     InvalidWaylandPath,
     NetDeviceNew(devices::virtio::NetError),
     NoVarEmpty,
+    OpenAndroidFstab(PathBuf, io::Error),
     OpenKernel(PathBuf, io::Error),
     P9DeviceNew(devices::virtio::P9Error),
     PollContextAdd(sys_util::Error),
@@ -124,6 +125,9 @@ impl fmt::Display for Error {
             Error::NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {:?}", e),
             Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
             Error::OpenKernel(p, e) => write!(f, "failed to open kernel image {:?}: {}", p, e),
+            Error::OpenAndroidFstab(ref p, ref e) => {
+                write!(f, "failed to open android fstab file {:?}: {}", p, e)
+            }
             Error::P9DeviceNew(e) => write!(f, "failed to create 9p device: {}", e),
             Error::PollContextAdd(e) => write!(f, "failed to add fd to poll context: {:?}", e),
             Error::PollContextDelete(e) => {
@@ -851,6 +855,13 @@ pub fn run_config(cfg: Config) -> Result<()> {
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         kernel_image: File::open(cfg.kernel_path.as_path())
             .map_err(|e| Error::OpenKernel(cfg.kernel_path.clone(), e))?,
+        android_fstab: cfg
+            .android_fstab
+            .as_ref()
+            .map(|x| {
+                File::open(x.as_path()).map_err(|e| Error::OpenAndroidFstab(x.to_path_buf(), e))
+            })
+            .map_or(Ok(None), |v| v.map(Some))?,
         extra_kernel_params: cfg.params.clone(),
         wayland_dmabuf: cfg.wayland_dmabuf,
     };
