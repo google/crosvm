@@ -26,6 +26,7 @@ mod fork;
 mod guest_address;
 mod guest_memory;
 mod mmap;
+pub mod net;
 mod passwd;
 mod poll;
 mod priority;
