@@ -4,7 +4,6 @@
 
 //! Emulates virtual and hardware devices.
 
-#[macro_use]
 extern crate bit_field;
 extern crate byteorder;
 extern crate data_model;
