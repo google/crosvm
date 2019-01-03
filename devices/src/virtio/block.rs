@@ -13,6 +13,7 @@ use std::thread;
 use std::time::Duration;
 use std::u32;
 
+use sync::Mutex;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
 use sys_util::{
@@ -618,7 +619,7 @@ impl<T: DiskFile> Worker<T> {
 pub struct Block<T: DiskFile> {
     kill_evt: Option<EventFd>,
     disk_image: Option<T>,
-    disk_size: u64,
+    disk_size: Arc<Mutex<u64>>,
     avail_features: u64,
     read_only: bool,
 }
@@ -664,7 +665,7 @@ impl<T: DiskFile> Block<T> {
         Ok(Block {
             kill_evt: None,
             disk_image: Some(disk_image),
-            disk_size,
+            disk_size: Arc::new(Mutex::new(disk_size)),
             avail_features,
             read_only,
         })
@@ -704,7 +705,10 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
     }
 
     fn read_config(&self, offset: u64, mut data: &mut [u8]) {
-        let config_space = build_config_space(self.disk_size);
+        let config_space = {
+            let disk_size = self.disk_size.lock();
+            build_config_space(*disk_size)
+        };
         let config_len = size_of_val(&config_space) as u64;
         if offset >= config_len {
             return;
