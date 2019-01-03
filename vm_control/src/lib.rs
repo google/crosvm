@@ -71,8 +71,8 @@ impl MsgOnSocket for MaybeOwnedFd {
 /// Unless otherwise noted, each request should expect a `VmResponse::Ok` to be received on success.
 #[derive(MsgOnSocket)]
 pub enum VmRequest {
-    /// Try to grow or shrink the VM's balloon.
-    BalloonAdjust(i32),
+    /// Set the size of the VM's balloon in bytes.
+    BalloonAdjust(u64),
     /// Break the VM's run loop and exit.
     Exit,
     /// Register the given ioevent address along with given datamatch to trigger the `EventFd`.
@@ -161,10 +161,10 @@ impl VmRequest {
                 Err(e) => VmResponse::Err(e),
             },
             VmRequest::BalloonAdjust(num_pages) => {
-                let mut buf = [0u8; 4];
-                // write_i32 can't fail as the buffer is 4 bytes long.
+                let mut buf = [0u8; 8];
+                // write_u64 can't fail as the buffer is 8 bytes long.
                 (&mut buf[0..])
-                    .write_i32::<LittleEndian>(num_pages)
+                    .write_u64::<LittleEndian>(num_pages)
                     .unwrap();
                 match balloon_host_socket.send(&buf) {
                     Ok(_) => VmResponse::Ok,

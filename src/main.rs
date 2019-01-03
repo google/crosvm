@@ -571,13 +571,13 @@ fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
 
 fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() < 2 {
-        print_help("crosvm balloon", "PAGE_ADJUST VM_SOCKET...", &[]);
-        println!("Adjust the ballon size of the crosvm instance by `PAGE_ADJUST` pages, `PAGE_ADJUST` can be negative to shrink the balloon.");
+        print_help("crosvm balloon", "SIZE VM_SOCKET...", &[]);
+        println!("Set the ballon size of the crosvm instance to `SIZE` bytes.");
     }
-    let num_pages: i32 = match args.nth(0).unwrap().parse::<i32>() {
+    let num_bytes = match args.nth(0).unwrap().parse::<u64>() {
         Ok(n) => n,
         Err(_) => {
-            error!("Failed to parse number of pages");
+            error!("Failed to parse number of bytes");
             return Err(());
         }
     };
@@ -590,7 +590,7 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
         }) {
             Ok(s) => {
                 let sender = Sender::<VmRequest>::new(s);
-                if let Err(e) = sender.send(&VmRequest::BalloonAdjust(num_pages)) {
+                if let Err(e) = sender.send(&VmRequest::BalloonAdjust(num_bytes)) {
                     error!(
                         "failed to send balloon request to socket at '{}': {:?}",
                         socket_path, e
