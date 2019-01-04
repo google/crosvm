@@ -1,0 +1,12 @@
+[package]
+name = "tpm2-sys"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2018"
+links = "tpm2"
+
+[build-dependencies]
+num_cpus = "*"
+pkg-config = "*"
+
+[workspace]

@@ -1,0 +1,3 @@
+[submodule "tpm2-sys/libtpm2"]
+	path = tpm2-sys/libtpm2
+	url = https://chromium.googlesource.com/chromiumos/third_party/tpm2
