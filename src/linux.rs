@@ -895,8 +895,8 @@ fn run_control(
     let freemem_jitter_secs = Range::new(0, 12);
     let interval_jitter_secs = Range::new(0, 6);
 
-    let mut vcpu_handles = Vec::with_capacity(linux.vcpus.len() as usize);
-    let vcpu_thread_barrier = Arc::new(Barrier::new((linux.vcpus.len() + 1) as usize));
+    let mut vcpu_handles = Vec::with_capacity(linux.vcpus.len());
+    let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpus.len() + 1));
     let kill_signaled = Arc::new(AtomicBool::new(false));
     setup_vcpu_signal_handler()?;
     for (cpu_id, vcpu) in linux.vcpus.into_iter().enumerate() {
@@ -1044,7 +1044,7 @@ fn run_control(
                     }
                 }
                 Token::VmControl { index } => {
-                    if let Some(socket) = control_sockets.get(index as usize) {
+                    if let Some(socket) = control_sockets.get(index) {
                         match socket.recv() {
                             Ok(request) => {
                                 let mut running = true;
@@ -1083,7 +1083,7 @@ fn run_control(
                     Token::LowMemory => {}
                     Token::LowmemTimer => {}
                     Token::VmControl { index } => {
-                        if let Some(socket) = control_sockets.get(index as usize) {
+                        if let Some(socket) = control_sockets.get(index) {
                             let _ = poll_ctx.delete(socket.as_ref());
                         }
                     }
