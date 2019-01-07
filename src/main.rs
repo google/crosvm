@@ -7,6 +7,7 @@
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 extern crate aarch64;
 extern crate arch;
+extern crate audio_streams;
 extern crate byteorder;
 extern crate devices;
 extern crate io_jail;
@@ -92,6 +93,7 @@ pub struct Config {
     multiprocess: bool,
     seccomp_policy_dir: PathBuf,
     gpu: bool,
+    null_audio: bool,
 }
 
 impl Default for Config {
@@ -118,6 +120,7 @@ impl Default for Config {
             shared_dirs: Vec::new(),
             multiprocess: !cfg!(feature = "default-no-sandbox"),
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
+            null_audio: false,
         }
     }
 }
@@ -208,6 +211,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                             expected: "this value for `mem` needs to be integer",
                         })?,
                 )
+        }
+        "null-audio" => {
+            cfg.null_audio = true;
         }
         "root" | "disk" | "rwdisk" | "qcow" | "rwqcow" => {
             let disk_path = PathBuf::from(value.unwrap());
@@ -491,6 +497,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           "IP address to assign to host tap interface."),
           Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
           Argument::value("mac", "MAC", "MAC address for VM."),
+          Argument::flag("null-audio", "Add an audio device to the VM that plays samples to /dev/null"),
           Argument::value("wayland-sock", "PATH", "Path to the Wayland socket to use."),
           #[cfg(feature = "wl-dmabuf")]
           Argument::flag("wayland-dmabuf", "Enable support for DMABufs in Wayland device."),

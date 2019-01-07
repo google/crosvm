@@ -21,6 +21,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use libc::{self, c_int};
 
+use audio_streams::DummyStreamSource;
 use byteorder::{ByteOrder, LittleEndian};
 use devices::{self, PciDevice, VirtioPciDevice};
 use io_jail::{self, Minijail};
@@ -630,6 +631,20 @@ fn create_virtio_devs(
         let pci_dev =
             Box::new(VirtioPciDevice::new((*mem).clone(), stub.dev).map_err(Error::VirtioPciDev)?);
         pci_devices.push((pci_dev, stub.jail));
+    }
+
+    if cfg.null_audio {
+        let null_audio_box = Box::new(devices::Ac97Dev::new(
+            (*mem).clone(),
+            Box::new(DummyStreamSource::new()),
+        ));
+        let null_audio_jail = if cfg.multiprocess {
+            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("null_audio_device.policy");
+            Some(create_base_minijail(empty_root_path, &policy_path)?)
+        } else {
+            None
+        };
+        pci_devices.push((null_audio_box, null_audio_jail));
     }
 
     Ok(pci_devices)
