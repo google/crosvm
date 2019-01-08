@@ -182,16 +182,16 @@ extern "C" {
     pub fn gbm_bo_get_stride(bo: *mut gbm_bo) -> u32;
     pub fn gbm_bo_get_stride_or_tiling(bo: *mut gbm_bo) -> u32;
     pub fn gbm_bo_get_format(bo: *mut gbm_bo) -> u32;
-    pub fn gbm_bo_get_format_modifier(bo: *mut gbm_bo) -> u64;
+    pub fn gbm_bo_get_modifier(bo: *mut gbm_bo) -> u64;
     pub fn gbm_bo_get_device(bo: *mut gbm_bo) -> *mut gbm_device;
     pub fn gbm_bo_get_handle(bo: *mut gbm_bo) -> gbm_bo_handle;
     pub fn gbm_bo_get_fd(bo: *mut gbm_bo) -> c_int;
-    pub fn gbm_bo_get_num_planes(bo: *mut gbm_bo) -> usize;
-    pub fn gbm_bo_get_plane_handle(bo: *mut gbm_bo, plane: usize) -> gbm_bo_handle;
+    pub fn gbm_bo_get_plane_count(bo: *mut gbm_bo) -> usize;
+    pub fn gbm_bo_get_handle_for_plane(bo: *mut gbm_bo, plane: usize) -> gbm_bo_handle;
     pub fn gbm_bo_get_plane_fd(bo: *mut gbm_bo, plane: usize) -> c_int;
-    pub fn gbm_bo_get_plane_offset(bo: *mut gbm_bo, plane: usize) -> u32;
+    pub fn gbm_bo_get_offset(bo: *mut gbm_bo, plane: usize) -> u32;
     pub fn gbm_bo_get_plane_size(bo: *mut gbm_bo, plane: usize) -> u32;
-    pub fn gbm_bo_get_plane_stride(bo: *mut gbm_bo, plane: usize) -> u32;
+    pub fn gbm_bo_get_stride_for_plane(bo: *mut gbm_bo, plane: usize) -> u32;
     pub fn gbm_bo_get_plane_format_modifier(bo: *mut gbm_bo, plane: usize) -> u64;
     // Did not generate cleanly by bindgen. Redone manually by zachr.
     pub fn gbm_bo_set_user_data(
