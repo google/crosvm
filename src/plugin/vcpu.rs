@@ -10,7 +10,7 @@ use std::mem::size_of;
 use std::os::unix::net::UnixDatagram;
 use std::sync::{Arc, RwLock};
 
-use libc::{EDEADLK, EINVAL, ENOENT, ENOTTY, EPERM, EPIPE, EPROTO};
+use libc::{EINVAL, ENOENT, ENOTTY, EPERM, EPIPE, EPROTO};
 
 use protobuf;
 use protobuf::Message;
