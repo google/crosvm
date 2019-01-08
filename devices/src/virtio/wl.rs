@@ -1715,6 +1715,9 @@ impl VirtioDevice for Wl {
         if let Some(ref vm_socket) = self.vm_socket {
             keep_fds.push(vm_socket.as_raw_fd());
         }
+        if let Some(ref resource_bridge) = self.resource_bridge {
+            keep_fds.push(resource_bridge.as_raw_fd());
+        }
 
         keep_fds
     }
