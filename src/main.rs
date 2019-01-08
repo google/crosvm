@@ -63,6 +63,7 @@ struct DiskOption {
     read_only: bool,
 }
 
+#[allow(dead_code)]
 struct BindMount {
     src: PathBuf,
     dst: PathBuf,
@@ -505,7 +506,9 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
           #[cfg(feature = "plugin")]
           Argument::value("plugin", "PATH", "Absolute path to plugin process to run under crosvm."),
+          #[cfg(feature = "plugin")]
           Argument::value("plugin-root", "PATH", "Absolute path to a directory that will become root filesystem for the plugin process."),
+          #[cfg(feature = "plugin")]
           Argument::value("plugin-mount", "PATH:PATH:BOOL", "Path to be mounted into the plugin's root filesystem.  Can be given more than once."),
           Argument::flag("vhost-net", "Use vhost for networking."),
           Argument::value("tap-fd",
