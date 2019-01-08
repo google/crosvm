@@ -56,3 +56,4 @@ memfd_create: arg1 == 3
 # Used to set of size new memfd.
 ftruncate: 1
 fcntl: arg1 == F_DUPFD_CLOEXEC
+lstat: 1
