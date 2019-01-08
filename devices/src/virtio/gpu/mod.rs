@@ -653,6 +653,9 @@ impl VirtioDevice for Gpu {
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
         keep_fds.push(self.exit_evt.as_raw_fd());
+        if let Some(ref resource_bridge) = self.resource_bridge {
+            keep_fds.push(resource_bridge.as_raw_fd());
+        }
         keep_fds
     }
 
