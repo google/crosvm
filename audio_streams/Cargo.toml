@@ -1,0 +1,14 @@
+[package]
+name = "audio_streams"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2018"
+
+[lib]
+path = "src/audio_streams.rs"
+
+[dependencies]
+async-trait = "0.1.36"
+cros_async = { path = "../../../platform/crosvm/cros_async" } # provided by ebuild
+sync = { path = "../../../platform/crosvm/sync" } # provided by ebuild
+sys_util = { path = "../../../platform/crosvm/sys_util" } # provided by ebuild

@@ -1,0 +1,7 @@
+rust_library_rlib {
+    name: "libaudio_streams",
+    host_supported: true,
+    crate_name: "audio_streams",
+    edition: "2018",
+    srcs: ["src/audio_streams.rs"],
+}
