@@ -5,6 +5,6 @@ authors = ["The Chromium OS Authors"]
 include = ["src/**/*", "Cargo.toml"]
 
 [dependencies]
-assertions = "*"
+assertions = { path = "../assertions" } # provided by ebuild
 
 [workspace]

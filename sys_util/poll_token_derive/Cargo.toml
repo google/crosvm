@@ -12,5 +12,3 @@ path = "poll_token_derive.rs"
 syn = "0.15"
 quote = "0.6"
 proc-macro2 = "0.4"
-
-[workspace]
