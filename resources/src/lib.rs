@@ -7,8 +7,8 @@
 #[cfg(feature = "wl-dmabuf")]
 extern crate gpu_buffer;
 extern crate libc;
-extern crate sys_util;
 extern crate msg_socket;
+extern crate sys_util;
 
 mod address_allocator;
 mod gpu_allocator;
