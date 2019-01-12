@@ -163,7 +163,7 @@ pub fn load_cmdline(
     }
 
     guest_mem
-        .write_slice_at_addr(cmdline.to_bytes_with_nul(), guest_addr)
+        .write_at_addr(cmdline.to_bytes_with_nul(), guest_addr)
         .map_err(|_| Error::CommandLineCopy)?;
 
     Ok(())

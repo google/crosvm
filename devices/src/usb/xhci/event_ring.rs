@@ -80,7 +80,7 @@ impl EventRing {
                 .checked_add(CYCLE_STATE_OFFSET as u64)
                 .expect("unexpected address in event ring");
             self.mem
-                .write_slice_at_addr(cycle_bit_dword, address)
+                .write_at_addr(cycle_bit_dword, address)
                 .expect("Fail to write Guest Memory");
         }
 

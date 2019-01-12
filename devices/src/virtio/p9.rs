@@ -135,7 +135,7 @@ where
             let len = min(buf.len(), (current.len - self.offset) as usize);
             let count = self
                 .mem
-                .read_slice_at_addr(&mut buf[..len], addr)
+                .read_at_addr(&mut buf[..len], addr)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
             // |count| has to fit into a u32 because it must be less than or equal to
@@ -191,7 +191,7 @@ where
             let len = min(buf.len(), (current.len - self.offset) as usize);
             let count = self
                 .mem
-                .write_slice_at_addr(&buf[..len], addr)
+                .write_at_addr(&buf[..len], addr)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
             // |count| has to fit into a u32 because it must be less than or equal to

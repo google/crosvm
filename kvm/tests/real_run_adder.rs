@@ -35,7 +35,7 @@ fn test_run() {
     let vcpu = Vcpu::new(0, &kvm, &vm).expect("new vcpu failed");
 
     vm.get_memory()
-        .write_slice_at_addr(&code, load_addr)
+        .write_at_addr(&code, load_addr)
         .expect("Writing code to memory failed.");
 
     let mut vcpu_sregs = vcpu.get_sregs().expect("get sregs failed");

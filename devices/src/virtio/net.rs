@@ -103,7 +103,7 @@ where
                     }
                     let limit = cmp::min(write_count + desc.len as usize, self.rx_count);
                     let source_slice = &self.rx_buf[write_count..limit];
-                    let write_result = self.mem.write_slice_at_addr(source_slice, desc.addr);
+                    let write_result = self.mem.write_at_addr(source_slice, desc.addr);
 
                     match write_result {
                         Ok(sz) => {
@@ -182,7 +182,7 @@ where
                 let limit = cmp::min(read_count + desc.len as usize, frame.len());
                 let read_result = self
                     .mem
-                    .read_slice_at_addr(&mut frame[read_count..limit as usize], desc.addr);
+                    .read_at_addr(&mut frame[read_count..limit as usize], desc.addr);
                 match read_result {
                     Ok(sz) => {
                         read_count += sz;

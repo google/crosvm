@@ -4,7 +4,6 @@
 
 //! Track memory regions that are mapped to the guest VM.
 
-use std::error::{self, Error as GuestMemoryError};
 use std::fmt::{self, Display};
 use std::io::{Read, Write};
 use std::result;
@@ -21,23 +20,38 @@ pub enum Error {
     MemoryAccess(GuestAddress, mmap::Error),
     MemoryMappingFailed(mmap::Error),
     MemoryRegionOverlap,
+    ShortWrite { expected: usize, completed: usize },
+    ShortRead { expected: usize, completed: usize },
 }
 pub type Result<T> = result::Result<T, Error>;
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match self {
-            Error::InvalidGuestAddress(_) => "Invalid Guest Address",
-            Error::MemoryAccess(_, _) => "Invalid Guest Memory Access",
-            Error::MemoryMappingFailed(_) => "Failed to map guest memory",
-            Error::MemoryRegionOverlap => "Memory regions overlap",
-        }
-    }
-}
+impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Guest memory error: {}", Error::description(self))
+        write!(f, "Guest memory error: ")?;
+        match self {
+            Error::InvalidGuestAddress(_) => write!(f, "Invalid Guest Address"),
+            Error::MemoryAccess(_, _) => write!(f, "Invalid Guest Memory Access"),
+            Error::MemoryMappingFailed(_) => write!(f, "Failed to map guest memory"),
+            Error::MemoryRegionOverlap => write!(f, "Memory regions overlap"),
+            Error::ShortWrite {
+                expected,
+                completed,
+            } => write!(
+                f,
+                "incomplete write of {} instead of {} bytes",
+                completed, expected,
+            ),
+            Error::ShortRead {
+                expected,
+                completed,
+            } => write!(
+                f,
+                "incomplete read of {} instead of {} bytes",
+                completed, expected,
+            ),
+        }
     }
 }
 
@@ -156,6 +170,7 @@ impl GuestMemory {
         }
         Ok(())
     }
+
     /// Writes a slice to guest memory at the specified guest address.
     /// Returns the number of bytes written.  The number of bytes written can
     /// be less than the length of the slice if there isn't enough room in the
@@ -169,17 +184,48 @@ impl GuestMemory {
     /// # fn test_write_u64() -> Result<(), ()> {
     /// #   let start_addr = GuestAddress(0x1000);
     /// #   let mut gm = GuestMemory::new(&vec![(start_addr, 0x400)]).map_err(|_| ())?;
-    ///     let res = gm.write_slice_at_addr(&[1,2,3,4,5], GuestAddress(0x200)).map_err(|_| ())?;
+    ///     let res = gm.write_at_addr(&[1,2,3,4,5], GuestAddress(0x200)).map_err(|_| ())?;
     ///     assert_eq!(5, res);
     ///     Ok(())
     /// # }
     /// ```
-    pub fn write_slice_at_addr(&self, buf: &[u8], guest_addr: GuestAddress) -> Result<usize> {
+    pub fn write_at_addr(&self, buf: &[u8], guest_addr: GuestAddress) -> Result<usize> {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
                 .write_slice(buf, offset)
                 .map_err(|e| Error::MemoryAccess(guest_addr, e))
         })
+    }
+
+    /// Writes the entire contents of a slice to guest memory at the specified
+    /// guest address.
+    ///
+    /// Returns an error if there isn't enough room in the memory region to
+    /// complete the entire write. Part of the data may have been written
+    /// nevertheless.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sys_util::{guest_memory, GuestAddress, GuestMemory};
+    ///
+    /// fn test_write_all() -> guest_memory::Result<()> {
+    ///     let ranges = &[(GuestAddress(0x1000), 0x400)];
+    ///     let gm = GuestMemory::new(ranges)?;
+    ///     gm.write_all_at_addr(b"zyxwvut", GuestAddress(0x1200))
+    /// }
+    /// ```
+    pub fn write_all_at_addr(&self, buf: &[u8], guest_addr: GuestAddress) -> Result<()> {
+        let expected = buf.len();
+        let completed = self.write_at_addr(buf, guest_addr)?;
+        if expected == completed {
+            Ok(())
+        } else {
+            Err(Error::ShortWrite {
+                expected,
+                completed,
+            })
+        }
     }
 
     /// Reads to a slice from guest memory at the specified guest address.
@@ -196,21 +242,48 @@ impl GuestMemory {
     /// #   let start_addr = GuestAddress(0x1000);
     /// #   let mut gm = GuestMemory::new(&vec![(start_addr, 0x400)]).map_err(|_| ())?;
     ///     let buf = &mut [0u8; 16];
-    ///     let res = gm.read_slice_at_addr(buf, GuestAddress(0x200)).map_err(|_| ())?;
+    ///     let res = gm.read_at_addr(buf, GuestAddress(0x200)).map_err(|_| ())?;
     ///     assert_eq!(16, res);
     ///     Ok(())
     /// # }
     /// ```
-    pub fn read_slice_at_addr(
-        &self,
-        mut buf: &mut [u8],
-        guest_addr: GuestAddress,
-    ) -> Result<usize> {
+    pub fn read_at_addr(&self, mut buf: &mut [u8], guest_addr: GuestAddress) -> Result<usize> {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
                 .read_slice(buf, offset)
                 .map_err(|e| Error::MemoryAccess(guest_addr, e))
         })
+    }
+
+    /// Reads from guest memory at the specified address to fill the entire
+    /// buffer.
+    ///
+    /// Returns an error if there isn't enough room in the memory region to fill
+    /// the entire buffer. Part of the buffer may have been filled nevertheless.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sys_util::{guest_memory, GuestAddress, GuestMemory, MemoryMapping};
+    ///
+    /// fn test_read_exact() -> guest_memory::Result<()> {
+    ///     let ranges = &[(GuestAddress(0x1000), 0x400)];
+    ///     let gm = GuestMemory::new(ranges)?;
+    ///     let mut buffer = [0u8; 0x200];
+    ///     gm.read_exact_at_addr(&mut buffer, GuestAddress(0x1200))
+    /// }
+    /// ```
+    pub fn read_exact_at_addr(&self, buf: &mut [u8], guest_addr: GuestAddress) -> Result<()> {
+        let expected = buf.len();
+        let completed = self.read_at_addr(buf, guest_addr)?;
+        if expected == completed {
+            Ok(())
+        } else {
+            Err(Error::ShortRead {
+                expected,
+                completed,
+            })
+        }
     }
 
     /// Reads an object from guest memory at the given guest address.

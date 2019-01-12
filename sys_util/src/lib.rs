@@ -24,7 +24,7 @@ mod file_flags;
 mod file_traits;
 mod fork;
 mod guest_address;
-mod guest_memory;
+pub mod guest_memory;
 mod mmap;
 pub mod net;
 mod passwd;

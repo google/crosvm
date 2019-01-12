@@ -547,7 +547,7 @@ pub fn create_fdt(
     }
     let fdt_address = GuestAddress(AARCH64_PHYS_MEM_START + fdt_load_offset);
     let written = guest_mem
-        .write_slice_at_addr(fdt_final.as_slice(), fdt_address)
+        .write_at_addr(fdt_final.as_slice(), fdt_address)
         .map_err(|_| Error::FdtGuestMemoryWriteError)?;
     if written < fdt_max_size {
         return Err(Box::new(Error::FdtGuestMemoryWriteError));
