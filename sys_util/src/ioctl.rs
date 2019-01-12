@@ -9,16 +9,30 @@ use std::os::unix::io::AsRawFd;
 
 use libc;
 
+/// Raw macro to declare the expression that calculates an ioctl number
+#[macro_export]
+macro_rules! ioctl_expr {
+    ($dir:expr, $ty:expr, $nr:expr, $size:expr) => {
+        (($dir << $crate::ioctl::_IOC_DIRSHIFT)
+            | ($ty << $crate::ioctl::_IOC_TYPESHIFT)
+            | ($nr << $crate::ioctl::_IOC_NRSHIFT)
+            | ($size << $crate::ioctl::_IOC_SIZESHIFT)) as ::std::os::raw::c_ulong
+    };
+}
+
 /// Raw macro to declare a function that returns an ioctl number.
 #[macro_export]
 macro_rules! ioctl_ioc_nr {
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr) => {
         #[allow(non_snake_case)]
         pub fn $name() -> ::std::os::raw::c_ulong {
-            (($dir << $crate::ioctl::_IOC_DIRSHIFT)
-                | ($ty << $crate::ioctl::_IOC_TYPESHIFT)
-                | ($nr << $crate::ioctl::_IOC_NRSHIFT)
-                | ($size << $crate::ioctl::_IOC_SIZESHIFT)) as ::std::os::raw::c_ulong
+            ioctl_expr!($dir, $ty, $nr, $size)
+        }
+    };
+    ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr, $($v:ident),+) => {
+        #[allow(non_snake_case)]
+        pub fn $name($($v: ::std::os::raw::c_uint),+) -> ::std::os::raw::c_ulong {
+            ioctl_expr!($dir, $ty, $nr, $size)
         }
     };
 }
@@ -28,6 +42,9 @@ macro_rules! ioctl_ioc_nr {
 macro_rules! ioctl_io_nr {
     ($name:ident, $ty:expr, $nr:expr) => {
         ioctl_ioc_nr!($name, $crate::ioctl::_IOC_NONE, $ty, $nr, 0);
+    };
+    ($name:ident, $ty:expr, $nr:expr, $($v:ident),+) => {
+        ioctl_ioc_nr!($name, $crate::ioctl::_IOC_NONE, $ty, $nr, 0, $($v),+);
     };
 }
 
@@ -41,6 +58,16 @@ macro_rules! ioctl_ior_nr {
             $ty,
             $nr,
             ::std::mem::size_of::<$size>() as u32
+        );
+    };
+    ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
+        ioctl_ioc_nr!(
+            $name,
+            $crate::ioctl::_IOC_READ,
+            $ty,
+            $nr,
+            ::std::mem::size_of::<$size>() as u32,
+            $($v),+
         );
     };
 }
@@ -57,6 +84,16 @@ macro_rules! ioctl_iow_nr {
             ::std::mem::size_of::<$size>() as u32
         );
     };
+    ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
+        ioctl_ioc_nr!(
+            $name,
+            $crate::ioctl::_IOC_WRITE,
+            $ty,
+            $nr,
+            ::std::mem::size_of::<$size>() as u32,
+            $($v),+
+        );
+    };
 }
 
 /// Declare an ioctl that reads and writes data.
@@ -69,6 +106,16 @@ macro_rules! ioctl_iowr_nr {
             $ty,
             $nr,
             ::std::mem::size_of::<$size>() as u32
+        );
+    };
+    ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
+        ioctl_ioc_nr!(
+            $name,
+            $crate::ioctl::_IOC_READ | $crate::ioctl::_IOC_WRITE,
+            $ty,
+            $nr,
+            ::std::mem::size_of::<$size>() as u32,
+            $($v),+
         );
     };
 }
@@ -128,11 +175,15 @@ pub unsafe fn ioctl_with_mut_ptr<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: *mut T
 mod tests {
     const TUNTAP: ::std::os::raw::c_uint = 0x54;
     const VHOST: ::std::os::raw::c_uint = 0xaf;
+    const EVDEV: ::std::os::raw::c_uint = 0x45;
 
     ioctl_io_nr!(VHOST_SET_OWNER, VHOST, 0x01);
     ioctl_ior_nr!(TUNGETFEATURES, TUNTAP, 0xcf, ::std::os::raw::c_uint);
     ioctl_iow_nr!(TUNSETQUEUE, TUNTAP, 0xd9, ::std::os::raw::c_int);
     ioctl_iowr_nr!(VHOST_GET_VRING_BASE, VHOST, 0x12, ::std::os::raw::c_int);
+
+    ioctl_ior_nr!(EVIOCGBIT, EVDEV, 0x20 + evt, [u8; 128], evt);
+    ioctl_io_nr!(FAKE_IOCTL_2_ARG, EVDEV, 0x01 + x + y, x, y);
 
     #[test]
     fn ioctl_macros() {
@@ -140,5 +191,8 @@ mod tests {
         assert_eq!(0x800454cf, TUNGETFEATURES());
         assert_eq!(0x400454d9, TUNSETQUEUE());
         assert_eq!(0xc004af12, VHOST_GET_VRING_BASE());
+
+        assert_eq!(0x80804522, EVIOCGBIT(2));
+        assert_eq!(0x00004509, FAKE_IOCTL_2_ARG(3, 5));
     }
 }
