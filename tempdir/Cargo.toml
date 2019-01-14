@@ -1,0 +1,7 @@
+[package]
+name = "tempdir"
+version = "0.3.5"
+authors = ["The Chromium OS Authors"]
+
+[dependencies]
+rand_ish = { path = "../rand_ish" }

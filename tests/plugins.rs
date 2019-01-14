@@ -4,10 +4,8 @@
 
 #![cfg(feature = "plugin")]
 
-extern crate rand;
+extern crate rand_ish;
 extern crate sys_util;
-
-use rand::{thread_rng, Rng};
 
 use std::env::{current_exe, var_os};
 use std::ffi::OsString;
@@ -19,6 +17,7 @@ use std::process::{Command, Stdio};
 use std::thread::sleep;
 use std::time::Duration;
 
+use rand_ish::urandom_str;
 use sys_util::{ioctl, SharedMemory};
 
 struct RemovePath(PathBuf);
@@ -56,7 +55,8 @@ fn get_crosvm_path() -> PathBuf {
 fn build_plugin(src: &str) -> RemovePath {
     let libcrosvm_plugin_dir = get_target_path();
     let mut out_bin = libcrosvm_plugin_dir.clone();
-    out_bin.push(thread_rng().gen_ascii_chars().take(10).collect::<String>());
+    let randbin = urandom_str(10).expect("failed to generate random bin name");
+    out_bin.push(randbin);
     let mut child = Command::new(var_os("CC").unwrap_or(OsString::from("cc")))
         .args(&["-Icrosvm_plugin", "-pthread", "-o"]) // crosvm.h location and set output path.
         .arg(&out_bin)

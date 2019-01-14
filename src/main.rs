@@ -29,7 +29,7 @@ extern crate msg_socket;
 extern crate plugin_proto;
 #[cfg(feature = "plugin")]
 extern crate protobuf;
-extern crate rand;
+extern crate rand_ish;
 extern crate resources;
 extern crate sync;
 extern crate vhost;

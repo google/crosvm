@@ -16,6 +16,8 @@ exclude = [
     "sync",
     "sys_util",
     "syscall_defines",
+    "tempdir",
+    "rand_ish",
 ]
 
 [features]
@@ -51,8 +53,8 @@ crosvm_plugin = { path = "crosvm_plugin", optional = true }
 protobuf = { version = "=1.4.3", optional = true }
 resources = { path = "resources" }
 p9 = { path = "p9" }
-rand = "=0.3.20"
 sync = { path = "sync" }
+rand_ish = { path = "rand_ish" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { path = "x86_64" }
@@ -70,3 +72,4 @@ poll_token_derive = { path = "sys_util/poll_token_derive" }
 sync = { path = "sync" }
 sys_util = { path = "sys_util" }
 syscall_defines = { path = "syscall_defines" }
+tempdir = { path = "tempdir" }

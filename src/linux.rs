@@ -18,11 +18,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use libc::{self, c_int};
-use rand::distributions::{IndependentSample, Range};
-use rand::thread_rng;
 
 use byteorder::{ByteOrder, LittleEndian};
 use devices::{self, PciDevice, VirtioPciDevice};
@@ -31,6 +29,7 @@ use kvm::*;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket, UnlinkMsgSocket};
 use net_util::{Error as NetError, Tap};
 use qcow::{self, ImageType, QcowFile};
+use rand_ish::SimpleRng;
 use sys_util;
 use sys_util::*;
 use vhost;
@@ -907,10 +906,12 @@ fn run_control(
 
     // Used to add jitter to timer values so that we don't have a thundering herd problem when
     // multiple VMs are running.
-    let mut rng = thread_rng();
-    let lowmem_jitter_ms = Range::new(0, 200);
-    let freemem_jitter_secs = Range::new(0, 12);
-    let interval_jitter_secs = Range::new(0, 6);
+    let mut simple_rng = SimpleRng::new(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time went backwards")
+            .subsec_nanos() as u64,
+    );
 
     let mut vcpu_handles = Vec::with_capacity(linux.vcpus.len());
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpus.len() + 1));
@@ -1031,8 +1032,7 @@ fn run_control(
 
                         // Add some jitter to the timer so that if there are multiple VMs running
                         // they don't all start ballooning at exactly the same time.
-                        let lowmem_dur =
-                            Duration::from_millis(1000 + lowmem_jitter_ms.ind_sample(&mut rng));
+                        let lowmem_dur = Duration::from_millis(1000 + simple_rng.rng() % 200);
                         lowmem_timer
                             .reset(lowmem_dur, None)
                             .map_err(Error::ResetTimerFd)?;
@@ -1040,10 +1040,8 @@ fn run_control(
                         // Also start a timer to check when we can start giving memory back.  Do the
                         // first check after a minute (with jitter) and subsequent checks after
                         // every 30 seconds (with jitter).
-                        let freemem_dur =
-                            Duration::from_secs(60 + freemem_jitter_secs.ind_sample(&mut rng));
-                        let freemem_int =
-                            Duration::from_secs(30 + interval_jitter_secs.ind_sample(&mut rng));
+                        let freemem_dur = Duration::from_secs(60 + simple_rng.rng() % 12);
+                        let freemem_int = Duration::from_secs(30 + simple_rng.rng() % 6);
                         freemem_timer
                             .reset(freemem_dur, Some(freemem_int))
                             .map_err(Error::ResetTimerFd)?;
