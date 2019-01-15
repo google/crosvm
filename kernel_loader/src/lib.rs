@@ -119,7 +119,7 @@ where
 
     // Read in each section pointed to by the program headers.
     for phdr in &phdrs {
-        if (phdr.p_type & elf::PT_LOAD) == 0 || phdr.p_filesz == 0 {
+        if phdr.p_type != elf::PT_LOAD || phdr.p_filesz == 0 {
             continue;
         }
 
