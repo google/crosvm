@@ -72,6 +72,25 @@ struct BindMount {
     writable: bool,
 }
 
+const DEFAULT_TRACKPAD_WIDTH: u32 = 800;
+const DEFAULT_TRACKPAD_HEIGHT: u32 = 1280;
+
+struct TrackpadOption {
+    path: PathBuf,
+    width: u32,
+    height: u32,
+}
+
+impl TrackpadOption {
+    fn new(path: PathBuf) -> TrackpadOption {
+        TrackpadOption {
+            path,
+            width: DEFAULT_TRACKPAD_WIDTH,
+            height: DEFAULT_TRACKPAD_HEIGHT,
+        }
+    }
+}
+
 pub struct Config {
     vcpu_count: Option<u32>,
     memory: Option<usize>,
@@ -97,6 +116,10 @@ pub struct Config {
     gpu: bool,
     cras_audio: bool,
     null_audio: bool,
+    virtio_trackpad: Option<TrackpadOption>,
+    virtio_mouse: Option<PathBuf>,
+    virtio_keyboard: Option<PathBuf>,
+    virtio_input_evdevs: Vec<PathBuf>,
 }
 
 impl Default for Config {
@@ -126,6 +149,10 @@ impl Default for Config {
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             cras_audio: false,
             null_audio: false,
+            virtio_trackpad: None,
+            virtio_mouse: None,
+            virtio_keyboard: None,
+            virtio_input_evdevs: Vec::new(),
         }
     }
 }
@@ -492,6 +519,51 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "gpu" => {
             cfg.gpu = true;
         }
+        "trackpad" => {
+            if cfg.virtio_trackpad.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`trackpad` already given".to_owned(),
+                ));
+            }
+            let mut it = value.unwrap().split(":");
+
+            let mut trackpad_spec =
+                TrackpadOption::new(PathBuf::from(it.next().unwrap().to_owned()));
+            if let Some(width) = it.next() {
+                trackpad_spec.width = width.trim().parse().unwrap();
+            }
+            if let Some(height) = it.next() {
+                trackpad_spec.height = height.trim().parse().unwrap();
+            }
+
+            cfg.virtio_trackpad = Some(trackpad_spec);
+        }
+        "mouse" => {
+            if cfg.virtio_mouse.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`mouse` already given".to_owned(),
+                ));
+            }
+            cfg.virtio_mouse = Some(PathBuf::from(value.unwrap().to_owned()));
+        }
+        "keyboard" => {
+            if cfg.virtio_keyboard.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`keyboard` already given".to_owned(),
+                ));
+            }
+            cfg.virtio_keyboard = Some(PathBuf::from(value.unwrap().to_owned()));
+        }
+        "evdev" => {
+            let dev_path = PathBuf::from(value.unwrap());
+            if !dev_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: "this input device path does not exist",
+                });
+            }
+            cfg.virtio_input_evdevs.push(dev_path);
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -551,6 +623,10 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           "File descriptor for configured tap device.  Mutually exclusive with `host_ip`, `netmask`, and `mac`."),
           #[cfg(feature = "gpu")]
           Argument::flag("gpu", "(EXPERIMENTAL) enable virtio-gpu device"),
+          Argument::value("evdev", "PATH", "Path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host"),
+          Argument::value("trackpad", "PATH:WIDTH:HEIGHT", "Path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280)."),
+          Argument::value("mouse", "PATH", "Path to a socket from where to read mouse input events and write status updates to."),
+          Argument::value("keyboard", "PATH", "Path to a socket from where to read keyboard input events and write status updates to."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

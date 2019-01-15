@@ -10,8 +10,8 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, Read};
 use std::mem;
-use std::os::unix::io::FromRawFd;
-use std::os::unix::net::UnixDatagram;
+use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::net::{UnixDatagram, UnixStream};
 use std::path::{Path, PathBuf};
 use std::str;
 use std::sync::{Arc, Barrier};
@@ -86,6 +86,8 @@ pub enum Error {
     RegisterWayland(arch::DeviceRegistrationError),
     ResetTimerFd(sys_util::Error),
     RngDeviceNew(devices::virtio::RngError),
+    InputDeviceNew(devices::virtio::InputError),
+    InputEventsOpen(std::io::Error),
     SettingGidMap(io_jail::Error),
     SettingUidMap(io_jail::Error),
     SignalFd(sys_util::SignalFdError),
@@ -156,6 +158,8 @@ impl fmt::Display for Error {
             Error::RegisterWayland(e) => write!(f, "error registering wayland device: {}", e),
             Error::ResetTimerFd(e) => write!(f, "failed to reset timerfd: {}", e),
             Error::RngDeviceNew(e) => write!(f, "failed to set up rng: {:?}", e),
+            Error::InputDeviceNew(ref e) => write!(f, "failed to set up input device: {:?}", e),
+            Error::InputEventsOpen(ref e) => write!(f, "failed to open event device: {:?}", e),
             Error::SettingGidMap(e) => write!(f, "error setting GID map: {}", e),
             Error::SettingUidMap(e) => write!(f, "error setting UID map: {}", e),
             Error::SignalFd(e) => write!(f, "failed to read signal fd: {:?}", e),
@@ -233,17 +237,8 @@ fn create_virtio_devs(
 
         // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
         let mut raw_image: File = if disk.path.parent() == Some(Path::new("/proc/self/fd")) {
-            if !disk.path.is_file() {
-                return Err(Box::new(Error::InvalidFdPath));
-            }
-            let raw_fd = disk
-                .path
-                .file_name()
-                .and_then(|fd_osstr| fd_osstr.to_str())
-                .and_then(|fd_str| fd_str.parse::<c_int>().ok())
-                .ok_or(Error::InvalidFdPath)?;
             // Safe because we will validate |raw_fd|.
-            unsafe { File::from_raw_fd(validate_raw_fd(raw_fd).map_err(Error::ValidateRawFd)?) }
+            unsafe { File::from_raw_fd(raw_fd_from_path(&disk.path)?) }
         } else {
             OpenOptions::new()
                 .read(true)
@@ -322,6 +317,101 @@ fn create_virtio_devs(
         devs.push(VirtioDeviceStub {
             dev: tpm_box,
             jail: tpm_jail,
+        });
+    }
+
+    if let Some(trackpad_spec) = cfg.virtio_trackpad {
+        match create_input_socket(&trackpad_spec.path) {
+            Ok(socket) => {
+                let trackpad_box = Box::new(
+                    devices::virtio::new_trackpad(
+                        socket,
+                        trackpad_spec.width,
+                        trackpad_spec.height,
+                    )
+                    .map_err(Error::InputDeviceNew)?,
+                );
+                let trackpad_jail = if cfg.multiprocess {
+                    let policy_path: PathBuf = cfg.seccomp_policy_dir.join("input_device.policy");
+                    Some(create_base_minijail(empty_root_path, &policy_path)?)
+                } else {
+                    None
+                };
+                devs.push(VirtioDeviceStub {
+                    dev: trackpad_box,
+                    jail: trackpad_jail,
+                });
+            }
+            Err(e) => {
+                error!("failed configuring virtio trackpad: {:?}", e);
+                return Err(e);
+            }
+        }
+    }
+
+    if let Some(mouse_socket) = cfg.virtio_mouse {
+        match create_input_socket(&mouse_socket) {
+            Ok(socket) => {
+                let mouse_box =
+                    Box::new(devices::virtio::new_mouse(socket).map_err(Error::InputDeviceNew)?);
+                let mouse_jail = if cfg.multiprocess {
+                    let policy_path: PathBuf = cfg.seccomp_policy_dir.join("input_device.policy");
+                    Some(create_base_minijail(empty_root_path, &policy_path)?)
+                } else {
+                    None
+                };
+                devs.push(VirtioDeviceStub {
+                    dev: mouse_box,
+                    jail: mouse_jail,
+                });
+            }
+            Err(e) => {
+                error!("failed configuring virtio mouse: {:?}", e);
+                return Err(e);
+            }
+        }
+    }
+
+    if let Some(keyboard_socket) = cfg.virtio_keyboard {
+        match create_input_socket(&keyboard_socket) {
+            Ok(socket) => {
+                let keyboard_box =
+                    Box::new(devices::virtio::new_keyboard(socket).map_err(Error::InputDeviceNew)?);
+                let keyboard_jail = if cfg.multiprocess {
+                    let policy_path: PathBuf = cfg.seccomp_policy_dir.join("input_device.policy");
+                    Some(create_base_minijail(empty_root_path, &policy_path)?)
+                } else {
+                    None
+                };
+                devs.push(VirtioDeviceStub {
+                    dev: keyboard_box,
+                    jail: keyboard_jail,
+                });
+            }
+            Err(e) => {
+                error!("failed configuring virtio keyboard: {:?}", e);
+                return Err(e);
+            }
+        }
+    }
+
+    for dev_path in cfg.virtio_input_evdevs {
+        let dev_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(dev_path)
+            .map_err(|e| Box::new(e))?;
+        let vinput_box =
+            Box::new(devices::virtio::new_evdev(dev_file).map_err(Error::InputDeviceNew)?);
+        let vinput_jail = if cfg.multiprocess {
+            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("input_device.policy");
+            Some(create_base_minijail(empty_root_path, &policy_path)?)
+        } else {
+            None
+        };
+        devs.push(VirtioDeviceStub {
+            dev: vinput_box,
+            jail: vinput_jail,
         });
     }
 
@@ -667,6 +757,32 @@ fn create_virtio_devs(
     }
 
     Ok(pci_devices)
+}
+
+fn raw_fd_from_path(path: &PathBuf) -> std::result::Result<RawFd, Box<Error>> {
+    if !path.is_file() {
+        return Err(Box::new(Error::InvalidFdPath));
+    }
+    let raw_fd = path
+        .file_name()
+        .and_then(|fd_osstr| fd_osstr.to_str())
+        .and_then(|fd_str| fd_str.parse::<c_int>().ok())
+        .ok_or(Error::InvalidFdPath)?;
+    validate_raw_fd(raw_fd).map_err(|e| Box::new(Error::ValidateRawFd(e)))
+}
+
+fn create_input_socket(path: &PathBuf) -> std::result::Result<UnixStream, Box<Error>> {
+    if path.parent() == Some(Path::new("/proc/self/fd")) {
+        // Safe because we will validate |raw_fd|.
+        unsafe { Ok(UnixStream::from_raw_fd(raw_fd_from_path(path)?)) }
+    } else {
+        match UnixStream::connect(path) {
+            Ok(us) => return Ok(us),
+            Err(e) => {
+                return Err(Box::new(Error::InputEventsOpen(e)));
+            }
+        }
+    }
 }
 
 fn setup_vcpu_signal_handler() -> Result<()> {

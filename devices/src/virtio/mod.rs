@@ -8,6 +8,7 @@ mod balloon;
 mod block;
 #[cfg(feature = "gpu")]
 mod gpu;
+mod input;
 mod net;
 mod p9;
 mod queue;
@@ -26,6 +27,7 @@ pub use self::balloon::*;
 pub use self::block::*;
 #[cfg(feature = "gpu")]
 pub use self::gpu::*;
+pub use self::input::*;
 pub use self::net::*;
 pub use self::p9::*;
 pub use self::queue::*;
@@ -50,6 +52,7 @@ const TYPE_BALLOON: u32 = 5;
 #[allow(dead_code)]
 const TYPE_GPU: u32 = 16;
 const TYPE_9P: u32 = 9;
+const TYPE_INPUT: u32 = 18;
 const TYPE_VSOCK: u32 = 19;
 // Additional types invented by crosvm
 const TYPE_WL: u32 = 30;
