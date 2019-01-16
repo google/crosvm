@@ -67,6 +67,23 @@ impl MsgOnSocket for MaybeOwnedFd {
     }
 }
 
+/// Mode of execution for the VM.
+#[derive(Debug)]
+pub enum VmRunMode {
+    /// The default run mode indicating the VCPUs are running.
+    Running,
+    /// Indicates that the VCPUs are suspending execution until the `Running` mode is set.
+    Suspending,
+    /// Indicates that the VM is exiting all processes.
+    Exiting,
+}
+
+impl Default for VmRunMode {
+    fn default() -> Self {
+        VmRunMode::Running
+    }
+}
+
 /// A request to the main process to perform some operation on the VM.
 ///
 /// Unless otherwise noted, each request should expect a `VmResponse::Ok` to be received on success.
@@ -76,6 +93,10 @@ pub enum VmRequest {
     BalloonAdjust(u64),
     /// Break the VM's run loop and exit.
     Exit,
+    /// Suspend the VM's VCPUs until resume.
+    Suspend,
+    /// Resume the VM's VCPUs that were previously suspended.
+    Resume,
     /// Register the given ioevent address along with given datamatch to trigger the `EventFd`.
     RegisterIoevent(EventFd, IoeventAddress, u32),
     /// Register the given IRQ number to be triggered when the `EventFd` is triggered.
@@ -126,7 +147,7 @@ impl VmRequest {
     /// # Arguments
     /// * `vm` - The `Vm` to perform the request on.
     /// * `allocator` - Used to allocate addresses.
-    /// * `running` - Out argument that is set to false if the request was to stop running the VM.
+    /// * `run_mode` - Out argument that is set to a run mode if one was requested.
     ///
     /// This does not return a result, instead encapsulating the success or failure in a
     /// `VmResponse` with the intended purpose of sending the response back over the  socket that
@@ -135,14 +156,21 @@ impl VmRequest {
         &self,
         vm: &mut Vm,
         sys_allocator: &mut SystemAllocator,
-        running: &mut bool,
+        run_mode: &mut Option<VmRunMode>,
         balloon_host_socket: &UnixDatagram,
         disk_host_sockets: &[MsgSocket<VmRequest, VmResponse>],
     ) -> VmResponse {
-        *running = true;
         match *self {
             VmRequest::Exit => {
-                *running = false;
+                *run_mode = Some(VmRunMode::Exiting);
+                VmResponse::Ok
+            }
+            VmRequest::Suspend => {
+                *run_mode = Some(VmRunMode::Suspending);
+                VmResponse::Ok
+            }
+            VmRequest::Resume => {
+                *run_mode = Some(VmRunMode::Running);
                 VmResponse::Ok
             }
             VmRequest::RegisterIoevent(ref evt, addr, datamatch) => {

@@ -14,7 +14,6 @@ use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::str;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::thread::JoinHandle;
@@ -30,10 +29,11 @@ use msg_socket::{MsgReceiver, MsgSender, MsgSocket, UnlinkMsgSocket};
 use net_util::{Error as NetError, Tap};
 use qcow::{self, ImageType, QcowFile};
 use rand_ish::SimpleRng;
+use sync::{Condvar, Mutex};
 use sys_util;
 use sys_util::*;
 use vhost;
-use vm_control::{VmRequest, VmResponse};
+use vm_control::{VmRequest, VmResponse, VmRunMode};
 
 use Config;
 
@@ -631,6 +631,19 @@ fn setup_vcpu_signal_handler() -> Result<()> {
     Ok(())
 }
 
+#[derive(Default)]
+struct VcpuRunMode {
+    mtx: Mutex<VmRunMode>,
+    cvar: Condvar,
+}
+
+impl VcpuRunMode {
+    fn set_and_notify(&self, new_mode: VmRunMode) {
+        *self.mtx.lock() = new_mode;
+        self.cvar.notify_all();
+    }
+}
+
 fn run_vcpu(
     vcpu: Vcpu,
     cpu_id: u32,
@@ -638,7 +651,7 @@ fn run_vcpu(
     io_bus: devices::Bus,
     mmio_bus: devices::Bus,
     exit_evt: EventFd,
-    kill_signaled: Arc<AtomicBool>,
+    run_mode_arc: Arc<VcpuRunMode>,
 ) -> Result<JoinHandle<()>> {
     thread::Builder::new()
         .name(format!("crosvm_vcpu{}", cpu_id))
@@ -667,7 +680,8 @@ fn run_vcpu(
             start_barrier.wait();
 
             if sig_ok {
-                loop {
+                'vcpu_loop: loop {
+                    let mut interrupted_by_signal = false;
                     match vcpu.run() {
                         Ok(VcpuExit::IoIn { port, mut size }) => {
                             let mut data = [0; 8];
@@ -706,27 +720,38 @@ fn run_vcpu(
                         }
                         Ok(VcpuExit::Hlt) => break,
                         Ok(VcpuExit::Shutdown) => break,
-                        Ok(VcpuExit::SystemEvent(_, _)) =>
-                        //TODO handle reboot and crash events
-                        {
-                            kill_signaled.store(true, Ordering::SeqCst)
-                        }
+                        Ok(VcpuExit::SystemEvent(_, _)) => break,
                         Ok(r) => warn!("unexpected vcpu exit: {:?}", r),
                         Err(e) => match e.errno() {
-                            libc::EAGAIN | libc::EINTR => {}
+                            libc::EINTR => interrupted_by_signal = true,
+                            libc::EAGAIN => {}
                             _ => {
                                 error!("vcpu hit unknown error: {:?}", e);
                                 break;
                             }
                         },
                     }
-                    if kill_signaled.load(Ordering::SeqCst) {
-                        break;
-                    }
 
-                    // Try to clear the signal that we use to kick VCPU if it is
-                    // pending before attempting to handle pause requests.
-                    clear_signal(SIGRTMIN() + 0).expect("failed to clear pending signal");
+                    if interrupted_by_signal {
+                        // Try to clear the signal that we use to kick VCPU if it is pending before
+                        // attempting to handle pause requests.
+                        if let Err(e) = clear_signal(SIGRTMIN() + 0) {
+                            error!("failed to clear pending signal: {:?}", e);
+                            break;
+                        }
+                        let mut run_mode_lock = run_mode_arc.mtx.lock();
+                        loop {
+                            match *run_mode_lock {
+                                VmRunMode::Running => break,
+                                VmRunMode::Suspending => {}
+                                VmRunMode::Exiting => break 'vcpu_loop,
+                            }
+                            // Give ownership of our exclusive lock to the condition variable that
+                            // will block. When the condition variable is notified, `wait` will
+                            // unblock and return a new exclusive lock.
+                            run_mode_lock = run_mode_arc.cvar.wait(run_mode_lock);
+                        }
+                    }
                 }
             }
             exit_evt
@@ -915,7 +940,7 @@ fn run_control(
 
     let mut vcpu_handles = Vec::with_capacity(linux.vcpus.len());
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpus.len() + 1));
-    let kill_signaled = Arc::new(AtomicBool::new(false));
+    let run_mode_arc = Arc::new(VcpuRunMode::default());
     setup_vcpu_signal_handler()?;
     for (cpu_id, vcpu) in linux.vcpus.into_iter().enumerate() {
         let handle = run_vcpu(
@@ -925,7 +950,7 @@ fn run_control(
             linux.io_bus.clone(),
             linux.mmio_bus.clone(),
             linux.exit_evt.try_clone().map_err(Error::CloneEventFd)?,
-            kill_signaled.clone(),
+            run_mode_arc.clone(),
         )?;
         vcpu_handles.push(handle);
     }
@@ -1062,20 +1087,30 @@ fn run_control(
                     if let Some(socket) = control_sockets.get(index) {
                         match socket.recv() {
                             Ok(request) => {
-                                let mut running = true;
+                                let mut run_mode_opt = None;
                                 let response = request.execute(
                                     &mut linux.vm,
                                     &mut linux.resources,
-                                    &mut running,
+                                    &mut run_mode_opt,
                                     &balloon_host_socket,
                                     disk_host_sockets,
                                 );
                                 if let Err(e) = socket.send(&response) {
                                     error!("failed to send VmResponse: {:?}", e);
                                 }
-                                if !running {
-                                    info!("control socket requested exit");
-                                    break 'poll;
+                                if let Some(run_mode) = run_mode_opt {
+                                    info!("control socket changed run mode to {:?}", run_mode);
+                                    match run_mode {
+                                        VmRunMode::Exiting => {
+                                            break 'poll;
+                                        }
+                                        other => {
+                                            run_mode_arc.set_and_notify(other);
+                                            for handle in &vcpu_handles {
+                                                let _ = handle.kill(SIGRTMIN() + 0);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             Err(e) => error!("failed to recv VmRequest: {:?}", e),
@@ -1108,9 +1143,8 @@ fn run_control(
         }
     }
 
-    // vcpu threads MUST see the kill signaled flag, otherwise they may
-    // re-enter the VM.
-    kill_signaled.store(true, Ordering::SeqCst);
+    // VCPU threads MUST see the VmRunMode flag, otherwise they may re-enter the VM.
+    run_mode_arc.set_and_notify(VmRunMode::Exiting);
     for handle in vcpu_handles {
         match handle.kill(SIGRTMIN() + 0) {
             Ok(_) => {

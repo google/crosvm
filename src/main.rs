@@ -592,10 +592,15 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
     }
 }
 
-fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
+fn vms_request(
+    cmd_name: &str,
+    cmd_help: &str,
+    request: &VmRequest,
+    args: std::env::Args,
+) -> std::result::Result<(), ()> {
     if args.len() == 0 {
-        print_help("crosvm stop", "VM_SOCKET...", &[]);
-        println!("Stops the crosvm instance listening on each `VM_SOCKET` given.");
+        print_help(cmd_name, "VM_SOCKET...", &[]);
+        println!("{}", cmd_help);
     }
 
     let mut return_result = Ok(());
@@ -606,9 +611,9 @@ fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
         }) {
             Ok(s) => {
                 let sender = Sender::<VmRequest>::new(s);
-                if let Err(e) = sender.send(&VmRequest::Exit) {
+                if let Err(e) = sender.send(request) {
                     error!(
-                        "failed to send stop request to socket at '{}': {:?}",
+                        "failed to send request to socket at '{}': {:?}",
                         socket_path, e
                     );
                 }
@@ -621,6 +626,33 @@ fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
     }
 
     return_result
+}
+
+fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
+    vms_request(
+        "crosvm stop",
+        "Stops the crosvm instance listening on each `VM_SOCKET` given.",
+        &VmRequest::Exit,
+        args,
+    )
+}
+
+fn suspend_vms(args: std::env::Args) -> std::result::Result<(), ()> {
+    vms_request(
+        "crosvm suspend",
+        "Suspends the crosvm instance listening on each `VM_SOCKET` given.",
+        &VmRequest::Suspend,
+        args,
+    )
+}
+
+fn resume_vms(args: std::env::Args) -> std::result::Result<(), ()> {
+    vms_request(
+        "crosvm resume",
+        "Suspends the crosvm instance listening on each `VM_SOCKET` given.",
+        &VmRequest::Resume,
+        args,
+    )
 }
 
 fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
@@ -782,6 +814,8 @@ fn crosvm_main() -> std::result::Result<(), ()> {
             Ok(())
         }
         Some("stop") => stop_vms(args),
+        Some("suspend") => suspend_vms(args),
+        Some("resume") => resume_vms(args),
         Some("run") => run_vm(args),
         Some("balloon") => balloon_vms(args),
         Some("create_qcow2") => create_qcow2(args),
