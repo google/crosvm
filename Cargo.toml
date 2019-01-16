@@ -34,6 +34,7 @@ arch = { path = "arch" }
 audio_streams = "*"
 bit_field = { path = "bit_field" }
 devices = { path = "devices" }
+enumn = { path = "enumn" }
 gpu_buffer = { path = "gpu_buffer", optional = true }
 io_jail = { path = "io_jail" }
 kvm = { path = "kvm" }

@@ -88,6 +88,7 @@ dependencies = [
  "crosvm_plugin 0.17.0",
  "data_model 0.1.0",
  "devices 0.1.0",
+ "enumn 0.1.0",
  "gpu_buffer 0.1.0",
  "io_jail 0.1.0",
  "kernel_cmdline 0.1.0",
@@ -139,6 +140,7 @@ dependencies = [
  "bit_field 0.1.0",
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
+ "enumn 0.1.0",
  "gpu_buffer 0.1.0",
  "gpu_display 0.1.0",
  "gpu_renderer 0.1.0",
@@ -157,6 +159,15 @@ dependencies = [
  "vhost 0.1.0",
  "virtio_sys 0.1.0",
  "vm_control 0.1.0",
+]
+
+[[package]]
+name = "enumn"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2 0.4.21 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 0.6.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 0.15.21 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

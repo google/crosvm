@@ -8,6 +8,7 @@ extern crate audio_streams;
 extern crate bit_field;
 extern crate byteorder;
 extern crate data_model;
+extern crate enumn;
 extern crate io_jail;
 extern crate kvm;
 extern crate libc;
@@ -30,6 +31,7 @@ mod bus;
 mod cmos;
 mod i8042;
 mod pci;
+mod pit;
 pub mod pl030;
 mod proxy;
 mod serial;
@@ -42,6 +44,7 @@ pub use self::i8042::I8042Device;
 pub use self::pci::{
     Ac97Dev, PciConfigIo, PciConfigMmio, PciDevice, PciDeviceError, PciInterruptPin, PciRoot,
 };
+pub use self::pit::{Pit, PitError};
 pub use self::pl030::Pl030;
 pub use self::proxy::Error as ProxyError;
 pub use self::proxy::ProxyDevice;
