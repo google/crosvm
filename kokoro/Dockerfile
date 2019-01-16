@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     git \
     libcap-dev \
     libdrm-dev \
+    libfdt-dev \
     libegl1-mesa-dev \
     libgl1-mesa-dev \
     libgles1-mesa-dev \
