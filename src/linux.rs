@@ -651,6 +651,7 @@ fn run_vcpu(
     io_bus: devices::Bus,
     mmio_bus: devices::Bus,
     exit_evt: EventFd,
+    requires_kvmclock_ctrl: bool,
     run_mode_arc: Arc<VcpuRunMode>,
 ) -> Result<JoinHandle<()>> {
     thread::Builder::new()
@@ -743,7 +744,18 @@ fn run_vcpu(
                         loop {
                             match *run_mode_lock {
                                 VmRunMode::Running => break,
-                                VmRunMode::Suspending => {}
+                                VmRunMode::Suspending => {
+                                    // On KVM implementations that use a paravirtualized clock (e.g.
+                                    // x86), a flag must be set to indicate to the guest kernel that
+                                    // a VCPU was suspended. The guest kernel will use this flag to
+                                    // prevent the soft lockup detection from triggering when this
+                                    // VCPU resumes, which could happen days later in realtime.
+                                    if requires_kvmclock_ctrl {
+                                        if let Err(e) = vcpu.kvmclock_ctrl() {
+                                            error!("failed to signal to kvm that vcpu {} is being suspended: {:?}", cpu_id, e);
+                                        }
+                                    }
+                                }
                                 VmRunMode::Exiting => break 'vcpu_loop,
                             }
                             // Give ownership of our exclusive lock to the condition variable that
@@ -950,6 +962,7 @@ fn run_control(
             linux.io_bus.clone(),
             linux.mmio_bus.clone(),
             linux.exit_evt.try_clone().map_err(Error::CloneEventFd)?,
+            linux.vm.check_extension(Cap::KvmclockCtrl),
             run_mode_arc.clone(),
         )?;
         vcpu_handles.push(handle);
