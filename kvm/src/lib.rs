@@ -1454,6 +1454,21 @@ impl Vcpu {
         Ok(())
     }
 
+    /// Signals to the host kernel that this VCPU is about to be paused.
+    ///
+    /// See the documentation for KVM_KVMCLOCK_CTRL.
+    pub fn kvmclock_ctrl(&self) -> Result<()> {
+        let ret = unsafe {
+            // The ioctl is safe because it does not read or write memory in this process.
+            ioctl(self, KVM_KVMCLOCK_CTRL())
+        };
+
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
     /// Specifies set of signals that are blocked during execution of KVM_RUN.
     /// Signals that are not blocked will will cause KVM_RUN to return
     /// with -EINTR.
