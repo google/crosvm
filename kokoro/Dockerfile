@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     libgl1-mesa-dev \
     libgles1-mesa-dev \
     libgles2-mesa-dev \
+    libssl1.0-dev \
     libtool \
     libusb-1.0-0-dev \
     libwayland-dev \
@@ -33,7 +34,8 @@ RUN apt-get update && apt-get install -y \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.31.0
+    RUST_VERSION=1.31.0 \
+    RUSTFLAGS='--cfg hermetic'
 
 # Debian usually has an old rust version in the repository. Instead of using that, we use rustup to
 # pull in a toolchain versions of our choosing.
@@ -89,6 +91,17 @@ RUN git clone https://gitlab.freedesktop.org/virgl/virglrenderer.git \
     && cd virglrenderer \
     && ./autogen.sh \
     && make install -j24
+
+# Install libtpm2 so that tpm2-sys/build.rs does not try to build it in place in
+# the read-only source directory.
+RUN git clone https://chromium.googlesource.com/chromiumos/third_party/tpm2 \
+    && cd tpm2 \
+    && git checkout 15260c8cd98eb10b4976d2161cd5cb9bc0c3adac \
+    && make -j24 \
+    && cp build/libtpm2.a /lib
+
+# Inform pkg-config where libraries we install are placed.
+COPY pkgconfig/* /usr/lib/pkgconfig
 
 # Reduces image size and prevents accidentally using /scratch files
 RUN rm -r /scratch /usr/bin/meson

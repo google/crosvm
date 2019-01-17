@@ -1,0 +1,5 @@
+Name: tpm2
+Description: TPM simulator extracted from the TCG TPM 2.0 library specification
+Version: 2.0.0
+Requires.private: libcrypto
+Libs: -L/lib -ltpm2
