@@ -486,6 +486,37 @@ impl Vm {
         }
     }
 
+    /// Retrieves the current timestamp of kvmclock as seen by the current guest.
+    ///
+    /// See the documentation on the KVM_GET_CLOCK ioctl.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_clock(&self) -> Result<kvm_clock_data> {
+        // Safe because we know that our file is a VM fd, we know the kernel will only write
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut clock_data = unsafe { std::mem::zeroed() };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_CLOCK(), &mut clock_data) };
+        if ret == 0 {
+            Ok(clock_data)
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Sets the current timestamp of kvmclock to the specified value.
+    ///
+    /// See the documentation on the KVM_SET_CLOCK ioctl.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_clock(&self, clock_data: &kvm_clock_data) -> Result<()> {
+        // Safe because we know that our file is a VM fd, we know the kernel will only read
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_CLOCK(), clock_data) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
     /// Crates an in kernel interrupt controller.
     ///
     /// See the documentation on the KVM_CREATE_IRQCHIP ioctl.
@@ -1672,6 +1703,17 @@ mod tests {
         vm.get_memory().write_obj_at_addr(67u8, obj_addr).unwrap();
         let read_val: u8 = vm.get_memory().read_obj_from_addr(obj_addr).unwrap();
         assert_eq!(read_val, 67u8);
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn clock_handling() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        let mut clock_data = vm.get_clock().unwrap();
+        clock_data.clock += 1000;
+        vm.set_clock(&clock_data).unwrap();
     }
 
     #[test]
