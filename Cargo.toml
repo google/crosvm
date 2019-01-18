@@ -9,7 +9,7 @@ panic = 'abort'
 overflow-checks = true
 
 [workspace]
-members = ["9s", "qcow_utils"]
+members = ["qcow_utils"]
 exclude = [
     "assertions",
     "data_model",

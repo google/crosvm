@@ -9,4 +9,4 @@ libc = "*"
 sys_util = { path = "../sys_util" }
 
 [build-dependencies]
-cc = "=1.0.15"
+cc = "=1.0.25"

@@ -9,5 +9,5 @@ protobuf = "*"
 kvm_sys = { path = "../kvm_sys" }
 
 [build-dependencies]
-cc = "=1.0.15"
+cc = "=1.0.25"
 protoc-rust = "=1.4.3"
