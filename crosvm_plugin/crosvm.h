@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 16
+#define CROSVM_API_MINOR 17
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -251,6 +251,13 @@ int crosvm_get_pit_state(struct crosvm *, struct kvm_pit_state2 *__pit_state);
 /* Sets the state of interrupt controller in a VM. */
 int crosvm_set_pit_state(struct crosvm *,
                          const struct kvm_pit_state2 *__pit_state);
+
+/* Gets the current timestamp of kvmclock as seen by the VM. */
+int crosvm_get_clock(struct crosvm *, struct kvm_clock_data *__clock_data);
+
+/* Sets the current timestamp of kvmclock for the VM. */
+int crosvm_set_clock(struct crosvm *,
+                     const struct kvm_clock_data *__clock_data);
 
 /* Sets the identity map address as in the KVM_SET_IDENTITY_MAP_ADDR ioctl. */
 int crosvm_set_identity_map_addr(struct crosvm*, uint32_t __addr);

@@ -24,7 +24,7 @@ use protobuf::Message;
 
 use io_jail::Minijail;
 use kvm::{dirty_log_bitmap_size, Datamatch, IoeventAddress, IrqRoute, IrqSource, PicId, Vm};
-use kvm_sys::{kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
+use kvm_sys::{kvm_clock_data, kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
 use plugin_proto::*;
 use sync::Mutex;
 use sys_util::{
@@ -45,6 +45,9 @@ unsafe impl DataInit for VmIoapicState {}
 #[derive(Copy, Clone)]
 struct VmPitState(kvm_pit_state2);
 unsafe impl DataInit for VmPitState {}
+#[derive(Copy, Clone)]
+struct VmClockState(kvm_clock_data);
+unsafe impl DataInit for VmClockState {}
 
 fn get_vm_state(vm: &Vm, state_set: MainRequest_StateSet) -> SysResult<Vec<u8>> {
     Ok(match state_set {
@@ -56,6 +59,7 @@ fn get_vm_state(vm: &Vm, state_set: MainRequest_StateSet) -> SysResult<Vec<u8>> 
             .to_vec(),
         MainRequest_StateSet::IOAPIC => VmIoapicState(vm.get_ioapic_state()?).as_slice().to_vec(),
         MainRequest_StateSet::PIT => VmPitState(vm.get_pit_state()?).as_slice().to_vec(),
+        MainRequest_StateSet::CLOCK => VmClockState(vm.get_clock()?).as_slice().to_vec(),
     })
 }
 
@@ -80,6 +84,11 @@ fn set_vm_state(vm: &Vm, state_set: MainRequest_StateSet, state: &[u8]) -> SysRe
         ),
         MainRequest_StateSet::PIT => vm.set_pit_state(
             &VmPitState::from_slice(state)
+                .ok_or(SysError::new(EINVAL))?
+                .0,
+        ),
+        MainRequest_StateSet::CLOCK => vm.set_clock(
+            &VmClockState::from_slice(state)
                 .ok_or(SysError::new(EINVAL))?
                 .0,
         ),

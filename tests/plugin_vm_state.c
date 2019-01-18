@@ -115,5 +115,33 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Test retrieving and setting clock state.
+    struct kvm_clock_data clock_data = { .clock = 0, .flags = -1U, };
+    ret = crosvm_get_clock(crosvm, &clock_data);
+    if (ret < 0) {
+        fprintf(stderr, "failed to get initial clock state: %d\n", ret);
+        return 1;
+    }
+
+    if (clock_data.clock == 0 || clock_data.flags != 0) {
+        fprintf(stderr, "invalid clock data returned (%llu, %u)\n",
+                clock_data.clock, clock_data.flags);
+    }
+
+    clock_data.clock += 10000000;
+
+    ret = crosvm_set_clock(crosvm, &clock_data);
+    if (ret < 0) {
+        fprintf(stderr, "failed to update clock: %d\n", ret);
+        return 1;
+    }
+
+    clock_data.flags = -1U;
+    ret = crosvm_set_clock(crosvm, &clock_data);
+    if (ret >= 0) {
+        fprintf(stderr, "unexpected success updating clock\n");
+        return 1;
+    }
+
     return 0;
 }

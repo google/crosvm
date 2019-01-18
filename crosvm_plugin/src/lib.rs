@@ -45,8 +45,9 @@ use sys_util::ScmSocket;
 use kvm::dirty_log_bitmap_size;
 
 use kvm_sys::{
-    kvm_cpuid_entry2, kvm_debugregs, kvm_fpu, kvm_ioapic_state, kvm_lapic_state, kvm_mp_state,
-    kvm_msr_entry, kvm_pic_state, kvm_pit_state2, kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs,
+    kvm_clock_data, kvm_cpuid_entry2, kvm_debugregs, kvm_fpu, kvm_ioapic_state, kvm_lapic_state,
+    kvm_mp_state, kvm_msr_entry, kvm_pic_state, kvm_pit_state2, kvm_regs, kvm_sregs,
+    kvm_vcpu_events, kvm_xcrs,
 };
 
 use plugin_proto::*;
@@ -151,6 +152,8 @@ enum Stat {
     SetIoapicState,
     GetPitState,
     SetPitState,
+    GetClock,
+    SetClock,
     SetIdentityMapAddr,
     PauseVcpus,
     Start,
@@ -1352,6 +1355,30 @@ pub unsafe extern "C" fn crosvm_set_pit_state(
     let this = &mut *this;
     let state = from_raw_parts(state as *mut u8, size_of::<kvm_pit_state2>());
     let ret = this.set_state(MainRequest_StateSet::PIT, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_get_clock(
+    this: *mut crosvm,
+    clock_data: *mut kvm_clock_data,
+) -> c_int {
+    let _u = STATS.record(Stat::GetClock);
+    let this = &mut *this;
+    let state = from_raw_parts_mut(clock_data as *mut u8, size_of::<kvm_clock_data>());
+    let ret = this.get_state(MainRequest_StateSet::CLOCK, state);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_set_clock(
+    this: *mut crosvm,
+    clock_data: *const kvm_clock_data,
+) -> c_int {
+    let _u = STATS.record(Stat::SetClock);
+    let this = &mut *this;
+    let state = from_raw_parts(clock_data as *mut u8, size_of::<kvm_clock_data>());
+    let ret = this.set_state(MainRequest_StateSet::CLOCK, state);
     to_crosvm_rc(ret)
 }
 

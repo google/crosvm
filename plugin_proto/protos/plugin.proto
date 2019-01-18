@@ -124,6 +124,8 @@ message MainRequest {
         IOAPIC = 2;
         // struct kvm_pit_state2
         PIT = 3;
+        // struct kvm_clock_data
+        CLOCK = 4;
     }
 
     message GetState {
