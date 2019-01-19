@@ -42,6 +42,14 @@ If you have x20 access, move `crosvm-base.tar.xz` to `/teams/chromeos-vm/docker/
 owner is `chromeos-vm-ci-read-write`. This owner is used to allow Kokoro to read the base image in
 during the test run. The updated image will be used for future Kokoro runs until it is replaced.
 
+```shell
+prodaccess
+cp crosvm-base.tar.xz /google/data/rw/teams/chromeos-vm/docker/
+```
+
+The cp command should preserve the right owner but to be sure you can confirm that it is
+`chromeos-vm-ci-read-write` in the web ui: https://x20.corp.google.com/teams/chromeos-vm/docker
+
 > **WARNING**:
 > If the image tarball uploaded to x20 is defective in any way, Kokoro will fail to verify every
 > crosvm change as if the change itself were defective. Please verify the image is good before
