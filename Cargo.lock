@@ -70,6 +70,13 @@ version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "cras-sys"
+version = "0.1.0"
+dependencies = [
+ "data_model 0.1.0",
+]
+
+[[package]]
 name = "crosvm"
 version = "0.1.0"
 dependencies = [
@@ -88,6 +95,7 @@ dependencies = [
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libcras 0.1.0",
  "msg_socket 0.1.0",
  "net_util 0.1.0",
  "p9 0.1.0",
@@ -230,6 +238,17 @@ dependencies = [
 name = "libc"
 version = "0.2.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "libcras"
+version = "0.1.0"
+dependencies = [
+ "audio_streams 0.1.0",
+ "cras-sys 0.1.0",
+ "data_model 0.1.0",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sys_util 0.1.0",
+]
 
 [[package]]
 name = "log"

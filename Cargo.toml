@@ -44,6 +44,7 @@ usb_util = { path = "usb_util", optional = true }
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
 libc = "=0.2.44"
+libcras = "*"
 byteorder = "=1.1.0"
 net_util = { path = "net_util" }
 vhost = { path = "vhost" }
@@ -71,6 +72,7 @@ sys_util = "*"
 assertions = { path = "assertions" }
 audio_streams = { path = "../../third_party/adhd/audio_streams" } # ignored by ebuild
 data_model = { path = "data_model" }
+libcras = { path = "../../third_party/adhd/cras/client/libcras" } # ignored by ebuild
 poll_token_derive = { path = "sys_util/poll_token_derive" }
 sync = { path = "sync" }
 sys_util = { path = "sys_util" }

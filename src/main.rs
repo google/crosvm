@@ -16,6 +16,7 @@ extern crate kernel_loader;
 extern crate kvm;
 extern crate kvm_sys;
 extern crate libc;
+extern crate libcras;
 extern crate net_util;
 extern crate qcow;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -93,6 +94,7 @@ pub struct Config {
     multiprocess: bool,
     seccomp_policy_dir: PathBuf,
     gpu: bool,
+    cras_audio: bool,
     null_audio: bool,
 }
 
@@ -120,6 +122,7 @@ impl Default for Config {
             shared_dirs: Vec::new(),
             multiprocess: !cfg!(feature = "default-no-sandbox"),
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
+            cras_audio: false,
             null_audio: false,
         }
     }
@@ -211,6 +214,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                             expected: "this value for `mem` needs to be integer",
                         })?,
                 )
+        }
+        "cras-audio" => {
+            cfg.cras_audio = true;
         }
         "null-audio" => {
             cfg.null_audio = true;
@@ -497,6 +503,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           "IP address to assign to host tap interface."),
           Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
           Argument::value("mac", "MAC", "MAC address for VM."),
+          Argument::flag("cras-audio", "Add an audio device to the VM that plays samples through CRAS server"),
           Argument::flag("null-audio", "Add an audio device to the VM that plays samples to /dev/null"),
           Argument::value("wayland-sock", "PATH", "Path to the Wayland socket to use."),
           #[cfg(feature = "wl-dmabuf")]

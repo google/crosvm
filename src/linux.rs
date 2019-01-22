@@ -26,6 +26,7 @@ use byteorder::{ByteOrder, LittleEndian};
 use devices::{self, PciDevice, VirtioPciDevice};
 use io_jail::{self, Minijail};
 use kvm::*;
+use libcras::CrasClient;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket, UnlinkMsgSocket};
 use net_util::{Error as NetError, Tap};
 use qcow::{self, ImageType, QcowFile};
@@ -631,6 +632,20 @@ fn create_virtio_devs(
         let pci_dev =
             Box::new(VirtioPciDevice::new((*mem).clone(), stub.dev).map_err(Error::VirtioPciDev)?);
         pci_devices.push((pci_dev, stub.jail));
+    }
+
+    if cfg.cras_audio {
+        let cras_audio_box = Box::new(devices::Ac97Dev::new(
+            (*mem).clone(),
+            Box::new(CrasClient::new()?),
+        ));
+        let cras_audio_jail = if cfg.multiprocess {
+            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("cras_audio_device.policy");
+            Some(create_base_minijail(empty_root_path, &policy_path)?)
+        } else {
+            None
+        };
+        pci_devices.push((cras_audio_box, cras_audio_jail));
     }
 
     if cfg.null_audio {
