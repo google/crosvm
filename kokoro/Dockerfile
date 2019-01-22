@@ -109,6 +109,14 @@ RUN rm -r /scratch /usr/bin/meson
 # The manual installation of shared objects requires an ld.so.cache refresh.
 RUN ldconfig
 
+# Pull down repositories that crosvm depends on to cros checkout-like locations.
+ENV CROS_ROOT=/
+ENV THIRD_PARTY_ROOT=$CROS_ROOT/third_party
+RUN mkdir -p $THIRD_PARTY_ROOT
+
+# Pull the cras library for audio access.
+RUN git clone https://chromium.googlesource.com/chromiumos/third_party/adhd $THIRD_PARTY_ROOT/adhd
+
 # The /build directory is used so that the bind mounted /src volume does not get scribbled on.
 ENV CARGO_TARGET_DIR=/build
 RUN mkdir -p $CARGO_TARGET_DIR
