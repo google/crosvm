@@ -217,9 +217,9 @@ mod tests {
         assert_eq!(addr.sun_family, libc::AF_UNIX as libc::sa_family_t);
 
         // Check `sun_path` in returned `sockaddr_un`
-        let mut ref_sun_path = [0i8; 108];
+        let mut ref_sun_path = [0 as libc::c_char; 108];
         for i in 0..path_size {
-            ref_sun_path[i] = 'a' as i8;
+            ref_sun_path[i] = 'a' as libc::c_char;
         }
 
         for (addr_char, ref_char) in addr.sun_path.iter().zip(ref_sun_path.iter()) {
