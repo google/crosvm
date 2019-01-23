@@ -12,8 +12,7 @@ is built with a [`Dockerfile`](Dockerfile).
 Assuming a Docker daemon is already running, build the `crosvm-base` image:
 
 ```shell
-cd crosvm/kokoro
-docker build -t crosvm-base - < Dockerfile
+docker build -t crosvm-base path/to/crosvm/kokoro
 ```
 
 Here is how to use the image to test a crosvm repository located at `$CROSVM_SRC`:
@@ -33,8 +32,7 @@ If an update or new library is needed or any other adjustment is required, a new
 generated as follows:
 
 ```shell
-cd crosvm/kokoro
-docker build -t crosvm-base - < Dockerfile
+docker build -t crosvm-base path/to/crosvm/kokoro
 docker save crosvm-base | xz -T 0 -z >crosvm-base.tar.xz
 ```
 
