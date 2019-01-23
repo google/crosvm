@@ -96,7 +96,7 @@ The following are crosvm's default arguments and how to override them.
 * no network (set with `--host_ip`, `--netmask`, and `--mac`)
 * virtio wayland support if `XDG_RUNTIME_DIR` enviroment variable is set (disable with `--no-wl`)
 * only the kernel arguments necessary to run with the supported devices (add more with `-p`)
-* run in single process mode (run in multiprocess mode with `-u`)
+* run in multiprocess mode (run in single process mode with `--disable-sandbox`)
 * no control socket (set with `-s`)
 
 ## System Requirements
@@ -107,7 +107,7 @@ requirements:
 
 * `virtio-wayland` - The `memfd_create` syscall, introduced in Linux 3.17, and a Wayland compositor.
 * `vsock` - Host Linux kernel with vhost-vsock support, introduced in Linux 4.8.
-* `multiprocess` - Host Linux kernel with seccomp-bpf and Linux namespaceing support.
+* `multiprocess` - Host Linux kernel with seccomp-bpf and Linux namespacing support.
 * `virtio-net` - Host Linux kernel with TUN/TAP support (check for `/dev/net/tun`) and running with `CAP_NET_ADMIN` privileges.
 
 ## Emulated Devices
@@ -150,7 +150,7 @@ dependencies also must be reviewed to ensure their suitability to the crosvm
 project. Currently allowed crates are:
 
 * `byteorder` - A very small library used for endian swaps.
-* `gcc` - Build time dependency needed to build C source code used in crosvm.
+* `cc` - Build time dependency needed to build C source code used in crosvm.
 * `libc` - Required to use the standard library, this crate is a simple wrapper around `libc`'s symbols.
 
 ### Code Overview
@@ -177,5 +177,5 @@ crates are:
 * `x86_64` - Support code specific to 64 bit intel machines.
 
 The `seccomp` folder contains minijail seccomp policy files for each sandboxed
-device. Because some syscalls vary by architecturs, the seccomp policies are
+device. Because some syscalls vary by architecture, the seccomp policies are
 split by architecture.
