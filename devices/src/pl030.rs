@@ -70,6 +70,10 @@ impl Pl030 {
 }
 
 impl BusDevice for Pl030 {
+    fn debug_label(&self) -> String {
+        "Pl030".to_owned()
+    }
+
     fn write(&mut self, offset: u64, data: &[u8]) {
         if data.len() != 4 {
             warn!("bad write size: {} for pl030", data.len());

@@ -22,6 +22,10 @@ impl I8042Device {
 // registers: port 0x61 (I8042_PORT_B_REG, offset 0 from base of 0x61), and
 // port 0x64 (I8042_COMMAND_REG, offset 3 from base of 0x61).
 impl BusDevice for I8042Device {
+    fn debug_label(&self) -> String {
+        "i8042".to_owned()
+    }
+
     fn read(&mut self, offset: u64, data: &mut [u8]) {
         if data.len() == 1 && offset == 3 {
             data[0] = 0x0;

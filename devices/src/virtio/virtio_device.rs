@@ -17,6 +17,14 @@ use sys_util::{EventFd, GuestMemory};
 /// Optionally, a virtio device can implement device reset in which it returns said resources and
 /// resets its internal.
 pub trait VirtioDevice: Send {
+    /// Returns a label suitable for debug output.
+    fn debug_label(&self) -> String {
+        match type_to_str(self.device_type()) {
+            Some(s) => format!("virtio-{}", s),
+            None => format!("virtio (type {})", self.device_type()),
+        }
+    }
+
     /// A vector of device-specific file descriptors that must be kept open
     /// after jailing. Must be called before the process is jailed.
     fn keep_fds(&self) -> Vec<RawFd>;

@@ -120,6 +120,7 @@ fn child_proc(sock: UnixDatagram, device: &mut BusDevice) {
 pub struct ProxyDevice {
     sock: MsgSocket<Command, CommandResult>,
     pid: pid_t,
+    debug_label: String,
 }
 
 impl ProxyDevice {
@@ -136,6 +137,7 @@ impl ProxyDevice {
         jail: &Minijail,
         mut keep_fds: Vec<RawFd>,
     ) -> Result<ProxyDevice> {
+        let debug_label = device.debug_label();
         let (child_sock, parent_sock) = UnixDatagram::pair().map_err(Error::Io)?;
 
         keep_fds.push(child_sock.as_raw_fd());
@@ -161,6 +163,7 @@ impl ProxyDevice {
         Ok(ProxyDevice {
             sock: MsgSocket::<Command, CommandResult>::new(parent_sock),
             pid,
+            debug_label,
         })
     }
 
@@ -171,11 +174,17 @@ impl ProxyDevice {
     fn sync_send(&self, cmd: Command) -> Option<CommandResult> {
         let res = self.sock.send(&cmd);
         if let Err(e) = res {
-            error!("failed write to child device process: {:?}", e);
+            error!(
+                "failed write to child device process {}: {:?}",
+                self.debug_label, e
+            );
         };
         match self.sock.recv() {
             Err(e) => {
-                error!("failed read from child device process: {:?}", e);
+                error!(
+                    "failed read from child device process {}: {:?}",
+                    self.debug_label, e
+                );
                 None
             }
             Ok(r) => Some(r),
@@ -184,6 +193,10 @@ impl ProxyDevice {
 }
 
 impl BusDevice for ProxyDevice {
+    fn debug_label(&self) -> String {
+        self.debug_label.clone()
+    }
+
     fn config_register_write(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
         let len = data.len() as u32;
         let mut buffer = [0u8; 4];

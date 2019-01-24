@@ -20,6 +20,9 @@ struct PciRootConfiguration {
 }
 
 impl PciDevice for PciRootConfiguration {
+    fn debug_label(&self) -> String {
+        "pci root device".to_owned()
+    }
     fn keep_fds(&self) -> Vec<RawFd> {
         Vec::new()
     }
@@ -188,6 +191,10 @@ impl PciConfigIo {
 }
 
 impl BusDevice for PciConfigIo {
+    fn debug_label(&self) -> String {
+        format!("pci config io-port 0x{:03x}", self.config_address)
+    }
+
     fn read(&mut self, offset: u64, data: &mut [u8]) {
         // `offset` is relative to 0xcf8
         let value = match offset {
@@ -245,6 +252,10 @@ impl PciConfigMmio {
 }
 
 impl BusDevice for PciConfigMmio {
+    fn debug_label(&self) -> String {
+        format!("pci config mmio")
+    }
+
     fn read(&mut self, offset: u64, data: &mut [u8]) {
         // Only allow reads to the register boundary.
         let start = offset as usize % 4;

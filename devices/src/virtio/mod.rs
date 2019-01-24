@@ -64,3 +64,18 @@ const INTERRUPT_STATUS_CONFIG_CHANGED: u32 = 0x2;
 /// Offset from the base MMIO address of a virtio device used by the guest to notify the device of
 /// queue events.
 pub const NOTIFY_REG_OFFSET: u32 = 0x50;
+
+/// Returns a string representation of the given virtio device type number.
+pub fn type_to_str(type_: u32) -> Option<&'static str> {
+    Some(match type_ {
+        TYPE_NET => "net",
+        TYPE_BLOCK => "block",
+        TYPE_RNG => "rng",
+        TYPE_BALLOON => "balloon",
+        TYPE_GPU => "gpu",
+        TYPE_9P => "9p",
+        TYPE_VSOCK => "vsock",
+        TYPE_WL => "wl",
+        _ => return None,
+    })
+}

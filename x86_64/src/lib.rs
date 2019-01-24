@@ -300,7 +300,7 @@ impl arch::LinuxArch for X8664arch {
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
 
         let pci_devices = virtio_devs(&mem, &exit_evt)?;
-        let (pci, pci_irqs) =
+        let (pci, pci_irqs, pid_debug_label_map) =
             arch::generate_pci_root(pci_devices, &mut mmio_bus, &mut resources, &mut vm)
                 .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
@@ -336,6 +336,7 @@ impl arch::LinuxArch for X8664arch {
             irq_chip,
             io_bus,
             mmio_bus,
+            pid_debug_label_map,
         })
     }
 }
@@ -463,7 +464,11 @@ impl X8664arch {
         pci: Option<Arc<Mutex<devices::PciConfigIo>>>,
     ) -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)> {
         struct NoDevice;
-        impl devices::BusDevice for NoDevice {}
+        impl devices::BusDevice for NoDevice {
+            fn debug_label(&self) -> String {
+                "no device".to_owned()
+            }
+        }
 
         let mut io_bus = devices::Bus::new();
 

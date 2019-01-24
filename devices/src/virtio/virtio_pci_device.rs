@@ -276,6 +276,10 @@ impl VirtioPciDevice {
 }
 
 impl PciDevice for VirtioPciDevice {
+    fn debug_label(&self) -> String {
+        format!("virtio-pci ({})", self.device.debug_label())
+    }
+
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut fds = self.device.keep_fds();
         if let Some(ref interrupt_evt) = self.interrupt_evt {

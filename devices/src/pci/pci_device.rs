@@ -25,6 +25,8 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait PciDevice: Send {
+    /// Returns a label suitable for debug output.
+    fn debug_label(&self) -> String;
     /// A vector of device-specific file descriptors that must be kept open
     /// after jailing. Must be called before the process is jailed.
     fn keep_fds(&self) -> Vec<RawFd>;
@@ -66,6 +68,10 @@ pub trait PciDevice: Send {
 }
 
 impl<T: PciDevice> BusDevice for T {
+    fn debug_label(&self) -> String {
+        PciDevice::debug_label(self)
+    }
+
     fn read(&mut self, offset: u64, data: &mut [u8]) {
         self.read_bar(offset, data)
     }
@@ -102,6 +108,10 @@ impl<T: PciDevice> BusDevice for T {
 }
 
 impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
+    /// Returns a label suitable for debug output.
+    fn debug_label(&self) -> String {
+        (**self).debug_label()
+    }
     fn keep_fds(&self) -> Vec<RawFd> {
         (**self).keep_fds()
     }

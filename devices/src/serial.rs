@@ -185,6 +185,10 @@ impl Serial {
 }
 
 impl BusDevice for Serial {
+    fn debug_label(&self) -> String {
+        "serial".to_owned()
+    }
+
     fn write(&mut self, offset: u64, data: &[u8]) {
         if data.len() != 1 {
             return;

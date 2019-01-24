@@ -11,6 +11,7 @@ extern crate resources;
 extern crate sync;
 extern crate sys_util;
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -52,6 +53,7 @@ pub struct RunnableLinuxVm {
     pub irq_chip: Option<File>,
     pub io_bus: Bus,
     pub mmio_bus: Bus,
+    pub pid_debug_label_map: BTreeMap<u32, String>,
 }
 
 /// The device and optional jail.
@@ -144,9 +146,13 @@ pub fn generate_pci_root(
     mmio_bus: &mut Bus,
     resources: &mut SystemAllocator,
     vm: &mut Vm,
-) -> std::result::Result<(PciRoot, Vec<(u32, PciInterruptPin)>), DeviceRegistrationError> {
+) -> std::result::Result<
+    (PciRoot, Vec<(u32, PciInterruptPin)>, BTreeMap<u32, String>),
+    DeviceRegistrationError,
+> {
     let mut root = PciRoot::new();
     let mut pci_irqs = Vec::new();
+    let mut pid_labels = BTreeMap::new();
     for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
         let mut keep_fds = device.keep_fds();
         syslog::push_fds(&mut keep_fds);
@@ -182,6 +188,7 @@ pub fn generate_pci_root(
         let arced_dev: Arc<Mutex<BusDevice>> = if let Some(jail) = jail {
             let proxy = ProxyDevice::new(device, &jail, keep_fds)
                 .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
+            pid_labels.insert(proxy.pid() as u32, proxy.debug_label());
             Arc::new(Mutex::new(proxy))
         } else {
             Arc::new(Mutex::new(device))
@@ -193,7 +200,7 @@ pub fn generate_pci_root(
                 .map_err(DeviceRegistrationError::MmioInsert)?;
         }
     }
-    Ok((root, pci_irqs))
+    Ok((root, pci_irqs, pid_labels))
 }
 
 /// Errors for image loading.

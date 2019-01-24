@@ -227,7 +227,7 @@ impl arch::LinuxArch for AArch64 {
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
 
         let pci_devices = virtio_devs(&mem, &exit_evt)?;
-        let (pci, pci_irqs) =
+        let (pci, pci_irqs, pid_debug_label_map) =
             arch::generate_pci_root(pci_devices, &mut mmio_bus, &mut resources, &mut vm)
                 .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci)));
@@ -277,6 +277,7 @@ impl arch::LinuxArch for AArch64 {
             irq_chip,
             io_bus,
             mmio_bus,
+            pid_debug_label_map,
         })
     }
 }

@@ -1023,12 +1023,14 @@ fn run_control(
                 Token::ChildSignal => {
                     // Print all available siginfo structs, then exit the loop.
                     while let Some(siginfo) = sigchld_fd.read().map_err(Error::SignalFd)? {
+                        let pid = siginfo.ssi_pid;
+                        let pid_label = match linux.pid_debug_label_map.get(&pid) {
+                            Some(label) => format!("{} (pid {})", label, pid),
+                            None => format!("pid {}", pid),
+                        };
                         error!(
                             "child {} died: signo {}, status {}, code {}",
-                            siginfo.ssi_pid,
-                            siginfo.ssi_signo,
-                            siginfo.ssi_status,
-                            siginfo.ssi_code
+                            pid_label, siginfo.ssi_signo, siginfo.ssi_status, siginfo.ssi_code
                         );
                     }
                     break 'poll;

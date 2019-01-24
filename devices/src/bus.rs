@@ -17,6 +17,8 @@ use sync::Mutex;
 /// into its allocated portion of address space.
 #[allow(unused_variables)]
 pub trait BusDevice: Send {
+    /// Returns a label suitable for debug output.
+    fn debug_label(&self) -> String;
     /// Reads at `offset` from this device
     fn read(&mut self, offset: u64, data: &mut [u8]) {}
     /// Writes at `offset` into this device
@@ -202,10 +204,18 @@ mod tests {
     use super::*;
 
     struct DummyDevice;
-    impl BusDevice for DummyDevice {}
+    impl BusDevice for DummyDevice {
+        fn debug_label(&self) -> String {
+            "dummy device".to_owned()
+        }
+    }
 
     struct ConstantDevice;
     impl BusDevice for ConstantDevice {
+        fn debug_label(&self) -> String {
+            "constant device".to_owned()
+        }
+
         fn read(&mut self, offset: u64, data: &mut [u8]) {
             for (i, v) in data.iter_mut().enumerate() {
                 *v = (offset as u8) + (i as u8);
