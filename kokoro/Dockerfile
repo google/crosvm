@@ -113,6 +113,12 @@ RUN ldconfig
 ENV CROS_ROOT=/
 ENV THIRD_PARTY_ROOT=$CROS_ROOT/third_party
 RUN mkdir -p $THIRD_PARTY_ROOT
+ENV PLATFORM_ROOT=$CROS_ROOT/platform
+RUN mkdir -p $PLATFORM_ROOT
+
+# Allow other crates to depend on crosvm provided crates by linking to the
+# crosvm source from a relative path.
+RUN ln -s /src $PLATFORM_ROOT/crosvm
 
 # Pull the cras library for audio access.
 RUN git clone https://chromium.googlesource.com/chromiumos/third_party/adhd $THIRD_PARTY_ROOT/adhd
