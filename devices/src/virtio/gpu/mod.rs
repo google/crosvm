@@ -711,7 +711,10 @@ impl VirtioDevice for Gpu {
     }
 
     fn features(&self) -> u64 {
-        1 << VIRTIO_GPU_F_VIRGL | 1 << VIRTIO_F_VERSION_1
+        1 << VIRTIO_GPU_F_VIRGL
+            | 1 << VIRTIO_F_VERSION_1
+            | 1 << VIRTIO_GPU_F_MEMORY
+            | 1 << VIRTIO_GPU_F_HOST_COHERENT
     }
 
     fn ack_features(&mut self, value: u64) {
