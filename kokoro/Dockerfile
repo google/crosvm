@@ -4,7 +4,7 @@
 
 FROM debian:stretch
 LABEL description="Test crosvm using a command like the following: \
-docker run --privileged -v /dev/log:/dev/log -v <path to crosvm>:/src:ro <crosvm base image>"
+docker run --privileged -v /dev/log:/dev/log -v <path to crosvm>:/platform/crosvm:ro <crosvm base image>"
 
 RUN apt-get update && apt-get install -y \
     autoconf \
@@ -116,17 +116,14 @@ RUN mkdir -p $THIRD_PARTY_ROOT
 ENV PLATFORM_ROOT=$CROS_ROOT/platform
 RUN mkdir -p $PLATFORM_ROOT
 
-# Allow other crates to depend on crosvm provided crates by linking to the
-# crosvm source from a relative path.
-RUN ln -s /src $PLATFORM_ROOT/crosvm
-
 # Pull the cras library for audio access.
 RUN git clone https://chromium.googlesource.com/chromiumos/third_party/adhd $THIRD_PARTY_ROOT/adhd
 
-# The /build directory is used so that the bind mounted /src volume does not get scribbled on.
+# The /build directory is used so that the bind mounted /platform/crosvm volume
+# does not get scribbled on.
 ENV CARGO_TARGET_DIR=/build
 RUN mkdir -p $CARGO_TARGET_DIR
-WORKDIR /src
+WORKDIR /platform/crosvm
 CMD cargo --version && rustc --version && rustfmt --version && \
     echo "Running cargo test" && \
     cargo test --no-fail-fast --all-features --all --exclude aarch64 $TEST_FLAGS -- \

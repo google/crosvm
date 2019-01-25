@@ -23,7 +23,7 @@ main() {
     --privileged \
     -e TEST_RUNNER_FLAGS='--format terse' \
     -v /dev/log:/dev/log \
-    -v "${src_root}":/src:ro \
+    -v "${src_root}":/platform/crosvm:ro \
     ${base_image}
 
   return 0

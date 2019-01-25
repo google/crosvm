@@ -18,7 +18,7 @@ docker build -t crosvm-base path/to/crosvm/kokoro
 Here is how to use the image to test a crosvm repository located at `$CROSVM_SRC`:
 
 ```shell
-docker run --privileged -v /dev/log:/dev/log -v "${CROSVM_SRC}":/src:ro crosvm-base
+docker run --privileged -v /dev/log:/dev/log -v "${CROSVM_SRC}":/platform/crosvm:ro crosvm-base
 ```
 
 > **WARNING**:
