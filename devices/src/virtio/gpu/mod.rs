@@ -652,6 +652,12 @@ impl Drop for Gpu {
 impl VirtioDevice for Gpu {
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
+        // TODO(davidriley): Remove once virgl has another path to include
+        // debugging logs.
+        if cfg!(debug_assertions) {
+            keep_fds.push(libc::STDOUT_FILENO);
+            keep_fds.push(libc::STDERR_FILENO);
+        }
         keep_fds.push(self.exit_evt.as_raw_fd());
         if let Some(ref resource_bridge) = self.resource_bridge {
             keep_fds.push(resource_bridge.as_raw_fd());
