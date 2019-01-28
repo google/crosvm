@@ -7,6 +7,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use super::*;
+use pci::PciBarConfiguration;
 use sys_util::{EventFd, GuestMemory};
 
 /// Trait for virtio devices to be driven by a virtio transport.
@@ -71,6 +72,11 @@ pub trait VirtioDevice: Send {
     /// Optionally deactivates this device and returns ownership of the guest memory map, interrupt
     /// event, and queue events.
     fn reset(&mut self) -> Option<(EventFd, Vec<EventFd>)> {
+        None
+    }
+
+    /// Optionally returns additional BAR configuration needed by device
+    fn get_device_bars(&self) -> Option<Vec<PciBarConfiguration>> {
         None
     }
 }
