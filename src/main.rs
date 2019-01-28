@@ -39,6 +39,7 @@ extern crate vm_control;
 
 pub mod argument;
 pub mod linux;
+pub mod panic_hook;
 #[cfg(feature = "plugin")]
 pub mod plugin;
 
@@ -924,6 +925,8 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         println!("failed to initialize syslog: {:?}", e);
         return Err(());
     }
+
+    panic_hook::set_panic_hook();
 
     let mut args = std::env::args();
     if args.next().is_none() {
