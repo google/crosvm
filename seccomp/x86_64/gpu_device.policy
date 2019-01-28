@@ -57,3 +57,5 @@ memfd_create: arg1 == 3
 ftruncate: 1
 fcntl: arg1 == F_DUPFD_CLOEXEC
 lstat: 1
+# Allow PR_SET_NAME only.
+prctl: arg0 == 15

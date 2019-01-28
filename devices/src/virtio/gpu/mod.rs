@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::thread::spawn;
+use std::thread;
 use std::time::Duration;
 
 use data_model::*;
@@ -737,55 +737,63 @@ impl VirtioDevice for Gpu {
         let cursor_queue = queues.remove(0);
         let cursor_evt = queue_evts.remove(0);
         let socket_path = self.wayland_socket_path.clone();
-        spawn(move || {
-            const UNDESIRED_CARDS: &[&str] = &["vgem", "pvr"];
-            let drm_card = match gpu_buffer::rendernode::open_device(UNDESIRED_CARDS) {
-                Ok(f) => f,
-                Err(e) => {
-                    error!("failed to open card: {:?}", e);
-                    return;
-                }
-            };
+        let worker_result =
+            thread::Builder::new()
+                .name("virtio_gpu".to_string())
+                .spawn(move || {
+                    const UNDESIRED_CARDS: &[&str] = &["vgem", "pvr"];
+                    let drm_card = match gpu_buffer::rendernode::open_device(UNDESIRED_CARDS) {
+                        Ok(f) => f,
+                        Err(e) => {
+                            error!("failed to open card: {:?}", e);
+                            return;
+                        }
+                    };
 
-            let device = match Device::new(drm_card) {
-                Ok(d) => d,
-                Err(()) => {
-                    error!("failed to open device");
-                    return;
-                }
-            };
+                    let device = match Device::new(drm_card) {
+                        Ok(d) => d,
+                        Err(()) => {
+                            error!("failed to open device");
+                            return;
+                        }
+                    };
 
-            let display = match GpuDisplay::new(socket_path) {
-                Ok(c) => c,
-                Err(e) => {
-                    error!("failed to open display: {:?}", e);
-                    return;
-                }
-            };
+                    let display = match GpuDisplay::new(socket_path) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            error!("failed to open display: {:?}", e);
+                            return;
+                        }
+                    };
 
-            let renderer = match Renderer::init() {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("failed to initialize gpu renderer: {}", e);
-                    return;
-                }
-            };
+                    let renderer = match Renderer::init() {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!("failed to initialize gpu renderer: {}", e);
+                            return;
+                        }
+                    };
 
-            Worker {
-                exit_evt,
-                mem,
-                interrupt_evt,
-                interrupt_resample_evt,
-                interrupt_status,
-                ctrl_queue,
-                ctrl_evt,
-                cursor_queue,
-                cursor_evt,
-                resource_bridge,
-                kill_evt,
-                state: Frontend::new(Backend::new(device, display, renderer)),
-            }
-            .run()
-        });
+                    Worker {
+                        exit_evt,
+                        mem,
+                        interrupt_evt,
+                        interrupt_resample_evt,
+                        interrupt_status,
+                        ctrl_queue,
+                        ctrl_evt,
+                        cursor_queue,
+                        cursor_evt,
+                        resource_bridge,
+                        kill_evt,
+                        state: Frontend::new(Backend::new(device, display, renderer)),
+                    }
+                    .run()
+                });
+
+        if let Err(e) = worker_result {
+            error!("failed to spawn virtio_gpu worker: {}", e);
+            return;
+        }
     }
 }
