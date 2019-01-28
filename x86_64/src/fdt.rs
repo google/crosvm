@@ -29,7 +29,7 @@ pub fn create_fdt(
     guest_mem: &GuestMemory,
     fdt_load_offset: u64,
     android_fstab: &mut File,
-) -> Result<(), Box<Error>> {
+) -> Result<usize, Box<Error>> {
     // Reserve space for the setup_data
     let fdt_data_size = fdt_max_size - mem::size_of::<setup_data>();
 
@@ -87,5 +87,5 @@ pub fn create_fdt(
     if written < fdt_data_size {
         return Err(Box::new(Error::FdtGuestMemoryWriteError));
     }
-    Ok(())
+    Ok(fdt_data_size)
 }

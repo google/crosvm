@@ -173,8 +173,7 @@ fn configure_system(
     cmdline_size: usize,
     num_cpus: u8,
     pci_irqs: Vec<(u32, PciInterruptPin)>,
-    android_fstab: &mut Option<File>,
-    kernel_end: u64,
+    setup_data: Option<GuestAddress>,
 ) -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
@@ -189,17 +188,14 @@ fn configure_system(
 
     let mut params: boot_params = Default::default();
 
-    let kernel_end_aligned = (((kernel_end + 64 - 1) / 64) * 64) + 64;
-    let dtb_start = GuestAddress(kernel_end_aligned);
-
     params.hdr.type_of_loader = KERNEL_LOADER_OTHER;
     params.hdr.boot_flag = KERNEL_BOOT_FLAG_MAGIC;
     params.hdr.header = KERNEL_HDR_MAGIC;
     params.hdr.cmd_line_ptr = cmdline_addr.offset() as u32;
     params.hdr.cmdline_size = cmdline_size as u32;
     params.hdr.kernel_alignment = KERNEL_MIN_ALIGNMENT_BYTES;
-    if android_fstab.is_some() {
-        params.hdr.setup_data = dtb_start.offset();
+    if let Some(setup_data) = setup_data {
+        params.hdr.setup_data = setup_data.offset();
     }
 
     add_e820_entry(&mut params, 0, EBDA_START, E820_RAM)?;
@@ -236,15 +232,6 @@ fn configure_system(
     guest_mem
         .write_obj_at_addr(params, zero_page_addr)
         .map_err(|_| Error::ZeroPageSetup)?;
-
-    if let Some(fstab) = android_fstab {
-        fdt::create_fdt(
-            X86_64_FDT_MAX_SIZE as usize,
-            guest_mem,
-            dtb_start.offset(),
-            fstab,
-        )?;
-    }
     Ok(())
 }
 
@@ -403,10 +390,30 @@ impl X8664arch {
         vcpu_count: u32,
         cmdline: &CStr,
         pci_irqs: Vec<(u32, PciInterruptPin)>,
-        mut android_fstab: Option<File>,
+        android_fstab: Option<File>,
         kernel_end: u64,
     ) -> Result<()> {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)?;
+
+        // Track the first free address after the kernel - this is where extra
+        // data like the device tree blob will be loaded.
+        let free_addr = kernel_end;
+
+        let setup_data = if let Some(fstab) = android_fstab {
+            let mut fstab = fstab;
+            let free_addr_aligned = (((free_addr + 64 - 1) / 64) * 64) + 64;
+            let dtb_start = GuestAddress(free_addr_aligned);
+            let _dtb_size = fdt::create_fdt(
+                X86_64_FDT_MAX_SIZE as usize,
+                mem,
+                dtb_start.offset(),
+                &mut fstab,
+            )?;
+            Some(dtb_start)
+        } else {
+            None
+        };
+
         configure_system(
             mem,
             mem_size,
@@ -415,8 +422,7 @@ impl X8664arch {
             cmdline.to_bytes().len() + 1,
             vcpu_count as u8,
             pci_irqs,
-            &mut android_fstab,
-            kernel_end,
+            setup_data,
         )?;
         Ok(())
     }
