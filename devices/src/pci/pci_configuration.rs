@@ -172,6 +172,32 @@ pub struct PciConfiguration {
     last_capability: Option<(usize, usize)>,
 }
 
+/// See pci_regs.h in kernel
+#[allow(dead_code)]
+#[derive(Copy, Clone)]
+pub enum PciBarRegionType {
+    Memory32BitRegion = 0,
+    IORegion = 0x01,
+    Memory64BitRegion = 0x04,
+}
+
+#[allow(dead_code)]
+#[derive(Copy, Clone)]
+pub enum PciBarPrefetchable {
+    NotPrefetchable = 0,
+    Prefetchable = 0x08,
+}
+
+#[allow(dead_code)]
+#[derive(Copy, Clone)]
+pub struct PciBarConfiguration {
+    addr: u64,
+    size: u64,
+    reg_idx: usize,
+    region_type: PciBarRegionType,
+    prefetchable: PciBarPrefetchable,
+}
+
 impl PciConfiguration {
     pub fn new(
         vendor_id: u16,
@@ -366,6 +392,55 @@ impl PciConfiguration {
     fn next_dword(offset: usize, len: usize) -> usize {
         let next = offset + len;
         (next + 3) & !3
+    }
+}
+
+impl Default for PciBarConfiguration {
+    fn default() -> Self {
+        PciBarConfiguration {
+            reg_idx: 0,
+            addr: 0,
+            size: 0,
+            region_type: PciBarRegionType::Memory32BitRegion,
+            prefetchable: PciBarPrefetchable::NotPrefetchable,
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl PciBarConfiguration {
+    pub fn new(
+        reg_idx: usize,
+        size: u64,
+        region_type: PciBarRegionType,
+        prefetchable: PciBarPrefetchable,
+    ) -> Self {
+        PciBarConfiguration {
+            reg_idx,
+            addr: 0,
+            size,
+            region_type,
+            prefetchable,
+        }
+    }
+
+    pub fn set_register_index(mut self, reg_idx: usize) -> Self {
+        self.reg_idx = reg_idx;
+        self
+    }
+
+    pub fn set_address(mut self, addr: u64) -> Self {
+        self.addr = addr;
+        self
+    }
+
+    pub fn set_size(mut self, size: u64) -> Self {
+        self.size = size;
+        self
+    }
+
+    pub fn get_size(&self) -> u64 {
+        self.size
     }
 }
 
