@@ -36,6 +36,7 @@ use super::{
 
 use self::backend::Backend;
 use self::protocol::*;
+use pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType};
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.
@@ -808,5 +809,17 @@ impl VirtioDevice for Gpu {
             error!("failed to spawn virtio_gpu worker: {}", e);
             return;
         }
+    }
+
+    // Require 1 BAR for mapping 3D buffers
+    fn get_device_bars(&self) -> Option<Vec<PciBarConfiguration>> {
+        let mut bars = Vec::new();
+        bars.push(PciBarConfiguration::new(
+            4,
+            1 << 33,
+            PciBarRegionType::Memory64BitRegion,
+            PciBarPrefetchable::NotPrefetchable,
+        ));
+        Some(bars)
     }
 }
