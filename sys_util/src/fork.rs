@@ -100,11 +100,14 @@ mod tests {
     use libc;
     use {getpid, EventFd};
 
-    fn wait_process() -> libc::c_int {
+    fn wait_process(pid: libc::pid_t) -> ::Result<libc::c_int> {
         let mut status: libc::c_int = 0;
         unsafe {
-            libc::wait(&mut status as *mut libc::c_int);
-            libc::WEXITSTATUS(status)
+            if libc::waitpid(pid, &mut status as *mut libc::c_int, 0) < 0 {
+                errno_result()
+            } else {
+                Ok(libc::WEXITSTATUS(status))
+            }
         }
     }
 
@@ -130,7 +133,7 @@ mod tests {
         let pid = getpid();
         assert_ne!(pid, 0);
 
-        clone_process(CloneNamespace::Inherit, || {
+        let clone_pid = clone_process(CloneNamespace::Inherit, || {
             assert!(false);
         })
         .expect("failed to clone");
@@ -140,7 +143,7 @@ mod tests {
             process::exit(2);
         }
 
-        let status = wait_process();
+        let status = wait_process(clone_pid).expect("wait_process failed");
         assert!(status == 101 || status == 0);
     }
 }
