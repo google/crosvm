@@ -990,6 +990,7 @@ pub enum VcpuExit {
 pub struct Vcpu {
     vcpu: File,
     run_mmap: MemoryMapping,
+    guest_mem: GuestMemory,
 }
 
 impl Vcpu {
@@ -1012,7 +1013,21 @@ impl Vcpu {
         let run_mmap =
             MemoryMapping::from_fd(&vcpu, run_mmap_size).map_err(|_| Error::new(ENOSPC))?;
 
-        Ok(Vcpu { vcpu, run_mmap })
+        let guest_mem = vm.guest_mem.clone();
+
+        Ok(Vcpu {
+            vcpu,
+            run_mmap,
+            guest_mem,
+        })
+    }
+
+    /// Gets a reference to the guest memory owned by this VM of this VCPU.
+    ///
+    /// Note that `GuestMemory` does not include any device memory that may have been added after
+    /// this VM was constructed.
+    pub fn get_memory(&self) -> &GuestMemory {
+        &self.guest_mem
     }
 
     /// Sets the data received by an mmio or ioport read/in instruction.
