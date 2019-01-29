@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use data_model::*;
 
-use sys_util::{EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
+use sys_util::{Error, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 
 use self::gpu_buffer::Device;
 use self::gpu_display::*;
@@ -771,6 +771,13 @@ impl VirtioDevice for Gpu {
                             return;
                         }
                     };
+
+                    if cfg!(debug_assertions) {
+                        let ret = unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
+                        if ret == -1 {
+                            warn!("unable to dup2 stdout to stderr: {}", Error::last());
+                        }
+                    }
 
                     let renderer = match Renderer::init() {
                         Ok(r) => r,

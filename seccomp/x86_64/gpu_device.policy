@@ -59,3 +59,4 @@ fcntl: arg1 == F_DUPFD_CLOEXEC
 lstat: 1
 # Allow PR_SET_NAME only.
 prctl: arg0 == 15
+dup2: 1
