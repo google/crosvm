@@ -114,7 +114,7 @@ def main(argv):
   modules = (
     (
       'virglrenderer',
-      'virgl_.+',
+      '(virgl|VIRGL)_.+',
       os.path.join(opts.sysroot, 'usr/include/virgl/virglrenderer.h'),
       clang_args,
       'virglrenderer',
