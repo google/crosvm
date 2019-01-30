@@ -190,7 +190,11 @@ fn fdt_offset(mem_size: u64) -> u64 {
 pub struct AArch64;
 
 impl arch::LinuxArch for AArch64 {
-    fn build_vm<F>(mut components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
+    fn build_vm<F>(
+        mut components: VmComponents,
+        _split_irqchip: bool,
+        virtio_devs: F,
+    ) -> Result<RunnableLinuxVm>
     where
         F: FnOnce(
             &GuestMemory,

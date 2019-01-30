@@ -1011,7 +1011,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         disk_host_sockets.push(disk_host_socket);
     }
 
-    let linux = Arch::build_vm(components, |m, e| {
+    let linux = Arch::build_vm(components, cfg.split_irqchip, |m, e| {
         create_virtio_devs(
             cfg,
             m,

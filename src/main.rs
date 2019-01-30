@@ -120,6 +120,7 @@ pub struct Config {
     virtio_mouse: Option<PathBuf>,
     virtio_keyboard: Option<PathBuf>,
     virtio_input_evdevs: Vec<PathBuf>,
+    split_irqchip: bool,
 }
 
 impl Default for Config {
@@ -153,6 +154,7 @@ impl Default for Config {
             virtio_mouse: None,
             virtio_keyboard: None,
             virtio_input_evdevs: Vec::new(),
+            split_irqchip: false,
         }
     }
 }
@@ -564,6 +566,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.virtio_input_evdevs.push(dev_path);
         }
+        "split-irqchip" => {
+            cfg.split_irqchip = true;
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -627,6 +632,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("trackpad", "PATH:WIDTH:HEIGHT", "Path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280)."),
           Argument::value("mouse", "PATH", "Path to a socket from where to read mouse input events and write status updates to."),
           Argument::value("keyboard", "PATH", "Path to a socket from where to read keyboard input events and write status updates to."),
+          #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+          Argument::flag("split-irqchip", "(EXPERIMENTAL) enable split-irqchip support"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

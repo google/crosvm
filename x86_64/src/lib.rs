@@ -83,7 +83,7 @@ use io_jail::Minijail;
 use kvm::*;
 use resources::{AddressRanges, SystemAllocator};
 use sync::Mutex;
-use sys_util::{EventFd, GuestAddress, GuestMemory};
+use sys_util::{Clock, EventFd, GuestAddress, GuestMemory};
 
 #[derive(Debug)]
 pub enum Error {
@@ -95,6 +95,8 @@ pub enum Error {
     Cmdline(kernel_cmdline::Error),
     /// Unable to make an EventFd
     CreateEventFd(sys_util::Error),
+    /// Unable to create PIT device.
+    CreatePit(devices::PitError),
     /// Unable to create Kvm.
     CreateKvm(sys_util::Error),
     /// Unable to create a PciRoot hub.
@@ -126,6 +128,7 @@ impl error::Error for Error {
             Error::CloneEventFd(_) => "Unable to clone an EventFd",
             Error::Cmdline(_) => "the given kernel command line was invalid",
             Error::CreateEventFd(_) => "Unable to make an EventFd",
+            Error::CreatePit(_) => "Unable to make Pit device",
             Error::CreateKvm(_) => "failed to open /dev/kvm",
             Error::CreatePciRoot(_) => "failed to create a PCI root hub",
             Error::CreateSocket(_) => "failed to create socket",
@@ -286,7 +289,11 @@ fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
 }
 
 impl arch::LinuxArch for X8664arch {
-    fn build_vm<F>(mut components: VmComponents, virtio_devs: F) -> Result<RunnableLinuxVm>
+    fn build_vm<F>(
+        mut components: VmComponents,
+        split_irqchip: bool,
+        virtio_devs: F,
+    ) -> Result<RunnableLinuxVm>
     where
         F: FnOnce(
             &GuestMemory,
@@ -297,7 +304,7 @@ impl arch::LinuxArch for X8664arch {
             Self::get_resource_allocator(components.memory_mb, components.wayland_dmabuf);
         let mem = Self::setup_memory(components.memory_mb)?;
         let kvm = Kvm::new().map_err(Error::CreateKvm)?;
-        let mut vm = Self::create_vm(&kvm, mem.clone())?;
+        let mut vm = Self::create_vm(&kvm, split_irqchip, mem.clone())?;
 
         let vcpu_count = components.vcpu_count;
         let mut vcpus = Vec::with_capacity(vcpu_count as usize);
@@ -329,6 +336,7 @@ impl arch::LinuxArch for X8664arch {
 
         let (io_bus, stdio_serial) = Self::setup_io_bus(
             &mut vm,
+            split_irqchip,
             exit_evt.try_clone().map_err(Error::CloneEventFd)?,
             Some(pci_bus.clone()),
         )?;
@@ -418,13 +426,16 @@ impl X8664arch {
     /// # Arguments
     ///
     /// * `kvm` - The opened /dev/kvm object.
+    /// * `split_irqchip` - Whether to use a split IRQ chip.
     /// * `mem` - The memory to be used by the guest.
-    fn create_vm(kvm: &Kvm, mem: GuestMemory) -> Result<Vm> {
+    fn create_vm(kvm: &Kvm, split_irqchip: bool, mem: GuestMemory) -> Result<Vm> {
         let vm = Vm::new(&kvm, mem)?;
         let tss_addr = GuestAddress(0xfffbd000);
         vm.set_tss_addr(tss_addr).expect("set tss addr failed");
-        vm.create_pit().expect("create pit failed");
-        vm.create_irq_chip()?;
+        if !split_irqchip {
+            vm.create_pit().expect("create pit failed");
+            vm.create_irq_chip()?;
+        }
         Ok(vm)
     }
 
@@ -490,9 +501,11 @@ impl X8664arch {
     /// # Arguments
     ///
     /// * - `vm` the vm object
+    /// * - `split_irqchip`: whether to use a split IRQ chip (i.e. userspace PIT/PIC/IOAPIC)
     /// * - `exit_evt` - the event fd object which should receive exit events
     fn setup_io_bus(
         vm: &mut Vm,
+        split_irqchip: bool,
         exit_evt: EventFd,
         pci: Option<Arc<Mutex<devices::PciConfigIo>>>,
     ) -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)> {
@@ -558,9 +571,26 @@ impl X8664arch {
                 false,
             )
             .unwrap();
-        io_bus
-            .insert(nul_device.clone(), 0x040, 0x8, false)
-            .unwrap(); // ignore pit
+
+        if split_irqchip {
+            let pit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+            let pit = Arc::new(Mutex::new(
+                devices::Pit::new(
+                    pit_evt.try_clone().map_err(Error::CloneEventFd)?,
+                    Arc::new(Mutex::new(Clock::new())),
+                )
+                .map_err(Error::CreatePit)?,
+            ));
+            // Reserve from 0x40 to 0x61 (the speaker).
+            io_bus.insert(pit.clone(), 0x040, 0x22, false).unwrap();
+            vm.register_irqfd(&pit_evt, 0)
+                .map_err(Error::RegisterIrqfd)?;
+        } else {
+            io_bus
+                .insert(nul_device.clone(), 0x040, 0x8, false)
+                .unwrap(); // ignore pit
+        }
+
         io_bus
             .insert(nul_device.clone(), 0x0ed, 0x1, false)
             .unwrap(); // most likely this one does nothing
