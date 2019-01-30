@@ -60,3 +60,4 @@ lstat: 1
 # Allow PR_SET_NAME only.
 prctl: arg0 == 15
 dup2: 1
+brk: 1
