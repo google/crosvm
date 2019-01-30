@@ -158,9 +158,6 @@ impl FenceState {
 }
 
 struct VirglCookie {
-    display: EGLDisplay,
-    egl_config: EGLConfig,
-    egl_funcs: EGLFunctions,
     fence_state: Rc<RefCell<FenceState>>,
 }
 
@@ -173,50 +170,12 @@ extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
     fence_state.write(fence);
 }
 
-unsafe extern "C" fn create_gl_context(
-    cookie: *mut c_void,
-    scanout_idx: c_int,
-    param: *mut virgl_renderer_gl_ctx_param,
-) -> virgl_renderer_gl_context {
-    let _ = scanout_idx;
-    let cookie = &*(cookie as *mut VirglCookie);
-
-    let shared = if (*param).shared {
-        (cookie.egl_funcs.GetCurrentContext)()
-    } else {
-        null_mut()
-    };
-    let context_attribs = [EGL_CONTEXT_CLIENT_VERSION as i32, 3, EGL_NONE as i32];
-    (cookie.egl_funcs.CreateContext)(
-        cookie.display,
-        cookie.egl_config,
-        shared,
-        context_attribs.as_ptr(),
-    )
-}
-
-unsafe extern "C" fn make_current(
-    cookie: *mut c_void,
-    scanout_idx: c_int,
-    ctx: virgl_renderer_gl_context,
-) -> c_int {
-    let _ = scanout_idx;
-    let cookie = &*(cookie as *mut VirglCookie);
-
-    (cookie.egl_funcs.MakeCurrent)(cookie.display, null_mut(), null_mut(), ctx) as c_int
-}
-
-unsafe extern "C" fn destroy_gl_context(cookie: *mut c_void, ctx: virgl_renderer_gl_context) {
-    let cookie = &*(cookie as *mut VirglCookie);
-    (cookie.egl_funcs.DestroyContext)(cookie.display, ctx);
-}
-
 const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks = &virgl_renderer_callbacks {
     version: 1,
     write_fence: Some(write_fence),
-    create_gl_context: Some(create_gl_context),
-    destroy_gl_context: Some(destroy_gl_context),
-    make_current: Some(make_current),
+    create_gl_context: None,
+    destroy_gl_context: None,
+    make_current: None,
     get_drm_fd: None,
 };
 
@@ -260,7 +219,6 @@ struct EGLFunctionsInner {
     ) -> EGLImageKHR,
     DebugMessageControlKHR:
         unsafe extern "C" fn(callback: EGLDEBUGPROCKHR, attrib_list: *const EGLAttrib) -> EGLint,
-    DestroyContext: unsafe extern "C" fn(dpy: EGLDisplay, ctx: EGLContext) -> EGLBoolean,
     DestroyImageKHR: unsafe extern "C" fn(dpy: EGLDisplay, image: EGLImageKHR) -> EGLBoolean,
     ExportDRMImageMESA: unsafe extern "C" fn(
         dpy: EGLDisplay,
@@ -316,8 +274,6 @@ impl EGLFunctions {
                     .ok_or(Error::MissingEGLFunction("eglCreateImageKHR"))?,
                 DebugMessageControlKHR: epoxy_eglDebugMessageControlKHR
                     .ok_or(Error::MissingEGLFunction("eglDebugMessageControlKHR"))?,
-                DestroyContext: epoxy_eglDestroyContext
-                    .ok_or(Error::MissingEGLFunction("eglDestroyContext"))?,
                 DestroyImageKHR: epoxy_eglDestroyImageKHR
                     .ok_or(Error::MissingEGLFunction("eglDestroyImageKHR"))?,
                 ExportDRMImageMESA: epoxy_eglExportDRMImageMESA
@@ -415,9 +371,6 @@ impl Renderer {
         let fence_state = Rc::new(RefCell::new(FenceState { latest_fence: 0 }));
 
         let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
-            display,
-            egl_config,
-            egl_funcs: egl_funcs.clone(),
             fence_state: Rc::clone(&fence_state),
         }));
 
@@ -448,7 +401,8 @@ impl Renderer {
         let ret = unsafe {
             virgl_renderer_init(
                 cookie as *mut c_void,
-                0,
+                (VIRGL_RENDERER_USE_EGL | VIRGL_RENDERER_USE_SURFACELESS | VIRGL_RENDERER_USE_GLES)
+                    as i32,
                 transmute(VIRGL_RENDERER_CALLBACKS),
             )
         };
