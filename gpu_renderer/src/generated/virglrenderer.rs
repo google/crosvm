@@ -3,6 +3,23 @@
 #[link(name = "virglrenderer")]
 extern "C" {}
 
+pub const VIRGL_RENDERER_CALLBACKS_VERSION: u32 = 2;
+pub const VIRGL_RENDERER_USE_EGL: u32 = 1;
+pub const VIRGL_RENDERER_THREAD_SYNC: u32 = 2;
+pub const VIRGL_RENDERER_USE_GLX: u32 = 4;
+pub const VIRGL_RENDERER_USE_SURFACELESS: u32 = 8;
+pub const VIRGL_RENDERER_USE_GLES: u32 = 16;
+pub const VIRGL_RES_BIND_DEPTH_STENCIL: u32 = 1;
+pub const VIRGL_RES_BIND_RENDER_TARGET: u32 = 2;
+pub const VIRGL_RES_BIND_SAMPLER_VIEW: u32 = 8;
+pub const VIRGL_RES_BIND_VERTEX_BUFFER: u32 = 16;
+pub const VIRGL_RES_BIND_INDEX_BUFFER: u32 = 32;
+pub const VIRGL_RES_BIND_CONSTANT_BUFFER: u32 = 64;
+pub const VIRGL_RES_BIND_STREAM_OUTPUT: u32 = 2048;
+pub const VIRGL_RES_BIND_CURSOR: u32 = 65536;
+pub const VIRGL_RES_BIND_CUSTOM: u32 = 131072;
+pub type __uint32_t = ::std::os::raw::c_uint;
+pub type __uint64_t = ::std::os::raw::c_ulong;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct virgl_box {
@@ -123,6 +140,12 @@ extern "C" {
 }
 extern "C" {
     pub fn virgl_renderer_resource_unref(res_handle: u32);
+}
+extern "C" {
+    pub fn virgl_renderer_resource_set_priv(res_handle: u32, priv_: *mut ::std::os::raw::c_void);
+}
+extern "C" {
+    pub fn virgl_renderer_resource_get_priv(res_handle: u32) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     pub fn virgl_renderer_context_create(

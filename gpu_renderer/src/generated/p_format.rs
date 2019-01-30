@@ -313,6 +313,7 @@ pub const PIPE_FORMAT_R10G10B10X2_UNORM: pipe_format = 308;
 pub const PIPE_FORMAT_A1B5G5R5_UNORM: pipe_format = 309;
 pub const PIPE_FORMAT_X1B5G5R5_UNORM: pipe_format = 310;
 pub const PIPE_FORMAT_A4B4G4R4_UNORM: pipe_format = 311;
-pub const PIPE_FORMAT_COUNT: pipe_format = 312;
+pub const PIPE_FORMAT_R8_SRGB: pipe_format = 312;
+pub const PIPE_FORMAT_COUNT: pipe_format = 313;
 /// Formats for textures, surfaces and vertex data
 pub type pipe_format = u32;
