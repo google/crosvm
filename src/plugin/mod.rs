@@ -61,6 +61,7 @@ pub enum Error {
     DecodeRequest(ProtobufError),
     EncodeResponse(ProtobufError),
     Mount(io_jail::Error),
+    MountDev(io_jail::Error),
     MountLib(io_jail::Error),
     MountLib64(io_jail::Error),
     MountPlugin(io_jail::Error),
@@ -129,6 +130,7 @@ impl fmt::Display for Error {
             Error::DecodeRequest(ref e) => write!(f, "failed to decode plugin request: {}", e),
             Error::EncodeResponse(ref e) => write!(f, "failed to encode plugin response: {}", e),
             Error::Mount(ref e) => write!(f, "failed to mount: {}", e),
+            Error::MountDev(ref e) => write!(f, "failed to mount: {}", e),
             Error::MountLib(ref e) => write!(f, "failed to mount: {}", e),
             Error::MountLib64(ref e) => write!(f, "failed to mount: {}", e),
             Error::MountPlugin(ref e) => write!(f, "failed to mount: {}", e),
@@ -495,6 +497,15 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
         let policy_path = cfg.seccomp_policy_dir.join("plugin.policy");
         let mut jail = create_plugin_jail(root_path, &policy_path)?;
+
+        // Mount minimal set of devices (full, zero, urandom, etc). We can not use
+        // jail.mount_dev() here because crosvm may not be running with CAP_SYS_ADMIN.
+        let device_names = ["full", "null", "urandom", "zero"];
+        for name in device_names.iter() {
+            let device = Path::new("/dev").join(&name);
+            jail.mount_bind(&device, &device, true)
+                .map_err(Error::MountDev)?;
+        }
 
         for bind_mount in &cfg.plugin_mounts {
             jail.mount_bind(&bind_mount.src, &bind_mount.dst, bind_mount.writable)
