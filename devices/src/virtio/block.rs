@@ -210,6 +210,7 @@ enum ExecuteError {
     ReadOnly {
         request_type: RequestType,
     },
+    OutOfRange,
     Unsupported(u32),
 }
 
@@ -223,6 +224,7 @@ impl ExecuteError {
             ExecuteError::Write { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::DiscardWriteZeroes { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::ReadOnly { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::OutOfRange { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
         }
     }
@@ -373,6 +375,7 @@ impl Request {
         &self,
         read_only: bool,
         disk: &mut T,
+        disk_size: u64,
         flush_timer: &mut TimerFd,
         flush_timer_armed: &mut bool,
         mem: &GuestMemory,
@@ -386,13 +389,35 @@ impl Request {
             });
         }
 
-        disk.seek(SeekFrom::Start(self.sector << SECTOR_SHIFT))
-            .map_err(|e| ExecuteError::Seek {
-                ioerr: e,
-                sector: self.sector,
-            })?;
+        /// Check that a request accesses only data within the disk's current size.
+        /// All parameters are in units of bytes.
+        fn check_range(
+            io_start: u64,
+            io_length: u64,
+            disk_size: u64,
+        ) -> result::Result<(), ExecuteError> {
+            let io_end = io_start
+                .checked_add(io_length)
+                .ok_or(ExecuteError::OutOfRange)?;
+            if io_end > disk_size {
+                Err(ExecuteError::OutOfRange)
+            } else {
+                Ok(())
+            }
+        }
+
         match self.request_type {
             RequestType::In => {
+                let offset = self
+                    .sector
+                    .checked_shl(u32::from(SECTOR_SHIFT))
+                    .ok_or(ExecuteError::OutOfRange)?;
+                check_range(offset, u64::from(self.data_len), disk_size)?;
+                disk.seek(SeekFrom::Start(offset))
+                    .map_err(|e| ExecuteError::Seek {
+                        ioerr: e,
+                        sector: self.sector,
+                    })?;
                 mem.read_to_memory(self.data_addr, disk, self.data_len as usize)
                     .map_err(|e| ExecuteError::Read {
                         addr: self.data_addr,
@@ -403,6 +428,16 @@ impl Request {
                 return Ok(self.data_len);
             }
             RequestType::Out => {
+                let offset = self
+                    .sector
+                    .checked_shl(u32::from(SECTOR_SHIFT))
+                    .ok_or(ExecuteError::OutOfRange)?;
+                check_range(offset, u64::from(self.data_len), disk_size)?;
+                disk.seek(SeekFrom::Start(offset))
+                    .map_err(|e| ExecuteError::Seek {
+                        ioerr: e,
+                        sector: self.sector,
+                    })?;
                 mem.write_from_memory(self.data_addr, disk, self.data_len as usize)
                     .map_err(|e| ExecuteError::Write {
                         addr: self.data_addr,
@@ -438,23 +473,29 @@ impl Request {
                         });
                     }
 
+                    let offset = sector
+                        .checked_shl(u32::from(SECTOR_SHIFT))
+                        .ok_or(ExecuteError::OutOfRange)?;
+                    let length = u64::from(num_sectors)
+                        .checked_shl(u32::from(SECTOR_SHIFT))
+                        .ok_or(ExecuteError::OutOfRange)?;
+                    check_range(offset, length, disk_size)?;
+
                     if self.request_type == RequestType::Discard {
                         // Since Discard is just a hint and some filesystems may not implement
                         // FALLOC_FL_PUNCH_HOLE, ignore punch_hole errors.
-                        let _ = disk.punch_hole(
-                            sector << SECTOR_SHIFT,
-                            (num_sectors as u64) << SECTOR_SHIFT,
-                        );
+                        let _ = disk.punch_hole(offset, length);
                     } else {
-                        disk.seek(SeekFrom::Start(sector << SECTOR_SHIFT))
+                        disk.seek(SeekFrom::Start(offset))
                             .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
-                        disk.write_zeroes((num_sectors as usize) << SECTOR_SHIFT)
-                            .map_err(|e| ExecuteError::DiscardWriteZeroes {
+                        disk.write_zeroes(length as usize).map_err(|e| {
+                            ExecuteError::DiscardWriteZeroes {
                                 ioerr: Some(e),
                                 sector,
                                 num_sectors,
                                 flags,
-                            })?;
+                            }
+                        })?;
                     }
                 }
             }
@@ -489,6 +530,8 @@ impl<T: DiskFile> Worker<T> {
     ) -> bool {
         let queue = &mut self.queues[queue_index];
 
+        let disk_size = self.disk_size.lock();
+
         let mut used_desc_heads = [(0, 0); QUEUE_SIZE as usize];
         let mut used_count = 0;
         for avail_desc in queue.iter(&self.mem) {
@@ -498,6 +541,7 @@ impl<T: DiskFile> Worker<T> {
                     let status = match request.execute(
                         self.read_only,
                         &mut self.disk_image,
+                        *disk_size,
                         flush_timer,
                         flush_timer_armed,
                         &self.mem,
@@ -854,7 +898,7 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::File;
+    use std::fs::{File, OpenOptions};
     use std::path::PathBuf;
     use sys_util::TempDir;
 
@@ -902,5 +946,88 @@ mod tests {
             // + VIRTIO_F_VERSION_1
             assert_eq!(0x100000220, b.features());
         }
+    }
+
+    #[test]
+    fn read_last_sector() {
+        let tempdir = TempDir::new("/tmp/block_read_test").unwrap();
+        let mut path = PathBuf::from(tempdir.as_path().unwrap());
+        path.push("disk_image");
+        let mut f = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&path)
+            .unwrap();
+        let disk_size = 0x1000;
+        f.set_len(disk_size).unwrap();
+
+        let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
+            .expect("Creating guest memory failed.");
+
+        let req = Request {
+            request_type: RequestType::In,
+            sector: 7, // Disk is 8 sectors long, so this is the last valid sector.
+            data_addr: GuestAddress(0x1000),
+            data_len: 512, // Read 1 sector of data.
+            status_addr: GuestAddress(0),
+            discard_write_zeroes_seg: None,
+        };
+
+        let mut flush_timer = TimerFd::new().expect("failed to create flush_timer");
+        let mut flush_timer_armed = false;
+
+        assert_eq!(
+            512,
+            req.execute(
+                false,
+                &mut f,
+                disk_size,
+                &mut flush_timer,
+                &mut flush_timer_armed,
+                &mem
+            )
+            .expect("execute failed"),
+        );
+    }
+
+    #[test]
+    fn read_beyond_last_sector() {
+        let tempdir = TempDir::new("/tmp/block_read_test").unwrap();
+        let mut path = PathBuf::from(tempdir.as_path().unwrap());
+        path.push("disk_image");
+        let mut f = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&path)
+            .unwrap();
+        let disk_size = 0x1000;
+        f.set_len(disk_size).unwrap();
+
+        let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
+            .expect("Creating guest memory failed.");
+
+        let req = Request {
+            request_type: RequestType::In,
+            sector: 7, // Disk is 8 sectors long, so this is the last valid sector.
+            data_addr: GuestAddress(0x1000),
+            data_len: 512 * 2, // Read 2 sectors of data (overlap the end of the disk).
+            status_addr: GuestAddress(0),
+            discard_write_zeroes_seg: None,
+        };
+
+        let mut flush_timer = TimerFd::new().expect("failed to create flush_timer");
+        let mut flush_timer_armed = false;
+
+        req.execute(
+            false,
+            &mut f,
+            disk_size,
+            &mut flush_timer,
+            &mut flush_timer_armed,
+            &mem,
+        )
+        .expect_err("execute was supposed to fail");
     }
 }
