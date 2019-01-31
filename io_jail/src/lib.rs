@@ -442,6 +442,11 @@ impl Minijail {
         }
         Ok(())
     }
+    pub fn mount_dev(&mut self) {
+        unsafe {
+            libminijail::minijail_mount_dev(self.jail);
+        }
+    }
     pub fn mount_tmp(&mut self) {
         unsafe {
             libminijail::minijail_mount_tmp(self.jail);

@@ -56,6 +56,7 @@ extern "C" {
     pub fn minijail_enter_pivot_root(j: *mut minijail, dir: *const c_char) -> c_int;
     pub fn minijail_fork(j: *mut minijail) -> pid_t;
     pub fn minijail_get_original_path(j: *mut minijail, chroot_path: *const c_char) -> *mut c_char;
+    pub fn minijail_mount_dev(j: *mut minijail);
     pub fn minijail_mount_tmp(j: *mut minijail);
     pub fn minijail_mount_tmp_size(j: *mut minijail, size: usize);
     pub fn minijail_mount_with_data(
