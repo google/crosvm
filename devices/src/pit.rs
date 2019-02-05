@@ -41,6 +41,7 @@ enum CommandBit {
 // six bits of the byte. However, if 0xc0 is specified, it indicates that the
 // command is a "Read-Back", which can latch count and/or status of the
 // counters selected in the lower bits. See Intel 8254 data sheet for details.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, enumn::N)]
 enum CommandCounter {
     CommandCounter0 = 0x00, // Select counter 0.
