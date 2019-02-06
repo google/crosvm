@@ -362,7 +362,7 @@ struct PitCounter {
 impl Drop for PitCounter {
     fn drop(&mut self) {
         if self.timer_valid {
-            // This should not happen - timer.clear() only fails if timerfd_settime fails, which
+            // This should not fail - timer.clear() only fails if timerfd_settime fails, which
             // only happens due to invalid arguments or bad file descriptors. The arguments to
             // timerfd_settime are constant, so its arguments won't be invalid, and it manages
             // the file descriptor safely (we don't use the unsafe FromRawFd) so its file
@@ -582,7 +582,18 @@ impl PitCounter {
             }
             // Don't arm timer if invalid mode.
             None => {
-                // TODO(mutexlox): Start will be invalid here. is that ok?
+                // This will still result in start being set to the current time.
+                // Per spec:
+                //   A new initial count may be written to a Counter at any time without affecting
+                //   the Counter’s programmed Mode in any way. Counting will be affected as
+                //   described in the Mode definitions. The new count must follow the programmed
+                //   count format
+                // It's unclear whether setting `self.start` in this case is entirely compliant,
+                // but the spec is fairly quiet on expected behavior in error cases, so OSs
+                // shouldn't enter invalid modes in the first place.  If they do, and then try to
+                // get out of it by first setting the counter then the command, this behavior will
+                // (perhaps) be minimally surprising, but arguments can be made for other behavior.
+                // It's uncertain if this behavior matches real PIT hardware.
                 warn!("Invalid command mode based on command {:#x}", self.command);
                 return;
             }
@@ -1059,13 +1070,11 @@ mod tests {
             0xffff - 10_000 * 2,
             CommandAccess::CommandRWBoth,
         );
-        // TODO(mutexlox): Check timerfd call?
     }
 
     /// Tests that rategen mode updates the counter correctly.
     #[test]
     fn rate_gen_counter_read() {
-        // TODO(mutexlox): Check timerfd call?
         let mut data = set_up();
         write_command(
             &mut data.pit,
@@ -1087,7 +1096,6 @@ mod tests {
     /// Tests that interrupt counter mode updates the counter correctly.
     #[test]
     fn interrupt_counter_read() {
-        // TODO(mutexlox): Check timerfd call?
         let mut data = set_up();
         write_command(
             &mut data.pit,
@@ -1194,7 +1202,6 @@ mod tests {
     /// Tests that ReadBack status returns the expected values.
     #[test]
     fn read_back_status() {
-        // TODO(mutexlox): handle   UpdateExpectedArmParam throughout.
         let mut data = set_up();
         write_command(
             &mut data.pit,
@@ -1203,15 +1210,13 @@ mod tests {
                 | CommandMode::CommandSWStrobe as u8,
         );
         write_counter(&mut data.pit, 0, 0xffff, CommandAccess::CommandRWBoth);
-        // TODO(mutexlox): the test i'm modelling this on explicitly calls the callback and
-        // verifies that the interrupt is asserted here, but i'm not sure why; the timer shouldn't
-        // go off and isn't advanced.
         write_command(
             &mut data.pit,
             CommandCounter::CommandReadBack as u8
                 | CommandReadBackLatch::CommandRBLatchStatus as u8
                 | CommandReadBackCounters::CommandRBCounter0 as u8,
         );
+
         read_counter(
             &mut data.pit,
             0,
