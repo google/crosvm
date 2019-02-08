@@ -13,6 +13,10 @@ extern "C" {
 // Create a basic, empty qcow2 file that can grow to `virtual_size` at `path`.
 int create_qcow_with_size(const char *path, uint64_t virtual_size);
 
+// Attempt to resize the disk image at `path` to `virtual_size` bytes if
+// the disk image is currently smaller than the requested size.
+int expand_disk_image(const char *path, uint64_t virtual_size);
+
 // Copy the source disk image from `src_fd` into `dst_fd` as a qcow2 image file.
 // Returns 0 on success or a negated errno value on failure.
 int convert_to_qcow2(int src_fd, int dst_fd);
