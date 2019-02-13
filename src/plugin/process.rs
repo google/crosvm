@@ -457,7 +457,7 @@ impl Process {
         kvm: &Kvm,
         vm: &mut Vm,
         vcpu_handles: &[JoinHandle<()>],
-        tap: Option<&Tap>,
+        taps: &Vec<Tap>,
     ) -> Result<()> {
         let (msg_size, request_file) = self.request_sockets[index]
             .recv_with_fd(&mut self.request_buffer)
@@ -603,7 +603,7 @@ impl Process {
                 Ok(())
             }
         } else if request.has_get_net_config() {
-            match tap {
+            match taps.first() {
                 Some(tap) => {
                     match Self::handle_get_net_config(tap, response.mut_get_net_config()) {
                         Ok(_) => {

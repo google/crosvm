@@ -108,7 +108,7 @@ pub struct Config {
     netmask: Option<net::Ipv4Addr>,
     mac_address: Option<net_util::MacAddress>,
     vhost_net: bool,
-    tap_fd: Option<RawFd>,
+    tap_fd: Vec<RawFd>,
     cid: Option<u64>,
     wayland_socket_path: Option<PathBuf>,
     wayland_dmabuf: bool,
@@ -143,7 +143,7 @@ impl Default for Config {
             netmask: None,
             mac_address: None,
             vhost_net: false,
-            tap_fd: None,
+            tap_fd: Vec::new(),
             cid: None,
             gpu: false,
             wayland_socket_path: None,
@@ -505,21 +505,15 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         "vhost-net" => cfg.vhost_net = true,
         "tap-fd" => {
-            if cfg.tap_fd.is_some() {
-                return Err(argument::Error::TooManyArguments(
-                    "`tap-fd` alread given".to_owned(),
-                ));
-            }
-            cfg.tap_fd =
-                Some(
-                    value
-                        .unwrap()
-                        .parse()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: value.unwrap().to_owned(),
-                            expected: "this value for `tap-fd` must be an unsigned integer",
-                        })?,
-                );
+            cfg.tap_fd.push(
+                value
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| argument::Error::InvalidValue {
+                        value: value.unwrap().to_owned(),
+                        expected: "this value for `tap-fd` must be an unsigned integer",
+                    })?,
+            );
         }
         "gpu" => {
             cfg.gpu = true;
@@ -632,7 +626,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::flag("vhost-net", "Use vhost for networking."),
           Argument::value("tap-fd",
                           "fd",
-                          "File descriptor for configured tap device.  Mutually exclusive with `host_ip`, `netmask`, and `mac`."),
+                          "File descriptor for configured tap device. A different virtual network card will be added each time this argument is given."),
           #[cfg(feature = "gpu")]
           Argument::flag("gpu", "(EXPERIMENTAL) enable virtio-gpu device"),
           Argument::value("evdev", "PATH", "Path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host"),
@@ -671,14 +665,6 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
         if cfg.plugin_root.is_some() && cfg.plugin.is_none() {
             return Err(argument::Error::ExpectedArgument(
                 "`plugin-root` requires `plugin`".to_owned(),
-            ));
-        }
-        if cfg.tap_fd.is_some()
-            && (cfg.host_ip.is_some() || cfg.netmask.is_some() || cfg.mac_address.is_some())
-        {
-            return Err(argument::Error::TooManyArguments(
-                "`tap_fd` and any of `host_ip`, `netmask`, or `mac` are mutually exclusive"
-                    .to_owned(),
             ));
         }
         Ok(())

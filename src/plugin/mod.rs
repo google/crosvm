@@ -506,7 +506,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         None
     };
 
-    let mut tap_opt: Option<Tap> = None;
+    let mut tap_interfaces: Vec<Tap> = Vec::new();
     if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
             if let Some(mac_address) = cfg.mac_address {
@@ -517,17 +517,17 @@ pub fn run_config(cfg: Config) -> Result<()> {
                     .map_err(Error::TapSetMacAddress)?;
 
                 tap.enable().map_err(Error::TapEnable)?;
-                tap_opt = Some(tap);
+                tap_interfaces.push(tap);
             }
         }
     }
-    if let Some(tap_fd) = cfg.tap_fd {
+    for tap_fd in cfg.tap_fd {
         // Safe because we ensure that we get a unique handle to the fd.
         let tap = unsafe {
             Tap::from_raw_fd(validate_raw_fd(tap_fd).map_err(Error::ValidateTapFd)?)
                 .map_err(Error::CreateTapFd)?
         };
-        tap_opt = Some(tap);
+        tap_interfaces.push(tap);
     }
 
     let plugin_args: Vec<&str> = cfg.params.iter().map(|s| &s[..]).collect();
@@ -650,13 +650,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
                     }
                 }
                 Token::Plugin { index } => {
-                    match plugin.handle_socket(
-                        index,
-                        &kvm,
-                        &mut vm,
-                        &vcpu_handles,
-                        tap_opt.as_ref(),
-                    ) {
+                    match plugin.handle_socket(index, &kvm, &mut vm, &vcpu_handles, &tap_interfaces)
+                    {
                         Ok(_) => {}
                         // A HUP is an expected event for a socket, so don't bother warning about
                         // it.

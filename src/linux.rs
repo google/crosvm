@@ -432,7 +432,7 @@ fn create_virtio_devs(
     });
 
     // We checked above that if the IP is defined, then the netmask is, too.
-    if let Some(tap_fd) = cfg.tap_fd {
+    for tap_fd in cfg.tap_fd {
         // Safe because we ensure that we get a unique handle to the fd.
         let tap = unsafe {
             Tap::from_raw_fd(validate_raw_fd(tap_fd).map_err(Error::ValidateRawFd)?)
@@ -449,7 +449,9 @@ fn create_virtio_devs(
         };
 
         devs.push(VirtioDeviceStub { dev: net_box, jail });
-    } else if let Some(host_ip) = cfg.host_ip {
+    }
+
+    if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
             if let Some(mac_address) = cfg.mac_address {
                 let net_box: Box<devices::virtio::VirtioDevice> = if cfg.vhost_net {
