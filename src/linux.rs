@@ -105,39 +105,44 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::BalloonDeviceNew(e) => write!(f, "failed to create balloon: {:?}", e),
-            Error::BlockDeviceNew(e) => write!(f, "failed to create block device: {:?}", e),
-            Error::BlockSignal(e) => write!(f, "failed to block signal: {:?}", e),
-            Error::BuildingVm(e) => write!(f, "The architecture failed to build the vm: {:?}", e),
-            Error::CloneEventFd(e) => write!(f, "failed to clone eventfd: {:?}", e),
-            Error::CreateEventFd(e) => write!(f, "failed to create eventfd: {:?}", e),
-            Error::CreatePollContext(e) => write!(f, "failed to create poll context: {:?}", e),
-            Error::CreateSignalFd(e) => write!(f, "failed to create signalfd: {:?}", e),
+            Error::BalloonDeviceNew(e) => write!(f, "failed to create balloon: {}", e),
+            Error::BlockDeviceNew(e) => write!(f, "failed to create block device: {}", e),
+            Error::BlockSignal(e) => write!(f, "failed to block signal: {}", e),
+            Error::BuildingVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
+            Error::CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
+            Error::CreateEventFd(e) => write!(f, "failed to create eventfd: {}", e),
+            Error::CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
+            Error::CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
             Error::CreateSocket(e) => write!(f, "failed to create socket: {}", e),
-            Error::CreateTapDevice(e) => write!(f, "failed to create tap device: {:?}", e),
+            Error::CreateTapDevice(e) => write!(f, "failed to create tap device: {}", e),
             Error::CreateTimerFd(e) => write!(f, "failed to create timerfd: {}", e),
-            Error::DetectImageType(e) => write!(f, "failed to detect disk image type: {:?}", e),
+            Error::DetectImageType(e) => write!(f, "failed to detect disk image type: {}", e),
             Error::DeviceJail(e) => write!(f, "failed to jail device: {}", e),
             Error::DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
             Error::Disk(e) => write!(f, "failed to load disk image: {}", e),
-            Error::DiskImageLock(e) => write!(f, "failed to lock disk image: {:?}", e),
+            Error::DiskImageLock(e) => write!(f, "failed to lock disk image: {}", e),
             Error::InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
             Error::InvalidWaylandPath => {
                 write!(f, "wayland socket path has no parent or file name")
             }
-            Error::NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {:?}", e),
+            Error::NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {}", e),
             Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
-            Error::OpenInitrd(p, e) => write!(f, "failed to open initrd {:?}: {}", p, e),
-            Error::OpenKernel(p, e) => write!(f, "failed to open kernel image {:?}: {}", p, e),
-            Error::OpenAndroidFstab(ref p, ref e) => {
-                write!(f, "failed to open android fstab file {:?}: {}", p, e)
+            Error::OpenInitrd(p, e) => write!(f, "failed to open initrd {}: {}", p.display(), e),
+            Error::OpenKernel(p, e) => {
+                write!(f, "failed to open kernel image {}: {}", p.display(), e)
             }
+            Error::OpenAndroidFstab(ref p, ref e) => write!(
+                f,
+                "failed to open android fstab file {}: {}",
+                p.display(),
+                e
+            ),
             Error::P9DeviceNew(e) => write!(f, "failed to create 9p device: {}", e),
-            Error::PollContextAdd(e) => write!(f, "failed to add fd to poll context: {:?}", e),
+            Error::PollContextAdd(e) => write!(f, "failed to add fd to poll context: {}", e),
             Error::PollContextDelete(e) => {
-                write!(f, "failed to remove fd from poll context: {:?}", e)
+                write!(f, "failed to remove fd from poll context: {}", e)
             }
-            Error::QcowDeviceCreate(e) => write!(f, "failed to read qcow formatted file {:?}", e),
+            Error::QcowDeviceCreate(e) => write!(f, "failed to read qcow formatted file {}", e),
             Error::ReadLowmemAvailable(e) => write!(
                 f,
                 "failed to read /sys/kernel/mm/chromeos-low_mem/available: {}",
@@ -148,32 +153,30 @@ impl fmt::Display for Error {
                 "failed to read /sys/kernel/mm/chromeos-low_mem/margin: {}",
                 e
             ),
-            Error::RegisterBalloon(e) => write!(f, "error registering balloon device: {:?}", e),
-            Error::RegisterBlock(e) => write!(f, "error registering block device: {:?}", e),
-            Error::RegisterGpu(e) => write!(f, "error registering gpu device: {:?}", e),
-            Error::RegisterNet(e) => write!(f, "error registering net device: {:?}", e),
-            Error::RegisterP9(e) => write!(f, "error registering 9p device: {:?}", e),
-            Error::RegisterRng(e) => write!(f, "error registering rng device: {:?}", e),
-            Error::RegisterSignalHandler(e) => {
-                write!(f, "error registering signal handler: {:?}", e)
-            }
+            Error::RegisterBalloon(e) => write!(f, "error registering balloon device: {}", e),
+            Error::RegisterBlock(e) => write!(f, "error registering block device: {}", e),
+            Error::RegisterGpu(e) => write!(f, "error registering gpu device: {}", e),
+            Error::RegisterNet(e) => write!(f, "error registering net device: {}", e),
+            Error::RegisterP9(e) => write!(f, "error registering 9p device: {}", e),
+            Error::RegisterRng(e) => write!(f, "error registering rng device: {}", e),
+            Error::RegisterSignalHandler(e) => write!(f, "error registering signal handler: {}", e),
             Error::RegisterWayland(e) => write!(f, "error registering wayland device: {}", e),
             Error::ResetTimerFd(e) => write!(f, "failed to reset timerfd: {}", e),
-            Error::RngDeviceNew(e) => write!(f, "failed to set up rng: {:?}", e),
-            Error::InputDeviceNew(ref e) => write!(f, "failed to set up input device: {:?}", e),
-            Error::InputEventsOpen(ref e) => write!(f, "failed to open event device: {:?}", e),
+            Error::RngDeviceNew(e) => write!(f, "failed to set up rng: {}", e),
+            Error::InputDeviceNew(ref e) => write!(f, "failed to set up input device: {}", e),
+            Error::InputEventsOpen(ref e) => write!(f, "failed to open event device: {}", e),
             Error::SettingGidMap(e) => write!(f, "error setting GID map: {}", e),
             Error::SettingUidMap(e) => write!(f, "error setting UID map: {}", e),
-            Error::SignalFd(e) => write!(f, "failed to read signal fd: {:?}", e),
-            Error::SpawnVcpu(e) => write!(f, "failed to spawn VCPU thread: {:?}", e),
-            Error::TimerFd(e) => write!(f, "failed to read timer fd: {:?}", e),
-            Error::ValidateRawFd(e) => write!(f, "failed to validate raw fd: {:?}", e),
-            Error::VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {:?}", e),
+            Error::SignalFd(e) => write!(f, "failed to read signal fd: {}", e),
+            Error::SpawnVcpu(e) => write!(f, "failed to spawn VCPU thread: {}", e),
+            Error::TimerFd(e) => write!(f, "failed to read timer fd: {}", e),
+            Error::ValidateRawFd(e) => write!(f, "failed to validate raw fd: {}", e),
+            Error::VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {}", e),
             Error::VhostVsockDeviceNew(e) => {
-                write!(f, "failed to set up virtual socket device: {:?}", e)
+                write!(f, "failed to set up virtual socket device: {}", e)
             }
             Error::VirtioPciDev(e) => write!(f, "failed to create virtio pci dev: {}", e),
-            Error::WaylandDeviceNew(e) => write!(f, "failed to create wayland device: {:?}", e),
+            Error::WaylandDeviceNew(e) => write!(f, "failed to create wayland device: {}", e),
             Error::LoadKernel(e) => write!(f, "failed to load kernel: {}", e),
         }
     }
@@ -345,7 +348,7 @@ fn create_virtio_devs(
                 });
             }
             Err(e) => {
-                error!("failed configuring virtio trackpad: {:?}", e);
+                error!("failed configuring virtio trackpad: {}", e);
                 return Err(e);
             }
         }
@@ -368,7 +371,7 @@ fn create_virtio_devs(
                 });
             }
             Err(e) => {
-                error!("failed configuring virtio mouse: {:?}", e);
+                error!("failed configuring virtio mouse: {}", e);
                 return Err(e);
             }
         }
@@ -391,7 +394,7 @@ fn create_virtio_devs(
                 });
             }
             Err(e) => {
-                error!("failed configuring virtio keyboard: {:?}", e);
+                error!("failed configuring virtio keyboard: {}", e);
                 return Err(e);
             }
         }
@@ -554,14 +557,14 @@ fn create_virtio_devs(
                     let crosvm_uid = match get_user_id(&crosvm_user_group) {
                         Ok(u) => u,
                         Err(e) => {
-                            warn!("falling back to current user id for gpu: {:?}", e);
+                            warn!("falling back to current user id for gpu: {}", e);
                             geteuid()
                         }
                     };
                     let crosvm_gid = match get_group_id(&crosvm_user_group) {
                         Ok(u) => u,
                         Err(e) => {
-                            warn!("falling back to current group id for gpu: {:?}", e);
+                            warn!("falling back to current group id for gpu: {}", e);
                             getegid()
                         }
                     };
@@ -632,14 +635,14 @@ fn create_virtio_devs(
             let crosvm_uid = match get_user_id(&crosvm_user_group) {
                 Ok(u) => u,
                 Err(e) => {
-                    warn!("falling back to current user id for Wayland: {:?}", e);
+                    warn!("falling back to current user id for Wayland: {}", e);
                     geteuid()
                 }
             };
             let crosvm_gid = match get_group_id(&crosvm_user_group) {
                 Ok(u) => u,
                 Err(e) => {
-                    warn!("falling back to current group id for Wayland: {:?}", e);
+                    warn!("falling back to current group id for Wayland: {}", e);
                     getegid()
                 }
             };
@@ -680,14 +683,14 @@ fn create_virtio_devs(
     let chronos_uid = match get_user_id(&chronos_user_group) {
         Ok(u) => u,
         Err(e) => {
-            warn!("falling back to current user id for 9p: {:?}", e);
+            warn!("falling back to current user id for 9p: {}", e);
             geteuid()
         }
     };
     let chronos_gid = match get_group_id(&chronos_user_group) {
         Ok(u) => u,
         Err(e) => {
-            warn!("falling back to current group id for 9p: {:?}", e);
+            warn!("falling back to current group id for 9p: {}", e);
             getegid()
         }
     };
@@ -829,7 +832,7 @@ fn run_vcpu(
                     v.retain(|&x| x != SIGRTMIN() + 0);
                     if let Err(e) = vcpu.set_signal_mask(&v) {
                         error!(
-                            "Failed to set the KVM_SIGNAL_MASK for vcpu {} : {:?}",
+                            "Failed to set the KVM_SIGNAL_MASK for vcpu {} : {}",
                             cpu_id, e
                         );
                         sig_ok = false;
@@ -837,7 +840,7 @@ fn run_vcpu(
                 }
                 Err(e) => {
                     error!(
-                        "Failed to retrieve signal mask for vcpu {} : {:?}",
+                        "Failed to retrieve signal mask for vcpu {} : {}",
                         cpu_id, e
                     );
                     sig_ok = false;
@@ -858,7 +861,7 @@ fn run_vcpu(
                             }
                             io_bus.read(port as u64, &mut data[..size]);
                             if let Err(e) = vcpu.set_data(&data[..size]) {
-                                error!("failed to set return data for IoIn: {:?}", e);
+                                error!("failed to set return data for IoIn: {}", e);
                             }
                         }
                         Ok(VcpuExit::IoOut {
@@ -893,7 +896,7 @@ fn run_vcpu(
                             libc::EINTR => interrupted_by_signal = true,
                             libc::EAGAIN => {}
                             _ => {
-                                error!("vcpu hit unknown error: {:?}", e);
+                                error!("vcpu hit unknown error: {}", e);
                                 break;
                             }
                         },
@@ -903,7 +906,7 @@ fn run_vcpu(
                         // Try to clear the signal that we use to kick VCPU if it is pending before
                         // attempting to handle pause requests.
                         if let Err(e) = clear_signal(SIGRTMIN() + 0) {
-                            error!("failed to clear pending signal: {:?}", e);
+                            error!("failed to clear pending signal: {}", e);
                             break;
                         }
                         let mut run_mode_lock = run_mode_arc.mtx.lock();
@@ -918,7 +921,7 @@ fn run_vcpu(
                                     // VCPU resumes, which could happen days later in realtime.
                                     if requires_kvmclock_ctrl {
                                         if let Err(e) = vcpu.kvmclock_ctrl() {
-                                            error!("failed to signal to kvm that vcpu {} is being suspended: {:?}", cpu_id, e);
+                                            error!("failed to signal to kvm that vcpu {} is being suspended: {}", cpu_id, e);
                                         }
                                     }
                                 }
@@ -1091,7 +1094,7 @@ fn run_control(
         .add(&linux.exit_evt, Token::Exit)
         .map_err(Error::PollContextAdd)?;
     if let Err(e) = poll_ctx.add(&stdin_handle, Token::Stdin) {
-        warn!("failed to add stdin to poll context: {:?}", e);
+        warn!("failed to add stdin to poll context: {}", e);
     }
     poll_ctx
         .add(&sigchld_fd, Token::ChildSignal)
@@ -1157,7 +1160,7 @@ fn run_control(
             match poll_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("failed to poll: {:?}", e);
+                    error!("failed to poll: {}", e);
                     break;
                 }
             }
@@ -1176,7 +1179,7 @@ fn run_control(
                             let _ = poll_ctx.delete(&stdin_handle);
                         }
                         Err(e) => {
-                            warn!("error while reading stdin: {:?}", e);
+                            warn!("error while reading stdin: {}", e);
                             let _ = poll_ctx.delete(&stdin_handle);
                         }
                         Ok(count) => {
@@ -1294,10 +1297,10 @@ fn run_control(
                                     disk_host_sockets,
                                 );
                                 if let Err(e) = socket.send(&response) {
-                                    error!("failed to send VmResponse: {:?}", e);
+                                    error!("failed to send VmResponse: {}", e);
                                 }
                                 if let Some(run_mode) = run_mode_opt {
-                                    info!("control socket changed run mode to {:?}", run_mode);
+                                    info!("control socket changed run mode to {}", run_mode);
                                     match run_mode {
                                         VmRunMode::Exiting => {
                                             break 'poll;
@@ -1311,7 +1314,7 @@ fn run_control(
                                     }
                                 }
                             }
-                            Err(e) => error!("failed to recv VmRequest: {:?}", e),
+                            Err(e) => error!("failed to recv VmRequest: {}", e),
                         }
                     }
                 }
@@ -1350,7 +1353,7 @@ fn run_control(
                     error!("failed to join vcpu thread: {:?}", e);
                 }
             }
-            Err(e) => error!("failed to kill vcpu thread: {:?}", e),
+            Err(e) => error!("failed to kill vcpu thread: {}", e),
         }
     }
 

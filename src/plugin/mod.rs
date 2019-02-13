@@ -105,66 +105,49 @@ pub enum Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::CloneEventFd(ref e) => write!(f, "failed to clone eventfd: {:?}", e),
-            Error::CloneVcpuSocket(ref e) => write!(f, "failed to clone vcpu socket: {:?}", e),
-            Error::CreateEventFd(ref e) => write!(f, "failed to create eventfd: {:?}", e),
-            Error::CreateIrqChip(ref e) => write!(f, "failed to create kvm irqchip: {:?}", e),
-            Error::CreateJail(ref e) => write!(f, "failed to create jail: {}", e),
-            Error::CreateKvm(ref e) => write!(f, "error creating Kvm: {:?}", e),
-            Error::CreateMainSocket(ref e) => {
-                write!(f, "error creating main request socket: {:?}", e)
-            }
-            Error::CreatePIT(ref e) => write!(f, "failed to create kvm PIT: {:?}", e),
-            Error::CreatePollContext(ref e) => write!(f, "failed to create poll context: {:?}", e),
-            Error::CreateSignalFd(ref e) => write!(f, "failed to create signalfd: {:?}", e),
-            Error::CreateSocketPair(ref e) => write!(f, "failed to create socket pair: {}", e),
-            Error::CreateTapFd(ref e) => {
-                write!(f, "failed to create tap device from raw fd: {:?}", e)
-            }
-            Error::CreateVcpu(ref e) => write!(f, "error creating vcpu: {:?}", e),
-            Error::CreateVcpuSocket(ref e) => {
-                write!(f, "error creating vcpu request socket: {:?}", e)
-            }
-            Error::CreateVm(ref e) => write!(f, "error creating vm: {:?}", e),
-            Error::DecodeRequest(ref e) => write!(f, "failed to decode plugin request: {}", e),
-            Error::EncodeResponse(ref e) => write!(f, "failed to encode plugin response: {}", e),
-            Error::Mount(ref e) => write!(f, "failed to mount: {}", e),
-            Error::MountDev(ref e) => write!(f, "failed to mount: {}", e),
-            Error::MountLib(ref e) => write!(f, "failed to mount: {}", e),
-            Error::MountLib64(ref e) => write!(f, "failed to mount: {}", e),
-            Error::MountPlugin(ref e) => write!(f, "failed to mount: {}", e),
-            Error::MountPluginLib(ref e) => write!(f, "failed to mount: {}", e),
-            Error::MountRoot(ref e) => write!(f, "failed to mount: {}", e),
-            Error::NoRootDir => {
-                write!(f, "no root directory for jailed process to pivot root into")
-            }
-            Error::ParsePivotRoot(ref e) => write!(f, "failed to set jail pivot root: {}", e),
-            Error::ParseSeccomp(ref e) => write!(f, "failed to parse jail seccomp filter: {}", e),
-            Error::PluginFailed(ref e) => write!(f, "plugin exited with error: {}", e),
-            Error::PluginKill(ref e) => write!(f, "error sending kill signal to plugin: {:?}", e),
-            Error::PluginKilled(ref e) => write!(f, "plugin exited with signal {}", e),
-            Error::PluginRunJail(ref e) => write!(f, "failed to run jail: {}", e),
-            Error::PluginSocketHup => write!(f, "plugin request socket has been hung up"),
-            Error::PluginSocketPoll(ref e) => {
-                write!(f, "failed to poll plugin request sockets: {:?}", e)
-            }
-            Error::PluginSocketRecv(ref e) => {
-                write!(f, "failed to recv from plugin request socket: {:?}", e)
-            }
-            Error::PluginSocketSend(ref e) => {
-                write!(f, "failed to send to plugin request socket: {:?}", e)
-            }
-            Error::PluginSpawn(ref e) => write!(f, "failed to spawn plugin: {}", e),
-            Error::PluginTimeout => write!(f, "plugin did not exit within timeout"),
-            Error::PluginWait(ref e) => write!(f, "error waiting for plugin to exit: {:?}", e),
-            Error::Poll(ref e) => write!(f, "failed to poll all FDs: {:?}", e),
-            Error::PollContextAdd(ref e) => write!(f, "failed to add fd to poll context: {:?}", e),
-            Error::RootNotAbsolute => write!(f, "path to the root directory must be absolute"),
-            Error::RootNotDir => write!(f, "specified root directory is not a directory"),
-            Error::SetGidMap(ref e) => write!(f, "failed to set gidmap for jail: {}", e),
-            Error::SetUidMap(ref e) => write!(f, "failed to set uidmap for jail: {}", e),
-            Error::SigChild {
+        use self::Error::*;
+
+        match self {
+            CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
+            CloneVcpuSocket(e) => write!(f, "failed to clone vcpu socket: {}", e),
+            CreateEventFd(e) => write!(f, "failed to create eventfd: {}", e),
+            CreateIrqChip(e) => write!(f, "failed to create kvm irqchip: {}", e),
+            CreateJail(e) => write!(f, "failed to create jail: {}", e),
+            CreateKvm(e) => write!(f, "error creating Kvm: {}", e),
+            CreateMainSocket(e) => write!(f, "error creating main request socket: {}", e),
+            CreatePIT(e) => write!(f, "failed to create kvm PIT: {}", e),
+            CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
+            CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
+            CreateSocketPair(e) => write!(f, "failed to create socket pair: {}", e),
+            CreateTapFd(e) => write!(f, "failed to create tap device from raw fd: {}", e),
+            CreateVcpu(e) => write!(f, "error creating vcpu: {}", e),
+            CreateVcpuSocket(e) => write!(f, "error creating vcpu request socket: {}", e),
+            CreateVm(e) => write!(f, "error creating vm: {}", e),
+            DecodeRequest(e) => write!(f, "failed to decode plugin request: {}", e),
+            EncodeResponse(e) => write!(f, "failed to encode plugin response: {}", e),
+            Mount(e) | MountDev(e) | MountLib(e) | MountLib64(e) | MountPlugin(e)
+            | MountPluginLib(e) | MountRoot(e) => write!(f, "failed to mount: {}", e),
+            NoRootDir => write!(f, "no root directory for jailed process to pivot root into"),
+            ParsePivotRoot(e) => write!(f, "failed to set jail pivot root: {}", e),
+            ParseSeccomp(e) => write!(f, "failed to parse jail seccomp filter: {}", e),
+            PluginFailed(e) => write!(f, "plugin exited with error: {}", e),
+            PluginKill(e) => write!(f, "error sending kill signal to plugin: {}", e),
+            PluginKilled(e) => write!(f, "plugin exited with signal {}", e),
+            PluginRunJail(e) => write!(f, "failed to run jail: {}", e),
+            PluginSocketHup => write!(f, "plugin request socket has been hung up"),
+            PluginSocketPoll(e) => write!(f, "failed to poll plugin request sockets: {}", e),
+            PluginSocketRecv(e) => write!(f, "failed to recv from plugin request socket: {}", e),
+            PluginSocketSend(e) => write!(f, "failed to send to plugin request socket: {}", e),
+            PluginSpawn(e) => write!(f, "failed to spawn plugin: {}", e),
+            PluginTimeout => write!(f, "plugin did not exit within timeout"),
+            PluginWait(e) => write!(f, "error waiting for plugin to exit: {}", e),
+            Poll(e) => write!(f, "failed to poll all FDs: {}", e),
+            PollContextAdd(e) => write!(f, "failed to add fd to poll context: {}", e),
+            RootNotAbsolute => write!(f, "path to the root directory must be absolute"),
+            RootNotDir => write!(f, "specified root directory is not a directory"),
+            SetGidMap(e) => write!(f, "failed to set gidmap for jail: {}", e),
+            SetUidMap(e) => write!(f, "failed to set uidmap for jail: {}", e),
+            SigChild {
                 pid,
                 signo,
                 status,
@@ -174,14 +157,14 @@ impl fmt::Display for Error {
                 "process {} died with signal {}, status {}, and code {}",
                 pid, signo, status, code
             ),
-            Error::SignalFd(ref e) => write!(f, "failed to read signal fd: {:?}", e),
-            Error::SpawnVcpu(ref e) => write!(f, "error spawning vcpu thread: {}", e),
-            Error::TapOpen(ref e) => write!(f, "error opening tap device: {:?}", e),
-            Error::TapSetIp(ref e) => write!(f, "error setting tap ip: {:?}", e),
-            Error::TapSetNetmask(ref e) => write!(f, "error setting tap netmask: {:?}", e),
-            Error::TapSetMacAddress(ref e) => write!(f, "error setting tap mac address: {:?}", e),
-            Error::TapEnable(ref e) => write!(f, "error enabling tap device: {:?}", e),
-            Error::ValidateTapFd(ref e) => write!(f, "failed to validate raw tap fd: {:?}", e),
+            SignalFd(e) => write!(f, "failed to read signal fd: {}", e),
+            SpawnVcpu(e) => write!(f, "error spawning vcpu thread: {}", e),
+            TapOpen(e) => write!(f, "error opening tap device: {}", e),
+            TapSetIp(e) => write!(f, "error setting tap ip: {}", e),
+            TapSetNetmask(e) => write!(f, "error setting tap netmask: {}", e),
+            TapSetMacAddress(e) => write!(f, "error setting tap mac address: {}", e),
+            TapEnable(e) => write!(f, "error enabling tap device: {}", e),
+            ValidateTapFd(e) => write!(f, "failed to validate raw tap fd: {}", e),
         }
     }
 }
@@ -368,7 +351,7 @@ pub fn run_vcpus(
                     let res = vcpu_plugin.init(&vcpu);
                     vcpu_thread_barrier.wait();
                     if let Err(e) = res {
-                        error!("failed to initialize vcpu {}: {:?}", cpu_id, e);
+                        error!("failed to initialize vcpu {}: {}", cpu_id, e);
                     } else {
                         loop {
                             let run_res = vcpu.run();
@@ -382,7 +365,7 @@ pub fn run_vcpus(
                                         }
                                         vcpu_plugin.io_read(port as u64, &mut data[..size], &vcpu);
                                         if let Err(e) = vcpu.set_data(&data[..size]) {
-                                            error!("failed to set return data for IoIn: {:?}", e);
+                                            error!("failed to set return data for IoIn: {}", e);
                                         }
                                     }
                                     VcpuExit::IoOut {
@@ -428,7 +411,7 @@ pub fn run_vcpus(
                                 Err(e) => match e.errno() {
                                     EAGAIN | EINTR => {}
                                     _ => {
-                                        error!("vcpu hit unknown error: {:?}", e);
+                                        error!("vcpu hit unknown error: {}", e);
                                         break;
                                     }
                                 },
@@ -442,7 +425,7 @@ pub fn run_vcpus(
                             clear_signal(SIGRTMIN() + 0).expect("failed to clear pending signal");
 
                             if let Err(e) = vcpu_plugin.pre_run(&vcpu) {
-                                error!("failed to process pause on vcpu {}: {:?}", cpu_id, e);
+                                error!("failed to process pause on vcpu {}: {}", cpu_id, e);
                                 break;
                             }
                         }
@@ -723,7 +706,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                     error!("failed to join vcpu thread: {:?}", e);
                 }
             }
-            Err(e) => error!("failed to kill vcpu thread: {:?}", e),
+            Err(e) => error!("failed to kill vcpu thread: {}", e),
         }
     }
 

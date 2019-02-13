@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std;
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -23,6 +24,16 @@ pub enum RngError {
     AccessingRandomDev(io::Error),
 }
 pub type Result<T> = std::result::Result<T, RngError>;
+
+impl Display for RngError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::RngError::*;
+
+        match self {
+            AccessingRandomDev(e) => write!(f, "failed to access /dev/urandom: {}", e),
+        }
+    }
+}
 
 struct Worker {
     queue: Queue,
@@ -92,7 +103,7 @@ impl Worker {
         {
             Ok(pc) => pc,
             Err(e) => {
-                error!("failed creating PollContext: {:?}", e);
+                error!("failed creating PollContext: {}", e);
                 return;
             }
         };
@@ -101,7 +112,7 @@ impl Worker {
             let events = match poll_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("failed polling for events: {:?}", e);
+                    error!("failed polling for events: {}", e);
                     break;
                 }
             };
@@ -111,7 +122,7 @@ impl Worker {
                 match event.token() {
                     Token::QueueAvailable => {
                         if let Err(e) = queue_evt.read() {
-                            error!("failed reading queue EventFd: {:?}", e);
+                            error!("failed reading queue EventFd: {}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_queue();
@@ -193,7 +204,7 @@ impl VirtioDevice for Rng {
         let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed to create kill EventFd pair: {:?}", e);
+                error!("failed to create kill EventFd pair: {}", e);
                 return;
             }
         };

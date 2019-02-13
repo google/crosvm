@@ -4,6 +4,7 @@
 
 use std;
 use std::cmp;
+use std::fmt::{self, Display};
 use std::io::Write;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -28,6 +29,17 @@ pub enum BalloonError {
     WritingConfigEvent(sys_util::Error),
 }
 pub type Result<T> = std::result::Result<T, BalloonError>;
+
+impl Display for BalloonError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::BalloonError::*;
+
+        match self {
+            NotEnoughPages => write!(f, "not enough pages"),
+            WritingConfigEvent(e) => write!(f, "failed to write config event: {}", e),
+        }
+    }
+}
 
 // Balloon has three virt IO queues: Inflate, Deflate, and Stats.
 // Stats is currently not used.
@@ -92,7 +104,7 @@ impl Worker {
                         .remove_range(guest_address, 1 << VIRTIO_BALLOON_PFN_SHIFT)
                         .is_err()
                     {
-                        warn!("Marking pages unused failed {:?}", guest_address);
+                        warn!("Marking pages unused failed; addr={}", guest_address);
                         continue;
                     }
                 }
@@ -148,7 +160,7 @@ impl Worker {
         {
             Ok(pc) => pc,
             Err(e) => {
-                error!("failed creating PollContext: {:?}", e);
+                error!("failed creating PollContext: {}", e);
                 return;
             }
         };
@@ -157,7 +169,7 @@ impl Worker {
             let events = match poll_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("failed polling for events: {:?}", e);
+                    error!("failed polling for events: {}", e);
                     break;
                 }
             };
@@ -167,14 +179,14 @@ impl Worker {
                 match event.token() {
                     Token::Inflate => {
                         if let Err(e) = inflate_queue_evt.read() {
-                            error!("failed reading inflate queue EventFd: {:?}", e);
+                            error!("failed reading inflate queue EventFd: {}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_inflate_deflate(true);
                     }
                     Token::Deflate => {
                         if let Err(e) = deflate_queue_evt.read() {
-                            error!("failed reading deflate queue EventFd: {:?}", e);
+                            error!("failed reading deflate queue EventFd: {}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_inflate_deflate(false);
@@ -321,7 +333,7 @@ impl VirtioDevice for Balloon {
         let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed to create kill EventFd pair: {:?}", e);
+                error!("failed to create kill EventFd pair: {}", e);
                 return;
             }
         };

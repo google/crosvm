@@ -75,8 +75,10 @@ impl fmt::Display for Error {
         match self {
             Error::BindMount { src, dst, errno } => write!(
                 f,
-                "failed to accept bind mount {:?} -> {:?}: {}",
-                src, dst, errno
+                "failed to accept bind mount {} -> {}: {}",
+                src.display(),
+                dst.display(),
+                io::Error::from_raw_os_error(*errno),
             ),
             Error::Mount {
                 errno,
@@ -87,9 +89,14 @@ impl fmt::Display for Error {
                 data,
             } => write!(
                 f,
-                "failed to accept mount {:?} -> {:?} of type {:?} with flags 0x{:x} \
+                "failed to accept mount {} -> {} of type {:?} with flags 0x{:x} \
                  and data {:?}: {}",
-                src, dest, fstype, flags, data, errno
+                src.display(),
+                dest.display(),
+                fstype,
+                flags,
+                data,
+                io::Error::from_raw_os_error(*errno),
             ),
             Error::CheckingMultiThreaded(e) => write!(
                 f,
@@ -101,28 +108,39 @@ impl fmt::Display for Error {
             Error::ForkingWhileMultiThreaded => {
                 write!(f, "Attempt to call fork() while multithreaded")
             }
-            Error::SeccompPath(p) => write!(f, "missing seccomp policy path: {:?}", p),
-            Error::StrToCString(s) => write!(f, "failed to convert string into CString: {:?}", s),
-            Error::PathToCString(s) => write!(f, "failed to convert path into CString: {:?}", s),
+            Error::SeccompPath(p) => write!(f, "missing seccomp policy path: {}", p.display()),
+            Error::StrToCString(s) => write!(f, "failed to convert string into CString: {}", s),
+            Error::PathToCString(s) => {
+                write!(f, "failed to convert path into CString: {}", s.display())
+            }
             Error::DupDevNull(errno) => write!(
                 f,
                 "failed to call dup2 to set stdin, stdout, or stderr to /dev/null: {}",
-                errno
+                io::Error::from_raw_os_error(*errno),
             ),
             Error::OpenDevNull(e) => write!(
                 f,
                 "fail to open /dev/null for setting FDs 0, 1, or 2: {}",
-                e
+                e,
             ),
-            Error::SetAltSyscallTable { name, errno } => {
-                write!(f, "failed to set alt-syscall table {:?}: {}", name, errno)
-            }
-            Error::SettingChrootDirectory(errno, p) => {
-                write!(f, "failed to set chroot {:?}: {}", p, errno)
-            }
-            Error::SettingPivotRootDirectory(errno, p) => {
-                write!(f, "failed to set pivot root {:?}: {}", p, errno)
-            }
+            Error::SetAltSyscallTable { name, errno } => write!(
+                f,
+                "failed to set alt-syscall table {}: {}",
+                name,
+                io::Error::from_raw_os_error(*errno),
+            ),
+            Error::SettingChrootDirectory(errno, p) => write!(
+                f,
+                "failed to set chroot {}: {}",
+                p.display(),
+                io::Error::from_raw_os_error(*errno),
+            ),
+            Error::SettingPivotRootDirectory(errno, p) => write!(
+                f,
+                "failed to set pivot root {}: {}",
+                p.display(),
+                io::Error::from_raw_os_error(*errno),
+            ),
             Error::ReadFdDirEntry(e) => {
                 write!(f, "failed to read an entry in /proc/self/fd: {}", e)
             }

@@ -14,6 +14,7 @@ pub use net::Net;
 pub use net::NetT;
 pub use vsock::Vsock;
 
+use std::fmt::{self, Display};
 use std::io::Error as IoError;
 use std::mem;
 use std::os::unix::io::AsRawFd;
@@ -40,6 +41,22 @@ pub enum Error {
     LogAddress(GuestMemoryError),
 }
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            VhostOpen(e) => write!(f, "failed to open vhost device: {}", e),
+            IoctlError(e) => write!(f, "failed to run ioctl: {}", e),
+            InvalidQueue => write!(f, "invalid queue"),
+            DescriptorTableAddress(e) => write!(f, "invalid descriptor table address: {}", e),
+            UsedAddress(e) => write!(f, "invalid used address: {}", e),
+            AvailAddress(e) => write!(f, "invalid available address: {}", e),
+            LogAddress(e) => write!(f, "invalid log address: {}", e),
+        }
+    }
+}
 
 fn ioctl_result<T>() -> Result<T> {
     Err(Error::IoctlError(IoError::last_os_error()))
@@ -331,7 +348,7 @@ mod tests {
             // FakeNet won't respond to ioctl's
             Ok(_t) => {}
             Err(Error::IoctlError(ref ioe)) if ioe.raw_os_error().unwrap() == 25 => {}
-            Err(e) => panic!("Unexpected Error:\n{:?}", e),
+            Err(e) => panic!("Unexpected Error:\n{}", e),
         }
     }
 

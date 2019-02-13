@@ -60,36 +60,32 @@ impl error::Error for P9Error {
 
 impl fmt::Display for P9Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::P9Error::*;
+
         match self {
-            P9Error::TagTooLong(len) => write!(
+            TagTooLong(len) => write!(
                 f,
                 "P9 device tag is too long: len = {}, max = {}",
                 len,
                 ::std::u16::MAX
             ),
-            P9Error::RootNotAbsolute(buf) => write!(
+            RootNotAbsolute(buf) => write!(
                 f,
                 "P9 root directory is not absolute: root = {}",
                 buf.display()
             ),
-            P9Error::CreatePollContext(err) => write!(f, "failed to create PollContext: {:?}", err),
-            P9Error::PollError(err) => write!(f, "failed to poll events: {:?}", err),
-            P9Error::ReadQueueEventFd(err) => {
-                write!(f, "failed to read from virtio queue EventFd: {:?}", err)
-            }
-            P9Error::NoReadableDescriptors => {
-                write!(f, "request does not have any readable descriptors")
-            }
-            P9Error::NoWritableDescriptors => {
-                write!(f, "request does not have any writable descriptors")
-            }
-            P9Error::InvalidGuestAddress(addr, len) => write!(
+            CreatePollContext(err) => write!(f, "failed to create PollContext: {}", err),
+            PollError(err) => write!(f, "failed to poll events: {}", err),
+            ReadQueueEventFd(err) => write!(f, "failed to read from virtio queue EventFd: {}", err),
+            NoReadableDescriptors => write!(f, "request does not have any readable descriptors"),
+            NoWritableDescriptors => write!(f, "request does not have any writable descriptors"),
+            InvalidGuestAddress(addr, len) => write!(
                 f,
-                "descriptor contained invalid guest address range: address = {:?}, len = {}",
+                "descriptor contained invalid guest address range: address = {}, len = {}",
                 addr, len
             ),
-            P9Error::SignalUsedQueue(err) => write!(f, "failed to signal used queue: {:?}", err),
-            P9Error::Internal(err) => write!(f, "P9 internal server error: {}", err),
+            SignalUsedQueue(err) => write!(f, "failed to signal used queue: {}", err),
+            Internal(err) => write!(f, "P9 internal server error: {}", err),
         }
     }
 }
@@ -402,7 +398,7 @@ impl VirtioDevice for P9 {
         let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed creating kill EventFd pair: {:?}", e);
+                error!("failed creating kill EventFd pair: {}", e);
                 return;
             }
         };
@@ -427,7 +423,7 @@ impl VirtioDevice for P9 {
 
             match worker_result {
                 Ok(worker) => self.worker = Some(worker),
-                Err(e) => error!("failed to spawn virtio_9p worker: {:?}", e),
+                Err(e) => error!("failed to spawn virtio_9p worker: {}", e),
             }
         }
     }
@@ -437,7 +433,7 @@ impl Drop for P9 {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
             if let Err(e) = kill_evt.write(1) {
-                error!("failed to kill virtio_9p worker thread: {:?}", e);
+                error!("failed to kill virtio_9p worker thread: {}", e);
                 return;
             }
 

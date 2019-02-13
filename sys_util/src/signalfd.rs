@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::mem;
 use std::os::raw::c_int;
@@ -27,6 +28,32 @@ pub enum Error {
     /// Signalfd could be read, but didn't return a full siginfo struct.
     /// This wraps the number of bytes that were actually read.
     SignalFdPartialRead(usize),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            CreateSigset(e) => write!(
+                f,
+                "failed to construct sigset when creating signalfd: {}",
+                e,
+            ),
+            CreateSignalFd(e) => write!(f, "failed to create a new signalfd: {}", e),
+            CreateBlockSignal(e) => write!(
+                f,
+                "failed to block the signal when creating signalfd: {}",
+                e,
+            ),
+            SignalFdRead(e) => write!(f, "unable to read from signalfd: {}", e),
+            SignalFdPartialRead(read) => write!(
+                f,
+                "signalfd failed to return a full siginfo struct, read only {} bytes",
+                read,
+            ),
+        }
+    }
 }
 
 pub type Result<T> = result::Result<T, Error>;
@@ -114,7 +141,7 @@ impl Drop for SignalFd {
         // was promised - unmasking the signal when we go out of scope.
         let res = signal::unblock_signal(self.signal);
         if let Err(e) = res {
-            error!("signalfd failed to unblock signal {}: {:?}", self.signal, e);
+            error!("signalfd failed to unblock signal {}: {}", self.signal, e);
         }
     }
 }

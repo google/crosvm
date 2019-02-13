@@ -12,6 +12,7 @@ mod dwl;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
+use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
 use std::ptr::null_mut;
@@ -43,6 +44,23 @@ pub enum GpuDisplayError {
     InvalidSurfaceId,
     /// The path is invalid.
     InvalidPath,
+}
+
+impl Display for GpuDisplayError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::GpuDisplayError::*;
+
+        match self {
+            Allocate => write!(f, "internal allocation failed"),
+            Connect => write!(f, "failed to connect to compositor"),
+            CreateShm(e) => write!(f, "failed to create shared memory: {}", e),
+            SetSize(e) => write!(f, "failed to set size of shared memory: {}", e),
+            CreateSurface => write!(f, "failed to crate surface on the compositor"),
+            FailedImport => write!(f, "failed to import a buffer to the compositor"),
+            InvalidSurfaceId => write!(f, "invalid surface ID"),
+            InvalidPath => write!(f, "invalid path"),
+        }
+    }
 }
 
 struct DwlContext(*mut dwl_context);

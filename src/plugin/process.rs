@@ -412,7 +412,7 @@ impl Process {
             if cpu_mask & (1 << cpu_id) != 0 {
                 per_cpu_state.lock().request_pause(user_data);
                 if let Err(e) = handle.kill(SIGRTMIN() + 0) {
-                    error!("failed to interrupt vcpu {}: {:?}", cpu_id, e);
+                    error!("failed to interrupt vcpu {}: {}", cpu_id, e);
                 }
             }
         }
@@ -425,7 +425,7 @@ impl Process {
         // Log any NetError so that the cause can be found later, but extract and return the
         // underlying errno for the client as well.
         fn map_net_error(s: &str, e: NetError) -> SysError {
-            error!("failed to get {}: {:?}", s, e);
+            error!("failed to get {}: {}", s, e);
             e.sys_error()
         }
 
@@ -683,7 +683,7 @@ impl Drop for Process {
     fn drop(&mut self) {
         // Ignore the result because there is nothing we can do about it.
         if let Err(e) = self.signal_kill() {
-            error!("failed to signal kill event for plugin: {:?}", e);
+            error!("failed to signal kill event for plugin: {}", e);
         }
     }
 }

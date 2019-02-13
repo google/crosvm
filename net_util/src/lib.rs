@@ -6,7 +6,7 @@ extern crate libc;
 extern crate net_sys;
 extern crate sys_util;
 
-use std::fmt;
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Read, Result as IoResult, Write};
 use std::mem;
@@ -33,6 +33,19 @@ pub enum Error {
     IoctlError(SysError),
 }
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            CreateSocket(e) => write!(f, "failed to create a socket: {}", e),
+            OpenTun(e) => write!(f, "failed to open /dev/net/tun: {}", e),
+            CreateTap(e) => write!(f, "failed to create tap interface: {}", e),
+            IoctlError(e) => write!(f, "ioctl failed: {}", e),
+        }
+    }
+}
 
 impl Error {
     pub fn sys_error(&self) -> SysError {
@@ -92,7 +105,7 @@ impl fmt::Display for MacAddressError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             MacAddressError::InvalidNumOctets(n) => write!(f, "invalid number of octets: {}", n),
-            MacAddressError::ParseOctet(ref e) => write!(f, "failed to parse octet: {:?}", e),
+            MacAddressError::ParseOctet(ref e) => write!(f, "failed to parse octet: {}", e),
         }
     }
 }
@@ -636,7 +649,7 @@ mod tests {
             // We won't have permission in test environments; allow that
             Ok(_t) => {}
             Err(Error::IoctlError(ref e)) if e.errno() == EPERM => {}
-            Err(e) => panic!("Unexpected Error:\n{:?}", e),
+            Err(e) => panic!("Unexpected Error:\n{}", e),
         }
     }
 }

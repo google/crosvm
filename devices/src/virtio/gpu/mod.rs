@@ -365,14 +365,14 @@ impl Frontend {
                                 Ok(data_mem) => {
                                     resp = self.process_gpu_command(mem, cmd, Some(data_mem))
                                 }
-                                Err(e) => debug!("ctrl queue invalid data descriptor: {:?}", e),
+                                Err(e) => debug!("ctrl queue invalid data descriptor: {}", e),
                             }
                         }
                         None => resp = self.process_gpu_command(mem, cmd, None),
                     }
                     gpu_cmd = Some(cmd);
                 }
-                Err(e) => debug!("ctrl queue decode error: {:?}", e),
+                Err(e) => debug!("ctrl queue decode error: {}", e),
             }
         }
         if resp.is_err() {
@@ -402,7 +402,7 @@ impl Frontend {
                 // fence is complete.
                 match resp.encode(flags, fence_id, ctx_id, ret_desc_mem) {
                     Ok(l) => len = l,
-                    Err(e) => debug!("ctrl queue response encode error: {:?}", e),
+                    Err(e) => debug!("ctrl queue response encode error: {}", e),
                 }
 
                 if flags & VIRTIO_GPU_FLAG_FENCE != 0 {
@@ -505,14 +505,14 @@ impl Worker {
         {
             Ok(pc) => pc,
             Err(e) => {
-                error!("failed creating PollContext: {:?}", e);
+                error!("failed creating PollContext: {}", e);
                 return;
             }
         };
 
         if let Some(ref resource_bridge) = self.resource_bridge {
             if let Err(e) = poll_ctx.add(resource_bridge, Token::ResourceBridge) {
-                error!("failed to add resource bridge to PollContext: {:?}", e);
+                error!("failed to add resource bridge to PollContext: {}", e);
             }
         }
 
@@ -527,7 +527,7 @@ impl Worker {
             let events = match poll_ctx.wait_timeout(duration) {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("failed polling for events: {:?}", e);
+                    error!("failed polling for events: {}", e);
                     break;
                 }
             };
@@ -722,7 +722,7 @@ impl VirtioDevice for Gpu {
         let exit_evt = match self.exit_evt.try_clone() {
             Ok(e) => e,
             Err(e) => {
-                error!("error cloning exit eventfd: {:?}", e);
+                error!("error cloning exit eventfd: {}", e);
                 return;
             }
         };
@@ -730,7 +730,7 @@ impl VirtioDevice for Gpu {
         let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("error creating kill EventFd pair: {:?}", e);
+                error!("error creating kill EventFd pair: {}", e);
                 return;
             }
         };
@@ -750,8 +750,8 @@ impl VirtioDevice for Gpu {
                     const UNDESIRED_CARDS: &[&str] = &["vgem", "pvr"];
                     let drm_card = match gpu_buffer::rendernode::open_device(UNDESIRED_CARDS) {
                         Ok(f) => f,
-                        Err(e) => {
-                            error!("failed to open card: {:?}", e);
+                        Err(()) => {
+                            error!("failed to open card");
                             return;
                         }
                     };
@@ -767,7 +767,7 @@ impl VirtioDevice for Gpu {
                     let display = match GpuDisplay::new(socket_path) {
                         Ok(c) => c,
                         Err(e) => {
-                            error!("failed to open display: {:?}", e);
+                            error!("failed to open display: {}", e);
                             return;
                         }
                     };

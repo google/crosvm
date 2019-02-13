@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::cmp;
+use std::fmt::{self, Display};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::{size_of, size_of_val};
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -128,6 +129,21 @@ enum RequestType {
     Unsupported(u32),
 }
 
+impl Display for RequestType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::RequestType::*;
+
+        match self {
+            In => write!(f, "in"),
+            Out => write!(f, "out"),
+            Flush => write!(f, "flush"),
+            Discard => write!(f, "discard"),
+            WriteZeroes => write!(f, "write zeroes"),
+            Unsupported(n) => write!(f, "unsupported({})", n),
+        }
+    }
+}
+
 #[derive(Debug)]
 enum ParseError {
     /// Guest gave us bad memory addresses
@@ -142,6 +158,21 @@ enum ParseError {
     DescriptorChainTooShort,
     /// Guest gave us a descriptor that was too short to use.
     DescriptorLengthTooSmall,
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::ParseError::*;
+
+        match self {
+            GuestMemory(e) => write!(f, "bad guest memory address: {}", e),
+            CheckedOffset(addr, offset) => write!(f, "{}+{} would overflow a usize", addr, offset),
+            UnexpectedWriteOnlyDescriptor => write!(f, "unexpected write-only descriptor"),
+            UnexpectedReadOnlyDescriptor => write!(f, "unexpected read-only descriptor"),
+            DescriptorChainTooShort => write!(f, "descriptor chain too short"),
+            DescriptorLengthTooSmall => write!(f, "descriptor length too small"),
+        }
+    }
 }
 
 fn request_type(
@@ -212,6 +243,61 @@ enum ExecuteError {
     },
     OutOfRange,
     Unsupported(u32),
+}
+
+impl Display for ExecuteError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::ExecuteError::*;
+
+        match self {
+            Flush(e) => write!(f, "failed to flush: {}", e),
+            Read {
+                addr,
+                length,
+                sector,
+                guestmemerr,
+            } => write!(
+                f,
+                "failed to read {} bytes from address {} sector {}: {}",
+                length, addr, sector, guestmemerr,
+            ),
+            Seek { ioerr, sector } => write!(f, "failed to seek to sector {}: {}", sector, ioerr),
+            TimerFd(e) => write!(f, "{}", e),
+            Write {
+                addr,
+                length,
+                sector,
+                guestmemerr,
+            } => write!(
+                f,
+                "failed to write {} bytes to address {} sector {}: {}",
+                length, addr, sector, guestmemerr,
+            ),
+            DiscardWriteZeroes {
+                ioerr: Some(ioerr),
+                sector,
+                num_sectors,
+                flags,
+            } => write!(
+                f,
+                "failed to perform discard or write zeroes; sector={} num_sectors={} flags={}; {}",
+                sector, num_sectors, flags, ioerr,
+            ),
+            DiscardWriteZeroes {
+                ioerr: None,
+                sector,
+                num_sectors,
+                flags,
+            } => write!(
+                f,
+                "failed to perform discard or write zeroes; sector={} num_sectors={} flags={}",
+                sector, num_sectors, flags,
+            ),
+            ReadOnly { request_type } => write!(f, "read only; request_type={}", request_type),
+            OutOfRange => write!(f, "out of range"),
+            Unsupported(n) => write!(f, "unsupported ({})", n),
+        }
+    }
 }
 
 impl ExecuteError {
@@ -551,7 +637,7 @@ impl<T: DiskFile> Worker<T> {
                             VIRTIO_BLK_S_OK
                         }
                         Err(e) => {
-                            error!("failed executing disk request: {:?}", e);
+                            error!("failed executing disk request: {}", e);
                             len = 1; // 1 byte for the status
                             e.status()
                         }
@@ -563,7 +649,7 @@ impl<T: DiskFile> Worker<T> {
                         .unwrap();
                 }
                 Err(e) => {
-                    error!("failed processing available descriptor chain: {:?}", e);
+                    error!("failed processing available descriptor chain: {}", e);
                     len = 0;
                 }
             }
@@ -622,7 +708,7 @@ impl<T: DiskFile> Worker<T> {
         let mut flush_timer = match TimerFd::new() {
             Ok(t) => t,
             Err(e) => {
-                error!("Failed to create the flush timer: {:?}", e);
+                error!("Failed to create the flush timer: {}", e);
                 return;
             }
         };
@@ -642,7 +728,7 @@ impl<T: DiskFile> Worker<T> {
         {
             Ok(pc) => pc,
             Err(e) => {
-                error!("failed creating PollContext: {:?}", e);
+                error!("failed creating PollContext: {}", e);
                 return;
             }
         };
@@ -651,7 +737,7 @@ impl<T: DiskFile> Worker<T> {
             let events = match poll_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("failed polling for events: {:?}", e);
+                    error!("failed polling for events: {}", e);
                     break;
                 }
             };
@@ -662,17 +748,17 @@ impl<T: DiskFile> Worker<T> {
                 match event.token() {
                     Token::FlushTimer => {
                         if let Err(e) = self.disk_image.flush() {
-                            error!("Failed to flush the disk: {:?}", e);
+                            error!("Failed to flush the disk: {}", e);
                             break 'poll;
                         }
                         if let Err(e) = flush_timer.wait() {
-                            error!("Failed to clear flush timer: {:?}", e);
+                            error!("Failed to clear flush timer: {}", e);
                             break 'poll;
                         }
                     }
                     Token::QueueAvailable => {
                         if let Err(e) = queue_evt.read() {
-                            error!("failed reading queue EventFd: {:?}", e);
+                            error!("failed reading queue EventFd: {}", e);
                             break 'poll;
                         }
                         needs_interrupt |=
@@ -682,7 +768,7 @@ impl<T: DiskFile> Worker<T> {
                         let req = match control_socket.recv() {
                             Ok(req) => req,
                             Err(e) => {
-                                error!("control socket failed recv: {:?}", e);
+                                error!("control socket failed recv: {}", e);
                                 break 'poll;
                             }
                         };
@@ -703,7 +789,7 @@ impl<T: DiskFile> Worker<T> {
                         };
 
                         if let Err(e) = control_socket.send(&resp) {
-                            error!("control socket failed send: {:?}", e);
+                            error!("control socket failed send: {}", e);
                             break 'poll;
                         }
                     }
@@ -860,7 +946,7 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
         let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed creating kill EventFd pair: {:?}", e);
+                error!("failed creating kill EventFd pair: {}", e);
                 return;
             }
         };

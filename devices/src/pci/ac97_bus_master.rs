@@ -82,17 +82,15 @@ impl Error for PlaybackError {}
 
 impl Display for PlaybackError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::PlaybackError::*;
+
         match self {
-            PlaybackError::ReadingGuestBufferAddress(e) => {
-                write!(f, "Failed to get the address of the audio buffer: {:?}.", e)
+            ReadingGuestBufferAddress(e) => {
+                write!(f, "Failed to get the address of the audio buffer: {}.", e)
             }
-            PlaybackError::ReadingGuestSamples(e) => {
-                write!(f, "Failed to read samples from guest memory: {:?}.", e)
-            }
-            PlaybackError::StreamError(e) => {
-                write!(f, "Failed to get a buffer from the stream: {:?}", e)
-            }
-            PlaybackError::WritingOutput(e) => write!(f, "Failed to write audio output: {:?}.", e),
+            ReadingGuestSamples(e) => write!(f, "Failed to read samples from guest memory: {}.", e),
+            StreamError(e) => write!(f, "Failed to get a buffer from the stream: {}", e),
+            WritingOutput(e) => write!(f, "Failed to write audio output: {}.", e),
         }
     }
 }
@@ -151,8 +149,8 @@ impl Ac97BusMaster {
             loop {
                 if let Err(e) = irq_resample_evt.read() {
                     error!(
-                        "Failed to read the irq event from the resample thread: {:?}.",
-                        e
+                        "Failed to read the irq event from the resample thread: {}.",
+                        e,
                     );
                     break;
                 }
@@ -163,7 +161,7 @@ impl Ac97BusMaster {
                     if regs.func_regs(Ac97Function::Output).sr & int_mask != 0 {
                         if let Some(irq_evt) = regs.irq_evt.as_ref() {
                             if let Err(e) = irq_evt.write(1) {
-                                error!("Failed to set the irq from the resample thread: {:?}.", e);
+                                error!("Failed to set the irq from the resample thread: {}.", e);
                                 break;
                             }
                         }
@@ -440,7 +438,7 @@ impl Ac97BusMaster {
                     if let Err(e) =
                         audio_out_thread(thread_regs, thread_mem, &thread_run, output_stream)
                     {
-                        error!("Playback error: {:?}", e);
+                        error!("Playback error: {}", e);
                     }
                     thread_run.store(false, Ordering::Relaxed);
                 }));

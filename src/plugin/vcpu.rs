@@ -329,7 +329,7 @@ impl PluginVcpu {
         let vcpu_state_lock = match self.shared_vcpu_state.read() {
             Ok(l) => l,
             Err(e) => {
-                error!("error read locking shared cpu state: {:?}", e);
+                error!("error read locking shared cpu state: {}", e);
                 return false;
             }
         };
@@ -360,7 +360,7 @@ impl PluginVcpu {
                 match self.handle_until_resume(vcpu) {
                     Ok(resume_data) => data.copy_from_slice(&resume_data),
                     Err(e) if e.errno() == EPIPE => {}
-                    Err(e) => error!("failed to process vcpu requests: {:?}", e),
+                    Err(e) => error!("failed to process vcpu requests: {}", e),
                 }
                 true
             }

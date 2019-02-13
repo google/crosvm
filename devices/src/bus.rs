@@ -6,6 +6,7 @@
 
 use std::cmp::{Ord, Ordering, PartialEq, PartialOrd};
 use std::collections::btree_map::BTreeMap;
+use std::fmt::{self, Display};
 use std::result;
 use std::sync::Arc;
 
@@ -40,6 +41,16 @@ pub trait BusDevice: Send {
 pub enum Error {
     /// The insertion failed because the new device overlapped with an old device.
     Overlap,
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            Overlap => write!(f, "new device overlaps with an old device"),
+        }
+    }
 }
 
 pub type Result<T> = result::Result<T, Error>;

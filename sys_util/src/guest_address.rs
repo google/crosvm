@@ -5,6 +5,7 @@
 //! Represents an address in the guest's memory space.
 
 use std::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
+use std::fmt::{self, Display};
 use std::ops::{BitAnd, BitOr};
 
 /// Represents an Address in the guest's memory.
@@ -86,6 +87,12 @@ impl Ord for GuestAddress {
 impl PartialOrd for GuestAddress {
     fn partial_cmp(&self, other: &GuestAddress) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+impl Display for GuestAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:#x}", self.0)
     }
 }
 

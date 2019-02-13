@@ -18,6 +18,7 @@ extern crate resources;
 #[macro_use]
 extern crate sys_util;
 
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
@@ -76,6 +77,18 @@ pub enum VmRunMode {
     Suspending,
     /// Indicates that the VM is exiting all processes.
     Exiting,
+}
+
+impl Display for VmRunMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::VmRunMode::*;
+
+        match self {
+            Running => write!(f, "running"),
+            Suspending => write!(f, "suspending"),
+            Exiting => write!(f, "exiting"),
+        }
+    }
 }
 
 impl Default for VmRunMode {
@@ -239,13 +252,13 @@ impl VmRequest {
                 // Forward the request to the block device process via its control socket.
                 if let Some(sock) = disk_host_sockets.get(disk_index) {
                     if let Err(e) = sock.send(self) {
-                        error!("disk socket send failed: {:?}", e);
+                        error!("disk socket send failed: {}", e);
                         VmResponse::Err(SysError::new(EINVAL))
                     } else {
                         match sock.recv() {
                             Ok(result) => result,
                             Err(e) => {
-                                error!("disk socket recv failed: {:?}", e);
+                                error!("disk socket recv failed: {}", e);
                                 VmResponse::Err(SysError::new(EINVAL))
                             }
                         }

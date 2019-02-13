@@ -120,26 +120,24 @@ impl fmt::Display for DeviceRegistrationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             DeviceRegistrationError::AllocateIoAddrs(e) => {
-                write!(f, "Allocating IO addresses: {:?}", e)
+                write!(f, "Allocating IO addresses: {}", e)
             }
             DeviceRegistrationError::AllocateIrq => write!(f, "Allocating IRQ number"),
             DeviceRegistrationError::CreateMmioDevice(e) => {
-                write!(f, "failed to create mmio device: {:?}", e)
+                write!(f, "failed to create mmio device: {}", e)
             }
             DeviceRegistrationError::Cmdline(e) => {
                 write!(f, "unable to add device to kernel command line: {}", e)
             }
             DeviceRegistrationError::EventFdCreate(e) => {
-                write!(f, "failed to create eventfd: {:?}", e)
+                write!(f, "failed to create eventfd: {}", e)
             }
-            DeviceRegistrationError::MmioInsert(e) => {
-                write!(f, "failed to add to mmio bus: {:?}", e)
-            }
+            DeviceRegistrationError::MmioInsert(e) => write!(f, "failed to add to mmio bus: {}", e),
             DeviceRegistrationError::RegisterIoevent(e) => {
-                write!(f, "failed to register ioevent to VM: {:?}", e)
+                write!(f, "failed to register ioevent to VM: {}", e)
             }
             DeviceRegistrationError::RegisterIrqfd(e) => {
-                write!(f, "failed to register irq eventfd to VM: {:?}", e)
+                write!(f, "failed to register irq eventfd to VM: {}", e)
             }
             DeviceRegistrationError::ProxyDeviceCreation(e) => {
                 write!(f, "failed to create proxy device: {}", e)
@@ -223,14 +221,12 @@ pub enum LoadImageError {
 
 impl fmt::Display for LoadImageError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::LoadImageError::*;
+
         match self {
-            LoadImageError::Seek(e) => write!(f, "Seek failed: {:?}", e),
-            LoadImageError::ImageSizeTooLarge(size) => {
-                write!(f, "Image size too large: {:?}", size)
-            }
-            LoadImageError::ReadToMemory(e) => {
-                write!(f, "Reading image into memory failed: {:?}", e)
-            }
+            Seek(e) => write!(f, "Seek failed: {}", e),
+            ImageSizeTooLarge(size) => write!(f, "Image size too large: {}", size),
+            ReadToMemory(e) => write!(f, "Reading image into memory failed: {}", e),
         }
     }
 }

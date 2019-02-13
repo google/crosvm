@@ -233,7 +233,7 @@ pub fn fallocate(
 ///                 continue
 ///             },
 ///             Err(e) if e.errno() == libc::ECHILD => println!("no children left"),
-///             Err(e) => println!("error reaping children: {:?}", e),
+///             Err(e) => println!("error reaping children: {}", e),
 ///         }
 ///         break
 ///     }
@@ -298,7 +298,7 @@ impl Drop for UnlinkUnixDatagram {
         if let Ok(addr) = self.0.local_addr() {
             if let Some(path) = addr.as_pathname() {
                 if let Err(e) = remove_file(path) {
-                    warn!("failed to remove control socket file: {:?}", e);
+                    warn!("failed to remove control socket file: {}", e);
                 }
             }
         }

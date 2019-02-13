@@ -202,7 +202,7 @@ where
                                 let result =
                                     worker.run(queue_evts, QUEUE_SIZES, kill_evt, activate_vqs);
                                 if let Err(e) = result {
-                                    error!("net worker thread exited with error: {:?}", e);
+                                    error!("net worker thread exited with error: {}", e);
                                 }
                             });
 

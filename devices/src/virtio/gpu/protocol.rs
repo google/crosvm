@@ -2,7 +2,7 @@
 #![allow(non_camel_case_types)]
 
 use std::cmp::min;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
 use std::str::from_utf8;
@@ -493,6 +493,21 @@ pub enum GpuCommandDecodeError {
     InvalidType(u32),
 }
 
+impl Display for GpuCommandDecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::GpuCommandDecodeError::*;
+
+        match self {
+            Memory(e) => write!(
+                f,
+                "command referenced an inaccessible area of memory: {}",
+                e,
+            ),
+            InvalidType(n) => write!(f, "invalid command type ({})", n),
+        }
+    }
+}
+
 impl From<VolatileMemoryError> for GpuCommandDecodeError {
     fn from(e: VolatileMemoryError) -> GpuCommandDecodeError {
         GpuCommandDecodeError::Memory(e)
@@ -623,6 +638,22 @@ pub enum GpuResponseEncodeError {
     TooManyDisplays(usize),
     /// More planes than are valid were in a `OkResourcePlaneInfo`.
     TooManyPlanes(usize),
+}
+
+impl Display for GpuResponseEncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::GpuResponseEncodeError::*;
+
+        match self {
+            Memory(e) => write!(
+                f,
+                "response was encoded to an inaccessible area of memory: {}",
+                e,
+            ),
+            TooManyDisplays(n) => write!(f, "{} is more displays than are valid", n),
+            TooManyPlanes(n) => write!(f, "{} is more planes than are valid", n),
+        }
+    }
 }
 
 impl From<VolatileMemoryError> for GpuResponseEncodeError {

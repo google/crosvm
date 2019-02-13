@@ -78,7 +78,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::GbmFailed => write!(f, "internal GBM failure"),
-            Error::ExportFailed(e) => write!(f, "export failed: {:?}", e),
+            Error::ExportFailed(e) => write!(f, "export failed: {}", e),
             Error::MapFailed => write!(f, "map failed"),
             Error::CheckedArithmetic {
                 field1: (label1, value1),

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std;
+use std::fmt::{self, Display};
 use std::io;
 
 use libc::EINVAL;
@@ -25,6 +26,26 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            EvictingRefCounts(e) => write!(
+                f,
+                "failed to write a refblock from the cache to disk: {}",
+                e
+            ),
+            InvalidIndex => write!(f, "address requested is not within the range of the disk"),
+            NeedCluster(addr) => write!(f, "cluster with addr={} needs to be read", addr),
+            NeedNewCluster => write!(f, "new cluster needs to be allocated for refcounts"),
+            ReadingRefCounts(e) => {
+                write!(f, "failed to read the file into the refcount cache: {}", e)
+            }
+        }
+    }
+}
 
 /// Represents the refcount entries for an open qcow file.
 #[derive(Debug)]

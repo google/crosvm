@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::cmp;
+use std::fmt::{self, Display};
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -51,6 +52,26 @@ pub enum NetError {
     TapEnable(TapError),
     /// Error while polling for events.
     PollError(SysError),
+}
+
+impl Display for NetError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::NetError::*;
+
+        match self {
+            CreateKillEventFd(e) => write!(f, "failed to create kill eventfd: {}", e),
+            CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
+            CloneKillEventFd(e) => write!(f, "failed to clone kill eventfd: {}", e),
+            TapOpen(e) => write!(f, "failed to open tap device: {}", e),
+            TapSetIp(e) => write!(f, "failed to set tap IP: {}", e),
+            TapSetNetmask(e) => write!(f, "failed to set tap netmask: {}", e),
+            TapSetMacAddress(e) => write!(f, "failed to set tap mac address: {}", e),
+            TapSetOffload(e) => write!(f, "failed to set tap interface offload flags: {}", e),
+            TapSetVnetHdrSize(e) => write!(f, "failed to set vnet header size: {}", e),
+            TapEnable(e) => write!(f, "failed to enable tap interface: {}", e),
+            PollError(e) => write!(f, "error while polling for events: {}", e),
+        }
+    }
 }
 
 struct Worker<T: TapT> {
@@ -110,7 +131,7 @@ where
                             write_count += sz;
                         }
                         Err(e) => {
-                            warn!("net: rx: failed to write slice: {:?}", e);
+                            warn!("net: rx: failed to write slice: {}", e);
                             break;
                         }
                     };
@@ -156,7 +177,7 @@ where
                     // The tap device is nonblocking, so any error aside from EAGAIN is
                     // unexpected.
                     if e.raw_os_error().unwrap() != EAGAIN {
-                        warn!("net: rx: failed to read tap: {:?}", e);
+                        warn!("net: rx: failed to read tap: {}", e);
                     }
                     break;
                 }
@@ -188,7 +209,7 @@ where
                         read_count += sz;
                     }
                     Err(e) => {
-                        warn!("net: tx: failed to read slice: {:?}", e);
+                        warn!("net: tx: failed to read slice: {}", e);
                         break;
                     }
                 }
@@ -199,7 +220,7 @@ where
             match write_result {
                 Ok(_) => {}
                 Err(e) => {
-                    warn!("net: tx: error failed to write to tap: {:?}", e);
+                    warn!("net: tx: error failed to write to tap: {}", e);
                 }
             };
 
@@ -263,7 +284,7 @@ where
                     }
                     Token::RxQueue => {
                         if let Err(e) = rx_queue_evt.read() {
-                            error!("net: error reading rx queue EventFd: {:?}", e);
+                            error!("net: error reading rx queue EventFd: {}", e);
                             break 'poll;
                         }
                         // There should be a buffer available now to receive the frame into.
@@ -273,7 +294,7 @@ where
                     }
                     Token::TxQueue => {
                         if let Err(e) = tx_queue_evt.read() {
-                            error!("net: error reading tx queue EventFd: {:?}", e);
+                            error!("net: error reading tx queue EventFd: {}", e);
                             break 'poll;
                         }
                         self.process_tx();
@@ -453,7 +474,7 @@ where
                             let tx_queue_evt = queue_evts.remove(0);
                             let result = worker.run(rx_queue_evt, tx_queue_evt, kill_evt);
                             if let Err(e) = result {
-                                error!("net worker thread exited with error: {:?}", e);
+                                error!("net worker thread exited with error: {}", e);
                             }
                         });
 

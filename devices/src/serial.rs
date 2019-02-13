@@ -195,7 +195,7 @@ impl BusDevice for Serial {
         }
 
         if let Err(e) = self.handle_write(offset as u8, data[0]) {
-            error!("serial failed write: {:?}", e);
+            error!("serial failed write: {}", e);
         }
     }
 

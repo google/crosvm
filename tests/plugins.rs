@@ -24,7 +24,7 @@ struct RemovePath(PathBuf);
 impl Drop for RemovePath {
     fn drop(&mut self) {
         if let Err(e) = remove_file(&self.0) {
-            eprintln!("failed to remove path: {:?}", e);
+            eprintln!("failed to remove path: {}", e);
         }
     }
 }

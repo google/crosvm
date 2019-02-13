@@ -258,7 +258,7 @@ impl VirglResource for BackedBuffer {
                 Some(import_id)
             }
             Err(e) => {
-                error!("failed to import dmabuf for display: {:?}", e);
+                error!("failed to import dmabuf for display: {}", e);
                 None
             }
         }
@@ -292,13 +292,13 @@ impl VirglResource for BackedBuffer {
                 .map(|&(addr, len)| mem.get_slice(addr.offset(), len as u64).unwrap_or_default()),
         );
         if let Err(e) = res {
-            error!("failed to write to resource from guest memory: {:?}", e)
+            error!("failed to write to resource from guest memory: {}", e)
         }
     }
 
     fn read_to_volatile(&mut self, x: u32, y: u32, width: u32, height: u32, dst: VolatileSlice) {
         if let Err(e) = self.buffer.read_to_volatile(x, y, width, height, 0, dst) {
-            error!("failed to copy resource: {:?}", e);
+            error!("failed to copy resource: {}", e);
         }
     }
 }
@@ -356,7 +356,7 @@ impl Backend {
         let request = match resource_bridge.recv() {
             Ok(msg) => msg,
             Err(e) => {
-                error!("error receiving resource bridge request: {:?}", e);
+                error!("error receiving resource bridge request: {}", e);
                 return;
             }
         };
@@ -372,7 +372,7 @@ impl Backend {
         };
 
         if let Err(e) = resource_bridge.send(&response) {
-            error!("error sending resource bridge request: {:?}", e);
+            error!("error sending resource bridge request: {}", e);
         }
     }
 
@@ -442,7 +442,7 @@ impl Backend {
             if self.scanout_surface.is_none() {
                 match display.create_surface(None, DEFAULT_WIDTH, DEFAULT_HEIGHT) {
                     Ok(surface) => self.scanout_surface = Some(surface),
-                    Err(e) => error!("failed to create display surface: {:?}", e),
+                    Err(e) => error!("failed to create display surface: {}", e),
                 }
             }
             GpuResponse::OkNoData
@@ -591,7 +591,7 @@ impl Backend {
                 ) {
                     Ok(surface) => self.cursor_surface = Some(surface),
                     Err(e) => {
-                        error!("failed to create cursor surface: {:?}", e);
+                        error!("failed to create cursor surface: {}", e);
                         return GpuResponse::ErrUnspec;
                     }
                 }
@@ -613,7 +613,7 @@ impl Backend {
                     if let Err(e) =
                         buffer.read_to_volatile(0, 0, buffer.width(), buffer.height(), 0, fb)
                     {
-                        error!("failed to copy resource to cursor: {:?}", e);
+                        error!("failed to copy resource to cursor: {}", e);
                         return GpuResponse::ErrInvalidParameter;
                     }
                 }

@@ -5,6 +5,7 @@
 use byteorder::{ByteOrder, LittleEndian};
 
 use std;
+use std::fmt::{self, Display};
 use std::os::unix::io::RawFd;
 
 use kvm::Datamatch;
@@ -23,6 +24,19 @@ pub enum Error {
     IoRegistrationFailed(u64),
 }
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            IoAllocationFailed(size) => {
+                write!(f, "failed to allocate space for an IO BAR, size={}", size)
+            }
+            IoRegistrationFailed(addr) => write!(f, "failed to register an IO BAR, addr={}", addr),
+        }
+    }
+}
 
 pub trait PciDevice: Send {
     /// Returns a label suitable for debug output.

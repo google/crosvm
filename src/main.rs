@@ -174,7 +174,7 @@ fn wait_all_children() -> bool {
                 // We expect ECHILD which indicates that there were no children left.
                 Err(e) if e.errno() == libc::ECHILD => return true,
                 Err(e) => {
-                    warn!("error while waiting for children: {:?}", e);
+                    warn!("error while waiting for children: {}", e);
                     return false;
                 }
                 // We reaped one child, so continue reaping.
@@ -724,7 +724,7 @@ fn vms_request(
                 let sender = Sender::<VmRequest>::new(s);
                 if let Err(e) = sender.send(request) {
                     error!(
-                        "failed to send request to socket at '{}': {:?}",
+                        "failed to send request to socket at '{}': {}",
                         socket_path, e
                     );
                 }
@@ -789,7 +789,7 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
                 let sender = Sender::<VmRequest>::new(s);
                 if let Err(e) = sender.send(&VmRequest::BalloonAdjust(num_bytes)) {
                     error!(
-                        "failed to send balloon request to socket at '{}': {:?}",
+                        "failed to send balloon request to socket at '{}': {}",
                         socket_path, e
                     );
                 }
@@ -824,11 +824,11 @@ fn create_qcow2(mut args: std::env::Args) -> std::result::Result<(), ()> {
         .write(true)
         .open(&file_path)
         .map_err(|e| {
-            error!("Failed opening qcow file at '{}': {:?}", file_path, e);
+            error!("Failed opening qcow file at '{}': {}", file_path, e);
         })?;
 
     QcowFile::new(file, size).map_err(|e| {
-        error!("Failed to create qcow file at '{}': {:?}", file_path, e);
+        error!("Failed to create qcow file at '{}': {}", file_path, e);
     })?;
 
     Ok(())
@@ -882,7 +882,7 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
                 let sender = Sender::<VmRequest>::new(s);
                 if let Err(e) = sender.send(&request) {
                     error!(
-                        "failed to send disk request to socket at '{}': {:?}",
+                        "failed to send disk request to socket at '{}': {}",
                         socket_path, e
                     );
                 }
@@ -908,7 +908,7 @@ fn print_usage() {
 
 fn crosvm_main() -> std::result::Result<(), ()> {
     if let Err(e) = syslog::init() {
-        println!("failed to initialize syslog: {:?}", e);
+        println!("failed to initialize syslog: {}", e);
         return Err(());
     }
 
@@ -948,7 +948,7 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         warn!("not all child processes have exited; sending SIGKILL");
         if let Err(e) = kill_process_group() {
             // We're now at the mercy of the OS to clean up after us.
-            warn!("unable to kill all child processes: {:?}", e);
+            warn!("unable to kill all child processes: {}", e);
         }
     }
 

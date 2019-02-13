@@ -6,6 +6,7 @@
 //! mmap object leaves scope.
 
 use std;
+use std::fmt::{self, Display};
 use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::ptr::null_mut;
@@ -35,6 +36,26 @@ pub enum Error {
     ReadFromMemory(std::io::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            InvalidAddress => write!(f, "requested memory out of range"),
+            InvalidOffset => write!(f, "requested offset is out of range of off_t"),
+            InvalidRange(offset, count) => write!(
+                f,
+                "requested memory range spans past the end of the region: offset={} count={}",
+                offset, count,
+            ),
+            ReadFromSource(e) => write!(f, "failed to read from the given source: {}", e),
+            SystemCallFailed(e) => write!(f, "mmap system call failed: {}", e),
+            WriteToMemory(e) => write!(f, "failed to write to memory: {}", e),
+            ReadFromMemory(e) => write!(f, "failed to read from memory: {}", e),
+        }
+    }
+}
 
 /// Wraps an anonymous shared memory mapping in the current process.
 #[derive(Debug)]
@@ -75,7 +96,7 @@ impl MemoryMapping {
         // return value. We only warn about an error because failure here is not fatal to the mmap.
         if unsafe { libc::madvise(addr, size, libc::MADV_DONTDUMP) } == -1 {
             warn!(
-                "failed madvise(MADV_DONTDUMP) on mmap: {:?}",
+                "failed madvise(MADV_DONTDUMP) on mmap: {}",
                 errno::Error::last()
             );
         }
@@ -123,7 +144,7 @@ impl MemoryMapping {
         // return value. We only warn about an error because failure here is not fatal to the mmap.
         if unsafe { libc::madvise(addr, size, libc::MADV_DONTDUMP) } == -1 {
             warn!(
-                "failed madvise(MADV_DONTDUMP) on mmap: {:?}",
+                "failed madvise(MADV_DONTDUMP) on mmap: {}",
                 errno::Error::last()
             );
         }
@@ -414,7 +435,7 @@ mod tests {
         if let Error::SystemCallFailed(e) = res {
             assert_eq!(e.errno(), libc::EINVAL);
         } else {
-            panic!("unexpected error: {:?}", res);
+            panic!("unexpected error: {}", res);
         }
     }
 
@@ -425,7 +446,7 @@ mod tests {
         if let Error::SystemCallFailed(e) = res {
             assert_eq!(e.errno(), libc::EBADF);
         } else {
-            panic!("unexpected error: {:?}", res);
+            panic!("unexpected error: {}", res);
         }
     }
 
@@ -485,7 +506,7 @@ mod tests {
             .unwrap_err();
         match res {
             Error::InvalidOffset => {}
-            e => panic!("unexpected error: {:?}", e),
+            e => panic!("unexpected error: {}", e),
         }
     }
 }

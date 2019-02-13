@@ -5,6 +5,7 @@
 //! Implements vhost-based virtio devices.
 
 use std;
+use std::fmt::{self, Display};
 
 use net_util::Error as TapError;
 use sys_util::Error as SysError;
@@ -74,3 +75,38 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            CreateKillEventFd(e) => write!(f, "failed to create kill eventfd: {}", e),
+            CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
+            CloneKillEventFd(e) => write!(f, "failed to clone kill eventfd: {}", e),
+            PollError(e) => write!(f, "failed polling for events: {}", e),
+            TapOpen(e) => write!(f, "failed to open tap device: {}", e),
+            TapSetIp(e) => write!(f, "failed to set tap IP: {}", e),
+            TapSetNetmask(e) => write!(f, "failed to set tap netmask: {}", e),
+            TapSetMacAddress(e) => write!(f, "failed to set tap mac address: {}", e),
+            TapSetOffload(e) => write!(f, "failed to set tap interface offload flags: {}", e),
+            TapSetVnetHdrSize(e) => write!(f, "failed to set vnet header size: {}", e),
+            TapEnable(e) => write!(f, "failed to enable tap interface: {}", e),
+            VhostOpen(e) => write!(f, "failed to open vhost device: {}", e),
+            VhostSetOwner(e) => write!(f, "failed to set owner: {}", e),
+            VhostGetFeatures(e) => write!(f, "failed to get features: {}", e),
+            VhostSetFeatures(e) => write!(f, "failed to set features: {}", e),
+            VhostSetMemTable(e) => write!(f, "failed to set mem table: {}", e),
+            VhostSetVringNum(e) => write!(f, "failed to set vring num: {}", e),
+            VhostSetVringAddr(e) => write!(f, "failed to set vring addr: {}", e),
+            VhostSetVringBase(e) => write!(f, "failed to set vring base: {}", e),
+            VhostSetVringCall(e) => write!(f, "failed to set vring call: {}", e),
+            VhostSetVringKick(e) => write!(f, "failed to set vring kick: {}", e),
+            VhostNetSetBackend(e) => write!(f, "net set backend failed: {}", e),
+            VhostVsockSetCid(e) => write!(f, "failed to set CID for guest: {}", e),
+            VhostVsockStart(e) => write!(f, "failed to start vhost-vsock driver: {}", e),
+            VhostIrqCreate(e) => write!(f, "failed to create vhost eventfd: {}", e),
+            VhostIrqRead(e) => write!(f, "failed to read vhost eventfd: {}", e),
+        }
+    }
+}

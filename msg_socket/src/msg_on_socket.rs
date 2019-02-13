@@ -4,6 +4,7 @@
 
 use data_model::*;
 use std;
+use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::result;
 use sys_util::{Error as SysError, EventFd};
@@ -37,6 +38,23 @@ pub enum MsgError {
 }
 
 pub type MsgResult<T> = result::Result<T, MsgError>;
+
+impl Display for MsgError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::MsgError::*;
+
+        match self {
+            Send(e) => write!(f, "failed to send request or response: {}", e),
+            Recv(e) => write!(f, "failed to receive request or response: {}", e),
+            InvalidType => write!(f, "invalid type"),
+            BadRecvSize(n) => write!(f, "wrong amount of data received; expected {} bytes", n),
+            ExpectFd => write!(f, "missing associated file descriptor for request"),
+            NotExpectFd => write!(f, "unexpected file descriptor is unused"),
+            WrongFdBufferSize => write!(f, "fd buffer size too small"),
+            WrongMsgBufferSize => write!(f, "msg buffer size too small"),
+        }
+    }
+}
 
 /// A msg that could be serialized to and deserialize from array in little endian.
 ///

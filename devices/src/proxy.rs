@@ -72,7 +72,7 @@ fn child_proc(sock: UnixDatagram, device: &mut BusDevice) {
         let cmd = match sock.recv() {
             Ok(cmd) => cmd,
             Err(err) => {
-                error!("child device process failed recv: {:?}", err);
+                error!("child device process failed recv: {}", err);
                 break;
             }
         };
@@ -108,7 +108,7 @@ fn child_proc(sock: UnixDatagram, device: &mut BusDevice) {
             }
         };
         if let Err(e) = res {
-            error!("child device process failed send: {:?}", e);
+            error!("child device process failed send: {}", e);
         }
     }
 }
@@ -175,15 +175,15 @@ impl ProxyDevice {
         let res = self.sock.send(&cmd);
         if let Err(e) = res {
             error!(
-                "failed write to child device process {}: {:?}",
-                self.debug_label, e
+                "failed write to child device process {}: {}",
+                self.debug_label, e,
             );
         };
         match self.sock.recv() {
             Err(e) => {
                 error!(
-                    "failed read from child device process {}: {:?}",
-                    self.debug_label, e
+                    "failed read from child device process {}: {}",
+                    self.debug_label, e,
                 );
                 None
             }

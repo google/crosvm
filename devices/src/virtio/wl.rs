@@ -1163,14 +1163,14 @@ impl WlState {
         let events = match self.poll_ctx.wait_timeout(Duration::from_secs(0)) {
             Ok(v) => v.to_owned(),
             Err(e) => {
-                error!("failed polling for vfd evens: {:?}", e);
+                error!("failed polling for vfd evens: {}", e);
                 return;
             }
         };
 
         for event in events.as_ref().iter_readable() {
             if let Err(e) = self.recv(event.token()) {
-                error!("failed to recv from vfd: {:?}", e)
+                error!("failed to recv from vfd: {}", e)
             }
         }
 
@@ -1179,7 +1179,7 @@ impl WlState {
                 let vfd_id = event.token();
                 if let Some(fd) = self.vfds.get(&vfd_id).and_then(|vfd| vfd.poll_fd()) {
                     if let Err(e) = self.poll_ctx.delete(fd) {
-                        warn!("failed to remove hungup vfd from poll context: {:?}", e);
+                        warn!("failed to remove hungup vfd from poll context: {}", e);
                     }
                 }
                 self.in_queue.push_back((vfd_id, WlRecv::Hup));
@@ -1263,7 +1263,7 @@ impl WlState {
                         .unwrap()
                         .send(&ResourceRequest::GetResource { id })
                     {
-                        error!("error sending resource bridge request: {:?}", e);
+                        error!("error sending resource bridge request: {}", e);
                         return Ok(WlResp::InvalidId);
                     }
                     match self.resource_bridge.as_ref().unwrap().recv() {
@@ -1276,7 +1276,7 @@ impl WlState {
                             return Ok(WlResp::InvalidId);
                         }
                         Err(e) => {
-                            error!("error receiving resource bridge response: {:?}", e);
+                            error!("error receiving resource bridge response: {}", e);
                             // If there was an error with the resource bridge, it can no longer be
                             // trusted to continue to function.
                             self.resource_bridge = None;
@@ -1538,7 +1538,7 @@ impl Worker {
             }) {
             Ok(pc) => pc,
             Err(e) => {
-                error!("failed creating PollContext: {:?}", e);
+                error!("failed creating PollContext: {}", e);
                 return;
             }
         };
@@ -1548,7 +1548,7 @@ impl Worker {
             let events = match poll_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("failed polling for events: {:?}", e);
+                    error!("failed polling for events: {}", e);
                     break;
                 }
             };
@@ -1654,7 +1654,7 @@ impl Worker {
                             len
                         }
                         Err(e) => {
-                            error!("failed to encode response to descriptor chain: {:?}", e);
+                            error!("failed to encode response to descriptor chain: {}", e);
                             0
                         }
                     };
@@ -1756,7 +1756,7 @@ impl VirtioDevice for Wl {
         let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed creating kill EventFd pair: {:?}", e);
+                error!("failed creating kill EventFd pair: {}", e);
                 return;
             }
         };

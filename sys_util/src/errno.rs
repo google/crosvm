@@ -49,7 +49,7 @@ impl error::Error for Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Error: {}", self.errno())
+        io::Error::from_raw_os_error(self.0).fmt(f)
     }
 }
 

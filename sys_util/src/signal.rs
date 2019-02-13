@@ -8,6 +8,8 @@ use libc::{
     SIG_BLOCK, SIG_UNBLOCK,
 };
 
+use std::fmt::{self, Display};
+use std::io;
 use std::mem;
 use std::os::unix::thread::JoinHandleExt;
 use std::ptr::{null, null_mut};
@@ -36,6 +38,36 @@ pub enum Error {
     ClearGetPending(errno::Error),
     /// Failed to check if given signal is in the set of pending signals.
     ClearCheckPending(errno::Error),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            CreateSigset(e) => write!(f, "couldn't create a sigset: {}", e),
+            SignalAlreadyBlocked(num) => write!(f, "signal {} already blocked", num),
+            CompareBlockedSignals(e) => write!(
+                f,
+                "failed to check whether requested signal is in the blocked set: {}",
+                e,
+            ),
+            BlockSignal(e) => write!(f, "signal could not be blocked: {}", e),
+            RetrieveSignalMask(errno) => write!(
+                f,
+                "failed to retrieve signal mask: {}",
+                io::Error::from_raw_os_error(*errno),
+            ),
+            UnblockSignal(e) => write!(f, "signal could not be unblocked: {}", e),
+            ClearWaitPending(e) => write!(f, "failed to wait for given signal: {}", e),
+            ClearGetPending(e) => write!(f, "failed to get pending signals: {}", e),
+            ClearCheckPending(e) => write!(
+                f,
+                "failed to check whether given signal is in the pending set: {}",
+                e,
+            ),
+        }
+    }
 }
 
 pub type SignalResult<T> = result::Result<T, Error>;

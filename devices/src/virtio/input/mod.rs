@@ -19,6 +19,7 @@ use self::event_source::{input_event, EvdevEventSource, EventSource, SocketEvent
 use super::{Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_INPUT};
 use std::cmp::min;
 use std::collections::BTreeMap;
+use std::fmt::{self, Display};
 use std::io::Read;
 use std::io::Write;
 use std::mem::size_of;
@@ -52,6 +53,28 @@ pub enum InputError {
     EvdevGrabError(sys_util::Error),
 }
 pub type Result<T> = std::result::Result<T, InputError>;
+
+impl Display for InputError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::InputError::*;
+
+        match self {
+            EventsWriteError(e) => write!(f, "failed to write events to the source: {}", e),
+            EventsReadError(e) => write!(f, "failed to read events from the source: {}", e),
+            EvdevIdError(e) => write!(f, "failed to get id of event device: {}", e),
+            EvdevNameError(e) => write!(f, "failed to get name of event device: {}", e),
+            EvdevSerialError(e) => write!(f, "failed to get serial name of event device: {}", e),
+            EvdevPropertiesError(e) => write!(f, "failed to get properties of event device: {}", e),
+            EvdevEventTypesError(e) => {
+                write!(f, "failed to get event types supported by device: {}", e)
+            }
+            EvdevAbsInfoError(e) => {
+                write!(f, "failed to get axis information of event device: {}", e)
+            }
+            EvdevGrabError(e) => write!(f, "failed to grab event device: {}", e),
+        }
+    }
+}
 
 #[derive(Copy, Clone, Default, Debug)]
 #[repr(C)]
@@ -405,7 +428,7 @@ impl<T: EventSource> Worker<T> {
                         // Read is guaranteed to succeed here, so the only possible failure would be
                         // writing outside the guest memory region, which would mean the address and
                         // length given in the queue descriptor are wrong.
-                        panic!("failed reading events into guest memory: {:?}", e);
+                        panic!("failed reading events into guest memory: {}", e);
                     }
                     used_desc_heads[used_count] = (avail_desc.index, len as u32);
                     used_count += 1;
@@ -457,7 +480,7 @@ impl<T: EventSource> Worker<T> {
         kill_evt: EventFd,
     ) {
         if let Err(e) = self.event_source.init() {
-            error!("failed initializing event source: {:?}", e);
+            error!("failed initializing event source: {}", e);
             return;
         }
 
@@ -490,7 +513,7 @@ impl<T: EventSource> Worker<T> {
         {
             Ok(poll_ctx) => poll_ctx,
             Err(e) => {
-                error!("failed creating PollContext: {:?}", e);
+                error!("failed creating PollContext: {}", e);
                 return;
             }
         };
@@ -499,7 +522,7 @@ impl<T: EventSource> Worker<T> {
             let poll_events = match poll_ctx.wait() {
                 Ok(poll_events) => poll_events,
                 Err(e) => {
-                    error!("failed polling for events: {:?}", e);
+                    error!("failed polling for events: {}", e);
                     break;
                 }
             };
@@ -509,23 +532,23 @@ impl<T: EventSource> Worker<T> {
                 match poll_event.token() {
                     Token::EventQAvailable => {
                         if let Err(e) = event_queue_evt_fd.read() {
-                            error!("failed reading event queue EventFd: {:?}", e);
+                            error!("failed reading event queue EventFd: {}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.send_events();
                     }
                     Token::StatusQAvailable => {
                         if let Err(e) = status_queue_evt_fd.read() {
-                            error!("failed reading status queue EventFd: {:?}", e);
+                            error!("failed reading status queue EventFd: {}", e);
                             break 'poll;
                         }
                         match self.process_status_queue() {
                             Ok(b) => needs_interrupt |= b,
-                            Err(e) => error!("failed processing status events: {:?}", e),
+                            Err(e) => error!("failed processing status events: {}", e),
                         }
                     }
                     Token::InputEventsAvailable => match self.event_source.receive_events() {
-                        Err(e) => error!("error receiving events: {:?}", e),
+                        Err(e) => error!("error receiving events: {}", e),
                         Ok(_cnt) => needs_interrupt |= self.send_events(),
                     },
                     Token::InterruptResample => {
@@ -546,7 +569,7 @@ impl<T: EventSource> Worker<T> {
         }
 
         if let Err(e) = self.event_source.finalize() {
-            error!("failed finalizing event source: {:?}", e);
+            error!("failed finalizing event source: {}", e);
             return;
         }
     }
@@ -612,7 +635,7 @@ where
         let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed to create kill EventFd pair: {:?}", e);
+                error!("failed to create kill EventFd pair: {}", e);
                 return;
             }
         };

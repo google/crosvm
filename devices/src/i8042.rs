@@ -39,7 +39,7 @@ impl BusDevice for I8042Device {
     fn write(&mut self, offset: u64, data: &[u8]) {
         if data.len() == 1 && data[0] == 0xfe && offset == 3 {
             if let Err(e) = self.reset_evt.write(1) {
-                error!("failed to trigger i8042 reset event: {:?}", e);
+                error!("failed to trigger i8042 reset event: {}", e);
             }
         }
     }

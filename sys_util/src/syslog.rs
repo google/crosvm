@@ -16,17 +16,17 @@
 //!
 //! fn main() {
 //!     if let Err(e) = syslog::init() {
-//!         println!("failed to initiailize syslog: {:?}", e);
+//!         println!("failed to initiailize syslog: {}", e);
 //!         return;
 //!     }
 //!     warn!("this is your {} warning", "final");
-//!     error!("something went horribly wrong: {:?}", "out of RAMs");
+//!     error!("something went horribly wrong: {}", "out of RAMs");
 //! }
 //! ```
 
 use std::env;
 use std::ffi::{OsStr, OsString};
-use std::fmt;
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
 use std::io::{stderr, Cursor, ErrorKind, Write};
@@ -117,6 +117,21 @@ pub enum Error {
     GetLowestFd(io::Error),
     // The guess of libc's file descriptor for the syslog connection was invalid.
     InvalidFd,
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            NeverInitialized => write!(f, "initialization was never attempted"),
+            Poisoned => write!(f, "initialization previously failed and cannot be retried"),
+            Socket(e) => write!(f, "failed to create socket: {}", e),
+            Connect(e) => write!(f, "failed to connect socket: {}", e),
+            GetLowestFd(e) => write!(f, "failed to get lowest file descriptor: {}", e),
+            InvalidFd => write!(f, "guess of fd for syslog connection was invalid"),
+        }
+    }
 }
 
 fn get_hostname() -> Result<String, ()> {
@@ -409,7 +424,7 @@ fn get_localtime() -> tm {
 /// # use sys_util::syslog;
 /// # fn main() {
 /// #   if let Err(e) = syslog::init() {
-/// #       println!("failed to initiailize syslog: {:?}", e);
+/// #       println!("failed to initiailize syslog: {}", e);
 /// #       return;
 /// #   }
 /// syslog::log(syslog::Priority::Error,

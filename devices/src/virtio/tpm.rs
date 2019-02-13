@@ -133,7 +133,7 @@ impl Worker {
         {
             Ok(pc) => pc,
             Err(e) => {
-                error!("vtpm failed creating PollContext: {:?}", e);
+                error!("vtpm failed creating PollContext: {}", e);
                 return;
             }
         };
@@ -142,7 +142,7 @@ impl Worker {
             let events = match poll_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("vtpm failed polling for events: {:?}", e);
+                    error!("vtpm failed polling for events: {}", e);
                     break;
                 }
             };
@@ -152,7 +152,7 @@ impl Worker {
                 match event.token() {
                     Token::QueueAvailable => {
                         if let Err(e) = queue_evt.read() {
-                            error!("vtpm failed reading queue EventFd: {:?}", e);
+                            error!("vtpm failed reading queue EventFd: {}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_queue();
@@ -231,7 +231,7 @@ impl VirtioDevice for Tpm {
         let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(err) => {
-                error!("vtpm failed to create kill EventFd pair: {:?}", err);
+                error!("vtpm failed to create kill EventFd pair: {}", err);
                 return;
             }
         };

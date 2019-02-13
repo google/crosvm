@@ -19,6 +19,7 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
 
 use std::cmp::min;
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
@@ -60,6 +61,45 @@ pub enum Error {
     WritingData(io::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            BackingFilesNotSupported => write!(f, "backing files not supported"),
+            CompressedBlocksNotSupported => write!(f, "compressed blocks not supported"),
+            GettingFileSize(e) => write!(f, "failed to get file size: {}", e),
+            GettingRefcount(e) => write!(f, "failed to get refcount: {}", e),
+            EvictingCache(e) => write!(f, "failed to evict cache: {}", e),
+            InvalidClusterIndex => write!(f, "invalid cluster index"),
+            InvalidClusterSize => write!(f, "invalid cluster size"),
+            InvalidIndex => write!(f, "invalid index"),
+            InvalidL1TableOffset => write!(f, "invalid L1 table offset"),
+            InvalidMagic => write!(f, "invalid magic"),
+            InvalidOffset(_) => write!(f, "invalid offset"),
+            InvalidRefcountTableOffset => write!(f, "invalid refcount table offset"),
+            InvalidRefcountTableSize => write!(f, "invalid refcount table size"),
+            NoFreeClusters => write!(f, "no free clusters"),
+            NoRefcountClusters => write!(f, "no refcount clusters"),
+            OpeningFile(e) => write!(f, "failed to open file: {}", e),
+            ReadingData(e) => write!(f, "failed to read data: {}", e),
+            ReadingHeader(e) => write!(f, "failed to read header: {}", e),
+            ReadingPointers(e) => write!(f, "failed to read pointers: {}", e),
+            ReadingRefCounts(e) => write!(f, "failed to read ref counts: {}", e),
+            ReadingRefCountBlock(e) => write!(f, "failed to read ref count block: {}", e),
+            RebuildingRefCounts(e) => write!(f, "failed to rebuild ref counts: {}", e),
+            SeekingFile(e) => write!(f, "failed to seek file: {}", e),
+            SettingFileSize(e) => write!(f, "failed to set file size: {}", e),
+            SettingRefcountRefcount(e) => write!(f, "failed to set refcount refcount: {}", e),
+            SizeTooSmallForNumberOfClusters => write!(f, "size too small for number of clusters"),
+            WritingHeader(e) => write!(f, "failed to write header: {}", e),
+            UnsupportedRefcountOrder => write!(f, "unsupported refcount order"),
+            UnsupportedVersion(v) => write!(f, "unsupported version: {}", v),
+            WritingData(e) => write!(f, "failed to write data: {}", e),
+        }
+    }
+}
 
 pub enum ImageType {
     Raw,

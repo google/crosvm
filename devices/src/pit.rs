@@ -161,15 +161,17 @@ pub enum PitError {
 
 impl fmt::Display for PitError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::PitError::*;
+
         match self {
-            PitError::TimerFdCreateError(e) => {
-                write!(f, "failed to create pit counter due to timer fd: {:?}", e)
+            TimerFdCreateError(e) => {
+                write!(f, "failed to create pit counter due to timer fd: {}", e)
             }
-            PitError::CreatePollContext(e) => write!(f, "failed to create poll context: {:?}", e),
-            PitError::PollError(err) => write!(f, "failed to poll events: {:?}", err),
-            PitError::SpawnThread(err) => write!(f, "failed to spawn thread: {:?}", err),
-            PitError::CreateEventFd(err) => write!(f, "failed to create event fd: {:?}", err),
-            PitError::CloneEventFd(err) => write!(f, "failed to clone event fd: {:?}", err),
+            CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
+            PollError(err) => write!(f, "failed to poll events: {}", err),
+            SpawnThread(err) => write!(f, "failed to spawn thread: {}", err),
+            CreateEventFd(err) => write!(f, "failed to create event fd: {}", err),
+            CloneEventFd(err) => write!(f, "failed to clone event fd: {}", err),
         }
     }
 }
@@ -195,7 +197,7 @@ pub struct Pit {
 impl Drop for Pit {
     fn drop(&mut self) {
         if let Err(e) = self.kill_evt.write(1) {
-            error!("failed to kill PIT worker threads: {:?}", e);
+            error!("failed to kill PIT worker threads: {}", e);
             return;
         }
         if let Some(thread) = self.worker_thread.take() {
