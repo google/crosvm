@@ -124,7 +124,9 @@ RUN git clone https://chromium.googlesource.com/chromiumos/third_party/adhd $THI
 ENV CARGO_TARGET_DIR=/build
 RUN mkdir -p $CARGO_TARGET_DIR
 WORKDIR /platform/crosvm
-CMD cargo --version && rustc --version && rustfmt --version && \
+CMD rustup default "$(cat rust-toolchain)" && \
+    rustup component add rustfmt-preview && \
+    cargo --version && rustc --version && rustfmt --version && \
     echo "Running cargo test" && \
     cargo test --no-fail-fast --all-features --all --exclude aarch64 $TEST_FLAGS -- \
     --test-threads=1 $TEST_RUNNER_FLAGS && \
