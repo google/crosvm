@@ -488,10 +488,10 @@ fn create_virtio_devs(
         }
     }
 
-    #[cfg(feature = "gpu")]
-    let mut resource_bridge_wl_socket: Option<
-        devices::virtio::resource_bridge::ResourceRequestSocket,
-    > = None;
+    #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
+    let mut resource_bridge_wl_socket =
+        None::<devices::virtio::resource_bridge::ResourceRequestSocket>;
+
     #[cfg(feature = "gpu")]
     {
         if cfg.gpu {
@@ -590,9 +590,6 @@ fn create_virtio_devs(
             .ok_or(Error::InvalidWaylandPath)?;
         let jailed_wayland_dir = Path::new("/wayland");
         let jailed_wayland_path = jailed_wayland_dir.join(wayland_socket_name);
-
-        #[cfg(not(feature = "gpu"))]
-        let resource_bridge_wl_socket = None;
 
         let wl_box = Box::new(
             devices::virtio::Wl::new(
