@@ -46,14 +46,13 @@ pub mod plugin;
 use std::fs::OpenOptions;
 use std::net;
 use std::os::unix::io::RawFd;
-use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
 use std::string::String;
 use std::thread::sleep;
 use std::time::Duration;
 
 use qcow::QcowFile;
-use sys_util::{getpid, kill_process_group, reap_child, syslog};
+use sys_util::{getpid, kill_process_group, net::UnixSeqpacket, reap_child, syslog};
 
 use argument::{print_help, set_arguments, Argument};
 use msg_socket::{MsgSender, Sender};
@@ -723,10 +722,7 @@ fn vms_request(
 
     let mut return_result = Ok(());
     for socket_path in args {
-        match UnixDatagram::unbound().and_then(|s| {
-            s.connect(&socket_path)?;
-            Ok(s)
-        }) {
+        match UnixSeqpacket::connect(&socket_path) {
             Ok(s) => {
                 let sender = Sender::<VmRequest>::new(s);
                 if let Err(e) = sender.send(request) {
@@ -788,10 +784,7 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
 
     let mut return_result = Ok(());
     for socket_path in args {
-        match UnixDatagram::unbound().and_then(|s| {
-            s.connect(&socket_path)?;
-            Ok(s)
-        }) {
+        match UnixSeqpacket::connect(&socket_path) {
             Ok(s) => {
                 let sender = Sender::<VmRequest>::new(s);
                 if let Err(e) = sender.send(&VmRequest::BalloonAdjust(num_bytes)) {
@@ -881,10 +874,7 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
 
     let mut return_result = Ok(());
     for socket_path in args {
-        match UnixDatagram::unbound().and_then(|s| {
-            s.connect(&socket_path)?;
-            Ok(s)
-        }) {
+        match UnixSeqpacket::connect(&socket_path) {
             Ok(s) => {
                 let sender = Sender::<VmRequest>::new(s);
                 if let Err(e) = sender.send(&request) {

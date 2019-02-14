@@ -22,7 +22,6 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::os::unix::net::UnixDatagram;
 
 use libc::{EINVAL, ENODEV};
 
@@ -30,7 +29,9 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use kvm::{Datamatch, IoeventAddress, Vm};
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{GpuMemoryDesc, SystemAllocator};
-use sys_util::{Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError, Result};
+use sys_util::{
+    net::UnixSeqpacket, Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError, Result,
+};
 
 /// A file descriptor either borrowed or owned by this.
 pub enum MaybeOwnedFd {
@@ -170,7 +171,7 @@ impl VmRequest {
         vm: &mut Vm,
         sys_allocator: &mut SystemAllocator,
         run_mode: &mut Option<VmRunMode>,
-        balloon_host_socket: &UnixDatagram,
+        balloon_host_socket: &UnixSeqpacket,
         disk_host_sockets: &[MsgSocket<VmRequest, VmResponse>],
     ) -> VmResponse {
         match *self {

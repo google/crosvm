@@ -7,7 +7,6 @@ use std::fmt::{self, Display};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::{size_of, size_of_val};
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::os::unix::net::UnixDatagram;
 use std::result;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -19,8 +18,8 @@ use sync::Mutex;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
 use sys_util::{
-    EventFd, FileSetLen, FileSync, GuestAddress, GuestMemory, GuestMemoryError, PollContext,
-    PollToken, PunchHole, TimerFd, WriteZeroes,
+    net::UnixSeqpacket, EventFd, FileSetLen, FileSync, GuestAddress, GuestMemory, GuestMemoryError,
+    PollContext, PollToken, PunchHole, TimerFd, WriteZeroes,
 };
 
 use data_model::{DataInit, Le16, Le32, Le64};
@@ -695,7 +694,7 @@ impl<T: DiskFile> Worker<T> {
         self.interrupt_evt.write(1).unwrap();
     }
 
-    fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd, control_socket: UnixDatagram) {
+    fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd, control_socket: UnixSeqpacket) {
         #[derive(PollToken)]
         enum Token {
             FlushTimer,
@@ -819,7 +818,7 @@ pub struct Block<T: DiskFile> {
     disk_size: Arc<Mutex<u64>>,
     avail_features: u64,
     read_only: bool,
-    control_socket: Option<UnixDatagram>,
+    control_socket: Option<UnixSeqpacket>,
 }
 
 fn build_config_space(disk_size: u64) -> virtio_blk_config {
@@ -844,7 +843,7 @@ impl<T: DiskFile> Block<T> {
     pub fn new(
         mut disk_image: T,
         read_only: bool,
-        control_socket: Option<UnixDatagram>,
+        control_socket: Option<UnixSeqpacket>,
     ) -> SysResult<Block<T>> {
         let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
         if disk_size % SECTOR_SIZE != 0 {

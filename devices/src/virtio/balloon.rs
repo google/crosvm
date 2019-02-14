@@ -8,13 +8,14 @@ use std::fmt::{self, Display};
 use std::io::Write;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::os::unix::net::UnixDatagram;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
-use sys_util::{self, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
+use sys_util::{
+    self, net::UnixSeqpacket, EventFd, GuestAddress, GuestMemory, PollContext, PollToken,
+};
 
 use super::{
     DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_CONFIG_CHANGED,
@@ -67,7 +68,7 @@ struct Worker {
     interrupt_evt: EventFd,
     interrupt_resample_evt: EventFd,
     config: Arc<BalloonConfig>,
-    command_socket: UnixDatagram,
+    command_socket: UnixSeqpacket,
 }
 
 fn valid_inflate_desc(desc: &DescriptorChain) -> bool {
@@ -230,7 +231,7 @@ impl Worker {
 
 /// Virtio device for memory balloon inflation/deflation.
 pub struct Balloon {
-    command_socket: Option<UnixDatagram>,
+    command_socket: Option<UnixSeqpacket>,
     config: Arc<BalloonConfig>,
     features: u64,
     kill_evt: Option<EventFd>,
@@ -238,7 +239,7 @@ pub struct Balloon {
 
 impl Balloon {
     /// Create a new virtio balloon device.
-    pub fn new(command_socket: UnixDatagram) -> Result<Balloon> {
+    pub fn new(command_socket: UnixSeqpacket) -> Result<Balloon> {
         Ok(Balloon {
             command_socket: Some(command_socket),
             config: Arc::new(BalloonConfig {

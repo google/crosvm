@@ -41,7 +41,7 @@ use std::mem::{size_of, size_of_val};
 #[cfg(feature = "wl-dmabuf")]
 use std::os::raw::{c_uint, c_ulonglong};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::os::unix::net::{UnixDatagram, UnixStream};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::result;
@@ -59,6 +59,7 @@ use data_model::*;
 use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 #[cfg(feature = "wl-dmabuf")]
 use resources::GpuMemoryDesc;
+use sys_util::net::UnixSeqpacket;
 use sys_util::{
     pipe, round_up_to_page_size, Error, EventFd, FileFlags, GuestAddress, GuestMemory,
     GuestMemoryError, PollContext, PollToken, Result, ScmSocket, SharedMemory,
@@ -490,7 +491,7 @@ struct VmRequester {
 }
 
 impl VmRequester {
-    fn new(vm_socket: UnixDatagram) -> VmRequester {
+    fn new(vm_socket: UnixSeqpacket) -> VmRequester {
         VmRequester {
             inner: Rc::new(RefCell::new(MsgSocket::<VmRequest, VmResponse>::new(
                 vm_socket,
@@ -1004,7 +1005,7 @@ struct WlState {
 impl WlState {
     fn new(
         wayland_path: PathBuf,
-        vm_socket: UnixDatagram,
+        vm_socket: UnixSeqpacket,
         use_transition_flags: bool,
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> WlState {
@@ -1488,7 +1489,7 @@ impl Worker {
         in_queue: Queue,
         out_queue: Queue,
         wayland_path: PathBuf,
-        vm_socket: UnixDatagram,
+        vm_socket: UnixSeqpacket,
         use_transition_flags: bool,
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> Worker {
@@ -1678,7 +1679,7 @@ impl Worker {
 pub struct Wl {
     kill_evt: Option<EventFd>,
     wayland_path: PathBuf,
-    vm_socket: Option<UnixDatagram>,
+    vm_socket: Option<UnixSeqpacket>,
     resource_bridge: Option<ResourceRequestSocket>,
     use_transition_flags: bool,
 }
@@ -1686,7 +1687,7 @@ pub struct Wl {
 impl Wl {
     pub fn new<P: AsRef<Path>>(
         wayland_path: P,
-        vm_socket: UnixDatagram,
+        vm_socket: UnixSeqpacket,
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> Result<Wl> {
         Ok(Wl {

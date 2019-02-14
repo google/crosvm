@@ -23,8 +23,8 @@ pub enum MsgError {
     /// The type of a received request or response is unknown.
     InvalidType,
     /// There was not the expected amount of data when receiving a message. The inner
-    /// value is how much data is needed.
-    BadRecvSize(usize),
+    /// value is how much data is expected and how much data was actually received.
+    BadRecvSize { expected: usize, actual: usize },
     /// There was no associated file descriptor received for a request that expected it.
     ExpectFd,
     /// There was some associated file descriptor received but not used when deserialize.
@@ -47,7 +47,11 @@ impl Display for MsgError {
             Send(e) => write!(f, "failed to send request or response: {}", e),
             Recv(e) => write!(f, "failed to receive request or response: {}", e),
             InvalidType => write!(f, "invalid type"),
-            BadRecvSize(n) => write!(f, "wrong amount of data received; expected {} bytes", n),
+            BadRecvSize { expected, actual } => write!(
+                f,
+                "wrong amount of data received; expected {} bytes; got {} bytes",
+                expected, actual
+            ),
             ExpectFd => write!(f, "missing associated file descriptor for request"),
             NotExpectFd => write!(f, "unexpected file descriptor is unused"),
             WrongFdBufferSize => write!(f, "fd buffer size too small"),
