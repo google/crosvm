@@ -312,17 +312,19 @@ fn create_virtio_devs(
 
     #[cfg(feature = "tpm")]
     {
-        let tpm_box = Box::new(devices::virtio::Tpm::new());
-        let tpm_jail = if cfg.multiprocess {
-            let policy_path = cfg.seccomp_policy_dir.join("tpm_device.policy");
-            Some(create_base_minijail(empty_root_path, &policy_path)?)
-        } else {
-            None
-        };
-        devs.push(VirtioDeviceStub {
-            dev: tpm_box,
-            jail: tpm_jail,
-        });
+        if cfg.software_tpm {
+            let tpm_box = Box::new(devices::virtio::Tpm::new());
+            let tpm_jail = if cfg.multiprocess {
+                let policy_path = cfg.seccomp_policy_dir.join("tpm_device.policy");
+                Some(create_base_minijail(empty_root_path, &policy_path)?)
+            } else {
+                None
+            };
+            devs.push(VirtioDeviceStub {
+                dev: tpm_box,
+                jail: tpm_jail,
+            });
+        }
     }
 
     if let Some(trackpad_spec) = cfg.virtio_trackpad {

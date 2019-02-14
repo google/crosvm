@@ -116,6 +116,7 @@ pub struct Config {
     multiprocess: bool,
     seccomp_policy_dir: PathBuf,
     gpu: bool,
+    software_tpm: bool,
     cras_audio: bool,
     null_audio: bool,
     virtio_trackpad: Option<TrackpadOption>,
@@ -146,6 +147,7 @@ impl Default for Config {
             tap_fd: Vec::new(),
             cid: None,
             gpu: false,
+            software_tpm: false,
             wayland_socket_path: None,
             wayland_dmabuf: false,
             shared_dirs: Vec::new(),
@@ -518,6 +520,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "gpu" => {
             cfg.gpu = true;
         }
+        "software-tpm" => {
+            cfg.software_tpm = true;
+        }
         "trackpad" => {
             if cfg.virtio_trackpad.is_some() {
                 return Err(argument::Error::TooManyArguments(
@@ -629,6 +634,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           "File descriptor for configured tap device. A different virtual network card will be added each time this argument is given."),
           #[cfg(feature = "gpu")]
           Argument::flag("gpu", "(EXPERIMENTAL) enable virtio-gpu device"),
+          #[cfg(feature = "tpm")]
+          Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),
           Argument::value("evdev", "PATH", "Path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host"),
           Argument::value("trackpad", "PATH:WIDTH:HEIGHT", "Path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280)."),
           Argument::value("mouse", "PATH", "Path to a socket from where to read mouse input events and write status updates to."),
