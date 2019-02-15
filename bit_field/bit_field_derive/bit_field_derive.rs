@@ -51,7 +51,7 @@ fn bitfield_impl(ast: DeriveInput) -> TokenStream {
         Err(err_str) => {
             return quote! {
                 compile_error!(#err_str);
-            }
+            };
         }
     };
     let struct_def = get_struct_def(&vis, &name, fields.as_slice());
@@ -99,7 +99,7 @@ fn get_struct_fields(ast: DeriveInput) -> Result<Vec<(String, TokenStream)>> {
             None => {
                 return Err(format!(
                     "Unknown Error. bit_field_derive library might have a bug."
-                ))
+                ));
             }
         };
         let ty = field.ty;
