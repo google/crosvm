@@ -6,7 +6,7 @@ use super::endpoint_descriptor::EndpointDescriptor;
 use bindings::libusb_interface_descriptor;
 use std::ops::Deref;
 
-/// ConfigDescriptor wraps libusb_interface_descriptor.
+/// InterfaceDescriptor wraps libusb_interface_descriptor.
 pub struct InterfaceDescriptor<'a>(&'a libusb_interface_descriptor);
 
 impl<'a> InterfaceDescriptor<'a> {

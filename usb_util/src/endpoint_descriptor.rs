@@ -6,7 +6,7 @@ use super::types::{EndpointDirection, EndpointType};
 use bindings::libusb_endpoint_descriptor;
 use std::ops::Deref;
 
-/// ConfigDescriptor wraps libusb_interface_descriptor.
+/// EndpointDescriptor wraps libusb_endpoint_descriptor.
 pub struct EndpointDescriptor<'a>(&'a libusb_endpoint_descriptor);
 
 const ENDPOINT_DESCRIPTOR_DIRECTION_MASK: u8 = 1 << 7;
