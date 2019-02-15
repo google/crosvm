@@ -33,6 +33,7 @@ mod cmos;
 mod i8042;
 mod ioapic;
 mod pci;
+mod pic;
 mod pit;
 pub mod pl030;
 mod proxy;
@@ -52,6 +53,7 @@ pub use self::ioapic::Ioapic;
 pub use self::pci::{
     Ac97Dev, PciConfigIo, PciConfigMmio, PciDevice, PciDeviceError, PciInterruptPin, PciRoot,
 };
+pub use self::pic::Pic;
 pub use self::pit::{Pit, PitError};
 pub use self::pl030::Pl030;
 pub use self::proxy::Error as ProxyError;
