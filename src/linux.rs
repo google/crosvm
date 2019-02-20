@@ -238,7 +238,7 @@ fn simple_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
     }
 }
 
-fn create_virtio_devs(
+fn create_devices(
     cfg: Config,
     mem: &GuestMemory,
     _exit_evt: &EventFd,
@@ -970,7 +970,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     }
 
     let linux = Arch::build_vm(components, cfg.split_irqchip, |m, e| {
-        create_virtio_devs(
+        create_devices(
             cfg,
             m,
             e,

@@ -76,11 +76,11 @@ pub trait LinuxArch {
     ///
     /// * `components` - Parts to use to build the VM.
     /// * `split_irqchip` - whether to use a split IRQ chip (i.e. userspace PIT/PIC/IOAPIC)
-    /// * `virtio_devs` - Function to generate a list of virtio devices.
+    /// * `create_devices` - Function to generate a list of devices.
     fn build_vm<F>(
         components: VmComponents,
         split_irqchip: bool,
-        virtio_devs: F,
+        create_devices: F,
     ) -> Result<RunnableLinuxVm>
     where
         F: FnOnce(
