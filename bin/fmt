@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# Run `cargo fmt` on all Rust code contained in crosvm. This is different from
+# `cargo fmt --all` which formats multiple crates but a single workspace only.
+# Crosvm consists of multiple workspaces.
+#
+# Usage:
+#
+#    $ bin/fmt
+#
+# To print a diff and exit 1 if code is not formatted, but without changing any
+# files, use:
+#
+#    $ bin/fmt --check
+#
+
+set -euo pipefail
+
+# Change into directory of script, which is crosvm/bin.
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+# Jump up to root directory of crosvm repo.
+cd ..
+
+# Keep track of whether any cargo fmt invocation exited with error.
+EXIT=0
+
+FIND_CARGO_TOMLS="$(find "$PWD" -name Cargo.toml)"
+
+while read path_to_cargo_toml; do
+    cd "$(dirname "$path_to_cargo_toml")"
+
+    if grep --quiet '\[workspace\]' Cargo.toml; then
+        if ! cargo fmt --all -- "$@"; then
+            EXIT=1
+        fi
+    fi
+done <<< "$FIND_CARGO_TOMLS"
+
+exit $EXIT

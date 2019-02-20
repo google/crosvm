@@ -131,4 +131,4 @@ CMD rustup default "$(cat rust-toolchain)" && \
     cargo test --no-fail-fast --all-features --all --exclude aarch64 $TEST_FLAGS -- \
     --test-threads=1 $TEST_RUNNER_FLAGS && \
     echo "Running cargo fmt" && \
-    cargo fmt --all -- --check
+    bin/fmt --check

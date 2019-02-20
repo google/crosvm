@@ -138,8 +138,11 @@ for each architecture. See `build_test -h` for more information.
 
 #### `rustfmt`
 
-All code should be formatted with `rustfmt`.  Run `cargo fmt --all` to autoformat
-your code before checking in a change.
+All code should be formatted with `rustfmt`. We have a script that applies
+rustfmt to all Rust code in the crosvm repo: please run `bin/fmt` before
+checking in a change. This is different from `cargo fmt --all` which formats
+multiple crates but a single workspace only; crosvm consists of multiple
+workspaces.
 
 #### Dependencies
 
