@@ -16,8 +16,16 @@ use tpm2;
 
 use super::{DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_TPM};
 
-const QUEUE_SIZE: u16 = 1;
+// A single queue of size 2. The guest kernel driver will enqueue a single
+// descriptor chain containing one command buffer and one response buffer at a
+// time.
+const QUEUE_SIZE: u16 = 2;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
+
+// Maximum command or response message size permitted by this device
+// implementation. Named to match the equivalent constant in Linux's tpm.h.
+// There is no hard requirement that the value is the same but it makes sense.
+const TPM_BUFSIZE: usize = 4096;
 
 // Simply store TPM state in /tmp/tpm-simulator. Before shipping this feature,
 // will need to move state under /run/vm instead. https://crbug.com/921841
@@ -36,45 +44,60 @@ struct Worker {
 
 struct Device {
     simulator: tpm2::Simulator,
-    response: Option<Vec<u8>>,
+}
+
+// Checks that the input descriptor chain holds a read-only descriptor followed
+// by a write-only descriptor, as required of the guest's virtio tpm driver.
+//
+// Returns those descriptors as a tuple: `(read_desc, write_desc)`.
+fn two_input_descriptors(desc: DescriptorChain) -> Result<(DescriptorChain, DescriptorChain)> {
+    let read_desc = desc;
+    if !read_desc.is_read_only() {
+        return Err(Error::ExpectedReadOnly);
+    }
+
+    let write_desc = match read_desc.next_descriptor() {
+        Some(desc) => desc,
+        None => return Err(Error::ExpectedSecondBuffer),
+    };
+
+    if !write_desc.is_write_only() {
+        return Err(Error::ExpectedWriteOnly);
+    }
+
+    Ok((read_desc, write_desc))
 }
 
 impl Device {
     fn perform_work(&mut self, mem: &GuestMemory, desc: DescriptorChain) -> Result<u32> {
-        if desc.is_read_only() {
-            self.perform_send(&mem, desc)
-        } else if desc.is_write_only() {
-            self.perform_recv(&mem, desc)
-        } else {
-            Err(Error::ExpectedReadOrWrite)
-        }
-    }
+        let (read_desc, write_desc) = two_input_descriptors(desc)?;
 
-    fn perform_send(&mut self, mem: &GuestMemory, desc: DescriptorChain) -> Result<u32> {
-        if self.response.is_some() {
-            return Err(Error::UnexpectedSend);
+        if read_desc.len > TPM_BUFSIZE as u32 {
+            return Err(Error::CommandTooLong {
+                size: read_desc.len as usize,
+            });
         }
 
-        let mut buf = vec![0u8; desc.len as usize];
-        mem.read_exact_at_addr(&mut buf, desc.addr)
+        let mut command = vec![0u8; read_desc.len as usize];
+        mem.read_exact_at_addr(&mut command, read_desc.addr)
             .map_err(Error::Read)?;
 
-        let response = self.simulator.execute_command(&buf);
-        self.response = Some(response.to_owned());
-        Ok(desc.len)
-    }
+        let response = self.simulator.execute_command(&command);
 
-    fn perform_recv(&mut self, mem: &GuestMemory, desc: DescriptorChain) -> Result<u32> {
-        let response = self.response.take().ok_or(Error::UnexpectedRecv)?;
+        if response.len() > TPM_BUFSIZE {
+            return Err(Error::ResponseTooLong {
+                size: response.len(),
+            });
+        }
 
-        if response.len() > desc.len as usize {
-            return Err(Error::SmallBuffer {
-                size: desc.len as usize,
+        if response.len() > write_desc.len as usize {
+            return Err(Error::BufferTooSmall {
+                size: write_desc.len as usize,
                 required: response.len(),
             });
         }
 
-        mem.write_all_at_addr(&response, desc.addr)
+        mem.write_all_at_addr(&response, write_desc.addr)
             .map_err(Error::Write)?;
 
         Ok(response.len() as u32)
@@ -243,10 +266,7 @@ impl VirtioDevice for Tpm {
             interrupt_evt,
             interrupt_resample_evt,
             kill_evt,
-            device: Device {
-                simulator,
-                response: None,
-            },
+            device: Device { simulator },
         };
 
         let worker_result = thread::Builder::new()
@@ -277,11 +297,13 @@ impl BitOrAssign for NeedsInterrupt {
 type Result<T> = std::result::Result<T, Error>;
 
 enum Error {
-    ExpectedReadOrWrite,
-    UnexpectedSend,
+    ExpectedReadOnly,
+    ExpectedSecondBuffer,
+    ExpectedWriteOnly,
+    CommandTooLong { size: usize },
     Read(GuestMemoryError),
-    UnexpectedRecv,
-    SmallBuffer { size: usize, required: usize },
+    ResponseTooLong { size: usize },
+    BufferTooSmall { size: usize, required: usize },
     Write(GuestMemoryError),
 }
 
@@ -290,13 +312,23 @@ impl Display for Error {
         use self::Error::*;
 
         match self {
-            ExpectedReadOrWrite => write!(f, "vtpm expected either read or write descriptor"),
-            UnexpectedSend => write!(f, "vtpm encountered unexpected send"),
-            Read(e) => write!(f, "vtpm failed to read from guest memory: {}", e),
-            UnexpectedRecv => write!(f, "vtpm encountered unexpected recv"),
-            SmallBuffer { size, required } => write!(
+            ExpectedReadOnly => write!(f, "vtpm expected first descriptor to be read-only"),
+            ExpectedSecondBuffer => write!(f, "vtpm expected a second descriptor"),
+            ExpectedWriteOnly => write!(f, "vtpm expected second descriptor to be write-only"),
+            CommandTooLong { size } => write!(
                 f,
-                "vtpm response buffer is too small: {} < {}",
+                "vtpm command is too long: {} > {} bytes",
+                size, TPM_BUFSIZE
+            ),
+            Read(e) => write!(f, "vtpm failed to read from guest memory: {}", e),
+            ResponseTooLong { size } => write!(
+                f,
+                "vtpm simulator generated a response that is unexpectedly long: {} > {} bytes",
+                size, TPM_BUFSIZE
+            ),
+            BufferTooSmall { size, required } => write!(
+                f,
+                "vtpm response buffer is too small: {} < {} bytes",
                 size, required
             ),
             Write(e) => write!(f, "vtpm failed to write to guest memory: {}", e),
