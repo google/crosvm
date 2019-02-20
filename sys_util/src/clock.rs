@@ -5,8 +5,8 @@
 // Utility file to provide a fake clock object representing current time, and a timerfd driven by
 // that time.
 
-use std::time::{Duration, Instant};
 use std::os::unix::io::AsRawFd;
+use std::time::{Duration, Instant};
 use EventFd;
 
 #[derive(Debug, Copy, Clone)]
@@ -25,7 +25,7 @@ impl Clock {
     }
 }
 
-const NS_PER_SEC : u64 = 1_000_000_000;
+const NS_PER_SEC: u64 = 1_000_000_000;
 /// A fake clock that can be used in tests to give exact control over the time.
 /// For a code example, see the tests in sys_util/src/timerfd.rs.
 #[derive(Debug)]
@@ -64,9 +64,8 @@ impl FakeClock {
     /// Register the event fd for a notification when self's time is |deadline_ns|.
     /// Drop any existing events registered to the same raw fd.
     pub fn add_event_fd(&mut self, deadline_ns: u64, fd: EventFd) {
-        self.deadlines.retain(|&(_, ref old_fd)| {
-            fd.as_raw_fd() != old_fd.as_raw_fd()
-        });
+        self.deadlines
+            .retain(|&(_, ref old_fd)| fd.as_raw_fd() != old_fd.as_raw_fd());
         self.deadlines.push((deadline_ns, fd));
     }
 

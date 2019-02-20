@@ -6,13 +6,13 @@ use std::fs::File;
 use std::mem;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::ptr;
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 use sync::Mutex;
 
 use libc::{self, timerfd_create, timerfd_gettime, timerfd_settime, CLOCK_MONOTONIC, TFD_CLOEXEC};
 
-use {errno_result, Result, FakeClock, EventFd};
+use {errno_result, EventFd, FakeClock, Result};
 
 /// A safe wrapper around a Linux timerfd (man 2 timerfd_create).
 pub struct TimerFd(File);
@@ -210,7 +210,6 @@ impl IntoRawFd for FakeTimerFd {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,7 +272,8 @@ mod tests {
 
         let dur = Duration::from_nanos(200);
         let interval = Duration::from_nanos(100);
-        tfd.reset(dur.clone(), Some(interval)).expect("failed to arm timer");
+        tfd.reset(dur.clone(), Some(interval))
+            .expect("failed to arm timer");
 
         clock.lock().add_ns(300);
 
