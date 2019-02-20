@@ -255,10 +255,10 @@ impl EGLFunctions {
     fn new() -> Result<EGLFunctions> {
         use generated::epoxy_egl::{
             epoxy_eglBindAPI, epoxy_eglChooseConfig, epoxy_eglCreateContext,
-            epoxy_eglCreateImageKHR, epoxy_eglDebugMessageControlKHR, epoxy_eglDestroyContext,
-            epoxy_eglDestroyImageKHR, epoxy_eglExportDMABUFImageQueryMESA,
-            epoxy_eglExportDRMImageMESA, epoxy_eglGetCurrentContext, epoxy_eglGetCurrentDisplay,
-            epoxy_eglGetDisplay, epoxy_eglInitialize, epoxy_eglMakeCurrent,
+            epoxy_eglCreateImageKHR, epoxy_eglDebugMessageControlKHR, epoxy_eglDestroyImageKHR,
+            epoxy_eglExportDMABUFImageQueryMESA, epoxy_eglExportDRMImageMESA,
+            epoxy_eglGetCurrentContext, epoxy_eglGetCurrentDisplay, epoxy_eglGetDisplay,
+            epoxy_eglInitialize, epoxy_eglMakeCurrent,
         };
         // This is unsafe because it is reading mutable static variables exported by epoxy. These
         // variables are initialized during the binary's init and never modified again, so it should
