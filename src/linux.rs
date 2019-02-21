@@ -223,6 +223,21 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     Ok(j)
 }
 
+fn simple_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
+    if cfg.multiprocess {
+        let pivot_root: &str = option_env!("DEFAULT_PIVOT_ROOT").unwrap_or("/var/empty");
+        // A directory for a jailed device's pivot root.
+        let root_path = Path::new(pivot_root);
+        if !root_path.exists() {
+            return Err(Error::PivotRootDoesntExist(pivot_root));
+        }
+        let policy_path: PathBuf = cfg.seccomp_policy_dir.join(policy);
+        Ok(Some(create_base_minijail(root_path, &policy_path)?))
+    } else {
+        Ok(None)
+    }
+}
+
 fn create_virtio_devs(
     cfg: Config,
     mem: &GuestMemory,
@@ -231,15 +246,7 @@ fn create_virtio_devs(
     balloon_device_socket: UnixSeqpacket,
     disk_device_sockets: &mut Vec<UnixSeqpacket>,
 ) -> std::result::Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>, Box<error::Error>> {
-    let default_pivot_root: &str = option_env!("DEFAULT_PIVOT_ROOT").unwrap_or("/var/empty");
-
     let mut devs = Vec::new();
-
-    // An empty directory for jailed device's pivot root.
-    let empty_root_path = Path::new(default_pivot_root);
-    if cfg.multiprocess && !empty_root_path.exists() {
-        return Err(Box::new(Error::PivotRootDoesntExist(default_pivot_root)));
-    }
 
     for disk in &cfg.disks {
         let disk_device_socket = disk_device_sockets.remove(0);
@@ -289,49 +296,32 @@ fn create_virtio_devs(
                 )
             }
         };
-        let jail = if cfg.multiprocess {
-            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("block_device.policy");
-            Some(create_base_minijail(empty_root_path, &policy_path)?)
-        } else {
-            None
-        };
 
         devs.push(VirtioDeviceStub {
             dev: block_box,
-            jail,
+            jail: simple_jail(&cfg, "block_device.policy")?,
         });
     }
 
     let rng_box = Box::new(devices::virtio::Rng::new().map_err(Error::RngDeviceNew)?);
-    let rng_jail = if cfg.multiprocess {
-        let policy_path: PathBuf = cfg.seccomp_policy_dir.join("rng_device.policy");
-        Some(create_base_minijail(empty_root_path, &policy_path)?)
-    } else {
-        None
-    };
+
     devs.push(VirtioDeviceStub {
         dev: rng_box,
-        jail: rng_jail,
+        jail: simple_jail(&cfg, "rng_device.policy")?,
     });
 
     #[cfg(feature = "tpm")]
     {
         if cfg.software_tpm {
             let tpm_box = Box::new(devices::virtio::Tpm::new());
-            let tpm_jail = if cfg.multiprocess {
-                let policy_path = cfg.seccomp_policy_dir.join("tpm_device.policy");
-                Some(create_base_minijail(empty_root_path, &policy_path)?)
-            } else {
-                None
-            };
             devs.push(VirtioDeviceStub {
                 dev: tpm_box,
-                jail: tpm_jail,
+                jail: simple_jail(&cfg, "tpm_device.policy")?,
             });
         }
     }
 
-    if let Some(trackpad_spec) = cfg.virtio_trackpad {
+    if let Some(trackpad_spec) = &cfg.virtio_trackpad {
         match create_input_socket(&trackpad_spec.path) {
             Ok(socket) => {
                 let trackpad_box = Box::new(
@@ -342,15 +332,10 @@ fn create_virtio_devs(
                     )
                     .map_err(Error::InputDeviceNew)?,
                 );
-                let trackpad_jail = if cfg.multiprocess {
-                    let policy_path: PathBuf = cfg.seccomp_policy_dir.join("input_device.policy");
-                    Some(create_base_minijail(empty_root_path, &policy_path)?)
-                } else {
-                    None
-                };
+
                 devs.push(VirtioDeviceStub {
                     dev: trackpad_box,
-                    jail: trackpad_jail,
+                    jail: simple_jail(&cfg, "input_device.policy")?,
                 });
             }
             Err(e) => {
@@ -360,20 +345,15 @@ fn create_virtio_devs(
         }
     }
 
-    if let Some(mouse_socket) = cfg.virtio_mouse {
+    if let Some(mouse_socket) = &cfg.virtio_mouse {
         match create_input_socket(&mouse_socket) {
             Ok(socket) => {
                 let mouse_box =
                     Box::new(devices::virtio::new_mouse(socket).map_err(Error::InputDeviceNew)?);
-                let mouse_jail = if cfg.multiprocess {
-                    let policy_path: PathBuf = cfg.seccomp_policy_dir.join("input_device.policy");
-                    Some(create_base_minijail(empty_root_path, &policy_path)?)
-                } else {
-                    None
-                };
+
                 devs.push(VirtioDeviceStub {
                     dev: mouse_box,
-                    jail: mouse_jail,
+                    jail: simple_jail(&cfg, "input_device.policy")?,
                 });
             }
             Err(e) => {
@@ -383,20 +363,15 @@ fn create_virtio_devs(
         }
     }
 
-    if let Some(keyboard_socket) = cfg.virtio_keyboard {
+    if let Some(keyboard_socket) = &cfg.virtio_keyboard {
         match create_input_socket(&keyboard_socket) {
             Ok(socket) => {
                 let keyboard_box =
                     Box::new(devices::virtio::new_keyboard(socket).map_err(Error::InputDeviceNew)?);
-                let keyboard_jail = if cfg.multiprocess {
-                    let policy_path: PathBuf = cfg.seccomp_policy_dir.join("input_device.policy");
-                    Some(create_base_minijail(empty_root_path, &policy_path)?)
-                } else {
-                    None
-                };
+
                 devs.push(VirtioDeviceStub {
                     dev: keyboard_box,
-                    jail: keyboard_jail,
+                    jail: simple_jail(&cfg, "input_device.policy")?,
                 });
             }
             Err(e) => {
@@ -406,7 +381,7 @@ fn create_virtio_devs(
         }
     }
 
-    for dev_path in cfg.virtio_input_evdevs {
+    for dev_path in &cfg.virtio_input_evdevs {
         let dev_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -414,50 +389,35 @@ fn create_virtio_devs(
             .map_err(|e| Box::new(e))?;
         let vinput_box =
             Box::new(devices::virtio::new_evdev(dev_file).map_err(Error::InputDeviceNew)?);
-        let vinput_jail = if cfg.multiprocess {
-            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("input_device.policy");
-            Some(create_base_minijail(empty_root_path, &policy_path)?)
-        } else {
-            None
-        };
+
         devs.push(VirtioDeviceStub {
             dev: vinput_box,
-            jail: vinput_jail,
+            jail: simple_jail(&cfg, "input_device.policy")?,
         });
     }
 
     let balloon_box = Box::new(
         devices::virtio::Balloon::new(balloon_device_socket).map_err(Error::BalloonDeviceNew)?,
     );
-    let balloon_jail = if cfg.multiprocess {
-        let policy_path: PathBuf = cfg.seccomp_policy_dir.join("balloon_device.policy");
-        Some(create_base_minijail(empty_root_path, &policy_path)?)
-    } else {
-        None
-    };
+
     devs.push(VirtioDeviceStub {
         dev: balloon_box,
-        jail: balloon_jail,
+        jail: simple_jail(&cfg, "balloon_device.policy")?,
     });
 
     // We checked above that if the IP is defined, then the netmask is, too.
-    for tap_fd in cfg.tap_fd {
+    for tap_fd in &cfg.tap_fd {
         // Safe because we ensure that we get a unique handle to the fd.
         let tap = unsafe {
-            Tap::from_raw_fd(validate_raw_fd(tap_fd).map_err(Error::ValidateRawFd)?)
+            Tap::from_raw_fd(validate_raw_fd(*tap_fd).map_err(Error::ValidateRawFd)?)
                 .map_err(Error::CreateTapDevice)?
         };
         let net_box = Box::new(devices::virtio::Net::from(tap).map_err(Error::NetDeviceNew)?);
 
-        let jail = if cfg.multiprocess {
-            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("net_device.policy");
-
-            Some(create_base_minijail(empty_root_path, &policy_path)?)
-        } else {
-            None
-        };
-
-        devs.push(VirtioDeviceStub { dev: net_box, jail });
+        devs.push(VirtioDeviceStub {
+            dev: net_box,
+            jail: simple_jail(&cfg, "net_device.policy")?,
+        });
     }
 
     if let Some(host_ip) = cfg.host_ip {
@@ -480,19 +440,16 @@ fn create_virtio_devs(
                     )
                 };
 
-                let jail = if cfg.multiprocess {
-                    let policy_path: PathBuf = if cfg.vhost_net {
-                        cfg.seccomp_policy_dir.join("vhost_net_device.policy")
-                    } else {
-                        cfg.seccomp_policy_dir.join("net_device.policy")
-                    };
-
-                    Some(create_base_minijail(empty_root_path, &policy_path)?)
+                let policy = if cfg.vhost_net {
+                    "vhost_net_device.policy"
                 } else {
-                    None
+                    "net_device.policy"
                 };
 
-                devs.push(VirtioDeviceStub { dev: net_box, jail });
+                devs.push(VirtioDeviceStub {
+                    dev: net_box,
+                    jail: simple_jail(&cfg, policy)?,
+                });
             }
         }
     }
@@ -520,70 +477,67 @@ fn create_virtio_devs(
                         wayland_socket_path.as_path()
                     },
                 ));
-
-                let jail = if cfg.multiprocess {
-                    let policy_path: PathBuf = cfg.seccomp_policy_dir.join("gpu_device.policy");
-                    let mut jail = create_base_minijail(empty_root_path, &policy_path)?;
-
-                    // Create a tmpfs in the device's root directory so that we can bind mount the
-                    // dri directory into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
-                    jail.mount_with_data(
-                        Path::new("none"),
-                        Path::new("/"),
-                        "tmpfs",
-                        (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
-                        "size=67108864",
-                    )
-                    .unwrap();
-
-                    // Device nodes required for DRM.
-                    let sys_dev_char_path = Path::new("/sys/dev/char");
-                    jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)
-                        .unwrap();
-                    let sys_devices_path = Path::new("/sys/devices");
-                    jail.mount_bind(sys_devices_path, sys_devices_path, false)
-                        .unwrap();
-                    let drm_dri_path = Path::new("/dev/dri");
-                    jail.mount_bind(drm_dri_path, drm_dri_path, false).unwrap();
-
-                    // Libraries that are required when mesa drivers are dynamically loaded.
-                    let lib_path = Path::new("/lib64");
-                    jail.mount_bind(lib_path, lib_path, false).unwrap();
-                    let usr_lib_path = Path::new("/usr/lib64");
-                    jail.mount_bind(usr_lib_path, usr_lib_path, false).unwrap();
-
-                    // Bind mount the wayland socket into jail's root. This is necessary since each
-                    // new wayland context must open() the socket.
-                    jail.mount_bind(wayland_socket_path.as_path(), jailed_wayland_path, true)
+                let jail = match simple_jail(&cfg, "gpu_device.policy")? {
+                    Some(mut jail) => {
+                        // Create a tmpfs in the device's root directory so that we can bind mount the
+                        // dri directory into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
+                        jail.mount_with_data(
+                            Path::new("none"),
+                            Path::new("/"),
+                            "tmpfs",
+                            (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                            "size=67108864",
+                        )
                         .unwrap();
 
-                    // Set the uid/gid for the jailed process, and give a basic id map. This
-                    // is required for the above bind mount to work.
-                    let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
-                    let crosvm_uid = match get_user_id(&crosvm_user_group) {
-                        Ok(u) => u,
-                        Err(e) => {
-                            warn!("falling back to current user id for gpu: {}", e);
-                            geteuid()
-                        }
-                    };
-                    let crosvm_gid = match get_group_id(&crosvm_user_group) {
-                        Ok(u) => u,
-                        Err(e) => {
-                            warn!("falling back to current group id for gpu: {}", e);
-                            getegid()
-                        }
-                    };
-                    jail.change_uid(crosvm_uid);
-                    jail.change_gid(crosvm_gid);
-                    jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
-                        .map_err(Error::SettingUidMap)?;
-                    jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
-                        .map_err(Error::SettingGidMap)?;
+                        // Device nodes required for DRM.
+                        let sys_dev_char_path = Path::new("/sys/dev/char");
+                        jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)
+                            .unwrap();
+                        let sys_devices_path = Path::new("/sys/devices");
+                        jail.mount_bind(sys_devices_path, sys_devices_path, false)
+                            .unwrap();
+                        let drm_dri_path = Path::new("/dev/dri");
+                        jail.mount_bind(drm_dri_path, drm_dri_path, false).unwrap();
 
-                    Some(jail)
-                } else {
-                    None
+                        // Libraries that are required when mesa drivers are dynamically loaded.
+                        let lib_path = Path::new("/lib64");
+                        jail.mount_bind(lib_path, lib_path, false).unwrap();
+                        let usr_lib_path = Path::new("/usr/lib64");
+                        jail.mount_bind(usr_lib_path, usr_lib_path, false).unwrap();
+
+                        // Bind mount the wayland socket into jail's root. This is necessary since each
+                        // new wayland context must open() the socket.
+                        jail.mount_bind(wayland_socket_path.as_path(), jailed_wayland_path, true)
+                            .unwrap();
+
+                        // Set the uid/gid for the jailed process, and give a basic id map. This
+                        // is required for the above bind mount to work.
+                        let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
+                        let crosvm_uid = match get_user_id(&crosvm_user_group) {
+                            Ok(u) => u,
+                            Err(e) => {
+                                warn!("falling back to current user id for gpu: {}", e);
+                                geteuid()
+                            }
+                        };
+                        let crosvm_gid = match get_group_id(&crosvm_user_group) {
+                            Ok(u) => u,
+                            Err(e) => {
+                                warn!("falling back to current group id for gpu: {}", e);
+                                getegid()
+                            }
+                        };
+                        jail.change_uid(crosvm_uid);
+                        jail.change_gid(crosvm_gid);
+                        jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
+                            .map_err(Error::SettingUidMap)?;
+                        jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
+                            .map_err(Error::SettingGidMap)?;
+
+                        Some(jail)
+                    }
+                    None => None,
                 };
                 devs.push(VirtioDeviceStub { dev: gpu_box, jail });
             }
@@ -613,55 +567,53 @@ fn create_virtio_devs(
             .map_err(Error::WaylandDeviceNew)?,
         );
 
-        let jail = if cfg.multiprocess {
-            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("wl_device.policy");
-            let mut jail = create_base_minijail(empty_root_path, &policy_path)?;
-
-            // Create a tmpfs in the device's root directory so that we can bind mount the wayland
-            // socket directory into it. The size=67108864 is size=64*1024*1024 or size=64MB.
-            jail.mount_with_data(
-                Path::new("none"),
-                Path::new("/"),
-                "tmpfs",
-                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
-                "size=67108864",
-            )
-            .unwrap();
-
-            // Bind mount the wayland socket's directory into jail's root. This is necessary since
-            // each new wayland context must open() the socket. If the wayland socket is ever
-            // destroyed and remade in the same host directory, new connections will be possible
-            // without restarting the wayland device.
-            jail.mount_bind(wayland_socket_dir, jailed_wayland_dir, true)
+        let jail = match simple_jail(&cfg, "wl_device.policy")? {
+            Some(mut jail) => {
+                // Create a tmpfs in the device's root directory so that we can bind mount the wayland
+                // socket directory into it. The size=67108864 is size=64*1024*1024 or size=64MB.
+                jail.mount_with_data(
+                    Path::new("none"),
+                    Path::new("/"),
+                    "tmpfs",
+                    (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                    "size=67108864",
+                )
                 .unwrap();
 
-            // Set the uid/gid for the jailed process, and give a basic id map. This
-            // is required for the above bind mount to work.
-            let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
-            let crosvm_uid = match get_user_id(&crosvm_user_group) {
-                Ok(u) => u,
-                Err(e) => {
-                    warn!("falling back to current user id for Wayland: {}", e);
-                    geteuid()
-                }
-            };
-            let crosvm_gid = match get_group_id(&crosvm_user_group) {
-                Ok(u) => u,
-                Err(e) => {
-                    warn!("falling back to current group id for Wayland: {}", e);
-                    getegid()
-                }
-            };
-            jail.change_uid(crosvm_uid);
-            jail.change_gid(crosvm_gid);
-            jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
-                .map_err(Error::SettingUidMap)?;
-            jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
-                .map_err(Error::SettingGidMap)?;
+                // Bind mount the wayland socket's directory into jail's root. This is necessary since
+                // each new wayland context must open() the socket. If the wayland socket is ever
+                // destroyed and remade in the same host directory, new connections will be possible
+                // without restarting the wayland device.
+                jail.mount_bind(wayland_socket_dir, jailed_wayland_dir, true)
+                    .unwrap();
 
-            Some(jail)
-        } else {
-            None
+                // Set the uid/gid for the jailed process, and give a basic id map. This
+                // is required for the above bind mount to work.
+                let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
+                let crosvm_uid = match get_user_id(&crosvm_user_group) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        warn!("falling back to current user id for Wayland: {}", e);
+                        geteuid()
+                    }
+                };
+                let crosvm_gid = match get_group_id(&crosvm_user_group) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        warn!("falling back to current group id for Wayland: {}", e);
+                        getegid()
+                    }
+                };
+                jail.change_uid(crosvm_uid);
+                jail.change_gid(crosvm_gid);
+                jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
+                    .map_err(Error::SettingUidMap)?;
+                jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
+                    .map_err(Error::SettingGidMap)?;
+
+                Some(jail)
+            }
+            None => None,
         };
         devs.push(VirtioDeviceStub { dev: wl_box, jail });
     }
@@ -671,17 +623,9 @@ fn create_virtio_devs(
             devices::virtio::vhost::Vsock::new(cid, &mem).map_err(Error::VhostVsockDeviceNew)?,
         );
 
-        let jail = if cfg.multiprocess {
-            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("vhost_vsock_device.policy");
-
-            Some(create_base_minijail(empty_root_path, &policy_path)?)
-        } else {
-            None
-        };
-
         devs.push(VirtioDeviceStub {
             dev: vsock_box,
-            jail,
+            jail: simple_jail(&cfg, "vhost_vsock_device.policy")?,
         });
     }
 
@@ -702,28 +646,28 @@ fn create_virtio_devs(
     };
 
     for &(ref src, ref tag) in &cfg.shared_dirs {
-        let (jail, root) = if cfg.multiprocess {
-            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("9p_device.policy");
-            let mut jail = create_base_minijail(empty_root_path, &policy_path)?;
+        let (jail, root) = match simple_jail(&cfg, "9p_device.policy")? {
+            Some(mut jail) => {
+                //  The shared directory becomes the root of the device's file system.
+                let root = Path::new("/");
+                jail.mount_bind(&src, root, true).unwrap();
 
-            //  The shared directory becomes the root of the device's file system.
-            let root = Path::new("/");
-            jail.mount_bind(&src, root, true).unwrap();
+                // Set the uid/gid for the jailed process, and give a basic id map. This
+                // is required for the above bind mount to work.
+                jail.change_uid(chronos_uid);
+                jail.change_gid(chronos_gid);
+                jail.uidmap(&format!("{0} {0} 1", chronos_uid))
+                    .map_err(Error::SettingUidMap)?;
+                jail.gidmap(&format!("{0} {0} 1", chronos_gid))
+                    .map_err(Error::SettingGidMap)?;
 
-            // Set the uid/gid for the jailed process, and give a basic id map. This
-            // is required for the above bind mount to work.
-            jail.change_uid(chronos_uid);
-            jail.change_gid(chronos_gid);
-            jail.uidmap(&format!("{0} {0} 1", chronos_uid))
-                .map_err(Error::SettingUidMap)?;
-            jail.gidmap(&format!("{0} {0} 1", chronos_gid))
-                .map_err(Error::SettingGidMap)?;
-
-            (Some(jail), root)
-        } else {
-            // There's no bind mount so we tell the server to treat the source directory as the
-            // root.  The double deref here converts |src| from a &PathBuf into a &Path.
-            (None, &**src)
+                (Some(jail), root)
+            }
+            None => {
+                // There's no bind mount so we tell the server to treat the source directory as the
+                // root.  The double deref here converts |src| from a &PathBuf into a &Path.
+                (None, &**src)
+            }
         };
 
         let p9_box = Box::new(devices::virtio::P9::new(root, tag).map_err(Error::P9DeviceNew)?);
@@ -743,13 +687,11 @@ fn create_virtio_devs(
             (*mem).clone(),
             Box::new(CrasClient::new()?),
         ));
-        let cras_audio_jail = if cfg.multiprocess {
-            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("cras_audio_device.policy");
-            Some(create_base_minijail(empty_root_path, &policy_path)?)
-        } else {
-            None
-        };
-        pci_devices.push((cras_audio_box, cras_audio_jail));
+
+        pci_devices.push((
+            cras_audio_box,
+            simple_jail(&cfg, "cras_audio_device.policy")?,
+        ));
     }
 
     if cfg.null_audio {
@@ -757,13 +699,11 @@ fn create_virtio_devs(
             (*mem).clone(),
             Box::new(DummyStreamSource::new()),
         ));
-        let null_audio_jail = if cfg.multiprocess {
-            let policy_path: PathBuf = cfg.seccomp_policy_dir.join("null_audio_device.policy");
-            Some(create_base_minijail(empty_root_path, &policy_path)?)
-        } else {
-            None
-        };
-        pci_devices.push((null_audio_box, null_audio_jail));
+
+        pci_devices.push((
+            null_audio_box,
+            simple_jail(&cfg, "null_audio_device.policy")?,
+        ));
     }
 
     Ok(pci_devices)
