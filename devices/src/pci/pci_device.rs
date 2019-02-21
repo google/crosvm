@@ -60,6 +60,17 @@ pub trait PciDevice: Send {
     fn allocate_io_bars(&mut self, _resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
         Ok(Vec::new())
     }
+
+    /// Allocates the needed device BAR space. Returns a Vec of (address, length) tuples.
+    /// Unlike MMIO BARs (see allocate_io_bars), device BARs are not expected to incur VM exits
+    /// - these BARs represent normal memory.
+    fn allocate_device_bars(
+        &mut self,
+        _resources: &mut SystemAllocator,
+    ) -> Result<Vec<(u64, u64)>> {
+        Ok(Vec::new())
+    }
+
     /// Gets a list of ioeventfds that should be registered with the running VM. The list is
     /// returned as a Vec of (eventfd, addr, datamatch) tuples.
     fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
@@ -140,6 +151,9 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     }
     fn allocate_io_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
         (**self).allocate_io_bars(resources)
+    }
+    fn allocate_device_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
+        (**self).allocate_device_bars(resources)
     }
     fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
         (**self).ioeventfds()

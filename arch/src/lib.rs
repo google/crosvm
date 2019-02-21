@@ -94,6 +94,8 @@ pub trait LinuxArch {
 pub enum DeviceRegistrationError {
     /// Could not allocate IO space for the device.
     AllocateIoAddrs(PciDeviceError),
+    /// Could not allocate device address space for the device.
+    AllocateDeviceAddrs(PciDeviceError),
     /// Could not allocate an IRQ number.
     AllocateIrq,
     /// Could not create the mmio device to wrap a VirtioDevice.
@@ -121,6 +123,9 @@ impl fmt::Display for DeviceRegistrationError {
         match self {
             DeviceRegistrationError::AllocateIoAddrs(e) => {
                 write!(f, "Allocating IO addresses: {}", e)
+            }
+            DeviceRegistrationError::AllocateDeviceAddrs(e) => {
+                write!(f, "Allocating device addresses: {:?}", e)
             }
             DeviceRegistrationError::AllocateIrq => write!(f, "Allocating IRQ number"),
             DeviceRegistrationError::CreateMmioDevice(e) => {
@@ -187,6 +192,9 @@ pub fn generate_pci_root(
         let ranges = device
             .allocate_io_bars(resources)
             .map_err(DeviceRegistrationError::AllocateIoAddrs)?;
+        let device_ranges = device
+            .allocate_device_bars(resources)
+            .map_err(DeviceRegistrationError::AllocateDeviceAddrs)?;
         for (event, addr, datamatch) in device.ioeventfds() {
             let io_addr = IoeventAddress::Mmio(addr);
             vm.register_ioevent(&event, io_addr, datamatch)
@@ -203,6 +211,12 @@ pub fn generate_pci_root(
         };
         root.add_device(arced_dev.clone());
         for range in &ranges {
+            mmio_bus
+                .insert(arced_dev.clone(), range.0, range.1, true)
+                .map_err(DeviceRegistrationError::MmioInsert)?;
+        }
+
+        for range in &device_ranges {
             mmio_bus
                 .insert(arced_dev.clone(), range.0, range.1, true)
                 .map_err(DeviceRegistrationError::MmioInsert)?;

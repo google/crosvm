@@ -329,6 +329,31 @@ impl PciDevice for VirtioPciDevice {
         Ok(ranges)
     }
 
+    fn allocate_device_bars(
+        &mut self,
+        resources: &mut SystemAllocator,
+    ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
+        let mut ranges = Vec::new();
+        let configs = self.device.get_device_bars();
+        match configs {
+            Some(configs) => {
+                for mut config in configs {
+                    let device_addr = resources
+                        .allocate_device_addresses(config.get_size())
+                        .ok_or(PciDeviceError::IoAllocationFailed(config.get_size()))?;
+                    config.set_address(device_addr);
+                    let _device_bar = self
+                        .config_regs
+                        .add_pci_bar(&config)
+                        .ok_or(PciDeviceError::IoRegistrationFailed(device_addr))?;
+                    ranges.push((device_addr, config.get_size()));
+                }
+            }
+            None => (),
+        };
+        Ok(ranges)
+    }
+
     fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize) as u64;
         let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
