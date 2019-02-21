@@ -11,8 +11,8 @@ use super::*;
 use data_model::{DataInit, Le32};
 use kvm::Datamatch;
 use pci::{
-    PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciDevice, PciDeviceError,
-    PciHeaderType, PciInterruptPin, PciSubclass,
+    PciBarConfiguration, PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciDevice,
+    PciDeviceError, PciHeaderType, PciInterruptPin, PciSubclass,
 };
 use resources::SystemAllocator;
 use sys_util::{EventFd, GuestMemory, Result};
@@ -312,9 +312,13 @@ impl PciDevice for VirtioPciDevice {
         let settings_config_addr = resources
             .allocate_mmio_addresses(CAPABILITY_BAR_SIZE)
             .ok_or(PciDeviceError::IoAllocationFailed(CAPABILITY_BAR_SIZE))?;
+        let config = PciBarConfiguration::default()
+            .set_register_index(0)
+            .set_address(settings_config_addr)
+            .set_size(CAPABILITY_BAR_SIZE);
         let settings_bar = self
             .config_regs
-            .add_memory_region(settings_config_addr, CAPABILITY_BAR_SIZE)
+            .add_pci_bar(&config)
             .ok_or(PciDeviceError::IoRegistrationFailed(settings_config_addr))?
             as u8;
         ranges.push((settings_config_addr, CAPABILITY_BAR_SIZE));

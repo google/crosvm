@@ -11,7 +11,6 @@ const STATUS_REG: usize = 1;
 const STATUS_REG_CAPABILITIES_USED_MASK: u32 = 0x0010_0000;
 const BAR0_REG: usize = 4;
 const BAR_IO_ADDR_MASK: u32 = 0xffff_fffc;
-const BAR_IO_BIT: u32 = 0x0000_0001;
 const BAR_MEM_ADDR_MASK: u32 = 0xffff_fff0;
 const NUM_BAR_REGS: usize = 6;
 const CAPABILITY_LIST_HEAD_OFFSET: usize = 0x34;
@@ -167,13 +166,12 @@ pub trait PciCapability {
 pub struct PciConfiguration {
     registers: [u32; NUM_CONFIGURATION_REGISTERS],
     writable_bits: [u32; NUM_CONFIGURATION_REGISTERS], // writable bits for each register.
-    num_bars: usize,
+    bar_used: [bool; NUM_BAR_REGS],
     // Contains the byte offset and size of the last capability.
     last_capability: Option<(usize, usize)>,
 }
 
 /// See pci_regs.h in kernel
-#[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub enum PciBarRegionType {
     Memory32BitRegion = 0,
@@ -181,14 +179,12 @@ pub enum PciBarRegionType {
     Memory64BitRegion = 0x04,
 }
 
-#[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub enum PciBarPrefetchable {
     NotPrefetchable = 0,
     Prefetchable = 0x08,
 }
 
-#[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub struct PciBarConfiguration {
     addr: u64,
@@ -239,7 +235,7 @@ impl PciConfiguration {
         PciConfiguration {
             registers,
             writable_bits,
-            num_bars: 0,
+            bar_used: [false; NUM_BAR_REGS],
             last_capability: None,
         }
     }
@@ -304,44 +300,61 @@ impl PciConfiguration {
         }
     }
 
-    // Add either an IO or memory region, depending on `mem_type` mask, which is ORed in to the
-    // value before saving it.
-    fn add_bar(&mut self, addr: u64, size: u64, addr_mask: u32, mem_type: u32) -> Option<usize> {
-        if self.num_bars >= NUM_BAR_REGS {
-            return None;
-        }
-        if size.count_ones() != 1 {
-            return None;
-        }
-
-        // TODO(dgreid) Allow 64 bit address and size.
-        if addr.checked_add(size)? > u64::from(u32::max_value()) {
+    /// Adds a region specified by `config`.  Configures the specified BAR(s) to
+    /// report this region and size to the guest kernel.  Enforces a few constraints
+    /// (i.e, region size must be power of two, register not already used). Returns 'None' on
+    /// failure all, `Some(BarIndex)` on success.
+    pub fn add_pci_bar(&mut self, config: &PciBarConfiguration) -> Option<usize> {
+        if self.bar_used[config.reg_idx] {
             return None;
         }
 
-        let this_bar = self.num_bars;
-        let bar_idx = BAR0_REG + this_bar;
+        if config.size.count_ones() != 1 {
+            return None;
+        }
 
-        self.registers[bar_idx] = addr as u32 & addr_mask | mem_type;
-        // The first writable bit represents the size of the region.
-        self.writable_bits[bar_idx] = !(size - 1) as u32;
+        if config.reg_idx >= NUM_BAR_REGS {
+            return None;
+        }
 
-        self.num_bars += 1;
-        Some(this_bar)
-    }
+        let bar_idx = BAR0_REG + config.reg_idx;
+        match config.region_type {
+            PciBarRegionType::Memory32BitRegion | PciBarRegionType::IORegion => {
+                if config.addr.checked_add(config.size)? > u64::from(u32::max_value()) {
+                    return None;
+                }
+            }
+            PciBarRegionType::Memory64BitRegion => {
+                if config.reg_idx + 1 >= NUM_BAR_REGS {
+                    return None;
+                }
 
-    /// Adds a memory region of `size` at `addr`. Configures the next available BAR register to
-    /// report this region and size to the guest kernel. Returns 'None' if all BARs are full, or
-    /// `Some(BarIndex)` on success. `size` must be a power of 2.
-    pub fn add_memory_region(&mut self, addr: u64, size: u64) -> Option<usize> {
-        self.add_bar(addr, size, BAR_MEM_ADDR_MASK, 0)
-    }
+                if config.addr.checked_add(config.size)? > u64::max_value() {
+                    return None;
+                }
 
-    /// Adds an IO region of `size` at `addr`. Configures the next available BAR register to
-    /// report this region and size to the guest kernel. Returns 'None' if all BARs are full, or
-    /// `Some(BarIndex)` on success. `size` must be a power of 2.
-    pub fn add_io_region(&mut self, addr: u64, size: u64) -> Option<usize> {
-        self.add_bar(addr, size, BAR_IO_ADDR_MASK, BAR_IO_BIT)
+                if self.bar_used[config.reg_idx + 1] {
+                    return None;
+                }
+
+                self.registers[bar_idx + 1] = (config.addr >> 32) as u32;
+                self.writable_bits[bar_idx + 1] = !((config.size >> 32) - 1) as u32;
+                self.bar_used[config.reg_idx + 1] = true;
+            }
+        }
+
+        let (mask, lower_bits) = match config.region_type {
+            PciBarRegionType::Memory32BitRegion | PciBarRegionType::Memory64BitRegion => (
+                BAR_MEM_ADDR_MASK,
+                config.prefetchable as u32 | config.region_type as u32,
+            ),
+            PciBarRegionType::IORegion => (BAR_IO_ADDR_MASK, config.region_type as u32),
+        };
+
+        self.registers[bar_idx] = ((config.addr as u32) & mask) | lower_bits;
+        self.writable_bits[bar_idx] = !(config.size - 1) as u32;
+        self.bar_used[config.reg_idx] = true;
+        Some(config.reg_idx)
     }
 
     /// Returns the address of the given BAR region.
@@ -407,7 +420,6 @@ impl Default for PciBarConfiguration {
     }
 }
 
-#[allow(dead_code)]
 impl PciBarConfiguration {
     pub fn new(
         reg_idx: usize,
