@@ -17,6 +17,7 @@ use libc::{
 
 use data_model::VolatileSlice;
 
+use net::UnixSeqpacket;
 use {Error, Result};
 
 // Each of the following macros performs the same function as their C counterparts. They are each
@@ -290,6 +291,11 @@ impl ScmSocket for UnixDatagram {
 }
 
 impl ScmSocket for UnixStream {
+    fn socket_fd(&self) -> RawFd {
+        self.as_raw_fd()
+    }
+}
+impl ScmSocket for UnixSeqpacket {
     fn socket_fd(&self) -> RawFd {
         self.as_raw_fd()
     }
