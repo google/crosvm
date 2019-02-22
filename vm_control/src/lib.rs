@@ -293,3 +293,24 @@ pub enum VmResponse {
         desc: GpuMemoryDesc,
     },
 }
+
+impl Display for VmResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::VmResponse::*;
+
+        match self {
+            Ok => write!(f, "ok"),
+            Err(e) => write!(f, "error: {}", e),
+            RegisterMemory { pfn, slot } => write!(
+                f,
+                "memory registered to page frame number {:#x} and memory slot {}",
+                pfn, slot
+            ),
+            AllocateAndRegisterGpuMemory { pfn, slot, .. } => write!(
+                f,
+                "gpu memory allocated and registered to page frame number {:#x} and memory slot {}",
+                pfn, slot
+            ),
+        }
+    }
+}

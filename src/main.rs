@@ -55,8 +55,8 @@ use qcow::QcowFile;
 use sys_util::{getpid, kill_process_group, net::UnixSeqpacket, reap_child, syslog};
 
 use argument::{print_help, set_arguments, Argument};
-use msg_socket::{MsgSender, Sender};
-use vm_control::VmRequest;
+use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
+use vm_control::{VmRequest, VmResponse};
 
 static SECCOMP_POLICY_DIR: &'static str = "/usr/share/policy/crosvm";
 
@@ -709,89 +709,30 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
     }
 }
 
-fn vms_request(
-    cmd_name: &str,
-    cmd_help: &str,
-    request: &VmRequest,
-    args: std::env::Args,
-) -> std::result::Result<(), ()> {
-    if args.len() == 0 {
-        print_help(cmd_name, "VM_SOCKET...", &[]);
-        println!("{}", cmd_help);
-    }
-
+fn vms_request(request: &VmRequest, args: std::env::Args) -> std::result::Result<(), ()> {
     let mut return_result = Ok(());
     for socket_path in args {
         match UnixSeqpacket::connect(&socket_path) {
             Ok(s) => {
-                let sender = Sender::<VmRequest>::new(s);
-                if let Err(e) = sender.send(request) {
+                let socket = MsgSocket::<VmRequest, VmResponse>::new(s);
+                if let Err(e) = socket.send(request) {
                     error!(
                         "failed to send request to socket at '{}': {}",
                         socket_path, e
                     );
+                    return_result = Err(());
+                    continue;
                 }
-            }
-            Err(e) => {
-                error!("failed to connect to socket at '{}': {}", socket_path, e);
-                return_result = Err(());;
-            }
-        }
-    }
-
-    return_result
-}
-
-fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
-    vms_request(
-        "crosvm stop",
-        "Stops the crosvm instance listening on each `VM_SOCKET` given.",
-        &VmRequest::Exit,
-        args,
-    )
-}
-
-fn suspend_vms(args: std::env::Args) -> std::result::Result<(), ()> {
-    vms_request(
-        "crosvm suspend",
-        "Suspends the crosvm instance listening on each `VM_SOCKET` given.",
-        &VmRequest::Suspend,
-        args,
-    )
-}
-
-fn resume_vms(args: std::env::Args) -> std::result::Result<(), ()> {
-    vms_request(
-        "crosvm resume",
-        "Suspends the crosvm instance listening on each `VM_SOCKET` given.",
-        &VmRequest::Resume,
-        args,
-    )
-}
-
-fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() < 2 {
-        print_help("crosvm balloon", "SIZE VM_SOCKET...", &[]);
-        println!("Set the ballon size of the crosvm instance to `SIZE` bytes.");
-    }
-    let num_bytes = match args.nth(0).unwrap().parse::<u64>() {
-        Ok(n) => n,
-        Err(_) => {
-            error!("Failed to parse number of bytes");
-            return Err(());
-        }
-    };
-
-    let mut return_result = Ok(());
-    for socket_path in args {
-        match UnixSeqpacket::connect(&socket_path) {
-            Ok(s) => {
-                let sender = Sender::<VmRequest>::new(s);
-                if let Err(e) = sender.send(&VmRequest::BalloonAdjust(num_bytes)) {
-                    error!(
-                        "failed to send balloon request to socket at '{}': {}",
-                        socket_path, e
-                    );
+                match socket.recv() {
+                    Ok(response) => info!("request response was {}", response),
+                    Err(e) => {
+                        error!(
+                            "failed to send request to socket at2 '{}': {}",
+                            socket_path, e
+                        );
+                        return_result = Err(());
+                        continue;
+                    }
                 }
             }
             Err(e) => {
@@ -802,6 +743,50 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     }
 
     return_result
+}
+
+fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() == 0 {
+        print_help("crosvm stop", "VM_SOCKET...", &[]);
+        println!("Stops the crosvm instance listening on each `VM_SOCKET` given.");
+        return Ok(());
+    }
+    vms_request(&VmRequest::Exit, args)
+}
+
+fn suspend_vms(args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() == 0 {
+        print_help("crosvm suspend", "VM_SOCKET...", &[]);
+        println!("Suspends the crosvm instance listening on each `VM_SOCKET` given.");
+        return Ok(());
+    }
+    vms_request(&VmRequest::Suspend, args)
+}
+
+fn resume_vms(args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() == 0 {
+        print_help("crosvm resume", "VM_SOCKET...", &[]);
+        println!("Resumes the crosvm instance listening on each `VM_SOCKET` given.");
+        return Ok(());
+    }
+    vms_request(&VmRequest::Resume, args)
+}
+
+fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() < 2 {
+        print_help("crosvm balloon", "SIZE VM_SOCKET...", &[]);
+        println!("Set the ballon size of the crosvm instance to `SIZE` bytes.");
+        return Ok(());
+    }
+    let num_bytes = match args.nth(0).unwrap().parse::<u64>() {
+        Ok(n) => n,
+        Err(_) => {
+            error!("Failed to parse number of bytes");
+            return Err(());
+        }
+    };
+
+    vms_request(&VmRequest::BalloonAdjust(num_bytes), args)
 }
 
 fn create_qcow2(mut args: std::env::Args) -> std::result::Result<(), ()> {
@@ -840,6 +825,7 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
         println!("Manage attached virtual disk devices.");
         println!("Subcommands:");
         println!("  resize DISK_INDEX NEW_SIZE VM_SOCKET");
+        return Ok(());
     }
     let subcommand: &str = &args.nth(0).unwrap();
 
@@ -872,26 +858,7 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
         }
     };
 
-    let mut return_result = Ok(());
-    for socket_path in args {
-        match UnixSeqpacket::connect(&socket_path) {
-            Ok(s) => {
-                let sender = Sender::<VmRequest>::new(s);
-                if let Err(e) = sender.send(&request) {
-                    error!(
-                        "failed to send disk request to socket at '{}': {}",
-                        socket_path, e
-                    );
-                }
-            }
-            Err(e) => {
-                error!("failed to connect to socket at '{}': {}", socket_path, e);
-                return_result = Err(());
-            }
-        }
-    }
-
-    return_result
+    vms_request(&request, args)
 }
 
 fn print_usage() {
