@@ -67,7 +67,7 @@ pub enum Error {
     InvalidFdPath,
     InvalidWaylandPath,
     NetDeviceNew(devices::virtio::NetError),
-    NoVarEmpty,
+    PivotRootDoesntExist(&'static str),
     OpenAndroidFstab(PathBuf, io::Error),
     OpenInitrd(PathBuf, io::Error),
     OpenKernel(PathBuf, io::Error),
@@ -126,7 +126,7 @@ impl fmt::Display for Error {
                 write!(f, "wayland socket path has no parent or file name")
             }
             Error::NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {}", e),
-            Error::NoVarEmpty => write!(f, "/var/empty doesn't exist, can't jail devices."),
+            Error::PivotRootDoesntExist(p) => write!(f, "{} doesn't exist, can't jail devices.", p),
             Error::OpenInitrd(p, e) => write!(f, "failed to open initrd {}: {}", p.display(), e),
             Error::OpenKernel(p, e) => {
                 write!(f, "failed to open kernel image {}: {}", p.display(), e)
@@ -227,14 +227,14 @@ fn create_virtio_devs(
     balloon_device_socket: UnixDatagram,
     disk_device_sockets: &mut Vec<UnixDatagram>,
 ) -> std::result::Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>, Box<error::Error>> {
-    static DEFAULT_PIVOT_ROOT: &str = "/var/empty";
+    let default_pivot_root: &str = option_env!("DEFAULT_PIVOT_ROOT").unwrap_or("/var/empty");
 
     let mut devs = Vec::new();
 
     // An empty directory for jailed device's pivot root.
-    let empty_root_path = Path::new(DEFAULT_PIVOT_ROOT);
+    let empty_root_path = Path::new(default_pivot_root);
     if cfg.multiprocess && !empty_root_path.exists() {
-        return Err(Box::new(Error::NoVarEmpty));
+        return Err(Box::new(Error::PivotRootDoesntExist(default_pivot_root)));
     }
 
     for disk in &cfg.disks {
