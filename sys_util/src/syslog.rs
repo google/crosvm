@@ -35,12 +35,11 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
 use std::ptr::null;
-use std::str::from_utf8;
 use std::sync::{MutexGuard, Once, ONCE_INIT};
 
 use libc::{
-    c_char, closelog, fcntl, gethostname, localtime_r, openlog, time, time_t, tm, F_GETFD,
-    LOG_NDELAY, LOG_PERROR, LOG_PID, LOG_USER,
+    closelog, fcntl, localtime_r, openlog, time, time_t, tm, F_GETFD, LOG_NDELAY, LOG_PERROR,
+    LOG_PID, LOG_USER,
 };
 
 use sync::Mutex;
@@ -138,20 +137,6 @@ impl Display for Error {
     }
 }
 
-fn get_hostname() -> Result<String, ()> {
-    let mut hostname: [u8; 256] = [b'\0'; 256];
-    // Safe because we give a valid pointer to a buffer of the indicated length and check for the
-    // result.
-    let ret = unsafe { gethostname(hostname.as_mut_ptr() as *mut c_char, hostname.len()) };
-    if ret == -1 {
-        return Err(());
-    }
-
-    let len = hostname.iter().position(|&v| v == b'\0').ok_or(())?;
-
-    Ok(from_utf8(&hostname[..len]).map_err(|_| ())?.to_string())
-}
-
 fn get_proc_name() -> Option<String> {
     env::args_os()
         .next()
@@ -206,7 +191,6 @@ struct State {
     stderr: bool,
     socket: Option<UnixDatagram>,
     file: Option<File>,
-    hostname: Option<String>,
     proc_name: Option<String>,
 }
 
@@ -217,7 +201,6 @@ impl State {
             stderr: true,
             socket: Some(s),
             file: None,
-            hostname: get_hostname().ok(),
             proc_name: get_proc_name(),
         })
     }
@@ -270,17 +253,6 @@ macro_rules! lock {
             _ => return,
         };
     };
-}
-
-/// Replaces the hostname reported in each syslog message.
-///
-/// The default hostname is whatever `gethostname()` returned when `syslog::init()` was first
-/// called.
-///
-/// Does nothing if syslog was never initialized.
-pub fn set_hostname<T: Into<String>>(hostname: T) {
-    let mut state = lock!();
-    state.hostname = Some(hostname.into());
 }
 
 /// Replaces the process name reported in each syslog message.
@@ -453,14 +425,13 @@ pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::
             (
                 write!(
                     &mut buf_cursor,
-                    "<{}>{} {:02} {:02}:{:02}:{:02} {} {}[{}]: [{}:{}] {}",
+                    "<{}>{} {:02} {:02}:{:02}:{:02} {}[{}]: [{}:{}] {}",
                     prifac,
                     MONTHS[tm.tm_mon as usize],
                     tm.tm_mday,
                     tm.tm_hour,
                     tm.tm_min,
                     tm.tm_sec,
-                    state.hostname.as_ref().map(|s| s.as_ref()).unwrap_or("-"),
                     state.proc_name.as_ref().map(|s| s.as_ref()).unwrap_or("-"),
                     getpid(),
                     file_name,
