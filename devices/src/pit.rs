@@ -229,7 +229,7 @@ impl BusDevice for Pit {
             Some(PortIOSpace::PortCounter2Data) => self.counters[2].lock().write_counter(data[0]),
             Some(PortIOSpace::PortCommand) => self.command_write(data[0]),
             Some(PortIOSpace::PortSpeaker) => self.counters[2].lock().write_speaker(data[0]),
-            None => panic!("PIT: bad write to offset {}", offset),
+            None => warn!("PIT: bad write to offset {}", offset),
         }
     }
 
@@ -250,7 +250,10 @@ impl BusDevice for Pit {
                 0
             }
             Some(PortIOSpace::PortSpeaker) => self.counters[2].lock().read_speaker(),
-            None => panic!("PIT: bad read from offset {}", offset),
+            None => {
+                warn!("PIT: bad read from offset {}", offset);
+                return;
+            }
         };
         debug!("Pit: Read of offset {} returning {}", offset, data[0]);
     }
@@ -1288,5 +1291,13 @@ mod tests {
         write_speaker(&mut data.pit, 0x1);
         advance_by_ticks(&mut data, 128);
         read_counter(&mut data.pit, 2, 0xffff - 256, CommandAccess::CommandRWBoth);
+    }
+
+    /// Verify that invalid reads and writes do not cause crashes.
+    #[test]
+    fn invalid_write_and_read() {
+        let mut data = set_up();
+        data.pit.write(0x44, &[0]);
+        data.pit.read(0x55, &mut [0]);
     }
 }
