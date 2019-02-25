@@ -11,7 +11,7 @@ use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::ptr::null_mut;
 
-use libc;
+use libc::{self, c_int};
 
 use errno;
 
@@ -57,6 +57,47 @@ impl Display for Error {
     }
 }
 
+/// Memory access type for anonymous shared memory mapping.
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub struct Protection(c_int);
+impl Protection {
+    /// Returns Protection allowing no access.
+    #[inline(always)]
+    pub fn none() -> Protection {
+        Protection(libc::PROT_NONE)
+    }
+
+    /// Returns Protection allowing read/write access.
+    #[inline(always)]
+    pub fn read_write() -> Protection {
+        Protection(libc::PROT_READ | libc::PROT_WRITE)
+    }
+
+    /// Set read events.
+    #[inline(always)]
+    pub fn set_read(self) -> Protection {
+        Protection(self.0 | libc::PROT_READ)
+    }
+
+    /// Set write events.
+    #[inline(always)]
+    pub fn set_write(self) -> Protection {
+        Protection(self.0 | libc::PROT_WRITE)
+    }
+}
+
+impl From<c_int> for Protection {
+    fn from(f: c_int) -> Self {
+        Protection(f)
+    }
+}
+
+impl Into<c_int> for Protection {
+    fn into(self) -> c_int {
+        self.0
+    }
+}
+
 /// Wraps an anonymous shared memory mapping in the current process.
 #[derive(Debug)]
 pub struct MemoryMapping {
@@ -72,18 +113,27 @@ unsafe impl Send for MemoryMapping {}
 unsafe impl Sync for MemoryMapping {}
 
 impl MemoryMapping {
-    /// Creates an anonymous shared mapping of `size` bytes.
+    /// Creates an anonymous shared, read/write mapping of `size` bytes.
     ///
     /// # Arguments
     /// * `size` - Size of memory region in bytes.
     pub fn new(size: usize) -> Result<MemoryMapping> {
+        Self::new_protection(size, Protection::read_write())
+    }
+
+    /// Creates an anonymous shared mapping of `size` bytes with `prot` protection.
+    ///
+    /// # Arguments
+    /// * `size` - Size of memory region in bytes.
+    /// * `prot` - Protection (e.g. readable/writable) of the memory region.
+    pub fn new_protection(size: usize, prot: Protection) -> Result<MemoryMapping> {
         // This is safe because we are creating an anonymous mapping in a place not already used by
         // any other area in this process.
         let addr = unsafe {
             libc::mmap(
                 null_mut(),
                 size,
-                libc::PROT_READ | libc::PROT_WRITE,
+                prot.into(),
                 libc::MAP_ANONYMOUS | libc::MAP_SHARED | libc::MAP_NORESERVE,
                 -1,
                 0,
