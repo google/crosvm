@@ -150,18 +150,6 @@ impl UnixSeqpacket {
         }
     }
 
-    #[deprecated]
-    /// Alias for `send`.
-    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
-        self.send(buf)
-    }
-
-    #[deprecated]
-    /// Alias for `recv`.
-    pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.recv(buf)
-    }
-
     /// Write data from a given buffer to the socket fd
     ///
     /// # Arguments
