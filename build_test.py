@@ -116,12 +116,14 @@ def test_target(triple, is_release, env):
     is_release: True to build a release version.
     env: Enviroment variables to run cargo with.
   """
-  return (
-      test_target_modules(
-          triple, is_release, env, TEST_MODULES_PARALLEL, True) and
-      test_target_modules(
-          triple, is_release, env, TEST_MODULES_SERIAL, False)
-  )
+
+  parallel_result = test_target_modules(
+      triple, is_release, env, TEST_MODULES_PARALLEL, True)
+
+  serial_result = test_target_modules(
+      triple, is_release, env, TEST_MODULES_SERIAL, False)
+
+  return parallel_result and serial_result
 
 
 def check_build(sysroot, triple, kind, test_it, clean):
