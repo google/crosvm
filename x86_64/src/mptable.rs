@@ -330,6 +330,13 @@ pub fn setup_mptable(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sys_util::pagesize;
+
+    fn compute_page_aligned_mp_size(num_cpus: u8) -> u64 {
+        let mp_size = compute_mp_size(num_cpus);
+        let pg_size = pagesize();
+        (mp_size + pg_size - (mp_size % pg_size)) as u64
+    }
 
     fn table_entry_size(type_: u8) -> usize {
         match type_ as u32 {
@@ -347,7 +354,7 @@ mod tests {
         let num_cpus = 4;
         let mem = GuestMemory::new(&[(
             GuestAddress(MPTABLE_START),
-            compute_mp_size(num_cpus) as u64,
+            compute_page_aligned_mp_size(num_cpus),
         )])
         .unwrap();
 
@@ -356,12 +363,8 @@ mod tests {
 
     #[test]
     fn bounds_check_fails() {
-        let num_cpus = 4;
-        let mem = GuestMemory::new(&[(
-            GuestAddress(MPTABLE_START),
-            (compute_mp_size(num_cpus) - 1) as u64,
-        )])
-        .unwrap();
+        let num_cpus = 255;
+        let mem = GuestMemory::new(&[(GuestAddress(MPTABLE_START), 0x1000)]).unwrap();
 
         assert!(setup_mptable(&mem, num_cpus, Vec::new()).is_err());
     }
@@ -371,7 +374,7 @@ mod tests {
         let num_cpus = 1;
         let mem = GuestMemory::new(&[(
             GuestAddress(MPTABLE_START),
-            compute_mp_size(num_cpus) as u64,
+            compute_page_aligned_mp_size(num_cpus),
         )])
         .unwrap();
 
@@ -387,7 +390,7 @@ mod tests {
         let num_cpus = 4;
         let mem = GuestMemory::new(&[(
             GuestAddress(MPTABLE_START),
-            compute_mp_size(num_cpus) as u64,
+            compute_page_aligned_mp_size(num_cpus),
         )])
         .unwrap();
 
@@ -421,7 +424,7 @@ mod tests {
         const MAX_CPUS: u8 = 0xff;
         let mem = GuestMemory::new(&[(
             GuestAddress(MPTABLE_START),
-            compute_mp_size(MAX_CPUS) as u64,
+            compute_page_aligned_mp_size(MAX_CPUS),
         )])
         .unwrap();
 

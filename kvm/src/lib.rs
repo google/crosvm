@@ -312,7 +312,7 @@ impl Vm {
         if ret >= 0 {
             // Safe because we verify the value of ret and we are the owners of the fd.
             let vm_file = unsafe { File::from_raw_fd(ret) };
-            guest_mem.with_regions(|index, guest_addr, size, host_addr| {
+            guest_mem.with_regions(|index, guest_addr, size, host_addr, _| {
                 unsafe {
                     // Safe because the guest regions are guaranteed not to overlap.
                     set_user_memory_region(

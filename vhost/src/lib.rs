@@ -128,7 +128,7 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
 
         let _ = self
             .mem()
-            .with_regions::<_, ()>(|index, guest_addr, size, host_addr| {
+            .with_regions::<_, ()>(|index, guest_addr, size, host_addr, _| {
                 vhost_regions[index] = virtio_sys::vhost_memory_region {
                     guest_phys_addr: guest_addr.offset() as u64,
                     memory_size: size as u64,
@@ -339,8 +339,8 @@ mod tests {
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);
-        let start_addr2 = GuestAddress(0x100);
-        GuestMemory::new(&vec![(start_addr1, 0x100), (start_addr2, 0x400)])
+        let start_addr2 = GuestAddress(0x1000);
+        GuestMemory::new(&vec![(start_addr1, 0x1000), (start_addr2, 0x4000)])
     }
 
     fn assert_ok_or_known_failure<T>(res: Result<T>) {

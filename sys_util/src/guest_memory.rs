@@ -4,16 +4,19 @@
 
 //! Track memory regions that are mapped to the guest VM.
 
+use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::io::{Read, Write};
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::Arc;
 
-use data_model::volatile_memory::*;
-use data_model::DataInit;
-
 use crate::guest_address::GuestAddress;
 use crate::mmap::{self, MemoryMapping};
+use crate::shm::{MemfdSeals, SharedMemory};
+use crate::{errno, pagesize};
+use data_model::volatile_memory::*;
+use data_model::DataInit;
 
 #[derive(Debug)]
 pub enum Error {
@@ -21,6 +24,10 @@ pub enum Error {
     MemoryAccess(GuestAddress, mmap::Error),
     MemoryMappingFailed(mmap::Error),
     MemoryRegionOverlap,
+    MemoryNotAligned,
+    MemoryCreationFailed(errno::Error),
+    MemorySetSizeFailed(errno::Error),
+    MemoryAddSealsFailed(errno::Error),
     ShortWrite { expected: usize, completed: usize },
     ShortRead { expected: usize, completed: usize },
 }
@@ -39,6 +46,10 @@ impl Display for Error {
             }
             MemoryMappingFailed(e) => write!(f, "failed to map guest memory: {}", e),
             MemoryRegionOverlap => write!(f, "memory regions overlap"),
+            MemoryNotAligned => write!(f, "memfd regions must be page aligned"),
+            MemoryCreationFailed(_) => write!(f, "failed to create memfd region"),
+            MemorySetSizeFailed(e) => write!(f, "failed to set memfd region size: {}", e),
+            MemoryAddSealsFailed(e) => write!(f, "failed to set seals on memfd region: {}", e),
             ShortWrite {
                 expected,
                 completed,
@@ -62,6 +73,7 @@ impl Display for Error {
 struct MemoryRegion {
     mapping: MemoryMapping,
     guest_base: GuestAddress,
+    memfd_offset: usize,
 }
 
 fn region_end(region: &MemoryRegion) -> GuestAddress {
@@ -71,17 +83,77 @@ fn region_end(region: &MemoryRegion) -> GuestAddress {
         .unchecked_add(region.mapping.size() as u64)
 }
 
-/// Tracks a memory region and where it is mapped in the guest.
+/// Tracks a memory region and where it is mapped in the guest, along with a shm
+/// fd of the underlying memory regions.
 #[derive(Clone)]
 pub struct GuestMemory {
     regions: Arc<Vec<MemoryRegion>>,
+    memfd: Option<Arc<SharedMemory>>,
+}
+
+impl AsRawFd for GuestMemory {
+    fn as_raw_fd(&self) -> RawFd {
+        match self.memfd {
+            Some(ref memfd) => memfd.as_raw_fd(),
+            None => panic!("GuestMemory is not backed by a memfd"),
+        }
+    }
 }
 
 impl GuestMemory {
+    /// Creates backing memfd for GuestMemory regions
+    fn create_memfd(ranges: &[(GuestAddress, u64)]) -> Result<SharedMemory> {
+        let mut aligned_size = 0;
+        let pg_size = pagesize();
+        for range in ranges.iter() {
+            if range.1 % pg_size as u64 != 0 {
+                return Err(Error::MemoryNotAligned);
+            }
+
+            aligned_size += range.1;
+        }
+
+        let mut seals = MemfdSeals::new();
+
+        seals.set_shrink_seal();
+        seals.set_grow_seal();
+        seals.set_seal_seal();
+
+        let mut memfd =
+            SharedMemory::new(Some(CStr::from_bytes_with_nul(b"crosvm_guest\0").unwrap()))
+                .map_err(Error::MemoryCreationFailed)?;
+        memfd
+            .set_size(aligned_size)
+            .map_err(Error::MemorySetSizeFailed)?;
+        memfd
+            .add_seals(seals)
+            .map_err(Error::MemoryAddSealsFailed)?;
+
+        Ok(memfd)
+    }
+
     /// Creates a container for guest memory regions.
     /// Valid memory regions are specified as a Vec of (Address, Size) tuples sorted by Address.
     pub fn new(ranges: &[(GuestAddress, u64)]) -> Result<GuestMemory> {
+        // Create memfd
+
+        // TODO(prilik) remove optional memfd once parallel CQ lands (crbug.com/942183).
+        // Many classic CQ builders run old kernels without memfd support, resulting in test
+        // failures. It's less effort to introduce this temporary optional path than to
+        // manually mark all affected tests as ignore.
+        let memfd = match GuestMemory::create_memfd(ranges) {
+            Err(Error::MemoryCreationFailed { .. }) => {
+                warn!("GuestMemory is not backed by a memfd");
+                None
+            }
+            Err(e) => return Err(e),
+            Ok(memfd) => Some(memfd),
+        };
+
+        // Create memory regions
         let mut regions = Vec::<MemoryRegion>::new();
+        let mut offset = 0;
+
         for range in ranges.iter() {
             if let Some(last) = regions.last() {
                 if last
@@ -93,16 +165,27 @@ impl GuestMemory {
                 }
             }
 
-            let mapping =
-                MemoryMapping::new(range.1 as usize).map_err(Error::MemoryMappingFailed)?;
+            let mapping = match memfd {
+                Some(ref memfd) => MemoryMapping::from_fd_offset(memfd, range.1 as usize, offset),
+                None => MemoryMapping::new(range.1 as usize),
+            }
+            .map_err(Error::MemoryMappingFailed)?;
+
             regions.push(MemoryRegion {
                 mapping,
                 guest_base: range.0,
+                memfd_offset: offset,
             });
+
+            offset += range.1 as usize;
         }
 
         Ok(GuestMemory {
             regions: Arc::new(regions),
+            memfd: match memfd {
+                Some(memfd) => Some(Arc::new(memfd)),
+                None => None,
+            },
         })
     }
 
@@ -160,9 +243,16 @@ impl GuestMemory {
     }
 
     /// Perform the specified action on each region's addresses.
+    ///
+    /// Callback is called with arguments:
+    ///  * index: usize
+    ///  * guest_addr : GuestAddress
+    ///  * size: usize
+    ///  * host_addr: usize
+    ///  * memfd_offset: usize
     pub fn with_regions<F, E>(&self, mut cb: F) -> result::Result<(), E>
     where
-        F: FnMut(usize, GuestAddress, usize, usize) -> result::Result<(), E>,
+        F: FnMut(usize, GuestAddress, usize, usize, usize) -> result::Result<(), E>,
     {
         for (index, region) in self.regions.iter().enumerate() {
             cb(
@@ -170,6 +260,7 @@ impl GuestMemory {
                 region.guest_base,
                 region.mapping.size(),
                 region.mapping.as_ptr() as usize,
+                region.memfd_offset,
             )?;
         }
         Ok(())
@@ -483,12 +574,22 @@ impl VolatileMemory for GuestMemory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernel_has_memfd;
+
+    #[test]
+    fn test_alignment() {
+        let start_addr1 = GuestAddress(0x0);
+        let start_addr2 = GuestAddress(0x1000);
+
+        assert!(GuestMemory::new(&vec![(start_addr1, 0x100), (start_addr2, 0x400)]).is_err());
+        assert!(GuestMemory::new(&vec![(start_addr1, 0x1000), (start_addr2, 0x1000)]).is_ok());
+    }
 
     #[test]
     fn two_regions() {
         let start_addr1 = GuestAddress(0x0);
-        let start_addr2 = GuestAddress(0x400);
-        assert!(GuestMemory::new(&vec![(start_addr1, 0x400), (start_addr2, 0x400)]).is_ok());
+        let start_addr2 = GuestAddress(0x4000);
+        assert!(GuestMemory::new(&vec![(start_addr1, 0x4000), (start_addr2, 0x4000)]).is_ok());
     }
 
     #[test]
@@ -572,8 +673,8 @@ mod tests {
     #[test]
     fn guest_to_host() {
         let start_addr1 = GuestAddress(0x0);
-        let start_addr2 = GuestAddress(0x100);
-        let mem = GuestMemory::new(&vec![(start_addr1, 0x100), (start_addr2, 0x400)]).unwrap();
+        let start_addr2 = GuestAddress(0x1000);
+        let mem = GuestMemory::new(&vec![(start_addr1, 0x1000), (start_addr2, 0x4000)]).unwrap();
 
         // Verify the host addresses match what we expect from the mappings.
         let addr1_base = get_mapping(&mem, start_addr1).unwrap();
@@ -586,5 +687,40 @@ mod tests {
         // Check that a bad address returns an error.
         let bad_addr = GuestAddress(0x123456);
         assert!(mem.get_host_address(bad_addr).is_err());
+    }
+
+    #[test]
+    fn memfd_offset() {
+        if !kernel_has_memfd() {
+            return;
+        }
+
+        let start_region1 = GuestAddress(0x0);
+        let size_region1 = 0x1000;
+        let start_region2 = GuestAddress(0x10000);
+        let size_region2 = 0x2000;
+        let gm = GuestMemory::new(&vec![
+            (start_region1, size_region1),
+            (start_region2, size_region2),
+        ])
+        .unwrap();
+
+        gm.write_obj_at_addr(0x1337u16, GuestAddress(0x0)).unwrap();
+        gm.write_obj_at_addr(0x0420u16, GuestAddress(0x10000))
+            .unwrap();
+
+        let _ = gm.with_regions::<_, ()>(|index, _, size, _, memfd_offset| {
+            let mmap = MemoryMapping::from_fd_offset(&gm, size, memfd_offset).unwrap();
+
+            if index == 0 {
+                assert!(mmap.read_obj::<u16>(0x0).unwrap() == 0x1337u16);
+            }
+
+            if index == 1 {
+                assert!(mmap.read_obj::<u16>(0x0).unwrap() == 0x0420u16);
+            }
+
+            Ok(())
+        });
     }
 }
