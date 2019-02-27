@@ -382,7 +382,7 @@ impl PciConfiguration {
                 }
 
                 self.registers[bar_idx + 1] = (config.addr >> 32) as u32;
-                self.writable_bits[bar_idx + 1] = !((config.size >> 32) - 1) as u32;
+                self.writable_bits[bar_idx + 1] = !((config.size >> 32).wrapping_sub(1)) as u32;
                 self.bar_used[config.reg_idx + 1] = true;
             }
         }
