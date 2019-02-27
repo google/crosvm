@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use super::*;
-use pci::PciBarConfiguration;
+use pci::{PciBarConfiguration, PciCapability};
 use sys_util::{EventFd, GuestMemory};
 
 /// Trait for virtio devices to be driven by a virtio transport.
@@ -77,6 +77,11 @@ pub trait VirtioDevice: Send {
 
     /// Optionally returns additional BAR configuration needed by device
     fn get_device_bars(&self) -> Option<Vec<PciBarConfiguration>> {
+        None
+    }
+
+    /// Optionally returns additional capabiltiies needed by device
+    fn get_device_caps(&self) -> Option<Vec<Box<PciCapability>>> {
         None
     }
 }
