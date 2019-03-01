@@ -72,6 +72,13 @@ struct BindMount {
     writable: bool,
 }
 
+#[allow(dead_code)]
+struct GidMap {
+    inner: libc::gid_t,
+    outer: libc::gid_t,
+    count: u32,
+}
+
 const DEFAULT_TRACKPAD_WIDTH: u32 = 800;
 const DEFAULT_TRACKPAD_HEIGHT: u32 = 1280;
 
@@ -102,6 +109,7 @@ pub struct Config {
     plugin: Option<PathBuf>,
     plugin_root: Option<PathBuf>,
     plugin_mounts: Vec<BindMount>,
+    plugin_gid_maps: Vec<GidMap>,
     disks: Vec<DiskOption>,
     host_ip: Option<net::Ipv4Addr>,
     netmask: Option<net::Ipv4Addr>,
@@ -138,6 +146,7 @@ impl Default for Config {
             plugin: None,
             plugin_root: None,
             plugin_mounts: Vec::new(),
+            plugin_gid_maps: Vec::new(),
             disks: Vec::new(),
             host_ip: None,
             netmask: None,
@@ -504,6 +513,45 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
 
             cfg.plugin_mounts.push(BindMount { src, dst, writable });
         }
+        "plugin-gid-map" => {
+            let components: Vec<&str> = value.unwrap().split(":").collect();
+            if components.len() != 3 {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected:
+                        "`plugin-gid-map` must have exactly 3 components: <inner>:<outer>:<count>",
+                });
+            }
+
+            let inner: libc::gid_t =
+                components[0]
+                    .parse()
+                    .map_err(|_| argument::Error::InvalidValue {
+                        value: components[0].to_owned(),
+                        expected: "the <inner> component for `plugin-gid-map` is not valid gid",
+                    })?;
+
+            let outer: libc::gid_t =
+                components[1]
+                    .parse()
+                    .map_err(|_| argument::Error::InvalidValue {
+                        value: components[1].to_owned(),
+                        expected: "the <outer> component for `plugin-gid-map` is not valid gid",
+                    })?;
+
+            let count: u32 = components[2]
+                .parse()
+                .map_err(|_| argument::Error::InvalidValue {
+                    value: components[2].to_owned(),
+                    expected: "the <count> component for `plugin-gid-map` is not valid number",
+                })?;
+
+            cfg.plugin_gid_maps.push(GidMap {
+                inner,
+                outer,
+                count,
+            });
+        }
         "vhost-net" => cfg.vhost_net = true,
         "tap-fd" => {
             cfg.tap_fd.push(
@@ -627,6 +675,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("plugin-root", "PATH", "Absolute path to a directory that will become root filesystem for the plugin process."),
           #[cfg(feature = "plugin")]
           Argument::value("plugin-mount", "PATH:PATH:BOOL", "Path to be mounted into the plugin's root filesystem.  Can be given more than once."),
+          #[cfg(feature = "plugin")]
+          Argument::value("plugin-gid-map", "GID:GID:INT", "Supplemental GIDs that should be mapped in plugin jail.  Can be given more than once."),
           Argument::flag("vhost-net", "Use vhost for networking."),
           Argument::value("tap-fd",
                           "fd",

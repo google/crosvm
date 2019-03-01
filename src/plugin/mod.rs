@@ -481,6 +481,17 @@ pub fn run_config(cfg: Config) -> Result<()> {
         let policy_path = cfg.seccomp_policy_dir.join("plugin.policy");
         let mut jail = create_plugin_jail(root_path, &policy_path)?;
 
+        // Update gid map of the jail if caller provided supplemental groups.
+        if !cfg.plugin_gid_maps.is_empty() {
+            let map = format!("0 {} 1", getegid())
+                + &cfg
+                    .plugin_gid_maps
+                    .into_iter()
+                    .map(|m| format!(",{} {} {}", m.inner, m.outer, m.count))
+                    .collect::<String>();
+            jail.gidmap(&map).map_err(Error::SetGidMap)?;
+        }
+
         // Mount minimal set of devices (full, zero, urandom, etc). We can not use
         // jail.mount_dev() here because crosvm may not be running with CAP_SYS_ADMIN.
         let device_names = ["full", "null", "urandom", "zero"];
