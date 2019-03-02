@@ -511,29 +511,7 @@ fn create_devices(
                         jail.mount_bind(wayland_socket_path.as_path(), jailed_wayland_path, true)
                             .unwrap();
 
-                        // Set the uid/gid for the jailed process, and give a basic id map. This
-                        // is required for the above bind mount to work.
-                        let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
-                        let crosvm_uid = match get_user_id(&crosvm_user_group) {
-                            Ok(u) => u,
-                            Err(e) => {
-                                warn!("falling back to current user id for gpu: {}", e);
-                                geteuid()
-                            }
-                        };
-                        let crosvm_gid = match get_group_id(&crosvm_user_group) {
-                            Ok(u) => u,
-                            Err(e) => {
-                                warn!("falling back to current group id for gpu: {}", e);
-                                getegid()
-                            }
-                        };
-                        jail.change_uid(crosvm_uid);
-                        jail.change_gid(crosvm_gid);
-                        jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
-                            .map_err(Error::SettingUidMap)?;
-                        jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
-                            .map_err(Error::SettingGidMap)?;
+                        add_crosvm_user_to_jail(&mut jail, "gpu")?;
 
                         Some(jail)
                     }
@@ -587,29 +565,7 @@ fn create_devices(
                 jail.mount_bind(wayland_socket_dir, jailed_wayland_dir, true)
                     .unwrap();
 
-                // Set the uid/gid for the jailed process, and give a basic id map. This
-                // is required for the above bind mount to work.
-                let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
-                let crosvm_uid = match get_user_id(&crosvm_user_group) {
-                    Ok(u) => u,
-                    Err(e) => {
-                        warn!("falling back to current user id for Wayland: {}", e);
-                        geteuid()
-                    }
-                };
-                let crosvm_gid = match get_group_id(&crosvm_user_group) {
-                    Ok(u) => u,
-                    Err(e) => {
-                        warn!("falling back to current group id for Wayland: {}", e);
-                        getegid()
-                    }
-                };
-                jail.change_uid(crosvm_uid);
-                jail.change_gid(crosvm_gid);
-                jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
-                    .map_err(Error::SettingUidMap)?;
-                jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
-                    .map_err(Error::SettingGidMap)?;
+                add_crosvm_user_to_jail(&mut jail, "Wayland")?;
 
                 Some(jail)
             }
@@ -707,6 +663,40 @@ fn create_devices(
     }
 
     Ok(pci_devices)
+}
+
+// Set the uid/gid for the jailed process and give a basic id map. This is
+// required for bind mounts to work.
+fn add_crosvm_user_to_jail(
+    jail: &mut Minijail,
+    feature: &str,
+) -> std::result::Result<(), Box<Error>> {
+    let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
+
+    let crosvm_uid = match get_user_id(&crosvm_user_group) {
+        Ok(u) => u,
+        Err(e) => {
+            warn!("falling back to current user id for {}: {}", feature, e);
+            geteuid()
+        }
+    };
+
+    let crosvm_gid = match get_group_id(&crosvm_user_group) {
+        Ok(u) => u,
+        Err(e) => {
+            warn!("falling back to current group id for {}: {}", feature, e);
+            getegid()
+        }
+    };
+
+    jail.change_uid(crosvm_uid);
+    jail.change_gid(crosvm_gid);
+    jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
+        .map_err(Error::SettingUidMap)?;
+    jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
+        .map_err(Error::SettingGidMap)?;
+
+    Ok(())
 }
 
 fn raw_fd_from_path(path: &PathBuf) -> std::result::Result<RawFd, Box<Error>> {
