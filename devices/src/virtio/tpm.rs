@@ -7,6 +7,7 @@ use std::fmt::{self, Display};
 use std::fs;
 use std::ops::BitOrAssign;
 use std::os::unix::io::RawFd;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -26,10 +27,6 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
 // implementation. Named to match the equivalent constant in Linux's tpm.h.
 // There is no hard requirement that the value is the same but it makes sense.
 const TPM_BUFSIZE: usize = 4096;
-
-// Simply store TPM state in /tmp/tpm-simulator. Before shipping this feature,
-// will need to move state under /run/vm instead. https://crbug.com/921841
-const SIMULATOR_DIR: &str = "/tmp/tpm-simulator";
 
 struct Worker {
     queue: Queue,
@@ -194,12 +191,16 @@ impl Worker {
 
 /// Virtio vTPM device.
 pub struct Tpm {
+    storage: PathBuf,
     kill_evt: Option<EventFd>,
 }
 
 impl Tpm {
-    pub fn new() -> Tpm {
-        Tpm { kill_evt: None }
+    pub fn new(storage: PathBuf) -> Tpm {
+        Tpm {
+            storage,
+            kill_evt: None,
+        }
     }
 }
 
@@ -239,11 +240,11 @@ impl VirtioDevice for Tpm {
         let queue = queues.remove(0);
         let queue_evt = queue_evts.remove(0);
 
-        if let Err(err) = fs::create_dir_all(SIMULATOR_DIR) {
+        if let Err(err) = fs::create_dir_all(&self.storage) {
             error!("vtpm failed to create directory for simulator: {}", err);
             return;
         }
-        if let Err(err) = env::set_current_dir(SIMULATOR_DIR) {
+        if let Err(err) = env::set_current_dir(&self.storage) {
             error!("vtpm failed to change into simulator directory: {}", err);
             return;
         }

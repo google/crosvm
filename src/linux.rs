@@ -19,7 +19,7 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use libc::{self, c_int};
+use libc::{self, c_int, gid_t, uid_t};
 
 use audio_streams::DummyStreamSource;
 use byteorder::{ByteOrder, LittleEndian};
@@ -312,11 +312,48 @@ fn create_devices(
 
     #[cfg(feature = "tpm")]
     {
+        use std::ffi::CString;
+        use std::fs;
+        use std::process;
+        use sys_util::chown;
+
         if cfg.software_tpm {
-            let tpm_box = Box::new(devices::virtio::Tpm::new());
+            let tpm_storage: PathBuf;
+            let mut tpm_jail = simple_jail(&cfg, "tpm_device.policy")?;
+
+            match &mut tpm_jail {
+                Some(jail) => {
+                    // Create a tmpfs in the device's root directory for tpm
+                    // simulator storage. The size is 20*1024, or 20 KB.
+                    jail.mount_with_data(
+                        Path::new("none"),
+                        Path::new("/"),
+                        "tmpfs",
+                        (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                        "size=20480",
+                    )?;
+
+                    let crosvm_ids = add_crosvm_user_to_jail(jail, "tpm")?;
+
+                    let pid = process::id();
+                    let tpm_pid_dir = format!("/run/vm/tpm.{}", pid);
+                    tpm_storage = Path::new(&tpm_pid_dir).to_owned();
+                    fs::create_dir_all(&tpm_storage)?;
+                    let tpm_pid_dir_c = CString::new(tpm_pid_dir).expect("no nul bytes");
+                    chown(&tpm_pid_dir_c, crosvm_ids.uid, crosvm_ids.gid)?;
+
+                    jail.mount_bind(&tpm_storage, &tpm_storage, true)?;
+                }
+                None => {
+                    // Path used inside cros_sdk which does not have /run/vm.
+                    tpm_storage = Path::new("/tmp/tpm-simulator").to_owned();
+                }
+            }
+
+            let tpm = devices::virtio::Tpm::new(tpm_storage);
             devs.push(VirtioDeviceStub {
-                dev: tpm_box,
-                jail: simple_jail(&cfg, "tpm_device.policy")?,
+                dev: Box::new(tpm),
+                jail: tpm_jail,
             });
         }
     }
@@ -665,12 +702,17 @@ fn create_devices(
     Ok(pci_devices)
 }
 
+struct Ids {
+    uid: uid_t,
+    gid: gid_t,
+}
+
 // Set the uid/gid for the jailed process and give a basic id map. This is
 // required for bind mounts to work.
 fn add_crosvm_user_to_jail(
     jail: &mut Minijail,
     feature: &str,
-) -> std::result::Result<(), Box<Error>> {
+) -> std::result::Result<Ids, Box<Error>> {
     let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
 
     let crosvm_uid = match get_user_id(&crosvm_user_group) {
@@ -696,7 +738,10 @@ fn add_crosvm_user_to_jail(
     jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
         .map_err(Error::SettingGidMap)?;
 
-    Ok(())
+    Ok(Ids {
+        uid: crosvm_uid,
+        gid: crosvm_gid,
+    })
 }
 
 fn raw_fd_from_path(path: &PathBuf) -> std::result::Result<RawFd, Box<Error>> {
