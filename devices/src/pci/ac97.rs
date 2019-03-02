@@ -141,24 +141,24 @@ impl PciDevice for Ac97Dev {
         let mixer_regs_addr = resources
             .allocate_mmio_addresses(MIXER_REGS_SIZE)
             .ok_or(pci_device::Error::IoAllocationFailed(MIXER_REGS_SIZE))?;
-        let config: PciBarConfiguration = PciBarConfiguration::default()
+        let mixer_config = PciBarConfiguration::default()
             .set_register_index(0)
             .set_address(mixer_regs_addr)
             .set_size(MIXER_REGS_SIZE);
         self.config_regs
-            .add_pci_bar(&config)
+            .add_pci_bar(&mixer_config)
             .ok_or_else(|| pci_device::Error::IoRegistrationFailed(mixer_regs_addr))?;
         ranges.push((mixer_regs_addr, MIXER_REGS_SIZE));
 
         let master_regs_addr = resources
             .allocate_mmio_addresses(MASTER_REGS_SIZE)
             .ok_or_else(|| pci_device::Error::IoAllocationFailed(MASTER_REGS_SIZE))?;
-        config
+        let master_config = PciBarConfiguration::default()
             .set_register_index(1)
             .set_address(master_regs_addr)
             .set_size(MASTER_REGS_SIZE);
         self.config_regs
-            .add_pci_bar(&config)
+            .add_pci_bar(&master_config)
             .ok_or_else(|| pci_device::Error::IoRegistrationFailed(master_regs_addr))?;
         ranges.push((master_regs_addr, MASTER_REGS_SIZE));
         Ok(ranges)
