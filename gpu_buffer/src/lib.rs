@@ -39,7 +39,7 @@ mod raw;
 pub mod rendernode;
 
 use std::cmp::min;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::isize;
 use std::os::raw::c_void;
@@ -74,13 +74,15 @@ pub enum Error {
     Memcopy(VolatileMemoryError),
 }
 
-impl fmt::Display for Error {
+impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::GbmFailed => write!(f, "internal GBM failure"),
-            Error::ExportFailed(e) => write!(f, "export failed: {}", e),
-            Error::MapFailed => write!(f, "map failed"),
-            Error::CheckedArithmetic {
+        use self::Error::*;
+
+        match self {
+            GbmFailed => write!(f, "internal GBM failure"),
+            ExportFailed(e) => write!(f, "export failed: {}", e),
+            MapFailed => write!(f, "map failed"),
+            CheckedArithmetic {
                 field1: (label1, value1),
                 field2: (label2, value2),
                 op,
@@ -89,7 +91,7 @@ impl fmt::Display for Error {
                 "arithmetic failed: {}({}) {} {}({})",
                 label1, value1, op, label2, value2
             ),
-            Error::InvalidPrecondition {
+            InvalidPrecondition {
                 field1: (label1, value1),
                 field2: (label2, value2),
                 op,
@@ -98,8 +100,8 @@ impl fmt::Display for Error {
                 "invalid precondition: {}({}) {} {}({})",
                 label1, value1, op, label2, value2
             ),
-            Error::UnknownFormat(format) => write!(f, "unknown format {:?}", format),
-            Error::Memcopy(ref e) => write!(f, "error copying memory: {}", e),
+            UnknownFormat(format) => write!(f, "unknown format {:?}", format),
+            Memcopy(e) => write!(f, "error copying memory: {}", e),
         }
     }
 }

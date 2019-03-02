@@ -3,8 +3,7 @@
 // found in the LICENSE file.
 
 use std::cmp::min;
-use std::error;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::io::{self, Read, Write};
 use std::iter::Peekable;
 use std::mem;
@@ -52,13 +51,9 @@ pub enum P9Error {
     Internal(io::Error),
 }
 
-impl error::Error for P9Error {
-    fn description(&self) -> &str {
-        "An error occurred in the virtio 9P device"
-    }
-}
+impl std::error::Error for P9Error {}
 
-impl fmt::Display for P9Error {
+impl Display for P9Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::P9Error::*;
 

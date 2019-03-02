@@ -66,7 +66,6 @@ mod interrupts;
 mod mptable;
 mod regs;
 
-use std::error::{self, Error as X86Error};
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -122,34 +121,32 @@ pub enum Error {
     E820Configuration,
 }
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match self {
-            Error::ConfigureSystem => "Error configuring the system",
-            Error::CloneEventFd(_) => "Unable to clone an EventFd",
-            Error::Cmdline(_) => "the given kernel command line was invalid",
-            Error::CreateEventFd(_) => "Unable to make an EventFd",
-            Error::CreatePit(_) => "Unable to make Pit device",
-            Error::CreateKvm(_) => "failed to open /dev/kvm",
-            Error::CreatePciRoot(_) => "failed to create a PCI root hub",
-            Error::CreateSocket(_) => "failed to create socket",
-            Error::CreateVcpu(_) => "failed to create VCPU",
-            Error::KernelOffsetPastEnd => "The kernel extends past the end of RAM",
-            Error::RegisterIrqfd(_) => "Error registering an IrqFd",
-            Error::RegisterVsock(_) => "error registering virtual socket device",
-            Error::LoadCmdline(_) => "Error Loading command line",
-            Error::LoadKernel(_) => "Error Loading Kernel",
-            Error::LoadInitrd(_) => "Error loading initrd",
-            Error::ZeroPageSetup => "Error writing the zero page of guest memory",
-            Error::ZeroPagePastRamEnd => "The zero page extends past the end of guest_mem",
-            Error::E820Configuration => "Invalid e820 setup params",
-        }
-    }
-}
+impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "X86 Arch Error: {}", Error::description(self))
+        use self::Error::*;
+
+        match self {
+            ConfigureSystem => write!(f, "error configuring the system"),
+            CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
+            Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
+            CreateEventFd(e) => write!(f, "unable to make an EventFd: {}", e),
+            CreatePit(e) => write!(f, "unable to make Pit device: {}", e),
+            CreateKvm(e) => write!(f, "failed to open /dev/kvm: {}", e),
+            CreatePciRoot(e) => write!(f, "failed to create a PCI root hub: {}", e),
+            CreateSocket(e) => write!(f, "failed to create socket: {}", e),
+            CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
+            KernelOffsetPastEnd => write!(f, "the kernel extends past the end of RAM"),
+            RegisterIrqfd(e) => write!(f, "error registering an IrqFd: {}", e),
+            RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
+            LoadCmdline(e) => write!(f, "error Loading command line: {}", e),
+            LoadKernel(e) => write!(f, "error Loading Kernel: {}", e),
+            LoadInitrd(e) => write!(f, "error loading initrd: {}", e),
+            ZeroPageSetup => write!(f, "error writing the zero page of guest memory"),
+            ZeroPagePastRamEnd => write!(f, "the zero page extends past the end of guest_mem"),
+            E820Configuration => write!(f, "invalid e820 setup params"),
+        }
     }
 }
 

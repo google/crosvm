@@ -14,7 +14,6 @@ extern crate resources;
 extern crate sync;
 extern crate sys_util;
 
-use std::error::{self, Error as Aarch64Error};
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -133,7 +132,7 @@ pub enum Error {
     /// Unable to create Vcpu.
     CreateVcpu(sys_util::Error),
     /// FDT could not be created
-    FDTCreateFailure(Box<error::Error>),
+    FDTCreateFailure(Box<std::error::Error>),
     /// Kernel could not be loaded
     KernelLoadFailure(arch::LoadImageError),
     /// Initrd could not be loaded
@@ -150,31 +149,29 @@ pub enum Error {
     VCPUSetRegFailure,
 }
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match self {
-            &Error::CloneEventFd(_) => "Unable to clone an EventFd",
-            &Error::Cmdline(_) => "the given kernel command line was invalid",
-            &Error::CreateEventFd(_) => "Unable to make an EventFd",
-            &Error::CreateKvm(_) => "failed to open /dev/kvm",
-            &Error::CreatePciRoot(_) => "failed to create a PCI root hub",
-            &Error::CreateSocket(_) => "failed to create socket",
-            &Error::CreateVcpu(_) => "failed to create VCPU",
-            &Error::FDTCreateFailure(_) => "FDT could not be created",
-            &Error::KernelLoadFailure(_) => "Kernel cound not be loaded",
-            &Error::InitrdLoadFailure(_) => "initrd cound not be loaded",
-            &Error::CreateGICFailure(_) => "Failure to create GIC",
-            &Error::RegisterPci(_) => "error registering PCI bus",
-            &Error::RegisterVsock(_) => "error registering virtual socket device",
-            &Error::VCPUInitFailure => "Failed to initialize VCPU",
-            &Error::VCPUSetRegFailure => "Failed to set register",
-        }
-    }
-}
+impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Aarch64 Error: {}", Error::description(self))
+        use self::Error::*;
+
+        match self {
+            CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
+            Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
+            CreateEventFd(e) => write!(f, "unable to make an EventFd: {}", e),
+            CreateKvm(e) => write!(f, "failed to open /dev/kvm: {}", e),
+            CreatePciRoot(e) => write!(f, "failed to create a PCI root hub: {}", e),
+            CreateSocket(e) => write!(f, "failed to create socket: {}", e),
+            CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
+            FDTCreateFailure(e) => write!(f, "FDT could not be created: {}", e),
+            KernelLoadFailure(e) => write!(f, "kernel cound not be loaded: {}", e),
+            InitrdLoadFailure(e) => write!(f, "initrd cound not be loaded: {}", e),
+            CreateGICFailure(e) => write!(f, "failed to create GIC: {}", e),
+            RegisterPci(e) => write!(f, "error registering PCI bus: {}", e),
+            RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
+            VCPUInitFailure => write!(f, "failed to initialize VCPU"),
+            VCPUSetRegFailure => write!(f, "failed to set register"),
+        }
     }
 }
 

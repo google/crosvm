@@ -24,7 +24,6 @@
 //! Developers should feel free to use sync::Mutex anywhere in crosvm that they
 //! would otherwise be using std::sync::Mutex.
 
-use std::error::Error;
 use std::fmt::{self, Debug, Display};
 use std::sync::{Mutex as StdMutex, MutexGuard, TryLockError};
 
@@ -119,4 +118,4 @@ impl Display for WouldBlock {
     }
 }
 
-impl Error for WouldBlock {}
+impl std::error::Error for WouldBlock {}

@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::error;
 use std::fmt::{self, Display};
 use std::io;
 use std::result;
@@ -41,11 +40,7 @@ impl From<io::Error> for Error {
     }
 }
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        "System returned an error code"
-    }
-}
+impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

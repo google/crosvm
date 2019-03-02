@@ -6,10 +6,11 @@
 
 use libc::pid_t;
 
+use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::process;
 use std::time::Duration;
-use std::{self, fmt, io};
+use std::{self, io};
 
 use io_jail::{self, Minijail};
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgSender, MsgSocket};
@@ -25,11 +26,13 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl fmt::Display for Error {
+impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
         match self {
-            Error::ForkingJail(_) => write!(f, "Failed to fork jail process"),
-            Error::Io(e) => write!(f, "IO error configuring proxy device {}.", e),
+            ForkingJail(e) => write!(f, "Failed to fork jail process: {}", e),
+            Io(e) => write!(f, "IO error configuring proxy device {}.", e),
         }
     }
 }

@@ -101,14 +101,17 @@ pub enum MacAddressError {
     ParseOctet(ParseIntError),
 }
 
-impl fmt::Display for MacAddressError {
+impl Display for MacAddressError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            MacAddressError::InvalidNumOctets(n) => write!(f, "invalid number of octets: {}", n),
-            MacAddressError::ParseOctet(ref e) => write!(f, "failed to parse octet: {}", e),
+        use self::MacAddressError::*;
+
+        match self {
+            InvalidNumOctets(n) => write!(f, "invalid number of octets: {}", n),
+            ParseOctet(e) => write!(f, "failed to parse octet: {}", e),
         }
     }
 }
+
 /// An Ethernet mac address. This struct is compatible with the C `struct sockaddr`.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -147,7 +150,7 @@ impl FromStr for MacAddress {
     }
 }
 
-impl fmt::Display for MacAddress {
+impl Display for MacAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,

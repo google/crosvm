@@ -12,7 +12,7 @@ mod libminijail;
 
 use libc::pid_t;
 use std::ffi::CString;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::fs;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -70,17 +70,19 @@ pub enum Error {
     PreservingFd(i32),
 }
 
-impl fmt::Display for Error {
+impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
         match self {
-            Error::BindMount { src, dst, errno } => write!(
+            BindMount { src, dst, errno } => write!(
                 f,
                 "failed to accept bind mount {} -> {}: {}",
                 src.display(),
                 dst.display(),
                 io::Error::from_raw_os_error(*errno),
             ),
-            Error::Mount {
+            Mount {
                 errno,
                 src,
                 dest,
@@ -98,57 +100,49 @@ impl fmt::Display for Error {
                 data,
                 io::Error::from_raw_os_error(*errno),
             ),
-            Error::CheckingMultiThreaded(e) => write!(
+            CheckingMultiThreaded(e) => write!(
                 f,
                 "Failed to count the number of threads from /proc/self/tasks {}",
                 e
             ),
-            Error::CreatingMinijail => write!(f, "minjail_new failed due to an allocation failure"),
-            Error::ForkingMinijail(e) => write!(f, "minijail_fork failed with error {}", e),
-            Error::ForkingWhileMultiThreaded => {
-                write!(f, "Attempt to call fork() while multithreaded")
-            }
-            Error::SeccompPath(p) => write!(f, "missing seccomp policy path: {}", p.display()),
-            Error::StrToCString(s) => write!(f, "failed to convert string into CString: {}", s),
-            Error::PathToCString(s) => {
-                write!(f, "failed to convert path into CString: {}", s.display())
-            }
-            Error::DupDevNull(errno) => write!(
+            CreatingMinijail => write!(f, "minjail_new failed due to an allocation failure"),
+            ForkingMinijail(e) => write!(f, "minijail_fork failed with error {}", e),
+            ForkingWhileMultiThreaded => write!(f, "Attempt to call fork() while multithreaded"),
+            SeccompPath(p) => write!(f, "missing seccomp policy path: {}", p.display()),
+            StrToCString(s) => write!(f, "failed to convert string into CString: {}", s),
+            PathToCString(s) => write!(f, "failed to convert path into CString: {}", s.display()),
+            DupDevNull(errno) => write!(
                 f,
                 "failed to call dup2 to set stdin, stdout, or stderr to /dev/null: {}",
                 io::Error::from_raw_os_error(*errno),
             ),
-            Error::OpenDevNull(e) => write!(
+            OpenDevNull(e) => write!(
                 f,
                 "fail to open /dev/null for setting FDs 0, 1, or 2: {}",
                 e,
             ),
-            Error::SetAltSyscallTable { name, errno } => write!(
+            SetAltSyscallTable { name, errno } => write!(
                 f,
                 "failed to set alt-syscall table {}: {}",
                 name,
                 io::Error::from_raw_os_error(*errno),
             ),
-            Error::SettingChrootDirectory(errno, p) => write!(
+            SettingChrootDirectory(errno, p) => write!(
                 f,
                 "failed to set chroot {}: {}",
                 p.display(),
                 io::Error::from_raw_os_error(*errno),
             ),
-            Error::SettingPivotRootDirectory(errno, p) => write!(
+            SettingPivotRootDirectory(errno, p) => write!(
                 f,
                 "failed to set pivot root {}: {}",
                 p.display(),
                 io::Error::from_raw_os_error(*errno),
             ),
-            Error::ReadFdDirEntry(e) => {
-                write!(f, "failed to read an entry in /proc/self/fd: {}", e)
-            }
-            Error::ReadFdDir(e) => write!(f, "failed to open /proc/self/fd: {}", e),
-            Error::ProcFd(s) => write!(f, "an entry in /proc/self/fd is not an integer: {}", s),
-            Error::PreservingFd(e) => {
-                write!(f, "fork failed in minijail_preserve_fd with error {}", e)
-            }
+            ReadFdDirEntry(e) => write!(f, "failed to read an entry in /proc/self/fd: {}", e),
+            ReadFdDir(e) => write!(f, "failed to open /proc/self/fd: {}", e),
+            ProcFd(s) => write!(f, "an entry in /proc/self/fd is not an integer: {}", s),
+            PreservingFd(e) => write!(f, "fork failed in minijail_preserve_fd with error {}", e),
         }
     }
 }

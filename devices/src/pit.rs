@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 // Based heavily on GCE VMM's pit.cc.
 
-use std::fmt;
+use std::fmt::{self, Display};
 use std::io::Error as IoError;
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
@@ -159,7 +159,7 @@ pub enum PitError {
     CloneEventFd(SysError),
 }
 
-impl fmt::Display for PitError {
+impl Display for PitError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::PitError::*;
 
@@ -176,11 +176,7 @@ impl fmt::Display for PitError {
     }
 }
 
-impl std::error::Error for PitError {
-    fn description(&self) -> &str {
-        "Pit failure"
-    }
-}
+impl std::error::Error for PitError {}
 
 type PitResult<T> = std::result::Result<T, PitError>;
 

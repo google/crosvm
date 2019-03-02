@@ -14,7 +14,7 @@ mod pipe_format_fourcc;
 
 use std::cell::RefCell;
 use std::ffi::CStr;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::marker::PhantomData;
 use std::mem::{size_of, transmute, uninitialized};
@@ -81,10 +81,11 @@ pub enum Error {
     InvalidCommandSize(usize),
 }
 
-impl fmt::Display for Error {
+impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Error::*;
-        match *self {
+        use self::Error::*;
+
+        match self {
             AlreadyInitialized => write!(f, "global gpu renderer was already initailized"),
             MissingEGLFunction(name) => write!(f, "egl function `{}` was missing", name),
             EGLGetDisplay => write!(f, "call to eglGetDisplay failed"),

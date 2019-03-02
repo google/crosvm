@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::error::{self, Error as RegsError};
 use std::fmt::{self, Display};
 use std::{mem, result};
 
@@ -41,26 +40,26 @@ pub enum Error {
 }
 pub type Result<T> = result::Result<T, Error>;
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match self {
-            Error::MsrIoctlFailed(_) => "Setting up msrs failed",
-            Error::FpuIoctlFailed(_) => "Failed to configure the FPU",
-            Error::GetSRegsIoctlFailed(_) => "Failed to get sregs for this cpu",
-            Error::SettingRegistersIoctl(_) => "Failed to set base registers for this cpu",
-            Error::SetSRegsIoctlFailed(_) => "Failed to set sregs for this cpu",
-            Error::WriteGDTFailure => "Writing the GDT to RAM failed",
-            Error::WriteIDTFailure => "Writing the IDT to RAM failed",
-            Error::WritePML4Address => "Writing PML4 to RAM failed",
-            Error::WritePDPTEAddress => "Writing PDPTE to RAM failed",
-            Error::WritePDEAddress => "Writing PDE to RAM failed",
-        }
-    }
-}
+impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Interrupt Error: {}", Error::description(self))
+        use self::Error::*;
+
+        match self {
+            MsrIoctlFailed(e) => write!(f, "setting up msrs failed: {}", e),
+            FpuIoctlFailed(e) => write!(f, "failed to configure the FPU: {}", e),
+            GetSRegsIoctlFailed(e) => write!(f, "failed to get sregs for this cpu: {}", e),
+            SettingRegistersIoctl(e) => {
+                write!(f, "failed to set base registers for this cpu: {}", e)
+            }
+            SetSRegsIoctlFailed(e) => write!(f, "failed to set sregs for this cpu: {}", e),
+            WriteGDTFailure => write!(f, "writing the GDT to RAM failed"),
+            WriteIDTFailure => write!(f, "writing the IDT to RAM failed"),
+            WritePML4Address => write!(f, "writing PML4 to RAM failed"),
+            WritePDPTEAddress => write!(f, "writing PDPTE to RAM failed"),
+            WritePDEAddress => write!(f, "writing PDE to RAM failed"),
+        }
     }
 }
 

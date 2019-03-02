@@ -5,7 +5,7 @@
 mod process;
 mod vcpu;
 
-use std::fmt;
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
 use std::os::unix::io::{FromRawFd, IntoRawFd};
@@ -103,7 +103,7 @@ pub enum Error {
     ValidateTapFd(SysError),
 }
 
-impl fmt::Display for Error {
+impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::Error::*;
 

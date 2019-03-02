@@ -4,7 +4,6 @@
 
 extern crate sys_util;
 
-use std::error::{self, Error as KernelLoaderError};
 use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::io::{Read, Seek, SeekFrom};
@@ -37,31 +36,29 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match self {
-            Error::BigEndianElfOnLittle => {
-                "Trying to load big-endian binary on little-endian machine"
-            }
-            Error::CommandLineCopy => "Failed writing command line to guest memory",
-            Error::CommandLineOverflow => "Command line overflowed guest memory",
-            Error::InvalidElfMagicNumber => "Invalid Elf magic number",
-            Error::InvalidProgramHeaderSize => "Invalid program header size",
-            Error::InvalidProgramHeaderOffset => "Invalid program header offset",
-            Error::InvalidProgramHeaderAddress => "Invalid Program Header Address",
-            Error::ReadElfHeader => "Unable to read elf header",
-            Error::ReadKernelImage => "Unable to read kernel image",
-            Error::ReadProgramHeader => "Unable to read program header",
-            Error::SeekKernelStart => "Unable to seek to kernel start",
-            Error::SeekElfStart => "Unable to seek to elf start",
-            Error::SeekProgramHeader => "Unable to seek to program header",
-        }
-    }
-}
+impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Kernel Loader Error: {}", Error::description(self))
+        use self::Error::*;
+
+        let description = match self {
+            BigEndianElfOnLittle => "trying to load big-endian binary on little-endian machine",
+            CommandLineCopy => "failed writing command line to guest memory",
+            CommandLineOverflow => "command line overflowed guest memory",
+            InvalidElfMagicNumber => "invalid Elf magic number",
+            InvalidProgramHeaderSize => "invalid program header size",
+            InvalidProgramHeaderOffset => "invalid program header offset",
+            InvalidProgramHeaderAddress => "invalid Program Header Address",
+            ReadElfHeader => "unable to read elf header",
+            ReadKernelImage => "unable to read kernel image",
+            ReadProgramHeader => "unable to read program header",
+            SeekKernelStart => "unable to seek to kernel start",
+            SeekElfStart => "unable to seek to elf start",
+            SeekProgramHeader => "unable to seek to program header",
+        };
+
+        write!(f, "kernel loader: {}", description)
     }
 }
 

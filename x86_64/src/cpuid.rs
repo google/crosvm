@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::error::{self, Error as CpuidError};
 use std::fmt::{self, Display};
 use std::result;
 
@@ -16,18 +15,16 @@ pub enum Error {
 }
 pub type Result<T> = result::Result<T, Error>;
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match self {
-            Error::GetSupportedCpusFailed(_) => "GetSupportedCpus ioctl failed",
-            Error::SetSupportedCpusFailed(_) => "SetSupportedCpus ioctl failed",
-        }
-    }
-}
+impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "CPUID Error: {}", Error::description(self))
+        use self::Error::*;
+
+        match self {
+            GetSupportedCpusFailed(e) => write!(f, "GetSupportedCpus ioctl failed: {}", e),
+            SetSupportedCpusFailed(e) => write!(f, "SetSupportedCpus ioctl failed: {}", e),
+        }
     }
 }
 

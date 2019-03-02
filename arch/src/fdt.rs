@@ -4,9 +4,8 @@
 
 use byteorder::{BigEndian, ByteOrder};
 use libc::{c_char, c_int, c_void};
-use std::error::{self, Error as FdtError};
 use std::ffi::{CStr, CString};
-use std::fmt;
+use std::fmt::{self, Display};
 use std::ptr::null;
 
 // This links to libfdt which handles the creation of the binary blob
@@ -38,43 +37,24 @@ pub enum Error {
     FdtGuestMemoryWriteError,
 }
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match self {
-            &Error::FdtCreateError(_) => "Error creating FDT",
-            &Error::FdtFinishReservemapError(_) => "Error finishing reserve map",
-            &Error::FdtBeginNodeError(_) => "Error beginning FDT node",
-            &Error::FdtPropertyError(_) => "Error adding FDT property",
-            &Error::FdtEndNodeError(_) => "Error ending FDT node",
-            &Error::FdtOpenIntoError(_) => "Error copying FDT to Guest",
-            &Error::FdtFinishError(_) => "Error performing FDT finish",
-            &Error::FdtPackError(_) => "Error packing FDT",
-            &Error::FdtGuestMemoryWriteError => "Error writing FDT to Guest Memory",
-        }
-    }
-}
+impl std::error::Error for Error {}
 
-impl fmt::Display for Error {
+impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let prefix = "Libfdt Error: ";
+        use self::Error::*;
+
+        write!(f, "libfdt: ")?;
+
         match self {
-            &Error::FdtCreateError(fdt_ret)
-            | &Error::FdtFinishReservemapError(fdt_ret)
-            | &Error::FdtBeginNodeError(fdt_ret)
-            | &Error::FdtPropertyError(fdt_ret)
-            | &Error::FdtEndNodeError(fdt_ret)
-            | &Error::FdtOpenIntoError(fdt_ret)
-            | &Error::FdtFinishError(fdt_ret)
-            | &Error::FdtPackError(fdt_ret) => write!(
-                f,
-                "{} {} code: {}",
-                prefix,
-                Error::description(self),
-                fdt_ret
-            ),
-            &Error::FdtGuestMemoryWriteError => {
-                write!(f, "{} {}", prefix, Error::description(self))
-            }
+            FdtCreateError(ret) => write!(f, "error creating FDT, code={}", ret),
+            FdtFinishReservemapError(ret) => write!(f, "error finishing reserve map, code={}", ret),
+            FdtBeginNodeError(ret) => write!(f, "error beginning FDT node, code={}", ret),
+            FdtPropertyError(ret) => write!(f, "error adding FDT property, code={}", ret),
+            FdtEndNodeError(ret) => write!(f, "error ending FDT node, code={}", ret),
+            FdtOpenIntoError(ret) => write!(f, "error copying FDT to Guest, code={}", ret),
+            FdtFinishError(ret) => write!(f, "error performing FDT finish, code={}", ret),
+            FdtPackError(ret) => write!(f, "error packing FDT, code={}", ret),
+            FdtGuestMemoryWriteError => write!(f, "error writing FDT to guest memory"),
         }
     }
 }

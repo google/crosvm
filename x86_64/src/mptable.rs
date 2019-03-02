@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::error::{self, Error as MptableError};
 use std::fmt::{self, Display};
 use std::io;
 use std::mem;
@@ -40,26 +39,26 @@ pub enum Error {
     WriteMpcTable,
 }
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match self {
-            Error::NotEnoughMemory => "There was too little guest memory to store the MP table",
-            Error::AddressOverflow => "The MP table has too little address space to be stored",
-            Error::Clear => "Failure while zeroing out the memory for the MP table",
-            Error::WriteMpfIntel => "Failure to write the MP floating pointer",
-            Error::WriteMpcCpu => "Failure to write MP CPU entry",
-            Error::WriteMpcIoapic => "Failure to write MP ioapic entry",
-            Error::WriteMpcBus => "Failure to write MP bus entry",
-            Error::WriteMpcIntsrc => "Failure to write MP interrupt source entry",
-            Error::WriteMpcLintsrc => "Failure to write MP local interrupt source entry",
-            Error::WriteMpcTable => "Failure to write MP table header",
-        }
-    }
-}
+impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "MPTable Error: {}", Error::description(self))
+        use self::Error::*;
+
+        let description = match self {
+            NotEnoughMemory => "There was too little guest memory to store the MP table",
+            AddressOverflow => "The MP table has too little address space to be stored",
+            Clear => "Failure while zeroing out the memory for the MP table",
+            WriteMpfIntel => "Failure to write the MP floating pointer",
+            WriteMpcCpu => "Failure to write MP CPU entry",
+            WriteMpcIoapic => "Failure to write MP ioapic entry",
+            WriteMpcBus => "Failure to write MP bus entry",
+            WriteMpcIntsrc => "Failure to write MP interrupt source entry",
+            WriteMpcLintsrc => "Failure to write MP local interrupt source entry",
+            WriteMpcTable => "Failure to write MP table header",
+        };
+
+        write!(f, "MPTable error: {}", description)
     }
 }
 

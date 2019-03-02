@@ -40,7 +40,7 @@
 //! }
 //! ```
 
-use std::fmt;
+use std::fmt::{self, Display};
 use std::result;
 
 /// An error with argument parsing.
@@ -64,18 +64,20 @@ pub enum Error {
     PrintHelp,
 }
 
-impl fmt::Display for Error {
+impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
         match self {
-            Error::Syntax(s) => write!(f, "syntax error: {}", s),
-            Error::UnknownArgument(s) => write!(f, "unknown argument: {}", s),
-            Error::ExpectedArgument(s) => write!(f, "expected argument: {}", s),
-            Error::InvalidValue { value, expected } => {
+            Syntax(s) => write!(f, "syntax error: {}", s),
+            UnknownArgument(s) => write!(f, "unknown argument: {}", s),
+            ExpectedArgument(s) => write!(f, "expected argument: {}", s),
+            InvalidValue { value, expected } => {
                 write!(f, "invalid value {:?}: {}", value, expected)
             }
-            Error::TooManyArguments(s) => write!(f, "too many arguments: {}", s),
-            Error::ExpectedValue(s) => write!(f, "expected parameter value: {}", s),
-            Error::PrintHelp => write!(f, "help was requested"),
+            TooManyArguments(s) => write!(f, "too many arguments: {}", s),
+            ExpectedValue(s) => write!(f, "expected parameter value: {}", s),
+            PrintHelp => write!(f, "help was requested"),
         }
     }
 }

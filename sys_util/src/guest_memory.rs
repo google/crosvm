@@ -29,13 +29,16 @@ impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Guest memory error: ")?;
+        use self::Error::*;
+
         match self {
-            Error::InvalidGuestAddress(_) => write!(f, "Invalid Guest Address"),
-            Error::MemoryAccess(_, _) => write!(f, "Invalid Guest Memory Access"),
-            Error::MemoryMappingFailed(_) => write!(f, "Failed to map guest memory"),
-            Error::MemoryRegionOverlap => write!(f, "Memory regions overlap"),
-            Error::ShortWrite {
+            InvalidGuestAddress(addr) => write!(f, "invalid guest address {}", addr),
+            MemoryAccess(addr, e) => {
+                write!(f, "invalid guest memory access at addr={}: {}", addr, e)
+            }
+            MemoryMappingFailed(e) => write!(f, "failed to map guest memory: {}", e),
+            MemoryRegionOverlap => write!(f, "memory regions overlap"),
+            ShortWrite {
                 expected,
                 completed,
             } => write!(
@@ -43,7 +46,7 @@ impl Display for Error {
                 "incomplete write of {} instead of {} bytes",
                 completed, expected,
             ),
-            Error::ShortRead {
+            ShortRead {
                 expected,
                 completed,
             } => write!(

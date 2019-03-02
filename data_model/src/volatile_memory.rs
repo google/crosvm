@@ -20,7 +20,7 @@
 //! not reordered or elided the access.
 
 use std::cmp::min;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::io::Result as IoResult;
 use std::io::{Read, Write};
 use std::marker::PhantomData;
@@ -41,13 +41,13 @@ pub enum VolatileMemoryError {
     Overflow { base: u64, offset: u64 },
 }
 
-impl fmt::Display for VolatileMemoryError {
+impl Display for VolatileMemoryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::VolatileMemoryError::*;
+
         match self {
-            VolatileMemoryError::OutOfBounds { addr } => {
-                write!(f, "address 0x{:x} is out of bounds", addr)
-            }
-            VolatileMemoryError::Overflow { base, offset } => write!(
+            OutOfBounds { addr } => write!(f, "address 0x{:x} is out of bounds", addr),
+            Overflow { base, offset } => write!(
                 f,
                 "address 0x{:x} offset by 0x{:x} would overflow",
                 base, offset

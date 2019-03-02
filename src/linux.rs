@@ -6,7 +6,7 @@ use std;
 use std::cmp::min;
 use std::error;
 use std::ffi::CStr;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, Read};
 use std::mem;
@@ -106,91 +106,81 @@ pub enum Error {
     LoadKernel(Box<error::Error>),
 }
 
-impl fmt::Display for Error {
+impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
         match self {
-            Error::BalloonDeviceNew(e) => write!(f, "failed to create balloon: {}", e),
-            Error::BlockDeviceNew(e) => write!(f, "failed to create block device: {}", e),
-            Error::BlockSignal(e) => write!(f, "failed to block signal: {}", e),
-            Error::BuildingVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
-            Error::CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
-            Error::CreateEventFd(e) => write!(f, "failed to create eventfd: {}", e),
-            Error::CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
-            Error::CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
-            Error::CreateSocket(e) => write!(f, "failed to create socket: {}", e),
-            Error::CreateTapDevice(e) => write!(f, "failed to create tap device: {}", e),
-            Error::CreateTimerFd(e) => write!(f, "failed to create timerfd: {}", e),
-            Error::DetectImageType(e) => write!(f, "failed to detect disk image type: {}", e),
-            Error::DeviceJail(e) => write!(f, "failed to jail device: {}", e),
-            Error::DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
-            Error::Disk(e) => write!(f, "failed to load disk image: {}", e),
-            Error::DiskImageLock(e) => write!(f, "failed to lock disk image: {}", e),
-            Error::InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
-            Error::InvalidWaylandPath => {
-                write!(f, "wayland socket path has no parent or file name")
-            }
-            Error::NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {}", e),
-            Error::PivotRootDoesntExist(p) => write!(f, "{} doesn't exist, can't jail devices.", p),
-            Error::OpenInitrd(p, e) => write!(f, "failed to open initrd {}: {}", p.display(), e),
-            Error::OpenKernel(p, e) => {
-                write!(f, "failed to open kernel image {}: {}", p.display(), e)
-            }
-            Error::OpenAndroidFstab(ref p, ref e) => write!(
+            BalloonDeviceNew(e) => write!(f, "failed to create balloon: {}", e),
+            BlockDeviceNew(e) => write!(f, "failed to create block device: {}", e),
+            BlockSignal(e) => write!(f, "failed to block signal: {}", e),
+            BuildingVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
+            CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
+            CreateEventFd(e) => write!(f, "failed to create eventfd: {}", e),
+            CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
+            CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
+            CreateSocket(e) => write!(f, "failed to create socket: {}", e),
+            CreateTapDevice(e) => write!(f, "failed to create tap device: {}", e),
+            CreateTimerFd(e) => write!(f, "failed to create timerfd: {}", e),
+            DetectImageType(e) => write!(f, "failed to detect disk image type: {}", e),
+            DeviceJail(e) => write!(f, "failed to jail device: {}", e),
+            DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
+            Disk(e) => write!(f, "failed to load disk image: {}", e),
+            DiskImageLock(e) => write!(f, "failed to lock disk image: {}", e),
+            InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
+            InvalidWaylandPath => write!(f, "wayland socket path has no parent or file name"),
+            NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {}", e),
+            PivotRootDoesntExist(p) => write!(f, "{} doesn't exist, can't jail devices.", p),
+            OpenInitrd(p, e) => write!(f, "failed to open initrd {}: {}", p.display(), e),
+            OpenKernel(p, e) => write!(f, "failed to open kernel image {}: {}", p.display(), e),
+            OpenAndroidFstab(ref p, ref e) => write!(
                 f,
                 "failed to open android fstab file {}: {}",
                 p.display(),
                 e
             ),
-            Error::P9DeviceNew(e) => write!(f, "failed to create 9p device: {}", e),
-            Error::PollContextAdd(e) => write!(f, "failed to add fd to poll context: {}", e),
-            Error::PollContextDelete(e) => {
-                write!(f, "failed to remove fd from poll context: {}", e)
-            }
-            Error::QcowDeviceCreate(e) => write!(f, "failed to read qcow formatted file {}", e),
-            Error::ReadLowmemAvailable(e) => write!(
+            P9DeviceNew(e) => write!(f, "failed to create 9p device: {}", e),
+            PollContextAdd(e) => write!(f, "failed to add fd to poll context: {}", e),
+            PollContextDelete(e) => write!(f, "failed to remove fd from poll context: {}", e),
+            QcowDeviceCreate(e) => write!(f, "failed to read qcow formatted file {}", e),
+            ReadLowmemAvailable(e) => write!(
                 f,
                 "failed to read /sys/kernel/mm/chromeos-low_mem/available: {}",
                 e
             ),
-            Error::ReadLowmemMargin(e) => write!(
+            ReadLowmemMargin(e) => write!(
                 f,
                 "failed to read /sys/kernel/mm/chromeos-low_mem/margin: {}",
                 e
             ),
-            Error::RegisterBalloon(e) => write!(f, "error registering balloon device: {}", e),
-            Error::RegisterBlock(e) => write!(f, "error registering block device: {}", e),
-            Error::RegisterGpu(e) => write!(f, "error registering gpu device: {}", e),
-            Error::RegisterNet(e) => write!(f, "error registering net device: {}", e),
-            Error::RegisterP9(e) => write!(f, "error registering 9p device: {}", e),
-            Error::RegisterRng(e) => write!(f, "error registering rng device: {}", e),
-            Error::RegisterSignalHandler(e) => write!(f, "error registering signal handler: {}", e),
-            Error::RegisterWayland(e) => write!(f, "error registering wayland device: {}", e),
-            Error::ResetTimerFd(e) => write!(f, "failed to reset timerfd: {}", e),
-            Error::RngDeviceNew(e) => write!(f, "failed to set up rng: {}", e),
-            Error::InputDeviceNew(ref e) => write!(f, "failed to set up input device: {}", e),
-            Error::InputEventsOpen(ref e) => write!(f, "failed to open event device: {}", e),
-            Error::SettingGidMap(e) => write!(f, "error setting GID map: {}", e),
-            Error::SettingUidMap(e) => write!(f, "error setting UID map: {}", e),
-            Error::SignalFd(e) => write!(f, "failed to read signal fd: {}", e),
-            Error::SpawnVcpu(e) => write!(f, "failed to spawn VCPU thread: {}", e),
-            Error::TimerFd(e) => write!(f, "failed to read timer fd: {}", e),
-            Error::ValidateRawFd(e) => write!(f, "failed to validate raw fd: {}", e),
-            Error::VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {}", e),
-            Error::VhostVsockDeviceNew(e) => {
-                write!(f, "failed to set up virtual socket device: {}", e)
-            }
-            Error::VirtioPciDev(e) => write!(f, "failed to create virtio pci dev: {}", e),
-            Error::WaylandDeviceNew(e) => write!(f, "failed to create wayland device: {}", e),
-            Error::LoadKernel(e) => write!(f, "failed to load kernel: {}", e),
+            RegisterBalloon(e) => write!(f, "error registering balloon device: {}", e),
+            RegisterBlock(e) => write!(f, "error registering block device: {}", e),
+            RegisterGpu(e) => write!(f, "error registering gpu device: {}", e),
+            RegisterNet(e) => write!(f, "error registering net device: {}", e),
+            RegisterP9(e) => write!(f, "error registering 9p device: {}", e),
+            RegisterRng(e) => write!(f, "error registering rng device: {}", e),
+            RegisterSignalHandler(e) => write!(f, "error registering signal handler: {}", e),
+            RegisterWayland(e) => write!(f, "error registering wayland device: {}", e),
+            ResetTimerFd(e) => write!(f, "failed to reset timerfd: {}", e),
+            RngDeviceNew(e) => write!(f, "failed to set up rng: {}", e),
+            InputDeviceNew(ref e) => write!(f, "failed to set up input device: {}", e),
+            InputEventsOpen(ref e) => write!(f, "failed to open event device: {}", e),
+            SettingGidMap(e) => write!(f, "error setting GID map: {}", e),
+            SettingUidMap(e) => write!(f, "error setting UID map: {}", e),
+            SignalFd(e) => write!(f, "failed to read signal fd: {}", e),
+            SpawnVcpu(e) => write!(f, "failed to spawn VCPU thread: {}", e),
+            TimerFd(e) => write!(f, "failed to read timer fd: {}", e),
+            ValidateRawFd(e) => write!(f, "failed to validate raw fd: {}", e),
+            VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {}", e),
+            VhostVsockDeviceNew(e) => write!(f, "failed to set up virtual socket device: {}", e),
+            VirtioPciDev(e) => write!(f, "failed to create virtio pci dev: {}", e),
+            WaylandDeviceNew(e) => write!(f, "failed to create wayland device: {}", e),
+            LoadKernel(e) => write!(f, "failed to load kernel: {}", e),
         }
     }
 }
 
-impl std::error::Error for Error {
-    fn description(&self) -> &str {
-        "Some device failure"
-    }
-}
+impl std::error::Error for Error {}
 
 type Result<T> = std::result::Result<T, Error>;
 

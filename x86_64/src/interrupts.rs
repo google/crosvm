@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::error::{self, Error as InterruptsError};
 use std::fmt::{self, Display};
 use std::io::Cursor;
 use std::mem;
@@ -21,18 +20,16 @@ pub enum Error {
 }
 pub type Result<T> = result::Result<T, Error>;
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match self {
-            Error::GetLapic(_) => "GetLapic ioctl failed",
-            Error::SetLapic(_) => "SetLapic ioctl failed",
-        }
-    }
-}
+impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Interrupt Error: {}", Error::description(self))
+        use self::Error::*;
+
+        match self {
+            GetLapic(e) => write!(f, "GetLapic ioctl failed: {}", e),
+            SetLapic(e) => write!(f, "SetLapic ioctl failed: {}", e),
+        }
     }
 }
 

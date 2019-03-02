@@ -78,7 +78,7 @@ enum PlaybackError {
     WritingOutput(std::io::Error),
 }
 
-impl Error for PlaybackError {}
+impl std::error::Error for PlaybackError {}
 
 impl Display for PlaybackError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

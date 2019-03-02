@@ -32,9 +32,8 @@ use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap as Map, BTreeSet as Set, VecDeque};
 use std::convert::From;
-use std::error::{self, Error as StdError};
 use std::ffi::CStr;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::mem::{size_of, size_of_val};
@@ -442,34 +441,32 @@ enum WlError {
     DmabufSync(io::Error),
 }
 
-impl fmt::Display for WlError {
+impl Display for WlError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.description())
-    }
-}
+        use self::WlError::*;
 
-impl error::Error for WlError {
-    fn description(&self) -> &str {
-        match *self {
-            WlError::NewAlloc(_) => "Failed to create shared memory allocation",
-            WlError::NewPipe(_) => "Failed to create pipe",
-            WlError::AllocSetSize(_) => "Failed to set size of shared memory",
-            WlError::SocketConnect(_) => "Failed to connect socket",
-            WlError::SocketNonBlock(_) => "Failed to set socket as non-blocking",
-            WlError::VmControl(_) => "Failed to control parent VM",
-            WlError::VmBadResponse => "Invalid response from parent VM",
-            WlError::CheckedOffset => "Overflow in calculation",
-            WlError::GuestMemory(_) => "Access violation in guest memory",
-            WlError::VolatileMemory(_) => "Access violating in guest volatile memory",
-            WlError::SendVfd(_) => "Failed to send on a socket",
-            WlError::WritePipe(_) => "Failed to write to a pipe",
-            WlError::RecvVfd(_) => "Failed to recv on a socket",
-            WlError::ReadPipe(_) => "Failed to read a pipe",
-            WlError::PollContextAdd(_) => "Failed to listen to FD on poll context",
-            WlError::DmabufSync(_) => "Failed to synchronize DMABuf access",
+        match self {
+            NewAlloc(e) => write!(f, "failed to create shared memory allocation: {}", e),
+            NewPipe(e) => write!(f, "failed to create pipe: {}", e),
+            AllocSetSize(e) => write!(f, "failed to set size of shared memory: {}", e),
+            SocketConnect(e) => write!(f, "failed to connect socket: {}", e),
+            SocketNonBlock(e) => write!(f, "failed to set socket as non-blocking: {}", e),
+            VmControl(e) => write!(f, "failed to control parent VM: {}", e),
+            VmBadResponse => write!(f, "invalid response from parent VM"),
+            CheckedOffset => write!(f, "overflow in calculation"),
+            GuestMemory(e) => write!(f, "access violation in guest memory: {}", e),
+            VolatileMemory(e) => write!(f, "access violating in guest volatile memory: {}", e),
+            SendVfd(e) => write!(f, "failed to send on a socket: {}", e),
+            WritePipe(e) => write!(f, "failed to write to a pipe: {}", e),
+            RecvVfd(e) => write!(f, "failed to recv on a socket: {}", e),
+            ReadPipe(e) => write!(f, "failed to read a pipe: {}", e),
+            PollContextAdd(e) => write!(f, "failed to listen to FD on poll context: {}", e),
+            DmabufSync(e) => write!(f, "failed to synchronize DMABuf access: {}", e),
         }
     }
 }
+
+impl std::error::Error for WlError {}
 
 type WlResult<T> = result::Result<T, WlError>;
 
@@ -648,7 +645,7 @@ enum WlResp<'a> {
     VfdHup {
         id: u32,
     },
-    Err(Box<error::Error>),
+    Err(Box<std::error::Error>),
     OutOfMemory,
     InvalidId,
     InvalidType,
