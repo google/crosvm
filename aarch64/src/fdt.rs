@@ -252,6 +252,7 @@ fn create_pci_nodes(
     property_u32(fdt, "#interrupt-cells", 1)?;
     property(fdt, "interrupt-map", &interrupt_map)?;
     property(fdt, "interrupt-map-mask", &interrupt_map_mask)?;
+    property_null(fdt, "dma-coherent")?;
     end_node(fdt)?;
 
     Ok(())
