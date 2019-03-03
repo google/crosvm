@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt::{self, Display};
+
 use pci::PciInterruptPin;
 
 // The number of 32bit registers in the config space, 256 bytes.
@@ -194,6 +196,44 @@ pub struct PciBarConfiguration {
     prefetchable: PciBarPrefetchable,
 }
 
+#[derive(Debug)]
+pub enum Error {
+    BarAddressInvalid(u64, u64),
+    BarInUse(usize),
+    BarInUse64(usize),
+    BarInvalid(usize),
+    BarInvalid64(usize),
+    BarSizeInvalid(u64),
+    CapabilityEmpty,
+    CapabilityLengthInvalid(usize),
+    CapabilitySpaceFull(usize),
+}
+pub type Result<T> = std::result::Result<T, Error>;
+
+impl std::error::Error for Error {}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+        match self {
+            BarAddressInvalid(a, s) => write!(f, "address {} size {} too big", a, s),
+            BarInUse(b) => write!(f, "bar {} already used", b),
+            BarInUse64(b) => write!(f, "64bit bar {} already used(requires two regs)", b),
+            BarInvalid(b) => write!(f, "bar {} invalid, max {}", b, NUM_BAR_REGS - 1),
+            BarInvalid64(b) => write!(
+                f,
+                "64bitbar {} invalid, requires two regs, max {}",
+                b,
+                NUM_BAR_REGS - 1
+            ),
+            BarSizeInvalid(s) => write!(f, "bar address {} not a power of two", s),
+            CapabilityEmpty => write!(f, "empty capabilities are invalid"),
+            CapabilityLengthInvalid(l) => write!(f, "Invalid capability length {}", l),
+            CapabilitySpaceFull(s) => write!(f, "capability of size {} doesn't fit", s),
+        }
+    }
+}
+
 impl PciConfiguration {
     pub fn new(
         vendor_id: u16,
@@ -304,37 +344,41 @@ impl PciConfiguration {
     /// report this region and size to the guest kernel.  Enforces a few constraints
     /// (i.e, region size must be power of two, register not already used). Returns 'None' on
     /// failure all, `Some(BarIndex)` on success.
-    pub fn add_pci_bar(&mut self, config: &PciBarConfiguration) -> Option<usize> {
+    pub fn add_pci_bar(&mut self, config: &PciBarConfiguration) -> Result<usize> {
         if self.bar_used[config.reg_idx] {
-            return None;
+            return Err(Error::BarInUse(config.reg_idx));
         }
 
         if config.size.count_ones() != 1 {
-            return None;
+            return Err(Error::BarSizeInvalid(config.size));
         }
 
         if config.reg_idx >= NUM_BAR_REGS {
-            return None;
+            return Err(Error::BarInvalid(config.reg_idx));
         }
 
         let bar_idx = BAR0_REG + config.reg_idx;
+        let end_addr = config
+            .addr
+            .checked_add(config.size)
+            .ok_or(Error::BarAddressInvalid(config.addr, config.size))?;
         match config.region_type {
             PciBarRegionType::Memory32BitRegion | PciBarRegionType::IORegion => {
-                if config.addr.checked_add(config.size)? > u64::from(u32::max_value()) {
-                    return None;
+                if end_addr > u64::from(u32::max_value()) {
+                    return Err(Error::BarAddressInvalid(config.addr, config.size));
                 }
             }
             PciBarRegionType::Memory64BitRegion => {
                 if config.reg_idx + 1 >= NUM_BAR_REGS {
-                    return None;
+                    return Err(Error::BarInvalid64(config.reg_idx));
                 }
 
-                if config.addr.checked_add(config.size)? > u64::max_value() {
-                    return None;
+                if end_addr > u64::max_value() {
+                    return Err(Error::BarAddressInvalid(config.addr, config.size));
                 }
 
                 if self.bar_used[config.reg_idx + 1] {
-                    return None;
+                    return Err(Error::BarInUse64(config.reg_idx));
                 }
 
                 self.registers[bar_idx + 1] = (config.addr >> 32) as u32;
@@ -354,7 +398,7 @@ impl PciConfiguration {
         self.registers[bar_idx] = ((config.addr as u32) & mask) | lower_bits;
         self.writable_bits[bar_idx] = !(config.size - 1) as u32;
         self.bar_used[config.reg_idx] = true;
-        Some(config.reg_idx)
+        Ok(config.reg_idx)
     }
 
     /// Returns the address of the given BAR region.
@@ -377,18 +421,25 @@ impl PciConfiguration {
     /// Adds the capability `cap_data` to the list of capabilities.
     /// `cap_data` should not include the two-byte PCI capability header (type, next);
     /// it will be generated automatically based on `cap_data.id()`.
-    pub fn add_capability(&mut self, cap_data: &PciCapability) -> Option<usize> {
-        let total_len = cap_data.bytes().len() + 2;
+    pub fn add_capability(&mut self, cap_data: &PciCapability) -> Result<usize> {
+        let total_len = cap_data
+            .bytes()
+            .len()
+            .checked_add(2)
+            .ok_or(Error::CapabilityLengthInvalid(cap_data.bytes().len()))?;
         // Check that the length is valid.
         if cap_data.bytes().is_empty() {
-            return None;
+            return Err(Error::CapabilityEmpty);
         }
         let (cap_offset, tail_offset) = match self.last_capability {
             Some((offset, len)) => (Self::next_dword(offset, len), offset + 1),
             None => (FIRST_CAPABILITY_OFFSET, CAPABILITY_LIST_HEAD_OFFSET),
         };
-        if cap_offset.checked_add(cap_data.bytes().len() + 2)? > CAPABILITY_MAX_OFFSET {
-            return None;
+        let end_offset = cap_offset
+            .checked_add(total_len)
+            .ok_or(Error::CapabilitySpaceFull(total_len))?;
+        if end_offset > CAPABILITY_MAX_OFFSET {
+            return Err(Error::CapabilitySpaceFull(total_len));
         }
         self.registers[STATUS_REG] |= STATUS_REG_CAPABILITIES_USED_MASK;
         self.write_byte_internal(tail_offset, cap_offset as u8, false);
@@ -398,7 +449,7 @@ impl PciConfiguration {
             self.write_byte_internal(cap_offset + i + 2, *byte, false);
         }
         self.last_capability = Some((cap_offset, total_len));
-        Some(cap_offset)
+        Ok(cap_offset)
     }
 
     // Find the next aligned offset after the one given.

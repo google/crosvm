@@ -9,7 +9,7 @@ use std::fmt::{self, Display};
 use std::os::unix::io::RawFd;
 
 use kvm::Datamatch;
-use pci::pci_configuration::PciConfiguration;
+use pci::pci_configuration::{self, PciConfiguration};
 use pci::PciInterruptPin;
 use resources::SystemAllocator;
 use sys_util::EventFd;
@@ -18,10 +18,12 @@ use BusDevice;
 
 #[derive(Debug)]
 pub enum Error {
+    /// Setup of the device capabilities failed.
+    CapabilitiesSetup(pci_configuration::Error),
     /// Allocating space for an IO BAR failed.
     IoAllocationFailed(u64),
     /// Registering an IO BAR failed.
-    IoRegistrationFailed(u64),
+    IoRegistrationFailed(u64, pci_configuration::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -30,10 +32,13 @@ impl Display for Error {
         use self::Error::*;
 
         match self {
+            CapabilitiesSetup(e) => write!(f, "failed to add capability {}", e),
             IoAllocationFailed(size) => {
                 write!(f, "failed to allocate space for an IO BAR, size={}", size)
             }
-            IoRegistrationFailed(addr) => write!(f, "failed to register an IO BAR, addr={}", addr),
+            IoRegistrationFailed(addr, e) => {
+                write!(f, "failed to register an IO BAR, addr={} err={}", addr, e)
+            }
         }
     }
 }
