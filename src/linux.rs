@@ -693,7 +693,10 @@ fn create_devices(
 }
 
 struct Ids {
+    // Fields are only read in some configurations.
+    #[allow(dead_code)]
     uid: uid_t,
+    #[allow(dead_code)]
     gid: gid_t,
 }
 
