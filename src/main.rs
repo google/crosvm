@@ -799,7 +799,7 @@ fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() == 0 {
         print_help("crosvm stop", "VM_SOCKET...", &[]);
         println!("Stops the crosvm instance listening on each `VM_SOCKET` given.");
-        return Ok(());
+        return Err(());
     }
     vms_request(&VmRequest::Exit, args)
 }
@@ -808,7 +808,7 @@ fn suspend_vms(args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() == 0 {
         print_help("crosvm suspend", "VM_SOCKET...", &[]);
         println!("Suspends the crosvm instance listening on each `VM_SOCKET` given.");
-        return Ok(());
+        return Err(());
     }
     vms_request(&VmRequest::Suspend, args)
 }
@@ -817,7 +817,7 @@ fn resume_vms(args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() == 0 {
         print_help("crosvm resume", "VM_SOCKET...", &[]);
         println!("Resumes the crosvm instance listening on each `VM_SOCKET` given.");
-        return Ok(());
+        return Err(());
     }
     vms_request(&VmRequest::Resume, args)
 }
@@ -826,7 +826,7 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() < 2 {
         print_help("crosvm balloon", "SIZE VM_SOCKET...", &[]);
         println!("Set the ballon size of the crosvm instance to `SIZE` bytes.");
-        return Ok(());
+        return Err(());
     }
     let num_bytes = match args.nth(0).unwrap().parse::<u64>() {
         Ok(n) => n,
@@ -843,6 +843,7 @@ fn create_qcow2(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() != 2 {
         print_help("crosvm create_qcow2", "PATH SIZE", &[]);
         println!("Create a new QCOW2 image at `PATH` of the specified `SIZE` in bytes.");
+        return Err(());
     }
     let file_path = args.nth(0).unwrap();
     let size: u64 = match args.nth(0).unwrap().parse::<u64>() {
@@ -875,7 +876,7 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
         println!("Manage attached virtual disk devices.");
         println!("Subcommands:");
         println!("  resize DISK_INDEX NEW_SIZE VM_SOCKET");
-        return Ok(());
+        return Err(());
     }
     let subcommand: &str = &args.nth(0).unwrap();
 
