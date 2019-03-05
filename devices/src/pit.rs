@@ -251,7 +251,6 @@ impl BusDevice for Pit {
                 return;
             }
         };
-        debug!("Pit: Read of offset {} returning {}", offset, data[0]);
     }
 }
 
@@ -291,7 +290,6 @@ impl Pit {
     }
 
     fn command_write(&mut self, control_word: u8) {
-        debug!("Pit command_write control_word = {:#x}", control_word);
         let command: u16 = (control_word & CommandBit::CommandSC as u8).into();
         let counter_index: usize = (command >> 6).into();
         if command == (CommandCounter::CommandReadBack as u16) {
@@ -458,10 +456,6 @@ impl PitCounter {
     }
 
     fn write_counter(&mut self, written_datum: u8) {
-        debug!(
-            "Pit counter write to counter {} with data {:#x}",
-            self.counter_id, written_datum
-        );
         let access_mode = self.get_access_mode();
         let datum: u16 = written_datum.into();
         let mut should_start_timer = true;
@@ -532,7 +526,6 @@ impl PitCounter {
     }
 
     fn write_speaker(&mut self, datum: u8) {
-        debug!("PIT: write to speaker with data {:#x}", datum);
         let mut speaker = SpeakerPortFields::new();
         speaker.set(/*offset=*/ 0, /*width=*/ 8, datum.into());
         let new_gate = speaker.get_gate() != 0;
@@ -558,11 +551,6 @@ impl PitCounter {
     }
 
     fn start_timer(&mut self) {
-        debug!(
-            "Starting timer command: {:#x} count: {:#x}",
-            self.command, self.count
-        );
-
         self.start = Some(self.clock.lock().now());
 
         // Counter 0 is the only counter that generates interrupts, so we
@@ -629,10 +617,6 @@ impl PitCounter {
         self.latched_value = self.get_read_value();
         self.latched = true;
         self.read_low_byte = false;
-        debug!(
-            "Pit counter index {}: latching counter value to {}",
-            self.counter_id, self.latched_value
-        );
     }
 
     fn latch_status(&mut self) {
@@ -647,7 +631,6 @@ impl PitCounter {
         if self.get_output() {
             self.status |= ReadBackData::ReadBackOutput as u8;
         }
-        debug!("Status being latched: {:#x}", self.status);
         self.status_latched = true;
     }
 
@@ -668,7 +651,6 @@ impl PitCounter {
     }
 
     fn timer_handler(&mut self) {
-        debug!("Timer expiration on PIT ctr {} ", self.counter_id);
         if let Err(e) = self.timer.wait() {
             // Under the current timerfd implementation (as of Jan 2019), this failure shouldn't
             // happen but implementation details may change in the future, and the failure
@@ -698,7 +680,6 @@ impl PitCounter {
             due = Duration::from_nanos(1);
         }
 
-        debug!("arming timer with due: {:?}, period: {:?}", due, period);
         if let Err(e) = self.timer.reset(due, Some(period)) {
             error!("failed to reset timer: {}", e);
         }
