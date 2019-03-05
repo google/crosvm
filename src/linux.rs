@@ -58,13 +58,16 @@ pub enum Error {
     BlockDeviceNew(sys_util::Error),
     BlockSignal(sys_util::signal::Error),
     BuildingVm(Box<error::Error>),
+    ChownTpmStorage(sys_util::Error),
     CloneEventFd(sys_util::Error),
+    CreateCrasClient(libcras::Error),
     CreateEventFd(sys_util::Error),
     CreatePollContext(sys_util::Error),
     CreateSignalFd(sys_util::SignalFdError),
     CreateSocket(io::Error),
     CreateTapDevice(NetError),
     CreateTimerFd(sys_util::Error),
+    CreateTpmStorage(PathBuf, io::Error),
     DetectImageType(qcow::Error),
     DeviceJail(io_jail::Error),
     DevicePivotRoot(io_jail::Error),
@@ -72,11 +75,13 @@ pub enum Error {
     DiskImageLock(sys_util::Error),
     InvalidFdPath,
     InvalidWaylandPath,
+    IoJail(io_jail::Error),
     NetDeviceNew(virtio::NetError),
     PivotRootDoesntExist(&'static str),
     OpenAndroidFstab(PathBuf, io::Error),
     OpenInitrd(PathBuf, io::Error),
     OpenKernel(PathBuf, io::Error),
+    OpenVinput(PathBuf, io::Error),
     P9DeviceNew(virtio::P9Error),
     PollContextAdd(sys_util::Error),
     PollContextDelete(sys_util::Error),
@@ -117,13 +122,18 @@ impl Display for Error {
             BlockDeviceNew(e) => write!(f, "failed to create block device: {}", e),
             BlockSignal(e) => write!(f, "failed to block signal: {}", e),
             BuildingVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
+            ChownTpmStorage(e) => write!(f, "failed to chown tpm storage: {}", e),
             CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
+            CreateCrasClient(e) => write!(f, "failed to create cras client: {}", e),
             CreateEventFd(e) => write!(f, "failed to create eventfd: {}", e),
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             CreateTapDevice(e) => write!(f, "failed to create tap device: {}", e),
             CreateTimerFd(e) => write!(f, "failed to create timerfd: {}", e),
+            CreateTpmStorage(p, e) => {
+                write!(f, "failed to create tpm storage dir {}: {}", p.display(), e)
+            }
             DetectImageType(e) => write!(f, "failed to detect disk image type: {}", e),
             DeviceJail(e) => write!(f, "failed to jail device: {}", e),
             DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
@@ -131,16 +141,18 @@ impl Display for Error {
             DiskImageLock(e) => write!(f, "failed to lock disk image: {}", e),
             InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
             InvalidWaylandPath => write!(f, "wayland socket path has no parent or file name"),
+            IoJail(e) => write!(f, "{}", e),
             NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {}", e),
             PivotRootDoesntExist(p) => write!(f, "{} doesn't exist, can't jail devices.", p),
             OpenInitrd(p, e) => write!(f, "failed to open initrd {}: {}", p.display(), e),
             OpenKernel(p, e) => write!(f, "failed to open kernel image {}: {}", p.display(), e),
-            OpenAndroidFstab(ref p, ref e) => write!(
+            OpenAndroidFstab(p, e) => write!(
                 f,
                 "failed to open android fstab file {}: {}",
                 p.display(),
                 e
             ),
+            OpenVinput(p, e) => write!(f, "failed to open vinput device {}: {}", p.display(), e),
             P9DeviceNew(e) => write!(f, "failed to create 9p device: {}", e),
             PollContextAdd(e) => write!(f, "failed to add fd to poll context: {}", e),
             PollContextDelete(e) => write!(f, "failed to remove fd from poll context: {}", e),
@@ -165,8 +177,8 @@ impl Display for Error {
             RegisterWayland(e) => write!(f, "error registering wayland device: {}", e),
             ResetTimerFd(e) => write!(f, "failed to reset timerfd: {}", e),
             RngDeviceNew(e) => write!(f, "failed to set up rng: {}", e),
-            InputDeviceNew(ref e) => write!(f, "failed to set up input device: {}", e),
-            InputEventsOpen(ref e) => write!(f, "failed to open event device: {}", e),
+            InputDeviceNew(e) => write!(f, "failed to set up input device: {}", e),
+            InputEventsOpen(e) => write!(f, "failed to open event device: {}", e),
             SettingGidMap(e) => write!(f, "error setting GID map: {}", e),
             SettingUidMap(e) => write!(f, "error setting UID map: {}", e),
             SignalFd(e) => write!(f, "failed to read signal fd: {}", e),
@@ -179,6 +191,12 @@ impl Display for Error {
             WaylandDeviceNew(e) => write!(f, "failed to create wayland device: {}", e),
             LoadKernel(e) => write!(f, "failed to load kernel: {}", e),
         }
+    }
+}
+
+impl From<io_jail::Error> for Error {
+    fn from(err: io_jail::Error) -> Self {
+        Error::IoJail(err)
     }
 }
 
@@ -230,7 +248,7 @@ fn simple_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
     }
 }
 
-type DeviceResult<T = VirtioDeviceStub> = std::result::Result<T, Box<error::Error>>;
+type DeviceResult<T = VirtioDeviceStub> = std::result::Result<T, Error>;
 
 fn create_block_device(
     cfg: &Config,
@@ -315,9 +333,11 @@ fn create_tpm_device(cfg: &Config) -> DeviceResult {
             let pid = process::id();
             let tpm_pid_dir = format!("/run/vm/tpm.{}", pid);
             tpm_storage = Path::new(&tpm_pid_dir).to_owned();
-            fs::create_dir_all(&tpm_storage)?;
+            fs::create_dir_all(&tpm_storage)
+                .map_err(|e| Error::CreateTpmStorage(tpm_storage.to_owned(), e))?;
             let tpm_pid_dir_c = CString::new(tpm_pid_dir).expect("no nul bytes");
-            chown(&tpm_pid_dir_c, crosvm_ids.uid, crosvm_ids.gid)?;
+            chown(&tpm_pid_dir_c, crosvm_ids.uid, crosvm_ids.gid)
+                .map_err(Error::ChownTpmStorage)?;
 
             jail.mount_bind(&tpm_storage, &tpm_storage, true)?;
         }
@@ -383,7 +403,7 @@ fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
         .read(true)
         .write(true)
         .open(dev_path)
-        .map_err(|e| Box::new(e))?;
+        .map_err(|e| Error::OpenVinput(dev_path.to_owned(), e))?;
 
     let dev = virtio::new_evdev(dev_file).map_err(Error::InputDeviceNew)?;
 
@@ -476,29 +496,25 @@ fn create_gpu_device(
                 "tmpfs",
                 (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
                 "size=67108864",
-            )
-            .unwrap();
+            )?;
 
             // Device nodes required for DRM.
             let sys_dev_char_path = Path::new("/sys/dev/char");
-            jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)
-                .unwrap();
+            jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
             let sys_devices_path = Path::new("/sys/devices");
-            jail.mount_bind(sys_devices_path, sys_devices_path, false)
-                .unwrap();
+            jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
             let drm_dri_path = Path::new("/dev/dri");
-            jail.mount_bind(drm_dri_path, drm_dri_path, false).unwrap();
+            jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
 
             // Libraries that are required when mesa drivers are dynamically loaded.
             let lib_path = Path::new("/lib64");
-            jail.mount_bind(lib_path, lib_path, false).unwrap();
+            jail.mount_bind(lib_path, lib_path, false)?;
             let usr_lib_path = Path::new("/usr/lib64");
-            jail.mount_bind(usr_lib_path, usr_lib_path, false).unwrap();
+            jail.mount_bind(usr_lib_path, usr_lib_path, false)?;
 
             // Bind mount the wayland socket into jail's root. This is necessary since each
             // new wayland context must open() the socket.
-            jail.mount_bind(wayland_socket_path, jailed_wayland_path, true)
-                .unwrap();
+            jail.mount_bind(wayland_socket_path, jailed_wayland_path, true)?;
 
             add_crosvm_user_to_jail(&mut jail, "gpu")?;
 
@@ -545,15 +561,13 @@ fn create_wayland_device(
                 "tmpfs",
                 (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
                 "size=67108864",
-            )
-            .unwrap();
+            )?;
 
             // Bind mount the wayland socket's directory into jail's root. This is necessary since
             // each new wayland context must open() the socket. If the wayland socket is ever
             // destroyed and remade in the same host directory, new connections will be possible
             // without restarting the wayland device.
-            jail.mount_bind(wayland_socket_dir, jailed_wayland_dir, true)
-                .unwrap();
+            jail.mount_bind(wayland_socket_dir, jailed_wayland_dir, true)?;
 
             add_crosvm_user_to_jail(&mut jail, "Wayland")?;
 
@@ -582,7 +596,7 @@ fn create_9p_device(cfg: &Config, chronos: Ids, src: &Path, tag: &str) -> Device
         Some(mut jail) => {
             //  The shared directory becomes the root of the device's file system.
             let root = Path::new("/");
-            jail.mount_bind(src, root, true).unwrap();
+            jail.mount_bind(src, root, true)?;
 
             // Set the uid/gid for the jailed process, and give a basic id map. This
             // is required for the above bind mount to work.
@@ -697,7 +711,7 @@ fn create_virtio_devices(
         devs.push(create_vhost_vsock_device(cfg, cid, mem)?);
     }
 
-    let chronos = get_chronos_ids()?;
+    let chronos = get_chronos_ids();
 
     for (src, tag) in &cfg.shared_dirs {
         devs.push(create_9p_device(cfg, chronos, src, tag)?);
@@ -732,7 +746,7 @@ fn create_devices(
     }
 
     if cfg.cras_audio {
-        let server = Box::new(CrasClient::new()?);
+        let server = Box::new(CrasClient::new().map_err(Error::CreateCrasClient)?);
         let cras_audio = devices::Ac97Dev::new(mem.clone(), server);
 
         pci_devices.push((
@@ -760,7 +774,7 @@ struct Ids {
     gid: gid_t,
 }
 
-fn get_chronos_ids() -> std::result::Result<Ids, Box<Error>> {
+fn get_chronos_ids() -> Ids {
     let chronos_user_group = CStr::from_bytes_with_nul(b"chronos\0").unwrap();
 
     let chronos_uid = match get_user_id(&chronos_user_group) {
@@ -779,18 +793,15 @@ fn get_chronos_ids() -> std::result::Result<Ids, Box<Error>> {
         }
     };
 
-    Ok(Ids {
+    Ids {
         uid: chronos_uid,
         gid: chronos_gid,
-    })
+    }
 }
 
 // Set the uid/gid for the jailed process and give a basic id map. This is
 // required for bind mounts to work.
-fn add_crosvm_user_to_jail(
-    jail: &mut Minijail,
-    feature: &str,
-) -> std::result::Result<Ids, Box<Error>> {
+fn add_crosvm_user_to_jail(jail: &mut Minijail, feature: &str) -> Result<Ids> {
     let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
 
     let crosvm_uid = match get_user_id(&crosvm_user_group) {
@@ -822,29 +833,24 @@ fn add_crosvm_user_to_jail(
     })
 }
 
-fn raw_fd_from_path(path: &Path) -> std::result::Result<RawFd, Box<Error>> {
+fn raw_fd_from_path(path: &Path) -> Result<RawFd> {
     if !path.is_file() {
-        return Err(Box::new(Error::InvalidFdPath));
+        return Err(Error::InvalidFdPath);
     }
     let raw_fd = path
         .file_name()
         .and_then(|fd_osstr| fd_osstr.to_str())
         .and_then(|fd_str| fd_str.parse::<c_int>().ok())
         .ok_or(Error::InvalidFdPath)?;
-    validate_raw_fd(raw_fd).map_err(|e| Box::new(Error::ValidateRawFd(e)))
+    validate_raw_fd(raw_fd).map_err(Error::ValidateRawFd)
 }
 
-fn create_input_socket(path: &Path) -> std::result::Result<UnixStream, Box<Error>> {
+fn create_input_socket(path: &Path) -> Result<UnixStream> {
     if path.parent() == Some(Path::new("/proc/self/fd")) {
         // Safe because we will validate |raw_fd|.
         unsafe { Ok(UnixStream::from_raw_fd(raw_fd_from_path(path)?)) }
     } else {
-        match UnixStream::connect(path) {
-            Ok(us) => return Ok(us),
-            Err(e) => {
-                return Err(Box::new(Error::InputEventsOpen(e)));
-            }
-        }
+        UnixStream::connect(path).map_err(Error::InputEventsOpen)
     }
 }
 
@@ -1086,6 +1092,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
             balloon_device_socket,
             &mut disk_device_sockets,
         )
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
     })
     .map_err(Error::BuildingVm)?;
     run_control(
