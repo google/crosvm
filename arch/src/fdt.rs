@@ -37,8 +37,6 @@ pub enum Error {
     FdtGuestMemoryWriteError,
 }
 
-impl std::error::Error for Error {}
-
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::Error::*;
@@ -59,27 +57,31 @@ impl Display for Error {
     }
 }
 
-pub fn begin_node(fdt: &mut Vec<u8>, name: &str) -> Result<(), Box<Error>> {
+pub type Result<T> = std::result::Result<T, Error>;
+
+impl std::error::Error for Error {}
+
+pub fn begin_node(fdt: &mut Vec<u8>, name: &str) -> Result<()> {
     let cstr_name = CString::new(name).unwrap();
 
     // Safe because we allocated fdt and converted name to a CString
     let fdt_ret = unsafe { fdt_begin_node(fdt.as_mut_ptr() as *mut c_void, cstr_name.as_ptr()) };
     if fdt_ret != 0 {
-        return Err(Box::new(Error::FdtBeginNodeError(fdt_ret)));
+        return Err(Error::FdtBeginNodeError(fdt_ret));
     }
     Ok(())
 }
 
-pub fn end_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
+pub fn end_node(fdt: &mut Vec<u8>) -> Result<()> {
     // Safe because we allocated fdt
     let fdt_ret = unsafe { fdt_end_node(fdt.as_mut_ptr() as *mut c_void) };
     if fdt_ret != 0 {
-        return Err(Box::new(Error::FdtEndNodeError(fdt_ret)));
+        return Err(Error::FdtEndNodeError(fdt_ret));
     }
     Ok(())
 }
 
-pub fn property(fdt: &mut Vec<u8>, name: &str, val: &[u8]) -> Result<(), Box<Error>> {
+pub fn property(fdt: &mut Vec<u8>, name: &str, val: &[u8]) -> Result<()> {
     let cstr_name = CString::new(name).unwrap();
     let val_ptr = val.as_ptr() as *const c_void;
 
@@ -93,7 +95,7 @@ pub fn property(fdt: &mut Vec<u8>, name: &str, val: &[u8]) -> Result<(), Box<Err
         )
     };
     if fdt_ret != 0 {
-        return Err(Box::new(Error::FdtPropertyError(fdt_ret)));
+        return Err(Error::FdtPropertyError(fdt_ret));
     }
     Ok(())
 }
@@ -110,11 +112,11 @@ fn cpu_to_fdt64(input: u64) -> [u8; 8] {
     buf
 }
 
-pub fn property_u32(fdt: &mut Vec<u8>, name: &str, val: u32) -> Result<(), Box<Error>> {
+pub fn property_u32(fdt: &mut Vec<u8>, name: &str, val: u32) -> Result<()> {
     property(fdt, name, &cpu_to_fdt32(val))
 }
 
-pub fn property_u64(fdt: &mut Vec<u8>, name: &str, val: u64) -> Result<(), Box<Error>> {
+pub fn property_u64(fdt: &mut Vec<u8>, name: &str, val: u64) -> Result<()> {
     property(fdt, name, &cpu_to_fdt64(val))
 }
 
@@ -136,7 +138,7 @@ pub fn generate_prop64(cells: &[u64]) -> Vec<u8> {
     ret
 }
 
-pub fn property_null(fdt: &mut Vec<u8>, name: &str) -> Result<(), Box<Error>> {
+pub fn property_null(fdt: &mut Vec<u8>, name: &str) -> Result<()> {
     let cstr_name = CString::new(name).unwrap();
 
     // Safe because we allocated fdt, converted name to a CString
@@ -149,16 +151,12 @@ pub fn property_null(fdt: &mut Vec<u8>, name: &str) -> Result<(), Box<Error>> {
         )
     };
     if fdt_ret != 0 {
-        return Err(Box::new(Error::FdtPropertyError(fdt_ret)));
+        return Err(Error::FdtPropertyError(fdt_ret));
     }
     Ok(())
 }
 
-pub fn property_cstring(
-    fdt: &mut Vec<u8>,
-    name: &str,
-    cstr_value: &CStr,
-) -> Result<(), Box<Error>> {
+pub fn property_cstring(fdt: &mut Vec<u8>, name: &str, cstr_value: &CStr) -> Result<()> {
     let value_bytes = cstr_value.to_bytes_with_nul();
     let cstr_name = CString::new(name).unwrap();
 
@@ -172,40 +170,36 @@ pub fn property_cstring(
         )
     };
     if fdt_ret != 0 {
-        return Err(Box::new(Error::FdtPropertyError(fdt_ret)));
+        return Err(Error::FdtPropertyError(fdt_ret));
     }
     Ok(())
 }
 
-pub fn property_string(fdt: &mut Vec<u8>, name: &str, value: &str) -> Result<(), Box<Error>> {
+pub fn property_string(fdt: &mut Vec<u8>, name: &str, value: &str) -> Result<()> {
     let cstr_value = CString::new(value).unwrap();
     property_cstring(fdt, name, &cstr_value)
 }
 
-pub fn start_fdt(fdt: &mut Vec<u8>, fdt_max_size: usize) -> Result<(), Box<Error>> {
+pub fn start_fdt(fdt: &mut Vec<u8>, fdt_max_size: usize) -> Result<()> {
     // Safe since we allocated this array with fdt_max_size
     let mut fdt_ret = unsafe { fdt_create(fdt.as_mut_ptr() as *mut c_void, fdt_max_size as c_int) };
 
     if fdt_ret != 0 {
-        return Err(Box::new(Error::FdtCreateError(fdt_ret)));
+        return Err(Error::FdtCreateError(fdt_ret));
     }
     // Safe since we allocated this array
     fdt_ret = unsafe { fdt_finish_reservemap(fdt.as_mut_ptr() as *mut c_void) };
     if fdt_ret != 0 {
-        return Err(Box::new(Error::FdtFinishReservemapError(fdt_ret)));
+        return Err(Error::FdtFinishReservemapError(fdt_ret));
     }
     Ok(())
 }
 
-pub fn finish_fdt(
-    fdt: &mut Vec<u8>,
-    fdt_final: &mut Vec<u8>,
-    fdt_max_size: usize,
-) -> Result<(), Box<Error>> {
+pub fn finish_fdt(fdt: &mut Vec<u8>, fdt_final: &mut Vec<u8>, fdt_max_size: usize) -> Result<()> {
     // Safe since we allocated fdt_final and previously passed in it's size
     let mut fdt_ret = unsafe { fdt_finish(fdt.as_mut_ptr() as *mut c_void) };
     if fdt_ret != 0 {
-        return Err(Box::new(Error::FdtFinishError(fdt_ret)));
+        return Err(Error::FdtFinishError(fdt_ret));
     }
 
     // Safe because we allocated both arrays with the correct size
@@ -217,13 +211,13 @@ pub fn finish_fdt(
         )
     };
     if fdt_ret != 0 {
-        return Err(Box::new(Error::FdtOpenIntoError(fdt_ret)));
+        return Err(Error::FdtOpenIntoError(fdt_ret));
     }
 
     // Safe since we allocated fdt_final
     fdt_ret = unsafe { fdt_pack(fdt_final.as_mut_ptr() as *mut c_void) };
     if fdt_ret != 0 {
-        return Err(Box::new(Error::FdtPackError(fdt_ret)));
+        return Err(Error::FdtPackError(fdt_ret));
     }
     Ok(())
 }

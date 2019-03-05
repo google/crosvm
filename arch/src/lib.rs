@@ -15,11 +15,11 @@ extern crate sync;
 extern crate sys_util;
 
 use std::collections::BTreeMap;
+use std::error::Error as StdError;
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::os::unix::io::AsRawFd;
-use std::result;
 use std::sync::Arc;
 
 use devices::virtio::VirtioDevice;
@@ -32,8 +32,6 @@ use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
 use resources::SystemAllocator;
 use sync::Mutex;
 use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
-
-pub type Result<T> = result::Result<T, Box<std::error::Error>>;
 
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
 /// create a `RunnableLinuxVm`.
@@ -70,6 +68,8 @@ pub struct VirtioDeviceStub {
 /// Trait which is implemented for each Linux Architecture in order to
 /// set up the memory, cpus, and system devices and to boot the kernel.
 pub trait LinuxArch {
+    type Error: StdError;
+
     /// Takes `VmComponents` and generates a `RunnableLinuxVm`.
     ///
     /// # Arguments
@@ -77,16 +77,14 @@ pub trait LinuxArch {
     /// * `components` - Parts to use to build the VM.
     /// * `split_irqchip` - whether to use a split IRQ chip (i.e. userspace PIT/PIC/IOAPIC)
     /// * `create_devices` - Function to generate a list of devices.
-    fn build_vm<F>(
+    fn build_vm<F, E>(
         components: VmComponents,
         split_irqchip: bool,
         create_devices: F,
-    ) -> Result<RunnableLinuxVm>
+    ) -> Result<RunnableLinuxVm, Self::Error>
     where
-        F: FnOnce(
-            &GuestMemory,
-            &EventFd,
-        ) -> Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>>;
+        F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<(Box<PciDevice>, Option<Minijail>)>, E>,
+        E: StdError + 'static;
 }
 
 /// Errors for device manager.
@@ -141,14 +139,12 @@ impl Display for DeviceRegistrationError {
 
 /// Creates a root PCI device for use by this Vm.
 pub fn generate_pci_root(
-    devices: Vec<(Box<PciDevice + 'static>, Option<Minijail>)>,
+    devices: Vec<(Box<PciDevice>, Option<Minijail>)>,
     mmio_bus: &mut Bus,
     resources: &mut SystemAllocator,
     vm: &mut Vm,
-) -> std::result::Result<
-    (PciRoot, Vec<(u32, PciInterruptPin)>, BTreeMap<u32, String>),
-    DeviceRegistrationError,
-> {
+) -> Result<(PciRoot, Vec<(u32, PciInterruptPin)>, BTreeMap<u32, String>), DeviceRegistrationError>
+{
     let mut root = PciRoot::new();
     let mut pci_irqs = Vec::new();
     let mut pid_labels = BTreeMap::new();
@@ -214,7 +210,7 @@ pub fn generate_pci_root(
 /// Errors for image loading.
 #[derive(Debug)]
 pub enum LoadImageError {
-    Seek(std::io::Error),
+    Seek(io::Error),
     ImageSizeTooLarge(u64),
     ReadToMemory(GuestMemoryError),
 }
@@ -246,7 +242,7 @@ pub fn load_image<F>(
     image: &mut F,
     guest_addr: GuestAddress,
     max_size: u64,
-) -> std::result::Result<usize, LoadImageError>
+) -> Result<usize, LoadImageError>
 where
     F: Read + Seek,
 {

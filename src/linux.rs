@@ -58,7 +58,7 @@ pub enum Error {
     BalloonDeviceNew(virtio::BalloonError),
     BlockDeviceNew(sys_util::Error),
     BlockSignal(sys_util::signal::Error),
-    BuildingVm(Box<error::Error>),
+    BuildVm(<Arch as LinuxArch>::Error),
     ChownTpmStorage(sys_util::Error),
     CloneEventFd(sys_util::Error),
     CreateCrasClient(libcras::Error),
@@ -123,7 +123,7 @@ impl Display for Error {
             BalloonDeviceNew(e) => write!(f, "failed to create balloon: {}", e),
             BlockDeviceNew(e) => write!(f, "failed to create block device: {}", e),
             BlockSignal(e) => write!(f, "failed to block signal: {}", e),
-            BuildingVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
+            BuildVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
             ChownTpmStorage(e) => write!(f, "failed to chown tpm storage: {}", e),
             CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
             CreateCrasClient(e) => write!(f, "failed to create cras client: {}", e),
@@ -1113,9 +1113,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
             balloon_device_socket,
             &mut disk_device_sockets,
         )
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
     })
-    .map_err(Error::BuildingVm)?;
+    .map_err(Error::BuildVm)?;
     run_control(
         linux,
         control_server_socket,

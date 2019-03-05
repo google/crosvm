@@ -14,6 +14,7 @@ extern crate resources;
 extern crate sync;
 extern crate sys_util;
 
+use std::error::Error as StdError;
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -26,12 +27,11 @@ use devices::{Bus, BusError, PciConfigMmio, PciDevice, PciInterruptPin};
 use io_jail::Minijail;
 use resources::{AddressRanges, SystemAllocator};
 use sync::Mutex;
-use sys_util::{EventFd, GuestAddress, GuestMemory};
+use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 
 use kvm::*;
 use kvm_sys::kvm_device_attr;
 
-use arch::Result;
 mod fdt;
 
 // We place the kernel at offset 8MB
@@ -117,39 +117,28 @@ const AARCH64_IRQ_BASE: u32 = 2;
 
 #[derive(Debug)]
 pub enum Error {
-    /// Unable to clone an EventFd
     CloneEventFd(sys_util::Error),
-    /// Error creating kernel command line.
     Cmdline(kernel_cmdline::Error),
-    /// Unable to make an EventFd
+    CreateDevices(Box<dyn StdError>),
     CreateEventFd(sys_util::Error),
-    /// Unable to create Kvm.
-    CreateKvm(sys_util::Error),
-    /// Unable to create a PciRoot hub.
-    CreatePciRoot(arch::DeviceRegistrationError),
-    /// Unable to create socket.
-    CreateSocket(io::Error),
-    /// Unable to create Vcpu.
-    CreateVcpu(sys_util::Error),
-    /// FDT could not be created
-    FDTCreateFailure(Box<std::error::Error>),
-    /// Kernel could not be loaded
-    KernelLoadFailure(arch::LoadImageError),
-    /// Initrd could not be loaded
-    InitrdLoadFailure(arch::LoadImageError),
-    /// Failure to Create GIC
+    CreateFdt(arch::fdt::Error),
     CreateGICFailure(sys_util::Error),
-    /// Couldn't register PCI bus.
+    CreateKvm(sys_util::Error),
+    CreatePciRoot(arch::DeviceRegistrationError),
+    CreateSocket(io::Error),
+    CreateVcpu(sys_util::Error),
+    CreateVm(sys_util::Error),
+    InitrdLoadFailure(arch::LoadImageError),
+    KernelLoadFailure(arch::LoadImageError),
+    ReadPreferredTarget(sys_util::Error),
+    RegisterIrqfd(sys_util::Error),
     RegisterPci(BusError),
-    /// Couldn't register virtio socket.
     RegisterVsock(arch::DeviceRegistrationError),
-    /// VCPU Init failed
-    VCPUInitFailure,
-    /// VCPU Set one reg failed
-    VCPUSetRegFailure,
+    SetDeviceAttr(sys_util::Error),
+    SetReg(sys_util::Error),
+    SetupGuestMemory(GuestMemoryError),
+    VcpuInit(sys_util::Error),
 }
-
-impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -158,22 +147,32 @@ impl Display for Error {
         match self {
             CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
             Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
+            CreateDevices(e) => write!(f, "error creating devices: {}", e),
             CreateEventFd(e) => write!(f, "unable to make an EventFd: {}", e),
+            CreateFdt(e) => write!(f, "FDT could not be created: {}", e),
+            CreateGICFailure(e) => write!(f, "failed to create GIC: {}", e),
             CreateKvm(e) => write!(f, "failed to open /dev/kvm: {}", e),
             CreatePciRoot(e) => write!(f, "failed to create a PCI root hub: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
-            FDTCreateFailure(e) => write!(f, "FDT could not be created: {}", e),
-            KernelLoadFailure(e) => write!(f, "kernel cound not be loaded: {}", e),
+            CreateVm(e) => write!(f, "failed to create vm: {}", e),
             InitrdLoadFailure(e) => write!(f, "initrd cound not be loaded: {}", e),
-            CreateGICFailure(e) => write!(f, "failed to create GIC: {}", e),
+            KernelLoadFailure(e) => write!(f, "kernel cound not be loaded: {}", e),
+            ReadPreferredTarget(e) => write!(f, "failed to read preferred target: {}", e),
+            RegisterIrqfd(e) => write!(f, "failed to register irq fd: {}", e),
             RegisterPci(e) => write!(f, "error registering PCI bus: {}", e),
             RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
-            VCPUInitFailure => write!(f, "failed to initialize VCPU"),
-            VCPUSetRegFailure => write!(f, "failed to set register"),
+            SetDeviceAttr(e) => write!(f, "failed to set device attr: {}", e),
+            SetReg(e) => write!(f, "failed to set register: {}", e),
+            SetupGuestMemory(e) => write!(f, "failed to set up guest memory: {}", e),
+            VcpuInit(e) => write!(f, "failed to initialize VCPU: {}", e),
         }
     }
 }
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+impl std::error::Error for Error {}
 
 /// Returns a Vec of the valid memory addresses.
 /// These should be used to configure the GuestMemory structure for the platfrom.
@@ -191,7 +190,9 @@ fn fdt_offset(mem_size: u64) -> u64 {
 pub struct AArch64;
 
 impl arch::LinuxArch for AArch64 {
-    fn build_vm<F>(
+    type Error = Error;
+
+    fn build_vm<F, E>(
         mut components: VmComponents,
         _split_irqchip: bool,
         create_devices: F,
@@ -200,13 +201,14 @@ impl arch::LinuxArch for AArch64 {
         F: FnOnce(
             &GuestMemory,
             &EventFd,
-        ) -> Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>>,
+        ) -> std::result::Result<Vec<(Box<PciDevice>, Option<Minijail>)>, E>,
+        E: StdError + 'static,
     {
         let mut resources =
             Self::get_resource_allocator(components.memory_mb, components.wayland_dmabuf);
         let mem = Self::setup_memory(components.memory_mb)?;
         let kvm = Kvm::new().map_err(Error::CreateKvm)?;
-        let mut vm = Self::create_vm(&kvm, mem.clone())?;
+        let mut vm = Vm::new(&kvm, mem.clone()).map_err(Error::CreateVm)?;
 
         let vcpu_count = components.vcpu_count;
         let mut vcpus = Vec::with_capacity(vcpu_count as usize);
@@ -230,7 +232,8 @@ impl arch::LinuxArch for AArch64 {
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
 
-        let pci_devices = create_devices(&mem, &exit_evt)?;
+        let pci_devices =
+            create_devices(&mem, &exit_evt).map_err(|e| Error::CreateDevices(Box::new(e)))?;
         let (pci, pci_irqs, pid_debug_label_map) =
             arch::generate_pci_root(pci_devices, &mut mmio_bus, &mut resources, &mut vm)
                 .map_err(Error::CreatePciRoot)?;
@@ -321,18 +324,14 @@ impl AArch64 {
             fdt_offset(mem_size),
             cmdline,
             initrd,
-        )?;
+        )
+        .map_err(Error::CreateFdt)?;
         Ok(())
-    }
-
-    fn create_vm(kvm: &Kvm, mem: GuestMemory) -> Result<Vm> {
-        let vm = Vm::new(&kvm, mem)?;
-        Ok(vm)
     }
 
     fn setup_memory(mem_size: u64) -> Result<GuestMemory> {
         let arch_mem_regions = arch_memory_regions(mem_size);
-        let mem = GuestMemory::new(&arch_mem_regions)?;
+        let mem = GuestMemory::new(&arch_mem_regions).map_err(Error::SetupGuestMemory)?;
         Ok(mem)
     }
 
@@ -364,13 +363,15 @@ impl AArch64 {
     /// * `vm` - The vm to add irqs to.
     /// * `bus` - The bus to add devices to.
     fn add_arch_devs(vm: &mut Vm, bus: &mut Bus) -> Result<Arc<Mutex<devices::Serial>>> {
-        let rtc_evt = EventFd::new()?;
-        vm.register_irqfd(&rtc_evt, AARCH64_RTC_IRQ)?;
+        let rtc_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+        vm.register_irqfd(&rtc_evt, AARCH64_RTC_IRQ)
+            .map_err(Error::RegisterIrqfd)?;
 
-        let com_evt_1_3 = EventFd::new()?;
-        vm.register_irqfd(&com_evt_1_3, AARCH64_SERIAL_IRQ)?;
+        let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
+        vm.register_irqfd(&com_evt_1_3, AARCH64_SERIAL_IRQ)
+            .map_err(Error::RegisterIrqfd)?;
         let serial = Arc::new(Mutex::new(devices::Serial::new_out(
-            com_evt_1_3.try_clone()?,
+            com_evt_1_3.try_clone().map_err(Error::CloneEventFd)?,
             Box::new(stdout()),
         )));
         bus.insert(
@@ -429,7 +430,7 @@ impl AArch64 {
             sys_util::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &cpu_if_attr)
         };
         if ret != 0 {
-            return Err(Box::new(Error::CreateGICFailure(sys_util::Error::new(ret))));
+            return Err(Error::CreateGICFailure(sys_util::Error::new(ret)));
         }
 
         // Safe because we allocated the struct that's being passed in
@@ -437,7 +438,7 @@ impl AArch64 {
             sys_util::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &dist_attr)
         };
         if ret != 0 {
-            return Err(Box::new(Error::CreateGICFailure(sys_util::Error::new(ret))));
+            return Err(Error::CreateGICFailure(sys_util::Error::new(ret)));
         }
 
         // We need to tell the kernel how many irqs to support with this vgic
@@ -454,7 +455,7 @@ impl AArch64 {
             sys_util::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &nr_irqs_attr)
         };
         if ret != 0 {
-            return Err(Box::new(Error::CreateGICFailure(sys_util::Error::new(ret))));
+            return Err(Error::CreateGICFailure(sys_util::Error::new(ret)));
         }
 
         // Finalize the GIC
@@ -470,7 +471,7 @@ impl AArch64 {
             sys_util::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &init_gic_attr)
         };
         if ret != 0 {
-            return Err(Box::new(sys_util::Error::new(ret)));
+            return Err(Error::SetDeviceAttr(sys_util::Error::new(ret)));
         }
         Ok(Some(vgic_fd))
     }
@@ -489,7 +490,8 @@ impl AArch64 {
         };
 
         // This reads back the kernel's preferred target type.
-        vm.arm_preferred_target(&mut kvi)?;
+        vm.arm_preferred_target(&mut kvi)
+            .map_err(Error::ReadPreferredTarget)?;
 
         // TODO(sonnyrao): need to verify this feature is supported by host kernel
         kvi.features[0] |= 1 << kvm_sys::KVM_ARM_VCPU_PSCI_0_2;
@@ -498,7 +500,7 @@ impl AArch64 {
         if cpu_id > 0 {
             kvi.features[0] |= 1 << kvm_sys::KVM_ARM_VCPU_POWER_OFF;
         }
-        vcpu.arm_vcpu_init(&kvi)?;
+        vcpu.arm_vcpu_init(&kvi).map_err(Error::VcpuInit)?;
 
         // set up registers
         let mut data: u64;
@@ -507,20 +509,20 @@ impl AArch64 {
         // All interrupts masked
         data = PSR_D_BIT | PSR_A_BIT | PSR_I_BIT | PSR_F_BIT | PSR_MODE_EL1H;
         reg_id = arm64_core_reg!(pstate);
-        vcpu.set_one_reg(reg_id, data)?;
+        vcpu.set_one_reg(reg_id, data).map_err(Error::SetReg)?;
 
         // Other cpus are powered off initially
         if cpu_id == 0 {
             data = AARCH64_PHYS_MEM_START + AARCH64_KERNEL_OFFSET;
             reg_id = arm64_core_reg!(pc);
-            vcpu.set_one_reg(reg_id, data)?;
+            vcpu.set_one_reg(reg_id, data).map_err(Error::SetReg)?;
 
             /* X0 -- fdt address */
             let mem_size = guest_mem.memory_size();
             data = (AARCH64_PHYS_MEM_START + fdt_offset(mem_size)) as u64;
             // hack -- can't get this to do offsetof(regs[0]) but luckily it's at offset 0
             reg_id = arm64_core_reg!(regs);
-            vcpu.set_one_reg(reg_id, data)?;
+            vcpu.set_one_reg(reg_id, data).map_err(Error::SetReg)?;
         }
         Ok(())
     }

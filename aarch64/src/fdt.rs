@@ -6,7 +6,7 @@ use std::ffi::CStr;
 
 use arch::fdt::{
     begin_node, end_node, finish_fdt, generate_prop32, generate_prop64, property, property_cstring,
-    property_null, property_string, property_u32, property_u64, start_fdt, Error,
+    property_null, property_string, property_u32, property_u64, start_fdt, Error, Result,
 };
 use devices::PciInterruptPin;
 use sys_util::{GuestAddress, GuestMemory};
@@ -54,7 +54,7 @@ const IRQ_TYPE_EDGE_RISING: u32 = 0x00000001;
 const IRQ_TYPE_LEVEL_HIGH: u32 = 0x00000004;
 const IRQ_TYPE_LEVEL_LOW: u32 = 0x00000008;
 
-fn create_memory_node(fdt: &mut Vec<u8>, guest_mem: &GuestMemory) -> Result<(), Box<Error>> {
+fn create_memory_node(fdt: &mut Vec<u8>, guest_mem: &GuestMemory) -> Result<()> {
     let mem_size = guest_mem.memory_size();
     let mem_reg_prop = generate_prop64(&[AARCH64_PHYS_MEM_START, mem_size]);
 
@@ -65,7 +65,7 @@ fn create_memory_node(fdt: &mut Vec<u8>, guest_mem: &GuestMemory) -> Result<(), 
     Ok(())
 }
 
-fn create_cpu_nodes(fdt: &mut Vec<u8>, num_cpus: u32) -> Result<(), Box<Error>> {
+fn create_cpu_nodes(fdt: &mut Vec<u8>, num_cpus: u32) -> Result<()> {
     begin_node(fdt, "cpus")?;
     property_u32(fdt, "#address-cells", 0x1)?;
     property_u32(fdt, "#size-cells", 0x0)?;
@@ -85,7 +85,7 @@ fn create_cpu_nodes(fdt: &mut Vec<u8>, num_cpus: u32) -> Result<(), Box<Error>> 
     Ok(())
 }
 
-fn create_gic_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
+fn create_gic_node(fdt: &mut Vec<u8>) -> Result<()> {
     let gic_reg_prop = generate_prop64(&[
         AARCH64_GIC_DIST_BASE,
         AARCH64_GIC_DIST_SIZE,
@@ -106,7 +106,7 @@ fn create_gic_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
     Ok(())
 }
 
-fn create_timer_node(fdt: &mut Vec<u8>, num_cpus: u32) -> Result<(), Box<Error>> {
+fn create_timer_node(fdt: &mut Vec<u8>, num_cpus: u32) -> Result<()> {
     // These are fixed interrupt numbers for the timer device.
     let irqs = [13, 14, 11, 10];
     let compatible = "arm,armv8-timer";
@@ -130,7 +130,7 @@ fn create_timer_node(fdt: &mut Vec<u8>, num_cpus: u32) -> Result<(), Box<Error>>
     Ok(())
 }
 
-fn create_serial_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
+fn create_serial_node(fdt: &mut Vec<u8>) -> Result<()> {
     let serial_reg_prop = generate_prop64(&[AARCH64_SERIAL_ADDR, AARCH64_SERIAL_SIZE]);
     let irq = generate_prop32(&[
         GIC_FDT_IRQ_TYPE_SPI,
@@ -149,7 +149,7 @@ fn create_serial_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
 }
 
 // TODO(sonnyrao) -- check to see if host kernel supports PSCI 0_2
-fn create_psci_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
+fn create_psci_node(fdt: &mut Vec<u8>) -> Result<()> {
     let compatible = "arm,psci-0.2";
     begin_node(fdt, "psci")?;
     property_string(fdt, "compatible", compatible)?;
@@ -169,7 +169,7 @@ fn create_chosen_node(
     fdt: &mut Vec<u8>,
     cmdline: &CStr,
     initrd: Option<(GuestAddress, usize)>,
-) -> Result<(), Box<Error>> {
+) -> Result<()> {
     begin_node(fdt, "chosen")?;
     property_u32(fdt, "linux,pci-probe-only", 1)?;
     property_cstring(fdt, "bootargs", cmdline)?;
@@ -185,10 +185,7 @@ fn create_chosen_node(
     Ok(())
 }
 
-fn create_pci_nodes(
-    fdt: &mut Vec<u8>,
-    pci_irqs: Vec<(u32, PciInterruptPin)>,
-) -> Result<(), Box<Error>> {
+fn create_pci_nodes(fdt: &mut Vec<u8>, pci_irqs: Vec<(u32, PciInterruptPin)>) -> Result<()> {
     // Add devicetree nodes describing a PCI generic host controller.
     // See Documentation/devicetree/bindings/pci/host-generic-pci.txt in the kernel
     // and "PCI Bus Binding to IEEE Std 1275-1994".
@@ -258,7 +255,7 @@ fn create_pci_nodes(
     Ok(())
 }
 
-fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<(), Box<Error>> {
+fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<()> {
     // the kernel driver for pl030 really really wants a clock node
     // associated with an AMBA device or it will fail to probe, so we
     // need to make up a clock node to associate with the pl030 rtc
@@ -306,7 +303,7 @@ pub fn create_fdt(
     fdt_load_offset: u64,
     cmdline: &CStr,
     initrd: Option<(GuestAddress, usize)>,
-) -> Result<(), Box<Error>> {
+) -> Result<()> {
     let mut fdt = vec![0; fdt_max_size];
     start_fdt(&mut fdt, fdt_max_size)?;
 
@@ -338,7 +335,7 @@ pub fn create_fdt(
         .write_at_addr(fdt_final.as_slice(), fdt_address)
         .map_err(|_| Error::FdtGuestMemoryWriteError)?;
     if written < fdt_max_size {
-        return Err(Box::new(Error::FdtGuestMemoryWriteError));
+        return Err(Error::FdtGuestMemoryWriteError);
     }
     Ok(())
 }

@@ -66,12 +66,12 @@ mod interrupts;
 mod mptable;
 mod regs;
 
+use std::error::Error as StdError;
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, stdout};
 use std::mem;
-use std::result;
 use std::sync::Arc;
 
 use arch::{RunnableLinuxVm, VmComponents};
@@ -82,76 +82,90 @@ use io_jail::Minijail;
 use kvm::*;
 use resources::{AddressRanges, SystemAllocator};
 use sync::Mutex;
-use sys_util::{Clock, EventFd, GuestAddress, GuestMemory};
+use sys_util::{Clock, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 
 #[derive(Debug)]
 pub enum Error {
-    /// Error configuring the system
-    ConfigureSystem,
-    /// Unable to clone an EventFd
     CloneEventFd(sys_util::Error),
-    /// Error creating kernel command line.
     Cmdline(kernel_cmdline::Error),
-    /// Unable to make an EventFd
+    ConfigureSystem,
+    CreateDevices(Box<dyn StdError>),
     CreateEventFd(sys_util::Error),
-    /// Unable to create PIT device.
-    CreatePit(devices::PitError),
-    /// Unable to create Kvm.
+    CreateFdt(arch::fdt::Error),
+    CreateIrqChip(sys_util::Error),
     CreateKvm(sys_util::Error),
-    /// Unable to create a PciRoot hub.
     CreatePciRoot(arch::DeviceRegistrationError),
-    /// Unable to create socket.
+    CreatePit(sys_util::Error),
+    CreatePitDevice(devices::PitError),
     CreateSocket(io::Error),
-    /// Unable to create Vcpu.
     CreateVcpu(sys_util::Error),
-    /// The kernel extends past the end of RAM
-    KernelOffsetPastEnd,
-    /// Error registering an IrqFd
-    RegisterIrqfd(sys_util::Error),
-    /// Couldn't register virtio socket.
-    RegisterVsock(arch::DeviceRegistrationError),
-    LoadCmdline(kernel_loader::Error),
-    LoadKernel(kernel_loader::Error),
-    LoadInitrd(arch::LoadImageError),
-    /// Error writing the zero page of guest memory.
-    ZeroPageSetup,
-    /// The zero page extends past the end of guest_mem.
-    ZeroPagePastRamEnd,
-    /// Invalid e820 setup params.
+    CreateVm(sys_util::Error),
     E820Configuration,
+    KernelOffsetPastEnd,
+    LoadCmdline(kernel_loader::Error),
+    LoadInitrd(arch::LoadImageError),
+    LoadKernel(kernel_loader::Error),
+    RegisterIrqfd(sys_util::Error),
+    RegisterVsock(arch::DeviceRegistrationError),
+    SetLint(interrupts::Error),
+    SetTssAddr(sys_util::Error),
+    SetupCpuid(cpuid::Error),
+    SetupFpu(regs::Error),
+    SetupGuestMemory(GuestMemoryError),
+    SetupMptable(mptable::Error),
+    SetupMsrs(regs::Error),
+    SetupRegs(regs::Error),
+    SetupSregs(regs::Error),
+    ZeroPagePastRamEnd,
+    ZeroPageSetup,
 }
-
-impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::Error::*;
 
         match self {
-            ConfigureSystem => write!(f, "error configuring the system"),
             CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
             Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
+            ConfigureSystem => write!(f, "error configuring the system"),
+            CreateDevices(e) => write!(f, "error creating devices: {}", e),
             CreateEventFd(e) => write!(f, "unable to make an EventFd: {}", e),
-            CreatePit(e) => write!(f, "unable to make Pit device: {}", e),
+            CreateFdt(e) => write!(f, "failed to create fdt: {}", e),
+            CreateIrqChip(e) => write!(f, "failed to create irq chip: {}", e),
             CreateKvm(e) => write!(f, "failed to open /dev/kvm: {}", e),
             CreatePciRoot(e) => write!(f, "failed to create a PCI root hub: {}", e),
+            CreatePit(e) => write!(f, "unable to create PIT: {}", e),
+            CreatePitDevice(e) => write!(f, "unable to make PIT device: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
+            CreateVm(e) => write!(f, "failed to create VM: {}", e),
+            E820Configuration => write!(f, "invalid e820 setup params"),
             KernelOffsetPastEnd => write!(f, "the kernel extends past the end of RAM"),
+            LoadCmdline(e) => write!(f, "error loading command line: {}", e),
+            LoadInitrd(e) => write!(f, "error loading initrd: {}", e),
+            LoadKernel(e) => write!(f, "error loading Kernel: {}", e),
             RegisterIrqfd(e) => write!(f, "error registering an IrqFd: {}", e),
             RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
-            LoadCmdline(e) => write!(f, "error Loading command line: {}", e),
-            LoadKernel(e) => write!(f, "error Loading Kernel: {}", e),
-            LoadInitrd(e) => write!(f, "error loading initrd: {}", e),
-            ZeroPageSetup => write!(f, "error writing the zero page of guest memory"),
+            SetLint(e) => write!(f, "failed to set interrupts: {}", e),
+            SetTssAddr(e) => write!(f, "failed to set tss addr: {}", e),
+            SetupCpuid(e) => write!(f, "failed to set up cpuid: {}", e),
+            SetupFpu(e) => write!(f, "failed to set up FPU: {}", e),
+            SetupGuestMemory(e) => write!(f, "failed to set up guest memory: {}", e),
+            SetupMptable(e) => write!(f, "failed to set up mptable: {}", e),
+            SetupMsrs(e) => write!(f, "failed to set up MSRs: {}", e),
+            SetupRegs(e) => write!(f, "failed to set up registers: {}", e),
+            SetupSregs(e) => write!(f, "failed to set up sregs: {}", e),
             ZeroPagePastRamEnd => write!(f, "the zero page extends past the end of guest_mem"),
-            E820Configuration => write!(f, "invalid e820 setup params"),
+            ZeroPageSetup => write!(f, "error writing the zero page of guest memory"),
         }
     }
 }
 
+pub type Result<T> = std::result::Result<T, Error>;
+
+impl std::error::Error for Error {}
+
 pub struct X8664arch;
-pub type Result<T> = result::Result<T, Box<std::error::Error>>;
 
 const BOOT_STACK_POINTER: u64 = 0x8000;
 const MEM_32BIT_GAP_SIZE: u64 = (768 << 20);
@@ -184,7 +198,7 @@ fn configure_system(
     let end_32bit_gap_start = GuestAddress(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE);
 
     // Note that this puts the mptable at 0x0 in guest physical memory.
-    mptable::setup_mptable(guest_mem, num_cpus, pci_irqs)?;
+    mptable::setup_mptable(guest_mem, num_cpus, pci_irqs).map_err(Error::SetupMptable)?;
 
     let mut params: boot_params = Default::default();
 
@@ -243,7 +257,7 @@ fn configure_system(
 /// Returns Ok(()) if successful, or an error if there is no space left in the map.
 fn add_e820_entry(params: &mut boot_params, addr: u64, size: u64, mem_type: u32) -> Result<()> {
     if params.e820_entries >= params.e820_map.len() as u8 {
-        return Err(Box::new(Error::E820Configuration));
+        return Err(Error::E820Configuration);
     }
 
     params.e820_map[params.e820_entries as usize].addr = addr;
@@ -280,7 +294,9 @@ fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
 }
 
 impl arch::LinuxArch for X8664arch {
-    fn build_vm<F>(
+    type Error = Error;
+
+    fn build_vm<F, E>(
         mut components: VmComponents,
         split_irqchip: bool,
         create_devices: F,
@@ -289,7 +305,8 @@ impl arch::LinuxArch for X8664arch {
         F: FnOnce(
             &GuestMemory,
             &EventFd,
-        ) -> Result<Vec<(Box<PciDevice + 'static>, Option<Minijail>)>>,
+        ) -> std::result::Result<Vec<(Box<PciDevice>, Option<Minijail>)>, E>,
+        E: StdError + 'static,
     {
         let mut resources =
             Self::get_resource_allocator(components.memory_mb, components.wayland_dmabuf);
@@ -319,7 +336,8 @@ impl arch::LinuxArch for X8664arch {
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
 
-        let pci_devices = create_devices(&mem, &exit_evt)?;
+        let pci_devices =
+            create_devices(&mem, &exit_evt).map_err(|e| Error::CreateDevices(Box::new(e)))?;
         let (pci, pci_irqs, pid_debug_label_map) =
             arch::generate_pci_root(pci_devices, &mut mmio_bus, &mut resources, &mut vm)
                 .map_err(Error::CreatePciRoot)?;
@@ -374,11 +392,8 @@ impl X8664arch {
     /// * `mem` - The memory to be used by the guest.
     /// * `kernel_image` - the File object for the specified kernel.
     fn load_kernel(mem: &GuestMemory, mut kernel_image: &mut File) -> Result<u64> {
-        Ok(kernel_loader::load_kernel(
-            mem,
-            GuestAddress(KERNEL_START_OFFSET),
-            &mut kernel_image,
-        )?)
+        kernel_loader::load_kernel(mem, GuestAddress(KERNEL_START_OFFSET), &mut kernel_image)
+            .map_err(Error::LoadKernel)
     }
 
     /// Configures the system memory space should be called once per vm before
@@ -400,7 +415,8 @@ impl X8664arch {
         android_fstab: Option<File>,
         kernel_end: u64,
     ) -> Result<()> {
-        kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)?;
+        kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)
+            .map_err(Error::LoadCmdline)?;
 
         // Track the first free address after the kernel - this is where extra
         // data like the device tree blob and initrd will be loaded.
@@ -415,7 +431,8 @@ impl X8664arch {
                 mem,
                 dtb_start.offset(),
                 &mut fstab,
-            )?;
+            )
+            .map_err(Error::CreateFdt)?;
             free_addr = dtb_start.offset() + dtb_size as u64;
             Some(dtb_start)
         } else {
@@ -460,12 +477,12 @@ impl X8664arch {
     /// * `split_irqchip` - Whether to use a split IRQ chip.
     /// * `mem` - The memory to be used by the guest.
     fn create_vm(kvm: &Kvm, split_irqchip: bool, mem: GuestMemory) -> Result<Vm> {
-        let vm = Vm::new(&kvm, mem)?;
+        let vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
         let tss_addr = GuestAddress(0xfffbd000);
-        vm.set_tss_addr(tss_addr).expect("set tss addr failed");
+        vm.set_tss_addr(tss_addr).map_err(Error::SetTssAddr)?;
         if !split_irqchip {
-            vm.create_pit().expect("create pit failed");
-            vm.create_irq_chip()?;
+            vm.create_pit().map_err(Error::CreatePit)?;
+            vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
         }
         Ok(vm)
     }
@@ -473,9 +490,9 @@ impl X8664arch {
     /// This creates a GuestMemory object for this VM
     ///
     /// * `mem_size` - Desired physical memory size in bytes for this VM
-    fn setup_memory(mem_size: u64) -> Result<sys_util::GuestMemory> {
+    fn setup_memory(mem_size: u64) -> Result<GuestMemory> {
         let arch_mem_regions = arch_memory_regions(mem_size);
-        let mem = GuestMemory::new(&arch_mem_regions)?;
+        let mem = GuestMemory::new(&arch_mem_regions).map_err(Error::SetupGuestMemory)?;
         Ok(mem)
     }
 
@@ -610,7 +627,7 @@ impl X8664arch {
                     pit_evt.try_clone().map_err(Error::CloneEventFd)?,
                     Arc::new(Mutex::new(Clock::new())),
                 )
-                .map_err(Error::CreatePit)?,
+                .map_err(Error::CreatePitDevice)?,
             ));
             // Reserve from 0x40 to 0x61 (the speaker).
             io_bus.insert(pit.clone(), 0x040, 0x22, false).unwrap();
@@ -667,8 +684,8 @@ impl X8664arch {
         num_cpus: u64,
     ) -> Result<()> {
         let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
-        cpuid::setup_cpuid(kvm, vcpu, cpu_id, num_cpus)?;
-        regs::setup_msrs(vcpu)?;
+        cpuid::setup_cpuid(kvm, vcpu, cpu_id, num_cpus).map_err(Error::SetupCpuid)?;
+        regs::setup_msrs(vcpu).map_err(Error::SetupMsrs)?;
         let kernel_end = guest_mem
             .checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
             .ok_or(Error::KernelOffsetPastEnd)?;
@@ -677,10 +694,11 @@ impl X8664arch {
             (kernel_end).offset() as u64,
             BOOT_STACK_POINTER as u64,
             ZERO_PAGE_OFFSET as u64,
-        )?;
-        regs::setup_fpu(vcpu)?;
-        regs::setup_sregs(guest_mem, vcpu)?;
-        interrupts::set_lint(vcpu)?;
+        )
+        .map_err(Error::SetupRegs)?;
+        regs::setup_fpu(vcpu).map_err(Error::SetupFpu)?;
+        regs::setup_sregs(guest_mem, vcpu).map_err(Error::SetupSregs)?;
+        interrupts::set_lint(vcpu).map_err(Error::SetLint)?;
         Ok(())
     }
 }
