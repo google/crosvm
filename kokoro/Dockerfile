@@ -100,6 +100,15 @@ RUN git clone https://chromium.googlesource.com/chromiumos/third_party/tpm2 \
     && make -j24 \
     && cp build/libtpm2.a /lib
 
+# Install librendernodehost
+RUN git clone https://chromium.googlesource.com/chromiumos/platform2 \
+    && cd platform2 \
+    && git checkout 226fc35730a430344a68c34d7fe7d613f758f417 \
+    && cd rendernodehost \
+    && gcc -c src.c -o src.o \
+    && ar rcs librendernodehost.a src.o \
+    && cp librendernodehost.a /lib
+
 # Inform pkg-config where libraries we install are placed.
 COPY pkgconfig/* /usr/lib/pkgconfig
 
