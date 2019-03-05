@@ -30,6 +30,7 @@ pub enum PciCapabilityType {
     IsrConfig = 3,
     DeviceConfig = 4,
     PciConfig = 5,
+    SharedMemoryConfig = 8,
 }
 
 #[allow(dead_code)]
@@ -114,6 +115,61 @@ impl VirtioPciNotifyCap {
                 length: Le32::from(length),
             },
             notify_off_multiplier: multiplier,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct VirtioPciShmCap {
+    cap: VirtioPciCap,
+    offset_hi: Le32,       // Most sig 32 bits of offset
+    length_hi: Le32,       // Most sig 32 bits of length
+    id: VirtioPciShmCapID, // To distinguish shm chunks
+}
+// It is safe to implement DataInit; all members are simple numbers and any value is valid.
+unsafe impl DataInit for VirtioPciShmCap {}
+
+#[repr(u8)]
+#[derive(Clone, Copy)]
+pub enum VirtioPciShmCapID {
+    Cache = 0,
+    Vertab = 1,
+    Journal = 2,
+}
+
+impl PciCapability for VirtioPciShmCap {
+    fn bytes(&self) -> &[u8] {
+        self.as_slice()
+    }
+
+    fn id(&self) -> PciCapabilityID {
+        PciCapabilityID::VendorSpecific
+    }
+}
+
+impl VirtioPciShmCap {
+    pub fn new(
+        cfg_type: PciCapabilityType,
+        bar: u8,
+        offset: u64,
+        length: u64,
+        id: VirtioPciShmCapID,
+    ) -> Self {
+        VirtioPciShmCap {
+            cap: VirtioPciCap {
+                _cap_vndr: 0,
+                _cap_next: 0,
+                cap_len: std::mem::size_of::<VirtioPciShmCap>() as u8,
+                cfg_type: cfg_type as u8,
+                bar,
+                padding: [0; 3],
+                offset: Le32::from(offset as u32),
+                length: Le32::from(length as u32),
+            },
+            offset_hi: Le32::from((offset >> 32) as u32),
+            length_hi: Le32::from((length >> 32) as u32),
+            id,
         }
     }
 }
