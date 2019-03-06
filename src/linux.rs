@@ -611,7 +611,7 @@ fn create_9p_device(cfg: &Config, chronos: Ids, src: &Path, tag: &str) -> Device
         }
         None => {
             // There's no bind mount so we tell the server to treat the source directory as the
-            // root.  The double deref here converts |src| from a &PathBuf into a &Path.
+            // root.
             (None, src)
         }
     };
