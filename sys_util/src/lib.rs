@@ -18,6 +18,7 @@ pub mod handle_eintr;
 pub mod ioctl;
 #[macro_use]
 pub mod syslog;
+mod capabilities;
 mod clock;
 mod errno;
 mod eventfd;
@@ -43,6 +44,7 @@ mod terminal;
 mod timerfd;
 mod write_zeroes;
 
+pub use capabilities::drop_capabilities;
 pub use clock::{Clock, FakeClock};
 use errno::errno_result;
 pub use errno::{Error, Result};

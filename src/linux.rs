@@ -36,9 +36,10 @@ use rand_ish::SimpleRng;
 use sync::{Condvar, Mutex};
 use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use sys_util::{
-    self, block_signal, clear_signal, flock, get_blocked_signals, get_group_id, get_user_id,
-    getegid, geteuid, register_signal_handler, validate_raw_fd, EventFd, FlockOperation,
-    GuestMemory, Killable, PollContext, PollToken, SignalFd, Terminal, TimerFd, SIGRTMIN,
+    self, block_signal, clear_signal, drop_capabilities, flock, get_blocked_signals, get_group_id,
+    get_user_id, getegid, geteuid, register_signal_handler, validate_raw_fd, EventFd,
+    FlockOperation, GuestMemory, Killable, PollContext, PollToken, SignalFd, Terminal, TimerFd,
+    SIGRTMIN,
 };
 use vhost;
 use vm_control::{VmRequest, VmResponse, VmRunMode};
@@ -73,6 +74,7 @@ pub enum Error {
     DevicePivotRoot(io_jail::Error),
     Disk(io::Error),
     DiskImageLock(sys_util::Error),
+    DropCapabilities(sys_util::Error),
     InvalidFdPath,
     InvalidWaylandPath,
     IoJail(io_jail::Error),
@@ -139,6 +141,7 @@ impl Display for Error {
             DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
             Disk(e) => write!(f, "failed to load disk image: {}", e),
             DiskImageLock(e) => write!(f, "failed to lock disk image: {}", e),
+            DropCapabilities(e) => write!(f, "failed to drop process capabilities: {}", e),
             InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
             InvalidWaylandPath => write!(f, "wayland socket path has no parent or file name"),
             IoJail(e) => write!(f, "{}", e),
@@ -1203,6 +1206,9 @@ fn run_control(
             .expect("time went backwards")
             .subsec_nanos() as u64,
     );
+
+    // Before starting VCPUs, in case we started with some capabilities, drop them all.
+    drop_capabilities().map_err(Error::DropCapabilities)?;
 
     let mut vcpu_handles = Vec::with_capacity(linux.vcpus.len());
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpus.len() + 1));

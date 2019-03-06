@@ -28,9 +28,9 @@ use io_jail::{self, Minijail};
 use kvm::{Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use net_util::{Error as TapError, Tap, TapT};
 use sys_util::{
-    block_signal, clear_signal, getegid, geteuid, register_signal_handler, validate_raw_fd,
-    Error as SysError, EventFd, GuestMemory, Killable, MmapError, PollContext, PollToken,
-    Result as SysResult, SignalFd, SignalFdError, SIGRTMIN,
+    block_signal, clear_signal, drop_capabilities, getegid, geteuid, register_signal_handler,
+    validate_raw_fd, Error as SysError, EventFd, GuestMemory, Killable, MmapError, PollContext,
+    PollToken, Result as SysResult, SignalFd, SignalFdError, SIGRTMIN,
 };
 
 use Config;
@@ -59,6 +59,7 @@ pub enum Error {
     CreateVcpuSocket(SysError),
     CreateVm(SysError),
     DecodeRequest(ProtobufError),
+    DropCapabilities(SysError),
     EncodeResponse(ProtobufError),
     Mount(io_jail::Error),
     MountDev(io_jail::Error),
@@ -124,6 +125,7 @@ impl Display for Error {
             CreateVcpuSocket(e) => write!(f, "error creating vcpu request socket: {}", e),
             CreateVm(e) => write!(f, "error creating vm: {}", e),
             DecodeRequest(e) => write!(f, "failed to decode plugin request: {}", e),
+            DropCapabilities(e) => write!(f, "failed to drop process capabilities: {}", e),
             EncodeResponse(e) => write!(f, "failed to encode plugin response: {}", e),
             Mount(e) | MountDev(e) | MountLib(e) | MountLib64(e) | MountPlugin(e)
             | MountPluginLib(e) | MountRoot(e) => write!(f, "failed to mount: {}", e),
@@ -544,7 +546,11 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
     vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
     vm.create_pit().map_err(Error::CreatePIT)?;
+
     let mut plugin = Process::new(vcpu_count, plugin_path, &plugin_args, jail)?;
+    // Now that the jail for the plugin has been created and we had a chance to adjust gids there,
+    // we can drop all our capabilities in case we had any.
+    drop_capabilities().map_err(Error::DropCapabilities)?;
 
     let mut res = Ok(());
     // If Some, we will exit after enough time is passed to shutdown cleanly.
