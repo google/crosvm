@@ -382,6 +382,9 @@ impl<'a> VolatileSlice<'a> {
     unsafe fn as_slice(&self) -> &[u8] {
         from_raw_parts(self.addr, self.size as usize)
     }
+
+    // TODO(zachr) - refactor this so the mut from non-mut isn't necessary (bug: 938767)
+    #[allow(clippy::mut_from_ref)]
     unsafe fn as_mut_slice(&self) -> &mut [u8] {
         from_raw_parts_mut(self.addr, self.size as usize)
     }
