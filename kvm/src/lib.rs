@@ -918,6 +918,29 @@ impl Vm {
         }
         Ok(())
     }
+
+    /// Enable the specified capability.
+    /// See documentation for KVM_ENABLE_CAP.
+    pub fn kvm_enable_cap(&self, cap: &kvm_enable_cap) -> Result<()> {
+        // safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct
+        let ret = unsafe { ioctl_with_ref(self, KVM_ENABLE_CAP(), cap) };
+        if ret < 0 {
+            errno_result()
+        } else {
+            Ok(())
+        }
+    }
+
+    /// (x86-only): Enable support for split-irqchip.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn enable_split_irqchip(&self) -> Result<()> {
+        let mut cap: kvm_enable_cap = Default::default();
+        cap.cap = KVM_CAP_SPLIT_IRQCHIP;
+        // TODO(mutexlox): When the IOAPIC is implemented, refer to its "number of pins" constant.
+        cap.args[0] = 24;
+        self.kvm_enable_cap(&cap)
+    }
 }
 
 impl AsRawFd for Vm {
@@ -1549,6 +1572,23 @@ impl Vcpu {
             return errno_result();
         }
         Ok(())
+    }
+
+    /// Use the KVM_INTERRUPT ioctl to inject the specified interrupt vector.
+    ///
+    /// While this ioctl exits on PPC and MIPS as well as x86, the semantics are different and
+    /// ChromeOS doesn't support PPC or MIPS.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn interrupt(&self, irq: u32) -> Result<()> {
+        let interrupt = kvm_interrupt { irq };
+        // safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct
+        let ret = unsafe { ioctl_with_ref(self, KVM_INTERRUPT(), &interrupt) };
+        if ret < 0 {
+            errno_result()
+        } else {
+            Ok(())
+        }
     }
 }
 
