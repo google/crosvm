@@ -252,7 +252,7 @@ where
     T: Read + Write + AsRawFd,
 {
     fn init(&mut self) -> Result<()> {
-        grab_evdev(self)
+        Ok(())
     }
 
     fn finalize(&mut self) -> Result<()> {
