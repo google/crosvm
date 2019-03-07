@@ -11,43 +11,43 @@ use sync::Mutex;
 
 use data_model::DataInit;
 
-/// Type of offset in the bar.
-pub type BarOffset = u64;
+/// Type of offset in the register space.
+pub type RegisterOffset = u64;
 
-/// This represents a range of memory in the MMIO space starting from Bar.
+/// This represents a range of memory in the register space starting.
 /// Both from and to are inclusive.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
-pub struct BarRange {
-    pub from: BarOffset,
-    pub to: BarOffset,
+pub struct RegisterRange {
+    pub from: RegisterOffset,
+    pub to: RegisterOffset,
 }
 
-impl Ord for BarRange {
-    fn cmp(&self, other: &BarRange) -> Ordering {
+impl Ord for RegisterRange {
+    fn cmp(&self, other: &RegisterRange) -> Ordering {
         self.from.cmp(&other.from)
     }
 }
 
-impl PartialOrd for BarRange {
-    fn partial_cmp(&self, other: &BarRange) -> Option<Ordering> {
+impl PartialOrd for RegisterRange {
+    fn partial_cmp(&self, other: &RegisterRange) -> Option<Ordering> {
         self.from.partial_cmp(&other.from)
     }
 }
 
-impl BarRange {
+impl RegisterRange {
     /// Return true if those range overlaps.
-    pub fn overlap_with(&self, other: &BarRange) -> bool {
+    pub fn overlap_with(&self, other: &RegisterRange) -> bool {
         !(self.from > other.to || self.to < other.from)
     }
 
-    /// Get the overlapping part of two BarRange.
+    /// Get the overlapping part of two RegisterRange.
     /// Return is Option(overlap_from, overlap_to).
     /// For example, (4,7).overlap_range(5, 8) will be Some(5, 7).
-    pub fn overlap_range(&self, other: &BarRange) -> Option<BarRange> {
+    pub fn overlap_range(&self, other: &RegisterRange) -> Option<RegisterRange> {
         if !self.overlap_with(other) {
             return None;
         }
-        Some(BarRange {
+        Some(RegisterRange {
             from: max(self.from, other.from),
             to: min(self.to, other.to),
         })
@@ -88,11 +88,11 @@ impl RegisterValue for u64 {}
 // corresponding bytes into data.
 fn read_reg_helper<T: RegisterValue>(
     val: T,
-    val_range: BarRange,
-    addr: BarOffset,
+    val_range: RegisterRange,
+    addr: RegisterOffset,
     data: &mut [u8],
 ) {
-    let read_range = BarRange {
+    let read_range = RegisterRange {
         from: addr,
         to: addr + data.len() as u64 - 1,
     };
@@ -114,12 +114,12 @@ fn read_reg_helper<T: RegisterValue>(
 
 /// Interface for register, as seen by guest driver.
 pub trait RegisterInterface: Send {
-    /// Bar range of this register.
-    fn bar_range(&self) -> BarRange;
-    /// Handle read bar.
-    fn read_bar(&self, addr: BarOffset, data: &mut [u8]);
-    /// Handle write bar.
-    fn write_bar(&self, _addr: BarOffset, _data: &[u8]) {}
+    /// Range of this register.
+    fn range(&self) -> RegisterRange;
+    /// Handle read.
+    fn read(&self, addr: RegisterOffset, data: &mut [u8]);
+    /// Handle write.
+    fn write(&self, _addr: RegisterOffset, _data: &[u8]) {}
     /// Reset this register to default value.
     fn reset(&self) {}
 }
@@ -127,7 +127,7 @@ pub trait RegisterInterface: Send {
 // Spec for hardware init Read Only Registers.
 // The value of this register won't change.
 pub struct StaticRegisterSpec<T: RegisterValue> {
-    pub offset: BarOffset,
+    pub offset: RegisterOffset,
     pub value: T,
 }
 
@@ -155,15 +155,15 @@ impl<T> RegisterInterface for StaticRegister<T>
 where
     T: RegisterValue,
 {
-    fn bar_range(&self) -> BarRange {
-        BarRange {
+    fn range(&self) -> RegisterRange {
+        RegisterRange {
             from: self.spec.offset,
             to: self.spec.offset + (size_of::<T>() as u64) - 1,
         }
     }
 
-    fn read_bar(&self, addr: BarOffset, data: &mut [u8]) {
-        let val_range = self.bar_range();
+    fn read(&self, addr: RegisterOffset, data: &mut [u8]) {
+        let val_range = self.range();
         read_reg_helper(self.spec.value.clone(), val_range, addr, data);
     }
 }
@@ -172,6 +172,7 @@ where
 #[macro_export]
 macro_rules! static_register {
     (ty: $ty:ty,offset: $offset:expr,value: $value:expr,) => {{
+        use super::*;
         static REG_SPEC: StaticRegisterSpec<$ty> = StaticRegisterSpec::<$ty> {
             offset: $offset,
             value: $value,
@@ -180,11 +181,11 @@ macro_rules! static_register {
     }};
 }
 
-/// Spec for a regular register. It specifies it's location on bar, guest writable mask and guest
-/// write to clear mask.
+/// Spec for a regular register. It specifies it's location on register space, guest writable mask
+/// and guest write to clear mask.
 pub struct RegisterSpec<T> {
     pub name: String,
-    pub offset: BarOffset,
+    pub offset: RegisterOffset,
     pub reset_value: T,
     /// Only masked bits could be written by guest.
     pub guest_writeable_mask: T,
@@ -223,24 +224,24 @@ impl<T: RegisterValue> Register<T> {
 
 // All functions implemented on this one is thread safe.
 impl<T: RegisterValue> RegisterInterface for Register<T> {
-    fn bar_range(&self) -> BarRange {
+    fn range(&self) -> RegisterRange {
         let locked = self.lock();
         let spec = &locked.spec;
-        BarRange {
+        RegisterRange {
             from: spec.offset,
             to: spec.offset + (size_of::<T>() as u64) - 1,
         }
     }
 
-    fn read_bar(&self, addr: BarOffset, data: &mut [u8]) {
-        let val_range = self.bar_range();
+    fn read(&self, addr: RegisterOffset, data: &mut [u8]) {
+        let val_range = self.range();
         let value = self.lock().value.clone();
         read_reg_helper(value, val_range, addr, data);
     }
 
-    fn write_bar(&self, addr: BarOffset, data: &[u8]) {
-        let my_range = self.bar_range();
-        let write_range = BarRange {
+    fn write(&self, addr: RegisterOffset, data: &[u8]) {
+        let my_range = self.range();
+        let write_range = RegisterRange {
             from: addr,
             to: addr + data.len() as u64 - 1,
         };
@@ -248,7 +249,7 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
         let overlap = match my_range.overlap_range(&write_range) {
             Some(range) => range,
             None => {
-                error!("write bar should not be invoked on this register");
+                error!("write should not be invoked on this register");
                 return;
             }
         };
@@ -324,7 +325,7 @@ impl<T: RegisterValue> Register<T> {
         (old_byte & (!w_mask)) | (val & w_mask)
     }
 
-    /// Set a callback. It will be invoked when bar write happens.
+    /// Set a callback. It will be invoked when write happens.
     pub fn set_write_cb<C: 'static + Fn(T) -> T + Send>(&self, callback: C) {
         self.lock().write_cb = Some(Box::new(callback));
     }
@@ -355,6 +356,7 @@ macro_rules! register {
         guest_writeable_mask: $mask:expr,
         guest_write_1_to_clear_mask: $w1tcm:expr,
     ) => {{
+        use super::*;
         let spec: RegisterSpec<$ty> = RegisterSpec::<$ty> {
             name: String::from($name),
             offset: $offset,
@@ -365,6 +367,7 @@ macro_rules! register {
         Register::<$ty>::new(spec, $rv)
     }};
     (name: $name:tt, ty: $ty:ty,offset: $offset:expr,reset_value: $rv:expr,) => {{
+        use super::*;
         let spec: RegisterSpec<$ty> = RegisterSpec::<$ty> {
             name: String::from($name),
             offset: $offset,
@@ -389,9 +392,10 @@ macro_rules! register_array {
         $gwm:expr,guest_write_1_to_clear_mask:
         $gw1tcm:expr,
     ) => {{
+        use super::*;
         let mut v: Vec<Register<$ty>> = Vec::new();
         for i in 0..$cnt {
-            let offset = $base_offset + ($stride * i) as BarOffset;
+            let offset = $base_offset + ($stride * i) as RegisterOffset;
             let mut spec: RegisterSpec<$ty> = RegisterSpec::<$ty> {
                 name: format!("{}-{}", $name, i),
                 offset,
@@ -423,11 +427,11 @@ mod tests {
     fn static_register_basic_test_u8() {
         let r = StaticRegister::<u8> { spec: &REG_SPEC0 };
         let mut data: [u8; 4] = [0, 0, 0, 0];
-        assert_eq!(r.bar_range().from, 3);
-        assert_eq!(r.bar_range().to, 3);
-        r.read_bar(0, &mut data);
+        assert_eq!(r.range().from, 3);
+        assert_eq!(r.range().to, 3);
+        r.read(0, &mut data);
         assert_eq!(data, [0, 0, 0, 32]);
-        r.read_bar(2, &mut data);
+        r.read(2, &mut data);
         assert_eq!(data, [0, 32, 0, 32]);
     }
 
@@ -435,11 +439,11 @@ mod tests {
     fn static_register_basic_test_u16() {
         let r = StaticRegister::<u16> { spec: &REG_SPEC1 };
         let mut data: [u8; 4] = [0, 0, 0, 0];
-        assert_eq!(r.bar_range().from, 3);
-        assert_eq!(r.bar_range().to, 4);
-        r.read_bar(0, &mut data);
+        assert_eq!(r.range().from, 3);
+        assert_eq!(r.range().to, 4);
+        r.read(0, &mut data);
         assert_eq!(data, [0, 0, 0, 32]);
-        r.read_bar(2, &mut data);
+        r.read(2, &mut data);
         assert_eq!(data, [0, 32, 0, 32]);
     }
 
@@ -451,11 +455,11 @@ mod tests {
             value: 32,
         });
         let mut data: [u8; 4] = [0, 0, 0, 0];
-        assert_eq!(r.bar_range().from, 3);
-        assert_eq!(r.bar_range().to, 3);
-        r.read_bar(0, &mut data);
+        assert_eq!(r.range().from, 3);
+        assert_eq!(r.range().to, 3);
+        r.read(0, &mut data);
         assert_eq!(data, [0, 0, 0, 32]);
-        r.read_bar(2, &mut data);
+        r.read(2, &mut data);
         assert_eq!(data, [0, 32, 0, 32]);
     }
 
@@ -470,14 +474,14 @@ mod tests {
             guest_write_1_to_clear_mask: 0x0,
         };
         let mut data: [u8; 4] = [0, 0, 0, 0];
-        assert_eq!(r.bar_range().from, 3);
-        assert_eq!(r.bar_range().to, 3);
-        r.read_bar(0, &mut data);
+        assert_eq!(r.range().from, 3);
+        assert_eq!(r.range().to, 3);
+        r.read(0, &mut data);
         assert_eq!(data, [0, 0, 0, 0xf1]);
-        r.read_bar(2, &mut data);
+        r.read(2, &mut data);
         assert_eq!(data, [0, 0xf1, 0, 0xf1]);
         data = [0, 0, 0, 0xab];
-        r.write_bar(0, &data);
+        r.write(0, &data);
         assert_eq!(r.get_value(), 0xab);
         r.reset();
         assert_eq!(r.get_value(), 0xf1);
@@ -496,12 +500,12 @@ mod tests {
             guest_write_1_to_clear_mask: 0x0,
         };
         let mut data: [u8; 4] = [0, 0, 0, 0];
-        assert_eq!(r.bar_range().from, 3);
-        assert_eq!(r.bar_range().to, 3);
-        r.read_bar(0, &mut data);
+        assert_eq!(r.range().from, 3);
+        assert_eq!(r.range().to, 3);
+        r.read(0, &mut data);
         assert_eq!(data, [0, 0, 0, 0]);
         data = [0, 0, 0, 0xab];
-        r.write_bar(0, &data);
+        r.write(0, &data);
         assert_eq!(r.get_value(), 0x0b);
         r.reset();
         assert_eq!(r.get_value(), 0x0);
@@ -520,12 +524,12 @@ mod tests {
             guest_write_1_to_clear_mask: 0xf0,
         };
         let mut data: [u8; 4] = [0, 0, 0, 0];
-        assert_eq!(r.bar_range().from, 3);
-        assert_eq!(r.bar_range().to, 3);
-        r.read_bar(0, &mut data);
+        assert_eq!(r.range().from, 3);
+        assert_eq!(r.range().to, 3);
+        r.read(0, &mut data);
         assert_eq!(data, [0, 0, 0, 0xf1]);
         data = [0, 0, 0, 0xfa];
-        r.write_bar(0, &data);
+        r.write(0, &data);
         assert_eq!(r.get_value(), 0x0a);
         r.reset();
         assert_eq!(r.get_value(), 0xf1);
@@ -544,12 +548,12 @@ mod tests {
             guest_write_1_to_clear_mask: 0xf0,
         };
         let mut data: [u8; 4] = [0, 0, 0, 0];
-        assert_eq!(r.bar_range().from, 0);
-        assert_eq!(r.bar_range().to, 3);
-        r.read_bar(0, &mut data);
+        assert_eq!(r.range().from, 0);
+        assert_eq!(r.range().to, 3);
+        r.read(0, &mut data);
         assert_eq!(data, [0xf1, 0xff, 0, 0]);
         data = [0xfa, 0, 0, 0];
-        r.write_bar(0, &data);
+        r.write(0, &data);
         assert_eq!(r.get_value(), 0xff0a);
         r.reset();
         assert_eq!(r.get_value(), 0xfff1);
@@ -575,12 +579,12 @@ mod tests {
             val
         });
         let data: [u8; 4] = [0, 0, 0, 0xff];
-        r.write_bar(0, &data);
+        r.write(0, &data);
         assert_eq!(*state.lock(), 0xf);
         r.set_value(0xab);
         assert_eq!(*state.lock(), 0xf);
         let data: [u8; 1] = [0xfc];
-        r.write_bar(3, &data);
+        r.write(3, &data);
         assert_eq!(*state.lock(), 0xc);
     }
 }

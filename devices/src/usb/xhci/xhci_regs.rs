@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use register_space::{MMIOSpace, BarOffset, Register, RegisterSpec, StaticRegister,
-                    StaticRegisterSpec};
+use register_space::RegisterSpace;
 
 /// Max interrupter number.
 pub const MAX_INTERRUPTER: u8 = 1;
