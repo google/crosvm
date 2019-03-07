@@ -38,11 +38,15 @@ impl TimerFd {
         // Safe because we are zero-initializing a struct with only primitive member fields.
         let mut spec: libc::itimerspec = unsafe { mem::zeroed() };
         spec.it_value.tv_sec = dur.as_secs() as libc::time_t;
-        spec.it_value.tv_nsec = dur.subsec_nanos() as libc::c_long;
+        // nsec always fits in i32 because subsec_nanos is defined to be less than one billion.
+        let nsec = dur.subsec_nanos() as i32;
+        spec.it_value.tv_nsec = libc::c_long::from(nsec);
 
         if let Some(int) = interval {
             spec.it_interval.tv_sec = int.as_secs() as libc::time_t;
-            spec.it_interval.tv_nsec = int.subsec_nanos() as libc::c_long;
+            // nsec always fits in i32 because subsec_nanos is defined to be less than one billion.
+            let nsec = int.subsec_nanos() as i32;
+            spec.it_interval.tv_nsec = libc::c_long::from(nsec);
         }
 
         // Safe because this doesn't modify any memory and we check the return value.
