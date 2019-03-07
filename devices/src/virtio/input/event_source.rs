@@ -145,10 +145,7 @@ where
             .map_err(|e| InputError::EventsReadError(e))?;
         let buff_size = read + self.read_idx;
 
-        for evt_slice in self
-            .read_buffer
-            .buffer
-            .chunks_exact(input_event::EVENT_SIZE)
+        for evt_slice in self.read_buffer.buffer[..buff_size].chunks_exact(input_event::EVENT_SIZE)
         {
             let input_evt = match input_event::from_slice(evt_slice) {
                 Some(x) => x,
