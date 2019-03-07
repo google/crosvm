@@ -267,6 +267,14 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
                 );
             }
         }
+
+        // A single u64 register is done by write to lower 32 bit and then higher 32 bit. Callback
+        // should only be invoked when higher is written.
+        if my_range.to != overlap.to {
+            self.lock().value = reg_value;
+            return;
+        }
+
         // Taking the callback out of register when executing it. This prevent dead lock if
         // callback want to read current register value.
         // Note that the only source of callback comes from mmio writing, which is synchronized.
