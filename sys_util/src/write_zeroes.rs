@@ -32,14 +32,13 @@ impl<T: PunchHole + Seek + Write> WriteZeroes for T {
     fn write_zeroes(&mut self, length: usize) -> io::Result<usize> {
         // Try to punch a hole first.
         let offset = self.seek(SeekFrom::Current(0))?;
-        match self.punch_hole(offset, length as u64) {
-            Ok(()) => {
-                // Advance the seek cursor as if we had done a real write().
-                self.seek(SeekFrom::Current(length as i64))?;
-                return Ok(length);
-            }
-            Err(_) => {} // fall back to write()
+        if let Ok(()) = self.punch_hole(offset, length as u64) {
+            // Advance the seek cursor as if we had done a real write().
+            self.seek(SeekFrom::Current(length as i64))?;
+            return Ok(length);
         }
+
+        // fall back to write()
 
         // punch_hole() failed; fall back to writing a buffer of zeroes
         // until we have written up to length.
