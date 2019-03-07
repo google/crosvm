@@ -203,9 +203,11 @@ impl UnixSeqpacket {
                         "zero timeout duration is invalid",
                     ));
                 }
+                // subsec_micros fits in i32 because it is defined to be less than one million.
+                let nsec = t.subsec_micros() as i32;
                 libc::timeval {
                     tv_sec: t.as_secs() as libc::time_t,
-                    tv_usec: t.subsec_micros() as libc::suseconds_t,
+                    tv_usec: libc::suseconds_t::from(nsec),
                 }
             }
             None => libc::timeval {
