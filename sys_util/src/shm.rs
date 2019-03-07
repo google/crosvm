@@ -31,7 +31,7 @@ unsafe fn memfd_create(name: *const c_char, flags: c_uint) -> c_int {
 /// A set of memfd seals.
 ///
 /// An enumeration of each bit can be found at `fcntl(2)`.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct MemfdSeals(i32);
 
 impl MemfdSeals {
