@@ -34,6 +34,7 @@ mod pci;
 mod pit;
 pub mod pl030;
 mod proxy;
+mod register_space;
 mod serial;
 pub mod virtio;
 

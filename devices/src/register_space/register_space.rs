@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::mmio_register::{BarOffset, BarRange, Register, RegisterInterface, RegisterValue};
+use super::register::{BarOffset, BarRange, Register, RegisterInterface, RegisterValue};
 use std::collections::btree_map::BTreeMap;
 
 /// MMIO space repesents a set of registers. It can handle bar read/write operations.
@@ -93,9 +93,9 @@ impl MMIOSpace {
 
 #[cfg(test)]
 mod tests {
+    use super::super::{RegisterSpec, StaticRegister, StaticRegisterSpec};
     use super::*;
     use std::sync::{Arc, Mutex};
-    use usb::xhci::mmio_register::{RegisterSpec, StaticRegister, StaticRegisterSpec};
 
     #[test]
     fn mmio_no_reg() {
@@ -115,26 +115,26 @@ mod tests {
     fn mmio_reg_overlap() {
         let mut mmio = MMIOSpace::new();
         mmio.add_register(static_register!(
-                ty: u32,
-                offset: 4,
-                value: 11,
-                ));
+        ty: u32,
+        offset: 4,
+        value: 11,
+        ));
 
         mmio.add_register(static_register!(
-                ty: u16,
-                offset: 7,
-                value: 11,
-                ));
+        ty: u16,
+        offset: 7,
+        value: 11,
+        ));
     }
 
     #[test]
     fn mmio_static_reg() {
         let mut mmio = MMIOSpace::new();
         mmio.add_register(static_register!(
-                ty: u8,
-                offset: 0,
-                value: 11,
-            ));
+            ty: u8,
+            offset: 0,
+            value: 11,
+        ));
         let mut data: [u8; 4] = [4, 3, 2, 1];
         mmio.read_bar(0, &mut data);
         assert_eq!([11, 3, 2, 1], data);
@@ -149,10 +149,10 @@ mod tests {
     fn mmio_static_reg_offset() {
         let mut mmio = MMIOSpace::new();
         mmio.add_register(static_register!(
-                ty: u32,
-                offset: 2,
-                value: 0xaabbccdd,
-            ));
+            ty: u32,
+            offset: 2,
+            value: 0xaabbccdd,
+        ));
         let mut data: [u8; 8] = [8, 7, 6, 5, 4, 3, 2, 1];
         mmio.read_bar(0, &mut data);
         assert_eq!([8, 7, 0xdd, 0xcc, 0xbb, 0xaa, 2, 1], data);
@@ -167,11 +167,11 @@ mod tests {
     fn mmio_reg_write() {
         let mut mmio = MMIOSpace::new();
         mmio.add_register(register!(
-                name: "",
-                ty: u32,
-                offset: 2,
-                reset_value: 0xaabbccdd,
-            ));
+            name: "",
+            ty: u32,
+            offset: 2,
+            reset_value: 0xaabbccdd,
+        ));
         let mut data: [u8; 8] = [8, 7, 6, 5, 4, 3, 2, 1];
         mmio.read_bar(0, &mut data);
         assert_eq!([8, 7, 0xdd, 0xcc, 0xbb, 0xaa, 2, 1], data);
@@ -185,13 +185,13 @@ mod tests {
     fn mmio_reg_writeable() {
         let mut mmio = MMIOSpace::new();
         mmio.add_register(register!(
-                name: "",
-                ty: u32,
-                offset: 2,
-                reset_value: 0xaabbccdd,
-                guest_writeable_mask: 0x00f0000f,
-                guest_write_1_to_clear_mask: 0,
-            ));
+            name: "",
+            ty: u32,
+            offset: 2,
+            reset_value: 0xaabbccdd,
+            guest_writeable_mask: 0x00f0000f,
+            guest_write_1_to_clear_mask: 0,
+        ));
         let mut data: [u8; 8] = [8, 7, 6, 5, 4, 3, 2, 1];
         mmio.read_bar(0, &mut data);
         assert_eq!([8, 7, 0xdd, 0xcc, 0xbb, 0xaa, 2, 1], data);
@@ -206,13 +206,13 @@ mod tests {
         let state = Arc::new(Mutex::new(0u32));
         let mut mmio = MMIOSpace::new();
         let reg = register!(
-                name: "",
-                ty: u32,
-                offset: 2,
-                reset_value: 0xaabbccdd,
-                guest_writeable_mask: 0x00f0000f,
-                guest_write_1_to_clear_mask: 0,
-            );
+            name: "",
+            ty: u32,
+            offset: 2,
+            reset_value: 0xaabbccdd,
+            guest_writeable_mask: 0x00f0000f,
+            guest_write_1_to_clear_mask: 0,
+        );
         mmio.add_register(reg.clone());
         let state_clone = state.clone();
         reg.set_write_cb(move |val: u32| {
@@ -231,13 +231,13 @@ mod tests {
     fn mmio_reg_write_to_clear() {
         let mut mmio = MMIOSpace::new();
         mmio.add_register(register!(
-                name: "",
-                ty: u32,
-                offset: 2,
-                reset_value: 0xaabbccdd,
-                guest_writeable_mask: 0xfff0000f,
-                guest_write_1_to_clear_mask: 0xf0000000,
-                ));
+        name: "",
+        ty: u32,
+        offset: 2,
+        reset_value: 0xaabbccdd,
+        guest_writeable_mask: 0xfff0000f,
+        guest_write_1_to_clear_mask: 0xf0000000,
+        ));
         let mut data: [u8; 8] = [8, 7, 6, 5, 4, 3, 2, 1];
         mmio.read_bar(0, &mut data);
         assert_eq!([8, 7, 0xdd, 0xcc, 0xbb, 0xaa, 2, 1], data);
@@ -251,15 +251,15 @@ mod tests {
     fn mmio_reg_array() {
         let mut mmio = MMIOSpace::new();
         mmio.add_register_array(&register_array!(
-                name: "",
-                ty: u8,
-                cnt: 8,
-                base_offset: 10,
-                stride: 2,
-                reset_value: 0xff,
-                guest_writeable_mask: !0,
-                guest_write_1_to_clear_mask: 0,
-            ));
+            name: "",
+            ty: u8,
+            cnt: 8,
+            base_offset: 10,
+            stride: 2,
+            reset_value: 0xff,
+            guest_writeable_mask: !0,
+            guest_write_1_to_clear_mask: 0,
+        ));
         let mut data: [u8; 8] = [0; 8];
         mmio.read_bar(8, &mut data);
         assert_eq!([0, 0, 0xff, 0, 0xff, 0, 0xff, 0], data);
@@ -269,25 +269,25 @@ mod tests {
     fn mmio_reg_multi_array() {
         let mut mmio = MMIOSpace::new();
         mmio.add_register_array(&register_array!(
-                name: "",
-                ty: u8,
-                cnt: 8,
-                base_offset: 10,
-                stride: 2,
-                reset_value: 0xff,
-                guest_writeable_mask: !0,
-                guest_write_1_to_clear_mask: 0,
-                ));
+        name: "",
+        ty: u8,
+        cnt: 8,
+        base_offset: 10,
+        stride: 2,
+        reset_value: 0xff,
+        guest_writeable_mask: !0,
+        guest_write_1_to_clear_mask: 0,
+        ));
         mmio.add_register_array(&register_array!(
-                name: "",
-                ty: u8,
-                cnt: 8,
-                base_offset: 11,
-                stride: 2,
-                reset_value: 0xee,
-                guest_writeable_mask: !0,
-                guest_write_1_to_clear_mask: 0,
-                ));
+        name: "",
+        ty: u8,
+        cnt: 8,
+        base_offset: 11,
+        stride: 2,
+        reset_value: 0xee,
+        guest_writeable_mask: !0,
+        guest_write_1_to_clear_mask: 0,
+        ));
         let mut data: [u8; 8] = [0; 8];
         mmio.read_bar(8, &mut data);
         assert_eq!([0, 0, 0xff, 0xee, 0xff, 0xee, 0xff, 0xee], data);
