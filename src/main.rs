@@ -79,21 +79,21 @@ struct GidMap {
     count: u32,
 }
 
-const DEFAULT_TRACKPAD_WIDTH: u32 = 800;
-const DEFAULT_TRACKPAD_HEIGHT: u32 = 1280;
+const DEFAULT_TOUCH_DEVICE_WIDTH: u32 = 800;
+const DEFAULT_TOUCH_DEVICE_HEIGHT: u32 = 1280;
 
-struct TrackpadOption {
+struct TouchDeviceOption {
     path: PathBuf,
     width: u32,
     height: u32,
 }
 
-impl TrackpadOption {
-    fn new(path: PathBuf) -> TrackpadOption {
-        TrackpadOption {
+impl TouchDeviceOption {
+    fn new(path: PathBuf) -> TouchDeviceOption {
+        TouchDeviceOption {
             path,
-            width: DEFAULT_TRACKPAD_WIDTH,
-            height: DEFAULT_TRACKPAD_HEIGHT,
+            width: DEFAULT_TOUCH_DEVICE_WIDTH,
+            height: DEFAULT_TOUCH_DEVICE_HEIGHT,
         }
     }
 }
@@ -126,7 +126,8 @@ pub struct Config {
     software_tpm: bool,
     cras_audio: bool,
     null_audio: bool,
-    virtio_trackpad: Option<TrackpadOption>,
+    virtio_single_touch: Option<TouchDeviceOption>,
+    virtio_trackpad: Option<TouchDeviceOption>,
     virtio_mouse: Option<PathBuf>,
     virtio_keyboard: Option<PathBuf>,
     virtio_input_evdevs: Vec<PathBuf>,
@@ -163,6 +164,7 @@ impl Default for Config {
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             cras_audio: false,
             null_audio: false,
+            virtio_single_touch: None,
             virtio_trackpad: None,
             virtio_mouse: None,
             virtio_keyboard: None,
@@ -570,6 +572,25 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "software-tpm" => {
             cfg.software_tpm = true;
         }
+        "single-touch" => {
+            if cfg.virtio_single_touch.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`single-touch` already given".to_owned(),
+                ));
+            }
+            let mut it = value.unwrap().split(":");
+
+            let mut single_touch_spec =
+                TouchDeviceOption::new(PathBuf::from(it.next().unwrap().to_owned()));
+            if let Some(width) = it.next() {
+                single_touch_spec.width = width.trim().parse().unwrap();
+            }
+            if let Some(height) = it.next() {
+                single_touch_spec.height = height.trim().parse().unwrap();
+            }
+
+            cfg.virtio_single_touch = Some(single_touch_spec);
+        }
         "trackpad" => {
             if cfg.virtio_trackpad.is_some() {
                 return Err(argument::Error::TooManyArguments(
@@ -579,7 +600,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             let mut it = value.unwrap().split(":");
 
             let mut trackpad_spec =
-                TrackpadOption::new(PathBuf::from(it.next().unwrap().to_owned()));
+                TouchDeviceOption::new(PathBuf::from(it.next().unwrap().to_owned()));
             if let Some(width) = it.next() {
                 trackpad_spec.width = width.trim().parse().unwrap();
             }
@@ -686,6 +707,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           #[cfg(feature = "tpm")]
           Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),
           Argument::value("evdev", "PATH", "Path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host"),
+          Argument::value("single-touch", "PATH:WIDTH:HEIGHT", "Path to a socket from where to read single touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280)."),
           Argument::value("trackpad", "PATH:WIDTH:HEIGHT", "Path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280)."),
           Argument::value("mouse", "PATH", "Path to a socket from where to read mouse input events and write status updates to."),
           Argument::value("keyboard", "PATH", "Path to a socket from where to read keyboard input events and write status updates to."),

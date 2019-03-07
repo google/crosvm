@@ -44,7 +44,7 @@ use sys_util::{
 use vhost;
 use vm_control::{VmRequest, VmResponse, VmRunMode};
 
-use crate::{Config, DiskOption, TrackpadOption};
+use crate::{Config, DiskOption, TouchDeviceOption};
 
 use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents};
 
@@ -358,7 +358,21 @@ fn create_tpm_device(cfg: &Config) -> DeviceResult {
     })
 }
 
-fn create_trackpad_device(cfg: &Config, trackpad_spec: &TrackpadOption) -> DeviceResult {
+fn create_single_touch_device(cfg: &Config, single_touch_spec: &TouchDeviceOption) -> DeviceResult {
+    let socket = create_input_socket(&single_touch_spec.path).map_err(|e| {
+        error!("failed configuring virtio single touch: {:?}", e);
+        e
+    })?;
+
+    let dev = virtio::new_single_touch(socket, single_touch_spec.width, single_touch_spec.height)
+        .map_err(Error::InputDeviceNew)?;
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: simple_jail(&cfg, "input_device.policy")?,
+    })
+}
+
+fn create_trackpad_device(cfg: &Config, trackpad_spec: &TouchDeviceOption) -> DeviceResult {
     let socket = create_input_socket(&trackpad_spec.path).map_err(|e| {
         error!("failed configuring virtio trackpad: {}", e);
         e
@@ -649,6 +663,10 @@ fn create_virtio_devices(
         if cfg.software_tpm {
             devs.push(create_tpm_device(cfg)?);
         }
+    }
+
+    if let Some(single_touch_spec) = &cfg.virtio_single_touch {
+        devs.push(create_single_touch_device(cfg, single_touch_spec)?);
     }
 
     if let Some(trackpad_spec) = &cfg.virtio_trackpad {

@@ -48,6 +48,33 @@ pub fn new_keyboard_config() -> VirtioInputConfig {
     )
 }
 
+/// Instantiates a VirtioInputConfig object with the default configuration for a touchscreen (no
+/// multitouch support).
+pub fn new_single_touch_config(width: u32, height: u32) -> VirtioInputConfig {
+    VirtioInputConfig::new(
+        virtio_input_device_ids::new(0, 0, 0, 0),
+        "Crosvm Virtio Touchscreen".as_bytes().to_vec(),
+        "virtio-touchscreen".as_bytes().to_vec(),
+        virtio_input_bitmap::from_bits(&[INPUT_PROP_DIRECT]),
+        default_touchscreen_events(),
+        default_touchscreen_absinfo(width, height),
+    )
+}
+
+fn default_touchscreen_absinfo(width: u32, height: u32) -> BTreeMap<u16, virtio_input_absinfo> {
+    let mut absinfo: BTreeMap<u16, virtio_input_absinfo> = BTreeMap::new();
+    absinfo.insert(ABS_X, virtio_input_absinfo::new(0, width, 0, 0));
+    absinfo.insert(ABS_Y, virtio_input_absinfo::new(0, height, 0, 0));
+    absinfo
+}
+
+fn default_touchscreen_events() -> BTreeMap<u16, virtio_input_bitmap> {
+    let mut supported_events: BTreeMap<u16, virtio_input_bitmap> = BTreeMap::new();
+    supported_events.insert(EV_KEY, virtio_input_bitmap::from_bits(&[BTN_TOUCH]));
+    supported_events.insert(EV_ABS, virtio_input_bitmap::from_bits(&[ABS_X, ABS_Y]));
+    supported_events
+}
+
 fn default_trackpad_absinfo(width: u32, height: u32) -> BTreeMap<u16, virtio_input_absinfo> {
     let mut absinfo: BTreeMap<u16, virtio_input_absinfo> = BTreeMap::new();
     absinfo.insert(ABS_X, virtio_input_absinfo::new(0, width, 0, 0));
