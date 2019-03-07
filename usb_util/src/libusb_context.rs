@@ -65,6 +65,34 @@ impl LibUsbContext {
         })
     }
 
+    /// Create a new jailed LibUsbContext.
+    #[cfg(feature = "sandboxed-libusb")]
+    pub fn new_jailed() -> Result<LibUsbContext> {
+        let mut ctx: *mut bindings::libusb_context = std::ptr::null_mut();
+        // Safe because '&mut ctx' points to a valid memory (on stack).
+        try_libusb!(unsafe { bindings::libusb_init_jailed(&mut ctx) });
+        Ok(LibUsbContext {
+            inner: Arc::new(LibUsbContextInner {
+                context: ctx,
+                pollfd_change_handler: Mutex::new(None),
+            }),
+        })
+    }
+
+    /// Build device from File.
+    #[cfg(feature = "sandboxed-libusb")]
+    pub fn get_device_from_fd(&self, fd: std::fs::File) -> Result<LibUsbDevice> {
+        use std::os::unix::io::IntoRawFd;
+
+        let fd = fd.into_raw_fd();
+        let mut device: *mut bindings::libusb_device = std::ptr::null_mut();
+        // Safe because fd is valid and owned, and '&mut device' points to valid memory.
+        try_libusb!(unsafe {
+            bindings::libusb_get_device_from_fd(self.inner.context, fd, &mut device)
+        });
+        unsafe { Ok(LibUsbDevice::new(self.inner.clone(), device)) }
+    }
+
     /// Returns a list of USB devices currently attached to the system.
     pub fn get_device_iter(&self) -> Result<DeviceIter> {
         let mut list: *mut *mut bindings::libusb_device = std::ptr::null_mut();

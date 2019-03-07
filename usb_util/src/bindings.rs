@@ -4008,7 +4008,17 @@ extern "C" {
     pub fn libusb_init(ctx: *mut *mut libusb_context) -> ::std::os::raw::c_int;
 }
 extern "C" {
+    pub fn libusb_init_jailed(ctx: *mut *mut libusb_context) -> ::std::os::raw::c_int;
+}
+extern "C" {
     pub fn libusb_exit(ctx: *mut libusb_context);
+}
+extern "C" {
+    pub fn libusb_get_device_from_fd(
+        ctx: *mut libusb_context,
+        fd: ::std::os::raw::c_int,
+        device: *mut *mut libusb_device,
+    ) -> ::std::os::raw::c_int;
 }
 extern "C" {
     pub fn libusb_set_debug(ctx: *mut libusb_context, level: ::std::os::raw::c_int);
