@@ -34,6 +34,12 @@ impl EpollEvents {
     }
 }
 
+impl Default for EpollEvents {
+    fn default() -> EpollEvents {
+        Self::new()
+    }
+}
+
 /// Trait for a token that can be associated with an `fd` in a `PollContext`.
 ///
 /// Simple enums that have no or primitive variant data data can use the `#[derive(PollToken)]`
@@ -73,7 +79,7 @@ impl PollToken for u64 {
 
 impl PollToken for u32 {
     fn as_raw_token(&self) -> u64 {
-        *self as u64
+        u64::from(*self)
     }
 
     fn from_raw_token(data: u64) -> Self {
@@ -83,7 +89,7 @@ impl PollToken for u32 {
 
 impl PollToken for u16 {
     fn as_raw_token(&self) -> u64 {
-        *self as u64
+        u64::from(*self)
     }
 
     fn from_raw_token(data: u64) -> Self {
@@ -93,7 +99,7 @@ impl PollToken for u16 {
 
 impl PollToken for u8 {
     fn as_raw_token(&self) -> u64 {
-        *self as u64
+        u64::from(*self)
     }
 
     fn from_raw_token(data: u64) -> Self {
@@ -180,7 +186,7 @@ impl<'a, T: PollToken> PollEvents<'a, T> {
     /// Iterates over each event.
     pub fn iter(&self) -> PollEventIter<slice::Iter<epoll_event>, T> {
         PollEventIter {
-            mask: 0xffffffff,
+            mask: 0xffff_ffff,
             iter: self.events[..self.count].iter(),
             tokens: PhantomData,
         }
@@ -394,7 +400,7 @@ impl<T: PollToken> EpollContext<T> {
             let millis = timeout
                 .as_secs()
                 .checked_mul(1_000)
-                .and_then(|ms| ms.checked_add(timeout.subsec_nanos() as u64 / 1_000_000))
+                .and_then(|ms| ms.checked_add(u64::from(timeout.subsec_nanos()) / 1_000_000))
                 .unwrap_or(i32::max_value() as u64);
             min(i32::max_value() as u64, millis) as i32
         };
