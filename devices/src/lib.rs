@@ -36,6 +36,7 @@ pub mod pl030;
 mod proxy;
 mod register_space;
 mod serial;
+mod utils;
 pub mod virtio;
 
 pub use self::bus::Error as BusError;
