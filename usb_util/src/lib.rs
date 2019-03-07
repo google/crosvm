@@ -19,6 +19,7 @@ pub mod error;
 pub mod config_descriptor;
 pub mod device_handle;
 pub mod endpoint_descriptor;
+pub mod hotplug;
 pub mod interface_descriptor;
 pub mod libusb_context;
 pub mod libusb_device;

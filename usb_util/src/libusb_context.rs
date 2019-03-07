@@ -8,6 +8,7 @@ use std::os::unix::io::RawFd;
 
 use bindings;
 use error::{Error, Result};
+use hotplug::{hotplug_cb, UsbHotplugHandler, UsbHotplugHandlerHolder};
 use libusb_device::LibUsbDevice;
 use std::sync::Arc;
 
@@ -159,6 +160,31 @@ impl LibUsbContext {
     /// Remove the previous registered notifiers.
     pub fn remove_pollfd_notifiers(&self) {
         self.inner.remove_pollfd_notifiers();
+    }
+
+    /// Set a callback that could handle hotplug events. Currently, this function listen to hotplug
+    /// event of all devices.
+    pub fn set_hotplug_cb<H: UsbHotplugHandler + Sized>(&self, handler: H) -> Result<()> {
+        let event = bindings::LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED
+            | bindings::LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT;
+        let holder = UsbHotplugHandlerHolder::new(self.inner.clone(), handler);
+        let raw_holder = Box::into_raw(holder);
+        // Safe becuase hotpulg cb is a vaild c function and raw_holder points to memory for that
+        // function argument.
+        try_libusb!(unsafe {
+            bindings::libusb_hotplug_register_callback(
+                self.inner.context,
+                event,
+                bindings::LIBUSB_HOTPLUG_NO_FLAGS,
+                bindings::LIBUSB_HOTPLUG_MATCH_ANY,
+                bindings::LIBUSB_HOTPLUG_MATCH_ANY,
+                bindings::LIBUSB_HOTPLUG_MATCH_ANY,
+                Some(hotplug_cb),
+                raw_holder as *mut c_void,
+                std::ptr::null_mut(),
+            )
+        });
+        Ok(())
     }
 }
 
