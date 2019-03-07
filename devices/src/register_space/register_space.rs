@@ -95,7 +95,8 @@ impl MMIOSpace {
 mod tests {
     use super::super::{RegisterSpec, StaticRegister, StaticRegisterSpec};
     use super::*;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
+    use sync::Mutex;
 
     #[test]
     fn mmio_no_reg() {
@@ -216,7 +217,7 @@ mod tests {
         mmio.add_register(reg.clone());
         let state_clone = state.clone();
         reg.set_write_cb(move |val: u32| {
-            *state_clone.lock().unwrap() = val;
+            *state_clone.lock() = val;
             val
         });
 
@@ -224,7 +225,7 @@ mod tests {
         mmio.read_bar(0, &mut data);
         assert_eq!([8, 7, 0xdd, 0xcc, 0xbb, 0xaa, 2, 1], data);
         mmio.write_bar(0, &[0, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(0xaa0bccd0, *state.lock().unwrap());
+        assert_eq!(0xaa0bccd0, *state.lock());
     }
 
     #[test]
