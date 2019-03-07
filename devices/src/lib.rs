@@ -27,6 +27,9 @@ extern crate vhost;
 extern crate virtio_sys;
 extern crate vm_control;
 
+#[macro_use]
+mod register_space;
+
 mod bus;
 mod cmos;
 mod i8042;
@@ -34,8 +37,8 @@ mod pci;
 mod pit;
 pub mod pl030;
 mod proxy;
-mod register_space;
 mod serial;
+mod usb;
 mod utils;
 pub mod virtio;
 

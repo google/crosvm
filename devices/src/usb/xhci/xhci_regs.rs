@@ -2,14 +2,25 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use register_space::RegisterSpace;
+use register_space::{Register, RegisterSpace};
 
 /// Max interrupter number.
 pub const MAX_INTERRUPTER: u8 = 1;
 /// For port configuration, see register HCSPARAMS1, spcap1.3 and spcap2.3.
-pub const MAX_SLOTS: u8 = 8;
-/// Max port number.
-pub const MAX_PORTS: u8 = 8;
+pub const MAX_SLOTS: u8 = 16;
+
+/// Usb 2 ports start from port number 0.
+pub const USB2_PORTS_START: u8 = 0;
+/// Last usb 2 ports is 7.
+pub const USB2_PORTS_END: u8 = 8;
+/// Usb 3 ports start from port number 8.
+pub const USB3_PORTS_START: u8 = 8;
+/// Last usb 3 port is 15.
+pub const USB3_PORTS_END: u8 = 16;
+
+/// Max port number. Review the following before changing this:
+///     HCSPARAMS1, portsc, spcap1.3 and spcap2.3.
+pub const MAX_PORTS: u8 = USB3_PORTS_END;
 
 /// Cap register length.
 pub const XHCI_CAPLENGTH: u8 = 0x20;
@@ -135,173 +146,173 @@ pub struct XhciRegs {
 
 /// This function returns mmio space definition for xhci. See Xhci spec chapter 5
 /// for details.
-pub fn init_xhci_mmio_space_and_regs() -> (MMIOSpace, XhciRegs) {
-    let mut mmio = MMIOSpace::new();
+pub fn init_xhci_mmio_space_and_regs() -> (RegisterSpace, XhciRegs) {
+    let mut mmio = RegisterSpace::new();
 
     /* Host Controller Capability Registers */
     mmio.add_register(
         // CAPLENGTH
         static_register!(
-            ty: u8,
-            offset: 0x00,
-            value: XHCI_CAPLENGTH, // Operation register start at offset 0x20
-            ),
+        ty: u8,
+        offset: 0x00,
+        value: XHCI_CAPLENGTH, // Operation register start at offset 0x20
+        ),
     );
     mmio.add_register(
         // HCIVERSION
         static_register!(
-            ty: u16,
-            offset: 0x02,
-            value: 0x0110,// Revision 1.1
-            ),
+        ty: u16,
+        offset: 0x02,
+        value: 0x0110,// Revision 1.1
+        ),
     );
     mmio.add_register(
         // HCSPARAMS1
         static_register!(
-            ty: u32,
-            offset: 0x04,
-            value: 0x08000108, // max_slots = 8, max_interrupters = 1, max_ports = 8
-            ),
+        ty: u32,
+        offset: 0x04,
+        value: 0x10000110, // max_slots = 16, max_interrupters = 1, max_ports = 16
+        ),
     );
 
     mmio.add_register(
         // HCSPARAMS2
         static_register!(
-            ty: u32,
-            offset: 0x08,
-            // Maximum number of event ring segment table entries = 32k
-            // No scratchpad buffers.
-            value: 0xf0,
-            ),
+        ty: u32,
+        offset: 0x08,
+        // Maximum number of event ring segment table entries = 32k
+        // No scratchpad buffers.
+        value: 0xf0,
+        ),
     );
 
     mmio.add_register(
         // HCSPARAM3
         static_register!(
-            ty: u32,
-            offset: 0x0c,
+        ty: u32,
+        offset: 0x0c,
 
-            // Exit latencies for U1 (standby with fast exit) and U2 (standby with
-            // slower exit) power states. We use the max values:
-            // - U1 to U0: < 10 us
-            // - U2 to U1: < 2047 us
-            value: 0x07FF000A,
-            ),
+        // Exit latencies for U1 (standby with fast exit) and U2 (standby with
+        // slower exit) power states. We use the max values:
+        // - U1 to U0: < 10 us
+        // - U2 to U1: < 2047 us
+        value: 0x07FF000A,
+        ),
     );
 
     mmio.add_register(
         // HCCPARAMS1
         static_register!(
-            ty: u32,
-            offset: 0x10,
-            // Supports 64 bit addressing
-            // Max primary stream array size = 0 (streams not supported).
-            // Extended capabilities pointer = 0xC000 offset from base.
-            value: 0x30000501,
-            ),
+        ty: u32,
+        offset: 0x10,
+        // Supports 64 bit addressing
+        // Max primary stream array size = 0 (streams not supported).
+        // Extended capabilities pointer = 0xC000 offset from base.
+        value: 0x30000501,
+        ),
     );
     mmio.add_register(
         // DBOFF
         static_register!(
-            ty: u32,
-            offset: 0x14,
-            value: XHCI_DBOFF, // Doorbell array offset 0x2000 from base.
-            ),
+        ty: u32,
+        offset: 0x14,
+        value: XHCI_DBOFF, // Doorbell array offset 0x2000 from base.
+        ),
     );
 
     mmio.add_register(
         // RTSOFF
         static_register!(
-            ty: u32,
-            offset: 0x18,
-            value: XHCI_RTSOFF, // Runtime registers offset 0x3000 from base.
-            ),
+        ty: u32,
+        offset: 0x18,
+        value: XHCI_RTSOFF, // Runtime registers offset 0x3000 from base.
+        ),
     );
 
     mmio.add_register(
         // HCCPARAMS2
         static_register!(
-            ty: u32,
-            offset: 0x1c,
-            value: 0,
-            ),
+        ty: u32,
+        offset: 0x1c,
+        value: 0,
+        ),
     );
     /* End of Host Controller Capability Registers */
 
     /* Host Controller Operational Registers */
     let usbcmd = register!(
-            name: "usbcmd",
-            ty: u32,
-            offset: 0x20,
-            reset_value: 0,
-            guest_writeable_mask: 0x00002F0F,
-            guest_write_1_to_clear_mask: 0,
-        );
+        name: "usbcmd",
+        ty: u32,
+        offset: 0x20,
+        reset_value: 0,
+        guest_writeable_mask: 0x00002F0F,
+        guest_write_1_to_clear_mask: 0,
+    );
     mmio.add_register(usbcmd.clone());
 
     let usbsts = register!(
-            name: "usbsts",
-            ty: u32,
-            offset: 0x24,
-            reset_value: 0x00000001,
-            guest_writeable_mask: 0x0000041C,
-            guest_write_1_to_clear_mask: 0x0000041C,
-        );
+        name: "usbsts",
+        ty: u32,
+        offset: 0x24,
+        reset_value: 0x00000001,
+        guest_writeable_mask: 0x0000041C,
+        guest_write_1_to_clear_mask: 0x0000041C,
+    );
     mmio.add_register(usbsts.clone());
 
     mmio.add_register(
         //  Pagesize
         static_register!(
-            ty: u32,
-            offset: 0x28,
-            value: 0x00000001,
-            ),
+        ty: u32,
+        offset: 0x28,
+        value: 0x00000001,
+        ),
     );
 
     let dnctrl = register!(
-            name: "dnctrl",
-            ty: u32,
-            offset: 0x34,
-            reset_value: 0,
-            guest_writeable_mask: 0x0000FFFF,
-            guest_write_1_to_clear_mask: 0,
-        );
+        name: "dnctrl",
+        ty: u32,
+        offset: 0x34,
+        reset_value: 0,
+        guest_writeable_mask: 0x0000FFFF,
+        guest_write_1_to_clear_mask: 0,
+    );
     mmio.add_register(dnctrl.clone());
 
     let crcr = register!(
-            name: "crcr",
-            ty: u64,
-            offset: 0x38,
-            reset_value: 9,
-            guest_writeable_mask: 0xFFFFFFFFFFFFFFC7,
-            guest_write_1_to_clear_mask: 0,
-        );
+        name: "crcr",
+        ty: u64,
+        offset: 0x38,
+        reset_value: 9,
+        guest_writeable_mask: 0xFFFFFFFFFFFFFFC7,
+        guest_write_1_to_clear_mask: 0,
+    );
     mmio.add_register(crcr.clone());
 
     let dcbaap = register!(
-            name: "dcbaap",
-            ty: u64,
-            offset: 0x50,
-            reset_value: 0x0,
-            guest_writeable_mask: 0xFFFFFFFFFFFFFFC0,
-            guest_write_1_to_clear_mask: 0,
-        );
+        name: "dcbaap",
+        ty: u64,
+        offset: 0x50,
+        reset_value: 0x0,
+        guest_writeable_mask: 0xFFFFFFFFFFFFFFC0,
+        guest_write_1_to_clear_mask: 0,
+    );
     mmio.add_register(dcbaap.clone());
 
     let config = register!(
-            name: "config",
-            ty: u64,
-            offset: 0x58,
-            reset_value: 0,
-            guest_writeable_mask: 0x0000003F,
-            guest_write_1_to_clear_mask: 0,
-        );
+        name: "config",
+        ty: u64,
+        offset: 0x58,
+        reset_value: 0,
+        guest_writeable_mask: 0x0000003F,
+        guest_write_1_to_clear_mask: 0,
+    );
     mmio.add_register(config.clone());
 
     let portsc = register_array!(
         name: "portsc",
         ty: u32,
-        cnt: 8, //  Must be equal to max_ports
+        cnt: MAX_PORTS,
         base_offset: 0x420,
         stride: 16,
         reset_value: 0x000002A0,
@@ -313,7 +324,7 @@ pub fn init_xhci_mmio_space_and_regs() -> (MMIOSpace, XhciRegs) {
     mmio.add_register_array(&register_array!(
             name: "portpmsc",
             ty: u32,
-            cnt: 8,
+            cnt: MAX_PORTS,
             base_offset: 0x424,
             stride: 16,
             reset_value: 0,
@@ -324,7 +335,7 @@ pub fn init_xhci_mmio_space_and_regs() -> (MMIOSpace, XhciRegs) {
     mmio.add_register_array(&register_array!(
             name: "portli",
             ty: u32,
-            cnt: 8,
+            cnt: MAX_PORTS,
             base_offset: 0x428,
             stride: 16,
             reset_value: 0,
@@ -335,7 +346,7 @@ pub fn init_xhci_mmio_space_and_regs() -> (MMIOSpace, XhciRegs) {
     mmio.add_register_array(&register_array!(
             name: "porthlpmc",
             ty: u32,
-            cnt: 8,
+            cnt: MAX_PORTS,
             base_offset: 0x42c,
             stride: 16,
             reset_value: 0,
@@ -345,7 +356,7 @@ pub fn init_xhci_mmio_space_and_regs() -> (MMIOSpace, XhciRegs) {
     let doorbells = register_array!(
         name: "doorbell",
         ty: u32,
-        cnt: 9, //  Must be equal to max_ports
+        cnt: MAX_SLOTS + 1, //  Must be equal to max_slots + 1
         base_offset: 0x2000,
         stride: 4,
         reset_value: 0,
@@ -358,10 +369,10 @@ pub fn init_xhci_mmio_space_and_regs() -> (MMIOSpace, XhciRegs) {
     mmio.add_register(
         // mfindex
         static_register!(
-            ty: u32,
-            offset: 0x3000,
-            value: 0, // 4 ports starting at port 5
-            ),
+        ty: u32,
+        offset: 0x3000,
+        value: 0, // 4 ports starting at port 5
+        ),
     );
 
     /* Reg Array for interrupters */
@@ -440,41 +451,81 @@ pub fn init_xhci_mmio_space_and_regs() -> (MMIOSpace, XhciRegs) {
     mmio.add_register(
         // spcap 1.1
         static_register!(
-            ty: u32,
-            offset: 0xc000,
-            // "Supported Protocol" capability.
-            // Not next capability.
-            // USB 2.0. Revision 2.0.
-            value: 0x02000002,
-            ),
+        ty: u32,
+        offset: 0xc000,
+        // "Supported Protocol" capability.
+        // Next capability starts after 0x40 dwords.
+        // USB 2.0. Revision 2.0.
+        value: 0x02004002,
+        ),
     );
     mmio.add_register(
         // spcap 1.2
         static_register!(
-            ty: u32,
-            offset: 0xc004,
-            value: 0x20425355, // Name string = "USB "
-            ),
+        ty: u32,
+        offset: 0xc004,
+        value: 0x20425355, // Name string = "USB "
+        ),
     );
     mmio.add_register(
         // spcap 1.3
         static_register!(
-            ty: u32,
-            offset: 0xc008,
-            value: 0x00000801, // 4 ports starting at port 1.
-            ),
+        ty: u32,
+        offset: 0xc008,
+        value: 0x00000801, // 8 ports starting at port 1. See USB2_PORTS_START and USB2_PORTS_END.
+        ),
     );
 
     mmio.add_register(
         // spcap 1.4
         static_register!(
-            ty: u32,
-            offset: 0xc00c,
-            // The specification says that this shall be set to 0.
-            // Section 7.2.2.1.4.
-            value: 0,
-            ),
+        ty: u32,
+        offset: 0xc00c,
+        // The specification says that this shall be set to 0.
+        // Section 7.2.2.1.4.
+        value: 0,
+        ),
     );
+
+    mmio.add_register(
+        // spcap 2.1
+        static_register!(
+        ty: u32,
+        offset: 0xc100,
+        // "Supported Protocol" capability.
+        // Not next capability.
+        // USB 3.0. Revision 2.0.
+        value: 0x03000002,
+        ),
+    );
+    mmio.add_register(
+        // spcap 2.2
+        static_register!(
+        ty: u32,
+        offset: 0xc104,
+        value: 0x20425355, // Name string = "USB "
+        ),
+    );
+    mmio.add_register(
+        // spcap 2.3
+        static_register!(
+        ty: u32,
+        offset: 0xc108,
+        value: 0x00000809, // 8 ports starting at port 9. See USB3_PORTS_START and USB3_PORTS_END.
+        ),
+    );
+
+    mmio.add_register(
+        // spcap 2.4
+        static_register!(
+        ty: u32,
+        offset: 0xc10c,
+        // The specification says that this shall be set to 0.
+        // Section 7.2.2.1.4.
+        value: 0,
+        ),
+    );
+
     /* End of Host Controller Operational Registers */
 
     (mmio, xhci_regs)

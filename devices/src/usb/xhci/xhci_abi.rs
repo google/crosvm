@@ -4,7 +4,7 @@
 
 pub use super::xhci_abi_schema::*;
 use data_model::DataInit;
-use std;
+use std::fmt::{self, Display};
 
 unsafe impl DataInit for Trb {}
 unsafe impl DataInit for NormalTrb {}
@@ -140,136 +140,163 @@ impl TypedTrb for PortStatusChangeEventTrb {
     const TY: TrbType = TrbType::PortStatusChangeEvent;
 }
 
+#[derive(Debug, PartialEq)]
+pub enum Error {
+    UnknownTrbType(u8),
+    UnknownCompletionCode(u8),
+    UnknownDeviceSlotState(u8),
+    UnknownEndpointState(u8),
+    CannotCastTrb,
+}
+
+type Result<T> = std::result::Result<T, Error>;
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            UnknownTrbType(v) => write!(f, "we got an unknown trb type value: {}", v),
+            UnknownCompletionCode(v) => write!(f, "we got an unknown trb completion code: {}", v),
+            UnknownDeviceSlotState(v) => write!(f, "we got and unknown device slot state: {}", v),
+            UnknownEndpointState(v) => write!(f, "we got and unknown endpoint state: {}", v),
+            CannotCastTrb => write!(f, "cannot cast trb from raw memory"),
+        }
+    }
+}
+
 /// All trb structs have the same size. One trb could be safely casted to another, though the
 /// values might be invalid.
 pub unsafe trait TrbCast: DataInit + TypedTrb {
-    fn cast<T: TrbCast>(&self) -> &T {
-        T::from_slice(self.as_slice()).unwrap()
+    fn cast<T: TrbCast>(&self) -> Result<&T> {
+        T::from_slice(self.as_slice()).ok_or(Error::CannotCastTrb)
     }
 
-    fn cast_mut<T: TrbCast>(&mut self) -> &mut T {
-        T::from_mut_slice(self.as_mut_slice()).unwrap()
+    fn cast_mut<T: TrbCast>(&mut self) -> Result<&mut T> {
+        T::from_mut_slice(self.as_mut_slice()).ok_or(Error::CannotCastTrb)
     }
 
-    fn checked_cast<T: TrbCast>(&self) -> Option<&T> {
+    fn checked_cast<T: TrbCast>(&self) -> Result<&T> {
         if Trb::from_slice(self.as_slice())
-            .unwrap()
-            .trb_type()
-            .unwrap()
+            .ok_or(Error::CannotCastTrb)?
+            .trb_type()?
             != T::TY
         {
-            return None;
+            return Err(Error::CannotCastTrb);
         }
-        Some(T::from_slice(self.as_slice()).unwrap())
+        T::from_slice(self.as_slice()).ok_or(Error::CannotCastTrb)
     }
 
-    fn checked_mut_cast<T: TrbCast>(&mut self) -> Option<&mut T> {
+    fn checked_mut_cast<T: TrbCast>(&mut self) -> Result<&mut T> {
         if Trb::from_slice(self.as_slice())
-            .unwrap()
-            .trb_type()
-            .unwrap()
+            .ok_or(Error::CannotCastTrb)?
+            .trb_type()?
             != T::TY
         {
-            return None;
+            return Err(Error::CannotCastTrb);
         }
-        Some(T::from_mut_slice(self.as_mut_slice()).unwrap())
+        T::from_mut_slice(self.as_mut_slice()).ok_or(Error::CannotCastTrb)
+    }
+}
+
+impl Trb {
+    fn fmt_helper(&self, f: &mut fmt::Formatter) -> Result<fmt::Result> {
+        match self.trb_type()? {
+            TrbType::Reserved => Ok(write!(f, "reserved trb type")),
+            TrbType::Normal => {
+                let t = self.cast::<NormalTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::SetupStage => {
+                let t = self.cast::<SetupStageTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::DataStage => {
+                let t = self.cast::<DataStageTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::StatusStage => {
+                let t = self.cast::<StatusStageTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::Isoch => {
+                let t = self.cast::<IsochTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::Link => {
+                let t = self.cast::<LinkTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::EventData => {
+                let t = self.cast::<EventDataTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::Noop => {
+                let t = self.cast::<NoopTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::EnableSlotCommand => Ok(write!(f, "trb: enable slot command {:?}", self)),
+            TrbType::DisableSlotCommand => {
+                let t = self.cast::<DisableSlotCommandTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::AddressDeviceCommand => {
+                let t = self.cast::<AddressDeviceCommandTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::ConfigureEndpointCommand => {
+                let t = self.cast::<ConfigureEndpointCommandTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::EvaluateContextCommand => {
+                let t = self.cast::<EvaluateContextCommandTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::ResetEndpointCommand => {
+                let t = self.cast::<ResetEndpointCommandTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::StopEndpointCommand => {
+                let t = self.cast::<StopEndpointCommandTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::SetTRDequeuePointerCommand => {
+                let t = self.cast::<SetTRDequeuePointerCommandTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::ResetDeviceCommand => {
+                let t = self.cast::<ResetDeviceCommandTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::NoopCommand => Ok(write!(f, "trb: noop command {:?}", self)),
+            TrbType::TransferEvent => {
+                let t = self.cast::<TransferEventTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::CommandCompletionEvent => {
+                let t = self.cast::<CommandCompletionEventTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+            TrbType::PortStatusChangeEvent => {
+                let t = self.cast::<PortStatusChangeEventTrb>()?;
+                Ok(write!(f, "trb: {:?}", t))
+            }
+        }
+    }
+}
+impl Display for Trb {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.fmt_helper(f) {
+            Ok(f) => f,
+            Err(e) => write!(f, "fail to format trb {}", e),
+        }
     }
 }
 
 impl Trb {
     /// Get trb type.
-    pub fn trb_type(&self) -> Option<TrbType> {
+    pub fn trb_type(&self) -> Result<TrbType> {
         TrbType::from_raw(self.get_trb_type())
-    }
-
-    /// Get debug string, the string will be printed with correct trb type and
-    /// fields.
-    pub fn debug_str(&self) -> String {
-        let trb_type = match self.trb_type() {
-            None => return format!("unexpected trb type: {:?}", self),
-            Some(t) => t,
-        };
-        match trb_type {
-            TrbType::Reserved => format!("reserved trb type"),
-            TrbType::Normal => {
-                let t = self.cast::<NormalTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::SetupStage => {
-                let t = self.cast::<SetupStageTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::DataStage => {
-                let t = self.cast::<DataStageTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::StatusStage => {
-                let t = self.cast::<StatusStageTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::Isoch => {
-                let t = self.cast::<IsochTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::Link => {
-                let t = self.cast::<LinkTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::EventData => {
-                let t = self.cast::<EventDataTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::Noop => {
-                let t = self.cast::<NoopTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::EnableSlotCommand => format!("trb: enable slot command {:?}", self),
-            TrbType::DisableSlotCommand => {
-                let t = self.cast::<DisableSlotCommandTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::AddressDeviceCommand => {
-                let t = self.cast::<AddressDeviceCommandTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::ConfigureEndpointCommand => {
-                let t = self.cast::<ConfigureEndpointCommandTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::EvaluateContextCommand => {
-                let t = self.cast::<EvaluateContextCommandTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::ResetEndpointCommand => {
-                let t = self.cast::<ResetEndpointCommandTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::StopEndpointCommand => {
-                let t = self.cast::<StopEndpointCommandTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::SetTRDequeuePointerCommand => {
-                let t = self.cast::<SetTRDequeuePointerCommandTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::ResetDeviceCommand => {
-                let t = self.cast::<ResetDeviceCommandTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::NoopCommand => format!("trb: noop command {:?}", self),
-            TrbType::TransferEvent => {
-                let t = self.cast::<TransferEventTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::CommandCompletionEvent => {
-                let t = self.cast::<CommandCompletionEventTrb>();
-                format!("trb: {:?}", t)
-            }
-            TrbType::PortStatusChangeEvent => {
-                let t = self.cast::<PortStatusChangeEventTrb>();
-                format!("trb: {:?}", t)
-            }
-        }
     }
 
     /// Get cycle bit.
@@ -286,17 +313,17 @@ impl Trb {
     }
 
     /// Get chain bit.
-    pub fn get_chain_bit(&self) -> bool {
-        match self.trb_type() {
-            Some(TrbType::Normal) => self.cast::<NormalTrb>().get_chain() != 0,
-            Some(TrbType::DataStage) => self.cast::<DataStageTrb>().get_chain() != 0,
-            Some(TrbType::StatusStage) => self.cast::<StatusStageTrb>().get_chain() != 0,
-            Some(TrbType::Isoch) => self.cast::<IsochTrb>().get_chain() != 0,
-            Some(TrbType::Noop) => self.cast::<NoopTrb>().get_chain() != 0,
-            Some(TrbType::Link) => self.cast::<LinkTrb>().get_chain() != 0,
-            Some(TrbType::EventData) => self.cast::<EventDataTrb>().get_chain() != 0,
+    pub fn get_chain_bit(&self) -> Result<bool> {
+        Ok(match self.trb_type() {
+            Ok(TrbType::Normal) => self.cast::<NormalTrb>()?.get_chain() != 0,
+            Ok(TrbType::DataStage) => self.cast::<DataStageTrb>()?.get_chain() != 0,
+            Ok(TrbType::StatusStage) => self.cast::<StatusStageTrb>()?.get_chain() != 0,
+            Ok(TrbType::Isoch) => self.cast::<IsochTrb>()?.get_chain() != 0,
+            Ok(TrbType::Noop) => self.cast::<NoopTrb>()?.get_chain() != 0,
+            Ok(TrbType::Link) => self.cast::<LinkTrb>()?.get_chain() != 0,
+            Ok(TrbType::EventData) => self.cast::<EventDataTrb>()?.get_chain() != 0,
             _ => false,
-        }
+        })
     }
 
     /// Get interrupt target.
@@ -306,8 +333,8 @@ impl Trb {
     }
 
     /// Only some of trb types could appear in transfer ring.
-    pub fn can_be_in_transfer_ring(&self) -> bool {
-        match self.trb_type().unwrap() {
+    pub fn can_be_in_transfer_ring(&self) -> Result<bool> {
+        match self.trb_type()? {
             TrbType::Normal
             | TrbType::SetupStage
             | TrbType::DataStage
@@ -315,19 +342,19 @@ impl Trb {
             | TrbType::Isoch
             | TrbType::Link
             | TrbType::EventData
-            | TrbType::Noop => true,
-            _ => false,
+            | TrbType::Noop => Ok(true),
+            _ => Ok(false),
         }
     }
 
     /// Length of this transfer.
-    pub fn transfer_length(&self) -> u32 {
+    pub fn transfer_length(&self) -> Result<u32> {
         const STATUS_TRANSFER_LENGTH_MASK: u32 = 0x1ffff;
-        match self.trb_type().unwrap() {
+        match self.trb_type()? {
             TrbType::Normal | TrbType::SetupStage | TrbType::DataStage | TrbType::Isoch => {
-                self.get_status() & STATUS_TRANSFER_LENGTH_MASK
+                Ok(self.get_status() & STATUS_TRANSFER_LENGTH_MASK)
             }
-            _ => 0,
+            _ => Ok(0),
         }
     }
 
@@ -338,20 +365,47 @@ impl Trb {
     }
 
     /// Returns true if this trb is immediate data.
-    pub fn immediate_data(&self) -> bool {
+    pub fn immediate_data(&self) -> Result<bool> {
         const FLAGS_IMMEDIATE_DATA_MASK: u16 = 0x20;
-        match self.trb_type().unwrap() {
+        match self.trb_type()? {
             TrbType::Normal | TrbType::SetupStage | TrbType::DataStage | TrbType::Isoch => {
-                (self.get_flags() & FLAGS_IMMEDIATE_DATA_MASK) != 0
+                Ok((self.get_flags() & FLAGS_IMMEDIATE_DATA_MASK) != 0)
             }
-            _ => false,
+            _ => Ok(false),
         }
     }
 }
 
+impl LinkTrb {
+    /// Get cycle.
+    pub fn get_cycle_bit(&self) -> bool {
+        self.get_cycle() != 0
+    }
+
+    /// Get toggle cycle.
+    pub fn get_toggle_cycle_bit(&self) -> bool {
+        self.get_toggle_cycle() != 0
+    }
+
+    /// set chain status.
+    pub fn set_chain_bit(&mut self, v: bool) {
+        self.set_chain(v as u8);
+    }
+
+    /// Get chain status.
+    pub fn get_chain_bit(&self) -> bool {
+        self.get_chain() != 0
+    }
+
+    /// Get interrupt on completion.
+    pub fn interrupt_on_completion(&self) -> bool {
+        self.get_interrupt_on_completion() != 0
+    }
+}
+
 /// Trait for enum that could be converted from raw u8.
-pub trait PrimitiveEnum: Sized {
-    fn from_raw(val: u8) -> Option<Self>;
+pub trait PrimitiveTrbEnum: Sized {
+    fn from_raw(val: u8) -> Result<Self>;
 }
 
 /// All kinds of trb.
@@ -381,32 +435,32 @@ pub enum TrbType {
     PortStatusChangeEvent = 34,
 }
 
-impl PrimitiveEnum for TrbType {
-    fn from_raw(val: u8) -> Option<Self> {
+impl PrimitiveTrbEnum for TrbType {
+    fn from_raw(val: u8) -> Result<Self> {
         match val {
-            0 => Some(TrbType::Reserved),
-            1 => Some(TrbType::Normal),
-            2 => Some(TrbType::SetupStage),
-            3 => Some(TrbType::DataStage),
-            4 => Some(TrbType::StatusStage),
-            5 => Some(TrbType::Isoch),
-            6 => Some(TrbType::Link),
-            7 => Some(TrbType::EventData),
-            8 => Some(TrbType::Noop),
-            9 => Some(TrbType::EnableSlotCommand),
-            10 => Some(TrbType::DisableSlotCommand),
-            11 => Some(TrbType::AddressDeviceCommand),
-            12 => Some(TrbType::ConfigureEndpointCommand),
-            13 => Some(TrbType::EvaluateContextCommand),
-            14 => Some(TrbType::ResetEndpointCommand),
-            15 => Some(TrbType::StopEndpointCommand),
-            16 => Some(TrbType::SetTRDequeuePointerCommand),
-            17 => Some(TrbType::ResetDeviceCommand),
-            23 => Some(TrbType::NoopCommand),
-            32 => Some(TrbType::TransferEvent),
-            33 => Some(TrbType::CommandCompletionEvent),
-            34 => Some(TrbType::PortStatusChangeEvent),
-            _ => None,
+            0 => Ok(TrbType::Reserved),
+            1 => Ok(TrbType::Normal),
+            2 => Ok(TrbType::SetupStage),
+            3 => Ok(TrbType::DataStage),
+            4 => Ok(TrbType::StatusStage),
+            5 => Ok(TrbType::Isoch),
+            6 => Ok(TrbType::Link),
+            7 => Ok(TrbType::EventData),
+            8 => Ok(TrbType::Noop),
+            9 => Ok(TrbType::EnableSlotCommand),
+            10 => Ok(TrbType::DisableSlotCommand),
+            11 => Ok(TrbType::AddressDeviceCommand),
+            12 => Ok(TrbType::ConfigureEndpointCommand),
+            13 => Ok(TrbType::EvaluateContextCommand),
+            14 => Ok(TrbType::ResetEndpointCommand),
+            15 => Ok(TrbType::StopEndpointCommand),
+            16 => Ok(TrbType::SetTRDequeuePointerCommand),
+            17 => Ok(TrbType::ResetDeviceCommand),
+            23 => Ok(TrbType::NoopCommand),
+            32 => Ok(TrbType::TransferEvent),
+            33 => Ok(TrbType::CommandCompletionEvent),
+            34 => Ok(TrbType::PortStatusChangeEvent),
+            v => Err(Error::UnknownTrbType(v)),
         }
     }
 }
@@ -422,17 +476,17 @@ pub enum TrbCompletionCode {
     ContextStateError = 19,
 }
 
-impl PrimitiveEnum for TrbCompletionCode {
-    fn from_raw(val: u8) -> Option<Self> {
+impl PrimitiveTrbEnum for TrbCompletionCode {
+    fn from_raw(val: u8) -> Result<Self> {
         match val {
-            1 => Some(TrbCompletionCode::Success),
-            4 => Some(TrbCompletionCode::TransactionError),
-            5 => Some(TrbCompletionCode::TrbError),
-            9 => Some(TrbCompletionCode::NoSlotsAvailableError),
-            11 => Some(TrbCompletionCode::SlotNotEnabledError),
-            13 => Some(TrbCompletionCode::ShortPacket),
-            19 => Some(TrbCompletionCode::ContextStateError),
-            _ => None,
+            1 => Ok(TrbCompletionCode::Success),
+            4 => Ok(TrbCompletionCode::TransactionError),
+            5 => Ok(TrbCompletionCode::TrbError),
+            9 => Ok(TrbCompletionCode::NoSlotsAvailableError),
+            11 => Ok(TrbCompletionCode::SlotNotEnabledError),
+            13 => Ok(TrbCompletionCode::ShortPacket),
+            19 => Ok(TrbCompletionCode::ContextStateError),
+            v => Err(Error::UnknownCompletionCode(v)),
         }
     }
 }
@@ -448,21 +502,21 @@ pub enum DeviceSlotState {
     Configured = 3,
 }
 
-impl PrimitiveEnum for DeviceSlotState {
-    fn from_raw(val: u8) -> Option<Self> {
+impl PrimitiveTrbEnum for DeviceSlotState {
+    fn from_raw(val: u8) -> Result<Self> {
         match val {
-            0 => Some(DeviceSlotState::DisabledOrEnabled),
-            1 => Some(DeviceSlotState::Default),
-            2 => Some(DeviceSlotState::Addressed),
-            3 => Some(DeviceSlotState::Configured),
-            _ => None,
+            0 => Ok(DeviceSlotState::DisabledOrEnabled),
+            1 => Ok(DeviceSlotState::Default),
+            2 => Ok(DeviceSlotState::Addressed),
+            3 => Ok(DeviceSlotState::Configured),
+            v => Err(Error::UnknownDeviceSlotState(v)),
         }
     }
 }
 
 impl SlotContext {
     /// Set slot context state.
-    pub fn state(&self) -> Option<DeviceSlotState> {
+    pub fn state(&self) -> Result<DeviceSlotState> {
         DeviceSlotState::from_raw(self.get_slot_state())
     }
 
@@ -478,19 +532,19 @@ pub enum EndpointState {
     Running = 1,
 }
 
-impl PrimitiveEnum for EndpointState {
-    fn from_raw(val: u8) -> Option<Self> {
+impl PrimitiveTrbEnum for EndpointState {
+    fn from_raw(val: u8) -> Result<Self> {
         match val {
-            0 => Some(EndpointState::Disabled),
-            1 => Some(EndpointState::Running),
-            _ => None,
+            0 => Ok(EndpointState::Disabled),
+            1 => Ok(EndpointState::Running),
+            v => Err(Error::UnknownEndpointState(v)),
         }
     }
 }
 
 impl EndpointContext {
     /// Get endpoint context state.
-    pub fn state(&self) -> Option<EndpointState> {
+    pub fn state(&self) -> Result<EndpointState> {
         EndpointState::from_raw(self.get_endpoint_state())
     }
 
