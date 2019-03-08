@@ -3,6 +3,9 @@ name = "vm_control"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 
+[features]
+sandboxed-libusb = []
+
 [dependencies]
 byteorder = "*"
 data_model = { path = "../data_model" }

@@ -5,8 +5,6 @@
 use super::interrupter::{Error as InterrupterError, Interrupter};
 use super::scatter_gather_buffer::{Error as BufferError, ScatterGatherBuffer};
 use super::usb_hub::{Error as HubError, UsbPort};
-use super::usb_util::types::UsbRequestSetup;
-use super::usb_util::usb_transfer::TransferStatus;
 use super::xhci_abi::{
     AddressedTrb, Error as TrbError, EventDataTrb, SetupStageTrb, TransferDescriptor, TrbCast,
     TrbCompletionCode, TrbType,
@@ -18,6 +16,8 @@ use std::mem;
 use std::sync::{Arc, Weak};
 use sync::Mutex;
 use sys_util::{Error as SysError, EventFd, GuestMemory};
+use usb::usb_util::types::UsbRequestSetup;
+use usb::usb_util::usb_transfer::TransferStatus;
 
 #[derive(Debug)]
 pub enum Error {

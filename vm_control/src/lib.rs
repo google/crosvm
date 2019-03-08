@@ -23,7 +23,7 @@ use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
-use libc::{EINVAL, ENODEV};
+use libc::{EINVAL, EIO, ENODEV};
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use kvm::{Datamatch, IoeventAddress, Vm};
@@ -34,6 +34,7 @@ use sys_util::{
 };
 
 /// A file descriptor either borrowed or owned by this.
+#[derive(Debug)]
 pub enum MaybeOwnedFd {
     /// Owned by this enum variant, and will be destructed automatically if not moved out.
     Owned(File),
@@ -98,10 +99,54 @@ impl Default for VmRunMode {
     }
 }
 
+#[derive(MsgOnSocket, Debug)]
+pub enum UsbControlCommand {
+    AttachDevice {
+        bus: u8,
+        addr: u8,
+        vid: u16,
+        pid: u16,
+        fd: Option<MaybeOwnedFd>,
+    },
+    DetachDevice {
+        port: u8,
+    },
+    ListDevice {
+        port: u8,
+    },
+}
+
+#[derive(MsgOnSocket, Debug)]
+pub enum UsbControlResult {
+    Ok { port: u8 },
+    NoAvailablePort,
+    NoSuchDevice,
+    NoSuchPort,
+    FailedToOpenDevice,
+    Device { port: u8, vid: u16, pid: u16 },
+}
+
+impl Display for UsbControlResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::UsbControlResult::*;
+
+        match self {
+            Ok { port } => write!(f, "ok {}", port),
+            NoAvailablePort => write!(f, "no_available_port"),
+            NoSuchDevice => write!(f, "no_such_device"),
+            NoSuchPort => write!(f, "no_such_port"),
+            FailedToOpenDevice => write!(f, "failed_to_open_device"),
+            Device { port, vid, pid } => write!(f, "device {} {:04x} {:04x}", port, vid, pid),
+        }
+    }
+}
+
+pub type UsbControlSocket = MsgSocket<UsbControlCommand, UsbControlResult>;
+
 /// A request to the main process to perform some operation on the VM.
 ///
 /// Unless otherwise noted, each request should expect a `VmResponse::Ok` to be received on success.
-#[derive(MsgOnSocket)]
+#[derive(MsgOnSocket, Debug)]
 pub enum VmRequest {
     /// Set the size of the VM's balloon in bytes.
     BalloonAdjust(u64),
@@ -130,6 +175,8 @@ pub enum VmRequest {
     /// Resize a disk chosen by `disk_index` to `new_size` in bytes.
     /// `disk_index` is a 0-based count of `--disk`, `--rwdisk`, and `-r` command-line options.
     DiskResize { disk_index: usize, new_size: u64 },
+    /// Command to use controller.
+    UsbCommand(UsbControlCommand),
 }
 
 fn register_memory(
@@ -268,6 +315,10 @@ impl VmRequest {
                     VmResponse::Err(SysError::new(ENODEV))
                 }
             }
+            VmRequest::UsbCommand(ref cmd) => {
+                error!("not implemented yet");
+                VmResponse::Ok
+            }
         }
     }
 }
@@ -275,7 +326,7 @@ impl VmRequest {
 /// Indication of success or failure of a `VmRequest`.
 ///
 /// Success is usually indicated `VmResponse::Ok` unless there is data associated with the response.
-#[derive(MsgOnSocket)]
+#[derive(MsgOnSocket, Debug)]
 pub enum VmResponse {
     /// Indicates the request was executed successfully.
     Ok,
@@ -292,6 +343,8 @@ pub enum VmResponse {
         slot: u32,
         desc: GpuMemoryDesc,
     },
+    /// Results of usb control commands.
+    UsbResponse(UsbControlResult),
 }
 
 impl Display for VmResponse {
@@ -311,6 +364,7 @@ impl Display for VmResponse {
                 "gpu memory allocated and registered to page frame number {:#x} and memory slot {}",
                 pfn, slot
             ),
+            UsbResponse(result) => write!(f, "usb control request get result {:?}", result),
         }
     }
 }
