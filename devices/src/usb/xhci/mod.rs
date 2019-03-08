@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 mod event_ring;
+mod interrupter;
+mod intr_resample_handler;
 mod xhci_abi;
 mod xhci_abi_schema;
 mod xhci_regs;
