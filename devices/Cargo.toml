@@ -29,6 +29,7 @@ resources = { path = "../resources" }
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
 tpm2 = { path = "../tpm2", optional = true }
+usb_util = { path = "../usb_util" }
 vhost = { path = "../vhost" }
 virtio_sys = { path = "../virtio_sys" }
 vm_control = { path = "../vm_control" }
