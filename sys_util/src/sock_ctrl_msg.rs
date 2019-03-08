@@ -53,7 +53,7 @@ fn CMSG_DATA(cmsg_buffer: *mut cmsghdr) -> *mut RawFd {
 
 // This function is like CMSG_NEXT, but safer because it reads only from references, although it
 // does some pointer arithmetic on cmsg_ptr.
-#[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+#[allow(clippy::cast_ptr_alignment)]
 fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut cmsghdr) -> *mut cmsghdr {
     let next_cmsg = (cmsg_ptr as *mut u8).wrapping_add(CMSG_ALIGN!(cmsg.cmsg_len)) as *mut cmsghdr;
     if next_cmsg
@@ -318,7 +318,7 @@ pub unsafe trait IntoIovec {
 // guaranteed to be valid.
 unsafe impl<'a> IntoIovec for &'a [u8] {
     // Clippy false positive: https://github.com/rust-lang/rust-clippy/issues/3480
-    #[cfg_attr(feature = "cargo-clippy", allow(useless_asref))]
+    #[allow(clippy::useless_asref)]
     fn as_ptr(&self) -> *const c_void {
         self.as_ref().as_ptr() as *const c_void
     }
