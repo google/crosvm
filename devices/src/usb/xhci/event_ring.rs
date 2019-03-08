@@ -84,7 +84,7 @@ impl EventRing {
                 .expect("Fail to write Guest Memory");
         }
 
-        debug!(
+        usb_debug!(
             "event write to pointer {:#x}, trb_count {}, {}",
             self.enqueue_pointer.0,
             self.trb_count,
@@ -108,21 +108,21 @@ impl EventRing {
 
     /// Set segment table size.
     pub fn set_seg_table_size(&mut self, size: u16) {
-        debug!("event ring seg table size is set to {}", size);
+        usb_debug!("event ring seg table size is set to {}", size);
         self.segment_table_size = size;
         self.try_reconfigure_event_ring();
     }
 
     /// Set segment table base addr.
     pub fn set_seg_table_base_addr(&mut self, addr: GuestAddress) {
-        debug!("event ring seg table base addr is set to {:#x}", addr.0);
+        usb_debug!("event ring seg table base addr is set to {:#x}", addr.0);
         self.segment_table_base_address = addr;
         self.try_reconfigure_event_ring();
     }
 
     /// Set dequeue pointer.
     pub fn set_dequeue_pointer(&mut self, addr: GuestAddress) {
-        debug!("event ring dequeue pointer set to {:#x}", addr.0);
+        usb_debug!("event ring dequeue pointer set to {:#x}", addr.0);
         self.dequeue_pointer = addr;
     }
 
