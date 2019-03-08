@@ -29,7 +29,7 @@ impl AsyncJobQueue {
             &queue.evt,
             WatchingEvents::empty().set_read(),
             Arc::downgrade(&handler),
-        );
+        )?;
         Ok(queue)
     }
 

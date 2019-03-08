@@ -27,6 +27,7 @@ extern crate vhost;
 extern crate virtio_sys;
 extern crate vm_control;
 
+#[allow(dead_code)]
 #[macro_use]
 mod register_space;
 
@@ -38,7 +39,9 @@ mod pit;
 pub mod pl030;
 mod proxy;
 mod serial;
+#[allow(dead_code)]
 mod usb;
+#[allow(dead_code)]
 mod utils;
 pub mod virtio;
 

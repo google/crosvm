@@ -4,7 +4,7 @@
 
 use std;
 use std::boxed::Box;
-use std::cmp::{max, min, Ord, Ordering, PartialEq, PartialOrd};
+use std::cmp::{max, min, Ord, Ordering, PartialOrd};
 use std::mem::size_of;
 use std::sync::{Arc, MutexGuard};
 use sync::Mutex;
