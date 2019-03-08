@@ -26,6 +26,12 @@ impl Clock {
     }
 }
 
+impl Default for Clock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 const NS_PER_SEC: u64 = 1_000_000_000;
 /// A fake clock that can be used in tests to give exact control over the time.
 /// For a code example, see the tests in sys_util/src/timerfd.rs.
@@ -38,7 +44,7 @@ pub struct FakeClock {
 impl FakeClock {
     pub fn new() -> Self {
         FakeClock {
-            ns_since_epoch: 1547163599 * NS_PER_SEC,
+            ns_since_epoch: 1_547_163_599 * NS_PER_SEC,
             deadlines: Vec::new(),
         }
     }
@@ -80,5 +86,11 @@ impl FakeClock {
             }
             !expired
         });
+    }
+}
+
+impl Default for FakeClock {
+    fn default() -> Self {
+        Self::new()
     }
 }
