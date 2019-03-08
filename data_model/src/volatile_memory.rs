@@ -31,7 +31,7 @@ use std::result;
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 use std::{isize, usize};
 
-use DataInit;
+use crate::DataInit;
 
 #[derive(Eq, PartialEq, Debug)]
 pub enum VolatileMemoryError {
@@ -58,7 +58,7 @@ impl Display for VolatileMemoryError {
 
 pub type VolatileMemoryResult<T> = result::Result<T, VolatileMemoryError>;
 
-use VolatileMemoryError as Error;
+use crate::VolatileMemoryError as Error;
 type Result<T> = VolatileMemoryResult<T>;
 
 /// Convenience function for computing `base + offset` which returns

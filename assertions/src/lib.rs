@@ -13,7 +13,7 @@ pub mod mechanism;
 // Re-export so that these types appear with a more concise name in error
 // messages.
 #[doc(hidden)]
-pub use mechanism::*;
+pub use crate::mechanism::*;
 
 /// Macro that fails to compile if a given const expression is not true.
 ///

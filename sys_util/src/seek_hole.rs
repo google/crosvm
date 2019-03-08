@@ -54,10 +54,10 @@ impl SeekHole for File {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TempDir;
     use std::fs::File;
     use std::io::{Seek, SeekFrom, Write};
     use std::path::PathBuf;
-    use TempDir;
 
     fn seek_cur(file: &mut File) -> u64 {
         file.seek(SeekFrom::Current(0)).unwrap()

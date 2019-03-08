@@ -2,12 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::BTreeMap;
+
 use super::constants::*;
+use super::virtio_input_absinfo;
 use super::virtio_input_bitmap;
 use super::virtio_input_device_ids;
 use super::VirtioInputConfig;
-use std::collections::BTreeMap;
-use virtio::input::virtio_input_absinfo;
 
 /// Instantiates a VirtioInputConfig object with the default configuration for a trackpad. It
 /// supports touch, left button and right button events, as well as X and Y axis.

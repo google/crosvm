@@ -3,10 +3,11 @@
 // found in the LICENSE file.
 
 use assertions::const_assert;
-use bindings;
 use data_model::DataInit;
 
 use std::mem::size_of;
+
+use crate::bindings;
 
 /// Speed of usb device. See usb spec for more details.
 #[derive(Debug)]

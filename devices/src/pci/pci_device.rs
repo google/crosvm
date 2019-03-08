@@ -9,12 +9,12 @@ use std::fmt::{self, Display};
 use std::os::unix::io::RawFd;
 
 use kvm::Datamatch;
-use pci::pci_configuration::{self, PciConfiguration};
-use pci::PciInterruptPin;
 use resources::SystemAllocator;
 use sys_util::EventFd;
 
-use BusDevice;
+use crate::pci::pci_configuration::{self, PciConfiguration};
+use crate::pci::PciInterruptPin;
+use crate::BusDevice;
 
 #[derive(Debug)]
 pub enum Error {

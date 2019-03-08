@@ -15,9 +15,9 @@ pub mod vhost;
 pub mod virtio_net;
 // generated with bindgen /usr/include/linux/virtio_ring.h --no-unstable-rust --constified-enum '*' --with-derive-default
 pub mod virtio_ring;
-pub use vhost::*;
-pub use virtio_net::*;
-pub use virtio_ring::*;
+pub use crate::vhost::*;
+pub use crate::virtio_net::*;
+pub use crate::virtio_ring::*;
 
 pub const VHOST: ::std::os::raw::c_uint = 0xaf;
 

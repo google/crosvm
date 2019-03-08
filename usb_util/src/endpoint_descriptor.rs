@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::types::{EndpointDirection, EndpointType};
-use bindings::libusb_endpoint_descriptor;
 use std::ops::Deref;
+
+use crate::bindings::libusb_endpoint_descriptor;
+use crate::types::{EndpointDirection, EndpointType};
 
 /// EndpointDescriptor wraps libusb_endpoint_descriptor.
 pub struct EndpointDescriptor<'a>(&'a libusb_endpoint_descriptor);

@@ -11,7 +11,7 @@ use libc::{
     ISIG, O_NONBLOCK, STDIN_FILENO, TCSANOW,
 };
 
-use {errno_result, Result};
+use crate::{errno_result, Result};
 
 fn modify_mode<F: FnOnce(&mut termios)>(fd: RawFd, f: F) -> Result<()> {
     // Safe because we check the return value of isatty.

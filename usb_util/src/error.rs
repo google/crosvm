@@ -5,7 +5,7 @@
 use std;
 use std::fmt;
 
-use bindings;
+use crate::bindings;
 
 /// Error type for libusb.
 pub enum Error {

@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::interface_descriptor::InterfaceDescriptor;
-use bindings;
-use bindings::libusb_config_descriptor;
 use std::ops::Deref;
+
+use crate::bindings::{self, libusb_config_descriptor};
+use crate::interface_descriptor::InterfaceDescriptor;
 
 /// ConfigDescriptor wraps libusb_config_descriptor.
 pub struct ConfigDescriptor {

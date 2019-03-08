@@ -12,32 +12,32 @@ use devices::PciInterruptPin;
 use sys_util::{GuestAddress, GuestMemory};
 
 // This is the start of DRAM in the physical address space.
-use AARCH64_PHYS_MEM_START;
+use crate::AARCH64_PHYS_MEM_START;
 
 // These are GIC address-space location constants.
-use AARCH64_GIC_CPUI_BASE;
-use AARCH64_GIC_CPUI_SIZE;
-use AARCH64_GIC_DIST_BASE;
-use AARCH64_GIC_DIST_SIZE;
+use crate::AARCH64_GIC_CPUI_BASE;
+use crate::AARCH64_GIC_CPUI_SIZE;
+use crate::AARCH64_GIC_DIST_BASE;
+use crate::AARCH64_GIC_DIST_SIZE;
 
 // These are RTC related constants
+use crate::AARCH64_RTC_ADDR;
+use crate::AARCH64_RTC_IRQ;
+use crate::AARCH64_RTC_SIZE;
 use devices::pl030::PL030_AMBA_ID;
-use AARCH64_RTC_ADDR;
-use AARCH64_RTC_IRQ;
-use AARCH64_RTC_SIZE;
 
 // These are serial device related constants.
-use AARCH64_SERIAL_ADDR;
-use AARCH64_SERIAL_IRQ;
-use AARCH64_SERIAL_SIZE;
-use AARCH64_SERIAL_SPEED;
+use crate::AARCH64_SERIAL_ADDR;
+use crate::AARCH64_SERIAL_IRQ;
+use crate::AARCH64_SERIAL_SIZE;
+use crate::AARCH64_SERIAL_SPEED;
 
 // These are related to guest virtio devices.
-use AARCH64_IRQ_BASE;
-use AARCH64_MMIO_BASE;
-use AARCH64_MMIO_SIZE;
-use AARCH64_PCI_CFG_BASE;
-use AARCH64_PCI_CFG_SIZE;
+use crate::AARCH64_IRQ_BASE;
+use crate::AARCH64_MMIO_BASE;
+use crate::AARCH64_MMIO_SIZE;
+use crate::AARCH64_PCI_CFG_BASE;
+use crate::AARCH64_PCI_CFG_SIZE;
 
 // This is an arbitrary number to specify the node for the GIC.
 // If we had a more complex interrupt architecture, then we'd need an enum for

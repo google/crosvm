@@ -29,21 +29,22 @@ use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
 use data_model::{VolatileMemory, VolatileSlice};
 use sys_util::{GuestAddress, GuestMemory};
 
-pub use command_buffer::CommandBufferBuilder;
-use generated::epoxy_egl::{
+use crate::generated::epoxy_egl::{
     EGLAttrib, EGLBoolean, EGLClientBuffer, EGLConfig, EGLContext, EGLDisplay, EGLImageKHR,
     EGLNativeDisplayType, EGLSurface, EGLenum, EGLint, EGLuint64KHR, EGLDEBUGPROCKHR,
     EGL_CONTEXT_CLIENT_VERSION, EGL_DMA_BUF_PLANE0_FD_EXT, EGL_DMA_BUF_PLANE0_OFFSET_EXT,
     EGL_DMA_BUF_PLANE0_PITCH_EXT, EGL_GL_TEXTURE_2D_KHR, EGL_HEIGHT, EGL_LINUX_DMA_BUF_EXT,
     EGL_LINUX_DRM_FOURCC_EXT, EGL_NONE, EGL_OPENGL_ES_API, EGL_SURFACE_TYPE, EGL_WIDTH,
 };
-use generated::p_defines::{PIPE_BIND_SAMPLER_VIEW, PIPE_TEXTURE_1D, PIPE_TEXTURE_2D};
-use generated::p_format::PIPE_FORMAT_B8G8R8X8_UNORM;
-use generated::virglrenderer::*;
-pub use generated::virglrenderer::{
+use crate::generated::p_defines::{PIPE_BIND_SAMPLER_VIEW, PIPE_TEXTURE_1D, PIPE_TEXTURE_2D};
+use crate::generated::p_format::PIPE_FORMAT_B8G8R8X8_UNORM;
+use crate::generated::virglrenderer::*;
+
+pub use crate::command_buffer::CommandBufferBuilder;
+pub use crate::generated::virglrenderer::{
     virgl_renderer_resource_create_args, virgl_renderer_resource_info,
 };
-pub use pipe_format_fourcc::pipe_format_fourcc as format_fourcc;
+pub use crate::pipe_format_fourcc::pipe_format_fourcc as format_fourcc;
 
 /// Arguments used in `Renderer::create_resource`..
 pub type ResourceCreateArgs = virgl_renderer_resource_create_args;
@@ -254,7 +255,7 @@ struct EGLFunctions(Rc<EGLFunctionsInner>);
 
 impl EGLFunctions {
     fn new() -> Result<EGLFunctions> {
-        use generated::epoxy_egl::{
+        use crate::generated::epoxy_egl::{
             epoxy_eglBindAPI, epoxy_eglChooseConfig, epoxy_eglCreateContext,
             epoxy_eglCreateImageKHR, epoxy_eglDebugMessageControlKHR, epoxy_eglDestroyImageKHR,
             epoxy_eglExportDMABUFImageQueryMESA, epoxy_eglExportDRMImageMESA,
@@ -966,7 +967,7 @@ impl Drop for Resource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use generated::p_defines::PIPE_CLEAR_COLOR0;
+    use crate::generated::p_defines::PIPE_CLEAR_COLOR0;
 
     #[test]
     #[ignore]

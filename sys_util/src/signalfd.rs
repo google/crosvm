@@ -12,8 +12,8 @@ use std::result;
 use libc::{c_void, read, signalfd, signalfd_siginfo};
 use libc::{EAGAIN, SFD_CLOEXEC, SFD_NONBLOCK};
 
-use errno;
-use signal;
+use crate::errno;
+use crate::signal;
 
 #[derive(Debug)]
 pub enum Error {
@@ -150,8 +150,8 @@ impl Drop for SignalFd {
 mod tests {
     use super::*;
 
+    use crate::signal::SIGRTMIN;
     use libc::{pthread_sigmask, raise, sigismember, sigset_t};
-    use signal::SIGRTMIN;
     use std::ptr::null;
 
     #[test]

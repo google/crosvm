@@ -17,8 +17,8 @@ use libc::{
 
 use data_model::VolatileSlice;
 
-use net::UnixSeqpacket;
-use {Error, Result};
+use crate::net::UnixSeqpacket;
+use crate::{Error, Result};
 
 // Each of the following macros performs the same function as their C counterparts. They are each
 // macros because they are used to size statically allocated arrays.
@@ -352,7 +352,7 @@ mod tests {
 
     use libc::cmsghdr;
 
-    use EventFd;
+    use crate::EventFd;
 
     #[test]
     fn buffer_len() {

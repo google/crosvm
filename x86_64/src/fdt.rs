@@ -5,15 +5,15 @@
 extern crate arch;
 
 use arch::fdt::{begin_node, end_node, finish_fdt, property_string, start_fdt, Error};
-use bootparam::setup_data;
-use bootparam::SETUP_DTB;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::mem;
 use sys_util::{GuestAddress, GuestMemory};
 
-use X86_64_FDT_MAX_SIZE;
+use crate::bootparam::setup_data;
+use crate::bootparam::SETUP_DTB;
+use crate::X86_64_FDT_MAX_SIZE;
 
 /// Creates a flattened device tree containing all of the parameters for the
 /// kernel and loads it into the guest memory at the specified offset.

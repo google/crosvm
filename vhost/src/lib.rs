@@ -10,9 +10,9 @@ extern crate virtio_sys;
 pub mod net;
 mod vsock;
 
-pub use net::Net;
-pub use net::NetT;
-pub use vsock::Vsock;
+pub use crate::net::Net;
+pub use crate::net::NetT;
+pub use crate::vsock::Vsock;
 
 use std::fmt::{self, Display};
 use std::io::Error as IoError;
@@ -332,7 +332,7 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
 mod tests {
     use super::*;
 
-    use net::fakes::FakeNet;
+    use crate::net::fakes::FakeNet;
     use net_util::fakes::FakeTap;
     use std::result;
     use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};

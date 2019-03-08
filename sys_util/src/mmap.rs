@@ -11,12 +11,11 @@ use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::ptr::null_mut;
 
-use libc::{self, c_int};
-
-use errno;
-
 use data_model::volatile_memory::*;
 use data_model::DataInit;
+use libc::{self, c_int};
+
+use crate::errno;
 
 #[derive(Debug)]
 pub enum Error {

@@ -5,10 +5,10 @@
 use std::os::raw::c_int;
 use std::sync::Arc;
 
-use bindings;
-use error::{Error, Result};
-use libusb_context::LibUsbContextInner;
-use usb_transfer::{UsbTransfer, UsbTransferBuffer};
+use crate::bindings;
+use crate::error::{Error, Result};
+use crate::libusb_context::LibUsbContextInner;
+use crate::usb_transfer::{UsbTransfer, UsbTransferBuffer};
 
 /// DeviceHandle wraps libusb_device_handle.
 pub struct DeviceHandle {

@@ -77,9 +77,9 @@ use std::io::{self, stdout};
 use std::mem;
 use std::sync::Arc;
 
+use crate::bootparam::boot_params;
+use crate::bootparam::E820_RAM;
 use arch::{RunnableLinuxVm, VmComponents};
-use bootparam::boot_params;
-use bootparam::E820_RAM;
 use devices::{PciConfigIo, PciDevice, PciInterruptPin};
 use io_jail::Minijail;
 use kvm::*;

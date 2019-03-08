@@ -5,12 +5,12 @@
 use std;
 use std::os::raw::{c_short, c_void};
 use std::os::unix::io::RawFd;
-
-use bindings;
-use error::{Error, Result};
-use hotplug::{hotplug_cb, UsbHotplugHandler, UsbHotplugHandlerHolder};
-use libusb_device::LibUsbDevice;
 use std::sync::Arc;
+
+use crate::bindings;
+use crate::error::{Error, Result};
+use crate::hotplug::{hotplug_cb, UsbHotplugHandler, UsbHotplugHandlerHolder};
+use crate::libusb_device::LibUsbDevice;
 
 use sync::Mutex;
 

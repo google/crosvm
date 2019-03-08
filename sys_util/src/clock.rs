@@ -7,7 +7,8 @@
 
 use std::os::unix::io::AsRawFd;
 use std::time::{Duration, Instant};
-use EventFd;
+
+use crate::EventFd;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Clock(Instant);

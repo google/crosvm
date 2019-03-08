@@ -50,8 +50,8 @@ use std::result::Result;
 
 use data_model::{VolatileMemory, VolatileMemoryError, VolatileSlice};
 
-use drm_formats::*;
-use raw::*;
+use crate::drm_formats::*;
+use crate::raw::*;
 
 const MAP_FAILED: *mut c_void = (-1isize as *mut _);
 

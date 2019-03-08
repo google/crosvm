@@ -10,4 +10,4 @@ extern crate wire_format_derive;
 mod protocol;
 mod server;
 
-pub use server::Server;
+pub use crate::server::Server;

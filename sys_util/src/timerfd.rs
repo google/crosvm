@@ -12,7 +12,7 @@ use sync::Mutex;
 
 use libc::{self, timerfd_create, timerfd_gettime, timerfd_settime, CLOCK_MONOTONIC, TFD_CLOEXEC};
 
-use {errno_result, EventFd, FakeClock, Result};
+use crate::{errno_result, EventFd, FakeClock, Result};
 
 /// A safe wrapper around a Linux timerfd (man 2 timerfd_create).
 pub struct TimerFd(File);

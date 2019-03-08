@@ -11,8 +11,9 @@ use std::sync::Arc;
 
 use data_model::volatile_memory::*;
 use data_model::DataInit;
-use guest_address::GuestAddress;
-use mmap::{self, MemoryMapping};
+
+use crate::guest_address::GuestAddress;
+use crate::mmap::{self, MemoryMapping};
 
 #[derive(Debug)]
 pub enum Error {

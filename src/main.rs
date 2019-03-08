@@ -51,12 +51,12 @@ use std::string::String;
 use std::thread::sleep;
 use std::time::Duration;
 
+use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use qcow::QcowFile;
 use sys_util::{getpid, kill_process_group, net::UnixSeqpacket, reap_child, syslog};
-
-use argument::{print_help, set_arguments, Argument};
-use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use vm_control::{VmRequest, VmResponse};
+
+use crate::argument::{print_help, set_arguments, Argument};
 
 static SECCOMP_POLICY_DIR: &'static str = "/usr/share/policy/crosvm";
 

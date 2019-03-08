@@ -8,19 +8,19 @@ use syn::{parse_quote, DeriveInput};
 #[test]
 fn test_variant_bits() {
     let mut variants = vec![parse_quote!(A)];
-    assert_eq!(::variant_bits(&variants), 0);
+    assert_eq!(crate::variant_bits(&variants), 0);
 
     variants.push(parse_quote!(B));
     variants.push(parse_quote!(C));
-    assert_eq!(::variant_bits(&variants), 2);
+    assert_eq!(crate::variant_bits(&variants), 2);
 
     for _ in 0..1021 {
         variants.push(parse_quote!(Dynamic));
     }
-    assert_eq!(::variant_bits(&variants), 10);
+    assert_eq!(crate::variant_bits(&variants), 10);
 
     variants.push(parse_quote!(OneMore));
-    assert_eq!(::variant_bits(&variants), 11);
+    assert_eq!(crate::variant_bits(&variants), 11);
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn poll_token_e2e() {
         }
     };
 
-    let actual = ::poll_token_inner(input);
+    let actual = crate::poll_token_inner(input);
     let expected = quote! {
         impl PollToken for Token {
             fn as_raw_token(&self) -> u64 {

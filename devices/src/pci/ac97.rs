@@ -5,16 +5,17 @@
 use std::os::unix::io::RawFd;
 
 use audio_streams::StreamSource;
-use pci::ac97_bus_master::Ac97BusMaster;
-use pci::ac97_mixer::Ac97Mixer;
-use pci::ac97_regs::*;
-use pci::pci_configuration::{
-    PciBarConfiguration, PciClassCode, PciConfiguration, PciHeaderType, PciMultimediaSubclass,
-};
-use pci::pci_device::{self, PciDevice, Result};
-use pci::PciInterruptPin;
 use resources::SystemAllocator;
 use sys_util::{EventFd, GuestMemory};
+
+use crate::pci::ac97_bus_master::Ac97BusMaster;
+use crate::pci::ac97_mixer::Ac97Mixer;
+use crate::pci::ac97_regs::*;
+use crate::pci::pci_configuration::{
+    PciBarConfiguration, PciClassCode, PciConfiguration, PciHeaderType, PciMultimediaSubclass,
+};
+use crate::pci::pci_device::{self, PciDevice, Result};
+use crate::pci::PciInterruptPin;
 
 // Use 82801AA because it's what qemu does.
 const PCI_DEVICE_ID_INTEL_82801AA_5: u16 = 0x2415;

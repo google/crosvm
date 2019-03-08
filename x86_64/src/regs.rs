@@ -5,7 +5,6 @@
 use std::fmt::{self, Display};
 use std::{mem, result};
 
-use gdt;
 use kvm;
 use kvm_sys::kvm_fpu;
 use kvm_sys::kvm_msr_entry;
@@ -14,6 +13,8 @@ use kvm_sys::kvm_regs;
 use kvm_sys::kvm_sregs;
 use sys_util;
 use sys_util::{GuestAddress, GuestMemory};
+
+use crate::gdt;
 
 #[derive(Debug)]
 pub enum Error {
@@ -67,55 +68,55 @@ fn create_msr_entries() -> Vec<kvm_msr_entry> {
     let mut entries = Vec::<kvm_msr_entry>::new();
 
     entries.push(kvm_msr_entry {
-        index: ::msr_index::MSR_IA32_SYSENTER_CS,
+        index: crate::msr_index::MSR_IA32_SYSENTER_CS,
         data: 0x0,
         ..Default::default()
     });
     entries.push(kvm_msr_entry {
-        index: ::msr_index::MSR_IA32_SYSENTER_ESP,
+        index: crate::msr_index::MSR_IA32_SYSENTER_ESP,
         data: 0x0,
         ..Default::default()
     });
     entries.push(kvm_msr_entry {
-        index: ::msr_index::MSR_IA32_SYSENTER_EIP,
+        index: crate::msr_index::MSR_IA32_SYSENTER_EIP,
         data: 0x0,
         ..Default::default()
     });
     // x86_64 specific msrs, we only run on x86_64 not x86
     entries.push(kvm_msr_entry {
-        index: ::msr_index::MSR_STAR,
+        index: crate::msr_index::MSR_STAR,
         data: 0x0,
         ..Default::default()
     });
     entries.push(kvm_msr_entry {
-        index: ::msr_index::MSR_CSTAR,
+        index: crate::msr_index::MSR_CSTAR,
         data: 0x0,
         ..Default::default()
     });
     entries.push(kvm_msr_entry {
-        index: ::msr_index::MSR_KERNEL_GS_BASE,
+        index: crate::msr_index::MSR_KERNEL_GS_BASE,
         data: 0x0,
         ..Default::default()
     });
     entries.push(kvm_msr_entry {
-        index: ::msr_index::MSR_SYSCALL_MASK,
+        index: crate::msr_index::MSR_SYSCALL_MASK,
         data: 0x0,
         ..Default::default()
     });
     entries.push(kvm_msr_entry {
-        index: ::msr_index::MSR_LSTAR,
+        index: crate::msr_index::MSR_LSTAR,
         data: 0x0,
         ..Default::default()
     });
     // end of x86_64 specific code
     entries.push(kvm_msr_entry {
-        index: ::msr_index::MSR_IA32_TSC,
+        index: crate::msr_index::MSR_IA32_TSC,
         data: 0x0,
         ..Default::default()
     });
     entries.push(kvm_msr_entry {
-        index: ::msr_index::MSR_IA32_MISC_ENABLE,
-        data: ::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
+        index: crate::msr_index::MSR_IA32_MISC_ENABLE,
+        data: crate::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
         ..Default::default()
     });
 

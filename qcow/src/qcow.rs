@@ -11,12 +11,9 @@ mod qcow_raw_file;
 mod refcount;
 mod vec_cache;
 
-use qcow_raw_file::QcowRawFile;
-use refcount::RefCount;
-use vec_cache::{CacheMap, Cacheable, VecCache};
-
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
+use sys_util::{FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes};
 
 use std::cmp::min;
 use std::fmt::{self, Display};
@@ -25,7 +22,9 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use sys_util::{FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes};
+use crate::qcow_raw_file::QcowRawFile;
+use crate::refcount::RefCount;
+use crate::vec_cache::{CacheMap, Cacheable, VecCache};
 
 #[derive(Debug)]
 pub enum Error {

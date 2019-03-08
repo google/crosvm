@@ -33,7 +33,7 @@
 use assertions::const_assert;
 use std::mem::{align_of, size_of};
 
-use DataInit;
+use crate::DataInit;
 
 macro_rules! endian_type {
     ($old_type:ident, $new_type:ident, $to_new:ident, $from_new:ident) => {

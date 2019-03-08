@@ -6,9 +6,8 @@ use std::mem::size_of;
 use std::os::raw::c_void;
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 
-use generated::virgl_protocol::*;
-
-use Resource;
+use crate::generated::virgl_protocol::*;
+use crate::Resource;
 
 /// Helper struct for making a virgl command buffer.
 #[derive(Default)]

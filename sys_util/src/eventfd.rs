@@ -8,7 +8,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 use libc::{c_void, dup, eventfd, read, write};
 
-use {errno_result, Result};
+use crate::{errno_result, Result};
 
 /// A safe wrapper around a Linux eventfd (man 2 eventfd).
 ///

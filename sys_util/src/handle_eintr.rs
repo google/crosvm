@@ -15,7 +15,7 @@ pub trait InterruptibleResult {
     fn is_interrupted(&self) -> bool;
 }
 
-impl<T> InterruptibleResult for ::Result<T> {
+impl<T> InterruptibleResult for crate::Result<T> {
     fn is_interrupted(&self) -> bool {
         match self {
             Err(e) if e.errno() == EINTR => true,
@@ -178,9 +178,8 @@ macro_rules! handle_eintr_errno {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use errno::set_errno;
-
-    use Error as SysError;
+    use crate::errno::set_errno;
+    use crate::Error as SysError;
 
     #[test]
     fn i32_eintr_rc() {

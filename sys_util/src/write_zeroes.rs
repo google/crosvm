@@ -6,8 +6,8 @@ use std::cmp::min;
 use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Write};
 
-use fallocate;
-use FallocateMode;
+use crate::fallocate;
+use crate::FallocateMode;
 
 /// A trait for deallocating space in a file.
 pub trait PunchHole {
@@ -62,7 +62,7 @@ mod tests {
     use std::io::{Read, Seek, SeekFrom};
     use std::path::PathBuf;
 
-    use TempDir;
+    use crate::TempDir;
 
     #[test]
     fn simple_test() {

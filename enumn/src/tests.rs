@@ -15,7 +15,7 @@ fn test_repr() {
             C,
         }
     };
-    let actual = ::testable_derive(input);
+    let actual = crate::testable_derive(input);
     let expected = quote! {
         impl E {
             pub fn n(value: u8) -> Option<Self> {
@@ -46,7 +46,7 @@ fn test_no_repr() {
             C,
         }
     };
-    let actual = ::testable_derive(input);
+    let actual = crate::testable_derive(input);
     let expected = quote! {
         impl E {
             pub fn n<REPR: Into<i64>>(value: REPR) -> Option<Self> {

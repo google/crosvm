@@ -6,15 +6,15 @@ use std::mem::size_of;
 use std::os::raw::c_void;
 use std::sync::{Arc, Weak};
 
-use bindings::{
+use crate::bindings::{
     libusb_alloc_transfer, libusb_cancel_transfer, libusb_device_handle, libusb_free_transfer,
     libusb_submit_transfer, libusb_transfer, libusb_transfer_status, LIBUSB_TRANSFER_CANCELLED,
     LIBUSB_TRANSFER_COMPLETED, LIBUSB_TRANSFER_ERROR, LIBUSB_TRANSFER_NO_DEVICE,
     LIBUSB_TRANSFER_OVERFLOW, LIBUSB_TRANSFER_STALL, LIBUSB_TRANSFER_TIMED_OUT,
     LIBUSB_TRANSFER_TYPE_BULK, LIBUSB_TRANSFER_TYPE_CONTROL, LIBUSB_TRANSFER_TYPE_INTERRUPT,
 };
-use error::{Error, Result};
-use types::UsbRequestSetup;
+use crate::error::{Error, Result};
+use crate::types::UsbRequestSetup;
 
 /// Status of transfer.
 #[derive(PartialEq)]

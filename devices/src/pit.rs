@@ -25,7 +25,7 @@ use sys_util::FakeTimerFd as TimerFd;
 #[cfg(not(test))]
 use sys_util::TimerFd;
 
-use BusDevice;
+use crate::BusDevice;
 
 // Bitmask for areas of standard (non-ReadBack) Control Word Format. Constant
 // names are kept the same as Intel PIT data sheet.

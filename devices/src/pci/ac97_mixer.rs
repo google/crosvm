@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use pci::ac97_regs::*;
+use crate::pci::ac97_regs::*;
 
 // AC97 Vendor ID
 const AC97_VENDOR_ID1: u16 = 0x8086;

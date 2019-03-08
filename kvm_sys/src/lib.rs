@@ -19,7 +19,7 @@ pub mod x86 {
     // generated with bindgen /usr/include/linux/kvm.h --no-unstable-rust --constified-enum '*' --with-derive-default
     #[cfg_attr(feature = "cargo-clippy", allow(clippy))]
     pub mod bindings;
-    pub use bindings::*;
+    pub use crate::bindings::*;
 
     ioctl_iow_nr!(KVM_SET_GSI_ROUTING, KVMIO, 0x6a, kvm_irq_routing);
     ioctl_iowr_nr!(KVM_GET_MSR_INDEX_LIST, KVMIO, 0x02, kvm_msr_list);
@@ -154,7 +154,7 @@ ioctl_io_nr!(KVM_SMI, KVMIO, 0xb7);
 // platform.
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub use x86::*;
+pub use crate::x86::*;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use aarch64::*;

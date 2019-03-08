@@ -8,10 +8,9 @@ use std::ffi::CStr;
 use std::mem;
 use std::ptr;
 
-use libc;
-use libc::{c_char, getgrnam_r, getpwnam_r, gid_t, uid_t};
+use libc::{self, c_char, getgrnam_r, getpwnam_r, gid_t, uid_t};
 
-use {errno_result, Result};
+use crate::{errno_result, Result};
 
 /// Safe wrapper for getting a uid from a user name with `getpwnam_r(3)`.
 #[inline(always)]

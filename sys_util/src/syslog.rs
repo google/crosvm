@@ -45,7 +45,7 @@ use libc::{
 
 use sync::Mutex;
 
-use getpid;
+use crate::getpid;
 
 const SYSLOG_PATH: &str = "/dev/log";
 

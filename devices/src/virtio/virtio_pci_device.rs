@@ -7,15 +7,16 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use super::*;
 use data_model::{DataInit, Le32};
 use kvm::Datamatch;
-use pci::{
+use resources::SystemAllocator;
+use sys_util::{EventFd, GuestMemory, Result};
+
+use super::*;
+use crate::pci::{
     PciBarConfiguration, PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciDevice,
     PciDeviceError, PciHeaderType, PciInterruptPin, PciSubclass,
 };
-use resources::SystemAllocator;
-use sys_util::{EventFd, GuestMemory, Result};
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
 

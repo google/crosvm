@@ -14,6 +14,6 @@ mod address_allocator;
 mod gpu_allocator;
 mod system_allocator;
 
-pub use address_allocator::AddressAllocator;
-pub use gpu_allocator::{GpuMemoryAllocator, GpuMemoryDesc, GpuMemoryPlaneDesc};
-pub use system_allocator::{AddressRanges, SystemAllocator};
+pub use crate::address_allocator::AddressAllocator;
+pub use crate::gpu_allocator::{GpuMemoryAllocator, GpuMemoryDesc, GpuMemoryPlaneDesc};
+pub use crate::system_allocator::{AddressRanges, SystemAllocator};

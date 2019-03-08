@@ -15,7 +15,7 @@ use std::os::unix::fs::{DirBuilderExt, FileExt, OpenOptionsExt};
 use std::os::unix::io::AsRawFd;
 use std::path::{Component, Path, PathBuf};
 
-use protocol::*;
+use crate::protocol::*;
 
 // Tlopen and Tlcreate flags.  Taken from "include/net/9p/9p.h" in the linux tree.
 const _P9_RDONLY: u32 = 0o00000000;

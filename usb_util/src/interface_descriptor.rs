@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::endpoint_descriptor::EndpointDescriptor;
-use bindings::libusb_interface_descriptor;
 use std::ops::Deref;
+
+use crate::bindings::libusb_interface_descriptor;
+use crate::endpoint_descriptor::EndpointDescriptor;
 
 /// InterfaceDescriptor wraps libusb_interface_descriptor.
 pub struct InterfaceDescriptor<'a>(&'a libusb_interface_descriptor);

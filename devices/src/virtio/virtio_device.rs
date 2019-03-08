@@ -6,9 +6,10 @@ use std::os::unix::io::RawFd;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
-use super::*;
-use pci::{PciBarConfiguration, PciCapability};
 use sys_util::{EventFd, GuestMemory};
+
+use super::*;
+use crate::pci::{PciBarConfiguration, PciCapability};
 
 /// Trait for virtio devices to be driven by a virtio transport.
 ///

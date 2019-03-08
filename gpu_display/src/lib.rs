@@ -20,7 +20,7 @@ use std::ptr::null_mut;
 use data_model::{VolatileMemory, VolatileSlice};
 use sys_util::{round_up_to_page_size, Error as SysError, MemoryMapping, SharedMemory};
 
-use dwl::*;
+use crate::dwl::*;
 
 const BUFFER_COUNT: usize = 2;
 const BYTES_PER_PIXEL: u32 = 4;

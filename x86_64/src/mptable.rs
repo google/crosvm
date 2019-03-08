@@ -13,7 +13,7 @@ use libc::c_char;
 use devices::PciInterruptPin;
 use sys_util::{GuestAddress, GuestMemory};
 
-use mpspec::*;
+use crate::mpspec::*;
 
 #[derive(Debug)]
 pub enum Error {

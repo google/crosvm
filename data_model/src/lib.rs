@@ -117,7 +117,7 @@ macro_rules! data_init_type {
         #[cfg(test)]
         mod data_init_tests {
             use std::mem::{size_of, align_of};
-            use DataInit;
+            use crate::DataInit;
 
             #[test]
             fn from_slice_alignment() {
@@ -164,7 +164,7 @@ macro_rules! data_init_type {
 data_init_type!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 
 pub mod endian;
-pub use endian::*;
+pub use crate::endian::*;
 
 pub mod volatile_memory;
-pub use volatile_memory::*;
+pub use crate::volatile_memory::*;

@@ -14,10 +14,11 @@ use std::time::Instant;
 
 use audio_streams::{PlaybackBuffer, PlaybackBufferStream, StreamControl, StreamSource};
 use data_model::{VolatileMemory, VolatileSlice};
-use pci::ac97_mixer::Ac97Mixer;
-use pci::ac97_regs::*;
 use sync::Mutex;
 use sys_util::{self, set_rt_prio_limit, set_rt_round_robin, EventFd, GuestAddress, GuestMemory};
+
+use crate::pci::ac97_mixer::Ac97Mixer;
+use crate::pci::ac97_regs::*;
 
 const DEVICE_SAMPLE_RATE: usize = 48000;
 

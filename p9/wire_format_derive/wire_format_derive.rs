@@ -51,7 +51,7 @@ fn p9_wire_format_inner(input: DeriveInput) -> TokenStream {
 
             use super::#container;
 
-            use protocol::WireFormat;
+            use crate::protocol::WireFormat;
 
             impl WireFormat for #container {
                 fn byte_size(&self) -> u32 {
@@ -249,7 +249,7 @@ mod tests {
 
                 use super::Niijima_先輩;
 
-                use protocol::WireFormat;
+                use crate::protocol::WireFormat;
 
                 impl WireFormat for Niijima_先輩 {
                     fn byte_size(&self) -> u32 {

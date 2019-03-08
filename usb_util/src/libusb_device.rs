@@ -3,15 +3,15 @@
 // found in the LICENSE file.
 
 use std;
-
-use bindings;
-use config_descriptor::ConfigDescriptor;
-use device_handle::DeviceHandle;
-use error::{Error, Result};
-use libusb_context::LibUsbContextInner;
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
-use types::Speed;
+
+use crate::bindings;
+use crate::config_descriptor::ConfigDescriptor;
+use crate::device_handle::DeviceHandle;
+use crate::error::{Error, Result};
+use crate::libusb_context::LibUsbContextInner;
+use crate::types::Speed;
 
 pub type DeviceDescriptor = bindings::libusb_device_descriptor;
 

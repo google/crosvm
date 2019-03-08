@@ -16,7 +16,7 @@ use std::ptr::{null, null_mut};
 use std::result;
 use std::thread::JoinHandle;
 
-use {errno, errno_result};
+use crate::{errno, errno_result};
 
 #[derive(Debug)]
 pub enum Error {

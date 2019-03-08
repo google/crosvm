@@ -6,13 +6,13 @@ use std::os::unix::io::RawFd;
 use std::sync::Arc;
 
 use byteorder::{ByteOrder, LittleEndian};
-
 use sync::Mutex;
 
-use BusDevice;
-
-use pci::pci_configuration::{PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType};
-use pci::pci_device::PciDevice;
+use crate::pci::pci_configuration::{
+    PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType,
+};
+use crate::pci::pci_device::PciDevice;
+use crate::BusDevice;
 
 // A PciDevice that holds the root hub's configuration.
 struct PciRootConfiguration {

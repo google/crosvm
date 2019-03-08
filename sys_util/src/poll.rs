@@ -19,7 +19,7 @@ use libc::{
     EPOLL_CLOEXEC, EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD,
 };
 
-use {errno_result, Result};
+use crate::{errno_result, Result};
 
 const POLL_CONTEXT_MAX_EVENTS: usize = 16;
 
@@ -607,9 +607,9 @@ impl<T: PollToken> IntoRawFd for PollContext<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::EventFd;
     use std::os::unix::net::UnixStream;
     use std::time::Instant;
-    use EventFd;
 
     #[test]
     fn poll_context() {

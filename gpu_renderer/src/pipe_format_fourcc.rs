@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use generated::p_format;
+use crate::generated::p_format;
 
 macro_rules! fourcc {
     ($a:expr, $b:expr, $c:expr, $d:expr) => {

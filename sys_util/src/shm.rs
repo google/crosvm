@@ -11,11 +11,9 @@ use libc::{
     self, c_char, c_int, c_long, c_uint, close, fcntl, ftruncate64, off64_t, syscall, F_ADD_SEALS,
     F_GET_SEALS, F_SEAL_GROW, F_SEAL_SEAL, F_SEAL_SHRINK, F_SEAL_WRITE, MFD_ALLOW_SEALING,
 };
-
-use errno;
 use syscall_defines::linux::LinuxSyscall::SYS_memfd_create;
 
-use {errno_result, Result};
+use crate::{errno, errno_result, Result};
 
 /// A shared memory file descriptor and its size.
 pub struct SharedMemory {
@@ -219,7 +217,7 @@ mod tests {
 
     use data_model::VolatileMemory;
 
-    use MemoryMapping;
+    use crate::MemoryMapping;
 
     #[test]
     fn new() {

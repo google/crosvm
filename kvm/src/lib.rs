@@ -35,7 +35,7 @@ use sys_util::{
     pagesize, signal, Error, EventFd, GuestAddress, GuestMemory, MemoryMapping, Result,
 };
 
-pub use cap::*;
+pub use crate::cap::*;
 
 fn errno_result<T>() -> Result<T> {
     Err(Error::last())

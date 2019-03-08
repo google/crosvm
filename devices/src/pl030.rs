@@ -5,7 +5,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 use sys_util::EventFd;
 
-use BusDevice;
+use crate::BusDevice;
 
 // Register offsets
 // Data register

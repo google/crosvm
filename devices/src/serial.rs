@@ -7,7 +7,7 @@ use std::io;
 
 use sys_util::{EventFd, Result};
 
-use BusDevice;
+use crate::BusDevice;
 
 const LOOP_SIZE: usize = 0x40;
 

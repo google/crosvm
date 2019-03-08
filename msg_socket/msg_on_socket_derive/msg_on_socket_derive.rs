@@ -515,7 +515,7 @@ fn write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream 
 
 #[cfg(test)]
 mod tests {
-    use socket_msg_impl;
+    use crate::socket_msg_impl;
     use syn::DeriveInput;
 
     #[test]

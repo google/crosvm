@@ -4,8 +4,6 @@
 
 //! Runs hardware devices in child processes.
 
-use libc::pid_t;
-
 use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::process;
@@ -13,10 +11,11 @@ use std::time::Duration;
 use std::{self, io};
 
 use io_jail::{self, Minijail};
+use libc::pid_t;
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgSender, MsgSocket};
 use sys_util::net::UnixSeqpacket;
 
-use BusDevice;
+use crate::BusDevice;
 
 /// Errors for proxy devices.
 #[derive(Debug)]
