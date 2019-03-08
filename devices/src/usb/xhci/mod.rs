@@ -5,6 +5,7 @@
 mod event_ring;
 mod interrupter;
 mod intr_resample_handler;
+mod scatter_gather_buffer;
 mod xhci_abi;
 mod xhci_abi_schema;
 mod xhci_regs;
