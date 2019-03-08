@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::sync::{Arc, Mutex};
+use utils::FailHandle;
 
 /// RingBufferStopCallback wraps a callback. The callback will be invoked when last instance of
 /// RingBufferStopCallback and its clones is dropped.
@@ -31,6 +32,21 @@ struct RingBufferStopCallbackInner {
 impl Drop for RingBufferStopCallbackInner {
     fn drop(&mut self) {
         (self.callback)();
+    }
+}
+
+/// Helper function to wrap up a closure with fail handle. The fail handle will be triggered if the
+/// closure returns an error.
+pub fn fallible_closure<E: std::fmt::Display, C: FnMut() -> Result<(), E> + 'static + Send>(
+    fail_handle: Arc<FailHandle>,
+    mut callback: C,
+) -> impl FnMut() + 'static + Send {
+    move || match callback() {
+        Ok(()) => {}
+        Err(e) => {
+            error!("callback failed {}", e);
+            fail_handle.fail();
+        }
     }
 }
 
