@@ -138,6 +138,40 @@ impl MsgOnSocket for RawFd {
     }
 }
 
+impl<T: MsgOnSocket> MsgOnSocket for Option<T> {
+    fn msg_size() -> usize {
+        T::msg_size() + 1
+    }
+
+    fn max_fd_count() -> usize {
+        T::max_fd_count()
+    }
+
+    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+        match buffer[0] {
+            0 => Ok((None, 0)),
+            1 => {
+                let (inner, len) = T::read_from_buffer(&buffer[1..], fds)?;
+                Ok((Some(inner), len))
+            }
+            _ => Err(MsgError::InvalidType),
+        }
+    }
+
+    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
+        match self {
+            None => {
+                buffer[0] = 0;
+                Ok(0)
+            }
+            Some(inner) => {
+                buffer[0] = 1;
+                inner.write_to_buffer(&mut buffer[1..], fds)
+            }
+        }
+    }
+}
+
 macro_rules! rawfd_impl {
     ($type:ident) => {
         impl MsgOnSocket for $type {
