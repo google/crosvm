@@ -113,6 +113,7 @@ pub fn create_gpu_memory_allocator() -> Result<Option<Box<GpuMemoryAllocator>>, 
 }
 
 #[cfg(not(feature = "wl-dmabuf"))]
-pub fn create_gpu_memory_allocator() -> Result<Option<Box<GpuMemoryAllocator>>, GpuAllocatorError> {
+pub fn create_gpu_memory_allocator(
+) -> Result<Option<Box<dyn GpuMemoryAllocator>>, GpuAllocatorError> {
     Ok(None)
 }

@@ -149,7 +149,7 @@ const VIRTIO_PCI_DEVICE_ID_BASE: u16 = 0x1040; // Add to device type to get devi
 pub struct VirtioPciDevice {
     config_regs: PciConfiguration,
 
-    device: Box<VirtioDevice>,
+    device: Box<dyn VirtioDevice>,
     device_activated: bool,
 
     interrupt_status: Arc<AtomicUsize>,
@@ -165,7 +165,7 @@ pub struct VirtioPciDevice {
 
 impl VirtioPciDevice {
     /// Constructs a new PCI transport for the given virtio device.
-    pub fn new(mem: GuestMemory, device: Box<VirtioDevice>) -> Result<Self> {
+    pub fn new(mem: GuestMemory, device: Box<dyn VirtioDevice>) -> Result<Self> {
         let mut queue_evts = Vec::new();
         for _ in device.queue_max_sizes().iter() {
             queue_evts.push(EventFd::new()?)
@@ -414,7 +414,7 @@ impl PciDevice for VirtioPciDevice {
                     o - COMMON_CONFIG_BAR_OFFSET,
                     data,
                     &mut self.queues,
-                    &mut self.device,
+                    self.device.as_mut(),
                 )
             }
             o if ISR_CONFIG_BAR_OFFSET <= o && o < ISR_CONFIG_BAR_OFFSET + ISR_CONFIG_SIZE => {
@@ -448,7 +448,7 @@ impl PciDevice for VirtioPciDevice {
                     o - COMMON_CONFIG_BAR_OFFSET,
                     data,
                     &mut self.queues,
-                    &mut self.device,
+                    self.device.as_mut(),
                 )
             }
             o if ISR_CONFIG_BAR_OFFSET <= o && o < ISR_CONFIG_BAR_OFFSET + ISR_CONFIG_SIZE => {

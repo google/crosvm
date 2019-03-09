@@ -38,7 +38,7 @@ pub trait UsbHotplugHandler: Send + Sync + 'static {
 /// user_data to libusb_hotplug_register_callback.
 pub struct UsbHotplugHandlerHolder {
     context: Arc<LibUsbContextInner>,
-    handler: Box<UsbHotplugHandler>,
+    handler: Box<dyn UsbHotplugHandler>,
 }
 
 impl UsbHotplugHandlerHolder {

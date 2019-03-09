@@ -25,7 +25,7 @@ impl IntrResampleHandler {
             interrupter,
             resample_evt,
         });
-        let tmp_handler: Arc<EventHandler> = handler.clone();
+        let tmp_handler: Arc<dyn EventHandler> = handler.clone();
         if let Err(e) = event_loop.add_event(
             &handler.resample_evt,
             WatchingEvents::empty().set_read(),

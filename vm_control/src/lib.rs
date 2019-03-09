@@ -182,7 +182,7 @@ pub enum VmRequest {
 fn register_memory(
     vm: &mut Vm,
     allocator: &mut SystemAllocator,
-    fd: &AsRawFd,
+    fd: &dyn AsRawFd,
     size: usize,
 ) -> Result<(u64, u32)> {
     let mmap = match MemoryMapping::from_fd(fd, size) {

@@ -12,7 +12,7 @@ pub trait XhciBackendDeviceProvider: Send {
     /// Start the provider on EventLoop.
     fn start(
         &mut self,
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
         event_loop: Arc<EventLoop>,
         hub: Arc<UsbHub>,
     ) -> std::result::Result<(), ()>;

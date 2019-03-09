@@ -55,7 +55,7 @@ impl HostBackendDeviceProvider {
 
     fn start_helper(
         &mut self,
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
         event_loop: Arc<EventLoop>,
         hub: Arc<UsbHub>,
     ) -> Result<()> {
@@ -67,7 +67,7 @@ impl HostBackendDeviceProvider {
                 let job_queue =
                     AsyncJobQueue::init(&event_loop).map_err(Error::StartAsyncJobQueue)?;
                 let inner = Arc::new(ProviderInner::new(fail_handle, job_queue, ctx, sock, hub));
-                let handler: Arc<EventHandler> = inner.clone();
+                let handler: Arc<dyn EventHandler> = inner.clone();
                 event_loop
                     .add_event(
                         &inner.sock,
@@ -93,7 +93,7 @@ impl HostBackendDeviceProvider {
 impl XhciBackendDeviceProvider for HostBackendDeviceProvider {
     fn start(
         &mut self,
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
         event_loop: Arc<EventLoop>,
         hub: Arc<UsbHub>,
     ) -> std::result::Result<(), ()> {
@@ -119,7 +119,7 @@ impl XhciBackendDeviceProvider for HostBackendDeviceProvider {
 
 /// ProviderInner listens to control socket.
 pub struct ProviderInner {
-    fail_handle: Arc<FailHandle>,
+    fail_handle: Arc<dyn FailHandle>,
     job_queue: Arc<AsyncJobQueue>,
     ctx: Context,
     sock: MsgSocket<UsbControlResult, UsbControlCommand>,
@@ -128,7 +128,7 @@ pub struct ProviderInner {
 
 impl ProviderInner {
     fn new(
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
         job_queue: Arc<AsyncJobQueue>,
         ctx: Context,
         sock: MsgSocket<UsbControlResult, UsbControlCommand>,

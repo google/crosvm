@@ -38,7 +38,7 @@ pub struct Ac97Dev {
 impl Ac97Dev {
     /// Creates an 'Ac97Dev' that uses the given `GuestMemory` and starts with all registers at
     /// default values.
-    pub fn new(mem: GuestMemory, audio_server: Box<StreamSource>) -> Self {
+    pub fn new(mem: GuestMemory, audio_server: Box<dyn StreamSource>) -> Self {
         let config_regs = PciConfiguration::new(
             0x8086,
             PCI_DEVICE_ID_INTEL_82801AA_5,

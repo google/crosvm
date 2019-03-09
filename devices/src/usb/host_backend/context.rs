@@ -17,7 +17,7 @@ use vm_control::MaybeOwnedFd;
 pub struct Context {
     context: LibUsbContext,
     event_loop: Arc<EventLoop>,
-    event_handler: Arc<EventHandler>,
+    event_handler: Arc<dyn EventHandler>,
 }
 
 impl Context {
@@ -124,7 +124,7 @@ impl EventHandler for LibUsbEventHandler {
 
 struct PollfdChangeHandler {
     event_loop: Arc<EventLoop>,
-    event_handler: Weak<EventHandler>,
+    event_handler: Weak<dyn EventHandler>,
 }
 
 impl LibUsbPollfdChangeHandler for PollfdChangeHandler {

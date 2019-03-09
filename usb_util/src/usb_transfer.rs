@@ -130,7 +130,7 @@ impl UsbTransferBuffer for BulkTransferBuffer {
     }
 }
 
-type UsbTransferCompletionCallback<T> = Fn(UsbTransfer<T>) + Send + 'static;
+type UsbTransferCompletionCallback<T> = dyn Fn(UsbTransfer<T>) + Send + 'static;
 
 // This wraps libusb_transfer pointer.
 struct LibUsbTransfer {

@@ -87,7 +87,7 @@ enum XhciControllerState {
         // Xhci init could fail.
         #[allow(dead_code)]
         xhci: Option<Arc<Xhci>>,
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
     },
 }
 
@@ -131,7 +131,7 @@ impl XhciController {
                 irq_resample_evt,
             } => {
                 let (mmio, regs) = init_xhci_mmio_space_and_regs();
-                let fail_handle: Arc<FailHandle> = Arc::new(XhciFailHandle::new(&regs));
+                let fail_handle: Arc<dyn FailHandle> = Arc::new(XhciFailHandle::new(&regs));
                 let xhci = match Xhci::new(
                     fail_handle.clone(),
                     self.mem.clone(),

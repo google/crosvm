@@ -4,7 +4,7 @@
 
 use std;
 use std::cmp::min;
-use std::error;
+use std::error::Error as StdError;
 use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
@@ -92,7 +92,7 @@ pub enum Error {
     InvalidFdPath,
     InvalidWaylandPath,
     IoJail(io_jail::Error),
-    LoadKernel(Box<error::Error>),
+    LoadKernel(Box<dyn StdError>),
     NetDeviceNew(virtio::NetError),
     OpenAndroidFstab(PathBuf, io::Error),
     OpenInitrd(PathBuf, io::Error),
@@ -302,14 +302,14 @@ fn create_block_device(
             // Access as a raw block device.
             let dev = virtio::Block::new(raw_image, disk.read_only, Some(disk_device_socket))
                 .map_err(Error::BlockDeviceNew)?;
-            Box::new(dev) as Box<VirtioDevice>
+            Box::new(dev) as Box<dyn VirtioDevice>
         }
         ImageType::Qcow2 => {
             // Valid qcow header present
             let qcow_image = QcowFile::from(raw_image).map_err(Error::QcowDeviceCreate)?;
             let dev = virtio::Block::new(qcow_image, disk.read_only, Some(disk_device_socket))
                 .map_err(Error::BlockDeviceNew)?;
-            Box::new(dev) as Box<VirtioDevice>
+            Box::new(dev) as Box<dyn VirtioDevice>
         }
     };
 
@@ -484,11 +484,11 @@ fn create_net_device(
         let dev =
             virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(host_ip, netmask, mac_address, mem)
                 .map_err(Error::VhostNetDeviceNew)?;
-        Box::new(dev) as Box<VirtioDevice>
+        Box::new(dev) as Box<dyn VirtioDevice>
     } else {
         let dev =
             virtio::Net::<Tap>::new(host_ip, netmask, mac_address).map_err(Error::NetDeviceNew)?;
-        Box::new(dev) as Box<VirtioDevice>
+        Box::new(dev) as Box<dyn VirtioDevice>
     };
 
     let policy = if cfg.vhost_net {
@@ -768,7 +768,7 @@ fn create_devices(
     balloon_device_socket: UnixSeqpacket,
     disk_device_sockets: &mut Vec<UnixSeqpacket>,
     usb_provider: HostBackendDeviceProvider,
-) -> DeviceResult<Vec<(Box<PciDevice>, Option<Minijail>)>> {
+) -> DeviceResult<Vec<(Box<dyn PciDevice>, Option<Minijail>)>> {
     let stubs = create_virtio_devices(
         &cfg,
         mem,
@@ -782,7 +782,7 @@ fn create_devices(
 
     for stub in stubs {
         let dev = VirtioPciDevice::new(mem.clone(), stub.dev).map_err(Error::VirtioPciDev)?;
-        let dev = Box::new(dev) as Box<PciDevice>;
+        let dev = Box::new(dev) as Box<dyn PciDevice>;
         pci_devices.push((dev, stub.jail));
     }
 

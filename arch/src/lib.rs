@@ -61,7 +61,7 @@ pub struct RunnableLinuxVm {
 
 /// The device and optional jail.
 pub struct VirtioDeviceStub {
-    pub dev: Box<VirtioDevice>,
+    pub dev: Box<dyn VirtioDevice>,
     pub jail: Option<Minijail>,
 }
 
@@ -83,7 +83,7 @@ pub trait LinuxArch {
         create_devices: F,
     ) -> Result<RunnableLinuxVm, Self::Error>
     where
-        F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<(Box<PciDevice>, Option<Minijail>)>, E>,
+        F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E>,
         E: StdError + 'static;
 }
 
@@ -144,7 +144,7 @@ impl Display for DeviceRegistrationError {
 
 /// Creates a root PCI device for use by this Vm.
 pub fn generate_pci_root(
-    devices: Vec<(Box<PciDevice>, Option<Minijail>)>,
+    devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
     mmio_bus: &mut Bus,
     resources: &mut SystemAllocator,
     vm: &mut Vm,
@@ -191,7 +191,7 @@ pub fn generate_pci_root(
                 .map_err(DeviceRegistrationError::RegisterIoevent)?;
             keep_fds.push(event.as_raw_fd());
         }
-        let arced_dev: Arc<Mutex<BusDevice>> = if let Some(jail) = jail {
+        let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
             let proxy = ProxyDevice::new(device, &jail, keep_fds)
                 .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
             pid_labels.insert(proxy.pid() as u32, proxy.debug_label());

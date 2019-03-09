@@ -11,7 +11,7 @@ use sys_util::{EventFd, WatchingEvents};
 
 /// Async Job Queue can schedule async jobs.
 pub struct AsyncJobQueue {
-    jobs: Mutex<Vec<Box<FnMut() + 'static + Send>>>,
+    jobs: Mutex<Vec<Box<dyn FnMut() + Send>>>,
     evt: EventFd,
 }
 
@@ -23,7 +23,7 @@ impl AsyncJobQueue {
             jobs: Mutex::new(Vec::new()),
             evt,
         });
-        let handler: Arc<EventHandler> = queue.clone();
+        let handler: Arc<dyn EventHandler> = queue.clone();
         event_loop.add_event(
             &queue.evt,
             WatchingEvents::empty().set_read(),

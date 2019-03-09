@@ -139,7 +139,7 @@ impl LibUsbContext {
     }
 
     /// Set a handler that could handle pollfd change events.
-    pub fn set_pollfd_notifiers(&self, handler: Box<LibUsbPollfdChangeHandler>) {
+    pub fn set_pollfd_notifiers(&self, handler: Box<dyn LibUsbPollfdChangeHandler>) {
         // LibUsbContext is alive when any libusb related function is called. It owns the handler,
         // thus the handler memory is always valid when callback is invoked.
         let holder = Box::new(PollfdChangeHandlerHolder { handler });
@@ -262,7 +262,7 @@ pub trait LibUsbPollfdChangeHandler: Send + Sync + 'static {
 // This struct owns LibUsbPollfdChangeHandler. We need it because it's not possible to cast void
 // pointer to trait pointer.
 struct PollfdChangeHandlerHolder {
-    handler: Box<LibUsbPollfdChangeHandler>,
+    handler: Box<dyn LibUsbPollfdChangeHandler>,
 }
 
 // This function is safe when user_data points to valid PollfdChangeHandlerHolder.

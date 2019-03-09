@@ -305,7 +305,7 @@ impl arch::LinuxArch for X8664arch {
         F: FnOnce(
             &GuestMemory,
             &EventFd,
-        ) -> std::result::Result<Vec<(Box<PciDevice>, Option<Minijail>)>, E>,
+        ) -> std::result::Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E>,
         E: StdError + 'static,
     {
         let mut resources =

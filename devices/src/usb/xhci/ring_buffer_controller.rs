@@ -106,7 +106,7 @@ where
             event_loop: event_loop.clone(),
             event: evt,
         });
-        let event_handler: Arc<EventHandler> = controller.clone();
+        let event_handler: Arc<dyn EventHandler> = controller.clone();
         event_loop
             .add_event(
                 &controller.event,

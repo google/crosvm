@@ -19,7 +19,7 @@ pub trait FailHandle: Send + Sync {
     fn failed(&self) -> bool;
 }
 
-impl FailHandle for Option<Arc<FailHandle>> {
+impl FailHandle for Option<Arc<dyn FailHandle>> {
     fn fail(&self) {
         match *self {
             Some(ref handle) => handle.fail(),
@@ -57,9 +57,9 @@ impl PollToken for Fd {
 /// EpollEventLoop is an event loop blocked on a set of fds. When a monitered events is triggered,
 /// event loop will invoke the mapped handler.
 pub struct EventLoop {
-    fail_handle: Option<Arc<FailHandle>>,
+    fail_handle: Option<Arc<dyn FailHandle>>,
     poll_ctx: Arc<EpollContext<Fd>>,
-    handlers: Arc<Mutex<BTreeMap<RawFd, Weak<EventHandler>>>>,
+    handlers: Arc<Mutex<BTreeMap<RawFd, Weak<dyn EventHandler>>>>,
     stop_evt: EventFd,
 }
 
@@ -71,13 +71,13 @@ pub trait EventHandler: Send + Sync {
 impl EventLoop {
     /// Start an event loop. An optional fail handle could be passed to the event loop.
     pub fn start(
-        fail_handle: Option<Arc<FailHandle>>,
+        fail_handle: Option<Arc<dyn FailHandle>>,
     ) -> Result<(EventLoop, thread::JoinHandle<()>)> {
         let (self_stop_evt, stop_evt) = EventFd::new()
             .and_then(|e| Ok((e.try_clone()?, e)))
             .map_err(Error::CreateEventFd)?;
 
-        let fd_callbacks: Arc<Mutex<BTreeMap<RawFd, Weak<EventHandler>>>> =
+        let fd_callbacks: Arc<Mutex<BTreeMap<RawFd, Weak<dyn EventHandler>>>> =
             Arc::new(Mutex::new(BTreeMap::new()));
         let poll_ctx: EpollContext<Fd> = EpollContext::new()
             .and_then(|pc| pc.add(&stop_evt, Fd(stop_evt.as_raw_fd())).and(Ok(pc)))
@@ -156,9 +156,9 @@ impl EventLoop {
     /// the event will be removed.
     pub fn add_event(
         &self,
-        fd: &AsRawFd,
+        fd: &dyn AsRawFd,
         events: WatchingEvents,
-        handler: Weak<EventHandler>,
+        handler: Weak<dyn EventHandler>,
     ) -> Result<()> {
         if self.fail_handle.failed() {
             return Err(Error::EventLoopAlreadyFailed);
@@ -173,7 +173,7 @@ impl EventLoop {
     /// Removes event for this `fd`. This function returns false if it fails.
     ///
     /// EventLoop does not guarantee all events for `fd` is handled.
-    pub fn remove_event_for_fd(&self, fd: &AsRawFd) -> Result<()> {
+    pub fn remove_event_for_fd(&self, fd: &dyn AsRawFd) -> Result<()> {
         if self.fail_handle.failed() {
             return Err(Error::EventLoopAlreadyFailed);
         }

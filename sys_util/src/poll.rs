@@ -293,7 +293,7 @@ impl<T: PollToken> EpollContext<T> {
     /// A `fd` can only be added once and does not need to be kept open. If the `fd` is dropped and
     /// there were no duplicated file descriptors (i.e. adding the same descriptor with a different
     /// FD number) added to this context, events will not be reported by `wait` anymore.
-    pub fn add(&self, fd: &AsRawFd, token: T) -> Result<()> {
+    pub fn add(&self, fd: &dyn AsRawFd, token: T) -> Result<()> {
         self.add_fd_with_events(fd, WatchingEvents::empty().set_read(), token)
     }
 
@@ -303,7 +303,12 @@ impl<T: PollToken> EpollContext<T> {
     /// A `fd` can only be added once and does not need to be kept open. If the `fd` is dropped and
     /// there were no duplicated file descriptors (i.e. adding the same descriptor with a different
     /// FD number) added to this context, events will not be reported by `wait` anymore.
-    pub fn add_fd_with_events(&self, fd: &AsRawFd, events: WatchingEvents, token: T) -> Result<()> {
+    pub fn add_fd_with_events(
+        &self,
+        fd: &dyn AsRawFd,
+        events: WatchingEvents,
+        token: T,
+    ) -> Result<()> {
         let mut evt = epoll_event {
             events: events.get_raw(),
             u64: token.as_raw_token(),
@@ -326,7 +331,7 @@ impl<T: PollToken> EpollContext<T> {
 
     /// If `fd` was previously added to this context, the watched events will be replaced with
     /// `events` and the token associated with it will be replaced with the given `token`.
-    pub fn modify(&self, fd: &AsRawFd, events: WatchingEvents, token: T) -> Result<()> {
+    pub fn modify(&self, fd: &dyn AsRawFd, events: WatchingEvents, token: T) -> Result<()> {
         let mut evt = epoll_event {
             events: events.0,
             u64: token.as_raw_token(),
@@ -353,7 +358,7 @@ impl<T: PollToken> EpollContext<T> {
     /// method or by closing/dropping (if and only if the fd was never dup()'d/fork()'d) the `fd`.
     /// Failure to do so will cause the `wait` method to always return immediately, causing ~100%
     /// CPU load.
-    pub fn delete(&self, fd: &AsRawFd) -> Result<()> {
+    pub fn delete(&self, fd: &dyn AsRawFd) -> Result<()> {
         // Safe because we give a valid epoll FD and FD to stop watching. Then we check the return
         // value.
         let ret = unsafe {
@@ -497,7 +502,7 @@ impl<T: PollToken> PollContext<T> {
     /// A `fd` can only be added once and does not need to be kept open. If the `fd` is dropped and
     /// there were no duplicated file descriptors (i.e. adding the same descriptor with a different
     /// FD number) added to this context, events will not be reported by `wait` anymore.
-    pub fn add(&self, fd: &AsRawFd, token: T) -> Result<()> {
+    pub fn add(&self, fd: &dyn AsRawFd, token: T) -> Result<()> {
         self.add_fd_with_events(fd, WatchingEvents::empty().set_read(), token)
     }
 
@@ -507,7 +512,12 @@ impl<T: PollToken> PollContext<T> {
     /// A `fd` can only be added once and does not need to be kept open. If the `fd` is dropped and
     /// there were no duplicated file descriptors (i.e. adding the same descriptor with a different
     /// FD number) added to this context, events will not be reported by `wait` anymore.
-    pub fn add_fd_with_events(&self, fd: &AsRawFd, events: WatchingEvents, token: T) -> Result<()> {
+    pub fn add_fd_with_events(
+        &self,
+        fd: &dyn AsRawFd,
+        events: WatchingEvents,
+        token: T,
+    ) -> Result<()> {
         self.epoll_ctx.add_fd_with_events(fd, events, token)?;
         self.hangups.set(0);
         self.max_hangups.set(self.max_hangups.get() + 1);
@@ -516,7 +526,7 @@ impl<T: PollToken> PollContext<T> {
 
     /// If `fd` was previously added to this context, the watched events will be replaced with
     /// `events` and the token associated with it will be replaced with the given `token`.
-    pub fn modify(&self, fd: &AsRawFd, events: WatchingEvents, token: T) -> Result<()> {
+    pub fn modify(&self, fd: &dyn AsRawFd, events: WatchingEvents, token: T) -> Result<()> {
         self.epoll_ctx.modify(fd, events, token)
     }
 
@@ -526,7 +536,7 @@ impl<T: PollToken> PollContext<T> {
     /// method or by closing/dropping (if and only if the fd was never dup()'d/fork()'d) the `fd`.
     /// Failure to do so will cause the `wait` method to always return immediately, causing ~100%
     /// CPU load.
-    pub fn delete(&self, fd: &AsRawFd) -> Result<()> {
+    pub fn delete(&self, fd: &dyn AsRawFd) -> Result<()> {
         self.epoll_ctx.delete(fd)?;
         self.hangups.set(0);
         self.max_hangups.set(self.max_hangups.get() - 1);

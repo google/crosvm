@@ -197,7 +197,7 @@ pub struct RegisterSpec<T> {
 struct RegisterInner<T: RegisterValue> {
     spec: RegisterSpec<T>,
     value: T,
-    write_cb: Option<Box<Fn(T) -> T + Send>>,
+    write_cb: Option<Box<dyn Fn(T) -> T + Send>>,
 }
 
 /// Register is a thread safe struct. It can be safely changed from any thread.

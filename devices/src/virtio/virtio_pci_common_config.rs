@@ -43,7 +43,7 @@ impl VirtioPciCommonConfig {
         offset: u64,
         data: &mut [u8],
         queues: &mut Vec<Queue>,
-        device: &mut Box<VirtioDevice>,
+        device: &mut dyn VirtioDevice,
     ) {
         match data.len() {
             1 => {
@@ -71,7 +71,7 @@ impl VirtioPciCommonConfig {
         offset: u64,
         data: &[u8],
         queues: &mut Vec<Queue>,
-        device: &mut Box<VirtioDevice>,
+        device: &mut dyn VirtioDevice,
     ) {
         match data.len() {
             1 => self.write_common_config_byte(offset, data[0]),
@@ -133,7 +133,7 @@ impl VirtioPciCommonConfig {
         }
     }
 
-    fn read_common_config_dword(&self, offset: u64, device: &Box<VirtioDevice>) -> u32 {
+    fn read_common_config_dword(&self, offset: u64, device: &dyn VirtioDevice) -> u32 {
         match offset {
             0x00 => self.device_feature_select,
             0x04 => {
@@ -155,7 +155,7 @@ impl VirtioPciCommonConfig {
         offset: u64,
         value: u32,
         queues: &mut Vec<Queue>,
-        device: &mut Box<VirtioDevice>,
+        device: &mut dyn VirtioDevice,
     ) {
         fn hi(v: &mut GuestAddress, x: u32) {
             *v = (*v & 0xffffffff) | ((x as u64) << 32)
@@ -267,41 +267,41 @@ mod tests {
             queue_select: 0xff,
         };
 
-        let mut dev: Box<VirtioDevice> = Box::new(DummyDevice(0));
+        let dev = &mut DummyDevice(0) as &mut dyn VirtioDevice;
         let mut queues = Vec::new();
 
         // Can set all bits of driver_status.
-        regs.write(0x14, &[0x55], &mut queues, &mut dev);
+        regs.write(0x14, &[0x55], &mut queues, dev);
         let mut read_back = vec![0x00];
-        regs.read(0x14, &mut read_back, &mut queues, &mut dev);
+        regs.read(0x14, &mut read_back, &mut queues, dev);
         assert_eq!(read_back[0], 0x55);
 
         // The config generation register is read only.
-        regs.write(0x15, &[0xaa], &mut queues, &mut dev);
+        regs.write(0x15, &[0xaa], &mut queues, dev);
         let mut read_back = vec![0x00];
-        regs.read(0x15, &mut read_back, &mut queues, &mut dev);
+        regs.read(0x15, &mut read_back, &mut queues, dev);
         assert_eq!(read_back[0], 0x55);
 
         // Device features is read-only and passed through from the device.
-        regs.write(0x04, &[0, 0, 0, 0], &mut queues, &mut dev);
+        regs.write(0x04, &[0, 0, 0, 0], &mut queues, dev);
         let mut read_back = vec![0, 0, 0, 0];
-        regs.read(0x04, &mut read_back, &mut queues, &mut dev);
+        regs.read(0x04, &mut read_back, &mut queues, dev);
         assert_eq!(LittleEndian::read_u32(&read_back), DUMMY_FEATURES as u32);
 
         // Feature select registers are read/write.
-        regs.write(0x00, &[1, 2, 3, 4], &mut queues, &mut dev);
+        regs.write(0x00, &[1, 2, 3, 4], &mut queues, dev);
         let mut read_back = vec![0, 0, 0, 0];
-        regs.read(0x00, &mut read_back, &mut queues, &mut dev);
+        regs.read(0x00, &mut read_back, &mut queues, dev);
         assert_eq!(LittleEndian::read_u32(&read_back), 0x0403_0201);
-        regs.write(0x08, &[1, 2, 3, 4], &mut queues, &mut dev);
+        regs.write(0x08, &[1, 2, 3, 4], &mut queues, dev);
         let mut read_back = vec![0, 0, 0, 0];
-        regs.read(0x08, &mut read_back, &mut queues, &mut dev);
+        regs.read(0x08, &mut read_back, &mut queues, dev);
         assert_eq!(LittleEndian::read_u32(&read_back), 0x0403_0201);
 
         // 'queue_select' can be read and written.
-        regs.write(0x16, &[0xaa, 0x55], &mut queues, &mut dev);
+        regs.write(0x16, &[0xaa, 0x55], &mut queues, dev);
         let mut read_back = vec![0x00, 0x00];
-        regs.read(0x16, &mut read_back, &mut queues, &mut dev);
+        regs.read(0x16, &mut read_back, &mut queues, dev);
         assert_eq!(read_back[0], 0xaa);
         assert_eq!(read_back[1], 0x55);
     }

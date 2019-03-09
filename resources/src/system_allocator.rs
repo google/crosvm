@@ -27,7 +27,7 @@ pub struct SystemAllocator {
     io_address_space: Option<AddressAllocator>,
     device_address_space: AddressAllocator,
     mmio_address_space: AddressAllocator,
-    gpu_allocator: Option<Box<GpuMemoryAllocator>>,
+    gpu_allocator: Option<Box<dyn GpuMemoryAllocator>>,
     next_irq: u32,
 }
 
@@ -98,7 +98,7 @@ impl SystemAllocator {
     }
 
     /// Gets an allocator to be used for GPU memory.
-    pub fn gpu_memory_allocator(&self) -> Option<&GpuMemoryAllocator> {
+    pub fn gpu_memory_allocator(&self) -> Option<&dyn GpuMemoryAllocator> {
         self.gpu_allocator.as_ref().map(|v| v.as_ref())
     }
 }

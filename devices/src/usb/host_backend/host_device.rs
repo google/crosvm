@@ -83,7 +83,7 @@ impl HostToDeviceControlRequest {
 
 /// Host device is a device connected to host.
 pub struct HostDevice {
-    fail_handle: Arc<FailHandle>,
+    fail_handle: Arc<dyn FailHandle>,
     // Endpoints only contains data endpoints (1 to 30). Control transfers are handled at device
     // level.
     endpoints: Vec<UsbEndpoint>,
@@ -106,7 +106,7 @@ impl Drop for HostDevice {
 impl HostDevice {
     /// Create a new host device.
     pub fn new(
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
         job_queue: Arc<AsyncJobQueue>,
         device: LibUsbDevice,
         device_handle: DeviceHandle,

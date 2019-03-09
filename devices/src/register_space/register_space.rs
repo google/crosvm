@@ -7,7 +7,7 @@ use std::collections::btree_map::BTreeMap;
 
 /// Register space repesents a set of registers. It can handle read/write operations.
 pub struct RegisterSpace {
-    regs: BTreeMap<RegisterRange, Box<RegisterInterface>>,
+    regs: BTreeMap<RegisterRange, Box<dyn RegisterInterface>>,
 }
 
 impl RegisterSpace {
@@ -70,17 +70,17 @@ impl RegisterSpace {
     }
 
     /// Get first register before this addr.
-    fn first_before(&self, addr: RegisterOffset) -> Option<&Box<RegisterInterface>> {
+    fn first_before(&self, addr: RegisterOffset) -> Option<&dyn RegisterInterface> {
         for (range, r) in self.regs.iter().rev() {
             if range.from <= addr {
-                return Some(r);
+                return Some(r.as_ref());
             }
         }
         None
     }
 
     /// Get register at this addr.
-    fn get_register(&self, addr: RegisterOffset) -> Option<&Box<RegisterInterface>> {
+    fn get_register(&self, addr: RegisterOffset) -> Option<&dyn RegisterInterface> {
         let r = self.first_before(addr)?;
         let range = r.range();
         if addr <= range.to {

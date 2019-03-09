@@ -44,7 +44,7 @@ pub struct PciRoot {
     /// Bus configuration for the root device.
     root_configuration: PciRootConfiguration,
     /// Devices attached to this bridge.
-    devices: Vec<Arc<Mutex<BusDevice>>>,
+    devices: Vec<Arc<Mutex<dyn BusDevice>>>,
 }
 
 impl PciRoot {
@@ -68,7 +68,7 @@ impl PciRoot {
     }
 
     /// Add a `device` to this root PCI bus.
-    pub fn add_device(&mut self, device: Arc<Mutex<BusDevice>>) {
+    pub fn add_device(&mut self, device: Arc<Mutex<dyn BusDevice>>) {
         self.devices.push(device);
     }
 

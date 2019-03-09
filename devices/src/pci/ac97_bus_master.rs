@@ -74,7 +74,7 @@ enum PlaybackError {
     // Failure reading samples from guest memory.
     ReadingGuestSamples(data_model::VolatileMemoryError),
     // Failure to get an buffer from the stream.
-    StreamError(Box<Error>),
+    StreamError(Box<dyn Error>),
     // Failure writing to the audio output.
     WritingOutput(std::io::Error),
 }
@@ -406,7 +406,7 @@ impl Ac97BusMaster {
         self.regs.lock().glob_cnt = new_glob_cnt;
     }
 
-    fn start_audio(&mut self, func: Ac97Function, mixer: &Ac97Mixer) -> Result<(), Box<Error>> {
+    fn start_audio(&mut self, func: Ac97Function, mixer: &Ac97Mixer) -> Result<(), Box<dyn Error>> {
         const AUDIO_THREAD_RTPRIO: u16 = 12; // Matches other cros audio clients.
 
         match func {

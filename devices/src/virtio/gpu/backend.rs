@@ -312,7 +312,7 @@ pub struct Backend {
     display: Rc<RefCell<GpuDisplay>>,
     device: Device,
     renderer: Renderer,
-    resources: Map<u32, Box<VirglResource>>,
+    resources: Map<u32, Box<dyn VirglResource>>,
     contexts: Map<u32, RendererContext>,
     scanout_surface: Option<u32>,
     cursor_surface: Option<u32>,

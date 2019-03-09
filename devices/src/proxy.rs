@@ -66,7 +66,7 @@ enum CommandResult {
     ReadConfigResult(u32),
 }
 
-fn child_proc(sock: UnixSeqpacket, device: &mut BusDevice) {
+fn child_proc(sock: UnixSeqpacket, device: &mut dyn BusDevice) {
     let mut running = true;
     let sock = MsgSocket::<CommandResult, Command>::new(sock);
 

@@ -66,7 +66,7 @@ pub enum XhciTransferState {
     /// When transfer is submitted, it will contain a transfer callback, which should be invoked
     /// when the transfer is cancelled.
     Submitted {
-        cancel_callback: Box<FnMut() + Send>,
+        cancel_callback: Box<dyn FnMut() + Send>,
     },
     Cancelling,
     Cancelled,

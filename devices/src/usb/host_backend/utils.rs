@@ -44,7 +44,7 @@ pub fn update_transfer_state<T: UsbTransferBuffer>(
 
 /// Helper function to submit usb_transfer to device handle.
 pub fn submit_transfer<T: UsbTransferBuffer>(
-    fail_handle: Arc<FailHandle>,
+    fail_handle: Arc<dyn FailHandle>,
     job_queue: &Arc<AsyncJobQueue>,
     xhci_transfer: Arc<XhciTransfer>,
     device_handle: &Arc<Mutex<DeviceHandle>>,

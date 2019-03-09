@@ -239,8 +239,8 @@ impl PciConfiguration {
         vendor_id: u16,
         device_id: u16,
         class_code: PciClassCode,
-        subclass: &PciSubclass,
-        programming_interface: Option<&PciProgrammingInterface>,
+        subclass: &dyn PciSubclass,
+        programming_interface: Option<&dyn PciProgrammingInterface>,
         header_type: PciHeaderType,
         subsystem_vendor_id: u16,
         subsystem_id: u16,
@@ -422,7 +422,7 @@ impl PciConfiguration {
     /// `cap_data` should include the two-byte PCI capability header (type, next),
     /// but not populate it. Correct values will be generated automatically based
     /// on `cap_data.id()`.
-    pub fn add_capability(&mut self, cap_data: &PciCapability) -> Result<usize> {
+    pub fn add_capability(&mut self, cap_data: &dyn PciCapability) -> Result<usize> {
         let total_len = cap_data.bytes().len();
         // Check that the length is valid.
         if cap_data.bytes().is_empty() {

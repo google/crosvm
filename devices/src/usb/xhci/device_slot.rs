@@ -77,14 +77,14 @@ fn valid_endpoint_id(endpoint_id: u8) -> bool {
 
 #[derive(Clone)]
 pub struct DeviceSlots {
-    fail_handle: Arc<FailHandle>,
+    fail_handle: Arc<dyn FailHandle>,
     hub: Arc<UsbHub>,
     slots: Vec<Arc<DeviceSlot>>,
 }
 
 impl DeviceSlots {
     pub fn new(
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
         dcbaap: Register<u64>,
         hub: Arc<UsbHub>,
         interrupter: Arc<Mutex<Interrupter>>,
@@ -336,7 +336,7 @@ impl DeviceSlot {
     /// Disable this device slot. If the slot is not enabled, callback will be invoked immediately
     /// with error. Otherwise, callback will be invoked when all trc is stopped.
     pub fn disable<C: FnMut(TrbCompletionCode) -> std::result::Result<(), ()> + 'static + Send>(
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
         slot: &Arc<DeviceSlot>,
         mut callback: C,
     ) -> Result<()> {
@@ -577,7 +577,7 @@ impl DeviceSlot {
     pub fn reset_slot<
         C: FnMut(TrbCompletionCode) -> std::result::Result<(), ()> + 'static + Send,
     >(
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
         slot: &Arc<DeviceSlot>,
         mut callback: C,
     ) -> Result<()> {
@@ -621,7 +621,7 @@ impl DeviceSlot {
         C: FnMut(TrbCompletionCode) -> std::result::Result<(), ()> + 'static + Send,
     >(
         &self,
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
         endpoint_id: u8,
         mut cb: C,
     ) -> Result<()> {

@@ -82,7 +82,7 @@ pub trait VirtioDevice: Send {
     }
 
     /// Returns any additional capabiltiies required by the device.
-    fn get_device_caps(&self) -> Vec<Box<PciCapability>> {
+    fn get_device_caps(&self) -> Vec<Box<dyn PciCapability>> {
         Vec::new()
     }
 }

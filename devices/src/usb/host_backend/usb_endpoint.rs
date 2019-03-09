@@ -22,7 +22,7 @@ use utils::FailHandle;
 
 /// Isochronous, Bulk or Interrupt endpoint.
 pub struct UsbEndpoint {
-    fail_handle: Arc<FailHandle>,
+    fail_handle: Arc<dyn FailHandle>,
     job_queue: Arc<AsyncJobQueue>,
     device_handle: Arc<Mutex<DeviceHandle>>,
     endpoint_number: u8,
@@ -33,7 +33,7 @@ pub struct UsbEndpoint {
 impl UsbEndpoint {
     /// Create new endpoint. This function will panic if endpoint type is control.
     pub fn new(
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
         job_queue: Arc<AsyncJobQueue>,
         device_handle: Arc<Mutex<DeviceHandle>>,
         endpoint_number: u8,

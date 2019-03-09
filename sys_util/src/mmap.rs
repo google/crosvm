@@ -160,7 +160,7 @@ impl MemoryMapping {
     /// # Arguments
     /// * `fd` - File descriptor to mmap from.
     /// * `size` - Size of memory region in bytes.
-    pub fn from_fd(fd: &AsRawFd, size: usize) -> Result<MemoryMapping> {
+    pub fn from_fd(fd: &dyn AsRawFd, size: usize) -> Result<MemoryMapping> {
         MemoryMapping::from_fd_offset(fd, size, 0)
     }
 
@@ -170,7 +170,7 @@ impl MemoryMapping {
     /// * `fd` - File descriptor to mmap from.
     /// * `size` - Size of memory region in bytes.
     /// * `offset` - Offset in bytes from the beginning of `fd` to start the mmap.
-    pub fn from_fd_offset(fd: &AsRawFd, size: usize, offset: usize) -> Result<MemoryMapping> {
+    pub fn from_fd_offset(fd: &dyn AsRawFd, size: usize, offset: usize) -> Result<MemoryMapping> {
         if offset > libc::off_t::max_value() as usize {
             return Err(Error::InvalidOffset);
         }

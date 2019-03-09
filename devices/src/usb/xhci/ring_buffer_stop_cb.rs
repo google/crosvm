@@ -26,7 +26,7 @@ impl RingBufferStopCallback {
 }
 
 struct RingBufferStopCallbackInner {
-    callback: Box<FnMut() + Send>,
+    callback: Box<dyn FnMut() + Send>,
 }
 
 impl Drop for RingBufferStopCallbackInner {
@@ -38,7 +38,7 @@ impl Drop for RingBufferStopCallbackInner {
 /// Helper function to wrap up a closure with fail handle. The fail handle will be triggered if the
 /// closure returns an error.
 pub fn fallible_closure<E: std::fmt::Display, C: FnMut() -> Result<(), E> + 'static + Send>(
-    fail_handle: Arc<FailHandle>,
+    fail_handle: Arc<dyn FailHandle>,
     mut callback: C,
 ) -> impl FnMut() + 'static + Send {
     move || match callback() {

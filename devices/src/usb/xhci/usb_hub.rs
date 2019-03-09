@@ -74,7 +74,7 @@ pub struct UsbPort {
     portsc: Register<u32>,
     usbsts: Register<u32>,
     interrupter: Arc<Mutex<Interrupter>>,
-    backend_device: Mutex<Option<Box<XhciBackendDevice>>>,
+    backend_device: Mutex<Option<Box<dyn XhciBackendDevice>>>,
 }
 
 impl UsbPort {
@@ -116,7 +116,7 @@ impl UsbPort {
     }
 
     /// Get current connected backend.
-    pub fn get_backend_device(&self) -> MutexGuard<Option<Box<XhciBackendDevice>>> {
+    pub fn get_backend_device(&self) -> MutexGuard<Option<Box<dyn XhciBackendDevice>>> {
         self.backend_device.lock()
     }
 
@@ -131,7 +131,10 @@ impl UsbPort {
         Ok(())
     }
 
-    fn attach(&self, device: Box<XhciBackendDevice>) -> std::result::Result<(), InterrupterError> {
+    fn attach(
+        &self,
+        device: Box<dyn XhciBackendDevice>,
+    ) -> std::result::Result<(), InterrupterError> {
         usb_debug!("A backend is connected to port {}", self.port_id);
         let mut locked = self.backend_device.lock();
         assert!(locked.is_none());
@@ -250,7 +253,7 @@ impl UsbHub {
     }
 
     /// Connect backend to next empty port.
-    pub fn connect_backend(&self, backend: Box<XhciBackendDevice>) -> Result<u8> {
+    pub fn connect_backend(&self, backend: Box<dyn XhciBackendDevice>) -> Result<u8> {
         usb_debug!("Trying to connect backend to hub");
         for port in &self.ports {
             if port.is_attached() {

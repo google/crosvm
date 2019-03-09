@@ -32,6 +32,7 @@ use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap as Map, BTreeSet as Set, VecDeque};
 use std::convert::From;
+use std::error::Error as StdError;
 use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -645,7 +646,7 @@ enum WlResp<'a> {
     VfdHup {
         id: u32,
     },
-    Err(Box<std::error::Error>),
+    Err(Box<dyn StdError>),
     OutOfMemory,
     InvalidId,
     InvalidType,
@@ -891,11 +892,11 @@ impl WlVfd {
     }
 
     // The FD that is used for polling for events on this VFD.
-    fn poll_fd(&self) -> Option<&AsRawFd> {
-        self.socket
+    fn poll_fd(&self) -> Option<&dyn AsRawFd> {
+        self.socket.as_ref().map(|s| s as &dyn AsRawFd).or(self
+            .local_pipe
             .as_ref()
-            .map(|s| s as &AsRawFd)
-            .or(self.local_pipe.as_ref().map(|&(_, ref p)| p as &AsRawFd))
+            .map(|&(_, ref p)| p as &dyn AsRawFd))
     }
 
     // Sends data/files from the guest to the host over this VFD.

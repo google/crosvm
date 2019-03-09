@@ -148,7 +148,7 @@ pub enum FlockOperation {
 /// Safe wrapper for flock(2) with the operation `op` and optionally `nonblocking`. The lock will be
 /// dropped automatically when `file` is dropped.
 #[inline(always)]
-pub fn flock(file: &AsRawFd, op: FlockOperation, nonblocking: bool) -> Result<()> {
+pub fn flock(file: &dyn AsRawFd, op: FlockOperation, nonblocking: bool) -> Result<()> {
     let mut operation = match op {
         FlockOperation::LockShared => libc::LOCK_SH,
         FlockOperation::LockExclusive => libc::LOCK_EX,
@@ -177,7 +177,7 @@ pub enum FallocateMode {
 
 /// Safe wrapper for `fallocate()`.
 pub fn fallocate(
-    file: &AsRawFd,
+    file: &dyn AsRawFd,
     mode: FallocateMode,
     keep_size: bool,
     offset: u64,

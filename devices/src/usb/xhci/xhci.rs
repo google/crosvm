@@ -58,7 +58,7 @@ impl Display for Error {
 
 /// xHCI controller implementation.
 pub struct Xhci {
-    fail_handle: Arc<FailHandle>,
+    fail_handle: Arc<dyn FailHandle>,
     regs: XhciRegs,
     interrupter: Arc<Mutex<Interrupter>>,
     command_ring_controller: Arc<CommandRingController>,
@@ -75,7 +75,7 @@ pub struct Xhci {
 impl Xhci {
     /// Create a new xHCI controller.
     pub fn new(
-        fail_handle: Arc<FailHandle>,
+        fail_handle: Arc<dyn FailHandle>,
         mem: GuestMemory,
         device_provider: HostBackendDeviceProvider,
         irq_evt: EventFd,
