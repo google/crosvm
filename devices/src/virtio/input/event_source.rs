@@ -135,7 +135,7 @@ impl<T: AsRawFd> EventSourceImpl<T> {
 
 impl<T> EventSourceImpl<T>
 where
-    T: Read + Write + AsRawFd,
+    T: Read + Write,
 {
     // Receive events from the source and store them in a queue, unless they should be filtered out.
     fn receive_events<F: Fn(&input_event) -> bool>(&mut self, event_filter: F) -> Result<usize> {
@@ -330,5 +330,189 @@ where
 
     fn available_events_count(&self) -> usize {
         self.evt_source_impl.available_events()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use data_model::{DataInit, Le16, Le32};
+    use std::cmp::min;
+    use std::io::Read;
+    use std::io::Write;
+    use std::mem::size_of;
+    use virtio::input::event_source::input_event;
+    use virtio::input::event_source::EventSourceImpl;
+    use virtio::input::virtio_input_event;
+
+    struct SourceMock {
+        events: Vec<u8>,
+    }
+
+    impl SourceMock {
+        fn new(evts: &Vec<input_event>) -> SourceMock {
+            let mut events: Vec<u8> = vec![];
+            for evt in evts {
+                for byte in evt.as_slice() {
+                    events.push(byte.clone());
+                }
+            }
+            SourceMock { events }
+        }
+    }
+
+    impl Read for SourceMock {
+        fn read(&mut self, buf: &mut [u8]) -> std::result::Result<usize, std::io::Error> {
+            let copy_size = min(buf.len(), self.events.len());
+            buf[..copy_size].copy_from_slice(&self.events[..copy_size]);
+            Ok(copy_size)
+        }
+    }
+    impl Write for SourceMock {
+        fn write(&mut self, buf: &[u8]) -> std::result::Result<usize, std::io::Error> {
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::result::Result<(), std::io::Error> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn empty_new() {
+        let mut source = EventSourceImpl::new(SourceMock::new(&vec![]));
+        assert_eq!(
+            source.available_events(),
+            0,
+            "zero events should be available"
+        );
+        let mut buffer = [0u8, 80];
+        assert_eq!(
+            source.read(&mut buffer).unwrap(),
+            0,
+            "zero events should be read"
+        );
+    }
+
+    #[test]
+    fn empty_receive() {
+        let mut source = EventSourceImpl::new(SourceMock::new(&vec![]));
+        assert_eq!(
+            source.receive_events(|_| true).unwrap(),
+            0,
+            "zero events should be received"
+        );
+        let mut buffer = [0u8, 80];
+        assert_eq!(
+            source.read(&mut buffer).unwrap(),
+            0,
+            "zero events should be read"
+        );
+    }
+
+    fn instantiate_input_events(count: usize) -> Vec<input_event> {
+        let mut ret: Vec<input_event> = Vec::with_capacity(count);
+        for idx in 0..count {
+            ret.push(input_event {
+                timestamp_fields: [0, 0],
+                type_: 3 * (idx as u16) + 1,
+                code: 3 * (idx as u16) + 2,
+                value: 3 * (idx as u32) + 3,
+            });
+        }
+        ret
+    }
+
+    fn assert_events_match(e1: &virtio_input_event, e2: &input_event) {
+        assert_eq!(e1.type_, Le16::from(e2.type_), "type should match");
+        assert_eq!(e1.code, Le16::from(e2.code), "code should match");
+        assert_eq!(e1.value, Le32::from(e2.value), "value should match");
+    }
+
+    #[test]
+    fn partial_read() {
+        let evts = instantiate_input_events(4usize);
+        let mut source = EventSourceImpl::new(SourceMock::new(&evts));
+        assert_eq!(
+            source.receive_events(|_| true).unwrap(),
+            evts.len(),
+            "should receive all events"
+        );
+        let mut evt = virtio_input_event {
+            type_: Le16::from(0),
+            code: Le16::from(0),
+            value: Le32::from(0),
+        };
+        assert_eq!(
+            source.read(evt.as_mut_slice()).unwrap(),
+            virtio_input_event::EVENT_SIZE,
+            "should read a single event"
+        );
+        assert_events_match(&evt, &evts[0]);
+    }
+
+    #[test]
+    fn exact_read() {
+        const EVENT_COUNT: usize = 4;
+        let evts = instantiate_input_events(EVENT_COUNT);
+        let mut source = EventSourceImpl::new(SourceMock::new(&evts));
+        assert_eq!(
+            source.receive_events(|_| true).unwrap(),
+            evts.len(),
+            "should receive all events"
+        );
+        let mut vio_evts = [0u8; EVENT_COUNT * size_of::<virtio_input_event>()];
+        assert_eq!(
+            source.read(&mut vio_evts).unwrap(),
+            EVENT_COUNT * virtio_input_event::EVENT_SIZE,
+            "should read all events"
+        );
+
+        let mut chunks = vio_evts.chunks_exact(virtio_input_event::EVENT_SIZE);
+        for idx in 0..EVENT_COUNT {
+            let evt = virtio_input_event::from_slice(chunks.next().unwrap()).unwrap();
+            assert_events_match(&evt, &evts[idx]);
+        }
+    }
+
+    #[test]
+    fn over_read() {
+        const EVENT_COUNT: usize = 4;
+        let evts = instantiate_input_events(EVENT_COUNT);
+        let mut source = EventSourceImpl::new(SourceMock::new(&evts));
+        assert_eq!(
+            source.receive_events(|_| true).unwrap(),
+            evts.len(),
+            "should receive all events"
+        );
+        let mut vio_evts = [0u8; 2 * EVENT_COUNT * size_of::<virtio_input_event>()];
+        assert_eq!(
+            source.read(&mut vio_evts).unwrap(),
+            EVENT_COUNT * virtio_input_event::EVENT_SIZE,
+            "should only read available events"
+        );
+
+        let mut chunks = vio_evts.chunks_exact(virtio_input_event::EVENT_SIZE);
+        for idx in 0..EVENT_COUNT {
+            let evt = virtio_input_event::from_slice(chunks.next().unwrap()).unwrap();
+            assert_events_match(&evt, &evts[idx]);
+        }
+    }
+
+    #[test]
+    fn incomplete_read() {
+        const EVENT_COUNT: usize = 4;
+        let evts = instantiate_input_events(EVENT_COUNT);
+        let mut source = EventSourceImpl::new(SourceMock::new(&evts));
+        assert_eq!(
+            source.receive_events(|_| true).unwrap(),
+            evts.len(),
+            "should receive all events"
+        );
+        let mut vio_evts = [0u8; 3];
+        assert_eq!(
+            source.read(&mut vio_evts).unwrap(),
+            0,
+            "shouldn't read incomplete events"
+        );
     }
 }
