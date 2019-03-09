@@ -23,13 +23,10 @@ extern crate sync;
 extern crate sys_util;
 #[cfg(feature = "tpm")]
 extern crate tpm2;
+extern crate usb_util;
 extern crate vhost;
 extern crate virtio_sys;
 extern crate vm_control;
-
-#[allow(dead_code)]
-#[macro_use]
-mod register_space;
 
 mod bus;
 mod cmos;
@@ -39,10 +36,10 @@ mod pci;
 mod pit;
 pub mod pl030;
 mod proxy;
+#[macro_use]
+mod register_space;
 mod serial;
-#[allow(dead_code)]
-mod usb;
-#[allow(dead_code)]
+pub mod usb;
 mod utils;
 pub mod virtio;
 
@@ -59,4 +56,6 @@ pub use self::pl030::Pl030;
 pub use self::proxy::Error as ProxyError;
 pub use self::proxy::ProxyDevice;
 pub use self::serial::Serial;
+pub use self::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
+pub use self::usb::xhci::xhci_controller::XhciController;
 pub use self::virtio::VirtioPciDevice;

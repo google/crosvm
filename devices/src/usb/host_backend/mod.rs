@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 pub mod context;
-mod error;
+pub mod error;
 pub mod host_backend_device_provider;
 pub mod host_device;
 mod hotplug;

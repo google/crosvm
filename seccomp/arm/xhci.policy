@@ -1,0 +1,40 @@
+# Copyright 2018 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+openat: 1
+@include /usr/share/policy/crosvm/common_device.policy
+
+stat64: 1
+fcntl64: 1
+lstat64: 1
+readlinkat: 1
+getdents64: 1
+getrandom: 1
+name_to_handle_at: 1
+access: 1
+gettid: 1
+clock_gettime: 1
+timerfd_create: 1
+getsockname: 1
+pipe: 1
+setsockopt: 1
+bind: 1
+fcntl: 1
+socket: arg0 == AF_NETLINK
+stat: 1
+uname: 1
+# The following ioctls are:
+# 0x4004550d == USBDEVFS_REAPURBNDELAY32
+# 0x550b     == USBDEVFS_DISCARDURB
+# 0x8004550f == USBDEVFS_CLAIMINTERFACE
+# 0x80045510 == USBDEVFS_RELEASEINTERFACE
+# 0x8004551a == USBDEVFS_GET_CAPABILITIES
+# 0x802c550a == USBDEVFS_SUBMITURB
+# 0xc0105500 == USBDEVFS_CONTROL
+ioctl: arg1 == 0xc0105500 || arg1 == 0x802c550a || arg1 == 0x8004551a || arg1 == 0x4004550d || arg1 == 0x8004550f || arg1 == 0x80045510 || arg1 == 0x550b
+fstat: 1
+sigaltstack: 1
+recvmsg: 1
+getrandom: 1
+getdents: 1

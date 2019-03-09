@@ -10,12 +10,18 @@ mod intr_resample_handler;
 mod ring_buffer;
 mod ring_buffer_controller;
 mod ring_buffer_stop_cb;
-pub mod scatter_gather_buffer;
 mod transfer_ring_controller;
-pub mod usb_hub;
+mod xhci;
+#[allow(dead_code)]
 mod xhci_abi;
+#[allow(dead_code)]
 mod xhci_abi_schema;
+#[allow(dead_code)]
+mod xhci_regs;
+
+pub mod scatter_gather_buffer;
+pub mod usb_hub;
 pub mod xhci_backend_device;
 pub mod xhci_backend_device_provider;
-mod xhci_regs;
+pub mod xhci_controller;
 pub mod xhci_transfer;

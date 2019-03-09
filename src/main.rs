@@ -43,18 +43,22 @@ pub mod panic_hook;
 #[cfg(feature = "plugin")]
 pub mod plugin;
 
-use std::fs::OpenOptions;
+use std::fmt;
+use std::fs::{File, OpenOptions};
 use std::net;
-use std::os::unix::io::RawFd;
-use std::path::PathBuf;
+use std::num::ParseIntError;
+use std::os::unix::io::{FromRawFd, RawFd};
+use std::path::{Path, PathBuf};
 use std::string::String;
 use std::thread::sleep;
 use std::time::Duration;
 
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use qcow::QcowFile;
-use sys_util::{getpid, kill_process_group, net::UnixSeqpacket, reap_child, syslog};
-use vm_control::{VmRequest, VmResponse};
+use sys_util::{
+    getpid, kill_process_group, net::UnixSeqpacket, reap_child, syslog, validate_raw_fd,
+};
+use vm_control::{MaybeOwnedFd, UsbControlCommand, UsbControlResult, VmRequest, VmResponse};
 
 use crate::argument::{print_help, set_arguments, Argument};
 
@@ -777,8 +781,11 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
     }
 }
 
-fn vms_request(request: &VmRequest, args: std::env::Args) -> std::result::Result<(), ()> {
-    let mut return_result = Ok(());
+fn handle_request(
+    request: &VmRequest,
+    args: std::env::Args,
+) -> std::result::Result<VmResponse, ()> {
+    let mut return_result = Err(());
     for socket_path in args {
         match UnixSeqpacket::connect(&socket_path) {
             Ok(s) => {
@@ -792,7 +799,7 @@ fn vms_request(request: &VmRequest, args: std::env::Args) -> std::result::Result
                     continue;
                 }
                 match socket.recv() {
-                    Ok(response) => info!("request response was {}", response),
+                    Ok(response) => return_result = Ok(response),
                     Err(e) => {
                         error!(
                             "failed to send request to socket at2 '{}': {}",
@@ -811,6 +818,12 @@ fn vms_request(request: &VmRequest, args: std::env::Args) -> std::result::Result
     }
 
     return_result
+}
+
+fn vms_request(request: &VmRequest, args: std::env::Args) -> std::result::Result<(), ()> {
+    let response = handle_request(request, args)?;
+    info!("request response was {}", response);
+    Ok(())
 }
 
 fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
@@ -930,13 +943,193 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
     vms_request(&request, args)
 }
 
+enum ModifyUsbError {
+    ArgMissing(&'static str),
+    ArgParse(&'static str, String),
+    ArgParseInt(&'static str, String, ParseIntError),
+    FailedFdValidate(sys_util::Error),
+    PathDoesNotExist(PathBuf),
+    SocketFailed,
+    UnexpectedResponse(VmResponse),
+    UnknownCommand(String),
+    UsbControl(UsbControlResult),
+}
+
+impl fmt::Display for ModifyUsbError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::ModifyUsbError::*;
+
+        match self {
+            ArgMissing(a) => write!(f, "argument missing: {}", a),
+            ArgParse(name, value) => {
+                write!(f, "failed to parse argument {} value `{}`", name, value)
+            }
+            ArgParseInt(name, value, e) => write!(
+                f,
+                "failed to parse integer argument {} value `{}`: {}",
+                name, value, e
+            ),
+            FailedFdValidate(e) => write!(f, "failed to validate file descriptor: {}", e),
+            PathDoesNotExist(p) => write!(f, "path `{}` does not exist", p.display()),
+            SocketFailed => write!(f, "socket failed"),
+            UnexpectedResponse(r) => write!(f, "unexpected response: {}", r),
+            UnknownCommand(c) => write!(f, "unknown command: `{}`", c),
+            UsbControl(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+type ModifyUsbResult<T> = std::result::Result<T, ModifyUsbError>;
+
+fn parse_bus_id_addr(v: &str) -> ModifyUsbResult<(u8, u8, u16, u16)> {
+    debug!("parse_bus_id_addr: {}", v);
+    let mut ids = v.split(":");
+    match (ids.next(), ids.next(), ids.next(), ids.next()) {
+        (Some(bus_id), Some(addr), Some(vid), Some(pid)) => {
+            let bus_id = bus_id
+                .parse::<u8>()
+                .map_err(|e| ModifyUsbError::ArgParseInt("bus_id", bus_id.to_owned(), e))?;
+            let addr = addr
+                .parse::<u8>()
+                .map_err(|e| ModifyUsbError::ArgParseInt("addr", addr.to_owned(), e))?;
+            let vid = u16::from_str_radix(&vid, 16)
+                .map_err(|e| ModifyUsbError::ArgParseInt("vid", vid.to_owned(), e))?;
+            let pid = u16::from_str_radix(&pid, 16)
+                .map_err(|e| ModifyUsbError::ArgParseInt("pid", pid.to_owned(), e))?;
+            Ok((bus_id, addr, vid, pid))
+        }
+        _ => Err(ModifyUsbError::ArgParse(
+            "BUS_ID_ADDR_BUS_NUM_DEV_NUM",
+            v.to_owned(),
+        )),
+    }
+}
+
+fn raw_fd_from_path(path: &Path) -> ModifyUsbResult<RawFd> {
+    if !path.exists() {
+        return Err(ModifyUsbError::PathDoesNotExist(path.to_owned()));
+    }
+    let raw_fd = path
+        .file_name()
+        .and_then(|fd_osstr| fd_osstr.to_str())
+        .map_or(
+            Err(ModifyUsbError::ArgParse(
+                "USB_DEVICE_PATH",
+                path.to_string_lossy().into_owned(),
+            )),
+            |fd_str| {
+                fd_str.parse::<libc::c_int>().map_err(|e| {
+                    ModifyUsbError::ArgParseInt("USB_DEVICE_PATH", fd_str.to_owned(), e)
+                })
+            },
+        )?;
+    validate_raw_fd(raw_fd).map_err(|e| ModifyUsbError::FailedFdValidate(e))
+}
+
+fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
+    let val = args
+        .next()
+        .ok_or(ModifyUsbError::ArgMissing("BUS_ID_ADDR_BUS_NUM_DEV_NUM"))?;
+    let (bus, addr, vid, pid) = parse_bus_id_addr(&val)?;
+    let dev_path = PathBuf::from(
+        args.next()
+            .ok_or(ModifyUsbError::ArgMissing("usb device path"))?,
+    );
+    let usb_file: Option<File> = if dev_path == Path::new("-") {
+        None
+    } else if dev_path.parent() == Some(Path::new("/proc/self/fd")) {
+        // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
+        // Safe because we will validate |raw_fd|.
+        Some(unsafe { File::from_raw_fd(raw_fd_from_path(&dev_path)?) })
+    } else {
+        Some(
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&dev_path)
+                .map_err(|_| ModifyUsbError::UsbControl(UsbControlResult::FailedToOpenDevice))?,
+        )
+    };
+
+    let request = VmRequest::UsbCommand(UsbControlCommand::AttachDevice {
+        bus,
+        addr,
+        vid,
+        pid,
+        fd: usb_file.map(|f| MaybeOwnedFd::Owned(f)),
+    });
+    let response = handle_request(&request, args).map_err(|_| ModifyUsbError::SocketFailed)?;
+    match response {
+        VmResponse::UsbResponse(usb_resp) => Ok(usb_resp),
+        r => Err(ModifyUsbError::UnexpectedResponse(r)),
+    }
+}
+
+fn usb_detach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
+    let port: u8 = args
+        .next()
+        .map_or(Err(ModifyUsbError::ArgMissing("PORT")), |p| {
+            p.parse::<u8>()
+                .map_err(|e| ModifyUsbError::ArgParseInt("PORT", p.to_owned(), e))
+        })?;
+    let request = VmRequest::UsbCommand(UsbControlCommand::DetachDevice { port });
+    let response = handle_request(&request, args).map_err(|_| ModifyUsbError::SocketFailed)?;
+    match response {
+        VmResponse::UsbResponse(usb_resp) => Ok(usb_resp),
+        r => Err(ModifyUsbError::UnexpectedResponse(r)),
+    }
+}
+
+fn usb_list(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
+    let port: u8 = args
+        .next()
+        .map_or(Err(ModifyUsbError::ArgMissing("PORT")), |p| {
+            p.parse::<u8>()
+                .map_err(|e| ModifyUsbError::ArgParseInt("PORT", p.to_owned(), e))
+        })?;
+    let request = VmRequest::UsbCommand(UsbControlCommand::ListDevice { port });
+    let response = handle_request(&request, args).map_err(|_| ModifyUsbError::SocketFailed)?;
+    match response {
+        VmResponse::UsbResponse(usb_resp) => Ok(usb_resp),
+        r => Err(ModifyUsbError::UnexpectedResponse(r)),
+    }
+}
+
+fn modify_usb(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() < 3 {
+        print_help("crosvm usb",
+                   "[attach BUS_ID:ADDR:VENDOR_ID:PRODUCT_ID [USB_DEVICE_PATH|-] | detach PORT | list PORT] VM_SOCKET...", &[]);
+        return Err(());
+    }
+
+    // This unwrap will not panic because of the above length check.
+    let command = args.next().unwrap();
+    let result = match command.as_ref() {
+        "attach" => usb_attach(args),
+        "detach" => usb_detach(args),
+        "list" => usb_list(args),
+        other => Err(ModifyUsbError::UnknownCommand(other.to_owned())),
+    };
+    match result {
+        Ok(response) => {
+            println!("{}", response);
+            Ok(())
+        }
+        Err(e) => {
+            println!("error {}", e);
+            Err(())
+        }
+    }
+}
+
 fn print_usage() {
     print_help("crosvm", "[stop|run]", &[]);
     println!("Commands:");
     println!("    stop - Stops crosvm instances via their control sockets.");
     println!("    run  - Start a new crosvm instance.");
     println!("    create_qcow2  - Create a new qcow2 disk image file.");
-    println!("    disk - Manage attached virtual disk devices.")
+    println!("    disk - Manage attached virtual disk devices.");
+    println!("    usb - Manage attached virtual USB devices.");
 }
 
 fn crosvm_main() -> std::result::Result<(), ()> {
@@ -966,6 +1159,7 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         Some("balloon") => balloon_vms(args),
         Some("create_qcow2") => create_qcow2(args),
         Some("disk") => disk_cmd(args),
+        Some("usb") => modify_usb(args),
         Some(c) => {
             println!("invalid subcommand: {:?}", c);
             print_usage();

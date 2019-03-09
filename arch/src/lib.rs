@@ -190,6 +190,7 @@ pub fn generate_pci_root(
             pid_labels.insert(proxy.pid() as u32, proxy.debug_label());
             Arc::new(Mutex::new(proxy))
         } else {
+            device.on_sandboxed();
             Arc::new(Mutex::new(device))
         };
         root.add_device(arced_dev.clone());

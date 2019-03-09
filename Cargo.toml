@@ -25,9 +25,9 @@ default-no-sandbox = []
 wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
 gpu = ["devices/gpu"]
 usb-emulation = ["usb_util"]
-sandboxed-libusb = ["usb_util/sandboxed-libusb"]
 tpm = ["devices/tpm"]
 gpu-forward = ["render_node_forward"]
+sandboxed-libusb = ["devices/sandboxed-libusb", "usb_util/sandboxed-libusb", "vm_control/sandboxed-libusb"]
 
 [dependencies]
 arch = { path = "arch" }

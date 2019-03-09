@@ -6,5 +6,5 @@ extern crate usb_util;
 
 #[macro_use]
 mod log;
-mod host_backend;
+pub mod host_backend;
 pub mod xhci;

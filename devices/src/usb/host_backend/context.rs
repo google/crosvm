@@ -129,11 +129,14 @@ struct PollfdChangeHandler {
 
 impl LibUsbPollfdChangeHandler for PollfdChangeHandler {
     fn add_poll_fd(&self, fd: RawFd, events: c_short) {
-        self.event_loop.add_event(
+        match self.event_loop.add_event(
             &MaybeOwnedFd::Borrowed(fd),
             WatchingEvents::new(events as u32),
             self.event_handler.clone(),
-        );
+        ) {
+            Err(e) => error!("cannot add event to event loop: {}", e),
+            Ok(_) => {}
+        }
     }
 
     fn remove_poll_fd(&self, fd: RawFd) {
