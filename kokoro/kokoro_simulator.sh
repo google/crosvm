@@ -16,7 +16,7 @@ main() {
   mkdir -p "${kokoro_simulator_root}"
   if [[ ! -e "${base_image_tarball}" ]]; then
     if [[ "$(docker images -q ${base_image} 2> /dev/null)" == "" ]]; then
-      docker build -t ${base_image} - < Dockerfile
+      docker build -t ${base_image} .
     fi
     docker save ${base_image} | xz -T 0 -z >"${base_image_tarball}"
   fi
