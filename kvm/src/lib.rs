@@ -941,6 +941,20 @@ impl Vm {
         cap.args[0] = 24;
         self.kvm_enable_cap(&cap)
     }
+
+    /// Request that the kernel inject the specified MSI message.
+    /// Returns Ok(true) on delivery, Ok(false) if the guest blocked delivery, or an error.
+    /// See kernel documentation for KVM_SIGNAL_MSI.
+    pub fn signal_msi(&self, msi: &kvm_msi) -> Result<bool> {
+        // safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct
+        let ret = unsafe { ioctl_with_ref(self, KVM_SIGNAL_MSI(), msi) };
+        if ret < 0 {
+            errno_result()
+        } else {
+            Ok(ret > 0)
+        }
+    }
 }
 
 impl AsRawFd for Vm {
