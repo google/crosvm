@@ -10,6 +10,7 @@ extern crate kernel_cmdline;
 extern crate kvm;
 extern crate kvm_sys;
 extern crate libc;
+extern crate remain;
 extern crate resources;
 extern crate sync;
 extern crate sys_util;
@@ -25,6 +26,7 @@ use std::sync::Arc;
 use arch::{RunnableLinuxVm, VmComponents};
 use devices::{Bus, BusError, PciConfigMmio, PciDevice, PciInterruptPin};
 use io_jail::Minijail;
+use remain::sorted;
 use resources::{AddressRanges, SystemAllocator};
 use sync::Mutex;
 use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError};
@@ -115,6 +117,7 @@ const AARCH64_MMIO_SIZE: u64 = 0x100000;
 // Virtio devices start at SPI interrupt number 2
 const AARCH64_IRQ_BASE: u32 = 2;
 
+#[sorted]
 #[derive(Debug)]
 pub enum Error {
     CloneEventFd(sys_util::Error),
@@ -141,9 +144,11 @@ pub enum Error {
 }
 
 impl Display for Error {
+    #[remain::check]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::Error::*;
 
+        #[sorted]
         match self {
             CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
             Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),

@@ -12,6 +12,7 @@ extern crate kernel_loader;
 extern crate kvm;
 extern crate kvm_sys;
 extern crate libc;
+extern crate remain;
 extern crate resources;
 extern crate sync;
 extern crate sys_util;
@@ -80,10 +81,12 @@ use arch::{RunnableLinuxVm, VmComponents};
 use devices::{PciConfigIo, PciDevice, PciInterruptPin};
 use io_jail::Minijail;
 use kvm::*;
+use remain::sorted;
 use resources::{AddressRanges, SystemAllocator};
 use sync::Mutex;
 use sys_util::{Clock, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 
+#[sorted]
 #[derive(Debug)]
 pub enum Error {
     CloneEventFd(sys_util::Error),
@@ -121,9 +124,11 @@ pub enum Error {
 }
 
 impl Display for Error {
+    #[remain::check]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::Error::*;
 
+        #[sorted]
         match self {
             CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
             Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),

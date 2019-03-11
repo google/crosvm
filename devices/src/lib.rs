@@ -17,6 +17,7 @@ extern crate msg_socket;
 extern crate net_sys;
 extern crate net_util;
 extern crate p9;
+extern crate remain;
 extern crate resources;
 extern crate sync;
 #[macro_use]

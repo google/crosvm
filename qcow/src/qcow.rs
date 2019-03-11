@@ -4,6 +4,7 @@
 
 extern crate byteorder;
 extern crate libc;
+extern crate remain;
 #[macro_use]
 extern crate sys_util;
 
@@ -13,6 +14,7 @@ mod vec_cache;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
+use remain::sorted;
 use sys_util::{FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes};
 
 use std::cmp::min;
@@ -26,13 +28,14 @@ use crate::qcow_raw_file::QcowRawFile;
 use crate::refcount::RefCount;
 use crate::vec_cache::{CacheMap, Cacheable, VecCache};
 
+#[sorted]
 #[derive(Debug)]
 pub enum Error {
     BackingFilesNotSupported,
     CompressedBlocksNotSupported,
+    EvictingCache(io::Error),
     GettingFileSize(io::Error),
     GettingRefcount(refcount::Error),
-    EvictingCache(io::Error),
     InvalidClusterIndex,
     InvalidClusterSize,
     InvalidIndex,
@@ -47,30 +50,33 @@ pub enum Error {
     ReadingData(io::Error),
     ReadingHeader(io::Error),
     ReadingPointers(io::Error),
-    ReadingRefCounts(io::Error),
     ReadingRefCountBlock(refcount::Error),
+    ReadingRefCounts(io::Error),
     RebuildingRefCounts(io::Error),
     SeekingFile(io::Error),
     SettingFileSize(io::Error),
     SettingRefcountRefcount(io::Error),
     SizeTooSmallForNumberOfClusters,
-    WritingHeader(io::Error),
     UnsupportedRefcountOrder,
     UnsupportedVersion(u32),
     WritingData(io::Error),
+    WritingHeader(io::Error),
 }
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl Display for Error {
+    #[remain::check]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::Error::*;
 
+        #[sorted]
         match self {
             BackingFilesNotSupported => write!(f, "backing files not supported"),
             CompressedBlocksNotSupported => write!(f, "compressed blocks not supported"),
+            EvictingCache(e) => write!(f, "failed to evict cache: {}", e),
             GettingFileSize(e) => write!(f, "failed to get file size: {}", e),
             GettingRefcount(e) => write!(f, "failed to get refcount: {}", e),
-            EvictingCache(e) => write!(f, "failed to evict cache: {}", e),
             InvalidClusterIndex => write!(f, "invalid cluster index"),
             InvalidClusterSize => write!(f, "invalid cluster size"),
             InvalidIndex => write!(f, "invalid index"),
@@ -85,17 +91,17 @@ impl Display for Error {
             ReadingData(e) => write!(f, "failed to read data: {}", e),
             ReadingHeader(e) => write!(f, "failed to read header: {}", e),
             ReadingPointers(e) => write!(f, "failed to read pointers: {}", e),
-            ReadingRefCounts(e) => write!(f, "failed to read ref counts: {}", e),
             ReadingRefCountBlock(e) => write!(f, "failed to read ref count block: {}", e),
+            ReadingRefCounts(e) => write!(f, "failed to read ref counts: {}", e),
             RebuildingRefCounts(e) => write!(f, "failed to rebuild ref counts: {}", e),
             SeekingFile(e) => write!(f, "failed to seek file: {}", e),
             SettingFileSize(e) => write!(f, "failed to set file size: {}", e),
             SettingRefcountRefcount(e) => write!(f, "failed to set refcount refcount: {}", e),
             SizeTooSmallForNumberOfClusters => write!(f, "size too small for number of clusters"),
-            WritingHeader(e) => write!(f, "failed to write header: {}", e),
             UnsupportedRefcountOrder => write!(f, "unsupported refcount order"),
             UnsupportedVersion(v) => write!(f, "unsupported version: {}", v),
             WritingData(e) => write!(f, "failed to write data: {}", e),
+            WritingHeader(e) => write!(f, "failed to write header: {}", e),
         }
     }
 }

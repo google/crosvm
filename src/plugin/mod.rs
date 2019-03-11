@@ -23,6 +23,7 @@ use libc::{
 };
 
 use protobuf::ProtobufError;
+use remain::sorted;
 
 use io_jail::{self, Minijail};
 use kvm::{Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
@@ -41,6 +42,7 @@ const MAX_DATAGRAM_SIZE: usize = 4096;
 const MAX_VCPU_DATAGRAM_SIZE: usize = 0x40000;
 
 /// An error that occurs during the lifetime of a plugin process.
+#[sorted]
 pub enum Error {
     CloneEventFd(SysError),
     CloneVcpuSocket(io::Error),
@@ -95,18 +97,20 @@ pub enum Error {
     },
     SignalFd(SignalFdError),
     SpawnVcpu(io::Error),
+    TapEnable(TapError),
     TapOpen(TapError),
     TapSetIp(TapError),
-    TapSetNetmask(TapError),
     TapSetMacAddress(TapError),
-    TapEnable(TapError),
+    TapSetNetmask(TapError),
     ValidateTapFd(SysError),
 }
 
 impl Display for Error {
+    #[remain::check]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::Error::*;
 
+        #[sorted]
         match self {
             CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
             CloneVcpuSocket(e) => write!(f, "failed to clone vcpu socket: {}", e),
@@ -160,11 +164,11 @@ impl Display for Error {
             ),
             SignalFd(e) => write!(f, "failed to read signal fd: {}", e),
             SpawnVcpu(e) => write!(f, "error spawning vcpu thread: {}", e),
+            TapEnable(e) => write!(f, "error enabling tap device: {}", e),
             TapOpen(e) => write!(f, "error opening tap device: {}", e),
             TapSetIp(e) => write!(f, "error setting tap ip: {}", e),
-            TapSetNetmask(e) => write!(f, "error setting tap netmask: {}", e),
             TapSetMacAddress(e) => write!(f, "error setting tap mac address: {}", e),
-            TapEnable(e) => write!(f, "error enabling tap device: {}", e),
+            TapSetNetmask(e) => write!(f, "error setting tap netmask: {}", e),
             ValidateTapFd(e) => write!(f, "failed to validate raw tap fd: {}", e),
         }
     }

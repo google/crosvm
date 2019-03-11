@@ -32,6 +32,7 @@ extern crate protobuf;
 #[cfg(feature = "plugin")]
 extern crate protos;
 extern crate rand_ish;
+extern crate remain;
 extern crate resources;
 extern crate sync;
 extern crate vhost;

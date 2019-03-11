@@ -33,6 +33,7 @@ use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 use net_util::{Error as NetError, MacAddress, Tap};
 use qcow::{self, ImageType, QcowFile};
 use rand_ish::SimpleRng;
+use remain::sorted;
 use sync::{Condvar, Mutex};
 use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use sys_util::{
@@ -65,6 +66,7 @@ use self::render_node_forward::*;
 #[cfg(not(feature = "gpu-forward"))]
 type RenderNodeHost = ();
 
+#[sorted]
 #[derive(Debug)]
 pub enum Error {
     AddGpuDeviceMemory(sys_util::Error),
@@ -133,9 +135,11 @@ pub enum Error {
 }
 
 impl Display for Error {
+    #[remain::check]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::Error::*;
 
+        #[sorted]
         match self {
             AddGpuDeviceMemory(e) => write!(f, "failed to add gpu device memory: {}", e),
             AllocateGpuDeviceAddress => write!(f, "failed to allocate gpu device guest address"),
@@ -169,14 +173,14 @@ impl Display for Error {
             IoJail(e) => write!(f, "{}", e),
             LoadKernel(e) => write!(f, "failed to load kernel: {}", e),
             NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {}", e),
-            OpenInitrd(p, e) => write!(f, "failed to open initrd {}: {}", p.display(), e),
-            OpenKernel(p, e) => write!(f, "failed to open kernel image {}: {}", p.display(), e),
             OpenAndroidFstab(p, e) => write!(
                 f,
                 "failed to open android fstab file {}: {}",
                 p.display(),
                 e
             ),
+            OpenInitrd(p, e) => write!(f, "failed to open initrd {}: {}", p.display(), e),
+            OpenKernel(p, e) => write!(f, "failed to open kernel image {}: {}", p.display(), e),
             OpenVinput(p, e) => write!(f, "failed to open vinput device {}: {}", p.display(), e),
             P9DeviceNew(e) => write!(f, "failed to create 9p device: {}", e),
             PivotRootDoesntExist(p) => write!(f, "{} doesn't exist, can't jail devices.", p),
