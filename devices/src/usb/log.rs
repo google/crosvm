@@ -6,7 +6,9 @@
 #[macro_export]
 macro_rules! usb_debug {
     ($($args:tt)+) => {
-        // Uncomment the following line to enable logging.
-        // debug!($($args)*)
+        // Set true to enable logging.
+        if false {
+            debug!($($args)*);
+        }
     };
 }

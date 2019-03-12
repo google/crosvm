@@ -108,7 +108,7 @@ impl EventRing {
             "event write to pointer {:#x}, trb_count {}, {}",
             self.enqueue_pointer.0,
             self.trb_count,
-            trb.debug_str()
+            trb
         );
         self.enqueue_pointer = match self.enqueue_pointer.checked_add(size_of::<Trb>() as u64) {
             Some(addr) => addr,
