@@ -113,6 +113,7 @@ mod tests {
 
     #[test]
     #[should_panic]
+    #[cfg(debug_assertions)]
     fn regs_reg_overlap() {
         let mut regs = RegisterSpace::new();
         regs.add_register(static_register!(
