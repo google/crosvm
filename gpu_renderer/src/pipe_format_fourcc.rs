@@ -18,7 +18,7 @@ pub fn pipe_format_fourcc(f: p_format::pipe_format) -> Option<u32> {
         p_format::PIPE_FORMAT_B8G8R8X8_UNORM => fourcc!('X', 'R', '2', '4'),
         p_format::PIPE_FORMAT_R8G8B8A8_UNORM => fourcc!('A', 'B', '2', '4'),
         p_format::PIPE_FORMAT_R8G8B8X8_UNORM => fourcc!('X', 'B', '2', '4'),
-        // p_format::PIPE_FORMAT_B5G6R5_UNORM => fourcc!('R', 'G', '1', '6'),
+        p_format::PIPE_FORMAT_B5G6R5_UNORM => fourcc!('R', 'G', '1', '6'),
         // p_format::PIPE_FORMAT_R8_UNORM => fourcc!('R', '8', ' ', ' '),
         // p_format::PIPE_FORMAT_G8R8_UNORM => fourcc!('R', 'G', '8', '8'),
         _ => None,
