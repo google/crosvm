@@ -6,6 +6,7 @@ build = "build.rs"
 
 [dependencies]
 arch = { path = "../arch" }
+bit_field = { path = "../bit_field" }
 data_model = { path = "../data_model" }
 devices = { path = "../devices" }
 io_jail = { path = "../io_jail" }

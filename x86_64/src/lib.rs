@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 extern crate arch;
+extern crate bit_field;
 extern crate byteorder;
 extern crate data_model;
 extern crate devices;
@@ -65,7 +66,9 @@ mod gdt;
 mod interrupts;
 mod mptable;
 mod regs;
+mod split_irqchip_common;
 
+pub use self::split_irqchip_common::*;
 use std::error::Error as StdError;
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
