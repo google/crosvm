@@ -34,6 +34,7 @@ mod register_space;
 mod bus;
 mod cmos;
 mod i8042;
+mod ioapic;
 mod pci;
 mod pit;
 pub mod pl030;
@@ -49,6 +50,7 @@ pub use self::bus::Error as BusError;
 pub use self::bus::{Bus, BusDevice, BusRange};
 pub use self::cmos::Cmos;
 pub use self::i8042::I8042Device;
+pub use self::ioapic::Ioapic;
 pub use self::pci::{
     Ac97Dev, PciConfigIo, PciConfigMmio, PciDevice, PciDeviceError, PciInterruptPin, PciRoot,
 };

@@ -274,6 +274,9 @@ pub enum PicId {
     Secondary = 1,
 }
 
+/// Number of pins on the IOAPIC.
+pub const NUM_IOAPIC_PINS: usize = 24;
+
 // Used to invert the order when stored in a max-heap.
 #[derive(Copy, Clone, Eq, PartialEq)]
 struct MemSlot(u32);
@@ -937,8 +940,7 @@ impl Vm {
     pub fn enable_split_irqchip(&self) -> Result<()> {
         let mut cap: kvm_enable_cap = Default::default();
         cap.cap = KVM_CAP_SPLIT_IRQCHIP;
-        // TODO(mutexlox): When the IOAPIC is implemented, refer to its "number of pins" constant.
-        cap.args[0] = 24;
+        cap.args[0] = NUM_IOAPIC_PINS as u64;
         self.kvm_enable_cap(&cap)
     }
 
