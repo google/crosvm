@@ -5,9 +5,9 @@
 use std::os::raw::{c_int, c_void};
 use std::sync::Arc;
 
-use bindings;
-use libusb_context::LibUsbContextInner;
-use libusb_device::LibUsbDevice;
+use crate::bindings;
+use crate::libusb_context::LibUsbContextInner;
+use crate::libusb_device::LibUsbDevice;
 
 #[derive(PartialEq)]
 pub enum HotplugEvent {
