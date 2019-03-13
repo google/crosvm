@@ -2,6 +2,7 @@
 name = "msg_on_socket_derive"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
+edition = "2018"
 
 [dependencies]
 syn = "=0.15"
