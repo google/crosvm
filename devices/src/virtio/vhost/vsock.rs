@@ -9,8 +9,8 @@ use std::thread;
 
 use byteorder::{ByteOrder, LittleEndian};
 
+use ::vhost::Vsock as VhostVsockHandle;
 use sys_util::{EventFd, GuestMemory};
-use vhost::Vsock as VhostVsockHandle;
 use virtio_sys::vhost;
 
 use super::super::{Queue, VirtioDevice, TYPE_VSOCK};

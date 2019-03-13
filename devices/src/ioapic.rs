@@ -5,9 +5,9 @@
 // Implementation of an intel 82093AA Input/Output Advanced Programmable Interrupt Controller
 // See https://pdos.csail.mit.edu/6.828/2016/readings/ia32/ioapic.pdf for a specification.
 
+use crate::split_irqchip_common::*;
 use crate::BusDevice;
 use bit_field::*;
-use split_irqchip_common::*;
 
 #[bitfield]
 #[derive(Clone, Copy, PartialEq)]

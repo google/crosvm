@@ -12,8 +12,8 @@ use std::thread;
 use net_sys;
 use net_util::{MacAddress, TapT};
 
+use ::vhost::NetT as VhostNetT;
 use sys_util::{EventFd, GuestMemory};
-use vhost::NetT as VhostNetT;
 use virtio_sys::{vhost, virtio_net};
 
 use super::super::{Queue, VirtioDevice, TYPE_NET};
@@ -220,10 +220,10 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use ::vhost::net::fakes::FakeNet;
     use net_util::fakes::FakeTap;
     use std::result;
     use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
-    use vhost::net::fakes::FakeNet;
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);
