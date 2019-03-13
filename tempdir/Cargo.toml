@@ -2,6 +2,7 @@
 name = "tempdir"
 version = "0.3.7"
 authors = ["The Chromium OS Authors"]
+edition = "2018"
 
 [dependencies]
 rand_ish = { path = "../rand_ish" }
