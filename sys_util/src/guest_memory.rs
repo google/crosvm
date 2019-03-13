@@ -342,7 +342,7 @@ impl GuestMemory {
     ///     Ok(())
     /// # }
     /// ```
-    pub fn read_at_addr(&self, mut buf: &mut [u8], guest_addr: GuestAddress) -> Result<usize> {
+    pub fn read_at_addr(&self, buf: &mut [u8], guest_addr: GuestAddress) -> Result<usize> {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
                 .read_slice(buf, offset)

@@ -5,7 +5,8 @@
 extern crate libc;
 
 use libc::{c_int, c_void};
-use {errno_result, Result};
+
+use crate::{errno_result, Result};
 
 #[allow(non_camel_case_types)]
 type cap_t = *mut c_void;
