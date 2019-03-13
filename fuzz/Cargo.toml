@@ -1,19 +1,11 @@
 [package]
 name = "crosvm-fuzz"
 version = "0.0.1"
-authors = ["Automatically generated"]
-publish = false
-
-[package.metadata]
-cargo-fuzz = true
-
-[dependencies.kernel_loader]
-path = "../kernel_loader"
-[dependencies.libfuzzer-sys]
-git = "https://github.com/rust-fuzz/libfuzzer-sys.git"
+authors = ["The Chromium OS Authors"]
 
 [dependencies]
 libc = "*"
+kernel_loader = { path = "../kernel_loader" }
 sys_util = { path = "../sys_util" }
 
 # Prevent this from interfering with workspaces
@@ -21,5 +13,5 @@ sys_util = { path = "../sys_util" }
 members = ["."]
 
 [[bin]]
-name = "fuzz_zimage"
-path = "fuzzers/fuzz_zimage.rs"
+name = "crosvm_zimage_fuzzer"
+path = "zimage_fuzzer.rs"
