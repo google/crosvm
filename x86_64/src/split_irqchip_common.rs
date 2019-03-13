@@ -6,13 +6,15 @@
 
 use bit_field::*;
 
-#[derive(Clone, Copy, PartialEq)]
+#[bitfield]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DestinationMode {
     Physical = 0,
     Logical = 1,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[bitfield]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TriggerMode {
     Edge = 0,
     Level = 1,
@@ -34,7 +36,8 @@ pub enum DeliveryMode {
 #[derive(Clone, Copy, PartialEq)]
 pub struct MsiAddressMessageNonRemappable {
     reserved: BitField2,
-    destination_mode: BitField1,
+    #[bits = 1]
+    destination_mode: DestinationMode,
     redirection_hint: BitField1,
     reserved_2: BitField8,
     destination_id: BitField8,
@@ -67,6 +70,7 @@ struct MsiDataMessage {
     delivery_mode: BitField3,
     reserved: BitField3,
     level: BitField1,
-    trigger: BitField1,
+    #[bits = 1]
+    trigger: TriggerMode,
     reserved2: BitField16,
 }

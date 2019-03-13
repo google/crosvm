@@ -12,13 +12,12 @@ extern crate quote;
 #[macro_use]
 extern crate syn;
 
-use std::string::String;
-use std::vec::Vec;
-
 use proc_macro2::{Span, TokenStream};
-use syn::{Data, DeriveInput, Fields, Ident};
-
-type Result<T> = std::result::Result<T, String>;
+use syn::parse::{Error, Result};
+use syn::{
+    Attribute, Data, DataEnum, DeriveInput, Fields, FieldsNamed, Ident, Lit, LitInt, Meta, Type,
+    Visibility,
+};
 
 /// The function that derives the actual implementation.
 #[proc_macro_attribute]
@@ -27,39 +26,171 @@ pub fn bitfield(
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let derive_input = parse_macro_input!(input as DeriveInput);
-    bitfield_impl(derive_input).into()
+
+    let expanded = bitfield_impl(&derive_input).unwrap_or_else(|err| {
+        let compile_error = err.to_compile_error();
+        quote! {
+            #compile_error
+
+            // Include the original input to avoid "use of undeclared type"
+            // errors elsewhere.
+            #derive_input
+        }
+    });
+
+    expanded.into()
 }
 
-fn bitfield_impl(ast: DeriveInput) -> TokenStream {
+fn bitfield_impl(ast: &DeriveInput) -> Result<TokenStream> {
     if !ast.generics.params.is_empty() {
-        return quote! {
-            compile_error!("#[bitfield] does not support generic parameters");
-        };
+        return Err(Error::new(
+            Span::call_site(),
+            "#[bitfield] does not support generic parameters",
+        ));
     }
 
-    let name = ast.ident.clone();
+    match &ast.data {
+        Data::Struct(data_struct) => match &data_struct.fields {
+            Fields::Named(fields_named) => bitfield_struct_impl(ast, fields_named),
+            _ => Err(Error::new(
+                Span::call_site(),
+                "#[bitfield] schema must have named fields",
+            )),
+        },
+        Data::Enum(data_enum) => bitfield_enum_impl(ast, data_enum),
+        Data::Union(_) => Err(Error::new(
+            Span::call_site(),
+            "#[bitfield] does not support unions",
+        )),
+    }
+}
+
+// Expand to an impl of BitFieldSpecifier for an enum like:
+//
+//     #[bitfield]
+//     #[derive(Debug, PartialEq)]
+//     enum TwoBits {
+//         Zero = 0b00,
+//         One = 0b01,
+//         Two = 0b10,
+//         Three = 0b11,
+//     }
+//
+// Such enums may be used as a field of a bitfield struct.
+//
+//     #[bitfield]
+//     struct Struct {
+//         prefix: BitField1,
+//         two_bits: TwoBits,
+//         suffix: BitField5,
+//     }
+//
+fn bitfield_enum_impl(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
+    let variants = &data.variants;
+    let len = variants.len();
+    if len.count_ones() != 1 {
+        return Err(Error::new(
+            Span::call_site(),
+            "#[bitfield] expected a number of variants which is a power of 2",
+        ));
+    }
+
+    let bits = len.trailing_zeros() as u8;
+    let upper_bound = 2u64.pow(bits as u32);
+
+    let ident = &ast.ident;
+
+    let declare_discriminants = variants.iter().map(|variant| {
+        let variant = &variant.ident;
+        let span = variant.span();
+
+        let assertion = quote_spanned! {span=>
+            // If IS_IN_BOUNDS is true, this evaluates to 0.
+            //
+            // If IS_IN_BOUNDS is false, this evaluates to `0 - 1` which
+            // triggers a compile error on underflow when referenced below. The
+            // error is not beautiful but does carry the span of the problematic
+            // enum variant so at least it points to the right line.
+            //
+            //     error: any use of this value will cause an error
+            //       --> bit_field/test.rs:10:5
+            //        |
+            //     10 |     OutOfBounds = 0b111111,
+            //        |     ^^^^^^^^^^^ attempt to subtract with overflow
+            //        |
+            //
+            //     error[E0080]: erroneous constant used
+            //      --> bit_field/test.rs:5:1
+            //       |
+            //     5 | #[bitfield]
+            //       | ^^^^^^^^^^^ referenced constant has errors
+            //
+            const ASSERT: u64 = 0 - !IS_IN_BOUNDS as u64;
+        };
+
+        quote! {
+            const #variant: u64 = {
+                const IS_IN_BOUNDS: bool = (#ident::#variant as u64) < #upper_bound;
+
+                #assertion
+
+                #ident::#variant as u64 + ASSERT
+            };
+        }
+    });
+
+    let match_discriminants = variants.iter().map(|variant| {
+        let variant = &variant.ident;
+        quote! {
+            discriminant::#variant => #ident::#variant,
+        }
+    });
+
+    let expanded = quote! {
+        #ast
+
+        impl bit_field::BitFieldSpecifier for #ident {
+            const FIELD_WIDTH: u8 = #bits;
+            type DefaultFieldType = Self;
+
+            #[inline]
+            fn from_u64(val: u64) -> Self::DefaultFieldType {
+                struct discriminant;
+                impl discriminant {
+                    #(#declare_discriminants)*
+                }
+                match val {
+                    #(#match_discriminants)*
+                    _ => unreachable!(),
+                }
+            }
+
+            #[inline]
+            fn into_u64(val: Self::DefaultFieldType) -> u64 {
+                val as u64
+            }
+        }
+    };
+
+    Ok(expanded)
+}
+
+fn bitfield_struct_impl(ast: &DeriveInput, fields: &FieldsNamed) -> Result<TokenStream> {
+    let name = &ast.ident;
     let test_mod_ident = Ident::new(
         format!("test_{}", name.to_string().to_lowercase()).as_str(),
         Span::call_site(),
     );
-    let vis = ast.vis.clone();
-    let attrs = ast.attrs.clone();
-    // Visibility.
-    let vis = quote!(#vis);
-    let fields = match get_struct_fields(ast) {
-        Ok(f) => f,
-        Err(err_str) => {
-            return quote! {
-                compile_error!(#err_str);
-            };
-        }
-    };
-    let struct_def = get_struct_def(&vis, &name, fields.as_slice());
+    let vis = &ast.vis;
+    let attrs = &ast.attrs;
+    let fields = get_struct_fields(fields)?;
+    let struct_def = get_struct_def(vis, &name, &fields);
     let bits_impl = get_bits_impl(&name);
-    let fields_impl = get_fields_impl(fields.as_slice());
-    let tests_impl = get_tests_impl(&name, fields.as_slice());
-    let debug_fmt_impl = get_debug_fmt_impl(&name, fields.as_slice());
-    quote! {
+    let fields_impl = get_fields_impl(&fields);
+    let tests_impl = get_tests_impl(&name, &fields);
+    let debug_fmt_impl = get_debug_fmt_impl(&name, &fields);
+
+    let expanded = quote! {
         #(#attrs)*
         #struct_def
         #bits_impl
@@ -73,50 +204,67 @@ fn bitfield_impl(ast: DeriveInput) -> TokenStream {
             use super::*;
             #(#tests_impl)*
         }
-    }
+    };
+
+    Ok(expanded)
 }
 
-// Unwrap ast to get the named fields. Anything unexpected will be treated as an
-// error.
-// We only care about field names and types.
+struct FieldSpec<'a> {
+    ident: &'a Ident,
+    ty: &'a Type,
+    expected_bits: Option<LitInt>,
+}
+
+// Unwrap ast to get the named fields. We only care about field names and types:
 // "myfield : BitField3" -> ("myfield", Token(BitField3))
-fn get_struct_fields(ast: DeriveInput) -> Result<Vec<(String, TokenStream)>> {
-    let fields = match ast.data {
-        Data::Struct(data_struct) => match data_struct.fields {
-            Fields::Named(fields_named) => fields_named.named,
-            _ => {
-                return Err(format!("Schema must have named fields."));
-            }
-        },
-        _ => {
-            return Err(format!("Schema must be a struct."));
-        }
-    };
+fn get_struct_fields(fields: &FieldsNamed) -> Result<Vec<FieldSpec>> {
     let mut vec = Vec::new();
-    for field in fields {
-        let ident = match field.ident {
-            Some(ident) => ident,
-            None => {
-                return Err(format!(
-                    "Unknown Error. bit_field_derive library might have a bug."
-                ));
-            }
-        };
-        let ty = field.ty;
-        vec.push((ident.to_string(), quote!(#ty)));
+
+    for field in &fields.named {
+        let ident = field
+            .ident
+            .as_ref()
+            .expect("Fields::Named has named fields");
+        let ty = &field.ty;
+        let expected_bits = parse_bits_attr(&field.attrs)?;
+        vec.push(FieldSpec {
+            ident,
+            ty,
+            expected_bits,
+        });
     }
 
     Ok(vec)
 }
 
-fn get_struct_def(
-    vis: &TokenStream,
-    name: &Ident,
-    fields: &[(String, TokenStream)],
-) -> TokenStream {
+// For example: #[bits = 1]
+fn parse_bits_attr(attrs: &[Attribute]) -> Result<Option<LitInt>> {
+    let mut expected_bits = None;
+
+    for attr in attrs {
+        if attr.path.is_ident("doc") {
+            continue;
+        }
+
+        if attr.path.is_ident("bits") {
+            if let Meta::NameValue(name_value) = attr.parse_meta()? {
+                if let Lit::Int(int) = name_value.lit {
+                    expected_bits = Some(int);
+                    continue;
+                }
+            }
+        }
+
+        return Err(Error::new_spanned(attr, "unrecognized attribute"));
+    }
+
+    Ok(expected_bits)
+}
+
+fn get_struct_def(vis: &Visibility, name: &Ident, fields: &[FieldSpec]) -> TokenStream {
     let mut field_types = Vec::new();
-    for &(ref _name, ref ty) in fields {
-        field_types.push(ty.clone());
+    for spec in fields {
+        field_types.push(spec.ty);
     }
 
     // `(BitField1::FIELD_WIDTH + BitField3::FIELD_WIDTH + ...)`
@@ -147,20 +295,34 @@ fn get_struct_def(
 }
 
 // Implement setter and getter for all fields.
-fn get_fields_impl(fields: &[(String, TokenStream)]) -> Vec<TokenStream> {
+fn get_fields_impl(fields: &[FieldSpec]) -> Vec<TokenStream> {
     let mut impls = Vec::new();
     // This vec keeps track of types before this field, used to generate the offset.
-    let mut current_types = vec![quote!(::bit_field::BitField0)];
+    let current_types = &mut vec![quote!(::bit_field::BitField0)];
 
-    for &(ref name, ref ty) in fields {
-        // Creating two copies of current types. As they are going to be moved in quote!.
-        let ct0 = current_types.clone();
-        let ct1 = current_types.clone();
-        let getter_ident = Ident::new(format!("get_{}", name).as_str(), Span::call_site());
-        let setter_ident = Ident::new(format!("set_{}", name).as_str(), Span::call_site());
+    for spec in fields {
+        let ty = spec.ty;
+        let getter_ident = Ident::new(format!("get_{}", spec.ident).as_str(), Span::call_site());
+        let setter_ident = Ident::new(format!("set_{}", spec.ident).as_str(), Span::call_site());
+
+        // Optional #[bits = N] attribute to provide compile-time checked
+        // documentation of how many bits some field covers.
+        let check_expected_bits = spec.expected_bits.as_ref().map(|expected_bits| {
+            // If expected_bits does not match the actual number of bits in the
+            // bit field specifier, this will fail to compile with an error
+            // pointing into the #[bits = N] attribute.
+            let span = expected_bits.span();
+            quote_spanned! {span=>
+                #[allow(dead_code)]
+                const EXPECTED_BITS: [(); #expected_bits as usize] =
+                    [(); <#ty as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize];
+            }
+        });
+
         impls.push(quote! {
             pub fn #getter_ident(&self) -> <#ty as ::bit_field::BitFieldSpecifier>::DefaultFieldType {
-                let offset = #(<#ct0 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize)+*;
+                #check_expected_bits
+                let offset = #(<#current_types as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize)+*;
                 let val = self.get(offset, <#ty as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH);
                 <#ty as ::bit_field::BitFieldSpecifier>::from_u64(val)
             }
@@ -168,23 +330,26 @@ fn get_fields_impl(fields: &[(String, TokenStream)]) -> Vec<TokenStream> {
             pub fn #setter_ident(&mut self, val: <#ty as ::bit_field::BitFieldSpecifier>::DefaultFieldType) {
                 let val = <#ty as ::bit_field::BitFieldSpecifier>::into_u64(val);
                 debug_assert!(val <= ::bit_field::max::<#ty>());
-                let offset = #(<#ct1 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize)+*;
+                let offset = #(<#current_types as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize)+*;
                 self.set(offset, <#ty as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH, val)
             }
         });
-        current_types.push(ty.clone());
+
+        current_types.push(quote!(#ty));
     }
+
     impls
 }
 
 // Implement setter and getter for all fields.
-fn get_debug_fmt_impl(name: &Ident, fields: &[(String, TokenStream)]) -> TokenStream {
+fn get_debug_fmt_impl(name: &Ident, fields: &[FieldSpec]) -> TokenStream {
     // print fields:
     let mut impls = Vec::new();
-    for &(ref name, ref _ty) in fields {
-        let getter_ident = Ident::new(format!("get_{}", name).as_str(), Span::call_site());
+    for spec in fields {
+        let field_name = spec.ident.to_string();
+        let getter_ident = Ident::new(&format!("get_{}", spec.ident), Span::call_site());
         impls.push(quote! {
-            .field(#name, &self.#getter_ident())
+            .field(#field_name, &self.#getter_ident())
         });
     }
 
@@ -201,10 +366,10 @@ fn get_debug_fmt_impl(name: &Ident, fields: &[(String, TokenStream)]) -> TokenSt
 }
 
 // Implement test.
-fn get_tests_impl(struct_name: &Ident, fields: &[(String, TokenStream)]) -> Vec<TokenStream> {
+fn get_tests_impl(struct_name: &Ident, fields: &[FieldSpec]) -> Vec<TokenStream> {
     let mut field_types = Vec::new();
-    for &(ref _name, ref ty) in fields {
-        field_types.push(ty.clone());
+    for spec in fields {
+        field_types.push(spec.ty);
     }
     let field_types2 = field_types.clone();
     let mut impls = Vec::new();
@@ -233,13 +398,11 @@ fn get_tests_impl(struct_name: &Ident, fields: &[(String, TokenStream)]) -> Vec<
         }
     });
 
-    for &(ref name, ref ty) in fields {
-        let testname = Ident::new(
-            format!("test_{}", name.as_str()).as_str(),
-            Span::call_site(),
-        );
-        let getter_ident = Ident::new(format!("get_{}", name.as_str()).as_str(), Span::call_site());
-        let setter_ident = Ident::new(format!("set_{}", name.as_str()).as_str(), Span::call_site());
+    for spec in fields {
+        let testname = Ident::new(&format!("test_{}", spec.ident), Span::call_site());
+        let getter_ident = Ident::new(&format!("get_{}", spec.ident), Span::call_site());
+        let setter_ident = Ident::new(&format!("set_{}", spec.ident), Span::call_site());
+        let ty = spec.ty;
         impls.push(quote! {
             #[test]
             fn #testname() {
@@ -366,8 +529,6 @@ pub fn define_bit_field_specifiers(_input: proc_macro::TokenStream) -> proc_macr
                     val as u64
                 }
             }
-
-            impl private::Sealed for #long_name {}
         });
     }
 
@@ -578,6 +739,9 @@ mod tests {
             }
         };
 
-        assert_eq!(bitfield_impl(input).to_string(), expected.to_string());
+        assert_eq!(
+            bitfield_impl(&input).unwrap().to_string(),
+            expected.to_string()
+        );
     }
 }

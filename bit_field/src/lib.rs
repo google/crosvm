@@ -79,7 +79,12 @@
 //! }
 //! ```
 //!
-//! We also accept `bool` as a field type, which is laid out equivalently to
+//! # Bit field specifier types
+//!
+//! Field types may be specified as B1 through B64, or alternatively as
+//! BitField1 through BitField64 in code that benefits from the clarification.
+//!
+//! Fields may also be specified as `bool`, which is laid out equivalently to
 //! `B1` but with accessors that use `bool` rather than `u8`.
 //!
 //! ```
@@ -96,6 +101,64 @@
 //! }
 //! ```
 //!
+//! Finally, fields may be of user-defined enum types where the enum has a
+//! number of variants which is a power of 2 and the discriminant values
+//! (explicit or implicit) are 0 through (2^n)-1. In this case the generated
+//! getter and setter are defined in terms of the given enum type.
+//!
+//! ```
+//! extern crate bit_field;
+//!
+//! use bit_field::*;
+//!
+//! #[bitfield]
+//! #[derive(Debug, PartialEq)]
+//! enum TwoBits {
+//!     Zero = 0b00,
+//!     One = 0b01,
+//!     Two = 0b10,
+//!     Three = 0b11,
+//! }
+//!
+//! #[bitfield]
+//! struct Struct {
+//!     prefix: BitField1,
+//!     two_bits: TwoBits,
+//!     suffix: BitField5,
+//! }
+//! ```
+//!
+//! An optional `#[bits = N]` attribute may be used to document the number of
+//! bits in any field. This is intended for fields of enum type whose name does
+//! not clearly indicate the number of bits. The attribute is optional but helps
+//! make it possible to read off the field sizes directly from the definition of
+//! a bitfield struct.
+//!
+//! ```
+//! extern crate bit_field;
+//!
+//! use bit_field::*;
+//!
+//! #[bitfield]
+//! #[derive(Debug, PartialEq)]
+//! enum WhoKnows {
+//!     Zero = 0b00,
+//!     One = 0b01,
+//!     Two = 0b10,
+//!     Three = 0b11,
+//! }
+//!
+//! #[bitfield]
+//! struct Struct {
+//!     prefix: BitField1,
+//!     #[bits = 2]
+//!     two_bits: WhoKnows,
+//!     suffix: BitField5,
+//! }
+//! ```
+//!
+//! # Derives
+//!
 //! Derives may be specified and are applied to the data structure post
 //! rewriting by the macro.
 //!
@@ -111,6 +174,8 @@
 //!     cdr: B4,
 //! }
 //! ```
+//!
+//! # Compile time checks
 //!
 //! If the total size is not a multiple of 8 bits, you will receive an error
 //! message at compile time mentioning:
@@ -129,6 +194,46 @@
 //!     field_c: B6,
 //! }
 //! ```
+//!
+//! If a bitfield enum has discriminants that are outside the range 0 through
+//! (2^n)-1, it will be caught at compile time.
+//!
+//! ```compile_fail
+//! extern crate bit_field;
+//!
+//! use bit_field::*;
+//!
+//! #[bitfield]
+//! enum Broken {
+//!     Zero = 0b00,
+//!     One = 0b01,
+//!     Two = 0b10,
+//!     Nine = 0b1001, // error
+//! }
+//! ```
+//!
+//! If the value provided in a #[bits = N] attribute does not match the real
+//! number of bits in that field, it will be caught.
+//!
+//! ```compile_fail
+//! extern crate bit_field;
+//!
+//! use bit_field::*;
+//!
+//! #[bitfield]
+//! #[derive(Debug, PartialEq)]
+//! enum OneBit {
+//!     No = 0,
+//!     Yes = 1,
+//! }
+//!
+//! #[bitfield]
+//! struct Struct {
+//!     #[bits = 4] // error
+//!     two_bits: OneBit,
+//!     padding: BitField7,
+//! }
+//! ```
 
 #[allow(unused_imports)]
 #[macro_use]
@@ -136,10 +241,8 @@ extern crate bit_field_derive;
 
 pub use bit_field_derive::bitfield;
 
-// This trait is sealed and not intended to be implemented outside of the
-// bit_field crate.
 #[doc(hidden)]
-pub trait BitFieldSpecifier: private::Sealed {
+pub trait BitFieldSpecifier {
     // Width of this field in bits.
     const FIELD_WIDTH: u8;
     // Default data type of this field.
@@ -180,15 +283,6 @@ impl BitFieldSpecifier for bool {
     fn into_u64(val: Self::DefaultFieldType) -> u64 {
         val as u64
     }
-}
-
-impl private::Sealed for bool {}
-
-mod private {
-    // Seal for the BitFieldSpecifier trait. This seal trait is not nameable
-    // outside of the bit_field crate, so we are guaranteed that all impls of
-    // BitFieldSpecifier come from within this crate.
-    pub trait Sealed {}
 }
 
 // Instantiated by the generated code to prove that the total size of fields is
