@@ -33,10 +33,9 @@ use sys_util::{
     PollToken, Result as SysResult, SignalFd, SignalFdError, SIGRTMIN,
 };
 
-use Config;
-
 use self::process::*;
 use self::vcpu::*;
+use crate::Config;
 
 const MAX_DATAGRAM_SIZE: usize = 4096;
 const MAX_VCPU_DATAGRAM_SIZE: usize = 0x40000;
@@ -381,7 +380,7 @@ pub fn run_vcpus(
                                         }
                                         vcpu_plugin.io_write(port as u64, &data[..size], &vcpu);
                                     }
-                                    VcpuExit::MmioRead { address, mut size } => {
+                                    VcpuExit::MmioRead { address, size } => {
                                         let mut data = [0; 8];
                                         vcpu_plugin.mmio_read(
                                             address as u64,

@@ -22,10 +22,10 @@ use libc::{pid_t, waitpid, EINVAL, ENODATA, ENOTTY, WEXITSTATUS, WIFEXITED, WNOH
 use protobuf;
 use protobuf::Message;
 
+use ::plugin_proto::*;
 use io_jail::Minijail;
 use kvm::{dirty_log_bitmap_size, Datamatch, IoeventAddress, IrqRoute, IrqSource, PicId, Vm};
 use kvm_sys::{kvm_clock_data, kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
-use plugin_proto::*;
 use sync::Mutex;
 use sys_util::{
     Error as SysError, EventFd, GuestAddress, Killable, MemoryMapping, Result as SysResult,
