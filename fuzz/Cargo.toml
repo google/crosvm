@@ -4,13 +4,19 @@ version = "0.0.1"
 authors = ["The Chromium OS Authors"]
 
 [dependencies]
+devices = { path = "../devices" }
 libc = "*"
 kernel_loader = { path = "../kernel_loader" }
+qcow = { path = "../qcow" }
 sys_util = { path = "../sys_util" }
 
 # Prevent this from interfering with workspaces
 [workspace]
 members = ["."]
+
+[[bin]]
+name = "crosvm_qcow_fuzzer"
+path = "qcow_fuzzer.rs"
 
 [[bin]]
 name = "crosvm_zimage_fuzzer"
