@@ -1121,6 +1121,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         disk_host_sockets.push(disk_host_socket);
     }
 
+    let sandbox = cfg.sandbox;
     let linux = Arch::build_vm(components, cfg.split_irqchip, |m, e| {
         create_devices(
             cfg,
@@ -1175,6 +1176,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         &disk_host_sockets,
         sigchld_fd,
         _render_node_host,
+        sandbox,
     )
 }
 
@@ -1186,6 +1188,7 @@ fn run_control(
     disk_host_sockets: &[MsgSocket<VmRequest, VmResponse>],
     sigchld_fd: SignalFd,
     _render_node_host: RenderNodeHost,
+    sandbox: bool,
 ) -> Result<()> {
     // Paths to get the currently available memory and the low memory threshold.
     const LOWMEM_MARGIN: &str = "/sys/kernel/mm/chromeos-low_mem/margin";
@@ -1278,8 +1281,10 @@ fn run_control(
             .subsec_nanos() as u64,
     );
 
-    // Before starting VCPUs, in case we started with some capabilities, drop them all.
-    drop_capabilities().map_err(Error::DropCapabilities)?;
+    if sandbox {
+        // Before starting VCPUs, in case we started with some capabilities, drop them all.
+        drop_capabilities().map_err(Error::DropCapabilities)?;
+    }
 
     let mut vcpu_handles = Vec::with_capacity(linux.vcpus.len());
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpus.len() + 1));
