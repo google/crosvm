@@ -7,7 +7,7 @@ authors = ["The Chromium OS Authors"]
 wl-dmabuf = []
 gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
 tpm = ["tpm2"]
-sandboxed-libusb = []
+sandboxed-libusb = ["usb_util/sandboxed-libusb"]
 
 [dependencies]
 audio_streams = "*"
