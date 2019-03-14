@@ -120,7 +120,7 @@ pub struct Config {
     wayland_socket_path: Option<PathBuf>,
     wayland_dmabuf: bool,
     shared_dirs: Vec<(PathBuf, String)>,
-    multiprocess: bool,
+    sandbox: bool,
     seccomp_policy_dir: PathBuf,
     gpu: bool,
     software_tpm: bool,
@@ -160,7 +160,7 @@ impl Default for Config {
             wayland_socket_path: None,
             wayland_dmabuf: false,
             shared_dirs: Vec::new(),
-            multiprocess: !cfg!(feature = "default-no-sandbox"),
+            sandbox: !cfg!(feature = "default-no-sandbox"),
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             cras_audio: false,
             null_audio: false,
@@ -395,11 +395,8 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.socket_path = Some(socket_path);
         }
-        "multiprocess" => {
-            cfg.multiprocess = true;
-        }
         "disable-sandbox" => {
-            cfg.multiprocess = false;
+            cfg.sandbox = false;
         }
         "cid" => {
             if cfg.cid.is_some() {
@@ -684,7 +681,6 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                                 "socket",
                                 "PATH",
                                 "Path to put the control socket. If PATH is a directory, a name will be generated."),
-          Argument::short_flag('u', "multiprocess", "Run each device in a child process(default)."),
           Argument::flag("disable-sandbox", "Run all devices in one, non-sandboxed process."),
           Argument::value("cid", "CID", "Context ID for virtual sockets."),
           Argument::value("shared-dir", "PATH:TAG",

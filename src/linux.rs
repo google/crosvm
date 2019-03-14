@@ -237,7 +237,7 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
 }
 
 fn simple_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
-    if cfg.multiprocess {
+    if cfg.sandbox {
         let pivot_root: &str = option_env!("DEFAULT_PIVOT_ROOT").unwrap_or("/var/empty");
         // A directory for a jailed device's pivot root.
         let root_path = Path::new(pivot_root);
@@ -496,7 +496,7 @@ fn create_gpu_device(
     let dev = virtio::Gpu::new(
         exit_evt.try_clone().map_err(Error::CloneEventFd)?,
         Some(gpu_socket),
-        if cfg.multiprocess {
+        if cfg.sandbox {
             &jailed_wayland_path
         } else {
             wayland_socket_path
@@ -558,7 +558,7 @@ fn create_wayland_device(
     let jailed_wayland_path = jailed_wayland_dir.join(wayland_socket_name);
 
     let dev = virtio::Wl::new(
-        if cfg.multiprocess {
+        if cfg.sandbox {
             &jailed_wayland_path
         } else {
             socket_path
@@ -1044,7 +1044,7 @@ fn file_to_u64<P: AsRef<Path>>(path: P) -> io::Result<u64> {
 }
 
 pub fn run_config(cfg: Config) -> Result<()> {
-    if cfg.multiprocess {
+    if cfg.sandbox {
         // Printing something to the syslog before entering minijail so that libc's syslogger has a
         // chance to open files necessary for its operation, like `/etc/localtime`. After jailing,
         // access to those files will not be possible.

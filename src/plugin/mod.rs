@@ -461,7 +461,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     // quickly.
     let sigchld_fd = SignalFd::new(SIGCHLD).map_err(Error::CreateSignalFd)?;
 
-    let jail = if cfg.multiprocess {
+    let jail = if cfg.sandbox {
         // An empty directory for jailed plugin pivot root.
         let root_path = match cfg.plugin_root {
             Some(ref dir) => Path::new(dir),
