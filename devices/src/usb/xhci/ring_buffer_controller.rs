@@ -5,7 +5,6 @@
 use super::ring_buffer_stop_cb::RingBufferStopCallback;
 use super::xhci_abi::*;
 use std::fmt::{self, Display};
-use std::os::unix::io::RawFd;
 use std::sync::{Arc, MutexGuard};
 use sync::Mutex;
 use utils::{self, EventHandler, EventLoop};
@@ -184,7 +183,7 @@ impl<T> EventHandler for RingBufferController<T>
 where
     T: 'static + TransferDescriptorHandler + Send,
 {
-    fn on_event(&self, _fd: RawFd) -> std::result::Result<(), ()> {
+    fn on_event(&self) -> std::result::Result<(), ()> {
         // `self.event` triggers ring buffer controller to run, the value read is not important.
         match self.event.read() {
             Ok(_) => {}

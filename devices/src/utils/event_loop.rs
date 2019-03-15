@@ -65,7 +65,7 @@ pub struct EventLoop {
 
 /// Interface for event handler.
 pub trait EventHandler: Send + Sync {
-    fn on_event(&self, fd: RawFd) -> std::result::Result<(), ()>;
+    fn on_event(&self) -> std::result::Result<(), ()>;
 }
 
 impl EventLoop {
@@ -123,7 +123,7 @@ impl EventLoop {
                             Some(handler) => {
                                 // Drop lock before triggering the event.
                                 drop(locked);
-                                match handler.on_event(fd) {
+                                match handler.on_event() {
                                     Ok(()) => {}
                                     Err(_) => {
                                         error!("event loop stopping due to handle event error");
@@ -199,18 +199,18 @@ impl EventLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
     use std::sync::{Arc, Condvar, Mutex};
     use sys_util::EventFd;
 
     struct EventLoopTestHandler {
         val: Mutex<u8>,
         cvar: Condvar,
+        evt: EventFd,
     }
 
     impl EventHandler for EventLoopTestHandler {
-        fn on_event(&self, fd: RawFd) -> std::result::Result<(), ()> {
-            let _ = unsafe { EventFd::from_raw_fd(fd).read() };
+        fn on_event(&self) -> std::result::Result<(), ()> {
+            self.evt.read().unwrap();
             *self.val.lock().unwrap() += 1;
             self.cvar.notify_one();
             Ok(())
@@ -230,9 +230,15 @@ mod tests {
         let h = Arc::new(EventLoopTestHandler {
             val: Mutex::new(0),
             cvar: Condvar::new(),
+            evt,
         });
         let t: Arc<EventHandler> = h.clone();
-        l.add_event(&evt, WatchingEvents::empty().set_read(), Arc::downgrade(&t));
+        l.add_event(
+            &h.evt,
+            WatchingEvents::empty().set_read(),
+            Arc::downgrade(&t),
+        )
+        .unwrap();
         self_evt.write(1).unwrap();
         let _ = h.cvar.wait(h.val.lock().unwrap()).unwrap();
         l.stop();

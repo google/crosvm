@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use super::interrupter::Interrupter;
-use std::os::unix::io::RawFd;
 use std::sync::Arc;
 use sync::Mutex;
 use sys_util::{EventFd, WatchingEvents};
@@ -39,7 +38,7 @@ impl IntrResampleHandler {
     }
 }
 impl EventHandler for IntrResampleHandler {
-    fn on_event(&self, _fd: RawFd) -> Result<(), ()> {
+    fn on_event(&self) -> Result<(), ()> {
         match self.resample_evt.read() {
             Ok(_) => {}
             Err(e) => {

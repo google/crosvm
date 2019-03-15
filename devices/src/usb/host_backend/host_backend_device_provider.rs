@@ -143,7 +143,7 @@ impl ProviderInner {
         }
     }
 
-    fn on_event_helper(&self, _fd: RawFd) -> Result<()> {
+    fn on_event_helper(&self) -> Result<()> {
         let cmd = self.sock.recv().map_err(Error::ReadControlSock)?;
         match cmd {
             UsbControlCommand::AttachDevice {
@@ -315,8 +315,8 @@ impl ProviderInner {
 }
 
 impl EventHandler for ProviderInner {
-    fn on_event(&self, fd: RawFd) -> std::result::Result<(), ()> {
-        self.on_event_helper(fd).map_err(|e| {
+    fn on_event(&self) -> std::result::Result<(), ()> {
+        self.on_event_helper().map_err(|e| {
             error!("host backend device provider failed: {}", e);
             ()
         })

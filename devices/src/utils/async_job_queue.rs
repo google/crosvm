@@ -5,7 +5,6 @@
 use super::{Error, Result};
 use super::{EventHandler, EventLoop};
 use std::mem;
-use std::os::unix::io::RawFd;
 use std::sync::Arc;
 use sync::Mutex;
 use sys_util::{EventFd, WatchingEvents};
@@ -41,7 +40,7 @@ impl AsyncJobQueue {
 }
 
 impl EventHandler for AsyncJobQueue {
-    fn on_event(&self, _fd: RawFd) -> std::result::Result<(), ()> {
+    fn on_event(&self) -> std::result::Result<(), ()> {
         // We want to read out the event, but the value is not important.
         match self.evt.read() {
             Ok(_) => {}

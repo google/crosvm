@@ -116,7 +116,7 @@ struct LibUsbEventHandler {
 }
 
 impl EventHandler for LibUsbEventHandler {
-    fn on_event(&self, _fd: RawFd) -> std::result::Result<(), ()> {
+    fn on_event(&self) -> std::result::Result<(), ()> {
         self.context.handle_events_nonblock();
         Ok(())
     }
@@ -141,7 +141,7 @@ impl LibUsbPollfdChangeHandler for PollfdChangeHandler {
 
     fn remove_poll_fd(&self, fd: RawFd) {
         if let Some(h) = self.event_handler.upgrade() {
-            match h.on_event(0) {
+            match h.on_event() {
                 Ok(()) => {}
                 Err(e) => error!("cannot handle event: {:?}", e),
             }
