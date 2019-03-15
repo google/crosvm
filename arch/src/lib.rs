@@ -114,6 +114,8 @@ pub enum DeviceRegistrationError {
     IrqsExhausted,
     /// No more MMIO space available.
     AddrsExhausted,
+    /// Could not register PCI device capabilities.
+    RegisterDeviceCapabilities(PciDeviceError),
 }
 
 impl Display for DeviceRegistrationError {
@@ -133,6 +135,9 @@ impl Display for DeviceRegistrationError {
             ProxyDeviceCreation(e) => write!(f, "failed to create proxy device: {}", e),
             IrqsExhausted => write!(f, "no more IRQs are available"),
             AddrsExhausted => write!(f, "no more addresses are available"),
+            RegisterDeviceCapabilities(e) => {
+                write!(f, "could not register PCI device capabilities: {}", e)
+            }
         }
     }
 }
@@ -177,7 +182,9 @@ pub fn generate_pci_root(
         let device_ranges = device
             .allocate_device_bars(resources)
             .map_err(DeviceRegistrationError::AllocateDeviceAddrs)?;
-        device.register_device_capabilities();
+        device
+            .register_device_capabilities()
+            .map_err(DeviceRegistrationError::RegisterDeviceCapabilities)?;
         for (event, addr, datamatch) in device.ioeventfds() {
             let io_addr = IoeventAddress::Mmio(addr);
             vm.register_ioevent(&event, io_addr, datamatch)
