@@ -52,6 +52,7 @@ const VIRTIO_BLK_S_IOERR: u8 = 1;
 const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
 const VIRTIO_BLK_F_RO: u32 = 5;
+const VIRTIO_BLK_F_BLK_SIZE: u32 = 6;
 const VIRTIO_BLK_F_FLUSH: u32 = 9;
 const VIRTIO_BLK_F_DISCARD: u32 = 13;
 const VIRTIO_BLK_F_WRITE_ZEROES: u32 = 14;
@@ -825,6 +826,7 @@ fn build_config_space(disk_size: u64) -> virtio_blk_config {
     virtio_blk_config {
         // If the image is not a multiple of the sector size, the tail bits are not exposed.
         capacity: Le64::from(disk_size >> SECTOR_SHIFT),
+        blk_size: Le32::from(SECTOR_SIZE as u32),
         max_discard_sectors: Le32::from(MAX_DISCARD_SECTORS),
         discard_sector_alignment: Le32::from(DISCARD_SECTOR_ALIGNMENT),
         max_write_zeroes_sectors: Le32::from(MAX_WRITE_ZEROES_SECTORS),
@@ -862,6 +864,7 @@ impl<T: DiskFile> Block<T> {
             avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
         }
         avail_features |= 1 << VIRTIO_F_VERSION_1;
+        avail_features |= 1 << VIRTIO_BLK_F_BLK_SIZE;
 
         Ok(Block {
             kill_evt: None,
@@ -1019,8 +1022,8 @@ mod tests {
             let f = File::create(&path).unwrap();
             let b = Block::new(f, false, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
-            // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1
-            assert_eq!(0x100006200, b.features());
+            // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
+            assert_eq!(0x100006240, b.features());
         }
 
         // read-only block device
@@ -1028,8 +1031,8 @@ mod tests {
             let f = File::create(&path).unwrap();
             let b = Block::new(f, true, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
-            // + VIRTIO_F_VERSION_1
-            assert_eq!(0x100000220, b.features());
+            // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
+            assert_eq!(0x100000260, b.features());
         }
     }
 
