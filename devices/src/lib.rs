@@ -39,6 +39,7 @@ mod proxy;
 #[macro_use]
 mod register_space;
 mod serial;
+pub mod split_irqchip_common;
 pub mod usb;
 mod utils;
 pub mod virtio;
