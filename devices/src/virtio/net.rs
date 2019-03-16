@@ -50,6 +50,8 @@ pub enum NetError {
     TapSetVnetHdrSize(TapError),
     /// Enabling tap interface failed.
     TapEnable(TapError),
+    /// Validating tap interface failed.
+    TapValidate(String),
     /// Error while polling for events.
     PollError(SysError),
 }
@@ -69,6 +71,7 @@ impl Display for NetError {
             TapSetOffload(e) => write!(f, "failed to set tap interface offload flags: {}", e),
             TapSetVnetHdrSize(e) => write!(f, "failed to set vnet header size: {}", e),
             TapEnable(e) => write!(f, "failed to enable tap interface: {}", e),
+            TapValidate(s) => write!(f, "failed to validate tap interface: {}", s),
             PollError(e) => write!(f, "error while polling for events: {}", e),
         }
     }
@@ -338,17 +341,6 @@ where
         tap.set_mac_address(mac_addr)
             .map_err(NetError::TapSetMacAddress)?;
 
-        // Set offload flags to match the virtio features below.  If you make any
-        // changes to this set, also change the corresponding feature set in vm_concierge.
-        tap.set_offload(
-            net_sys::TUN_F_CSUM | net_sys::TUN_F_UFO | net_sys::TUN_F_TSO4 | net_sys::TUN_F_TSO6,
-        )
-        .map_err(NetError::TapSetOffload)?;
-
-        let vnet_hdr_size = mem::size_of::<virtio_net_hdr_v1>() as i32;
-        tap.set_vnet_hdr_size(vnet_hdr_size)
-            .map_err(NetError::TapSetVnetHdrSize)?;
-
         tap.enable().map_err(NetError::TapEnable)?;
 
         Net::from(tap)
@@ -357,6 +349,11 @@ where
     /// Creates a new virtio network device from a tap device that has already been
     /// configured.
     pub fn from(tap: T) -> Result<Net<T>, NetError> {
+        // This would also validate a tap created by Self::new(), but that's a good thing as it
+        // would ensure that any changes in the creation procedure are matched in the validation.
+        // Plus we still need to set the offload and vnet_hdr_size values.
+        validate_and_configure_tap(&tap)?;
+
         let avail_features = 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4
@@ -374,6 +371,48 @@ where
             acked_features: 0u64,
         })
     }
+}
+
+// Ensure that the tap interface has the correct flags and sets the offload and VNET header size
+// to the appropriate values.
+fn validate_and_configure_tap<T: TapT>(tap: &T) -> Result<(), NetError> {
+    let flags = tap.if_flags();
+    let required_flags = [
+        (net_sys::IFF_TAP, "IFF_TAP"),
+        (net_sys::IFF_NO_PI, "IFF_NO_PI"),
+        (net_sys::IFF_VNET_HDR, "IFF_VNET_HDR"),
+    ];
+    let missing_flags = required_flags
+        .iter()
+        .filter_map(
+            |(value, name)| {
+                if value & flags == 0 {
+                    Some(name)
+                } else {
+                    None
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+
+    if !missing_flags.is_empty() {
+        return Err(NetError::TapValidate(format!(
+            "Missing flags: {:?}",
+            missing_flags
+        )));
+    }
+
+    // Set offload flags to match the virtio features below.
+    tap.set_offload(
+        net_sys::TUN_F_CSUM | net_sys::TUN_F_UFO | net_sys::TUN_F_TSO4 | net_sys::TUN_F_TSO6,
+    )
+    .map_err(NetError::TapSetOffload)?;
+
+    let vnet_hdr_size = mem::size_of::<virtio_net_hdr_v1>() as i32;
+    tap.set_vnet_hdr_size(vnet_hdr_size)
+        .map_err(NetError::TapSetVnetHdrSize)?;
+
+    Ok(())
 }
 
 impl<T> Drop for Net<T>

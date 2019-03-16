@@ -170,6 +170,7 @@ impl Display for MacAddress {
 pub struct Tap {
     tap_file: File,
     if_name: [u8; 16usize],
+    if_flags: ::std::os::raw::c_short,
 }
 
 impl Tap {
@@ -187,6 +188,7 @@ impl Tap {
         Ok(Tap {
             tap_file,
             if_name: ifreq.ifr_ifrn.ifrn_name.as_ref().clone(),
+            if_flags: ifreq.ifr_ifru.ifru_flags.as_ref().clone(),
         })
     }
 }
@@ -225,6 +227,9 @@ pub trait TapT: Read + Write + AsRawFd + Send + Sized {
     fn set_vnet_hdr_size(&self, size: c_int) -> Result<()>;
 
     fn get_ifreq(&self) -> net_sys::ifreq;
+
+    /// Get the interface flags
+    fn if_flags(&self) -> u32;
 }
 
 impl TapT for Tap {
@@ -278,6 +283,7 @@ impl TapT for Tap {
         Ok(Tap {
             tap_file: tuntap,
             if_name: unsafe { *ifreq.ifr_ifrn.ifrn_name.as_ref() },
+            if_flags: unsafe { *ifreq.ifr_ifru.ifru_flags.as_ref() },
         })
     }
 
@@ -465,7 +471,21 @@ impl TapT for Tap {
             ifrn_name.clone_from_slice(&self.if_name);
         }
 
+        // This sets the flags with which the interface was created, which is the only entry we set
+        // on the second union.
+        unsafe {
+            ifreq
+                .ifr_ifru
+                .ifru_flags
+                .as_mut()
+                .clone_from(&self.if_flags);
+        }
+
         ifreq
+    }
+
+    fn if_flags(&self) -> u32 {
+        self.if_flags as u32
     }
 }
 
@@ -553,6 +573,10 @@ pub mod fakes {
         fn get_ifreq(&self) -> net_sys::ifreq {
             let ifreq: net_sys::ifreq = Default::default();
             ifreq
+        }
+
+        fn if_flags(&self) -> u32 {
+            net_sys::IFF_TAP
         }
     }
 
