@@ -65,6 +65,81 @@ fn bitfield_impl(ast: &DeriveInput) -> Result<TokenStream> {
     }
 }
 
+fn bitfield_enum_impl(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
+    let mut ast = ast.clone();
+    let mut width = None;
+    let mut bits_idx = 0;
+
+    for (i, attr) in ast.attrs.iter().enumerate() {
+        if let Some(w) = try_parse_bits_attr(attr)? {
+            bits_idx = i;
+            width = Some(w);
+        }
+    }
+
+    if width.is_some() {
+        ast.attrs.remove(bits_idx);
+    }
+
+    match width {
+        None => bitfield_enum_without_width_impl(&ast, data),
+        Some(width) => bitfield_enum_with_width_impl(&ast, data, &width),
+    }
+}
+
+fn bitfield_enum_with_width_impl(
+    ast: &DeriveInput,
+    data: &DataEnum,
+    width: &LitInt,
+) -> Result<TokenStream> {
+    if width.value() > 64 {
+        return Err(Error::new(
+            Span::call_site(),
+            "max width of bitfield enum is 64",
+        ));
+    }
+    let bits = width.value() as u8;
+    let declare_discriminants = get_declare_discriminants_for_enum(bits, ast, data);
+
+    let ident = &ast.ident;
+    let type_name = ident.to_string();
+    let variants = &data.variants;
+    let match_discriminants = variants.iter().map(|variant| {
+        let variant = &variant.ident;
+        quote! {
+            discriminant::#variant => Ok(#ident::#variant),
+        }
+    });
+
+    let expanded = quote! {
+        #ast
+
+        impl bit_field::BitFieldSpecifier for #ident {
+            const FIELD_WIDTH: u8 = #bits;
+            type SetterType = Self;
+            type GetterType = Result<Self, bit_field::Error>;
+
+            #[inline]
+            fn from_u64(val: u64) -> Self::GetterType {
+                struct discriminant;
+                impl discriminant {
+                    #(#declare_discriminants)*
+                }
+                match val {
+                    #(#match_discriminants)*
+                    v => Err(bit_field::Error::new(#type_name, v)),
+                }
+            }
+
+            #[inline]
+            fn into_u64(val: Self::SetterType) -> u64 {
+                val as u64
+            }
+        }
+    };
+
+    Ok(expanded)
+}
 // Expand to an impl of BitFieldSpecifier for an enum like:
 //
 //     #[bitfield]
@@ -85,59 +160,20 @@ fn bitfield_impl(ast: &DeriveInput) -> Result<TokenStream> {
 //         suffix: BitField5,
 //     }
 //
-fn bitfield_enum_impl(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
+fn bitfield_enum_without_width_impl(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
+    let ident = &ast.ident;
     let variants = &data.variants;
     let len = variants.len();
     if len.count_ones() != 1 {
         return Err(Error::new(
             Span::call_site(),
-            "#[bitfield] expected a number of variants which is a power of 2",
+            "#[bitfield] expected a number of variants which is a power of 2 when bits is not \
+             specified for the enum",
         ));
     }
 
     let bits = len.trailing_zeros() as u8;
-    let upper_bound = 2u64.pow(bits as u32);
-
-    let ident = &ast.ident;
-
-    let declare_discriminants = variants.iter().map(|variant| {
-        let variant = &variant.ident;
-        let span = variant.span();
-
-        let assertion = quote_spanned! {span=>
-            // If IS_IN_BOUNDS is true, this evaluates to 0.
-            //
-            // If IS_IN_BOUNDS is false, this evaluates to `0 - 1` which
-            // triggers a compile error on underflow when referenced below. The
-            // error is not beautiful but does carry the span of the problematic
-            // enum variant so at least it points to the right line.
-            //
-            //     error: any use of this value will cause an error
-            //       --> bit_field/test.rs:10:5
-            //        |
-            //     10 |     OutOfBounds = 0b111111,
-            //        |     ^^^^^^^^^^^ attempt to subtract with overflow
-            //        |
-            //
-            //     error[E0080]: erroneous constant used
-            //      --> bit_field/test.rs:5:1
-            //       |
-            //     5 | #[bitfield]
-            //       | ^^^^^^^^^^^ referenced constant has errors
-            //
-            const ASSERT: u64 = 0 - !IS_IN_BOUNDS as u64;
-        };
-
-        quote! {
-            const #variant: u64 = {
-                const IS_IN_BOUNDS: bool = (#ident::#variant as u64) < #upper_bound;
-
-                #assertion
-
-                #ident::#variant as u64 + ASSERT
-            };
-        }
-    });
+    let declare_discriminants = get_declare_discriminants_for_enum(bits, ast, data);
 
     let match_discriminants = variants.iter().map(|variant| {
         let variant = &variant.ident;
@@ -174,6 +210,58 @@ fn bitfield_enum_impl(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream>
     };
 
     Ok(expanded)
+}
+
+fn get_declare_discriminants_for_enum(
+    bits: u8,
+    ast: &DeriveInput,
+    data: &DataEnum,
+) -> Vec<TokenStream> {
+    let variants = &data.variants;
+    let upper_bound = 2u64.pow(bits as u32);
+    let ident = &ast.ident;
+
+    variants
+        .iter()
+        .map(|variant| {
+            let variant = &variant.ident;
+            let span = variant.span();
+
+            let assertion = quote_spanned! {span=>
+                // If IS_IN_BOUNDS is true, this evaluates to 0.
+                //
+                // If IS_IN_BOUNDS is false, this evaluates to `0 - 1` which
+                // triggers a compile error on underflow when referenced below. The
+                // error is not beautiful but does carry the span of the problematic
+                // enum variant so at least it points to the right line.
+                //
+                //     error: any use of this value will cause an error
+                //       --> bit_field/test.rs:10:5
+                //        |
+                //     10 |     OutOfBounds = 0b111111,
+                //        |     ^^^^^^^^^^^ attempt to subtract with overflow
+                //        |
+                //
+                //     error[E0080]: erroneous constant used
+                //      --> bit_field/test.rs:5:1
+                //       |
+                //     5 | #[bitfield]
+                //       | ^^^^^^^^^^^ referenced constant has errors
+                //
+                const ASSERT: u64 = 0 - !IS_IN_BOUNDS as u64;
+            };
+
+            quote! {
+                const #variant: u64 = {
+                    const IS_IN_BOUNDS: bool = (#ident::#variant as u64) < #upper_bound;
+
+                    #assertion
+
+                    #ident::#variant as u64 + ASSERT
+                };
+            }
+        })
+        .collect()
 }
 
 fn bitfield_struct_impl(ast: &DeriveInput, fields: &FieldsNamed) -> Result<TokenStream> {
@@ -235,20 +323,27 @@ fn parse_bits_attr(attrs: &[Attribute]) -> Result<Option<LitInt>> {
         if attr.path.is_ident("doc") {
             continue;
         }
-
-        if attr.path.is_ident("bits") {
-            if let Meta::NameValue(name_value) = attr.parse_meta()? {
-                if let Lit::Int(int) = name_value.lit {
-                    expected_bits = Some(int);
-                    continue;
-                }
-            }
+        if let Some(v) = try_parse_bits_attr(attr)? {
+            expected_bits = Some(v);
+            continue;
         }
 
         return Err(Error::new_spanned(attr, "unrecognized attribute"));
     }
 
     Ok(expected_bits)
+}
+
+// This function will return None if the attribute is not #[bits = *].
+fn try_parse_bits_attr(attr: &Attribute) -> Result<Option<LitInt>> {
+    if attr.path.is_ident("bits") {
+        if let Meta::NameValue(name_value) = attr.parse_meta()? {
+            if let Lit::Int(int) = name_value.lit {
+                return Ok(Some(int));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn get_struct_def(vis: &Visibility, name: &Ident, fields: &[FieldSpec]) -> TokenStream {

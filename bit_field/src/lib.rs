@@ -101,8 +101,36 @@
 //! }
 //! ```
 //!
-//! Finally, fields may be of user-defined enum types where the enum has a
-//! number of variants which is a power of 2 and the discriminant values
+//! Finally, fields may be of user-defined enum types. The enum must satisfy one of the following
+//! requirements.
+//!
+//! The enum has `#[bits = N]` attributes with it. `N` will be the width of the field. The getter
+//! function of this enum field will return `Result<EnumType, u64>`. Raw value that does not match
+//! any variant will result in an `Err(u64)`.
+//!
+//! ```
+//! extern crate bit_field;
+//!
+//! use bit_field::*;
+//!
+//! #[bitfield]
+//! #[bits = 2]
+//! #[derive(Debug, PartialEq)]
+//! enum TwoBits {
+//!     Zero = 0b00,
+//!     One = 0b01,
+//!     Three = 0b11,
+//! }
+//!
+//! #[bitfield]
+//! struct Struct {
+//!     prefix: BitField1,
+//!     two_bits: TwoBits,
+//!     suffix: BitField5,
+//! }
+//! ```
+//!
+//! The enum has a number of variants which is a power of 2 and the discriminant values
 //! (explicit or implicit) are 0 through (2^n)-1. In this case the generated
 //! getter and setter are defined in terms of the given enum type.
 //!
@@ -235,11 +263,42 @@
 //! }
 //! ```
 
+use std::fmt::{self, Display};
+
 #[allow(unused_imports)]
 #[macro_use]
 extern crate bit_field_derive;
 
 pub use bit_field_derive::bitfield;
+
+/// Error type for bit field get.
+#[derive(Debug)]
+pub struct Error {
+    type_name: &'static str,
+    val: u64,
+}
+
+impl Error {
+    pub fn new(type_name: &'static str, val: u64) -> Error {
+        Error { type_name, val }
+    }
+
+    pub fn raw_val(&self) -> u64 {
+        self.val
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "enum field type {} has a bad value {}",
+            self.type_name, self.val
+        )
+    }
+}
+
+impl std::error::Error for Error {}
 
 #[doc(hidden)]
 pub trait BitFieldSpecifier {
