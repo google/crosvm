@@ -151,10 +151,11 @@ fn bitfield_enum_impl(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream>
 
         impl bit_field::BitFieldSpecifier for #ident {
             const FIELD_WIDTH: u8 = #bits;
-            type DefaultFieldType = Self;
+            type SetterType = Self;
+            type GetterType = Self;
 
             #[inline]
-            fn from_u64(val: u64) -> Self::DefaultFieldType {
+            fn from_u64(val: u64) -> Self::GetterType {
                 struct discriminant;
                 impl discriminant {
                     #(#declare_discriminants)*
@@ -166,7 +167,7 @@ fn bitfield_enum_impl(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream>
             }
 
             #[inline]
-            fn into_u64(val: Self::DefaultFieldType) -> u64 {
+            fn into_u64(val: Self::SetterType) -> u64 {
                 val as u64
             }
         }
@@ -177,17 +178,12 @@ fn bitfield_enum_impl(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream>
 
 fn bitfield_struct_impl(ast: &DeriveInput, fields: &FieldsNamed) -> Result<TokenStream> {
     let name = &ast.ident;
-    let test_mod_ident = Ident::new(
-        format!("test_{}", name.to_string().to_lowercase()).as_str(),
-        Span::call_site(),
-    );
     let vis = &ast.vis;
     let attrs = &ast.attrs;
     let fields = get_struct_fields(fields)?;
     let struct_def = get_struct_def(vis, &name, &fields);
     let bits_impl = get_bits_impl(&name);
     let fields_impl = get_fields_impl(&fields);
-    let tests_impl = get_tests_impl(&name, &fields);
     let debug_fmt_impl = get_debug_fmt_impl(&name, &fields);
 
     let expanded = quote! {
@@ -197,13 +193,7 @@ fn bitfield_struct_impl(ast: &DeriveInput, fields: &FieldsNamed) -> Result<Token
         impl #name {
             #(#fields_impl)*
         }
-
         #debug_fmt_impl
-        #[cfg(test)]
-        mod #test_mod_ident {
-            use super::*;
-            #(#tests_impl)*
-        }
     };
 
     Ok(expanded)
@@ -320,14 +310,14 @@ fn get_fields_impl(fields: &[FieldSpec]) -> Vec<TokenStream> {
         });
 
         impls.push(quote! {
-            pub fn #getter_ident(&self) -> <#ty as ::bit_field::BitFieldSpecifier>::DefaultFieldType {
+            pub fn #getter_ident(&self) -> <#ty as ::bit_field::BitFieldSpecifier>::GetterType {
                 #check_expected_bits
                 let offset = #(<#current_types as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize)+*;
                 let val = self.get(offset, <#ty as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH);
                 <#ty as ::bit_field::BitFieldSpecifier>::from_u64(val)
             }
 
-            pub fn #setter_ident(&mut self, val: <#ty as ::bit_field::BitFieldSpecifier>::DefaultFieldType) {
+            pub fn #setter_ident(&mut self, val: <#ty as ::bit_field::BitFieldSpecifier>::SetterType) {
                 let val = <#ty as ::bit_field::BitFieldSpecifier>::into_u64(val);
                 debug_assert!(val <= ::bit_field::max::<#ty>());
                 let offset = #(<#current_types as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize)+*;
@@ -363,62 +353,6 @@ fn get_debug_fmt_impl(name: &Ident, fields: &[FieldSpec]) -> TokenStream {
             }
         }
     }
-}
-
-// Implement test.
-fn get_tests_impl(struct_name: &Ident, fields: &[FieldSpec]) -> Vec<TokenStream> {
-    let mut field_types = Vec::new();
-    for spec in fields {
-        field_types.push(spec.ty);
-    }
-    let field_types2 = field_types.clone();
-    let mut impls = Vec::new();
-    impls.push(quote! {
-        #[test]
-        fn test_total_size() {
-            let total_size = #(<#field_types as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize)+*;
-            assert_eq!(total_size % 8, 0);
-        }
-    });
-    impls.push(quote! {
-        #[test]
-        fn test_bits_boundary() {
-            let fields_sizes = vec![#(<#field_types2 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize),*];
-            let mut sum = 0usize;
-            for s in fields_sizes {
-                if sum % 64 == 0 {
-                    assert!(s <= 64);
-                } else {
-                    if (sum + s) % 64 != 0 {
-                        assert_eq!(sum / 64, (sum + s) / 64);
-                    }
-                }
-                sum += s;
-            }
-        }
-    });
-
-    for spec in fields {
-        let testname = Ident::new(&format!("test_{}", spec.ident), Span::call_site());
-        let getter_ident = Ident::new(&format!("get_{}", spec.ident), Span::call_site());
-        let setter_ident = Ident::new(&format!("set_{}", spec.ident), Span::call_site());
-        let ty = spec.ty;
-        impls.push(quote! {
-            #[test]
-            fn #testname() {
-                let mut a = #struct_name::new();
-                let val = <#ty as ::bit_field::BitFieldSpecifier>::into_u64(a.#getter_ident());
-                assert_eq!(val, 0);
-
-                let val = <#ty as ::bit_field::BitFieldSpecifier>::from_u64(::bit_field::max::<#ty>());
-                a.#setter_ident(val);
-
-                let val = <#ty as ::bit_field::BitFieldSpecifier>::into_u64(a.#getter_ident());
-                assert_eq!(val, ::bit_field::max::<#ty>());
-            }
-        });
-    }
-    impls
 }
 
 fn get_bits_impl(name: &Ident) -> TokenStream {
@@ -517,15 +451,16 @@ pub fn define_bit_field_specifiers(_input: proc_macro::TokenStream) -> proc_macr
 
             impl BitFieldSpecifier for #long_name {
                 const FIELD_WIDTH: u8 = #width;
-                type DefaultFieldType = #default_field_type;
+                type SetterType = #default_field_type;
+                type GetterType = #default_field_type;
 
                 #[inline]
-                fn from_u64(val: u64) -> Self::DefaultFieldType {
-                    val as Self::DefaultFieldType
+                fn from_u64(val: u64) -> Self::GetterType {
+                    val as Self::GetterType
                 }
 
                 #[inline]
-                fn into_u64(val: Self::DefaultFieldType) -> u64 {
+                fn into_u64(val: Self::SetterType) -> u64 {
                     val as u64
                 }
             }
@@ -628,38 +563,38 @@ mod tests {
                 }
             }
             impl MyBitField {
-                pub fn get_a(&self) -> <BitField1 as ::bit_field::BitFieldSpecifier>::DefaultFieldType {
+                pub fn get_a(&self) -> <BitField1 as ::bit_field::BitFieldSpecifier>::GetterType {
                     let offset = <::bit_field::BitField0 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize;
                     let val = self.get(offset, <BitField1 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH);
                     <BitField1 as ::bit_field::BitFieldSpecifier>::from_u64(val)
                 }
-                pub fn set_a(&mut self, val: <BitField1 as ::bit_field::BitFieldSpecifier>::DefaultFieldType) {
+                pub fn set_a(&mut self, val: <BitField1 as ::bit_field::BitFieldSpecifier>::SetterType) {
                     let val = <BitField1 as ::bit_field::BitFieldSpecifier>::into_u64(val);
                     debug_assert!(val <= ::bit_field::max::<BitField1>());
                     let offset = <::bit_field::BitField0 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize;
                     self.set(offset, <BitField1 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH, val)
                 }
-                pub fn get_b(&self) -> <BitField2 as ::bit_field::BitFieldSpecifier>::DefaultFieldType {
+                pub fn get_b(&self) -> <BitField2 as ::bit_field::BitFieldSpecifier>::GetterType {
                     let offset = <::bit_field::BitField0 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize
                         + <BitField1 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize;
                     let val = self.get(offset, <BitField2 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH);
                     <BitField2 as ::bit_field::BitFieldSpecifier>::from_u64(val)
                 }
-                pub fn set_b(&mut self, val: <BitField2 as ::bit_field::BitFieldSpecifier>::DefaultFieldType) {
+                pub fn set_b(&mut self, val: <BitField2 as ::bit_field::BitFieldSpecifier>::SetterType) {
                     let val = <BitField2 as ::bit_field::BitFieldSpecifier>::into_u64(val);
                     debug_assert!(val <= ::bit_field::max::<BitField2>());
                     let offset = <::bit_field::BitField0 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize
                         + <BitField1 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize;
                     self.set(offset, <BitField2 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH, val)
                 }
-                pub fn get_c(&self) -> <BitField5 as ::bit_field::BitFieldSpecifier>::DefaultFieldType {
+                pub fn get_c(&self) -> <BitField5 as ::bit_field::BitFieldSpecifier>::GetterType {
                     let offset = <::bit_field::BitField0 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize
                         + <BitField1 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize
                         + <BitField2 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize;
                     let val = self.get(offset, <BitField5 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH);
                     <BitField5 as ::bit_field::BitFieldSpecifier>::from_u64(val)
                 }
-                pub fn set_c(&mut self, val: <BitField5 as ::bit_field::BitFieldSpecifier>::DefaultFieldType) {
+                pub fn set_c(&mut self, val: <BitField5 as ::bit_field::BitFieldSpecifier>::SetterType) {
                     let val = <BitField5 as ::bit_field::BitFieldSpecifier>::into_u64(val);
                     debug_assert!(val <= ::bit_field::max::<BitField5>());
                     let offset = <::bit_field::BitField0 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize
@@ -675,66 +610,6 @@ mod tests {
                         .field("b", &self.get_b())
                         .field("c", &self.get_c())
                         .finish()
-                }
-            }
-            #[cfg(test)]
-            mod test_mybitfield {
-                use super::*;
-                #[test]
-                fn test_total_size() {
-                    let total_size = <BitField1 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize
-                        + <BitField2 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize
-                        + <BitField5 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize;
-                    assert_eq!(total_size % 8, 0);
-                }
-                #[test]
-                fn test_bits_boundary() {
-                    let fields_sizes = vec![
-                        <BitField1 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize,
-                        <BitField2 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize,
-                        <BitField5 as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize
-                    ];
-                    let mut sum = 0usize;
-                    for s in fields_sizes {
-                        if sum % 64 == 0 {
-                            assert!(s <= 64);
-                        } else {
-                            if (sum + s) % 64 != 0 {
-                                assert_eq!(sum / 64, (sum + s) / 64);
-                            }
-                        }
-                        sum += s;
-                    }
-                }
-                #[test]
-                fn test_a() {
-                    let mut a = MyBitField::new();
-                    let val = <BitField1 as ::bit_field::BitFieldSpecifier>::into_u64(a.get_a());
-                    assert_eq!(val, 0);
-                    let val = <BitField1 as ::bit_field::BitFieldSpecifier>::from_u64(::bit_field::max::<BitField1>());
-                    a.set_a(val);
-                    let val = <BitField1 as ::bit_field::BitFieldSpecifier>::into_u64(a.get_a());
-                    assert_eq!(val, ::bit_field::max::<BitField1>());
-                }
-                #[test]
-                fn test_b() {
-                    let mut a = MyBitField::new();
-                    let val = <BitField2 as ::bit_field::BitFieldSpecifier>::into_u64(a.get_b());
-                    assert_eq!(val, 0);
-                    let val = <BitField2 as ::bit_field::BitFieldSpecifier>::from_u64(::bit_field::max::<BitField2>());
-                    a.set_b(val);
-                    let val = <BitField2 as ::bit_field::BitFieldSpecifier>::into_u64(a.get_b());
-                    assert_eq!(val, ::bit_field::max::<BitField2>());
-                }
-                #[test]
-                fn test_c() {
-                    let mut a = MyBitField::new();
-                    let val = <BitField5 as ::bit_field::BitFieldSpecifier>::into_u64(a.get_c());
-                    assert_eq!(val, 0);
-                    let val = <BitField5 as ::bit_field::BitFieldSpecifier>::from_u64(::bit_field::max::<BitField5>());
-                    a.set_c(val);
-                    let val = <BitField5 as ::bit_field::BitFieldSpecifier>::into_u64(a.get_c());
-                    assert_eq!(val, ::bit_field::max::<BitField5>());
                 }
             }
         };

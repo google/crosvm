@@ -245,14 +245,17 @@ pub use bit_field_derive::bitfield;
 pub trait BitFieldSpecifier {
     // Width of this field in bits.
     const FIELD_WIDTH: u8;
-    // Default data type of this field.
+    // Date type for setter of this field.
     // For any field, we use the closest u* type. e.g. FIELD_WIDTH <= 8 will
     // have defulat type of u8.
     // It's possible to write a custom specifier and use i8.
-    type DefaultFieldType;
+    type SetterType;
+    // Data type for getter of this field. For enums, it will be Result<EnumType, SetterType>.
+    // For others, it will be the same as SetterType.
+    type GetterType;
 
-    fn from_u64(val: u64) -> Self::DefaultFieldType;
-    fn into_u64(val: Self::DefaultFieldType) -> u64;
+    fn from_u64(val: u64) -> Self::GetterType;
+    fn into_u64(val: Self::SetterType) -> u64;
 }
 
 // Largest u64 representable by this bit field specifier. Used by generated code
@@ -272,15 +275,16 @@ bit_field_derive::define_bit_field_specifiers!();
 
 impl BitFieldSpecifier for bool {
     const FIELD_WIDTH: u8 = 1;
-    type DefaultFieldType = bool;
+    type SetterType = bool;
+    type GetterType = bool;
 
     #[inline]
-    fn from_u64(val: u64) -> Self::DefaultFieldType {
+    fn from_u64(val: u64) -> Self::GetterType {
         val > 0
     }
 
     #[inline]
-    fn into_u64(val: Self::DefaultFieldType) -> u64 {
+    fn into_u64(val: Self::SetterType) -> u64 {
         val as u64
     }
 }
