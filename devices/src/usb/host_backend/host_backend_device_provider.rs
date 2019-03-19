@@ -18,7 +18,10 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
 use sys_util::net::UnixSeqpacket;
 use sys_util::{error, WatchingEvents};
-use vm_control::{UsbControlCommand, UsbControlResult, UsbControlSocket};
+use vm_control::{
+    UsbControlAttachedDevice, UsbControlCommand, UsbControlResult, UsbControlSocket,
+    USB_CONTROL_MAX_PORTS,
+};
 
 const SOCKET_TIMEOUT_MS: u64 = 2000;
 
@@ -140,6 +143,27 @@ impl ProviderInner {
             sock,
             usb_hub,
         }
+    }
+
+    fn handle_list_devices(&self, ports: [u8; USB_CONTROL_MAX_PORTS]) -> UsbControlResult {
+        let mut devices: [UsbControlAttachedDevice; USB_CONTROL_MAX_PORTS] = Default::default();
+        for (result_index, &port_id) in ports.iter().enumerate() {
+            match self.usb_hub.get_port(port_id).and_then(|p| {
+                p.get_backend_device()
+                    .as_ref()
+                    .map(|d| (d.get_vid(), d.get_pid()))
+            }) {
+                Some((vendor_id, product_id)) => {
+                    devices[result_index] = UsbControlAttachedDevice {
+                        port: port_id,
+                        vendor_id,
+                        product_id,
+                    }
+                }
+                None => continue,
+            }
+        }
+        UsbControlResult::Devices(devices)
     }
 
     fn on_event_helper(&self) -> Result<()> {
@@ -287,23 +311,8 @@ impl ProviderInner {
                 }
                 Ok(())
             }
-            UsbControlCommand::ListDevice { port } => {
-                let port_number = port;
-                let result = match self.usb_hub.get_port(port_number) {
-                    Some(port) => match port.get_backend_device().as_ref() {
-                        Some(device) => {
-                            let vid = device.get_vid();
-                            let pid = device.get_pid();
-                            UsbControlResult::Device {
-                                port: port_number,
-                                vid,
-                                pid,
-                            }
-                        }
-                        None => UsbControlResult::NoSuchDevice,
-                    },
-                    None => UsbControlResult::NoSuchPort,
-                };
+            UsbControlCommand::ListDevice { ports } => {
+                let result = self.handle_list_devices(ports);
                 // The send failure will be logged, but event loop still think the event is
                 // handled.
                 let _ = self.sock.send(&result).map_err(Error::WriteControlSock);

@@ -88,6 +88,13 @@ impl Default for VmRunMode {
     }
 }
 
+/// The maximum number of devices that can be listed in one `UsbControlCommand`.
+///
+/// This value was set to be equal to `xhci_regs::MAX_PORTS` for convenience, but it is not
+/// necessary for correctness. Importing that value directly would be overkill because it would
+/// require adding a big dependency for a single const.
+pub const USB_CONTROL_MAX_PORTS: usize = 16;
+
 #[derive(MsgOnSocket, Debug)]
 pub enum BalloonControlCommand {
     /// Set the size of the VM's balloon.
@@ -129,8 +136,21 @@ pub enum UsbControlCommand {
         port: u8,
     },
     ListDevice {
-        port: u8,
+        ports: [u8; USB_CONTROL_MAX_PORTS],
     },
+}
+
+#[derive(MsgOnSocket, Copy, Clone, Debug, Default)]
+pub struct UsbControlAttachedDevice {
+    pub port: u8,
+    pub vendor_id: u16,
+    pub product_id: u16,
+}
+
+impl UsbControlAttachedDevice {
+    fn valid(self) -> bool {
+        self.port != 0
+    }
 }
 
 #[derive(MsgOnSocket, Debug)]
@@ -140,7 +160,7 @@ pub enum UsbControlResult {
     NoSuchDevice,
     NoSuchPort,
     FailedToOpenDevice,
-    Device { port: u8, vid: u16, pid: u16 },
+    Devices([UsbControlAttachedDevice; USB_CONTROL_MAX_PORTS]),
 }
 
 impl Display for UsbControlResult {
@@ -153,7 +173,13 @@ impl Display for UsbControlResult {
             NoSuchDevice => write!(f, "no_such_device"),
             NoSuchPort => write!(f, "no_such_port"),
             FailedToOpenDevice => write!(f, "failed_to_open_device"),
-            Device { port, vid, pid } => write!(f, "device {} {:04x} {:04x}", port, vid, pid),
+            Devices(devices) => {
+                write!(f, "devices")?;
+                for d in devices.iter().filter(|d| d.valid()) {
+                    write!(f, " {} {:04x} {:04x}", d.port, d.vendor_id, d.product_id)?;
+                }
+                std::result::Result::Ok(())
+            }
         }
     }
 }

@@ -28,7 +28,7 @@ use sys_util::{
 };
 use vm_control::{
     BalloonControlCommand, DiskControlCommand, MaybeOwnedFd, UsbControlCommand, UsbControlResult,
-    VmControlRequestSocket, VmRequest, VmResponse,
+    VmControlRequestSocket, VmRequest, VmResponse, USB_CONTROL_MAX_PORTS,
 };
 
 use crate::argument::{print_help, set_arguments, Argument};
@@ -1105,14 +1105,12 @@ fn usb_detach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
     }
 }
 
-fn usb_list(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
-    let port: u8 = args
-        .next()
-        .map_or(Err(ModifyUsbError::ArgMissing("PORT")), |p| {
-            p.parse::<u8>()
-                .map_err(|e| ModifyUsbError::ArgParseInt("PORT", p.to_owned(), e))
-        })?;
-    let request = VmRequest::UsbCommand(UsbControlCommand::ListDevice { port });
+fn usb_list(args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
+    let mut ports: [u8; USB_CONTROL_MAX_PORTS] = Default::default();
+    for (index, port) in ports.iter_mut().enumerate() {
+        *port = index as u8
+    }
+    let request = VmRequest::UsbCommand(UsbControlCommand::ListDevice { ports });
     let response = handle_request(&request, args).map_err(|_| ModifyUsbError::SocketFailed)?;
     match response {
         VmResponse::UsbResponse(usb_resp) => Ok(usb_resp),
@@ -1121,9 +1119,9 @@ fn usb_list(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
 }
 
 fn modify_usb(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() < 3 {
+    if args.len() < 2 {
         print_help("crosvm usb",
-                   "[attach BUS_ID:ADDR:VENDOR_ID:PRODUCT_ID [USB_DEVICE_PATH|-] | detach PORT | list PORT] VM_SOCKET...", &[]);
+                   "[attach BUS_ID:ADDR:VENDOR_ID:PRODUCT_ID [USB_DEVICE_PATH|-] | detach PORT | list] VM_SOCKET...", &[]);
         return Err(());
     }
 
