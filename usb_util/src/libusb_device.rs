@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std;
+#[cfg(feature = "sandboxed-libusb")]
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
 
