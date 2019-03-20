@@ -514,23 +514,6 @@ impl DeviceSlot {
         if !self.enabled.load(Ordering::SeqCst) {
             return Ok(TrbCompletionCode::SlotNotEnabledError);
         }
-
-        let device_context = self.get_device_context()?;
-        let state = device_context
-            .slot_context
-            .state()
-            .map_err(Error::GetSlotContextState)?;
-        if state == DeviceSlotState::Default
-            || state == DeviceSlotState::Addressed
-            || state == DeviceSlotState::Configured
-        {
-            error!(
-                "wrong context state on evaluate context. state = {:?}",
-                state
-            );
-            return Ok(TrbCompletionCode::ContextStateError);
-        }
-
         // TODO(jkwang) verify this
         // The spec has multiple contradictions about validating context parameters in sections
         // 4.6.7, 6.2.3.3. To keep things as simple as possible we do no further validation here.
@@ -581,13 +564,6 @@ impl DeviceSlot {
         slot: &Arc<DeviceSlot>,
         mut callback: C,
     ) -> Result<()> {
-        let state = slot.state()?;
-        if state != DeviceSlotState::Addressed && state != DeviceSlotState::Configured {
-            error!("reset slot failed due to context state error {:?}", state);
-            return callback(TrbCompletionCode::ContextStateError)
-                .map_err(|_| Error::CallbackFailed);
-        }
-
         let weak_s = Arc::downgrade(&slot);
         let auto_callback =
             RingBufferStopCallback::new(fallible_closure(fail_handle, move || -> Result<()> {
@@ -650,20 +626,23 @@ impl DeviceSlot {
     }
 
     /// Set transfer ring dequeue pointer.
-    pub fn set_tr_dequeue_ptr(&self, endpoint_id: u8, ptr: u64) -> TrbCompletionCode {
+    pub fn set_tr_dequeue_ptr(&self, endpoint_id: u8, ptr: u64) -> Result<TrbCompletionCode> {
         if !valid_endpoint_id(endpoint_id) {
             error!("trb indexing wrong endpoint id");
-            return TrbCompletionCode::TrbError;
+            return Ok(TrbCompletionCode::TrbError);
         }
-        let index = endpoint_id - 1;
-        match self.get_trc(index as usize) {
+        let index = (endpoint_id - 1) as usize;
+        match self.get_trc(index) {
             Some(trc) => {
                 trc.set_dequeue_pointer(GuestAddress(ptr));
-                TrbCompletionCode::Success
+                let mut ctx = self.get_device_context()?;
+                ctx.endpoint_context[index].set_tr_dequeue_pointer(ptr >> 4);
+                self.set_device_context(ctx)?;
+                Ok(TrbCompletionCode::Success)
             }
             None => {
                 error!("set tr dequeue ptr failed due to no trc started");
-                TrbCompletionCode::ContextStateError
+                Ok(TrbCompletionCode::ContextStateError)
             }
         }
     }
@@ -718,9 +697,12 @@ impl DeviceSlot {
     }
 
     fn get_device_context(&self) -> Result<DeviceContext> {
-        self.mem
+        let ctx = self
+            .mem
             .read_obj_from_addr(self.get_device_context_addr()?)
-            .map_err(Error::ReadGuestMemory)
+            .map_err(Error::ReadGuestMemory)?;
+        usb_debug!("read device ctx: {:?}", ctx);
+        Ok(ctx)
     }
 
     fn set_device_context(&self, device_context: DeviceContext) -> Result<()> {
@@ -766,15 +748,6 @@ impl DeviceSlot {
             ))
             .map_err(Error::ReadGuestMemory)?;
         Ok(GuestAddress(addr))
-    }
-
-    // Returns the current state of the device slot.
-    fn state(&self) -> Result<DeviceSlotState> {
-        let context = self.get_device_context()?;
-        context
-            .slot_context
-            .state()
-            .map_err(Error::GetSlotContextState)
     }
 
     fn set_state(&self, state: DeviceSlotState) -> Result<()> {

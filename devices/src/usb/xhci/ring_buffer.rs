@@ -85,6 +85,11 @@ impl RingBuffer {
                 }
             };
 
+            usb_debug!(
+                "{}: adding trb to td {}",
+                self.name.as_str(),
+                addressed_trb.trb
+            );
             td.push(addressed_trb);
             if !addressed_trb.trb.get_chain_bit().map_err(Error::TrbChain)? {
                 usb_debug!("trb chain is false returning");

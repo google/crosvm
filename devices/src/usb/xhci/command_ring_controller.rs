@@ -29,6 +29,7 @@ pub enum Error {
     StopEndpoint(DeviceSlotError),
     ConfigEndpoint(DeviceSlotError),
     SetAddress(DeviceSlotError),
+    SetDequeuePointer(DeviceSlotError),
     EvaluateContext(DeviceSlotError),
     DisableSlot(DeviceSlotError),
     ResetSlot(DeviceSlotError),
@@ -48,6 +49,7 @@ impl Display for Error {
             StopEndpoint(e) => write!(f, "failed to stop endpoint: {}", e),
             ConfigEndpoint(e) => write!(f, "failed to config endpoint: {}", e),
             SetAddress(e) => write!(f, "failed to set address: {}", e),
+            SetDequeuePointer(e) => write!(f, "failed to set dequeue pointer: {}", e),
             EvaluateContext(e) => write!(f, "failed to evaluate context: {}", e),
             DisableSlot(e) => write!(f, "failed to disable slot: {}", e),
             ResetSlot(e) => write!(f, "failed to reset slot: {}", e),
@@ -314,6 +316,7 @@ impl CommandRingTrbHandler {
             if valid_slot_id(slot_id) {
                 self.slot(slot_id)?
                     .set_tr_dequeue_ptr(endpoint_id, dequeue_ptr)
+                    .map_err(Error::SetDequeuePointer)?
             } else {
                 error!("stop endpoint trb has invalid slot id {}", slot_id);
                 TrbCompletionCode::TrbError

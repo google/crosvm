@@ -244,6 +244,12 @@ impl ProviderInner {
                             }
                         }
                     };
+
+                    // Resetting the device is used to make sure it is in a known state, but it may
+                    // still function if the reset fails.
+                    if let Err(e) = device_handle.reset() {
+                        error!("failed to reset device after attach: {:?}", e);
+                    }
                     (device, device_handle)
                 };
 

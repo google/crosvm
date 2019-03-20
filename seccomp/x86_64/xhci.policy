@@ -30,7 +30,9 @@ uname: 1
 # 0x8004551a == USBDEVFS_GET_CAPABILITIES
 # 0x8038550a == USBDEVFS_SUBMITURB
 # 0xc0185500 == USBDEVFS_CONTROL
-ioctl: arg1 == 0xc0185500 || arg1 == 0x41045508 || arg1 == 0x8004550f || arg1 == 0x4008550d || arg1 == 0x8004551a || arg1 == 0x550b || arg1 == 0x80045510 || arg1 == 0x8038550a
+# 0x5514 == USBDEVFS_RESET
+# 0x80045505 == USBDEVFS_SETCONFIGURATION
+ioctl: arg1 == 0xc0185500 || arg1 == 0x41045508 || arg1 == 0x8004550f || arg1 == 0x4008550d || arg1 == 0x8004551a || arg1 == 0x550b || arg1 == 0x80045510 || arg1 == 0x8038550a || arg1 == 0x5514 || arg1 == 0x80045505
 fstat: 1
 sigaltstack: 1
 recvmsg: 1

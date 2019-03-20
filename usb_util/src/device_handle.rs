@@ -39,6 +39,12 @@ impl DeviceHandle {
         }
     }
 
+    /// Reset this usb device.
+    pub fn reset(&self) -> Result<()> {
+        // Safe because 'self.handle' is a valid pointer to device handle.
+        try_libusb!(unsafe { bindings::libusb_reset_device(self.handle) });
+        Ok(())
+    }
     /// Get bConfigurationValue of the currently active configuration.
     pub fn get_active_configuration(&self) -> Result<i32> {
         let mut config: c_int = 0;
