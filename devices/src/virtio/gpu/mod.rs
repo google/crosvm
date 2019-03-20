@@ -266,17 +266,23 @@ impl Frontend {
                     offset,
                 )
             }
-            GpuCommand::CmdSubmit3d(info) if data.is_some() => {
-                let data = data.unwrap(); // guarded by this match arm
-                let cmd_size = info.size.to_native() as usize;
-                match data.get_slice(0, cmd_size as u64) {
-                    Ok(cmd_slice) => {
-                        let mut cmd_buf = vec![0; cmd_size];
-                        cmd_slice.copy_to(&mut cmd_buf[..]);
-                        self.backend
-                            .submit_command(info.hdr.ctx_id.to_native(), &mut cmd_buf[..])
+            GpuCommand::CmdSubmit3d(info) => {
+                if data.is_some() {
+                    let data = data.unwrap(); // guarded by this match arm
+                    let cmd_size = info.size.to_native() as usize;
+                    match data.get_slice(0, cmd_size as u64) {
+                        Ok(cmd_slice) => {
+                            let mut cmd_buf = vec![0; cmd_size];
+                            cmd_slice.copy_to(&mut cmd_buf[..]);
+                            self.backend
+                                .submit_command(info.hdr.ctx_id.to_native(), &mut cmd_buf[..])
+                        }
+                        Err(_) => GpuResponse::ErrInvalidParameter,
                     }
-                    Err(_) => GpuResponse::ErrInvalidParameter,
+                } else {
+                    // Silently accept empty command buffers to allow for
+                    // benchmarking.
+                    GpuResponse::OkNoData
                 }
             }
             _ => {
