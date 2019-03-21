@@ -201,7 +201,7 @@ where
                 if arg == "--" {
                     State::Positional
                 } else if arg.starts_with("--") {
-                    let param = arg.trim_left_matches('-');
+                    let param = arg.trim_start_matches('-');
                     if param.contains('=') {
                         let mut iter = param.splitn(2, '=');
                         let name = iter.next().unwrap();
