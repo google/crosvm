@@ -64,3 +64,8 @@ readlink: 1
 socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
 stat: 1
 sysinfo: 1
+
+# Rules specific to AMD gpus.
+uname: 1
+sched_setscheduler: 1
+sched_setaffinity: 1
