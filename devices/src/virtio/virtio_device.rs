@@ -76,13 +76,13 @@ pub trait VirtioDevice: Send {
         None
     }
 
-    /// Optionally returns additional BAR configuration needed by device
-    fn get_device_bars(&self) -> Option<Vec<PciBarConfiguration>> {
-        None
+    /// Returns any additional BAR configuration required by the device.
+    fn get_device_bars(&self) -> Vec<PciBarConfiguration> {
+        Vec::new()
     }
 
-    /// Optionally returns additional capabiltiies needed by device
-    fn get_device_caps(&self) -> Option<Vec<Box<PciCapability>>> {
-        None
+    /// Returns any additional capabiltiies required by the device.
+    fn get_device_caps(&self) -> Vec<Box<PciCapability>> {
+        Vec::new()
     }
 }

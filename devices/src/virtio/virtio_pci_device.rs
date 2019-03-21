@@ -349,29 +349,25 @@ impl PciDevice for VirtioPciDevice {
         resources: &mut SystemAllocator,
     ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
         let mut ranges = Vec::new();
-        if let Some(configs) = self.device.get_device_bars() {
-            for mut config in configs {
-                let device_addr = resources
-                    .allocate_device_addresses(config.get_size())
-                    .ok_or(PciDeviceError::IoAllocationFailed(config.get_size()))?;
-                config.set_address(device_addr);
-                let _device_bar = self
-                    .config_regs
-                    .add_pci_bar(&config)
-                    .map_err(|e| PciDeviceError::IoRegistrationFailed(device_addr, e))?;
-                ranges.push((device_addr, config.get_size()));
-            }
+        for mut config in self.device.get_device_bars() {
+            let device_addr = resources
+                .allocate_device_addresses(config.get_size())
+                .ok_or(PciDeviceError::IoAllocationFailed(config.get_size()))?;
+            config.set_address(device_addr);
+            let _device_bar = self
+                .config_regs
+                .add_pci_bar(&config)
+                .map_err(|e| PciDeviceError::IoRegistrationFailed(device_addr, e))?;
+            ranges.push((device_addr, config.get_size()));
         }
         Ok(ranges)
     }
 
     fn register_device_capabilities(&mut self) -> std::result::Result<(), PciDeviceError> {
-        if let Some(caps) = self.device.get_device_caps() {
-            for cap in caps {
-                self.config_regs
-                    .add_capability(&*cap)
-                    .map_err(|e| PciDeviceError::CapabilitiesSetup(e))?;
-            }
+        for cap in self.device.get_device_caps() {
+            self.config_regs
+                .add_capability(&*cap)
+                .map_err(|e| PciDeviceError::CapabilitiesSetup(e))?;
         }
 
         Ok(())

@@ -812,14 +812,12 @@ impl VirtioDevice for Gpu {
     }
 
     // Require 1 BAR for mapping 3D buffers
-    fn get_device_bars(&self) -> Option<Vec<PciBarConfiguration>> {
-        let mut bars = Vec::new();
-        bars.push(PciBarConfiguration::new(
+    fn get_device_bars(&self) -> Vec<PciBarConfiguration> {
+        vec![PciBarConfiguration::new(
             4,
             1 << 33,
             PciBarRegionType::Memory64BitRegion,
             PciBarPrefetchable::NotPrefetchable,
-        ));
-        Some(bars)
+        )]
     }
 }
