@@ -182,6 +182,7 @@ fn testable_derive(input: DeriveInput) -> proc_macro2::TokenStream {
     });
 
     quote! {
+        #[allow(non_upper_case_globals)]
         impl #ident {
             pub #signature -> Option<Self> {
                 struct discriminant;

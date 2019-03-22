@@ -319,6 +319,7 @@ fn get_declare_discriminants_for_enum(
             };
 
             quote! {
+                #[allow(non_upper_case_globals)]
                 const #variant: u64 = {
                     const IS_IN_BOUNDS: bool = (#ident::#variant as u64) < #upper_bound;
 

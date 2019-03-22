@@ -17,6 +17,7 @@ fn test_repr() {
     };
     let actual = crate::testable_derive(input);
     let expected = quote! {
+        #[allow(non_upper_case_globals)]
         impl E {
             pub fn n(value: u8) -> Option<Self> {
                 struct discriminant;
@@ -48,6 +49,7 @@ fn test_no_repr() {
     };
     let actual = crate::testable_derive(input);
     let expected = quote! {
+        #[allow(non_upper_case_globals)]
         impl E {
             pub fn n<REPR: Into<i64>>(value: REPR) -> Option<Self> {
                 struct discriminant;
