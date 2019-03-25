@@ -216,14 +216,13 @@ impl PciDevice for Ac97Dev {
 mod tests {
     use super::*;
     use audio_streams::DummyStreamSource;
-    use resources::AddressRanges;
     use sys_util::GuestAddress;
 
     #[test]
     fn create() {
         let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)]).unwrap();
         let mut ac97_dev = Ac97Dev::new(mem, Box::new(DummyStreamSource::new()));
-        let mut allocator = AddressRanges::new()
+        let mut allocator = SystemAllocator::builder()
             .add_io_addresses(0x1000_0000, 0x1000_0000)
             .add_mmio_addresses(0x2000_0000, 0x1000_0000)
             .add_device_addresses(0x3000_0000, 0x1000_0000)

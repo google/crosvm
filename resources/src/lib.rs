@@ -10,4 +10,4 @@ mod system_allocator;
 
 pub use crate::address_allocator::AddressAllocator;
 pub use crate::gpu_allocator::{GpuMemoryAllocator, GpuMemoryDesc, GpuMemoryPlaneDesc};
-pub use crate::system_allocator::{AddressRanges, SystemAllocator};
+pub use crate::system_allocator::SystemAllocator;

@@ -67,7 +67,7 @@ use devices::{PciConfigIo, PciDevice, PciInterruptPin};
 use io_jail::Minijail;
 use kvm::*;
 use remain::sorted;
-use resources::{AddressRanges, SystemAllocator};
+use resources::SystemAllocator;
 use sync::Mutex;
 use sys_util::{Clock, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 
@@ -529,7 +529,7 @@ impl X8664arch {
     fn get_resource_allocator(mem_size: u64, gpu_allocation: bool) -> SystemAllocator {
         const MMIO_BASE: u64 = 0xe0000000;
         let device_addr_start = Self::get_base_dev_pfn(mem_size) * sys_util::pagesize() as u64;
-        AddressRanges::new()
+        SystemAllocator::builder()
             .add_io_addresses(0xc000, 0x10000)
             .add_mmio_addresses(MMIO_BASE, 0x100000)
             .add_device_addresses(device_addr_start, u64::max_value() - device_addr_start)

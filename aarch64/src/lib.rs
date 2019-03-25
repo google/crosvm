@@ -14,7 +14,7 @@ use arch::{RunnableLinuxVm, VmComponents};
 use devices::{Bus, BusError, PciConfigMmio, PciDevice, PciInterruptPin};
 use io_jail::Minijail;
 use remain::sorted;
-use resources::{AddressRanges, SystemAllocator};
+use resources::SystemAllocator;
 use sync::Mutex;
 use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 
@@ -344,7 +344,7 @@ impl AArch64 {
     /// Returns a system resource allocator.
     fn get_resource_allocator(mem_size: u64, gpu_allocation: bool) -> SystemAllocator {
         let device_addr_start = Self::get_base_dev_pfn(mem_size) * sys_util::pagesize() as u64;
-        AddressRanges::new()
+        SystemAllocator::builder()
             .add_device_addresses(device_addr_start, u64::max_value() - device_addr_start)
             .add_mmio_addresses(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
             .create_allocator(AARCH64_IRQ_BASE, gpu_allocation)

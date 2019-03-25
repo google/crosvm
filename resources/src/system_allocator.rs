@@ -12,8 +12,8 @@ use crate::gpu_allocator::{self, GpuMemoryAllocator};
 /// # Example - Use the `SystemAddress` builder.
 ///
 /// ```
-/// # use resources::AddressRanges;
-///   if let Some(mut a) = AddressRanges::new()
+/// # use resources::SystemAllocator;
+///   if let Some(mut a) = SystemAllocator::builder()
 ///           .add_io_addresses(0x1000, 0x10000)
 ///           .add_device_addresses(0x10000000, 0x10000000)
 ///           .add_mmio_addresses(0x30000000, 0x10000)
@@ -72,6 +72,11 @@ impl SystemAllocator {
         })
     }
 
+    /// Returns a `SystemAllocatorBuilder` that can create a new `SystemAllocator`.
+    pub fn builder() -> SystemAllocatorBuilder {
+        SystemAllocatorBuilder::new()
+    }
+
     /// Reserves the next available system irq number.
     pub fn allocate_irq(&mut self) -> Option<u32> {
         if let Some(irq_num) = self.next_irq.checked_add(1) {
@@ -104,7 +109,7 @@ impl SystemAllocator {
 }
 
 /// Used to build a system address map for use in creating a `SystemAllocator`.
-pub struct AddressRanges {
+pub struct SystemAllocatorBuilder {
     io_base: Option<u64>,
     io_size: Option<u64>,
     mmio_base: Option<u64>,
@@ -113,9 +118,9 @@ pub struct AddressRanges {
     device_size: Option<u64>,
 }
 
-impl AddressRanges {
+impl SystemAllocatorBuilder {
     pub fn new() -> Self {
-        AddressRanges {
+        SystemAllocatorBuilder {
             io_base: None,
             io_size: None,
             mmio_base: None,
