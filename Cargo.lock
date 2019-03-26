@@ -391,17 +391,7 @@ dependencies = [
  "getopts 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "qcow 0.1.0",
- "qcow_utils_test 0.1.0",
  "sys_util 0.1.0",
-]
-
-[[package]]
-name = "qcow_utils_test"
-version = "0.1.0"
-dependencies = [
- "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
- "qcow_utils 0.1.0",
- "tempdir 0.3.7",
 ]
 
 [[package]]

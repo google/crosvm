@@ -16,6 +16,3 @@ getopts = "*"
 libc = "*"
 qcow = { path = "../qcow" }
 sys_util = { path = "../sys_util" }
-
-[dev-dependencies]
-qcow_utils_test = { path = "tests/qcow_utils_test" }
