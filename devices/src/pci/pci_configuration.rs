@@ -490,6 +490,10 @@ impl PciBarConfiguration {
         self
     }
 
+    pub fn get_register_index(&self) -> usize {
+        self.reg_idx
+    }
+
     pub fn set_address(mut self, addr: u64) -> Self {
         self.addr = addr;
         self

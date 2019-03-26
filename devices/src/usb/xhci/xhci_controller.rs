@@ -12,7 +12,7 @@ use crate::usb::xhci::xhci::Xhci;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::usb::xhci::xhci_regs::{init_xhci_mmio_space_and_regs, XhciRegs};
 use crate::utils::FailHandle;
-use resources::SystemAllocator;
+use resources::{Alloc, SystemAllocator};
 use std::mem;
 use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -94,6 +94,7 @@ enum XhciControllerState {
 /// xHCI PCI interface implementation.
 pub struct XhciController {
     config_regs: PciConfiguration,
+    pci_bus_dev: Option<(u8, u8)>,
     mem: GuestMemory,
     bar0: u64, // bar0 in config_regs will be changed by guest. Not sure why.
     state: XhciControllerState,
@@ -114,6 +115,7 @@ impl XhciController {
         );
         XhciController {
             config_regs,
+            pci_bus_dev: None,
             mem,
             bar0: 0,
             state: XhciControllerState::Created {
@@ -167,6 +169,10 @@ impl PciDevice for XhciController {
         "xhci controller".to_owned()
     }
 
+    fn assign_bus_dev(&mut self, bus: u8, device: u8) {
+        self.pci_bus_dev = Some((bus, device));
+    }
+
     fn keep_fds(&self) -> Vec<RawFd> {
         match &self.state {
             XhciControllerState::Created { device_provider } => device_provider.keep_fds(),
@@ -204,10 +210,18 @@ impl PciDevice for XhciController {
         &mut self,
         resources: &mut SystemAllocator,
     ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
+        let (bus, dev) = self
+            .pci_bus_dev
+            .expect("assign_bus_dev must be called prior to allocate_io_bars");
         // xHCI spec 5.2.1.
         let bar0_addr = resources
-            .allocate_mmio_addresses(XHCI_BAR0_SIZE)
-            .ok_or(PciDeviceError::IoAllocationFailed(XHCI_BAR0_SIZE))?;
+            .mmio_allocator()
+            .allocate(
+                XHCI_BAR0_SIZE,
+                Alloc::PciBar { bus, dev, bar: 0 },
+                "xhci_bar0".to_string(),
+            )
+            .map_err(|e| PciDeviceError::IoAllocationFailed(XHCI_BAR0_SIZE, e))?;
         let bar0_config = PciBarConfiguration::default()
             .set_register_index(0)
             .set_address(bar0_addr)

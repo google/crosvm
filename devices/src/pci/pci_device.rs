@@ -9,7 +9,7 @@ use std::fmt::{self, Display};
 use std::os::unix::io::RawFd;
 
 use kvm::Datamatch;
-use resources::SystemAllocator;
+use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
 use sys_util::EventFd;
 
 use crate::pci::pci_configuration::{self, PciConfiguration};
@@ -21,7 +21,7 @@ pub enum Error {
     /// Setup of the device capabilities failed.
     CapabilitiesSetup(pci_configuration::Error),
     /// Allocating space for an IO BAR failed.
-    IoAllocationFailed(u64),
+    IoAllocationFailed(u64, SystemAllocatorFaliure),
     /// Registering an IO BAR failed.
     IoRegistrationFailed(u64, pci_configuration::Error),
 }
@@ -33,9 +33,11 @@ impl Display for Error {
 
         match self {
             CapabilitiesSetup(e) => write!(f, "failed to add capability {}", e),
-            IoAllocationFailed(size) => {
-                write!(f, "failed to allocate space for an IO BAR, size={}", size)
-            }
+            IoAllocationFailed(size, e) => write!(
+                f,
+                "failed to allocate space for an IO BAR, size={}: {}",
+                size, e
+            ),
             IoRegistrationFailed(addr, e) => {
                 write!(f, "failed to register an IO BAR, addr={} err={}", addr, e)
             }
@@ -46,6 +48,8 @@ impl Display for Error {
 pub trait PciDevice: Send {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String;
+    /// Assign a unique bus and device number to this device.
+    fn assign_bus_dev(&mut self, _bus: u8, _device: u8 /*u5*/) {}
     /// A vector of device-specific file descriptors that must be kept open
     /// after jailing. Must be called before the process is jailed.
     fn keep_fds(&self) -> Vec<RawFd>;
@@ -146,6 +150,9 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String {
         (**self).debug_label()
+    }
+    fn assign_bus_dev(&mut self, bus: u8, device: u8 /*u5*/) {
+        (**self).assign_bus_dev(bus, device)
     }
     fn keep_fds(&self) -> Vec<RawFd> {
         (**self).keep_fds()

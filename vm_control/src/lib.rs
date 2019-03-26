@@ -209,9 +209,14 @@ fn register_memory(
         Err(MmapError::SystemCallFailed(e)) => return Err(e),
         _ => return Err(SysError::new(EINVAL)),
     };
-    let addr = match allocator.allocate_device_addresses(size as u64) {
-        Some(a) => a,
-        None => return Err(SysError::new(EINVAL)),
+    let alloc = allocator.get_anon_alloc();
+    let addr = match allocator.device_allocator().allocate(
+        size as u64,
+        alloc,
+        "vmcontrol_register_memory".to_string(),
+    ) {
+        Ok(a) => a,
+        Err(_) => return Err(SysError::new(EINVAL)),
     };
     let slot = match vm.add_device_memory(GuestAddress(addr), mmap, false, false) {
         Ok(v) => v,

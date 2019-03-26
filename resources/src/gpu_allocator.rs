@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt::Debug;
 use std::fs::File;
 
 #[cfg(feature = "wl-dmabuf")]
@@ -13,7 +14,7 @@ use msg_socket::MsgOnSocket;
 use sys_util;
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum GpuAllocatorError {
     OpenGpuBufferDevice,
     CreateGpuBufferDevice,
@@ -35,7 +36,7 @@ pub struct GpuMemoryDesc {
 /// Trait that needs to be implemented in order to service GPU memory allocation
 /// requests. Implementations are expected to support some set of buffer sizes and
 /// formats but every possible combination is not required.
-pub trait GpuMemoryAllocator {
+pub trait GpuMemoryAllocator: Debug {
     /// Allocates GPU memory for a buffer of a specific size and format. The memory
     /// layout for the returned buffer must be linear. A file handle and the
     /// description of the planes for the buffer are returned on success.
@@ -55,6 +56,13 @@ pub trait GpuMemoryAllocator {
 #[cfg(feature = "wl-dmabuf")]
 pub struct GpuBufferDevice {
     device: gpu_buffer::Device,
+}
+
+#[cfg(feature = "wl-dmabuf")]
+impl std::fmt::Debug for GpuBufferDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "GpuBufferDevice {{opaque}}")
+    }
 }
 
 #[cfg(feature = "wl-dmabuf")]

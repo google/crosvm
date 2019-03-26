@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use data_model::{DataInit, Le32};
 use kvm::Datamatch;
-use resources::SystemAllocator;
+use resources::{Alloc, SystemAllocator};
 use sys_util::{EventFd, GuestMemory, Result};
 
 use super::*;
@@ -148,6 +148,7 @@ const VIRTIO_PCI_DEVICE_ID_BASE: u16 = 0x1040; // Add to device type to get devi
 /// transport for virtio devices.
 pub struct VirtioPciDevice {
     config_regs: PciConfiguration,
+    pci_bus_dev: Option<(u8, u8)>,
 
     device: Box<dyn VirtioDevice>,
     device_activated: bool,
@@ -191,6 +192,7 @@ impl VirtioPciDevice {
 
         Ok(VirtioPciDevice {
             config_regs,
+            pci_bus_dev: None,
             device,
             device_activated: false,
             interrupt_status: Arc::new(AtomicUsize::new(0)),
@@ -300,6 +302,10 @@ impl PciDevice for VirtioPciDevice {
         format!("virtio-pci ({})", self.device.debug_label())
     }
 
+    fn assign_bus_dev(&mut self, bus: u8, device: u8) {
+        self.pci_bus_dev = Some((bus, device));
+    }
+
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut fds = self.device.keep_fds();
         if let Some(interrupt_evt) = &self.interrupt_evt {
@@ -327,11 +333,22 @@ impl PciDevice for VirtioPciDevice {
         &mut self,
         resources: &mut SystemAllocator,
     ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
+        let (bus, dev) = self
+            .pci_bus_dev
+            .expect("assign_bus_dev must be called prior to allocate_io_bars");
         // Allocate one bar for the structures pointed to by the capability structures.
         let mut ranges = Vec::new();
         let settings_config_addr = resources
-            .allocate_mmio_addresses(CAPABILITY_BAR_SIZE)
-            .ok_or(PciDeviceError::IoAllocationFailed(CAPABILITY_BAR_SIZE))?;
+            .mmio_allocator()
+            .allocate(
+                CAPABILITY_BAR_SIZE,
+                Alloc::PciBar { bus, dev, bar: 0 },
+                format!(
+                    "virtio-{}-cap_bar",
+                    type_to_str(self.device.device_type()).unwrap_or("?")
+                ),
+            )
+            .map_err(|e| PciDeviceError::IoAllocationFailed(CAPABILITY_BAR_SIZE, e))?;
         let config = PciBarConfiguration::default()
             .set_register_index(0)
             .set_address(settings_config_addr)
@@ -353,12 +370,27 @@ impl PciDevice for VirtioPciDevice {
         &mut self,
         resources: &mut SystemAllocator,
     ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
+        let (bus, dev) = self
+            .pci_bus_dev
+            .expect("assign_bus_dev must be called prior to allocate_device_bars");
         let mut ranges = Vec::new();
         for config in self.device.get_device_bars() {
             let device_addr = resources
-                .allocate_device_addresses(config.get_size())
-                .ok_or(PciDeviceError::IoAllocationFailed(config.get_size()))?;
-            config.set_address(device_addr);
+                .device_allocator()
+                .allocate(
+                    config.get_size(),
+                    Alloc::PciBar {
+                        bus,
+                        dev,
+                        bar: config.get_register_index() as u8,
+                    },
+                    format!(
+                        "virtio-{}-custom_bar",
+                        type_to_str(self.device.device_type()).unwrap_or("?")
+                    ),
+                )
+                .map_err(|e| PciDeviceError::IoAllocationFailed(config.get_size(), e))?;
+            let config = config.set_address(device_addr);
             let _device_bar = self
                 .config_regs
                 .add_pci_bar(&config)

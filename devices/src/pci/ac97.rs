@@ -5,7 +5,7 @@
 use std::os::unix::io::RawFd;
 
 use audio_streams::StreamSource;
-use resources::SystemAllocator;
+use resources::{Alloc, SystemAllocator};
 use sys_util::{error, EventFd, GuestMemory};
 
 use crate::pci::ac97_bus_master::Ac97BusMaster;
@@ -27,6 +27,7 @@ const PCI_DEVICE_ID_INTEL_82801AA_5: u16 = 0x2415;
 /// the audio backend.
 pub struct Ac97Dev {
     config_regs: PciConfiguration,
+    pci_bus_dev: Option<(u8, u8)>,
     // The irq events are temporarily saved here. They need to be passed to the device after the
     // jail forks. This happens when the bus is first written.
     irq_evt: Option<EventFd>,
@@ -52,6 +53,7 @@ impl Ac97Dev {
 
         Ac97Dev {
             config_regs,
+            pci_bus_dev: None,
             irq_evt: None,
             irq_resample_evt: None,
             bus_master: Ac97BusMaster::new(mem, audio_server),
@@ -125,6 +127,10 @@ impl PciDevice for Ac97Dev {
         "AC97".to_owned()
     }
 
+    fn assign_bus_dev(&mut self, bus: u8, device: u8) {
+        self.pci_bus_dev = Some((bus, device));
+    }
+
     fn assign_irq(
         &mut self,
         irq_evt: EventFd,
@@ -138,10 +144,18 @@ impl PciDevice for Ac97Dev {
     }
 
     fn allocate_io_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
+        let (bus, dev) = self
+            .pci_bus_dev
+            .expect("assign_bus_dev must be called prior to allocate_io_bars");
         let mut ranges = Vec::new();
         let mixer_regs_addr = resources
-            .allocate_mmio_addresses(MIXER_REGS_SIZE)
-            .ok_or(pci_device::Error::IoAllocationFailed(MIXER_REGS_SIZE))?;
+            .mmio_allocator()
+            .allocate(
+                MIXER_REGS_SIZE,
+                Alloc::PciBar { bus, dev, bar: 0 },
+                "ac97-mixer_regs".to_string(),
+            )
+            .map_err(|e| pci_device::Error::IoAllocationFailed(MIXER_REGS_SIZE, e))?;
         let mixer_config = PciBarConfiguration::default()
             .set_register_index(0)
             .set_address(mixer_regs_addr)
@@ -152,8 +166,13 @@ impl PciDevice for Ac97Dev {
         ranges.push((mixer_regs_addr, MIXER_REGS_SIZE));
 
         let master_regs_addr = resources
-            .allocate_mmio_addresses(MASTER_REGS_SIZE)
-            .ok_or_else(|| pci_device::Error::IoAllocationFailed(MASTER_REGS_SIZE))?;
+            .mmio_allocator()
+            .allocate(
+                MASTER_REGS_SIZE,
+                Alloc::PciBar { bus, dev, bar: 1 },
+                "ac97-master_regs".to_string(),
+            )
+            .map_err(|e| pci_device::Error::IoAllocationFailed(MASTER_REGS_SIZE, e))?;
         let master_config = PciBarConfiguration::default()
             .set_register_index(1)
             .set_address(master_regs_addr)
@@ -228,6 +247,7 @@ mod tests {
             .add_device_addresses(0x3000_0000, 0x1000_0000)
             .create_allocator(5, false)
             .unwrap();
+        ac97_dev.assign_bus_dev(0, 0);
         assert!(ac97_dev.allocate_io_bars(&mut allocator).is_ok());
     }
 }

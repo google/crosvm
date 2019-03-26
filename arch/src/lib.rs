@@ -146,6 +146,9 @@ pub fn generate_pci_root(
     let mut pci_irqs = Vec::new();
     let mut pid_labels = BTreeMap::new();
     for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
+        // Only support one bus.
+        device.assign_bus_dev(0, dev_idx as u8);
+
         let mut keep_fds = device.keep_fds();
         syslog::push_fds(&mut keep_fds);
 

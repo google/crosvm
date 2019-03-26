@@ -34,6 +34,8 @@ use net_util::{Error as NetError, MacAddress, Tap};
 use qcow::{self, ImageType, QcowFile};
 use rand_ish::SimpleRng;
 use remain::sorted;
+#[cfg(feature = "gpu-forward")]
+use resources::Alloc;
 use sync::{Condvar, Mutex};
 use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use sys_util::{
@@ -1173,8 +1175,13 @@ pub fn run_config(cfg: Config) -> Result<()> {
         // guest address space.
         let gpu_addr = linux
             .resources
-            .allocate_device_addresses(RENDER_NODE_HOST_SIZE)
-            .ok_or(Error::AllocateGpuDeviceAddress)?;
+            .device_allocator()
+            .allocate(
+                RENDER_NODE_HOST_SIZE,
+                Alloc::GpuRenderNode,
+                "gpu_render_node".to_string(),
+            )
+            .map_err(|_| Error::AllocateGpuDeviceAddress)?;
 
         let host = RenderNodeHost::start(&gpu_mmap, gpu_addr, linux.vm.get_memory().clone());
 
