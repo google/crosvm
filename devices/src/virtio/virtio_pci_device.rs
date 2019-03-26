@@ -29,9 +29,12 @@ pub enum PciCapabilityType {
 }
 
 #[allow(dead_code)]
-#[repr(packed)]
+#[repr(C)]
 #[derive(Clone, Copy)]
 struct VirtioPciCap {
+    // _cap_vndr and _cap_next are autofilled based on id() in pci configuration
+    _cap_vndr: u8,    // Generic PCI field: PCI_CAP_ID_VNDR
+    _cap_next: u8,    // Generic PCI field: next ptr
     cap_len: u8,      // Generic PCI field: capability length
     cfg_type: u8,     // Identifies the structure.
     bar: u8,          // Where to find it.
@@ -52,12 +55,12 @@ impl PciCapability for VirtioPciCap {
     }
 }
 
-const VIRTIO_PCI_CAPABILITY_BYTES: u8 = 16;
-
 impl VirtioPciCap {
     pub fn new(cfg_type: PciCapabilityType, bar: u8, offset: u32, length: u32) -> Self {
         VirtioPciCap {
-            cap_len: VIRTIO_PCI_CAPABILITY_BYTES,
+            _cap_vndr: 0,
+            _cap_next: 0,
+            cap_len: std::mem::size_of::<VirtioPciCap>() as u8,
             cfg_type: cfg_type as u8,
             bar,
             padding: [0; 3],
@@ -68,7 +71,7 @@ impl VirtioPciCap {
 }
 
 #[allow(dead_code)]
-#[repr(packed)]
+#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct VirtioPciNotifyCap {
     cap: VirtioPciCap,
@@ -97,6 +100,8 @@ impl VirtioPciNotifyCap {
     ) -> Self {
         VirtioPciNotifyCap {
             cap: VirtioPciCap {
+                _cap_vndr: 0,
+                _cap_next: 0,
                 cap_len: std::mem::size_of::<VirtioPciNotifyCap>() as u8,
                 cfg_type: cfg_type as u8,
                 bar,

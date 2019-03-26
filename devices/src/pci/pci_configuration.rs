@@ -419,14 +419,11 @@ impl PciConfiguration {
     }
 
     /// Adds the capability `cap_data` to the list of capabilities.
-    /// `cap_data` should not include the two-byte PCI capability header (type, next);
-    /// it will be generated automatically based on `cap_data.id()`.
+    /// `cap_data` should include the two-byte PCI capability header (type, next),
+    /// but not populate it. Correct values will be generated automatically based
+    /// on `cap_data.id()`.
     pub fn add_capability(&mut self, cap_data: &PciCapability) -> Result<usize> {
-        let total_len = cap_data
-            .bytes()
-            .len()
-            .checked_add(2)
-            .ok_or(Error::CapabilityLengthInvalid(cap_data.bytes().len()))?;
+        let total_len = cap_data.bytes().len();
         // Check that the length is valid.
         if cap_data.bytes().is_empty() {
             return Err(Error::CapabilityEmpty);
@@ -445,8 +442,8 @@ impl PciConfiguration {
         self.write_byte_internal(tail_offset, cap_offset as u8, false);
         self.write_byte_internal(cap_offset, cap_data.id() as u8, false);
         self.write_byte_internal(cap_offset + 1, 0, false); // Next pointer.
-        for (i, byte) in cap_data.bytes().iter().enumerate() {
-            self.write_byte_internal(cap_offset + i + 2, *byte, false);
+        for (i, byte) in cap_data.bytes().iter().enumerate().skip(2) {
+            self.write_byte_internal(cap_offset + i, *byte, false);
         }
         self.last_capability = Some((cap_offset, total_len));
         Ok(cap_offset)
@@ -517,6 +514,8 @@ mod tests {
     #[derive(Clone, Copy)]
     #[allow(dead_code)]
     struct TestCap {
+        _vndr: u8,
+        _next: u8,
         len: u8,
         foo: u8,
     }
@@ -548,11 +547,18 @@ mod tests {
         );
 
         // Add two capabilities with different contents.
-        let cap1 = TestCap { len: 4, foo: 0xAA };
+        let cap1 = TestCap {
+            _vndr: 0,
+            _next: 0,
+            len: 4,
+            foo: 0xAA,
+        };
         let cap1_offset = cfg.add_capability(&cap1).unwrap();
         assert_eq!(cap1_offset % 4, 0);
 
         let cap2 = TestCap {
+            _vndr: 0,
+            _next: 0,
             len: 0x04,
             foo: 0x55,
         };
