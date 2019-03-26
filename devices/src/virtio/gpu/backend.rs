@@ -764,7 +764,7 @@ impl Backend {
                         width,
                         height,
                         Format::from(fourcc),
-                        Flags::empty().use_scanout(true).use_linear(true),
+                        Flags::empty().use_scanout(true).use_rendering(true),
                     ) {
                         Ok(buffer) => buffer,
                         Err(e) => {
