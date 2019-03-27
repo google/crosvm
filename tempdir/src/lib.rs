@@ -7,11 +7,11 @@
 
 extern crate rand_ish;
 
+use rand_ish::urandom_str;
 use std::env;
 use std::fs;
 use std::io::{self, Error, ErrorKind};
 use std::path::{Path, PathBuf};
-use rand_ish::urandom_str;
 
 pub struct TempDir {
     path: PathBuf,
@@ -36,7 +36,10 @@ impl TempDir {
             }
         }
 
-        Err(Error::new(ErrorKind::AlreadyExists, "too many tempdirs exist"))
+        Err(Error::new(
+            ErrorKind::AlreadyExists,
+            "too many tempdirs exist",
+        ))
     }
 
     /// Accesses the tempdir's [`Path`].
