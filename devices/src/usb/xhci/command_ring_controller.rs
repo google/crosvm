@@ -310,7 +310,7 @@ impl CommandRingTrbHandler {
             .cast::<SetTRDequeuePointerCommandTrb>()
             .map_err(Error::CastTrb)?;
         let slot_id = trb.get_slot_id();
-        let endpoint_id = trb.get_trb_type();
+        let endpoint_id = trb.get_endpoint_id();
         // See Set TR Dequeue Pointer Trb in spec.
         let dequeue_ptr = trb.get_dequeue_ptr() << 4;
         let completion_code = {
