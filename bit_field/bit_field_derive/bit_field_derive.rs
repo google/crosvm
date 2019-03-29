@@ -15,8 +15,8 @@ extern crate syn;
 use proc_macro2::{Span, TokenStream};
 use syn::parse::{Error, Result};
 use syn::{
-    Attribute, Data, DataEnum, DeriveInput, Fields, FieldsNamed, Ident, Lit, LitInt, Meta, Type,
-    Visibility,
+    Attribute, Data, DataEnum, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Ident, Lit, LitInt,
+    Meta, Type, Visibility,
 };
 
 /// The function that derives the actual implementation.
@@ -52,9 +52,10 @@ fn bitfield_impl(ast: &DeriveInput) -> Result<TokenStream> {
     match &ast.data {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields_named) => bitfield_struct_impl(ast, fields_named),
-            _ => Err(Error::new(
+            Fields::Unnamed(fields_unnamed) => bitfield_tuple_struct_impl(ast, fields_unnamed),
+            Fields::Unit => Err(Error::new(
                 Span::call_site(),
-                "#[bitfield] schema must have named fields",
+                "#[bitfield] does not work with unit struct",
             )),
         },
         Data::Enum(data_enum) => bitfield_enum_impl(ast, data_enum),
@@ -65,22 +66,88 @@ fn bitfield_impl(ast: &DeriveInput) -> Result<TokenStream> {
     }
 }
 
+fn bitfield_tuple_struct_impl(ast: &DeriveInput, fields: &FieldsUnnamed) -> Result<TokenStream> {
+    let mut ast = ast.clone();
+    let width = match parse_remove_bits_attr(&mut ast)? {
+        Some(w) => w,
+        None => {
+            return Err(Error::new(
+                Span::call_site(),
+                "tuple struct field must have bits attribute",
+            ));
+        }
+    };
+
+    let ident = &ast.ident;
+
+    if width.value() > 64 {
+        return Err(Error::new(
+            Span::call_site(),
+            "max width of bitfield field is 64",
+        ));
+    }
+
+    let bits = width.value() as u8;
+
+    if fields.unnamed.len() != 1 {
+        return Err(Error::new(
+            Span::call_site(),
+            "tuple struct field must have exactly 1 field",
+        ));
+    }
+
+    let field_type = match fields.unnamed.first().unwrap().value().ty {
+        Type::Path(ref t) => t,
+        _ => {
+            return Err(Error::new(
+                Span::call_site(),
+                "tuple struct field must have primitive field",
+            ));
+        }
+    };
+    let span = field_type
+        .path
+        .segments
+        .first()
+        .unwrap()
+        .value()
+        .ident
+        .span();
+
+    let from_u64 = quote_spanned! {
+        span => val as #field_type
+    };
+
+    let into_u64 = quote_spanned! {
+        span => val.0 as u64
+    };
+
+    let expanded = quote! {
+        #ast
+
+        impl bit_field::BitFieldSpecifier for #ident {
+            const FIELD_WIDTH: u8 = #bits;
+            type SetterType = Self;
+            type GetterType = Self;
+
+            #[inline]
+            fn from_u64(val: u64) -> Self::GetterType {
+                Self(#from_u64)
+            }
+
+            #[inline]
+            fn into_u64(val: Self::SetterType) -> u64 {
+                #into_u64
+            }
+        }
+    };
+
+    Ok(expanded)
+}
+
 fn bitfield_enum_impl(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
     let mut ast = ast.clone();
-    let mut width = None;
-    let mut bits_idx = 0;
-
-    for (i, attr) in ast.attrs.iter().enumerate() {
-        if let Some(w) = try_parse_bits_attr(attr)? {
-            bits_idx = i;
-            width = Some(w);
-        }
-    }
-
-    if width.is_some() {
-        ast.attrs.remove(bits_idx);
-    }
-
+    let width = parse_remove_bits_attr(&mut ast)?;
     match width {
         None => bitfield_enum_without_width_impl(&ast, data),
         Some(width) => bitfield_enum_with_width_impl(&ast, data, &width),
@@ -344,6 +411,24 @@ fn try_parse_bits_attr(attr: &Attribute) -> Result<Option<LitInt>> {
         }
     }
     Ok(None)
+}
+
+fn parse_remove_bits_attr(ast: &mut DeriveInput) -> Result<Option<LitInt>> {
+    let mut width = None;
+    let mut bits_idx = 0;
+
+    for (i, attr) in ast.attrs.iter().enumerate() {
+        if let Some(w) = try_parse_bits_attr(attr)? {
+            bits_idx = i;
+            width = Some(w);
+        }
+    }
+
+    if width.is_some() {
+        ast.attrs.remove(bits_idx);
+    }
+
+    Ok(width)
 }
 
 fn get_struct_def(vis: &Visibility, name: &Ident, fields: &[FieldSpec]) -> TokenStream {

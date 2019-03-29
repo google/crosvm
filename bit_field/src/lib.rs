@@ -101,6 +101,30 @@
 //! }
 //! ```
 //!
+//! Fields may be user-defined single element tuple struct with primitive types. Use must specify
+//! the width with `#[bits = N]`. This should be used to improve type safety.
+//!
+//! ```
+//! extern crate bit_field;
+//!
+//! use bit_field::*;
+//!
+//! #[bitfield]
+//! #[bits = 60]
+//! struct AddressField(u64);
+//!
+//! impl AddressField {
+//!     pub fn new(addr: u64) -> AddressField {
+//!         AddressField(addr >> 4)
+//!     }
+//!
+//!     pub fn get_addr(&self) -> u64 {
+//!         self.0 << 4
+//!     }
+//! }
+//!
+//! ```
+//!
 //! Finally, fields may be of user-defined enum types. The enum must satisfy one of the following
 //! requirements.
 //!
