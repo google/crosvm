@@ -13,7 +13,6 @@ extern crate msg_socket;
 mod cap;
 
 use std::cmp::{min, Ordering};
-use std::collections::hash_map::Entry;
 use std::collections::{BinaryHeap, HashMap};
 use std::fs::File;
 use std::mem::size_of;
@@ -32,7 +31,8 @@ use sys_util::{
     ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
 };
 use sys_util::{
-    pagesize, signal, Error, EventFd, GuestAddress, GuestMemory, MemoryMapping, Result,
+    pagesize, signal, Error, EventFd, GuestAddress, GuestMemory, MemoryMapping, MemoryMappingArena,
+    Result,
 };
 
 pub use crate::cap::*;
@@ -79,7 +79,7 @@ unsafe fn set_user_memory_region<F: AsRawFd>(
     log_dirty_pages: bool,
     guest_addr: u64,
     memory_size: u64,
-    userspace_addr: u64,
+    userspace_addr: *mut u8,
 ) -> Result<()> {
     let mut flags = if read_only { KVM_MEM_READONLY } else { 0 };
     if log_dirty_pages {
@@ -90,7 +90,7 @@ unsafe fn set_user_memory_region<F: AsRawFd>(
         flags,
         guest_phys_addr: guest_addr,
         memory_size,
-        userspace_addr,
+        userspace_addr: userspace_addr as u64,
     };
 
     let ret = ioctl_with_ref(fd, KVM_SET_USER_MEMORY_REGION(), &region);
@@ -300,6 +300,7 @@ pub struct Vm {
     vm: File,
     guest_mem: GuestMemory,
     device_memory: HashMap<u32, MemoryMapping>,
+    mmap_arenas: HashMap<u32, MemoryMappingArena>,
     mem_slot_gaps: BinaryHeap<MemSlot>,
 }
 
@@ -322,7 +323,7 @@ impl Vm {
                         false,
                         guest_addr.offset() as u64,
                         size as u64,
-                        host_addr as u64,
+                        host_addr as *mut u8,
                     )
                 }
             })?;
@@ -331,11 +332,55 @@ impl Vm {
                 vm: vm_file,
                 guest_mem,
                 device_memory: HashMap::new(),
+                mmap_arenas: HashMap::new(),
                 mem_slot_gaps: BinaryHeap::new(),
             })
         } else {
             errno_result()
         }
+    }
+
+    // Helper method for `set_user_memory_region` that tracks available slots.
+    unsafe fn set_user_memory_region(
+        &mut self,
+        read_only: bool,
+        log_dirty_pages: bool,
+        guest_addr: u64,
+        memory_size: u64,
+        userspace_addr: *mut u8,
+    ) -> Result<u32> {
+        let slot = match self.mem_slot_gaps.pop() {
+            Some(gap) => gap.0,
+            None => {
+                (self.device_memory.len()
+                    + self.guest_mem.num_regions() as usize
+                    + self.mmap_arenas.len()) as u32
+            }
+        };
+
+        let res = set_user_memory_region(
+            &self.vm,
+            slot,
+            read_only,
+            log_dirty_pages,
+            guest_addr,
+            memory_size,
+            userspace_addr,
+        );
+        match res {
+            Ok(_) => Ok(slot),
+            Err(e) => {
+                self.mem_slot_gaps.push(MemSlot(slot));
+                Err(e)
+            }
+        }
+    }
+
+    // Helper method for `set_user_memory_region` that tracks available slots.
+    unsafe fn remove_user_memory_region(&mut self, slot: u32) -> Result<()> {
+        set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut())?;
+        self.mem_slot_gaps.push(MemSlot(slot));
+        Ok(())
     }
 
     /// Checks if a particular `Cap` is available.
@@ -374,29 +419,18 @@ impl Vm {
             return Err(Error::new(ENOSPC));
         }
 
-        // If there are no gaps, the lowest slot number is equal to the number of slots we are
-        // currently using between guest memory and device memory. For example, if 2 slots are used
-        // by guest memory, 3 slots are used for device memory, and there are no gaps, it follows
-        // that the lowest unused slot is 2+3=5.
-        let slot = match self.mem_slot_gaps.pop() {
-            Some(gap) => gap.0,
-            None => (self.device_memory.len() + (self.guest_mem.num_regions() as usize)) as u32,
-        };
-
         // Safe because we check that the given guest address is valid and has no overlaps. We also
         // know that the pointer and size are correct because the MemoryMapping interface ensures
         // this. We take ownership of the memory mapping so that it won't be unmapped until the slot
         // is removed.
-        unsafe {
-            set_user_memory_region(
-                &self.vm,
-                slot,
+        let slot = unsafe {
+            self.set_user_memory_region(
                 read_only,
                 log_dirty_pages,
                 guest_addr.offset() as u64,
                 mem.size() as u64,
-                mem.as_ptr() as u64,
-            )?;
+                mem.as_ptr(),
+            )?
         };
         self.device_memory.insert(slot, mem);
 
@@ -407,17 +441,80 @@ impl Vm {
     ///
     /// Ownership of the host memory mapping associated with the given slot is returned on success.
     pub fn remove_device_memory(&mut self, slot: u32) -> Result<MemoryMapping> {
-        match self.device_memory.entry(slot) {
-            Entry::Occupied(entry) => {
-                // Safe because the slot is checked against the list of device memory slots.
-                unsafe {
-                    set_user_memory_region(&self.vm, slot, false, false, 0, 0, 0)?;
-                }
-                self.mem_slot_gaps.push(MemSlot(slot));
-                Ok(entry.remove())
+        if self.device_memory.contains_key(&slot) {
+            // Safe because the slot is checked against the list of device memory slots.
+            unsafe {
+                self.remove_user_memory_region(slot)?;
             }
-            _ => Err(Error::new(ENOENT)),
+            // Safe to unwrap since map is checked to contain key
+            Ok(self.device_memory.remove(&slot).unwrap())
+        } else {
+            Err(Error::new(ENOENT))
         }
+    }
+
+    /// Inserts the given `MemoryMappingArena` into the VM's address space at `guest_addr`.
+    ///
+    /// The slot that was assigned the device memory mapping is returned on success. The slot can be
+    /// given to `Vm::remove_mmap_arena` to remove the memory from the VM's address space and
+    /// take back ownership of `mmap_arena`.
+    ///
+    /// Note that memory inserted into the VM's address space must not overlap with any other memory
+    /// slot's region.
+    ///
+    /// If `read_only` is true, the guest will be able to read the memory as normal, but attempts to
+    /// write will trigger a mmio VM exit, leaving the memory untouched.
+    ///
+    /// If `log_dirty_pages` is true, the slot number can be used to retrieve the pages written to
+    /// by the guest with `get_dirty_log`.
+    pub fn add_mmap_arena(
+        &mut self,
+        guest_addr: GuestAddress,
+        mmap_arena: MemoryMappingArena,
+        read_only: bool,
+        log_dirty_pages: bool,
+    ) -> Result<u32> {
+        if guest_addr < self.guest_mem.end_addr() {
+            return Err(Error::new(ENOSPC));
+        }
+
+        // Safe because we check that the given guest address is valid and has no overlaps. We also
+        // know that the pointer and size are correct because the MemoryMapping interface ensures
+        // this. We take ownership of the memory mapping so that it won't be unmapped until the slot
+        // is removed.
+        let slot = unsafe {
+            self.set_user_memory_region(
+                read_only,
+                log_dirty_pages,
+                guest_addr.offset() as u64,
+                mmap_arena.size() as u64,
+                mmap_arena.as_ptr(),
+            )?
+        };
+        self.mmap_arenas.insert(slot, mmap_arena);
+
+        Ok(slot)
+    }
+
+    /// Removes memory map arena that was previously added at the given slot.
+    ///
+    /// Ownership of the host memory mapping associated with the given slot is returned on success.
+    pub fn remove_mmap_arena(&mut self, slot: u32) -> Result<MemoryMappingArena> {
+        if self.mmap_arenas.contains_key(&slot) {
+            // Safe because the slot is checked against the list of device memory slots.
+            unsafe {
+                self.remove_user_memory_region(slot)?;
+            }
+            // Safe to unwrap since map is checked to contain key
+            Ok(self.mmap_arenas.remove(&slot).unwrap())
+        } else {
+            Err(Error::new(ENOENT))
+        }
+    }
+
+    /// Get a mutable reference to the memory map arena added at the given slot.
+    pub fn get_mmap_arena(&mut self, slot: u32) -> Option<&mut MemoryMappingArena> {
+        self.mmap_arenas.get_mut(&slot)
     }
 
     /// Gets the bitmap of dirty pages since the last call to `get_dirty_log` for the memory at
