@@ -257,6 +257,31 @@ impl MsgOnSocket for usize {
     }
 }
 
+// Encode bool as a u8 of value 0 or 1
+impl MsgOnSocket for bool {
+    fn msg_size() -> usize {
+        std::mem::size_of::<u8>()
+    }
+    unsafe fn read_from_buffer(buffer: &[u8], _fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+        if buffer.len() < std::mem::size_of::<u8>() {
+            return Err(MsgError::WrongMsgBufferSize);
+        }
+        let t: u8 = buffer[0];
+        match t {
+            0 => Ok((false, 0)),
+            1 => Ok((true, 0)),
+            _ => Err(MsgError::InvalidType),
+        }
+    }
+    fn write_to_buffer(&self, buffer: &mut [u8], _fds: &mut [RawFd]) -> MsgResult<usize> {
+        if buffer.len() < std::mem::size_of::<u8>() {
+            return Err(MsgError::WrongMsgBufferSize);
+        }
+        buffer[0] = *self as u8;
+        Ok(0)
+    }
+}
+
 macro_rules! le_impl {
     ($type:ident, $le_type:ident) => {
         impl MsgOnSocket for $type {
