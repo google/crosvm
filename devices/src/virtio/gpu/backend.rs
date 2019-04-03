@@ -20,7 +20,7 @@ use gpu_buffer::{Buffer, Device, Flags, Format};
 use gpu_display::*;
 use gpu_renderer::{
     format_fourcc as renderer_fourcc, Box3, Context as RendererContext, Image as RendererImage,
-    Renderer, Resource as GpuRendererResource, ResourceCreateArgs,
+    Renderer, Resource as GpuRendererResource, ResourceCreateArgs, VIRGL_RES_BIND_SCANOUT,
 };
 
 use super::protocol::{
@@ -715,12 +715,12 @@ impl Backend {
         }
     }
 
-    pub fn validate_args_as_fourcc(args: ResourceCreateArgs) -> Option<u32> {
-        if args.depth == 1 && args.array_size == 1 && args.last_level == 0 && args.nr_samples == 0 {
-            renderer_fourcc(args.format)
-        } else {
-            None
-        }
+    pub fn allocate_using_minigbm(args: ResourceCreateArgs) -> bool {
+        return args.bind & VIRGL_RES_BIND_SCANOUT != 0
+            && args.depth == 1
+            && args.array_size == 1
+            && args.last_level == 0
+            && args.nr_samples == 0;
     }
 
     /// Creates a 3D resource with the given properties and associated it with the given id.
@@ -758,69 +758,83 @@ impl Backend {
 
         match self.resources.entry(id) {
             Entry::Occupied(_) => GpuResponse::ErrInvalidResourceId,
-            Entry::Vacant(slot) => match Backend::validate_args_as_fourcc(create_args) {
-                Some(fourcc) => {
-                    let buffer = match self.device.create_buffer(
-                        width,
-                        height,
-                        Format::from(fourcc),
-                        Flags::empty().use_scanout(true).use_rendering(true),
-                    ) {
-                        Ok(buffer) => buffer,
-                        Err(e) => {
-                            error!("failed to create buffer for 3d resource {}: {}", format, e);
-                            return GpuResponse::ErrUnspec;
-                        }
-                    };
+            Entry::Vacant(slot) => {
+                if Backend::allocate_using_minigbm(create_args) {
+                    match renderer_fourcc(create_args.format) {
+                        Some(fourcc) => {
+                            let buffer = match self.device.create_buffer(
+                                width,
+                                height,
+                                Format::from(fourcc),
+                                Flags::empty().use_scanout(true).use_rendering(true),
+                            ) {
+                                Ok(buffer) => buffer,
+                                Err(e) => {
+                                    error!(
+                                        "failed to create buffer for 3d resource {}: {}",
+                                        format, e
+                                    );
+                                    return GpuResponse::ErrUnspec;
+                                }
+                            };
 
-                    let dma_buf_fd = match buffer.export_plane_fd(0) {
-                        Ok(dma_buf_fd) => dma_buf_fd,
-                        Err(e) => {
-                            error!("failed to export plane fd: {}", e);
-                            return GpuResponse::ErrUnspec;
-                        }
-                    };
+                            let dma_buf_fd = match buffer.export_plane_fd(0) {
+                                Ok(dma_buf_fd) => dma_buf_fd,
+                                Err(e) => {
+                                    error!("failed to export plane fd: {}", e);
+                                    return GpuResponse::ErrUnspec;
+                                }
+                            };
 
-                    let image = match self.renderer.image_from_dmabuf(
-                        fourcc,
-                        width,
-                        height,
-                        dma_buf_fd.as_raw_fd(),
-                        buffer.plane_offset(0),
-                        buffer.plane_stride(0),
-                    ) {
-                        Ok(image) => image,
-                        Err(e) => {
-                            error!("failed to create egl image: {}", e);
-                            return GpuResponse::ErrUnspec;
-                        }
-                    };
+                            let image = match self.renderer.image_from_dmabuf(
+                                fourcc,
+                                width,
+                                height,
+                                dma_buf_fd.as_raw_fd(),
+                                buffer.plane_offset(0),
+                                buffer.plane_stride(0),
+                            ) {
+                                Ok(image) => image,
+                                Err(e) => {
+                                    error!("failed to create egl image: {}", e);
+                                    return GpuResponse::ErrUnspec;
+                                }
+                            };
 
-                    let res = self.renderer.import_resource(create_args, &image);
-                    match res {
-                        Ok(res) => {
-                            let format_modifier = buffer.format_modifier();
-                            let mut plane_info = Vec::with_capacity(buffer.num_planes());
-                            for plane_index in 0..buffer.num_planes() {
-                                plane_info.push(GpuResponsePlaneInfo {
-                                    stride: buffer.plane_stride(plane_index),
-                                    offset: buffer.plane_offset(plane_index),
-                                });
+                            let res = self.renderer.import_resource(create_args, &image);
+                            match res {
+                                Ok(res) => {
+                                    let format_modifier = buffer.format_modifier();
+                                    let mut plane_info = Vec::with_capacity(buffer.num_planes());
+                                    for plane_index in 0..buffer.num_planes() {
+                                        plane_info.push(GpuResponsePlaneInfo {
+                                            stride: buffer.plane_stride(plane_index),
+                                            offset: buffer.plane_offset(plane_index),
+                                        });
+                                    }
+                                    let backed =
+                                        BackedBuffer::new_renderer_registered(buffer, res, image);
+                                    slot.insert(Box::new(backed));
+                                    GpuResponse::OkResourcePlaneInfo {
+                                        format_modifier,
+                                        plane_info,
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("failed to import renderer resource: {}", e);
+                                    GpuResponse::ErrUnspec
+                                }
                             }
-                            let backed = BackedBuffer::new_renderer_registered(buffer, res, image);
-                            slot.insert(Box::new(backed));
-                            GpuResponse::OkResourcePlaneInfo {
-                                format_modifier,
-                                plane_info,
-                            }
                         }
-                        Err(e) => {
-                            error!("failed to import renderer resource: {}", e);
-                            GpuResponse::ErrUnspec
+                        None => {
+                            error!(
+                                "failed to detemine fourcc for minigbm 3d resource {}",
+                                format
+                            );
+                            return GpuResponse::ErrUnspec;
                         }
                     }
-                }
-                None => {
+                } else {
                     let res = self.renderer.create_resource(create_args);
                     match res {
                         Ok(res) => {
@@ -833,7 +847,7 @@ impl Backend {
                         }
                     }
                 }
-            },
+            }
         }
     }
 

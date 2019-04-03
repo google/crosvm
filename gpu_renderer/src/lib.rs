@@ -38,7 +38,7 @@ use crate::generated::virglrenderer::*;
 
 pub use crate::command_buffer::CommandBufferBuilder;
 pub use crate::generated::virglrenderer::{
-    virgl_renderer_resource_create_args, virgl_renderer_resource_info,
+    virgl_renderer_resource_create_args, virgl_renderer_resource_info, VIRGL_RES_BIND_SCANOUT,
 };
 pub use crate::pipe_format_fourcc::pipe_format_fourcc as format_fourcc;
 
