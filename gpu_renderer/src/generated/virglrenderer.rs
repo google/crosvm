@@ -18,8 +18,10 @@ pub const VIRGL_RES_BIND_CONSTANT_BUFFER: u32 = 64;
 pub const VIRGL_RES_BIND_STREAM_OUTPUT: u32 = 2048;
 pub const VIRGL_RES_BIND_CURSOR: u32 = 65536;
 pub const VIRGL_RES_BIND_CUSTOM: u32 = 131072;
+pub const VIRGL_RES_BIND_SCANOUT: u32 = 262144;
 pub type __uint32_t = ::std::os::raw::c_uint;
 pub type __uint64_t = ::std::os::raw::c_ulong;
+pub type va_list = __builtin_va_list;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct virgl_box {
@@ -125,6 +127,9 @@ pub struct virgl_renderer_resource_create_args {
     pub nr_samples: u32,
     pub flags: u32,
 }
+pub type virgl_debug_callback_type = ::std::option::Option<
+    unsafe extern "C" fn(fmt: *const ::std::os::raw::c_char, ap: *mut __va_list_tag),
+>;
 extern "C" {
     pub fn virgl_renderer_resource_create(
         args: *mut virgl_renderer_resource_create_args,
@@ -231,6 +236,9 @@ extern "C" {
         res_handle: ::std::os::raw::c_int,
     );
 }
+extern "C" {
+    pub fn virgl_set_debug_callback(cb: virgl_debug_callback_type) -> virgl_debug_callback_type;
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct virgl_renderer_resource_info {
@@ -258,4 +266,13 @@ extern "C" {
 }
 extern "C" {
     pub fn virgl_renderer_get_poll_fd() -> ::std::os::raw::c_int;
+}
+pub type __builtin_va_list = [__va_list_tag; 1usize];
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct __va_list_tag {
+    pub gp_offset: ::std::os::raw::c_uint,
+    pub fp_offset: ::std::os::raw::c_uint,
+    pub overflow_arg_area: *mut ::std::os::raw::c_void,
+    pub reg_save_area: *mut ::std::os::raw::c_void,
 }

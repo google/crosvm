@@ -140,6 +140,7 @@ pub const PIPE_BIND_GLOBAL: u32 = 262144;
 pub const PIPE_BIND_SHADER_RESOURCE: u32 = 524288;
 pub const PIPE_BIND_COMPUTE_RESOURCE: u32 = 1048576;
 pub const PIPE_BIND_COMMAND_ARGS_BUFFER: u32 = 2097152;
+pub const PIPE_BIND_QUERY_BUFFER: u32 = 4194304;
 pub const PIPE_BIND_SCANOUT: u32 = 16384;
 pub const PIPE_BIND_SHARED: u32 = 32768;
 pub const PIPE_BIND_LINEAR: u32 = 2097152;
@@ -606,6 +607,11 @@ pub union pipe_query_result {
     pub pipeline_statistics: pipe_query_data_pipeline_statistics,
     _bindgen_union_align: [u64; 11usize],
 }
+pub const PIPE_QUERY_TYPE_I32: pipe_query_value_type = 0;
+pub const PIPE_QUERY_TYPE_U32: pipe_query_value_type = 1;
+pub const PIPE_QUERY_TYPE_I64: pipe_query_value_type = 2;
+pub const PIPE_QUERY_TYPE_U64: pipe_query_value_type = 3;
+pub type pipe_query_value_type = u32;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union pipe_color_union {
