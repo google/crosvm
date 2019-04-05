@@ -329,6 +329,8 @@ impl arch::LinuxArch for X8664arch {
             vcpus.push(vcpu);
         }
 
+        let vcpu_affinity = components.vcpu_affinity;
+
         let irq_chip = Self::create_irq_chip(&vm)?;
         let mut cmdline = Self::get_base_linux_cmdline();
 
@@ -376,6 +378,7 @@ impl arch::LinuxArch for X8664arch {
             stdio_serial,
             exit_evt,
             vcpus,
+            vcpu_affinity,
             irq_chip,
             io_bus,
             mmio_bus,

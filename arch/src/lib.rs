@@ -38,6 +38,7 @@ use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 pub struct VmComponents {
     pub memory_mb: u64,
     pub vcpu_count: u32,
+    pub vcpu_affinity: Vec<usize>,
     pub kernel_image: File,
     pub android_fstab: Option<File>,
     pub initrd_image: Option<File>,
@@ -53,6 +54,7 @@ pub struct RunnableLinuxVm {
     pub stdio_serial: Arc<Mutex<Serial>>,
     pub exit_evt: EventFd,
     pub vcpus: Vec<Vcpu>,
+    pub vcpu_affinity: Vec<usize>,
     pub irq_chip: Option<File>,
     pub io_bus: Bus,
     pub mmio_bus: Bus,

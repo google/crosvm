@@ -104,6 +104,7 @@ impl TouchDeviceOption {
 
 pub struct Config {
     vcpu_count: Option<u32>,
+    vcpu_affinity: Vec<usize>,
     memory: Option<usize>,
     kernel_path: PathBuf,
     android_fstab: Option<PathBuf>,
@@ -142,6 +143,7 @@ impl Default for Config {
     fn default() -> Config {
         Config {
             vcpu_count: None,
+            vcpu_affinity: Vec::new(),
             memory: None,
             kernel_path: PathBuf::default(),
             android_fstab: None,
@@ -206,6 +208,48 @@ fn wait_all_children() -> bool {
     false
 }
 
+/// Parse a comma-separated list of CPU numbers and ranges and convert it to a Vec of CPU numbers.
+fn parse_cpu_set(s: &str) -> argument::Result<Vec<usize>> {
+    let mut cpuset = Vec::new();
+    for part in s.split(',') {
+        let range: Vec<&str> = part.split('-').collect();
+        if range.len() == 0 || range.len() > 2 {
+            return Err(argument::Error::InvalidValue {
+                value: part.to_owned(),
+                expected: "invalid list syntax",
+            });
+        }
+        let first_cpu: usize = range[0]
+            .parse()
+            .map_err(|_| argument::Error::InvalidValue {
+                value: part.to_owned(),
+                expected: "CPU index must be a non-negative integer",
+            })?;
+        let last_cpu: usize = if range.len() == 2 {
+            range[1]
+                .parse()
+                .map_err(|_| argument::Error::InvalidValue {
+                    value: part.to_owned(),
+                    expected: "CPU index must be a non-negative integer",
+                })?
+        } else {
+            first_cpu
+        };
+
+        if last_cpu < first_cpu {
+            return Err(argument::Error::InvalidValue {
+                value: part.to_owned(),
+                expected: "CPU ranges must be from low to high",
+            });
+        }
+
+        for cpu in first_cpu..=last_cpu {
+            cpuset.push(cpu);
+        }
+    }
+    Ok(cpuset)
+}
+
 fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::Result<()> {
     match name {
         "" => {
@@ -265,6 +309,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                             expected: "this value for `cpus` needs to be integer",
                         })?,
                 )
+        }
+        "cpu-affinity" => {
+            if cfg.vcpu_affinity.len() != 0 {
+                return Err(argument::Error::TooManyArguments(
+                    "`cpu-affinity` already given".to_owned(),
+                ));
+            }
+            cfg.vcpu_affinity = parse_cpu_set(value.unwrap())?;
         }
         "mem" => {
             if cfg.memory.is_some() {
@@ -659,6 +711,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                                 "PARAMS",
                                 "Extra kernel or plugin command line arguments. Can be given more than once."),
           Argument::short_value('c', "cpus", "N", "Number of VCPUs. (default: 1)"),
+          Argument::value("cpu-affinity", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: no mask)"),
           Argument::short_value('m',
                                 "mem",
                                 "N",
@@ -1186,4 +1239,66 @@ fn crosvm_main() -> std::result::Result<(), ()> {
 
 fn main() {
     std::process::exit(if crosvm_main().is_ok() { 0 } else { 1 });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_cpu_set_single() {
+        assert_eq!(parse_cpu_set("123").expect("parse failed"), vec![123]);
+    }
+
+    #[test]
+    fn parse_cpu_set_list() {
+        assert_eq!(
+            parse_cpu_set("0,1,2,3").expect("parse failed"),
+            vec![0, 1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn parse_cpu_set_range() {
+        assert_eq!(
+            parse_cpu_set("0-3").expect("parse failed"),
+            vec![0, 1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn parse_cpu_set_list_of_ranges() {
+        assert_eq!(
+            parse_cpu_set("3-4,7-9,18").expect("parse failed"),
+            vec![3, 4, 7, 8, 9, 18]
+        );
+    }
+
+    #[test]
+    fn parse_cpu_set_repeated() {
+        // For now, allow duplicates - they will be handled gracefully by the vec to cpu_set_t conversion.
+        assert_eq!(parse_cpu_set("1,1,1").expect("parse failed"), vec![1, 1, 1]);
+    }
+
+    #[test]
+    fn parse_cpu_set_negative() {
+        // Negative CPU numbers are not allowed.
+        parse_cpu_set("-3").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_cpu_set_reverse_range() {
+        // Ranges must be from low to high.
+        parse_cpu_set("5-2").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_cpu_set_open_range() {
+        parse_cpu_set("3-").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_cpu_set_extra_comma() {
+        parse_cpu_set("0,1,2,").expect_err("parse should have failed");
+    }
 }

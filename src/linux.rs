@@ -37,9 +37,9 @@ use sync::{Condvar, Mutex};
 use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use sys_util::{
     self, block_signal, clear_signal, drop_capabilities, flock, get_blocked_signals, get_group_id,
-    get_user_id, getegid, geteuid, register_signal_handler, validate_raw_fd, EventFd,
-    FlockOperation, GuestMemory, Killable, PollContext, PollToken, SignalFd, Terminal, TimerFd,
-    SIGRTMIN,
+    get_user_id, getegid, geteuid, register_signal_handler, set_cpu_affinity, validate_raw_fd,
+    EventFd, FlockOperation, GuestMemory, Killable, PollContext, PollToken, SignalFd, Terminal,
+    TimerFd, SIGRTMIN,
 };
 #[cfg(feature = "gpu-forward")]
 use sys_util::{GuestAddress, MemoryMapping, Protection};
@@ -925,6 +925,7 @@ impl VcpuRunMode {
 fn run_vcpu(
     vcpu: Vcpu,
     cpu_id: u32,
+    vcpu_affinity: Vec<usize>,
     start_barrier: Arc<Barrier>,
     io_bus: devices::Bus,
     mmio_bus: devices::Bus,
@@ -935,6 +936,12 @@ fn run_vcpu(
     thread::Builder::new()
         .name(format!("crosvm_vcpu{}", cpu_id))
         .spawn(move || {
+            if vcpu_affinity.len() != 0 {
+                if let Err(e) = set_cpu_affinity(vcpu_affinity) {
+                    error!("Failed to set CPU affinity: {}", e);
+                }
+            }
+
             let mut sig_ok = true;
             match get_blocked_signals() {
                 Ok(mut v) => {
@@ -1090,6 +1097,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let components = VmComponents {
         memory_mb: (cfg.memory.unwrap_or(256) << 20) as u64,
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
+        vcpu_affinity: cfg.vcpu_affinity.clone(),
         kernel_image: File::open(&cfg.kernel_path)
             .map_err(|e| Error::OpenKernel(cfg.kernel_path.clone(), e))?,
         android_fstab: cfg
@@ -1305,6 +1313,7 @@ fn run_control(
         let handle = run_vcpu(
             vcpu,
             cpu_id as u32,
+            linux.vcpu_affinity.clone(),
             vcpu_thread_barrier.clone(),
             linux.io_bus.clone(),
             linux.mmio_bus.clone(),

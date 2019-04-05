@@ -12,6 +12,7 @@ extern crate syscall_defines;
 extern crate poll_token_derive;
 extern crate sync;
 
+pub mod affinity;
 #[macro_use]
 pub mod handle_eintr;
 #[macro_use]
@@ -44,6 +45,7 @@ mod terminal;
 mod timerfd;
 mod write_zeroes;
 
+pub use crate::affinity::*;
 pub use crate::capabilities::drop_capabilities;
 pub use crate::clock::{Clock, FakeClock};
 use crate::errno::errno_result;

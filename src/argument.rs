@@ -44,6 +44,7 @@ use std::fmt::{self, Display};
 use std::result;
 
 /// An error with argument parsing.
+#[derive(Debug)]
 pub enum Error {
     /// There was a syntax error with the argument.
     Syntax(String),
