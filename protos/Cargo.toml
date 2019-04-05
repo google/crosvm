@@ -1,0 +1,11 @@
+[package]
+name = "protos"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2018"
+
+[dependencies]
+protobuf = "2.3"
+
+[build-dependencies]
+protoc-rust = "2.3"

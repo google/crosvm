@@ -152,6 +152,7 @@ dependencies = [
  "net_sys 0.1.0",
  "net_util 0.1.0",
  "p9 0.1.0",
+ "protos 0.1.0",
  "resources 0.1.0",
  "sync 0.1.0",
  "sys_util 0.1.0",
@@ -382,6 +383,14 @@ dependencies = [
  "protobuf-codegen 2.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "protoc 2.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tempfile 3.0.7",
+]
+
+[[package]]
+name = "protos"
+version = "0.1.0"
+dependencies = [
+ "protobuf 2.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "protoc-rust 2.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

@@ -6,7 +6,7 @@ authors = ["The Chromium OS Authors"]
 [features]
 gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
 sandboxed-libusb = ["usb_util/sandboxed-libusb"]
-tpm = ["tpm2"]
+tpm = ["protos", "tpm2"]
 wl-dmabuf = []
 
 [dependencies]
@@ -26,6 +26,7 @@ msg_socket = { path = "../msg_socket" }
 net_sys = { path = "../net_sys" }
 net_util = { path = "../net_util" }
 p9 = { path = "../p9" }
+protos = { path = "../protos", optional = true }
 resources = { path = "../resources" }
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
