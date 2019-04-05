@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     g++ \
     git \
     libcap-dev \
+    libdbus-1-dev \
     libdrm-dev \
     libfdt-dev \
     libegl1-mesa-dev \
@@ -108,6 +109,12 @@ RUN git clone https://chromium.googlesource.com/chromiumos/platform2 \
     && gcc -c src.c -o src.o \
     && ar rcs librendernodehost.a src.o \
     && cp librendernodehost.a /lib
+
+# Set up sysroot from which system_api proto files are built.
+ENV SYSROOT=/sysroot
+RUN mkdir -p $SYSROOT/usr/include/chromeos/dbus/trunks \
+    && cp platform2/trunks/interface.proto \
+        $SYSROOT/usr/include/chromeos/dbus/trunks
 
 # Inform pkg-config where libraries we install are placed.
 COPY pkgconfig/* /usr/lib/pkgconfig
