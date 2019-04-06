@@ -6,7 +6,7 @@ authors = ["The Chromium OS Authors"]
 [features]
 gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
 sandboxed-libusb = ["usb_util/sandboxed-libusb"]
-tpm = ["protos", "tpm2"]
+tpm = ["protos/trunks", "tpm2"]
 wl-dmabuf = []
 
 [dependencies]

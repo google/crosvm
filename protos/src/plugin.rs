@@ -1,6 +1,4 @@
-extern crate kvm_sys;
-extern crate protobuf;
-include!(concat!(env!("OUT_DIR"), "/proto_include.rs"));
+pub use crate::generated::plugin::*;
 
 /// Converts protobuf representation of CpuId data into KVM format.
 pub fn cpuid_proto_to_kvm(entry: &CpuidEntry) -> kvm_sys::kvm_cpuid_entry2 {

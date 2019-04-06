@@ -22,10 +22,10 @@ use libc::{pid_t, waitpid, EINVAL, ENODATA, ENOTTY, WEXITSTATUS, WIFEXITED, WNOH
 use protobuf;
 use protobuf::Message;
 
-use ::plugin_proto::*;
 use io_jail::Minijail;
 use kvm::{dirty_log_bitmap_size, Datamatch, IoeventAddress, IrqRoute, IrqSource, PicId, Vm};
 use kvm_sys::{kvm_clock_data, kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
+use protos::plugin::*;
 use sync::Mutex;
 use sys_util::{
     Error as SysError, EventFd, GuestAddress, Killable, MemoryMapping, Result as SysResult,
@@ -110,8 +110,8 @@ pub enum ProcessStatus {
 /// Creates, owns, and handles messages from a plugin process.
 ///
 /// A plugin process has control over a single VM and a fixed number of VCPUs via a set of unix
-/// domain socket connections and a protocol defined in `plugin_proto`. The plugin process is run in
-/// an unprivileged manner as a child process spawned via a path to a arbitrary executable.
+/// domain socket connections and a protocol defined in `protos::plugin`. The plugin process is run
+/// in an unprivileged manner as a child process spawned via a path to a arbitrary executable.
 pub struct Process {
     started: bool,
     plugin_pid: pid_t,

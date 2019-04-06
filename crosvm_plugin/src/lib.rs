@@ -6,7 +6,7 @@
 
 //! This module implements the dynamically loaded client library API used by a crosvm plugin,
 //! defined in `crosvm.h`. It implements the client half of the plugin protocol, which is defined in
-//! the plugin_proto module.
+//! the `protos::plugin` module.
 //!
 //! To implement the `crosvm.h` C API, each function and struct definition is repeated here, with
 //! concrete definitions for each struct. Most functions are thin shims to the underlying object
@@ -18,8 +18,8 @@
 extern crate kvm;
 extern crate kvm_sys;
 extern crate libc;
-extern crate plugin_proto;
 extern crate protobuf;
+extern crate protos;
 extern crate sys_util;
 
 use std::env;
@@ -50,7 +50,7 @@ use kvm_sys::{
     kvm_vcpu_events, kvm_xcrs,
 };
 
-use plugin_proto::*;
+use protos::plugin::*;
 
 // Needs to be large enough to receive all the VCPU sockets.
 const MAX_DATAGRAM_FD: usize = 32;

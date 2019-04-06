@@ -28,9 +28,9 @@ extern crate data_model;
 extern crate gpu_buffer;
 extern crate msg_socket;
 #[cfg(feature = "plugin")]
-extern crate plugin_proto;
-#[cfg(feature = "plugin")]
 extern crate protobuf;
+#[cfg(feature = "plugin")]
+extern crate protos;
 extern crate rand_ish;
 extern crate resources;
 extern crate sync;

@@ -4,7 +4,12 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
 
+[features]
+plugin = ["kvm_sys"]
+trunks = []
+
 [dependencies]
+kvm_sys = { path = "../kvm_sys", optional = true }
 protobuf = "2.3"
 
 [build-dependencies]
