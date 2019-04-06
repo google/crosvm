@@ -8,8 +8,8 @@ include = ["src/**/*", "Cargo.toml"]
 [dependencies]
 data_model = { path = "../data_model" } # provided by ebuild
 libc = "*"
-syscall_defines = { path = "../syscall_defines" } # provided by ebuild
 poll_token_derive = { version = "*", path = "poll_token_derive" }
 sync = { path = "../sync" } # provided by ebuild
+syscall_defines = { path = "../syscall_defines" } # provided by ebuild
 
 [workspace]

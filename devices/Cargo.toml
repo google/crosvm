@@ -4,23 +4,23 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 
 [features]
-wl-dmabuf = []
 gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
-tpm = ["tpm2"]
 sandboxed-libusb = ["usb_util/sandboxed-libusb"]
+tpm = ["tpm2"]
+wl-dmabuf = []
 
 [dependencies]
 audio_streams = "*"
 bit_field = { path = "../bit_field" }
 byteorder = "*"
 data_model = { path = "../data_model" }
+enumn = { path = "../enumn" }
 gpu_buffer = { path = "../gpu_buffer", optional = true }
 gpu_display = { path = "../gpu_display", optional = true }
 gpu_renderer = { path = "../gpu_renderer", optional = true }
-enumn = { path = "../enumn" }
+io_jail = { path = "../io_jail" }
 kvm = { path = "../kvm" }
 libc = "*"
-io_jail = { path = "../io_jail" }
 msg_on_socket_derive = { path = "../msg_socket/msg_on_socket_derive" }
 msg_socket = { path = "../msg_socket" }
 net_sys = { path = "../net_sys" }

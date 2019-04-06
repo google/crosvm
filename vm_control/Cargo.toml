@@ -12,6 +12,6 @@ byteorder = "*"
 data_model = { path = "../data_model" }
 kvm = { path = "../kvm" }
 libc = "*"
-sys_util = { path = "../sys_util" }
-resources = { path = "../resources" }
 msg_socket = { path = "../msg_socket" }
+resources = { path = "../resources" }
+sys_util = { path = "../sys_util" }

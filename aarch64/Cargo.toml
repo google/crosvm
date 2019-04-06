@@ -10,9 +10,9 @@ data_model = { path = "../data_model" }
 devices = { path = "../devices" }
 io_jail = { path = "../io_jail" }
 kernel_cmdline = { path = "../kernel_cmdline" }
-kvm_sys = { path = "../kvm_sys" }
 kvm = { path = "../kvm" }
-sys_util = { path = "../sys_util" }
+kvm_sys = { path = "../kvm_sys" }
+libc = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
-libc = "*"
+sys_util = { path = "../sys_util" }

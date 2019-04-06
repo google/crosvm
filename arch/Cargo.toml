@@ -8,9 +8,9 @@ edition = "2018"
 byteorder = "*"
 devices = { path = "../devices" }
 io_jail = { path = "../io_jail" }
-kvm = { path = "../kvm" }
-sys_util = { path = "../sys_util" }
-resources = { path = "../resources" }
 kernel_cmdline = { path = "../kernel_cmdline" }
+kvm = { path = "../kvm" }
 libc = "*"
+resources = { path = "../resources" }
 sync = { path = "../sync" }
+sys_util = { path = "../sys_util" }

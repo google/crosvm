@@ -7,19 +7,18 @@ build = "build.rs"
 
 [dependencies]
 arch = { path = "../arch" }
+byteorder = "*"
 data_model = { path = "../data_model" }
 devices = { path = "../devices" }
 io_jail = { path = "../io_jail" }
-kvm_sys = { path = "../kvm_sys" }
-kvm = { path = "../kvm" }
-sync = { path = "../sync" }
-sys_util = { path = "../sys_util" }
-resources = { path = "../resources" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 kernel_loader = { path = "../kernel_loader" }
+kvm = { path = "../kvm" }
+kvm_sys = { path = "../kvm_sys" }
 libc = "*"
-byteorder = "*"
+resources = { path = "../resources" }
+sync = { path = "../sync" }
+sys_util = { path = "../sys_util" }
 
 [build-dependencies]
 cc = "=1.0.25"
-

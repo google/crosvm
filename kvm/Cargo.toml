@@ -5,7 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
-libc = "*"
 kvm_sys = { path = "../kvm_sys" }
-sys_util = { path = "../sys_util" }
+libc = "*"
 msg_socket = { path = "../msg_socket" }
+sys_util = { path = "../sys_util" }

@@ -6,8 +6,8 @@ edition = "2018"
 
 [dependencies]
 devices = { path = "../devices" }
-libc = "*"
 kernel_loader = { path = "../kernel_loader" }
+libc = "*"
 qcow = { path = "../qcow" }
 sys_util = { path = "../sys_util" }
 

@@ -7,9 +7,9 @@ authors = ["The Chromium OS Authors"]
 crate-type = ["cdylib"]
 
 [dependencies]
-protobuf = "=1.4.3"
-plugin_proto = { path = "../plugin_proto" }
-sys_util = { path = "../sys_util" }
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
+plugin_proto = { path = "../plugin_proto" }
+protobuf = "=1.4.3"
+sys_util = { path = "../sys_util" }

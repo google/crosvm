@@ -13,52 +13,52 @@ members = ["qcow_utils"]
 exclude = [
     "assertions",
     "data_model",
+    "rand_ish",
     "sync",
     "sys_util",
     "syscall_defines",
     "tempdir",
-    "rand_ish",
 ]
 
 [features]
-plugin = ["plugin_proto", "crosvm_plugin", "protobuf"]
 default-no-sandbox = []
-wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
 gpu = ["devices/gpu"]
-tpm = ["devices/tpm"]
 gpu-forward = ["render_node_forward"]
+plugin = ["plugin_proto", "crosvm_plugin", "protobuf"]
 sandboxed-libusb = ["devices/sandboxed-libusb", "vm_control/sandboxed-libusb"]
+tpm = ["devices/tpm"]
+wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
 
 [dependencies]
 arch = { path = "arch" }
 audio_streams = "*"
 bit_field = { path = "bit_field" }
+byteorder = "=1.1.0"
+crosvm_plugin = { path = "crosvm_plugin", optional = true }
+data_model = "*"
 devices = { path = "devices" }
 enumn = { path = "enumn" }
 gpu_buffer = { path = "gpu_buffer", optional = true }
 io_jail = { path = "io_jail" }
-kvm = { path = "kvm" }
-kvm_sys = { path = "kvm_sys" }
-msg_socket = { path = "msg_socket" }
-sys_util = "*"
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
+kvm = { path = "kvm" }
+kvm_sys = { path = "kvm_sys" }
 libc = "=0.2.44"
 libcras = "*"
-byteorder = "=1.1.0"
+msg_socket = { path = "msg_socket" }
 net_util = { path = "net_util" }
-vhost = { path = "vhost" }
-vm_control = { path = "vm_control" }
-data_model = "*"
-qcow = { path = "qcow" }
-plugin_proto = { path = "plugin_proto", optional = true }
-crosvm_plugin = { path = "crosvm_plugin", optional = true }
-protobuf = { version = "=1.4.3", optional = true }
-resources = { path = "resources" }
 p9 = { path = "p9" }
-sync = { path = "sync" }
+plugin_proto = { path = "plugin_proto", optional = true }
+protobuf = { version = "=1.4.3", optional = true }
+qcow = { path = "qcow" }
 rand_ish = { path = "rand_ish" }
 render_node_forward = { path = "render_node_forward", optional = true }
+resources = { path = "resources" }
+sync = { path = "sync" }
+sys_util = "*"
+vhost = { path = "vhost" }
+vm_control = { path = "vm_control" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { path = "x86_64" }
