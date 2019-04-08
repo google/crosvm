@@ -185,21 +185,32 @@ fn create_chosen_node(
     Ok(())
 }
 
-fn create_pci_nodes(fdt: &mut Vec<u8>, pci_irqs: Vec<(u32, PciInterruptPin)>) -> Result<()> {
+fn create_pci_nodes(
+    fdt: &mut Vec<u8>,
+    pci_irqs: Vec<(u32, PciInterruptPin)>,
+    pci_device_base: u64,
+    pci_device_size: u64,
+) -> Result<()> {
     // Add devicetree nodes describing a PCI generic host controller.
     // See Documentation/devicetree/bindings/pci/host-generic-pci.txt in the kernel
     // and "PCI Bus Binding to IEEE Std 1275-1994".
     let ranges = generate_prop32(&[
-        // bus address (ss = 01: 32-bit memory space)
-        0x2000000,
-        (AARCH64_MMIO_BASE >> 32) as u32,
+        // mmio addresses
+        0x2000000,                        // (ss = 01: 32-bit memory space)
+        (AARCH64_MMIO_BASE >> 32) as u32, // PCI address
         AARCH64_MMIO_BASE as u32,
-        // CPU address
-        (AARCH64_MMIO_BASE >> 32) as u32,
+        (AARCH64_MMIO_BASE >> 32) as u32, // CPU address
         AARCH64_MMIO_BASE as u32,
-        // size
-        (AARCH64_MMIO_SIZE >> 32) as u32,
+        (AARCH64_MMIO_SIZE >> 32) as u32, // size
         AARCH64_MMIO_SIZE as u32,
+        // device addresses
+        0x3000000,                      // (ss = 11: 64-bit memory space)
+        (pci_device_base >> 32) as u32, // PCI address
+        pci_device_base as u32,
+        (pci_device_base >> 32) as u32, // CPU address
+        pci_device_base as u32,
+        (pci_device_size >> 32) as u32, // size
+        pci_device_size as u32,
     ]);
     let bus_range = generate_prop32(&[0, 0]); // Only bus 0
     let reg = generate_prop64(&[AARCH64_PCI_CFG_BASE, AARCH64_PCI_CFG_SIZE]);
@@ -293,6 +304,8 @@ fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<()> {
 /// * `pci_irqs` - List of PCI device number to PCI interrupt pin mappings
 /// * `num_cpus` - Number of virtual CPUs the guest will have
 /// * `fdt_load_offset` - The offset into physical memory for the device tree
+/// * `pci_device_base` - The offset into physical memory for PCI device memory
+/// * `pci_device_size` - The size of PCI device memory
 /// * `cmdline` - The kernel commandline
 /// * `initrd` - An optional tuple of initrd guest physical address and size
 pub fn create_fdt(
@@ -301,6 +314,8 @@ pub fn create_fdt(
     pci_irqs: Vec<(u32, PciInterruptPin)>,
     num_cpus: u32,
     fdt_load_offset: u64,
+    pci_device_base: u64,
+    pci_device_size: u64,
     cmdline: &CStr,
     initrd: Option<(GuestAddress, usize)>,
 ) -> Result<()> {
@@ -321,7 +336,7 @@ pub fn create_fdt(
     create_timer_node(&mut fdt, num_cpus)?;
     create_serial_node(&mut fdt)?;
     create_psci_node(&mut fdt)?;
-    create_pci_nodes(&mut fdt, pci_irqs)?;
+    create_pci_nodes(&mut fdt, pci_irqs, pci_device_base, pci_device_size)?;
     create_rtc_node(&mut fdt)?;
     // End giant node
     end_node(&mut fdt)?;
