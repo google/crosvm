@@ -515,12 +515,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn unix_seqpacket_zero_timeout() {
         let (s1, _s2) = UnixSeqpacket::pair().expect("failed to create socket pair");
         // Timeouts less than a microsecond are too small and round to zero.
         s1.set_read_timeout(Some(Duration::from_nanos(10)))
-            .expect("failed to set read timeout for socket");
+            .expect_err("successfully set zero timeout");
     }
 
     #[test]
