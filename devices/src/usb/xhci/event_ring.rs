@@ -80,7 +80,7 @@ impl EventRing {
         }
         // Event is write twice to avoid race condition.
         // Guest kernel use cycle bit to check ownership, thus we should write cycle last.
-        trb.set_cycle_bit(!self.producer_cycle_state);
+        trb.set_cycle(!self.producer_cycle_state);
         self.mem
             .write_obj_at_addr(trb, self.enqueue_pointer)
             .map_err(Error::MemoryWrite)?;
@@ -88,7 +88,7 @@ impl EventRing {
         // Updating the cycle state bit should always happen after updating other parts.
         fence(Ordering::SeqCst);
 
-        trb.set_cycle_bit(self.producer_cycle_state);
+        trb.set_cycle(self.producer_cycle_state);
 
         // Offset of cycle state byte.
         const CYCLE_STATE_OFFSET: usize = 12usize;
@@ -275,7 +275,7 @@ mod test {
         assert_eq!(er.is_empty(), false);
         let t: Trb = gm.read_obj_from_addr(GuestAddress(0x100)).unwrap();
         assert_eq!(t.get_control(), 1);
-        assert_eq!(t.get_cycle(), 1);
+        assert_eq!(t.get_cycle(), true);
 
         trb.set_control(2);
         assert_eq!(er.add_event(trb.clone()).unwrap(), ());
@@ -285,7 +285,7 @@ mod test {
             .read_obj_from_addr(GuestAddress(0x100 + trb_size))
             .unwrap();
         assert_eq!(t.get_control(), 2);
-        assert_eq!(t.get_cycle(), 1);
+        assert_eq!(t.get_cycle(), true);
 
         trb.set_control(3);
         assert_eq!(er.add_event(trb.clone()).unwrap(), ());
@@ -295,7 +295,7 @@ mod test {
             .read_obj_from_addr(GuestAddress(0x100 + 2 * trb_size))
             .unwrap();
         assert_eq!(t.get_control(), 3);
-        assert_eq!(t.get_cycle(), 1);
+        assert_eq!(t.get_cycle(), true);
 
         // Fill second table.
         trb.set_control(4);
@@ -304,7 +304,7 @@ mod test {
         assert_eq!(er.is_empty(), false);
         let t: Trb = gm.read_obj_from_addr(GuestAddress(0x200)).unwrap();
         assert_eq!(t.get_control(), 4);
-        assert_eq!(t.get_cycle(), 1);
+        assert_eq!(t.get_cycle(), true);
 
         trb.set_control(5);
         assert_eq!(er.add_event(trb.clone()).unwrap(), ());
@@ -314,7 +314,7 @@ mod test {
             .read_obj_from_addr(GuestAddress(0x200 + trb_size))
             .unwrap();
         assert_eq!(t.get_control(), 5);
-        assert_eq!(t.get_cycle(), 1);
+        assert_eq!(t.get_cycle(), true);
 
         trb.set_control(6);
         assert_eq!(er.add_event(trb.clone()).unwrap(), ());
@@ -324,7 +324,7 @@ mod test {
             .read_obj_from_addr(GuestAddress(0x200 + 2 * trb_size as u64))
             .unwrap();
         assert_eq!(t.get_control(), 6);
-        assert_eq!(t.get_cycle(), 1);
+        assert_eq!(t.get_cycle(), true);
 
         // Fill third table.
         trb.set_control(7);
@@ -333,7 +333,7 @@ mod test {
         assert_eq!(er.is_empty(), false);
         let t: Trb = gm.read_obj_from_addr(GuestAddress(0x300)).unwrap();
         assert_eq!(t.get_control(), 7);
-        assert_eq!(t.get_cycle(), 1);
+        assert_eq!(t.get_cycle(), true);
 
         trb.set_control(8);
         assert_eq!(er.add_event(trb.clone()).unwrap(), ());
@@ -344,7 +344,7 @@ mod test {
             .read_obj_from_addr(GuestAddress(0x300 + trb_size))
             .unwrap();
         assert_eq!(t.get_control(), 8);
-        assert_eq!(t.get_cycle(), 1);
+        assert_eq!(t.get_cycle(), true);
 
         // Add the last trb will result in error.
         match er.add_event(trb.clone()) {
@@ -367,7 +367,7 @@ mod test {
             .read_obj_from_addr(GuestAddress(0x300 + trb_size))
             .unwrap();
         assert_eq!(t.get_control(), 8);
-        assert_eq!(t.get_cycle(), 1);
+        assert_eq!(t.get_cycle(), true);
 
         // Add the last trb will result in error.
         match er.add_event(trb.clone()) {
@@ -388,7 +388,7 @@ mod test {
         let t: Trb = gm.read_obj_from_addr(GuestAddress(0x100)).unwrap();
         assert_eq!(t.get_control(), 10);
         // cycle bit should be reversed.
-        assert_eq!(t.get_cycle(), 0);
+        assert_eq!(t.get_cycle(), false);
 
         trb.set_control(11);
         assert_eq!(er.add_event(trb.clone()).unwrap(), ());
@@ -398,7 +398,7 @@ mod test {
             .read_obj_from_addr(GuestAddress(0x100 + trb_size))
             .unwrap();
         assert_eq!(t.get_control(), 11);
-        assert_eq!(t.get_cycle(), 0);
+        assert_eq!(t.get_cycle(), false);
 
         trb.set_control(12);
         assert_eq!(er.add_event(trb.clone()).unwrap(), ());
@@ -408,6 +408,6 @@ mod test {
             .read_obj_from_addr(GuestAddress(0x100 + 2 * trb_size))
             .unwrap();
         assert_eq!(t.get_control(), 12);
-        assert_eq!(t.get_cycle(), 0);
+        assert_eq!(t.get_cycle(), false);
     }
 }

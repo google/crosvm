@@ -67,14 +67,14 @@ impl RingBuffer {
     pub fn dequeue_transfer_descriptor(&mut self) -> Result<Option<TransferDescriptor>> {
         let mut td: TransferDescriptor = TransferDescriptor::new();
         while let Some(addressed_trb) = self.get_current_trb()? {
-            if let Ok(TrbType::Link) = addressed_trb.trb.trb_type() {
+            if let Ok(TrbType::Link) = addressed_trb.trb.get_trb_type() {
                 let link_trb = addressed_trb
                     .trb
                     .cast::<LinkTrb>()
                     .map_err(Error::CastTrb)?;
                 self.dequeue_pointer = GuestAddress(link_trb.get_ring_segment_pointer());
                 self.consumer_cycle_state =
-                    self.consumer_cycle_state != link_trb.get_toggle_cycle_bit();
+                    self.consumer_cycle_state != link_trb.get_toggle_cycle();
                 continue;
             }
 
@@ -131,7 +131,7 @@ impl RingBuffer {
         usb_debug!("{}: trb read from memory {:?}", self.name.as_str(), trb);
         // If cycle bit of trb does not equal consumer cycle state, the ring is empty.
         // This trb is invalid.
-        if trb.get_cycle_bit() != self.consumer_cycle_state {
+        if trb.get_cycle() != self.consumer_cycle_state {
             usb_debug!(
                 "cycle bit does not match, self cycle {}",
                 self.consumer_cycle_state
@@ -163,9 +163,9 @@ mod test {
         //  trb 2  |   trb 4  |   trb 6
         //  l trb  -   l trb  -   l trb to 0x100
         let mut trb = NormalTrb::new();
-        trb.set_trb_type(TrbType::Normal as u8);
+        trb.set_trb_type(TrbType::Normal);
         trb.set_data_buffer(1);
-        trb.set_chain(1);
+        trb.set_chain(true);
         gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
             .unwrap();
 
@@ -174,7 +174,7 @@ mod test {
             .unwrap();
 
         let mut ltrb = LinkTrb::new();
-        ltrb.set_trb_type(TrbType::Link as u8);
+        ltrb.set_trb_type(TrbType::Link);
         ltrb.set_ring_segment_pointer(0x200);
         gm.write_obj_at_addr(ltrb, GuestAddress(0x100 + 2 * trb_size))
             .unwrap();
@@ -184,7 +184,7 @@ mod test {
 
         // Chain bit is false.
         trb.set_data_buffer(4);
-        trb.set_chain(0);
+        trb.set_chain(false);
         gm.write_obj_at_addr(trb, GuestAddress(0x200 + 1 * trb_size))
             .unwrap();
 
@@ -193,12 +193,12 @@ mod test {
             .unwrap();
 
         trb.set_data_buffer(5);
-        trb.set_chain(1);
+        trb.set_chain(true);
         gm.write_obj_at_addr(trb, GuestAddress(0x300)).unwrap();
 
         // Chain bit is false.
         trb.set_data_buffer(6);
-        trb.set_chain(0);
+        trb.set_chain(false);
         gm.write_obj_at_addr(trb, GuestAddress(0x300 + 1 * trb_size))
             .unwrap();
 
@@ -237,9 +237,9 @@ mod test {
         let mut transfer_ring = RingBuffer::new(String::new(), gm.clone());
 
         let mut trb = NormalTrb::new();
-        trb.set_trb_type(TrbType::Normal as u8);
+        trb.set_trb_type(TrbType::Normal);
         trb.set_data_buffer(1);
-        trb.set_chain(1);
+        trb.set_chain(true);
         gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
             .unwrap();
 
@@ -248,9 +248,9 @@ mod test {
             .unwrap();
 
         let mut ltrb = LinkTrb::new();
-        ltrb.set_trb_type(TrbType::Link as u8);
+        ltrb.set_trb_type(TrbType::Link);
         ltrb.set_ring_segment_pointer(0x200);
-        ltrb.set_toggle_cycle(1);
+        ltrb.set_toggle_cycle(true);
         gm.write_obj_at_addr(ltrb, GuestAddress(0x100 + 2 * trb_size))
             .unwrap();
 

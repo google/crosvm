@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use super::xhci_abi::{Error as TrbError, NormalTrb, TransferDescriptor, TrbCast, TrbType};
+use bit_field::Error as BitFieldError;
 use std::fmt::{self, Display};
 use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
 
@@ -10,7 +11,7 @@ use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
 pub enum Error {
     ReadGuestMemory(GuestMemoryError),
     WriteGuestMemory(GuestMemoryError),
-    UnknownTrbType(TrbError),
+    UnknownTrbType(BitFieldError),
     CastTrb(TrbError),
     BadTrbType(TrbType),
 }
@@ -42,7 +43,7 @@ impl ScatterGatherBuffer {
     /// Create a new buffer from transfer descriptor.
     pub fn new(mem: GuestMemory, td: TransferDescriptor) -> Result<ScatterGatherBuffer> {
         for atrb in &td {
-            let trb_type = atrb.trb.trb_type().map_err(Error::UnknownTrbType)?;
+            let trb_type = atrb.trb.get_trb_type().map_err(Error::UnknownTrbType)?;
             if trb_type != TrbType::Normal
                 && trb_type != TrbType::DataStage
                 && trb_type != TrbType::Isoch
@@ -138,21 +139,21 @@ mod test {
 
         let mut trb = Trb::new();
         let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
-        ntrb.set_trb_type(TrbType::Normal as u8);
+        ntrb.set_trb_type(TrbType::Normal);
         ntrb.set_data_buffer(0x100);
         ntrb.set_trb_transfer_length(4);
         td.push(AddressedTrb { trb, gpa: 0 });
 
         let mut trb = Trb::new();
         let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
-        ntrb.set_trb_type(TrbType::Normal as u8);
+        ntrb.set_trb_type(TrbType::Normal);
         ntrb.set_data_buffer(0x200);
         ntrb.set_trb_transfer_length(2);
         td.push(AddressedTrb { trb, gpa: 0 });
 
         let mut trb = Trb::new();
         let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
-        ntrb.set_trb_type(TrbType::Normal as u8);
+        ntrb.set_trb_type(TrbType::Normal);
         ntrb.set_data_buffer(0x300);
         ntrb.set_trb_transfer_length(1);
         td.push(AddressedTrb { trb, gpa: 0 });

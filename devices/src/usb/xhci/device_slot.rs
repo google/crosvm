@@ -6,14 +6,15 @@ use super::interrupter::Interrupter;
 use super::transfer_ring_controller::{TransferRingController, TransferRingControllerError};
 use super::usb_hub::{self, UsbHub};
 use super::xhci_abi::{
-    AddressDeviceCommandTrb, ConfigureEndpointCommandTrb, DeviceContext, DeviceSlotState,
-    EndpointContext, EndpointState, Error as TrbError, EvaluateContextCommandTrb,
+    AddressDeviceCommandTrb, ConfigureEndpointCommandTrb, DequeuePtr, DeviceContext,
+    DeviceSlotState, EndpointContext, EndpointState, EvaluateContextCommandTrb,
     InputControlContext, SlotContext, TrbCompletionCode, DEVICE_CONTEXT_ENTRY_SIZE,
 };
 use super::xhci_regs::{valid_slot_id, MAX_PORTS, MAX_SLOTS};
 use crate::register_space::Register;
 use crate::usb::xhci::ring_buffer_stop_cb::{fallible_closure, RingBufferStopCallback};
 use crate::utils::{EventLoop, FailHandle};
+use bit_field::Error as BitFieldError;
 use std::fmt::{self, Display};
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -28,7 +29,8 @@ pub enum Error {
     WriteGuestMemory(GuestMemoryError),
     WeakReferenceUpgrade,
     CallbackFailed,
-    GetSlotContextState(TrbError),
+    GetSlotContextState(BitFieldError),
+    GetEndpointState(BitFieldError),
     GetPort(u8),
     GetTrc(u8),
     BadInputContextAddr(GuestAddress),
@@ -49,6 +51,7 @@ impl Display for Error {
             WeakReferenceUpgrade => write!(f, "failed to upgrade weak reference"),
             CallbackFailed => write!(f, "callback failed"),
             GetSlotContextState(e) => write!(f, "failed to get slot context state: {}", e),
+            GetEndpointState(e) => write!(f, "failed to get endpoint state: {}", e),
             GetPort(v) => write!(f, "failed to get port: {}", v),
             GetTrc(v) => write!(f, "failed to get trc: {}", v),
             BadInputContextAddr(addr) => write!(f, "bad input context address: {}", addr),
@@ -310,9 +313,10 @@ impl DeviceSlot {
             }
         };
         let context = self.get_device_context()?;
-        // TODO(jkwang) Refactor the code to have bitfield return enum.
-        if context.endpoint_context[endpoint_index].get_endpoint_state()
-            == EndpointState::Running as u8
+        if context.endpoint_context[endpoint_index]
+            .get_endpoint_state()
+            .map_err(Error::GetEndpointState)?
+            == EndpointState::Running
         {
             usb_debug!("endpoint is started, start transfer ring");
             transfer_ring_controller.start();
@@ -350,7 +354,7 @@ impl DeviceSlot {
                     let mut device_context = slot.get_device_context()?;
                     device_context
                         .slot_context
-                        .set_state(DeviceSlotState::DisabledOrEnabled);
+                        .set_slot_state(DeviceSlotState::DisabledOrEnabled);
                     slot.set_device_context(device_context)?;
                     slot.reset();
                     usb_debug!(
@@ -378,11 +382,11 @@ impl DeviceSlot {
         let device_context = self.get_device_context()?;
         let state = device_context
             .slot_context
-            .state()
+            .get_slot_state()
             .map_err(Error::GetSlotContextState)?;
         match state {
             DeviceSlotState::DisabledOrEnabled => {}
-            DeviceSlotState::Default if trb.get_block_set_address_request() == 0 => {}
+            DeviceSlotState::Default if !trb.get_block_set_address_request() => {}
             _ => {
                 error!("slot {} has unexpected slot state", self.slot_id);
                 return Ok(TrbCompletionCode::ContextStateError);
@@ -424,10 +428,10 @@ impl DeviceSlot {
         );
 
         // Assign slot ID as device address if block_set_address_request is not set.
-        if trb.get_block_set_address_request() > 0 {
+        if trb.get_block_set_address_request() {
             device_context
                 .slot_context
-                .set_state(DeviceSlotState::Default);
+                .set_slot_state(DeviceSlotState::Default);
         } else {
             let port = self.hub.get_port(port_id).ok_or(Error::GetPort(port_id))?;
             match port.get_backend_device().as_mut() {
@@ -444,24 +448,24 @@ impl DeviceSlot {
                 .set_usb_device_address(self.slot_id);
             device_context
                 .slot_context
-                .set_state(DeviceSlotState::Addressed);
+                .set_slot_state(DeviceSlotState::Addressed);
         }
 
         // TODO(jkwang) trc should always exists. Fix this.
         self.get_trc(0)
             .ok_or(Error::GetTrc(0))?
-            .set_dequeue_pointer(GuestAddress(
-                device_context.endpoint_context[0].get_tr_dequeue_pointer() << 4,
-            ));
+            .set_dequeue_pointer(
+                device_context.endpoint_context[0]
+                    .get_tr_dequeue_pointer()
+                    .get_gpa(),
+            );
 
         self.get_trc(0)
             .ok_or(Error::GetTrc(0))?
-            .set_consumer_cycle_state(
-                device_context.endpoint_context[0].get_dequeue_cycle_state() > 0,
-            );
+            .set_consumer_cycle_state(device_context.endpoint_context[0].get_dequeue_cycle_state());
 
         usb_debug!("Setting endpoint 0 to running");
-        device_context.endpoint_context[0].set_state(EndpointState::Running);
+        device_context.endpoint_context[0].set_endpoint_state(EndpointState::Running);
         self.set_device_context(device_context)?;
         Ok(TrbCompletionCode::Success)
     }
@@ -472,7 +476,7 @@ impl DeviceSlot {
         trb: &ConfigureEndpointCommandTrb,
     ) -> Result<TrbCompletionCode> {
         usb_debug!("configuring endpoint");
-        let input_control_context = if trb.get_deconfigure() > 0 {
+        let input_control_context = if trb.get_deconfigure() {
             // From section 4.6.6 of the xHCI spec:
             // Setting the deconfigure (DC) flag to '1' in the Configure Endpoint Command
             // TRB is equivalent to setting Input Context Drop Context flags 2-31 to '1'
@@ -500,7 +504,7 @@ impl DeviceSlot {
             }
         }
 
-        if trb.get_deconfigure() > 0 {
+        if trb.get_deconfigure() {
             self.set_state(DeviceSlotState::Addressed)?;
         } else {
             self.set_state(DeviceSlotState::Configured)?;
@@ -572,7 +576,7 @@ impl DeviceSlot {
                     s.drop_one_endpoint(i)?;
                 }
                 let mut ctx = s.get_device_context()?;
-                ctx.slot_context.set_state(DeviceSlotState::Default);
+                ctx.slot_context.set_slot_state(DeviceSlotState::Default);
                 ctx.slot_context.set_context_entries(1);
                 ctx.slot_context.set_root_hub_port_number(0);
                 s.set_device_context(ctx)?;
@@ -636,7 +640,8 @@ impl DeviceSlot {
             Some(trc) => {
                 trc.set_dequeue_pointer(GuestAddress(ptr));
                 let mut ctx = self.get_device_context()?;
-                ctx.endpoint_context[index].set_tr_dequeue_pointer(ptr >> 4);
+                ctx.endpoint_context[index]
+                    .set_tr_dequeue_pointer(DequeuePtr::new(GuestAddress(ptr)));
                 self.set_device_context(ctx)?;
                 Ok(TrbCompletionCode::Success)
             }
@@ -677,14 +682,17 @@ impl DeviceSlot {
             device_context_index,
         )
         .map_err(Error::CreateTransferController)?;
-        trc.set_dequeue_pointer(GuestAddress(
-            device_context.endpoint_context[transfer_ring_index].get_tr_dequeue_pointer() << 4,
-        ));
+        trc.set_dequeue_pointer(
+            device_context.endpoint_context[transfer_ring_index]
+                .get_tr_dequeue_pointer()
+                .get_gpa(),
+        );
         trc.set_consumer_cycle_state(
-            device_context.endpoint_context[transfer_ring_index].get_dequeue_cycle_state() > 0,
+            device_context.endpoint_context[transfer_ring_index].get_dequeue_cycle_state(),
         );
         self.set_trc(transfer_ring_index, Some(trc));
-        device_context.endpoint_context[transfer_ring_index].set_state(EndpointState::Running);
+        device_context.endpoint_context[transfer_ring_index]
+            .set_endpoint_state(EndpointState::Running);
         self.set_device_context(device_context)
     }
 
@@ -692,7 +700,7 @@ impl DeviceSlot {
         let endpoint_index = (device_context_index - 1) as usize;
         self.set_trc(endpoint_index, None);
         let mut ctx = self.get_device_context()?;
-        ctx.endpoint_context[endpoint_index].set_state(EndpointState::Disabled);
+        ctx.endpoint_context[endpoint_index].set_endpoint_state(EndpointState::Disabled);
         self.set_device_context(ctx)
     }
 
@@ -752,7 +760,7 @@ impl DeviceSlot {
 
     fn set_state(&self, state: DeviceSlotState) -> Result<()> {
         let mut ctx = self.get_device_context()?;
-        ctx.slot_context.set_state(state);
+        ctx.slot_context.set_slot_state(state);
         self.set_device_context(ctx)
     }
 }

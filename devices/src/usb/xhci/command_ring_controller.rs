@@ -311,7 +311,7 @@ impl CommandRingTrbHandler {
         let slot_id = trb.get_slot_id();
         let endpoint_id = trb.get_endpoint_id();
         // See Set TR Dequeue Pointer Trb in spec.
-        let dequeue_ptr = trb.get_dequeue_ptr() << 4;
+        let dequeue_ptr = trb.get_dequeue_ptr().get_gpa().offset();
         let completion_code = {
             if valid_slot_id(slot_id) {
                 self.slot(slot_id)?
@@ -341,7 +341,7 @@ impl TransferDescriptorHandler for CommandRingTrbHandler {
         // Command descriptor always consist of a single TRB.
         assert_eq!(descriptor.len(), 1);
         let atrb = &descriptor[0];
-        let command_result = match atrb.trb.trb_type() {
+        let command_result = match atrb.trb.get_trb_type() {
             Ok(TrbType::EnableSlotCommand) => self.enable_slot(atrb, complete_event),
             Ok(TrbType::DisableSlotCommand) => self.disable_slot(atrb, complete_event),
             Ok(TrbType::AddressDeviceCommand) => self.address_device(atrb, complete_event),
@@ -376,7 +376,7 @@ impl TransferDescriptorHandler for CommandRingTrbHandler {
                 warn!(
                     // We are not handling type 14,15,16. See table 6.4.6.
                     "Unexpected command ring trb type: {}",
-                    atrb.trb.get_trb_type()
+                    atrb.trb
                 );
                 match self.interrupter.lock().send_command_completion_trb(
                     TrbCompletionCode::TrbError,

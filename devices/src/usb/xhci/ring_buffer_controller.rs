@@ -238,7 +238,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::FailHandle;
     use std::mem::size_of;
     use std::sync::mpsc::{channel, Sender};
 
@@ -253,7 +252,7 @@ mod tests {
             complete_event: EventFd,
         ) -> std::result::Result<(), ()> {
             for atrb in descriptor {
-                assert_eq!(atrb.trb.trb_type().unwrap(), TrbType::Normal);
+                assert_eq!(atrb.trb.get_trb_type().unwrap(), TrbType::Normal);
                 self.sender.send(atrb.trb.get_parameter() as i32).unwrap();
             }
             complete_event.write(1).unwrap();
@@ -271,9 +270,9 @@ mod tests {
         //  trb 2  |   trb 4  |   trb 6
         //  l trb  -   l trb  -   l trb to 0x100
         let mut trb = NormalTrb::new();
-        trb.set_trb_type(TrbType::Normal as u8);
+        trb.set_trb_type(TrbType::Normal);
         trb.set_data_buffer(1);
-        trb.set_chain(1);
+        trb.set_chain(true);
         gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
             .unwrap();
 
@@ -282,7 +281,7 @@ mod tests {
             .unwrap();
 
         let mut ltrb = LinkTrb::new();
-        ltrb.set_trb_type(TrbType::Link as u8);
+        ltrb.set_trb_type(TrbType::Link);
         ltrb.set_ring_segment_pointer(0x200);
         gm.write_obj_at_addr(ltrb, GuestAddress(0x100 + 2 * trb_size))
             .unwrap();
@@ -292,7 +291,7 @@ mod tests {
 
         // Chain bit is false.
         trb.set_data_buffer(4);
-        trb.set_chain(0);
+        trb.set_chain(false);
         gm.write_obj_at_addr(trb, GuestAddress(0x200 + 1 * trb_size))
             .unwrap();
 
@@ -301,12 +300,12 @@ mod tests {
             .unwrap();
 
         trb.set_data_buffer(5);
-        trb.set_chain(1);
+        trb.set_chain(true);
         gm.write_obj_at_addr(trb, GuestAddress(0x300)).unwrap();
 
         // Chain bit is false.
         trb.set_data_buffer(6);
-        trb.set_chain(0);
+        trb.set_chain(false);
         gm.write_obj_at_addr(trb, GuestAddress(0x300 + 1 * trb_size))
             .unwrap();
 

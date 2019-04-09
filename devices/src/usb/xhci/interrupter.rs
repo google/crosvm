@@ -87,8 +87,8 @@ impl Interrupter {
             .cast_mut::<PortStatusChangeEventTrb>()
             .map_err(Error::CastTrb)?;
         psctrb.set_port_id(port_id);
-        psctrb.set_completion_code(TrbCompletionCode::Success as u8);
-        psctrb.set_trb_type(TrbType::PortStatusChangeEvent as u8);
+        psctrb.set_completion_code(TrbCompletionCode::Success);
+        psctrb.set_trb_type(TrbType::PortStatusChangeEvent);
         self.add_event(trb)
     }
 
@@ -105,8 +105,8 @@ impl Interrupter {
             .map_err(Error::CastTrb)?;
         ctrb.set_trb_pointer(trb_addr.0);
         ctrb.set_command_completion_parameter(0);
-        ctrb.set_completion_code(completion_code as u8);
-        ctrb.set_trb_type(TrbType::CommandCompletionEvent as u8);
+        ctrb.set_completion_code(completion_code);
+        ctrb.set_trb_type(TrbType::CommandCompletionEvent);
         ctrb.set_vf_id(0);
         ctrb.set_slot_id(slot_id);
         self.add_event(trb)
@@ -126,9 +126,9 @@ impl Interrupter {
         let event_trb = trb.cast_mut::<TransferEventTrb>().map_err(Error::CastTrb)?;
         event_trb.set_trb_pointer(trb_pointer);
         event_trb.set_trb_transfer_length(transfer_length);
-        event_trb.set_completion_code(completion_code as u8);
+        event_trb.set_completion_code(completion_code);
         event_trb.set_event_data(event_data.into());
-        event_trb.set_trb_type(TrbType::TransferEvent as u8);
+        event_trb.set_trb_type(TrbType::TransferEvent);
         event_trb.set_endpoint_id(endpoint_id);
         event_trb.set_slot_id(slot_id);
         self.add_event(trb)

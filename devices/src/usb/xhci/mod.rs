@@ -15,8 +15,6 @@ mod xhci;
 #[allow(dead_code)]
 mod xhci_abi;
 #[allow(dead_code)]
-mod xhci_abi_schema;
-#[allow(dead_code)]
 mod xhci_regs;
 
 pub mod scatter_gather_buffer;

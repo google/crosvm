@@ -10,6 +10,7 @@ use super::xhci_abi::{
     TrbCompletionCode, TrbType,
 };
 use super::xhci_regs::MAX_INTERRUPTER;
+use bit_field::Error as BitFieldError;
 use std::cmp::min;
 use std::fmt::{self, Display};
 use std::mem;
@@ -21,7 +22,7 @@ use usb_util::usb_transfer::TransferStatus;
 
 #[derive(Debug)]
 pub enum Error {
-    TrbType(TrbError),
+    TrbType(BitFieldError),
     CastTrb(TrbError),
     TransferLength(TrbError),
     BadTrbType(TrbType),
@@ -114,7 +115,7 @@ impl XhciTransferType {
     pub fn new(mem: GuestMemory, td: TransferDescriptor) -> Result<XhciTransferType> {
         // We can figure out transfer type from the first trb.
         // See transfer descriptor description in xhci spec for more details.
-        match td[0].trb.trb_type().map_err(Error::TrbType)? {
+        match td[0].trb.get_trb_type().map_err(Error::TrbType)? {
             TrbType::Normal => {
                 let buffer = ScatterGatherBuffer::new(mem, td).map_err(Error::CreateBuffer)?;
                 Ok(XhciTransferType::Normal(buffer))
@@ -329,7 +330,7 @@ impl XhciTransfer {
                 || (atrb.trb.interrupt_on_short_packet() && edtla > bytes_transferred)
             {
                 // For details about event data trb and EDTLA, see spec 4.11.5.2.
-                if atrb.trb.trb_type().map_err(Error::TrbType)? == TrbType::EventData {
+                if atrb.trb.get_trb_type().map_err(Error::TrbType)? == TrbType::EventData {
                     let tlength = min(edtla, bytes_transferred);
                     self.interrupter
                         .lock()

@@ -179,7 +179,7 @@ fn bitfield_enum_with_width_impl(
         impl bit_field::BitFieldSpecifier for #ident {
             const FIELD_WIDTH: u8 = #bits;
             type SetterType = Self;
-            type GetterType = Result<Self, bit_field::Error>;
+            type GetterType = std::result::Result<Self, bit_field::Error>;
 
             #[inline]
             fn from_u64(val: u64) -> Self::GetterType {
