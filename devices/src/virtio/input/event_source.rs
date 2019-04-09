@@ -335,14 +335,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::virtio::input::event_source::input_event;
+    use crate::virtio::input::event_source::EventSourceImpl;
+    use crate::virtio::input::virtio_input_event;
     use data_model::{DataInit, Le16, Le32};
     use std::cmp::min;
     use std::io::Read;
     use std::io::Write;
     use std::mem::size_of;
-    use virtio::input::event_source::input_event;
-    use virtio::input::event_source::EventSourceImpl;
-    use virtio::input::virtio_input_event;
 
     struct SourceMock {
         events: Vec<u8>,

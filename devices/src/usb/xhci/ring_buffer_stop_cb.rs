@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::utils::FailHandle;
 use std::sync::{Arc, Mutex};
-use utils::FailHandle;
 
 /// RingBufferStopCallback wraps a callback. The callback will be invoked when last instance of
 /// RingBufferStopCallback and its clones is dropped.

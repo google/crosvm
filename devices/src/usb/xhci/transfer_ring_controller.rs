@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::usb::xhci::ring_buffer_controller::{
+    Error as RingBufferControllerError, RingBufferController, TransferDescriptorHandler,
+};
+use crate::utils::EventLoop;
 use std::sync::Arc;
 use sync::Mutex;
 use sys_util::{EventFd, GuestMemory};
-use usb::xhci::ring_buffer_controller::{
-    Error as RingBufferControllerError, RingBufferController, TransferDescriptorHandler,
-};
-use utils::EventLoop;
 
 use super::interrupter::Interrupter;
 use super::usb_hub::UsbPort;

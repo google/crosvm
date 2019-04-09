@@ -354,7 +354,7 @@ impl PciDevice for VirtioPciDevice {
         resources: &mut SystemAllocator,
     ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
         let mut ranges = Vec::new();
-        for mut config in self.device.get_device_bars() {
+        for config in self.device.get_device_bars() {
             let device_addr = resources
                 .allocate_device_addresses(config.get_size())
                 .ok_or(PciDeviceError::IoAllocationFailed(config.get_size()))?;

@@ -9,22 +9,22 @@ use sync::Mutex;
 use super::error::*;
 use super::usb_endpoint::UsbEndpoint;
 use super::utils::{submit_transfer, update_transfer_state};
-use std::collections::HashMap;
-use usb::usb_util::device_handle::DeviceHandle;
-use usb::usb_util::error::Error as LibUsbError;
-use usb::usb_util::libusb_device::LibUsbDevice;
-use usb::usb_util::types::{
+use crate::usb::usb_util::device_handle::DeviceHandle;
+use crate::usb::usb_util::error::Error as LibUsbError;
+use crate::usb::usb_util::libusb_device::LibUsbDevice;
+use crate::usb::usb_util::types::{
     ControlRequestDataPhaseTransferDirection, ControlRequestRecipient, ControlRequestType,
     StandardControlRequest, UsbRequestSetup,
 };
-use usb::usb_util::usb_transfer::{
+use crate::usb::usb_util::usb_transfer::{
     control_transfer, ControlTransferBuffer, TransferStatus, UsbTransfer,
 };
-use usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
-use usb::xhci::xhci_backend_device::{BackendType, UsbDeviceAddress, XhciBackendDevice};
-use usb::xhci::xhci_transfer::{XhciTransfer, XhciTransferState, XhciTransferType};
-use utils::AsyncJobQueue;
-use utils::FailHandle;
+use crate::usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
+use crate::usb::xhci::xhci_backend_device::{BackendType, UsbDeviceAddress, XhciBackendDevice};
+use crate::usb::xhci::xhci_transfer::{XhciTransfer, XhciTransferState, XhciTransferType};
+use crate::utils::AsyncJobQueue;
+use crate::utils::FailHandle;
+use std::collections::HashMap;
 
 #[derive(PartialEq)]
 pub enum ControlEndpointState {

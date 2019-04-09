@@ -126,7 +126,7 @@ impl ScatterGatherBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use usb::xhci::xhci_abi::{AddressedTrb, Trb};
+    use crate::usb::xhci::xhci_abi::{AddressedTrb, Trb};
 
     #[test]
     fn scatter_gather_buffer_test() {

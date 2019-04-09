@@ -807,8 +807,7 @@ impl Backend {
                                     offset: buffer.plane_offset(plane_index),
                                 });
                             }
-                            let mut backed =
-                                BackedBuffer::new_renderer_registered(buffer, res, image);
+                            let backed = BackedBuffer::new_renderer_registered(buffer, res, image);
                             slot.insert(Box::new(backed));
                             GpuResponse::OkResourcePlaneInfo {
                                 format_modifier,

@@ -8,17 +8,17 @@ use sync::Mutex;
 
 use super::error::*;
 use super::utils::{submit_transfer, update_transfer_state};
-use usb::usb_util::device_handle::DeviceHandle;
-use usb::usb_util::types::{EndpointDirection, EndpointType, ENDPOINT_DIRECTION_OFFSET};
-use usb::usb_util::usb_transfer::{
+use crate::usb::usb_util::device_handle::DeviceHandle;
+use crate::usb::usb_util::types::{EndpointDirection, EndpointType, ENDPOINT_DIRECTION_OFFSET};
+use crate::usb::usb_util::usb_transfer::{
     bulk_transfer, interrupt_transfer, BulkTransferBuffer, TransferStatus, UsbTransfer,
 };
-use usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
-use usb::xhci::xhci_transfer::{
+use crate::usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
+use crate::usb::xhci::xhci_transfer::{
     TransferDirection, XhciTransfer, XhciTransferState, XhciTransferType,
 };
-use utils::AsyncJobQueue;
-use utils::FailHandle;
+use crate::utils::AsyncJobQueue;
+use crate::utils::FailHandle;
 
 /// Isochronous, Bulk or Interrupt endpoint.
 pub struct UsbEndpoint {

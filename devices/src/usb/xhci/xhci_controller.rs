@@ -2,22 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use pci::{
+use crate::pci::{
     PciBarConfiguration, PciClassCode, PciConfiguration, PciDevice, PciDeviceError, PciHeaderType,
     PciInterruptPin, PciProgrammingInterface, PciSerialBusSubClass,
 };
-use register_space::{Register, RegisterSpace};
+use crate::register_space::{Register, RegisterSpace};
+use crate::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
+use crate::usb::xhci::xhci::Xhci;
+use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
+use crate::usb::xhci::xhci_regs::{init_xhci_mmio_space_and_regs, XhciRegs};
+use crate::utils::FailHandle;
 use resources::SystemAllocator;
 use std::mem;
 use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use sys_util::{EventFd, GuestMemory};
-use usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
-use usb::xhci::xhci::Xhci;
-use usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
-use usb::xhci::xhci_regs::{init_xhci_mmio_space_and_regs, XhciRegs};
-use utils::FailHandle;
 
 const XHCI_BAR0_SIZE: u64 = 0x10000;
 

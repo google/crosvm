@@ -4,10 +4,10 @@
 
 use super::ring_buffer_stop_cb::RingBufferStopCallback;
 use super::xhci_abi::*;
+use crate::utils::{self, EventHandler, EventLoop};
 use std::fmt::{self, Display};
 use std::sync::{Arc, MutexGuard};
 use sync::Mutex;
-use utils::{self, EventHandler, EventLoop};
 
 use sys_util::{Error as SysError, EventFd, GuestAddress, GuestMemory, WatchingEvents};
 
@@ -238,9 +238,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::FailHandle;
     use std::mem::size_of;
     use std::sync::mpsc::{channel, Sender};
-    use utils::FailHandle;
 
     struct TestHandler {
         sender: Sender<i32>,

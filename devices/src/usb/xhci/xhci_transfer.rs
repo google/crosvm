@@ -10,14 +10,14 @@ use super::xhci_abi::{
     TrbCompletionCode, TrbType,
 };
 use super::xhci_regs::MAX_INTERRUPTER;
+use crate::usb::usb_util::types::UsbRequestSetup;
+use crate::usb::usb_util::usb_transfer::TransferStatus;
 use std::cmp::min;
 use std::fmt::{self, Display};
 use std::mem;
 use std::sync::{Arc, Weak};
 use sync::Mutex;
 use sys_util::{Error as SysError, EventFd, GuestMemory};
-use usb::usb_util::types::UsbRequestSetup;
-use usb::usb_util::usb_transfer::TransferStatus;
 
 #[derive(Debug)]
 pub enum Error {

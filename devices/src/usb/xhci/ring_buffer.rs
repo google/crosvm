@@ -152,7 +152,7 @@ impl RingBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use usb::xhci::xhci_abi::*;
+    use crate::usb::xhci::xhci_abi::*;
 
     #[test]
     fn ring_test_dequeue() {

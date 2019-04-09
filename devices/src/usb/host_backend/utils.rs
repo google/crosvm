@@ -7,11 +7,11 @@ use std::sync::Arc;
 use sync::Mutex;
 
 use super::error::*;
-use usb::usb_util::device_handle::DeviceHandle;
-use usb::usb_util::usb_transfer::{TransferStatus, UsbTransfer, UsbTransferBuffer};
-use usb::xhci::xhci_transfer::{XhciTransfer, XhciTransferState};
-use utils::AsyncJobQueue;
-use utils::FailHandle;
+use crate::usb::usb_util::device_handle::DeviceHandle;
+use crate::usb::usb_util::usb_transfer::{TransferStatus, UsbTransfer, UsbTransferBuffer};
+use crate::usb::xhci::xhci_transfer::{XhciTransfer, XhciTransferState};
+use crate::utils::AsyncJobQueue;
+use crate::utils::FailHandle;
 
 /// Helper function to update xhci_transfer state.
 pub fn update_transfer_state<T: UsbTransferBuffer>(

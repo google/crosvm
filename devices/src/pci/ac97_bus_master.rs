@@ -418,9 +418,11 @@ impl Ac97BusMaster {
                     current_buffer_size(self.regs.lock().func_regs(func), &self.mem)?;
 
                 let buffer_frames = buffer_samples / num_channels;
-                let (mut stream_control, mut output_stream) = self
-                    .audio_server
-                    .new_playback_stream(num_channels, DEVICE_SAMPLE_RATE, buffer_frames)?;
+                let (stream_control, output_stream) = self.audio_server.new_playback_stream(
+                    num_channels,
+                    DEVICE_SAMPLE_RATE,
+                    buffer_frames,
+                )?;
                 self.po_stream_control = Some(stream_control);
 
                 self.update_mixer_settings(mixer);

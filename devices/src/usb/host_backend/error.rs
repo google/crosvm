@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::usb::usb_util::error::Error as UsbUtilError;
+use crate::usb::xhci::scatter_gather_buffer::Error as BufferError;
+use crate::usb::xhci::xhci_transfer::Error as XhciTransferError;
+use crate::utils::Error as UtilsError;
 use msg_socket::MsgError;
 use std::fmt::{self, Display};
-use usb::usb_util::error::Error as UsbUtilError;
-use usb::xhci::scatter_gather_buffer::Error as BufferError;
-use usb::xhci::xhci_transfer::Error as XhciTransferError;
-use utils::Error as UtilsError;
 
 #[derive(Debug)]
 pub enum Error {

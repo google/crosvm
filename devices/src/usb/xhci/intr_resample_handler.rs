@@ -3,10 +3,10 @@
 // found in the LICENSE file.
 
 use super::interrupter::Interrupter;
+use crate::utils::{EventHandler, EventLoop};
 use std::sync::Arc;
 use sync::Mutex;
 use sys_util::{EventFd, WatchingEvents};
-use utils::{EventHandler, EventLoop};
 
 /// Interrupt Resample handler handles resample event. It will reassert interrupt if needed.
 pub struct IntrResampleHandler {

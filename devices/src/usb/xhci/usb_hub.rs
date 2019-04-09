@@ -9,7 +9,7 @@ use super::xhci_regs::{
     PORTSC_PORT_ENABLED, PORTSC_PORT_ENABLED_DISABLED_CHANGE, USB2_PORTS_END, USB2_PORTS_START,
     USB3_PORTS_END, USB3_PORTS_START, USB_STS_PORT_CHANGE_DETECT,
 };
-use register_space::Register;
+use crate::register_space::Register;
 use std::fmt::{self, Display};
 use std::sync::{Arc, MutexGuard};
 use sync::Mutex;

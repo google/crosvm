@@ -14,11 +14,11 @@ use super::xhci_abi::{
     TrbCompletionCode, TrbType,
 };
 use super::xhci_regs::{valid_slot_id, MAX_SLOTS};
+use crate::utils::EventLoop;
 use std::fmt::{self, Display};
 use std::sync::Arc;
 use sync::Mutex;
 use sys_util::{Error as SysError, EventFd, GuestAddress, GuestMemory};
-use utils::EventLoop;
 
 #[derive(Debug)]
 pub enum Error {

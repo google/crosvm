@@ -3,9 +3,9 @@
 // found in the LICENSE file.
 
 use super::usb_hub::UsbHub;
+use crate::utils::{EventLoop, FailHandle};
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
-use utils::{EventLoop, FailHandle};
 
 /// Xhci backend provider will run on an EventLoop and connect new devices to usb ports.
 pub trait XhciBackendDeviceProvider: Send {

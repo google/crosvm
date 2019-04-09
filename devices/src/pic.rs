@@ -12,7 +12,7 @@
 // For the purposes of both using more descriptive terms and avoiding terms with lots of charged
 // emotional context, this file refers to them instead as "primary" and "secondary" PITs.
 
-use BusDevice;
+use crate::BusDevice;
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq)]

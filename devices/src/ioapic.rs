@@ -5,8 +5,8 @@
 // Implementation of an intel 82093AA Input/Output Advanced Programmable Interrupt Controller
 // See https://pdos.csail.mit.edu/6.828/2016/readings/ia32/ioapic.pdf for a specification.
 
+use crate::BusDevice;
 use bit_field::*;
-use BusDevice;
 
 // TODO(mutexlox): once https://crrev.com/c/1519686 has landed, refactor these bitfields to use
 // better types where applicable.

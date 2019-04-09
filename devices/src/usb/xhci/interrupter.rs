@@ -8,7 +8,7 @@ use super::xhci_abi::{
     TrbCast, TrbCompletionCode, TrbType,
 };
 use super::xhci_regs::*;
-use register_space::Register;
+use crate::register_space::Register;
 use std::fmt::{self, Display};
 use sys_util::{Error as SysError, EventFd, GuestAddress, GuestMemory};
 

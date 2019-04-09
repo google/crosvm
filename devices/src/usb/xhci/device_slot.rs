@@ -11,15 +11,15 @@ use super::xhci_abi::{
     InputControlContext, SlotContext, TrbCompletionCode, DEVICE_CONTEXT_ENTRY_SIZE,
 };
 use super::xhci_regs::{valid_slot_id, MAX_PORTS, MAX_SLOTS};
-use register_space::Register;
+use crate::register_space::Register;
+use crate::usb::xhci::ring_buffer_stop_cb::{fallible_closure, RingBufferStopCallback};
+use crate::utils::{EventLoop, FailHandle};
 use std::fmt::{self, Display};
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
 use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
-use usb::xhci::ring_buffer_stop_cb::{fallible_closure, RingBufferStopCallback};
-use utils::{EventLoop, FailHandle};
 
 #[derive(Debug)]
 pub enum Error {

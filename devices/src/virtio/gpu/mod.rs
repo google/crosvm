@@ -36,7 +36,7 @@ use super::{
 
 use self::backend::Backend;
 use self::protocol::*;
-use pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType};
+use crate::pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType};
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.

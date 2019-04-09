@@ -10,12 +10,12 @@ use super::ring_buffer_stop_cb::RingBufferStopCallback;
 use super::usb_hub::UsbHub;
 use super::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use super::xhci_regs::*;
+use crate::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
+use crate::utils::{Error as UtilsError, EventLoop, FailHandle};
 use std::fmt::{self, Display};
 use std::sync::Arc;
 use sync::Mutex;
 use sys_util::{EventFd, GuestAddress, GuestMemory};
-use usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
-use utils::{Error as UtilsError, EventLoop, FailHandle};
 
 #[derive(Debug)]
 pub enum Error {
