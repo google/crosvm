@@ -93,7 +93,6 @@ impl RegisterSpace {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{RegisterSpec, StaticRegister, StaticRegisterSpec};
     use super::*;
     use std::sync::Arc;
     use sync::Mutex;
