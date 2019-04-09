@@ -142,6 +142,8 @@ impl Display for UsbControlResult {
 }
 
 pub type UsbControlSocket = MsgSocket<UsbControlCommand, UsbControlResult>;
+pub type VmControlRequestSocket = MsgSocket<VmRequest, VmResponse>;
+pub type VmControlResponseSocket = MsgSocket<VmResponse, VmRequest>;
 
 /// A request to the main process to perform some operation on the VM.
 ///

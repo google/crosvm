@@ -44,7 +44,10 @@ use sys_util::{
 #[cfg(feature = "gpu-forward")]
 use sys_util::{GuestAddress, MemoryMapping, Protection};
 use vhost;
-use vm_control::{UsbControlSocket, VmRequest, VmResponse, VmRunMode};
+use vm_control::{
+    UsbControlSocket, VmControlRequestSocket, VmControlResponseSocket, VmRequest, VmResponse,
+    VmRunMode,
+};
 
 use crate::{Config, DiskOption, TouchDeviceOption};
 
@@ -275,7 +278,7 @@ type DeviceResult<T = VirtioDeviceStub> = std::result::Result<T, Error>;
 fn create_block_device(
     cfg: &Config,
     disk: &DiskOption,
-    disk_device_socket: UnixSeqpacket,
+    disk_device_socket: VmControlResponseSocket,
 ) -> DeviceResult {
     // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
     let raw_image: File = if disk.path.parent() == Some(Path::new("/proc/self/fd")) {
@@ -568,7 +571,7 @@ fn create_gpu_device(
 fn create_wayland_device(
     cfg: &Config,
     socket_path: &Path,
-    socket: UnixSeqpacket,
+    socket: VmControlRequestSocket,
     resource_bridge: Option<virtio::resource_bridge::ResourceRequestSocket>,
 ) -> DeviceResult {
     let wayland_socket_dir = socket_path.parent().ok_or(Error::InvalidWaylandPath)?;
@@ -664,9 +667,9 @@ fn create_virtio_devices(
     cfg: &Config,
     mem: &GuestMemory,
     _exit_evt: &EventFd,
-    wayland_device_socket: UnixSeqpacket,
+    wayland_device_socket: VmControlRequestSocket,
     balloon_device_socket: UnixSeqpacket,
-    disk_device_sockets: &mut Vec<UnixSeqpacket>,
+    disk_device_sockets: &mut Vec<VmControlResponseSocket>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -764,9 +767,9 @@ fn create_devices(
     cfg: Config,
     mem: &GuestMemory,
     exit_evt: &EventFd,
-    wayland_device_socket: UnixSeqpacket,
+    wayland_device_socket: VmControlRequestSocket,
     balloon_device_socket: UnixSeqpacket,
-    disk_device_sockets: &mut Vec<UnixSeqpacket>,
+    disk_device_sockets: &mut Vec<VmControlResponseSocket>,
     usb_provider: HostBackendDeviceProvider,
 ) -> DeviceResult<Vec<(Box<dyn PciDevice>, Option<Minijail>)>> {
     let stubs = create_virtio_devices(
@@ -1119,8 +1122,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
     let mut control_sockets = Vec::new();
     let (wayland_host_socket, wayland_device_socket) =
-        UnixSeqpacket::pair().map_err(Error::CreateSocket)?;
-    control_sockets.push(MsgSocket::<VmResponse, VmRequest>::new(wayland_host_socket));
+        msg_socket::pair::<VmResponse, VmRequest>().map_err(Error::CreateSocket)?;
+    control_sockets.push(wayland_host_socket);
     // Balloon gets a special socket so balloon requests can be forwarded from the main process.
     let (balloon_host_socket, balloon_device_socket) =
         UnixSeqpacket::pair().map_err(Error::CreateSocket)?;
@@ -1131,10 +1134,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let disk_count = cfg.disks.len();
     for _ in 0..disk_count {
         let (disk_host_socket, disk_device_socket) =
-            UnixSeqpacket::pair().map_err(Error::CreateSocket)?;
-        disk_device_sockets.push(disk_device_socket);
-        let disk_host_socket = MsgSocket::<VmRequest, VmResponse>::new(disk_host_socket);
+            msg_socket::pair::<VmRequest, VmResponse>().map_err(Error::CreateSocket)?;
         disk_host_sockets.push(disk_host_socket);
+        disk_device_sockets.push(disk_device_socket);
     }
 
     let sandbox = cfg.sandbox;
@@ -1201,9 +1203,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
 fn run_control(
     mut linux: RunnableLinuxVm,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
-    mut control_sockets: Vec<MsgSocket<VmResponse, VmRequest>>,
+    mut control_sockets: Vec<VmControlResponseSocket>,
     balloon_host_socket: UnixSeqpacket,
-    disk_host_sockets: &[MsgSocket<VmRequest, VmResponse>],
+    disk_host_sockets: &[VmControlRequestSocket],
     usb_control_socket: UsbControlSocket,
     sigchld_fd: SignalFd,
     _render_node_host: RenderNodeHost,

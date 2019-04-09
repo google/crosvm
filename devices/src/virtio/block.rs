@@ -18,13 +18,13 @@ use sync::Mutex;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
 use sys_util::{
-    net::UnixSeqpacket, EventFd, FileSetLen, FileSync, GuestAddress, GuestMemory, GuestMemoryError,
-    PollContext, PollToken, PunchHole, TimerFd, WriteZeroes,
+    EventFd, FileSetLen, FileSync, GuestAddress, GuestMemory, GuestMemoryError, PollContext,
+    PollToken, PunchHole, TimerFd, WriteZeroes,
 };
 
 use data_model::{DataInit, Le16, Le32, Le64};
-use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
-use vm_control::{VmRequest, VmResponse};
+use msg_socket::{MsgReceiver, MsgSender};
+use vm_control::{VmControlResponseSocket, VmRequest, VmResponse};
 
 use super::{
     DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_CONFIG_CHANGED,
@@ -695,7 +695,12 @@ impl<T: DiskFile> Worker<T> {
         self.interrupt_evt.write(1).unwrap();
     }
 
-    fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd, control_socket: UnixSeqpacket) {
+    fn run(
+        &mut self,
+        queue_evt: EventFd,
+        kill_evt: EventFd,
+        control_socket: VmControlResponseSocket,
+    ) {
         #[derive(PollToken)]
         enum Token {
             FlushTimer,
@@ -713,8 +718,6 @@ impl<T: DiskFile> Worker<T> {
             }
         };
         let mut flush_timer_armed = false;
-
-        let control_socket = MsgSocket::<VmResponse, VmRequest>::new(control_socket);
 
         let poll_ctx: PollContext<Token> = match PollContext::new()
             .and_then(|pc| pc.add(&flush_timer, Token::FlushTimer).and(Ok(pc)))
@@ -819,7 +822,7 @@ pub struct Block<T: DiskFile> {
     disk_size: Arc<Mutex<u64>>,
     avail_features: u64,
     read_only: bool,
-    control_socket: Option<UnixSeqpacket>,
+    control_socket: Option<VmControlResponseSocket>,
 }
 
 fn build_config_space(disk_size: u64) -> virtio_blk_config {
@@ -845,7 +848,7 @@ impl<T: DiskFile> Block<T> {
     pub fn new(
         mut disk_image: T,
         read_only: bool,
-        control_socket: Option<UnixSeqpacket>,
+        control_socket: Option<VmControlResponseSocket>,
     ) -> SysResult<Block<T>> {
         let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
         if disk_size % SECTOR_SIZE != 0 {

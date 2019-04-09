@@ -56,10 +56,9 @@ use libc::{dup, EBADF, EINVAL};
 use data_model::VolatileMemoryError;
 use data_model::*;
 
-use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
+use msg_socket::{MsgError, MsgReceiver, MsgSender};
 #[cfg(feature = "wl-dmabuf")]
 use resources::GpuMemoryDesc;
-use sys_util::net::UnixSeqpacket;
 use sys_util::{
     pipe, round_up_to_page_size, Error, EventFd, FileFlags, GuestAddress, GuestMemory,
     GuestMemoryError, PollContext, PollToken, Result, ScmSocket, SharedMemory,
@@ -72,7 +71,7 @@ use super::resource_bridge::*;
 use super::{
     DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_WL, VIRTIO_F_VERSION_1,
 };
-use vm_control::{MaybeOwnedFd, VmRequest, VmResponse};
+use vm_control::{MaybeOwnedFd, VmControlRequestSocket, VmRequest, VmResponse};
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
 const VIRTIO_WL_CMD_VFD_NEW: u32 = 256;
@@ -485,15 +484,13 @@ impl From<VolatileMemoryError> for WlError {
 
 #[derive(Clone)]
 struct VmRequester {
-    inner: Rc<RefCell<MsgSocket<VmRequest, VmResponse>>>,
+    inner: Rc<RefCell<VmControlRequestSocket>>,
 }
 
 impl VmRequester {
-    fn new(vm_socket: UnixSeqpacket) -> VmRequester {
+    fn new(vm_socket: VmControlRequestSocket) -> VmRequester {
         VmRequester {
-            inner: Rc::new(RefCell::new(MsgSocket::<VmRequest, VmResponse>::new(
-                vm_socket,
-            ))),
+            inner: Rc::new(RefCell::new(vm_socket)),
         }
     }
 
@@ -1003,7 +1000,7 @@ struct WlState {
 impl WlState {
     fn new(
         wayland_path: PathBuf,
-        vm_socket: UnixSeqpacket,
+        vm_socket: VmControlRequestSocket,
         use_transition_flags: bool,
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> WlState {
@@ -1487,7 +1484,7 @@ impl Worker {
         in_queue: Queue,
         out_queue: Queue,
         wayland_path: PathBuf,
-        vm_socket: UnixSeqpacket,
+        vm_socket: VmControlRequestSocket,
         use_transition_flags: bool,
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> Worker {
@@ -1677,7 +1674,7 @@ impl Worker {
 pub struct Wl {
     kill_evt: Option<EventFd>,
     wayland_path: PathBuf,
-    vm_socket: Option<UnixSeqpacket>,
+    vm_socket: Option<VmControlRequestSocket>,
     resource_bridge: Option<ResourceRequestSocket>,
     use_transition_flags: bool,
 }
@@ -1685,7 +1682,7 @@ pub struct Wl {
 impl Wl {
     pub fn new<P: AsRef<Path>>(
         wayland_path: P,
-        vm_socket: UnixSeqpacket,
+        vm_socket: VmControlRequestSocket,
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> Result<Wl> {
         Ok(Wl {

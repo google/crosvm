@@ -58,7 +58,10 @@ use qcow::QcowFile;
 use sys_util::{
     getpid, kill_process_group, net::UnixSeqpacket, reap_child, syslog, validate_raw_fd,
 };
-use vm_control::{MaybeOwnedFd, UsbControlCommand, UsbControlResult, VmRequest, VmResponse};
+use vm_control::{
+    MaybeOwnedFd, UsbControlCommand, UsbControlResult, VmControlRequestSocket, VmRequest,
+    VmResponse,
+};
 
 use crate::argument::{print_help, set_arguments, Argument};
 
@@ -842,7 +845,7 @@ fn handle_request(
     for socket_path in args {
         match UnixSeqpacket::connect(&socket_path) {
             Ok(s) => {
-                let socket = MsgSocket::<VmRequest, VmResponse>::new(s);
+                let socket: VmControlRequestSocket = MsgSocket::new(s);
                 if let Err(e) = socket.send(request) {
                     error!(
                         "failed to send request to socket at '{}': {}",
