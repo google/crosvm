@@ -36,14 +36,6 @@ pub enum DeliveryStatus {
     Pending = 1,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum InterruptRemappingFormat {
-    Compatibility = 0,
-    Remappable = 1,
-}
-
-#[allow(dead_code)]
 const IOAPIC_VERSION_ID: u32 = 0x00170011;
 #[allow(dead_code)]
 const IOAPIC_BASE_ADDRESS: u32 = 0xfec00000;
@@ -87,9 +79,8 @@ fn decode_irq_from_selector(selector: u8) -> (usize, bool) {
 // not exactly the same as) KVM's IOAPIC.
 const RTC_IRQ: usize = 0x8;
 
-#[allow(dead_code)]
 pub struct Ioapic {
-    id: usize,
+    id: u32,
     // Remote IRR for Edge Triggered Real Time Clock interrupts, which allows the CMOS to know when
     // one of its interrupts is being coalesced.
     rtc_remote_irr: bool,
@@ -248,7 +239,7 @@ impl Ioapic {
     fn ioapic_write(&mut self, val: u32) {
         match self.ioregsel {
             IOAPIC_REG_VERSION => { /* read-only register */ }
-            IOAPIC_REG_ID => unimplemented!(),
+            IOAPIC_REG_ID => self.id = (val >> 24) & 0xf,
             IOAPIC_REG_ARBITRATION_ID => { /* read-only register */ }
             _ => {
                 if self.ioregsel < IOWIN_OFF {
@@ -294,7 +285,24 @@ impl Ioapic {
     }
 
     fn ioapic_read(&mut self) -> u32 {
-        unimplemented!();
+        match self.ioregsel {
+            IOAPIC_REG_VERSION => IOAPIC_VERSION_ID,
+            IOAPIC_REG_ID | IOAPIC_REG_ARBITRATION_ID => (self.id & 0xf) << 24,
+            _ => {
+                if self.ioregsel < IOWIN_OFF {
+                    // Invalid read; ignore and return 0.
+                    0
+                } else {
+                    let (index, is_high_bits) = decode_irq_from_selector(self.ioregsel);
+                    if index < kvm::NUM_IOAPIC_PINS {
+                        let offset = if is_high_bits { 32 } else { 0 };
+                        self.redirect_table[index].get(offset, 32) as u32
+                    } else {
+                        !0 // Invaild index - return all 1s
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -305,8 +313,23 @@ mod tests {
     const DEFAULT_VECTOR: u8 = 0x3a;
     const DEFAULT_DESTINATION_ID: u8 = 0x5f;
 
-    fn set_up() -> Ioapic {
-        Ioapic::new()
+    fn set_up(trigger: TriggerMode) -> (Ioapic, usize) {
+        let irq = kvm::NUM_IOAPIC_PINS - 1;
+        let ioapic = set_up_with_irq(irq, trigger);
+        (ioapic, irq)
+    }
+
+    fn set_up_with_irq(irq: usize, trigger: TriggerMode) -> Ioapic {
+        let mut ioapic = Ioapic::new();
+        set_up_redirection_table_entry(&mut ioapic, irq, trigger);
+        ioapic
+    }
+
+    fn read_reg(ioapic: &mut Ioapic, selector: u8) -> u32 {
+        let mut data = [0; 4];
+        ioapic.write(IOREGSEL_OFF.into(), &[selector]);
+        ioapic.read(IOWIN_OFF.into(), &mut data);
+        u32::from_ne_bytes(data)
     }
 
     fn write_reg(ioapic: &mut Ioapic, selector: u8, value: u32) {
@@ -314,16 +337,31 @@ mod tests {
         ioapic.write(IOWIN_OFF.into(), &value.to_ne_bytes());
     }
 
+    fn read_entry(ioapic: &mut Ioapic, irq: usize) -> RedirectionTableEntry {
+        let mut entry = RedirectionTableEntry::new();
+        entry.set(
+            0,
+            32,
+            read_reg(ioapic, encode_selector_from_irq(irq, false)).into(),
+        );
+        entry.set(
+            32,
+            32,
+            read_reg(ioapic, encode_selector_from_irq(irq, true)).into(),
+        );
+        entry
+    }
+
     fn write_entry(ioapic: &mut Ioapic, irq: usize, entry: RedirectionTableEntry) {
         write_reg(
             ioapic,
             encode_selector_from_irq(irq, false),
-            entry.get(0, 8) as u32,
+            entry.get(0, 32) as u32,
         );
         write_reg(
             ioapic,
             encode_selector_from_irq(irq, true),
-            entry.get(8, 8) as u32,
+            entry.get(32, 32) as u32,
         );
     }
 
@@ -337,19 +375,81 @@ mod tests {
         write_entry(ioapic, irq, entry);
     }
 
+    fn set_mask(ioapic: &mut Ioapic, irq: usize, mask: bool) {
+        let mut entry = read_entry(ioapic, irq);
+        entry.set_interrupt_mask(mask);
+        write_entry(ioapic, irq, entry);
+    }
+
+    #[test]
+    fn write_read_ioregsel() {
+        let mut ioapic = Ioapic::new();
+        let data_write = [0x0f, 0xf0, 0x01, 0xff];
+        let mut data_read = [0; 4];
+
+        for i in 0..data_write.len() {
+            ioapic.write(IOREGSEL_OFF.into(), &data_write[i..i + 1]);
+            ioapic.read(IOREGSEL_OFF.into(), &mut data_read[i..i + 1]);
+            assert_eq!(data_write[i], data_read[i]);
+        }
+    }
+
+    // Verify that version register is actually read-only.
+    #[test]
+    fn write_read_ioaic_reg_version() {
+        let mut ioapic = Ioapic::new();
+        let before = read_reg(&mut ioapic, IOAPIC_REG_VERSION);
+        let data_write = !before;
+
+        write_reg(&mut ioapic, IOAPIC_REG_VERSION, data_write);
+        assert_eq!(read_reg(&mut ioapic, IOAPIC_REG_VERSION), before);
+    }
+
+    // Verify that only bits 27:24 of the IOAPICID are readable/writable.
+    #[test]
+    fn write_read_ioapic_reg_id() {
+        let mut ioapic = Ioapic::new();
+
+        write_reg(&mut ioapic, IOAPIC_REG_ID, 0x1f3e5d7c);
+        assert_eq!(read_reg(&mut ioapic, IOAPIC_REG_ID), 0x0f000000);
+    }
+
+    // Write to read-only register IOAPICARB.
+    #[test]
+    fn write_read_ioapic_arbitration_id() {
+        let mut ioapic = Ioapic::new();
+
+        let data_write_id = 0x1f3e5d7c;
+        let expected_result = 0x0f000000;
+
+        // Write to IOAPICID.  This should also change IOAPICARB.
+        write_reg(&mut ioapic, IOAPIC_REG_ID, data_write_id);
+
+        // Read IOAPICARB
+        assert_eq!(
+            read_reg(&mut ioapic, IOAPIC_REG_ARBITRATION_ID),
+            expected_result
+        );
+
+        // Try to write to IOAPICARB and verify unchanged result.
+        write_reg(&mut ioapic, IOAPIC_REG_ARBITRATION_ID, !data_write_id);
+        assert_eq!(
+            read_reg(&mut ioapic, IOAPIC_REG_ARBITRATION_ID),
+            expected_result
+        );
+    }
+
     #[test]
     #[should_panic(expected = "index out of bounds: the len is 24 but the index is 24")]
     fn service_invalid_irq() {
-        let mut ioapic = set_up();
+        let mut ioapic = Ioapic::new();
         ioapic.service_irq(kvm::NUM_IOAPIC_PINS, false);
     }
 
     // Test a level triggered IRQ interrupt.
     #[test]
     fn service_level_irq() {
-        let mut ioapic = set_up();
-        let irq = kvm::NUM_IOAPIC_PINS - 1;
-        set_up_redirection_table_entry(&mut ioapic, irq, TriggerMode::Level);
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
 
         // TODO(mutexlox): Check that interrupt is fired once.
         ioapic.service_irq(irq, true);
@@ -358,9 +458,7 @@ mod tests {
 
     #[test]
     fn service_multiple_level_irqs() {
-        let mut ioapic = set_up();
-        let irq = kvm::NUM_IOAPIC_PINS - 1;
-        set_up_redirection_table_entry(&mut ioapic, irq, TriggerMode::Level);
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
         // TODO(mutexlox): Check that interrupt is fired twice.
         ioapic.service_irq(irq, true);
         ioapic.service_irq(irq, false);
@@ -372,9 +470,7 @@ mod tests {
     // delivered.
     #[test]
     fn coalesce_multiple_level_irqs() {
-        let mut ioapic = set_up();
-        let irq = kvm::NUM_IOAPIC_PINS - 1;
-        set_up_redirection_table_entry(&mut ioapic, irq, TriggerMode::Level);
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
 
         // TODO(mutexlox): Test that only one interrupt is delivered.
         ioapic.service_irq(irq, true);
@@ -385,9 +481,8 @@ mod tests {
     // Test multiple RTC interrupts without an EOI and verify that only one interrupt is delivered.
     #[test]
     fn coalesce_multiple_rtc_irqs() {
-        let mut ioapic = set_up();
         let irq = RTC_IRQ;
-        set_up_redirection_table_entry(&mut ioapic, irq, TriggerMode::Edge);
+        let mut ioapic = set_up_with_irq(irq, TriggerMode::Edge);
 
         // TODO(mutexlox): Verify that only one IRQ is delivered.
         ioapic.service_irq(irq, true);
@@ -399,9 +494,7 @@ mod tests {
     // EndOfInterrupt after the interrupt was coalesced while the line  is still asserted.
     #[test]
     fn reinject_level_interrupt() {
-        let mut ioapic = set_up();
-        let irq = kvm::NUM_IOAPIC_PINS - 1;
-        set_up_redirection_table_entry(&mut ioapic, irq, TriggerMode::Level);
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
 
         // TODO(mutexlox): Verify that only one IRQ is delivered.
         ioapic.service_irq(irq, true);
@@ -415,13 +508,230 @@ mod tests {
 
     #[test]
     fn service_edge_triggered_irq() {
-        let mut ioapic = set_up();
-        let irq = kvm::NUM_IOAPIC_PINS - 1;
-        set_up_redirection_table_entry(&mut ioapic, irq, TriggerMode::Edge);
+        let (mut ioapic, irq) = set_up(TriggerMode::Edge);
 
         // TODO(mutexlox): Verify that one interrupt is delivered.
         ioapic.service_irq(irq, true);
         ioapic.service_irq(irq, true); // Repeated asserts before a deassert should be ignored.
         ioapic.service_irq(irq, false);
+    }
+
+    // Verify that the state of an edge-triggered interrupt is properly tracked even when the
+    // interrupt is disabled.
+    #[test]
+    fn edge_trigger_unmask_test() {
+        let (mut ioapic, irq) = set_up(TriggerMode::Edge);
+
+        // TODO(mutexlox): Expect an IRQ.
+
+        ioapic.service_irq(irq, true);
+
+        set_mask(&mut ioapic, irq, true);
+        ioapic.service_irq(irq, false);
+
+        // No interrupt triggered while masked.
+        ioapic.service_irq(irq, true);
+        ioapic.service_irq(irq, false);
+
+        set_mask(&mut ioapic, irq, false);
+
+        // TODO(mutexlox): Expect another interrupt.
+        // Interrupt triggered while unmasked, even though when it was masked the level was high.
+        ioapic.service_irq(irq, true);
+        ioapic.service_irq(irq, false);
+    }
+
+    // Verify that a level-triggered interrupt that is triggered while masked will fire once the
+    // interrupt is unmasked.
+    #[test]
+    fn level_trigger_unmask_test() {
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
+
+        set_mask(&mut ioapic, irq, true);
+        ioapic.service_irq(irq, true);
+
+        // TODO(mutexlox): expect an interrupt after this.
+        set_mask(&mut ioapic, irq, false);
+    }
+
+    // Verify that multiple asserts before a deassert are ignored even if there's an EOI between
+    // them.
+    #[test]
+    fn end_of_interrupt_edge_triggered_irq() {
+        let (mut ioapic, irq) = set_up(TriggerMode::Edge);
+
+        // TODO(mutexlox): Expect 1 interrupt.
+        ioapic.service_irq(irq, true);
+        ioapic.end_of_interrupt(DEFAULT_DESTINATION_ID);
+        // Repeated asserts before a de-assert should be ignored.
+        ioapic.service_irq(irq, true);
+        ioapic.service_irq(irq, false);
+    }
+
+    // Send multiple edge-triggered interrupts in a row.
+    #[test]
+    fn service_multiple_edge_irqs() {
+        let (mut ioapic, irq) = set_up(TriggerMode::Edge);
+
+        ioapic.service_irq(irq, true);
+        // TODO(mutexlox): Verify that an interrupt occurs here.
+        ioapic.service_irq(irq, false);
+
+        ioapic.service_irq(irq, true);
+        // TODO(mutexlox): Verify that an interrupt occurs here.
+        ioapic.service_irq(irq, false);
+    }
+
+    // Test an interrupt line with negative polarity.
+    #[test]
+    fn service_negative_polarity_irq() {
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
+
+        let mut entry = read_entry(&mut ioapic, irq);
+        entry.set_polarity(1);
+        write_entry(&mut ioapic, irq, entry);
+
+        // TODO(mutexlox): Expect an interrupt to fire.
+        ioapic.service_irq(irq, false);
+    }
+
+    // Ensure that remote IRR can't be edited via mmio.
+    #[test]
+    fn remote_irr_read_only() {
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
+
+        ioapic.redirect_table[irq].set_remote_irr(true);
+
+        let mut entry = read_entry(&mut ioapic, irq);
+        entry.set_remote_irr(false);
+        write_entry(&mut ioapic, irq, entry);
+
+        assert_eq!(read_entry(&mut ioapic, irq).get_remote_irr(), true);
+    }
+
+    #[test]
+    fn delivery_status_read_only() {
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
+
+        ioapic.redirect_table[irq].set_delivery_status(DeliveryStatus::Pending);
+
+        let mut entry = read_entry(&mut ioapic, irq);
+        entry.set_delivery_status(DeliveryStatus::Idle);
+        write_entry(&mut ioapic, irq, entry);
+
+        assert_eq!(
+            read_entry(&mut ioapic, irq).get_delivery_status(),
+            DeliveryStatus::Pending
+        );
+    }
+
+    #[test]
+    fn level_to_edge_transition_clears_remote_irr() {
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
+
+        ioapic.redirect_table[irq].set_remote_irr(true);
+
+        let mut entry = read_entry(&mut ioapic, irq);
+        entry.set_trigger_mode(TriggerMode::Edge);
+        write_entry(&mut ioapic, irq, entry);
+
+        assert_eq!(read_entry(&mut ioapic, irq).get_remote_irr(), false);
+    }
+
+    #[test]
+    fn masking_preserves_remote_irr() {
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
+
+        ioapic.redirect_table[irq].set_remote_irr(true);
+
+        set_mask(&mut ioapic, irq, true);
+        set_mask(&mut ioapic, irq, false);
+
+        assert_eq!(read_entry(&mut ioapic, irq).get_remote_irr(), true);
+    }
+
+    // Test reconfiguration racing with EOIs.
+    #[test]
+    fn reconfiguration_race() {
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
+
+        // Fire one level-triggered interrupt.
+        // TODO(mutexlox): Check that it fires.
+        ioapic.service_irq(irq, true);
+
+        // Read the redirection table entry before the EOI...
+        let mut entry = read_entry(&mut ioapic, irq);
+        entry.set_trigger_mode(TriggerMode::Edge);
+
+        ioapic.service_irq(irq, false);
+        ioapic.end_of_interrupt(DEFAULT_DESTINATION_ID);
+
+        // ... and write back that (modified) value.
+        write_entry(&mut ioapic, irq, entry);
+
+        // Fire one *edge* triggered interrupt
+        // TODO(mutexlox): Assert that the interrupt fires once.
+        ioapic.service_irq(irq, true);
+        ioapic.service_irq(irq, false);
+    }
+
+    // Ensure that swapping to edge triggered and back clears the remote irr bit.
+    #[test]
+    fn implicit_eoi() {
+        let (mut ioapic, irq) = set_up(TriggerMode::Level);
+
+        // Fire one level-triggered interrupt.
+        ioapic.service_irq(irq, true);
+        // TODO(mutexlox): Verify that one interrupt was fired.
+        ioapic.service_irq(irq, false);
+
+        // Do an implicit EOI by cycling between edge and level triggered.
+        let mut entry = read_entry(&mut ioapic, irq);
+        entry.set_trigger_mode(TriggerMode::Edge);
+        write_entry(&mut ioapic, irq, entry);
+        entry.set_trigger_mode(TriggerMode::Level);
+        write_entry(&mut ioapic, irq, entry);
+
+        // Fire one level-triggered interrupt.
+        ioapic.service_irq(irq, true);
+        // TODO(mutexlox): Verify that one interrupt fires.
+        ioapic.service_irq(irq, false);
+    }
+
+    #[test]
+    fn set_redirection_entry_by_bits() {
+        let mut entry = RedirectionTableEntry::new();
+        //                                                          destination_mode
+        //                                                         polarity |
+        //                                                  trigger_mode |  |
+        //                                                             | |  |
+        // 0011 1010 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 1001 0110 0101 1111
+        // |_______| |______________________________________________||  | |  |_| |_______|
+        //  dest_id                      reserved                    |  | |   |    vector
+        //                                               interrupt_mask | |   |
+        //                                                     remote_irr |   |
+        //                                                    delivery_status |
+        //                                                              delivery_mode
+        entry.set(0, 64, 0x3a0000000000965f);
+        assert_eq!(entry.get_vector(), 0x5f);
+        assert_eq!(entry.get_delivery_mode(), DeliveryMode::Startup);
+        assert_eq!(entry.get_dest_mode(), DestinationMode::Physical);
+        assert_eq!(entry.get_delivery_status(), DeliveryStatus::Pending);
+        assert_eq!(entry.get_polarity(), 0);
+        assert_eq!(entry.get_remote_irr(), false);
+        assert_eq!(entry.get_trigger_mode(), TriggerMode::Level);
+        assert_eq!(entry.get_interrupt_mask(), false);
+        assert_eq!(entry.get_reserved(), 0);
+        assert_eq!(entry.get_dest_id(), 0x3a);
+
+        let (mut ioapic, irq) = set_up(TriggerMode::Edge);
+        write_entry(&mut ioapic, irq, entry);
+        assert_eq!(
+            read_entry(&mut ioapic, irq).get_trigger_mode(),
+            TriggerMode::Level
+        );
+
+        // TODO(mutexlox): Verify that this actually fires an interrupt.
+        ioapic.service_irq(irq, true);
     }
 }
