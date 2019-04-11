@@ -18,12 +18,11 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use libc::{EINVAL, EIO, ENODEV};
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use kvm::{Datamatch, IoeventAddress, Vm};
+use kvm::Vm;
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{GpuMemoryDesc, SystemAllocator};
 use sys_util::{
-    error, net::UnixSeqpacket, Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError,
-    Result,
+    error, net::UnixSeqpacket, Error as SysError, GuestAddress, MemoryMapping, MmapError, Result,
 };
 
 /// A file descriptor either borrowed or owned by this.
@@ -151,10 +150,6 @@ pub enum VmRequest {
     Suspend,
     /// Resume the VM's VCPUs that were previously suspended.
     Resume,
-    /// Register the given ioevent address along with given datamatch to trigger the `EventFd`.
-    RegisterIoevent(EventFd, IoeventAddress, u32),
-    /// Register the given IRQ number to be triggered when the `EventFd` is triggered.
-    RegisterIrqfd(EventFd, u32),
     /// Register shared memory represented by the given fd into guest address space. The response
     /// variant is `VmResponse::RegisterMemory`.
     RegisterMemory(MaybeOwnedFd, usize),
@@ -230,16 +225,6 @@ impl VmRequest {
                 *run_mode = Some(VmRunMode::Running);
                 VmResponse::Ok
             }
-            VmRequest::RegisterIoevent(ref evt, addr, datamatch) => {
-                match vm.register_ioevent(evt, addr, Datamatch::U32(Some(datamatch))) {
-                    Ok(_) => VmResponse::Ok,
-                    Err(e) => VmResponse::Err(e),
-                }
-            }
-            VmRequest::RegisterIrqfd(ref evt, irq) => match vm.register_irqfd(evt, irq) {
-                Ok(_) => VmResponse::Ok,
-                Err(e) => VmResponse::Err(e),
-            },
             VmRequest::RegisterMemory(ref fd, size) => {
                 match register_memory(vm, sys_allocator, fd, size) {
                     Ok((pfn, slot)) => VmResponse::RegisterMemory { pfn, slot },
