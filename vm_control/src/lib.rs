@@ -158,6 +158,95 @@ impl Display for UsbControlResult {
     }
 }
 
+#[derive(MsgOnSocket, Debug)]
+pub enum WlDriverRequest {
+    /// Register shared memory represented by the given fd into guest address space. The response
+    /// variant is `VmResponse::RegisterMemory`.
+    RegisterMemory(MaybeOwnedFd, usize),
+    /// Unregister the given memory slot that was previously registereed with `RegisterMemory`.
+    UnregisterMemory(u32),
+    /// Allocate GPU buffer of a given size/format and register the memory into guest address space.
+    /// The response variant is `VmResponse::AllocateAndRegisterGpuMemory`
+    AllocateAndRegisterGpuMemory {
+        width: u32,
+        height: u32,
+        format: u32,
+    },
+}
+
+impl WlDriverRequest {
+    /// Executes this request on the given Vm.
+    ///
+    /// # Arguments
+    /// * `vm` - The `Vm` to perform the request on.
+    /// * `allocator` - Used to allocate addresses.
+    ///
+    /// This does not return a result, instead encapsulating the success or failure in a
+    /// `WlDriverResponse` with the intended purpose of sending the response back over the socket
+    /// that received this `WlDriverResponse`.
+    pub fn execute(&self, vm: &mut Vm, sys_allocator: &mut SystemAllocator) -> WlDriverResponse {
+        use self::WlDriverRequest::*;
+        match *self {
+            RegisterMemory(ref fd, size) => match register_memory(vm, sys_allocator, fd, size) {
+                Ok((pfn, slot)) => WlDriverResponse::RegisterMemory { pfn, slot },
+                Err(e) => WlDriverResponse::Err(e),
+            },
+            UnregisterMemory(slot) => match vm.remove_device_memory(slot) {
+                Ok(_) => WlDriverResponse::Ok,
+                Err(e) => WlDriverResponse::Err(e),
+            },
+            AllocateAndRegisterGpuMemory {
+                width,
+                height,
+                format,
+            } => {
+                let (mut fd, desc) = match sys_allocator.gpu_memory_allocator() {
+                    Some(gpu_allocator) => match gpu_allocator.allocate(width, height, format) {
+                        Ok(v) => v,
+                        Err(e) => return WlDriverResponse::Err(e),
+                    },
+                    None => return WlDriverResponse::Err(SysError::new(ENODEV)),
+                };
+                // Determine size of buffer using 0 byte seek from end. This is preferred over
+                // `stride * height` as it's not limited to packed pixel formats.
+                let size = match fd.seek(SeekFrom::End(0)) {
+                    Ok(v) => v,
+                    Err(e) => return WlDriverResponse::Err(SysError::from(e)),
+                };
+                match register_memory(vm, sys_allocator, &fd, size as usize) {
+                    Ok((pfn, slot)) => WlDriverResponse::AllocateAndRegisterGpuMemory {
+                        fd: MaybeOwnedFd::Owned(fd),
+                        pfn,
+                        slot,
+                        desc,
+                    },
+                    Err(e) => WlDriverResponse::Err(e),
+                }
+            }
+        }
+    }
+}
+
+#[derive(MsgOnSocket, Debug)]
+pub enum WlDriverResponse {
+    /// The request to register memory into guest address space was successfully done at page frame
+    /// number `pfn` and memory slot number `slot`.
+    RegisterMemory {
+        pfn: u64,
+        slot: u32,
+    },
+    /// The request to allocate and register GPU memory into guest address space was successfully
+    /// done at page frame number `pfn` and memory slot number `slot` for buffer with `desc`.
+    AllocateAndRegisterGpuMemory {
+        fd: MaybeOwnedFd,
+        pfn: u64,
+        slot: u32,
+        desc: GpuMemoryDesc,
+    },
+    Ok,
+    Err(SysError),
+}
+
 pub type BalloonControlRequestSocket = MsgSocket<BalloonControlCommand, ()>;
 pub type BalloonControlResponseSocket = MsgSocket<(), BalloonControlCommand>;
 
@@ -165,6 +254,9 @@ pub type DiskControlRequestSocket = MsgSocket<DiskControlCommand, DiskControlRes
 pub type DiskControlResponseSocket = MsgSocket<DiskControlResult, DiskControlCommand>;
 
 pub type UsbControlSocket = MsgSocket<UsbControlCommand, UsbControlResult>;
+
+pub type WlControlRequestSocket = MsgSocket<WlDriverRequest, WlDriverResponse>;
+pub type WlControlResponseSocket = MsgSocket<WlDriverResponse, WlDriverRequest>;
 
 pub type VmControlRequestSocket = MsgSocket<VmRequest, VmResponse>;
 pub type VmControlResponseSocket = MsgSocket<VmResponse, VmRequest>;
@@ -180,18 +272,6 @@ pub enum VmRequest {
     Suspend,
     /// Resume the VM's VCPUs that were previously suspended.
     Resume,
-    /// Register shared memory represented by the given fd into guest address space. The response
-    /// variant is `VmResponse::RegisterMemory`.
-    RegisterMemory(MaybeOwnedFd, usize),
-    /// Unregister the given memory slot that was previously registereed with `RegisterMemory`.
-    UnregisterMemory(u32),
-    /// Allocate GPU buffer of a given size/format and register the memory into guest address space.
-    /// The response variant is `VmResponse::AllocateAndRegisterGpuMemory`
-    AllocateAndRegisterGpuMemory {
-        width: u32,
-        height: u32,
-        format: u32,
-    },
     /// Command for balloon driver.
     BalloonCommand(BalloonControlCommand),
     /// Send a command to a disk chosen by `disk_index`.
@@ -235,18 +315,11 @@ fn register_memory(
 impl VmRequest {
     /// Executes this request on the given Vm and other mutable state.
     ///
-    /// # Arguments
-    /// * `vm` - The `Vm` to perform the request on.
-    /// * `allocator` - Used to allocate addresses.
-    /// * `run_mode` - Out argument that is set to a run mode if one was requested.
-    ///
     /// This does not return a result, instead encapsulating the success or failure in a
     /// `VmResponse` with the intended purpose of sending the response back over the  socket that
     /// received this `VmRequest`.
     pub fn execute(
         &self,
-        vm: &mut Vm,
-        sys_allocator: &mut SystemAllocator,
         run_mode: &mut Option<VmRunMode>,
         balloon_host_socket: &BalloonControlRequestSocket,
         disk_host_sockets: &[DiskControlRequestSocket],
@@ -265,48 +338,10 @@ impl VmRequest {
                 *run_mode = Some(VmRunMode::Running);
                 VmResponse::Ok
             }
-            VmRequest::RegisterMemory(ref fd, size) => {
-                match register_memory(vm, sys_allocator, fd, size) {
-                    Ok((pfn, slot)) => VmResponse::RegisterMemory { pfn, slot },
-                    Err(e) => VmResponse::Err(e),
-                }
-            }
-            VmRequest::UnregisterMemory(slot) => match vm.remove_device_memory(slot) {
-                Ok(_) => VmResponse::Ok,
-                Err(e) => VmResponse::Err(e),
-            },
             VmRequest::BalloonCommand(ref command) => match balloon_host_socket.send(command) {
                 Ok(_) => VmResponse::Ok,
                 Err(_) => VmResponse::Err(SysError::last()),
             },
-            VmRequest::AllocateAndRegisterGpuMemory {
-                width,
-                height,
-                format,
-            } => {
-                let (mut fd, desc) = match sys_allocator.gpu_memory_allocator() {
-                    Some(gpu_allocator) => match gpu_allocator.allocate(width, height, format) {
-                        Ok(v) => v,
-                        Err(e) => return VmResponse::Err(e),
-                    },
-                    None => return VmResponse::Err(SysError::new(ENODEV)),
-                };
-                // Determine size of buffer using 0 byte seek from end. This is preferred over
-                // `stride * height` as it's not limited to packed pixel formats.
-                let size = match fd.seek(SeekFrom::End(0)) {
-                    Ok(v) => v,
-                    Err(e) => return VmResponse::Err(SysError::from(e)),
-                };
-                match register_memory(vm, sys_allocator, &fd, size as usize) {
-                    Ok((pfn, slot)) => VmResponse::AllocateAndRegisterGpuMemory {
-                        fd: MaybeOwnedFd::Owned(fd),
-                        pfn,
-                        slot,
-                        desc,
-                    },
-                    Err(e) => VmResponse::Err(e),
-                }
-            }
             VmRequest::DiskCommand {
                 disk_index,
                 ref command,

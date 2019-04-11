@@ -73,7 +73,7 @@ use super::resource_bridge::*;
 use super::{
     DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_WL, VIRTIO_F_VERSION_1,
 };
-use vm_control::{MaybeOwnedFd, VmControlRequestSocket, VmRequest, VmResponse};
+use vm_control::{MaybeOwnedFd, WlControlRequestSocket, WlDriverRequest, WlDriverResponse};
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
 const VIRTIO_WL_CMD_VFD_NEW: u32 = 256;
@@ -486,17 +486,17 @@ impl From<VolatileMemoryError> for WlError {
 
 #[derive(Clone)]
 struct VmRequester {
-    inner: Rc<RefCell<VmControlRequestSocket>>,
+    inner: Rc<RefCell<WlControlRequestSocket>>,
 }
 
 impl VmRequester {
-    fn new(vm_socket: VmControlRequestSocket) -> VmRequester {
+    fn new(vm_socket: WlControlRequestSocket) -> VmRequester {
         VmRequester {
             inner: Rc::new(RefCell::new(vm_socket)),
         }
     }
 
-    fn request(&self, request: VmRequest) -> WlResult<VmResponse> {
+    fn request(&self, request: WlDriverRequest) -> WlResult<WlDriverResponse> {
         let mut inner = self.inner.borrow_mut();
         let vm_socket = &mut *inner;
         vm_socket.send(&request).map_err(WlError::VmControl)?;
@@ -727,12 +727,12 @@ impl WlVfd {
         vfd_shm
             .set_size(size_page_aligned)
             .map_err(WlError::AllocSetSize)?;
-        let register_response = vm.request(VmRequest::RegisterMemory(
+        let register_response = vm.request(WlDriverRequest::RegisterMemory(
             MaybeOwnedFd::Borrowed(vfd_shm.as_raw_fd()),
             vfd_shm.size() as usize,
         ))?;
         match register_response {
-            VmResponse::RegisterMemory { pfn, slot } => {
+            WlDriverResponse::RegisterMemory { pfn, slot } => {
                 let mut vfd = WlVfd::default();
                 vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm.into()));
                 vfd.slot = Some((slot, pfn, vm));
@@ -750,13 +750,13 @@ impl WlVfd {
         format: u32,
     ) -> WlResult<(WlVfd, GpuMemoryDesc)> {
         let allocate_and_register_gpu_memory_response =
-            vm.request(VmRequest::AllocateAndRegisterGpuMemory {
+            vm.request(WlDriverRequest::AllocateAndRegisterGpuMemory {
                 width,
                 height,
                 format,
             })?;
         match allocate_and_register_gpu_memory_response {
-            VmResponse::AllocateAndRegisterGpuMemory {
+            WlDriverResponse::AllocateAndRegisterGpuMemory {
                 fd,
                 pfn,
                 slot,
@@ -822,13 +822,13 @@ impl WlVfd {
         match fd.seek(SeekFrom::End(0)) {
             Ok(fd_size) => {
                 let size = round_up_to_page_size(fd_size as usize) as u64;
-                let register_response = vm.request(VmRequest::RegisterMemory(
+                let register_response = vm.request(WlDriverRequest::RegisterMemory(
                     MaybeOwnedFd::Borrowed(fd.as_raw_fd()),
                     size as usize,
                 ))?;
 
                 match register_response {
-                    VmResponse::RegisterMemory { pfn, slot } => {
+                    WlDriverResponse::RegisterMemory { pfn, slot } => {
                         let mut vfd = WlVfd::default();
                         vfd.guest_shared_memory = Some((size, fd));
                         vfd.slot = Some((slot, pfn, vm));
@@ -963,7 +963,7 @@ impl WlVfd {
 
     fn close(&mut self) -> WlResult<()> {
         if let Some((slot, _, vm)) = self.slot.take() {
-            vm.request(VmRequest::UnregisterMemory(slot))?;
+            vm.request(WlDriverRequest::UnregisterMemory(slot))?;
         }
         self.socket = None;
         self.remote_pipe = None;
@@ -1002,7 +1002,7 @@ struct WlState {
 impl WlState {
     fn new(
         wayland_path: PathBuf,
-        vm_socket: VmControlRequestSocket,
+        vm_socket: WlControlRequestSocket,
         use_transition_flags: bool,
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> WlState {
@@ -1486,7 +1486,7 @@ impl Worker {
         in_queue: Queue,
         out_queue: Queue,
         wayland_path: PathBuf,
-        vm_socket: VmControlRequestSocket,
+        vm_socket: WlControlRequestSocket,
         use_transition_flags: bool,
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> Worker {
@@ -1676,7 +1676,7 @@ impl Worker {
 pub struct Wl {
     kill_evt: Option<EventFd>,
     wayland_path: PathBuf,
-    vm_socket: Option<VmControlRequestSocket>,
+    vm_socket: Option<WlControlRequestSocket>,
     resource_bridge: Option<ResourceRequestSocket>,
     use_transition_flags: bool,
 }
@@ -1684,7 +1684,7 @@ pub struct Wl {
 impl Wl {
     pub fn new<P: AsRef<Path>>(
         wayland_path: P,
-        vm_socket: VmControlRequestSocket,
+        vm_socket: WlControlRequestSocket,
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> Result<Wl> {
         Ok(Wl {

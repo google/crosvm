@@ -10,7 +10,7 @@ use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, Read};
 use std::net::Ipv4Addr;
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::str;
@@ -35,7 +35,7 @@ use remain::sorted;
 #[cfg(feature = "gpu-forward")]
 use resources::Alloc;
 use sync::{Condvar, Mutex};
-use sys_util::net::{UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
+use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use sys_util::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_signal_handler, set_cpu_affinity,
@@ -48,8 +48,8 @@ use vhost;
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
     DiskControlCommand, DiskControlRequestSocket, DiskControlResponseSocket, DiskControlResult,
-    UsbControlSocket, VmControlRequestSocket, VmControlResponseSocket, VmRequest, VmResponse,
-    VmRunMode,
+    UsbControlSocket, VmControlResponseSocket, VmRunMode, WlControlRequestSocket,
+    WlControlResponseSocket, WlDriverRequest, WlDriverResponse,
 };
 
 use crate::{Config, DiskOption, TouchDeviceOption};
@@ -232,6 +232,27 @@ impl From<io_jail::Error> for Error {
 impl std::error::Error for Error {}
 
 type Result<T> = std::result::Result<T, Error>;
+
+enum TaggedControlSocket {
+    Vm(VmControlResponseSocket),
+    Wayland(WlControlResponseSocket),
+}
+
+impl AsRef<UnixSeqpacket> for TaggedControlSocket {
+    fn as_ref(&self) -> &UnixSeqpacket {
+        use self::TaggedControlSocket::*;
+        match &self {
+            Vm(ref socket) => socket,
+            Wayland(ref socket) => socket,
+        }
+    }
+}
+
+impl AsRawFd for TaggedControlSocket {
+    fn as_raw_fd(&self) -> RawFd {
+        self.as_ref().as_raw_fd()
+    }
+}
 
 fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
@@ -575,7 +596,7 @@ fn create_gpu_device(
 fn create_wayland_device(
     cfg: &Config,
     socket_path: &Path,
-    socket: VmControlRequestSocket,
+    socket: WlControlRequestSocket,
     resource_bridge: Option<virtio::resource_bridge::ResourceRequestSocket>,
 ) -> DeviceResult {
     let wayland_socket_dir = socket_path.parent().ok_or(Error::InvalidWaylandPath)?;
@@ -671,7 +692,7 @@ fn create_virtio_devices(
     cfg: &Config,
     mem: &GuestMemory,
     _exit_evt: &EventFd,
-    wayland_device_socket: VmControlRequestSocket,
+    wayland_device_socket: WlControlRequestSocket,
     balloon_device_socket: BalloonControlResponseSocket,
     disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
@@ -771,7 +792,7 @@ fn create_devices(
     cfg: Config,
     mem: &GuestMemory,
     exit_evt: &EventFd,
-    wayland_device_socket: VmControlRequestSocket,
+    wayland_device_socket: WlControlRequestSocket,
     balloon_device_socket: BalloonControlResponseSocket,
     disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
     usb_provider: HostBackendDeviceProvider,
@@ -1126,8 +1147,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
     let mut control_sockets = Vec::new();
     let (wayland_host_socket, wayland_device_socket) =
-        msg_socket::pair::<VmResponse, VmRequest>().map_err(Error::CreateSocket)?;
-    control_sockets.push(wayland_host_socket);
+        msg_socket::pair::<WlDriverResponse, WlDriverRequest>().map_err(Error::CreateSocket)?;
+    control_sockets.push(TaggedControlSocket::Wayland(wayland_host_socket));
     // Balloon gets a special socket so balloon requests can be forwarded from the main process.
     let (balloon_host_socket, balloon_device_socket) =
         msg_socket::pair::<BalloonControlCommand, ()>().map_err(Error::CreateSocket)?;
@@ -1213,7 +1234,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
 fn run_control(
     mut linux: RunnableLinuxVm,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
-    mut control_sockets: Vec<VmControlResponseSocket>,
+    mut control_sockets: Vec<TaggedControlSocket>,
     balloon_host_socket: BalloonControlRequestSocket,
     disk_host_sockets: &[DiskControlRequestSocket],
     usb_control_socket: UsbControlSocket,
@@ -1482,7 +1503,8 @@ fn run_control(
                                         },
                                     )
                                     .map_err(Error::PollContextAdd)?;
-                                control_sockets.push(MsgSocket::new(socket));
+                                control_sockets
+                                    .push(TaggedControlSocket::Vm(MsgSocket::new(socket)));
                             }
                             Err(e) => error!("failed to accept socket: {}", e),
                         }
@@ -1490,42 +1512,58 @@ fn run_control(
                 }
                 Token::VmControl { index } => {
                     if let Some(socket) = control_sockets.get(index) {
-                        match socket.recv() {
-                            Ok(request) => {
-                                let mut run_mode_opt = None;
-                                let response = request.execute(
-                                    &mut linux.vm,
-                                    &mut linux.resources,
-                                    &mut run_mode_opt,
-                                    &balloon_host_socket,
-                                    disk_host_sockets,
-                                    &usb_control_socket,
-                                );
-                                if let Err(e) = socket.send(&response) {
-                                    error!("failed to send VmResponse: {}", e);
-                                }
-                                if let Some(run_mode) = run_mode_opt {
-                                    info!("control socket changed run mode to {}", run_mode);
-                                    match run_mode {
-                                        VmRunMode::Exiting => {
-                                            break 'poll;
-                                        }
-                                        other => {
-                                            run_mode_arc.set_and_notify(other);
-                                            for handle in &vcpu_handles {
-                                                let _ = handle.kill(SIGRTMIN() + 0);
+                        match socket {
+                            TaggedControlSocket::Vm(socket) => match socket.recv() {
+                                Ok(request) => {
+                                    let mut run_mode_opt = None;
+                                    let response = request.execute(
+                                        &mut run_mode_opt,
+                                        &balloon_host_socket,
+                                        disk_host_sockets,
+                                        &usb_control_socket,
+                                    );
+                                    if let Err(e) = socket.send(&response) {
+                                        error!("failed to send VmResponse: {}", e);
+                                    }
+                                    if let Some(run_mode) = run_mode_opt {
+                                        info!("control socket changed run mode to {}", run_mode);
+                                        match run_mode {
+                                            VmRunMode::Exiting => {
+                                                break 'poll;
+                                            }
+                                            other => {
+                                                run_mode_arc.set_and_notify(other);
+                                                for handle in &vcpu_handles {
+                                                    let _ = handle.kill(SIGRTMIN() + 0);
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
-                            Err(e) => {
-                                if let MsgError::BadRecvSize { actual: 0, .. } = e {
-                                    vm_control_indices_to_remove.push(index);
-                                } else {
-                                    error!("failed to recv VmRequest: {}", e);
+                                Err(e) => {
+                                    if let MsgError::BadRecvSize { actual: 0, .. } = e {
+                                        vm_control_indices_to_remove.push(index);
+                                    } else {
+                                        error!("failed to recv VmRequest: {}", e);
+                                    }
                                 }
-                            }
+                            },
+                            TaggedControlSocket::Wayland(socket) => match socket.recv() {
+                                Ok(request) => {
+                                    let response =
+                                        request.execute(&mut linux.vm, &mut linux.resources);
+                                    if let Err(e) = socket.send(&response) {
+                                        error!("failed to send WlControlResponse: {}", e);
+                                    }
+                                }
+                                Err(e) => {
+                                    if let MsgError::BadRecvSize { actual: 0, .. } = e {
+                                        vm_control_indices_to_remove.push(index);
+                                    } else {
+                                        error!("failed to recv WlControlRequest: {}", e);
+                                    }
+                                }
+                            },
                         }
                     }
                 }
@@ -1547,7 +1585,10 @@ fn run_control(
                     // It's possible more data is readable and buffered while the socket is hungup,
                     // so don't delete the socket from the poll context until we're sure all the
                     // data is read.
-                    match control_sockets.get(index).map(|s| s.get_readable_bytes()) {
+                    match control_sockets
+                        .get(index)
+                        .map(|s| s.as_ref().get_readable_bytes())
+                    {
                         Some(Ok(0)) | Some(Err(_)) => vm_control_indices_to_remove.push(index),
                         Some(Ok(x)) => info!("control index {} has {} bytes readable", index, x),
                         _ => {}
