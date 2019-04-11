@@ -16,6 +16,7 @@ fn main() {
         out_dir: out_dir.as_os_str().to_str().unwrap(),
         input: &["protos/plugin.proto"],
         includes: &["protos"],
+        ..Default::default()
     })
     .expect("protoc");
 

@@ -17,7 +17,7 @@ exclude = [
     "sync",
     "sys_util",
     "syscall_defines",
-    "tempdir",
+    "tempfile",
 ]
 
 [features]
@@ -50,7 +50,7 @@ msg_socket = { path = "msg_socket" }
 net_util = { path = "net_util" }
 p9 = { path = "p9" }
 plugin_proto = { path = "plugin_proto", optional = true }
-protobuf = { version = "=1.4.3", optional = true }
+protobuf = { version = "2.3", optional = true }
 qcow = { path = "qcow" }
 rand_ish = { path = "rand_ish" }
 render_node_forward = { path = "render_node_forward", optional = true }
@@ -78,4 +78,4 @@ poll_token_derive = { path = "sys_util/poll_token_derive" }
 sync = { path = "sync" }
 sys_util = { path = "sys_util" }
 syscall_defines = { path = "syscall_defines" }
-tempdir = { path = "tempdir" }
+tempfile = { path = "tempfile" }

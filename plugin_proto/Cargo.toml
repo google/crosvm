@@ -5,9 +5,9 @@ authors = ["The Chromium OS Authors"]
 build = "build.rs"
 
 [dependencies]
-protobuf = "=1.4.3"
+protobuf = "2.3"
 kvm_sys = { path = "../kvm_sys" }
 
 [build-dependencies]
 cc = "=1.0.25"
-protoc-rust = "=1.4.3"
+protoc-rust = "2.3"
