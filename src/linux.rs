@@ -46,6 +46,7 @@ use sys_util::{
 use sys_util::{GuestAddress, MemoryMapping, Protection};
 use vhost;
 use vm_control::{
+    DiskControlCommand, DiskControlRequestSocket, DiskControlResponseSocket, DiskControlResult,
     UsbControlSocket, VmControlRequestSocket, VmControlResponseSocket, VmRequest, VmResponse,
     VmRunMode,
 };
@@ -280,7 +281,7 @@ type DeviceResult<T = VirtioDeviceStub> = std::result::Result<T, Error>;
 fn create_block_device(
     cfg: &Config,
     disk: &DiskOption,
-    disk_device_socket: VmControlResponseSocket,
+    disk_device_socket: DiskControlResponseSocket,
 ) -> DeviceResult {
     // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
     let raw_image: File = if disk.path.parent() == Some(Path::new("/proc/self/fd")) {
@@ -671,7 +672,7 @@ fn create_virtio_devices(
     _exit_evt: &EventFd,
     wayland_device_socket: VmControlRequestSocket,
     balloon_device_socket: UnixSeqpacket,
-    disk_device_sockets: &mut Vec<VmControlResponseSocket>,
+    disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -771,7 +772,7 @@ fn create_devices(
     exit_evt: &EventFd,
     wayland_device_socket: VmControlRequestSocket,
     balloon_device_socket: UnixSeqpacket,
-    disk_device_sockets: &mut Vec<VmControlResponseSocket>,
+    disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
     usb_provider: HostBackendDeviceProvider,
 ) -> DeviceResult<Vec<(Box<dyn PciDevice>, Option<Minijail>)>> {
     let stubs = create_virtio_devices(
@@ -1136,7 +1137,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let disk_count = cfg.disks.len();
     for _ in 0..disk_count {
         let (disk_host_socket, disk_device_socket) =
-            msg_socket::pair::<VmRequest, VmResponse>().map_err(Error::CreateSocket)?;
+            msg_socket::pair::<DiskControlCommand, DiskControlResult>()
+                .map_err(Error::CreateSocket)?;
         disk_host_sockets.push(disk_host_socket);
         disk_device_sockets.push(disk_device_socket);
     }
@@ -1207,7 +1209,7 @@ fn run_control(
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
     mut control_sockets: Vec<VmControlResponseSocket>,
     balloon_host_socket: UnixSeqpacket,
-    disk_host_sockets: &[VmControlRequestSocket],
+    disk_host_sockets: &[DiskControlRequestSocket],
     usb_control_socket: UsbControlSocket,
     sigchld_fd: SignalFd,
     _render_node_host: RenderNodeHost,

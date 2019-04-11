@@ -27,8 +27,8 @@ use sys_util::{
     validate_raw_fd, warn,
 };
 use vm_control::{
-    MaybeOwnedFd, UsbControlCommand, UsbControlResult, VmControlRequestSocket, VmRequest,
-    VmResponse,
+    DiskControlCommand, MaybeOwnedFd, UsbControlCommand, UsbControlResult, VmControlRequestSocket,
+    VmRequest, VmResponse,
 };
 
 use crate::argument::{print_help, set_arguments, Argument};
@@ -953,9 +953,9 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
                 }
             };
 
-            VmRequest::DiskResize {
+            VmRequest::DiskCommand {
                 disk_index,
-                new_size,
+                command: DiskControlCommand::Resize { new_size },
             }
         }
         _ => {

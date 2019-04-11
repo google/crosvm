@@ -92,6 +92,28 @@ impl Default for VmRunMode {
 }
 
 #[derive(MsgOnSocket, Debug)]
+pub enum DiskControlCommand {
+    /// Resize a disk to `new_size` in bytes.
+    Resize { new_size: u64 },
+}
+
+impl Display for DiskControlCommand {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::DiskControlCommand::*;
+
+        match self {
+            Resize { new_size } => write!(f, "disk_resize {}", new_size),
+        }
+    }
+}
+
+#[derive(MsgOnSocket, Debug)]
+pub enum DiskControlResult {
+    Ok,
+    Err(SysError),
+}
+
+#[derive(MsgOnSocket, Debug)]
 pub enum UsbControlCommand {
     AttachDevice {
         bus: u8,
@@ -133,7 +155,11 @@ impl Display for UsbControlResult {
     }
 }
 
+pub type DiskControlRequestSocket = MsgSocket<DiskControlCommand, DiskControlResult>;
+pub type DiskControlResponseSocket = MsgSocket<DiskControlResult, DiskControlCommand>;
+
 pub type UsbControlSocket = MsgSocket<UsbControlCommand, UsbControlResult>;
+
 pub type VmControlRequestSocket = MsgSocket<VmRequest, VmResponse>;
 pub type VmControlResponseSocket = MsgSocket<VmResponse, VmRequest>;
 
@@ -162,9 +188,12 @@ pub enum VmRequest {
         height: u32,
         format: u32,
     },
-    /// Resize a disk chosen by `disk_index` to `new_size` in bytes.
+    /// Send a command to a disk chosen by `disk_index`.
     /// `disk_index` is a 0-based count of `--disk`, `--rwdisk`, and `-r` command-line options.
-    DiskResize { disk_index: usize, new_size: u64 },
+    DiskCommand {
+        disk_index: usize,
+        command: DiskControlCommand,
+    },
     /// Command to use controller.
     UsbCommand(UsbControlCommand),
 }
@@ -209,7 +238,7 @@ impl VmRequest {
         sys_allocator: &mut SystemAllocator,
         run_mode: &mut Option<VmRunMode>,
         balloon_host_socket: &UnixSeqpacket,
-        disk_host_sockets: &[MsgSocket<VmRequest, VmResponse>],
+        disk_host_sockets: &[DiskControlRequestSocket],
         usb_control_socket: &UsbControlSocket,
     ) -> VmResponse {
         match *self {
@@ -274,15 +303,19 @@ impl VmRequest {
                     Err(e) => VmResponse::Err(e),
                 }
             }
-            VmRequest::DiskResize { disk_index, .. } => {
+            VmRequest::DiskCommand {
+                disk_index,
+                ref command,
+            } => {
                 // Forward the request to the block device process via its control socket.
                 if let Some(sock) = disk_host_sockets.get(disk_index) {
-                    if let Err(e) = sock.send(self) {
+                    if let Err(e) = sock.send(command) {
                         error!("disk socket send failed: {}", e);
                         VmResponse::Err(SysError::new(EINVAL))
                     } else {
                         match sock.recv() {
-                            Ok(result) => result,
+                            Ok(DiskControlResult::Ok) => VmResponse::Ok,
+                            Ok(DiskControlResult::Err(e)) => VmResponse::Err(e),
                             Err(e) => {
                                 error!("disk socket recv failed: {}", e);
                                 VmResponse::Err(SysError::new(EINVAL))

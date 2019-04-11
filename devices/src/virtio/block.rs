@@ -24,7 +24,7 @@ use sys_util::{
 
 use data_model::{DataInit, Le16, Le32, Le64};
 use msg_socket::{MsgReceiver, MsgSender};
-use vm_control::{VmControlResponseSocket, VmRequest, VmResponse};
+use vm_control::{DiskControlCommand, DiskControlResponseSocket, DiskControlResult};
 
 use super::{
     DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_CONFIG_CHANGED,
@@ -663,24 +663,24 @@ impl<T: DiskFile> Worker<T> {
         used_count > 0
     }
 
-    fn resize(&mut self, new_size: u64) -> VmResponse {
+    fn resize(&mut self, new_size: u64) -> DiskControlResult {
         if self.read_only {
             error!("Attempted to resize read-only block device");
-            return VmResponse::Err(SysError::new(libc::EROFS));
+            return DiskControlResult::Err(SysError::new(libc::EROFS));
         }
 
         info!("Resizing block device to {} bytes", new_size);
 
         if let Err(e) = self.disk_image.set_len(new_size) {
             error!("Resizing disk failed! {}", e);
-            return VmResponse::Err(SysError::new(libc::EIO));
+            return DiskControlResult::Err(SysError::new(libc::EIO));
         }
 
         if let Ok(new_disk_size) = self.disk_image.seek(SeekFrom::End(0)) {
             let mut disk_size = self.disk_size.lock();
             *disk_size = new_disk_size;
         }
-        VmResponse::Ok
+        DiskControlResult::Ok
     }
 
     fn signal_used_queue(&self) {
@@ -699,7 +699,7 @@ impl<T: DiskFile> Worker<T> {
         &mut self,
         queue_evt: EventFd,
         kill_evt: EventFd,
-        control_socket: VmControlResponseSocket,
+        control_socket: DiskControlResponseSocket,
     ) {
         #[derive(PollToken)]
         enum Token {
@@ -777,14 +777,9 @@ impl<T: DiskFile> Worker<T> {
                         };
 
                         let resp = match req {
-                            VmRequest::DiskResize { new_size, .. } => {
+                            DiskControlCommand::Resize { new_size } => {
                                 needs_config_interrupt = true;
                                 self.resize(new_size)
-                            }
-                            // Only DiskResize makes sense - fail any other requests
-                            _ => {
-                                error!("block device received unexpected VmRequest");
-                                VmResponse::Err(SysError::new(libc::EINVAL))
                             }
                         };
 
@@ -819,7 +814,7 @@ pub struct Block<T: DiskFile> {
     disk_size: Arc<Mutex<u64>>,
     avail_features: u64,
     read_only: bool,
-    control_socket: Option<VmControlResponseSocket>,
+    control_socket: Option<DiskControlResponseSocket>,
 }
 
 fn build_config_space(disk_size: u64) -> virtio_blk_config {
@@ -845,7 +840,7 @@ impl<T: DiskFile> Block<T> {
     pub fn new(
         mut disk_image: T,
         read_only: bool,
-        control_socket: Option<VmControlResponseSocket>,
+        control_socket: Option<DiskControlResponseSocket>,
     ) -> SysResult<Block<T>> {
         let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
         if disk_size % SECTOR_SIZE != 0 {
