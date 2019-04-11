@@ -4,10 +4,6 @@
 
 // Exported interface to basic qcow functionality to be used from C.
 
-extern crate libc;
-extern crate qcow;
-extern crate sys_util;
-
 use libc::{EBADFD, EINVAL, EIO, ENOSYS};
 use std::ffi::CStr;
 use std::fs::{File, OpenOptions};

@@ -1,5 +1,3 @@
-extern crate bit_field;
-
 use bit_field::*;
 
 #[bitfield]

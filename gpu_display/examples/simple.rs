@@ -1,5 +1,3 @@
-extern crate gpu_display;
-
 use gpu_display::*;
 
 fn main() {

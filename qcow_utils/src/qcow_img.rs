@@ -2,10 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-extern crate getopts;
-extern crate qcow;
-extern crate sys_util;
-
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 

@@ -4,14 +4,6 @@
 
 //! Small system utility modules for usage by other modules.
 
-extern crate data_model;
-extern crate libc;
-extern crate syscall_defines;
-#[allow(unused_imports)]
-#[macro_use]
-extern crate poll_token_derive;
-extern crate sync;
-
 pub mod affinity;
 #[macro_use]
 pub mod handle_eintr;
@@ -226,8 +218,6 @@ pub fn fallocate(
 /// Reaps all child processes until there are no terminated children to reap.
 ///
 /// ```
-/// # extern crate libc;
-/// # extern crate sys_util;
 /// fn reap_children() {
 ///     loop {
 ///         match sys_util::reap_child() {

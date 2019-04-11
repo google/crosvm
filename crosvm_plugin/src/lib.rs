@@ -15,13 +15,6 @@
 //! connection's socket. Then, that socket is read for a `MainResponse` or `VcpuResponse`, which is
 //! translated to the appropriate return type for the C API.
 
-extern crate kvm;
-extern crate kvm_sys;
-extern crate libc;
-extern crate protobuf;
-extern crate protos;
-extern crate sys_util;
-
 use std::env;
 use std::fs::File;
 use std::mem::{size_of, swap};

@@ -4,9 +4,6 @@
 
 #![cfg(feature = "plugin")]
 
-extern crate rand_ish;
-extern crate sys_util;
-
 use std::env::{current_exe, var_os};
 use std::ffi::OsString;
 use std::fs::{remove_file, File};

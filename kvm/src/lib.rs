@@ -4,12 +4,6 @@
 
 //! A safe wrapper around the kernel's KVM interface.
 
-extern crate kvm_sys;
-extern crate libc;
-#[macro_use]
-extern crate sys_util;
-extern crate msg_socket;
-
 mod cap;
 
 use std::cmp::{min, Ordering};

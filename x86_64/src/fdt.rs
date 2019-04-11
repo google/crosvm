@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-extern crate arch;
-
 use arch::fdt::{begin_node, end_node, finish_fdt, property_string, start_fdt, Error};
 use std::fs::File;
 use std::io::BufRead;

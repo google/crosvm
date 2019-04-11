@@ -6,9 +6,6 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-#[macro_use]
-extern crate sys_util;
-
 use sys_util::{ioctl_ior_nr, ioctl_iow_nr};
 
 // generated with bindgen /usr/include/linux/if.h --no-unstable-rust

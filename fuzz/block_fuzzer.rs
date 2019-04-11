@@ -3,11 +3,6 @@
 // found in the LICENSE file.
 
 #![no_main]
-extern crate devices;
-extern crate libc;
-extern crate sys_util;
-
-use sys_util::{EventFd, GuestAddress, GuestMemory, SharedMemory};
 
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
@@ -20,6 +15,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use devices::virtio::{Block, Queue, VirtioDevice};
+use sys_util::{EventFd, GuestAddress, GuestMemory, SharedMemory};
 
 const MEM_SIZE: u64 = 256 * 1024 * 1024;
 const DESC_SIZE: u64 = 16; // Bytes in one virtio descriptor.

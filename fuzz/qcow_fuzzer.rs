@@ -3,9 +3,6 @@
 // found in the LICENSE file.
 
 #![no_main]
-extern crate libc;
-extern crate qcow;
-extern crate sys_util;
 
 use qcow::QcowFile;
 use sys_util::SharedMemory;

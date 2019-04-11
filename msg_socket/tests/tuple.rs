@@ -1,10 +1,5 @@
-extern crate msg_on_socket_derive;
-extern crate msg_socket;
-extern crate sys_util;
-
-use sys_util::EventFd;
-
 use msg_socket::*;
+use sys_util::EventFd;
 
 #[derive(MsgOnSocket)]
 struct Message(u8, u16, EventFd);

@@ -20,7 +20,6 @@ pub use crate::mechanism::*;
 /// # Example
 ///
 /// ```rust
-/// extern crate assertions;
 /// use assertions::const_assert;
 ///
 /// fn main() {
@@ -31,7 +30,6 @@ pub use crate::mechanism::*;
 /// # Example that fails to compile
 ///
 /// ```rust,compile_fail
-/// extern crate assertions;
 /// use assertions::const_assert;
 ///
 /// fn main() {

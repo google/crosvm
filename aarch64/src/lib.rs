@@ -2,19 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-extern crate arch;
-extern crate data_model;
-extern crate devices;
-extern crate io_jail;
-extern crate kernel_cmdline;
-extern crate kvm;
-extern crate kvm_sys;
-extern crate libc;
-extern crate remain;
-extern crate resources;
-extern crate sync;
-extern crate sys_util;
-
 use std::error::Error as StdError;
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};

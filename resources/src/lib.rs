@@ -4,12 +4,6 @@
 
 //! Manages system resources that can be allocated to VMs and their devices.
 
-#[cfg(feature = "wl-dmabuf")]
-extern crate gpu_buffer;
-extern crate libc;
-extern crate msg_socket;
-extern crate sys_util;
-
 mod address_allocator;
 mod gpu_allocator;
 mod system_allocator;

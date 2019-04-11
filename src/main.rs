@@ -4,40 +4,6 @@
 
 //! Runs a virtual machine under KVM
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-extern crate aarch64;
-extern crate arch;
-extern crate audio_streams;
-extern crate byteorder;
-extern crate devices;
-extern crate io_jail;
-extern crate kernel_cmdline;
-extern crate kernel_loader;
-extern crate kvm;
-extern crate kvm_sys;
-extern crate libc;
-extern crate libcras;
-extern crate net_util;
-extern crate qcow;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-extern crate x86_64;
-#[macro_use]
-extern crate sys_util;
-extern crate data_model;
-#[cfg(feature = "wl-dmabuf")]
-extern crate gpu_buffer;
-extern crate msg_socket;
-#[cfg(feature = "plugin")]
-extern crate protobuf;
-#[cfg(feature = "plugin")]
-extern crate protos;
-extern crate rand_ish;
-extern crate remain;
-extern crate resources;
-extern crate sync;
-extern crate vhost;
-extern crate vm_control;
-
 pub mod argument;
 pub mod linux;
 pub mod panic_hook;

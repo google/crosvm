@@ -28,8 +28,6 @@
 //! first three fields.
 //!
 //! ```
-//! extern crate bit_field;
-//!
 //! use bit_field::*;
 //!
 //! #[bitfield]
@@ -88,8 +86,6 @@
 //! `B1` but with accessors that use `bool` rather than `u8`.
 //!
 //! ```
-//! extern crate bit_field;
-//!
 //! use bit_field::*;
 //!
 //! #[bitfield]
@@ -105,8 +101,6 @@
 //! the width with `#[bits = N]`. This should be used to improve type safety.
 //!
 //! ```
-//! extern crate bit_field;
-//!
 //! use bit_field::*;
 //!
 //! #[bitfield]
@@ -133,8 +127,6 @@
 //! any variant will result in an `Err(u64)`.
 //!
 //! ```
-//! extern crate bit_field;
-//!
 //! use bit_field::*;
 //!
 //! #[bitfield]
@@ -159,8 +151,6 @@
 //! getter and setter are defined in terms of the given enum type.
 //!
 //! ```
-//! extern crate bit_field;
-//!
 //! use bit_field::*;
 //!
 //! #[bitfield]
@@ -187,8 +177,6 @@
 //! a bitfield struct.
 //!
 //! ```
-//! extern crate bit_field;
-//!
 //! use bit_field::*;
 //!
 //! #[bitfield]
@@ -215,8 +203,6 @@
 //! rewriting by the macro.
 //!
 //! ```
-//! extern crate bit_field;
-//!
 //! use bit_field::*;
 //!
 //! #[bitfield]
@@ -235,8 +221,6 @@
 //! > the trait `bit_field::checks::TotalSizeIsMultipleOfEightBits` is not implemented
 //!
 //! ```compile_fail
-//! extern crate bit_field;
-//!
 //! use bit_field::*;
 //!
 //! #[bitfield]
@@ -251,8 +235,6 @@
 //! (2^n)-1, it will be caught at compile time.
 //!
 //! ```compile_fail
-//! extern crate bit_field;
-//!
 //! use bit_field::*;
 //!
 //! #[bitfield]
@@ -268,8 +250,6 @@
 //! number of bits in that field, it will be caught.
 //!
 //! ```compile_fail
-//! extern crate bit_field;
-//!
 //! use bit_field::*;
 //!
 //! #[bitfield]
@@ -288,10 +268,6 @@
 //! ```
 
 use std::fmt::{self, Display};
-
-#[allow(unused_imports)]
-#[macro_use]
-extern crate bit_field_derive;
 
 pub use bit_field_derive::bitfield;
 

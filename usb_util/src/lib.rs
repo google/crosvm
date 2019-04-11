@@ -10,10 +10,6 @@
 #[cfg_attr(feature = "cargo-clippy", allow(clippy))]
 mod bindings;
 
-extern crate assertions;
-extern crate data_model;
-extern crate sync;
-
 #[macro_use]
 pub mod error;
 pub mod config_descriptor;

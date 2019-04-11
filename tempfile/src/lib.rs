@@ -5,8 +5,6 @@
 //! Simplified tempfile which doesn't depend on the `rand` crate, instead using
 //! /dev/urandom as a source of entropy
 
-extern crate rand_ish;
-
 use rand_ish::urandom_str;
 use std::env;
 use std::fs;

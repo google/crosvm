@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-extern crate kvm_sys;
-extern crate libc;
-
 use libc::{c_char, ioctl, open, O_RDWR};
 
 use kvm_sys::*;

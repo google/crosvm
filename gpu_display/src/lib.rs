@@ -4,9 +4,6 @@
 
 //! Crate for displaying simple surfaces and GPU buffers over wayland.
 
-extern crate data_model;
-extern crate sys_util;
-
 mod dwl;
 
 use std::cell::Cell;

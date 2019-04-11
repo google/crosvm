@@ -2,10 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-extern crate libc;
-extern crate net_sys;
-extern crate sys_util;
-
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Read, Result as IoResult, Write};

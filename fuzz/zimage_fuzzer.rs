@@ -3,9 +3,6 @@
 // found in the LICENSE file.
 
 #![no_main]
-extern crate kernel_loader;
-extern crate libc;
-extern crate sys_util;
 
 use sys_util::{GuestAddress, GuestMemory};
 

@@ -4,10 +4,6 @@
 
 //! A crate for using hardware acceleration to render virtio-gpu's virgl command streams.
 
-extern crate data_model;
-extern crate libc;
-extern crate sys_util;
-
 mod command_buffer;
 mod generated;
 mod pipe_format_fourcc;

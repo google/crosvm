@@ -4,10 +4,6 @@
 
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 
-extern crate kvm;
-extern crate kvm_sys;
-extern crate sys_util;
-
 use kvm::*;
 use kvm_sys::kvm_regs;
 use sys_util::{GuestAddress, GuestMemory, MemoryMapping, SharedMemory};

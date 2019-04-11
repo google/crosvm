@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-extern crate assertions;
-
 use std::mem::size_of;
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 

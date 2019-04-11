@@ -4,31 +4,6 @@
 
 //! Emulates virtual and hardware devices.
 
-extern crate audio_streams;
-extern crate bit_field;
-extern crate byteorder;
-extern crate data_model;
-extern crate enumn;
-extern crate io_jail;
-extern crate kvm;
-extern crate libc;
-extern crate msg_on_socket_derive;
-extern crate msg_socket;
-extern crate net_sys;
-extern crate net_util;
-extern crate p9;
-extern crate remain;
-extern crate resources;
-extern crate sync;
-#[macro_use]
-extern crate sys_util;
-#[cfg(feature = "tpm")]
-extern crate tpm2;
-extern crate usb_util;
-extern crate vhost;
-extern crate virtio_sys;
-extern crate vm_control;
-
 mod bus;
 mod cmos;
 mod i8042;

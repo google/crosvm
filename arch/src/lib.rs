@@ -4,16 +4,6 @@
 
 pub mod fdt;
 
-extern crate byteorder;
-extern crate devices;
-extern crate io_jail;
-extern crate kernel_cmdline;
-extern crate kvm;
-extern crate libc;
-extern crate resources;
-extern crate sync;
-extern crate sys_util;
-
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt::{self, Display};

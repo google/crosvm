@@ -9,13 +9,6 @@
 #![recursion_limit = "256"]
 
 extern crate proc_macro;
-extern crate proc_macro2;
-
-#[macro_use]
-extern crate quote;
-
-#[macro_use]
-extern crate syn;
 
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
@@ -46,9 +39,8 @@ fn p9_wire_format_inner(input: DeriveInput) -> TokenStream {
     let scope = Ident::new(&scope, Span::call_site());
     quote! {
         mod #scope {
-            extern crate std;
-            use self::std::io;
-            use self::std::result::Result::Ok;
+            use std::io;
+            use std::result::Result::Ok;
 
             use super::#container;
 
@@ -245,9 +237,8 @@ mod tests {
 
         let expected = quote! {
             mod wire_format_niijima_先輩 {
-                extern crate std;
-                use self::std::io;
-                use self::std::result::Result::Ok;
+                use std::io;
+                use std::result::Result::Ok;
 
                 use super::Niijima_先輩;
 

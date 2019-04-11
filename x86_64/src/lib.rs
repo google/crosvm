@@ -2,21 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-extern crate arch;
-extern crate byteorder;
-extern crate data_model;
-extern crate devices;
-extern crate io_jail;
-extern crate kernel_cmdline;
-extern crate kernel_loader;
-extern crate kvm;
-extern crate kvm_sys;
-extern crate libc;
-extern crate remain;
-extern crate resources;
-extern crate sync;
-extern crate sys_util;
-
 mod fdt;
 
 const X86_64_FDT_MAX_SIZE: u64 = 0x200000;

@@ -104,9 +104,6 @@
 #![recursion_limit = "128"]
 
 extern crate proc_macro;
-extern crate proc_macro2;
-extern crate quote;
-extern crate syn;
 
 #[cfg(test)]
 mod tests;

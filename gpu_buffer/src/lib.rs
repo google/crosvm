@@ -30,10 +30,6 @@
 //! # }
 //! ```
 
-extern crate data_model;
-#[macro_use]
-extern crate sys_util;
-
 mod drm_formats;
 mod raw;
 pub mod rendernode;

@@ -2,13 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[allow(unused_imports)]
-#[macro_use]
-extern crate msg_on_socket_derive;
-extern crate data_model;
-#[macro_use]
-extern crate sys_util;
-
 mod msg_on_socket;
 
 use std::io::Result;

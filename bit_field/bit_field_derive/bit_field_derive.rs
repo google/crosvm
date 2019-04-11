@@ -3,14 +3,8 @@
 // found in the LICENSE file.
 
 #![recursion_limit = "256"]
+
 extern crate proc_macro;
-extern crate proc_macro2;
-
-#[macro_use]
-extern crate quote;
-
-#[macro_use]
-extern crate syn;
 
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};

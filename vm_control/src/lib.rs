@@ -10,14 +10,6 @@
 //! The wire message format is a little-endian C-struct of fixed size, along with a file descriptor
 //! if the request type expects one.
 
-extern crate byteorder;
-extern crate kvm;
-extern crate libc;
-extern crate msg_socket;
-extern crate resources;
-#[macro_use]
-extern crate sys_util;
-
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};

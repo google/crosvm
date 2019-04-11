@@ -60,9 +60,7 @@ use aarch64::AArch64 as Arch;
 use x86_64::X8664arch as Arch;
 
 #[cfg(feature = "gpu-forward")]
-extern crate render_node_forward;
-#[cfg(feature = "gpu-forward")]
-use self::render_node_forward::*;
+use render_node_forward::*;
 #[cfg(not(feature = "gpu-forward"))]
 type RenderNodeHost = ();
 

@@ -2,12 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-extern crate byteorder;
-extern crate libc;
-extern crate remain;
-#[macro_use]
-extern crate sys_util;
-
 mod qcow_raw_file;
 mod refcount;
 mod vec_cache;

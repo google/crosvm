@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-extern crate libc;
-
 use libc::{gid_t, pid_t, uid_t};
 use std::os::raw::{c_char, c_int, c_ulong};
 
