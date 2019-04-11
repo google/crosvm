@@ -17,13 +17,10 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
 use libc::{EINVAL, EIO, ENODEV};
 
-use byteorder::{LittleEndian, WriteBytesExt};
 use kvm::Vm;
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{GpuMemoryDesc, SystemAllocator};
-use sys_util::{
-    error, net::UnixSeqpacket, Error as SysError, GuestAddress, MemoryMapping, MmapError, Result,
-};
+use sys_util::{error, Error as SysError, GuestAddress, MemoryMapping, MmapError, Result};
 
 /// A file descriptor either borrowed or owned by this.
 #[derive(Debug)]
@@ -92,6 +89,12 @@ impl Default for VmRunMode {
 }
 
 #[derive(MsgOnSocket, Debug)]
+pub enum BalloonControlCommand {
+    /// Set the size of the VM's balloon.
+    Adjust { num_bytes: u64 },
+}
+
+#[derive(MsgOnSocket, Debug)]
 pub enum DiskControlCommand {
     /// Resize a disk to `new_size` in bytes.
     Resize { new_size: u64 },
@@ -155,6 +158,9 @@ impl Display for UsbControlResult {
     }
 }
 
+pub type BalloonControlRequestSocket = MsgSocket<BalloonControlCommand, ()>;
+pub type BalloonControlResponseSocket = MsgSocket<(), BalloonControlCommand>;
+
 pub type DiskControlRequestSocket = MsgSocket<DiskControlCommand, DiskControlResult>;
 pub type DiskControlResponseSocket = MsgSocket<DiskControlResult, DiskControlCommand>;
 
@@ -168,8 +174,6 @@ pub type VmControlResponseSocket = MsgSocket<VmResponse, VmRequest>;
 /// Unless otherwise noted, each request should expect a `VmResponse::Ok` to be received on success.
 #[derive(MsgOnSocket, Debug)]
 pub enum VmRequest {
-    /// Set the size of the VM's balloon in bytes.
-    BalloonAdjust(u64),
     /// Break the VM's run loop and exit.
     Exit,
     /// Suspend the VM's VCPUs until resume.
@@ -188,6 +192,8 @@ pub enum VmRequest {
         height: u32,
         format: u32,
     },
+    /// Command for balloon driver.
+    BalloonCommand(BalloonControlCommand),
     /// Send a command to a disk chosen by `disk_index`.
     /// `disk_index` is a 0-based count of `--disk`, `--rwdisk`, and `-r` command-line options.
     DiskCommand {
@@ -242,7 +248,7 @@ impl VmRequest {
         vm: &mut Vm,
         sys_allocator: &mut SystemAllocator,
         run_mode: &mut Option<VmRunMode>,
-        balloon_host_socket: &UnixSeqpacket,
+        balloon_host_socket: &BalloonControlRequestSocket,
         disk_host_sockets: &[DiskControlRequestSocket],
         usb_control_socket: &UsbControlSocket,
     ) -> VmResponse {
@@ -269,17 +275,10 @@ impl VmRequest {
                 Ok(_) => VmResponse::Ok,
                 Err(e) => VmResponse::Err(e),
             },
-            VmRequest::BalloonAdjust(num_pages) => {
-                let mut buf = [0u8; 8];
-                // write_u64 can't fail as the buffer is 8 bytes long.
-                (&mut buf[0..])
-                    .write_u64::<LittleEndian>(num_pages)
-                    .unwrap();
-                match balloon_host_socket.send(&buf) {
-                    Ok(_) => VmResponse::Ok,
-                    Err(_) => VmResponse::Err(SysError::last()),
-                }
-            }
+            VmRequest::BalloonCommand(ref command) => match balloon_host_socket.send(command) {
+                Ok(_) => VmResponse::Ok,
+                Err(_) => VmResponse::Err(SysError::last()),
+            },
             VmRequest::AllocateAndRegisterGpuMemory {
                 width,
                 height,

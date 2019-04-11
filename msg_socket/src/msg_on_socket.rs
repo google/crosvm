@@ -172,6 +172,24 @@ impl<T: MsgOnSocket> MsgOnSocket for Option<T> {
     }
 }
 
+impl MsgOnSocket for () {
+    fn msg_size() -> usize {
+        0
+    }
+
+    fn max_fd_count() -> usize {
+        0
+    }
+
+    unsafe fn read_from_buffer(_buffer: &[u8], _fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+        Ok(((), 0))
+    }
+
+    fn write_to_buffer(&self, _buffer: &mut [u8], _fds: &mut [RawFd]) -> MsgResult<usize> {
+        Ok(0)
+    }
+}
+
 macro_rules! rawfd_impl {
     ($type:ident) => {
         impl MsgOnSocket for $type {

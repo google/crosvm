@@ -6,17 +6,17 @@ use std;
 use std::cmp;
 use std::fmt::{self, Display};
 use std::io::Write;
-use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use byteorder::{ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use msg_socket::MsgReceiver;
 use sys_util::{
-    self, error, info, net::UnixSeqpacket, warn, EventFd, GuestAddress, GuestMemory, PollContext,
-    PollToken,
+    self, error, info, warn, EventFd, GuestAddress, GuestMemory, PollContext, PollToken,
 };
+use vm_control::{BalloonControlCommand, BalloonControlResponseSocket};
 
 use super::{
     DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_CONFIG_CHANGED,
@@ -69,7 +69,7 @@ struct Worker {
     interrupt_evt: EventFd,
     interrupt_resample_evt: EventFd,
     config: Arc<BalloonConfig>,
-    command_socket: UnixSeqpacket,
+    command_socket: BalloonControlResponseSocket,
 }
 
 fn valid_inflate_desc(desc: &DescriptorChain) -> bool {
@@ -194,17 +194,17 @@ impl Worker {
                         needs_interrupt |= self.process_inflate_deflate(false);
                     }
                     Token::CommandSocket => {
-                        let mut buf = [0u8; mem::size_of::<u64>()];
-                        if let Ok(count) = self.command_socket.recv(&mut buf) {
-                            // Ignore any malformed messages that are not exactly 8 bytes long.
-                            if count == mem::size_of::<u64>() {
-                                let num_bytes = LittleEndian::read_u64(&buf);
-                                let num_pages = (num_bytes >> VIRTIO_BALLOON_PFN_SHIFT) as usize;
-                                info!("ballon config changed to consume {} pages", num_pages);
+                        if let Ok(req) = self.command_socket.recv() {
+                            match req {
+                                BalloonControlCommand::Adjust { num_bytes } => {
+                                    let num_pages =
+                                        (num_bytes >> VIRTIO_BALLOON_PFN_SHIFT) as usize;
+                                    info!("ballon config changed to consume {} pages", num_pages);
 
-                                self.config.num_pages.store(num_pages, Ordering::Relaxed);
-                                self.signal_config_changed();
-                            }
+                                    self.config.num_pages.store(num_pages, Ordering::Relaxed);
+                                    self.signal_config_changed();
+                                }
+                            };
                         }
                     }
                     Token::InterruptResample => {
@@ -232,7 +232,7 @@ impl Worker {
 
 /// Virtio device for memory balloon inflation/deflation.
 pub struct Balloon {
-    command_socket: Option<UnixSeqpacket>,
+    command_socket: Option<BalloonControlResponseSocket>,
     config: Arc<BalloonConfig>,
     features: u64,
     kill_evt: Option<EventFd>,
@@ -240,7 +240,7 @@ pub struct Balloon {
 
 impl Balloon {
     /// Create a new virtio balloon device.
-    pub fn new(command_socket: UnixSeqpacket) -> Result<Balloon> {
+    pub fn new(command_socket: BalloonControlResponseSocket) -> Result<Balloon> {
         Ok(Balloon {
             command_socket: Some(command_socket),
             config: Arc::new(BalloonConfig {

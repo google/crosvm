@@ -9,7 +9,6 @@ use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, Read};
-use std::mem;
 use std::net::Ipv4Addr;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
@@ -23,7 +22,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use libc::{self, c_int, gid_t, uid_t};
 
 use audio_streams::DummyStreamSource;
-use byteorder::{ByteOrder, LittleEndian};
 use devices::virtio::{self, VirtioDevice};
 use devices::{self, HostBackendDeviceProvider, PciDevice, VirtioPciDevice, XhciController};
 use io_jail::{self, Minijail};
@@ -37,7 +35,7 @@ use remain::sorted;
 #[cfg(feature = "gpu-forward")]
 use resources::Alloc;
 use sync::{Condvar, Mutex};
-use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
+use sys_util::net::{UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use sys_util::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_signal_handler, set_cpu_affinity,
@@ -48,6 +46,7 @@ use sys_util::{
 use sys_util::{GuestAddress, MemoryMapping, Protection};
 use vhost;
 use vm_control::{
+    BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
     DiskControlCommand, DiskControlRequestSocket, DiskControlResponseSocket, DiskControlResult,
     UsbControlSocket, VmControlRequestSocket, VmControlResponseSocket, VmRequest, VmResponse,
     VmRunMode,
@@ -457,7 +456,7 @@ fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
     })
 }
 
-fn create_balloon_device(cfg: &Config, socket: UnixSeqpacket) -> DeviceResult {
+fn create_balloon_device(cfg: &Config, socket: BalloonControlResponseSocket) -> DeviceResult {
     let dev = virtio::Balloon::new(socket).map_err(Error::BalloonDeviceNew)?;
 
     Ok(VirtioDeviceStub {
@@ -673,7 +672,7 @@ fn create_virtio_devices(
     mem: &GuestMemory,
     _exit_evt: &EventFd,
     wayland_device_socket: VmControlRequestSocket,
-    balloon_device_socket: UnixSeqpacket,
+    balloon_device_socket: BalloonControlResponseSocket,
     disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
@@ -773,7 +772,7 @@ fn create_devices(
     mem: &GuestMemory,
     exit_evt: &EventFd,
     wayland_device_socket: VmControlRequestSocket,
-    balloon_device_socket: UnixSeqpacket,
+    balloon_device_socket: BalloonControlResponseSocket,
     disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
     usb_provider: HostBackendDeviceProvider,
 ) -> DeviceResult<Vec<(Box<dyn PciDevice>, Option<Minijail>)>> {
@@ -1131,7 +1130,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     control_sockets.push(wayland_host_socket);
     // Balloon gets a special socket so balloon requests can be forwarded from the main process.
     let (balloon_host_socket, balloon_device_socket) =
-        UnixSeqpacket::pair().map_err(Error::CreateSocket)?;
+        msg_socket::pair::<BalloonControlCommand, ()>().map_err(Error::CreateSocket)?;
 
     // Create one control socket per disk.
     let mut disk_device_sockets = Vec::new();
@@ -1215,7 +1214,7 @@ fn run_control(
     mut linux: RunnableLinuxVm,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
     mut control_sockets: Vec<VmControlResponseSocket>,
-    balloon_host_socket: UnixSeqpacket,
+    balloon_host_socket: BalloonControlRequestSocket,
     disk_host_sockets: &[DiskControlRequestSocket],
     usb_control_socket: UsbControlSocket,
     sigchld_fd: SignalFd,
@@ -1416,9 +1415,10 @@ fn run_control(
                             } else {
                                 0
                             };
-                        let mut buf = [0u8; mem::size_of::<u64>()];
-                        LittleEndian::write_u64(&mut buf, current_balloon_memory);
-                        if let Err(e) = balloon_host_socket.send(&buf) {
+                        let command = BalloonControlCommand::Adjust {
+                            num_bytes: current_balloon_memory,
+                        };
+                        if let Err(e) = balloon_host_socket.send(&command) {
                             warn!("failed to send memory value to balloon device: {}", e);
                         }
                     }
@@ -1431,9 +1431,10 @@ fn run_control(
                             max_balloon_memory,
                         );
                         if current_balloon_memory != old_balloon_memory {
-                            let mut buf = [0u8; mem::size_of::<u64>()];
-                            LittleEndian::write_u64(&mut buf, current_balloon_memory);
-                            if let Err(e) = balloon_host_socket.send(&buf) {
+                            let command = BalloonControlCommand::Adjust {
+                                num_bytes: current_balloon_memory,
+                            };
+                            if let Err(e) = balloon_host_socket.send(&command) {
                                 warn!("failed to send memory value to balloon device: {}", e);
                             }
                         }

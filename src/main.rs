@@ -27,8 +27,8 @@ use sys_util::{
     validate_raw_fd, warn,
 };
 use vm_control::{
-    DiskControlCommand, MaybeOwnedFd, UsbControlCommand, UsbControlResult, VmControlRequestSocket,
-    VmRequest, VmResponse,
+    BalloonControlCommand, DiskControlCommand, MaybeOwnedFd, UsbControlCommand, UsbControlResult,
+    VmControlRequestSocket, VmRequest, VmResponse,
 };
 
 use crate::argument::{print_help, set_arguments, Argument};
@@ -891,7 +891,8 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
         }
     };
 
-    vms_request(&VmRequest::BalloonAdjust(num_bytes), args)
+    let command = BalloonControlCommand::Adjust { num_bytes };
+    vms_request(&VmRequest::BalloonCommand(command), args)
 }
 
 fn create_qcow2(mut args: std::env::Args) -> std::result::Result<(), ()> {
