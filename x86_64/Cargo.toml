@@ -7,6 +7,7 @@ build = "build.rs"
 
 [dependencies]
 arch = { path = "../arch" }
+assertions = { path = "../assertions" }
 byteorder = "*"
 data_model = { path = "../data_model" }
 devices = { path = "../devices" }

@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::alloc::Layout;
 use std::cell::{Cell, RefCell};
 use std::cmp::min;
 use std::cmp::{self, Ord, PartialEq, PartialOrd};
 use std::collections::btree_set::BTreeSet;
-use std::mem::size_of;
+use std::mem;
 use std::os::unix::net::UnixDatagram;
 use std::sync::{Arc, RwLock};
 
@@ -15,6 +16,7 @@ use libc::{EINVAL, ENOENT, ENOTTY, EPERM, EPIPE, EPROTO};
 use protobuf;
 use protobuf::Message;
 
+use assertions::const_assert;
 use data_model::DataInit;
 use kvm::{CpuId, Vcpu};
 use kvm_sys::{
@@ -23,7 +25,7 @@ use kvm_sys::{
 };
 use protos::plugin::*;
 use sync::Mutex;
-use sys_util::error;
+use sys_util::{error, LayoutAllocation};
 
 use super::*;
 
@@ -451,16 +453,23 @@ impl PluginVcpu {
                 Err(e) => Err(e),
             }
         } else if request.has_set_msrs() {
+            const SIZE_OF_MSRS: usize = mem::size_of::<kvm_msrs>();
+            const SIZE_OF_ENTRY: usize = mem::size_of::<kvm_msr_entry>();
+            const ALIGN_OF_MSRS: usize = mem::align_of::<kvm_msrs>();
+            const ALIGN_OF_ENTRY: usize = mem::align_of::<kvm_msr_entry>();
+            const_assert!(ALIGN_OF_MSRS >= ALIGN_OF_ENTRY);
+
             response.mut_set_msrs();
             let request_entries = &request.get_set_msrs().entries;
-            let vec_size_bytes =
-                size_of::<kvm_msrs>() + (request_entries.len() * size_of::<kvm_msr_entry>());
-            let vec: Vec<u8> = vec![0; vec_size_bytes];
-            let kvm_msrs: &mut kvm_msrs = unsafe {
-                // Converting the vector's memory to a struct is unsafe.  Carefully using the read-
-                // only vector to size and set the members ensures no out-of-bounds erros below.
-                &mut *(vec.as_ptr() as *mut kvm_msrs)
-            };
+            let size = SIZE_OF_MSRS + request_entries.len() * SIZE_OF_ENTRY;
+            let layout = Layout::from_size_align(size, ALIGN_OF_MSRS).expect("impossible layout");
+            let mut allocation = LayoutAllocation::zeroed(layout);
+
+            // Safe to obtain an exclusive reference because there are no other
+            // references to the allocation yet and all-zero is a valid bit
+            // pattern.
+            let kvm_msrs = unsafe { allocation.as_mut::<kvm_msrs>() };
+
             unsafe {
                 // Mapping the unsized array to a slice is unsafe becase the length isn't known.
                 // Providing the length used to create the struct guarantees the entire slice is

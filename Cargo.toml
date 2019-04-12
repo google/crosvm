@@ -31,6 +31,7 @@ wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
 
 [dependencies]
 arch = { path = "arch" }
+assertions = { path = "assertions" }
 audio_streams = "*"
 bit_field = { path = "bit_field" }
 byteorder = "=1.1.0"

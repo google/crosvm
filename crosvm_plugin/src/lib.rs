@@ -21,7 +21,7 @@ use std::mem::{size_of, swap};
 use std::os::raw::{c_int, c_void};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
-use std::ptr::null_mut;
+use std::ptr::{self, null_mut};
 use std::result;
 use std::slice;
 use std::slice::{from_raw_parts, from_raw_parts_mut};
@@ -682,6 +682,13 @@ pub struct crosvm_io_event {
 }
 
 impl crosvm_io_event {
+    // Clippy: we use ptr::read_unaligned to read from pointers that may be
+    // underaligned. Dereferencing such a pointer is always undefined behavior
+    // in Rust.
+    //
+    // Lint can be unsuppressed once Clippy recognizes this pattern as correct.
+    // https://github.com/rust-lang/rust-clippy/issues/2881
+    #[allow(clippy::cast_ptr_alignment)]
     unsafe fn create(
         crosvm: &mut crosvm,
         space: u32,
@@ -691,10 +698,10 @@ impl crosvm_io_event {
     ) -> result::Result<crosvm_io_event, c_int> {
         let datamatch = match length {
             0 => 0,
-            1 => *(datamatch as *const u8) as u64,
-            2 => *(datamatch as *const u16) as u64,
-            4 => *(datamatch as *const u32) as u64,
-            8 => *(datamatch as *const u64) as u64,
+            1 => ptr::read_unaligned(datamatch as *const u8) as u64,
+            2 => ptr::read_unaligned(datamatch as *const u16) as u64,
+            4 => ptr::read_unaligned(datamatch as *const u32) as u64,
+            8 => ptr::read_unaligned(datamatch as *const u64),
             _ => return Err(EINVAL),
         };
         Self::safe_create(crosvm, space, addr, length, datamatch)

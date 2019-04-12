@@ -2,17 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::alloc::Layout;
 use std::fmt::{self, Display};
 use std::{mem, result};
 
+use assertions::const_assert;
 use kvm;
 use kvm_sys::kvm_fpu;
 use kvm_sys::kvm_msr_entry;
 use kvm_sys::kvm_msrs;
 use kvm_sys::kvm_regs;
 use kvm_sys::kvm_sregs;
-use sys_util;
-use sys_util::{GuestAddress, GuestMemory};
+use sys_util::{self, GuestAddress, GuestMemory, LayoutAllocation};
 
 use crate::gdt;
 
@@ -129,15 +130,20 @@ fn create_msr_entries() -> Vec<kvm_msr_entry> {
 ///
 /// * `vcpu` - Structure for the vcpu that holds the vcpu fd.
 pub fn setup_msrs(vcpu: &kvm::Vcpu) -> Result<()> {
+    const SIZE_OF_MSRS: usize = mem::size_of::<kvm_msrs>();
+    const SIZE_OF_ENTRY: usize = mem::size_of::<kvm_msr_entry>();
+    const ALIGN_OF_MSRS: usize = mem::align_of::<kvm_msrs>();
+    const ALIGN_OF_ENTRY: usize = mem::align_of::<kvm_msr_entry>();
+    const_assert!(ALIGN_OF_MSRS >= ALIGN_OF_ENTRY);
+
     let entry_vec = create_msr_entries();
-    let vec_size_bytes =
-        mem::size_of::<kvm_msrs>() + (entry_vec.len() * mem::size_of::<kvm_msr_entry>());
-    let vec: Vec<u8> = Vec::with_capacity(vec_size_bytes);
-    let msrs: &mut kvm_msrs = unsafe {
-        // Converting the vector's memory to a struct is unsafe.  Carefully using the read-only
-        // vector to size and set the members ensures no out-of-bounds erros below.
-        &mut *(vec.as_ptr() as *mut kvm_msrs)
-    };
+    let size = SIZE_OF_MSRS + entry_vec.len() * SIZE_OF_ENTRY;
+    let layout = Layout::from_size_align(size, ALIGN_OF_MSRS).expect("impossible layout");
+    let mut allocation = LayoutAllocation::zeroed(layout);
+
+    // Safe to obtain an exclusive reference because there are no other
+    // references to the allocation yet and all-zero is a valid bit pattern.
+    let msrs = unsafe { allocation.as_mut::<kvm_msrs>() };
 
     unsafe {
         // Mapping the unsized array to a slice is unsafe becase the length isn't known.  Providing
@@ -150,6 +156,8 @@ pub fn setup_msrs(vcpu: &kvm::Vcpu) -> Result<()> {
     vcpu.set_msrs(msrs).map_err(Error::MsrIoctlFailed)?;
 
     Ok(())
+
+    // msrs allocation is deallocated.
 }
 
 /// Configure FPU registers for x86

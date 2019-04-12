@@ -18,9 +18,6 @@ SUPPRESS=(
     range_plus_one
     unit_arg
 
-    # To be resolved or suppressed locally.
-    cast_ptr_alignment
-
     # We don't care about these lints. Okay to remain suppressed globally.
     blacklisted_name
     cast_lossless
