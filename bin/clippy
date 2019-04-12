@@ -39,7 +39,6 @@ SUPPRESS=(
     while_let_loop
 
     # To be resolved or suppressed locally.
-    absurd_extreme_comparisons
     cast_ptr_alignment
     if_same_then_else
     ptr_arg
