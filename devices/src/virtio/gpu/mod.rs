@@ -25,9 +25,9 @@ use data_model::*;
 
 use sys_util::{Error, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 
-use self::gpu_buffer::Device;
-use self::gpu_display::*;
-use self::gpu_renderer::{format_fourcc, Renderer};
+use gpu_buffer::Device;
+use gpu_display::*;
+use gpu_renderer::{format_fourcc, Renderer};
 
 use super::{
     resource_bridge::*, AvailIter, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_GPU,

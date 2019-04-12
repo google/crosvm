@@ -16,9 +16,9 @@ use data_model::*;
 use msg_socket::{MsgReceiver, MsgSender};
 use sys_util::{GuestAddress, GuestMemory};
 
-use super::gpu_buffer::{Buffer, Device, Flags, Format};
-use super::gpu_display::*;
-use super::gpu_renderer::{
+use gpu_buffer::{Buffer, Device, Flags, Format};
+use gpu_display::*;
+use gpu_renderer::{
     format_fourcc as renderer_fourcc, Box3, Context as RendererContext, Image as RendererImage,
     Renderer, Resource as GpuRendererResource, ResourceCreateArgs,
 };
