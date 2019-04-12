@@ -1162,7 +1162,7 @@ impl Vcpu {
     ///
     /// This function should be called after `Vcpu::run` returns an `VcpuExit::IoIn` or
     /// `Vcpu::MmioRead`.
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+    #[allow(clippy::cast_ptr_alignment)]
     pub fn set_data(&self, data: &[u8]) -> Result<()> {
         // Safe because we know we mapped enough memory to hold the kvm_run struct because the
         // kernel told us how large it was. The pointer is page aligned so casting to a different
@@ -1211,7 +1211,7 @@ impl Vcpu {
     ///
     /// Note that the state of the VCPU and associated VM must be setup first for this to do
     /// anything useful.
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+    #[allow(clippy::cast_ptr_alignment)]
     // The pointer is page aligned so casting to a different type is well defined, hence the clippy
     // allow attribute.
     pub fn run(&self) -> Result<VcpuExit> {

@@ -13,7 +13,7 @@ use sys_util::{GuestAddress, GuestMemory};
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
 #[allow(non_upper_case_globals)]
-#[cfg_attr(feature = "cargo-clippy", allow(clippy))]
+#[allow(clippy::all)]
 mod elf;
 
 #[derive(Debug, PartialEq)]

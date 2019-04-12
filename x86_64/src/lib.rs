@@ -35,7 +35,7 @@ mod msr_index;
 #[allow(dead_code)]
 #[allow(non_upper_case_globals)]
 #[allow(non_camel_case_types)]
-#[cfg_attr(feature = "cargo-clippy", allow(clippy))]
+#[allow(clippy::all)]
 mod mpspec;
 // These mpspec types are only data, reading them from data is a safe initialization.
 unsafe impl data_model::DataInit for mpspec::mpc_bus {}

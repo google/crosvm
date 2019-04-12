@@ -15,7 +15,7 @@ use sys_util::{ioctl_ior_nr, ioctl_iow_nr};
 // Generated against Linux 4.11 to include fix "uapi: fix linux/if.h userspace
 // compilation errors".
 // Manual fixup of ifrn_name to be of type c_uchar instead of c_char.
-#[cfg_attr(feature = "cargo-clippy", allow(clippy))]
+#[allow(clippy::all)]
 pub mod iff;
 // generated with bindgen /usr/include/linux/if_tun.h --no-unstable-rust
 // --constified-enum '*' --with-derive-default
