@@ -3,14 +3,14 @@
 // found in the LICENSE file.
 
 use super::error::*;
-use crate::usb::usb_util::hotplug::UsbHotplugHandler;
-use crate::usb::usb_util::libusb_context::{LibUsbContext, LibUsbPollfdChangeHandler};
-use crate::usb::usb_util::libusb_device::LibUsbDevice;
 use crate::utils::{EventHandler, EventLoop};
 use std::os::raw::c_short;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Weak};
 use sys_util::WatchingEvents;
+use usb_util::hotplug::UsbHotplugHandler;
+use usb_util::libusb_context::{LibUsbContext, LibUsbPollfdChangeHandler};
+use usb_util::libusb_device::LibUsbDevice;
 use vm_control::MaybeOwnedFd;
 
 /// Context wraps libusb context with libusb event handling.

@@ -4,9 +4,9 @@
 
 use std::sync::Arc;
 
-use crate::usb::usb_util::hotplug::{HotplugEvent, UsbHotplugHandler};
-use crate::usb::usb_util::libusb_device::LibUsbDevice;
 use crate::usb::xhci::usb_hub::UsbHub;
+use usb_util::hotplug::{HotplugEvent, UsbHotplugHandler};
+use usb_util::libusb_device::LibUsbDevice;
 
 pub struct HotplugHandler {
     hub: Arc<UsbHub>,
