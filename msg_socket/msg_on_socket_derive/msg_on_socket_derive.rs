@@ -21,22 +21,8 @@ use syn::{Data, DataEnum, DataStruct, DeriveInput, Fields, Ident};
 #[proc_macro_derive(MsgOnSocket)]
 pub fn msg_on_socket_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-
-    let const_namespace = Ident::new(
-        &format!("__MSG_ON_SOCKET_IMPL_{}", input.ident),
-        Span::call_site(),
-    );
-
     let impl_for_input = socket_msg_impl(input);
-
-    let wrapped_impl = quote! {
-        const #const_namespace: () = {
-            extern crate msg_socket as _msg_socket;
-            #impl_for_input
-        };
-    };
-
-    wrapped_impl.into()
+    impl_for_input.into()
 }
 
 fn socket_msg_impl(input: DeriveInput) -> TokenStream {
@@ -76,7 +62,7 @@ fn impl_for_named_struct(name: Ident, ds: DataStruct) -> TokenStream {
     let read_buffer = define_read_buffer_for_struct(&name, &fields);
     let write_buffer = define_write_buffer_for_struct(&name, &fields);
     quote! {
-        impl _msg_socket::MsgOnSocket for #name {
+        impl msg_socket::MsgOnSocket for #name {
             #buffer_sizes_impls
             #read_buffer
             #write_buffer
@@ -138,7 +124,7 @@ fn define_read_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) -
         unsafe fn read_from_buffer(
             buffer: &[u8],
             fds: &[std::os::unix::io::RawFd],
-        ) -> _msg_socket::MsgResult<(Self, usize)> {
+        ) -> msg_socket::MsgResult<(Self, usize)> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
             #(#read_fields)*
@@ -163,7 +149,7 @@ fn define_write_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) 
             &self,
             buffer: &mut [u8],
             fds: &mut [std::os::unix::io::RawFd],
-        ) -> _msg_socket::MsgResult<usize> {
+        ) -> msg_socket::MsgResult<usize> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
             #(#write_fields)*
@@ -180,7 +166,7 @@ fn impl_for_enum(name: Ident, de: DataEnum) -> TokenStream {
     let read_buffer = define_read_buffer_for_enum(&name, &de);
     let write_buffer = define_write_buffer_for_enum(&name, &de);
     quote! {
-        impl _msg_socket::MsgOnSocket for #name {
+        impl msg_socket::MsgOnSocket for #name {
             #buffer_sizes_impls
             #read_buffer
             #write_buffer
@@ -300,11 +286,11 @@ fn define_read_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
         unsafe fn read_from_buffer(
             buffer: &[u8],
             fds: &[std::os::unix::io::RawFd],
-        ) -> _msg_socket::MsgResult<(Self, usize)> {
+        ) -> msg_socket::MsgResult<(Self, usize)> {
             let v = buffer[0];
             match v {
                 #(#match_variants)*
-                _ => Err(_msg_socket::MsgError::InvalidType),
+                _ => Err(msg_socket::MsgError::InvalidType),
             }
         }
     }
@@ -379,7 +365,7 @@ fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
             &self,
             buffer: &mut [u8],
             fds: &mut [std::os::unix::io::RawFd],
-        ) -> _msg_socket::MsgResult<usize> {
+        ) -> msg_socket::MsgResult<usize> {
             match self {
                 #(#match_variants)*
             }
@@ -404,7 +390,7 @@ fn impl_for_tuple_struct(name: Ident, ds: DataStruct) -> TokenStream {
     let read_buffer = define_read_buffer_for_tuples(&name, &types);
     let write_buffer = define_write_buffer_for_tuples(&name, &types);
     quote! {
-        impl _msg_socket::MsgOnSocket for #name {
+        impl msg_socket::MsgOnSocket for #name {
             #buffer_sizes_impls
             #read_buffer
             #write_buffer
@@ -442,7 +428,7 @@ fn define_read_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> TokenStr
         unsafe fn read_from_buffer(
             buffer: &[u8],
             fds: &[std::os::unix::io::RawFd],
-        ) -> _msg_socket::MsgResult<(Self, usize)> {
+        ) -> msg_socket::MsgResult<(Self, usize)> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
             #(#read_fields)*
@@ -471,7 +457,7 @@ fn define_write_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> TokenSt
             &self,
             buffer: &mut [u8],
             fds: &mut [std::os::unix::io::RawFd],
-        ) -> _msg_socket::MsgResult<usize> {
+        ) -> msg_socket::MsgResult<usize> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
             let #name( #(#tmp_names),* ) = self;
@@ -516,7 +502,8 @@ fn write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream 
 #[cfg(test)]
 mod tests {
     use crate::socket_msg_impl;
-    use syn::DeriveInput;
+    use quote::quote;
+    use syn::{parse_quote, DeriveInput};
 
     #[test]
     fn end_to_end_struct_test() {
@@ -529,7 +516,7 @@ mod tests {
         };
 
         let expected = quote! {
-            impl _msg_socket::MsgOnSocket for MyMsg {
+            impl msg_socket::MsgOnSocket for MyMsg {
                 fn msg_size() -> usize {
                     <u8>::msg_size() as usize
                         + <RawFd>::msg_size() as usize
@@ -543,7 +530,7 @@ mod tests {
                 unsafe fn read_from_buffer(
                     buffer: &[u8],
                     fds: &[std::os::unix::io::RawFd],
-                ) -> _msg_socket::MsgResult<(Self, usize)> {
+                ) -> msg_socket::MsgResult<(Self, usize)> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
                     let t = <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
@@ -564,7 +551,7 @@ mod tests {
                     &self,
                     buffer: &mut [u8],
                     fds: &mut [std::os::unix::io::RawFd],
-                ) -> _msg_socket::MsgResult<usize> {
+                ) -> msg_socket::MsgResult<usize> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
                     let o = self.a
@@ -594,7 +581,7 @@ mod tests {
         };
 
         let expected = quote! {
-            impl _msg_socket::MsgOnSocket for MyMsg {
+            impl msg_socket::MsgOnSocket for MyMsg {
                 fn msg_size() -> usize {
                     <u8>::msg_size() as usize
                         + <u32>::msg_size() as usize
@@ -608,7 +595,7 @@ mod tests {
                 unsafe fn read_from_buffer(
                     buffer: &[u8],
                     fds: &[std::os::unix::io::RawFd],
-                ) -> _msg_socket::MsgResult<(Self, usize)> {
+                ) -> msg_socket::MsgResult<(Self, usize)> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
                     let t = <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
@@ -629,7 +616,7 @@ mod tests {
                     &self,
                     buffer: &mut [u8],
                     fds: &mut [std::os::unix::io::RawFd],
-                ) -> _msg_socket::MsgResult<usize> {
+                ) -> msg_socket::MsgResult<usize> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
                     let MyMsg(tuple_tmp0, tuple_tmp1, tuple_tmp2) = self;
@@ -667,7 +654,7 @@ mod tests {
         };
 
         let expected = quote! {
-            impl _msg_socket::MsgOnSocket for MyMsg {
+            impl msg_socket::MsgOnSocket for MyMsg {
                 fn msg_size() -> usize {
                     [
                         <u8>::msg_size() as usize,
@@ -687,7 +674,7 @@ mod tests {
                 unsafe fn read_from_buffer(
                     buffer: &[u8],
                     fds: &[std::os::unix::io::RawFd],
-                ) -> _msg_socket::MsgResult<(Self, usize)> {
+                ) -> msg_socket::MsgResult<(Self, usize)> {
                     let v = buffer[0];
                     match v {
                         0u8 => {
@@ -718,14 +705,14 @@ mod tests {
                             let f1 = t.0;
                             Ok((MyMsg::C { f0, f1 }, __fd_offset))
                         }
-                        _ => Err(_msg_socket::MsgError::InvalidType),
+                        _ => Err(msg_socket::MsgError::InvalidType),
                     }
                 }
                 fn write_to_buffer(
                     &self,
                     buffer: &mut [u8],
                     fds: &mut [std::os::unix::io::RawFd],
-                ) -> _msg_socket::MsgResult<usize> {
+                ) -> msg_socket::MsgResult<usize> {
                     match self {
                         MyMsg::A(enum_variant_tmp0) => {
                             buffer[0] = 0u8;
