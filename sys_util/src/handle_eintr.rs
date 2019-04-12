@@ -111,7 +111,7 @@ impl<T> InterruptibleResult for io::Result<T> {
 /// # Examples
 ///
 /// ```
-/// # #[macro_use] extern crate sys_util;
+/// # use sys_util::handle_eintr;
 /// # use std::io::stdin;
 /// # fn main() {
 /// let mut line = String::new();

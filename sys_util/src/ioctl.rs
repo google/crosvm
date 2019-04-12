@@ -26,13 +26,13 @@ macro_rules! ioctl_ioc_nr {
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr) => {
         #[allow(non_snake_case)]
         pub fn $name() -> ::std::os::raw::c_ulong {
-            ioctl_expr!($dir, $ty, $nr, $size)
+            $crate::ioctl_expr!($dir, $ty, $nr, $size)
         }
     };
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr, $($v:ident),+) => {
         #[allow(non_snake_case)]
         pub fn $name($($v: ::std::os::raw::c_uint),+) -> ::std::os::raw::c_ulong {
-            ioctl_expr!($dir, $ty, $nr, $size)
+            $crate::ioctl_expr!($dir, $ty, $nr, $size)
         }
     };
 }
@@ -41,10 +41,10 @@ macro_rules! ioctl_ioc_nr {
 #[macro_export]
 macro_rules! ioctl_io_nr {
     ($name:ident, $ty:expr, $nr:expr) => {
-        ioctl_ioc_nr!($name, $crate::ioctl::_IOC_NONE, $ty, $nr, 0);
+        $crate::ioctl_ioc_nr!($name, $crate::ioctl::_IOC_NONE, $ty, $nr, 0);
     };
     ($name:ident, $ty:expr, $nr:expr, $($v:ident),+) => {
-        ioctl_ioc_nr!($name, $crate::ioctl::_IOC_NONE, $ty, $nr, 0, $($v),+);
+        $crate::ioctl_ioc_nr!($name, $crate::ioctl::_IOC_NONE, $ty, $nr, 0, $($v),+);
     };
 }
 
@@ -52,7 +52,7 @@ macro_rules! ioctl_io_nr {
 #[macro_export]
 macro_rules! ioctl_ior_nr {
     ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
-        ioctl_ioc_nr!(
+        $crate::ioctl_ioc_nr!(
             $name,
             $crate::ioctl::_IOC_READ,
             $ty,
@@ -61,7 +61,7 @@ macro_rules! ioctl_ior_nr {
         );
     };
     ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
-        ioctl_ioc_nr!(
+        $crate::ioctl_ioc_nr!(
             $name,
             $crate::ioctl::_IOC_READ,
             $ty,
@@ -76,7 +76,7 @@ macro_rules! ioctl_ior_nr {
 #[macro_export]
 macro_rules! ioctl_iow_nr {
     ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
-        ioctl_ioc_nr!(
+        $crate::ioctl_ioc_nr!(
             $name,
             $crate::ioctl::_IOC_WRITE,
             $ty,
@@ -85,7 +85,7 @@ macro_rules! ioctl_iow_nr {
         );
     };
     ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
-        ioctl_ioc_nr!(
+        $crate::ioctl_ioc_nr!(
             $name,
             $crate::ioctl::_IOC_WRITE,
             $ty,
@@ -100,7 +100,7 @@ macro_rules! ioctl_iow_nr {
 #[macro_export]
 macro_rules! ioctl_iowr_nr {
     ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
-        ioctl_ioc_nr!(
+        $crate::ioctl_ioc_nr!(
             $name,
             $crate::ioctl::_IOC_READ | $crate::ioctl::_IOC_WRITE,
             $ty,
@@ -109,7 +109,7 @@ macro_rules! ioctl_iowr_nr {
         );
     };
     ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
-        ioctl_ioc_nr!(
+        $crate::ioctl_ioc_nr!(
             $name,
             $crate::ioctl::_IOC_READ | $crate::ioctl::_IOC_WRITE,
             $ty,

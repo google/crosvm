@@ -10,9 +10,7 @@
 //! # Examples
 //!
 //! ```
-//! #[macro_use] extern crate sys_util;
-//!
-//! use sys_util::syslog;
+//! use sys_util::{error, syslog, warn};
 //!
 //! fn main() {
 //!     if let Err(e) = syslog::init() {
@@ -396,7 +394,6 @@ fn get_localtime() -> tm {
 /// # Examples
 ///
 /// ```
-/// # #[macro_use] extern crate sys_util;
 /// # use sys_util::syslog;
 /// # fn main() {
 /// #   if let Err(e) = syslog::init() {
@@ -479,7 +476,7 @@ macro_rules! log {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! error {
-    ($($args:tt)+) => (log!($crate::syslog::Priority::Error, $($args)*))
+    ($($args:tt)+) => ($crate::log!($crate::syslog::Priority::Error, $($args)*))
 }
 
 /// A macro for logging a warning.
@@ -487,7 +484,7 @@ macro_rules! error {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! warn {
-    ($($args:tt)+) => (log!($crate::syslog::Priority::Warning, $($args)*))
+    ($($args:tt)+) => ($crate::log!($crate::syslog::Priority::Warning, $($args)*))
 }
 
 /// A macro for logging info.
@@ -495,7 +492,7 @@ macro_rules! warn {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! info {
-    ($($args:tt)+) => (log!($crate::syslog::Priority::Info, $($args)*))
+    ($($args:tt)+) => ($crate::log!($crate::syslog::Priority::Info, $($args)*))
 }
 
 /// A macro for logging debug information.
@@ -503,7 +500,7 @@ macro_rules! info {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! debug {
-    ($($args:tt)+) => (log!($crate::syslog::Priority::Debug, $($args)*))
+    ($($args:tt)+) => ($crate::log!($crate::syslog::Priority::Debug, $($args)*))
 }
 
 #[cfg(test)]
