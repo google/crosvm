@@ -23,10 +23,10 @@ use gpu_renderer::{
     Renderer, Resource as GpuRendererResource, ResourceCreateArgs,
 };
 
-use super::super::resource_bridge::*;
 use super::protocol::{
     GpuResponse, GpuResponsePlaneInfo, VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2,
 };
+use crate::virtio::resource_bridge::*;
 
 const DEFAULT_WIDTH: u32 = 1280;
 const DEFAULT_HEIGHT: u32 = 1024;

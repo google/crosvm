@@ -13,9 +13,9 @@ use ::vhost::Vsock as VhostVsockHandle;
 use sys_util::{EventFd, GuestMemory};
 use virtio_sys::vhost;
 
-use super::super::{Queue, VirtioDevice, TYPE_VSOCK};
 use super::worker::Worker;
 use super::{Error, Result};
+use crate::virtio::{Queue, VirtioDevice, TYPE_VSOCK};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 3;

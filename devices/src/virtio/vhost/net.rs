@@ -16,9 +16,9 @@ use ::vhost::NetT as VhostNetT;
 use sys_util::{EventFd, GuestMemory};
 use virtio_sys::{vhost, virtio_net};
 
-use super::super::{Queue, VirtioDevice, TYPE_NET};
 use super::worker::Worker;
 use super::{Error, Result};
+use crate::virtio::{Queue, VirtioDevice, TYPE_NET};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;

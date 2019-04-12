@@ -9,8 +9,8 @@ use std::sync::Arc;
 use sys_util::{EventFd, PollContext, PollToken};
 use vhost::Vhost;
 
-use super::super::{Queue, INTERRUPT_STATUS_USED_RING};
 use super::{Error, Result};
+use crate::virtio::{Queue, INTERRUPT_STATUS_USED_RING};
 
 /// Worker that takes care of running the vhost device.  This mainly involves forwarding interrupts
 /// from the vhost driver to the guest VM because crosvm only supports the virtio-mmio transport,
