@@ -6,7 +6,7 @@ use std::os::unix::io::RawFd;
 
 use audio_streams::StreamSource;
 use resources::SystemAllocator;
-use sys_util::{EventFd, GuestMemory};
+use sys_util::{error, EventFd, GuestMemory};
 
 use crate::pci::ac97_bus_master::Ac97BusMaster;
 use crate::pci::ac97_mixer::Ac97Mixer;

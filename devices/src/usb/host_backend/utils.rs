@@ -10,6 +10,7 @@ use super::error::*;
 use crate::usb::xhci::xhci_transfer::{XhciTransfer, XhciTransferState};
 use crate::utils::AsyncJobQueue;
 use crate::utils::FailHandle;
+use sys_util::{error, warn};
 use usb_util::device_handle::DeviceHandle;
 use usb_util::usb_transfer::{TransferStatus, UsbTransfer, UsbTransferBuffer};
 

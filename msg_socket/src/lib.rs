@@ -16,7 +16,7 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use sys_util::{net::UnixSeqpacket, Error as SysError, ScmSocket};
+use sys_util::{handle_eintr, net::UnixSeqpacket, Error as SysError, ScmSocket};
 
 pub use crate::msg_on_socket::*;
 pub use msg_on_socket_derive::*;

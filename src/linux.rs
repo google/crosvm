@@ -37,10 +37,10 @@ use remain::sorted;
 use sync::{Condvar, Mutex};
 use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use sys_util::{
-    self, block_signal, clear_signal, drop_capabilities, flock, get_blocked_signals, get_group_id,
-    get_user_id, getegid, geteuid, register_signal_handler, set_cpu_affinity, validate_raw_fd,
-    EventFd, FlockOperation, GuestMemory, Killable, PollContext, PollToken, SignalFd, Terminal,
-    TimerFd, SIGRTMIN,
+    self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
+    get_group_id, get_user_id, getegid, geteuid, info, register_signal_handler, set_cpu_affinity,
+    validate_raw_fd, warn, EventFd, FlockOperation, GuestMemory, Killable, PollContext, PollToken,
+    SignalFd, Terminal, TimerFd, SIGRTMIN,
 };
 #[cfg(feature = "gpu-forward")]
 use sys_util::{GuestAddress, MemoryMapping, Protection};

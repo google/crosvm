@@ -5,7 +5,7 @@
 use std::collections::VecDeque;
 use std::io;
 
-use sys_util::{EventFd, Result};
+use sys_util::{error, EventFd, Result};
 
 use crate::BusDevice;
 

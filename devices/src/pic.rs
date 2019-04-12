@@ -13,6 +13,7 @@
 // emotional context, this file refers to them instead as "primary" and "secondary" PITs.
 
 use crate::BusDevice;
+use sys_util::{debug, warn};
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use sys_util::{EventFd, GuestMemory, PollContext, PollToken};
+use sys_util::{error, EventFd, GuestMemory, PollContext, PollToken};
 
 use super::{Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_RNG};
 

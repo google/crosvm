@@ -15,6 +15,7 @@ use crate::usb::xhci::xhci_transfer::{XhciTransfer, XhciTransferState, XhciTrans
 use crate::utils::AsyncJobQueue;
 use crate::utils::FailHandle;
 use std::collections::HashMap;
+use sys_util::{error, warn};
 use usb_util::device_handle::DeviceHandle;
 use usb_util::error::Error as LibUsbError;
 use usb_util::libusb_device::LibUsbDevice;

@@ -57,7 +57,8 @@ use std::time::Duration;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use qcow::QcowFile;
 use sys_util::{
-    getpid, kill_process_group, net::UnixSeqpacket, reap_child, syslog, validate_raw_fd,
+    debug, error, getpid, info, kill_process_group, net::UnixSeqpacket, reap_child, syslog,
+    validate_raw_fd, warn,
 };
 use vm_control::{
     MaybeOwnedFd, UsbControlCommand, UsbControlResult, VmControlRequestSocket, VmRequest,

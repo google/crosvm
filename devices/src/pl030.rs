@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::time::{SystemTime, UNIX_EPOCH};
-use sys_util::EventFd;
+use sys_util::{warn, EventFd};
 
 use crate::BusDevice;
 

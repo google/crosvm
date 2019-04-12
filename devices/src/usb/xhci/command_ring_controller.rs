@@ -18,7 +18,7 @@ use crate::utils::EventLoop;
 use std::fmt::{self, Display};
 use std::sync::Arc;
 use sync::Mutex;
-use sys_util::{Error as SysError, EventFd, GuestAddress, GuestMemory};
+use sys_util::{error, warn, Error as SysError, EventFd, GuestAddress, GuestMemory};
 
 #[derive(Debug)]
 pub enum Error {

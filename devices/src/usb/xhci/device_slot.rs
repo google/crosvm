@@ -19,7 +19,7 @@ use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
-use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
+use sys_util::{error, GuestAddress, GuestMemory, GuestMemoryError};
 
 #[derive(Debug)]
 pub enum Error {

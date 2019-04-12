@@ -4,6 +4,7 @@
 
 use crate::utils::FailHandle;
 use std::sync::{Arc, Mutex};
+use sys_util::error;
 
 /// RingBufferStopCallback wraps a callback. The callback will be invoked when last instance of
 /// RingBufferStopCallback and its clones is dropped.

@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use wire_format_derive::P9WireFormat;
+
 use std::io::{self, ErrorKind, Read, Write};
 use std::mem;
 use std::string::String;

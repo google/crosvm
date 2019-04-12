@@ -7,7 +7,7 @@ use crate::utils::{EventHandler, EventLoop};
 use std::os::raw::c_short;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Weak};
-use sys_util::WatchingEvents;
+use sys_util::{error, WatchingEvents};
 use usb_util::hotplug::UsbHotplugHandler;
 use usb_util::libusb_context::{LibUsbContext, LibUsbPollfdChangeHandler};
 use usb_util::libusb_device::LibUsbDevice;

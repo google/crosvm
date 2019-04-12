@@ -624,6 +624,7 @@ impl<T: PollToken> IntoRawFd for PollContext<T> {
 mod tests {
     use super::*;
     use crate::EventFd;
+    use poll_token_derive::PollToken;
     use std::os::unix::net::UnixStream;
     use std::time::Instant;
 

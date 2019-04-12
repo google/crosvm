@@ -14,7 +14,7 @@ use std::usize;
 use data_model::*;
 
 use msg_socket::{MsgReceiver, MsgSender};
-use sys_util::{GuestAddress, GuestMemory};
+use sys_util::{error, GuestAddress, GuestMemory};
 
 use gpu_buffer::{Buffer, Device, Flags, Format};
 use gpu_display::*;

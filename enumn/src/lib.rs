@@ -23,9 +23,9 @@
 //! # Example
 //!
 //! ```rust
-//! extern crate enumn;
+//! use enumn::N;
 //!
-//! #[derive(PartialEq, Debug, enumn::N)]
+//! #[derive(PartialEq, Debug, N)]
 //! enum Status {
 //!     LegendaryTriumph,
 //!     QualifiedSuccess,
@@ -52,7 +52,9 @@
 //! of that type.
 //!
 //! ```rust
-//! #[derive(enumn::N)]
+//! use enumn::N;
+//!
+//! #[derive(N)]
 //! #[repr(u8)]
 //! enum E {
 //!     /* ... */
@@ -88,7 +90,9 @@
 //! this enum:
 //!
 //! ```rust
-//! #[derive(enumn::N)]
+//! use enumn::N;
+//!
+//! #[derive(N)]
 //! enum Letter {
 //!     A = 65,
 //!     B = 66,

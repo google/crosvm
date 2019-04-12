@@ -15,7 +15,7 @@ use std::fmt::{self, Display};
 use std::mem;
 use std::sync::{Arc, Weak};
 use sync::Mutex;
-use sys_util::{Error as SysError, EventFd, GuestMemory};
+use sys_util::{error, Error as SysError, EventFd, GuestMemory};
 use usb_util::types::UsbRequestSetup;
 use usb_util::usb_transfer::TransferStatus;
 

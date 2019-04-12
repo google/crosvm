@@ -28,7 +28,7 @@ use kvm_sys::{kvm_clock_data, kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
 use protos::plugin::*;
 use sync::Mutex;
 use sys_util::{
-    Error as SysError, EventFd, GuestAddress, Killable, MemoryMapping, Result as SysResult,
+    error, Error as SysError, EventFd, GuestAddress, Killable, MemoryMapping, Result as SysResult,
     ScmSocket, SharedMemory, SIGRTMIN,
 };
 

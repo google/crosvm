@@ -8,6 +8,7 @@
 use crate::split_irqchip_common::*;
 use crate::BusDevice;
 use bit_field::*;
+use sys_util::warn;
 
 #[bitfield]
 #[derive(Clone, Copy, PartialEq)]

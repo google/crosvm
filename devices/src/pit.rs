@@ -13,7 +13,7 @@ use std::time::Duration;
 use bit_field::BitField1;
 use bit_field::*;
 use sync::Mutex;
-use sys_util::{Error as SysError, EventFd, Fd, PollContext, PollToken};
+use sys_util::{error, warn, Error as SysError, EventFd, Fd, PollContext, PollToken};
 
 #[cfg(not(test))]
 use sys_util::Clock;

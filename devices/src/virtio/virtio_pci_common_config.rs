@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use byteorder::{ByteOrder, LittleEndian};
-use sys_util::GuestAddress;
+use sys_util::{warn, GuestAddress};
 
 use super::*;
 

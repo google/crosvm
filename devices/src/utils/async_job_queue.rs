@@ -7,7 +7,7 @@ use super::{EventHandler, EventLoop};
 use std::mem;
 use std::sync::Arc;
 use sync::Mutex;
-use sys_util::{EventFd, WatchingEvents};
+use sys_util::{error, EventFd, WatchingEvents};
 
 /// Async Job Queue can schedule async jobs.
 pub struct AsyncJobQueue {

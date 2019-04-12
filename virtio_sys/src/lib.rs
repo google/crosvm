@@ -9,6 +9,8 @@
 #[macro_use]
 extern crate sys_util;
 
+use sys_util::{ioctl_io_nr, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
+
 // generated with bindgen /usr/include/linux/vhost.h --no-unstable-rust --constified-enum '*' --with-derive-default
 pub mod vhost;
 // generated with bindgen /usr/include/linux/virtio_net.h --no-unstable-rust --constified-enum '*' --with-derive-default

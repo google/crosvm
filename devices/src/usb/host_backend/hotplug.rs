@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use crate::usb::xhci::usb_hub::UsbHub;
+use sys_util::error;
 use usb_util::hotplug::{HotplugEvent, UsbHotplugHandler};
 use usb_util::libusb_device::LibUsbDevice;
 

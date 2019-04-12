@@ -15,7 +15,9 @@ use std::sync::Arc;
 use std::thread;
 
 use p9;
-use sys_util::{Error as SysError, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
+use sys_util::{
+    error, warn, Error as SysError, EventFd, GuestAddress, GuestMemory, PollContext, PollToken,
+};
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
 
 use super::{DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_9P};

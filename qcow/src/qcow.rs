@@ -15,7 +15,7 @@ mod vec_cache;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
 use remain::sorted;
-use sys_util::{FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes};
+use sys_util::{error, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes};
 
 use std::cmp::min;
 use std::fmt::{self, Display};

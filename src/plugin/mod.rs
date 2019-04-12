@@ -29,9 +29,10 @@ use io_jail::{self, Minijail};
 use kvm::{Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use net_util::{Error as TapError, Tap, TapT};
 use sys_util::{
-    block_signal, clear_signal, drop_capabilities, getegid, geteuid, register_signal_handler,
-    validate_raw_fd, Error as SysError, EventFd, GuestMemory, Killable, MmapError, PollContext,
-    PollToken, Result as SysResult, SignalFd, SignalFdError, SIGRTMIN,
+    block_signal, clear_signal, drop_capabilities, error, getegid, geteuid, info,
+    register_signal_handler, validate_raw_fd, warn, Error as SysError, EventFd, GuestMemory,
+    Killable, MmapError, PollContext, PollToken, Result as SysResult, SignalFd, SignalFdError,
+    SIGRTMIN,
 };
 
 use self::process::*;

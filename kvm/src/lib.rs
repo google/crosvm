@@ -29,10 +29,8 @@ use msg_socket::MsgOnSocket;
 #[allow(unused_imports)]
 use sys_util::{
     ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
-};
-use sys_util::{
-    pagesize, signal, Error, EventFd, GuestAddress, GuestMemory, MemoryMapping, MemoryMappingArena,
-    Result,
+    pagesize, signal, warn, Error, EventFd, GuestAddress, GuestMemory, MemoryMapping,
+    MemoryMappingArena, Result,
 };
 
 pub use crate::cap::*;

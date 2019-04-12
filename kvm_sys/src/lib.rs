@@ -9,6 +9,8 @@
 #[macro_use]
 extern crate sys_util;
 
+use sys_util::{ioctl_io_nr, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
+
 // Somehow this one gets missed by bindgen
 pub const KVM_EXIT_IO_OUT: ::std::os::raw::c_uint = 1;
 
@@ -20,6 +22,7 @@ pub mod x86 {
     #[cfg_attr(feature = "cargo-clippy", allow(clippy))]
     pub mod bindings;
     pub use crate::bindings::*;
+    use sys_util::{ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
 
     ioctl_iow_nr!(KVM_SET_GSI_ROUTING, KVMIO, 0x6a, kvm_irq_routing);
     ioctl_iowr_nr!(KVM_GET_MSR_INDEX_LIST, KVMIO, 0x02, kvm_msr_list);
@@ -54,6 +57,7 @@ pub mod aarch64 {
     // generated with bindgen <arm sysroot>/usr/include/linux/kvm.h --no-unstable-rust --constified-enum '*' --with-derive-default -- -I<arm sysroot>/usr/include
     pub mod bindings;
     pub use bindings::*;
+    use sys_util::{ioctl_ior_nr, ioctl_iow_nr};
 
     ioctl_iow_nr!(KVM_ARM_SET_DEVICE_ADDR, KVMIO, 0xab, kvm_arm_device_addr);
     ioctl_iow_nr!(KVM_ARM_VCPU_INIT, KVMIO, 0xae, kvm_vcpu_init);

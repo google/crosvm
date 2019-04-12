@@ -207,6 +207,7 @@ mod test {
     use std::io::Cursor;
     use std::mem;
     use std::string::String;
+    use wire_format_derive::P9WireFormat;
 
     #[test]
     fn integer_byte_size() {

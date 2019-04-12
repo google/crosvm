@@ -18,8 +18,9 @@ extern crate quote;
 extern crate syn;
 
 use proc_macro2::{Span, TokenStream};
+use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
-use syn::{Data, DeriveInput, Fields, Ident};
+use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident};
 
 /// The function that derives the actual implementation.
 #[proc_macro_derive(P9WireFormat)]
@@ -155,6 +156,7 @@ fn decode_wire_format(data: &Data, container: &Ident) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use syn::parse_quote;
 
     #[test]
     fn byte_size() {

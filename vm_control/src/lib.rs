@@ -30,7 +30,8 @@ use kvm::{Datamatch, IoeventAddress, Vm};
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{GpuMemoryDesc, SystemAllocator};
 use sys_util::{
-    net::UnixSeqpacket, Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError, Result,
+    error, net::UnixSeqpacket, Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError,
+    Result,
 };
 
 /// A file descriptor either borrowed or owned by this.

@@ -15,7 +15,9 @@ use std::time::Instant;
 use audio_streams::{PlaybackBuffer, PlaybackBufferStream, StreamControl, StreamSource};
 use data_model::{VolatileMemory, VolatileSlice};
 use sync::Mutex;
-use sys_util::{self, set_rt_prio_limit, set_rt_round_robin, EventFd, GuestAddress, GuestMemory};
+use sys_util::{
+    self, error, set_rt_prio_limit, set_rt_round_robin, warn, EventFd, GuestAddress, GuestMemory,
+};
 
 use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;

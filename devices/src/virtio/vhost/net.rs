@@ -13,7 +13,7 @@ use net_sys;
 use net_util::{MacAddress, TapT};
 
 use ::vhost::NetT as VhostNetT;
-use sys_util::{EventFd, GuestMemory};
+use sys_util::{error, warn, EventFd, GuestMemory};
 use virtio_sys::{vhost, virtio_net};
 
 use super::worker::Worker;

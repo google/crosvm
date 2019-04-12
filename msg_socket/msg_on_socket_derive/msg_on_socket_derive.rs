@@ -15,7 +15,8 @@ extern crate syn;
 use std::vec::Vec;
 
 use proc_macro2::{Span, TokenStream};
-use syn::{Data, DataEnum, DataStruct, DeriveInput, Fields, Ident};
+use quote::quote;
+use syn::{parse_macro_input, Data, DataEnum, DataStruct, DeriveInput, Fields, Ident};
 
 /// The function that derives the recursive implementation for struct or enum.
 #[proc_macro_derive(MsgOnSocket)]

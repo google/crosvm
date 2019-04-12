@@ -23,7 +23,9 @@ use std::time::Duration;
 
 use data_model::*;
 
-use sys_util::{Error, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
+use sys_util::{
+    debug, error, warn, Error, EventFd, GuestAddress, GuestMemory, PollContext, PollToken,
+};
 
 use gpu_buffer::Device;
 use gpu_display::*;

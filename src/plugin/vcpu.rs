@@ -23,6 +23,7 @@ use kvm_sys::{
 };
 use protos::plugin::*;
 use sync::Mutex;
+use sys_util::error;
 
 use super::*;
 

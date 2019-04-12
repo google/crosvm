@@ -13,6 +13,7 @@ use std::io::Read;
 use std::io::Write;
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
+use sys_util::{error, warn};
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]

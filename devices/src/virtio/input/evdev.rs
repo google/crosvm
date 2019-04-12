@@ -5,7 +5,7 @@
 use std::os::unix::io::AsRawFd;
 
 use data_model::Le32;
-use sys_util::{ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
+use sys_util::{ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 
 use super::constants::*;
 use super::virtio_input_absinfo;

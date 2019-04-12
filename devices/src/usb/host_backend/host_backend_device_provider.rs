@@ -17,7 +17,7 @@ use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
 use sys_util::net::UnixSeqpacket;
-use sys_util::WatchingEvents;
+use sys_util::{error, WatchingEvents};
 use vm_control::{UsbControlCommand, UsbControlResult, UsbControlSocket};
 
 const SOCKET_TIMEOUT_MS: u64 = 2000;

@@ -10,7 +10,7 @@ use std::thread;
 use byteorder::{ByteOrder, LittleEndian};
 
 use ::vhost::Vsock as VhostVsockHandle;
-use sys_util::{EventFd, GuestMemory};
+use sys_util::{error, warn, EventFd, GuestMemory};
 use virtio_sys::vhost;
 
 use super::worker::Worker;

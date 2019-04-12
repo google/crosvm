@@ -13,10 +13,11 @@ extern crate quote;
 extern crate syn;
 
 use proc_macro2::{Span, TokenStream};
+use quote::{quote, quote_spanned};
 use syn::parse::{Error, Result};
 use syn::{
-    Attribute, Data, DataEnum, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Ident, Lit, LitInt,
-    Meta, Type, Visibility,
+    parse_macro_input, Attribute, Data, DataEnum, DeriveInput, Fields, FieldsNamed, FieldsUnnamed,
+    Ident, Lit, LitInt, Meta, Type, Visibility,
 };
 
 /// The function that derives the actual implementation.
@@ -654,6 +655,7 @@ pub fn define_bit_field_specifiers(_input: proc_macro::TokenStream) -> proc_macr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use syn::parse_quote;
 
     #[test]
     fn end_to_end() {

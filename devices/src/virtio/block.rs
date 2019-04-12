@@ -18,8 +18,8 @@ use sync::Mutex;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
 use sys_util::{
-    EventFd, FileSetLen, FileSync, GuestAddress, GuestMemory, GuestMemoryError, PollContext,
-    PollToken, PunchHole, TimerFd, WriteZeroes,
+    error, info, warn, EventFd, FileSetLen, FileSync, GuestAddress, GuestMemory, GuestMemoryError,
+    PollContext, PollToken, PunchHole, TimerFd, WriteZeroes,
 };
 
 use data_model::{DataInit, Le16, Le32, Le64};

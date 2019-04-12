@@ -9,7 +9,7 @@ use std::fmt::{self, Display};
 use std::sync::{Arc, MutexGuard};
 use sync::Mutex;
 
-use sys_util::{Error as SysError, EventFd, GuestAddress, GuestMemory, WatchingEvents};
+use sys_util::{error, Error as SysError, EventFd, GuestAddress, GuestMemory, WatchingEvents};
 
 use super::ring_buffer::RingBuffer;
 

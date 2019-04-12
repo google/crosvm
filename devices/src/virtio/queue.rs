@@ -6,7 +6,7 @@ use std::cmp::min;
 use std::num::Wrapping;
 use std::sync::atomic::{fence, Ordering};
 
-use sys_util::{GuestAddress, GuestMemory};
+use sys_util::{error, GuestAddress, GuestMemory};
 
 const VIRTQ_DESC_F_NEXT: u16 = 0x1;
 const VIRTQ_DESC_F_WRITE: u16 = 0x2;

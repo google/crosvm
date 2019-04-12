@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use sys_util::{EventFd, GuestMemory, GuestMemoryError, PollContext, PollToken};
+use sys_util::{error, EventFd, GuestMemory, GuestMemoryError, PollContext, PollToken};
 use tpm2;
 
 use super::{DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_TPM};

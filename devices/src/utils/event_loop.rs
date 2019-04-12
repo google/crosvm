@@ -9,7 +9,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::{Arc, Weak};
 use std::thread;
 use sync::Mutex;
-use sys_util::{EpollContext, EpollEvents, EventFd, PollToken, WatchingEvents};
+use sys_util::{error, warn, EpollContext, EpollEvents, EventFd, PollToken, WatchingEvents};
 
 /// A fail handle will do the clean up when we cannot recover from some error.
 pub trait FailHandle: Send + Sync {

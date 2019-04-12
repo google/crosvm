@@ -14,7 +14,8 @@ use std::thread;
 
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
 use sys_util::{
-    self, net::UnixSeqpacket, EventFd, GuestAddress, GuestMemory, PollContext, PollToken,
+    self, error, info, net::UnixSeqpacket, warn, EventFd, GuestAddress, GuestMemory, PollContext,
+    PollToken,
 };
 
 use super::{

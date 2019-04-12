@@ -9,6 +9,8 @@
 #[macro_use]
 extern crate sys_util;
 
+use sys_util::{ioctl_ior_nr, ioctl_iow_nr};
+
 // generated with bindgen /usr/include/linux/if.h --no-unstable-rust
 // --constified-enum '*' --with-derive-default -- -D __UAPI_DEF_IF_IFNAMSIZ -D
 // __UAPI_DEF_IF_NET_DEVICE_FLAGS -D __UAPI_DEF_IF_IFREQ -D __UAPI_DEF_IF_IFMAP

@@ -59,8 +59,10 @@ use data_model::*;
 use msg_socket::{MsgError, MsgReceiver, MsgSender};
 #[cfg(feature = "wl-dmabuf")]
 use resources::GpuMemoryDesc;
+#[cfg(feature = "wl-dmabuf")]
+use sys_util::ioctl_iow_nr;
 use sys_util::{
-    pipe, round_up_to_page_size, Error, EventFd, FileFlags, GuestAddress, GuestMemory,
+    error, pipe, round_up_to_page_size, warn, Error, EventFd, FileFlags, GuestAddress, GuestMemory,
     GuestMemoryError, PollContext, PollToken, Result, ScmSocket, SharedMemory,
 };
 

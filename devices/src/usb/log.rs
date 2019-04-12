@@ -8,7 +8,7 @@ macro_rules! usb_debug {
     ($($args:tt)+) => {
         // Set true to enable logging.
         if false {
-            debug!($($args)*);
+            sys_util::debug!($($args)*);
         }
     };
 }
