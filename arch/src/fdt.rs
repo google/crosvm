@@ -124,7 +124,7 @@ pub fn property_u64(fdt: &mut Vec<u8>, name: &str, val: u64) -> Result<()> {
 pub fn generate_prop32(cells: &[u32]) -> Vec<u8> {
     let mut ret: Vec<u8> = Vec::new();
     for &e in cells {
-        ret.extend(cpu_to_fdt32(e).into_iter());
+        ret.extend(&cpu_to_fdt32(e));
     }
     ret
 }
@@ -133,7 +133,7 @@ pub fn generate_prop32(cells: &[u32]) -> Vec<u8> {
 pub fn generate_prop64(cells: &[u64]) -> Vec<u8> {
     let mut ret: Vec<u8> = Vec::new();
     for &e in cells {
-        ret.extend(cpu_to_fdt64(e).into_iter());
+        ret.extend(&cpu_to_fdt64(e));
     }
     ret
 }

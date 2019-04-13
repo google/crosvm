@@ -13,7 +13,6 @@ cd ..
 
 SUPPRESS=(
     # To be resolved.
-    into_iter_on_array
     let_and_return
     let_unit_value
     match_ref_pats
