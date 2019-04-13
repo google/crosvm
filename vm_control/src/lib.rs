@@ -321,7 +321,7 @@ impl VmRequest {
                     Ok(response) => VmResponse::UsbResponse(response),
                     Err(e) => {
                         error!("fail to recv command from usb control socket: {}", e);
-                        return VmResponse::Err(SysError::new(EIO));
+                        VmResponse::Err(SysError::new(EIO))
                     }
                 }
             }

@@ -733,11 +733,11 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
     match plugin.try_wait() {
         // The plugin has run out of time by now
-        Ok(ProcessStatus::Running) => return Err(Error::PluginTimeout),
+        Ok(ProcessStatus::Running) => Err(Error::PluginTimeout),
         // Return an error discovered earlier in this function.
-        Ok(ProcessStatus::Success) => return res,
-        Ok(ProcessStatus::Fail(code)) => return Err(Error::PluginFailed(code)),
-        Ok(ProcessStatus::Signal(code)) => return Err(Error::PluginKilled(code)),
-        Err(e) => return Err(Error::PluginWait(e)),
-    };
+        Ok(ProcessStatus::Success) => res,
+        Ok(ProcessStatus::Fail(code)) => Err(Error::PluginFailed(code)),
+        Ok(ProcessStatus::Signal(code)) => Err(Error::PluginKilled(code)),
+        Err(e) => Err(Error::PluginWait(e)),
+    }
 }
