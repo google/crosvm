@@ -183,8 +183,8 @@ impl Tap {
 
         Ok(Tap {
             tap_file,
-            if_name: ifreq.ifr_ifrn.ifrn_name.as_ref().clone(),
-            if_flags: ifreq.ifr_ifru.ifru_flags.as_ref().clone(),
+            if_name: *ifreq.ifr_ifrn.ifrn_name.as_ref(),
+            if_flags: *ifreq.ifr_ifru.ifru_flags.as_ref(),
         })
     }
 }

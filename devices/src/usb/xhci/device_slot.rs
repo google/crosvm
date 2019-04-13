@@ -743,7 +743,7 @@ impl DeviceSlot {
                     .checked_add(
                         (device_context_index as u64 + 1) * DEVICE_CONTEXT_ENTRY_SIZE as u64,
                     )
-                    .ok_or(Error::BadInputContextAddr(input_context_ptr.clone()))?,
+                    .ok_or(Error::BadInputContextAddr(input_context_ptr))?,
             )
             .map_err(Error::ReadGuestMemory)?;
         usb_debug!("context being copied {:?}", ctx);
@@ -753,7 +753,7 @@ impl DeviceSlot {
                 ctx,
                 device_context_ptr
                     .checked_add(device_context_index as u64 * DEVICE_CONTEXT_ENTRY_SIZE as u64)
-                    .ok_or(Error::BadDeviceContextAddr(device_context_ptr.clone()))?,
+                    .ok_or(Error::BadDeviceContextAddr(device_context_ptr))?,
             )
             .map_err(Error::WriteGuestMemory)
     }

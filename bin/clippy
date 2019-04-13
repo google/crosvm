@@ -13,7 +13,6 @@ cd ..
 
 SUPPRESS=(
     # To be resolved.
-    clone_on_copy
     collapsible_if
     const_static_lifetime
     extra_unused_lifetimes

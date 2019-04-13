@@ -84,7 +84,7 @@ impl RingBuffer {
             self.dequeue_pointer = match self.dequeue_pointer.checked_add(size_of::<Trb>() as u64) {
                 Some(addr) => addr,
                 None => {
-                    return Err(Error::BadDequeuePointer(self.dequeue_pointer.clone()));
+                    return Err(Error::BadDequeuePointer(self.dequeue_pointer));
                 }
             };
 

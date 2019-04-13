@@ -98,7 +98,7 @@ impl EventRing {
             let address = self.enqueue_pointer;
             let address = address
                 .checked_add(CYCLE_STATE_OFFSET as u64)
-                .ok_or(Error::BadEnqueuePointer(self.enqueue_pointer.clone()))?;
+                .ok_or(Error::BadEnqueuePointer(self.enqueue_pointer))?;
             self.mem
                 .write_all_at_addr(cycle_bit_dword, address)
                 .map_err(Error::MemoryWrite)?;
@@ -112,7 +112,7 @@ impl EventRing {
         );
         self.enqueue_pointer = match self.enqueue_pointer.checked_add(size_of::<Trb>() as u64) {
             Some(addr) => addr,
-            None => return Err(Error::BadEnqueuePointer(self.enqueue_pointer.clone())),
+            None => return Err(Error::BadEnqueuePointer(self.enqueue_pointer)),
         };
         self.trb_count -= 1;
         if self.trb_count == 0 {
@@ -214,9 +214,7 @@ impl EventRing {
         }
         self.segment_table_base_address
             .checked_add(((size_of::<EventRingSegmentTableEntry>() as u16) * index) as u64)
-            .ok_or(Error::BadSegTableAddress(
-                self.segment_table_base_address.clone(),
-            ))
+            .ok_or(Error::BadSegTableAddress(self.segment_table_base_address))
     }
 }
 

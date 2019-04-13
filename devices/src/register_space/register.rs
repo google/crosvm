@@ -73,11 +73,11 @@ pub trait RegisterValue:
     }
     // Set masked bits.
     fn set_bits(&mut self, mask: Self) {
-        *self = self.clone() | mask;
+        *self = *self | mask;
     }
     // Clear masked bits.
     fn clear_bits(&mut self, mask: Self) {
-        *self = self.clone() & (!mask);
+        *self = *self & (!mask);
     }
 }
 impl RegisterValue for u8 {}
@@ -165,7 +165,7 @@ where
 
     fn read(&self, addr: RegisterOffset, data: &mut [u8]) {
         let val_range = self.range();
-        read_reg_helper(self.spec.value.clone(), val_range, addr, data);
+        read_reg_helper(self.spec.value, val_range, addr, data);
     }
 }
 
@@ -236,7 +236,7 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
 
     fn read(&self, addr: RegisterOffset, data: &mut [u8]) {
         let val_range = self.range();
-        let value = self.lock().value.clone();
+        let value = self.lock().value;
         read_reg_helper(value, val_range, addr, data);
     }
 
@@ -258,7 +258,7 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
         let write_start_idx = (overlap.from - write_range.from) as usize;
         let total_size = (overlap.to - overlap.from) as usize + 1;
 
-        let mut reg_value: T = self.lock().value.clone();
+        let mut reg_value: T = self.lock().value;
         {
             let value: &mut [u8] = reg_value.as_mut_slice();
             for i in 0..total_size {
@@ -300,14 +300,14 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
 
     fn reset(&self) {
         let mut locked = self.lock();
-        locked.value = locked.spec.reset_value.clone();
+        locked.value = locked.spec.reset_value;
     }
 }
 
 impl<T: RegisterValue> Register<T> {
     /// Get current value of this register.
     pub fn get_value(&self) -> T {
-        self.lock().value.clone()
+        self.lock().value
     }
 
     /// This function apply "write 1 to clear mask" and "guest writeable mask".
@@ -316,8 +316,8 @@ impl<T: RegisterValue> Register<T> {
     pub fn apply_write_masks_to_byte(&self, old_byte: u8, write_byte: u8, offset: usize) -> u8 {
         let locked = self.lock();
         let spec = &locked.spec;
-        let guest_write_1_to_clear_mask: u64 = spec.guest_write_1_to_clear_mask.clone().into();
-        let guest_writeable_mask: u64 = spec.guest_writeable_mask.clone().into();
+        let guest_write_1_to_clear_mask: u64 = spec.guest_write_1_to_clear_mask.into();
+        let guest_writeable_mask: u64 = spec.guest_writeable_mask.into();
         // Mask with w1c mask.
         let w1c_mask = (guest_write_1_to_clear_mask >> (offset * 8)) as u8;
         let val = (!w1c_mask & write_byte) | (w1c_mask & old_byte & !write_byte);
