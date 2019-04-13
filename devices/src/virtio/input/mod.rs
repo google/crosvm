@@ -29,7 +29,7 @@ use std::thread;
 
 const EVENT_QUEUE_SIZE: u16 = 64;
 const STATUS_QUEUE_SIZE: u16 = 64;
-const QUEUE_SIZES: &'static [u16] = &[EVENT_QUEUE_SIZE, STATUS_QUEUE_SIZE];
+const QUEUE_SIZES: &[u16] = &[EVENT_QUEUE_SIZE, STATUS_QUEUE_SIZE];
 
 #[derive(Debug)]
 pub enum InputError {

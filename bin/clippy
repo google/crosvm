@@ -13,7 +13,6 @@ cd ..
 
 SUPPRESS=(
     # To be resolved.
-    const_static_lifetime
     extra_unused_lifetimes
     into_iter_on_array
     let_and_return

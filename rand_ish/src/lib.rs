@@ -33,7 +33,7 @@ impl SimpleRng {
 fn uniform_sample_ascii_alphanumeric(
     b: Result<u8, std::io::Error>,
 ) -> Option<Result<char, std::io::Error>> {
-    const ASCII_CHARS: &'static [u8] = b"\
+    const ASCII_CHARS: &[u8] = b"\
           ABCDEFGHIJKLMNOPQRSTUVWXYZ\
           abcdefghijklmnopqrstuvwxyz\
           0123456789";
