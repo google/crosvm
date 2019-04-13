@@ -14,7 +14,6 @@ cd ..
 SUPPRESS=(
     # To be resolved.
     let_unit_value
-    option_map_unit_fn
     question_mark
     range_plus_one
     redundant_closure

@@ -1308,9 +1308,9 @@ impl WlState {
         // hangup events.
         for &send_vfd_id in &send_vfd_ids[..vfd_count] {
             if send_vfd_id.kind == VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL {
-                self.vfds
-                    .get_mut(&send_vfd_id.id.into())
-                    .map(|vfd| vfd.close_remote());
+                if let Some(vfd) = self.vfds.get_mut(&send_vfd_id.id.into()) {
+                    vfd.close_remote();
+                }
             }
         }
         Ok(WlResp::Ok)
