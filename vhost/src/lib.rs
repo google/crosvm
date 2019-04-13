@@ -165,6 +165,7 @@ pub trait Vhost: AsRawFd + std::marker::Sized {
     }
 
     // TODO(smbarber): This is copypasta. Eliminate the copypasta.
+    #[allow(clippy::if_same_then_else)]
     fn is_valid(
         &self,
         queue_max_size: u16,

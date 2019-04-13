@@ -111,6 +111,7 @@ impl<'a> DescriptorChain<'a> {
         }
     }
 
+    #[allow(clippy::if_same_then_else)]
     fn is_valid(&self) -> bool {
         if self
             .mem
