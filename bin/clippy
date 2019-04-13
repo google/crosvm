@@ -17,7 +17,6 @@ SUPPRESS=(
     question_mark
     range_plus_one
     unit_arg
-    useless_format
 
     # To be resolved or suppressed locally.
     cast_ptr_alignment

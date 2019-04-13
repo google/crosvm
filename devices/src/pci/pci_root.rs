@@ -253,7 +253,7 @@ impl PciConfigMmio {
 
 impl BusDevice for PciConfigMmio {
     fn debug_label(&self) -> String {
-        format!("pci config mmio")
+        "pci config mmio".to_owned()
     }
 
     fn read(&mut self, offset: u64, data: &mut [u8]) {
