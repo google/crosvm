@@ -256,12 +256,9 @@ impl<'a> VcpuRunData<'a> {
     }
 
     fn copy_from_slice(&mut self, data: &[u8]) {
-        match self {
-            VcpuRunData::Read(s) => {
-                let copy_size = min(s.len(), data.len());
-                s.copy_from_slice(&data[..copy_size]);
-            }
-            _ => {}
+        if let VcpuRunData::Read(s) = self {
+            let copy_size = min(s.len(), data.len());
+            s.copy_from_slice(&data[..copy_size]);
         }
     }
 }

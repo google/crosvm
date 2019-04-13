@@ -842,10 +842,9 @@ impl Vm {
         if do_datamatch {
             flags |= 1 << kvm_ioeventfd_flag_nr_datamatch
         }
-        match addr {
-            IoeventAddress::Pio(_) => flags |= 1 << kvm_ioeventfd_flag_nr_pio,
-            _ => {}
-        };
+        if let IoeventAddress::Pio(_) = addr {
+            flags |= 1 << kvm_ioeventfd_flag_nr_pio;
+        }
         let ioeventfd = kvm_ioeventfd {
             datamatch: datamatch_value,
             len: datamatch_len,

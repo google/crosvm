@@ -129,32 +129,29 @@ struct PollfdChangeHandler {
 
 impl LibUsbPollfdChangeHandler for PollfdChangeHandler {
     fn add_poll_fd(&self, fd: RawFd, events: c_short) {
-        match self.event_loop.add_event(
+        if let Err(e) = self.event_loop.add_event(
             &MaybeOwnedFd::Borrowed(fd),
             WatchingEvents::new(events as u32),
             self.event_handler.clone(),
         ) {
-            Err(e) => error!("cannot add event to event loop: {}", e),
-            Ok(_) => {}
+            error!("cannot add event to event loop: {}", e);
         }
     }
 
     fn remove_poll_fd(&self, fd: RawFd) {
         if let Some(h) = self.event_handler.upgrade() {
-            match h.on_event() {
-                Ok(()) => {}
-                Err(e) => error!("cannot handle event: {:?}", e),
+            if let Err(e) = h.on_event() {
+                error!("cannot handle event: {:?}", e);
             }
         }
-        match self
+        if let Err(e) = self
             .event_loop
             .remove_event_for_fd(&MaybeOwnedFd::Borrowed(fd))
         {
-            Ok(_) => {}
-            Err(e) => error!(
+            error!(
                 "failed to remove poll change handler from event loop: {}",
                 e
-            ),
+            );
         }
     }
 }

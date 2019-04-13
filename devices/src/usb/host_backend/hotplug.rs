@@ -21,26 +21,25 @@ impl HotplugHandler {
 
 impl UsbHotplugHandler for HotplugHandler {
     fn hotplug_event(&self, device: LibUsbDevice, event: HotplugEvent) {
-        match event {
-            HotplugEvent::DeviceLeft => {
-                let bus = device.get_bus_number();
-                let address = device.get_address();
-                let descriptor = match device.get_device_descriptor() {
-                    Ok(d) => d,
-                    Err(e) => {
-                        error!("cannot get device descriptor: {:?}", e);
-                        return;
-                    }
-                };
-                let vid = descriptor.idVendor;
-                let pid = descriptor.idProduct;
+        if event != HotplugEvent::DeviceLeft {
+            return;
+        }
 
-                if let Err(e) = self.hub.try_detach(bus, address, vid, pid) {
-                    error!("device left event triggered failed detach from hub: {}", e);
-                    return;
-                }
+        let bus = device.get_bus_number();
+        let address = device.get_address();
+        let descriptor = match device.get_device_descriptor() {
+            Ok(d) => d,
+            Err(e) => {
+                error!("cannot get device descriptor: {:?}", e);
+                return;
             }
-            _ => {}
+        };
+        let vid = descriptor.idVendor;
+        let pid = descriptor.idProduct;
+
+        if let Err(e) = self.hub.try_detach(bus, address, vid, pid) {
+            error!("device left event triggered failed detach from hub: {}", e);
+            return;
         }
     }
 }

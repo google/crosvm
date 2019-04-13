@@ -549,13 +549,12 @@ impl QcowFile {
 
         let mut cluster_addr = 0;
         while cluster_addr < file_size {
-            match self
+            let cluster_refcount = self
                 .refcounts
                 .get_cluster_refcount(&mut self.raw_file, cluster_addr)
-                .map_err(Error::GettingRefcount)?
-            {
-                0 => return Ok(Some(cluster_addr)),
-                _ => (),
+                .map_err(Error::GettingRefcount)?;
+            if cluster_refcount == 0 {
+                return Ok(Some(cluster_addr));
             }
             cluster_addr += cluster_size;
         }

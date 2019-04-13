@@ -67,19 +67,16 @@ impl RingBuffer {
     pub fn dequeue_transfer_descriptor(&mut self) -> Result<Option<TransferDescriptor>> {
         let mut td: TransferDescriptor = TransferDescriptor::new();
         while let Some(addressed_trb) = self.get_current_trb()? {
-            match addressed_trb.trb.trb_type() {
-                Ok(TrbType::Link) => {
-                    let link_trb = addressed_trb
-                        .trb
-                        .cast::<LinkTrb>()
-                        .map_err(Error::CastTrb)?;
-                    self.dequeue_pointer = GuestAddress(link_trb.get_ring_segment_pointer());
-                    self.consumer_cycle_state =
-                        self.consumer_cycle_state != link_trb.get_toggle_cycle_bit();
-                    continue;
-                }
-                _ => {}
-            };
+            if let Ok(TrbType::Link) = addressed_trb.trb.trb_type() {
+                let link_trb = addressed_trb
+                    .trb
+                    .cast::<LinkTrb>()
+                    .map_err(Error::CastTrb)?;
+                self.dequeue_pointer = GuestAddress(link_trb.get_ring_segment_pointer());
+                self.consumer_cycle_state =
+                    self.consumer_cycle_state != link_trb.get_toggle_cycle_bit();
+                continue;
+            }
 
             self.dequeue_pointer = match self.dequeue_pointer.checked_add(size_of::<Trb>() as u64) {
                 Some(addr) => addr,
