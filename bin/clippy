@@ -16,7 +16,6 @@ SUPPRESS=(
     let_unit_value
     question_mark
     range_plus_one
-    toplevel_ref_arg
     unit_arg
     unneeded_field_pattern
     unused_unit

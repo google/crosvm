@@ -221,7 +221,7 @@ impl GlobalStats {
 
     fn print(&self) {
         for idx in 0..Stat::Count as usize {
-            let ref e = self.entries[idx as usize];
+            let e = &self.entries[idx as usize];
             let stat = unsafe { std::mem::transmute::<u8, Stat>(idx as u8) };
             if e.count > 0 {
                 println!(
@@ -235,7 +235,7 @@ impl GlobalStats {
     }
 
     fn update(&mut self, idx: usize, elapsed_nanos: u64) {
-        let ref mut e = self.entries[idx as usize];
+        let e = &mut self.entries[idx as usize];
         e.total += elapsed_nanos;
         if e.max < elapsed_nanos {
             e.max = elapsed_nanos;
