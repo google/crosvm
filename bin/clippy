@@ -13,7 +13,6 @@ cd ..
 
 SUPPRESS=(
     # To be resolved.
-    extra_unused_lifetimes
     into_iter_on_array
     let_and_return
     let_unit_value
