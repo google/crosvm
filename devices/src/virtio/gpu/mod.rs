@@ -570,26 +570,16 @@ impl Worker {
             }
 
             // All cursor commands go first because they have higher priority.
-            loop {
-                match self.state.process_cursor(&self.mem) {
-                    Some(ReturnDescriptor { index, len }) => {
-                        self.cursor_queue.add_used(&self.mem, index, len);
-                        signal_used = true;
-                    }
-                    None => break,
-                }
+            while let Some(desc) = self.state.process_cursor(&self.mem) {
+                self.cursor_queue.add_used(&self.mem, desc.index, desc.len);
+                signal_used = true;
             }
 
             self.state.fence_poll();
 
-            loop {
-                match self.state.process_ctrl(&self.mem) {
-                    Some(ReturnDescriptor { index, len }) => {
-                        self.ctrl_queue.add_used(&self.mem, index, len);
-                        signal_used = true;
-                    }
-                    None => break,
-                }
+            while let Some(desc) = self.state.process_ctrl(&self.mem) {
+                self.ctrl_queue.add_used(&self.mem, desc.index, desc.len);
+                signal_used = true;
             }
 
             // Process the entire control queue before the resource bridge in case a resource is

@@ -66,12 +66,7 @@ impl RingBuffer {
     /// Dequeue next transfer descriptor from the transfer ring.
     pub fn dequeue_transfer_descriptor(&mut self) -> Result<Option<TransferDescriptor>> {
         let mut td: TransferDescriptor = TransferDescriptor::new();
-        loop {
-            let addressed_trb = match self.get_current_trb()? {
-                Some(t) => t,
-                None => break,
-            };
-
+        while let Some(addressed_trb) = self.get_current_trb()? {
             match addressed_trb.trb.trb_type() {
                 Ok(TrbType::Link) => {
                     let link_trb = addressed_trb

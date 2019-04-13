@@ -785,13 +785,8 @@ impl Server {
         let count = min(self.msize - header_size, readdir.count);
         let mut cursor = Cursor::new(Vec::with_capacity(count as usize));
 
-        loop {
-            let byte_size = if let Some(entry) = entries.peek() {
-                entry.byte_size() as usize
-            } else {
-                // No more entries.
-                break;
-            };
+        while let Some(entry) = entries.peek() {
+            let byte_size = entry.byte_size() as usize;
 
             if cursor.get_ref().capacity() - cursor.get_ref().len() < byte_size {
                 // No more room in the buffer.

@@ -36,7 +36,6 @@ SUPPRESS=(
     unneeded_field_pattern
     unused_unit
     useless_format
-    while_let_loop
 
     # To be resolved or suppressed locally.
     cast_ptr_alignment
