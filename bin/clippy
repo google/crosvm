@@ -14,7 +14,6 @@ cd ..
 SUPPRESS=(
     # To be resolved.
     let_unit_value
-    match_ref_pats
     needless_return
     option_map_unit_fn
     question_mark

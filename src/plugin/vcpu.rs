@@ -243,21 +243,21 @@ enum VcpuRunData<'a> {
 impl<'a> VcpuRunData<'a> {
     fn is_write(&self) -> bool {
         match self {
-            &VcpuRunData::Write(_) => true,
+            VcpuRunData::Write(_) => true,
             _ => false,
         }
     }
 
     fn as_slice(&self) -> &[u8] {
         match self {
-            &VcpuRunData::Read(ref s) => s,
-            &VcpuRunData::Write(ref s) => s,
+            VcpuRunData::Read(s) => s,
+            VcpuRunData::Write(s) => s,
         }
     }
 
     fn copy_from_slice(&mut self, data: &[u8]) {
         match self {
-            &mut VcpuRunData::Read(ref mut s) => {
+            VcpuRunData::Read(s) => {
                 let copy_size = min(s.len(), data.len());
                 s.copy_from_slice(&data[..copy_size]);
             }
