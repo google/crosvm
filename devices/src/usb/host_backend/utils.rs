@@ -31,7 +31,7 @@ pub fn update_transfer_state<T: UsbTransferBuffer>(
         XhciTransferState::Cancelling => {
             *state = XhciTransferState::Cancelled;
         }
-        XhciTransferState::Submitted { cancel_callback: _ } => {
+        XhciTransferState::Submitted { .. } => {
             *state = XhciTransferState::Completed;
         }
         _ => {

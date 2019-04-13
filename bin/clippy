@@ -17,7 +17,6 @@ SUPPRESS=(
     question_mark
     range_plus_one
     unit_arg
-    unneeded_field_pattern
     unused_unit
     useless_format
 

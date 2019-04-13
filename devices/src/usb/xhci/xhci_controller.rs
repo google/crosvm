@@ -234,12 +234,8 @@ impl PciDevice for XhciController {
         if addr < bar0 || addr > bar0 + XHCI_BAR0_SIZE {
             return;
         }
-        match self.state {
-            XhciControllerState::Initialized {
-                ref mmio,
-                xhci: _,
-                fail_handle: _,
-            } => {
+        match &self.state {
+            XhciControllerState::Initialized { mmio, .. } => {
                 // Read bar would still work even if it's already failed.
                 mmio.read(addr - bar0, data);
             }
@@ -255,11 +251,9 @@ impl PciDevice for XhciController {
         if addr < bar0 || addr > bar0 + XHCI_BAR0_SIZE {
             return;
         }
-        match self.state {
+        match &self.state {
             XhciControllerState::Initialized {
-                ref mmio,
-                xhci: _,
-                ref fail_handle,
+                mmio, fail_handle, ..
             } => {
                 if !fail_handle.failed() {
                     mmio.write(addr - bar0, data);

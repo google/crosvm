@@ -777,10 +777,7 @@ impl<T: DiskFile> Worker<T> {
                         };
 
                         let resp = match req {
-                            VmRequest::DiskResize {
-                                disk_index: _,
-                                new_size,
-                            } => {
+                            VmRequest::DiskResize { new_size, .. } => {
                                 needs_config_interrupt = true;
                                 self.resize(new_size)
                             }

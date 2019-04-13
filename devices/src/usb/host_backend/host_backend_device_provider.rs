@@ -78,7 +78,7 @@ impl HostBackendDeviceProvider {
                 *self = HostBackendDeviceProvider::Started { inner };
                 Ok(())
             }
-            HostBackendDeviceProvider::Started { inner: _ } => {
+            HostBackendDeviceProvider::Started { .. } => {
                 error!("Host backend provider has already started");
                 Err(Error::BadBackendProviderState)
             }

@@ -289,10 +289,7 @@ impl VmRequest {
                     Err(e) => VmResponse::Err(e),
                 }
             }
-            VmRequest::DiskResize {
-                disk_index,
-                new_size: _,
-            } => {
+            VmRequest::DiskResize { disk_index, .. } => {
                 // Forward the request to the block device process via its control socket.
                 if let Some(sock) = disk_host_sockets.get(disk_index) {
                     if let Err(e) = sock.send(self) {
