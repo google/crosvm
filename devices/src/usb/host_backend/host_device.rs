@@ -112,7 +112,7 @@ impl HostDevice {
         device: LibUsbDevice,
         device_handle: DeviceHandle,
     ) -> HostDevice {
-        let device = HostDevice {
+        HostDevice {
             fail_handle,
             endpoints: vec![],
             device,
@@ -123,8 +123,7 @@ impl HostDevice {
             control_request_setup: UsbRequestSetup::new(0, 0, 0, 0, 0),
             buffer: None,
             job_queue,
-        };
-        device
+        }
     }
 
     fn get_interface_number_of_active_config(&self) -> i32 {
