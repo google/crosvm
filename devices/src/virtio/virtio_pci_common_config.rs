@@ -42,7 +42,7 @@ impl VirtioPciCommonConfig {
         &mut self,
         offset: u64,
         data: &mut [u8],
-        queues: &mut Vec<Queue>,
+        queues: &mut [Queue],
         device: &mut dyn VirtioDevice,
     ) {
         match data.len() {
@@ -70,7 +70,7 @@ impl VirtioPciCommonConfig {
         &mut self,
         offset: u64,
         data: &[u8],
-        queues: &mut Vec<Queue>,
+        queues: &mut [Queue],
         device: &mut dyn VirtioDevice,
     ) {
         match data.len() {
@@ -102,7 +102,7 @@ impl VirtioPciCommonConfig {
         }
     }
 
-    fn read_common_config_word(&self, offset: u64, queues: &Vec<Queue>) -> u16 {
+    fn read_common_config_word(&self, offset: u64, queues: &[Queue]) -> u16 {
         match offset {
             0x10 => 0,                   // TODO msi-x (crbug/854765): self.msix_config,
             0x12 => queues.len() as u16, // num_queues
@@ -120,7 +120,7 @@ impl VirtioPciCommonConfig {
         }
     }
 
-    fn write_common_config_word(&mut self, offset: u64, value: u16, queues: &mut Vec<Queue>) {
+    fn write_common_config_word(&mut self, offset: u64, value: u16, queues: &mut [Queue]) {
         match offset {
             0x10 => (), // TODO msi-x (crbug/854765): self.msix_config = value,
             0x16 => self.queue_select = value,
@@ -154,7 +154,7 @@ impl VirtioPciCommonConfig {
         &mut self,
         offset: u64,
         value: u32,
-        queues: &mut Vec<Queue>,
+        queues: &mut [Queue],
         device: &mut dyn VirtioDevice,
     ) {
         fn hi(v: &mut GuestAddress, x: u32) {
@@ -194,7 +194,7 @@ impl VirtioPciCommonConfig {
         0 // Assume the guest has no reason to read write-only registers.
     }
 
-    fn write_common_config_qword(&mut self, offset: u64, value: u64, queues: &mut Vec<Queue>) {
+    fn write_common_config_qword(&mut self, offset: u64, value: u64, queues: &mut [Queue]) {
         match offset {
             0x20 => self.with_queue_mut(queues, |q| q.desc_table = GuestAddress(value)),
             0x28 => self.with_queue_mut(queues, |q| q.avail_ring = GuestAddress(value)),
@@ -205,14 +205,14 @@ impl VirtioPciCommonConfig {
         }
     }
 
-    fn with_queue<U, F>(&self, queues: &Vec<Queue>, f: F) -> Option<U>
+    fn with_queue<U, F>(&self, queues: &[Queue], f: F) -> Option<U>
     where
         F: FnOnce(&Queue) -> U,
     {
         queues.get(self.queue_select as usize).map(f)
     }
 
-    fn with_queue_mut<F: FnOnce(&mut Queue)>(&self, queues: &mut Vec<Queue>, f: F) {
+    fn with_queue_mut<F: FnOnce(&mut Queue)>(&self, queues: &mut [Queue], f: F) {
         if let Some(queue) = queues.get_mut(self.queue_select as usize) {
             f(queue);
         }

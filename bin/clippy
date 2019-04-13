@@ -39,7 +39,6 @@ SUPPRESS=(
 
     # To be resolved or suppressed locally.
     cast_ptr_alignment
-    ptr_arg
 
     # We don't care about these lints. Okay to remain suppressed globally.
     blacklisted_name

@@ -457,7 +457,7 @@ impl Process {
         kvm: &Kvm,
         vm: &mut Vm,
         vcpu_handles: &[JoinHandle<()>],
-        taps: &Vec<Tap>,
+        taps: &[Tap],
     ) -> Result<()> {
         let (msg_size, request_file) = self.request_sockets[index]
             .recv_with_fd(&mut self.request_buffer)
