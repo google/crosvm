@@ -247,12 +247,10 @@ impl Pic {
             }
 
             ret
+        } else if self.pics[pic_type as usize].read_reg_select {
+            self.pics[pic_type as usize].isr
         } else {
-            if self.pics[pic_type as usize].read_reg_select {
-                self.pics[pic_type as usize].isr
-            } else {
-                self.pics[pic_type as usize].irr
-            }
+            self.pics[pic_type as usize].irr
         }
     }
 
