@@ -143,7 +143,7 @@ where
         let read = self
             .source
             .read(&mut self.read_buffer.buffer[self.read_idx..])
-            .map_err(|e| InputError::EventsReadError(e))?;
+            .map_err(InputError::EventsReadError)?;
         let buff_size = read + self.read_idx;
 
         for evt_slice in self.read_buffer.buffer[..buff_size].chunks_exact(input_event::EVENT_SIZE)

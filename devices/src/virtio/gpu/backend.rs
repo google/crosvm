@@ -367,7 +367,7 @@ impl Backend {
                 .get(&id)
                 .and_then(|resource| resource.buffer())
                 .and_then(|buffer| buffer.export_plane_fd(0).ok())
-                .map(|fd| ResourceResponse::Resource(fd))
+                .map(ResourceResponse::Resource)
                 .unwrap_or(ResourceResponse::Invalid),
         };
 

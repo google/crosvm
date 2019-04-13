@@ -1047,7 +1047,7 @@ fn raw_fd_from_path(path: &Path) -> ModifyUsbResult<RawFd> {
                 })
             },
         )?;
-    validate_raw_fd(raw_fd).map_err(|e| ModifyUsbError::FailedFdValidate(e))
+    validate_raw_fd(raw_fd).map_err(ModifyUsbError::FailedFdValidate)
 }
 
 fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
@@ -1080,7 +1080,7 @@ fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
         addr,
         vid,
         pid,
-        fd: usb_file.map(|f| MaybeOwnedFd::Owned(f)),
+        fd: usb_file.map(MaybeOwnedFd::Owned),
     });
     let response = handle_request(&request, args).map_err(|_| ModifyUsbError::SocketFailed)?;
     match response {

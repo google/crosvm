@@ -460,7 +460,7 @@ impl<T: EventSource> Worker<T> {
             } else {
                 self.guest_memory
                     .write_from_memory(avail_desc.addr, &mut self.event_source, len)
-                    .map_err(|e| InputError::EventsWriteError(e))?;
+                    .map_err(InputError::EventsWriteError)?;
             }
 
             used_desc_heads[used_count] = (avail_desc.index, len);

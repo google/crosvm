@@ -1087,7 +1087,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     }
 
     let (usb_control_socket, usb_provider) =
-        HostBackendDeviceProvider::new().map_err(|e| Error::CreateUsbProvider(e))?;
+        HostBackendDeviceProvider::new().map_err(Error::CreateUsbProvider)?;
     // Masking signals is inherently dangerous, since this can persist across clones/execs. Do this
     // before any jailed devices have been spawned, so that we can catch any of them that fail very
     // quickly.

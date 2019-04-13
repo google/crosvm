@@ -250,7 +250,7 @@ impl VirtioPciDevice {
         );
         self.config_regs
             .add_capability(&common_cap)
-            .map_err(|e| PciDeviceError::CapabilitiesSetup(e))?;
+            .map_err(PciDeviceError::CapabilitiesSetup)?;
 
         let isr_cap = VirtioPciCap::new(
             PciCapabilityType::IsrConfig,
@@ -260,7 +260,7 @@ impl VirtioPciDevice {
         );
         self.config_regs
             .add_capability(&isr_cap)
-            .map_err(|e| PciDeviceError::CapabilitiesSetup(e))?;
+            .map_err(PciDeviceError::CapabilitiesSetup)?;
 
         // TODO(dgreid) - set based on device's configuration size?
         let device_cap = VirtioPciCap::new(
@@ -271,7 +271,7 @@ impl VirtioPciDevice {
         );
         self.config_regs
             .add_capability(&device_cap)
-            .map_err(|e| PciDeviceError::CapabilitiesSetup(e))?;
+            .map_err(PciDeviceError::CapabilitiesSetup)?;
 
         let notify_cap = VirtioPciNotifyCap::new(
             PciCapabilityType::NotifyConfig,
@@ -282,13 +282,13 @@ impl VirtioPciDevice {
         );
         self.config_regs
             .add_capability(&notify_cap)
-            .map_err(|e| PciDeviceError::CapabilitiesSetup(e))?;
+            .map_err(PciDeviceError::CapabilitiesSetup)?;
 
         //TODO(dgreid) - How will the configuration_cap work?
         let configuration_cap = VirtioPciCap::new(PciCapabilityType::PciConfig, 0, 0, 0);
         self.config_regs
             .add_capability(&configuration_cap)
-            .map_err(|e| PciDeviceError::CapabilitiesSetup(e))?;
+            .map_err(PciDeviceError::CapabilitiesSetup)?;
 
         self.settings_bar = settings_bar;
         Ok(())
@@ -372,7 +372,7 @@ impl PciDevice for VirtioPciDevice {
         for cap in self.device.get_device_caps() {
             self.config_regs
                 .add_capability(&*cap)
-                .map_err(|e| PciDeviceError::CapabilitiesSetup(e))?;
+                .map_err(PciDeviceError::CapabilitiesSetup)?;
         }
 
         Ok(())
