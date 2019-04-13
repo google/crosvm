@@ -100,7 +100,6 @@ impl XhciBackendDeviceProvider for HostBackendDeviceProvider {
         self.start_helper(fail_handle, event_loop, hub)
             .map_err(|e| {
                 error!("failed to start host backend device provider: {}", e);
-                ()
             })
     }
 
@@ -318,7 +317,6 @@ impl EventHandler for ProviderInner {
     fn on_event(&self) -> std::result::Result<(), ()> {
         self.on_event_helper().map_err(|e| {
             error!("host backend device provider failed: {}", e);
-            ()
         })
     }
 }

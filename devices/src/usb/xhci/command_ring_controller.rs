@@ -144,7 +144,6 @@ impl CommandRingTrbHandler {
                     )
                     .map_err(|e| {
                         error!("failed to run command completion callback: {}", e);
-                        ()
                     })
                 })
                 .map_err(Error::DisableSlot)
@@ -251,7 +250,6 @@ impl CommandRingTrbHandler {
                     )
                     .map_err(|e| {
                         error!("command completion callback failed: {}", e);
-                        ()
                     })
                 })
                 .map_err(Error::ResetSlot)
@@ -287,7 +285,6 @@ impl CommandRingTrbHandler {
                     )
                     .map_err(|e| {
                         error!("command completion callback failed: {}", e);
-                        ()
                     })
                 })
                 .map_err(Error::StopEndpoint)?;
@@ -390,7 +387,6 @@ impl TransferDescriptorHandler for CommandRingTrbHandler {
         };
         command_result.map_err(|e| {
             error!("command failed: {}", e);
-            ()
         })
     }
 }

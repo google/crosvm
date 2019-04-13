@@ -526,7 +526,6 @@ impl XhciBackendDevice for HostDevice {
     fn submit_transfer(&mut self, transfer: XhciTransfer) -> std::result::Result<(), ()> {
         self.submit_transfer_helper(transfer).map_err(|e| {
             error!("failed to submit transfer: {}", e);
-            ()
         })
     }
 

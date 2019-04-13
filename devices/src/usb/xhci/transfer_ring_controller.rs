@@ -47,7 +47,6 @@ impl TransferDescriptorHandler for TransferRingTrbHandler {
         );
         xhci_transfer.send_to_backend_if_valid().map_err(|e| {
             error!("failed to send transfer to backend: {}", e);
-            ()
         })
     }
 
