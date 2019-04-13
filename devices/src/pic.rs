@@ -388,7 +388,7 @@ impl Pic {
     }
 
     fn update_irq(&mut self) -> bool {
-        if let Some(_) = self.get_irq(PicSelect::Secondary) {
+        if self.get_irq(PicSelect::Secondary).is_some() {
             // If secondary pic has an IRQ request, signal primary's cascade pin.
             Pic::set_irq_internal(
                 &mut self.pics[PicSelect::Primary as usize],
@@ -402,7 +402,7 @@ impl Pic {
             );
         }
 
-        if let Some(_) = self.get_irq(PicSelect::Primary) {
+        if self.get_irq(PicSelect::Primary).is_some() {
             // TODO(mutexlox): Signal local interrupt on APIC bus.
             // Note: this does not check if the interrupt is succesfully injected into
             // the CPU, just whether or not one is fired.
