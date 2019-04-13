@@ -49,7 +49,7 @@ impl RegisterSpace {
                 r.read(addr, data);
             } else {
                 // TODO(jkwang) Add logging for debug here.
-                current_addr = current_addr + 1;
+                current_addr += 1;
             }
         }
     }
@@ -64,7 +64,7 @@ impl RegisterSpace {
                 current_addr = r.range().to + 1;
                 r.write(addr, data);
             } else {
-                current_addr = current_addr + 1;
+                current_addr += 1;
             }
         }
     }

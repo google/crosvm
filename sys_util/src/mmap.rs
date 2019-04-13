@@ -253,7 +253,7 @@ impl MemoryMapping {
                 if (addr as usize) % pagesize() != 0 {
                     return Err(Error::NotPageAligned);
                 }
-                flags = flags | libc::MAP_FIXED;
+                flags |= libc::MAP_FIXED;
                 addr as *mut libc::c_void
             }
             None => null_mut(),
