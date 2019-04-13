@@ -15,8 +15,8 @@ use super::VirtioInputConfig;
 pub fn new_trackpad_config(width: u32, height: u32) -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),
-        "Crosvm Virtio Trackpad".as_bytes().to_vec(),
-        "virtio-trackpad".as_bytes().to_vec(),
+        b"Crosvm Virtio Trackpad".to_vec(),
+        b"virtio-trackpad".to_vec(),
         virtio_input_bitmap::new([0u8; 128]),
         default_trackpad_events(),
         default_trackpad_absinfo(width, height),
@@ -28,8 +28,8 @@ pub fn new_trackpad_config(width: u32, height: u32) -> VirtioInputConfig {
 pub fn new_mouse_config() -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),
-        "Crosvm Virtio Mouse".as_bytes().to_vec(),
-        "virtio-mouse".as_bytes().to_vec(),
+        b"Crosvm Virtio Mouse".to_vec(),
+        b"virtio-mouse".to_vec(),
         virtio_input_bitmap::new([0u8; 128]),
         default_mouse_events(),
         BTreeMap::new(),
@@ -41,8 +41,8 @@ pub fn new_mouse_config() -> VirtioInputConfig {
 pub fn new_keyboard_config() -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),
-        "Crosvm Virtio Keyboard".as_bytes().to_vec(),
-        "virtio-keyboard".as_bytes().to_vec(),
+        b"Crosvm Virtio Keyboard".to_vec(),
+        b"virtio-keyboard".to_vec(),
         virtio_input_bitmap::new([0u8; 128]),
         default_keyboard_events(),
         BTreeMap::new(),
@@ -54,8 +54,8 @@ pub fn new_keyboard_config() -> VirtioInputConfig {
 pub fn new_single_touch_config(width: u32, height: u32) -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),
-        "Crosvm Virtio Touchscreen".as_bytes().to_vec(),
-        "virtio-touchscreen".as_bytes().to_vec(),
+        b"Crosvm Virtio Touchscreen".to_vec(),
+        b"virtio-touchscreen".to_vec(),
         virtio_input_bitmap::from_bits(&[INPUT_PROP_DIRECT]),
         default_touchscreen_events(),
         default_touchscreen_absinfo(width, height),
