@@ -13,7 +13,6 @@ cd ..
 
 SUPPRESS=(
     # To be resolved.
-    block_in_if_condition_stmt
     clone_on_copy
     collapsible_if
     const_static_lifetime
