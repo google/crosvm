@@ -259,15 +259,13 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
         let total_size = (overlap.to - overlap.from) as usize + 1;
 
         let mut reg_value: T = self.lock().value;
-        {
-            let value: &mut [u8] = reg_value.as_mut_slice();
-            for i in 0..total_size {
-                value[my_start_idx + i] = self.apply_write_masks_to_byte(
-                    value[my_start_idx + i],
-                    data[write_start_idx + i],
-                    my_start_idx + i,
-                );
-            }
+        let value: &mut [u8] = reg_value.as_mut_slice();
+        for i in 0..total_size {
+            value[my_start_idx + i] = self.apply_write_masks_to_byte(
+                value[my_start_idx + i],
+                data[write_start_idx + i],
+                my_start_idx + i,
+            );
         }
 
         // A single u64 register is done by write to lower 32 bit and then higher 32 bit. Callback

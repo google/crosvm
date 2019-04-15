@@ -67,12 +67,10 @@ fn build_plugin(src: &str) -> RemovePath {
         .stdin(Stdio::piped())
         .spawn()
         .expect("failed to spawn compiler");
-    {
-        let stdin = child.stdin.as_mut().expect("failed to open stdin");
-        stdin
-            .write_all(src.as_bytes())
-            .expect("failed to write source to stdin");
-    }
+    let stdin = child.stdin.as_mut().expect("failed to open stdin");
+    stdin
+        .write_all(src.as_bytes())
+        .expect("failed to write source to stdin");
 
     let status = child.wait().expect("failed to wait for compiler");
     assert!(status.success(), "failed to build plugin");

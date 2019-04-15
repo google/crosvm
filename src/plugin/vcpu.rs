@@ -343,17 +343,17 @@ impl PluginVcpu {
                 if offset >= len {
                     return false;
                 }
+
                 let mut wait_reason = VcpuResponse_Wait::new();
-                {
-                    let io = wait_reason.mut_io();
-                    io.space = match io_space {
-                        IoSpace::Ioport => AddressSpace::IOPORT,
-                        IoSpace::Mmio => AddressSpace::MMIO,
-                    };
-                    io.address = addr;
-                    io.is_write = data.is_write();
-                    io.data = data.as_slice().to_vec();
-                }
+                let io = wait_reason.mut_io();
+                io.space = match io_space {
+                    IoSpace::Ioport => AddressSpace::IOPORT,
+                    IoSpace::Mmio => AddressSpace::MMIO,
+                };
+                io.address = addr;
+                io.is_write = data.is_write();
+                io.data = data.as_slice().to_vec();
+
                 self.wait_reason.set(Some(wait_reason));
                 match self.handle_until_resume(vcpu) {
                     Ok(resume_data) => data.copy_from_slice(&resume_data),
@@ -478,21 +478,17 @@ impl PluginVcpu {
             response.mut_set_cpuid();
             let request_entries = &request.get_set_cpuid().entries;
             let mut cpuid = CpuId::new(request_entries.len());
-            {
-                let cpuid_entries = cpuid.mut_entries_slice();
-                for (request_entry, cpuid_entry) in
-                    request_entries.iter().zip(cpuid_entries.iter_mut())
-                {
-                    cpuid_entry.function = request_entry.function;
-                    if request_entry.has_index {
-                        cpuid_entry.index = request_entry.index;
-                        cpuid_entry.flags = KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
-                    }
-                    cpuid_entry.eax = request_entry.eax;
-                    cpuid_entry.ebx = request_entry.ebx;
-                    cpuid_entry.ecx = request_entry.ecx;
-                    cpuid_entry.edx = request_entry.edx;
+            let cpuid_entries = cpuid.mut_entries_slice();
+            for (request_entry, cpuid_entry) in request_entries.iter().zip(cpuid_entries) {
+                cpuid_entry.function = request_entry.function;
+                if request_entry.has_index {
+                    cpuid_entry.index = request_entry.index;
+                    cpuid_entry.flags = KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
                 }
+                cpuid_entry.eax = request_entry.eax;
+                cpuid_entry.ebx = request_entry.ebx;
+                cpuid_entry.ecx = request_entry.ecx;
+                cpuid_entry.edx = request_entry.edx;
             }
             vcpu.set_cpuid2(&cpuid)
         } else {

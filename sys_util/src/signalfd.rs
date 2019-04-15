@@ -152,6 +152,7 @@ mod tests {
 
     use crate::signal::SIGRTMIN;
     use libc::{pthread_sigmask, raise, sigismember, sigset_t};
+    use std::mem;
     use std::ptr::null;
 
     #[test]
@@ -175,16 +176,14 @@ mod tests {
     fn drop() {
         let sigid = SIGRTMIN() + 2;
 
-        // Put the SignalFd in a block where it will be dropped at the end.
-        #[allow(unused_variables)]
-        {
-            let sigrt_fd = SignalFd::new(sigid).unwrap();
-            unsafe {
-                let mut sigset: sigset_t = mem::zeroed();
-                pthread_sigmask(0, null(), &mut sigset as *mut sigset_t);
-                assert_eq!(sigismember(&sigset, sigid), 1);
-            }
+        let sigrt_fd = SignalFd::new(sigid).unwrap();
+        unsafe {
+            let mut sigset: sigset_t = mem::zeroed();
+            pthread_sigmask(0, null(), &mut sigset as *mut sigset_t);
+            assert_eq!(sigismember(&sigset, sigid), 1);
         }
+
+        mem::drop(sigrt_fd);
 
         // The signal should no longer be masked.
         unsafe {

@@ -490,54 +490,51 @@ impl crosvm {
 
     fn reserve_range(&mut self, space: u32, start: u64, length: u64) -> result::Result<(), c_int> {
         let mut r = MainRequest::new();
-        {
-            let reserve: &mut MainRequest_ReserveRange = r.mut_reserve_range();
-            reserve.space = AddressSpace::from_i32(space as i32).ok_or(EINVAL)?;
-            reserve.start = start;
-            reserve.length = length;
-        }
+        let reserve: &mut MainRequest_ReserveRange = r.mut_reserve_range();
+        reserve.space = AddressSpace::from_i32(space as i32).ok_or(EINVAL)?;
+        reserve.start = start;
+        reserve.length = length;
+
         self.main_transaction(&r, &[])?;
         Ok(())
     }
 
     fn set_irq(&mut self, irq_id: u32, active: bool) -> result::Result<(), c_int> {
         let mut r = MainRequest::new();
-        {
-            let set_irq: &mut MainRequest_SetIrq = r.mut_set_irq();
-            set_irq.irq_id = irq_id;
-            set_irq.active = active;
-        }
+        let set_irq: &mut MainRequest_SetIrq = r.mut_set_irq();
+        set_irq.irq_id = irq_id;
+        set_irq.active = active;
+
         self.main_transaction(&r, &[])?;
         Ok(())
     }
 
     fn set_irq_routing(&mut self, routing: &[crosvm_irq_route]) -> result::Result<(), c_int> {
         let mut r = MainRequest::new();
-        {
-            let set_irq_routing: &mut RepeatedField<MainRequest_SetIrqRouting_Route> =
-                r.mut_set_irq_routing().mut_routes();
-            for route in routing {
-                let mut entry = MainRequest_SetIrqRouting_Route::new();
-                entry.irq_id = route.irq_id;
-                match route.kind {
-                    CROSVM_IRQ_ROUTE_IRQCHIP => {
-                        let irqchip: &mut MainRequest_SetIrqRouting_Route_Irqchip;
-                        irqchip = entry.mut_irqchip();
-                        // Safe because route.kind indicates which union field is valid.
-                        irqchip.irqchip = unsafe { route.route.irqchip }.irqchip;
-                        irqchip.pin = unsafe { route.route.irqchip }.pin;
-                    }
-                    CROSVM_IRQ_ROUTE_MSI => {
-                        let msi: &mut MainRequest_SetIrqRouting_Route_Msi = entry.mut_msi();
-                        // Safe because route.kind indicates which union field is valid.
-                        msi.address = unsafe { route.route.msi }.address;
-                        msi.data = unsafe { route.route.msi }.data;
-                    }
-                    _ => return Err(EINVAL),
+        let set_irq_routing: &mut RepeatedField<MainRequest_SetIrqRouting_Route> =
+            r.mut_set_irq_routing().mut_routes();
+        for route in routing {
+            let mut entry = MainRequest_SetIrqRouting_Route::new();
+            entry.irq_id = route.irq_id;
+            match route.kind {
+                CROSVM_IRQ_ROUTE_IRQCHIP => {
+                    let irqchip: &mut MainRequest_SetIrqRouting_Route_Irqchip;
+                    irqchip = entry.mut_irqchip();
+                    // Safe because route.kind indicates which union field is valid.
+                    irqchip.irqchip = unsafe { route.route.irqchip }.irqchip;
+                    irqchip.pin = unsafe { route.route.irqchip }.pin;
                 }
-                set_irq_routing.push(entry);
+                CROSVM_IRQ_ROUTE_MSI => {
+                    let msi: &mut MainRequest_SetIrqRouting_Route_Msi = entry.mut_msi();
+                    // Safe because route.kind indicates which union field is valid.
+                    msi.address = unsafe { route.route.msi }.address;
+                    msi.data = unsafe { route.route.msi }.data;
+                }
+                _ => return Err(EINVAL),
             }
+            set_irq_routing.push(entry);
         }
+
         self.main_transaction(&r, &[])?;
         Ok(())
     }
@@ -567,11 +564,10 @@ impl crosvm {
         new_state: &[u8],
     ) -> result::Result<(), c_int> {
         let mut r = MainRequest::new();
-        {
-            let set_state: &mut MainRequest_SetState = r.mut_set_state();
-            set_state.set = state_set;
-            set_state.state = new_state.to_vec();
-        }
+        let set_state: &mut MainRequest_SetState = r.mut_set_state();
+        set_state.set = state_set;
+        set_state.state = new_state.to_vec();
+
         self.main_transaction(&r, &[])?;
         Ok(())
     }
@@ -579,17 +575,16 @@ impl crosvm {
     fn set_identity_map_addr(&mut self, addr: u32) -> result::Result<(), c_int> {
         let mut r = MainRequest::new();
         r.mut_set_identity_map_addr().address = addr;
+
         self.main_transaction(&r, &[])?;
         Ok(())
     }
 
     fn pause_vcpus(&mut self, cpu_mask: u64, user: *mut c_void) -> result::Result<(), c_int> {
         let mut r = MainRequest::new();
-        {
-            let pause_vcpus: &mut MainRequest_PauseVcpus = r.mut_pause_vcpus();
-            pause_vcpus.cpu_mask = cpu_mask;
-            pause_vcpus.user = user as u64;
-        }
+        let pause_vcpus: &mut MainRequest_PauseVcpus = r.mut_pause_vcpus();
+        pause_vcpus.cpu_mask = cpu_mask;
+        pause_vcpus.user = user as u64;
         self.main_transaction(&r, &[])?;
         Ok(())
     }
@@ -713,16 +708,16 @@ impl crosvm_io_event {
         datamatch: u64,
     ) -> result::Result<crosvm_io_event, c_int> {
         let id = crosvm.get_id_allocator().alloc();
+
         let mut r = MainRequest::new();
-        {
-            let create: &mut MainRequest_Create = r.mut_create();
-            create.id = id;
-            let io_event: &mut MainRequest_Create_IoEvent = create.mut_io_event();
-            io_event.space = AddressSpace::from_i32(space as i32).ok_or(EINVAL)?;
-            io_event.address = addr;
-            io_event.length = length;
-            io_event.datamatch = datamatch;
-        }
+        let create: &mut MainRequest_Create = r.mut_create();
+        create.id = id;
+        let io_event: &mut MainRequest_Create_IoEvent = create.mut_io_event();
+        io_event.space = AddressSpace::from_i32(space as i32).ok_or(EINVAL)?;
+        io_event.address = addr;
+        io_event.length = length;
+        io_event.datamatch = datamatch;
+
         let ret = match crosvm.main_transaction(&r, &[]) {
             Ok((_, mut files)) => match files.pop() {
                 Some(evt) => return Ok(crosvm_io_event { id, evt }),
@@ -767,17 +762,17 @@ impl crosvm_memory {
             return Err(EINVAL);
         }
         let id = crosvm.get_id_allocator().alloc();
+
         let mut r = MainRequest::new();
-        {
-            let create: &mut MainRequest_Create = r.mut_create();
-            create.id = id;
-            let memory: &mut MainRequest_Create_Memory = create.mut_memory();
-            memory.offset = offset;
-            memory.start = start;
-            memory.length = length;
-            memory.read_only = read_only;
-            memory.dirty_log = dirty_log;
-        }
+        let create: &mut MainRequest_Create = r.mut_create();
+        create.id = id;
+        let memory: &mut MainRequest_Create_Memory = create.mut_memory();
+        memory.offset = offset;
+        memory.start = start;
+        memory.length = length;
+        memory.read_only = read_only;
+        memory.dirty_log = dirty_log;
+
         let ret = match crosvm.main_transaction(&r, &[fd]) {
             Ok(_) => return Ok(crosvm_memory { id, length }),
             Err(e) => e,
@@ -842,14 +837,14 @@ pub struct crosvm_irq_event {
 impl crosvm_irq_event {
     fn create(crosvm: &mut crosvm, irq_id: u32) -> result::Result<crosvm_irq_event, c_int> {
         let id = crosvm.get_id_allocator().alloc();
+
         let mut r = MainRequest::new();
-        {
-            let create: &mut MainRequest_Create = r.mut_create();
-            create.id = id;
-            let irq_event: &mut MainRequest_Create_IrqEvent = create.mut_irq_event();
-            irq_event.irq_id = irq_id;
-            irq_event.resample = true;
-        }
+        let create: &mut MainRequest_Create = r.mut_create();
+        create.id = id;
+        let irq_event: &mut MainRequest_Create_IrqEvent = create.mut_irq_event();
+        irq_event.irq_id = irq_id;
+        irq_event.resample = true;
+
         let ret = match crosvm.main_transaction(&r, &[]) {
             Ok((_, mut files)) => {
                 if files.len() >= 2 {
@@ -992,10 +987,9 @@ impl crosvm_vcpu {
 
     fn resume(&mut self) -> result::Result<(), c_int> {
         let mut r = VcpuRequest::new();
-        {
-            let resume: &mut VcpuRequest_Resume = r.mut_resume();
-            swap(&mut resume.data, &mut self.resume_data);
-        }
+        let resume: &mut VcpuRequest_Resume = r.mut_resume();
+        swap(&mut resume.data, &mut self.resume_data);
+
         self.vcpu_transaction(&r)?;
         Ok(())
     }
@@ -1025,11 +1019,10 @@ impl crosvm_vcpu {
         new_state: &[u8],
     ) -> result::Result<(), c_int> {
         let mut r = VcpuRequest::new();
-        {
-            let set_state: &mut VcpuRequest_SetState = r.mut_set_state();
-            set_state.set = state_set;
-            set_state.state = new_state.to_vec();
-        }
+        let set_state: &mut VcpuRequest_SetState = r.mut_set_state();
+        set_state.set = state_set;
+        set_state.state = new_state.to_vec();
+
         self.vcpu_transaction(&r)?;
         Ok(())
     }
@@ -1040,13 +1033,13 @@ impl crosvm_vcpu {
         msr_count: &mut usize,
     ) -> result::Result<(), c_int> {
         *msr_count = 0;
+
         let mut r = VcpuRequest::new();
-        {
-            let entry_indices: &mut Vec<u32> = r.mut_get_msrs().mut_entry_indices();
-            for entry in msr_entries.iter() {
-                entry_indices.push(entry.index);
-            }
+        let entry_indices: &mut Vec<u32> = r.mut_get_msrs().mut_entry_indices();
+        for entry in msr_entries.iter() {
+            entry_indices.push(entry.index);
         }
+
         let response = self.vcpu_transaction(&r)?;
         if !response.has_get_msrs() {
             return Err(EPROTO);
@@ -1064,28 +1057,26 @@ impl crosvm_vcpu {
 
     fn set_msrs(&mut self, msr_entries: &[kvm_msr_entry]) -> result::Result<(), c_int> {
         let mut r = VcpuRequest::new();
-        {
-            let set_msrs_entries: &mut RepeatedField<VcpuRequest_MsrEntry> =
-                r.mut_set_msrs().mut_entries();
-            for msr_entry in msr_entries.iter() {
-                let mut entry = VcpuRequest_MsrEntry::new();
-                entry.index = msr_entry.index;
-                entry.data = msr_entry.data;
-                set_msrs_entries.push(entry);
-            }
+        let set_msrs_entries: &mut RepeatedField<VcpuRequest_MsrEntry> =
+            r.mut_set_msrs().mut_entries();
+        for msr_entry in msr_entries.iter() {
+            let mut entry = VcpuRequest_MsrEntry::new();
+            entry.index = msr_entry.index;
+            entry.data = msr_entry.data;
+            set_msrs_entries.push(entry);
         }
+
         self.vcpu_transaction(&r)?;
         Ok(())
     }
 
     fn set_cpuid(&mut self, cpuid_entries: &[kvm_cpuid_entry2]) -> result::Result<(), c_int> {
         let mut r = VcpuRequest::new();
-        {
-            let set_cpuid_entries: &mut RepeatedField<CpuidEntry> = r.mut_set_cpuid().mut_entries();
-            for cpuid_entry in cpuid_entries.iter() {
-                set_cpuid_entries.push(cpuid_kvm_to_proto(cpuid_entry));
-            }
+        let set_cpuid_entries: &mut RepeatedField<CpuidEntry> = r.mut_set_cpuid().mut_entries();
+        for cpuid_entry in cpuid_entries.iter() {
+            set_cpuid_entries.push(cpuid_kvm_to_proto(cpuid_entry));
         }
+
         self.vcpu_transaction(&r)?;
         Ok(())
     }

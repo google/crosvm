@@ -129,25 +129,22 @@ mod tests {
     fn feature_and_vendor_name() {
         let mut cpuid = kvm::CpuId::new(2);
 
-        {
-            let entries = cpuid.mut_entries_slice();
-            entries[0].function = 0;
-            entries[1].function = 1;
-            entries[1].ecx = 0x10;
-            entries[1].edx = 0;
-        }
+        let entries = cpuid.mut_entries_slice();
+        entries[0].function = 0;
+        entries[1].function = 1;
+        entries[1].ecx = 0x10;
+        entries[1].edx = 0;
         assert_eq!(Ok(()), filter_cpuid(1, 2, &mut cpuid));
-        {
-            let entries = cpuid.mut_entries_slice();
-            assert_eq!(entries[0].function, 0);
-            assert_eq!(1, (entries[1].ebx >> EBX_CPUID_SHIFT) & 0x000000ff);
-            assert_eq!(2, (entries[1].ebx >> EBX_CPU_COUNT_SHIFT) & 0x000000ff);
-            assert_eq!(
-                EBX_CLFLUSH_CACHELINE,
-                (entries[1].ebx >> EBX_CLFLUSH_SIZE_SHIFT) & 0x000000ff
-            );
-            assert_ne!(0, entries[1].ecx & (1 << ECX_HYPERVISOR_SHIFT));
-            assert_ne!(0, entries[1].edx & (1 << EDX_HTT_SHIFT));
-        }
+
+        let entries = cpuid.mut_entries_slice();
+        assert_eq!(entries[0].function, 0);
+        assert_eq!(1, (entries[1].ebx >> EBX_CPUID_SHIFT) & 0x000000ff);
+        assert_eq!(2, (entries[1].ebx >> EBX_CPU_COUNT_SHIFT) & 0x000000ff);
+        assert_eq!(
+            EBX_CLFLUSH_CACHELINE,
+            (entries[1].ebx >> EBX_CLFLUSH_SIZE_SHIFT) & 0x000000ff
+        );
+        assert_ne!(0, entries[1].ecx & (1 << ECX_HYPERVISOR_SHIFT));
+        assert_ne!(0, entries[1].edx & (1 << EDX_HTT_SHIFT));
     }
 }

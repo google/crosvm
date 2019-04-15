@@ -724,10 +724,8 @@ mod tests {
         // OCW2: Set rotate on auto EOI.
         data.pic.write(PIC_SECONDARY_COMMAND, &[0x80]);
 
-        {
-            let secondary_pic = &data.pic.pics[PicSelect::Secondary as usize];
-            assert!(secondary_pic.rotate_on_auto_eoi);
-        }
+        let secondary_pic = &data.pic.pics[PicSelect::Secondary as usize];
+        assert!(secondary_pic.rotate_on_auto_eoi);
 
         // OCW2: Clear rotate on auto EOI.
         data.pic.write(PIC_SECONDARY_COMMAND, &[0x00]);

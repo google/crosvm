@@ -121,36 +121,30 @@ macro_rules! data_init_type {
             fn from_slice_alignment() {
                 let mut v = [0u8; 32];
                 $(
-                    let pre_len =  {
-                        let (pre, _, _) = unsafe { v.align_to::<$T>() };
-                        pre.len()
-                    };
-                    {
-                        let aligned_v = &mut v[pre_len..pre_len + size_of::<$T>()];
-                        {
-                            let from_aligned = $T::from_slice(aligned_v);
-                            assert_eq!(from_aligned, Some(&0));
-                        }
-                        {
-                            let from_aligned_mut = $T::from_mut_slice(aligned_v);
-                            assert_eq!(from_aligned_mut, Some(&mut 0));
-                        }
-                    }
+                    let (pre, _, _) = unsafe { v.align_to::<$T>() };
+                    let pre_len = pre.len();
+
+                    let aligned_v = &mut v[pre_len..pre_len + size_of::<$T>()];
+
+                    let from_aligned = $T::from_slice(aligned_v);
+                    assert_eq!(from_aligned, Some(&0));
+
+                    let from_aligned_mut = $T::from_mut_slice(aligned_v);
+                    assert_eq!(from_aligned_mut, Some(&mut 0));
+
                     for i in 1..size_of::<$T>() {
                         let begin = pre_len + i;
                         let end = begin + size_of::<$T>();
                         let unaligned_v = &mut v[begin..end];
-                        {
-                            let from_unaligned = $T::from_slice(unaligned_v);
-                            if align_of::<$T>() != 1 {
-                                assert_eq!(from_unaligned, None);
-                            }
+
+                        let from_unaligned = $T::from_slice(unaligned_v);
+                        if align_of::<$T>() != 1 {
+                            assert_eq!(from_unaligned, None);
                         }
-                        {
-                            let from_unaligned_mut = $T::from_mut_slice(unaligned_v);
-                            if align_of::<$T>() != 1 {
-                                assert_eq!(from_unaligned_mut, None);
-                            }
+
+                        let from_unaligned_mut = $T::from_mut_slice(unaligned_v);
+                        if align_of::<$T>() != 1 {
+                            assert_eq!(from_unaligned_mut, None);
                         }
                     }
                 )*

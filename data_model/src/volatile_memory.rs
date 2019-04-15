@@ -513,11 +513,9 @@ mod tests {
     #[test]
     fn ref_store() {
         let mut a = [0u8; 1];
-        {
-            let a_ref = &mut a[..];
-            let v_ref = a_ref.get_ref(0).unwrap();
-            v_ref.store(2u8);
-        }
+        let a_ref = &mut a[..];
+        let v_ref = a_ref.get_ref(0).unwrap();
+        v_ref.store(2u8);
         assert_eq!(a[0], 2);
     }
 

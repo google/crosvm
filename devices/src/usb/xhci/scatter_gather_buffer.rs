@@ -132,31 +132,29 @@ mod test {
     fn scatter_gather_buffer_test() {
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
         let mut td = TransferDescriptor::new();
+
         // In this td, we are going to have scatter buffer at 0x100, length 4, 0x200 length 2 and
         // 0x300 length 1.
+
         let mut trb = Trb::new();
-        {
-            let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
-            ntrb.set_trb_type(TrbType::Normal as u8);
-            ntrb.set_data_buffer(0x100);
-            ntrb.set_trb_transfer_length(4);
-        }
+        let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
+        ntrb.set_trb_type(TrbType::Normal as u8);
+        ntrb.set_data_buffer(0x100);
+        ntrb.set_trb_transfer_length(4);
         td.push(AddressedTrb { trb, gpa: 0 });
+
         let mut trb = Trb::new();
-        {
-            let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
-            ntrb.set_trb_type(TrbType::Normal as u8);
-            ntrb.set_data_buffer(0x200);
-            ntrb.set_trb_transfer_length(2);
-        }
+        let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
+        ntrb.set_trb_type(TrbType::Normal as u8);
+        ntrb.set_data_buffer(0x200);
+        ntrb.set_trb_transfer_length(2);
         td.push(AddressedTrb { trb, gpa: 0 });
+
         let mut trb = Trb::new();
-        {
-            let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
-            ntrb.set_trb_type(TrbType::Normal as u8);
-            ntrb.set_data_buffer(0x300);
-            ntrb.set_trb_transfer_length(1);
-        }
+        let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
+        ntrb.set_trb_type(TrbType::Normal as u8);
+        ntrb.set_data_buffer(0x300);
+        ntrb.set_trb_transfer_length(1);
         td.push(AddressedTrb { trb, gpa: 0 });
 
         let buffer = ScatterGatherBuffer::new(gm.clone(), td).unwrap();

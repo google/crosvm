@@ -690,11 +690,9 @@ impl VirtioDevice for Gpu {
         let offset = offset as usize;
         let len = data.len();
         let mut cfg = self.get_config();
-        {
-            let cfg_slice = cfg.as_mut_slice();
-            if offset + len <= cfg_slice.len() {
-                cfg_slice[offset..offset + len].copy_from_slice(data);
-            }
+        let cfg_slice = cfg.as_mut_slice();
+        if offset + len <= cfg_slice.len() {
+            cfg_slice[offset..offset + len].copy_from_slice(data);
         }
         if (cfg.events_clear.to_native() & VIRTIO_GPU_EVENT_DISPLAY) != 0 {
             self.config_event = false;

@@ -89,20 +89,19 @@ impl EventRing {
         fence(Ordering::SeqCst);
 
         trb.set_cycle_bit(self.producer_cycle_state);
-        {
-            // Offset of cycle state byte.
-            const CYCLE_STATE_OFFSET: usize = 12usize;
-            let data = trb.as_slice();
-            // Trb contains 4 dwords, the last one contains cycle bit.
-            let cycle_bit_dword = &data[CYCLE_STATE_OFFSET..];
-            let address = self.enqueue_pointer;
-            let address = address
-                .checked_add(CYCLE_STATE_OFFSET as u64)
-                .ok_or(Error::BadEnqueuePointer(self.enqueue_pointer))?;
-            self.mem
-                .write_all_at_addr(cycle_bit_dword, address)
-                .map_err(Error::MemoryWrite)?;
-        }
+
+        // Offset of cycle state byte.
+        const CYCLE_STATE_OFFSET: usize = 12usize;
+        let data = trb.as_slice();
+        // Trb contains 4 dwords, the last one contains cycle bit.
+        let cycle_bit_dword = &data[CYCLE_STATE_OFFSET..];
+        let address = self.enqueue_pointer;
+        let address = address
+            .checked_add(CYCLE_STATE_OFFSET as u64)
+            .ok_or(Error::BadEnqueuePointer(self.enqueue_pointer))?;
+        self.mem
+            .write_all_at_addr(cycle_bit_dword, address)
+            .map_err(Error::MemoryWrite)?;
 
         usb_debug!(
             "event write to pointer {:#x}, trb_count {}, {}",

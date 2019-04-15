@@ -184,76 +184,68 @@ mod tests {
     #[test]
     fn i32_eintr_rc() {
         let mut count = 3;
-        {
-            let mut dummy = || {
-                count -= 1;
-                if count > 0 {
-                    EINTR
-                } else {
-                    0
-                }
-            };
-            let res = handle_eintr_rc!(dummy());
-            assert_eq!(res, 0);
-        }
+        let mut dummy = || {
+            count -= 1;
+            if count > 0 {
+                EINTR
+            } else {
+                0
+            }
+        };
+        let res = handle_eintr_rc!(dummy());
+        assert_eq!(res, 0);
         assert_eq!(count, 0);
     }
 
     #[test]
     fn i32_eintr_errno() {
         let mut count = 3;
-        {
-            let mut dummy = || {
-                count -= 1;
-                if count > 0 {
-                    set_errno(EINTR);
-                    -1
-                } else {
-                    56
-                }
-            };
-            let res = handle_eintr_errno!(dummy());
-            assert_eq!(res, 56);
-        }
+        let mut dummy = || {
+            count -= 1;
+            if count > 0 {
+                set_errno(EINTR);
+                -1
+            } else {
+                56
+            }
+        };
+        let res = handle_eintr_errno!(dummy());
+        assert_eq!(res, 56);
         assert_eq!(count, 0);
     }
 
     #[test]
     fn sys_eintr() {
         let mut count = 7;
-        {
-            let mut dummy = || {
-                count -= 1;
-                if count > 1 {
-                    Err(SysError::new(EINTR))
-                } else {
-                    Ok(101)
-                }
-            };
-            let res = handle_eintr!(dummy());
-            assert_eq!(res, Ok(101));
-        }
+        let mut dummy = || {
+            count -= 1;
+            if count > 1 {
+                Err(SysError::new(EINTR))
+            } else {
+                Ok(101)
+            }
+        };
+        let res = handle_eintr!(dummy());
+        assert_eq!(res, Ok(101));
         assert_eq!(count, 1);
     }
 
     #[test]
     fn io_eintr() {
         let mut count = 108;
-        {
-            let mut dummy = || {
-                count -= 1;
-                if count > 99 {
-                    Err(io::Error::new(
-                        io::ErrorKind::Interrupted,
-                        "interrupted again :(",
-                    ))
-                } else {
-                    Ok(32)
-                }
-            };
-            let res = handle_eintr!(dummy());
-            assert_eq!(res.unwrap(), 32);
-        }
+        let mut dummy = || {
+            count -= 1;
+            if count > 99 {
+                Err(io::Error::new(
+                    io::ErrorKind::Interrupted,
+                    "interrupted again :(",
+                ))
+            } else {
+                Ok(32)
+            }
+        };
+        let res = handle_eintr!(dummy());
+        assert_eq!(res.unwrap(), 32);
         assert_eq!(count, 99);
     }
 }

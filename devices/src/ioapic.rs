@@ -261,27 +261,25 @@ impl Ioapic {
                     return;
                 }
 
-                {
-                    let entry = &mut self.redirect_table[index];
-                    if is_high_bits {
-                        entry.set(32, 32, val.into());
-                    } else {
-                        let before = *entry;
-                        entry.set(0, 32, val.into());
+                let entry = &mut self.redirect_table[index];
+                if is_high_bits {
+                    entry.set(32, 32, val.into());
+                } else {
+                    let before = *entry;
+                    entry.set(0, 32, val.into());
 
-                        // respect R/O bits.
-                        entry.set_delivery_status(before.get_delivery_status());
-                        entry.set_remote_irr(before.get_remote_irr());
+                    // respect R/O bits.
+                    entry.set_delivery_status(before.get_delivery_status());
+                    entry.set_remote_irr(before.get_remote_irr());
 
-                        // Clear remote_irr when switching to edge_triggered.
-                        if entry.get_trigger_mode() == TriggerMode::Edge {
-                            entry.set_remote_irr(false);
-                        }
-
-                        // NOTE: on pre-4.0 kernels, there's a race we would need to work around.
-                        // "KVM: x86: ioapic: Fix level-triggered EOI and IOAPIC reconfigure race"
-                        // is the fix for this.
+                    // Clear remote_irr when switching to edge_triggered.
+                    if entry.get_trigger_mode() == TriggerMode::Edge {
+                        entry.set_remote_irr(false);
                     }
+
+                    // NOTE: on pre-4.0 kernels, there's a race we would need to work around.
+                    // "KVM: x86: ioapic: Fix level-triggered EOI and IOAPIC reconfigure race"
+                    // is the fix for this.
                 }
 
                 // TODO(mutexlox): route MSI.

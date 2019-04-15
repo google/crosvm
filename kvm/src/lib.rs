@@ -956,25 +956,23 @@ impl Vm {
             vec_with_array_field::<kvm_irq_routing, kvm_irq_routing_entry>(routes.len());
         irq_routing[0].nr = routes.len() as u32;
 
-        {
-            // Safe because we ensured there is enough space in irq_routing to hold the number of
-            // route entries.
-            let irq_routes = unsafe { irq_routing[0].entries.as_mut_slice(routes.len()) };
-            for (route, irq_route) in routes.iter().zip(irq_routes.iter_mut()) {
-                irq_route.gsi = route.gsi;
-                match route.source {
-                    IrqSource::Irqchip { chip, pin } => {
-                        irq_route.type_ = KVM_IRQ_ROUTING_IRQCHIP;
-                        irq_route.u.irqchip = kvm_irq_routing_irqchip { irqchip: chip, pin }
-                    }
-                    IrqSource::Msi { address, data } => {
-                        irq_route.type_ = KVM_IRQ_ROUTING_MSI;
-                        irq_route.u.msi = kvm_irq_routing_msi {
-                            address_lo: address as u32,
-                            address_hi: (address >> 32) as u32,
-                            data,
-                            ..Default::default()
-                        }
+        // Safe because we ensured there is enough space in irq_routing to hold the number of
+        // route entries.
+        let irq_routes = unsafe { irq_routing[0].entries.as_mut_slice(routes.len()) };
+        for (route, irq_route) in routes.iter().zip(irq_routes.iter_mut()) {
+            irq_route.gsi = route.gsi;
+            match route.source {
+                IrqSource::Irqchip { chip, pin } => {
+                    irq_route.type_ = KVM_IRQ_ROUTING_IRQCHIP;
+                    irq_route.u.irqchip = kvm_irq_routing_irqchip { irqchip: chip, pin }
+                }
+                IrqSource::Msi { address, data } => {
+                    irq_route.type_ = KVM_IRQ_ROUTING_MSI;
+                    irq_route.u.msi = kvm_irq_routing_msi {
+                        address_lo: address as u32,
+                        address_hi: (address >> 32) as u32,
+                        data,
+                        ..Default::default()
                     }
                 }
             }

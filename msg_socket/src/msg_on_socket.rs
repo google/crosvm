@@ -212,13 +212,11 @@ rawfd_impl!(UnixDatagram);
 unsafe trait AlignedNew: Sized + DataInit {
     unsafe fn from_unaligned(buffer: &[u8]) -> Option<Self> {
         let mut value = std::mem::uninitialized::<Self>();
-        {
-            let value_mem = value.as_mut_slice();
-            if value_mem.len() != buffer.len() {
-                return None;
-            }
-            value_mem.copy_from_slice(buffer);
+        let value_mem = value.as_mut_slice();
+        if value_mem.len() != buffer.len() {
+            return None;
         }
+        value_mem.copy_from_slice(buffer);
         Some(value)
     }
 }
