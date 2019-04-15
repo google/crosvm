@@ -21,7 +21,7 @@ impl FromIterator<usize> for CpuSet {
         let mut cpuset: cpu_set_t = unsafe { mem::zeroed() };
         // Safe because we pass a valid cpuset pointer.
         unsafe { CPU_ZERO(&mut cpuset) };
-        for cpu in cpus.into_iter() {
+        for cpu in cpus {
             // Safe because we pass a valid cpuset pointer and cpu index.
             unsafe { CPU_SET(cpu, &mut cpuset) };
         }

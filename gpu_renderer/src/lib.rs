@@ -792,7 +792,7 @@ impl Resource {
         }
         self.detach_backing();
         self.backing_mem = Some(mem.clone());
-        for &(addr, len) in iovecs.iter() {
+        for &(addr, len) in iovecs {
             // Unwrap will not panic because we already checked the slices.
             let slice = mem.get_slice(addr.offset(), len as u64).unwrap();
             self.backing_iovecs.push(VirglVec {

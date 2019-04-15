@@ -257,7 +257,7 @@ impl Process {
         self.kill_evt.write(1)?;
         // By shutting down our half of the VCPU sockets, any blocked calls in the VCPU threads will
         // unblock, allowing them to exit cleanly.
-        for sock in self.vcpu_sockets.iter() {
+        for sock in &self.vcpu_sockets {
             sock.0.shutdown(Shutdown::Both)?;
         }
         Ok(())
@@ -377,7 +377,7 @@ impl Process {
         irq_routing: &MainRequest_SetIrqRouting,
     ) -> SysResult<()> {
         let mut routes = Vec::with_capacity(irq_routing.routes.len());
-        for route in irq_routing.routes.iter() {
+        for route in &irq_routing.routes {
             routes.push(IrqRoute {
                 gsi: route.irq_id,
                 source: if route.has_irqchip() {
@@ -404,10 +404,8 @@ impl Process {
     }
 
     fn handle_pause_vcpus(&self, vcpu_handles: &[JoinHandle<()>], cpu_mask: u64, user_data: u64) {
-        for (cpu_id, (handle, per_cpu_state)) in vcpu_handles
-            .iter()
-            .zip(self.per_vcpu_states.iter())
-            .enumerate()
+        for (cpu_id, (handle, per_cpu_state)) in
+            vcpu_handles.iter().zip(&self.per_vcpu_states).enumerate()
         {
             if cpu_mask & (1 << cpu_id) != 0 {
                 per_cpu_state.lock().request_pause(user_data);

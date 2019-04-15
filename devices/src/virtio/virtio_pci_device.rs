@@ -167,7 +167,7 @@ impl VirtioPciDevice {
     /// Constructs a new PCI transport for the given virtio device.
     pub fn new(mem: GuestMemory, device: Box<dyn VirtioDevice>) -> Result<Self> {
         let mut queue_evts = Vec::new();
-        for _ in device.queue_max_sizes().iter() {
+        for _ in device.queue_max_sizes() {
             queue_evts.push(EventFd::new()?)
         }
         let queues = device

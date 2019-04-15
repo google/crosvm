@@ -501,7 +501,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         // Mount minimal set of devices (full, zero, urandom, etc). We can not use
         // jail.mount_dev() here because crosvm may not be running with CAP_SYS_ADMIN.
         let device_names = ["full", "null", "urandom", "zero"];
-        for name in device_names.iter() {
+        for name in &device_names {
             let device = Path::new("/dev").join(&name);
             jail.mount_bind(&device, &device, true)
                 .map_err(Error::MountDev)?;

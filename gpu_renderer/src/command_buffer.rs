@@ -89,7 +89,7 @@ impl CommandBufferBuilder {
     pub fn e_clear(&mut self, buffers: u32, color: [f32; 4], depth: f64, stencil: u32) {
         self.push_cmd(VIRGL_CCMD_CLEAR, 0, VIRGL_OBJ_CLEAR_SIZE);
         self.push(buffers);
-        for &c in color.iter() {
+        for c in &color {
             self.push(c.to_bits())
         }
         self.push_qw(depth.to_bits());

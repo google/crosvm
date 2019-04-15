@@ -114,7 +114,7 @@ fn create_timer_node(fdt: &mut Vec<u8>, num_cpus: u32) -> Result<()> {
         (((1 << num_cpus) - 1) << GIC_FDT_IRQ_PPI_CPU_SHIFT) & GIC_FDT_IRQ_PPI_CPU_MASK;
 
     let mut timer_reg_cells = Vec::new();
-    for &irq in irqs.iter() {
+    for &irq in &irqs {
         timer_reg_cells.push(GIC_FDT_IRQ_TYPE_PPI);
         timer_reg_cells.push(irq);
         timer_reg_cells.push(cpu_mask | IRQ_TYPE_LEVEL_LOW);

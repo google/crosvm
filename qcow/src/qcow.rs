@@ -682,7 +682,7 @@ impl QcowFile {
             let refcount_table_entries = div_round_up_u64(refblock_clusters, pointers_per_cluster);
             let mut ref_table = vec![0; refcount_table_entries as usize];
             let mut first_free_cluster: u64 = 0;
-            for refblock_addr in ref_table.iter_mut() {
+            for refblock_addr in &mut ref_table {
                 while refcounts[first_free_cluster as usize] != 0 {
                     first_free_cluster += 1;
                     if first_free_cluster >= refcounts.len() as u64 {
@@ -1335,7 +1335,7 @@ impl Read for QcowFile {
                     .read_exact(&mut buf[nread..(nread + count)])?;
             } else {
                 // Previously unwritten region, return zeros
-                for b in (&mut buf[nread..(nread + count)]).iter_mut() {
+                for b in &mut buf[nread..(nread + count)] {
                     *b = 0;
                 }
             }
@@ -2161,7 +2161,7 @@ mod tests {
                 },
             ];
 
-            for xfer in xfers.iter() {
+            for xfer in &xfers {
                 q.seek(SeekFrom::Start(xfer.addr)).expect("Failed to seek.");
                 if xfer.write {
                     q.write(&b).expect("Failed to write.");

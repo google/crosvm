@@ -467,7 +467,7 @@ impl PluginVcpu {
                 // valid.
                 let kvm_msr_entries: &mut [kvm_msr_entry] =
                     kvm_msrs.entries.as_mut_slice(request_entries.len());
-                for (msr_entry, entry) in kvm_msr_entries.iter_mut().zip(request_entries.iter()) {
+                for (msr_entry, entry) in kvm_msr_entries.iter_mut().zip(request_entries) {
                     msr_entry.index = entry.index;
                     msr_entry.data = entry.data;
                 }

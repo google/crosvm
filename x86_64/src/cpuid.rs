@@ -53,7 +53,7 @@ const EDX_HTT_SHIFT: u32 = 28; // Hyper Threading Enabled.
 fn filter_cpuid(cpu_id: u64, cpu_count: u64, kvm_cpuid: &mut kvm::CpuId) -> Result<()> {
     let entries = kvm_cpuid.mut_entries_slice();
 
-    for entry in entries.iter_mut() {
+    for entry in entries {
         match entry.function {
             1 => {
                 // X86 hypervisor feature

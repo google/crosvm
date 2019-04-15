@@ -53,7 +53,7 @@ fn sockaddr_un<P: AsRef<Path>>(path: P) -> io::Result<(libc::sockaddr_un, libc::
     };
 
     // Copy data from `path` to `addr.sun_path`
-    for (dst, src) in addr.sun_path.iter_mut().zip(bytes.iter()) {
+    for (dst, src) in addr.sun_path.iter_mut().zip(bytes) {
         *dst = *src as libc::c_char;
     }
 

@@ -1049,7 +1049,7 @@ impl crosvm_vcpu {
         if *msr_count > msr_entries.len() {
             return Err(E2BIG);
         }
-        for (&msr_data, msr_entry) in get_msrs.get_entry_data().iter().zip(msr_entries.iter_mut()) {
+        for (&msr_data, msr_entry) in get_msrs.get_entry_data().iter().zip(msr_entries) {
             msr_entry.data = msr_data;
         }
         Ok(())
@@ -1059,7 +1059,7 @@ impl crosvm_vcpu {
         let mut r = VcpuRequest::new();
         let set_msrs_entries: &mut RepeatedField<VcpuRequest_MsrEntry> =
             r.mut_set_msrs().mut_entries();
-        for msr_entry in msr_entries.iter() {
+        for msr_entry in msr_entries {
             let mut entry = VcpuRequest_MsrEntry::new();
             entry.index = msr_entry.index;
             entry.data = msr_entry.data;
@@ -1073,7 +1073,7 @@ impl crosvm_vcpu {
     fn set_cpuid(&mut self, cpuid_entries: &[kvm_cpuid_entry2]) -> result::Result<(), c_int> {
         let mut r = VcpuRequest::new();
         let set_cpuid_entries: &mut RepeatedField<CpuidEntry> = r.mut_set_cpuid().mut_entries();
-        for cpuid_entry in cpuid_entries.iter() {
+        for cpuid_entry in cpuid_entries {
             set_cpuid_entries.push(cpuid_kvm_to_proto(cpuid_entry));
         }
 

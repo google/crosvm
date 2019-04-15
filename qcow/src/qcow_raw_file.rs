@@ -42,7 +42,7 @@ impl QcowRawFile {
         self.file.seek(SeekFrom::Start(offset))?;
         self.file.read_u64_into::<BigEndian>(&mut table)?;
         if let Some(m) = mask {
-            for ptr in table.iter_mut() {
+            for ptr in &mut table {
                 *ptr &= m;
             }
         }

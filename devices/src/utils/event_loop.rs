@@ -106,7 +106,7 @@ impl EventLoop {
                         return;
                     }
                 };
-                for event in events.iter() {
+                for event in &events {
                     if event.token().as_raw_fd() == stop_evt.as_raw_fd() {
                         return;
                     } else {

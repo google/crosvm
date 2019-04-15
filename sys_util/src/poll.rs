@@ -211,6 +211,15 @@ impl<'a, T: PollToken> PollEvents<'a, T> {
     }
 }
 
+impl<'a, T: PollToken> IntoIterator for &'a PollEvents<'_, T> {
+    type Item = PollEvent<'a, T>;
+    type IntoIter = PollEventIter<'a, slice::Iter<'a, epoll_event>, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 /// A deep copy of the event records from `PollEvents`.
 pub struct PollEventsOwned<T> {
     count: usize,

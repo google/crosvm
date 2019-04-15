@@ -1187,7 +1187,7 @@ impl WlState {
 
     fn close(&mut self, vfd_id: u32) -> WlResult<WlResp> {
         let mut to_delete = Set::new();
-        for (dest_vfd_id, q) in self.in_queue.iter() {
+        for (dest_vfd_id, q) in &self.in_queue {
             if *dest_vfd_id == vfd_id {
                 if let WlRecv::Vfd { id } = q {
                     to_delete.insert(*id);
@@ -1226,7 +1226,7 @@ impl WlState {
             vfds.copy_to(&mut vfd_ids[..]);
             send_vfd_ids[..vfd_count]
                 .iter_mut()
-                .zip(vfd_ids[..vfd_count].iter())
+                .zip(&vfd_ids[..vfd_count])
                 .for_each(|(send_vfd_id, &vfd_id)| {
                     *send_vfd_id = CtrlVfdSendVfd {
                         kind: Le32::from(VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL),
@@ -1551,7 +1551,7 @@ impl Worker {
                 }
             };
 
-            for event in events.iter() {
+            for event in &events {
                 match event.token() {
                     Token::InQueue => {
                         let _ = in_queue_evt.read();

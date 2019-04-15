@@ -105,7 +105,7 @@ impl GuestMemory {
     fn create_memfd(ranges: &[(GuestAddress, u64)]) -> Result<SharedMemory> {
         let mut aligned_size = 0;
         let pg_size = pagesize();
-        for range in ranges.iter() {
+        for range in ranges {
             if range.1 % pg_size as u64 != 0 {
                 return Err(Error::MemoryNotAligned);
             }
@@ -154,7 +154,7 @@ impl GuestMemory {
         let mut regions = Vec::<MemoryRegion>::new();
         let mut offset = 0;
 
-        for range in ranges.iter() {
+        for range in ranges {
             if let Some(last) = regions.last() {
                 if last
                     .guest_base

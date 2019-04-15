@@ -86,15 +86,15 @@ mod tests {
         f.seek(SeekFrom::Start(0)).unwrap();
         f.read(&mut readback).unwrap();
         // Bytes before the write should still be 0
-        for read in readback[0..1234].iter() {
+        for read in &readback[0..1234] {
             assert_eq!(*read, 0);
         }
         // Bytes that were just written should be 0x55
-        for read in readback[1234..(1234 + 5678)].iter() {
+        for read in &readback[1234..(1234 + 5678)] {
             assert_eq!(*read, 0x55);
         }
         // Bytes after the written area should still be 0
-        for read in readback[(1234 + 5678)..].iter() {
+        for read in &readback[(1234 + 5678)..] {
             assert_eq!(*read, 0);
         }
 
@@ -108,23 +108,23 @@ mod tests {
         f.seek(SeekFrom::Start(0)).unwrap();
         f.read(&mut readback).unwrap();
         // Bytes before the write should still be 0
-        for read in readback[0..1234].iter() {
+        for read in &readback[0..1234] {
             assert_eq!(*read, 0);
         }
         // Original data should still exist before the write_zeroes region
-        for read in readback[1234..2345].iter() {
+        for read in &readback[1234..2345] {
             assert_eq!(*read, 0x55);
         }
         // The write_zeroes region should now be zero
-        for read in readback[2345..(2345 + 4321)].iter() {
+        for read in &readback[2345..(2345 + 4321)] {
             assert_eq!(*read, 0);
         }
         // Original data should still exist after the write_zeroes region
-        for read in readback[(2345 + 4321)..(1234 + 5678)].iter() {
+        for read in &readback[(2345 + 4321)..(1234 + 5678)] {
             assert_eq!(*read, 0x55);
         }
         // The rest of the file should still be 0
-        for read in readback[(1234 + 5678)..].iter() {
+        for read in &readback[(1234 + 5678)..] {
             assert_eq!(*read, 0);
         }
     }
@@ -158,11 +158,11 @@ mod tests {
         f.seek(SeekFrom::Start(0)).unwrap();
         f.read(&mut readback).unwrap();
         // The write_zeroes region should now be zero
-        for read in readback[0..0x10001].iter() {
+        for read in &readback[0..0x10001] {
             assert_eq!(*read, 0);
         }
         // Original data should still exist after the write_zeroes region
-        for read in readback[0x10001..0x20000].iter() {
+        for read in &readback[0x10001..0x20000] {
             assert_eq!(*read, 0x55);
         }
     }
