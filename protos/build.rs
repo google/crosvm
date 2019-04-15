@@ -98,8 +98,14 @@ fn protoc<P: AsRef<Path>>(module: &str, input_path: P, mut out: &File) -> Result
     })?;
 
     // Write out a `mod` that refers to the generated module.
+    //
+    // The lint suppression is because protoc-rust emits
+    //   #![cfg_attr(feature = "cargo-clippy", allow(clippy))]
+    // which still works but is deprecated in favor of tool attributes:
+    //   #![allow(clippy::all)].
     let file_stem = input_path.file_stem().unwrap().to_str().unwrap();
     writeln!(out, "#[path = \"{}/{}.rs\"]", out_dir, file_stem)?;
+    writeln!(out, "#[allow(renamed_and_removed_lints)]")?;
     writeln!(out, "pub mod {};", module)?;
 
     Ok(())
