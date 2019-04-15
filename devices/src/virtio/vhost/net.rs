@@ -115,19 +115,19 @@ where
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
 
-        if let Some(ref tap) = self.tap {
+        if let Some(tap) = &self.tap {
             keep_fds.push(tap.as_raw_fd());
         }
 
-        if let Some(ref vhost_net_handle) = self.vhost_net_handle {
+        if let Some(vhost_net_handle) = &self.vhost_net_handle {
             keep_fds.push(vhost_net_handle.as_raw_fd());
         }
 
-        if let Some(ref vhost_interrupt) = self.vhost_interrupt {
+        if let Some(vhost_interrupt) = &self.vhost_interrupt {
             keep_fds.push(vhost_interrupt.as_raw_fd());
         }
 
-        if let Some(ref workers_kill_evt) = self.workers_kill_evt {
+        if let Some(workers_kill_evt) = &self.workers_kill_evt {
             keep_fds.push(workers_kill_evt.as_raw_fd());
         }
 

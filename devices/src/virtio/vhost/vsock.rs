@@ -76,7 +76,7 @@ impl Drop for Vsock {
     fn drop(&mut self) {
         // Only kill the child if it claimed its eventfd.
         if self.worker_kill_evt.is_none() {
-            if let Some(ref kill_evt) = self.kill_evt {
+            if let Some(kill_evt) = &self.kill_evt {
                 // Ignore the result because there is nothing we can do about it.
                 let _ = kill_evt.write(1);
             }
@@ -88,15 +88,15 @@ impl VirtioDevice for Vsock {
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
 
-        if let Some(ref handle) = self.vhost_handle {
+        if let Some(handle) = &self.vhost_handle {
             keep_fds.push(handle.as_raw_fd());
         }
 
-        if let Some(ref interrupt) = self.interrupt {
+        if let Some(interrupt) = &self.interrupt {
             keep_fds.push(interrupt.as_raw_fd());
         }
 
-        if let Some(ref worker_kill_evt) = self.worker_kill_evt {
+        if let Some(worker_kill_evt) = &self.worker_kill_evt {
             keep_fds.push(worker_kill_evt.as_raw_fd());
         }
 

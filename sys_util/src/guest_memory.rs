@@ -93,8 +93,8 @@ pub struct GuestMemory {
 
 impl AsRawFd for GuestMemory {
     fn as_raw_fd(&self) -> RawFd {
-        match self.memfd {
-            Some(ref memfd) => memfd.as_raw_fd(),
+        match &self.memfd {
+            Some(memfd) => memfd.as_raw_fd(),
             None => panic!("GuestMemory is not backed by a memfd"),
         }
     }
@@ -165,8 +165,8 @@ impl GuestMemory {
                 }
             }
 
-            let mapping = match memfd {
-                Some(ref memfd) => MemoryMapping::from_fd_offset(memfd, range.1 as usize, offset),
+            let mapping = match &memfd {
+                Some(memfd) => MemoryMapping::from_fd_offset(memfd, range.1 as usize, offset),
                 None => MemoryMapping::new(range.1 as usize),
             }
             .map_err(Error::MemoryMappingFailed)?;

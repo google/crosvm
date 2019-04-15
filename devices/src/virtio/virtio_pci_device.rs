@@ -302,10 +302,10 @@ impl PciDevice for VirtioPciDevice {
 
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut fds = self.device.keep_fds();
-        if let Some(ref interrupt_evt) = self.interrupt_evt {
+        if let Some(interrupt_evt) = &self.interrupt_evt {
             fds.push(interrupt_evt.as_raw_fd());
         }
-        if let Some(ref interrupt_resample_evt) = self.interrupt_resample_evt {
+        if let Some(interrupt_resample_evt) = &self.interrupt_resample_evt {
             fds.push(interrupt_resample_evt.as_raw_fd());
         }
         fds

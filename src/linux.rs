@@ -164,8 +164,8 @@ impl Display for Error {
             Disk(e) => write!(f, "failed to load disk image: {}", e),
             DiskImageLock(e) => write!(f, "failed to lock disk image: {}", e),
             DropCapabilities(e) => write!(f, "failed to drop process capabilities: {}", e),
-            InputDeviceNew(ref e) => write!(f, "failed to set up input device: {}", e),
-            InputEventsOpen(ref e) => write!(f, "failed to open event device: {}", e),
+            InputDeviceNew(e) => write!(f, "failed to set up input device: {}", e),
+            InputEventsOpen(e) => write!(f, "failed to open event device: {}", e),
             InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
             InvalidWaylandPath => write!(f, "wayland socket path has no parent or file name"),
             IoJail(e) => write!(f, "{}", e),
@@ -1275,7 +1275,7 @@ fn run_control(
 
     // Watch for low memory notifications and take memory back from the VM.
     let low_mem = File::open("/dev/chromeos-low-mem").ok();
-    if let Some(ref low_mem) = low_mem {
+    if let Some(low_mem) = &low_mem {
         poll_ctx
             .add(low_mem, Token::LowMemory)
             .map_err(Error::PollContextAdd)?;
@@ -1415,7 +1415,7 @@ fn run_control(
                     }
                 }
                 Token::LowMemory => {
-                    if let Some(ref low_mem) = low_mem {
+                    if let Some(low_mem) = &low_mem {
                         let old_balloon_memory = current_balloon_memory;
                         current_balloon_memory = min(
                             current_balloon_memory + balloon_memory_increment,
@@ -1453,7 +1453,7 @@ fn run_control(
                     // Acknowledge the timer.
                     lowmem_timer.wait().map_err(Error::TimerFd)?;
 
-                    if let Some(ref low_mem) = low_mem {
+                    if let Some(low_mem) = &low_mem {
                         // Start polling the lowmem device again.
                         poll_ctx
                             .add(low_mem, Token::LowMemory)

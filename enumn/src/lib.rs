@@ -150,8 +150,8 @@ fn testable_derive(input: DeriveInput) -> proc_macro2::TokenStream {
 
     let signature;
     let value;
-    match repr {
-        Some(ref repr) => {
+    match &repr {
+        Some(repr) => {
             signature = quote! {
                 fn n(value: #repr)
             };

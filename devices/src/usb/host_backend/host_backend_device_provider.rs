@@ -290,8 +290,8 @@ impl ProviderInner {
             UsbControlCommand::ListDevice { port } => {
                 let port_number = port;
                 let result = match self.usb_hub.get_port(port_number) {
-                    Some(port) => match *port.get_backend_device() {
-                        Some(ref device) => {
+                    Some(port) => match port.get_backend_device().as_ref() {
+                        Some(device) => {
                             let vid = device.get_vid();
                             let pid = device.get_pid();
                             UsbControlResult::Device {

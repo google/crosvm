@@ -515,7 +515,7 @@ impl Worker {
             }
         };
 
-        if let Some(ref resource_bridge) = self.resource_bridge {
+        if let Some(resource_bridge) = &self.resource_bridge {
             if let Err(e) = poll_ctx.add(resource_bridge, Token::ResourceBridge) {
                 error!("failed to add resource bridge to PollContext: {}", e);
             }
@@ -586,7 +586,7 @@ impl Worker {
             // created or destroyed by the control queue. Processing the resource bridge first may
             // lead to a race condition.
             if process_resource_bridge {
-                if let Some(ref resource_bridge) = self.resource_bridge {
+                if let Some(resource_bridge) = &self.resource_bridge {
                     self.state.process_resource_bridge(resource_bridge);
                 }
             }
@@ -654,7 +654,7 @@ impl VirtioDevice for Gpu {
             keep_fds.push(libc::STDERR_FILENO);
         }
         keep_fds.push(self.exit_evt.as_raw_fd());
-        if let Some(ref resource_bridge) = self.resource_bridge {
+        if let Some(resource_bridge) = &self.resource_bridge {
             keep_fds.push(resource_bridge.as_raw_fd());
         }
         keep_fds

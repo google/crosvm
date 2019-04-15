@@ -299,7 +299,7 @@ impl HostDevice {
                                 }
                                 XhciTransferState::Completed => {
                                     let status = t.status();
-                                    if let Some(ref buffer) = buffer {
+                                    if let Some(buffer) = &buffer {
                                         let _bytes = buffer
                                             .write(&t.buffer().data_buffer)
                                             .map_err(Error::WriteBuffer)?

@@ -414,7 +414,7 @@ pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::
 
     let mut state = lock!();
     let mut buf = [0u8; 1024];
-    if let Some(ref socket) = state.socket {
+    if let Some(socket) = &state.socket {
         let tm = get_localtime();
         let prifac = (pri as u8) | (fac as u8);
         let (res, len) = {
@@ -452,7 +452,7 @@ pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::
         )
     };
     if res.is_ok() {
-        if let Some(ref mut file) = state.file {
+        if let Some(file) = &mut state.file {
             let _ = file.write_all(&buf[..len]);
         }
         if state.stderr {

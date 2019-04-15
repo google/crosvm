@@ -170,7 +170,7 @@ impl FakeTimerFd {
     pub fn wait(&mut self) -> Result<u64> {
         loop {
             self.fd.read()?;
-            if let Some(ref mut deadline_ns) = self.deadline_ns {
+            if let Some(deadline_ns) = &mut self.deadline_ns {
                 let mut guard = self.clock.lock();
                 let now = guard.nanos();
                 if now >= *deadline_ns {

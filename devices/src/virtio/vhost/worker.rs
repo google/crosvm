@@ -82,7 +82,7 @@ impl<T: Vhost> Worker<T> {
             .set_mem_table()
             .map_err(Error::VhostSetMemTable)?;
 
-        for (queue_index, ref queue) in self.queues.iter().enumerate() {
+        for (queue_index, queue) in self.queues.iter().enumerate() {
             self.vhost_handle
                 .set_vring_num(queue_index, queue.max_size)
                 .map_err(Error::VhostSetVringNum)?;

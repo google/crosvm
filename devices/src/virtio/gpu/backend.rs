@@ -208,7 +208,7 @@ impl VirglResource for BackedBuffer {
 
     fn attach_guest_backing(&mut self, mem: &GuestMemory, vecs: Vec<(GuestAddress, usize)>) {
         self.backing = vecs.clone();
-        if let Some(ref mut resource) = self.gpu_renderer_resource {
+        if let Some(resource) = &mut self.gpu_renderer_resource {
             if let Err(e) = resource.attach_backing(&vecs[..], mem) {
                 error!("failed to attach backing to BackBuffer resource: {}", e);
             }
@@ -216,7 +216,7 @@ impl VirglResource for BackedBuffer {
     }
 
     fn detach_guest_backing(&mut self) {
-        if let Some(ref mut resource) = self.gpu_renderer_resource {
+        if let Some(resource) = &mut self.gpu_renderer_resource {
             resource.detach_backing();
         }
         self.backing.clear();
@@ -231,9 +231,9 @@ impl VirglResource for BackedBuffer {
     }
 
     fn import_to_display(&mut self, display: &Rc<RefCell<GpuDisplay>>) -> Option<u32> {
-        if let Some((ref self_display, import)) = self.display_import {
-            if Rc::ptr_eq(&self_display, display) {
-                return Some(import);
+        if let Some((self_display, import)) = &self.display_import {
+            if Rc::ptr_eq(self_display, display) {
+                return Some(*import);
             }
         }
         let dmabuf = match self.buffer.export_plane_fd(0) {

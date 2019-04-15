@@ -467,8 +467,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
     let jail = if cfg.sandbox {
         // An empty directory for jailed plugin pivot root.
-        let root_path = match cfg.plugin_root {
-            Some(ref dir) => Path::new(dir),
+        let root_path = match &cfg.plugin_root {
+            Some(dir) => dir,
             None => Path::new("/var/empty"),
         };
 
@@ -599,7 +599,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         let plugin_socket_count = plugin.sockets().len();
         let events = {
             let poll_res = match dying_instant {
-                Some(ref inst) => poll_ctx.wait_timeout(duration_to_die - inst.elapsed()),
+                Some(inst) => poll_ctx.wait_timeout(duration_to_die - inst.elapsed()),
                 None => poll_ctx.wait(),
             };
             match poll_res {

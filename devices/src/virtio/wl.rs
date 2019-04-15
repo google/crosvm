@@ -692,16 +692,16 @@ struct WlVfd {
 impl fmt::Debug for WlVfd {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "WlVfd {{")?;
-        if let Some(ref s) = self.socket {
+        if let Some(s) = &self.socket {
             write!(f, " socket: {}", s.as_raw_fd())?;
         }
-        if let Some(&(slot, pfn, _)) = self.slot.as_ref() {
+        if let Some((slot, pfn, _)) = &self.slot {
             write!(f, " slot: {} pfn: {}", slot, pfn)?;
         }
-        if let Some(ref s) = self.remote_pipe {
+        if let Some(s) = &self.remote_pipe {
             write!(f, " remote: {}", s.as_raw_fd())?;
         }
-        if let Some((_, ref s)) = self.local_pipe {
+        if let Some((_, s)) = &self.local_pipe {
             write!(f, " local: {}", s.as_raw_fd())?;
         }
         write!(f, " }}")
@@ -781,8 +781,8 @@ impl WlVfd {
             return Err(WlError::DmabufSync(io::Error::from_raw_os_error(EINVAL)));
         }
 
-        match self.guest_shared_memory.as_ref() {
-            Some(&(_, ref fd)) => {
+        match &self.guest_shared_memory {
+            Some((_, fd)) => {
                 let sync = dma_buf_sync {
                     flags: flags as u64,
                 };
@@ -885,25 +885,25 @@ impl WlVfd {
     fn send_fd(&self) -> Option<RawFd> {
         self.guest_shared_memory
             .as_ref()
-            .map(|&(_, ref fd)| fd.as_raw_fd())
+            .map(|(_, fd)| fd.as_raw_fd())
             .or(self.socket.as_ref().map(|s| s.as_raw_fd()))
             .or(self.remote_pipe.as_ref().map(|p| p.as_raw_fd()))
     }
 
     // The FD that is used for polling for events on this VFD.
     fn poll_fd(&self) -> Option<&dyn AsRawFd> {
-        self.socket.as_ref().map(|s| s as &dyn AsRawFd).or(self
-            .local_pipe
+        self.socket
             .as_ref()
-            .map(|&(_, ref p)| p as &dyn AsRawFd))
+            .map(|s| s as &dyn AsRawFd)
+            .or(self.local_pipe.as_ref().map(|(_, p)| p as &dyn AsRawFd))
     }
 
     // Sends data/files from the guest to the host over this VFD.
     fn send(&mut self, fds: &[RawFd], data: VolatileSlice) -> WlResult<WlResp> {
-        if let Some(ref socket) = self.socket {
+        if let Some(socket) = &self.socket {
             socket.send_with_fds(data, fds).map_err(WlError::SendVfd)?;
             Ok(WlResp::Ok)
-        } else if let Some((_, ref mut local_pipe)) = self.local_pipe {
+        } else if let Some((_, local_pipe)) = &mut self.local_pipe {
             // Impossible to send fds over a simple pipe.
             if !fds.is_empty() {
                 return Ok(WlResp::InvalidType);
@@ -1187,10 +1187,10 @@ impl WlState {
 
     fn close(&mut self, vfd_id: u32) -> WlResult<WlResp> {
         let mut to_delete = Set::new();
-        for &(dest_vfd_id, ref q) in self.in_queue.iter() {
-            if dest_vfd_id == vfd_id {
-                if let WlRecv::Vfd { id } = *q {
-                    to_delete.insert(id);
+        for (dest_vfd_id, q) in self.in_queue.iter() {
+            if *dest_vfd_id == vfd_id {
+                if let WlRecv::Vfd { id } = q {
+                    to_delete.insert(*id);
                 }
             }
         }
@@ -1710,10 +1710,10 @@ impl VirtioDevice for Wl {
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
 
-        if let Some(ref vm_socket) = self.vm_socket {
+        if let Some(vm_socket) = &self.vm_socket {
             keep_fds.push(vm_socket.as_raw_fd());
         }
-        if let Some(ref resource_bridge) = self.resource_bridge {
+        if let Some(resource_bridge) = &self.resource_bridge {
             keep_fds.push(resource_bridge.as_raw_fd());
         }
 

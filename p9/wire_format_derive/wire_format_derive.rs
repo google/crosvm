@@ -65,8 +65,8 @@ fn p9_wire_format_inner(input: DeriveInput) -> TokenStream {
 
 // Generate code that recursively calls byte_size on every field in the struct.
 fn byte_size_sum(data: &Data) -> TokenStream {
-    if let Data::Struct(ref data) = *data {
-        if let Fields::Named(ref fields) = data.fields {
+    if let Data::Struct(data) = data {
+        if let Fields::Named(fields) = &data.fields {
             let fields = fields.named.iter().map(|f| {
                 let field = &f.ident;
                 let span = field.span();
@@ -88,8 +88,8 @@ fn byte_size_sum(data: &Data) -> TokenStream {
 
 // Generate code that recursively calls encode on every field in the struct.
 fn encode_wire_format(data: &Data) -> TokenStream {
-    if let Data::Struct(ref data) = *data {
-        if let Fields::Named(ref fields) = data.fields {
+    if let Data::Struct(data) = data {
+        if let Fields::Named(fields) = &data.fields {
             let fields = fields.named.iter().map(|f| {
                 let field = &f.ident;
                 let span = field.span();
@@ -113,8 +113,8 @@ fn encode_wire_format(data: &Data) -> TokenStream {
 
 // Generate code that recursively calls decode on every field in the struct.
 fn decode_wire_format(data: &Data, container: &Ident) -> TokenStream {
-    if let Data::Struct(ref data) = *data {
-        if let Fields::Named(ref fields) = data.fields {
+    if let Data::Struct(data) = data {
+        if let Fields::Named(fields) = &data.fields {
             let values = fields.named.iter().map(|f| {
                 let field = &f.ident;
                 let span = field.span();

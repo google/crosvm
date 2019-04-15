@@ -669,7 +669,7 @@ impl PitCounter {
         // For square wave mode, this isn't quite accurate to the spec, but the
         // difference isn't meaningfully visible to the guest in any important way,
         // and the code is simpler without the special case.
-        if let Some(ref mut interrupt) = self.interrupt_evt {
+        if let Some(interrupt) = &mut self.interrupt_evt {
             // This is safe because the file descriptor is nonblocking and we're writing 1.
             interrupt.write(1).unwrap();
         }
@@ -686,9 +686,9 @@ impl PitCounter {
     }
 
     fn get_ticks_passed(&self) -> u64 {
-        match self.start {
+        match &self.start {
             None => 0,
-            Some(ref t) => {
+            Some(t) => {
                 let dur = self.clock.lock().now().duration_since(t);
                 let dur_ns: u64 = dur.as_secs() * NANOS_PER_SEC + u64::from(dur.subsec_nanos());
                 (dur_ns * FREQUENCY_HZ / NANOS_PER_SEC)

@@ -91,8 +91,8 @@ fn bitfield_tuple_struct_impl(ast: &DeriveInput, fields: &FieldsUnnamed) -> Resu
         ));
     }
 
-    let field_type = match fields.unnamed.first().unwrap().value().ty {
-        Type::Path(ref t) => t,
+    let field_type = match &fields.unnamed.first().unwrap().value().ty {
+        Type::Path(t) => t,
         _ => {
             return Err(Error::new(
                 Span::call_site(),

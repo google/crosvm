@@ -168,10 +168,8 @@ impl PciDevice for XhciController {
     }
 
     fn keep_fds(&self) -> Vec<RawFd> {
-        match self.state {
-            XhciControllerState::Created {
-                ref device_provider,
-            } => device_provider.keep_fds(),
+        match &self.state {
+            XhciControllerState::Created { device_provider } => device_provider.keep_fds(),
             _ => {
                 error!("xhci controller is in a wrong state");
                 vec![]

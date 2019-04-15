@@ -671,7 +671,7 @@ mod tests {
         match res {
             // We won't have permission in test environments; allow that
             Ok(_t) => {}
-            Err(Error::IoctlError(ref e)) if e.errno() == EPERM => {}
+            Err(Error::IoctlError(e)) if e.errno() == EPERM => {}
             Err(e) => panic!("Unexpected Error:\n{}", e),
         }
     }

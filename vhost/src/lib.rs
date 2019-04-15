@@ -340,10 +340,10 @@ mod tests {
     }
 
     fn assert_ok_or_known_failure<T>(res: Result<T>) {
-        match res {
+        match &res {
             // FakeNet won't respond to ioctl's
             Ok(_t) => {}
-            Err(Error::IoctlError(ref ioe)) if ioe.raw_os_error().unwrap() == 25 => {}
+            Err(Error::IoctlError(ioe)) if ioe.raw_os_error().unwrap() == 25 => {}
             Err(e) => panic!("Unexpected Error:\n{}", e),
         }
     }

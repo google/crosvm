@@ -21,15 +21,15 @@ pub trait FailHandle: Send + Sync {
 
 impl FailHandle for Option<Arc<dyn FailHandle>> {
     fn fail(&self) {
-        match *self {
-            Some(ref handle) => handle.fail(),
+        match self {
+            Some(handle) => handle.fail(),
             None => error!("event loop trying to fail without a fail handle"),
         }
     }
 
     fn failed(&self) -> bool {
-        match &self {
-            Some(ref handle) => handle.failed(),
+        match self {
+            Some(handle) => handle.failed(),
             None => false,
         }
     }

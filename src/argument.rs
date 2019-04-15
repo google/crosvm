@@ -324,7 +324,7 @@ pub fn print_help(program_name: &str, required_arg: &str, args: &[Argument]) {
     println!("Argument{}:", if args.len() > 1 { "s" } else { "" });
     for arg in args {
         match arg.short {
-            Some(ref s) => print!(" -{}, ", s),
+            Some(s) => print!(" -{}, ", s),
             None => print!("     "),
         }
         if arg.long.is_empty() {

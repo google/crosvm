@@ -890,11 +890,11 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
 
-        if let Some(ref disk_image) = self.disk_image {
+        if let Some(disk_image) = &self.disk_image {
             keep_fds.push(disk_image.as_raw_fd());
         }
 
-        if let Some(ref control_socket) = self.control_socket {
+        if let Some(control_socket) = &self.control_socket {
             keep_fds.push(control_socket.as_raw_fd());
         }
 

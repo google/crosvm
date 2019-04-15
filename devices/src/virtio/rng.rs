@@ -173,7 +173,7 @@ impl VirtioDevice for Rng {
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
 
-        if let Some(ref random_file) = self.random_file {
+        if let Some(random_file) = &self.random_file {
             keep_fds.push(random_file.as_raw_fd());
         }
 

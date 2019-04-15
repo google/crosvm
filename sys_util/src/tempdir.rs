@@ -66,13 +66,13 @@ impl TempDir {
 
     /// Returns the path to the tempdir if it is currently valid
     pub fn as_path(&self) -> Option<&Path> {
-        self.path.as_ref().map(|ref p| p.as_path())
+        self.path.as_ref().map(PathBuf::as_path)
     }
 }
 
 impl Drop for TempDir {
     fn drop(&mut self) {
-        if let Some(ref p) = self.path {
+        if let Some(p) = &self.path {
             // Nothing can be done here if this returns an error.
             let _ = fs::remove_dir_all(p);
         }

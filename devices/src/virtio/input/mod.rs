@@ -597,7 +597,7 @@ where
     T: 'static + EventSource + Send,
 {
     fn keep_fds(&self) -> Vec<RawFd> {
-        if let Some(ref source) = self.source {
+        if let Some(source) = &self.source {
             return vec![source.as_raw_fd()];
         }
         Vec::new()

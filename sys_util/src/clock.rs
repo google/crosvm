@@ -72,15 +72,15 @@ impl FakeClock {
     /// Drop any existing events registered to the same raw fd.
     pub fn add_event_fd(&mut self, deadline_ns: u64, fd: EventFd) {
         self.deadlines
-            .retain(|&(_, ref old_fd)| fd.as_raw_fd() != old_fd.as_raw_fd());
+            .retain(|(_, old_fd)| fd.as_raw_fd() != old_fd.as_raw_fd());
         self.deadlines.push((deadline_ns, fd));
     }
 
     pub fn add_ns(&mut self, ns: u64) {
         self.ns_since_epoch += ns;
         let time = self.ns_since_epoch;
-        self.deadlines.retain(|&(ns, ref fd)| {
-            let expired = ns <= time;
+        self.deadlines.retain(|(ns, fd)| {
+            let expired = *ns <= time;
             if expired {
                 fd.write(1).unwrap();
             }

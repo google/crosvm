@@ -430,8 +430,8 @@ impl DeviceSlot {
                 .set_state(DeviceSlotState::Default);
         } else {
             let port = self.hub.get_port(port_id).ok_or(Error::GetPort(port_id))?;
-            match *port.get_backend_device() {
-                Some(ref mut backend) => {
+            match port.get_backend_device().as_mut() {
+                Some(backend) => {
                     backend.set_address(self.slot_id as u32);
                 }
                 None => {
