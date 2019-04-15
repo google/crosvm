@@ -209,7 +209,7 @@ rawfd_impl!(UnixDatagram);
 
 // This trait is unsafe as it use uninitialized memory.
 // Please only implement it for primitive types.
-unsafe trait AlignedNew: Sized + DataInit {
+unsafe trait AlignedNew: DataInit {
     unsafe fn from_unaligned(buffer: &[u8]) -> Option<Self> {
         let mut value = std::mem::uninitialized::<Self>();
         let value_mem = value.as_mut_slice();
