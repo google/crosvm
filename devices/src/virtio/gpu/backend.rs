@@ -770,11 +770,22 @@ impl Backend {
                             ) {
                                 Ok(buffer) => buffer,
                                 Err(e) => {
-                                    error!(
-                                        "failed to create buffer for 3d resource {}: {}",
-                                        format, e
-                                    );
-                                    return GpuResponse::ErrUnspec;
+                                    // Attempt to allocate the buffer without scanout flag.
+                                    match self.device.create_buffer(
+                                        width,
+                                        height,
+                                        Format::from(fourcc),
+                                        Flags::empty().use_rendering(true),
+                                    ) {
+                                        Ok(buffer) => buffer,
+                                        Err(e) => {
+                                            error!(
+                                                "failed to create buffer for 3d resource {}: {}",
+                                                format, e
+                                            );
+                                            return GpuResponse::ErrUnspec;
+                                        }
+                                    }
                                 }
                             };
 
