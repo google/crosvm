@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::i64;
 use std::mem::{self, size_of};
+use std::num::NonZeroU8;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -25,7 +26,7 @@ use sys_util::{
 
 use gpu_buffer::Device;
 use gpu_display::*;
-use gpu_renderer::{format_fourcc, Renderer};
+use gpu_renderer::{Renderer, RendererFlags};
 
 use super::{
     resource_bridge::*, AvailIter, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_GPU,
@@ -107,24 +108,12 @@ impl Frontend {
             GpuCommand::GetDisplayInfo(_) => {
                 GpuResponse::OkDisplayInfo(self.backend.display_info().to_vec())
             }
-            GpuCommand::ResourceCreate2d(info) => {
-                let format = info.format.to_native();
-                match format_fourcc(format) {
-                    Some(fourcc) => self.backend.create_resource_2d(
-                        info.resource_id.to_native(),
-                        info.width.to_native(),
-                        info.height.to_native(),
-                        fourcc,
-                    ),
-                    None => {
-                        warn!(
-                            "failed to create resource with unrecognized pipe format {}",
-                            format
-                        );
-                        GpuResponse::ErrInvalidParameter
-                    }
-                }
-            }
+            GpuCommand::ResourceCreate2d(info) => self.backend.create_resource_2d(
+                info.resource_id.to_native(),
+                info.width.to_native(),
+                info.height.to_native(),
+                info.format.to_native(),
+            ),
             GpuCommand::ResourceUnref(info) => {
                 self.backend.unref_resource(info.resource_id.to_native())
             }
@@ -602,13 +591,123 @@ impl Worker {
     }
 }
 
+/// Indicates a backend that should be tried for the gpu to use for display.
+///
+/// Several instances of this enum are used in an ordered list to give the gpu device many backends
+/// to use as fallbacks in case some do not work.
+#[derive(Clone)]
+pub enum DisplayBackend {
+    /// Use the wayland backend with the given socket path if given.
+    Wayland(Option<PathBuf>),
+    /// Open a connection to the X server at the given display if given.
+    X(Option<String>),
+    /// Emulate a display without actually displaying it.
+    Null,
+}
+
+impl DisplayBackend {
+    fn build(&self) -> std::result::Result<GpuDisplay, GpuDisplayError> {
+        match self {
+            DisplayBackend::Wayland(path) => GpuDisplay::open_wayland(path.as_ref()),
+            DisplayBackend::X(display) => GpuDisplay::open_x(display.as_ref()),
+            DisplayBackend::Null => unimplemented!(),
+        }
+    }
+
+    fn is_x(&self) -> bool {
+        match self {
+            DisplayBackend::X(_) => true,
+            _ => false,
+        }
+    }
+}
+
+/// Builds a Device for doing buffer allocation and sharing via dmabuf.
+fn build_buffer_device() -> Option<Device> {
+    const UNDESIRED_CARDS: &[&str] = &["vgem", "pvr"];
+    let drm_card = match gpu_buffer::rendernode::open_device(UNDESIRED_CARDS) {
+        Ok(f) => f,
+        Err(()) => {
+            error!("failed to open render node for GBM");
+            return None;
+        }
+    };
+    match Device::new(drm_card) {
+        Ok(d) => Some(d),
+        Err(()) => {
+            error!("failed to create GBM device from render node");
+            None
+        }
+    }
+}
+
+// Builds a gpu backend with one of the given possible display backends, or None if they all
+// failed.
+fn build_backend(
+    possible_displays: &[DisplayBackend],
+    gpu_device_socket: VmMemoryControlRequestSocket,
+) -> Option<Backend> {
+    let mut buffer_device = None;
+    let mut renderer_flags = RendererFlags::default();
+    let mut display_opt = None;
+    for display in possible_displays {
+        match display.build() {
+            Ok(c) => {
+                // If X11 is being used, that's an indication that the renderer should also be using
+                // glx. Otherwise, we are likely in an enviroment in which GBM will work for doing
+                // allocations of buffers we wish to display. TODO(zachr): this is a heuristic (or
+                // terrible hack depending on your POV). We should do something either smarter or
+                // more configurable
+                if display.is_x() {
+                    renderer_flags = RendererFlags::new().use_glx(true);
+                } else {
+                    buffer_device = build_buffer_device();
+                }
+                display_opt = Some(c);
+                break;
+            }
+            Err(e) => error!("failed to open display: {}", e),
+        };
+    }
+    let display = match display_opt {
+        Some(d) => d,
+        None => {
+            error!("failed to open any displays");
+            return None;
+        }
+    };
+
+    if cfg!(debug_assertions) {
+        let ret = unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
+        if ret == -1 {
+            warn!("unable to dup2 stdout to stderr: {}", Error::last());
+        }
+    }
+
+    let renderer = match Renderer::init(renderer_flags) {
+        Ok(r) => r,
+        Err(e) => {
+            error!("failed to initialize gpu renderer: {}", e);
+            return None;
+        }
+    };
+
+    Some(Backend::new(
+        buffer_device,
+        display,
+        renderer,
+        gpu_device_socket,
+    ))
+}
+
 pub struct Gpu {
     config_event: bool,
     exit_evt: EventFd,
     gpu_device_socket: Option<VmMemoryControlRequestSocket>,
     resource_bridges: Vec<ResourceResponseSocket>,
     kill_evt: Option<EventFd>,
-    wayland_socket_path: PathBuf,
+    num_scanouts: NonZeroU8,
+    display_backends: Vec<DisplayBackend>,
 }
 
 impl Gpu {
@@ -618,13 +717,17 @@ impl Gpu {
         resource_bridges: Vec<ResourceResponseSocket>,
         wayland_socket_path: P,
     ) -> Gpu {
+        let display_backends = vec![DisplayBackend::Wayland(Some(
+            wayland_socket_path.as_ref().to_owned(),
+        ))];
         Gpu {
             config_event: false,
             exit_evt,
             gpu_device_socket,
             resource_bridges,
             kill_evt: None,
-            wayland_socket_path: wayland_socket_path.as_ref().to_path_buf(),
+            num_scanouts: NonZeroU8::new(1).unwrap(),
+            display_backends,
         }
     }
 
@@ -636,7 +739,7 @@ impl Gpu {
         virtio_gpu_config {
             events_read: Le32::from(events_read),
             events_clear: Le32::from(0),
-            num_scanouts: Le32::from(1),
+            num_scanouts: Le32::from(self.num_scanouts.get() as u32),
             num_capsets: Le32::from(3),
         }
     }
@@ -747,51 +850,15 @@ impl VirtioDevice for Gpu {
         let ctrl_evt = queue_evts.remove(0);
         let cursor_queue = queues.remove(0);
         let cursor_evt = queue_evts.remove(0);
-        let socket_path = self.wayland_socket_path.clone();
+        let display_backends = self.display_backends.clone();
         if let Some(gpu_device_socket) = self.gpu_device_socket.take() {
             let worker_result =
                 thread::Builder::new()
                     .name("virtio_gpu".to_string())
                     .spawn(move || {
-                        const UNDESIRED_CARDS: &[&str] = &["vgem", "pvr"];
-                        let drm_card = match gpu_buffer::rendernode::open_device(UNDESIRED_CARDS) {
-                            Ok(f) => f,
-                            Err(()) => {
-                                error!("failed to open card");
-                                return;
-                            }
-                        };
-
-                        let device = match Device::new(drm_card) {
-                            Ok(d) => d,
-                            Err(()) => {
-                                error!("failed to open device");
-                                return;
-                            }
-                        };
-
-                        let display = match GpuDisplay::new(socket_path) {
-                            Ok(c) => c,
-                            Err(e) => {
-                                error!("failed to open display: {}", e);
-                                return;
-                            }
-                        };
-
-                        if cfg!(debug_assertions) {
-                            let ret =
-                                unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
-                            if ret == -1 {
-                                warn!("unable to dup2 stdout to stderr: {}", Error::last());
-                            }
-                        }
-
-                        let renderer = match Renderer::init() {
-                            Ok(r) => r,
-                            Err(e) => {
-                                error!("failed to initialize gpu renderer: {}", e);
-                                return;
-                            }
+                        let backend = match build_backend(&display_backends, gpu_device_socket) {
+                            Some(backend) => backend,
+                            None => return,
                         };
 
                         Worker {
@@ -806,12 +873,7 @@ impl VirtioDevice for Gpu {
                             cursor_evt,
                             resource_bridges,
                             kill_evt,
-                            state: Frontend::new(Backend::new(
-                                device,
-                                display,
-                                renderer,
-                                gpu_device_socket,
-                            )),
+                            state: Frontend::new(backend),
                         }
                         .run()
                     });

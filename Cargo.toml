@@ -28,6 +28,7 @@ plugin = ["protos/plugin", "crosvm_plugin", "protobuf"]
 sandboxed-libusb = ["devices/sandboxed-libusb", "vm_control/sandboxed-libusb"]
 tpm = ["devices/tpm"]
 wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
+x = ["devices/x"]
 
 [dependencies]
 arch = { path = "arch" }

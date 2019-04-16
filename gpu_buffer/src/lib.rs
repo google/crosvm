@@ -566,19 +566,21 @@ impl Buffer {
         height: u32,
         plane: usize,
         dst: VolatileSlice,
+        dst_stride: u32,
     ) -> Result<(), Error> {
         if width == 0 || height == 0 {
             return Ok(());
         }
 
         let mapping = self.map(x, y, width, height, plane, GBM_BO_TRANSFER_READ)?;
+        let src_stride = mapping.stride() as u64;
+        let dst_stride = dst_stride as u64;
 
-        if x == 0 && width == self.width() {
+        if x == 0 && width == self.width() && src_stride == dst_stride {
             mapping.as_volatile_slice().copy_to_volatile_slice(dst);
         } else {
             // This path is more complicated because there are gaps in the data between lines.
             let width = width as u64;
-            let stride = mapping.stride() as u64;
             let bytes_per_pixel = match self.format().bytes_per_pixel(plane) {
                 Some(bpp) => bpp as u64,
                 None => return Err(Error::UnknownFormat(self.format())),
@@ -586,12 +588,13 @@ impl Buffer {
             let line_copy_size = checked_arithmetic!(width * bytes_per_pixel)?;
             let src = mapping.as_volatile_slice();
             for yy in 0..(height as u64) {
-                let line_offset = checked_arithmetic!(yy * stride)?;
+                let src_line_offset = checked_arithmetic!(yy * src_stride)?;
+                let dst_line_offset = checked_arithmetic!(yy * dst_stride)?;
                 let src_line = src
-                    .get_slice(line_offset, line_copy_size)
+                    .get_slice(src_line_offset, line_copy_size)
                     .map_err(Error::Memcopy)?;
                 let dst_line = dst
-                    .get_slice(line_offset, line_copy_size)
+                    .get_slice(dst_line_offset, line_copy_size)
                     .map_err(Error::Memcopy)?;
                 src_line.copy_to_volatile_slice(dst_line);
             }
@@ -855,6 +858,7 @@ mod tests {
             1024,
             0,
             dst.as_mut_slice().get_slice(0, dst_len).unwrap(),
+            bo.stride(),
         )
         .expect("failed to read bo");
         assert!(dst.iter().all(|&x| x == 0x4A));

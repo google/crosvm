@@ -32,7 +32,9 @@ use crate::generated::epoxy_egl::{
     EGL_DMA_BUF_PLANE0_PITCH_EXT, EGL_GL_TEXTURE_2D_KHR, EGL_HEIGHT, EGL_LINUX_DMA_BUF_EXT,
     EGL_LINUX_DRM_FOURCC_EXT, EGL_NONE, EGL_OPENGL_ES_API, EGL_SURFACE_TYPE, EGL_WIDTH,
 };
-use crate::generated::p_defines::{PIPE_BIND_SAMPLER_VIEW, PIPE_TEXTURE_1D, PIPE_TEXTURE_2D};
+use crate::generated::p_defines::{
+    PIPE_BIND_RENDER_TARGET, PIPE_BIND_SAMPLER_VIEW, PIPE_TEXTURE_1D, PIPE_TEXTURE_2D,
+};
 use crate::generated::p_format::PIPE_FORMAT_B8G8R8X8_UNORM;
 use crate::generated::virglrenderer::*;
 
@@ -78,6 +80,10 @@ pub enum Error {
     InvalidIovec,
     /// A command size was submitted that was invalid.
     InvalidCommandSize(usize),
+    /// The image export request is not supported without EGL.
+    ExportUnsupported,
+    /// The image import request is not supported without EGL.
+    ImportUnsupported,
 }
 
 impl Display for Error {
@@ -98,6 +104,8 @@ impl Display for Error {
             ExportedResourceDmabuf => write!(f, "failed to export dmabuf from EGLImageKHR"),
             InvalidIovec => write!(f, "an iovec is outside of guest memory's range"),
             InvalidCommandSize(s) => write!(f, "command buffer submitted with invalid size: {}", s),
+            ExportUnsupported => write!(f, "can not export images without EGL"),
+            ImportUnsupported => write!(f, "can not import images without EGL"),
         }
     }
 }
@@ -308,11 +316,139 @@ impl Deref for EGLFunctions {
     }
 }
 
+fn init_egl() -> Result<(EGLDisplay, EGLFunctions)> {
+    let egl_funcs = EGLFunctions::new()?;
+
+    // Safe because only valid callbacks are given and only one thread can execute this
+    // function.
+    unsafe {
+        (egl_funcs.DebugMessageControlKHR)(Some(error_callback), null());
+    }
+
+    // Trivially safe.
+    let display = unsafe { (egl_funcs.GetDisplay)(null_mut()) };
+    if display.is_null() {
+        return Err(Error::EGLGetDisplay);
+    }
+
+    // Safe because only a valid display is given.
+    let ret = unsafe { (egl_funcs.Initialize)(display, null_mut(), null_mut()) };
+    if ret == 0 {
+        return Err(Error::EGLInitialize);
+    }
+
+    let config_attribs = [EGL_SURFACE_TYPE as i32, -1, EGL_NONE as i32];
+    let mut egl_config: *mut c_void = null_mut();
+    let mut num_configs = 0;
+    // Safe because only a valid, initialized display is used, along with validly sized
+    // pointers to stack variables.
+    let ret = unsafe {
+        (egl_funcs.ChooseConfig)(
+            display,
+            config_attribs.as_ptr(),
+            &mut egl_config,
+            1,
+            &mut num_configs, /* unused but can't be null */
+        )
+    };
+    if ret == 0 {
+        return Err(Error::EGLChooseConfig);
+    }
+
+    // Safe because EGL was properly initialized before here..
+    let ret = unsafe { (egl_funcs.BindAPI)(EGL_OPENGL_ES_API) };
+    if ret == 0 {
+        return Err(Error::EGLBindAPI);
+    }
+
+    let context_attribs = [EGL_CONTEXT_CLIENT_VERSION as i32, 3, EGL_NONE as i32];
+    // Safe because a valid display, config, and config_attribs pointer are given.
+    let ctx = unsafe {
+        (egl_funcs.CreateContext)(display, egl_config, null_mut(), context_attribs.as_ptr())
+    };
+    if ctx.is_null() {
+        return Err(Error::EGLCreateContext);
+    }
+
+    // Safe because a valid display and context is used, and the two null surfaces are not
+    // used.
+    let ret = unsafe { (egl_funcs.MakeCurrent)(display, null_mut(), null_mut(), ctx) };
+    if ret == 0 {
+        return Err(Error::EGLMakeCurrent);
+    }
+
+    Ok((display, egl_funcs))
+}
+
+#[derive(Copy, Clone)]
+pub struct RendererFlags(u32);
+
+impl Default for RendererFlags {
+    fn default() -> RendererFlags {
+        RendererFlags::new()
+            .use_egl(true)
+            .use_surfaceless(true)
+            .use_gles(true)
+    }
+}
+
+impl RendererFlags {
+    pub fn new() -> RendererFlags {
+        RendererFlags(0)
+    }
+
+    fn set_flag(self, bitmask: u32, set: bool) -> RendererFlags {
+        if set {
+            RendererFlags(self.0 | bitmask)
+        } else {
+            RendererFlags(self.0 & (!bitmask))
+        }
+    }
+
+    pub fn uses_egl(self) -> bool {
+        (self.0 & VIRGL_RENDERER_USE_EGL) != 0
+    }
+
+    pub fn use_egl(self, v: bool) -> RendererFlags {
+        self.set_flag(VIRGL_RENDERER_USE_EGL, v)
+    }
+
+    pub fn uses_glx(self) -> bool {
+        (self.0 & VIRGL_RENDERER_USE_GLX) != 0
+    }
+
+    pub fn use_glx(self, v: bool) -> RendererFlags {
+        self.set_flag(VIRGL_RENDERER_USE_GLX, v)
+    }
+
+    pub fn uses_surfaceless(self) -> bool {
+        (self.0 & VIRGL_RENDERER_USE_SURFACELESS) != 0
+    }
+
+    pub fn use_surfaceless(self, v: bool) -> RendererFlags {
+        self.set_flag(VIRGL_RENDERER_USE_SURFACELESS, v)
+    }
+
+    pub fn uses_gles(self) -> bool {
+        (self.0 & VIRGL_RENDERER_USE_GLES) != 0
+    }
+
+    pub fn use_gles(self, v: bool) -> RendererFlags {
+        self.set_flag(VIRGL_RENDERER_USE_GLES, v)
+    }
+}
+
+impl From<RendererFlags> for i32 {
+    fn from(flags: RendererFlags) -> i32 {
+        flags.0 as i32
+    }
+}
+
 /// The global renderer handle used to query capability sets, and create resources and contexts.
 pub struct Renderer {
     no_sync_send: PhantomData<*mut ()>,
-    egl_funcs: EGLFunctions,
-    display: EGLDisplay,
+    egl_funcs: Option<EGLFunctions>,
+    display: Option<EGLDisplay>,
     fence_state: Rc<RefCell<FenceState>>,
 }
 
@@ -320,7 +456,7 @@ impl Renderer {
     /// Initializes the renderer and returns a handle to it.
     ///
     /// This may only be called once per process. Calls after the first will return an error.
-    pub fn init() -> Result<Renderer> {
+    pub fn init(flags: RendererFlags) -> Result<Renderer> {
         // virglrenderer is a global state backed library that uses thread bound OpenGL contexts.
         // Initialize it only once and use the non-send/non-sync Renderer struct to keep things tied
         // to whichever thread called this function first.
@@ -329,42 +465,13 @@ impl Renderer {
             return Err(Error::AlreadyInitialized);
         }
 
-        let egl_funcs = EGLFunctions::new()?;
-
-        // Safe because only valid callbacks are given and only one thread can execute this
-        // function.
-        unsafe {
-            (egl_funcs.DebugMessageControlKHR)(Some(error_callback), null());
-        }
-
-        // Trivially safe.
-        let display = unsafe { (egl_funcs.GetDisplay)(null_mut()) };
-        if display.is_null() {
-            return Err(Error::EGLGetDisplay);
-        }
-
-        // Safe because only a valid display is given.
-        let ret = unsafe { (egl_funcs.Initialize)(display, null_mut(), null_mut()) };
-        if ret == 0 {
-            return Err(Error::EGLInitialize);
-        }
-
-        let config_attribs = [EGL_SURFACE_TYPE as i32, -1, EGL_NONE as i32];
-        let mut egl_config: *mut c_void = null_mut();
-        let mut num_configs = 0;
-        // Safe because only a valid, initialized display is used, along with validly sized
-        // pointers to stack variables.
-        let ret = unsafe {
-            (egl_funcs.ChooseConfig)(
-                display,
-                config_attribs.as_ptr(),
-                &mut egl_config,
-                1,
-                &mut num_configs, /* unused but can't be null */
-            )
-        };
-        if ret == 0 {
-            return Err(Error::EGLChooseConfig);
+        let mut display = None;
+        let mut egl_funcs = None;
+        if flags.uses_egl() {
+            if let Ok((d, f)) = init_egl() {
+                display = Some(d);
+                egl_funcs = Some(f);
+            };
         }
 
         // Cookie is intentionally never freed because virglrenderer never gets uninitialized.
@@ -378,35 +485,12 @@ impl Renderer {
             fence_state: Rc::clone(&fence_state),
         }));
 
-        // Safe because EGL was properly initialized before here..
-        let ret = unsafe { (egl_funcs.BindAPI)(EGL_OPENGL_ES_API) };
-        if ret == 0 {
-            return Err(Error::EGLBindAPI);
-        }
-
-        let context_attribs = [EGL_CONTEXT_CLIENT_VERSION as i32, 3, EGL_NONE as i32];
-        // Safe because a valid display, config, and config_attribs pointer are given.
-        let ctx = unsafe {
-            (egl_funcs.CreateContext)(display, egl_config, null_mut(), context_attribs.as_ptr())
-        };
-        if ctx.is_null() {
-            return Err(Error::EGLCreateContext);
-        }
-
-        // Safe because a valid display and context is used, and the two null surfaces are not
-        // used.
-        let ret = unsafe { (egl_funcs.MakeCurrent)(display, null_mut(), null_mut(), ctx) };
-        if ret == 0 {
-            return Err(Error::EGLMakeCurrent);
-        }
-
         // Safe because a valid cookie and set of callbacks is used and the result is checked for
         // error.
         let ret = unsafe {
             virgl_renderer_init(
                 cookie as *mut c_void,
-                (VIRGL_RENDERER_USE_EGL | VIRGL_RENDERER_USE_SURFACELESS | VIRGL_RENDERER_USE_GLES)
-                    as i32,
+                flags.into(),
                 transmute(VIRGL_RENDERER_CALLBACKS),
             )
         };
@@ -485,6 +569,30 @@ impl Renderer {
         })
     }
 
+    /// Helper that creates a simple 2 dimensional resource with basic metadata and usable for
+    /// display.
+    pub fn create_resource_2d(
+        &self,
+        id: u32,
+        width: u32,
+        height: u32,
+        format: u32,
+    ) -> Result<Resource> {
+        self.create_resource(virgl_renderer_resource_create_args {
+            handle: id,
+            target: PIPE_TEXTURE_2D,
+            format,
+            width,
+            height,
+            depth: 1,
+            array_size: 1,
+            last_level: 0,
+            nr_samples: 0,
+            bind: PIPE_BIND_RENDER_TARGET,
+            flags: 0,
+        })
+    }
+
     /// Imports a resource from an EGLImage.
     pub fn import_resource(
         &self,
@@ -519,7 +627,8 @@ impl Renderer {
         })
     }
 
-    /// Helper that creates a simple 2 dimensional resource with basic metadata.
+    /// Helper that creates a simple 2 dimensional resource with basic metadata and usable as a
+    /// texture.
     pub fn create_tex_2d(&self, id: u32, width: u32, height: u32) -> Result<Resource> {
         self.create_resource(virgl_renderer_resource_create_args {
             handle: id,
@@ -546,6 +655,11 @@ impl Renderer {
         offset: u32,
         stride: u32,
     ) -> Result<Image> {
+        let (egl_dpy, egl_funcs) = match (self.display, self.egl_funcs.clone()) {
+            (Some(d), Some(f)) => (d, f),
+            _ => return Err(Error::ImportUnsupported),
+        };
+
         let mut attrs = [
             EGL_WIDTH as EGLint,
             width as EGLint,
@@ -563,8 +677,8 @@ impl Renderer {
         ];
 
         let image = unsafe {
-            (self.egl_funcs.CreateImageKHR)(
-                self.display,
+            (egl_funcs.CreateImageKHR)(
+                egl_dpy,
                 0 as EGLContext,
                 EGL_LINUX_DMA_BUF_EXT,
                 null_mut() as EGLClientBuffer,
@@ -577,8 +691,8 @@ impl Renderer {
         }
 
         Ok(Image {
-            egl_funcs: self.egl_funcs.clone(),
-            egl_dpy: self.display,
+            egl_funcs,
+            egl_dpy,
             image,
         })
     }
@@ -692,7 +806,7 @@ pub struct Resource {
     id: u32,
     backing_iovecs: Vec<VirglVec>,
     backing_mem: Option<GuestMemory>,
-    egl_funcs: EGLFunctions,
+    egl_funcs: Option<EGLFunctions>,
     no_sync_send: PhantomData<*mut ()>,
 }
 
@@ -712,6 +826,11 @@ impl Resource {
 
     /// Performs an export of this resource so that it may be imported by other processes.
     pub fn export(&self) -> Result<ExportedResource> {
+        let egl_funcs = match self.egl_funcs.as_ref() {
+            Some(f) => f,
+            None => return Err(Error::ExportUnsupported),
+        };
+
         let res_info = self.get_info()?;
         let mut fourcc = 0;
         let mut modifiers = 0;
@@ -724,13 +843,13 @@ impl Resource {
         }
         // These are trivially safe and always return successfully because we bind the context in
         // the previous line.
-        let egl_dpy: EGLDisplay = unsafe { (self.egl_funcs.GetCurrentDisplay)() };
-        let egl_ctx: EGLContext = unsafe { (self.egl_funcs.GetCurrentContext)() };
+        let egl_dpy: EGLDisplay = unsafe { (egl_funcs.GetCurrentDisplay)() };
+        let egl_ctx: EGLContext = unsafe { (egl_funcs.GetCurrentContext)() };
 
         // Safe because a valid display, context, and texture ID are given. The attribute list is
         // not needed. The result is checked to ensure the returned image is valid.
         let image = unsafe {
-            (self.egl_funcs.CreateImageKHR)(
+            (egl_funcs.CreateImageKHR)(
                 egl_dpy,
                 egl_ctx,
                 EGL_GL_TEXTURE_2D_KHR,
@@ -746,26 +865,21 @@ impl Resource {
         // Safe because the display and image are valid and each function call is checked for
         // success. The returned image parameters are stored in stack variables of the correct type.
         let export_success = unsafe {
-            (self.egl_funcs.ExportDMABUFImageQueryMESA)(
+            (egl_funcs.ExportDMABUFImageQueryMESA)(
                 egl_dpy,
                 image,
                 &mut fourcc,
                 null_mut(),
                 &mut modifiers,
             ) != 0
-                && (self.egl_funcs.ExportDRMImageMESA)(
-                    egl_dpy,
-                    image,
-                    &mut fd,
-                    &mut stride,
-                    &mut offset,
-                ) != 0
+                && (egl_funcs.ExportDRMImageMESA)(egl_dpy, image, &mut fd, &mut stride, &mut offset)
+                    != 0
         };
 
         // Safe because we checked that the image was valid and nobody else owns it. The image does
         // not need to be around for the dmabuf to be valid.
         unsafe {
-            (self.egl_funcs.DestroyImageKHR)(egl_dpy, image);
+            (egl_funcs.DestroyImageKHR)(egl_dpy, image);
         }
 
         if !export_success || fd < 0 {
@@ -989,7 +1103,8 @@ mod tests {
     #[ignore]
     // Make sure a simple buffer clear works by using a command stream.
     fn simple_clear() {
-        let render = Renderer::init().expect("failed to initialize virglrenderer");
+        let render =
+            Renderer::init(RendererFlags::default()).expect("failed to initialize virglrenderer");
         let mut ctx = render.create_context(1).expect("failed to create context");
 
         // Create a 50x50 texture with id=2.
