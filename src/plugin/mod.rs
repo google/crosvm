@@ -364,7 +364,7 @@ pub fn run_vcpus(
                             match run_res {
                                 Ok(run) => match run {
                                     VcpuExit::IoIn { port, mut size } => {
-                                        let mut data = [0; 8];
+                                        let mut data = [0; 256];
                                         if size > data.len() {
                                             error!("unsupported IoIn size of {} bytes", size);
                                             size = data.len();

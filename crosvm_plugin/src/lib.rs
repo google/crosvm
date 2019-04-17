@@ -920,6 +920,7 @@ pub struct crosvm_vcpu_event {
 
 pub struct crosvm_vcpu {
     socket: UnixDatagram,
+    send_init: bool,
     request_buffer: Vec<u8>,
     response_buffer: Vec<u8>,
     resume_data: Vec<u8>,
@@ -929,13 +930,13 @@ impl crosvm_vcpu {
     fn new(socket: UnixDatagram) -> crosvm_vcpu {
         crosvm_vcpu {
             socket,
+            send_init: true,
             request_buffer: Vec::new(),
             response_buffer: vec![0; MAX_DATAGRAM_SIZE],
             resume_data: Vec::new(),
         }
     }
-
-    fn vcpu_transaction(&mut self, request: &VcpuRequest) -> result::Result<VcpuResponse, c_int> {
+    fn vcpu_send(&mut self, request: &VcpuRequest) -> result::Result<(), c_int> {
         self.request_buffer.clear();
         request
             .write_to_vec(&mut self.request_buffer)
@@ -943,7 +944,10 @@ impl crosvm_vcpu {
         self.socket
             .send(self.request_buffer.as_slice())
             .map_err(|e| -e.raw_os_error().unwrap_or(EINVAL))?;
+        Ok(())
+    }
 
+    fn vcpu_recv(&mut self) -> result::Result<VcpuResponse, c_int> {
         let msg_size = self
             .socket
             .recv(&mut self.response_buffer)
@@ -957,10 +961,20 @@ impl crosvm_vcpu {
         Ok(response)
     }
 
+    fn vcpu_transaction(&mut self, request: &VcpuRequest) -> result::Result<VcpuResponse, c_int> {
+        self.vcpu_send(request)?;
+        let response: VcpuResponse = self.vcpu_recv()?;
+        Ok(response)
+    }
+
     fn wait(&mut self, event: &mut crosvm_vcpu_event) -> result::Result<(), c_int> {
-        let mut r = VcpuRequest::new();
-        r.mut_wait();
-        let mut response: VcpuResponse = self.vcpu_transaction(&r)?;
+        if self.send_init {
+            self.send_init = false;
+            let mut r = VcpuRequest::new();
+            r.mut_wait();
+            self.vcpu_send(&r)?;
+        }
+        let mut response: VcpuResponse = self.vcpu_recv()?;
         if !response.has_wait() {
             return Err(EPROTO);
         }
@@ -997,7 +1011,7 @@ impl crosvm_vcpu {
         let resume: &mut VcpuRequest_Resume = r.mut_resume();
         swap(&mut resume.data, &mut self.resume_data);
 
-        self.vcpu_transaction(&r)?;
+        self.vcpu_send(&r)?;
         Ok(())
     }
 

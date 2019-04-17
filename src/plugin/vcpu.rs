@@ -389,133 +389,164 @@ impl PluginVcpu {
     }
 
     fn handle_request(&self, vcpu: &Vcpu) -> SysResult<Option<Vec<u8>>> {
+        let mut wait_reason = self.wait_reason.take();
+        let mut do_recv = true;
         let mut resume_data = None;
-        let mut request_buffer = self.request_buffer.borrow_mut();
-        request_buffer.resize(MAX_VCPU_DATAGRAM_SIZE, 0);
-
-        let msg_size = self
-            .connection
-            .recv(&mut request_buffer)
-            .map_err(io_to_sys_err)?;
-
-        let mut request = protobuf::parse_from_bytes::<VcpuRequest>(&request_buffer[..msg_size])
-            .map_err(proto_to_sys_err)?;
-
-        let wait_reason = self.wait_reason.take();
-
         let mut response = VcpuResponse::new();
-        let res = if request.has_wait() {
-            match wait_reason {
-                Some(wait_reason) => {
-                    response.set_wait(wait_reason);
-                    Ok(())
-                }
-                None => Err(SysError::new(EPROTO)),
-            }
-        } else if wait_reason.is_some() {
-            // Any request other than getting the wait_reason while there is one pending is invalid.
-            self.wait_reason.set(wait_reason);
-            Err(SysError::new(EPROTO))
-        } else if request.has_resume() {
-            response.mut_resume();
-            resume_data = Some(request.take_resume().take_data());
-            Ok(())
-        } else if request.has_get_state() {
-            let response_state = response.mut_get_state();
-            match get_vcpu_state(vcpu, request.get_get_state().set) {
-                Ok(state) => {
-                    response_state.state = state;
-                    Ok(())
-                }
-                Err(e) => Err(e),
-            }
-        } else if request.has_set_state() {
-            response.mut_set_state();
-            let set_state = request.get_set_state();
-            set_vcpu_state(vcpu, set_state.set, set_state.get_state())
-        } else if request.has_get_msrs() {
-            let entry_data = &mut response.mut_get_msrs().entry_data;
-            let entry_indices = &request.get_get_msrs().entry_indices;
-            let mut msr_entries = Vec::with_capacity(entry_indices.len());
-            for &index in entry_indices {
-                msr_entries.push(kvm_msr_entry {
-                    index,
-                    ..Default::default()
-                });
-            }
-            match vcpu.get_msrs(&mut msr_entries) {
-                Ok(()) => {
-                    for msr_entry in msr_entries {
-                        entry_data.push(msr_entry.data);
-                    }
-                    Ok(())
-                }
-                Err(e) => Err(e),
-            }
-        } else if request.has_set_msrs() {
-            const SIZE_OF_MSRS: usize = mem::size_of::<kvm_msrs>();
-            const SIZE_OF_ENTRY: usize = mem::size_of::<kvm_msr_entry>();
-            const ALIGN_OF_MSRS: usize = mem::align_of::<kvm_msrs>();
-            const ALIGN_OF_ENTRY: usize = mem::align_of::<kvm_msr_entry>();
-            const_assert!(ALIGN_OF_MSRS >= ALIGN_OF_ENTRY);
 
-            response.mut_set_msrs();
-            let request_entries = &request.get_set_msrs().entries;
-            let size = SIZE_OF_MSRS + request_entries.len() * SIZE_OF_ENTRY;
-            let layout = Layout::from_size_align(size, ALIGN_OF_MSRS).expect("impossible layout");
-            let mut allocation = LayoutAllocation::zeroed(layout);
-
-            // Safe to obtain an exclusive reference because there are no other
-            // references to the allocation yet and all-zero is a valid bit
-            // pattern.
-            let kvm_msrs = unsafe { allocation.as_mut::<kvm_msrs>() };
-
-            unsafe {
-                // Mapping the unsized array to a slice is unsafe becase the length isn't known.
-                // Providing the length used to create the struct guarantees the entire slice is
-                // valid.
-                let kvm_msr_entries: &mut [kvm_msr_entry] =
-                    kvm_msrs.entries.as_mut_slice(request_entries.len());
-                for (msr_entry, entry) in kvm_msr_entries.iter_mut().zip(request_entries) {
-                    msr_entry.index = entry.index;
-                    msr_entry.data = entry.data;
-                }
+        // Typically a response is sent for every request received.  The odd (yet common)
+        // case is when a resume request is received.  This function will skip sending
+        // a resume reply, and instead we'll go run the VM and then later reply with a wait
+        // response message.  This code block handles checking if a wait reason is pending (where
+        // the wait reason isn't the first-time init [first time init needs to first
+        // receive a wait request from the plugin]) to send it as a reply before doing a recv()
+        // for the next request.  Note that if a wait reply is pending then this function
+        // will send the reply and do nothing else--the expectation is that handle_until_resume()
+        // is the only caller of this function, so the function will immediately get called again
+        // and this second call will no longer see a pending wait reason and do a recv() for the
+        // next message.
+        if let Some(reason) = wait_reason {
+            if reason.has_init() {
+                wait_reason = Some(reason);
+            } else {
+                response.set_wait(reason);
+                do_recv = false;
+                wait_reason = None;
             }
-            kvm_msrs.nmsrs = request_entries.len() as u32;
-            vcpu.set_msrs(&kvm_msrs)
-        } else if request.has_set_cpuid() {
-            response.mut_set_cpuid();
-            let request_entries = &request.get_set_cpuid().entries;
-            let mut cpuid = CpuId::new(request_entries.len());
-            let cpuid_entries = cpuid.mut_entries_slice();
-            for (request_entry, cpuid_entry) in request_entries.iter().zip(cpuid_entries) {
-                cpuid_entry.function = request_entry.function;
-                if request_entry.has_index {
-                    cpuid_entry.index = request_entry.index;
-                    cpuid_entry.flags = KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
-                }
-                cpuid_entry.eax = request_entry.eax;
-                cpuid_entry.ebx = request_entry.ebx;
-                cpuid_entry.ecx = request_entry.ecx;
-                cpuid_entry.edx = request_entry.edx;
-            }
-            vcpu.set_cpuid2(&cpuid)
-        } else {
-            Err(SysError::new(ENOTTY))
-        };
-
-        if let Err(e) = res {
-            response.errno = e.errno();
         }
 
-        let mut response_buffer = self.response_buffer.borrow_mut();
-        response_buffer.clear();
-        response
-            .write_to_vec(&mut response_buffer)
-            .map_err(proto_to_sys_err)?;
-        self.connection
-            .send(&response_buffer[..])
-            .map_err(io_to_sys_err)?;
+        if do_recv {
+            let mut request_buffer = self.request_buffer.borrow_mut();
+            request_buffer.resize(MAX_VCPU_DATAGRAM_SIZE, 0);
+
+            let msg_size = self
+                .connection
+                .recv(&mut request_buffer)
+                .map_err(io_to_sys_err)?;
+
+            let mut request =
+                protobuf::parse_from_bytes::<VcpuRequest>(&request_buffer[..msg_size])
+                    .map_err(proto_to_sys_err)?;
+
+            let res = if request.has_wait() {
+                match wait_reason {
+                    Some(wait_reason) => {
+                        response.set_wait(wait_reason);
+                        Ok(())
+                    }
+                    None => Err(SysError::new(EPROTO)),
+                }
+            } else if wait_reason.is_some() {
+                // Any request other than getting the wait_reason while there is one pending is invalid.
+                self.wait_reason.set(wait_reason);
+                Err(SysError::new(EPROTO))
+            } else if request.has_resume() {
+                response.mut_resume();
+                resume_data = Some(request.take_resume().take_data());
+                Ok(())
+            } else if request.has_get_state() {
+                let response_state = response.mut_get_state();
+                match get_vcpu_state(vcpu, request.get_get_state().set) {
+                    Ok(state) => {
+                        response_state.state = state;
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                }
+            } else if request.has_set_state() {
+                response.mut_set_state();
+                let set_state = request.get_set_state();
+                set_vcpu_state(vcpu, set_state.set, set_state.get_state())
+            } else if request.has_get_msrs() {
+                let entry_data = &mut response.mut_get_msrs().entry_data;
+                let entry_indices = &request.get_get_msrs().entry_indices;
+                let mut msr_entries = Vec::with_capacity(entry_indices.len());
+                for &index in entry_indices {
+                    msr_entries.push(kvm_msr_entry {
+                        index,
+                        ..Default::default()
+                    });
+                }
+                match vcpu.get_msrs(&mut msr_entries) {
+                    Ok(()) => {
+                        for msr_entry in msr_entries {
+                            entry_data.push(msr_entry.data);
+                        }
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                }
+            } else if request.has_set_msrs() {
+                const SIZE_OF_MSRS: usize = mem::size_of::<kvm_msrs>();
+                const SIZE_OF_ENTRY: usize = mem::size_of::<kvm_msr_entry>();
+                const ALIGN_OF_MSRS: usize = mem::align_of::<kvm_msrs>();
+                const ALIGN_OF_ENTRY: usize = mem::align_of::<kvm_msr_entry>();
+                const_assert!(ALIGN_OF_MSRS >= ALIGN_OF_ENTRY);
+
+                response.mut_set_msrs();
+                let request_entries = &request.get_set_msrs().entries;
+
+                let size = SIZE_OF_MSRS + request_entries.len() * SIZE_OF_ENTRY;
+                let layout =
+                    Layout::from_size_align(size, ALIGN_OF_MSRS).expect("impossible layout");
+                let mut allocation = LayoutAllocation::zeroed(layout);
+
+                // Safe to obtain an exclusive reference because there are no other
+                // references to the allocation yet and all-zero is a valid bit
+                // pattern.
+                let kvm_msrs = unsafe { allocation.as_mut::<kvm_msrs>() };
+
+                unsafe {
+                    // Mapping the unsized array to a slice is unsafe becase the length isn't known.
+                    // Providing the length used to create the struct guarantees the entire slice is
+                    // valid.
+                    let kvm_msr_entries: &mut [kvm_msr_entry] =
+                        kvm_msrs.entries.as_mut_slice(request_entries.len());
+                    for (msr_entry, entry) in kvm_msr_entries.iter_mut().zip(request_entries) {
+                        msr_entry.index = entry.index;
+                        msr_entry.data = entry.data;
+                    }
+                }
+                kvm_msrs.nmsrs = request_entries.len() as u32;
+                vcpu.set_msrs(&kvm_msrs)
+            } else if request.has_set_cpuid() {
+                response.mut_set_cpuid();
+                let request_entries = &request.get_set_cpuid().entries;
+                let mut cpuid = CpuId::new(request_entries.len());
+                let cpuid_entries = cpuid.mut_entries_slice();
+                for (request_entry, cpuid_entry) in request_entries.iter().zip(cpuid_entries) {
+                    cpuid_entry.function = request_entry.function;
+                    if request_entry.has_index {
+                        cpuid_entry.index = request_entry.index;
+                        cpuid_entry.flags = KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
+                    }
+                    cpuid_entry.eax = request_entry.eax;
+                    cpuid_entry.ebx = request_entry.ebx;
+                    cpuid_entry.ecx = request_entry.ecx;
+                    cpuid_entry.edx = request_entry.edx;
+                }
+                vcpu.set_cpuid2(&cpuid)
+            } else {
+                Err(SysError::new(ENOTTY))
+            };
+
+            if let Err(e) = res {
+                response.errno = e.errno();
+            }
+        }
+
+        // Send the response, except if it's a resume response (in which case
+        // we'll go run the VM and afterwards send a wait response message).
+        if !response.has_resume() {
+            let mut response_buffer = self.response_buffer.borrow_mut();
+            response_buffer.clear();
+            response
+                .write_to_vec(&mut response_buffer)
+                .map_err(proto_to_sys_err)?;
+            self.connection
+                .send(&response_buffer[..])
+                .map_err(io_to_sys_err)?;
+        }
 
         Ok(resume_data)
     }

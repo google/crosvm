@@ -235,7 +235,7 @@ int crosvm_get_pic_state(struct crosvm *, bool __primary,
 
 /* Sets the state of interrupt controller in a VM. */
 int crosvm_set_pic_state(struct crosvm *, bool __primary,
-                         struct kvm_pic_state *__pic_state);
+                         const struct kvm_pic_state *__pic_state);
 
 /* Gets the state of IOAPIC in a VM. */
 int crosvm_get_ioapic_state(struct crosvm *,
@@ -243,7 +243,7 @@ int crosvm_get_ioapic_state(struct crosvm *,
 
 /* Sets the state of IOAPIC in a VM. */
 int crosvm_set_ioapic_state(struct crosvm *,
-                            struct kvm_ioapic_state *__ioapic_state);
+                            const struct kvm_ioapic_state *__ioapic_state);
 
 /* Gets the state of interrupt controller in a VM. */
 int crosvm_get_pit_state(struct crosvm *, struct kvm_pit_state2 *__pit_state);
@@ -280,7 +280,7 @@ int crosvm_pause_vcpus(struct crosvm*, uint64_t __cpu_mask, void* __user);
 int crosvm_start(struct crosvm*);
 
 /*
- * Registers an eventfd that is triggered asynchronously on write in |__space|
+ * Allocates an eventfd that is triggered asynchronously on write in |__space|
  * at the given |__addr|.
  *
  * If |__datamatch| is non-NULL, it must be contain |__length| bytes that will
@@ -288,8 +288,8 @@ int crosvm_start(struct crosvm*);
  * the eventfd if equal. If datamatch is NULL all writes to the address will
  * trigger the eventfd.
  *
- * On successful registration, returns a non-negative eventfd owned by the
- * caller.
+ * On successful allocation, returns a crosvm_io.  Obtain the actual fd
+ * by passing this result to crosvm_io_event_fd().
  */
 int crosvm_create_io_event(struct crosvm*, uint32_t __space, uint64_t __addr,
                            uint32_t __len, const uint8_t* __datamatch,
@@ -423,6 +423,10 @@ struct crosvm_vcpu_event {
        * than 8 bytes, such as by AVX-512 instructions, multiple vcpu access
        * events are generated serially to cover each 8 byte fragment of the
        * access.
+       *
+       * Larger I/O accesses are possible.  "rep in" can generate I/Os larger
+       * than 8 bytes, though such accesses can also be split into multiple
+       * events.  Currently kvm doesn't seem to batch "rep out" I/Os.
        */
       uint32_t length;
 
@@ -435,7 +439,7 @@ struct crosvm_vcpu_event {
       uint8_t _reserved[3];
     } io_access;
 
-    /* CROSVM_VCPU_EVENT_KIND_USER */
+    /* CROSVM_VCPU_EVENT_KIND_PAUSED */
     void *user;
 
     uint8_t _reserved[64];
