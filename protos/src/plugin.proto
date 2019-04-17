@@ -323,6 +323,9 @@ message VcpuRequest {
         repeated CpuidEntry entries = 1;
     }
 
+    message Shutdown {
+    }
+
     // The type of the message is determined by which of these oneof fields is present in the
     // protobuf.
     oneof message {
@@ -333,6 +336,7 @@ message VcpuRequest {
         GetMsrs get_msrs = 5;
         SetMsrs set_msrs = 6;
         SetCpuid set_cpuid = 7;
+        Shutdown shutdown = 8;
     }
 }
 

@@ -7,8 +7,8 @@ use std::cell::{Cell, RefCell};
 use std::cmp::min;
 use std::cmp::{self, Ord, PartialEq, PartialOrd};
 use std::collections::btree_set::BTreeSet;
+use std::io::{Read, Write};
 use std::mem;
-use std::os::unix::net::UnixDatagram;
 use std::sync::{Arc, RwLock};
 
 use libc::{EINVAL, ENOENT, ENOTTY, EPERM, EPIPE, EPROTO};
@@ -274,7 +274,8 @@ impl<'a> VcpuRunData<'a> {
 pub struct PluginVcpu {
     shared_vcpu_state: Arc<RwLock<SharedVcpuState>>,
     per_vcpu_state: Arc<Mutex<PerVcpuState>>,
-    connection: UnixDatagram,
+    read_pipe: File,
+    write_pipe: File,
     wait_reason: Cell<Option<VcpuResponse_Wait>>,
     request_buffer: RefCell<Vec<u8>>,
     response_buffer: RefCell<Vec<u8>>,
@@ -285,12 +286,14 @@ impl PluginVcpu {
     pub fn new(
         shared_vcpu_state: Arc<RwLock<SharedVcpuState>>,
         per_vcpu_state: Arc<Mutex<PerVcpuState>>,
-        connection: UnixDatagram,
+        read_pipe: File,
+        write_pipe: File,
     ) -> PluginVcpu {
         PluginVcpu {
             shared_vcpu_state,
             per_vcpu_state,
-            connection,
+            read_pipe,
+            write_pipe,
             wait_reason: Default::default(),
             request_buffer: Default::default(),
             response_buffer: Default::default(),
@@ -419,10 +422,8 @@ impl PluginVcpu {
             let mut request_buffer = self.request_buffer.borrow_mut();
             request_buffer.resize(MAX_VCPU_DATAGRAM_SIZE, 0);
 
-            let msg_size = self
-                .connection
-                .recv(&mut request_buffer)
-                .map_err(io_to_sys_err)?;
+            let mut read_pipe = &self.read_pipe;
+            let msg_size = read_pipe.read(&mut request_buffer).map_err(io_to_sys_err)?;
 
             let mut request =
                 protobuf::parse_from_bytes::<VcpuRequest>(&request_buffer[..msg_size])
@@ -526,6 +527,8 @@ impl PluginVcpu {
                     cpuid_entry.edx = request_entry.edx;
                 }
                 vcpu.set_cpuid2(&cpuid)
+            } else if request.has_shutdown() {
+                return Err(SysError::new(EPIPE));
             } else {
                 Err(SysError::new(ENOTTY))
             };
@@ -543,8 +546,9 @@ impl PluginVcpu {
             response
                 .write_to_vec(&mut response_buffer)
                 .map_err(proto_to_sys_err)?;
-            self.connection
-                .send(&response_buffer[..])
+            let mut write_pipe = &self.write_pipe;
+            write_pipe
+                .write(&response_buffer[..])
                 .map_err(io_to_sys_err)?;
         }
 

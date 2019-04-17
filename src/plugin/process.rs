@@ -5,8 +5,8 @@
 use std::collections::hash_map::{Entry, HashMap, VacantEntry};
 use std::env::set_var;
 use std::fs::File;
+use std::io::Write;
 use std::mem::transmute;
-use std::net::Shutdown;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
@@ -109,7 +109,7 @@ pub enum ProcessStatus {
 
 /// Creates, owns, and handles messages from a plugin process.
 ///
-/// A plugin process has control over a single VM and a fixed number of VCPUs via a set of unix
+/// A plugin process has control over a single VM and a fixed number of VCPUs via a set of pipes & unix
 /// domain socket connections and a protocol defined in `protos::plugin`. The plugin process is run
 /// in an unprivileged manner as a child process spawned via a path to a arbitrary executable.
 pub struct Process {
@@ -122,7 +122,7 @@ pub struct Process {
 
     // Resource to sent to plugin
     kill_evt: EventFd,
-    vcpu_sockets: Vec<(UnixDatagram, UnixDatagram)>,
+    vcpu_pipes: Vec<VcpuPipe>,
 
     // Socket Transmission
     request_buffer: Vec<u8>,
@@ -147,10 +147,9 @@ impl Process {
         let (request_socket, child_socket) =
             new_seqpacket_pair().map_err(Error::CreateMainSocket)?;
 
-        let mut vcpu_sockets: Vec<(UnixDatagram, UnixDatagram)> =
-            Vec::with_capacity(cpu_count as usize);
+        let mut vcpu_pipes: Vec<VcpuPipe> = Vec::with_capacity(cpu_count as usize);
         for _ in 0..cpu_count {
-            vcpu_sockets.push(new_seqpacket_pair().map_err(Error::CreateVcpuSocket)?);
+            vcpu_pipes.push(new_pipe_pair().map_err(Error::CreateVcpuSocket)?);
         }
         let mut per_vcpu_states: Vec<Arc<Mutex<PerVcpuState>>> =
             Vec::with_capacity(cpu_count as usize);
@@ -184,7 +183,7 @@ impl Process {
             shared_vcpu_state: Default::default(),
             per_vcpu_states,
             kill_evt: EventFd::new().map_err(Error::CreateEventFd)?,
-            vcpu_sockets,
+            vcpu_pipes,
             request_buffer: vec![0; MAX_DATAGRAM_SIZE],
             response_buffer: Vec::new(),
         })
@@ -197,14 +196,19 @@ impl Process {
     /// `PluginVcpu` object, the underlying resources are shared by each `PluginVcpu` resulting from
     /// the same `cpu_id`.
     pub fn create_vcpu(&self, cpu_id: u32) -> Result<PluginVcpu> {
-        let vcpu_socket = self.vcpu_sockets[cpu_id as usize]
-            .0
+        let vcpu_pipe_read = self.vcpu_pipes[cpu_id as usize]
+            .crosvm_read
             .try_clone()
-            .map_err(Error::CloneVcpuSocket)?;
+            .map_err(Error::CloneVcpuPipe)?;
+        let vcpu_pipe_write = self.vcpu_pipes[cpu_id as usize]
+            .crosvm_write
+            .try_clone()
+            .map_err(Error::CloneVcpuPipe)?;
         Ok(PluginVcpu::new(
             self.shared_vcpu_state.clone(),
             self.per_vcpu_states[cpu_id as usize].clone(),
-            vcpu_socket,
+            vcpu_pipe_read,
+            vcpu_pipe_write,
         ))
     }
 
@@ -255,10 +259,21 @@ impl Process {
     /// Any subsequent attempt to use the VCPU connections will fail.
     pub fn signal_kill(&mut self) -> SysResult<()> {
         self.kill_evt.write(1)?;
-        // By shutting down our half of the VCPU sockets, any blocked calls in the VCPU threads will
-        // unblock, allowing them to exit cleanly.
-        for sock in &self.vcpu_sockets {
-            sock.0.shutdown(Shutdown::Both)?;
+        // Normally we'd get any blocked recv() calls in the VCPU threads
+        // to unblock by calling shutdown().  However, we're using pipes
+        // (for improved performance), and pipes don't have shutdown so
+        // instead we'll write a shutdown message to ourselves using the
+        // the writable side of the pipe (normally used by the plugin).
+        for pipe in self.vcpu_pipes.iter_mut() {
+            let mut shutdown_request = VcpuRequest::new();
+            shutdown_request.set_shutdown(VcpuRequest_Shutdown::new());
+            let mut buffer = Vec::new();
+            shutdown_request
+                .write_to_vec(&mut buffer)
+                .map_err(proto_to_sys_err)?;
+            pipe.plugin_write
+                .write(&buffer[..])
+                .map_err(io_to_sys_err)?;
         }
         Ok(())
     }
@@ -590,7 +605,10 @@ impl Process {
             Ok(())
         } else if request.has_get_vcpus() {
             response.mut_get_vcpus();
-            response_fds.extend(self.vcpu_sockets.iter().map(|s| s.1.as_raw_fd()));
+            for pipe in self.vcpu_pipes.iter() {
+                response_fds.push(pipe.plugin_write.as_raw_fd());
+                response_fds.push(pipe.plugin_read.as_raw_fd());
+            }
             Ok(())
         } else if request.has_start() {
             response.mut_start();

@@ -17,6 +17,7 @@
 
 use std::env;
 use std::fs::File;
+use std::io::{Read, Write};
 use std::mem::{size_of, swap};
 use std::os::raw::{c_int, c_void};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -358,14 +359,17 @@ impl crosvm {
     fn load_all_vcpus(&mut self) -> result::Result<(), c_int> {
         let mut r = MainRequest::new();
         r.mut_get_vcpus();
-        let (_, files) = self.main_transaction(&r, &[])?;
-        if files.is_empty() {
+        let (_, mut files) = self.main_transaction(&r, &[])?;
+        if files.is_empty() || files.len() % 2 != 0 {
             return Err(EPROTO);
         }
-        let vcpus = files
-            .into_iter()
-            .map(|f| crosvm_vcpu::new(fd_cast(f)))
-            .collect();
+
+        let mut vcpus = Vec::with_capacity(files.len() / 2);
+        while files.len() > 1 {
+            let write_pipe = files.remove(0);
+            let read_pipe = files.remove(0);
+            vcpus.push(crosvm_vcpu::new(fd_cast(read_pipe), fd_cast(write_pipe)));
+        }
         // Only called once by the `from_connection` constructor, which makes a new unique
         // `self.vcpus`.
         let self_vcpus = Arc::get_mut(&mut self.vcpus).unwrap();
@@ -919,7 +923,8 @@ pub struct crosvm_vcpu_event {
 }
 
 pub struct crosvm_vcpu {
-    socket: UnixDatagram,
+    read_pipe: File,
+    write_pipe: File,
     send_init: bool,
     request_buffer: Vec<u8>,
     response_buffer: Vec<u8>,
@@ -927,9 +932,10 @@ pub struct crosvm_vcpu {
 }
 
 impl crosvm_vcpu {
-    fn new(socket: UnixDatagram) -> crosvm_vcpu {
+    fn new(read_pipe: File, write_pipe: File) -> crosvm_vcpu {
         crosvm_vcpu {
-            socket,
+            read_pipe,
+            write_pipe,
             send_init: true,
             request_buffer: Vec::new(),
             response_buffer: vec![0; MAX_DATAGRAM_SIZE],
@@ -941,16 +947,16 @@ impl crosvm_vcpu {
         request
             .write_to_vec(&mut self.request_buffer)
             .map_err(proto_error_to_int)?;
-        self.socket
-            .send(self.request_buffer.as_slice())
+        self.write_pipe
+            .write(self.request_buffer.as_slice())
             .map_err(|e| -e.raw_os_error().unwrap_or(EINVAL))?;
         Ok(())
     }
 
     fn vcpu_recv(&mut self) -> result::Result<VcpuResponse, c_int> {
         let msg_size = self
-            .socket
-            .recv(&mut self.response_buffer)
+            .read_pipe
+            .read(&mut self.response_buffer)
             .map_err(|e| -e.raw_os_error().unwrap_or(EINVAL))?;
 
         let response: VcpuResponse =

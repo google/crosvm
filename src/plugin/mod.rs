@@ -8,7 +8,7 @@ mod vcpu;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
-use std::os::unix::io::{FromRawFd, IntoRawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
 use std::result;
@@ -18,8 +18,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use libc::{
-    c_ulong, ioctl, socketpair, AF_UNIX, EAGAIN, EBADF, EDEADLK, EEXIST, EINTR, EINVAL, ENOENT,
-    EOVERFLOW, EPERM, FIOCLEX, MS_NODEV, MS_NOEXEC, MS_NOSUID, SIGCHLD, SOCK_SEQPACKET,
+    c_int, c_ulong, fcntl, ioctl, socketpair, AF_UNIX, EAGAIN, EBADF, EDEADLK, EEXIST, EINTR,
+    EINVAL, ENOENT, EOVERFLOW, EPERM, FIOCLEX, F_SETPIPE_SZ, MS_NODEV, MS_NOEXEC, MS_NOSUID,
+    SIGCHLD, SOCK_SEQPACKET,
 };
 
 use protobuf::ProtobufError;
@@ -29,7 +30,7 @@ use io_jail::{self, Minijail};
 use kvm::{Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use net_util::{Error as TapError, Tap, TapT};
 use sys_util::{
-    block_signal, clear_signal, drop_capabilities, error, getegid, geteuid, info,
+    block_signal, clear_signal, drop_capabilities, error, getegid, geteuid, info, pipe,
     register_signal_handler, validate_raw_fd, warn, Error as SysError, EventFd, GuestMemory,
     Killable, MmapError, PollContext, PollToken, Result as SysResult, SignalFd, SignalFdError,
     SIGRTMIN,
@@ -46,7 +47,7 @@ const MAX_VCPU_DATAGRAM_SIZE: usize = 0x40000;
 #[sorted]
 pub enum Error {
     CloneEventFd(SysError),
-    CloneVcpuSocket(io::Error),
+    CloneVcpuPipe(io::Error),
     CreateEventFd(SysError),
     CreateIrqChip(SysError),
     CreateJail(io_jail::Error),
@@ -114,7 +115,7 @@ impl Display for Error {
         #[sorted]
         match self {
             CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
-            CloneVcpuSocket(e) => write!(f, "failed to clone vcpu socket: {}", e),
+            CloneVcpuPipe(e) => write!(f, "failed to clone vcpu pipe: {}", e),
             CreateEventFd(e) => write!(f, "failed to create eventfd: {}", e),
             CreateIrqChip(e) => write!(f, "failed to create kvm irqchip: {}", e),
             CreateJail(e) => write!(f, "failed to create jail: {}", e),
@@ -195,6 +196,55 @@ fn new_seqpacket_pair() -> SysResult<(UnixDatagram, UnixDatagram)> {
             Err(SysError::last())
         }
     }
+}
+
+struct VcpuPipe {
+    crosvm_read: File,
+    plugin_write: File,
+    plugin_read: File,
+    crosvm_write: File,
+}
+
+fn new_pipe_pair() -> SysResult<VcpuPipe> {
+    let to_crosvm = pipe(true)?;
+    let to_plugin = pipe(true)?;
+    // Increasing the pipe size can be a nice-to-have to make sure that
+    // messages get across atomically (and made sure that writes don't block),
+    // though it's not necessary a hard requirement for things to work.
+    let flags = unsafe {
+        fcntl(
+            to_crosvm.0.as_raw_fd(),
+            F_SETPIPE_SZ,
+            MAX_VCPU_DATAGRAM_SIZE as c_int,
+        )
+    };
+    if flags < 0 || flags != MAX_VCPU_DATAGRAM_SIZE as i32 {
+        warn!(
+            "Failed to adjust size of crosvm pipe (result {}): {}",
+            flags,
+            SysError::last()
+        );
+    }
+    let flags = unsafe {
+        fcntl(
+            to_plugin.0.as_raw_fd(),
+            F_SETPIPE_SZ,
+            MAX_VCPU_DATAGRAM_SIZE as c_int,
+        )
+    };
+    if flags < 0 || flags != MAX_VCPU_DATAGRAM_SIZE as i32 {
+        warn!(
+            "Failed to adjust size of plugin pipe (result {}): {}",
+            flags,
+            SysError::last()
+        );
+    }
+    Ok(VcpuPipe {
+        crosvm_read: to_crosvm.0,
+        plugin_write: to_crosvm.1,
+        plugin_read: to_plugin.0,
+        crosvm_write: to_plugin.1,
+    })
 }
 
 fn proto_to_sys_err(e: ProtobufError) -> SysError {
