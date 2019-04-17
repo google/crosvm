@@ -2,16 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{self, stdout};
+use std::io;
 use std::os::unix::io::FromRawFd;
 use std::sync::Arc;
 
 use arch::{RunnableLinuxVm, VmComponents};
-use devices::{Bus, BusError, PciConfigMmio, PciDevice, PciInterruptPin};
+use devices::{
+    get_serial_tty_string, Bus, BusError, PciConfigMmio, PciDevice, PciInterruptPin,
+    SerialParameters,
+};
 use io_jail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
@@ -84,7 +88,8 @@ const AARCH64_SERIAL_SIZE: u64 = 0x8;
 const AARCH64_SERIAL_SPEED: u32 = 1843200;
 // The serial device gets the first interrupt line
 // Which gets mapped to the first SPI interrupt (physical 32).
-const AARCH64_SERIAL_IRQ: u32 = 0;
+const AARCH64_SERIAL_1_3_IRQ: u32 = 0;
+const AARCH64_SERIAL_2_4_IRQ: u32 = 2;
 
 // Place the RTC device at page 2
 const AARCH64_RTC_ADDR: u64 = 0x2000;
@@ -101,8 +106,8 @@ const AARCH64_PCI_CFG_SIZE: u64 = 0x1000000;
 const AARCH64_MMIO_BASE: u64 = 0x1010000;
 // Size of the whole MMIO region.
 const AARCH64_MMIO_SIZE: u64 = 0x100000;
-// Virtio devices start at SPI interrupt number 2
-const AARCH64_IRQ_BASE: u32 = 2;
+// Virtio devices start at SPI interrupt number 3
+const AARCH64_IRQ_BASE: u32 = 3;
 
 #[sorted]
 #[derive(Debug)]
@@ -115,6 +120,7 @@ pub enum Error {
     CreateGICFailure(sys_util::Error),
     CreateKvm(sys_util::Error),
     CreatePciRoot(arch::DeviceRegistrationError),
+    CreateSerialDevices(arch::DeviceRegistrationError),
     CreateSocket(io::Error),
     CreateVcpu(sys_util::Error),
     CreateVm(sys_util::Error),
@@ -145,6 +151,7 @@ impl Display for Error {
             CreateGICFailure(e) => write!(f, "failed to create GIC: {}", e),
             CreateKvm(e) => write!(f, "failed to open /dev/kvm: {}", e),
             CreatePciRoot(e) => write!(f, "failed to create a PCI root hub: {}", e),
+            CreateSerialDevices(e) => write!(f, "unable to create serial devices: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
             CreateVm(e) => write!(f, "failed to create vm: {}", e),
@@ -187,6 +194,7 @@ impl arch::LinuxArch for AArch64 {
     fn build_vm<F, E>(
         mut components: VmComponents,
         _split_irqchip: bool,
+        serial_parameters: &BTreeMap<u8, SerialParameters>,
         create_devices: F,
     ) -> Result<RunnableLinuxVm>
     where
@@ -220,7 +228,6 @@ impl arch::LinuxArch for AArch64 {
         let vcpu_affinity = components.vcpu_affinity;
 
         let irq_chip = Self::create_irq_chip(&vm)?;
-        let mut cmdline = Self::get_base_linux_cmdline();
 
         let mut mmio_bus = devices::Bus::new();
 
@@ -236,7 +243,22 @@ impl arch::LinuxArch for AArch64 {
         // ARM doesn't really use the io bus like x86, so just create an empty bus.
         let io_bus = devices::Bus::new();
 
-        let stdio_serial = Self::add_arch_devs(&mut vm, &mut mmio_bus)?;
+        Self::add_arch_devs(&mut vm, &mut mmio_bus)?;
+
+        let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
+        let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
+        let (stdio_serial_num, stdio_serial) = arch::add_serial_devices(
+            &mut mmio_bus,
+            &com_evt_1_3,
+            &com_evt_2_4,
+            &serial_parameters,
+        )
+        .map_err(Error::CreateSerialDevices)?;
+
+        vm.register_irqfd(&com_evt_1_3, AARCH64_SERIAL_1_3_IRQ)
+            .map_err(Error::RegisterIrqfd)?;
+        vm.register_irqfd(&com_evt_2_4, AARCH64_SERIAL_2_4_IRQ)
+            .map_err(Error::RegisterIrqfd)?;
 
         mmio_bus
             .insert(
@@ -247,6 +269,7 @@ impl arch::LinuxArch for AArch64 {
             )
             .map_err(Error::RegisterPci)?;
 
+        let mut cmdline = Self::get_base_linux_cmdline(stdio_serial_num);
         for param in components.extra_kernel_params {
             cmdline.insert_str(&param).map_err(Error::Cmdline)?;
         }
@@ -343,9 +366,13 @@ impl AArch64 {
     }
 
     /// This returns a base part of the kernel command for this architecture
-    fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
+    fn get_base_linux_cmdline(stdio_serial_num: Option<u8>) -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(sys_util::pagesize());
-        cmdline.insert_str("console=ttyS0 panic=-1").unwrap();
+        if stdio_serial_num.is_some() {
+            let tty_string = get_serial_tty_string(stdio_serial_num.unwrap());
+            cmdline.insert("console", &tty_string).unwrap();
+        }
+        cmdline.insert_str("panic=-1").unwrap();
         cmdline
     }
 
@@ -365,30 +392,16 @@ impl AArch64 {
     ///
     /// * `vm` - The vm to add irqs to.
     /// * `bus` - The bus to add devices to.
-    fn add_arch_devs(vm: &mut Vm, bus: &mut Bus) -> Result<Arc<Mutex<devices::Serial>>> {
+    fn add_arch_devs(vm: &mut Vm, bus: &mut Bus) -> Result<()> {
         let rtc_evt = EventFd::new().map_err(Error::CreateEventFd)?;
         vm.register_irqfd(&rtc_evt, AARCH64_RTC_IRQ)
             .map_err(Error::RegisterIrqfd)?;
 
-        let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
-        vm.register_irqfd(&com_evt_1_3, AARCH64_SERIAL_IRQ)
-            .map_err(Error::RegisterIrqfd)?;
-        let serial = Arc::new(Mutex::new(devices::Serial::new_out(
-            com_evt_1_3.try_clone().map_err(Error::CloneEventFd)?,
-            Box::new(stdout()),
-        )));
-        bus.insert(
-            serial.clone(),
-            AARCH64_SERIAL_ADDR,
-            AARCH64_SERIAL_SIZE,
-            false,
-        )
-        .expect("failed to add serial device");
-
         let rtc = Arc::new(Mutex::new(devices::pl030::Pl030::new(rtc_evt)));
         bus.insert(rtc, AARCH64_RTC_ADDR, AARCH64_RTC_SIZE, false)
             .expect("failed to add rtc device");
-        Ok(serial)
+
+        Ok(())
     }
 
     /// The creates the interrupt controller device and optionally returns the fd for it.

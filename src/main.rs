@@ -10,6 +10,7 @@ pub mod panic_hook;
 #[cfg(feature = "plugin")]
 pub mod plugin;
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::net;
@@ -20,6 +21,7 @@ use std::string::String;
 use std::thread::sleep;
 use std::time::Duration;
 
+use devices::{SerialParameters, SerialType};
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use qcow::QcowFile;
 use sys_util::{
@@ -102,6 +104,8 @@ pub struct Config {
     software_tpm: bool,
     cras_audio: bool,
     null_audio: bool,
+    serial_parameters: BTreeMap<u8, SerialParameters>,
+    syslog_tag: Option<String>,
     virtio_single_touch: Option<TouchDeviceOption>,
     virtio_trackpad: Option<TouchDeviceOption>,
     virtio_mouse: Option<PathBuf>,
@@ -141,6 +145,8 @@ impl Default for Config {
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             cras_audio: false,
             null_audio: false,
+            serial_parameters: BTreeMap::new(),
+            syslog_tag: None,
             virtio_single_touch: None,
             virtio_trackpad: None,
             virtio_mouse: None,
@@ -219,6 +225,58 @@ fn parse_cpu_set(s: &str) -> argument::Result<Vec<usize>> {
         }
     }
     Ok(cpuset)
+}
+
+fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
+    let mut serial_setting = SerialParameters {
+        type_: SerialType::Sink,
+        path: None,
+        num: 0,
+        console: false,
+    };
+
+    let opts = s
+        .split(",")
+        .map(|frag| frag.split("="))
+        .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
+
+    for (k, v) in opts {
+        match k {
+            "type" => {
+                serial_setting.type_ = v
+                    .parse::<SerialType>()
+                    .map_err(|e| argument::Error::UnknownArgument(format!("{}", e)))?
+            }
+            "num" => {
+                let num = v.parse::<u8>().map_err(|e| {
+                    argument::Error::Syntax(format!("serial device number is not parsable: {}", e))
+                })?;
+                if num < 1 || num > 4 {
+                    return Err(argument::Error::InvalidValue {
+                        value: num.to_string(),
+                        expected: "Serial port num must be between 1 - 4",
+                    });
+                }
+                serial_setting.num = num;
+            }
+            "console" => {
+                serial_setting.console = v.parse::<bool>().map_err(|e| {
+                    argument::Error::Syntax(format!(
+                        "serial device console is not parseable: {}",
+                        e
+                    ))
+                })?
+            }
+            _ => {
+                return Err(argument::Error::UnknownArgument(format!(
+                    "serial parameter {}",
+                    k
+                )));
+            }
+        }
+    }
+
+    Ok(serial_setting)
 }
 
 fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::Result<()> {
@@ -311,6 +369,38 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         "null-audio" => {
             cfg.null_audio = true;
+        }
+        "serial" => {
+            let serial_params = parse_serial_options(value.unwrap())?;
+            let num = serial_params.num;
+            if cfg.serial_parameters.contains_key(&num) {
+                return Err(argument::Error::TooManyArguments(format!(
+                    "serial num {}",
+                    num
+                )));
+            }
+
+            if serial_params.console {
+                for (_, params) in &cfg.serial_parameters {
+                    if params.console {
+                        return Err(argument::Error::TooManyArguments(format!(
+                            "serial device {} already set as console",
+                            params.num
+                        )));
+                    }
+                }
+            }
+
+            cfg.serial_parameters.insert(num, serial_params);
+        }
+        "syslog-tag" => {
+            if cfg.syslog_tag.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`syslog-tag` already given".to_owned(),
+                ));
+            }
+            syslog::set_proc_name(value.unwrap());
+            cfg.syslog_tag = Some(value.unwrap().to_owned());
         }
         "root" | "disk" | "rwdisk" | "qcow" | "rwqcow" => {
             let disk_path = PathBuf::from(value.unwrap());
@@ -702,6 +792,15 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("mac", "MAC", "MAC address for VM."),
           Argument::flag("cras-audio", "Add an audio device to the VM that plays samples through CRAS server"),
           Argument::flag("null-audio", "Add an audio device to the VM that plays samples to /dev/null"),
+          Argument::value("serial",
+                          "type=TYPE,[path=PATH,num=NUM,console]",
+                          "Comma seperated key=value pairs for setting up serial devices. Can be given more than once.
+                          Possible key values:
+                          type=(stdout,syslog,sink) - Where to route the serial device
+                          num=(1,2,3,4) - Serial Device Number
+                          console - Use this serial device as the guest console. Can only be given once. Will default to first serial port if not provided.
+                          "),
+          Argument::value("syslog-tag", "TAG", "When logging to syslog, use the provided tag."),
           Argument::value("wayland-sock", "PATH", "Path to the Wayland socket to use."),
           #[cfg(feature = "wl-dmabuf")]
           Argument::flag("wayland-dmabuf", "Enable support for DMABufs in Wayland device."),
@@ -1270,5 +1369,35 @@ mod tests {
     #[test]
     fn parse_cpu_set_extra_comma() {
         parse_cpu_set("0,1,2,").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_serial_vaild() {
+        parse_serial_options("type=syslog,num=1,console=true").expect("parse should have succeded");
+    }
+
+    #[test]
+    fn parse_serial_invalid_type() {
+        parse_serial_options("type=wormhole,num=1").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_serial_invalid_num_upper() {
+        parse_serial_options("type=syslog,num=5").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_serial_invalid_num_lower() {
+        parse_serial_options("type=syslog,num=0").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_serial_invalid_num_string() {
+        parse_serial_options("type=syslog,num=number3").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_serial_invalid_option() {
+        parse_serial_options("type=syslog,speed=lightspeed").expect_err("parse should have failed");
     }
 }

@@ -83,6 +83,7 @@ impl Display for Priority {
 /// The facility of a syslog message.
 ///
 /// See syslog man pages for information on their semantics.
+#[derive(Copy, Clone)]
 pub enum Facility {
     Kernel = 0,
     User = 1 << 3,
@@ -387,8 +388,8 @@ fn get_localtime() -> tm {
 /// # Arguments
 /// * `pri` - The `Priority` (i.e. severity) of the log message.
 /// * `fac` - The `Facility` of the log message. Usually `Facility::User` should be used.
-/// * `file_name` - Name of the file that generated the log.
-/// * `line` - Line number within `file_name` that generated the log.
+/// * `file_line` - Optional tuple of the name of the file that generated the
+///                 log and the line number within that file.
 /// * `args` - The log's message to record, in the form of `format_args!()`  return value
 ///
 /// # Examples
@@ -402,12 +403,11 @@ fn get_localtime() -> tm {
 /// #   }
 /// syslog::log(syslog::Priority::Error,
 ///             syslog::Facility::User,
-///             file!(),
-///             line!(),
+///             Some((file!(), line!())),
 ///             format_args!("hello syslog"));
 /// # }
 /// ```
-pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::Arguments) {
+pub fn log(pri: Priority, fac: Facility, file_line: Option<(&str, u32)>, args: fmt::Arguments) {
     const MONTHS: [&str; 12] = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ];
@@ -417,46 +417,52 @@ pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::
     if let Some(socket) = &state.socket {
         let tm = get_localtime();
         let prifac = (pri as u8) | (fac as u8);
-        let (res, len) = {
+        let res = {
             let mut buf_cursor = Cursor::new(&mut buf[..]);
-            (
-                write!(
-                    &mut buf_cursor,
-                    "<{}>{} {:02} {:02}:{:02}:{:02} {}[{}]: [{}:{}] {}",
-                    prifac,
-                    MONTHS[tm.tm_mon as usize],
-                    tm.tm_mday,
-                    tm.tm_hour,
-                    tm.tm_min,
-                    tm.tm_sec,
-                    state.proc_name.as_ref().map(|s| s.as_ref()).unwrap_or("-"),
-                    getpid(),
-                    file_name,
-                    line,
-                    args
-                ),
-                buf_cursor.position() as usize,
+            write!(
+                &mut buf_cursor,
+                "<{}>{} {:02} {:02}:{:02}:{:02} {}[{}]: ",
+                prifac,
+                MONTHS[tm.tm_mon as usize],
+                tm.tm_mday,
+                tm.tm_hour,
+                tm.tm_min,
+                tm.tm_sec,
+                state.proc_name.as_ref().map(|s| s.as_ref()).unwrap_or("-"),
+                getpid()
             )
+            .and_then(|()| {
+                if let Some((file_name, line)) = &file_line {
+                    write!(&mut buf_cursor, " [{}:{}] ", file_name, line)
+                } else {
+                    Ok(())
+                }
+            })
+            .and_then(|()| write!(&mut buf_cursor, "{}", args))
+            .and_then(|()| Ok(buf_cursor.position() as usize))
         };
 
-        if res.is_ok() {
-            send_buf(&socket, &buf[..len]);
+        if let Ok(len) = &res {
+            send_buf(&socket, &buf[..*len])
         }
     }
 
-    let (res, len) = {
+    let res = {
         let mut buf_cursor = Cursor::new(&mut buf[..]);
-        (
-            writeln!(&mut buf_cursor, "[{}:{}:{}] {}", pri, file_name, line, args),
-            buf_cursor.position() as usize,
-        )
+        if let Some((file_name, line)) = &file_line {
+            write!(&mut buf_cursor, "[{}:{}:{}] ", pri, file_name, line)
+        } else {
+            Ok(())
+        }
+        .and_then(|()| writeln!(&mut buf_cursor, "{}", args))
+        .and_then(|()| Ok(buf_cursor.position() as usize))
     };
-    if res.is_ok() {
+    if let Ok(len) = &res {
         if let Some(file) = &mut state.file {
-            let _ = file.write_all(&buf[..len]);
+            let _ = file.write_all(&buf[..*len]);
         }
         if state.stderr {
-            let _ = stderr().write_all(&buf[..len]);
+            let _ = stderr().write_all(&buf[..*len]);
         }
     }
 }
@@ -467,7 +473,7 @@ pub fn log(pri: Priority, fac: Facility, file_name: &str, line: u32, args: fmt::
 #[macro_export]
 macro_rules! log {
     ($pri:expr, $($args:tt)+) => ({
-        $crate::syslog::log($pri, $crate::syslog::Facility::User, file!(), line!(), format_args!($($args)+))
+        $crate::syslog::log($pri, $crate::syslog::Facility::User, Some((file!(), line!())), format_args!($($args)+))
     })
 }
 
@@ -503,6 +509,44 @@ macro_rules! debug {
     ($($args:tt)+) => ($crate::log!($crate::syslog::Priority::Debug, $($args)*))
 }
 
+// Struct that implements io::Write to be used for writing directly to the syslog
+pub struct Syslogger {
+    buf: String,
+    priority: Priority,
+    facility: Facility,
+}
+
+impl Syslogger {
+    pub fn new(p: Priority, f: Facility) -> Syslogger {
+        Syslogger {
+            buf: String::new(),
+            priority: p,
+            facility: f,
+        }
+    }
+}
+
+impl io::Write for Syslogger {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let parsed_str = String::from_utf8_lossy(buf);
+        self.buf.push_str(&parsed_str);
+
+        if let Some(last_newline_idx) = self.buf.rfind('\n') {
+            for line in self.buf[..last_newline_idx].lines() {
+                log(self.priority, self.facility, None, format_args!("{}", line));
+            }
+
+            self.buf.drain(..=last_newline_idx);
+        }
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -535,8 +579,7 @@ mod tests {
         log(
             Priority::Error,
             Facility::User,
-            file!(),
-            line!(),
+            Some((file!(), line!())),
             format_args!("hello syslog"),
         );
     }
@@ -547,16 +590,14 @@ mod tests {
         log(
             Priority::Error,
             Facility::User,
-            file!(),
-            line!(),
+            Some((file!(), line!())),
             format_args!("before proc name"),
         );
         set_proc_name("sys_util-test");
         log(
             Priority::Error,
             Facility::User,
-            file!(),
-            line!(),
+            Some((file!(), line!())),
             format_args!("after proc name"),
         );
     }
@@ -579,8 +620,7 @@ mod tests {
         log(
             Priority::Error,
             Facility::User,
-            file!(),
-            line!(),
+            Some((file!(), line!())),
             format_args!("{}", TEST_STR),
         );
 
@@ -599,5 +639,43 @@ mod tests {
         warn!("this is a warning {}", "uh oh");
         info!("this is info {}", true);
         debug!("this is debug info {:?}", Some("helpful stuff"));
+    }
+
+    #[test]
+    fn syslogger_char() {
+        init().unwrap();
+        let mut syslogger = Syslogger::new(Priority::Info, Facility::Daemon);
+
+        let string = "Writing chars to syslog";
+        for c in string.chars() {
+            syslogger.write(&[c as u8]).expect("error writing char");
+        }
+
+        syslogger
+            .write(&['\n' as u8])
+            .expect("error writing newline char");
+    }
+
+    #[test]
+    fn syslogger_line() {
+        init().unwrap();
+        let mut syslogger = Syslogger::new(Priority::Info, Facility::Daemon);
+
+        let s = "Writing string to syslog\n";
+        syslogger
+            .write(&s.as_bytes())
+            .expect("error writing string");
+    }
+
+    #[test]
+    fn syslogger_partial() {
+        init().unwrap();
+        let mut syslogger = Syslogger::new(Priority::Info, Facility::Daemon);
+
+        let s = "Writing partial string";
+        // Should not log because there is no newline character
+        syslogger
+            .write(&s.as_bytes())
+            .expect("error writing string");
     }
 }

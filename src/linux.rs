@@ -789,7 +789,7 @@ fn create_virtio_devices(
 }
 
 fn create_devices(
-    cfg: Config,
+    cfg: &Config,
     mem: &GuestMemory,
     exit_evt: &EventFd,
     wayland_device_socket: WlControlRequestSocket,
@@ -1180,17 +1180,22 @@ pub fn run_config(cfg: Config) -> Result<()> {
     }
 
     let sandbox = cfg.sandbox;
-    let linux = Arch::build_vm(components, cfg.split_irqchip, |m, e| {
-        create_devices(
-            cfg,
-            m,
-            e,
-            wayland_device_socket,
-            balloon_device_socket,
-            &mut disk_device_sockets,
-            usb_provider,
-        )
-    })
+    let linux = Arch::build_vm(
+        components,
+        cfg.split_irqchip,
+        &cfg.serial_parameters,
+        |m, e| {
+            create_devices(
+                &cfg,
+                m,
+                e,
+                wayland_device_socket,
+                balloon_device_socket,
+                &mut disk_device_sockets,
+                usb_provider,
+            )
+        },
+    )
     .map_err(Error::BuildVm)?;
 
     let _render_node_host = ();
@@ -1401,13 +1406,15 @@ fn run_control(
                             warn!("error while reading stdin: {}", e);
                             let _ = poll_ctx.delete(&stdin_handle);
                         }
-                        Ok(count) => {
-                            linux
-                                .stdio_serial
-                                .lock()
-                                .queue_input_bytes(&out[..count])
-                                .expect("failed to queue bytes into serial port");
-                        }
+                        Ok(count) => match linux.stdio_serial {
+                            Some(ref stdio_serial) => {
+                                stdio_serial
+                                    .lock()
+                                    .queue_input_bytes(&out[..count])
+                                    .expect("failed to queue bytes into serial port");
+                            }
+                            None => {}
+                        },
                     }
                 }
                 Token::ChildSignal => {

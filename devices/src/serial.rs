@@ -3,9 +3,12 @@
 // found in the LICENSE file.
 
 use std::collections::VecDeque;
-use std::io;
+use std::fmt::{self, Display};
+use std::io::{self, stdout};
+use std::path::PathBuf;
+use std::str::FromStr;
 
-use sys_util::{error, EventFd, Result};
+use sys_util::{error, syslog, EventFd, Result};
 
 use crate::BusDevice;
 
@@ -43,6 +46,147 @@ const DEFAULT_LINE_CONTROL: u8 = 0x3; // 8-bits per character
 const DEFAULT_MODEM_CONTROL: u8 = 0x8; // Auxiliary output 2
 const DEFAULT_MODEM_STATUS: u8 = 0x20 | 0x10 | 0x80; // data ready, clear to send, carrier detect
 const DEFAULT_BAUD_DIVISOR: u16 = 12; // 9600 bps
+
+#[derive(Debug)]
+pub enum Error {
+    CloneEventFd(sys_util::Error),
+    InvalidSerialType(String),
+    Unimplemented(SerialType),
+}
+
+impl Display for Error {
+    #[remain::check]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        #[sorted]
+        match self {
+            CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
+            InvalidSerialType(e) => write!(f, "invalid serial type: {}", e),
+            Unimplemented(e) => write!(f, "serial device type {} not implemented", e.to_string()),
+        }
+    }
+}
+
+/// Enum for possible type of serial devices
+#[derive(Debug)]
+pub enum SerialType {
+    File, // NOT IMPLEMENTED
+    Stdout,
+    Sink,
+    Syslog,
+    UnixSocket, // NOT IMPLEMENTED
+}
+
+impl Display for SerialType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match &self {
+            SerialType::File => "File".to_string(),
+            SerialType::Stdout => "Stdout".to_string(),
+            SerialType::Sink => "Sink".to_string(),
+            SerialType::Syslog => "Syslog".to_string(),
+            SerialType::UnixSocket => "UnixSocket".to_string(),
+        };
+
+        write!(f, "{}", s)
+    }
+}
+
+impl FromStr for SerialType {
+    type Err = Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "file" | "File" => return Ok(SerialType::File),
+            "stdout" | "Stdout" => return Ok(SerialType::Stdout),
+            "sink" | "Sink" => return Ok(SerialType::Sink),
+            "syslog" | "Syslog" => return Ok(SerialType::Syslog),
+            "unix" | "UnixSocket" => return Ok(SerialType::UnixSocket),
+            _ => Err(Error::InvalidSerialType(s.to_string())),
+        }
+    }
+}
+
+/// Holds the parameters for a serial device
+#[derive(Debug)]
+pub struct SerialParameters {
+    pub type_: SerialType,
+    pub path: Option<PathBuf>,
+    pub num: u8,
+    pub console: bool,
+}
+
+impl SerialParameters {
+    /// Helper function to create a serial device from the defined parameters.
+    ///
+    /// # Arguments
+    /// * `evt_fd` - eventfd used for interrupt events
+    pub fn create_serial_device(&self, evt_fd: &EventFd) -> std::result::Result<Serial, Error> {
+        match self.type_ {
+            SerialType::Stdout => Ok(Serial::new_out(
+                evt_fd.try_clone().map_err(Error::CloneEventFd)?,
+                Box::new(stdout()),
+            )),
+            SerialType::Sink => Ok(Serial::new_sink(
+                evt_fd.try_clone().map_err(Error::CloneEventFd)?,
+            )),
+            SerialType::Syslog => Ok(Serial::new_out(
+                evt_fd.try_clone().map_err(Error::CloneEventFd)?,
+                Box::new(syslog::Syslogger::new(
+                    syslog::Priority::Info,
+                    syslog::Facility::Daemon,
+                )),
+            )),
+            SerialType::File => Err(Error::Unimplemented(SerialType::File)),
+            SerialType::UnixSocket => Err(Error::Unimplemented(SerialType::UnixSocket)),
+        }
+    }
+}
+
+// Structure for holding the default configuration of the serial devices.
+pub const DEFAULT_SERIAL_PARAMS: [SerialParameters; 4] = [
+    SerialParameters {
+        type_: SerialType::Stdout,
+        path: None,
+        num: 1,
+        console: true,
+    },
+    SerialParameters {
+        type_: SerialType::Sink,
+        path: None,
+        num: 2,
+        console: false,
+    },
+    SerialParameters {
+        type_: SerialType::Sink,
+        path: None,
+        num: 3,
+        console: false,
+    },
+    SerialParameters {
+        type_: SerialType::Sink,
+        path: None,
+        num: 4,
+        console: false,
+    },
+];
+
+/// Address for Serial ports in x86
+pub const SERIAL_ADDR: [u64; 4] = [0x3f8, 0x2f8, 0x3e8, 0x2e8];
+
+/// String representations of serial devices
+pub const SERIAL_TTY_STRINGS: [&str; 4] = ["ttyS0", "ttyS1", "ttyS2", "ttyS3"];
+
+/// Helper function to get the tty string of a serial device based on the port number. Will default
+///  to ttyS0 if an invalid number is given.
+pub fn get_serial_tty_string(stdio_serial_num: u8) -> String {
+    match stdio_serial_num {
+        1 => SERIAL_TTY_STRINGS[0].to_string(),
+        2 => SERIAL_TTY_STRINGS[1].to_string(),
+        3 => SERIAL_TTY_STRINGS[2].to_string(),
+        4 => SERIAL_TTY_STRINGS[3].to_string(),
+        _ => SERIAL_TTY_STRINGS[0].to_string(),
+    }
+}
 
 /// Emulates serial COM ports commonly seen on x86 I/O ports 0x3f8/0x2f8/0x3e8/0x2e8.
 ///

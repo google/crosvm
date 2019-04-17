@@ -28,8 +28,8 @@ use crate::AARCH64_RTC_SIZE;
 use devices::pl030::PL030_AMBA_ID;
 
 // These are serial device related constants.
+use crate::AARCH64_SERIAL_1_3_IRQ;
 use crate::AARCH64_SERIAL_ADDR;
-use crate::AARCH64_SERIAL_IRQ;
 use crate::AARCH64_SERIAL_SIZE;
 use crate::AARCH64_SERIAL_SPEED;
 
@@ -135,7 +135,7 @@ fn create_serial_node(fdt: &mut Vec<u8>) -> Result<()> {
     let serial_reg_prop = generate_prop64(&[AARCH64_SERIAL_ADDR, AARCH64_SERIAL_SIZE]);
     let irq = generate_prop32(&[
         GIC_FDT_IRQ_TYPE_SPI,
-        AARCH64_SERIAL_IRQ,
+        AARCH64_SERIAL_1_3_IRQ,
         IRQ_TYPE_EDGE_RISING,
     ]);
 

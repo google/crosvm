@@ -54,18 +54,19 @@ mod mptable;
 mod regs;
 mod smbios;
 
+use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{self, stdout};
+use std::io;
 use std::mem;
 use std::sync::Arc;
 
 use crate::bootparam::boot_params;
 use crate::bootparam::E820_RAM;
 use arch::{RunnableLinuxVm, VmComponents};
-use devices::{PciConfigIo, PciDevice, PciInterruptPin};
+use devices::{get_serial_tty_string, PciConfigIo, PciDevice, PciInterruptPin, SerialParameters};
 use io_jail::Minijail;
 use kvm::*;
 use remain::sorted;
@@ -87,6 +88,7 @@ pub enum Error {
     CreatePciRoot(arch::DeviceRegistrationError),
     CreatePit(sys_util::Error),
     CreatePitDevice(devices::PitError),
+    CreateSerialDevices(arch::DeviceRegistrationError),
     CreateSocket(io::Error),
     CreateVcpu(sys_util::Error),
     CreateVm(sys_util::Error),
@@ -130,6 +132,7 @@ impl Display for Error {
             CreatePciRoot(e) => write!(f, "failed to create a PCI root hub: {}", e),
             CreatePit(e) => write!(f, "unable to create PIT: {}", e),
             CreatePitDevice(e) => write!(f, "unable to make PIT device: {}", e),
+            CreateSerialDevices(e) => write!(f, "unable to create serial devices: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
             CreateVm(e) => write!(f, "failed to create VM: {}", e),
@@ -172,6 +175,8 @@ const ZERO_PAGE_OFFSET: u64 = 0x7000;
 const KERNEL_START_OFFSET: u64 = 0x200000;
 const CMDLINE_OFFSET: u64 = 0x20000;
 const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
+const X86_64_SERIAL_1_3_IRQ: u32 = 4;
+const X86_64_SERIAL_2_4_IRQ: u32 = 3;
 const X86_64_IRQ_BASE: u32 = 5;
 
 fn configure_system(
@@ -296,6 +301,7 @@ impl arch::LinuxArch for X8664arch {
     fn build_vm<F, E>(
         mut components: VmComponents,
         split_irqchip: bool,
+        serial_parameters: &BTreeMap<u8, SerialParameters>,
         create_devices: F,
     ) -> Result<RunnableLinuxVm>
     where
@@ -329,7 +335,6 @@ impl arch::LinuxArch for X8664arch {
         let vcpu_affinity = components.vcpu_affinity;
 
         let irq_chip = Self::create_irq_chip(&vm)?;
-        let mut cmdline = Self::get_base_linux_cmdline();
 
         let mut mmio_bus = devices::Bus::new();
 
@@ -342,13 +347,17 @@ impl arch::LinuxArch for X8664arch {
                 .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
 
-        let (io_bus, stdio_serial) = Self::setup_io_bus(
+        let mut io_bus = Self::setup_io_bus(
             &mut vm,
             split_irqchip,
             exit_evt.try_clone().map_err(Error::CloneEventFd)?,
             Some(pci_bus.clone()),
         )?;
 
+        let (stdio_serial_num, stdio_serial) =
+            Self::setup_serial_devices(&mut vm, &mut io_bus, &serial_parameters)?;
+
+        let mut cmdline = Self::get_base_linux_cmdline(stdio_serial_num);
         for param in components.extra_kernel_params {
             cmdline.insert_str(&param).map_err(Error::Cmdline)?;
         }
@@ -533,11 +542,14 @@ impl X8664arch {
     }
 
     /// This returns a minimal kernel command for this architecture
-    fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
+    fn get_base_linux_cmdline(stdio_serial_num: Option<u8>) -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
-        cmdline
-            .insert_str("console=ttyS0 noacpi reboot=k panic=-1")
-            .unwrap();
+        if stdio_serial_num.is_some() {
+            let tty_string = get_serial_tty_string(stdio_serial_num.unwrap());
+            cmdline.insert("console", &tty_string).unwrap();
+        }
+        cmdline.insert_str("noacpi reboot=k panic=-1").unwrap();
+
         cmdline
     }
 
@@ -565,7 +577,7 @@ impl X8664arch {
         split_irqchip: bool,
         exit_evt: EventFd,
         pci: Option<Arc<Mutex<devices::PciConfigIo>>>,
-    ) -> Result<(devices::Bus, Arc<Mutex<devices::Serial>>)> {
+    ) -> Result<(devices::Bus)> {
         struct NoDevice;
         impl devices::BusDevice for NoDevice {
             fn debug_label(&self) -> String {
@@ -575,46 +587,6 @@ impl X8664arch {
 
         let mut io_bus = devices::Bus::new();
 
-        let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
-        let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
-        let stdio_serial = Arc::new(Mutex::new(devices::Serial::new_out(
-            com_evt_1_3.try_clone().map_err(Error::CloneEventFd)?,
-            Box::new(stdout()),
-        )));
-        let nul_device = Arc::new(Mutex::new(NoDevice));
-        io_bus
-            .insert(stdio_serial.clone(), 0x3f8, 0x8, false)
-            .unwrap();
-        io_bus
-            .insert(
-                Arc::new(Mutex::new(devices::Serial::new_sink(
-                    com_evt_2_4.try_clone().map_err(Error::CloneEventFd)?,
-                ))),
-                0x2f8,
-                0x8,
-                false,
-            )
-            .unwrap();
-        io_bus
-            .insert(
-                Arc::new(Mutex::new(devices::Serial::new_sink(
-                    com_evt_1_3.try_clone().map_err(Error::CloneEventFd)?,
-                ))),
-                0x3e8,
-                0x8,
-                false,
-            )
-            .unwrap();
-        io_bus
-            .insert(
-                Arc::new(Mutex::new(devices::Serial::new_sink(
-                    com_evt_2_4.try_clone().map_err(Error::CloneEventFd)?,
-                ))),
-                0x2e8,
-                0x8,
-                false,
-            )
-            .unwrap();
         io_bus
             .insert(Arc::new(Mutex::new(devices::Cmos::new())), 0x70, 0x2, false)
             .unwrap();
@@ -629,6 +601,7 @@ impl X8664arch {
             )
             .unwrap();
 
+        let nul_device = Arc::new(Mutex::new(NoDevice));
         if split_irqchip {
             let pit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
             let pit = Arc::new(Mutex::new(
@@ -664,12 +637,35 @@ impl X8664arch {
                 .unwrap();
         }
 
-        vm.register_irqfd(&com_evt_1_3, 4)
+        Ok(io_bus)
+    }
+
+    /// Sets up the serial devices for this platform. Returns the serial port number and serial
+    /// device to be used for stdout
+    ///
+    /// # Arguments
+    ///
+    /// * - `vm` the vm object
+    /// * - `io_bus` the I/O bus to add the devices to
+    /// * - `serial_parmaters` - definitions for how the serial devices should be configured
+    fn setup_serial_devices(
+        vm: &mut Vm,
+        io_bus: &mut devices::Bus,
+        serial_parameters: &BTreeMap<u8, SerialParameters>,
+    ) -> Result<(Option<u8>, Option<Arc<Mutex<devices::Serial>>>)> {
+        let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
+        let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
+
+        let (stdio_serial_num, stdio_serial) =
+            arch::add_serial_devices(io_bus, &com_evt_1_3, &com_evt_2_4, &serial_parameters)
+                .map_err(Error::CreateSerialDevices)?;
+
+        vm.register_irqfd(&com_evt_1_3, X86_64_SERIAL_1_3_IRQ)
             .map_err(Error::RegisterIrqfd)?;
-        vm.register_irqfd(&com_evt_2_4, 3)
+        vm.register_irqfd(&com_evt_2_4, X86_64_SERIAL_2_4_IRQ)
             .map_err(Error::RegisterIrqfd)?;
 
-        Ok((io_bus, stdio_serial))
+        Ok((stdio_serial_num, stdio_serial))
     }
 
     /// Configures the vcpu and should be called once per vcpu from the vcpu's thread.

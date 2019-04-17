@@ -16,7 +16,7 @@ use std::sync::Arc;
 use devices::virtio::VirtioDevice;
 use devices::{
     Bus, BusDevice, BusError, PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProxyDevice,
-    Serial,
+    Serial, SerialParameters, DEFAULT_SERIAL_PARAMS, SERIAL_ADDR,
 };
 use io_jail::Minijail;
 use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
@@ -42,7 +42,7 @@ pub struct RunnableLinuxVm {
     pub vm: Vm,
     pub kvm: Kvm,
     pub resources: SystemAllocator,
-    pub stdio_serial: Arc<Mutex<Serial>>,
+    pub stdio_serial: Option<Arc<Mutex<Serial>>>,
     pub exit_evt: EventFd,
     pub vcpus: Vec<Vcpu>,
     pub vcpu_affinity: Vec<usize>,
@@ -69,10 +69,12 @@ pub trait LinuxArch {
     ///
     /// * `components` - Parts to use to build the VM.
     /// * `split_irqchip` - whether to use a split IRQ chip (i.e. userspace PIT/PIC/IOAPIC)
+    /// * `serial_parameters` - definitions for how the serial devices should be configured.
     /// * `create_devices` - Function to generate a list of devices.
     fn build_vm<F, E>(
         components: VmComponents,
         split_irqchip: bool,
+        serial_parameters: &BTreeMap<u8, SerialParameters>,
         create_devices: F,
     ) -> Result<RunnableLinuxVm, Self::Error>
     where
@@ -91,6 +93,8 @@ pub enum DeviceRegistrationError {
     AllocateIrq,
     /// Could not create the mmio device to wrap a VirtioDevice.
     CreateMmioDevice(sys_util::Error),
+    //  Unable to create serial device from serial parameters
+    CreateSerialDevice(devices::SerialError),
     /// Could not create an event fd.
     EventFdCreate(sys_util::Error),
     /// Could not add a device to the mmio bus.
@@ -120,6 +124,7 @@ impl Display for DeviceRegistrationError {
             AllocateDeviceAddrs(e) => write!(f, "Allocating device addresses: {}", e),
             AllocateIrq => write!(f, "Allocating IRQ number"),
             CreateMmioDevice(e) => write!(f, "failed to create mmio device: {}", e),
+            CreateSerialDevice(e) => write!(f, "failed to create serial device: {}", e),
             Cmdline(e) => write!(f, "unable to add device to kernel command line: {}", e),
             EventFdCreate(e) => write!(f, "failed to create eventfd: {}", e),
             MmioInsert(e) => write!(f, "failed to add to mmio bus: {}", e),
@@ -210,6 +215,57 @@ pub fn generate_pci_root(
         }
     }
     Ok((root, pci_irqs, pid_labels))
+}
+
+/// Adds serial devices to the provided bus based on the serial parameters given. Returns the serial
+///  port number and serial device to be used for stdout if defined.
+///
+/// # Arguments
+///
+/// * `io_bus` - Bus to add the devices to
+/// * `com_evt_1_3` - eventfd for com1 and com3
+/// * `com_evt_1_4` - eventfd for com2 and com4
+/// * `io_bus` - Bus to add the devices to
+/// * `serial_parameters` - definitions of serial parameter configuationis. If a setting is not
+///     provided for a port, then it will use the default configuation.
+pub fn add_serial_devices(
+    io_bus: &mut Bus,
+    com_evt_1_3: &EventFd,
+    com_evt_2_4: &EventFd,
+    serial_parameters: &BTreeMap<u8, SerialParameters>,
+) -> Result<(Option<u8>, Option<Arc<Mutex<Serial>>>), DeviceRegistrationError> {
+    let mut stdio_serial_num = None;
+    let mut stdio_serial = None;
+
+    for x in 0..3 {
+        let com_evt = match x {
+            0 => com_evt_1_3,
+            1 => com_evt_2_4,
+            2 => com_evt_1_3,
+            3 => com_evt_2_4,
+            _ => com_evt_1_3,
+        };
+
+        let param = serial_parameters
+            .get(&(x + 1))
+            .unwrap_or(&DEFAULT_SERIAL_PARAMS[x as usize]);
+
+        let com = Arc::new(Mutex::new(
+            param
+                .create_serial_device(&com_evt)
+                .map_err(DeviceRegistrationError::CreateSerialDevice)?,
+        ));
+        io_bus
+            .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8, false)
+            .unwrap();
+
+        if param.console {
+            stdio_serial_num = Some(x + 1);
+            stdio_serial = Some(com.clone());
+        }
+    }
+
+    Ok((stdio_serial_num, stdio_serial))
 }
 
 /// Errors for image loading.
