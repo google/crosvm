@@ -51,6 +51,7 @@ mod gdt;
 mod interrupts;
 mod mptable;
 mod regs;
+mod smbios;
 
 use std::error::Error as StdError;
 use std::ffi::{CStr, CString};
@@ -103,6 +104,7 @@ pub enum Error {
     SetupMptable(mptable::Error),
     SetupMsrs(regs::Error),
     SetupRegs(regs::Error),
+    SetupSmbios(smbios::Error),
     SetupSregs(regs::Error),
     ZeroPagePastRamEnd,
     ZeroPageSetup,
@@ -144,6 +146,7 @@ impl Display for Error {
             SetupMptable(e) => write!(f, "failed to set up mptable: {}", e),
             SetupMsrs(e) => write!(f, "failed to set up MSRs: {}", e),
             SetupRegs(e) => write!(f, "failed to set up registers: {}", e),
+            SetupSmbios(e) => write!(f, "failed to set up SMBIOS: {}", e),
             SetupSregs(e) => write!(f, "failed to set up sregs: {}", e),
             ZeroPagePastRamEnd => write!(f, "the zero page extends past the end of guest_mem"),
             ZeroPageSetup => write!(f, "error writing the zero page of guest memory"),
@@ -189,6 +192,8 @@ fn configure_system(
 
     // Note that this puts the mptable at 0x0 in guest physical memory.
     mptable::setup_mptable(guest_mem, num_cpus, pci_irqs).map_err(Error::SetupMptable)?;
+
+    smbios::setup_smbios(guest_mem).map_err(Error::SetupSmbios)?;
 
     let mut params: boot_params = Default::default();
 
