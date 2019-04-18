@@ -162,6 +162,7 @@ dependencies = [
  "resources 0.1.0",
  "sync 0.1.0",
  "sys_util 0.1.0",
+ "tempfile 3.0.7",
  "tpm2 0.1.0",
  "usb_util 0.1.0",
  "vhost 0.1.0",
@@ -473,6 +474,7 @@ dependencies = [
  "poll_token_derive 0.1.0",
  "sync 0.1.0",
  "syscall_defines 0.1.0",
+ "tempfile 3.0.7",
 ]
 
 [[package]]

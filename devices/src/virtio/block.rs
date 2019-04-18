@@ -1035,15 +1035,14 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
 #[cfg(test)]
 mod tests {
     use std::fs::{File, OpenOptions};
-    use std::path::PathBuf;
-    use sys_util::TempDir;
+    use tempfile::TempDir;
 
     use super::*;
 
     #[test]
     fn read_size() {
-        let tempdir = TempDir::new("/tmp/block_read_test").unwrap();
-        let mut path = PathBuf::from(tempdir.as_path().unwrap());
+        let tempdir = TempDir::new().unwrap();
+        let mut path = tempdir.path().to_owned();
         path.push("disk_image");
         let f = File::create(&path).unwrap();
         f.set_len(0x1000).unwrap();
@@ -1061,8 +1060,8 @@ mod tests {
 
     #[test]
     fn read_features() {
-        let tempdir = TempDir::new("/tmp/block_read_test").unwrap();
-        let mut path = PathBuf::from(tempdir.as_path().unwrap());
+        let tempdir = TempDir::new().unwrap();
+        let mut path = tempdir.path().to_owned();
         path.push("disk_image");
 
         // read-write block device
@@ -1086,8 +1085,8 @@ mod tests {
 
     #[test]
     fn read_last_sector() {
-        let tempdir = TempDir::new("/tmp/block_read_test").unwrap();
-        let mut path = PathBuf::from(tempdir.as_path().unwrap());
+        let tempdir = TempDir::new().unwrap();
+        let mut path = tempdir.path().to_owned();
         path.push("disk_image");
         let mut f = OpenOptions::new()
             .read(true)
@@ -1129,8 +1128,8 @@ mod tests {
 
     #[test]
     fn read_beyond_last_sector() {
-        let tempdir = TempDir::new("/tmp/block_read_test").unwrap();
-        let mut path = PathBuf::from(tempdir.as_path().unwrap());
+        let tempdir = TempDir::new().unwrap();
+        let mut path = tempdir.path().to_owned();
         path.push("disk_image");
         let mut f = OpenOptions::new()
             .read(true)

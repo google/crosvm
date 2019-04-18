@@ -11,5 +11,6 @@ libc = "*"
 poll_token_derive = { version = "*", path = "poll_token_derive" }
 sync = { path = "../sync" } # provided by ebuild
 syscall_defines = { path = "../syscall_defines" } # provided by ebuild
+tempfile = { path = "../tempfile" } # provided by ebuild
 
 [workspace]

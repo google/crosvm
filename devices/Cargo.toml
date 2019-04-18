@@ -37,3 +37,6 @@ usb_util = { path = "../usb_util" }
 vhost = { path = "../vhost" }
 virtio_sys = { path = "../virtio_sys" }
 vm_control = { path = "../vm_control" }
+
+[dev-dependencies]
+tempfile = { path = "../tempfile" }

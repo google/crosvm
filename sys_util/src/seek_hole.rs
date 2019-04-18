@@ -54,10 +54,9 @@ impl SeekHole for File {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TempDir;
     use std::fs::File;
     use std::io::{Seek, SeekFrom, Write};
-    use std::path::PathBuf;
+    use tempfile::TempDir;
 
     fn seek_cur(file: &mut File) -> u64 {
         file.seek(SeekFrom::Current(0)).unwrap()
@@ -65,8 +64,8 @@ mod tests {
 
     #[test]
     fn seek_data() {
-        let tempdir = TempDir::new("/tmp/seek_data_test").unwrap();
-        let mut path = PathBuf::from(tempdir.as_path().unwrap());
+        let tempdir = TempDir::new().unwrap();
+        let mut path = tempdir.path().to_owned();
         path.push("test_file");
         let mut file = File::create(&path).unwrap();
 
@@ -112,8 +111,8 @@ mod tests {
 
     #[test]
     fn seek_hole() {
-        let tempdir = TempDir::new("/tmp/seek_hole_test").unwrap();
-        let mut path = PathBuf::from(tempdir.as_path().unwrap());
+        let tempdir = TempDir::new().unwrap();
+        let mut path = tempdir.path().to_owned();
         path.push("test_file");
         let mut file = File::create(&path).unwrap();
 
