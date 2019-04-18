@@ -410,6 +410,7 @@ pub fn run_vcpus(
                         error!("failed to initialize vcpu {}: {}", cpu_id, e);
                     } else {
                         loop {
+                            let mut interrupted_by_signal = false;
                             let run_res = vcpu.run();
                             match run_res {
                                 Ok(run) => match run {
@@ -465,7 +466,8 @@ pub fn run_vcpus(
                                     r => warn!("unexpected vcpu exit: {:?}", r),
                                 },
                                 Err(e) => match e.errno() {
-                                    EAGAIN | EINTR => {}
+                                    EINTR => interrupted_by_signal = true,
+                                    EAGAIN => {}
                                     _ => {
                                         error!("vcpu hit unknown error: {}", e);
                                         break;
@@ -478,7 +480,10 @@ pub fn run_vcpus(
 
                             // Try to clear the signal that we use to kick VCPU if it is
                             // pending before attempting to handle pause requests.
-                            clear_signal(SIGRTMIN() + 0).expect("failed to clear pending signal");
+                            if interrupted_by_signal {
+                                clear_signal(SIGRTMIN() + 0)
+                                    .expect("failed to clear pending signal");
+                            }
 
                             if let Err(e) = vcpu_plugin.pre_run(&vcpu) {
                                 error!("failed to process pause on vcpu {}: {}", cpu_id, e);
