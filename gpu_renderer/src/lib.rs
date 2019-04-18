@@ -20,7 +20,7 @@ use std::os::unix::io::{FromRawFd, RawFd};
 use std::ptr::{null, null_mut};
 use std::rc::Rc;
 use std::result;
-use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use data_model::{VolatileMemory, VolatileSlice};
 use sys_util::{GuestAddress, GuestMemory};
@@ -317,7 +317,7 @@ impl Renderer {
         // virglrenderer is a global state backed library that uses thread bound OpenGL contexts.
         // Initialize it only once and use the non-send/non-sync Renderer struct to keep things tied
         // to whichever thread called this function first.
-        static INIT_ONCE: AtomicBool = ATOMIC_BOOL_INIT;
+        static INIT_ONCE: AtomicBool = AtomicBool::new(false);
         if INIT_ONCE.compare_and_swap(false, true, Ordering::Acquire) {
             return Err(Error::AlreadyInitialized);
         }
