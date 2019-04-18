@@ -12,7 +12,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
-use audio_streams::{PlaybackBuffer, PlaybackBufferStream, StreamControl, StreamSource};
+use audio_streams::{
+    capture::{CaptureBuffer, CaptureBufferStream},
+    PlaybackBuffer, PlaybackBufferStream, StreamControl, StreamSource,
+};
 use data_model::{VolatileMemory, VolatileSlice};
 use sync::Mutex;
 use sys_util::{
@@ -51,7 +54,7 @@ impl Ac97BusMasterRegs {
         }
     }
 
-    fn func_regs(&mut self, func: Ac97Function) -> &Ac97FunctionRegs {
+    fn func_regs(&self, func: Ac97Function) -> &Ac97FunctionRegs {
         match func {
             Ac97Function::Input => &self.pi_regs,
             Ac97Function::Output => &self.po_regs,
@@ -68,13 +71,49 @@ impl Ac97BusMasterRegs {
     }
 }
 
-// Internal error type used for reporting errors from the audio playback thread.
+// Internal error type used for reporting errors from guest memory reading.
 #[derive(Debug)]
-enum PlaybackError {
+enum GuestMemoryError {
     // Failure getting the address of the audio buffer.
     ReadingGuestBufferAddress(sys_util::GuestMemoryError),
     // Failure reading samples from guest memory.
     ReadingGuestSamples(data_model::VolatileMemoryError),
+}
+
+impl std::error::Error for GuestMemoryError {}
+
+impl Display for GuestMemoryError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::GuestMemoryError::*;
+
+        match self {
+            ReadingGuestBufferAddress(e) => {
+                write!(f, "Failed to get the address of the audio buffer: {}.", e)
+            }
+            ReadingGuestSamples(e) => write!(f, "Failed to read samples from guest memory: {}.", e),
+        }
+    }
+}
+
+impl From<GuestMemoryError> for PlaybackError {
+    fn from(err: GuestMemoryError) -> Self {
+        PlaybackError::ReadingGuestError(err)
+    }
+}
+
+impl From<GuestMemoryError> for CaptureError {
+    fn from(err: GuestMemoryError) -> Self {
+        CaptureError::ReadingGuestError(err)
+    }
+}
+
+type GuestMemoryResult<T> = std::result::Result<T, GuestMemoryError>;
+
+// Internal error type used for reporting errors from the audio playback thread.
+#[derive(Debug)]
+enum PlaybackError {
+    // Failure to read guest memory.
+    ReadingGuestError(GuestMemoryError),
     // Failure to get an buffer from the stream.
     StreamError(Box<dyn Error>),
     // Failure writing to the audio output.
@@ -88,10 +127,7 @@ impl Display for PlaybackError {
         use self::PlaybackError::*;
 
         match self {
-            ReadingGuestBufferAddress(e) => {
-                write!(f, "Failed to get the address of the audio buffer: {}.", e)
-            }
-            ReadingGuestSamples(e) => write!(f, "Failed to read samples from guest memory: {}.", e),
+            ReadingGuestError(e) => write!(f, "Failed to read guest memory: {}.", e),
             StreamError(e) => write!(f, "Failed to get a buffer from the stream: {}", e),
             WritingOutput(e) => write!(f, "Failed to write audio output: {}.", e),
         }
@@ -99,6 +135,33 @@ impl Display for PlaybackError {
 }
 
 type PlaybackResult<T> = std::result::Result<T, PlaybackError>;
+
+// Internal error type used for reporting errors from the audio capture thread.
+#[derive(Debug)]
+enum CaptureError {
+    // Failure to read guest memory.
+    ReadingGuestError(GuestMemoryError),
+    // Failure to get an buffer from the stream.
+    StreamError(Box<dyn Error>),
+    // Failure reading to the audio input.
+    ReadingInput(std::io::Error),
+}
+
+impl std::error::Error for CaptureError {}
+
+impl Display for CaptureError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::CaptureError::*;
+
+        match self {
+            ReadingGuestError(e) => write!(f, "Failed to read guest memory: {}.", e),
+            StreamError(e) => write!(f, "Failed to get a buffer from the stream: {}", e),
+            ReadingInput(e) => write!(f, "Failed to read audio input: {}.", e),
+        }
+    }
+}
+
+type CaptureResult<T> = std::result::Result<T, CaptureError>;
 
 /// `Ac97BusMaster` emulates the bus master portion of AC97. It exposes a register read/write
 /// interface compliant with the ICH bus master.
@@ -108,12 +171,17 @@ pub struct Ac97BusMaster {
     regs: Arc<Mutex<Ac97BusMasterRegs>>,
     acc_sema: u8,
 
+    // Audio thread for capture stream.
+    audio_thread_pi: Option<thread::JoinHandle<()>>,
+    audio_thread_pi_run: Arc<AtomicBool>,
+    pi_stream_control: Option<Box<dyn StreamControl>>,
+
     // Audio thread book keeping.
     audio_thread_po: Option<thread::JoinHandle<()>>,
     audio_thread_po_run: Arc<AtomicBool>,
     po_stream_control: Option<Box<dyn StreamControl>>,
 
-    // Audio server used to create playback streams.
+    // Audio server used to create playback or capture streams.
     audio_server: Box<dyn StreamSource>,
 
     // Thread for hadlind IRQ resample events from the guest.
@@ -128,6 +196,10 @@ impl Ac97BusMaster {
             mem,
             regs: Arc::new(Mutex::new(Ac97BusMasterRegs::new())),
             acc_sema: 0,
+
+            audio_thread_pi: None,
+            audio_thread_pi_run: Arc::new(AtomicBool::new(false)),
+            pi_stream_control: None,
 
             audio_thread_po: None,
             audio_thread_po_run: Arc::new(AtomicBool::new(false)),
@@ -159,9 +231,20 @@ impl Ac97BusMaster {
                 }
                 {
                     // Scope for the lock on thread_regs.
-                    let mut regs = thread_regs.lock();
-                    let int_mask = regs.func_regs(Ac97Function::Output).int_mask();
-                    if regs.func_regs(Ac97Function::Output).sr & int_mask != 0 {
+                    let regs = thread_regs.lock();
+                    // Check output irq
+                    let po_int_mask = regs.func_regs(Ac97Function::Output).int_mask();
+                    if regs.func_regs(Ac97Function::Output).sr & po_int_mask != 0 {
+                        if let Some(irq_evt) = regs.irq_evt.as_ref() {
+                            if let Err(e) = irq_evt.write(1) {
+                                error!("Failed to set the irq from the resample thread: {}.", e);
+                                break;
+                            }
+                        }
+                    }
+                    // Check input irq
+                    let pi_int_mask = regs.func_regs(Ac97Function::Input).int_mask();
+                    if regs.func_regs(Ac97Function::Input).sr & pi_int_mask != 0 {
                         if let Some(irq_evt) = regs.irq_evt.as_ref() {
                             if let Err(e) = irq_evt.write(1) {
                                 error!("Failed to set the irq from the resample thread: {}.", e);
@@ -272,6 +355,7 @@ impl Ac97BusMaster {
         match offset {
             PI_CIV_04 => (), // RO
             PI_LVI_05 => self.set_lvi(Ac97Function::Input, val),
+            PI_SR_06 => self.set_sr(Ac97Function::Input, u16::from(val)),
             PI_PIV_0A => (), // RO
             PI_CR_0B => self.set_cr(Ac97Function::Input, val, mixer),
             PO_CIV_14 => (), // RO
@@ -412,7 +496,38 @@ impl Ac97BusMaster {
         const AUDIO_THREAD_RTPRIO: u16 = 12; // Matches other cros audio clients.
 
         match func {
-            Ac97Function::Input => (),
+            Ac97Function::Input => {
+                let num_channels = 2;
+                let buffer_samples =
+                    current_buffer_size(self.regs.lock().func_regs(func), &self.mem)?;
+                let buffer_frames = buffer_samples / num_channels;
+                let (stream_control, input_stream) = self.audio_server.new_capture_stream(
+                    num_channels,
+                    DEVICE_SAMPLE_RATE,
+                    buffer_frames,
+                )?;
+                self.pi_stream_control = Some(stream_control);
+                self.update_mixer_settings(mixer);
+
+                self.audio_thread_pi_run.store(true, Ordering::Relaxed);
+                let thread_run = self.audio_thread_pi_run.clone();
+                let thread_mem = self.mem.clone();
+                let thread_regs = self.regs.clone();
+
+                self.audio_thread_pi = Some(thread::spawn(move || {
+                    if set_rt_prio_limit(u64::from(AUDIO_THREAD_RTPRIO)).is_err()
+                        || set_rt_round_robin(i32::from(AUDIO_THREAD_RTPRIO)).is_err()
+                    {
+                        warn!("Failed to set audio thread to real time.");
+                    }
+                    if let Err(e) =
+                        audio_in_thread(thread_regs, thread_mem, &thread_run, input_stream)
+                    {
+                        error!("Capture error: {}", e);
+                    }
+                    thread_run.store(false, Ordering::Relaxed);
+                }));
+            }
             Ac97Function::Output => {
                 let num_channels = 2;
 
@@ -455,7 +570,14 @@ impl Ac97BusMaster {
 
     fn stop_audio(&mut self, func: Ac97Function) {
         match func {
-            Ac97Function::Input => (),
+            Ac97Function::Input => {
+                self.audio_thread_pi_run.store(false, Ordering::Relaxed);
+                if let Some(thread) = self.audio_thread_pi.take() {
+                    if let Err(e) = thread.join() {
+                        error!("Failed to join the capture thread: {:?}.", e);
+                    }
+                }
+            }
             Ac97Function::Output => {
                 self.audio_thread_po_run.store(false, Ordering::Relaxed);
                 if let Some(thread) = self.audio_thread_po.take() {
@@ -488,7 +610,7 @@ impl Ac97BusMaster {
 fn next_guest_buffer<'a>(
     func_regs: &mut Ac97FunctionRegs,
     mem: &'a GuestMemory,
-) -> PlaybackResult<Option<VolatileSlice<'a>>> {
+) -> GuestMemoryResult<Option<VolatileSlice<'a>>> {
     let sample_size = 2;
 
     if func_regs.sr & SR_DCH != 0 {
@@ -498,11 +620,11 @@ fn next_guest_buffer<'a>(
     let descriptor_addr = func_regs.bdbar + u32::from(next_buffer) * DESCRIPTOR_LENGTH as u32;
     let buffer_addr_reg: u32 = mem
         .read_obj_from_addr(GuestAddress(u64::from(descriptor_addr)))
-        .map_err(PlaybackError::ReadingGuestBufferAddress)?;
+        .map_err(GuestMemoryError::ReadingGuestBufferAddress)?;
     let buffer_addr = buffer_addr_reg & !0x03u32; // The address must be aligned to four bytes.
     let control_reg: u32 = mem
         .read_obj_from_addr(GuestAddress(u64::from(descriptor_addr) + 4))
-        .map_err(PlaybackError::ReadingGuestBufferAddress)?;
+        .map_err(GuestMemoryError::ReadingGuestBufferAddress)?;
     let buffer_samples: usize = control_reg as usize & 0x0000_ffff;
 
     func_regs.picb = buffer_samples as u16;
@@ -514,7 +636,7 @@ fn next_guest_buffer<'a>(
     let read_pos = u64::from(buffer_addr);
     Ok(Some(
         mem.get_slice(read_pos, samples_remaining as u64 * sample_size)
-            .map_err(PlaybackError::ReadingGuestSamples)?,
+            .map_err(GuestMemoryError::ReadingGuestSamples)?,
     ))
 }
 
@@ -548,13 +670,13 @@ fn buffer_completed(
     regs: &mut Ac97BusMasterRegs,
     mem: &GuestMemory,
     func: Ac97Function,
-) -> PlaybackResult<()> {
+) -> GuestMemoryResult<()> {
     // check if the completed descriptor wanted an interrupt on completion.
     let civ = regs.func_regs(func).civ;
     let descriptor_addr = regs.func_regs(func).bdbar + u32::from(civ) * DESCRIPTOR_LENGTH as u32;
     let control_reg: u32 = mem
         .read_obj_from_addr(GuestAddress(u64::from(descriptor_addr) + 4))
-        .map_err(PlaybackError::ReadingGuestBufferAddress)?;
+        .map_err(GuestMemoryError::ReadingGuestBufferAddress)?;
 
     let mut new_sr = regs.func_regs(func).sr;
 
@@ -594,6 +716,41 @@ fn audio_out_thread(
             .next_playback_buffer()
             .map_err(PlaybackError::StreamError)
             .and_then(|mut pb_buf| play_buffer(&mut regs.lock(), &mem, &mut pb_buf))?;
+    }
+    Ok(())
+}
+
+// Reads samples from `in_buffer` and writes it to the next buffer from guest memory.
+fn capture_buffer(
+    regs: &mut Ac97BusMasterRegs,
+    mem: &GuestMemory,
+    in_buffer: &mut CaptureBuffer,
+) -> CaptureResult<()> {
+    // If the current buffer had any samples in it, mark it as done.
+    if regs.func_regs_mut(Ac97Function::Input).picb > 0 {
+        buffer_completed(regs, mem, Ac97Function::Input)?
+    }
+    let func_regs = regs.func_regs_mut(Ac97Function::Input);
+    if let Some(buffer) = next_guest_buffer(func_regs, mem)? {
+        buffer
+            .read_from(in_buffer)
+            .map_err(CaptureError::ReadingInput)?;
+    }
+    Ok(())
+}
+
+// Runs, capturing audio from `input_stream` to the guest until stopped or an error occurs.
+fn audio_in_thread(
+    regs: Arc<Mutex<Ac97BusMasterRegs>>,
+    mem: GuestMemory,
+    thread_run: &AtomicBool,
+    mut input_stream: Box<dyn CaptureBufferStream>,
+) -> CaptureResult<()> {
+    while thread_run.load(Ordering::Relaxed) {
+        input_stream
+            .next_capture_buffer()
+            .map_err(CaptureError::StreamError)
+            .and_then(|mut cp_buf| capture_buffer(&mut regs.lock(), &mem, &mut cp_buf))?;
     }
     Ok(())
 }
@@ -639,12 +796,15 @@ fn update_sr(regs: &mut Ac97BusMasterRegs, func: Ac97Function, val: u16) {
 }
 
 // Returns the size in samples of the buffer pointed to by the CIV register.
-fn current_buffer_size(func_regs: &Ac97FunctionRegs, mem: &GuestMemory) -> PlaybackResult<usize> {
+fn current_buffer_size(
+    func_regs: &Ac97FunctionRegs,
+    mem: &GuestMemory,
+) -> GuestMemoryResult<usize> {
     let civ = func_regs.civ;
     let descriptor_addr = func_regs.bdbar + u32::from(civ) * DESCRIPTOR_LENGTH as u32;
     let control_reg: u32 = mem
         .read_obj_from_addr(GuestAddress(u64::from(descriptor_addr) + 4))
-        .map_err(PlaybackError::ReadingGuestBufferAddress)?;
+        .map_err(GuestMemoryError::ReadingGuestBufferAddress)?;
     let buffer_len: usize = control_reg as usize & 0x0000_ffff;
     Ok(buffer_len)
 }
@@ -774,7 +934,7 @@ mod test {
         // test only checks that some samples are consumed.
         assert!(pos > 1000);
 
-        assert!(bm.readw(PO_SR_16) & 0x01 == 0); // DMA is running.
+        assert!(bm.readw(PO_SR_16) & SR_DCH == 0); // DMA is running.
 
         // civ should move eventually.
         for _i in 0..30 {
@@ -813,5 +973,78 @@ mod test {
         // Stop.
         bm.writeb(PO_CR_1B, 0, &mixer);
         assert!(bm.readw(PO_SR_16) & 0x01 != 0); // DMA is not running.
+    }
+
+    #[test]
+    fn start_capture() {
+        const LVI_MASK: u8 = 0x1f; // Five bits for 32 total entries.
+        const IOC_MASK: u32 = 0x8000_0000; // Interrupt on completion.
+        let num_buffers = LVI_MASK as usize + 1;
+        const BUFFER_SIZE: usize = 32768;
+        const FRAGMENT_SIZE: usize = BUFFER_SIZE / 2;
+
+        const GUEST_ADDR_BASE: u32 = 0x100_0000;
+        let mem = GuestMemory::new(&[(GuestAddress(GUEST_ADDR_BASE as u64), 1024 * 1024 * 1024)])
+            .expect("Creating guest memory failed.");
+        let mut bm = Ac97BusMaster::new(mem.clone(), Box::new(DummyStreamSource::new()));
+        let mixer = Ac97Mixer::new();
+
+        // Release cold reset.
+        bm.writel(GLOB_CNT_2C, 0x0000_0002);
+
+        // Setup ping-pong buffers.
+        bm.writel(PI_BDBAR_00, GUEST_ADDR_BASE);
+        for i in 0..num_buffers {
+            let pointer_addr = GuestAddress(GUEST_ADDR_BASE as u64 + i as u64 * 8);
+            let control_addr = GuestAddress(GUEST_ADDR_BASE as u64 + i as u64 * 8 + 4);
+            mem.write_obj_at_addr(GUEST_ADDR_BASE + FRAGMENT_SIZE as u32, pointer_addr)
+                .expect("Writing guest memory failed.");
+            mem.write_obj_at_addr(IOC_MASK | (FRAGMENT_SIZE as u32) / 2, control_addr)
+                .expect("Writing guest memory failed.");
+        }
+
+        bm.writeb(PI_LVI_05, LVI_MASK, &mixer);
+
+        // Start.
+        bm.writeb(PI_CR_0B, CR_RPBM, &mixer);
+        assert_eq!(bm.readw(PI_PICB_08), 0);
+
+        std::thread::sleep(time::Duration::from_millis(50));
+        let picb = bm.readw(PI_PICB_08);
+        assert!(picb > 1000);
+        assert!(bm.readw(PI_SR_06) & SR_DCH == 0); // DMA is running.
+
+        // civ should move eventually.
+        for _i in 0..10 {
+            let civ = bm.readb(PI_CIV_04);
+            if civ != 0 {
+                break;
+            }
+            std::thread::sleep(time::Duration::from_millis(20));
+        }
+        assert_ne!(bm.readb(PI_CIV_04), 0);
+
+        let civ = bm.readb(PI_CIV_04);
+        // Sets LVI to CIV + 1 to trigger last buffer hit
+        bm.writeb(PI_LVI_05, civ + 1, &mixer);
+        std::thread::sleep(time::Duration::from_millis(5000));
+        assert_ne!(bm.readw(PI_SR_06) & SR_LVBCI, 0); // Hit last buffer
+        assert_eq!(bm.readw(PI_SR_06) & SR_DCH, SR_DCH); // DMA stopped because of lack of buffers.
+        assert_eq!(bm.readb(PI_LVI_05), bm.readb(PI_CIV_04));
+
+        // Clear the LVB bit
+        bm.writeb(PI_SR_06, SR_LVBCI as u8, &mixer);
+        assert!(bm.readw(PI_SR_06) & SR_LVBCI == 0);
+        // Reset the LVI to the last buffer and check that playback resumes
+        bm.writeb(PI_LVI_05, LVI_MASK, &mixer);
+        assert!(bm.readw(PI_SR_06) & SR_DCH == 0); // DMA restarts.
+
+        let restart_civ = bm.readb(PI_CIV_04);
+        std::thread::sleep(time::Duration::from_millis(200));
+        assert_ne!(bm.readb(PI_CIV_04), restart_civ);
+
+        // Stop.
+        bm.writeb(PI_CR_0B, 0, &mixer);
+        assert!(bm.readw(PI_SR_06) & 0x01 != 0); // DMA is not running.
     }
 }
