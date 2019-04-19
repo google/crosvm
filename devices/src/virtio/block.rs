@@ -258,8 +258,8 @@ impl Display for ExecuteError {
                 guestmemerr,
             } => write!(
                 f,
-                "failed to read {} bytes from address {} sector {}: {}",
-                length, addr, sector, guestmemerr,
+                "failed to read {} bytes from sector {} to address {}: {}",
+                length, sector, addr, guestmemerr,
             ),
             Seek { ioerr, sector } => write!(f, "failed to seek to sector {}: {}", sector, ioerr),
             TimerFd(e) => write!(f, "{}", e),
@@ -270,7 +270,7 @@ impl Display for ExecuteError {
                 guestmemerr,
             } => write!(
                 f,
-                "failed to write {} bytes to address {} sector {}: {}",
+                "failed to write {} bytes from address {} to sector {}: {}",
                 length, addr, sector, guestmemerr,
             ),
             DiscardWriteZeroes {
