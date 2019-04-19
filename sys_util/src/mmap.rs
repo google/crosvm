@@ -30,7 +30,7 @@ pub enum Error {
     /// Overlapping regions
     Overlapping(usize, usize),
     /// Requested memory range spans past the end of the region.
-    InvalidRange(usize, usize),
+    InvalidRange(usize, usize, usize),
     /// Couldn't read from the given source.
     ReadFromSource(std::io::Error),
     /// `mmap` returned the given error.
@@ -55,10 +55,10 @@ impl Display for Error {
                 "requested memory range overlaps with existing region: offset={} size={}",
                 offset, count
             ),
-            InvalidRange(offset, count) => write!(
+            InvalidRange(offset, count, region_size) => write!(
                 f,
-                "requested memory range spans past the end of the region: offset={} count={}",
-                offset, count,
+                "requested memory range spans past the end of the region: offset={} count={} region_size={}",
+                offset, count, region_size,
             ),
             ReadFromSource(e) => write!(f, "failed to read from the given source: {}", e),
             SystemCallFailed(e) => write!(f, "mmap system call failed: {}", e),
@@ -450,7 +450,7 @@ impl MemoryMapping {
     {
         let mem_end = self
             .range_end(mem_offset, count)
-            .map_err(|_| Error::InvalidRange(mem_offset, count))?;
+            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
         unsafe {
             // It is safe to overwrite the volatile memory.  Acessing the guest
             // memory as a mutable slice is OK because nothing assumes another
@@ -489,7 +489,7 @@ impl MemoryMapping {
     {
         let mem_end = self
             .range_end(mem_offset, count)
-            .map_err(|_| Error::InvalidRange(mem_offset, count))?;
+            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
         unsafe {
             // It is safe to read from volatile memory.  Acessing the guest
             // memory as a slice is OK because nothing assumes another thread
@@ -504,7 +504,7 @@ impl MemoryMapping {
     /// to the pages in the range will return zero bytes.
     pub fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()> {
         self.range_end(mem_offset, count)
-            .map_err(|_| Error::InvalidRange(mem_offset, count))?;
+            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
         let ret = unsafe {
             // madvising away the region is the same as the guest changing it.
             // Next time it is read, it may return zero pages.
@@ -515,7 +515,7 @@ impl MemoryMapping {
             )
         };
         if ret < 0 {
-            Err(Error::InvalidRange(mem_offset, count))
+            Err(Error::InvalidRange(mem_offset, count, self.size()))
         } else {
             Ok(())
         }
