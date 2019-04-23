@@ -392,6 +392,24 @@ impl Renderer {
     pub fn force_ctx_0(&self) {
         unsafe { virgl_renderer_force_ctx_0() };
     }
+
+    #[allow(unused_variables)]
+    pub fn allocation_metadata(&self, request: &[u8], response: &mut Vec<u8>) -> Result<()> {
+        #[cfg(feature = "virtio-gpu-next")]
+        {
+            let ret = unsafe {
+                virgl_renderer_allocation_metadata(
+                    request.as_ptr() as *const c_void,
+                    response.as_mut_ptr() as *mut c_void,
+                    request.len() as u32,
+                    response.len() as u32,
+                )
+            };
+            ret_to_res(ret)
+        }
+        #[cfg(not(feature = "virtio-gpu-next"))]
+        Err(Error::Unsupported)
+    }
 }
 
 /// A context in which resources can be attached/detached and commands can be submitted.

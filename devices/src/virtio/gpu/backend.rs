@@ -23,8 +23,8 @@ use gpu_renderer::{
 };
 
 use super::protocol::{
-    GpuResponse, GpuResponsePlaneInfo, VIRTIO_GPU_CAPSET3, VIRTIO_GPU_CAPSET_VIRGL,
-    VIRTIO_GPU_CAPSET_VIRGL2,
+    AllocationMetadataResponse, GpuResponse, GpuResponsePlaneInfo, VIRTIO_GPU_CAPSET3,
+    VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2,
 };
 use crate::virtio::resource_bridge::*;
 use vm_control::VmMemoryControlRequestSocket;
@@ -777,5 +777,29 @@ impl Backend {
 
     pub fn force_ctx_0(&mut self) {
         self.renderer.force_ctx_0();
+    }
+
+    pub fn allocation_metadata(
+        &mut self,
+        request_id: u32,
+        request: Vec<u8>,
+        mut response: Vec<u8>,
+    ) -> GpuResponse {
+        let res = self.renderer.allocation_metadata(&request, &mut response);
+
+        match res {
+            Ok(_) => {
+                let res_info = AllocationMetadataResponse {
+                    request_id,
+                    response,
+                };
+
+                GpuResponse::OkAllocationMetadata { res_info }
+            }
+            Err(_) => {
+                error!("failed to get metadata");
+                GpuResponse::ErrUnspec
+            }
+        }
     }
 }

@@ -262,6 +262,29 @@ impl Frontend {
                     GpuResponse::OkNoData
                 }
             }
+            GpuCommand::AllocationMetadata(info) => {
+                if reader.available_bytes() != 0 {
+                    let id = info.request_id.to_native();
+                    let request_size = info.request_size.to_native();
+                    let response_size = info.response_size.to_native();
+                    if request_size > VIRTIO_GPU_MAX_BLOB_ARGUMENT_SIZE
+                        || response_size > VIRTIO_GPU_MAX_BLOB_ARGUMENT_SIZE
+                    {
+                        return GpuResponse::ErrUnspec;
+                    }
+
+                    let mut request_buf = vec![0; request_size as usize];
+                    let response_buf = vec![0; response_size as usize];
+                    if reader.read(&mut request_buf[..]).is_ok() {
+                        self.backend
+                            .allocation_metadata(id, request_buf, response_buf)
+                    } else {
+                        GpuResponse::ErrInvalidParameter
+                    }
+                } else {
+                    GpuResponse::ErrUnspec
+                }
+            }
         }
     }
 
