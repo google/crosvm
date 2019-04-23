@@ -269,6 +269,49 @@ pub enum PicId {
 /// Number of pins on the IOAPIC.
 pub const NUM_IOAPIC_PINS: usize = 24;
 
+impl IrqRoute {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn ioapic_irq_route(irq_num: u32) -> IrqRoute {
+        IrqRoute {
+            gsi: irq_num,
+            source: IrqSource::Irqchip {
+                chip: KVM_IRQCHIP_IOAPIC,
+                pin: irq_num,
+            },
+        }
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn pic_irq_route(id: PicId, irq_num: u32) -> IrqRoute {
+        IrqRoute {
+            gsi: irq_num,
+            source: IrqSource::Irqchip {
+                chip: id as u32,
+                pin: irq_num % 8,
+            },
+        }
+    }
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {
+    let mut routes: Vec<IrqRoute> = Vec::new();
+
+    for i in 0..8 {
+        routes.push(IrqRoute::pic_irq_route(PicId::Primary, i));
+        routes.push(IrqRoute::ioapic_irq_route(i));
+    }
+    for i in 8..16 {
+        routes.push(IrqRoute::pic_irq_route(PicId::Secondary, i));
+        routes.push(IrqRoute::ioapic_irq_route(i));
+    }
+    for i in 16..NUM_IOAPIC_PINS as u32 {
+        routes.push(IrqRoute::ioapic_irq_route(i));
+    }
+
+    routes
+}
+
 // Used to invert the order when stored in a max-heap.
 #[derive(Copy, Clone, Eq, PartialEq)]
 struct MemSlot(u32);
@@ -294,6 +337,8 @@ pub struct Vm {
     device_memory: HashMap<u32, MemoryMapping>,
     mmap_arenas: HashMap<u32, MemoryMappingArena>,
     mem_slot_gaps: BinaryHeap<MemSlot>,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    routes: Vec<IrqRoute>,
 }
 
 impl Vm {
@@ -326,6 +371,8 @@ impl Vm {
                 device_memory: HashMap::new(),
                 mmap_arenas: HashMap::new(),
                 mem_slot_gaps: BinaryHeap::new(),
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                routes: kvm_default_irq_routing_table(),
             })
         } else {
             errno_result()
@@ -946,6 +993,21 @@ impl Vm {
         } else {
             errno_result()
         }
+    }
+
+    /// Add one IrqRoute into vm's irq routing table
+    /// Note that any routes added using set_gsi_routing instead of this function will be dropped.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn add_irq_route_entry(&mut self, route: IrqRoute) -> Result<()> {
+        self.routes.retain(|r| r.gsi != route.gsi);
+
+        self.routes.push(route);
+
+        self.set_gsi_routing(&self.routes)
+    }
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    pub fn add_irq_route_entry(&mut self, _route: IrqRoute) -> Result<()> {
+        Err(Error::new(EINVAL))
     }
 
     /// Sets the GSI routing table, replacing any table set with previous calls to
