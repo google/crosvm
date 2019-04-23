@@ -4,7 +4,38 @@
 
 use std;
 use std::io::Read;
-use std::mem;
+use std::mem::size_of;
+
+// Returns a `Vec<T>` with a size in ytes at least as large as `size_in_bytes`.
+fn vec_with_size_in_bytes<T: Default>(size_in_bytes: usize) -> Vec<T> {
+    let rounded_size = (size_in_bytes + size_of::<T>() - 1) / size_of::<T>();
+    let mut v = Vec::with_capacity(rounded_size);
+    for _ in 0..rounded_size {
+        v.push(T::default())
+    }
+    v
+}
+
+/// The kvm API has many structs that resemble the following `Foo` structure:
+///
+/// ```
+/// #[repr(C)]
+/// struct Foo {
+///    some_data: u32
+///    entries: __IncompleteArrayField<__u32>,
+/// }
+/// ```
+///
+/// In order to allocate such a structure, `size_of::<Foo>()` would be too small because it would not
+/// include any space for `entries`. To make the allocation large enough while still being aligned
+/// for `Foo`, a `Vec<Foo>` is created. Only the first element of `Vec<Foo>` would actually be used
+/// as a `Foo`. The remaining memory in the `Vec<Foo>` is for `entries`, which must be contiguous
+/// with `Foo`. This function is used to make the `Vec<Foo>` with enough space for `count` entries.
+pub fn vec_with_array_field<T: Default, F>(count: usize) -> Vec<T> {
+    let element_space = count * size_of::<F>();
+    let vec_size_bytes = size_of::<T>() + element_space;
+    vec_with_size_in_bytes(vec_size_bytes)
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -21,7 +52,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// * `f` - The input to read from.  Often this is a file.
 /// * `out` - The struct to fill with data read from `f`.
 pub unsafe fn read_struct<T: Copy, F: Read>(f: &mut F, out: &mut T) -> Result<()> {
-    let out_slice = std::slice::from_raw_parts_mut(out as *mut T as *mut u8, mem::size_of::<T>());
+    let out_slice = std::slice::from_raw_parts_mut(out as *mut T as *mut u8, size_of::<T>());
     f.read_exact(out_slice).map_err(|_| Error::ReadStruct)?;
     Ok(())
 }
@@ -38,10 +69,8 @@ pub unsafe fn read_struct<T: Copy, F: Read>(f: &mut F, out: &mut T) -> Result<()
 pub unsafe fn read_struct_slice<T: Copy, F: Read>(f: &mut F, len: usize) -> Result<Vec<T>> {
     let mut out: Vec<T> = Vec::with_capacity(len);
     out.set_len(len);
-    let out_slice = std::slice::from_raw_parts_mut(
-        out.as_ptr() as *mut T as *mut u8,
-        mem::size_of::<T>() * len,
-    );
+    let out_slice =
+        std::slice::from_raw_parts_mut(out.as_ptr() as *mut T as *mut u8, size_of::<T>() * len);
     f.read_exact(out_slice).map_err(|_| Error::ReadStruct)?;
     Ok(out)
 }

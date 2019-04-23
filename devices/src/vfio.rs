@@ -14,8 +14,8 @@ use std::u32;
 
 use kvm::Vm;
 use sys_util::{
-    ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn, Error,
-    GuestMemory,
+    ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
+    vec_with_array_field, warn, Error, EventFd, GuestMemory,
 };
 
 use vfio_sys::*;
@@ -38,6 +38,8 @@ pub enum VfioError {
     InvalidPath,
     IommuDmaMap(Error),
     IommuDmaUnmap(Error),
+    VfioMsiEnable(Error),
+    VfioMsiDisable(Error),
 }
 
 impl fmt::Display for VfioError {
@@ -59,6 +61,8 @@ impl fmt::Display for VfioError {
             VfioError::InvalidPath => write!(f,"invalid file path"),
             VfioError::IommuDmaMap(e) => write!(f, "failed to add guest memory map into iommu table: {}", e),
             VfioError::IommuDmaUnmap(e) => write!(f, "failed to remove guest memory map from iommu table: {}", e),
+            VfioError::VfioMsiEnable(e) => write!(f, "failed to enable vfio deviece's MSI: {}", e),
+            VfioError::VfioMsiDisable(e) => write!(f, "failed to disable vfio deviece's MSI: {}", e),
         }
     }
 }
@@ -304,6 +308,50 @@ impl VfioDevice {
             regions: dev_regions,
             guest_mem,
         })
+    }
+
+    /// enable vfio device's MSI and associate EventFd with this MSI
+    pub fn msi_enable(&self, fd: &EventFd) -> Result<(), VfioError> {
+        let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(1);
+        irq_set[0].argsz = (mem::size_of::<vfio_irq_set>() + mem::size_of::<u32>()) as u32;
+        irq_set[0].flags = VFIO_IRQ_SET_DATA_EVENTFD | VFIO_IRQ_SET_ACTION_TRIGGER;
+        irq_set[0].index = VFIO_PCI_MSI_IRQ_INDEX;
+        irq_set[0].start = 0;
+        irq_set[0].count = 1;
+
+        {
+            // irq_set.data could be none, bool or fd according to flags, so irq_set.data
+            // is u8 default, here irq_set.data is fd as u32, so 4 default u8 are combined
+            // together as u32. It is safe as enough space is reserved through
+            // vec_with_array_field(u32)<1>.
+            let fds = unsafe { irq_set[0].data.as_mut_slice(4) };
+            fds.copy_from_slice(&fd.as_raw_fd().to_le_bytes()[..]);
+        }
+
+        // Safe as we are the owner of self and irq_set which are valid value
+        let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
+        if ret < 0 {
+            Err(VfioError::VfioMsiEnable(get_error()))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn msi_disable(&self) -> Result<(), VfioError> {
+        let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(0);
+        irq_set[0].argsz = mem::size_of::<vfio_irq_set>() as u32;
+        irq_set[0].flags = VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_ACTION_TRIGGER;
+        irq_set[0].index = VFIO_PCI_MSI_IRQ_INDEX;
+        irq_set[0].start = 0;
+        irq_set[0].count = 0;
+
+        // Safe as we are the owner of self and irq_set which are valid value
+        let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
+        if ret < 0 {
+            Err(VfioError::VfioMsiDisable(get_error()))
+        } else {
+            Ok(())
+        }
     }
 
     fn get_regions(dev: &File) -> Result<Vec<VfioRegion>, VfioError> {

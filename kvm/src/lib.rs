@@ -23,45 +23,14 @@ use msg_socket::MsgOnSocket;
 #[allow(unused_imports)]
 use sys_util::{
     ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
-    pagesize, signal, warn, Error, EventFd, GuestAddress, GuestMemory, MemoryMapping,
-    MemoryMappingArena, Result,
+    pagesize, signal, vec_with_array_field, warn, Error, EventFd, GuestAddress, GuestMemory,
+    MemoryMapping, MemoryMappingArena, Result,
 };
 
 pub use crate::cap::*;
 
 fn errno_result<T>() -> Result<T> {
     Err(Error::last())
-}
-
-// Returns a `Vec<T>` with a size in ytes at least as large as `size_in_bytes`.
-fn vec_with_size_in_bytes<T: Default>(size_in_bytes: usize) -> Vec<T> {
-    let rounded_size = (size_in_bytes + size_of::<T>() - 1) / size_of::<T>();
-    let mut v = Vec::with_capacity(rounded_size);
-    for _ in 0..rounded_size {
-        v.push(T::default())
-    }
-    v
-}
-
-// The kvm API has many structs that resemble the following `Foo` structure:
-//
-// ```
-// #[repr(C)]
-// struct Foo {
-//    some_data: u32
-//    entries: __IncompleteArrayField<__u32>,
-// }
-// ```
-//
-// In order to allocate such a structure, `size_of::<Foo>()` would be too small because it would not
-// include any space for `entries`. To make the allocation large enough while still being aligned
-// for `Foo`, a `Vec<Foo>` is created. Only the first element of `Vec<Foo>` would actually be used
-// as a `Foo`. The remaining memory in the `Vec<Foo>` is for `entries`, which must be contiguous
-// with `Foo`. This function is used to make the `Vec<Foo>` with enough space for `count` entries.
-fn vec_with_array_field<T: Default, F>(count: usize) -> Vec<T> {
-    let element_space = count * size_of::<F>();
-    let vec_size_bytes = size_of::<T>() + element_space;
-    vec_with_size_in_bytes(vec_size_bytes)
 }
 
 unsafe fn set_user_memory_region<F: AsRawFd>(

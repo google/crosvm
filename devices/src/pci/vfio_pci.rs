@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
 use std::u32;
 
@@ -77,6 +77,134 @@ impl VfioPciConfig {
     }
 }
 
+const PCI_CAPABILITY_LIST: u32 = 0x34;
+const PCI_CAP_ID_MSI: u8 = 0x05;
+
+// MSI registers
+const PCI_MSI_NEXT_POINTER: u32 = 0x1; // Next cap pointer
+const PCI_MSI_FLAGS: u32 = 0x2; // Message Control
+const PCI_MSI_FLAGS_ENABLE: u16 = 0x0001; // MSI feature enabled
+const PCI_MSI_FLAGS_64BIT: u16 = 0x0080; // 64-bit addresses allowed
+const PCI_MSI_FLAGS_MASKBIT: u16 = 0x0100; // Per-vector masking capable
+const PCI_MSI_ADDRESS_LO: u32 = 0x4; // MSI address lower 32 bits
+const PCI_MSI_ADDRESS_HI: u32 = 0x8; // MSI address upper 32 bits (if 64 bit allowed)
+const PCI_MSI_DATA_32: u32 = 0x8; // 16 bits of data for 32-bit message address
+const PCI_MSI_DATA_64: u32 = 0xC; // 16 bits of date for 64-bit message address
+
+// MSI length
+const MSI_LENGTH_32BIT: u32 = 0xA;
+const MSI_LENGTH_64BIT_WITHOUT_MASK: u32 = 0xE;
+const MSI_LENGTH_64BIT_WITH_MASK: u32 = 0x18;
+
+enum VfioMsiChange {
+    Disable,
+    Enable,
+}
+
+struct VfioMsiCap {
+    offset: u32,
+    size: u32,
+    ctl: u16,
+    address: u64,
+    data: u16,
+}
+
+impl VfioMsiCap {
+    fn new(config: &VfioPciConfig) -> Option<Self> {
+        // msi minimum size is 0xa
+        let mut msi_len: u32 = MSI_LENGTH_32BIT;
+        let mut cap_next: u32 = config.read_config_byte(PCI_CAPABILITY_LIST).into();
+        while cap_next != 0 {
+            let cap_id = config.read_config_byte(cap_next);
+            // find msi cap
+            if cap_id == PCI_CAP_ID_MSI {
+                let msi_ctl = config.read_config_word(cap_next + PCI_MSI_FLAGS);
+                if msi_ctl & PCI_MSI_FLAGS_64BIT != 0 {
+                    msi_len = MSI_LENGTH_64BIT_WITHOUT_MASK;
+                }
+                if msi_ctl & PCI_MSI_FLAGS_MASKBIT != 0 {
+                    msi_len = MSI_LENGTH_64BIT_WITH_MASK;
+                }
+                return Some(VfioMsiCap {
+                    offset: cap_next,
+                    size: msi_len,
+                    ctl: 0,
+                    address: 0,
+                    data: 0,
+                });
+            }
+            let offset = cap_next + PCI_MSI_NEXT_POINTER;
+            cap_next = config.read_config_byte(offset).into();
+        }
+
+        None
+    }
+
+    fn is_msi_reg(&self, index: u64, len: usize) -> bool {
+        if index >= self.offset as u64
+            && index + len as u64 <= (self.offset + self.size) as u64
+            && len as u32 <= self.size
+        {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn write_msi_reg(&mut self, index: u64, data: &[u8]) -> Option<VfioMsiChange> {
+        let len = data.len();
+        let offset = index as u32 - self.offset;
+        let mut ret: Option<VfioMsiChange> = None;
+
+        // write msi ctl
+        if len == 2 && offset == PCI_MSI_FLAGS {
+            let was_enabled = self.is_msi_enabled();
+            let value: [u8; 2] = [data[0], data[1]];
+            self.ctl = u16::from_le_bytes(value);
+            let is_enabled = self.is_msi_enabled();
+            if !was_enabled && is_enabled {
+                ret = Some(VfioMsiChange::Enable);
+            } else if was_enabled && !is_enabled {
+                ret = Some(VfioMsiChange::Disable)
+            }
+        } else if len == 4 && offset == PCI_MSI_ADDRESS_LO && self.size == MSI_LENGTH_32BIT {
+            //write 32 bit message address
+            let value: [u8; 8] = [data[0], data[1], data[2], data[3], 0, 0, 0, 0];
+            self.address = u64::from_le_bytes(value);
+        } else if len == 4 && offset == PCI_MSI_ADDRESS_LO && self.size != MSI_LENGTH_32BIT {
+            // write 64 bit message address low part
+            let value: [u8; 8] = [data[0], data[1], data[2], data[3], 0, 0, 0, 0];
+            self.address &= !0xffffffff;
+            self.address |= u64::from_le_bytes(value);
+        } else if len == 4 && offset == PCI_MSI_ADDRESS_HI && self.size != MSI_LENGTH_32BIT {
+            //write 64 bit message address high part
+            let value: [u8; 8] = [0, 0, 0, 0, data[0], data[1], data[2], data[3]];
+            self.address &= 0xffffffff;
+            self.address |= u64::from_le_bytes(value);
+        } else if len == 8 && offset == PCI_MSI_ADDRESS_LO && self.size != MSI_LENGTH_32BIT {
+            // write 64 bit message address
+            let value: [u8; 8] = [
+                data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+            ];
+            self.address = u64::from_le_bytes(value);
+        } else if len == 2
+            && ((offset == PCI_MSI_DATA_32 && self.size == MSI_LENGTH_32BIT)
+                || (offset == PCI_MSI_DATA_64 && self.size == MSI_LENGTH_64BIT_WITH_MASK)
+                || (offset == PCI_MSI_DATA_64 && self.size == MSI_LENGTH_64BIT_WITHOUT_MASK))
+        {
+            // write message data
+            let value: [u8; 2] = [data[0], data[1]];
+            self.data = u16::from_le_bytes(value);
+        }
+
+        ret
+    }
+
+    fn is_msi_enabled(&self) -> bool {
+        self.ctl & PCI_MSI_FLAGS_ENABLE == PCI_MSI_FLAGS_ENABLE
+    }
+}
+
 struct MmioInfo {
     bar_index: u32,
     start: u64,
@@ -96,6 +224,7 @@ pub struct VfioPciDevice {
     interrupt_resample_evt: Option<EventFd>,
     mmio_regions: Vec<MmioInfo>,
     io_regions: Vec<IoInfo>,
+    msi_cap: Option<VfioMsiCap>,
 }
 
 impl VfioPciDevice {
@@ -103,6 +232,8 @@ impl VfioPciDevice {
     pub fn new(device: VfioDevice) -> Self {
         let dev = Arc::new(device);
         let config = VfioPciConfig::new(Arc::clone(&dev));
+        let msi_cap = VfioMsiCap::new(&config);
+
         VfioPciDevice {
             device: dev,
             config,
@@ -111,6 +242,7 @@ impl VfioPciDevice {
             interrupt_resample_evt: None,
             mmio_regions: Vec::new(),
             io_regions: Vec::new(),
+            msi_cap,
         }
     }
 
@@ -139,7 +271,14 @@ impl PciDevice for VfioPciDevice {
     }
 
     fn keep_fds(&self) -> Vec<RawFd> {
-        self.device.keep_fds()
+        let mut fds = self.device.keep_fds();
+        if let Some(ref interrupt_evt) = self.interrupt_evt {
+            fds.push(interrupt_evt.as_raw_fd());
+        }
+        if let Some(ref interrupt_resample_evt) = self.interrupt_resample_evt {
+            fds.push(interrupt_resample_evt.as_raw_fd());
+        }
+        fds
     }
 
     fn assign_irq(
@@ -274,11 +413,30 @@ impl PciDevice for VfioPciDevice {
     }
 
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
-        self.device.region_write(
-            VFIO_PCI_CONFIG_REGION_INDEX,
-            data,
-            (reg_idx * 4) as u64 + offset,
-        )
+        let start = (reg_idx * 4) as u64 + offset;
+
+        if let Some(msi_cap) = self.msi_cap.as_mut() {
+            if msi_cap.is_msi_reg(start, data.len()) {
+                if let Some(ref interrupt_evt) = self.interrupt_evt {
+                    match msi_cap.write_msi_reg(start, data) {
+                        Some(VfioMsiChange::Enable) => {
+                            if let Err(e) = self.device.msi_enable(interrupt_evt) {
+                                error!("{}", e);
+                            }
+                        }
+                        Some(VfioMsiChange::Disable) => {
+                            if let Err(e) = self.device.msi_disable() {
+                                error!("{}", e);
+                            }
+                        }
+                        None => (),
+                    }
+                }
+            }
+        }
+
+        self.device
+            .region_write(VFIO_PCI_CONFIG_REGION_INDEX, data, start);
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
