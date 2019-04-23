@@ -205,7 +205,7 @@ fn create_pci_nodes(
     // and "PCI Bus Binding to IEEE Std 1275-1994".
     let ranges = generate_prop32(&[
         // mmio addresses
-        0x2000000,                        // (ss = 01: 32-bit memory space)
+        0x3000000,                        // (ss = 11: 64-bit memory space)
         (AARCH64_MMIO_BASE >> 32) as u32, // PCI address
         AARCH64_MMIO_BASE as u32,
         (AARCH64_MMIO_BASE >> 32) as u32, // CPU address
