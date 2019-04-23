@@ -685,6 +685,24 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.executable_path = Some(Executable::Bios(PathBuf::from(value.unwrap().to_owned())));
         }
+        "vfio" => {
+            let vfio_path = PathBuf::from(value.unwrap());
+            if !vfio_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: "the vfio path does not exist",
+                });
+            }
+            if !vfio_path.is_dir() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: "the vfio path should be directory",
+                });
+            }
+
+            cfg.vfio = Some(vfio_path);
+        }
+
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -774,6 +792,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("split-irqchip", "(EXPERIMENTAL) enable split-irqchip support"),
           Argument::value("bios", "PATH", "Path to BIOS/firmware ROM"),
+          Argument::value("vfio", "PATH", "Path to sysfs of pass through or mdev device"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

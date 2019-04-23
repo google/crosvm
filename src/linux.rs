@@ -27,7 +27,10 @@ use libc::{self, c_int, gid_t, uid_t};
 
 use audio_streams::DummyStreamSource;
 use devices::virtio::{self, VirtioDevice};
-use devices::{self, HostBackendDeviceProvider, PciDevice, VirtioPciDevice, XhciController};
+use devices::{
+    self, HostBackendDeviceProvider, PciDevice, VfioDevice, VfioPciDevice, VirtioPciDevice,
+    XhciController,
+};
 use io_jail::{self, Minijail};
 use kvm::*;
 use libcras::CrasClient;
@@ -91,6 +94,7 @@ pub enum Error {
     CreateTimerFd(sys_util::Error),
     CreateTpmStorage(PathBuf, io::Error),
     CreateUsbProvider(devices::usb::host_backend::error::Error),
+    CreateVfioDevice(devices::vfio::VfioError),
     DeviceJail(io_jail::Error),
     DevicePivotRoot(io_jail::Error),
     Disk(io::Error),
@@ -172,6 +176,7 @@ impl Display for Error {
                 write!(f, "failed to create tpm storage dir {}: {}", p.display(), e)
             }
             CreateUsbProvider(e) => write!(f, "failed to create usb provider: {}", e),
+            CreateVfioDevice(e) => write!(f, "Failed to create vfio device {}", e),
             DeviceJail(e) => write!(f, "failed to jail device: {}", e),
             DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
             Disk(e) => write!(f, "failed to load disk image: {}", e),
@@ -978,6 +983,13 @@ fn create_devices(
     // Create xhci controller.
     let usb_controller = Box::new(XhciController::new(mem.clone(), usb_provider));
     pci_devices.push((usb_controller, simple_jail(&cfg, "xhci.policy")?));
+
+    if cfg.vfio.is_some() {
+        let vfio_path = cfg.vfio.as_ref().unwrap().as_path();
+        let vfiodevice = Box::new(VfioDevice::new(vfio_path, vm).map_err(Error::CreateVfioDevice)?);
+        let vfiopcidevice = Box::new(VfioPciDevice::new(vfiodevice));
+        pci_devices.push((vfiopcidevice, simple_jail(&cfg, "vfio_device.policy")?));
+    }
 
     Ok(pci_devices)
 }

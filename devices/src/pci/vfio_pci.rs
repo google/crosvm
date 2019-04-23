@@ -139,8 +139,7 @@ impl PciDevice for VfioPciDevice {
     }
 
     fn keep_fds(&self) -> Vec<RawFd> {
-        let fds = Vec::new();
-        fds
+        self.device.keep_fds()
     }
 
     fn assign_irq(

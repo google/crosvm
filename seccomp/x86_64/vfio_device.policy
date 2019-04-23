@@ -1,0 +1,10 @@
+# Copyright 2019 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+@include /usr/share/policy/crosvm/common_device.policy
+
+# VFIO_DEVICE_SET_IRQS, VFIO_IOMMU_MAP/UNMAP_DMA
+ioctl: arg1 == 0x3B6E || arg1 == 0x3B71 || arg1 == 0x3B72
+readlink: 1
+pread64: 1
+pwrite64: 1

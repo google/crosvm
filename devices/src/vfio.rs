@@ -111,6 +111,7 @@ impl AsRawFd for VfioContainer {
 
 struct VfioGroup {
     group: File,
+    container: VfioContainer,
 }
 
 impl VfioGroup {
@@ -163,7 +164,10 @@ impl VfioGroup {
 
         Self::kvm_device_add_group(vm, &group_file)?;
 
-        Ok(VfioGroup { group: group_file })
+        Ok(VfioGroup {
+            group: group_file,
+            container,
+        })
     }
 
     fn kvm_device_add_group(vm: &Vm, group: &File) -> Result<File, VfioError> {
@@ -230,6 +234,7 @@ struct VfioRegion {
 /// Vfio device for exposing regions which could be read/write to kernel vfio device.
 pub struct VfioDevice {
     dev: File,
+    group: VfioGroup,
     regions: Vec<VfioRegion>,
 }
 
@@ -254,6 +259,7 @@ impl VfioDevice {
 
         Ok(VfioDevice {
             dev: new_dev,
+            group,
             regions: dev_regions,
         })
     }
@@ -367,6 +373,15 @@ impl VfioDevice {
                 index, addr, e
             );
         }
+    }
+
+    /// get vfio device's fds which are passed into minijail process
+    pub fn keep_fds(&self) -> Vec<RawFd> {
+        let mut fds = Vec::new();
+        fds.push(self.as_raw_fd());
+        fds.push(self.group.as_raw_fd());
+        fds.push(self.group.container.as_raw_fd());
+        fds
     }
 }
 
