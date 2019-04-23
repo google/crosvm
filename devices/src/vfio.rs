@@ -281,15 +281,20 @@ pub enum VfioIrqType {
 }
 
 struct VfioRegion {
+    // flags for this region: read/write/mmap
     flags: u32,
     size: u64,
+    // region offset used to read/write with vfio device fd
     offset: u64,
+    // vectors for mmap offset and size
+    mmaps: Vec<vfio_region_sparse_mmap_area>,
 }
 
 /// Vfio device for exposing regions which could be read/write to kernel vfio device.
 pub struct VfioDevice {
     dev: File,
     group: VfioGroup,
+    // vec for vfio device's regions
     regions: Vec<VfioRegion>,
     guest_mem: GuestMemory,
 }
@@ -453,6 +458,7 @@ impl VfioDevice {
         }
     }
 
+    #[allow(clippy::cast_ptr_alignment)]
     fn get_regions(dev: &File) -> Result<Vec<VfioRegion>, VfioError> {
         let mut regions: Vec<VfioRegion> = Vec::new();
         let mut dev_info = vfio_device_info {
@@ -473,8 +479,9 @@ impl VfioDevice {
         }
 
         for i in VFIO_PCI_BAR0_REGION_INDEX..dev_info.num_regions {
+            let argsz = mem::size_of::<vfio_region_info>() as u32;
             let mut reg_info = vfio_region_info {
-                argsz: mem::size_of::<vfio_region_info>() as u32,
+                argsz,
                 flags: 0,
                 index: i,
                 cap_offset: 0,
@@ -488,15 +495,137 @@ impl VfioDevice {
                 continue;
             }
 
+            let mut mmaps: Vec<vfio_region_sparse_mmap_area> = Vec::new();
+            if reg_info.argsz > argsz {
+                let cap_len: usize = (reg_info.argsz - argsz) as usize;
+                let mut region_with_cap =
+                    vec_with_array_field::<vfio_region_info_with_cap, u8>(cap_len);
+                region_with_cap[0].region_info.argsz = reg_info.argsz;
+                region_with_cap[0].region_info.flags = 0;
+                region_with_cap[0].region_info.index = i;
+                region_with_cap[0].region_info.cap_offset = 0;
+                region_with_cap[0].region_info.size = 0;
+                region_with_cap[0].region_info.offset = 0;
+                // Safe as we are the owner of dev and region_info which are valid value,
+                // and we verify the return value.
+                ret = unsafe {
+                    ioctl_with_mut_ref(
+                        dev,
+                        VFIO_DEVICE_GET_REGION_INFO(),
+                        &mut (region_with_cap[0].region_info),
+                    )
+                };
+                if ret < 0 {
+                    return Err(VfioError::VfioDeviceGetRegionInfo(get_error()));
+                }
+
+                if region_with_cap[0].region_info.flags & VFIO_REGION_INFO_FLAG_CAPS == 0 {
+                    continue;
+                }
+
+                let cap_header_sz = mem::size_of::<vfio_info_cap_header>() as u32;
+                let mmap_cap_sz = mem::size_of::<vfio_region_info_cap_sparse_mmap>() as u32;
+                let mmap_area_sz = mem::size_of::<vfio_region_sparse_mmap_area>() as u32;
+                let region_info_sz = reg_info.argsz;
+
+                // region_with_cap[0].cap_info may contain many structures, like
+                // vfio_region_info_cap_sparse_mmap struct or vfio_region_info_cap_type struct.
+                // Both of them begin with vfio_info_cap_header, so we will get individual cap from
+                // vfio_into_cap_header.
+                // Go through all the cap structs.
+                let info_ptr = region_with_cap.as_ptr() as *mut u8;
+                let mut offset = region_with_cap[0].region_info.cap_offset;
+                while offset != 0 {
+                    if offset + cap_header_sz >= region_info_sz {
+                        break;
+                    }
+                    // Safe, as cap_header struct is in this function allocated region_with_cap
+                    // vec.
+                    let cap_ptr = unsafe { info_ptr.offset(offset as isize) };
+                    let cap_header =
+                        unsafe { &*(cap_ptr as *mut u8 as *const vfio_info_cap_header) };
+                    if cap_header.id as u32 == VFIO_REGION_INFO_CAP_SPARSE_MMAP {
+                        if offset + mmap_cap_sz >= region_info_sz {
+                            break;
+                        }
+                        // cap_ptr is vfio_region_info_cap_sparse_mmap here
+                        // Safe, this vfio_region_info_cap_sparse_mmap is in this function allocated
+                        // region_with_cap vec.
+                        let sparse_mmap = unsafe {
+                            &*(cap_ptr as *mut u8 as *const vfio_region_info_cap_sparse_mmap)
+                        };
+
+                        let area_num = sparse_mmap.nr_areas;
+                        if offset + mmap_cap_sz + area_num * mmap_area_sz > region_info_sz {
+                            break;
+                        }
+                        // Safe, these vfio_region_sparse_mmap_area are in this function allocated
+                        // region_with_cap vec.
+                        let areas =
+                            unsafe { sparse_mmap.areas.as_slice(sparse_mmap.nr_areas as usize) };
+                        for area in areas.iter() {
+                            mmaps.push(area.clone());
+                        }
+                    }
+
+                    offset = cap_header.next;
+                }
+            } else if reg_info.flags & VFIO_REGION_INFO_FLAG_MMAP != 0 {
+                mmaps.push(vfio_region_sparse_mmap_area {
+                    offset: 0,
+                    size: reg_info.size,
+                });
+            }
+
             let region = VfioRegion {
                 flags: reg_info.flags,
                 size: reg_info.size,
                 offset: reg_info.offset,
+                mmaps,
             };
             regions.push(region);
         }
 
         Ok(regions)
+    }
+
+    /// get a region's flag
+    /// the return's value may conatin:
+    ///     VFIO_REGION_INFO_FLAG_READ:  region supports read
+    ///     VFIO_REGION_INFO_FLAG_WRITE: region supports write
+    ///     VFIO_REGION_INFO_FLAG_MMAP:  region supports mmap
+    ///     VFIO_REGION_INFO_FLAG_CAPS:  region's info supports caps
+    pub fn get_region_flags(&self, index: u32) -> u32 {
+        match self.regions.get(index as usize) {
+            Some(v) => v.flags,
+            None => {
+                warn!("get_region_flags() with invalid index: {}", index);
+                0
+            }
+        }
+    }
+
+    /// get a region's offset
+    /// return: Region offset from the start of vfio device fd
+    pub fn get_region_offset(&self, index: u32) -> u64 {
+        match self.regions.get(index as usize) {
+            Some(v) => v.offset,
+            None => {
+                warn!("get_region_offset with invalid index: {}", index);
+                0
+            }
+        }
+    }
+
+    /// get a region's mmap info vector
+    pub fn get_region_mmap(&self, index: u32) -> Vec<vfio_region_sparse_mmap_area> {
+        match self.regions.get(index as usize) {
+            Some(v) => v.mmaps.clone(),
+            None => {
+                warn!("get_region_mmap with invalid index: {}", index);
+                Vec::new()
+            }
+        }
     }
 
     /// Read region's data from VFIO device into buf

@@ -1084,10 +1084,18 @@ fn create_devices(
             msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
         control_sockets.push(TaggedControlSocket::VmIrq(vfio_host_socket_irq));
 
+        let (vfio_host_socket_mem, vfio_device_socket_mem) =
+            msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>().map_err(Error::CreateSocket)?;
+        control_sockets.push(TaggedControlSocket::VmMemory(vfio_host_socket_mem));
+
         let vfio_path = cfg.vfio.as_ref().unwrap().as_path();
         let vfiodevice =
             VfioDevice::new(vfio_path, vm, mem.clone()).map_err(Error::CreateVfioDevice)?;
-        let vfiopcidevice = Box::new(VfioPciDevice::new(vfiodevice, vfio_device_socket_irq));
+        let vfiopcidevice = Box::new(VfioPciDevice::new(
+            vfiodevice,
+            vfio_device_socket_irq,
+            vfio_device_socket_mem,
+        ));
         pci_devices.push((vfiopcidevice, simple_jail(&cfg, "vfio_device.policy")?));
     }
 

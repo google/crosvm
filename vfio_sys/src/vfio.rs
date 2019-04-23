@@ -225,6 +225,12 @@ pub struct vfio_region_info {
     pub offset: __u64,
 }
 #[repr(C)]
+#[derive(Debug, Default)]
+pub struct vfio_region_info_with_cap {
+    pub region_info: vfio_region_info,
+    pub cap_info: __IncompleteArrayField<u8>,
+}
+#[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct vfio_region_sparse_mmap_area {
     pub offset: __u64,

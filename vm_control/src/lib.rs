@@ -201,6 +201,13 @@ pub enum VmMemoryRequest {
         height: u32,
         format: u32,
     },
+    /// Register mmaped memory into kvm's EPT.
+    RegisterMmapMemory {
+        fd: MaybeOwnedFd,
+        size: usize,
+        offset: usize,
+        gpa: u64,
+    },
 }
 
 impl VmMemoryRequest {
@@ -257,6 +264,21 @@ impl VmMemoryRequest {
                         slot,
                         desc,
                     },
+                    Err(e) => VmMemoryResponse::Err(e),
+                }
+            }
+            RegisterMmapMemory {
+                ref fd,
+                size,
+                offset,
+                gpa,
+            } => {
+                let mmap = match MemoryMapping::from_fd_offset(fd, size, offset) {
+                    Ok(v) => v,
+                    Err(_e) => return VmMemoryResponse::Err(SysError::new(EINVAL)),
+                };
+                match vm.add_mmio_memory(GuestAddress(gpa), mmap, false, false) {
+                    Ok(_) => VmMemoryResponse::Ok,
                     Err(e) => VmMemoryResponse::Err(e),
                 }
             }

@@ -9,10 +9,13 @@ use std::u32;
 use kvm::Datamatch;
 use msg_socket::{MsgReceiver, MsgSender};
 use resources::{Alloc, MmioType, SystemAllocator};
-use sys_util::{error, EventFd};
+use sys_util::{error, EventFd, MemoryMapping};
 
 use vfio_sys::*;
-use vm_control::{MaybeOwnedFd, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
+use vm_control::{
+    MaybeOwnedFd, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse, VmMemoryControlRequestSocket,
+    VmMemoryRequest, VmMemoryResponse,
+};
 
 use crate::pci::pci_device::{Error as PciDeviceError, PciDevice};
 use crate::pci::PciInterruptPin;
@@ -306,11 +309,19 @@ pub struct VfioPciDevice {
     io_regions: Vec<IoInfo>,
     msi_cap: Option<VfioMsiCap>,
     irq_type: Option<VfioIrqType>,
+    vm_socket_mem: VmMemoryControlRequestSocket,
+
+    // scratch MemoryMapping to avoid unmap beform vm exit
+    mem: Vec<MemoryMapping>,
 }
 
 impl VfioPciDevice {
     /// Constructs a new Vfio Pci device for the give Vfio device
-    pub fn new(device: VfioDevice, vfio_device_socket_irq: VmIrqRequestSocket) -> Self {
+    pub fn new(
+        device: VfioDevice,
+        vfio_device_socket_irq: VmIrqRequestSocket,
+        vfio_device_socket_mem: VmMemoryControlRequestSocket,
+    ) -> Self {
         let dev = Arc::new(device);
         let config = VfioPciConfig::new(Arc::clone(&dev));
         let msi_cap = VfioMsiCap::new(&config, vfio_device_socket_irq);
@@ -325,6 +336,8 @@ impl VfioPciDevice {
             io_regions: Vec::new(),
             msi_cap,
             irq_type: None,
+            vm_socket_mem: vfio_device_socket_mem,
+            mem: Vec::new(),
         }
     }
 
@@ -421,7 +434,84 @@ impl VfioPciDevice {
 
         self.enable_intx();
     }
+
+    fn add_bar_mmap(&self, index: u32, bar_addr: u64) -> Vec<MemoryMapping> {
+        let mut mem_map: Vec<MemoryMapping> = Vec::new();
+        if self.device.get_region_flags(index) & VFIO_REGION_INFO_FLAG_MMAP != 0 {
+            let mmaps = self.device.get_region_mmap(index);
+            if mmaps.is_empty() {
+                return mem_map;
+            }
+
+            for mmap in mmaps.iter() {
+                let mmap_offset = mmap.offset;
+                let mmap_size = mmap.size;
+                let guest_map_start = bar_addr + mmap_offset;
+                let region_offset = self.device.get_region_offset(index);
+                let offset: usize = (region_offset + mmap_offset) as usize;
+                if self
+                    .vm_socket_mem
+                    .send(&VmMemoryRequest::RegisterMmapMemory {
+                        fd: MaybeOwnedFd::Borrowed(self.device.as_raw_fd()),
+                        size: mmap_size as usize,
+                        offset,
+                        gpa: guest_map_start,
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+
+                let response = match self.vm_socket_mem.recv() {
+                    Ok(res) => res,
+                    Err(_) => break,
+                };
+                match response {
+                    VmMemoryResponse::Ok => {
+                        // Even if vm has mapped this region, but it is in vm main process,
+                        // device process doesn't has this mapping, but vfio_dma_map() need it
+                        // in device process, so here map it again.
+                        let mmap = match MemoryMapping::from_fd_offset(
+                            self.device.as_ref(),
+                            mmap_size as usize,
+                            offset,
+                        ) {
+                            Ok(v) => v,
+                            Err(_e) => break,
+                        };
+                        let host = (&mmap).as_ptr() as u64;
+                        // Safe because the given guest_map_start is valid guest bar address. and
+                        // the host pointer is correct and valid guaranteed by MemoryMapping interface.
+                        match unsafe { self.device.vfio_dma_map(guest_map_start, mmap_size, host) }
+                        {
+                            Ok(_) => mem_map.push(mmap),
+                            Err(e) => {
+                                error!(
+                                    "{}, index: {}, bar_addr:0x{:x}, host:0x{:x}",
+                                    e, index, bar_addr, host
+                                );
+                                break;
+                            }
+                        }
+                    }
+                    _ => break,
+                }
+            }
+        }
+
+        mem_map
+    }
+
+    fn enable_bars_mmap(&mut self) {
+        for mmio_info in self.mmio_regions.iter() {
+            let mut mem_map = self.add_bar_mmap(mmio_info.bar_index, mmio_info.start);
+            self.mem.append(&mut mem_map);
+        }
+    }
 }
+
+const PCI_COMMAND: u8 = 0x4;
+const PCI_COMMAND_MEMORY: u8 = 0x2;
 
 impl PciDevice for VfioPciDevice {
     fn debug_label(&self) -> String {
@@ -443,6 +533,7 @@ impl PciDevice for VfioPciDevice {
         if let Some(msi_cap) = &self.msi_cap {
             fds.push(msi_cap.get_vm_socket());
         }
+        fds.push(self.vm_socket_mem.as_raw_fd());
         fds
     }
 
@@ -599,6 +690,15 @@ impl PciDevice for VfioPciDevice {
             Some(VfioMsiChange::Enable) => self.enable_msi(),
             Some(VfioMsiChange::Disable) => self.disable_msi(),
             None => (),
+        }
+
+        // if guest enable memory access, then enable bar mappable once
+        if start == PCI_COMMAND as u64
+            && data.len() == 2
+            && data[0] & PCI_COMMAND_MEMORY == PCI_COMMAND_MEMORY
+            && self.mem.is_empty()
+        {
+            self.enable_bars_mmap();
         }
 
         self.device
