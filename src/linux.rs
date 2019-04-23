@@ -41,7 +41,8 @@ use sys_util::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_signal_handler, set_cpu_affinity,
     validate_raw_fd, warn, EventFd, FlockOperation, GuestAddress, GuestMemory, Killable,
-    MemoryMapping, PollContext, PollToken, Protection, SignalFd, Terminal, TimerFd, SIGRTMIN,
+    MemoryMapping, PollContext, PollToken, Protection, SignalFd, Terminal, TimerFd, WatchingEvents,
+    SIGRTMIN,
 };
 use vhost;
 use vm_control::{
@@ -1740,7 +1741,11 @@ fn run_control(
             control_sockets.swap_remove(index);
             if let Some(socket) = control_sockets.get(index) {
                 poll_ctx
-                    .add(socket, Token::VmControl { index })
+                    .modify(
+                        socket,
+                        WatchingEvents::empty().set_read(),
+                        Token::VmControl { index },
+                    )
                     .map_err(Error::PollContextAdd)?;
             }
         }
