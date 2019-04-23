@@ -145,6 +145,7 @@ dependencies = [
  "gpu_renderer 0.1.0",
  "io_jail 0.1.0",
  "kvm 0.1.0",
+ "kvm_sys 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "msg_on_socket_derive 0.1.0",
  "msg_socket 0.1.0",
@@ -159,6 +160,7 @@ dependencies = [
  "tempfile 3.0.7",
  "tpm2 0.1.0",
  "usb_util 0.1.0",
+ "vfio_sys 0.1.0",
  "vhost 0.1.0",
  "virtio_sys 0.1.0",
  "vm_control 0.1.0",
@@ -525,6 +527,13 @@ dependencies = [
  "data_model 0.1.0",
  "pkg-config 0.3.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "sync 0.1.0",
+]
+
+[[package]]
+name = "vfio_sys"
+version = "0.1.0"
+dependencies = [
+ "sys_util 0.1.0",
 ]
 
 [[package]]
