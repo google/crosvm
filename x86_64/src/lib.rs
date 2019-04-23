@@ -159,6 +159,8 @@ pub struct X8664arch;
 const BOOT_STACK_POINTER: u64 = 0x8000;
 const MEM_32BIT_GAP_SIZE: u64 = (768 << 20);
 const FIRST_ADDR_PAST_32BITS: u64 = (1 << 32);
+const END_ADDR_BEFORE_32BITS: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
+const MMIO_SIZE: u64 = MEM_32BIT_GAP_SIZE - 0x8000000;
 const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
 const ZERO_PAGE_OFFSET: u64 = 0x7000;
 /// The x86 reset vector for i386+ and x86_64 puts the processor into an "unreal mode" where it
@@ -192,7 +194,7 @@ fn configure_system(
     const KERNEL_LOADER_OTHER: u8 = 0xff;
     const KERNEL_MIN_ALIGNMENT_BYTES: u32 = 0x1000000; // Must be non-zero.
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
-    let end_32bit_gap_start = GuestAddress(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE);
+    let end_32bit_gap_start = GuestAddress(END_ADDR_BEFORE_32BITS);
 
     // Note that this puts the mptable at 0x0 in guest physical memory.
     mptable::setup_mptable(guest_mem, num_cpus, pci_irqs).map_err(Error::SetupMptable)?;
@@ -272,7 +274,7 @@ fn add_e820_entry(params: &mut boot_params, addr: u64, size: u64, mem_type: u32)
 fn arch_memory_regions(size: u64, has_bios: bool) -> Vec<(GuestAddress, u64)> {
     let mem_end = GuestAddress(size);
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
-    let end_32bit_gap_start = GuestAddress(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE);
+    let end_32bit_gap_start = GuestAddress(END_ADDR_BEFORE_32BITS);
 
     let mut regions = Vec::new();
     if mem_end < end_32bit_gap_start {
@@ -605,11 +607,10 @@ impl X8664arch {
 
     /// Returns a system resource allocator.
     fn get_resource_allocator(mem: &GuestMemory, gpu_allocation: bool) -> SystemAllocator {
-        const LOW_MMIO_BASE: u64 = 0xe0000000;
         let high_mmio_start = Self::get_high_mmio_base(mem);
         SystemAllocator::builder()
             .add_io_addresses(0xc000, 0x10000)
-            .add_low_mmio_addresses(LOW_MMIO_BASE, 0x100000)
+            .add_low_mmio_addresses(END_ADDR_BEFORE_32BITS, MMIO_SIZE)
             .add_high_mmio_addresses(high_mmio_start, u64::max_value() - high_mmio_start)
             .create_allocator(X86_64_IRQ_BASE, gpu_allocation)
             .unwrap()
@@ -639,7 +640,7 @@ impl X8664arch {
 
         let mut io_bus = devices::Bus::new();
 
-        let mem_gap_start = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
+        let mem_gap_start = END_ADDR_BEFORE_32BITS;
         let mem_below_4g = std::cmp::min(mem_gap_start, mem_size);
         let mem_above_4g = mem_size.saturating_sub(FIRST_ADDR_PAST_32BITS);
 

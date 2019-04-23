@@ -501,8 +501,12 @@ impl PciDevice for VfioPciDevice {
                 size <<= 32;
                 size |= u64::from(low);
                 size = !size + 1;
+                let mmio_type = match is_64bit {
+                    false => MmioType::Low,
+                    true => MmioType::High,
+                };
                 let bar_addr = resources
-                    .mmio_allocator(MmioType::Low)
+                    .mmio_allocator(mmio_type)
                     .allocate_with_align(
                         size,
                         Alloc::PciBar {
