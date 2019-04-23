@@ -258,7 +258,6 @@ type Result<T> = std::result::Result<T, Error>;
 enum TaggedControlSocket {
     Vm(VmControlResponseSocket),
     VmMemory(VmMemoryControlResponseSocket),
-    #[allow(dead_code)]
     VmIrq(VmIrqResponseSocket),
 }
 
@@ -1000,10 +999,14 @@ fn create_devices(
     pci_devices.push((usb_controller, simple_jail(&cfg, "xhci.policy")?));
 
     if cfg.vfio.is_some() {
+        let (vfio_host_socket_irq, vfio_device_socket_irq) =
+            msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
+        control_sockets.push(TaggedControlSocket::VmIrq(vfio_host_socket_irq));
+
         let vfio_path = cfg.vfio.as_ref().unwrap().as_path();
         let vfiodevice =
             VfioDevice::new(vfio_path, vm, mem.clone()).map_err(Error::CreateVfioDevice)?;
-        let vfiopcidevice = Box::new(VfioPciDevice::new(vfiodevice));
+        let vfiopcidevice = Box::new(VfioPciDevice::new(vfiodevice, vfio_device_socket_irq));
         pci_devices.push((vfiopcidevice, simple_jail(&cfg, "vfio_device.policy")?));
     }
 
