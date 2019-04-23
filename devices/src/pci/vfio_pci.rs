@@ -8,7 +8,7 @@ use std::u32;
 
 use kvm::Datamatch;
 use resources::{Alloc, SystemAllocator};
-use sys_util::EventFd;
+use sys_util::{error, EventFd};
 
 use vfio_sys::*;
 
@@ -230,6 +230,14 @@ impl PciDevice for VfioPciDevice {
                 i += 1;
             }
         }
+
+        if let Err(e) = self.device.setup_dma_map() {
+            error!(
+                "failed to add all guest memory regions into iommu table: {}",
+                e
+            );
+        }
+
         Ok(ranges)
     }
 

@@ -15,6 +15,7 @@ use std::u32;
 use kvm::Vm;
 use sys_util::{
     ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn, Error,
+    GuestMemory,
 };
 
 use vfio_sys::*;
@@ -35,6 +36,8 @@ pub enum VfioError {
     VfioDeviceGetInfo(Error),
     VfioDeviceGetRegionInfo(Error),
     InvalidPath,
+    IommuDmaMap(Error),
+    IommuDmaUnmap(Error),
 }
 
 impl fmt::Display for VfioError {
@@ -54,6 +57,8 @@ impl fmt::Display for VfioError {
             VfioError::VfioDeviceGetInfo(e) => write!(f, "failed to get vfio device's info or info doesn't match: {}", e),
             VfioError::VfioDeviceGetRegionInfo(e) => write!(f, "failed to get vfio device's region info: {}", e),
             VfioError::InvalidPath => write!(f,"invalid file path"),
+            VfioError::IommuDmaMap(e) => write!(f, "failed to add guest memory map into iommu table: {}", e),
+            VfioError::IommuDmaUnmap(e) => write!(f, "failed to remove guest memory map from iommu table: {}", e),
         }
     }
 }
@@ -100,6 +105,41 @@ impl VfioContainer {
 
         // Safe as file is vfio container and make sure val is valid.
         unsafe { ioctl_with_val(self, VFIO_SET_IOMMU(), val.into()) }
+    }
+
+    unsafe fn vfio_dma_map(&self, iova: u64, size: u64, user_addr: u64) -> Result<(), VfioError> {
+        let dma_map = vfio_iommu_type1_dma_map {
+            argsz: mem::size_of::<vfio_iommu_type1_dma_map>() as u32,
+            flags: VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE,
+            vaddr: user_addr,
+            iova,
+            size,
+        };
+
+        let ret = ioctl_with_ref(self, VFIO_IOMMU_MAP_DMA(), &dma_map);
+        if ret != 0 {
+            return Err(VfioError::IommuDmaMap(get_error()));
+        }
+
+        Ok(())
+    }
+
+    fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<(), VfioError> {
+        let mut dma_unmap = vfio_iommu_type1_dma_unmap {
+            argsz: mem::size_of::<vfio_iommu_type1_dma_unmap>() as u32,
+            flags: 0,
+            iova,
+            size,
+        };
+
+        // Safe as file is vfio container, dma_unmap is constructed by us, and
+        // we check the return value
+        let ret = unsafe { ioctl_with_mut_ref(self, VFIO_IOMMU_UNMAP_DMA(), &mut dma_unmap) };
+        if ret != 0 || dma_unmap.size != size {
+            return Err(VfioError::IommuDmaUnmap(get_error()));
+        }
+
+        Ok(())
     }
 }
 
@@ -236,13 +276,14 @@ pub struct VfioDevice {
     dev: File,
     group: VfioGroup,
     regions: Vec<VfioRegion>,
+    guest_mem: GuestMemory,
 }
 
 impl VfioDevice {
     /// Create a new vfio device, then guest read/write on this device could be
     /// transfered into kernel vfio.
     /// sysfspath specify the vfio device path in sys file system.
-    pub fn new(sysfspath: &Path, vm: &Vm) -> Result<Self, VfioError> {
+    pub fn new(sysfspath: &Path, vm: &Vm, guest_mem: GuestMemory) -> Result<Self, VfioError> {
         let mut uuid_path = PathBuf::new();
         uuid_path.push(sysfspath);
         uuid_path.push("iommu_group");
@@ -261,6 +302,7 @@ impl VfioDevice {
             dev: new_dev,
             group,
             regions: dev_regions,
+            guest_mem,
         })
     }
 
@@ -382,6 +424,32 @@ impl VfioDevice {
         fds.push(self.group.as_raw_fd());
         fds.push(self.group.container.as_raw_fd());
         fds
+    }
+
+    /// Add (iova, user_addr) map into vfio container iommu table
+    pub unsafe fn vfio_dma_map(
+        &self,
+        iova: u64,
+        size: u64,
+        user_addr: u64,
+    ) -> Result<(), VfioError> {
+        self.group.container.vfio_dma_map(iova, size, user_addr)
+    }
+
+    /// Remove (iova, user_addr) map from vfio container iommu table
+    pub fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<(), VfioError> {
+        self.group.container.vfio_dma_unmap(iova, size)
+    }
+
+    /// Add all guest memory regions into vfio container's iommu table,
+    /// then vfio kernel driver could access guest memory from gfn
+    pub fn setup_dma_map(&self) -> Result<(), VfioError> {
+        self.guest_mem
+            .with_regions(|_index, guest_addr, size, host_addr, _fd_offset| {
+                // Safe because the guest regions are guaranteed not to overlap
+                unsafe { self.vfio_dma_map(guest_addr.0, size as u64, host_addr as u64) }
+            })?;
+        Ok(())
     }
 }
 
