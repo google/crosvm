@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use byteorder::{ByteOrder, LittleEndian};
-
 use std;
 use std::fmt::{self, Display};
 use std::os::unix::io::RawFd;
@@ -12,7 +10,7 @@ use kvm::Datamatch;
 use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
 use sys_util::EventFd;
 
-use crate::pci::pci_configuration::{self, PciConfiguration};
+use crate::pci::pci_configuration;
 use crate::pci::PciInterruptPin;
 use crate::BusDevice;
 
@@ -90,10 +88,17 @@ pub trait PciDevice: Send {
     fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
         Vec::new()
     }
-    /// Gets the configuration registers of the Pci Device.
-    fn config_registers(&self) -> &PciConfiguration; // TODO - remove these
-    /// Gets the configuration registers of the Pci Device for modification.
-    fn config_registers_mut(&mut self) -> &mut PciConfiguration;
+
+    /// Reads from a PCI configuration register.
+    /// * `reg_idx` - PCI register index (in units of 4 bytes).
+    fn read_config_register(&self, reg_idx: usize) -> u32;
+
+    /// Writes to a PCI configuration register.
+    /// * `reg_idx` - PCI register index (in units of 4 bytes).
+    /// * `offset`  - byte offset within 4-byte register.
+    /// * `data`    - The data to write.
+    fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]);
+
     /// Reads from a BAR region mapped in to the device.
     /// * `addr` - The guest address inside the BAR.
     /// * `data` - Filled with the data from `addr`.
@@ -124,21 +129,11 @@ impl<T: PciDevice> BusDevice for T {
             return;
         }
 
-        let regs = self.config_registers_mut();
-
-        match data.len() {
-            1 => regs.write_byte(reg_idx * 4 + offset as usize, data[0]),
-            2 => regs.write_word(
-                reg_idx * 4 + offset as usize,
-                (data[0] as u16) | (data[1] as u16) << 8,
-            ),
-            4 => regs.write_reg(reg_idx, LittleEndian::read_u32(data)),
-            _ => (),
-        }
+        self.write_config_register(reg_idx, offset, data)
     }
 
     fn config_register_read(&self, reg_idx: usize) -> u32 {
-        self.config_registers().read_reg(reg_idx)
+        self.read_config_register(reg_idx)
     }
 
     fn on_sandboxed(&mut self) {
@@ -178,11 +173,11 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
         (**self).ioeventfds()
     }
-    fn config_registers(&self) -> &PciConfiguration {
-        (**self).config_registers()
+    fn read_config_register(&self, reg_idx: usize) -> u32 {
+        (**self).read_config_register(reg_idx)
     }
-    fn config_registers_mut(&mut self) -> &mut PciConfiguration {
-        (**self).config_registers_mut()
+    fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+        (**self).write_config_register(reg_idx, offset, data)
     }
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
         (**self).read_bar(addr, data)

@@ -428,12 +428,12 @@ impl PciDevice for VirtioPciDevice {
             .collect()
     }
 
-    fn config_registers(&self) -> &PciConfiguration {
-        &self.config_regs
+    fn read_config_register(&self, reg_idx: usize) -> u32 {
+        self.config_regs.read_reg(reg_idx)
     }
 
-    fn config_registers_mut(&mut self) -> &mut PciConfiguration {
-        &mut self.config_regs
+    fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+        (&mut self.config_regs).write_reg(reg_idx, offset, data)
     }
 
     // Clippy: the value of COMMON_CONFIG_BAR_OFFSET happens to be zero so the

@@ -26,12 +26,12 @@ impl PciDevice for PciRootConfiguration {
     fn keep_fds(&self) -> Vec<RawFd> {
         Vec::new()
     }
-    fn config_registers(&self) -> &PciConfiguration {
-        &self.config
+    fn read_config_register(&self, reg_idx: usize) -> u32 {
+        self.config.read_reg(reg_idx)
     }
 
-    fn config_registers_mut(&mut self) -> &mut PciConfiguration {
-        &mut self.config
+    fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+        (&mut self.config).write_reg(reg_idx, offset, data)
     }
 
     fn read_bar(&mut self, _addr: u64, _data: &mut [u8]) {}

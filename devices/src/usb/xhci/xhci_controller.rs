@@ -234,12 +234,12 @@ impl PciDevice for XhciController {
         Ok(vec![(bar0_addr, XHCI_BAR0_SIZE)])
     }
 
-    fn config_registers(&self) -> &PciConfiguration {
-        &self.config_regs
+    fn read_config_register(&self, reg_idx: usize) -> u32 {
+        self.config_regs.read_reg(reg_idx)
     }
 
-    fn config_registers_mut(&mut self) -> &mut PciConfiguration {
-        &mut self.config_regs
+    fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+        (&mut self.config_regs).write_reg(reg_idx, offset, data)
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {

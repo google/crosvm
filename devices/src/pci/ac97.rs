@@ -186,12 +186,12 @@ impl PciDevice for Ac97Dev {
         Ok(ranges)
     }
 
-    fn config_registers(&self) -> &PciConfiguration {
-        &self.config_regs
+    fn read_config_register(&self, reg_idx: usize) -> u32 {
+        self.config_regs.read_reg(reg_idx)
     }
 
-    fn config_registers_mut(&mut self) -> &mut PciConfiguration {
-        &mut self.config_regs
+    fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+        (&mut self.config_regs).write_reg(reg_idx, offset, data)
     }
 
     fn keep_fds(&self) -> Vec<RawFd> {
