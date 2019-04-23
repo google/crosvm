@@ -47,14 +47,17 @@ pub struct PciRoot {
     devices: Vec<Arc<Mutex<dyn BusDevice>>>,
 }
 
+const PCI_VENDOR_ID_INTEL: u16 = 0x8086;
+const PCI_DEVICE_ID_INTEL_82441: u16 = 0x1237;
+
 impl PciRoot {
     /// Create an empty PCI root bus.
     pub fn new() -> Self {
         PciRoot {
             root_configuration: PciRootConfiguration {
                 config: PciConfiguration::new(
-                    0,
-                    0,
+                    PCI_VENDOR_ID_INTEL,
+                    PCI_DEVICE_ID_INTEL_82441,
                     PciClassCode::BridgeDevice,
                     &PciBridgeSubclass::HostBridge,
                     None,
