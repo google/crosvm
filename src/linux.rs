@@ -1086,8 +1086,9 @@ fn run_vcpu(
         .map_err(Error::SpawnVcpu)
 }
 
-// Reads the contents of a file and converts them into a u64.
-fn file_to_u64<P: AsRef<Path>>(path: P) -> io::Result<u64> {
+// Reads the contents of a file and converts the space-separated fields into a Vec of u64s.
+// Returns an error if any of the fields fail to parse.
+fn file_fields_to_u64<P: AsRef<Path>>(path: P) -> io::Result<Vec<u64>> {
     let mut file = File::open(path)?;
 
     let mut buf = [0u8; 32];
@@ -1097,8 +1098,21 @@ fn file_to_u64<P: AsRef<Path>>(path: P) -> io::Result<u64> {
         str::from_utf8(&buf[..count]).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     content
         .trim()
-        .parse()
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        .split_whitespace()
+        .map(|x| {
+            x.parse::<u64>()
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        })
+        .collect()
+}
+
+// Reads the contents of a file and converts them into a u64, and if there
+// are multiple fields it only returns the first one.
+fn file_to_u64<P: AsRef<Path>>(path: P) -> io::Result<u64> {
+    file_fields_to_u64(path)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty file"))
 }
 
 pub fn run_config(cfg: Config) -> Result<()> {
