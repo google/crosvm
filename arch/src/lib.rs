@@ -83,7 +83,12 @@ pub trait LinuxArch {
         create_devices: F,
     ) -> Result<RunnableLinuxVm, Self::Error>
     where
-        F: FnOnce(&GuestMemory, &EventFd) -> Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E>,
+        F: FnOnce(
+            &GuestMemory,
+            &mut Vm,
+            &mut SystemAllocator,
+            &EventFd,
+        ) -> Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E>,
         E: StdError + 'static;
 }
 

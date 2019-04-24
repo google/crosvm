@@ -102,6 +102,7 @@ pub struct Config {
     plugin_mounts: Vec<BindMount>,
     plugin_gid_maps: Vec<GidMap>,
     disks: Vec<DiskOption>,
+    pmem_devices: Vec<DiskOption>,
     host_ip: Option<net::Ipv4Addr>,
     netmask: Option<net::Ipv4Addr>,
     mac_address: Option<net_util::MacAddress>,
@@ -143,6 +144,7 @@ impl Default for Config {
             plugin_mounts: Vec::new(),
             plugin_gid_maps: Vec::new(),
             disks: Vec::new(),
+            pmem_devices: Vec::new(),
             host_ip: None,
             netmask: None,
             mac_address: None,
@@ -436,6 +438,20 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 ));
             }
             cfg.disks.push(DiskOption {
+                path: disk_path,
+                read_only: !name.starts_with("rw"),
+            });
+        }
+        "pmem-device" | "rw-pmem-device" => {
+            let disk_path = PathBuf::from(value.unwrap());
+            if !disk_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: "this disk path does not exist",
+                });
+            }
+
+            cfg.pmem_devices.push(DiskOption {
                 path: disk_path,
                 read_only: !name.starts_with("rw"),
             });
@@ -805,6 +821,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("qcow", "PATH", "Path to a qcow2 disk image. (Deprecated; use --disk instead.)"),
           Argument::value("rwdisk", "PATH", "Path to a writable disk image."),
           Argument::value("rwqcow", "PATH", "Path to a writable qcow2 disk image. (Deprecated; use --rwdisk instead.)"),
+          Argument::value("rw-pmem-device", "PATH", "Path to a writable disk image."),
+          Argument::value("pmem-device", "PATH", "Path to a disk image."),
           Argument::value("host_ip",
                           "IP",
                           "IP address to assign to host tap interface."),

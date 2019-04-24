@@ -82,6 +82,12 @@ impl Protection {
         Protection(libc::PROT_READ | libc::PROT_WRITE)
     }
 
+    /// Returns Protection allowing read access.
+    #[inline(always)]
+    pub fn read() -> Protection {
+        Protection(libc::PROT_READ)
+    }
+
     /// Set read events.
     #[inline(always)]
     pub fn set_read(self) -> Protection {

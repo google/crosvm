@@ -11,6 +11,7 @@ mod gpu;
 mod input;
 mod net;
 mod p9;
+mod pmem;
 mod queue;
 mod rng;
 #[cfg(feature = "tpm")]
@@ -30,6 +31,7 @@ pub use self::gpu::*;
 pub use self::input::*;
 pub use self::net::*;
 pub use self::p9::*;
+pub use self::pmem::*;
 pub use self::queue::*;
 pub use self::rng::*;
 #[cfg(feature = "tpm")]
@@ -54,6 +56,7 @@ const TYPE_GPU: u32 = 16;
 const TYPE_9P: u32 = 9;
 const TYPE_INPUT: u32 = 18;
 const TYPE_VSOCK: u32 = 19;
+const TYPE_PMEM: u32 = 27;
 // Additional types invented by crosvm
 const TYPE_WL: u32 = 30;
 #[cfg(feature = "tpm")]

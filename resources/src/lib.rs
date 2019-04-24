@@ -33,6 +33,8 @@ pub enum Alloc {
     PciBar { bus: u8, dev: u8, bar: u8 },
     /// GPU render node region.
     GpuRenderNode,
+    /// Pmem device region with associated device index.
+    PmemDevice(usize),
 }
 
 #[derive(Debug, Eq, PartialEq)]

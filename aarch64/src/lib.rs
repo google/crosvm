@@ -200,6 +200,8 @@ impl arch::LinuxArch for AArch64 {
     where
         F: FnOnce(
             &GuestMemory,
+            &mut Vm,
+            &mut SystemAllocator,
             &EventFd,
         ) -> std::result::Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E>,
         E: StdError + 'static,
@@ -233,8 +235,8 @@ impl arch::LinuxArch for AArch64 {
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
 
-        let pci_devices =
-            create_devices(&mem, &exit_evt).map_err(|e| Error::CreateDevices(Box::new(e)))?;
+        let pci_devices = create_devices(&mem, &mut vm, &mut resources, &exit_evt)
+            .map_err(|e| Error::CreateDevices(Box::new(e)))?;
         let (pci, pci_irqs, pid_debug_label_map) =
             arch::generate_pci_root(pci_devices, &mut mmio_bus, &mut resources, &mut vm)
                 .map_err(Error::CreatePciRoot)?;

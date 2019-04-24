@@ -4,6 +4,7 @@
 
 use std;
 use std::cmp::min;
+use std::convert::TryFrom;
 use std::error::Error as StdError;
 use std::ffi::CStr;
 use std::fmt::{self, Display};
@@ -32,18 +33,16 @@ use net_util::{Error as NetError, MacAddress, Tap};
 use qcow::{self, ImageType, QcowFile};
 use rand_ish::SimpleRng;
 use remain::sorted;
-#[cfg(feature = "gpu-forward")]
-use resources::Alloc;
+use resources::{Alloc, SystemAllocator};
 use sync::{Condvar, Mutex};
 use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
+
 use sys_util::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_signal_handler, set_cpu_affinity,
-    validate_raw_fd, warn, EventFd, FlockOperation, GuestMemory, Killable, PollContext, PollToken,
-    SignalFd, Terminal, TimerFd, SIGRTMIN,
+    validate_raw_fd, warn, EventFd, FlockOperation, GuestAddress, GuestMemory, Killable,
+    MemoryMapping, PollContext, PollToken, Protection, SignalFd, Terminal, TimerFd, SIGRTMIN,
 };
-#[cfg(feature = "gpu-forward")]
-use sys_util::{GuestAddress, MemoryMapping, Protection};
 use vhost;
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
@@ -70,7 +69,9 @@ type RenderNodeHost = ();
 #[derive(Debug)]
 pub enum Error {
     AddGpuDeviceMemory(sys_util::Error),
+    AddPmemDeviceMemory(sys_util::Error),
     AllocateGpuDeviceAddress,
+    AllocatePmemDeviceAddress(resources::Error),
     BalloonDeviceNew(virtio::BalloonError),
     BlockDeviceNew(sys_util::Error),
     BlockSignal(sys_util::signal::Error),
@@ -106,6 +107,8 @@ pub enum Error {
     OpenVinput(PathBuf, io::Error),
     P9DeviceNew(virtio::P9Error),
     PivotRootDoesntExist(&'static str),
+    PmemDeviceImageTooBig,
+    PmemDeviceNew(sys_util::Error),
     PollContextAdd(sys_util::Error),
     PollContextDelete(sys_util::Error),
     QcowDeviceCreate(qcow::Error),
@@ -121,6 +124,7 @@ pub enum Error {
     RegisterWayland(arch::DeviceRegistrationError),
     ReserveGpuMemory(sys_util::MmapError),
     ReserveMemory(sys_util::Error),
+    ReservePmemMemory(sys_util::MmapError),
     ResetTimerFd(sys_util::Error),
     RngDeviceNew(virtio::RngError),
     SettingGidMap(io_jail::Error),
@@ -143,7 +147,11 @@ impl Display for Error {
         #[sorted]
         match self {
             AddGpuDeviceMemory(e) => write!(f, "failed to add gpu device memory: {}", e),
+            AddPmemDeviceMemory(e) => write!(f, "failed to add pmem device memory: {}", e),
             AllocateGpuDeviceAddress => write!(f, "failed to allocate gpu device guest address"),
+            AllocatePmemDeviceAddress(e) => {
+                write!(f, "failed to allocate memory for pmem device: {}", e)
+            }
             BalloonDeviceNew(e) => write!(f, "failed to create balloon: {}", e),
             BlockDeviceNew(e) => write!(f, "failed to create block device: {}", e),
             BlockSignal(e) => write!(f, "failed to block signal: {}", e),
@@ -186,6 +194,10 @@ impl Display for Error {
             OpenVinput(p, e) => write!(f, "failed to open vinput device {}: {}", p.display(), e),
             P9DeviceNew(e) => write!(f, "failed to create 9p device: {}", e),
             PivotRootDoesntExist(p) => write!(f, "{} doesn't exist, can't jail devices.", p),
+            PmemDeviceImageTooBig => {
+                write!(f, "failed to create pmem device: pmem device image too big")
+            }
+            PmemDeviceNew(e) => write!(f, "failed to create pmem device: {}", e),
             PollContextAdd(e) => write!(f, "failed to add fd to poll context: {}", e),
             PollContextDelete(e) => write!(f, "failed to remove fd from poll context: {}", e),
             QcowDeviceCreate(e) => write!(f, "failed to read qcow formatted file {}", e),
@@ -209,6 +221,7 @@ impl Display for Error {
             RegisterWayland(e) => write!(f, "error registering wayland device: {}", e),
             ReserveGpuMemory(e) => write!(f, "failed to reserve gpu memory: {}", e),
             ReserveMemory(e) => write!(f, "failed to reserve memory: {}", e),
+            ReservePmemMemory(e) => write!(f, "failed to reserve pmem memory: {}", e),
             ResetTimerFd(e) => write!(f, "failed to reset timerfd: {}", e),
             RngDeviceNew(e) => write!(f, "failed to set up rng: {}", e),
             SettingGidMap(e) => write!(f, "error setting GID map: {}", e),
@@ -692,11 +705,76 @@ fn create_9p_device(cfg: &Config, chronos: Ids, src: &Path, tag: &str) -> Device
     })
 }
 
+fn create_pmem_device(
+    cfg: &Config,
+    vm: &mut Vm,
+    resources: &mut SystemAllocator,
+    disk: &DiskOption,
+    index: usize,
+) -> DeviceResult {
+    let fd = OpenOptions::new()
+        .read(true)
+        .write(!disk.read_only)
+        .open(&disk.path)
+        .map_err(Error::Disk)?;
+
+    let image_size = {
+        let metadata = std::fs::metadata(&disk.path).map_err(Error::Disk)?;
+        metadata.len()
+    };
+
+    let protection = {
+        if disk.read_only {
+            Protection::read()
+        } else {
+            Protection::read_write()
+        }
+    };
+
+    let memory_mapping = {
+        // Conversion from u64 to usize may fail on 32bit system.
+        let image_size = usize::try_from(image_size).map_err(|_| Error::PmemDeviceImageTooBig)?;
+
+        MemoryMapping::from_fd_offset_protection(&fd, image_size, 0, protection)
+            .map_err(Error::ReservePmemMemory)?
+    };
+
+    let mapping_address = resources
+        .device_allocator()
+        .allocate_with_align(
+            image_size,
+            Alloc::PmemDevice(index),
+            format!("pmem_disk_image_{}", index),
+            // Linux kernel requires pmem namespaces to be 128 MiB aligned.
+            128 * 1024 * 1024, /* 128 MiB */
+        )
+        .map_err(Error::AllocatePmemDeviceAddress)?;
+
+    vm.add_device_memory(
+        GuestAddress(mapping_address),
+        memory_mapping,
+        /* read_only = */ disk.read_only,
+        /* log_dirty_pages = */ false,
+    )
+    .map_err(Error::AddPmemDeviceMemory)?;
+
+    let dev = virtio::Pmem::new(fd, GuestAddress(mapping_address), image_size)
+        .map_err(Error::PmemDeviceNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev) as Box<dyn VirtioDevice>,
+        /// TODO(jstaron) Create separate device policy for pmem_device.
+        jail: simple_jail(&cfg, "block_device.policy")?,
+    })
+}
+
 // gpu_device_socket is not used when GPU support is disabled.
 #[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
 fn create_virtio_devices(
     cfg: &Config,
     mem: &GuestMemory,
+    vm: &mut Vm,
+    resources: &mut SystemAllocator,
     _exit_evt: &EventFd,
     wayland_device_socket: VmMemoryControlRequestSocket,
     gpu_device_socket: VmMemoryControlRequestSocket,
@@ -708,6 +786,10 @@ fn create_virtio_devices(
     for disk in &cfg.disks {
         let disk_device_socket = disk_device_sockets.remove(0);
         devs.push(create_block_device(cfg, disk, disk_device_socket)?);
+    }
+
+    for (index, pmem_disk) in cfg.pmem_devices.iter().enumerate() {
+        devs.push(create_pmem_device(cfg, vm, resources, pmem_disk, index)?);
     }
 
     devs.push(create_rng_device(cfg)?);
@@ -799,6 +881,8 @@ fn create_virtio_devices(
 fn create_devices(
     cfg: &Config,
     mem: &GuestMemory,
+    vm: &mut Vm,
+    resources: &mut SystemAllocator,
     exit_evt: &EventFd,
     wayland_device_socket: VmMemoryControlRequestSocket,
     gpu_device_socket: VmMemoryControlRequestSocket,
@@ -809,6 +893,8 @@ fn create_devices(
     let stubs = create_virtio_devices(
         &cfg,
         mem,
+        vm,
+        resources,
         exit_evt,
         wayland_device_socket,
         gpu_device_socket,
@@ -1210,11 +1296,13 @@ pub fn run_config(cfg: Config) -> Result<()> {
         components,
         cfg.split_irqchip,
         &cfg.serial_parameters,
-        |m, e| {
+        |mem, vm, sys_allocator, exit_evt| {
             create_devices(
                 &cfg,
-                m,
-                e,
+                mem,
+                vm,
+                sys_allocator,
+                exit_evt,
                 wayland_device_socket,
                 gpu_device_socket,
                 balloon_device_socket,
