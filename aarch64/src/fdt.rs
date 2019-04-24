@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::ffi::CStr;
+use std::fs::File;
 
 use arch::fdt::{
     begin_node, end_node, finish_fdt, generate_prop32, generate_prop64, property, property_cstring,
@@ -308,6 +309,7 @@ fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<()> {
 /// * `pci_device_size` - The size of PCI device memory
 /// * `cmdline` - The kernel commandline
 /// * `initrd` - An optional tuple of initrd guest physical address and size
+/// * `android_fstab` - An optional file holding Android fstab entries
 pub fn create_fdt(
     fdt_max_size: usize,
     guest_mem: &GuestMemory,
@@ -318,6 +320,7 @@ pub fn create_fdt(
     pci_device_size: u64,
     cmdline: &CStr,
     initrd: Option<(GuestAddress, usize)>,
+    android_fstab: File,
 ) -> Result<()> {
     let mut fdt = vec![0; fdt_max_size];
     start_fdt(&mut fdt, fdt_max_size)?;
@@ -328,7 +331,7 @@ pub fn create_fdt(
     property_string(&mut fdt, "compatible", "linux,dummy-virt")?;
     property_u32(&mut fdt, "#address-cells", 0x2)?;
     property_u32(&mut fdt, "#size-cells", 0x2)?;
-
+    arch::android::create_android_fdt(&mut fdt, android_fstab)?;
     create_chosen_node(&mut fdt, cmdline, initrd)?;
     create_memory_node(&mut fdt, guest_mem)?;
     create_cpu_nodes(&mut fdt, num_cpus)?;

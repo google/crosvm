@@ -6,6 +6,7 @@ use byteorder::{BigEndian, ByteOrder};
 use libc::{c_char, c_int, c_void};
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
+use std::io;
 use std::ptr::null;
 
 // This links to libfdt which handles the creation of the binary blob
@@ -35,6 +36,8 @@ pub enum Error {
     FdtFinishError(c_int),
     FdtPackError(c_int),
     FdtGuestMemoryWriteError,
+    FdtFileParseError,
+    FdtIoError(io::Error),
 }
 
 impl Display for Error {
@@ -53,6 +56,8 @@ impl Display for Error {
             FdtFinishError(ret) => write!(f, "error performing FDT finish, code={}", ret),
             FdtPackError(ret) => write!(f, "error packing FDT, code={}", ret),
             FdtGuestMemoryWriteError => write!(f, "error writing FDT to guest memory"),
+            FdtFileParseError => write!(f, "parse error reading FDT parameters"),
+            FdtIoError(ret) => write!(f, "I/O error reading FDT parameters code={}", ret),
         }
     }
 }

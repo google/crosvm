@@ -268,6 +268,7 @@ impl arch::LinuxArch for AArch64 {
             &CString::new(cmdline).unwrap(),
             components.initrd_image,
             pci_irqs,
+            components.android_fstab,
             kernel_end,
         )?;
 
@@ -295,6 +296,7 @@ impl AArch64 {
         cmdline: &CStr,
         initrd_file: Option<File>,
         pci_irqs: Vec<(u32, PciInterruptPin)>,
+        android_fstab: Option<File>,
         kernel_end: u64,
     ) -> Result<()> {
         let initrd = match initrd_file {
@@ -312,18 +314,21 @@ impl AArch64 {
             None => None,
         };
         let (pci_device_base, pci_device_size) = Self::get_device_addr_base_size(mem_size);
-        fdt::create_fdt(
-            AARCH64_FDT_MAX_SIZE as usize,
-            mem,
-            pci_irqs,
-            vcpu_count,
-            fdt_offset(mem_size),
-            pci_device_base,
-            pci_device_size,
-            cmdline,
-            initrd,
-        )
-        .map_err(Error::CreateFdt)?;
+        if let Some(android_fstab) = android_fstab {
+            fdt::create_fdt(
+                AARCH64_FDT_MAX_SIZE as usize,
+                mem,
+                pci_irqs,
+                vcpu_count,
+                fdt_offset(mem_size),
+                pci_device_base,
+                pci_device_size,
+                cmdline,
+                initrd,
+                android_fstab,
+            )
+            .map_err(Error::CreateFdt)?;
+        }
         Ok(())
     }
 

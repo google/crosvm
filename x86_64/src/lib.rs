@@ -420,15 +420,14 @@ impl X8664arch {
         // data like the device tree blob and initrd will be loaded.
         let mut free_addr = kernel_end;
 
-        let setup_data = if let Some(fstab) = android_fstab {
-            let mut fstab = fstab;
+        let setup_data = if let Some(android_fstab) = android_fstab {
             let free_addr_aligned = (((free_addr + 64 - 1) / 64) * 64) + 64;
             let dtb_start = GuestAddress(free_addr_aligned);
             let dtb_size = fdt::create_fdt(
                 X86_64_FDT_MAX_SIZE as usize,
                 mem,
                 dtb_start.offset(),
-                &mut fstab,
+                android_fstab,
             )
             .map_err(Error::CreateFdt)?;
             free_addr = dtb_start.offset() + dtb_size as u64;
