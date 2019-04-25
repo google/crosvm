@@ -466,6 +466,12 @@ impl Buffer {
         unsafe { gbm_bo_get_stride_for_plane(self.0, plane) }
     }
 
+    /// Size of a plane, in bytes.
+    pub fn plane_size(&self, plane: usize) -> u32 {
+        // This is always safe to call with a valid gbm_bo pointer.
+        unsafe { gbm_bo_get_plane_size(self.0, plane) }
+    }
+
     /// Exports a new dmabuf/prime file descriptor for the given plane.
     pub fn export_plane_fd(&self, plane: usize) -> Result<File, i32> {
         // This is always safe to call with a valid gbm_bo pointer.
