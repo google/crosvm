@@ -26,7 +26,7 @@ use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
 /// create a `RunnableLinuxVm`.
 pub struct VmComponents {
-    pub memory_mb: u64,
+    pub memory_size: u64,
     pub vcpu_count: u32,
     pub vcpu_affinity: Vec<usize>,
     pub kernel_image: File,

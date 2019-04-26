@@ -304,8 +304,8 @@ impl arch::LinuxArch for X8664arch {
         E: StdError + 'static,
     {
         let mut resources =
-            Self::get_resource_allocator(components.memory_mb, components.wayland_dmabuf);
-        let mem = Self::setup_memory(components.memory_mb)?;
+            Self::get_resource_allocator(components.memory_size, components.wayland_dmabuf);
+        let mem = Self::setup_memory(components.memory_size)?;
         let kvm = Kvm::new().map_err(Error::CreateKvm)?;
         let mut vm = Self::create_vm(&kvm, split_irqchip, mem.clone())?;
 
@@ -357,7 +357,7 @@ impl arch::LinuxArch for X8664arch {
 
         Self::setup_system_memory(
             &mem,
-            components.memory_mb,
+            components.memory_size,
             vcpu_count,
             &CString::new(cmdline).unwrap(),
             components.initrd_image,

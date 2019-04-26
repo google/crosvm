@@ -1123,7 +1123,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     };
 
     let components = VmComponents {
-        memory_mb: (cfg.memory.unwrap_or(256) << 20) as u64,
+        memory_size: (cfg.memory.unwrap_or(256) << 20) as u64,
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
         kernel_image: File::open(&cfg.kernel_path)

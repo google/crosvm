@@ -197,8 +197,8 @@ impl arch::LinuxArch for AArch64 {
         E: StdError + 'static,
     {
         let mut resources =
-            Self::get_resource_allocator(components.memory_mb, components.wayland_dmabuf);
-        let mem = Self::setup_memory(components.memory_mb)?;
+            Self::get_resource_allocator(components.memory_size, components.wayland_dmabuf);
+        let mem = Self::setup_memory(components.memory_size)?;
         let kvm = Kvm::new().map_err(Error::CreateKvm)?;
         let mut vm = Vm::new(&kvm, mem.clone()).map_err(Error::CreateVm)?;
 
@@ -263,7 +263,7 @@ impl arch::LinuxArch for AArch64 {
         let kernel_end = get_kernel_addr().offset() + kernel_size as u64;
         Self::setup_system_memory(
             &mem,
-            components.memory_mb,
+            components.memory_size,
             vcpu_count,
             &CString::new(cmdline).unwrap(),
             components.initrd_image,
