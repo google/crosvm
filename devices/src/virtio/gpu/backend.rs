@@ -24,10 +24,11 @@ use gpu_renderer::{
 
 use super::protocol::{
     AllocationMetadataResponse, GpuResponse, GpuResponsePlaneInfo, VIRTIO_GPU_CAPSET3,
-    VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2,
+    VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2, VIRTIO_GPU_MEMORY_HOST_COHERENT,
 };
 use crate::virtio::resource_bridge::*;
-use vm_control::VmMemoryControlRequestSocket;
+
+use vm_control::{MaybeOwnedFd, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse};
 
 const DEFAULT_WIDTH: u32 = 1280;
 const DEFAULT_HEIGHT: u32 = 1024;
@@ -37,6 +38,7 @@ struct VirtioGpuResource {
     height: u32,
     gpu_resource: GpuRendererResource,
     display_import: Option<(Rc<RefCell<GpuDisplay>>, u32)>,
+    kvm_slot: Option<u32>,
 }
 
 impl VirtioGpuResource {
@@ -46,6 +48,19 @@ impl VirtioGpuResource {
             height,
             gpu_resource,
             display_import: None,
+            kvm_slot: None,
+        }
+    }
+
+    pub fn v2_new(kvm_slot: u32, gpu_resource: GpuRendererResource) -> VirtioGpuResource {
+        // Choose DEFAULT_WIDTH and DEFAULT_HEIGHT, since that matches the default modes
+        // for virtgpu-kms.
+        VirtioGpuResource {
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
+            gpu_resource,
+            display_import: None,
+            kvm_slot: Some(kvm_slot),
         }
     }
 
@@ -143,13 +158,11 @@ pub struct Backend {
     renderer: Renderer,
     resources: Map<u32, VirtioGpuResource>,
     contexts: Map<u32, RendererContext>,
-    #[allow(dead_code)]
     gpu_device_socket: VmMemoryControlRequestSocket,
     scanout_surface: Option<u32>,
     cursor_surface: Option<u32>,
     scanout_resource: u32,
     cursor_resource: u32,
-    #[allow(dead_code)]
     pci_bar: Alloc,
 }
 
@@ -800,6 +813,129 @@ impl Backend {
                 error!("failed to get metadata");
                 GpuResponse::ErrUnspec
             }
+        }
+    }
+
+    pub fn resource_create_v2(
+        &mut self,
+        resource_id: u32,
+        guest_memory_type: u32,
+        guest_caching_type: u32,
+        size: u64,
+        pci_addr: u64,
+        mem: &GuestMemory,
+        vecs: Vec<(GuestAddress, usize)>,
+        args: Vec<u8>,
+    ) -> GpuResponse {
+        match self.resources.entry(resource_id) {
+            Entry::Vacant(entry) => {
+                let resource = match self.renderer.resource_create_v2(
+                    resource_id,
+                    guest_memory_type,
+                    guest_caching_type,
+                    size,
+                    mem,
+                    &vecs,
+                    &args,
+                ) {
+                    Ok(resource) => resource,
+                    Err(e) => {
+                        error!("failed to create resource: {}", e);
+                        return GpuResponse::ErrUnspec;
+                    }
+                };
+
+                match guest_memory_type {
+                    VIRTIO_GPU_MEMORY_HOST_COHERENT => {
+                        let dma_buf_fd = match resource.export() {
+                            Ok(export) => export.1,
+                            Err(e) => {
+                                error!("failed to export plane fd: {}", e);
+                                return GpuResponse::ErrUnspec;
+                            }
+                        };
+
+                        let request = VmMemoryRequest::RegisterMemoryAtAddress(
+                            self.pci_bar,
+                            MaybeOwnedFd::Borrowed(dma_buf_fd.as_raw_fd()),
+                            size as usize,
+                            pci_addr,
+                        );
+
+                        match self.gpu_device_socket.send(&request) {
+                            Ok(_resq) => match self.gpu_device_socket.recv() {
+                                Ok(response) => match response {
+                                    VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
+                                        entry.insert(VirtioGpuResource::v2_new(slot, resource));
+                                        GpuResponse::OkNoData
+                                    }
+                                    VmMemoryResponse::Err(e) => {
+                                        error!("received an error: {}", e);
+                                        GpuResponse::ErrUnspec
+                                    }
+                                    _ => {
+                                        error!("recieved an unexpected response");
+                                        GpuResponse::ErrUnspec
+                                    }
+                                },
+                                Err(e) => {
+                                    error!("failed to receive data: {}", e);
+                                    GpuResponse::ErrUnspec
+                                }
+                            },
+                            Err(e) => {
+                                error!("failed to send request: {}", e);
+                                GpuResponse::ErrUnspec
+                            }
+                        }
+                    }
+                    _ => {
+                        entry.insert(VirtioGpuResource::new(
+                            DEFAULT_WIDTH,
+                            DEFAULT_HEIGHT,
+                            resource,
+                        ));
+
+                        GpuResponse::OkNoData
+                    }
+                }
+            }
+            Entry::Occupied(_) => GpuResponse::ErrInvalidResourceId,
+        }
+    }
+
+    pub fn resource_v2_unref(&mut self, resource_id: u32) -> GpuResponse {
+        match self.resources.remove(&resource_id) {
+            Some(entry) => match entry.kvm_slot {
+                Some(kvm_slot) => {
+                    let request = VmMemoryRequest::UnregisterMemory(kvm_slot);
+                    match self.gpu_device_socket.send(&request) {
+                        Ok(_resq) => match self.gpu_device_socket.recv() {
+                            Ok(response) => match response {
+                                VmMemoryResponse::Ok => GpuResponse::OkNoData,
+                                VmMemoryResponse::Err(e) => {
+                                    error!("received an error: {}", e);
+                                    GpuResponse::ErrUnspec
+                                }
+                                _ => {
+                                    error!("recieved an unexpected response");
+                                    GpuResponse::ErrUnspec
+                                }
+                            },
+                            Err(e) => {
+                                error!("failed to receive data: {}", e);
+                                GpuResponse::ErrUnspec
+                            }
+                        },
+                        Err(e) => {
+                            error!("failed to send request: {}", e);
+                            GpuResponse::ErrUnspec
+                        }
+                    }
+                }
+                None => GpuResponse::OkNoData,
+            },
+            None => GpuResponse::ErrInvalidResourceId,
         }
     }
 }

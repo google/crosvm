@@ -285,6 +285,56 @@ impl Frontend {
                     GpuResponse::ErrUnspec
                 }
             }
+            GpuCommand::ResourceCreateV2(info) => {
+                if reader.available_bytes() != 0 {
+                    let resource_id = info.resource_id.to_native();
+                    let guest_memory_type = info.guest_memory_type.to_native();
+                    let size = info.size.to_native();
+                    let guest_caching_type = info.guest_caching_type.to_native();
+                    let pci_addr = info.pci_addr.to_native();
+                    let entry_count = info.nr_entries.to_native();
+                    let args_size = info.args_size.to_native();
+                    if args_size > VIRTIO_GPU_MAX_BLOB_ARGUMENT_SIZE
+                        || entry_count > VIRTIO_GPU_MAX_IOVEC_ENTRIES
+                    {
+                        return GpuResponse::ErrUnspec;
+                    }
+
+                    let mut iovecs = Vec::with_capacity(entry_count as usize);
+                    let mut args = vec![0; args_size as usize];
+
+                    for _ in 0..entry_count {
+                        match reader.read_obj::<virtio_gpu_mem_entry>() {
+                            Ok(entry) => {
+                                let addr = GuestAddress(entry.addr.to_native());
+                                let len = entry.length.to_native() as usize;
+                                iovecs.push((addr, len))
+                            }
+                            Err(_) => return GpuResponse::ErrUnspec,
+                        }
+                    }
+
+                    match reader.read(&mut args[..]) {
+                        Ok(_) => self.backend.resource_create_v2(
+                            resource_id,
+                            guest_memory_type,
+                            guest_caching_type,
+                            size,
+                            pci_addr,
+                            mem,
+                            iovecs,
+                            args,
+                        ),
+                        Err(_) => GpuResponse::ErrUnspec,
+                    }
+                } else {
+                    GpuResponse::ErrUnspec
+                }
+            }
+            GpuCommand::ResourceV2Unref(info) => {
+                let resource_id = info.resource_id.to_native();
+                self.backend.resource_v2_unref(resource_id)
+            }
         }
     }
 

@@ -410,6 +410,62 @@ impl Renderer {
         #[cfg(not(feature = "virtio-gpu-next"))]
         Err(Error::Unsupported)
     }
+
+    #[allow(unused_variables)]
+    pub fn resource_create_v2(
+        &self,
+        resource_id: u32,
+        guest_memory_type: u32,
+        guest_caching_type: u32,
+        size: u64,
+        mem: &GuestMemory,
+        iovecs: &[(GuestAddress, usize)],
+        args: &[u8],
+    ) -> Result<Resource> {
+        #[cfg(feature = "virtio-gpu-next")]
+        {
+            if iovecs
+                .iter()
+                .any(|&(addr, len)| mem.get_slice(addr.offset(), len as u64).is_err())
+            {
+                return Err(Error::InvalidIovec);
+            }
+
+            let mut vecs = Vec::new();
+            for &(addr, len) in iovecs {
+                // Unwrap will not panic because we already checked the slices.
+                let slice = mem.get_slice(addr.offset(), len as u64).unwrap();
+                vecs.push(VirglVec {
+                    base: slice.as_ptr() as *mut c_void,
+                    len,
+                });
+            }
+
+            let ret = unsafe {
+                virgl_renderer_resource_create_v2(
+                    resource_id,
+                    guest_memory_type,
+                    guest_caching_type,
+                    size,
+                    vecs.as_ptr() as *const iovec,
+                    vecs.len() as u32,
+                    args.as_ptr() as *const c_void,
+                    args.len() as u32,
+                )
+            };
+
+            ret_to_res(ret)?;
+
+            Ok(Resource {
+                id: resource_id,
+                backing_iovecs: vecs,
+                backing_mem: None,
+                no_sync_send: PhantomData,
+            })
+        }
+        #[cfg(not(feature = "virtio-gpu-next"))]
+        Err(Error::Unsupported)
+    }
 }
 
 /// A context in which resources can be attached/detached and commands can be submitted.
