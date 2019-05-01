@@ -150,6 +150,90 @@ impl HostDevice {
         self.claimed_interfaces = Vec::new();
     }
 
+    fn execute_control_transfer(
+        &mut self,
+        xhci_transfer: Arc<XhciTransfer>,
+        buffer: Option<ScatterGatherBuffer>,
+    ) -> Result<()> {
+        let mut control_transfer = control_transfer(0);
+        control_transfer
+            .buffer_mut()
+            .set_request_setup(&self.control_request_setup);
+
+        let direction = self.control_request_setup.get_direction();
+
+        let buffer = if direction == Some(ControlRequestDataPhaseTransferDirection::HostToDevice) {
+            if let Some(buffer) = buffer {
+                buffer
+                    .read(&mut control_transfer.buffer_mut().data_buffer)
+                    .map_err(Error::ReadBuffer)?;
+            }
+            // buffer is consumed here for HostToDevice transfers.
+            None
+        } else {
+            // buffer will be used later in the callback for DeviceToHost transfers.
+            buffer
+        };
+
+        let tmp_transfer = xhci_transfer.clone();
+        let callback = move |t: UsbTransfer<ControlTransferBuffer>| {
+            usb_debug!("setup token control transfer callback invoked");
+            update_transfer_state(&xhci_transfer, &t)?;
+            let state = xhci_transfer.state().lock();
+            match *state {
+                XhciTransferState::Cancelled => {
+                    usb_debug!("transfer cancelled");
+                    drop(state);
+                    xhci_transfer
+                        .on_transfer_complete(&TransferStatus::Cancelled, 0)
+                        .map_err(Error::TransferComplete)?;
+                }
+                XhciTransferState::Completed => {
+                    let status = t.status();
+                    let actual_length = t.actual_length();
+                    if direction == Some(ControlRequestDataPhaseTransferDirection::DeviceToHost) {
+                        if let Some(buffer) = &buffer {
+                            buffer
+                                .write(&t.buffer().data_buffer)
+                                .map_err(Error::WriteBuffer)?;
+                        }
+                    }
+                    drop(state);
+                    usb_debug!("transfer completed with actual length {}", actual_length);
+                    xhci_transfer
+                        .on_transfer_complete(&status, actual_length as u32)
+                        .map_err(Error::TransferComplete)?;
+                }
+                _ => {
+                    // update_transfer_state is already invoked before match.
+                    // This transfer could only be `Cancelled` or `Completed`.
+                    // Any other state means there is a bug in crosvm implementation.
+                    error!("should not take this branch");
+                    return Err(Error::BadXhciTransferState);
+                }
+            }
+            Ok(())
+        };
+
+        let fail_handle = self.fail_handle.clone();
+        control_transfer.set_callback(
+            move |t: UsbTransfer<ControlTransferBuffer>| match callback(t) {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("control transfer callback failed {:?}", e);
+                    fail_handle.fail();
+                }
+            },
+        );
+        submit_transfer(
+            self.fail_handle.clone(),
+            &self.job_queue,
+            tmp_transfer,
+            &self.device_handle,
+            control_transfer,
+        )
+    }
+
     fn handle_control_transfer(&mut self, transfer: XhciTransfer) -> Result<()> {
         let xhci_transfer = Arc::new(transfer);
         match xhci_transfer
@@ -191,62 +275,7 @@ impl HostDevice {
                             &self.control_request_setup,
                         )? {
                             HostToDeviceControlRequest::Other => {
-                                let mut control_transfer = control_transfer(0);
-                                control_transfer
-                                    .buffer_mut()
-                                    .set_request_setup(&self.control_request_setup);
-                                if let Some(buffer) = buffer {
-                                    buffer
-                                        .read(&mut control_transfer.buffer_mut().data_buffer)
-                                        .map_err(Error::ReadBuffer)?;
-                                }
-                                let tmp_transfer = xhci_transfer.clone();
-                                let callback = move |t: UsbTransfer<ControlTransferBuffer>| {
-                                    update_transfer_state(&xhci_transfer, &t)?;
-                                    let state = xhci_transfer.state().lock();
-                                    match *state {
-                                        XhciTransferState::Cancelled => {
-                                            drop(state);
-                                            xhci_transfer
-                                                .on_transfer_complete(&TransferStatus::Cancelled, 0)
-                                                .map_err(Error::TransferComplete)?;
-                                        }
-                                        XhciTransferState::Completed => {
-                                            let status = t.status();
-                                            let actual_length = t.actual_length();
-                                            drop(state);
-                                            xhci_transfer
-                                                .on_transfer_complete(&status, actual_length as u32)
-                                                .map_err(Error::TransferComplete)?;
-                                        }
-                                        _ => {
-                                            // update_transfer_state is already invoked before
-                                            // match. This transfer  could only be `Cancelled` or
-                                            // `Completed`. Any other states means there is a bug
-                                            // in crosvm implementation.
-                                            error!("should not take this branch");
-                                            return Err(Error::BadXhciTransferState);
-                                        }
-                                    }
-                                    Ok(())
-                                };
-                                let fail_handle = self.fail_handle.clone();
-                                control_transfer.set_callback(
-                                    move |t: UsbTransfer<ControlTransferBuffer>| match callback(t) {
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            error!("control transfer callback failed {:?}", e);
-                                            fail_handle.fail();
-                                        }
-                                    },
-                                );
-                                submit_transfer(
-                                    self.fail_handle.clone(),
-                                    &self.job_queue,
-                                    tmp_transfer,
-                                    &self.device_handle,
-                                    control_transfer,
-                                )?;
+                                self.execute_control_transfer(xhci_transfer, buffer)?;
                             }
                             HostToDeviceControlRequest::SetAddress => {
                                 usb_debug!("host device handling set address");
@@ -280,68 +309,7 @@ impl HostDevice {
                         };
                     }
                     Some(ControlRequestDataPhaseTransferDirection::DeviceToHost) => {
-                        let mut control_transfer = control_transfer(0);
-                        control_transfer
-                            .buffer_mut()
-                            .set_request_setup(&self.control_request_setup);
-                        let tmp_transfer = xhci_transfer.clone();
-                        let callback = move |t: UsbTransfer<ControlTransferBuffer>| {
-                            usb_debug!("setup token control transfer callback invoked");
-                            update_transfer_state(&xhci_transfer, &t)?;
-                            let state = xhci_transfer.state().lock();
-                            match *state {
-                                XhciTransferState::Cancelled => {
-                                    usb_debug!("transfer cancelled");
-                                    drop(state);
-                                    xhci_transfer
-                                        .on_transfer_complete(&TransferStatus::Cancelled, 0)
-                                        .map_err(Error::TransferComplete)?;
-                                }
-                                XhciTransferState::Completed => {
-                                    let status = t.status();
-                                    if let Some(buffer) = &buffer {
-                                        let _bytes = buffer
-                                            .write(&t.buffer().data_buffer)
-                                            .map_err(Error::WriteBuffer)?
-                                            as u32;
-                                        let _actual_length = t.actual_length();
-                                        usb_debug!(
-                                            "transfer completed bytes: {} actual length {}",
-                                            _bytes,
-                                            _actual_length
-                                        );
-                                    }
-                                    drop(state);
-                                    xhci_transfer
-                                        .on_transfer_complete(&status, 0)
-                                        .map_err(Error::TransferComplete)?;
-                                }
-                                _ => {
-                                    // update_transfer_state is already invoked before this match.
-                                    // Any other states indicates a bug in crosvm.
-                                    error!("should not take this branch");
-                                    return Err(Error::BadXhciTransferState);
-                                }
-                            }
-                            Ok(())
-                        };
-                        let fail_handle = self.fail_handle.clone();
-                        control_transfer.set_callback(
-                            move |t: UsbTransfer<ControlTransferBuffer>| match callback(t) {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    error!("control transfer callback failed {:?}", e);
-                                    fail_handle.fail();
-                                }
-                            },
-                        );
-                        submit_transfer(
-                            self.fail_handle.clone(),
-                            &self.job_queue,
-                            tmp_transfer,
-                            &self.device_handle,
-                            control_transfer,
-                        )?;
+                        self.execute_control_transfer(xhci_transfer, buffer)?;
                     }
                     None => error!("Unknown transfer direction!"),
                 }
