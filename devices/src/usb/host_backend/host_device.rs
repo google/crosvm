@@ -53,7 +53,7 @@ impl HostToDeviceControlRequest {
     pub fn analyze_request_setup(
         request_setup: &UsbRequestSetup,
     ) -> Result<HostToDeviceControlRequest> {
-        match request_setup.get_type().ok_or(Error::GetRequestSetupType)? {
+        match request_setup.get_type() {
             ControlRequestType::Standard => {}
             _ => return Ok(HostToDeviceControlRequest::Other),
         };
@@ -162,7 +162,7 @@ impl HostDevice {
 
         let direction = self.control_request_setup.get_direction();
 
-        let buffer = if direction == Some(ControlRequestDataPhaseTransferDirection::HostToDevice) {
+        let buffer = if direction == ControlRequestDataPhaseTransferDirection::HostToDevice {
             if let Some(buffer) = buffer {
                 buffer
                     .read(&mut control_transfer.buffer_mut().data_buffer)
@@ -191,7 +191,7 @@ impl HostDevice {
                 XhciTransferState::Completed => {
                     let status = t.status();
                     let actual_length = t.actual_length();
-                    if direction == Some(ControlRequestDataPhaseTransferDirection::DeviceToHost) {
+                    if direction == ControlRequestDataPhaseTransferDirection::DeviceToHost {
                         if let Some(buffer) = &buffer {
                             buffer
                                 .write(&t.buffer().data_buffer)
@@ -270,7 +270,7 @@ impl HostDevice {
                 }
                 let buffer = self.buffer.take();
                 match self.control_request_setup.get_direction() {
-                    Some(ControlRequestDataPhaseTransferDirection::HostToDevice) => {
+                    ControlRequestDataPhaseTransferDirection::HostToDevice => {
                         match HostToDeviceControlRequest::analyze_request_setup(
                             &self.control_request_setup,
                         )? {
@@ -308,10 +308,9 @@ impl HostDevice {
                             }
                         };
                     }
-                    Some(ControlRequestDataPhaseTransferDirection::DeviceToHost) => {
+                    ControlRequestDataPhaseTransferDirection::DeviceToHost => {
                         self.execute_control_transfer(xhci_transfer, buffer)?;
                     }
-                    None => error!("Unknown transfer direction!"),
                 }
 
                 self.ctl_ep_state = ControlEndpointState::SetupStage;

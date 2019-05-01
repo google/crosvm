@@ -32,7 +32,6 @@ pub enum Error {
     /// Cannot get interface descriptor for (interface, altsetting).
     GetInterfaceDescriptor((i32, u16)),
     GetEndpointDescriptor(u8),
-    GetRequestSetupType,
     BadXhciTransferState,
     BadBackendProviderState,
 }
@@ -68,7 +67,6 @@ impl Display for Error {
             GetEndpointDescriptor(ep_idx) => {
                 write!(f, "failed to get endpoint descriptor for ep: {}", ep_idx)
             }
-            GetRequestSetupType => write!(f, "failed to get request setup"),
             BadXhciTransferState => write!(f, "xhci transfer is in a bad state"),
             BadBackendProviderState => write!(f, "backend provider is in a bad state"),
         }

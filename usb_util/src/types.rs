@@ -142,31 +142,29 @@ impl UsbRequestSetup {
     }
 
     /// Get type of request.
-    pub fn get_type(&self) -> Option<ControlRequestType> {
+    pub fn get_type(&self) -> ControlRequestType {
         let ty = (self.request_type & CONTROL_REQUEST_TYPE) >> CONTROL_REQUEST_TYPE_OFFSET;
         match ty {
-            0 => Some(ControlRequestType::Standard),
-            1 => Some(ControlRequestType::Class),
-            2 => Some(ControlRequestType::Vendor),
-            3 => Some(ControlRequestType::Reserved),
-            _ => None,
+            0 => ControlRequestType::Standard,
+            1 => ControlRequestType::Class,
+            2 => ControlRequestType::Vendor,
+            _ => ControlRequestType::Reserved,
         }
     }
 
     /// Get request direction.
-    pub fn get_direction(&self) -> Option<ControlRequestDataPhaseTransferDirection> {
+    pub fn get_direction(&self) -> ControlRequestDataPhaseTransferDirection {
         let dir = (self.request_type & DATA_PHASE_DIRECTION) >> DATA_PHASE_DIRECTION_OFFSET;
         match dir {
-            0 => Some(ControlRequestDataPhaseTransferDirection::HostToDevice),
-            1 => Some(ControlRequestDataPhaseTransferDirection::DeviceToHost),
-            _ => None,
+            0 => ControlRequestDataPhaseTransferDirection::HostToDevice,
+            _ => ControlRequestDataPhaseTransferDirection::DeviceToHost,
         }
     }
 
     /// Get recipient of this control transfer.
     pub fn get_recipient(&self) -> ControlRequestRecipient {
-        let recipienet = self.request_type & REQUEST_RECIPIENT_TYPE;
-        match recipienet {
+        let recipient = self.request_type & REQUEST_RECIPIENT_TYPE;
+        match recipient {
             0 => ControlRequestRecipient::Device,
             1 => ControlRequestRecipient::Interface,
             2 => ControlRequestRecipient::Endpoint,
