@@ -20,8 +20,8 @@ use usb_util::device_handle::DeviceHandle;
 use usb_util::error::Error as LibUsbError;
 use usb_util::libusb_device::LibUsbDevice;
 use usb_util::types::{
-    ControlRequestDataPhaseTransferDirection, ControlRequestRecipient, ControlRequestType,
-    StandardControlRequest, UsbRequestSetup,
+    ControlRequestDataPhaseTransferDirection, ControlRequestRecipient, StandardControlRequest,
+    UsbRequestSetup,
 };
 use usb_util::usb_transfer::{
     control_transfer, ControlTransferBuffer, TransferStatus, UsbTransfer,
@@ -35,51 +35,6 @@ pub enum ControlEndpointState {
     DataStage,
     /// Control endpoint should receive status stage next.
     StatusStage,
-}
-
-// Types of host to device control requests. We want to handle it use libusb functions instead of
-// control transfers.
-enum HostToDeviceControlRequest {
-    SetAddress,
-    SetConfig,
-    SetInterface,
-    ClearFeature,
-    // It could still be some standard control request.
-    Other,
-}
-
-impl HostToDeviceControlRequest {
-    /// Analyze request setup.
-    pub fn analyze_request_setup(
-        request_setup: &UsbRequestSetup,
-    ) -> Result<HostToDeviceControlRequest> {
-        match request_setup.get_type() {
-            ControlRequestType::Standard => {}
-            _ => return Ok(HostToDeviceControlRequest::Other),
-        };
-
-        let recipient = request_setup.get_recipient();
-        let standard_request = request_setup.get_standard_request();
-
-        match (recipient, standard_request) {
-            (ControlRequestRecipient::Device, Some(StandardControlRequest::SetAddress)) => {
-                Ok(HostToDeviceControlRequest::SetAddress)
-            }
-
-            (ControlRequestRecipient::Device, Some(StandardControlRequest::SetConfiguration)) => {
-                Ok(HostToDeviceControlRequest::SetConfig)
-            }
-
-            (ControlRequestRecipient::Interface, Some(StandardControlRequest::SetInterface)) => {
-                Ok(HostToDeviceControlRequest::SetInterface)
-            }
-
-            (ControlRequestRecipient::Endpoint, Some(StandardControlRequest::ClearFeature)) => {
-                Ok(HostToDeviceControlRequest::ClearFeature)
-            }
-            _ => Ok(HostToDeviceControlRequest::Other),
-        }
-    }
 }
 
 /// Host device is a device connected to host.
@@ -150,6 +105,63 @@ impl HostDevice {
         self.claimed_interfaces = Vec::new();
     }
 
+    // Check for requests that should be intercepted and emulated using libusb
+    // functions rather than passed directly to the device.
+    // Returns true if the request has been intercepted or false if the request
+    // should be passed through to the device.
+    fn intercepted_control_transfer(&mut self, xhci_transfer: &XhciTransfer) -> Result<bool> {
+        let direction = self.control_request_setup.get_direction();
+        let recipient = self.control_request_setup.get_recipient();
+        let standard_request = self.control_request_setup.get_standard_request();
+
+        if direction != ControlRequestDataPhaseTransferDirection::HostToDevice {
+            // Only host to device requests are intercepted currently.
+            return Ok(false);
+        }
+
+        let status = match standard_request {
+            Some(StandardControlRequest::SetAddress) => {
+                if recipient != ControlRequestRecipient::Device {
+                    return Ok(false);
+                }
+                usb_debug!("host device handling set address");
+                let addr = self.control_request_setup.value as u32;
+                self.set_address(addr);
+                TransferStatus::Completed
+            }
+            Some(StandardControlRequest::SetConfiguration) => {
+                if recipient != ControlRequestRecipient::Device {
+                    return Ok(false);
+                }
+                usb_debug!("host device handling set config");
+                self.set_config()?
+            }
+            Some(StandardControlRequest::SetInterface) => {
+                if recipient != ControlRequestRecipient::Interface {
+                    return Ok(false);
+                }
+                usb_debug!("host device handling set interface");
+                self.set_interface()?
+            }
+            Some(StandardControlRequest::ClearFeature) => {
+                if recipient != ControlRequestRecipient::Endpoint {
+                    return Ok(false);
+                }
+                usb_debug!("host device handling clear feature");
+                self.clear_feature()?
+            }
+            _ => {
+                // Other requests will be passed through to the device.
+                return Ok(false);
+            }
+        };
+
+        xhci_transfer
+            .on_transfer_complete(&status, 0)
+            .map_err(Error::TransferComplete)?;
+        Ok(true)
+    }
+
     fn execute_control_transfer(
         &mut self,
         xhci_transfer: Arc<XhciTransfer>,
@@ -160,8 +172,11 @@ impl HostDevice {
             .buffer_mut()
             .set_request_setup(&self.control_request_setup);
 
-        let direction = self.control_request_setup.get_direction();
+        if self.intercepted_control_transfer(&xhci_transfer)? {
+            return Ok(());
+        }
 
+        let direction = self.control_request_setup.get_direction();
         let buffer = if direction == ControlRequestDataPhaseTransferDirection::HostToDevice {
             if let Some(buffer) = buffer {
                 buffer
@@ -269,50 +284,7 @@ impl HostDevice {
                     return Ok(());
                 }
                 let buffer = self.buffer.take();
-                match self.control_request_setup.get_direction() {
-                    ControlRequestDataPhaseTransferDirection::HostToDevice => {
-                        match HostToDeviceControlRequest::analyze_request_setup(
-                            &self.control_request_setup,
-                        )? {
-                            HostToDeviceControlRequest::Other => {
-                                self.execute_control_transfer(xhci_transfer, buffer)?;
-                            }
-                            HostToDeviceControlRequest::SetAddress => {
-                                usb_debug!("host device handling set address");
-                                let addr = self.control_request_setup.value as u32;
-                                self.set_address(addr);
-                                xhci_transfer
-                                    .on_transfer_complete(&TransferStatus::Completed, 0)
-                                    .map_err(Error::TransferComplete)?;
-                            }
-                            HostToDeviceControlRequest::SetConfig => {
-                                usb_debug!("host device handling set config");
-                                let status = self.set_config()?;
-                                xhci_transfer
-                                    .on_transfer_complete(&status, 0)
-                                    .map_err(Error::TransferComplete)?;
-                            }
-                            HostToDeviceControlRequest::SetInterface => {
-                                usb_debug!("host device handling set interface");
-                                let status = self.set_interface()?;
-                                xhci_transfer
-                                    .on_transfer_complete(&status, 0)
-                                    .map_err(Error::TransferComplete)?;
-                            }
-                            HostToDeviceControlRequest::ClearFeature => {
-                                usb_debug!("host device handling clear feature");
-                                let status = self.clear_feature()?;
-                                xhci_transfer
-                                    .on_transfer_complete(&status, 0)
-                                    .map_err(Error::TransferComplete)?;
-                            }
-                        };
-                    }
-                    ControlRequestDataPhaseTransferDirection::DeviceToHost => {
-                        self.execute_control_transfer(xhci_transfer, buffer)?;
-                    }
-                }
-
+                self.execute_control_transfer(xhci_transfer, buffer)?;
                 self.ctl_ep_state = ControlEndpointState::SetupStage;
             }
             _ => {

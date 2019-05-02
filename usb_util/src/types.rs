@@ -59,7 +59,7 @@ pub const DATA_PHASE_DIRECTION_OFFSET: u8 = 7;
 /// Bit mask of data phase transfer direction.
 pub const DATA_PHASE_DIRECTION: u8 = 1u8 << DATA_PHASE_DIRECTION_OFFSET;
 // Types of data phase transfer directions.
-#[derive(PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum ControlRequestDataPhaseTransferDirection {
     HostToDevice = 0,
     DeviceToHost = 1,
@@ -175,6 +175,9 @@ impl UsbRequestSetup {
 
     /// Return the type of standard control request.
     pub fn get_standard_request(&self) -> Option<StandardControlRequest> {
+        if self.get_type() != ControlRequestType::Standard {
+            return None;
+        }
         match self.request {
             0x00 => Some(StandardControlRequest::GetStatus),
             0x01 => Some(StandardControlRequest::ClearFeature),
