@@ -14,6 +14,7 @@ pub enum Error {
     CreatePollContext(SysError),
     PollContextAddFd(SysError),
     PollContextDeleteFd(SysError),
+    StartThread(std::io::Error),
 }
 
 impl Display for Error {
@@ -28,6 +29,7 @@ impl Display for Error {
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             PollContextAddFd(e) => write!(f, "failed to add fd to poll context: {}", e),
             PollContextDeleteFd(e) => write!(f, "failed to delete fd from poll context: {}", e),
+            StartThread(e) => write!(f, "failed to start thread: {}", e),
         }
     }
 }

@@ -71,6 +71,7 @@ pub trait EventHandler: Send + Sync {
 impl EventLoop {
     /// Start an event loop. An optional fail handle could be passed to the event loop.
     pub fn start(
+        name: String,
         fail_handle: Option<Arc<dyn FailHandle>>,
     ) -> Result<(EventLoop, thread::JoinHandle<()>)> {
         let (self_stop_evt, stop_evt) = EventFd::new()
@@ -91,59 +92,62 @@ impl EventLoop {
             stop_evt: self_stop_evt,
         };
 
-        let handle = thread::spawn(move || {
-            let event_loop = EpollEvents::new();
-            loop {
-                if fail_handle.failed() {
-                    error!("xhci controller already failed, stopping event ring");
-                    return;
-                }
-                let events = match poll_ctx.wait(&event_loop) {
-                    Ok(events) => events,
-                    Err(e) => {
-                        error!("cannot poll {:?}", e);
-                        fail_handle.fail();
+        let handle = thread::Builder::new()
+            .name(name)
+            .spawn(move || {
+                let event_loop = EpollEvents::new();
+                loop {
+                    if fail_handle.failed() {
+                        error!("xhci controller already failed, stopping event ring");
                         return;
                     }
-                };
-                for event in &events {
-                    if event.token().as_raw_fd() == stop_evt.as_raw_fd() {
-                        return;
-                    } else {
-                        let fd = event.token().as_raw_fd();
-                        let mut locked = fd_callbacks.lock();
-                        let weak_handler = match locked.get(&fd) {
-                            Some(cb) => cb.clone(),
-                            None => {
-                                warn!("callback for fd {} already removed", fd);
-                                continue;
-                            }
-                        };
-                        match weak_handler.upgrade() {
-                            Some(handler) => {
-                                // Drop lock before triggering the event.
-                                drop(locked);
-                                match handler.on_event() {
-                                    Ok(()) => {}
-                                    Err(_) => {
-                                        error!("event loop stopping due to handle event error");
-                                        fail_handle.fail();
-                                        return;
-                                    }
-                                };
-                            }
-                            // If the handler is already gone, we remove the fd.
-                            None => {
-                                let _ = poll_ctx.delete(&Fd(fd));
-                                if locked.remove(&fd).is_none() {
-                                    error!("fail to remove handler for file descriptor {}", fd);
+                    let events = match poll_ctx.wait(&event_loop) {
+                        Ok(events) => events,
+                        Err(e) => {
+                            error!("cannot poll {:?}", e);
+                            fail_handle.fail();
+                            return;
+                        }
+                    };
+                    for event in &events {
+                        if event.token().as_raw_fd() == stop_evt.as_raw_fd() {
+                            return;
+                        } else {
+                            let fd = event.token().as_raw_fd();
+                            let mut locked = fd_callbacks.lock();
+                            let weak_handler = match locked.get(&fd) {
+                                Some(cb) => cb.clone(),
+                                None => {
+                                    warn!("callback for fd {} already removed", fd);
+                                    continue;
                                 }
-                            }
-                        };
+                            };
+                            match weak_handler.upgrade() {
+                                Some(handler) => {
+                                    // Drop lock before triggering the event.
+                                    drop(locked);
+                                    match handler.on_event() {
+                                        Ok(()) => {}
+                                        Err(_) => {
+                                            error!("event loop stopping due to handle event error");
+                                            fail_handle.fail();
+                                            return;
+                                        }
+                                    };
+                                }
+                                // If the handler is already gone, we remove the fd.
+                                None => {
+                                    let _ = poll_ctx.delete(&Fd(fd));
+                                    if locked.remove(&fd).is_none() {
+                                        error!("fail to remove handler for file descriptor {}", fd);
+                                    }
+                                }
+                            };
+                        }
                     }
                 }
-            }
-        });
+            })
+            .map_err(Error::StartThread)?;
 
         Ok((event_loop, handle))
     }
@@ -219,7 +223,7 @@ mod tests {
 
     #[test]
     fn event_loop_test() {
-        let (l, j) = EventLoop::start(None).unwrap();
+        let (l, j) = EventLoop::start("test".to_string(), None).unwrap();
         let (self_evt, evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {

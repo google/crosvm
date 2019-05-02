@@ -83,7 +83,8 @@ impl Xhci {
         regs: XhciRegs,
     ) -> Result<Arc<Self>> {
         let (event_loop, _join_handle) =
-            EventLoop::start(Some(fail_handle.clone())).map_err(Error::StartEventLoop)?;
+            EventLoop::start("xhci".to_string(), Some(fail_handle.clone()))
+                .map_err(Error::StartEventLoop)?;
         let interrupter = Arc::new(Mutex::new(Interrupter::new(mem.clone(), irq_evt, &regs)));
         let event_loop = Arc::new(event_loop);
         let intr_resample_handler =

@@ -320,7 +320,7 @@ mod tests {
     fn test_ring_buffer_controller() {
         let (tx, rx) = channel();
         let mem = setup_mem();
-        let (l, j) = EventLoop::start(None).unwrap();
+        let (l, j) = EventLoop::start("test".to_string(), None).unwrap();
         let l = Arc::new(l);
         let controller = RingBufferController::new_with_handler(
             "".to_string(),
