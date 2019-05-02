@@ -47,13 +47,14 @@ impl EventHandler for IntrResampleHandler {
             }
         }
         usb_debug!("resample triggered");
-        if !self.interrupter.lock().event_ring_is_empty() {
+        let mut interrupter = self.interrupter.lock();
+        if !interrupter.event_ring_is_empty() {
             usb_debug!("irq resample re-assert irq event");
             // There could be a race condition. When we get resample_evt and other
             // component is sending interrupt at the same time.
             // This might result in one more interrupt than we want. It's handled by
             // kernel correctly.
-            if let Err(e) = self.interrupter.lock().interrupt() {
+            if let Err(e) = interrupter.interrupt() {
                 error!("cannot send interrupt: {}", e);
                 return Err(());
             }
