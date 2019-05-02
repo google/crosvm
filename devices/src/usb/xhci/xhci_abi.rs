@@ -364,6 +364,12 @@ impl Trb {
         (self.get_flags() & FLAGS_INTERRUPT_ON_COMPLETION_MASK) > 0
     }
 
+    /// Returns true if interrupt is required on transfer of short packet.
+    pub fn interrupt_on_short_packet(&self) -> bool {
+        const FLAGS_INTERRUPT_ON_SHORT_PACKET: u16 = 0x2;
+        (self.get_flags() & FLAGS_INTERRUPT_ON_SHORT_PACKET) > 0
+    }
+
     /// Returns true if this trb is immediate data.
     pub fn immediate_data(&self) -> Result<bool> {
         const FLAGS_IMMEDIATE_DATA_MASK: u16 = 0x20;

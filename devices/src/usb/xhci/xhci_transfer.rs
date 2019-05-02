@@ -316,16 +316,18 @@ impl XhciTransfer {
         }
 
         let mut edtla: u32 = 0;
-        // TODO(jkwang) Send event based on Status.
         // As noted in xHCI spec 4.11.3.1
-        // Transfer Event Trb only occurs under the following conditions:
+        // Transfer Event TRB only occurs under the following conditions:
         //   1. If the Interrupt On Completion flag is set.
         //   2. When a short transfer occurs during the execution of a Transfer TRB and the
-        //      Interrupter-on-Short Packet flag is set.
-        //   3. If an error occurs during the execution of a Transfer Trb.
+        //      Interrupt-on-Short Packet flag is set.
+        //   3. If an error occurs during the execution of a Transfer TRB.
+        // Errors are handled above, so just check for the two flags.
         for atrb in &self.transfer_trbs {
             edtla += atrb.trb.transfer_length().map_err(Error::TransferLength)?;
-            if atrb.trb.interrupt_on_completion() {
+            if atrb.trb.interrupt_on_completion()
+                || (atrb.trb.interrupt_on_short_packet() && edtla > bytes_transferred)
+            {
                 // For details about event data trb and EDTLA, see spec 4.11.5.2.
                 if atrb.trb.trb_type().map_err(Error::TrbType)? == TrbType::EventData {
                     let tlength = min(edtla, bytes_transferred);
