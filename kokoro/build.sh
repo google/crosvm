@@ -18,13 +18,7 @@ main() {
   if [[ "$(docker images -q ${base_image} 2> /dev/null)" == "" ]]; then
     docker load -i "${base_image_tarball}"
   fi
-  docker run \
-    --rm \
-    --privileged \
-    -e TEST_RUNNER_FLAGS='--format terse' \
-    -v /dev/log:/dev/log \
-    -v "${src_root}":/platform/crosvm:ro \
-    ${base_image}
+  "${src_root}"/docker/wrapped_smoke_test.sh
 
   return 0
 }

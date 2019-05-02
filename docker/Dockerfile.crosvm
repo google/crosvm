@@ -1,0 +1,16 @@
+FROM crosvm-base
+
+COPY . /platform/crosvm
+
+RUN cargo install --features 'default-no-sandbox wl-dmabuf gpu' --path . --root /usr
+
+ARG UID=1000
+ARG GID=1000
+
+RUN export uid=$UID gid=$GID && \
+    mkdir -p /home/chronos && \
+    echo "chronos:x:${uid}:${gid}:Developer,,,:/home/chronos:/bin/bash" >> /etc/passwd && \
+    echo "chronos:x:${uid}:" >> /etc/group && \
+    chown ${uid}:${gid} -R /home/chronos
+
+ENTRYPOINT ["crosvm"]

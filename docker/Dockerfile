@@ -61,7 +61,7 @@ WORKDIR /scratch
 # minijail does not exist in upstream linux distros.
 RUN git clone https://android.googlesource.com/platform/external/minijail \
     && cd minijail \
-    && make -j24 \
+    && make -j$(nproc) \
     && cp libminijail.so /usr/lib/x86_64-linux-gnu/
 
 # The gbm used by upstream linux distros is not compatible with crosvm, which must use Chrome OS's
@@ -70,18 +70,20 @@ RUN dpkg --force-depends -r libgbm1
 RUN git clone https://chromium.googlesource.com/chromiumos/platform/minigbm \
     && cd minigbm \
     && sed 's/-Wall/-Wno-maybe-uninitialized/g' -i Makefile \
-    && make install -j24
+    && make install -j$(nproc)
 
 # New libepoxy requires newer meson than is in Debian stretch.
+ARG MESON_COMMIT=master
 RUN git clone https://github.com/mesonbuild/meson \
     && cd meson \
-    && git checkout 0a5ff338012a00f32c3aa9d8773835accc3e4e5b \
+    && git checkout $MESON_COMMIT \
     && ln -s $PWD/meson.py /usr/bin/meson
 
 # New libepoxy has EGL_KHR_DEBUG entry points needed by crosvm.
+ARG LIBEPOXY_COMMIT=master
 RUN git clone https://github.com/anholt/libepoxy.git \
     && cd libepoxy \
-    && git checkout 707f50e680ab4f1861b1e54ca6e2907aaca56c12 \
+    && git checkout $LIBEPOXY_COMMIT \
     && mkdir build \
     && cd build \
     && meson \
@@ -91,20 +93,22 @@ RUN git clone https://github.com/anholt/libepoxy.git \
 RUN git clone https://gitlab.freedesktop.org/virgl/virglrenderer.git \
     && cd virglrenderer \
     && ./autogen.sh \
-    && make install -j24
+    && make install -j$(nproc)
 
 # Install libtpm2 so that tpm2-sys/build.rs does not try to build it in place in
 # the read-only source directory.
+ARG TPM2_COMMIT=master
 RUN git clone https://chromium.googlesource.com/chromiumos/third_party/tpm2 \
     && cd tpm2 \
-    && git checkout 15260c8cd98eb10b4976d2161cd5cb9bc0c3adac \
-    && make -j24 \
+    && git checkout $TPM2_COMMIT \
+    && make -j$(nproc) \
     && cp build/libtpm2.a /lib
 
 # Install librendernodehost
+ARG PLATFORM2_COMMIT=master
 RUN git clone https://chromium.googlesource.com/chromiumos/platform2 \
     && cd platform2 \
-    && git checkout 226fc35730a430344a68c34d7fe7d613f758f417 \
+    && git checkout $PLATFORM2_COMMIT \
     && cd rendernodehost \
     && gcc -c src.c -o src.o \
     && ar rcs librendernodehost.a src.o \
@@ -140,12 +144,3 @@ RUN git clone https://chromium.googlesource.com/chromiumos/third_party/adhd $THI
 ENV CARGO_TARGET_DIR=/build
 RUN mkdir -p $CARGO_TARGET_DIR
 WORKDIR /platform/crosvm
-CMD rustup default "$(cat rust-toolchain)" && \
-    rustup component add rustfmt-preview && \
-    cargo --version && rustc --version && rustfmt --version && \
-    echo "Running cargo test" && \
-    cargo test --no-fail-fast --features plugin,default-no-sandbox,wl-dmabuf,gpu,tpm,gpu-forward \
-    --all --exclude aarch64 $TEST_FLAGS -- \
-    --test-threads=1 $TEST_RUNNER_FLAGS && \
-    echo "Running cargo fmt" && \
-    bin/fmt --check

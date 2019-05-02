@@ -3,7 +3,7 @@
 For presubmit testing, each change posted for Gerrit on the master branch of crosvm will be tried by
 Kokoro. The configuration is found in [`presubmit.cfg`](presubmit.cfg) and the build script is at
 [`build.sh`](build.sh). A Docker image called `crosvm-base` is used as the testing environment which
-is built with a [`Dockerfile`](Dockerfile).
+is built with a [`Dockerfile`](../docker/Dockerfile).
 
 [TOC]
 
@@ -12,17 +12,17 @@ is built with a [`Dockerfile`](Dockerfile).
 Assuming a Docker daemon is already running, build the `crosvm-base` image:
 
 ```shell
-docker build -t crosvm-base path/to/crosvm/kokoro
+path/to/crosvm/docker/build_crosvm_base.sh
 ```
 
 Here is how to use the image to test a crosvm repository located at `$CROSVM_SRC`:
 
 ```shell
-docker run --privileged -v /dev/log:/dev/log -v "${CROSVM_SRC}":/platform/crosvm:ro crosvm-base
+$CROSVM_SRC/docker/wrapped_smoke_test.sh
 ```
 
 > **WARNING**:
-> The `--privileged` is so that the container will have `/dev/kvm` access.
+> The `--privileged` flag is used in that script so that the container will have `/dev/kvm` access.
 
 ## How to update `crosvm-base`
 
@@ -32,7 +32,7 @@ If an update or new library is needed or any other adjustment is required, a new
 generated as follows:
 
 ```shell
-docker build -t crosvm-base path/to/crosvm/kokoro
+path/to/crosvm/docker/build_crosvm_base.sh
 docker save crosvm-base | xz -T 0 -z >crosvm-base.tar.xz
 ```
 

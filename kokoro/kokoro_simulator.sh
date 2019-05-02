@@ -16,7 +16,7 @@ main() {
   mkdir -p "${kokoro_simulator_root}"
   if [[ ! -e "${base_image_tarball}" ]]; then
     if [[ "$(docker images -q ${base_image} 2> /dev/null)" == "" ]]; then
-      docker build -t ${base_image} .
+      ../docker/build_crosvm_base.sh
     fi
     docker save ${base_image} | xz -T 0 -z >"${base_image_tarball}"
   fi

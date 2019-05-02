@@ -7,6 +7,11 @@ safety within the programming language and a sandbox around the virtual
 devices to protect the kernel from attack in case of an exploit in the
 devices.
 
+## Building with Docker
+
+See the [README](docker/README.md) from the `docker` subdirectory to learn how
+to build crosvm in enviroments outside of the Chrome OS chroot.
+
 ## Usage
 
 To see the usage information for your version of crosvm, run `crosvm` or `crosvm
