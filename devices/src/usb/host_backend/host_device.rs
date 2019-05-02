@@ -49,7 +49,7 @@ pub struct HostDevice {
     alt_settings: HashMap<u16, u16>,
     claimed_interfaces: Vec<i32>,
     control_request_setup: UsbRequestSetup,
-    buffer: Option<ScatterGatherBuffer>,
+    executed: bool,
     job_queue: Arc<AsyncJobQueue>,
 }
 
@@ -76,7 +76,7 @@ impl HostDevice {
             alt_settings: HashMap::new(),
             claimed_interfaces: vec![],
             control_request_setup: UsbRequestSetup::new(0, 0, 0, 0, 0),
-            buffer: None,
+            executed: false,
             job_queue,
         }
     }
@@ -272,10 +272,10 @@ impl HostDevice {
                     error!("Control endpoint is in an inconsistant state");
                     return Ok(());
                 }
-                self.buffer = Some(buffer);
-                xhci_transfer
-                    .on_transfer_complete(&TransferStatus::Completed, 0)
-                    .map_err(Error::TransferComplete)?;
+                // Requests with a DataStage will be executed here.
+                // Requests without a DataStage will be executed in StatusStage.
+                self.execute_control_transfer(xhci_transfer, Some(buffer))?;
+                self.executed = true;
                 self.ctl_ep_state = ControlEndpointState::StatusStage;
             }
             XhciTransferType::StatusStage => {
@@ -283,8 +283,17 @@ impl HostDevice {
                     error!("Control endpoint is in an inconsistant state");
                     return Ok(());
                 }
-                let buffer = self.buffer.take();
-                self.execute_control_transfer(xhci_transfer, buffer)?;
+                if self.executed {
+                    // Request was already executed during DataStage.
+                    // Just complete the StatusStage transfer.
+                    xhci_transfer
+                        .on_transfer_complete(&TransferStatus::Completed, 0)
+                        .map_err(Error::TransferComplete)?;
+                } else {
+                    // Execute the request now since there was no DataStage.
+                    self.execute_control_transfer(xhci_transfer, None)?;
+                }
+                self.executed = false;
                 self.ctl_ep_state = ControlEndpointState::SetupStage;
             }
             _ => {
