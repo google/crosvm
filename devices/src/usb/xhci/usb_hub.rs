@@ -208,20 +208,28 @@ impl UsbHub {
     /// Try to detach device of bus, addr, vid, pid
     pub fn try_detach(&self, bus: u8, addr: u8, vid: u16, pid: u16) -> Result<()> {
         for port in &self.ports {
-            let backend_device = port.get_backend_device();
-
-            let d = match backend_device.as_ref() {
-                None => continue,
-                Some(d) => d,
-            };
-
-            if d.host_bus() == bus
-                && d.host_address() == addr
-                && d.get_vid() == vid
-                && d.get_pid() == pid
+            // This block exists so that we only hold the backend device
+            // lock while checking the address. It needs to be dropped before
+            // calling port.detach(), because that acquires the backend
+            // device lock again.
             {
-                return port.detach();
+                let backend_device = port.get_backend_device();
+
+                let d = match backend_device.as_ref() {
+                    None => continue,
+                    Some(d) => d,
+                };
+
+                if d.host_bus() != bus
+                    || d.host_address() != addr
+                    || d.get_vid() != vid
+                    || d.get_pid() != pid
+                {
+                    continue;
+                }
             }
+
+            return port.detach();
         }
 
         Err(Error::NoSuchDevice {
