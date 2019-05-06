@@ -314,21 +314,19 @@ impl AArch64 {
             None => None,
         };
         let (pci_device_base, pci_device_size) = Self::get_device_addr_base_size(mem_size);
-        if let Some(android_fstab) = android_fstab {
-            fdt::create_fdt(
-                AARCH64_FDT_MAX_SIZE as usize,
-                mem,
-                pci_irqs,
-                vcpu_count,
-                fdt_offset(mem_size),
-                pci_device_base,
-                pci_device_size,
-                cmdline,
-                initrd,
-                android_fstab,
-            )
-            .map_err(Error::CreateFdt)?;
-        }
+        fdt::create_fdt(
+            AARCH64_FDT_MAX_SIZE as usize,
+            mem,
+            pci_irqs,
+            vcpu_count,
+            fdt_offset(mem_size),
+            pci_device_base,
+            pci_device_size,
+            cmdline,
+            initrd,
+            android_fstab,
+        )
+        .map_err(Error::CreateFdt)?;
         Ok(())
     }
 

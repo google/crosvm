@@ -320,7 +320,7 @@ pub fn create_fdt(
     pci_device_size: u64,
     cmdline: &CStr,
     initrd: Option<(GuestAddress, usize)>,
-    android_fstab: File,
+    android_fstab: Option<File>,
 ) -> Result<()> {
     let mut fdt = vec![0; fdt_max_size];
     start_fdt(&mut fdt, fdt_max_size)?;
@@ -331,7 +331,9 @@ pub fn create_fdt(
     property_string(&mut fdt, "compatible", "linux,dummy-virt")?;
     property_u32(&mut fdt, "#address-cells", 0x2)?;
     property_u32(&mut fdt, "#size-cells", 0x2)?;
-    arch::android::create_android_fdt(&mut fdt, android_fstab)?;
+    if let Some(android_fstab) = android_fstab {
+        arch::android::create_android_fdt(&mut fdt, android_fstab)?;
+    }
     create_chosen_node(&mut fdt, cmdline, initrd)?;
     create_memory_node(&mut fdt, guest_mem)?;
     create_cpu_nodes(&mut fdt, num_cpus)?;
