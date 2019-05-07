@@ -30,4 +30,6 @@ pub trait XhciBackendDevice: Send {
     fn submit_transfer(&mut self, transfer: XhciTransfer) -> std::result::Result<(), ()>;
     /// Set address of this backend.
     fn set_address(&mut self, address: UsbDeviceAddress);
+    /// Reset the backend device.
+    fn reset(&mut self) -> std::result::Result<(), ()>;
 }

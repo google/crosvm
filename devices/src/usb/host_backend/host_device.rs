@@ -485,4 +485,19 @@ impl XhciBackendDevice for HostDevice {
             _address
         );
     }
+
+    fn reset(&mut self) -> std::result::Result<(), ()> {
+        usb_debug!("resetting host device");
+        let result = self.device_handle.lock().reset();
+        match result {
+            Err(LibUsbError::NotFound) => {
+                // libusb will return NotFound if it fails to re-claim
+                // the interface after the reset.
+                Ok(())
+            }
+            _ => result.map_err(|e| {
+                error!("failed to reset device: {:?}", e);
+            }),
+        }
+    }
 }

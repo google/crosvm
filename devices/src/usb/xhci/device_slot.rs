@@ -125,6 +125,18 @@ impl DeviceSlots {
         }
     }
 
+    /// Reset the device connected to a specific port.
+    pub fn reset_port(&self, port_id: u8) -> std::result::Result<(), ()> {
+        if let Some(port) = self.hub.get_port(port_id) {
+            if let Some(backend_device) = port.get_backend_device().as_mut() {
+                backend_device.reset()?;
+            }
+        }
+
+        // No device on port, so nothing to reset.
+        Ok(())
+    }
+
     /// Stop all device slots and reset them.
     pub fn stop_all_and_reset<C: FnMut() + 'static + Send>(&self, mut callback: C) {
         usb_debug!("stopping all device slots and resetting host hub");

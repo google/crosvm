@@ -30,6 +30,7 @@ pub enum Error {
     StartProvider,
     RingDoorbell(DeviceSlotError),
     CreateCommandRingController(CommandRingControllerError),
+    ResetPort,
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -52,6 +53,7 @@ impl Display for Error {
             CreateCommandRingController(e) => {
                 write!(f, "failed to create command ring controller: {}", e)
             }
+            ResetPort => write!(f, "failed to reset port"),
         }
     }
 }
@@ -267,17 +269,19 @@ impl Xhci {
             index,
             value
         );
+        let port_id = (index + 1) as u8;
         // xHCI spec 4.19.5. Note: we might want to change this logic if we support USB 3.0.
         if (value & PORTSC_PORT_RESET) > 0 || (value & PORTSC_WARM_PORT_RESET) > 0 {
-            // Libusb onlys support blocking call to reset and "usually incurs a noticeable
-            // delay.". We are faking a reset now.
+            self.device_slots
+                .reset_port(port_id)
+                .map_err(|_| Error::ResetPort)?;
             value &= !PORTSC_PORT_LINK_STATE_MASK;
             value &= !PORTSC_PORT_RESET;
             value |= PORTSC_PORT_ENABLED;
             value |= PORTSC_PORT_RESET_CHANGE;
             self.interrupter
                 .lock()
-                .send_port_status_change_trb((index + 1) as u8)
+                .send_port_status_change_trb(port_id)
                 .map_err(Error::SendInterrupt)?;
         }
         Ok(value)
