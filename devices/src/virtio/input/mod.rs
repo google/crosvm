@@ -408,8 +408,7 @@ impl<T: EventSource> Worker<T> {
 
         // Only consume from the queue iterator if we know we have events to send
         while self.event_source.available_events_count() > 0 {
-            let mut queue_iter = queue.iter(&self.guest_memory);
-            match queue_iter.next() {
+            match queue.pop(&self.guest_memory) {
                 None => {
                     break;
                 }

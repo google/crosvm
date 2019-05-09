@@ -108,7 +108,7 @@ where
     // if a buffer was used, and false if the frame must be deferred until a buffer
     // is made available by the driver.
     fn rx_single_frame(&mut self) -> bool {
-        let mut next_desc = self.rx_queue.iter(&self.mem).next();
+        let mut next_desc = self.rx_queue.pop(&self.mem);
 
         if next_desc.is_none() {
             return false;

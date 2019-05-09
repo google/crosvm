@@ -173,38 +173,14 @@ impl<'a> DescriptorChain<'a> {
 /// Consuming iterator over all available descriptor chain heads in the queue.
 pub struct AvailIter<'a, 'b> {
     mem: &'a GuestMemory,
-    desc_table: GuestAddress,
-    avail_ring: GuestAddress,
-    next_index: Wrapping<u16>,
-    last_index: Wrapping<u16>,
-    queue_size: u16,
-    next_avail: &'b mut Wrapping<u16>,
+    queue: &'b mut Queue,
 }
 
 impl<'a, 'b> Iterator for AvailIter<'a, 'b> {
     type Item = DescriptorChain<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.next_index == self.last_index {
-            return None;
-        }
-
-        let offset = (4 + (self.next_index.0 % self.queue_size) * 2) as usize;
-        let avail_addr = match self.mem.checked_offset(self.avail_ring, offset as u64) {
-            Some(a) => a,
-            None => return None,
-        };
-        // This index is checked below in checked_new
-        let desc_index: u16 = self.mem.read_obj_from_addr(avail_addr).unwrap();
-
-        self.next_index += Wrapping(1);
-
-        let ret =
-            DescriptorChain::checked_new(self.mem, self.desc_table, self.queue_size, desc_index);
-        if ret.is_some() {
-            *self.next_avail += Wrapping(1);
-        }
-        ret
+        self.queue.pop(self.mem)
     }
 }
 
@@ -304,48 +280,38 @@ impl Queue {
         }
     }
 
+    /// If a new DescriptorHead is available, returns one and removes it from the queue.
+    pub fn pop<'a>(&mut self, mem: &'a GuestMemory) -> Option<DescriptorChain<'a>> {
+        if !self.is_valid(mem) {
+            return None;
+        }
+
+        let queue_size = self.actual_size();
+        let avail_index_addr = mem.checked_offset(self.avail_ring, 2).unwrap();
+        let avail_index: u16 = mem.read_obj_from_addr(avail_index_addr).unwrap();
+        let avail_len = Wrapping(avail_index) - self.next_avail;
+
+        if avail_len.0 > queue_size || self.next_avail == Wrapping(avail_index) {
+            return None;
+        }
+
+        let desc_idx_addr_offset = (4 + (self.next_avail.0 % queue_size) * 2) as u64;
+        let desc_idx_addr = mem.checked_offset(self.avail_ring, desc_idx_addr_offset)?;
+
+        // This index is checked below in checked_new.
+        let descriptor_index: u16 = mem.read_obj_from_addr(desc_idx_addr).unwrap();
+
+        let descriptor_chain =
+            DescriptorChain::checked_new(mem, self.desc_table, queue_size, descriptor_index);
+        if descriptor_chain.is_some() {
+            self.next_avail += Wrapping(1);
+        }
+        descriptor_chain
+    }
+
     /// A consuming iterator over all available descriptor chain heads offered by the driver.
     pub fn iter<'a, 'b>(&'b mut self, mem: &'a GuestMemory) -> AvailIter<'a, 'b> {
-        if !self.is_valid(mem) {
-            return AvailIter {
-                mem,
-                desc_table: GuestAddress(0),
-                avail_ring: GuestAddress(0),
-                next_index: Wrapping(0),
-                last_index: Wrapping(0),
-                queue_size: 0,
-                next_avail: &mut self.next_avail,
-            };
-        }
-        let queue_size = self.actual_size();
-        let avail_ring = self.avail_ring;
-
-        let index_addr = mem.checked_offset(avail_ring, 2).unwrap();
-        // Note that last_index has no invalid values
-        let last_index: u16 = mem.read_obj_from_addr::<u16>(index_addr).unwrap();
-        let queue_len = Wrapping(last_index) - self.next_avail;
-
-        if queue_len.0 > queue_size {
-            return AvailIter {
-                mem,
-                desc_table: GuestAddress(0),
-                avail_ring: GuestAddress(0),
-                next_index: Wrapping(0),
-                last_index: Wrapping(0),
-                queue_size: 0,
-                next_avail: &mut self.next_avail,
-            };
-        }
-
-        AvailIter {
-            mem,
-            desc_table: self.desc_table,
-            avail_ring,
-            next_index: self.next_avail,
-            last_index: Wrapping(last_index),
-            queue_size,
-            next_avail: &mut self.next_avail,
-        }
+        AvailIter { mem, queue: self }
     }
 
     /// Puts an available descriptor head into the used ring for use by the guest.

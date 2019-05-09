@@ -103,7 +103,7 @@ impl Device {
 
 impl Worker {
     fn process_queue(&mut self) -> NeedsInterrupt {
-        let avail_desc = match self.queue.iter(&self.mem).next() {
+        let avail_desc = match self.queue.pop(&self.mem) {
             Some(avail_desc) => avail_desc,
             None => return NeedsInterrupt::No,
         };
