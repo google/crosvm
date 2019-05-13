@@ -46,6 +46,7 @@ unsafe impl data_model::DataInit for mpspec::mpc_table {}
 unsafe impl data_model::DataInit for mpspec::mpc_lintsrc {}
 unsafe impl data_model::DataInit for mpspec::mpf_intel {}
 
+mod bzimage;
 mod cpuid;
 mod gdt;
 mod interrupts;
@@ -91,6 +92,7 @@ pub enum Error {
     CreateVm(sys_util::Error),
     E820Configuration,
     KernelOffsetPastEnd,
+    LoadBzImage(bzimage::Error),
     LoadCmdline(kernel_loader::Error),
     LoadInitrd(arch::LoadImageError),
     LoadKernel(kernel_loader::Error),
@@ -133,6 +135,7 @@ impl Display for Error {
             CreateVm(e) => write!(f, "failed to create VM: {}", e),
             E820Configuration => write!(f, "invalid e820 setup params"),
             KernelOffsetPastEnd => write!(f, "the kernel extends past the end of RAM"),
+            LoadBzImage(e) => write!(f, "error loading kernel bzImage: {}", e),
             LoadCmdline(e) => write!(f, "error loading command line: {}", e),
             LoadInitrd(e) => write!(f, "error loading initrd: {}", e),
             LoadKernel(e) => write!(f, "error loading Kernel: {}", e),
@@ -181,6 +184,7 @@ fn configure_system(
     pci_irqs: Vec<(u32, PciInterruptPin)>,
     setup_data: Option<GuestAddress>,
     initrd: Option<(GuestAddress, usize)>,
+    mut params: boot_params,
 ) -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
@@ -194,8 +198,6 @@ fn configure_system(
     mptable::setup_mptable(guest_mem, num_cpus, pci_irqs).map_err(Error::SetupMptable)?;
 
     smbios::setup_smbios(guest_mem).map_err(Error::SetupSmbios)?;
-
-    let mut params: boot_params = Default::default();
 
     params.hdr.type_of_loader = KERNEL_LOADER_OTHER;
     params.hdr.boot_flag = KERNEL_BOOT_FLAG_MAGIC;
@@ -353,7 +355,7 @@ impl arch::LinuxArch for X8664arch {
 
         // separate out load_kernel from other setup to get a specific error for
         // kernel loading
-        let kernel_end = Self::load_kernel(&mem, &mut components.kernel_image)?;
+        let (params, kernel_end) = Self::load_kernel(&mem, &mut components.kernel_image)?;
 
         Self::setup_system_memory(
             &mem,
@@ -364,6 +366,7 @@ impl arch::LinuxArch for X8664arch {
             pci_irqs,
             components.android_fstab,
             kernel_end,
+            params,
         )?;
 
         Ok(RunnableLinuxVm {
@@ -389,9 +392,16 @@ impl X8664arch {
     ///
     /// * `mem` - The memory to be used by the guest.
     /// * `kernel_image` - the File object for the specified kernel.
-    fn load_kernel(mem: &GuestMemory, mut kernel_image: &mut File) -> Result<u64> {
-        kernel_loader::load_kernel(mem, GuestAddress(KERNEL_START_OFFSET), &mut kernel_image)
-            .map_err(Error::LoadKernel)
+    fn load_kernel(mem: &GuestMemory, mut kernel_image: &mut File) -> Result<(boot_params, u64)> {
+        let elf_result =
+            kernel_loader::load_kernel(mem, GuestAddress(KERNEL_START_OFFSET), &mut kernel_image);
+        if elf_result == Err(kernel_loader::Error::InvalidElfMagicNumber) {
+            bzimage::load_bzimage(mem, GuestAddress(KERNEL_START_OFFSET), &mut kernel_image)
+                .map_err(Error::LoadBzImage)
+        } else {
+            let kernel_end = elf_result.map_err(Error::LoadKernel)?;
+            Ok((Default::default(), kernel_end))
+        }
     }
 
     /// Configures the system memory space should be called once per vm before
@@ -412,6 +422,7 @@ impl X8664arch {
         pci_irqs: Vec<(u32, PciInterruptPin)>,
         android_fstab: Option<File>,
         kernel_end: u64,
+        params: boot_params,
     ) -> Result<()> {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)
             .map_err(Error::LoadCmdline)?;
@@ -462,6 +473,7 @@ impl X8664arch {
             pci_irqs,
             setup_data,
             initrd,
+            params,
         )?;
         Ok(())
     }
