@@ -84,9 +84,8 @@ impl Worker {
             &mut self.deflate_queue
         };
 
-        let mut used_desc_heads = [0; QUEUE_SIZE as usize];
-        let mut used_count = 0;
-        for avail_desc in queue.iter(&self.mem) {
+        let mut needs_interrupt = false;
+        while let Some(avail_desc) = queue.pop(&self.mem) {
             if inflate && valid_inflate_desc(&avail_desc) {
                 let num_addrs = avail_desc.len / 4;
                 for i in 0..num_addrs as usize {
@@ -112,14 +111,11 @@ impl Worker {
                 }
             }
 
-            used_desc_heads[used_count] = avail_desc.index;
-            used_count += 1;
+            queue.add_used(&self.mem, avail_desc.index, 0);
+            needs_interrupt = true;
         }
 
-        for &desc_index in &used_desc_heads[..used_count] {
-            queue.add_used(&self.mem, desc_index, 0);
-        }
-        used_count > 0
+        needs_interrupt
     }
 
     fn signal_used_queue(&self) {

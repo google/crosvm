@@ -1584,12 +1584,8 @@ impl Worker {
                     }
                     Token::OutQueue => {
                         let _ = out_queue_evt.read();
-                        // Used to buffer filled in descriptors that will be added to the used queue
-                        // after iterating the available queue.
-                        let mut used_descs = [(0u16, 0u32); QUEUE_SIZE as usize];
-                        let mut used_descs_len = 0;
                         let min_resp_desc_len = size_of::<CtrlHeader>() as u32;
-                        for desc in self.out_queue.iter(&self.mem) {
+                        while let Some(desc) = self.out_queue.pop(&self.mem) {
                             // Expects that each descriptor chain is made of one "in" followed by
                             // one "out" descriptor.
                             if !desc.is_write_only() {
@@ -1612,19 +1608,16 @@ impl Worker {
                                         let used_len =
                                             encode_resp(resp_mem, resp).unwrap_or_default();
 
-                                        used_descs[used_descs_len] = (desc.index, used_len);
+                                        self.out_queue.add_used(&self.mem, desc.index, used_len);
+                                        signal_used = true;
                                     }
                                 }
                             } else {
                                 // Chains that are unusable get sent straight back to the used
                                 // queue.
-                                used_descs[used_descs_len] = (desc.index, 0);
+                                self.out_queue.add_used(&self.mem, desc.index, 0);
+                                signal_used = true;
                             }
-                            used_descs_len += 1;
-                        }
-                        for &(index, len) in &used_descs[..used_descs_len] {
-                            signal_used = true;
-                            self.out_queue.add_used(&self.mem, index, len);
                         }
                     }
                     Token::Kill => break 'poll,

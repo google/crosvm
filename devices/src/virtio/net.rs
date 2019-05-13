@@ -190,10 +190,8 @@ where
 
     fn process_tx(&mut self) {
         let mut frame = [0u8; MAX_BUFFER_SIZE];
-        let mut used_desc_heads = [0u16; QUEUE_SIZE as usize];
-        let mut used_count = 0;
 
-        for avail_desc in self.tx_queue.iter(&self.mem) {
+        while let Some(avail_desc) = self.tx_queue.pop(&self.mem) {
             let head_index = avail_desc.index;
             let mut next_desc = Some(avail_desc);
             let mut read_count = 0;
@@ -227,12 +225,7 @@ where
                 }
             };
 
-            used_desc_heads[used_count] = head_index;
-            used_count += 1;
-        }
-
-        for &desc_index in &used_desc_heads[..used_count] {
-            self.tx_queue.add_used(&self.mem, desc_index, 0);
+            self.tx_queue.add_used(&self.mem, head_index, 0);
         }
 
         self.signal_used_queue();

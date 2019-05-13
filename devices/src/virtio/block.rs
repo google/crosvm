@@ -618,9 +618,8 @@ impl<T: DiskFile> Worker<T> {
 
         let disk_size = self.disk_size.lock();
 
-        let mut used_desc_heads = [(0, 0); QUEUE_SIZE as usize];
-        let mut used_count = 0;
-        for avail_desc in queue.iter(&self.mem) {
+        let mut needs_interrupt = false;
+        while let Some(avail_desc) = queue.pop(&self.mem) {
             let len;
             match Request::parse(&avail_desc, &self.mem) {
                 Ok(request) => {
@@ -653,14 +652,12 @@ impl<T: DiskFile> Worker<T> {
                     len = 0;
                 }
             }
-            used_desc_heads[used_count] = (avail_desc.index, len);
-            used_count += 1;
+
+            queue.add_used(&self.mem, avail_desc.index, len);
+            needs_interrupt = true;
         }
 
-        for &(desc_index, len) in &used_desc_heads[..used_count] {
-            queue.add_used(&self.mem, desc_index, len);
-        }
-        used_count > 0
+        needs_interrupt
     }
 
     fn resize(&mut self, new_size: u64) -> DiskControlResult {

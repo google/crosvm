@@ -48,9 +48,8 @@ impl Worker {
     fn process_queue(&mut self) -> bool {
         let queue = &mut self.queue;
 
-        let mut used_desc_heads = [(0, 0); QUEUE_SIZE as usize];
-        let mut used_count = 0;
-        for avail_desc in queue.iter(&self.mem) {
+        let mut needs_interrupt = false;
+        while let Some(avail_desc) = queue.pop(&self.mem) {
             let mut len = 0;
 
             // Drivers can only read from the random device.
@@ -69,14 +68,11 @@ impl Worker {
                 }
             }
 
-            used_desc_heads[used_count] = (avail_desc.index, len);
-            used_count += 1;
+            queue.add_used(&self.mem, avail_desc.index, len);
+            needs_interrupt = true;
         }
 
-        for &(desc_index, len) in &used_desc_heads[..used_count] {
-            queue.add_used(&self.mem, desc_index, len);
-        }
-        used_count > 0
+        needs_interrupt
     }
 
     fn signal_used_queue(&self) {

@@ -444,9 +444,8 @@ impl<T: EventSource> Worker<T> {
     fn process_status_queue(&mut self) -> Result<bool> {
         let queue = &mut self.status_queue;
 
-        let mut used_desc_heads = [(0, 0); EVENT_QUEUE_SIZE as usize];
-        let mut used_count = 0;
-        for avail_desc in queue.iter(&self.guest_memory) {
+        let mut needs_interrupt = false;
+        while let Some(avail_desc) = queue.pop(&self.guest_memory) {
             if !avail_desc.is_read_only() {
                 panic!("Received a writable descriptor on status queue");
             }
@@ -462,14 +461,11 @@ impl<T: EventSource> Worker<T> {
                     .map_err(InputError::EventsWriteError)?;
             }
 
-            used_desc_heads[used_count] = (avail_desc.index, len);
-            used_count += 1;
+            queue.add_used(&self.guest_memory, avail_desc.index, len as u32);
+            needs_interrupt = true;
         }
 
-        for &(desc_index, len) in &used_desc_heads[..used_count] {
-            queue.add_used(&self.guest_memory, desc_index, len as u32);
-        }
-        Ok(used_count > 0)
+        Ok(needs_interrupt)
     }
 
     fn run(

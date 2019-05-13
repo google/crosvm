@@ -222,10 +222,7 @@ impl Worker {
     }
 
     fn process_queue(&mut self) -> P9Result<()> {
-        let mut used_desc_heads = [(0, 0); QUEUE_SIZE as usize];
-        let mut used_count = 0;
-
-        for avail_desc in self.queue.iter(&self.mem) {
+        while let Some(avail_desc) = self.queue.pop(&self.mem) {
             let mut reader = Reader {
                 mem: &self.mem,
                 offset: 0,
@@ -242,12 +239,8 @@ impl Worker {
                 .handle_message(&mut reader, &mut writer)
                 .map_err(P9Error::Internal)?;
 
-            used_desc_heads[used_count] = (avail_desc.index, writer.bytes_written);
-            used_count += 1;
-        }
-
-        for &(idx, count) in &used_desc_heads[..used_count] {
-            self.queue.add_used(&self.mem, idx, count);
+            self.queue
+                .add_used(&self.mem, avail_desc.index, writer.bytes_written);
         }
 
         self.signal_used_queue()?;
