@@ -14,7 +14,7 @@ use std::usize;
 use data_model::*;
 
 use msg_socket::{MsgReceiver, MsgSender};
-use sys_util::{error, GuestAddress, GuestMemory};
+use sys_util::{error, warn, GuestAddress, GuestMemory};
 
 use gpu_buffer::{Buffer, Device, Flags, Format};
 use gpu_display::*;
@@ -769,7 +769,7 @@ impl Backend {
                                 Flags::empty().use_scanout(true).use_rendering(true),
                             ) {
                                 Ok(buffer) => buffer,
-                                Err(e) => {
+                                Err(_) => {
                                     // Attempt to allocate the buffer without scanout flag.
                                     match self.device.create_buffer(
                                         width,
@@ -838,11 +838,21 @@ impl Backend {
                             }
                         }
                         None => {
-                            error!(
-                                "failed to detemine fourcc for minigbm 3d resource {}",
+                            warn!(
+                                "failed to get fourcc for minigbm 3d resource {}, falling back",
                                 format
                             );
-                            return GpuResponse::ErrUnspec;
+                            let res = self.renderer.create_resource(create_args);
+                            match res {
+                                Ok(res) => {
+                                    slot.insert(Box::new(res));
+                                    GpuResponse::OkNoData
+                                }
+                                Err(e) => {
+                                    error!("failed to create renderer resource: {}", e);
+                                    GpuResponse::ErrUnspec
+                                }
+                            }
                         }
                     }
                 } else {
