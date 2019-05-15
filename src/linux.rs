@@ -535,7 +535,7 @@ fn create_net_device(
 fn create_gpu_device(
     cfg: &Config,
     exit_evt: &EventFd,
-    _gpu_device_socket: VmMemoryControlRequestSocket,
+    gpu_device_socket: VmMemoryControlRequestSocket,
     gpu_socket: virtio::resource_bridge::ResourceResponseSocket,
     wayland_socket_path: &Path,
 ) -> DeviceResult {
@@ -543,6 +543,7 @@ fn create_gpu_device(
 
     let dev = virtio::Gpu::new(
         exit_evt.try_clone().map_err(Error::CloneEventFd)?,
+        Some(gpu_device_socket),
         Some(gpu_socket),
         if cfg.sandbox {
             &jailed_wayland_path

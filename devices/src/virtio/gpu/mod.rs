@@ -36,6 +36,8 @@ use self::backend::Backend;
 use self::protocol::*;
 use crate::pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType};
 
+use vm_control::VmMemoryControlRequestSocket;
+
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.
 const QUEUE_SIZES: &[u16] = &[256, 16];
@@ -601,6 +603,7 @@ impl Worker {
 pub struct Gpu {
     config_event: bool,
     exit_evt: EventFd,
+    gpu_device_socket: Option<VmMemoryControlRequestSocket>,
     resource_bridge: Option<ResourceResponseSocket>,
     kill_evt: Option<EventFd>,
     wayland_socket_path: PathBuf,
@@ -609,12 +612,14 @@ pub struct Gpu {
 impl Gpu {
     pub fn new<P: AsRef<Path>>(
         exit_evt: EventFd,
+        gpu_device_socket: Option<VmMemoryControlRequestSocket>,
         resource_bridge: Option<ResourceResponseSocket>,
         wayland_socket_path: P,
     ) -> Gpu {
         Gpu {
             config_event: false,
             exit_evt,
+            gpu_device_socket,
             resource_bridge,
             kill_evt: None,
             wayland_socket_path: wayland_socket_path.as_ref().to_path_buf(),
@@ -653,6 +658,11 @@ impl VirtioDevice for Gpu {
             keep_fds.push(libc::STDOUT_FILENO);
             keep_fds.push(libc::STDERR_FILENO);
         }
+
+        if let Some(ref gpu_device_socket) = self.gpu_device_socket {
+            keep_fds.push(gpu_device_socket.as_raw_fd());
+        }
+
         keep_fds.push(self.exit_evt.as_raw_fd());
         if let Some(resource_bridge) = &self.resource_bridge {
             keep_fds.push(resource_bridge.as_raw_fd());
@@ -736,70 +746,78 @@ impl VirtioDevice for Gpu {
         let cursor_queue = queues.remove(0);
         let cursor_evt = queue_evts.remove(0);
         let socket_path = self.wayland_socket_path.clone();
-        let worker_result =
-            thread::Builder::new()
-                .name("virtio_gpu".to_string())
-                .spawn(move || {
-                    const UNDESIRED_CARDS: &[&str] = &["vgem", "pvr"];
-                    let drm_card = match gpu_buffer::rendernode::open_device(UNDESIRED_CARDS) {
-                        Ok(f) => f,
-                        Err(()) => {
-                            error!("failed to open card");
-                            return;
+        if let Some(gpu_device_socket) = self.gpu_device_socket.take() {
+            let worker_result =
+                thread::Builder::new()
+                    .name("virtio_gpu".to_string())
+                    .spawn(move || {
+                        const UNDESIRED_CARDS: &[&str] = &["vgem", "pvr"];
+                        let drm_card = match gpu_buffer::rendernode::open_device(UNDESIRED_CARDS) {
+                            Ok(f) => f,
+                            Err(()) => {
+                                error!("failed to open card");
+                                return;
+                            }
+                        };
+
+                        let device = match Device::new(drm_card) {
+                            Ok(d) => d,
+                            Err(()) => {
+                                error!("failed to open device");
+                                return;
+                            }
+                        };
+
+                        let display = match GpuDisplay::new(socket_path) {
+                            Ok(c) => c,
+                            Err(e) => {
+                                error!("failed to open display: {}", e);
+                                return;
+                            }
+                        };
+
+                        if cfg!(debug_assertions) {
+                            let ret =
+                                unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
+                            if ret == -1 {
+                                warn!("unable to dup2 stdout to stderr: {}", Error::last());
+                            }
                         }
-                    };
 
-                    let device = match Device::new(drm_card) {
-                        Ok(d) => d,
-                        Err(()) => {
-                            error!("failed to open device");
-                            return;
+                        let renderer = match Renderer::init() {
+                            Ok(r) => r,
+                            Err(e) => {
+                                error!("failed to initialize gpu renderer: {}", e);
+                                return;
+                            }
+                        };
+
+                        Worker {
+                            exit_evt,
+                            mem,
+                            interrupt_evt,
+                            interrupt_resample_evt,
+                            interrupt_status,
+                            ctrl_queue,
+                            ctrl_evt,
+                            cursor_queue,
+                            cursor_evt,
+                            resource_bridge,
+                            kill_evt,
+                            state: Frontend::new(Backend::new(
+                                device,
+                                display,
+                                renderer,
+                                gpu_device_socket,
+                            )),
                         }
-                    };
+                        .run()
+                    });
 
-                    let display = match GpuDisplay::new(socket_path) {
-                        Ok(c) => c,
-                        Err(e) => {
-                            error!("failed to open display: {}", e);
-                            return;
-                        }
-                    };
-
-                    if cfg!(debug_assertions) {
-                        let ret = unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
-                        if ret == -1 {
-                            warn!("unable to dup2 stdout to stderr: {}", Error::last());
-                        }
-                    }
-
-                    let renderer = match Renderer::init() {
-                        Ok(r) => r,
-                        Err(e) => {
-                            error!("failed to initialize gpu renderer: {}", e);
-                            return;
-                        }
-                    };
-
-                    Worker {
-                        exit_evt,
-                        mem,
-                        interrupt_evt,
-                        interrupt_resample_evt,
-                        interrupt_status,
-                        ctrl_queue,
-                        ctrl_evt,
-                        cursor_queue,
-                        cursor_evt,
-                        resource_bridge,
-                        kill_evt,
-                        state: Frontend::new(Backend::new(device, display, renderer)),
-                    }
-                    .run()
-                });
-
-        if let Err(e) = worker_result {
-            error!("failed to spawn virtio_gpu worker: {}", e);
-            return;
+            if let Err(e) = worker_result {
+                error!("failed to spawn virtio_gpu worker: {}", e);
+                return;
+            }
         }
     }
 

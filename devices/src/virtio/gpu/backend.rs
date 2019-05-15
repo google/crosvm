@@ -27,6 +27,7 @@ use super::protocol::{
     GpuResponse, GpuResponsePlaneInfo, VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2,
 };
 use crate::virtio::resource_bridge::*;
+use vm_control::VmMemoryControlRequestSocket;
 
 const DEFAULT_WIDTH: u32 = 1280;
 const DEFAULT_HEIGHT: u32 = 1024;
@@ -314,6 +315,8 @@ pub struct Backend {
     renderer: Renderer,
     resources: Map<u32, Box<dyn VirglResource>>,
     contexts: Map<u32, RendererContext>,
+    #[allow(dead_code)]
+    gpu_device_socket: VmMemoryControlRequestSocket,
     scanout_surface: Option<u32>,
     cursor_surface: Option<u32>,
     scanout_resource: u32,
@@ -324,11 +327,17 @@ impl Backend {
     /// Creates a new backend for virtio-gpu that realizes all commands using the given `device` for
     /// allocating buffers, `display` for showing the results, and `renderer` for submitting
     /// rendering commands.
-    pub fn new(device: Device, display: GpuDisplay, renderer: Renderer) -> Backend {
+    pub fn new(
+        device: Device,
+        display: GpuDisplay,
+        renderer: Renderer,
+        gpu_device_socket: VmMemoryControlRequestSocket,
+    ) -> Backend {
         Backend {
             display: Rc::new(RefCell::new(display)),
             device,
             renderer,
+            gpu_device_socket,
             resources: Default::default(),
             contexts: Default::default(),
             scanout_surface: None,
