@@ -535,6 +535,7 @@ fn create_net_device(
 fn create_gpu_device(
     cfg: &Config,
     exit_evt: &EventFd,
+    _gpu_device_socket: VmMemoryControlRequestSocket,
     gpu_socket: virtio::resource_bridge::ResourceResponseSocket,
     wayland_socket_path: &Path,
 ) -> DeviceResult {
@@ -693,6 +694,7 @@ fn create_virtio_devices(
     mem: &GuestMemory,
     _exit_evt: &EventFd,
     wayland_device_socket: VmMemoryControlRequestSocket,
+    gpu_device_socket: VmMemoryControlRequestSocket,
     balloon_device_socket: BalloonControlResponseSocket,
     disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
@@ -759,6 +761,7 @@ fn create_virtio_devices(
                 devs.push(create_gpu_device(
                     cfg,
                     _exit_evt,
+                    gpu_device_socket,
                     gpu_socket,
                     wayland_socket_path,
                 )?);
@@ -793,6 +796,7 @@ fn create_devices(
     mem: &GuestMemory,
     exit_evt: &EventFd,
     wayland_device_socket: VmMemoryControlRequestSocket,
+    gpu_device_socket: VmMemoryControlRequestSocket,
     balloon_device_socket: BalloonControlResponseSocket,
     disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
     usb_provider: HostBackendDeviceProvider,
@@ -802,6 +806,7 @@ fn create_devices(
         mem,
         exit_evt,
         wayland_device_socket,
+        gpu_device_socket,
         balloon_device_socket,
         disk_device_sockets,
     )?;
@@ -1179,6 +1184,10 @@ pub fn run_config(cfg: Config) -> Result<()> {
         disk_device_sockets.push(disk_device_socket);
     }
 
+    let (gpu_host_socket, gpu_device_socket) =
+        msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>().map_err(Error::CreateSocket)?;
+    control_sockets.push(TaggedControlSocket::VmMemory(gpu_host_socket));
+
     let sandbox = cfg.sandbox;
     let linux = Arch::build_vm(
         components,
@@ -1190,6 +1199,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 m,
                 e,
                 wayland_device_socket,
+                gpu_device_socket,
                 balloon_device_socket,
                 &mut disk_device_sockets,
                 usb_provider,
