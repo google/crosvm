@@ -10,6 +10,7 @@ extern crate libc;
 extern crate msg_socket;
 extern crate sys_util;
 
+use msg_socket::MsgOnSocket;
 use std::fmt::Display;
 
 pub use crate::address_allocator::AddressAllocator;
@@ -23,7 +24,7 @@ mod gpu_allocator;
 mod system_allocator;
 
 /// Used to tag SystemAllocator allocations.
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, MsgOnSocket, Copy, Clone)]
 pub enum Alloc {
     /// An anonymous resource allocation.
     /// Should only be instantiated through `SystemAllocator::get_anon_alloc()`.

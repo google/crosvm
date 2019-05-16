@@ -19,7 +19,7 @@ use libc::{EINVAL, EIO, ENODEV};
 
 use kvm::Vm;
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
-use resources::{GpuMemoryDesc, SystemAllocator};
+use resources::{Alloc, GpuMemoryDesc, SystemAllocator};
 use sys_util::{error, Error as SysError, GuestAddress, MemoryMapping, MmapError, Result};
 
 /// A file descriptor either borrowed or owned by this.
@@ -189,6 +189,9 @@ pub enum VmMemoryRequest {
     /// Register shared memory represented by the given fd into guest address space. The response
     /// variant is `VmResponse::RegisterMemory`.
     RegisterMemory(MaybeOwnedFd, usize),
+    /// Similiar to `VmMemoryRequest::RegisterMemory`, but doesn't allocate new address space.
+    /// Useful for cases where the address space is already allocated (PCI regions).
+    RegisterMemoryAtAddress(Alloc, MaybeOwnedFd, usize, u64),
     /// Unregister the given memory slot that was previously registereed with `RegisterMemory`.
     UnregisterMemory(u32),
     /// Allocate GPU buffer of a given size/format and register the memory into guest address space.
@@ -213,10 +216,18 @@ impl VmMemoryRequest {
     pub fn execute(&self, vm: &mut Vm, sys_allocator: &mut SystemAllocator) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
         match *self {
-            RegisterMemory(ref fd, size) => match register_memory(vm, sys_allocator, fd, size) {
-                Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
-                Err(e) => VmMemoryResponse::Err(e),
-            },
+            RegisterMemory(ref fd, size) => {
+                match register_memory(vm, sys_allocator, fd, size, None) {
+                    Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
+                    Err(e) => VmMemoryResponse::Err(e),
+                }
+            }
+            RegisterMemoryAtAddress(alloc, ref fd, size, guest_addr) => {
+                match register_memory(vm, sys_allocator, fd, size, Some((alloc, guest_addr))) {
+                    Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
+                    Err(e) => VmMemoryResponse::Err(e),
+                }
+            }
             UnregisterMemory(slot) => match vm.remove_device_memory(slot) {
                 Ok(_) => VmMemoryResponse::Ok,
                 Err(e) => VmMemoryResponse::Err(e),
@@ -239,7 +250,7 @@ impl VmMemoryRequest {
                     Ok(v) => v,
                     Err(e) => return VmMemoryResponse::Err(SysError::from(e)),
                 };
-                match register_memory(vm, sys_allocator, &fd, size as usize) {
+                match register_memory(vm, sys_allocator, &fd, size as usize, None) {
                     Ok((pfn, slot)) => VmMemoryResponse::AllocateAndRegisterGpuMemory {
                         fd: MaybeOwnedFd::Owned(fd),
                         pfn,
@@ -315,21 +326,45 @@ fn register_memory(
     allocator: &mut SystemAllocator,
     fd: &dyn AsRawFd,
     size: usize,
+    allocation: Option<(Alloc, u64)>,
 ) -> Result<(u64, u32)> {
     let mmap = match MemoryMapping::from_fd(fd, size) {
         Ok(v) => v,
         Err(MmapError::SystemCallFailed(e)) => return Err(e),
         _ => return Err(SysError::new(EINVAL)),
     };
-    let alloc = allocator.get_anon_alloc();
-    let addr = match allocator.device_allocator().allocate(
-        size as u64,
-        alloc,
-        "vmcontrol_register_memory".to_string(),
-    ) {
-        Ok(a) => a,
-        Err(_) => return Err(SysError::new(EINVAL)),
+
+    let addr = match allocation {
+        Some((Alloc::PciBar { bus, dev, bar }, address)) => {
+            match allocator
+                .device_allocator()
+                .get(&Alloc::PciBar { bus, dev, bar })
+            {
+                Some((start_addr, length, _)) => {
+                    let range = *start_addr..*start_addr + *length;
+                    let end = address + (size as u64);
+                    match (range.contains(&address), range.contains(&end)) {
+                        (true, true) => address,
+                        _ => return Err(SysError::new(EINVAL)),
+                    }
+                }
+                None => return Err(SysError::new(EINVAL)),
+            }
+        }
+        None => {
+            let alloc = allocator.get_anon_alloc();
+            match allocator.device_allocator().allocate(
+                size as u64,
+                alloc,
+                "vmcontrol_register_memory".to_string(),
+            ) {
+                Ok(a) => a,
+                _ => return Err(SysError::new(EINVAL)),
+            }
+        }
+        _ => return Err(SysError::new(EINVAL)),
     };
+
     let slot = match vm.add_device_memory(GuestAddress(addr), mmap, false, false) {
         Ok(v) => v,
         Err(e) => return Err(e),
