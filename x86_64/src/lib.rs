@@ -458,16 +458,26 @@ impl X8664arch {
 
         let initrd = match initrd_file {
             Some(mut initrd_file) => {
-                let initrd_start = free_addr;
-                let initrd_max_size = mem_size - initrd_start;
-                let initrd_size = arch::load_image(
+                let mut initrd_addr_max = u64::from(params.hdr.initrd_addr_max);
+                // Default initrd_addr_max for old kernels (see Documentation/x86/boot.txt).
+                if initrd_addr_max == 0 {
+                    initrd_addr_max = 0x37FFFFFF;
+                }
+
+                let mem_max = mem.end_addr().offset() - 1;
+                if initrd_addr_max > mem_max {
+                    initrd_addr_max = mem_max;
+                }
+
+                let (initrd_start, initrd_size) = arch::load_image_high(
                     mem,
                     &mut initrd_file,
-                    GuestAddress(initrd_start),
-                    initrd_max_size,
+                    GuestAddress(free_addr),
+                    GuestAddress(initrd_addr_max),
+                    sys_util::pagesize() as u64,
                 )
                 .map_err(Error::LoadInitrd)?;
-                Some((GuestAddress(initrd_start), initrd_size))
+                Some((initrd_start, initrd_size))
             }
             None => None,
         };

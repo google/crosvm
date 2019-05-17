@@ -271,6 +271,7 @@ pub fn add_serial_devices(
 /// Errors for image loading.
 #[derive(Debug)]
 pub enum LoadImageError {
+    BadAlignment(u64),
     Seek(io::Error),
     ImageSizeTooLarge(u64),
     ReadToMemory(GuestMemoryError),
@@ -281,6 +282,7 @@ impl Display for LoadImageError {
         use self::LoadImageError::*;
 
         match self {
+            BadAlignment(a) => write!(f, "Alignment not a power of two: {}", a),
             Seek(e) => write!(f, "Seek failed: {}", e),
             ImageSizeTooLarge(size) => write!(f, "Image size too large: {}", size),
             ReadToMemory(e) => write!(f, "Reading image into memory failed: {}", e),
@@ -325,4 +327,55 @@ where
         .map_err(LoadImageError::ReadToMemory)?;
 
     Ok(size)
+}
+
+/// Load an image from a file into guest memory at the highest possible address.
+///
+/// # Arguments
+///
+/// * `guest_mem` - The memory to be used by the guest.
+/// * `image` - The file containing the image to be loaded.
+/// * `min_guest_addr` - The minimum address of the start of the image.
+/// * `max_guest_addr` - The address to load the last byte of the image.
+/// * `align` - The minimum alignment of the start address of the image in bytes
+///   (must be a power of two).
+///
+/// The guest address and size in bytes of the loaded image are returned.
+pub fn load_image_high<F>(
+    guest_mem: &GuestMemory,
+    image: &mut F,
+    min_guest_addr: GuestAddress,
+    max_guest_addr: GuestAddress,
+    align: u64,
+) -> Result<(GuestAddress, usize), LoadImageError>
+where
+    F: Read + Seek,
+{
+    if !align.is_power_of_two() {
+        return Err(LoadImageError::BadAlignment(align));
+    }
+
+    let max_size = max_guest_addr.offset_from(min_guest_addr) & !(align - 1);
+    let size = image.seek(SeekFrom::End(0)).map_err(LoadImageError::Seek)?;
+
+    if size > usize::max_value() as u64 || size > max_size {
+        return Err(LoadImageError::ImageSizeTooLarge(size));
+    }
+
+    image
+        .seek(SeekFrom::Start(0))
+        .map_err(LoadImageError::Seek)?;
+
+    // Load image at the maximum aligned address allowed.
+    // The subtraction cannot underflow because of the size checks above.
+    let guest_addr = GuestAddress((max_guest_addr.offset() - size) & !(align - 1));
+
+    // This is safe due to the bounds check above.
+    let size = size as usize;
+
+    guest_mem
+        .read_to_memory(guest_addr, image, size)
+        .map_err(LoadImageError::ReadToMemory)?;
+
+    Ok((guest_addr, size))
 }
