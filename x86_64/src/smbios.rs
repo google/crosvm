@@ -47,7 +47,7 @@ pub type Result<T> = result::Result<T, Error>;
 const SMBIOS_START: u64 = 0xf0000; // First possible location per the spec.
 
 // Constants sourced from SMBIOS Spec 3.2.0.
-const SM3_MAGIC_IDENT: &'static [u8; 5usize] = b"_SM3_";
+const SM3_MAGIC_IDENT: &[u8; 5usize] = b"_SM3_";
 const BIOS_INFORMATION: u8 = 0;
 const SYSTEM_INFORMATION: u8 = 1;
 const PCI_SUPPORTED: u64 = 1 << 7;
@@ -148,7 +148,7 @@ fn write_and_incr<T: DataInit>(
 
 fn write_string(mem: &GuestMemory, val: &str, mut curptr: GuestAddress) -> Result<GuestAddress> {
     for c in val.as_bytes().iter() {
-        curptr = write_and_incr(mem, c.clone(), curptr)?;
+        curptr = write_and_incr(mem, *c, curptr)?;
     }
     curptr = write_and_incr(mem, 0 as u8, curptr)?;
     Ok(curptr)
