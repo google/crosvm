@@ -267,6 +267,7 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
                     ))
                 })?
             }
+            "path" => serial_setting.path = Some(PathBuf::from(v)),
             _ => {
                 return Err(argument::Error::UnknownArgument(format!(
                     "serial parameter {}",
@@ -796,8 +797,9 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           "type=TYPE,[path=PATH,num=NUM,console]",
                           "Comma seperated key=value pairs for setting up serial devices. Can be given more than once.
                           Possible key values:
-                          type=(stdout,syslog,sink) - Where to route the serial device
+                          type=(stdout,syslog,sink,file) - Where to route the serial device
                           num=(1,2,3,4) - Serial Device Number
+                          path=PATH - The path to the file to write to when type=file
                           console - Use this serial device as the guest console. Can only be given once. Will default to first serial port if not provided.
                           "),
           Argument::value("syslog-tag", "TAG", "When logging to syslog, use the provided tag."),

@@ -4,6 +4,7 @@
 
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
+use std::fs::File;
 use std::io::{self, stdout};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -51,6 +52,8 @@ const DEFAULT_BAUD_DIVISOR: u16 = 12; // 9600 bps
 pub enum Error {
     CloneEventFd(sys_util::Error),
     InvalidSerialType(String),
+    PathRequired,
+    FileError(std::io::Error),
     Unimplemented(SerialType),
 }
 
@@ -62,7 +65,9 @@ impl Display for Error {
         #[sorted]
         match self {
             CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
+            FileError(e) => write!(f, "Unable to open/create file: {}", e),
             InvalidSerialType(e) => write!(f, "invalid serial type: {}", e),
+            PathRequired => write!(f, "serial device type file requires a path"),
             Unimplemented(e) => write!(f, "serial device type {} not implemented", e.to_string()),
         }
     }
@@ -71,7 +76,7 @@ impl Display for Error {
 /// Enum for possible type of serial devices
 #[derive(Debug)]
 pub enum SerialType {
-    File, // NOT IMPLEMENTED
+    File,
     Stdout,
     Sink,
     Syslog,
@@ -136,7 +141,13 @@ impl SerialParameters {
                     syslog::Facility::Daemon,
                 )),
             )),
-            SerialType::File => Err(Error::Unimplemented(SerialType::File)),
+            SerialType::File => match &self.path {
+                None => Err(Error::PathRequired),
+                Some(path) => Ok(Serial::new_out(
+                    evt_fd.try_clone().map_err(Error::CloneEventFd)?,
+                    Box::new(File::create(path.as_path()).map_err(|e| Error::FileError(e))?),
+                )),
+            },
             SerialType::UnixSocket => Err(Error::Unimplemented(SerialType::UnixSocket)),
         }
     }
