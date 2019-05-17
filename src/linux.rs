@@ -22,7 +22,8 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::ptr;
 use std::str;
-use std::sync::{Arc, Barrier};
+use std::sync::{mpsc, Arc, Barrier};
+
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -48,7 +49,7 @@ use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 use net_util::{Error as NetError, MacAddress, Tap};
 use remain::sorted;
 use resources::{Alloc, MmioType, SystemAllocator};
-use sync::{Condvar, Mutex};
+use sync::Mutex;
 
 use base::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
@@ -1583,19 +1584,6 @@ fn setup_vcpu_signal_handler<T: Vcpu>(use_hypervisor_signals: bool) -> Result<()
     Ok(())
 }
 
-#[derive(Default)]
-struct VcpuRunMode {
-    mtx: Mutex<VmRunMode>,
-    cvar: Condvar,
-}
-
-impl VcpuRunMode {
-    fn set_and_notify(&self, new_mode: VmRunMode) {
-        *self.mtx.lock() = new_mode;
-        self.cvar.notify_all();
-    }
-}
-
 // Sets up a vcpu and converts it into a runnable vcpu.
 fn runnable_vcpu<V>(
     cpu_id: usize,
@@ -1723,7 +1711,7 @@ fn run_vcpu<V>(
     mmio_bus: devices::Bus,
     exit_evt: Event,
     requires_pvclock_ctrl: bool,
-    run_mode_arc: Arc<VcpuRunMode>,
+    from_main_channel: mpsc::Receiver<VmRunMode>,
     use_hypervisor_signals: bool,
 ) -> Result<JoinHandle<()>>
 where
@@ -1759,8 +1747,70 @@ where
                 }
             };
 
-            loop {
-                let mut interrupted_by_signal = false;
+            let mut run_mode = VmRunMode::Running;
+            let mut interrupted_by_signal = false;
+
+            'vcpu_loop: loop {
+                // Start by checking for messages to process and the run state of the CPU.
+                // An extra check here for Running so there isn't a need to call recv unless a
+                // message is likely to be ready because a signal was sent.
+                if interrupted_by_signal || run_mode != VmRunMode::Running {
+                    'state_loop: loop {
+                        // Tries to get a pending message without blocking first.
+                        let msg = match from_main_channel.try_recv() {
+                            Ok(m) => m,
+                            Err(mpsc::TryRecvError::Empty) if run_mode == VmRunMode::Running => {
+                                // If the VM is running and no message is pending, the state won't
+                                // be changed.
+                                break 'state_loop;
+                            }
+                            Err(mpsc::TryRecvError::Empty) => {
+                                // If the VM is not running, wait until a message is ready.
+                                match from_main_channel.recv() {
+                                    Ok(m) => m,
+                                    Err(mpsc::RecvError) => {
+                                        error!("Failed to read from main channel in vcpu");
+                                        break 'vcpu_loop;
+                                    }
+                                }
+                            }
+                            Err(mpsc::TryRecvError::Disconnected) => {
+                                error!("Failed to read from main channel in vcpu");
+                                break 'vcpu_loop;
+                            }
+                        };
+
+                        // Collect all pending messages.
+                        let mut messages = vec![msg];
+                        messages.append(&mut from_main_channel.try_iter().collect());
+
+                        for new_mode in messages {
+                            run_mode = new_mode.clone();
+                            match run_mode {
+                                VmRunMode::Running => break 'state_loop,
+                                VmRunMode::Suspending => {
+                                    // On KVM implementations that use a paravirtualized clock (e.g.
+                                    // x86), a flag must be set to indicate to the guest kernel that a
+                                    // VCPU was suspended. The guest kernel will use this flag to
+                                    // prevent the soft lockup detection from triggering when this VCPU
+                                    // resumes, which could happen days later in realtime.
+                                    if requires_pvclock_ctrl {
+                                        if let Err(e) = vcpu.pvclock_ctrl() {
+                                            error!(
+                                            "failed to tell hypervisor vcpu {} is suspending: {}",
+                                            cpu_id, e
+                                        );
+                                        }
+                                    }
+                                }
+                                VmRunMode::Exiting => break 'vcpu_loop,
+                            }
+                        }
+                    }
+                }
+
+                interrupted_by_signal = false;
+
                 match vcpu.run(&vcpu_run_handle) {
                     Ok(VcpuExit::IoIn { port, mut size }) => {
                         let mut data = [0; 8];
@@ -1835,32 +1885,6 @@ where
                         }
                     } else {
                         vcpu.set_immediate_exit(false);
-                    }
-                    let mut run_mode_lock = run_mode_arc.mtx.lock();
-                    loop {
-                        match *run_mode_lock {
-                            VmRunMode::Running => break,
-                            VmRunMode::Suspending => {
-                                // On KVM implementations that use a paravirtualized clock (e.g.
-                                // x86), a flag must be set to indicate to the guest kernel that a
-                                // VCPU was suspended. The guest kernel will use this flag to
-                                // prevent the soft lockup detection from triggering when this VCPU
-                                // resumes, which could happen days later in realtime.
-                                if requires_pvclock_ctrl {
-                                    if let Err(e) = vcpu.pvclock_ctrl() {
-                                        error!(
-                                            "failed to tell hypervisor vcpu {} is suspending: {}",
-                                            cpu_id, e
-                                        );
-                                    }
-                                }
-                            }
-                            VmRunMode::Exiting => return,
-                        }
-                        // Give ownership of our exclusive lock to the condition variable that will
-                        // block. When the condition variable is notified, `wait` will unblock and
-                        // return a new exclusive lock.
-                        run_mode_lock = run_mode_arc.cvar.wait(run_mode_lock);
                     }
                 }
 
@@ -2182,7 +2206,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
 
     let mut vcpu_handles = Vec::with_capacity(linux.vcpu_count);
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpu_count + 1));
-    let run_mode_arc = Arc::new(VcpuRunMode::default());
     let use_hypervisor_signals = !linux
         .vm
         .get_hypervisor()
@@ -2194,6 +2217,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
         None => iter::repeat_with(|| None).take(linux.vcpu_count).collect(),
     };
     for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
+        let (to_vcpu_channel, from_main_channel) = mpsc::channel();
         let vcpu_affinity = match linux.vcpu_affinity.clone() {
             Some(VcpuAffinity::Global(v)) => v,
             Some(VcpuAffinity::PerVcpu(mut m)) => m.remove(&cpu_id).unwrap_or_default(),
@@ -2214,10 +2238,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
             linux.mmio_bus.clone(),
             linux.exit_evt.try_clone().map_err(Error::CloneEvent)?,
             linux.vm.check_capability(VmCap::PvClockSuspend),
-            run_mode_arc.clone(),
+            from_main_channel,
             use_hypervisor_signals,
         )?;
-        vcpu_handles.push(handle);
+        vcpu_handles.push((handle, to_vcpu_channel));
     }
 
     vcpu_thread_barrier.wait();
@@ -2247,8 +2271,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                 Token::Suspend => {
                     info!("VM requested suspend");
                     linux.suspend_evt.read().unwrap();
-                    run_mode_arc.set_and_notify(VmRunMode::Suspending);
-                    for handle in &vcpu_handles {
+                    for (handle, channel) in &vcpu_handles {
+                        if let Err(e) = channel.send(VmRunMode::Suspending) {
+                            error!("failed to send VmRunMode: {}", e);
+                        }
+
                         let _ = handle.kill(SIGRTMIN() + 0);
                     }
                 }
@@ -2394,20 +2421,15 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                             VmRunMode::Exiting => {
                                                 break 'wait;
                                             }
-                                            VmRunMode::Running => {
-                                                if let VmRunMode::Suspending =
-                                                    *run_mode_arc.mtx.lock()
-                                                {
+                                            VmRunMode::Suspending | VmRunMode::Running => {
+                                                if run_mode == VmRunMode::Suspending {
                                                     linux.io_bus.notify_resume();
                                                 }
-                                                run_mode_arc.set_and_notify(VmRunMode::Running);
-                                                for handle in &vcpu_handles {
-                                                    let _ = handle.kill(SIGRTMIN() + 0);
-                                                }
-                                            }
-                                            other => {
-                                                run_mode_arc.set_and_notify(other);
-                                                for handle in &vcpu_handles {
+                                                for (handle, channel) in &vcpu_handles {
+                                                    if let Err(e) = channel.send(VmRunMode::Running)
+                                                    {
+                                                        error!("failed to send VmRunMode: {}", e);
+                                                    }
                                                     let _ = handle.kill(SIGRTMIN() + 0);
                                                 }
                                             }
@@ -2562,9 +2584,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
         }
     }
 
-    // VCPU threads MUST see the VmRunMode flag, otherwise they may re-enter the VM.
-    run_mode_arc.set_and_notify(VmRunMode::Exiting);
-    for handle in vcpu_handles {
+    for (handle, channel) in vcpu_handles {
+        // VCPU threads MUST see the VmRunMode flag, otherwise they may re-enter the VM.
+        if let Err(e) = channel.send(VmRunMode::Exiting) {
+            error!("failed to send VmRunMode: {}", e);
+        }
         match handle.kill(SIGRTMIN() + 0) {
             Ok(_) => {
                 if let Err(e) = handle.join() {

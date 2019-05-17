@@ -92,7 +92,7 @@ impl MsgOnSocket for MaybeOwnedDescriptor {
 }
 
 /// Mode of execution for the VM.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VmRunMode {
     /// The default run mode indicating the VCPUs are running.
     Running,
