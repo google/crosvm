@@ -80,8 +80,6 @@ fn get_kernel_addr() -> GuestAddress {
     GuestAddress(AARCH64_PHYS_MEM_START + AARCH64_KERNEL_OFFSET)
 }
 
-// Place the serial device at a typical address for x86.
-const AARCH64_SERIAL_ADDR: u64 = 0x3F8;
 // Serial device requires 8 bytes of registers;
 const AARCH64_SERIAL_SIZE: u64 = 0x8;
 // This was the speed kvmtool used, not sure if it matters.

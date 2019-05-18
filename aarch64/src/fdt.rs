@@ -9,7 +9,7 @@ use arch::fdt::{
     begin_node, end_node, finish_fdt, generate_prop32, generate_prop64, property, property_cstring,
     property_null, property_string, property_u32, property_u64, start_fdt, Error, Result,
 };
-use devices::PciInterruptPin;
+use devices::{PciInterruptPin, SERIAL_ADDR};
 use sys_util::{GuestAddress, GuestMemory};
 
 // This is the start of DRAM in the physical address space.
@@ -29,7 +29,7 @@ use devices::pl030::PL030_AMBA_ID;
 
 // These are serial device related constants.
 use crate::AARCH64_SERIAL_1_3_IRQ;
-use crate::AARCH64_SERIAL_ADDR;
+use crate::AARCH64_SERIAL_2_4_IRQ;
 use crate::AARCH64_SERIAL_SIZE;
 use crate::AARCH64_SERIAL_SPEED;
 
@@ -131,20 +131,28 @@ fn create_timer_node(fdt: &mut Vec<u8>, num_cpus: u32) -> Result<()> {
     Ok(())
 }
 
-fn create_serial_node(fdt: &mut Vec<u8>) -> Result<()> {
-    let serial_reg_prop = generate_prop64(&[AARCH64_SERIAL_ADDR, AARCH64_SERIAL_SIZE]);
-    let irq = generate_prop32(&[
-        GIC_FDT_IRQ_TYPE_SPI,
-        AARCH64_SERIAL_1_3_IRQ,
-        IRQ_TYPE_EDGE_RISING,
-    ]);
+fn create_serial_node(fdt: &mut Vec<u8>, addr: u64, irq: u32) -> Result<()> {
+    let serial_reg_prop = generate_prop64(&[addr, AARCH64_SERIAL_SIZE]);
+    let irq = generate_prop32(&[GIC_FDT_IRQ_TYPE_SPI, irq, IRQ_TYPE_EDGE_RISING]);
 
-    begin_node(fdt, "U6_16550A@3f8")?;
+    begin_node(fdt, &format!("U6_16550A@{:x}", addr))?;
     property_string(fdt, "compatible", "ns16550a")?;
     property(fdt, "reg", &serial_reg_prop)?;
     property_u32(fdt, "clock-frequency", AARCH64_SERIAL_SPEED)?;
     property(fdt, "interrupts", &irq)?;
     end_node(fdt)?;
+
+    Ok(())
+}
+
+fn create_serial_nodes(fdt: &mut Vec<u8>) -> Result<()> {
+    // Note that SERIAL_ADDR contains the I/O port addresses conventionally used
+    // for serial ports on x86. This uses the same addresses (but on the MMIO bus)
+    // to simplify the shared serial code.
+    create_serial_node(fdt, SERIAL_ADDR[0], AARCH64_SERIAL_1_3_IRQ)?;
+    create_serial_node(fdt, SERIAL_ADDR[1], AARCH64_SERIAL_2_4_IRQ)?;
+    create_serial_node(fdt, SERIAL_ADDR[2], AARCH64_SERIAL_1_3_IRQ)?;
+    create_serial_node(fdt, SERIAL_ADDR[3], AARCH64_SERIAL_2_4_IRQ)?;
 
     Ok(())
 }
@@ -339,7 +347,7 @@ pub fn create_fdt(
     create_cpu_nodes(&mut fdt, num_cpus)?;
     create_gic_node(&mut fdt)?;
     create_timer_node(&mut fdt, num_cpus)?;
-    create_serial_node(&mut fdt)?;
+    create_serial_nodes(&mut fdt)?;
     create_psci_node(&mut fdt)?;
     create_pci_nodes(&mut fdt, pci_irqs, pci_device_base, pci_device_size)?;
     create_rtc_node(&mut fdt)?;
