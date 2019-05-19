@@ -300,6 +300,10 @@ enum TaggedControlSocket {
     VmMsync(VmMsyncResponseSocket),
 }
 
+enum VcpuControl {
+    RunState(VmRunMode),
+}
+
 impl AsRef<UnixSeqpacket> for TaggedControlSocket {
     fn as_ref(&self) -> &UnixSeqpacket {
         use self::TaggedControlSocket::*;
@@ -1711,7 +1715,7 @@ fn run_vcpu<V>(
     mmio_bus: devices::Bus,
     exit_evt: Event,
     requires_pvclock_ctrl: bool,
-    from_main_channel: mpsc::Receiver<VmRunMode>,
+    from_main_channel: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
 ) -> Result<JoinHandle<()>>
 where
@@ -1784,7 +1788,7 @@ where
                         let mut messages = vec![msg];
                         messages.append(&mut from_main_channel.try_iter().collect());
 
-                        for new_mode in messages {
+                        for VcpuControl::RunState(new_mode) in messages {
                             run_mode = new_mode.clone();
                             match run_mode {
                                 VmRunMode::Running => break 'state_loop,
@@ -2272,7 +2276,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                     info!("VM requested suspend");
                     linux.suspend_evt.read().unwrap();
                     for (handle, channel) in &vcpu_handles {
-                        if let Err(e) = channel.send(VmRunMode::Suspending) {
+                        if let Err(e) = channel.send(VcpuControl::RunState(VmRunMode::Suspending)) {
                             error!("failed to send VmRunMode: {}", e);
                         }
 
@@ -2426,8 +2430,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                                     linux.io_bus.notify_resume();
                                                 }
                                                 for (handle, channel) in &vcpu_handles {
-                                                    if let Err(e) = channel.send(VmRunMode::Running)
-                                                    {
+                                                    if let Err(e) = channel.send(
+                                                        VcpuControl::RunState(VmRunMode::Running),
+                                                    ) {
                                                         error!("failed to send VmRunMode: {}", e);
                                                     }
                                                     let _ = handle.kill(SIGRTMIN() + 0);
@@ -2586,7 +2591,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
 
     for (handle, channel) in vcpu_handles {
         // VCPU threads MUST see the VmRunMode flag, otherwise they may re-enter the VM.
-        if let Err(e) = channel.send(VmRunMode::Exiting) {
+        if let Err(e) = channel.send(VcpuControl::RunState(VmRunMode::Exiting)) {
             error!("failed to send VmRunMode: {}", e);
         }
         match handle.kill(SIGRTMIN() + 0) {
