@@ -237,7 +237,7 @@ pub fn add_serial_devices(
     let mut stdio_serial_num = None;
     let mut stdio_serial = None;
 
-    for x in 0..3 {
+    for x in 0..=3 {
         let com_evt = match x {
             0 => com_evt_1_3,
             1 => com_evt_2_4,
