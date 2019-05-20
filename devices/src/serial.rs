@@ -39,13 +39,22 @@ const LSR_DATA_BIT: u8 = 0x1;
 const LSR_EMPTY_BIT: u8 = 0x20;
 const LSR_IDLE_BIT: u8 = 0x40;
 
+const MCR_DTR_BIT: u8 = 0x01; // Data Terminal Ready
+const MCR_RTS_BIT: u8 = 0x02; // Request to Send
+const MCR_OUT1_BIT: u8 = 0x04;
+const MCR_OUT2_BIT: u8 = 0x08;
 const MCR_LOOP_BIT: u8 = 0x10;
+
+const MSR_CTS_BIT: u8 = 0x10; // Clear to Send
+const MSR_DSR_BIT: u8 = 0x20; // Data Set Ready
+const MSR_RI_BIT: u8 = 0x40; // Ring Indicator
+const MSR_DCD_BIT: u8 = 0x80; // Data Carrier Detect
 
 const DEFAULT_INTERRUPT_IDENTIFICATION: u8 = IIR_NONE_BIT; // no pending interrupt
 const DEFAULT_LINE_STATUS: u8 = LSR_EMPTY_BIT | LSR_IDLE_BIT; // THR empty and line is idle
 const DEFAULT_LINE_CONTROL: u8 = 0x3; // 8-bits per character
-const DEFAULT_MODEM_CONTROL: u8 = 0x8; // Auxiliary output 2
-const DEFAULT_MODEM_STATUS: u8 = 0x20 | 0x10 | 0x80; // data ready, clear to send, carrier detect
+const DEFAULT_MODEM_CONTROL: u8 = MCR_OUT2_BIT;
+const DEFAULT_MODEM_STATUS: u8 = MSR_DSR_BIT | MSR_CTS_BIT | MSR_DCD_BIT;
 const DEFAULT_BAUD_DIVISOR: u16 = 12; // 9600 bps
 
 #[derive(Debug)]
@@ -378,7 +387,27 @@ impl BusDevice for Serial {
             LCR => self.line_control,
             MCR => self.modem_control,
             LSR => self.line_status,
-            MSR => self.modem_status,
+            MSR => {
+                if self.is_loop() {
+                    let mut msr =
+                        self.modem_status & !(MSR_DSR_BIT | MSR_CTS_BIT | MSR_RI_BIT | MSR_DCD_BIT);
+                    if self.modem_control & MCR_DTR_BIT != 0 {
+                        msr |= MSR_DSR_BIT;
+                    }
+                    if self.modem_control & MCR_RTS_BIT != 0 {
+                        msr |= MSR_CTS_BIT;
+                    }
+                    if self.modem_control & MCR_OUT1_BIT != 0 {
+                        msr |= MSR_RI_BIT;
+                    }
+                    if self.modem_control & MCR_OUT2_BIT != 0 {
+                        msr |= MSR_DCD_BIT;
+                    }
+                    msr
+                } else {
+                    self.modem_status
+                }
+            }
             SCR => self.scratch,
             _ => 0,
         };
