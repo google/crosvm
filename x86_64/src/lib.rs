@@ -48,12 +48,12 @@ use std::error::Error as StdError;
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io;
+use std::io::{self, Seek};
 use std::mem;
 use std::sync::Arc;
 
 use crate::bootparam::boot_params;
-use arch::{RunnableLinuxVm, VmComponents};
+use arch::{RunnableLinuxVm, VmComponents, VmImage};
 use devices::{get_serial_tty_string, PciConfigIo, PciDevice, PciInterruptPin, SerialParameters};
 use io_jail::Minijail;
 use kvm::*;
@@ -82,6 +82,7 @@ pub enum Error {
     CreateVm(sys_util::Error),
     E820Configuration,
     KernelOffsetPastEnd,
+    LoadBios(io::Error),
     LoadBzImage(bzimage::Error),
     LoadCmdline(kernel_loader::Error),
     LoadInitrd(arch::LoadImageError),
@@ -126,6 +127,7 @@ impl Display for Error {
             CreateVm(e) => write!(f, "failed to create VM: {}", e),
             E820Configuration => write!(f, "invalid e820 setup params"),
             KernelOffsetPastEnd => write!(f, "the kernel extends past the end of RAM"),
+            LoadBios(e) => write!(f, "error loading bios: {}", e),
             LoadBzImage(e) => write!(f, "error loading kernel bzImage: {}", e),
             LoadCmdline(e) => write!(f, "error loading command line: {}", e),
             LoadInitrd(e) => write!(f, "error loading initrd: {}", e),
@@ -159,6 +161,11 @@ const MEM_32BIT_GAP_SIZE: u64 = (768 << 20);
 const FIRST_ADDR_PAST_32BITS: u64 = (1 << 32);
 const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
 const ZERO_PAGE_OFFSET: u64 = 0x7000;
+/// The x86 reset vector for i386+ and x86_64 puts the processor into an "unreal mode" where it
+/// can access the last 1 MB of the 32-bit address space in 16-bit mode, and starts the instruction
+/// pointer at the effective physical address 0xFFFFFFF0.
+const BIOS_LEN: usize = 1 << 20;
+const BIOS_START: u64 = FIRST_ADDR_PAST_32BITS - (BIOS_LEN as u64);
 
 const KERNEL_START_OFFSET: u64 = 0x200000;
 const CMDLINE_OFFSET: u64 = 0x20000;
@@ -259,10 +266,10 @@ fn add_e820_entry(params: &mut boot_params, addr: u64, size: u64, mem_type: u32)
 }
 
 /// Returns a Vec of the valid memory addresses.
-/// These should be used to configure the GuestMemory structure for the platfrom.
-/// For x86_64 all addresses are valid from the start of the kenel except a
+/// These should be used to configure the GuestMemory structure for the platform.
+/// For x86_64 all addresses are valid from the start of the kernel except a
 /// carve out at the end of 32bit address space.
-fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
+fn arch_memory_regions(size: u64, has_bios: bool) -> Vec<(GuestAddress, u64)> {
     let mem_end = GuestAddress(size);
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
     let end_32bit_gap_start = GuestAddress(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE);
@@ -270,13 +277,20 @@ fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
     let mut regions = Vec::new();
     if mem_end < end_32bit_gap_start {
         regions.push((GuestAddress(0), size));
+        if has_bios {
+            regions.push((GuestAddress(BIOS_START), BIOS_LEN as u64));
+        }
     } else {
         regions.push((GuestAddress(0), end_32bit_gap_start.offset()));
         if mem_end > first_addr_past_32bits {
-            regions.push((
-                first_addr_past_32bits,
-                mem_end.offset_from(first_addr_past_32bits),
-            ));
+            let region_start = if has_bios {
+                GuestAddress(BIOS_START)
+            } else {
+                first_addr_past_32bits
+            };
+            regions.push((region_start, mem_end.offset_from(first_addr_past_32bits)));
+        } else if has_bios {
+            regions.push((GuestAddress(BIOS_START), BIOS_LEN as u64));
         }
     }
 
@@ -301,7 +315,11 @@ impl arch::LinuxArch for X8664arch {
     {
         let mut resources =
             Self::get_resource_allocator(components.memory_size, components.wayland_dmabuf);
-        let mem = Self::setup_memory(components.memory_size)?;
+        let has_bios = match components.vm_image {
+            VmImage::Bios(_) => true,
+            _ => false,
+        };
+        let mem = Self::setup_memory(components.memory_size, has_bios)?;
         let kvm = Kvm::new().map_err(Error::CreateKvm)?;
         let mut vm = Self::create_vm(&kvm, split_irqchip, mem.clone())?;
 
@@ -309,14 +327,16 @@ impl arch::LinuxArch for X8664arch {
         let mut vcpus = Vec::with_capacity(vcpu_count as usize);
         for cpu_id in 0..vcpu_count {
             let vcpu = Vcpu::new(cpu_id as libc::c_ulong, &kvm, &vm).map_err(Error::CreateVcpu)?;
-            Self::configure_vcpu(
-                vm.get_memory(),
-                &kvm,
-                &vm,
-                &vcpu,
-                cpu_id as u64,
-                vcpu_count as u64,
-            )?;
+            if let VmImage::Kernel(_) = components.vm_image {
+                Self::configure_vcpu(
+                    vm.get_memory(),
+                    &kvm,
+                    &vm,
+                    &vcpu,
+                    cpu_id as u64,
+                    vcpu_count as u64,
+                )?;
+            }
             vcpus.push(vcpu);
         }
 
@@ -346,27 +366,31 @@ impl arch::LinuxArch for X8664arch {
         let (stdio_serial_num, stdio_serial) =
             Self::setup_serial_devices(&mut vm, &mut io_bus, &serial_parameters)?;
 
-        let mut cmdline = Self::get_base_linux_cmdline(stdio_serial_num);
-        for param in components.extra_kernel_params {
-            cmdline.insert_str(&param).map_err(Error::Cmdline)?;
+        match components.vm_image {
+            VmImage::Bios(ref mut bios) => Self::load_bios(&mem, bios)?,
+            VmImage::Kernel(ref mut kernel_image) => {
+                let mut cmdline = Self::get_base_linux_cmdline(stdio_serial_num);
+                for param in components.extra_kernel_params {
+                    cmdline.insert_str(&param).map_err(Error::Cmdline)?;
+                }
+
+                // separate out load_kernel from other setup to get a specific error for
+                // kernel loading
+                let (params, kernel_end) = Self::load_kernel(&mem, kernel_image)?;
+
+                Self::setup_system_memory(
+                    &mem,
+                    components.memory_size,
+                    vcpu_count,
+                    &CString::new(cmdline).unwrap(),
+                    components.initrd_image,
+                    pci_irqs,
+                    components.android_fstab,
+                    kernel_end,
+                    params,
+                )?;
+            }
         }
-
-        // separate out load_kernel from other setup to get a specific error for
-        // kernel loading
-        let (params, kernel_end) = Self::load_kernel(&mem, &mut components.kernel_image)?;
-
-        Self::setup_system_memory(
-            &mem,
-            components.memory_size,
-            vcpu_count,
-            &CString::new(cmdline).unwrap(),
-            components.initrd_image,
-            pci_irqs,
-            components.android_fstab,
-            kernel_end,
-            params,
-        )?;
-
         Ok(RunnableLinuxVm {
             vm,
             kvm,
@@ -384,6 +408,33 @@ impl arch::LinuxArch for X8664arch {
 }
 
 impl X8664arch {
+    /// Loads the bios from an open file.
+    ///
+    /// # Arguments
+    ///
+    /// * `mem` - The memory to be used by the guest.
+    /// * `bios_image` - the File object for the specified bios
+    fn load_bios(mem: &GuestMemory, bios_image: &mut File) -> Result<()> {
+        let bios_image_length = bios_image
+            .seek(io::SeekFrom::End(0))
+            .map_err(Error::LoadBios)?;
+        if bios_image_length != BIOS_LEN as u64 {
+            return Err(Error::LoadBios(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "bios was {} bytes, expected {}",
+                    bios_image_length, BIOS_LEN
+                ),
+            )));
+        }
+        bios_image
+            .seek(io::SeekFrom::Start(0))
+            .map_err(Error::LoadBios)?;
+        mem.read_to_memory(GuestAddress(BIOS_START), bios_image, BIOS_LEN)
+            .map_err(Error::SetupGuestMemory)?;
+        Ok(())
+    }
+
     /// Loads the kernel from an open file.
     ///
     /// # Arguments
@@ -507,8 +558,8 @@ impl X8664arch {
     /// This creates a GuestMemory object for this VM
     ///
     /// * `mem_size` - Desired physical memory size in bytes for this VM
-    fn setup_memory(mem_size: u64) -> Result<GuestMemory> {
-        let arch_mem_regions = arch_memory_regions(mem_size);
+    fn setup_memory(mem_size: u64, has_bios: bool) -> Result<GuestMemory> {
+        let arch_mem_regions = arch_memory_regions(mem_size, has_bios);
         let mem = GuestMemory::new(&arch_mem_regions).map_err(Error::SetupGuestMemory)?;
         Ok(mem)
     }
@@ -722,18 +773,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn regions_lt_4gb() {
-        let regions = arch_memory_regions(1u64 << 29);
+    fn regions_lt_4gb_nobios() {
+        let regions = arch_memory_regions(1u64 << 29, /* has_bios */ false);
         assert_eq!(1, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
         assert_eq!(1u64 << 29, regions[0].1);
     }
 
     #[test]
-    fn regions_gt_4gb() {
-        let regions = arch_memory_regions((1u64 << 32) + 0x8000);
+    fn regions_gt_4gb_nobios() {
+        let regions = arch_memory_regions((1u64 << 32) + 0x8000, /* has_bios */ false);
         assert_eq!(2, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
         assert_eq!(GuestAddress(1u64 << 32), regions[1].0);
+    }
+
+    #[test]
+    fn regions_lt_4gb_bios() {
+        let regions = arch_memory_regions(1u64 << 29, /* has_bios */ true);
+        assert_eq!(2, regions.len());
+        assert_eq!(GuestAddress(0), regions[0].0);
+        assert_eq!(1u64 << 29, regions[0].1);
+        assert_eq!(GuestAddress(BIOS_START), regions[1].0);
+        assert_eq!(BIOS_LEN as u64, regions[1].1);
+    }
+
+    #[test]
+    fn regions_gt_4gb_bios() {
+        let regions = arch_memory_regions((1u64 << 32) + 0x8000, /* has_bios */ true);
+        assert_eq!(2, regions.len());
+        assert_eq!(GuestAddress(0), regions[0].0);
+        assert_eq!(GuestAddress(BIOS_START), regions[1].0);
     }
 }

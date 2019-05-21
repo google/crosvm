@@ -38,7 +38,7 @@ use sys_util::{
 
 use self::process::*;
 use self::vcpu::*;
-use crate::Config;
+use crate::{Config, Executable};
 
 const MAX_DATAGRAM_SIZE: usize = 4096;
 const MAX_VCPU_DATAGRAM_SIZE: usize = 0x40000;
@@ -598,7 +598,10 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
     let plugin_args: Vec<&str> = cfg.params.iter().map(|s| &s[..]).collect();
 
-    let plugin_path = cfg.plugin.as_ref().unwrap().as_path();
+    let plugin_path = match cfg.executable_path {
+        Some(Executable::Plugin(ref plugin_path)) => plugin_path.as_path(),
+        _ => panic!("Executable was not a plugin"),
+    };
     let vcpu_count = cfg.vcpu_count.unwrap_or(1);
     let mem = GuestMemory::new(&[]).unwrap();
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;

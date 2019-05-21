@@ -52,9 +52,9 @@ use vm_control::{
     VmMemoryControlResponseSocket, VmMemoryRequest, VmMemoryResponse, VmRunMode,
 };
 
-use crate::{Config, DiskOption, TouchDeviceOption};
+use crate::{Config, DiskOption, Executable, TouchDeviceOption};
 
-use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents};
+use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents, VmImage};
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use aarch64::AArch64 as Arch;
@@ -100,6 +100,7 @@ pub enum Error {
     LoadKernel(Box<dyn StdError>),
     NetDeviceNew(virtio::NetError),
     OpenAndroidFstab(PathBuf, io::Error),
+    OpenBios(PathBuf, io::Error),
     OpenInitrd(PathBuf, io::Error),
     OpenKernel(PathBuf, io::Error),
     OpenVinput(PathBuf, io::Error),
@@ -179,6 +180,7 @@ impl Display for Error {
                 p.display(),
                 e
             ),
+            OpenBios(p, e) => write!(f, "failed to open bios {}: {}", p.display(), e),
             OpenInitrd(p, e) => write!(f, "failed to open initrd {}: {}", p.display(), e),
             OpenKernel(p, e) => write!(f, "failed to open kernel image {}: {}", p.display(), e),
             OpenVinput(p, e) => write!(f, "failed to open vinput device {}: {}", p.display(), e),
@@ -1147,12 +1149,21 @@ pub fn run_config(cfg: Config) -> Result<()> {
         None
     };
 
+    let vm_image = match cfg.executable_path {
+        Some(Executable::Kernel(ref kernel_path)) => VmImage::Kernel(
+            File::open(kernel_path).map_err(|e| Error::OpenKernel(kernel_path.to_path_buf(), e))?,
+        ),
+        Some(Executable::Bios(ref bios_path)) => VmImage::Bios(
+            File::open(bios_path).map_err(|e| Error::OpenBios(bios_path.to_path_buf(), e))?,
+        ),
+        _ => panic!("Did not receive a bios or kernel, should be impossible."),
+    };
+
     let components = VmComponents {
         memory_size: (cfg.memory.unwrap_or(256) << 20) as u64,
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
-        kernel_image: File::open(&cfg.kernel_path)
-            .map_err(|e| Error::OpenKernel(cfg.kernel_path.clone(), e))?,
+        vm_image,
         android_fstab: cfg
             .android_fstab
             .as_ref()

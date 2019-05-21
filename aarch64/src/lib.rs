@@ -11,7 +11,7 @@ use std::io;
 use std::os::unix::io::FromRawFd;
 use std::sync::Arc;
 
-use arch::{RunnableLinuxVm, VmComponents};
+use arch::{RunnableLinuxVm, VmComponents, VmImage};
 use devices::{
     get_serial_tty_string, Bus, BusError, PciConfigMmio, PciDevice, PciInterruptPin,
     SerialParameters,
@@ -124,6 +124,7 @@ pub enum Error {
     CreateVm(sys_util::Error),
     InitrdLoadFailure(arch::LoadImageError),
     KernelLoadFailure(arch::LoadImageError),
+    KernelMissing,
     ReadPreferredTarget(sys_util::Error),
     RegisterIrqfd(sys_util::Error),
     RegisterPci(BusError),
@@ -155,6 +156,7 @@ impl Display for Error {
             CreateVm(e) => write!(f, "failed to create vm: {}", e),
             InitrdLoadFailure(e) => write!(f, "initrd cound not be loaded: {}", e),
             KernelLoadFailure(e) => write!(f, "kernel cound not be loaded: {}", e),
+            KernelMissing => write!(f, "aarch64 requires a kernel"),
             ReadPreferredTarget(e) => write!(f, "failed to read preferred target: {}", e),
             RegisterIrqfd(e) => write!(f, "failed to register irq fd: {}", e),
             RegisterPci(e) => write!(f, "error registering PCI bus: {}", e),
@@ -272,15 +274,16 @@ impl arch::LinuxArch for AArch64 {
             cmdline.insert_str(&param).map_err(Error::Cmdline)?;
         }
 
+        let kernel_image = if let VmImage::Kernel(ref mut img) = components.vm_image {
+            img
+        } else {
+            return Err(Error::KernelMissing);
+        };
+
         // separate out kernel loading from other setup to get a specific error for
         // kernel loading
-        let kernel_size = arch::load_image(
-            &mem,
-            &mut components.kernel_image,
-            get_kernel_addr(),
-            u64::max_value(),
-        )
-        .map_err(Error::KernelLoadFailure)?;
+        let kernel_size = arch::load_image(&mem, kernel_image, get_kernel_addr(), u64::max_value())
+            .map_err(Error::KernelLoadFailure)?;
         let kernel_end = get_kernel_addr().offset() + kernel_size as u64;
         Self::setup_system_memory(
             &mem,

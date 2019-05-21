@@ -24,13 +24,18 @@ use resources::SystemAllocator;
 use sync::Mutex;
 use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 
+pub enum VmImage {
+    Kernel(File),
+    Bios(File),
+}
+
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
 /// create a `RunnableLinuxVm`.
 pub struct VmComponents {
     pub memory_size: u64,
     pub vcpu_count: u32,
     pub vcpu_affinity: Vec<usize>,
-    pub kernel_image: File,
+    pub vm_image: VmImage,
     pub android_fstab: Option<File>,
     pub initrd_image: Option<File>,
     pub extra_kernel_params: Vec<String>,

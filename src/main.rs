@@ -75,16 +75,29 @@ impl TouchDeviceOption {
     }
 }
 
+#[derive(Debug)]
+pub enum Executable {
+    Bios(PathBuf),
+    Kernel(PathBuf),
+    Plugin(PathBuf),
+}
+
+fn executable_is_plugin(executable: &Option<Executable>) -> bool {
+    match executable {
+        Some(Executable::Plugin(_)) => true,
+        _ => false,
+    }
+}
+
 pub struct Config {
     vcpu_count: Option<u32>,
     vcpu_affinity: Vec<usize>,
     memory: Option<usize>,
-    kernel_path: PathBuf,
+    executable_path: Option<Executable>,
     android_fstab: Option<PathBuf>,
     initrd_path: Option<PathBuf>,
     params: Vec<String>,
     socket_path: Option<PathBuf>,
-    plugin: Option<PathBuf>,
     plugin_root: Option<PathBuf>,
     plugin_mounts: Vec<BindMount>,
     plugin_gid_maps: Vec<GidMap>,
@@ -121,12 +134,11 @@ impl Default for Config {
             vcpu_count: None,
             vcpu_affinity: Vec::new(),
             memory: None,
-            kernel_path: PathBuf::default(),
+            executable_path: None,
             android_fstab: None,
             initrd_path: None,
             params: Vec::new(),
             socket_path: None,
-            plugin: None,
             plugin_root: None,
             plugin_mounts: Vec::new(),
             plugin_gid_maps: Vec::new(),
@@ -285,24 +297,20 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
 fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::Result<()> {
     match name {
         "" => {
-            if cfg.plugin.is_some() {
-                return Err(argument::Error::TooManyArguments(
-                    "`plugin` can not be used with kernel".to_owned(),
-                ));
-            } else if !cfg.kernel_path.as_os_str().is_empty() {
-                return Err(argument::Error::TooManyArguments(
-                    "expected exactly one kernel path".to_owned(),
-                ));
-            } else {
-                let kernel_path = PathBuf::from(value.unwrap());
-                if !kernel_path.exists() {
-                    return Err(argument::Error::InvalidValue {
-                        value: value.unwrap().to_owned(),
-                        expected: "this kernel path does not exist",
-                    });
-                }
-                cfg.kernel_path = kernel_path;
+            if cfg.executable_path.is_some() {
+                return Err(argument::Error::TooManyArguments(format!(
+                    "A VM executable was already specified: {:?}",
+                    cfg.executable_path
+                )));
             }
+            let kernel_path = PathBuf::from(value.unwrap());
+            if !kernel_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: "this kernel path does not exist",
+                });
+            }
+            cfg.executable_path = Some(Executable::Kernel(kernel_path));
         }
         "android-fstab" => {
             if cfg.android_fstab.is_some()
@@ -572,14 +580,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.seccomp_policy_dir = PathBuf::from(value.unwrap());
         }
         "plugin" => {
-            if !cfg.kernel_path.as_os_str().is_empty() {
-                return Err(argument::Error::TooManyArguments(
-                    "`plugin` can not be used with kernel".to_owned(),
-                ));
-            } else if cfg.plugin.is_some() {
-                return Err(argument::Error::TooManyArguments(
-                    "`plugin` already given".to_owned(),
-                ));
+            if cfg.executable_path.is_some() {
+                return Err(argument::Error::TooManyArguments(format!(
+                    "A VM executable was already specified: {:?}",
+                    cfg.executable_path
+                )));
             }
             let plugin = PathBuf::from(value.unwrap().to_owned());
             if plugin.is_relative() {
@@ -588,7 +593,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     expected: "the plugin path must be an absolute path",
                 });
             }
-            cfg.plugin = Some(plugin);
+            cfg.executable_path = Some(Executable::Plugin(plugin));
         }
         "plugin-root" => {
             cfg.plugin_root = Some(PathBuf::from(value.unwrap().to_owned()));
@@ -762,6 +767,15 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "initrd" => {
             cfg.initrd_path = Some(PathBuf::from(value.unwrap().to_owned()));
         }
+        "bios" => {
+            if cfg.executable_path.is_some() {
+                return Err(argument::Error::TooManyArguments(format!(
+                    "A VM executable was already specified: {:?}",
+                    cfg.executable_path
+                )));
+            }
+            cfg.executable_path = Some(Executable::Bios(PathBuf::from(value.unwrap().to_owned())));
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -844,6 +858,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("keyboard", "PATH", "Path to a socket from where to read keyboard input events and write status updates to."),
           #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("split-irqchip", "(EXPERIMENTAL) enable split-irqchip support"),
+          Argument::value("bios", "PATH", "Path to BIOS/firmware ROM"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
@@ -851,7 +866,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
         set_argument(&mut cfg, name, value)
     })
     .and_then(|_| {
-        if cfg.kernel_path.as_os_str().is_empty() && cfg.plugin.is_none() {
+        if cfg.executable_path.is_none() {
             return Err(argument::Error::ExpectedArgument("`KERNEL`".to_owned()));
         }
         if cfg.host_ip.is_some() || cfg.netmask.is_some() || cfg.mac_address.is_some() {
@@ -871,7 +886,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                 ));
             }
         }
-        if cfg.plugin_root.is_some() && cfg.plugin.is_none() {
+        if cfg.plugin_root.is_some() && !executable_is_plugin(&cfg.executable_path) {
             return Err(argument::Error::ExpectedArgument(
                 "`plugin-root` requires `plugin`".to_owned(),
             ));
@@ -881,7 +896,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
 
     match match_res {
         #[cfg(feature = "plugin")]
-        Ok(()) if cfg.plugin.is_some() => match plugin::run_config(cfg) {
+        Ok(()) if executable_is_plugin(&cfg.executable_path) => match plugin::run_config(cfg) {
             Ok(_) => {
                 info!("crosvm and plugin have exited normally");
                 Ok(())
