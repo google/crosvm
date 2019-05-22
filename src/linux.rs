@@ -48,8 +48,8 @@ use vhost;
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
     DiskControlCommand, DiskControlRequestSocket, DiskControlResponseSocket, DiskControlResult,
-    UsbControlSocket, VmControlResponseSocket, VmRunMode, WlControlRequestSocket,
-    WlControlResponseSocket, WlDriverRequest, WlDriverResponse,
+    UsbControlSocket, VmControlResponseSocket, VmMemoryControlRequestSocket,
+    VmMemoryControlResponseSocket, VmMemoryRequest, VmMemoryResponse, VmRunMode,
 };
 
 use crate::{Config, DiskOption, TouchDeviceOption};
@@ -235,7 +235,7 @@ type Result<T> = std::result::Result<T, Error>;
 
 enum TaggedControlSocket {
     Vm(VmControlResponseSocket),
-    Wayland(WlControlResponseSocket),
+    VmMemory(VmMemoryControlResponseSocket),
 }
 
 impl AsRef<UnixSeqpacket> for TaggedControlSocket {
@@ -243,7 +243,7 @@ impl AsRef<UnixSeqpacket> for TaggedControlSocket {
         use self::TaggedControlSocket::*;
         match &self {
             Vm(ref socket) => socket,
-            Wayland(ref socket) => socket,
+            VmMemory(ref socket) => socket,
         }
     }
 }
@@ -596,7 +596,7 @@ fn create_gpu_device(
 fn create_wayland_device(
     cfg: &Config,
     socket_path: &Path,
-    socket: WlControlRequestSocket,
+    socket: VmMemoryControlRequestSocket,
     resource_bridge: Option<virtio::resource_bridge::ResourceRequestSocket>,
 ) -> DeviceResult {
     let wayland_socket_dir = socket_path.parent().ok_or(Error::InvalidWaylandPath)?;
@@ -692,7 +692,7 @@ fn create_virtio_devices(
     cfg: &Config,
     mem: &GuestMemory,
     _exit_evt: &EventFd,
-    wayland_device_socket: WlControlRequestSocket,
+    wayland_device_socket: VmMemoryControlRequestSocket,
     balloon_device_socket: BalloonControlResponseSocket,
     disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
@@ -792,7 +792,7 @@ fn create_devices(
     cfg: &Config,
     mem: &GuestMemory,
     exit_evt: &EventFd,
-    wayland_device_socket: WlControlRequestSocket,
+    wayland_device_socket: VmMemoryControlRequestSocket,
     balloon_device_socket: BalloonControlResponseSocket,
     disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
     usb_provider: HostBackendDeviceProvider,
@@ -1161,8 +1161,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
     let mut control_sockets = Vec::new();
     let (wayland_host_socket, wayland_device_socket) =
-        msg_socket::pair::<WlDriverResponse, WlDriverRequest>().map_err(Error::CreateSocket)?;
-    control_sockets.push(TaggedControlSocket::Wayland(wayland_host_socket));
+        msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>().map_err(Error::CreateSocket)?;
+    control_sockets.push(TaggedControlSocket::VmMemory(wayland_host_socket));
     // Balloon gets a special socket so balloon requests can be forwarded from the main process.
     let (balloon_host_socket, balloon_device_socket) =
         msg_socket::pair::<BalloonControlCommand, ()>().map_err(Error::CreateSocket)?;
@@ -1569,19 +1569,19 @@ fn run_control(
                                     }
                                 }
                             },
-                            TaggedControlSocket::Wayland(socket) => match socket.recv() {
+                            TaggedControlSocket::VmMemory(socket) => match socket.recv() {
                                 Ok(request) => {
                                     let response =
                                         request.execute(&mut linux.vm, &mut linux.resources);
                                     if let Err(e) = socket.send(&response) {
-                                        error!("failed to send WlControlResponse: {}", e);
+                                        error!("failed to send VmMemoryControlResponse: {}", e);
                                     }
                                 }
                                 Err(e) => {
                                     if let MsgError::BadRecvSize { actual: 0, .. } = e {
                                         vm_control_indices_to_remove.push(index);
                                     } else {
-                                        error!("failed to recv WlControlRequest: {}", e);
+                                        error!("failed to recv VmMemoryControlRequest: {}", e);
                                     }
                                 }
                             },

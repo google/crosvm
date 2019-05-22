@@ -185,7 +185,7 @@ impl Display for UsbControlResult {
 }
 
 #[derive(MsgOnSocket, Debug)]
-pub enum WlDriverRequest {
+pub enum VmMemoryRequest {
     /// Register shared memory represented by the given fd into guest address space. The response
     /// variant is `VmResponse::RegisterMemory`.
     RegisterMemory(MaybeOwnedFd, usize),
@@ -200,7 +200,7 @@ pub enum WlDriverRequest {
     },
 }
 
-impl WlDriverRequest {
+impl VmMemoryRequest {
     /// Executes this request on the given Vm.
     ///
     /// # Arguments
@@ -208,18 +208,18 @@ impl WlDriverRequest {
     /// * `allocator` - Used to allocate addresses.
     ///
     /// This does not return a result, instead encapsulating the success or failure in a
-    /// `WlDriverResponse` with the intended purpose of sending the response back over the socket
-    /// that received this `WlDriverResponse`.
-    pub fn execute(&self, vm: &mut Vm, sys_allocator: &mut SystemAllocator) -> WlDriverResponse {
-        use self::WlDriverRequest::*;
+    /// `VmMemoryResponse` with the intended purpose of sending the response back over the socket
+    /// that received this `VmMemoryResponse`.
+    pub fn execute(&self, vm: &mut Vm, sys_allocator: &mut SystemAllocator) -> VmMemoryResponse {
+        use self::VmMemoryRequest::*;
         match *self {
             RegisterMemory(ref fd, size) => match register_memory(vm, sys_allocator, fd, size) {
-                Ok((pfn, slot)) => WlDriverResponse::RegisterMemory { pfn, slot },
-                Err(e) => WlDriverResponse::Err(e),
+                Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
+                Err(e) => VmMemoryResponse::Err(e),
             },
             UnregisterMemory(slot) => match vm.remove_device_memory(slot) {
-                Ok(_) => WlDriverResponse::Ok,
-                Err(e) => WlDriverResponse::Err(e),
+                Ok(_) => VmMemoryResponse::Ok,
+                Err(e) => VmMemoryResponse::Err(e),
             },
             AllocateAndRegisterGpuMemory {
                 width,
@@ -229,24 +229,24 @@ impl WlDriverRequest {
                 let (mut fd, desc) = match sys_allocator.gpu_memory_allocator() {
                     Some(gpu_allocator) => match gpu_allocator.allocate(width, height, format) {
                         Ok(v) => v,
-                        Err(e) => return WlDriverResponse::Err(e),
+                        Err(e) => return VmMemoryResponse::Err(e),
                     },
-                    None => return WlDriverResponse::Err(SysError::new(ENODEV)),
+                    None => return VmMemoryResponse::Err(SysError::new(ENODEV)),
                 };
                 // Determine size of buffer using 0 byte seek from end. This is preferred over
                 // `stride * height` as it's not limited to packed pixel formats.
                 let size = match fd.seek(SeekFrom::End(0)) {
                     Ok(v) => v,
-                    Err(e) => return WlDriverResponse::Err(SysError::from(e)),
+                    Err(e) => return VmMemoryResponse::Err(SysError::from(e)),
                 };
                 match register_memory(vm, sys_allocator, &fd, size as usize) {
-                    Ok((pfn, slot)) => WlDriverResponse::AllocateAndRegisterGpuMemory {
+                    Ok((pfn, slot)) => VmMemoryResponse::AllocateAndRegisterGpuMemory {
                         fd: MaybeOwnedFd::Owned(fd),
                         pfn,
                         slot,
                         desc,
                     },
-                    Err(e) => WlDriverResponse::Err(e),
+                    Err(e) => VmMemoryResponse::Err(e),
                 }
             }
         }
@@ -254,7 +254,7 @@ impl WlDriverRequest {
 }
 
 #[derive(MsgOnSocket, Debug)]
-pub enum WlDriverResponse {
+pub enum VmMemoryResponse {
     /// The request to register memory into guest address space was successfully done at page frame
     /// number `pfn` and memory slot number `slot`.
     RegisterMemory {
@@ -281,8 +281,8 @@ pub type DiskControlResponseSocket = MsgSocket<DiskControlResult, DiskControlCom
 
 pub type UsbControlSocket = MsgSocket<UsbControlCommand, UsbControlResult>;
 
-pub type WlControlRequestSocket = MsgSocket<WlDriverRequest, WlDriverResponse>;
-pub type WlControlResponseSocket = MsgSocket<WlDriverResponse, WlDriverRequest>;
+pub type VmMemoryControlRequestSocket = MsgSocket<VmMemoryRequest, VmMemoryResponse>;
+pub type VmMemoryControlResponseSocket = MsgSocket<VmMemoryResponse, VmMemoryRequest>;
 
 pub type VmControlRequestSocket = MsgSocket<VmRequest, VmResponse>;
 pub type VmControlResponseSocket = MsgSocket<VmResponse, VmRequest>;
