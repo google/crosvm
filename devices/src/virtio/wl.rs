@@ -110,7 +110,10 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 
 const NEXT_VFD_ID_BASE: u32 = 0x40000000;
 const VFD_ID_HOST_MASK: u32 = NEXT_VFD_ID_BASE;
-const IN_BUFFER_LEN: usize = 4080;
+// Each in-vq buffer is one page, so we need to leave space for the control header and the maximum
+// number of allocs.
+const IN_BUFFER_LEN: usize =
+    0x1000 - size_of::<CtrlVfdRecv>() - VIRTWL_SEND_MAX_ALLOCS * size_of::<Le32>();
 
 #[cfg(feature = "wl-dmabuf")]
 const VIRTIO_WL_VFD_DMABUF_SYNC_VALID_FLAG_MASK: u32 = 0x7;
