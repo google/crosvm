@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use libc::{gmtime_r, time, time_t, tm};
+use std::cmp::min;
 use std::mem;
 
 use crate::BusDevice;
@@ -19,12 +20,27 @@ pub struct Cmos {
 }
 
 impl Cmos {
-    /// Constructs a CMOS/RTC device with zero data.
-    pub fn new() -> Cmos {
-        Cmos {
-            index: 0,
-            data: [0; DATA_LEN],
-        }
+    /// Constructs a CMOS/RTC device with initial data.
+    /// `mem_below_4g` is the size of memory in bytes below the 32-bit gap.
+    /// `mem_above_4g` is the size of memory in bytes above the 32-bit gap.
+    pub fn new(mem_below_4g: u64, mem_above_4g: u64) -> Cmos {
+        let mut data = [0u8; DATA_LEN];
+
+        // Extended memory from 16 MB to 4 GB in units of 64 KB
+        let ext_mem = min(
+            0xFFFF,
+            mem_below_4g.saturating_sub(16 * 1024 * 1024) / (64 * 1024),
+        );
+        data[0x34] = ext_mem as u8;
+        data[0x35] = (ext_mem >> 8) as u8;
+
+        // High memory (> 4GB) in units of 64 KB
+        let high_mem = min(0xFFFFFF, mem_above_4g / (64 * 1024));
+        data[0x5b] = high_mem as u8;
+        data[0x5c] = (high_mem >> 8) as u8;
+        data[0x5d] = (high_mem >> 16) as u8;
+
+        Cmos { index: 0, data }
     }
 }
 

@@ -352,6 +352,7 @@ impl arch::LinuxArch for X8664arch {
             split_irqchip,
             exit_evt.try_clone().map_err(Error::CloneEventFd)?,
             Some(pci_bus.clone()),
+            components.memory_size,
         )?;
 
         let (stdio_serial_num, stdio_serial) =
@@ -582,11 +583,13 @@ impl X8664arch {
     /// * - `vm` the vm object
     /// * - `split_irqchip`: whether to use a split IRQ chip (i.e. userspace PIT/PIC/IOAPIC)
     /// * - `exit_evt` - the event fd object which should receive exit events
+    /// * - `mem_size` - the size in bytes of physical ram for the guest
     fn setup_io_bus(
         vm: &mut Vm,
         split_irqchip: bool,
         exit_evt: EventFd,
         pci: Option<Arc<Mutex<devices::PciConfigIo>>>,
+        mem_size: u64,
     ) -> Result<(devices::Bus)> {
         struct NoDevice;
         impl devices::BusDevice for NoDevice {
@@ -597,8 +600,17 @@ impl X8664arch {
 
         let mut io_bus = devices::Bus::new();
 
+        let mem_gap_start = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
+        let mem_below_4g = std::cmp::min(mem_gap_start, mem_size);
+        let mem_above_4g = mem_size.saturating_sub(FIRST_ADDR_PAST_32BITS);
+
         io_bus
-            .insert(Arc::new(Mutex::new(devices::Cmos::new())), 0x70, 0x2, false)
+            .insert(
+                Arc::new(Mutex::new(devices::Cmos::new(mem_below_4g, mem_above_4g))),
+                0x70,
+                0x2,
+                false,
+            )
             .unwrap();
         io_bus
             .insert(
