@@ -165,7 +165,7 @@ impl Display for MacAddress {
 #[derive(Debug)]
 pub struct Tap {
     tap_file: File,
-    if_name: [u8; 16usize],
+    if_name: [c_char; 16usize],
     if_flags: ::std::os::raw::c_short,
 }
 
@@ -183,8 +183,8 @@ impl Tap {
 
         Ok(Tap {
             tap_file,
-            if_name: *ifreq.ifr_ifrn.ifrn_name.as_ref(),
-            if_flags: *ifreq.ifr_ifru.ifru_flags.as_ref(),
+            if_name: ifreq.ifr_ifrn.ifrn_name,
+            if_flags: ifreq.ifr_ifru.ifru_flags,
         })
     }
 }
@@ -253,10 +253,11 @@ impl TapT for Tap {
         let mut ifreq: net_sys::ifreq = Default::default();
         unsafe {
             let ifrn_name = ifreq.ifr_ifrn.ifrn_name.as_mut();
-            let ifru_flags = ifreq.ifr_ifru.ifru_flags.as_mut();
             let name_slice = &mut ifrn_name[..TUNTAP_DEV_FORMAT.len()];
-            name_slice.copy_from_slice(TUNTAP_DEV_FORMAT);
-            *ifru_flags = (net_sys::IFF_TAP
+            for (dst, src) in name_slice.iter_mut().zip(TUNTAP_DEV_FORMAT.iter()) {
+                *dst = *src as c_char;
+            }
+            ifreq.ifr_ifru.ifru_flags = (net_sys::IFF_TAP
                 | net_sys::IFF_NO_PI
                 | if vnet_hdr { net_sys::IFF_VNET_HDR } else { 0 })
                 as c_short;
@@ -278,8 +279,8 @@ impl TapT for Tap {
         // Safe since only the name is accessed, and it's copied out.
         Ok(Tap {
             tap_file: tuntap,
-            if_name: unsafe { *ifreq.ifr_ifrn.ifrn_name.as_ref() },
-            if_flags: unsafe { *ifreq.ifr_ifru.ifru_flags.as_ref() },
+            if_name: unsafe { ifreq.ifr_ifrn.ifrn_name },
+            if_flags: unsafe { ifreq.ifr_ifru.ifru_flags },
         })
     }
 
@@ -296,9 +297,9 @@ impl TapT for Tap {
         }
 
         // We only access one field of the ifru union, hence this is safe.
-        let addr = unsafe { ifreq.ifr_ifru.ifru_addr.as_ref() };
+        let addr = unsafe { ifreq.ifr_ifru.ifru_addr };
 
-        Ok(read_ipv4_addr(addr))
+        Ok(read_ipv4_addr(&addr))
     }
 
     fn set_ip_addr(&self, ip_addr: net::Ipv4Addr) -> Result<()> {
@@ -306,12 +307,7 @@ impl TapT for Tap {
         let addr = create_sockaddr(ip_addr);
 
         let mut ifreq = self.get_ifreq();
-
-        // We only access one field of the ifru union, hence this is safe.
-        unsafe {
-            let ifru_addr = ifreq.ifr_ifru.ifru_addr.as_mut();
-            *ifru_addr = addr;
-        }
+        ifreq.ifr_ifru.ifru_addr = addr;
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret =
@@ -340,9 +336,9 @@ impl TapT for Tap {
         }
 
         // We only access one field of the ifru union, hence this is safe.
-        let addr = unsafe { ifreq.ifr_ifru.ifru_netmask.as_ref() };
+        let addr = unsafe { ifreq.ifr_ifru.ifru_netmask };
 
-        Ok(read_ipv4_addr(addr))
+        Ok(read_ipv4_addr(&addr))
     }
 
     fn set_netmask(&self, netmask: net::Ipv4Addr) -> Result<()> {
@@ -350,12 +346,7 @@ impl TapT for Tap {
         let addr = create_sockaddr(netmask);
 
         let mut ifreq = self.get_ifreq();
-
-        // We only access one field of the ifru union, hence this is safe.
-        unsafe {
-            let ifru_addr = ifreq.ifr_ifru.ifru_netmask.as_mut();
-            *ifru_addr = addr;
-        }
+        ifreq.ifr_ifru.ifru_netmask = addr;
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret =
@@ -384,11 +375,9 @@ impl TapT for Tap {
         }
 
         // We only access one field of the ifru union, hence this is safe.
-        let ifru_hwaddr = unsafe { ifreq.ifr_ifru.ifru_hwaddr.as_ref() };
-
         // This is safe since the MacAddress struct is already sized to match the C sockaddr
         // struct. The address family has also been checked.
-        Ok(unsafe { mem::transmute(*ifru_hwaddr) })
+        Ok(unsafe { mem::transmute(ifreq.ifr_ifru.ifru_hwaddr) })
     }
 
     fn set_mac_address(&self, mac_addr: MacAddress) -> Result<()> {
@@ -398,10 +387,9 @@ impl TapT for Tap {
 
         // We only access one field of the ifru union, hence this is safe.
         unsafe {
-            let ifru_hwaddr = ifreq.ifr_ifru.ifru_hwaddr.as_mut();
             // This is safe since the MacAddress struct is already sized to match the C sockaddr
             // struct.
-            *ifru_hwaddr = std::mem::transmute(mac_addr);
+            ifreq.ifr_ifru.ifru_hwaddr = std::mem::transmute(mac_addr);
         }
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
@@ -429,13 +417,8 @@ impl TapT for Tap {
         let sock = create_socket()?;
 
         let mut ifreq = self.get_ifreq();
-
-        // We only access one field of the ifru union, hence this is safe.
-        unsafe {
-            let ifru_flags = ifreq.ifr_ifru.ifru_flags.as_mut();
-            *ifru_flags =
-                (net_sys::net_device_flags_IFF_UP | net_sys::net_device_flags_IFF_RUNNING) as i16;
-        }
+        ifreq.ifr_ifru.ifru_flags =
+            (net_sys::net_device_flags_IFF_UP | net_sys::net_device_flags_IFF_RUNNING) as i16;
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret =
@@ -469,13 +452,7 @@ impl TapT for Tap {
 
         // This sets the flags with which the interface was created, which is the only entry we set
         // on the second union.
-        unsafe {
-            ifreq
-                .ifr_ifru
-                .ifru_flags
-                .as_mut()
-                .clone_from(&self.if_flags);
-        }
+        ifreq.ifr_ifru.ifru_flags = self.if_flags;
 
         ifreq
     }
@@ -655,16 +632,6 @@ mod tests {
 
         let ret = tap.enable();
         assert_ok_or_perm_denied(ret);
-    }
-
-    #[test]
-    fn tap_get_ifreq() {
-        let tap = Tap::new(true).unwrap();
-        let ret = tap.get_ifreq();
-        assert_eq!(
-            "__BindgenUnionField",
-            format!("{:?}", ret.ifr_ifrn.ifrn_name)
-        );
     }
 
     fn assert_ok_or_perm_denied<T>(res: Result<T>) {
