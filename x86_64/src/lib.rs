@@ -4,6 +4,8 @@
 
 mod fdt;
 
+const E820_RAM: u32 = 1;
+const SETUP_DTB: u32 = 2;
 const X86_64_FDT_MAX_SIZE: u64 = 0x200000;
 
 #[allow(dead_code)]
@@ -11,22 +13,9 @@ const X86_64_FDT_MAX_SIZE: u64 = 0x200000;
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
 mod bootparam;
-// Bindgen didn't implement copy for boot_params because edid_info contains an array with len > 32.
-impl Copy for bootparam::edid_info {}
-impl Clone for bootparam::edid_info {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl Copy for bootparam::boot_params {}
-impl Clone for bootparam::boot_params {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 // boot_params is just a series of ints, it is safe to initialize it.
 unsafe impl data_model::DataInit for bootparam::boot_params {}
-unsafe impl data_model::DataInit for bootparam::setup_data {}
 
 #[allow(dead_code)]
 #[allow(non_upper_case_globals)]
@@ -64,7 +53,6 @@ use std::mem;
 use std::sync::Arc;
 
 use crate::bootparam::boot_params;
-use crate::bootparam::E820_RAM;
 use arch::{RunnableLinuxVm, VmComponents};
 use devices::{get_serial_tty_string, PciConfigIo, PciDevice, PciInterruptPin, SerialParameters};
 use io_jail::Minijail;
@@ -258,13 +246,13 @@ fn configure_system(
 /// Add an e820 region to the e820 map.
 /// Returns Ok(()) if successful, or an error if there is no space left in the map.
 fn add_e820_entry(params: &mut boot_params, addr: u64, size: u64, mem_type: u32) -> Result<()> {
-    if params.e820_entries >= params.e820_map.len() as u8 {
+    if params.e820_entries >= params.e820_table.len() as u8 {
         return Err(Error::E820Configuration);
     }
 
-    params.e820_map[params.e820_entries as usize].addr = addr;
-    params.e820_map[params.e820_entries as usize].size = size;
-    params.e820_map[params.e820_entries as usize].type_ = mem_type;
+    params.e820_table[params.e820_entries as usize].addr = addr;
+    params.e820_table[params.e820_entries as usize].size = size;
+    params.e820_table[params.e820_entries as usize].type_ = mem_type;
     params.e820_entries += 1;
 
     Ok(())
