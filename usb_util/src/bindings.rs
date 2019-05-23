@@ -2152,7 +2152,7 @@ pub type libusb_iso_usage_type = u32;
 /// descriptor is documented in section 9.6.1 of the USB 3.0 specification.
 /// All multiple-byte fields are represented in host-endian format.
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone)]
 pub struct libusb_device_descriptor {
     /// Size of this descriptor (in bytes)
     pub bLength: u8,

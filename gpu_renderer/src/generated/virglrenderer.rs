@@ -244,7 +244,7 @@ extern "C" {
     pub fn virgl_set_debug_callback(cb: virgl_debug_callback_type) -> virgl_debug_callback_type;
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone)]
 pub struct virgl_renderer_resource_info {
     pub handle: u32,
     pub virgl_format: u32,

@@ -13,7 +13,7 @@ use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::marker::PhantomData;
-use std::mem::{size_of, transmute, uninitialized};
+use std::mem::{size_of, transmute};
 use std::ops::Deref;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::os::unix::io::{FromRawFd, RawFd};
@@ -343,9 +343,8 @@ impl Renderer {
         }
 
         let config_attribs = [EGL_SURFACE_TYPE as i32, -1, EGL_NONE as i32];
-        // Safe because these uninitialized variables get initialized by the ChooseConfig function.
-        let mut egl_config: *mut c_void = unsafe { uninitialized() };
-        let mut num_configs = unsafe { uninitialized() };
+        let mut egl_config: *mut c_void = null_mut();
+        let mut num_configs = 0;
         // Safe because only a valid, initialized display is used, along with validly sized
         // pointers to stack variables.
         let ret = unsafe {
@@ -694,9 +693,7 @@ impl Resource {
 
     /// Retrieves metadata about this resource.
     pub fn get_info(&self) -> Result<ResourceInfo> {
-        // Safe because the resource info is filled in by the virgl call and only returned if it was
-        // successful.
-        let mut res_info = unsafe { uninitialized() };
+        let mut res_info = Default::default();
         let ret = unsafe { virgl_renderer_resource_get_info(self.id as i32, &mut res_info) };
         ret_to_res(ret)?;
         Ok(res_info)

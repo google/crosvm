@@ -18,13 +18,11 @@ use std::time::Duration;
 
 // Offset of sun_path in structure sockaddr_un.
 fn sun_path_offset() -> usize {
-    // Safe block since we only use the created structure to calculate the offset
-    unsafe {
-        let addr: libc::sockaddr_un = mem::uninitialized();
-        let base = &addr as *const _ as usize;
-        let path = &addr.sun_path as *const _ as usize;
-        path - base
-    }
+    // Prefer 0 to null() so that we do not need to subtract from the `sub_path` pointer.
+    let addr = 0 as *const libc::sockaddr_un;
+    // Safe because we only use the dereference to create a pointer to the desired field in
+    // calculating the offset.
+    unsafe { &(*addr).sun_path as *const _ as usize }
 }
 
 // Return `sockaddr_un` for a given `path`

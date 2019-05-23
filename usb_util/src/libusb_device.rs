@@ -50,8 +50,7 @@ impl LibUsbDevice {
     /// Get device descriptor of this device.
     pub fn get_device_descriptor(&self) -> Result<DeviceDescriptor> {
         // Safe because memory is initialized later.
-        let mut descriptor: bindings::libusb_device_descriptor =
-            unsafe { std::mem::uninitialized() };
+        let mut descriptor: bindings::libusb_device_descriptor = Default::default();
         // Safe because 'self.device' is valid and '&mut descriptor' is valid.
         try_libusb!(unsafe {
             bindings::libusb_get_device_descriptor(self.device, &mut descriptor)

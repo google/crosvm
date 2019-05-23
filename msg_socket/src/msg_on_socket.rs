@@ -2,16 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use data_model::*;
-use std;
 use std::fmt::{self, Display};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::result;
-use sys_util::{Error as SysError, EventFd};
-
 use std::fs::File;
 use std::net::{TcpListener, TcpStream, UdpSocket};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
+use std::result;
+
+use data_model::*;
+use sys_util::{Error as SysError, EventFd};
 
 #[derive(Debug, PartialEq)]
 /// An error during transaction or serialization/deserialization.
@@ -225,28 +224,19 @@ rawfd_impl!(UdpSocket);
 rawfd_impl!(UnixListener);
 rawfd_impl!(UnixDatagram);
 
-// This trait is unsafe as it use uninitialized memory.
-// Please only implement it for primitive types.
-unsafe trait AlignedNew: DataInit {
-    unsafe fn from_unaligned(buffer: &[u8]) -> Option<Self> {
-        let mut value = std::mem::uninitialized::<Self>();
-        let value_mem = value.as_mut_slice();
-        if value_mem.len() != buffer.len() {
-            return None;
-        }
-        value_mem.copy_from_slice(buffer);
-        Some(value)
-    }
+// Converts a slice into an array of fixed size inferred from by the return value. Panics if the
+// slice is too small, but will tolerate slices that are too large.
+fn slice_to_array<T, O>(s: &[T]) -> O
+where
+    T: Copy,
+    O: Default + AsMut<[T]>,
+{
+    let mut o = O::default();
+    let o_slice = o.as_mut();
+    let len = o_slice.len();
+    o_slice.copy_from_slice(&s[..len]);
+    o
 }
-
-unsafe impl AlignedNew for u8 {}
-unsafe impl AlignedNew for u16 {}
-unsafe impl AlignedNew for u32 {}
-unsafe impl AlignedNew for u64 {}
-
-unsafe impl AlignedNew for Le16 {}
-unsafe impl AlignedNew for Le32 {}
-unsafe impl AlignedNew for Le64 {}
 
 // usize could be different sizes on different targets. We always use u64.
 impl MsgOnSocket for usize {
@@ -257,9 +247,7 @@ impl MsgOnSocket for usize {
         if buffer.len() < std::mem::size_of::<u64>() {
             return Err(MsgError::WrongMsgBufferSize);
         }
-        let t: u64 = Le64::from_unaligned(&buffer[0..Self::msg_size()])
-            .unwrap()
-            .into();
+        let t = u64::from_le_bytes(slice_to_array(buffer));
         Ok((t as usize, 0))
     }
 
@@ -299,25 +287,25 @@ impl MsgOnSocket for bool {
 }
 
 macro_rules! le_impl {
-    ($type:ident, $le_type:ident) => {
+    ($type:ident, $native_type:ident) => {
         impl MsgOnSocket for $type {
             fn msg_size() -> usize {
-                std::mem::size_of::<$le_type>()
+                std::mem::size_of::<$native_type>()
             }
             unsafe fn read_from_buffer(buffer: &[u8], _fds: &[RawFd]) -> MsgResult<(Self, usize)> {
-                if buffer.len() < std::mem::size_of::<$le_type>() {
+                if buffer.len() < std::mem::size_of::<$native_type>() {
                     return Err(MsgError::WrongMsgBufferSize);
                 }
-                let t = $le_type::from_unaligned(&buffer[0..Self::msg_size()]).unwrap();
+                let t = $native_type::from_le_bytes(slice_to_array(buffer));
                 Ok((t.into(), 0))
             }
 
             fn write_to_buffer(&self, buffer: &mut [u8], _fds: &mut [RawFd]) -> MsgResult<usize> {
-                if buffer.len() < std::mem::size_of::<$le_type>() {
+                if buffer.len() < std::mem::size_of::<$native_type>() {
                     return Err(MsgError::WrongMsgBufferSize);
                 }
-                let t: $le_type = self.clone().into();
-                buffer[0..Self::msg_size()].copy_from_slice(t.as_slice());
+                let t: $native_type = self.clone().into();
+                buffer[0..Self::msg_size()].copy_from_slice(&t.to_le_bytes());
                 Ok(0)
             }
         }
@@ -325,13 +313,13 @@ macro_rules! le_impl {
 }
 
 le_impl!(u8, u8);
-le_impl!(u16, Le16);
-le_impl!(u32, Le32);
-le_impl!(u64, Le64);
+le_impl!(u16, u16);
+le_impl!(u32, u32);
+le_impl!(u64, u64);
 
-le_impl!(Le16, Le16);
-le_impl!(Le32, Le32);
-le_impl!(Le64, Le64);
+le_impl!(Le16, u16);
+le_impl!(Le32, u32);
+le_impl!(Le64, u64);
 
 macro_rules! array_impls {
     ($N:expr, $t: ident $($ts:ident)*)
