@@ -402,9 +402,7 @@ impl<T: EventSource> Worker<T> {
     // Send events from the source to the guest
     fn send_events(&mut self) -> bool {
         let queue = &mut self.event_queue;
-
-        let mut used_desc_heads = [(0, 0); EVENT_QUEUE_SIZE as usize];
-        let mut used_count = 0;
+        let mut needs_interrupt = false;
 
         // Only consume from the queue iterator if we know we have events to send
         while self.event_source.available_events_count() > 0 {
@@ -429,16 +427,14 @@ impl<T: EventSource> Worker<T> {
                         // length given in the queue descriptor are wrong.
                         panic!("failed reading events into guest memory: {}", e);
                     }
-                    used_desc_heads[used_count] = (avail_desc.index, len as u32);
-                    used_count += 1;
+
+                    queue.add_used(&self.guest_memory, avail_desc.index, len as u32);
+                    needs_interrupt = true;
                 }
             }
         }
-        for &(desc_index, len) in &used_desc_heads[..used_count] {
-            queue.add_used(&self.guest_memory, desc_index, len);
-        }
 
-        used_count > 0
+        needs_interrupt
     }
 
     fn process_status_queue(&mut self) -> Result<bool> {
