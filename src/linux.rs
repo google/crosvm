@@ -823,7 +823,10 @@ fn create_devices(
     }
 
     if cfg.cras_audio {
-        let server = Box::new(CrasClient::new().map_err(Error::CreateCrasClient)?);
+        let mut server = Box::new(CrasClient::new().map_err(Error::CreateCrasClient)?);
+        if cfg.cras_capture {
+            server.enable_cras_capture();
+        }
         let cras_audio = devices::Ac97Dev::new(mem.clone(), server);
 
         pci_devices.push((

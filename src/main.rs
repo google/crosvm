@@ -103,6 +103,7 @@ pub struct Config {
     gpu: bool,
     software_tpm: bool,
     cras_audio: bool,
+    cras_capture: bool,
     null_audio: bool,
     serial_parameters: BTreeMap<u8, SerialParameters>,
     syslog_tag: Option<String>,
@@ -144,6 +145,7 @@ impl Default for Config {
             sandbox: !cfg!(feature = "default-no-sandbox"),
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             cras_audio: false,
+            cras_capture: false,
             null_audio: false,
             serial_parameters: BTreeMap::new(),
             syslog_tag: None,
@@ -367,6 +369,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         "cras-audio" => {
             cfg.cras_audio = true;
+        }
+        "cras-capture" => {
+            cfg.cras_capture = true;
         }
         "null-audio" => {
             cfg.null_audio = true;
@@ -792,6 +797,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
           Argument::value("mac", "MAC", "MAC address for VM."),
           Argument::flag("cras-audio", "Add an audio device to the VM that plays samples through CRAS server"),
+          Argument::flag("cras-capture", "Enable capturing audio from CRAS server to the cras-audio device"),
           Argument::flag("null-audio", "Add an audio device to the VM that plays samples to /dev/null"),
           Argument::value("serial",
                           "type=TYPE,[path=PATH,num=NUM,console]",
