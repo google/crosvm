@@ -690,6 +690,8 @@ fn create_9p_device(cfg: &Config, chronos: Ids, src: &Path, tag: &str) -> Device
     })
 }
 
+// gpu_device_socket is not used when GPU support is disabled.
+#[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
 fn create_virtio_devices(
     cfg: &Config,
     mem: &GuestMemory,
