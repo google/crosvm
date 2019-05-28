@@ -747,7 +747,7 @@ impl<T: DiskFile> Worker<T> {
             for event in events.iter_readable() {
                 match event.token() {
                     Token::FlushTimer => {
-                        if let Err(e) = self.disk_image.flush() {
+                        if let Err(e) = self.disk_image.fsync() {
                             error!("Failed to flush the disk: {}", e);
                             break 'poll;
                         }
