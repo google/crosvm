@@ -51,7 +51,7 @@
 //! attribute. If a `repr` is specified, the input to `n` will be required to be
 //! of that type.
 //!
-//! ```rust
+//! ```ignore
 //! use enumn::N;
 //!
 //! #[derive(N)]
@@ -73,7 +73,7 @@
 //! On the other hand if no `repr` is specified then we get a signature that is
 //! generic over a variety of possible types.
 //!
-//! ```rust
+//! ```ignore
 //! # enum E {}
 //! #
 //! impl E {
