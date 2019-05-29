@@ -11,9 +11,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use sys_util::{error, EventFd, GuestMemory, PollContext, PollToken};
+use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
 
-use super::{Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_RNG};
+use super::{Queue, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_RNG};
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -50,21 +50,17 @@ impl Worker {
 
         let mut needs_interrupt = false;
         while let Some(avail_desc) = queue.pop(&self.mem) {
-            let mut len = 0;
-
-            // Drivers can only read from the random device.
-            if avail_desc.is_write_only() {
-                // Fill the read with data from the random device on the host.
-                if self
-                    .mem
-                    .read_to_memory(avail_desc.addr, &self.random_file, avail_desc.len as usize)
-                    .is_ok()
-                {
-                    len = avail_desc.len;
+            let index = avail_desc.index;
+            let mut writer = Writer::new(&self.mem, avail_desc);
+            // Fill the entire descriptor chain buffer with random bytes.
+            let written = match writer.write_from(&self.random_file, std::usize::MAX) {
+                Ok(n) => n,
+                Err(e) => {
+                    warn!("Failed to write random data to the guest: {}", e);
+                    0
                 }
-            }
-
-            queue.add_used(&self.mem, avail_desc.index, len);
+            };
+            queue.add_used(&self.mem, index, written as u32);
             needs_interrupt = true;
         }
 

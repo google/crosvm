@@ -12,10 +12,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use sys_util::{error, EventFd, GuestMemory, GuestMemoryError, PollContext, PollToken};
+use sys_util::{error, EventFd, GuestMemory, PollContext, PollToken};
 use tpm2;
 
-use super::{DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_TPM};
+use super::{
+    DescriptorChain, DescriptorError, Queue, Reader, VirtioDevice, Writer,
+    INTERRUPT_STATUS_USED_RING, TYPE_TPM,
+};
 
 // A single queue of size 2. The guest kernel driver will enqueue a single
 // descriptor chain containing one command buffer and one response buffer at a
@@ -43,41 +46,19 @@ struct Device {
     simulator: tpm2::Simulator,
 }
 
-// Checks that the input descriptor chain holds a read-only descriptor followed
-// by a write-only descriptor, as required of the guest's virtio tpm driver.
-//
-// Returns those descriptors as a tuple: `(read_desc, write_desc)`.
-fn two_input_descriptors(desc: DescriptorChain) -> Result<(DescriptorChain, DescriptorChain)> {
-    let read_desc = desc;
-    if !read_desc.is_read_only() {
-        return Err(Error::ExpectedReadOnly);
-    }
-
-    let write_desc = match read_desc.next_descriptor() {
-        Some(desc) => desc,
-        None => return Err(Error::ExpectedSecondBuffer),
-    };
-
-    if !write_desc.is_write_only() {
-        return Err(Error::ExpectedWriteOnly);
-    }
-
-    Ok((read_desc, write_desc))
-}
-
 impl Device {
     fn perform_work(&mut self, mem: &GuestMemory, desc: DescriptorChain) -> Result<u32> {
-        let (read_desc, write_desc) = two_input_descriptors(desc)?;
+        let mut reader = Reader::new(mem, desc.clone());
+        let mut writer = Writer::new(mem, desc);
 
-        if read_desc.len > TPM_BUFSIZE as u32 {
+        if reader.available_bytes() > TPM_BUFSIZE {
             return Err(Error::CommandTooLong {
-                size: read_desc.len as usize,
+                size: reader.available_bytes(),
             });
         }
 
-        let mut command = vec![0u8; read_desc.len as usize];
-        mem.read_exact_at_addr(&mut command, read_desc.addr)
-            .map_err(Error::Read)?;
+        let mut command = vec![0u8; reader.available_bytes() as usize];
+        reader.read_exact(&mut command).map_err(Error::Read)?;
 
         let response = self.simulator.execute_command(&command);
 
@@ -87,17 +68,16 @@ impl Device {
             });
         }
 
-        if response.len() > write_desc.len as usize {
+        if response.len() > writer.available_bytes() {
             return Err(Error::BufferTooSmall {
-                size: write_desc.len as usize,
+                size: writer.available_bytes(),
                 required: response.len(),
             });
         }
 
-        mem.write_all_at_addr(&response, write_desc.addr)
-            .map_err(Error::Write)?;
+        writer.write_all(&response).map_err(Error::Write)?;
 
-        Ok(response.len() as u32)
+        Ok(writer.bytes_written() as u32)
     }
 }
 
@@ -306,14 +286,11 @@ impl BitOrAssign for NeedsInterrupt {
 type Result<T> = std::result::Result<T, Error>;
 
 enum Error {
-    ExpectedReadOnly,
-    ExpectedSecondBuffer,
-    ExpectedWriteOnly,
     CommandTooLong { size: usize },
-    Read(GuestMemoryError),
+    Read(DescriptorError),
     ResponseTooLong { size: usize },
     BufferTooSmall { size: usize, required: usize },
-    Write(GuestMemoryError),
+    Write(DescriptorError),
 }
 
 impl Display for Error {
@@ -321,9 +298,6 @@ impl Display for Error {
         use self::Error::*;
 
         match self {
-            ExpectedReadOnly => write!(f, "vtpm expected first descriptor to be read-only"),
-            ExpectedSecondBuffer => write!(f, "vtpm expected a second descriptor"),
-            ExpectedWriteOnly => write!(f, "vtpm expected second descriptor to be write-only"),
             CommandTooLong { size } => write!(
                 f,
                 "vtpm command is too long: {} > {} bytes",
