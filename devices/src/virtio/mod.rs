@@ -6,6 +6,7 @@
 
 mod balloon;
 mod block;
+mod descriptor_utils;
 #[cfg(feature = "gpu")]
 mod gpu;
 mod input;
@@ -26,6 +27,7 @@ pub mod vhost;
 
 pub use self::balloon::*;
 pub use self::block::*;
+pub use self::descriptor_utils::*;
 #[cfg(feature = "gpu")]
 pub use self::gpu::*;
 pub use self::input::*;

@@ -70,7 +70,7 @@ pub struct DescriptorChain<'a> {
 }
 
 impl<'a> DescriptorChain<'a> {
-    fn checked_new(
+    pub(crate) fn checked_new(
         mem: &GuestMemory,
         desc_table: GuestAddress,
         queue_size: u16,
