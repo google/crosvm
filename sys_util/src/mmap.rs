@@ -5,17 +5,18 @@
 //! The mmap module provides a safe interface to mmap memory and ensures unmap is called when the
 //! mmap object leaves scope.
 
-use std;
+use std::cmp::min;
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
-use std::io::{Read, Write};
-use std::mem::ManuallyDrop;
+use std::io;
+use std::mem::{size_of, ManuallyDrop};
 use std::os::unix::io::AsRawFd;
-use std::ptr::null_mut;
+use std::ptr::{copy_nonoverlapping, null_mut, read_unaligned, write_unaligned};
+
+use libc::{self, c_int, c_void, read, write};
 
 use data_model::volatile_memory::*;
 use data_model::DataInit;
-use libc::{self, c_int};
 
 use crate::{errno, pagesize};
 
@@ -31,14 +32,12 @@ pub enum Error {
     Overlapping(usize, usize),
     /// Requested memory range spans past the end of the region.
     InvalidRange(usize, usize, usize),
-    /// Couldn't read from the given source.
-    ReadFromSource(std::io::Error),
     /// `mmap` returned the given error.
     SystemCallFailed(errno::Error),
     /// Writing to memory failed
-    WriteToMemory(std::io::Error),
+    ReadToMemory(io::Error),
     /// Reading from memory failed
-    ReadFromMemory(std::io::Error),
+    WriteFromMemory(io::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -60,10 +59,9 @@ impl Display for Error {
                 "requested memory range spans past the end of the region: offset={} count={} region_size={}",
                 offset, count, region_size,
             ),
-            ReadFromSource(e) => write!(f, "failed to read from the given source: {}", e),
             SystemCallFailed(e) => write!(f, "mmap system call failed: {}", e),
-            WriteToMemory(e) => write!(f, "failed to write to memory: {}", e),
-            ReadFromMemory(e) => write!(f, "failed to read from memory: {}", e),
+            ReadToMemory(e) => write!(f, "failed to read from file to memory: {}", e),
+            WriteFromMemory(e) => write!(f, "failed to write from memory to file: {}", e),
         }
     }
 }
@@ -330,15 +328,18 @@ impl MemoryMapping {
     ///     assert_eq!(res.unwrap(), 5);
     /// ```
     pub fn write_slice(&self, buf: &[u8], offset: usize) -> Result<usize> {
-        if offset >= self.size {
-            return Err(Error::InvalidAddress);
-        }
-        unsafe {
-            // Guest memory can't strictly be modeled as a slice because it is
-            // volatile.  Writing to it with what compiles down to a memcpy
-            // won't hurt anything as long as we get the bounds checks right.
-            let mut slice: &mut [u8] = &mut self.as_mut_slice()[offset..];
-            Ok(slice.write(buf).map_err(Error::WriteToMemory)?)
+        match self.size.checked_sub(offset) {
+            Some(size_past_offset) => {
+                let bytes_copied = min(size_past_offset, buf.len());
+                // The bytes_copied equation above ensures we don't copy bytes out of range of
+                // either buf or this slice. We also know that the buffers do not overlap because
+                // slices can never occupy the same memory as a volatile slice.
+                unsafe {
+                    copy_nonoverlapping(buf.as_ptr(), self.as_ptr().add(offset), bytes_copied);
+                }
+                Ok(bytes_copied)
+            }
+            None => Err(Error::InvalidAddress),
         }
     }
 
@@ -358,16 +359,23 @@ impl MemoryMapping {
     ///     assert!(res.is_ok());
     ///     assert_eq!(res.unwrap(), 16);
     /// ```
-    pub fn read_slice(&self, mut buf: &mut [u8], offset: usize) -> Result<usize> {
-        if offset >= self.size {
-            return Err(Error::InvalidAddress);
-        }
-        unsafe {
-            // Guest memory can't strictly be modeled as a slice because it is
-            // volatile.  Writing to it with what compiles down to a memcpy
-            // won't hurt anything as long as we get the bounds checks right.
-            let slice: &[u8] = &self.as_slice()[offset..];
-            Ok(buf.write(slice).map_err(Error::ReadFromMemory)?)
+    pub fn read_slice(&self, buf: &mut [u8], offset: usize) -> Result<usize> {
+        match self.size.checked_sub(offset) {
+            Some(size_past_offset) => {
+                let bytes_copied = min(size_past_offset, buf.len());
+                // The bytes_copied equation above ensures we don't copy bytes out of range of
+                // either buf or this slice. We also know that the buffers do not overlap because
+                // slices can never occupy the same memory as a volatile slice.
+                unsafe {
+                    copy_nonoverlapping(
+                        self.as_ptr().add(offset) as *const u8,
+                        buf.as_mut_ptr(),
+                        bytes_copied,
+                    );
+                }
+                Ok(bytes_copied)
+            }
+            None => Err(Error::InvalidAddress),
         }
     }
 
@@ -384,14 +392,12 @@ impl MemoryMapping {
     ///     assert!(res.is_ok());
     /// ```
     pub fn write_obj<T: DataInit>(&self, val: T, offset: usize) -> Result<()> {
+        self.range_end(offset, size_of::<T>())?;
+        // This is safe because we checked the bounds above.
         unsafe {
-            // Guest memory can't strictly be modeled as a slice because it is
-            // volatile.  Writing to it with what compiles down to a memcpy
-            // won't hurt anything as long as we get the bounds checks right.
-            self.range_end(offset, std::mem::size_of::<T>())?;
-            std::ptr::write_volatile(&mut self.as_mut_slice()[offset..] as *mut _ as *mut T, val);
-            Ok(())
+            write_unaligned(self.as_ptr().add(offset) as *mut T, val);
         }
+        Ok(())
     }
 
     /// Reads on object from the memory region at the given offset.
@@ -411,17 +417,17 @@ impl MemoryMapping {
     ///     assert_eq!(55, num);
     /// ```
     pub fn read_obj<T: DataInit>(&self, offset: usize) -> Result<T> {
-        self.range_end(offset, std::mem::size_of::<T>())?;
+        self.range_end(offset, size_of::<T>())?;
+        // This is safe because by definition Copy types can have their bits set arbitrarily and
+        // still be valid.
         unsafe {
-            // This is safe because by definition Copy types can have their bits
-            // set arbitrarily and still be valid.
-            Ok(std::ptr::read_volatile(
-                &self.as_slice()[offset..] as *const _ as *const T,
+            Ok(read_unaligned(
+                self.as_ptr().add(offset) as *const u8 as *const T
             ))
         }
     }
 
-    /// Reads data from a readable object like a File and writes it to guest memory.
+    /// Reads data from a file descriptor and writes it to guest memory.
     ///
     /// # Arguments
     /// * `mem_offset` - Begin writing memory at this offset.
@@ -444,24 +450,44 @@ impl MemoryMapping {
     /// #     Ok(rand_val)
     /// # }
     /// ```
-    pub fn read_to_memory<F>(&self, mem_offset: usize, src: &mut F, count: usize) -> Result<()>
-    where
-        F: Read,
-    {
-        let mem_end = self
-            .range_end(mem_offset, count)
+    pub fn read_to_memory(
+        &self,
+        mut mem_offset: usize,
+        src: &AsRawFd,
+        mut count: usize,
+    ) -> Result<()> {
+        self.range_end(mem_offset, count)
             .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
-        unsafe {
-            // It is safe to overwrite the volatile memory.  Acessing the guest
-            // memory as a mutable slice is OK because nothing assumes another
-            // thread won't change what is loaded.
-            let dst = &mut self.as_mut_slice()[mem_offset..mem_end];
-            src.read_exact(dst).map_err(Error::ReadFromSource)?;
+        while count > 0 {
+            // The check above ensures that no memory outside this slice will get accessed by this
+            // read call.
+            match unsafe {
+                read(
+                    src.as_raw_fd(),
+                    self.as_ptr().add(mem_offset) as *mut c_void,
+                    count,
+                )
+            } {
+                0 => {
+                    return Err(Error::ReadToMemory(io::Error::from(
+                        io::ErrorKind::UnexpectedEof,
+                    )))
+                }
+                r if r < 0 => return Err(Error::ReadToMemory(io::Error::last_os_error())),
+                ret => {
+                    let bytes_read = ret as usize;
+                    match count.checked_sub(bytes_read) {
+                        Some(count_remaining) => count = count_remaining,
+                        None => break,
+                    }
+                    mem_offset += ret as usize;
+                }
+            }
         }
         Ok(())
     }
 
-    /// Writes data from memory to a writable object.
+    /// Writes data from memory to a file descriptor.
     ///
     /// # Arguments
     /// * `mem_offset` - Begin reading memory from this offset.
@@ -483,19 +509,39 @@ impl MemoryMapping {
     /// #     Ok(())
     /// # }
     /// ```
-    pub fn write_from_memory<F>(&self, mem_offset: usize, dst: &mut F, count: usize) -> Result<()>
-    where
-        F: Write,
-    {
-        let mem_end = self
-            .range_end(mem_offset, count)
+    pub fn write_from_memory(
+        &self,
+        mut mem_offset: usize,
+        dst: &AsRawFd,
+        mut count: usize,
+    ) -> Result<()> {
+        self.range_end(mem_offset, count)
             .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
-        unsafe {
-            // It is safe to read from volatile memory.  Acessing the guest
-            // memory as a slice is OK because nothing assumes another thread
-            // won't change what is loaded.
-            let src = &self.as_mut_slice()[mem_offset..mem_end];
-            dst.write_all(src).map_err(Error::ReadFromSource)?;
+        while count > 0 {
+            // The check above ensures that no memory outside this slice will get accessed by this
+            // write call.
+            match unsafe {
+                write(
+                    dst.as_raw_fd(),
+                    self.as_ptr().add(mem_offset) as *const c_void,
+                    count,
+                )
+            } {
+                0 => {
+                    return Err(Error::WriteFromMemory(io::Error::from(
+                        io::ErrorKind::WriteZero,
+                    )))
+                }
+                ret if ret < 0 => return Err(Error::WriteFromMemory(io::Error::last_os_error())),
+                ret => {
+                    let bytes_written = ret as usize;
+                    match count.checked_sub(bytes_written) {
+                        Some(count_remaining) => count = count_remaining,
+                        None => break,
+                    }
+                    mem_offset += ret as usize;
+                }
+            }
         }
         Ok(())
     }
@@ -519,20 +565,6 @@ impl MemoryMapping {
         } else {
             Ok(())
         }
-    }
-
-    unsafe fn as_slice(&self) -> &[u8] {
-        // This is safe because we mapped the area at addr ourselves, so this slice will not
-        // overflow. However, it is possible to alias.
-        std::slice::from_raw_parts(self.addr, self.size)
-    }
-
-    // TODO(dgreid) - refactor this so the mut from non-mut isn't necessary (bug: 938767)
-    #[allow(clippy::mut_from_ref)]
-    unsafe fn as_mut_slice(&self) -> &mut [u8] {
-        // This is safe because we mapped the area at addr ourselves, so this slice will not
-        // overflow. However, it is possible to alias.
-        std::slice::from_raw_parts_mut(self.addr, self.size)
     }
 
     // Check that offset+count is valid and return the sum.

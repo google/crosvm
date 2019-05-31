@@ -62,8 +62,9 @@ use resources::GpuMemoryDesc;
 #[cfg(feature = "wl-dmabuf")]
 use sys_util::ioctl_iow_nr;
 use sys_util::{
-    error, pipe, round_up_to_page_size, warn, Error, EventFd, FileFlags, GuestAddress, GuestMemory,
-    GuestMemoryError, PollContext, PollToken, Result, ScmSocket, SharedMemory,
+    error, pipe, round_up_to_page_size, warn, Error, EventFd, FileFlags, FileReadWriteVolatile,
+    GuestAddress, GuestMemory, GuestMemoryError, PollContext, PollToken, Result, ScmSocket,
+    SharedMemory,
 };
 
 #[cfg(feature = "wl-dmabuf")]
@@ -911,7 +912,9 @@ impl WlVfd {
             if !fds.is_empty() {
                 return Ok(WlResp::InvalidType);
             }
-            data.write_all_to(local_pipe).map_err(WlError::WritePipe)?;
+            local_pipe
+                .write_volatile(data)
+                .map_err(WlError::WritePipe)?;
             Ok(WlResp::Ok)
         } else {
             Ok(WlResp::InvalidType)

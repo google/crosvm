@@ -395,6 +395,7 @@ name = "qcow"
 version = "0.1.0"
 dependencies = [
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "data_model 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "remain 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",

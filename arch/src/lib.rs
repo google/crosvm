@@ -312,7 +312,7 @@ pub fn load_image<F>(
     max_size: u64,
 ) -> Result<usize, LoadImageError>
 where
-    F: Read + Seek,
+    F: Read + Seek + AsRawFd,
 {
     let size = image.seek(SeekFrom::End(0)).map_err(LoadImageError::Seek)?;
 
@@ -354,7 +354,7 @@ pub fn load_image_high<F>(
     align: u64,
 ) -> Result<(GuestAddress, usize), LoadImageError>
 where
-    F: Read + Seek,
+    F: Read + Seek + AsRawFd,
 {
     if !align.is_power_of_two() {
         return Err(LoadImageError::BadAlignment(align));

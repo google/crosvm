@@ -21,14 +21,10 @@
 
 use std::cmp::min;
 use std::fmt::{self, Display};
-use std::io::Result as IoResult;
-use std::io::{Read, Write};
 use std::marker::PhantomData;
 use std::mem::size_of;
-use std::ptr::copy;
-use std::ptr::{null_mut, read_volatile, write_volatile};
+use std::ptr::{copy, null_mut, read_volatile, write_bytes, write_volatile};
 use std::result;
-use std::slice::{from_raw_parts, from_raw_parts_mut};
 use std::{isize, usize};
 
 use crate::DataInit;
@@ -178,6 +174,31 @@ impl<'a> VolatileSlice<'a> {
         unsafe { Ok(VolatileSlice::new(new_addr as *mut u8, new_size)) }
     }
 
+    /// Sets each byte of this slice with the given byte, similar to `memset`.
+    ///
+    /// The bytes of this slice are accessed in an arbitray order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use data_model::VolatileMemory;
+    /// # fn test_write_45() -> Result<(), ()> {
+    /// let mut mem = [0u8; 32];
+    /// let mem_ref = &mut mem[..];
+    /// let vslice = mem_ref.get_slice(0, 32).map_err(|_| ())?;
+    /// vslice.write_bytes(45);
+    /// for &mut v in mem_ref {
+    ///     assert_eq!(v, 45);
+    /// }
+    /// # Ok(())
+    /// # }
+    pub fn write_bytes(&self, value: u8) {
+        // Safe because the memory is valid and needs only byte alignment.
+        unsafe {
+            write_bytes(self.as_ptr(), value, self.size as usize);
+        }
+    }
+
     /// Copies `self.size()` or `buf.len()` times the size of `T` bytes, whichever is smaller, to
     /// `buf`.
     ///
@@ -269,124 +290,6 @@ impl<'a> VolatileSlice<'a> {
                 addr = addr.add(size_of::<T>());
             }
         }
-    }
-
-    /// Attempt to write all data from memory to a writable object and returns how many bytes were
-    /// actually written on success.
-    ///
-    /// # Arguments
-    /// * `w` - Write from memory to `w`.
-    ///
-    /// # Examples
-    ///
-    /// * Write some bytes to /dev/null
-    ///
-    /// ```
-    /// # use std::fs::File;
-    /// # use std::path::Path;
-    /// # use data_model::VolatileMemory;
-    /// # fn test_write_null() -> Result<(), ()> {
-    /// #     let mut mem = [0u8; 32];
-    /// #     let mem_ref = &mut mem[..];
-    /// #     let vslice = mem_ref.get_slice(0, 32).map_err(|_| ())?;
-    ///       let mut file = File::open(Path::new("/dev/null")).map_err(|_| ())?;
-    ///       vslice.write_to(&mut file).map_err(|_| ())?;
-    /// #     Ok(())
-    /// # }
-    /// ```
-    pub fn write_to<T: Write>(&self, w: &mut T) -> IoResult<usize> {
-        w.write(unsafe { self.as_slice() })
-    }
-
-    /// Writes all data from memory to a writable object via `Write::write_all`.
-    ///
-    /// # Arguments
-    /// * `w` - Write from memory to `w`.
-    ///
-    /// # Examples
-    ///
-    /// * Write some bytes to /dev/null
-    ///
-    /// ```
-    /// # use std::fs::File;
-    /// # use std::path::Path;
-    /// # use data_model::VolatileMemory;
-    /// # fn test_write_null() -> Result<(), ()> {
-    /// #     let mut mem = [0u8; 32];
-    /// #     let mem_ref = &mut mem[..];
-    /// #     let vslice = mem_ref.get_slice(0, 32).map_err(|_| ())?;
-    ///       let mut file = File::open(Path::new("/dev/null")).map_err(|_| ())?;
-    ///       vslice.write_all_to(&mut file).map_err(|_| ())?;
-    /// #     Ok(())
-    /// # }
-    /// ```
-    pub fn write_all_to<T: Write>(&self, w: &mut T) -> IoResult<()> {
-        w.write_all(unsafe { self.as_slice() })
-    }
-
-    /// Reads up to this slice's size to memory from a readable object and returns how many bytes
-    /// were actually read on success.
-    ///
-    /// # Arguments
-    /// * `r` - Read to `r` to memory.
-    ///
-    /// # Examples
-    ///
-    /// * Read some bytes to /dev/null
-    ///
-    /// ```
-    /// # use std::fs::File;
-    /// # use std::path::Path;
-    /// # use data_model::VolatileMemory;
-    /// # fn test_write_null() -> Result<(), ()> {
-    /// #     let mut mem = [0u8; 32];
-    /// #     let mem_ref = &mut mem[..];
-    /// #     let vslice = mem_ref.get_slice(0, 32).map_err(|_| ())?;
-    ///       let mut file = File::open(Path::new("/dev/null")).map_err(|_| ())?;
-    ///       vslice.read_from(&mut file).map_err(|_| ())?;
-    /// #     Ok(())
-    /// # }
-    /// ```
-    pub fn read_from<T: Read>(&self, r: &mut T) -> IoResult<usize> {
-        r.read(unsafe { self.as_mut_slice() })
-    }
-
-    /// Read exactly this slice's size into memory from to a readable object via `Read::read_exact`.
-    ///
-    /// # Arguments
-    /// * `r` - Read to `r` to memory.
-    ///
-    /// # Examples
-    ///
-    /// * Read some bytes to /dev/null
-    ///
-    /// ```
-    /// # use std::fs::File;
-    /// # use std::path::Path;
-    /// # use data_model::VolatileMemory;
-    /// # fn test_write_null() -> Result<(), ()> {
-    /// #     let mut mem = [0u8; 32];
-    /// #     let mem_ref = &mut mem[..];
-    /// #     let vslice = mem_ref.get_slice(0, 32).map_err(|_| ())?;
-    ///       let mut file = File::open(Path::new("/dev/null")).map_err(|_| ())?;
-    ///       vslice.read_from(&mut file).map_err(|_| ())?;
-    /// #     Ok(())
-    /// # }
-    /// ```
-    pub fn read_exact_from<T: Read>(&self, r: &mut T) -> IoResult<()> {
-        r.read_exact(unsafe { self.as_mut_slice() })
-    }
-
-    // These function are private and only used for the read/write functions. It is not valid in
-    // general to take slices of volatile memory.
-    unsafe fn as_slice(&self) -> &[u8] {
-        from_raw_parts(self.addr, self.size as usize)
-    }
-
-    // TODO(zachr) - refactor this so the mut from non-mut isn't necessary (bug: 938767)
-    #[allow(clippy::mut_from_ref)]
-    unsafe fn as_mut_slice(&self) -> &mut [u8] {
-        from_raw_parts_mut(self.addr, self.size as usize)
     }
 }
 

@@ -57,11 +57,7 @@ impl Worker {
                 // Fill the read with data from the random device on the host.
                 if self
                     .mem
-                    .read_to_memory(
-                        avail_desc.addr,
-                        &mut self.random_file,
-                        avail_desc.len as usize,
-                    )
+                    .read_to_memory(avail_desc.addr, &self.random_file, avail_desc.len as usize)
                     .is_ok()
                 {
                     len = avail_desc.len;

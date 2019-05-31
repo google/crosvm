@@ -6,7 +6,6 @@
 
 use std::ffi::CStr;
 use std::fmt::{self, Display};
-use std::io::{Read, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::Arc;
@@ -432,7 +431,7 @@ impl GuestMemory {
         })
     }
 
-    /// Reads data from a readable object like a File and writes it to guest memory.
+    /// Reads data from a file descriptor and writes it to guest memory.
     ///
     /// # Arguments
     /// * `guest_addr` - Begin writing memory at this offset.
@@ -458,15 +457,12 @@ impl GuestMemory {
     /// #     Ok(rand_val)
     /// # }
     /// ```
-    pub fn read_to_memory<F>(
+    pub fn read_to_memory(
         &self,
         guest_addr: GuestAddress,
-        src: &mut F,
+        src: &AsRawFd,
         count: usize,
-    ) -> Result<()>
-    where
-        F: Read,
-    {
+    ) -> Result<()> {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
                 .read_to_memory(offset, src, count)
@@ -474,7 +470,7 @@ impl GuestMemory {
         })
     }
 
-    /// Writes data from memory to a writable object.
+    /// Writes data from memory to a file descriptor.
     ///
     /// # Arguments
     /// * `guest_addr` - Begin reading memory from this offset.
@@ -498,15 +494,12 @@ impl GuestMemory {
     /// #     Ok(())
     /// # }
     /// ```
-    pub fn write_from_memory<F>(
+    pub fn write_from_memory(
         &self,
         guest_addr: GuestAddress,
-        dst: &mut F,
+        dst: &AsRawFd,
         count: usize,
-    ) -> Result<()>
-    where
-        F: Write,
-    {
+    ) -> Result<()> {
         self.do_in_region(guest_addr, move |mapping, offset| {
             mapping
                 .write_from_memory(offset, dst, count)

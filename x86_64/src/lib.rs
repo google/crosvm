@@ -441,11 +441,11 @@ impl X8664arch {
     ///
     /// * `mem` - The memory to be used by the guest.
     /// * `kernel_image` - the File object for the specified kernel.
-    fn load_kernel(mem: &GuestMemory, mut kernel_image: &mut File) -> Result<(boot_params, u64)> {
+    fn load_kernel(mem: &GuestMemory, kernel_image: &mut File) -> Result<(boot_params, u64)> {
         let elf_result =
-            kernel_loader::load_kernel(mem, GuestAddress(KERNEL_START_OFFSET), &mut kernel_image);
+            kernel_loader::load_kernel(mem, GuestAddress(KERNEL_START_OFFSET), kernel_image);
         if elf_result == Err(kernel_loader::Error::InvalidElfMagicNumber) {
-            bzimage::load_bzimage(mem, GuestAddress(KERNEL_START_OFFSET), &mut kernel_image)
+            bzimage::load_bzimage(mem, GuestAddress(KERNEL_START_OFFSET), kernel_image)
                 .map_err(Error::LoadBzImage)
         } else {
             let kernel_end = elf_result.map_err(Error::LoadKernel)?;

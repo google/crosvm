@@ -143,8 +143,6 @@ enum CaptureError {
     ReadingGuestError(GuestMemoryError),
     // Failure to get an buffer from the stream.
     StreamError(Box<dyn Error>),
-    // Failure reading to the audio input.
-    ReadingInput(std::io::Error),
 }
 
 impl std::error::Error for CaptureError {}
@@ -156,7 +154,6 @@ impl Display for CaptureError {
         match self {
             ReadingGuestError(e) => write!(f, "Failed to read guest memory: {}.", e),
             StreamError(e) => write!(f, "Failed to get a buffer from the stream: {}", e),
-            ReadingInput(e) => write!(f, "Failed to read audio input: {}.", e),
         }
     }
 }
@@ -653,9 +650,7 @@ fn play_buffer(
     let func_regs = regs.func_regs_mut(Ac97Function::Output);
     let buffer_len = func_regs.picb * 2;
     if let Some(buffer) = next_guest_buffer(func_regs, mem)? {
-        buffer
-            .write_to(out_buffer)
-            .map_err(PlaybackError::WritingOutput)?;
+        out_buffer.copy_cb(buffer.size() as usize, |out| buffer.copy_to(out));
     } else {
         let zeros = vec![0u8; buffer_len as usize];
         out_buffer
@@ -732,9 +727,7 @@ fn capture_buffer(
     }
     let func_regs = regs.func_regs_mut(Ac97Function::Input);
     if let Some(buffer) = next_guest_buffer(func_regs, mem)? {
-        buffer
-            .read_from(in_buffer)
-            .map_err(CaptureError::ReadingInput)?;
+        in_buffer.copy_cb(buffer.size() as usize, |inb| buffer.copy_from(inb))
     }
     Ok(())
 }

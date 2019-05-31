@@ -21,7 +21,7 @@ SUPPRESS=(
     # We don't care about these lints. Okay to remain suppressed globally.
     blacklisted_name
     cast_lossless
-    cyclomatic_complexity
+    cognitive_complexity
     enum_variant_names
     identity_op
     len_without_is_empty

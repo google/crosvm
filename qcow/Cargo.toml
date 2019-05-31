@@ -12,3 +12,4 @@ byteorder = "*"
 libc = "*"
 remain = "*"
 sys_util = { path = "../sys_util" }
+data_model = { path = "../data_model" }

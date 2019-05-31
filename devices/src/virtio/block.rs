@@ -4,7 +4,7 @@
 
 use std::cmp;
 use std::fmt::{self, Display};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::mem::{size_of, size_of_val};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
@@ -18,11 +18,11 @@ use sync::Mutex;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
 use sys_util::{
-    error, info, warn, EventFd, FileSetLen, FileSync, GuestAddress, GuestMemory, GuestMemoryError,
-    PollContext, PollToken, PunchHole, TimerFd, WriteZeroes,
+    error, info, warn, EventFd, FileReadWriteVolatile, FileSetLen, FileSync, GuestAddress,
+    GuestMemory, GuestMemoryError, PollContext, PollToken, PunchHole, TimerFd, WriteZeroes,
 };
 
-use data_model::{DataInit, Le16, Le32, Le64};
+use data_model::{DataInit, Le16, Le32, Le64, VolatileMemory, VolatileMemoryError};
 use msg_socket::{MsgReceiver, MsgSender};
 use vm_control::{DiskControlCommand, DiskControlResponseSocket, DiskControlResult};
 
@@ -116,8 +116,14 @@ const VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP: u32 = 1 << 0;
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_blk_discard_write_zeroes {}
 
-pub trait DiskFile: FileSetLen + FileSync + PunchHole + Read + Seek + Write + WriteZeroes {}
-impl<D: FileSetLen + FileSync + PunchHole + Read + Seek + Write + WriteZeroes> DiskFile for D {}
+pub trait DiskFile:
+    FileSetLen + FileSync + FileReadWriteVolatile + PunchHole + Seek + WriteZeroes
+{
+}
+impl<D: FileSetLen + FileSync + PunchHole + FileReadWriteVolatile + Seek + WriteZeroes> DiskFile
+    for D
+{
+}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum RequestType {
@@ -215,22 +221,34 @@ fn discard_write_zeroes_segment(
 enum ExecuteError {
     /// Error arming the flush timer.
     Flush(io::Error),
-    Read {
+    ReadVolatile {
         addr: GuestAddress,
         length: u32,
         sector: u64,
-        guestmemerr: GuestMemoryError,
+        volatile_memory_error: VolatileMemoryError,
+    },
+    ReadIo {
+        addr: GuestAddress,
+        length: u32,
+        sector: u64,
+        io_error: io::Error,
     },
     Seek {
         ioerr: io::Error,
         sector: u64,
     },
     TimerFd(SysError),
-    Write {
+    WriteVolatile {
         addr: GuestAddress,
         length: u32,
         sector: u64,
-        guestmemerr: GuestMemoryError,
+        volatile_memory_error: VolatileMemoryError,
+    },
+    WriteIo {
+        addr: GuestAddress,
+        length: u32,
+        sector: u64,
+        io_error: io::Error,
     },
     DiscardWriteZeroes {
         ioerr: Option<io::Error>,
@@ -251,27 +269,47 @@ impl Display for ExecuteError {
 
         match self {
             Flush(e) => write!(f, "failed to flush: {}", e),
-            Read {
+            ReadVolatile {
                 addr,
                 length,
                 sector,
-                guestmemerr,
+                volatile_memory_error,
             } => write!(
                 f,
-                "failed to read {} bytes from sector {} to address {}: {}",
-                length, sector, addr, guestmemerr,
+                "memory error reading {} bytes from sector {} to address {}: {}",
+                length, sector, addr, volatile_memory_error,
+            ),
+            ReadIo {
+                addr,
+                length,
+                sector,
+                io_error,
+            } => write!(
+                f,
+                "io error reading {} bytes from sector {} to address {}: {}",
+                length, sector, addr, io_error,
             ),
             Seek { ioerr, sector } => write!(f, "failed to seek to sector {}: {}", sector, ioerr),
             TimerFd(e) => write!(f, "{}", e),
-            Write {
+            WriteVolatile {
                 addr,
                 length,
                 sector,
-                guestmemerr,
+                volatile_memory_error,
             } => write!(
                 f,
-                "failed to write {} bytes from address {} to sector {}: {}",
-                length, addr, sector, guestmemerr,
+                "memory error writing {} bytes from address {} to sector {}: {}",
+                length, addr, sector, volatile_memory_error,
+            ),
+            WriteIo {
+                addr,
+                length,
+                sector,
+                io_error,
+            } => write!(
+                f,
+                "io error writing {} bytes from address {} to sector {}: {}",
+                length, addr, sector, io_error,
             ),
             DiscardWriteZeroes {
                 ioerr: Some(ioerr),
@@ -304,10 +342,12 @@ impl ExecuteError {
     fn status(&self) -> u8 {
         match self {
             ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
-            ExecuteError::Read { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::ReadIo { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::ReadVolatile { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::Seek { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::TimerFd(_) => VIRTIO_BLK_S_IOERR,
-            ExecuteError::Write { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::WriteIo { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::WriteVolatile { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::DiscardWriteZeroes { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::ReadOnly { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::OutOfRange { .. } => VIRTIO_BLK_S_IOERR,
@@ -504,12 +544,20 @@ impl Request {
                         ioerr: e,
                         sector: self.sector,
                     })?;
-                mem.read_to_memory(self.data_addr, disk, self.data_len as usize)
-                    .map_err(|e| ExecuteError::Read {
+                let mem_slice = mem
+                    .get_slice(self.data_addr.0, self.data_len as u64)
+                    .map_err(|volatile_memory_error| ExecuteError::ReadVolatile {
                         addr: self.data_addr,
                         length: self.data_len,
                         sector: self.sector,
-                        guestmemerr: e,
+                        volatile_memory_error,
+                    })?;
+                disk.read_exact_volatile(mem_slice)
+                    .map_err(|io_error| ExecuteError::ReadIo {
+                        addr: self.data_addr,
+                        length: self.data_len,
+                        sector: self.sector,
+                        io_error,
                     })?;
                 return Ok(self.data_len);
             }
@@ -524,12 +572,20 @@ impl Request {
                         ioerr: e,
                         sector: self.sector,
                     })?;
-                mem.write_from_memory(self.data_addr, disk, self.data_len as usize)
-                    .map_err(|e| ExecuteError::Write {
+                let mem_slice = mem
+                    .get_slice(self.data_addr.0, self.data_len as u64)
+                    .map_err(|volatile_memory_error| ExecuteError::WriteVolatile {
                         addr: self.data_addr,
                         length: self.data_len,
                         sector: self.sector,
-                        guestmemerr: e,
+                        volatile_memory_error,
+                    })?;
+                disk.write_all_volatile(mem_slice)
+                    .map_err(|io_error| ExecuteError::WriteIo {
+                        addr: self.data_addr,
+                        length: self.data_len,
+                        sector: self.sector,
+                        io_error,
                     })?;
                 if !*flush_timer_armed {
                     flush_timer

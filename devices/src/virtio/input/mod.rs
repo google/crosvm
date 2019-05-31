@@ -417,11 +417,10 @@ impl<T: EventSource> Worker<T> {
                     let avail_events_size =
                         self.event_source.available_events_count() * virtio_input_event::EVENT_SIZE;
                     let len = min(avail_desc.len as usize, avail_events_size);
-                    if let Err(e) = self.guest_memory.read_to_memory(
-                        avail_desc.addr,
-                        &mut self.event_source,
-                        len,
-                    ) {
+                    if let Err(e) =
+                        self.guest_memory
+                            .read_to_memory(avail_desc.addr, &self.event_source, len)
+                    {
                         // Read is guaranteed to succeed here, so the only possible failure would be
                         // writing outside the guest memory region, which would mean the address and
                         // length given in the queue descriptor are wrong.
@@ -453,7 +452,7 @@ impl<T: EventSource> Worker<T> {
                 );
             } else {
                 self.guest_memory
-                    .write_from_memory(avail_desc.addr, &mut self.event_source, len)
+                    .write_from_memory(avail_desc.addr, &self.event_source, len)
                     .map_err(InputError::EventsWriteError)?;
             }
 

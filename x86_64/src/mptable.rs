@@ -3,13 +3,13 @@
 // found in the LICENSE file.
 
 use std::fmt::{self, Display};
-use std::io;
 use std::mem;
 use std::result;
 use std::slice;
 
 use libc::c_char;
 
+use data_model::VolatileMemory;
 use devices::PciInterruptPin;
 use sys_util::{GuestAddress, GuestMemory};
 
@@ -135,8 +135,9 @@ pub fn setup_mptable(
         return Err(Error::AddressOverflow);
     }
 
-    mem.read_to_memory(base_mp, &mut io::repeat(0), mp_size)
-        .map_err(|_| Error::Clear)?;
+    mem.get_slice(base_mp.0, mp_size as u64)
+        .map_err(|_| Error::Clear)?
+        .write_bytes(0);
 
     {
         let size = mem::size_of::<mpf_intel>();
@@ -400,23 +401,14 @@ mod tests {
         let mpc_offset = GuestAddress(mpf_intel.physptr as u64);
         let mpc_table: mpc_table = mem.read_obj_from_addr(mpc_offset).unwrap();
 
-        struct Sum(u8);
-        impl io::Write for Sum {
-            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-                for v in buf.iter() {
-                    self.0 = self.0.wrapping_add(*v);
-                }
-                Ok(buf.len())
-            }
-            fn flush(&mut self) -> io::Result<()> {
-                Ok(())
-            }
+        let mut buf = vec![0; mpc_table.length as usize];
+        mem.read_at_addr(&mut buf[..], mpc_offset).unwrap();
+        let mut sum: u8 = 0;
+        for &v in &buf {
+            sum = sum.wrapping_add(v);
         }
 
-        let mut sum = Sum(0);
-        mem.write_from_memory(mpc_offset, &mut sum, mpc_table.length as usize)
-            .unwrap();
-        assert_eq!(sum.0, 0);
+        assert_eq!(sum, 0);
     }
 
     #[test]

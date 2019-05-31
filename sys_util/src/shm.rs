@@ -4,7 +4,7 @@
 
 use std::ffi::CStr;
 use std::fs::File;
-use std::io::{Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 use libc::{
@@ -178,7 +178,57 @@ impl SharedMemory {
     }
 }
 
+impl Read for SharedMemory {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.fd.read(buf)
+    }
+}
+
+impl Read for &SharedMemory {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        (&self.fd).read(buf)
+    }
+}
+
+impl Write for SharedMemory {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.fd.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.fd.flush()
+    }
+}
+
+impl Write for &SharedMemory {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        (&self.fd).write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        (&self.fd).flush()
+    }
+}
+
+impl Seek for SharedMemory {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        self.fd.seek(pos)
+    }
+}
+
+impl Seek for &SharedMemory {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        (&self.fd).seek(pos)
+    }
+}
+
 impl AsRawFd for SharedMemory {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd.as_raw_fd()
+    }
+}
+
+impl AsRawFd for &SharedMemory {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
     }
@@ -213,7 +263,6 @@ mod tests {
 
     use std::ffi::CString;
     use std::fs::read_link;
-    use std::io::repeat;
 
     use data_model::VolatileMemory;
 
@@ -312,8 +361,7 @@ mod tests {
         mmap1
             .get_slice(0, 4096)
             .expect("failed to get mmap slice")
-            .read_from(&mut repeat(0x45))
-            .expect("failed to fill mmap slice");
+            .write_bytes(0x45);
 
         for i in 0..4096 {
             assert_eq!(mmap2.get_ref::<u8>(i).unwrap().load(), 0x45u8);
@@ -337,8 +385,7 @@ mod tests {
         mmap1
             .get_slice(0, 4096)
             .expect("failed to get mmap slice")
-            .read_from(&mut repeat(0x45))
-            .expect("failed to fill mmap slice");
+            .write_bytes(0x45);
 
         for i in 0..4096 {
             assert_eq!(mmap2.get_ref::<u8>(i).unwrap().load(), 0);

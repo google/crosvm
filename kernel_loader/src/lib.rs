@@ -6,6 +6,7 @@ use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::io::{Read, Seek, SeekFrom};
 use std::mem;
+use std::os::unix::io::AsRawFd;
 
 use sys_util::{GuestAddress, GuestMemory};
 
@@ -73,7 +74,7 @@ pub fn load_kernel<F>(
     kernel_image: &mut F,
 ) -> Result<u64>
 where
-    F: Read + Seek,
+    F: Read + Seek + AsRawFd,
 {
     let mut ehdr: elf::Elf64_Ehdr = Default::default();
     kernel_image
@@ -171,8 +172,9 @@ pub fn load_cmdline(
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::io::Cursor;
-    use sys_util::{GuestAddress, GuestMemory};
+    use std::fs::File;
+    use std::io::Write;
+    use sys_util::{GuestAddress, GuestMemory, SharedMemory};
 
     const MEM_SIZE: u64 = 0x8000;
 
@@ -223,21 +225,29 @@ mod test {
     }
 
     // Elf64 image that prints hello world on x86_64.
-    fn make_elf_bin() -> Vec<u8> {
-        let mut v = Vec::new();
-        v.extend_from_slice(include_bytes!("test_elf.bin"));
-        v
+    fn make_elf_bin() -> File {
+        let elf_bytes = include_bytes!("test_elf.bin");
+        let mut shm = SharedMemory::new(None).expect("failed to create shared memory");
+        shm.set_size(elf_bytes.len() as u64)
+            .expect("failed to set shared memory size");
+        shm.write_all(elf_bytes)
+            .expect("failed to write elf to shared memoy");
+        shm.into()
+    }
+
+    fn mutate_elf_bin(mut f: &File, offset: u64, val: u8) {
+        f.seek(SeekFrom::Start(offset))
+            .expect("failed to seek file");
+        f.write(&[val])
+            .expect("failed to write mutated value to file");
     }
 
     #[test]
     fn load_elf() {
         let gm = create_guest_mem();
         let kernel_addr = GuestAddress(0x0);
-        let image = make_elf_bin();
-        assert_eq!(
-            Ok(16613),
-            load_kernel(&gm, kernel_addr, &mut Cursor::new(&image))
-        );
+        let mut image = make_elf_bin();
+        assert_eq!(Ok(16613), load_kernel(&gm, kernel_addr, &mut image));
     }
 
     #[test]
@@ -245,10 +255,10 @@ mod test {
         let gm = create_guest_mem();
         let kernel_addr = GuestAddress(0x0);
         let mut bad_image = make_elf_bin();
-        bad_image[0x1] = 0x33;
+        mutate_elf_bin(&bad_image, 0x1, 0x33);
         assert_eq!(
             Err(Error::InvalidElfMagicNumber),
-            load_kernel(&gm, kernel_addr, &mut Cursor::new(&bad_image))
+            load_kernel(&gm, kernel_addr, &mut bad_image)
         );
     }
 
@@ -258,10 +268,10 @@ mod test {
         let gm = create_guest_mem();
         let kernel_addr = GuestAddress(0x0);
         let mut bad_image = make_elf_bin();
-        bad_image[0x5] = 2;
+        mutate_elf_bin(&bad_image, 0x5, 2);
         assert_eq!(
             Err(Error::BigEndianElfOnLittle),
-            load_kernel(&gm, kernel_addr, &mut Cursor::new(&bad_image))
+            load_kernel(&gm, kernel_addr, &mut bad_image)
         );
     }
 
@@ -271,10 +281,10 @@ mod test {
         let gm = create_guest_mem();
         let kernel_addr = GuestAddress(0x0);
         let mut bad_image = make_elf_bin();
-        bad_image[0x20] = 0x10;
+        mutate_elf_bin(&bad_image, 0x20, 0x10);
         assert_eq!(
             Err(Error::InvalidProgramHeaderOffset),
-            load_kernel(&gm, kernel_addr, &mut Cursor::new(&bad_image))
+            load_kernel(&gm, kernel_addr, &mut bad_image)
         );
     }
 }

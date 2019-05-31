@@ -7,6 +7,7 @@
 
 use std::fmt::{self, Display};
 use std::io::{Read, Seek, SeekFrom};
+use std::os::unix::io::AsRawFd;
 
 use sys_util::{GuestAddress, GuestMemory};
 
@@ -57,7 +58,7 @@ pub fn load_bzimage<F>(
     kernel_image: &mut F,
 ) -> Result<(boot_params, u64)>
 where
-    F: Read + Seek,
+    F: Read + Seek + AsRawFd,
 {
     let mut params: boot_params = Default::default();
     kernel_image

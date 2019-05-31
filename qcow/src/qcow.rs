@@ -7,9 +7,12 @@ mod refcount;
 mod vec_cache;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use data_model::{VolatileMemory, VolatileSlice};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
 use remain::sorted;
-use sys_util::{error, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes};
+use sys_util::{
+    error, FileReadWriteVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes,
+};
 
 use std::cmp::min;
 use std::fmt::{self, Display};
@@ -1303,6 +1306,64 @@ impl QcowFile {
         }
         Ok(())
     }
+
+    // Reads `count` bytes from the cursor position, calling `cb` repeatedly with the backing file,
+    // number of bytes read so far, and number of bytes to read from the file in that invocation. If
+    // None is given to `cb` in place of the backing file, the `cb` should infer zeros would have
+    // been read.
+    fn read_cb<F>(&mut self, count: usize, mut cb: F) -> std::io::Result<usize>
+    where
+        F: FnMut(Option<&mut File>, usize, usize) -> std::io::Result<()>,
+    {
+        let address: u64 = self.current_offset as u64;
+        let read_count: usize = self.limit_range_file(address, count);
+
+        let mut nread: usize = 0;
+        while nread < read_count {
+            let curr_addr = address + nread as u64;
+            let file_offset = self.file_offset_read(curr_addr)?;
+            let count = self.limit_range_cluster(curr_addr, read_count - nread);
+
+            if let Some(offset) = file_offset {
+                self.raw_file.file_mut().seek(SeekFrom::Start(offset))?;
+                cb(Some(self.raw_file.file_mut()), nread, count)?;
+            } else {
+                cb(None, nread, count)?;
+            }
+
+            nread += count;
+        }
+        self.current_offset += read_count as u64;
+        Ok(read_count)
+    }
+
+    // Writes `count` bytes to the cursor position, calling `cb` repeatedly with the backing file,
+    // number of bytes written so far, and number of bytes to write to the file in that invocation.
+    fn write_cb<F>(&mut self, count: usize, mut cb: F) -> std::io::Result<usize>
+    where
+        F: FnMut(&mut File, usize, usize) -> std::io::Result<()>,
+    {
+        let address: u64 = self.current_offset as u64;
+        let write_count: usize = self.limit_range_file(address, count);
+
+        let mut nwritten: usize = 0;
+        while nwritten < write_count {
+            let curr_addr = address + nwritten as u64;
+            let offset = self.file_offset_write(curr_addr)?;
+            let count = self.limit_range_cluster(curr_addr, write_count - nwritten);
+
+            if let Err(e) = self.raw_file.file_mut().seek(SeekFrom::Start(offset)) {
+                return Err(e);
+            }
+            if let Err(e) = cb(self.raw_file.file_mut(), nwritten, count) {
+                return Err(e);
+            }
+
+            nwritten += count;
+        }
+        self.current_offset += write_count as u64;
+        Ok(write_count)
+    }
 }
 
 impl Drop for QcowFile {
@@ -1319,31 +1380,15 @@ impl AsRawFd for QcowFile {
 
 impl Read for QcowFile {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let address: u64 = self.current_offset as u64;
-        let read_count: usize = self.limit_range_file(address, buf.len());
-
-        let mut nread: usize = 0;
-        while nread < read_count {
-            let curr_addr = address + nread as u64;
-            let file_offset = self.file_offset_read(curr_addr)?;
-            let count = self.limit_range_cluster(curr_addr, read_count - nread);
-
-            if let Some(offset) = file_offset {
-                self.raw_file.file_mut().seek(SeekFrom::Start(offset))?;
-                self.raw_file
-                    .file_mut()
-                    .read_exact(&mut buf[nread..(nread + count)])?;
-            } else {
-                // Previously unwritten region, return zeros
-                for b in &mut buf[nread..(nread + count)] {
+        self.read_cb(buf.len(), |file, offset, count| match file {
+            Some(f) => f.read_exact(&mut buf[offset..(offset + count)]),
+            None => {
+                for b in &mut buf[offset..(offset + count)] {
                     *b = 0;
                 }
+                Ok(())
             }
-
-            nread += count;
-        }
-        self.current_offset += read_count as u64;
-        Ok(read_count)
+        })
     }
 }
 
@@ -1381,36 +1426,37 @@ impl Seek for QcowFile {
 
 impl Write for QcowFile {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let address: u64 = self.current_offset as u64;
-        let write_count: usize = self.limit_range_file(address, buf.len());
-
-        let mut nwritten: usize = 0;
-        while nwritten < write_count {
-            let curr_addr = address + nwritten as u64;
-            let offset = self.file_offset_write(curr_addr)?;
-            let count = self.limit_range_cluster(curr_addr, write_count - nwritten);
-
-            if let Err(e) = self.raw_file.file_mut().seek(SeekFrom::Start(offset)) {
-                return Err(e);
-            }
-            if let Err(e) = self
-                .raw_file
-                .file_mut()
-                .write(&buf[nwritten..(nwritten + count)])
-            {
-                return Err(e);
-            }
-
-            nwritten += count;
-        }
-        self.current_offset += write_count as u64;
-        Ok(write_count)
+        self.write_cb(buf.len(), |file, offset, count| {
+            file.write_all(&buf[offset..(offset + count)])
+        })
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
         self.sync_caches()?;
         self.avail_clusters.append(&mut self.unref_clusters);
         Ok(())
+    }
+}
+
+impl FileReadWriteVolatile for QcowFile {
+    fn read_volatile(&mut self, slice: VolatileSlice) -> io::Result<usize> {
+        self.read_cb(slice.size() as usize, |file, offset, count| {
+            let sub_slice = slice.get_slice(offset as u64, count as u64).unwrap();
+            match file {
+                Some(f) => f.read_exact_volatile(sub_slice),
+                None => {
+                    sub_slice.write_bytes(0);
+                    Ok(())
+                }
+            }
+        })
+    }
+
+    fn write_volatile(&mut self, slice: VolatileSlice) -> io::Result<usize> {
+        self.write_cb(slice.size() as usize, |file, offset, count| {
+            let sub_slice = slice.get_slice(offset as u64, count as u64).unwrap();
+            file.write_all_volatile(sub_slice)
+        })
     }
 }
 
