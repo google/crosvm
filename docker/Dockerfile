@@ -137,7 +137,10 @@ ENV PLATFORM_ROOT=$CROS_ROOT/platform
 RUN mkdir -p $PLATFORM_ROOT
 
 # Pull the cras library for audio access.
-RUN git clone https://chromium.googlesource.com/chromiumos/third_party/adhd $THIRD_PARTY_ROOT/adhd
+ARG ADHD_COMMIT=master
+RUN git clone https://chromium.googlesource.com/chromiumos/third_party/adhd $THIRD_PARTY_ROOT/adhd \
+    && cd $THIRD_PARTY_ROOT/adhd \
+    && git checkout $ADHD_COMMIT
 
 # The /build directory is used so that the bind mounted /platform/crosvm volume
 # does not get scribbled on.

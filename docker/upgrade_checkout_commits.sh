@@ -3,7 +3,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-set -ex
 cd "${0%/*}"
 
 remotes=(
@@ -11,6 +10,7 @@ remotes=(
     "https://github.com/anholt/libepoxy.git"
     "https://chromium.googlesource.com/chromiumos/third_party/tpm2"
     "https://chromium.googlesource.com/chromiumos/platform2"
+    "https://chromium.googlesource.com/chromiumos/third_party/adhd"
 )
 
 keys=(
@@ -18,10 +18,13 @@ keys=(
     "LIBEPOXY_COMMIT"
     "TPM2_COMMIT"
     "PLATFORM2_COMMIT"
+    "ADHD_COMMIT"
 )
 
-for remote in "${remotes[@]}"; do
+for (( i=0; i<${#remotes[*]}; ++i)); do
+    remote="${remotes[$i]}"
+    key="${keys[$i]}"
     remote_chunk=$(git ls-remote --exit-code "${remote}" refs/heads/master)
     commit=$(echo "${remote_chunk}" | cut -f 1 -)
-    echo $commit
+    echo $key=$commit
 done
