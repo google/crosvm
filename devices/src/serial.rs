@@ -110,11 +110,11 @@ impl FromStr for SerialType {
     type Err = Error;
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "file" | "File" => return Ok(SerialType::File),
-            "stdout" | "Stdout" => return Ok(SerialType::Stdout),
-            "sink" | "Sink" => return Ok(SerialType::Sink),
-            "syslog" | "Syslog" => return Ok(SerialType::Syslog),
-            "unix" | "UnixSocket" => return Ok(SerialType::UnixSocket),
+            "file" | "File" => Ok(SerialType::File),
+            "stdout" | "Stdout" => Ok(SerialType::Stdout),
+            "sink" | "Sink" => Ok(SerialType::Sink),
+            "syslog" | "Syslog" => Ok(SerialType::Syslog),
+            "unix" | "UnixSocket" => Ok(SerialType::UnixSocket),
             _ => Err(Error::InvalidSerialType(s.to_string())),
         }
     }
@@ -154,7 +154,7 @@ impl SerialParameters {
                 None => Err(Error::PathRequired),
                 Some(path) => Ok(Serial::new_out(
                     evt_fd.try_clone().map_err(Error::CloneEventFd)?,
-                    Box::new(File::create(path.as_path()).map_err(|e| Error::FileError(e))?),
+                    Box::new(File::create(path.as_path()).map_err(Error::FileError)?),
                 )),
             },
             SerialType::UnixSocket => Err(Error::Unimplemented(SerialType::UnixSocket)),
