@@ -4,13 +4,15 @@
 
 #![no_main]
 
-use sys_util::{round_up_to_page_size, GuestAddress, GuestMemory, SharedMemory};
+use sys_util::{GuestAddress, GuestMemory, SharedMemory};
 
 use std::fs::File;
 use std::io::Write;
 use std::panic;
 use std::process;
 use std::slice;
+
+const MEM_SIZE: u64 = 256 * 1024 * 1024;
 
 fn make_elf_bin(elf_bytes: &[u8]) -> File {
     let mut shm = SharedMemory::new(None).expect("failed to create shared memory");
@@ -30,9 +32,7 @@ pub fn test_one_input(data: *const u8, size: usize) -> i32 {
         // function.
         let bytes = unsafe { slice::from_raw_parts(data, size) };
         let mut kimage = make_elf_bin(bytes);
-        // `GuestMemory` only accepts page aligned segments.
-        let len = round_up_to_page_size(bytes.len()) as u64;
-        let mem = GuestMemory::new(&[(GuestAddress(0), len)]).unwrap();
+        let mem = GuestMemory::new(&[(GuestAddress(0), MEM_SIZE)]).unwrap();
         let _ = kernel_loader::load_kernel(&mem, GuestAddress(0), &mut kimage);
     })
     .err()
