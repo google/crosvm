@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Copyright 2019 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
 # Run `cargo fmt` on all Rust code contained in crosvm. This is different from
 # `cargo fmt --all` which formats multiple crates but a single workspace only.
 # Crosvm consists of multiple workspaces.
