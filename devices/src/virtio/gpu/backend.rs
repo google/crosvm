@@ -725,11 +725,11 @@ impl Backend {
     }
 
     pub fn allocate_using_minigbm(args: ResourceCreateArgs) -> bool {
-        return args.bind & VIRGL_RES_BIND_SCANOUT != 0
+        args.bind & VIRGL_RES_BIND_SCANOUT != 0
             && args.depth == 1
             && args.array_size == 1
             && args.last_level == 0
-            && args.nr_samples == 0;
+            && args.nr_samples == 0
     }
 
     /// Creates a 3D resource with the given properties and associated it with the given id.

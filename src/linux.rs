@@ -1521,15 +1521,14 @@ fn run_control(
                             warn!("error while reading stdin: {}", e);
                             let _ = poll_ctx.delete(&stdin_handle);
                         }
-                        Ok(count) => match linux.stdio_serial {
-                            Some(ref stdio_serial) => {
+                        Ok(count) => {
+                            if let Some(ref stdio_serial) = linux.stdio_serial {
                                 stdio_serial
                                     .lock()
                                     .queue_input_bytes(&out[..count])
                                     .expect("failed to queue bytes into serial port");
                             }
-                            None => {}
-                        },
+                        }
                     }
                 }
                 Token::ChildSignal => {

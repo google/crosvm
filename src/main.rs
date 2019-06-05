@@ -397,7 +397,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
 
             if serial_params.console {
-                for (_, params) in &cfg.serial_parameters {
+                for params in cfg.serial_parameters.values() {
                     if params.console {
                         return Err(argument::Error::TooManyArguments(format!(
                             "serial device {} already set as console",

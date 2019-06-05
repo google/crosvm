@@ -19,6 +19,7 @@ use std::time::Duration;
 // Offset of sun_path in structure sockaddr_un.
 fn sun_path_offset() -> usize {
     // Prefer 0 to null() so that we do not need to subtract from the `sub_path` pointer.
+    #[allow(clippy::zero_ptr)]
     let addr = 0 as *const libc::sockaddr_un;
     // Safe because we only use the dereference to create a pointer to the desired field in
     // calculating the offset.
