@@ -18,9 +18,15 @@ use vm_control::{
 };
 
 use crate::pci::pci_device::{Error as PciDeviceError, PciDevice};
-use crate::pci::PciInterruptPin;
+use crate::pci::{PciClassCode, PciInterruptPin};
 
 use crate::vfio::{VfioDevice, VfioIrqType};
+
+const PCI_VENDOR_ID: u32 = 0x0;
+const INTEL_VENDOR_ID: u16 = 0x8086;
+const PCI_COMMAND: u32 = 0x4;
+const PCI_COMMAND_MEMORY: u8 = 0x2;
+const PCI_BASE_CLASS_CODE: u32 = 0x0B;
 
 const PCI_INTERRUPT_PIN: u32 = 0x3D;
 
@@ -298,6 +304,10 @@ struct IoInfo {
     bar_index: u32,
 }
 
+enum DeviceData {
+    IntelGfxData,
+}
+
 /// Implements the Vfio Pci device, then a pci device is added into vm
 pub struct VfioPciDevice {
     device: Arc<VfioDevice>,
@@ -310,6 +320,7 @@ pub struct VfioPciDevice {
     msi_cap: Option<VfioMsiCap>,
     irq_type: Option<VfioIrqType>,
     vm_socket_mem: VmMemoryControlRequestSocket,
+    device_data: Option<DeviceData>,
 
     // scratch MemoryMapping to avoid unmap beform vm exit
     mem: Vec<MemoryMapping>,
@@ -326,6 +337,17 @@ impl VfioPciDevice {
         let config = VfioPciConfig::new(Arc::clone(&dev));
         let msi_cap = VfioMsiCap::new(&config, vfio_device_socket_irq);
 
+        let vendor_id = config.read_config_word(PCI_VENDOR_ID);
+        let class_code = config.read_config_byte(PCI_BASE_CLASS_CODE);
+
+        let is_intel_gfx = vendor_id == INTEL_VENDOR_ID
+            && class_code == PciClassCode::DisplayController.get_register_value();
+        let device_data = if is_intel_gfx {
+            Some(DeviceData::IntelGfxData)
+        } else {
+            None
+        };
+
         VfioPciDevice {
             device: dev,
             config,
@@ -337,8 +359,21 @@ impl VfioPciDevice {
             msi_cap,
             irq_type: None,
             vm_socket_mem: vfio_device_socket_mem,
+            device_data,
             mem: Vec::new(),
         }
+    }
+
+    fn is_intel_gfx(&self) -> bool {
+        let mut ret = false;
+
+        if let Some(device_data) = &self.device_data {
+            match *device_data {
+                DeviceData::IntelGfxData => ret = true,
+            }
+        }
+
+        ret
     }
 
     fn find_region(&self, addr: u64) -> Option<MmioInfo> {
@@ -510,9 +545,6 @@ impl VfioPciDevice {
     }
 }
 
-const PCI_COMMAND: u8 = 0x4;
-const PCI_COMMAND_MEMORY: u8 = 0x2;
-
 impl PciDevice for VfioPciDevice {
     fn debug_label(&self) -> String {
         "vfio pci device".to_string()
@@ -641,6 +673,14 @@ impl PciDevice for VfioPciDevice {
             );
         }
 
+        // Quirk, enable igd memory for guest vga arbitrate, otherwise kernel vga arbitrate
+        // driver doesn't claim this vga device, then xorg couldn't boot up.
+        if self.is_intel_gfx() {
+            let mut cmd = self.config.read_config_byte(PCI_COMMAND);
+            cmd |= PCI_COMMAND_MEMORY;
+            self.config.write_config_byte(cmd, PCI_COMMAND);
+        }
+
         Ok(ranges)
     }
 
@@ -671,6 +711,11 @@ impl PciDevice for VfioPciDevice {
                     config = 0;
                 }
             }
+        }
+
+        // Quirk for intel graphic, set stolen memory size to 0 in pci_cfg[0x51]
+        if self.is_intel_gfx() && reg == 0x50 {
+            config &= 0xffff00ff;
         }
 
         config
