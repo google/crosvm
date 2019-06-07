@@ -41,6 +41,7 @@ pub use crate::generated::virglrenderer::{
     virgl_renderer_resource_create_args, virgl_renderer_resource_info, VIRGL_RES_BIND_SCANOUT,
     VIRGL_RES_BIND_SHARED,
 };
+pub use crate::generated::virtgpu_hw::virtgpu_caps;
 pub use crate::pipe_format_fourcc::pipe_format_fourcc as format_fourcc;
 
 /// Arguments used in `Renderer::create_resource`..
@@ -421,6 +422,10 @@ impl Renderer {
 
     /// Gets the version and size for the given capability set ID.
     pub fn get_cap_set_info(&self, id: u32) -> (u32, u32) {
+        if id == 3 {
+            return (0 as u32, size_of::<virtgpu_caps>() as u32);
+        }
+
         let mut version = 0;
         let mut size = 0;
         // Safe because virglrenderer is initialized by now and properly size stack variables are

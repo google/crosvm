@@ -25,7 +25,8 @@ use gpu_renderer::{
 };
 
 use super::protocol::{
-    GpuResponse, GpuResponsePlaneInfo, VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2,
+    GpuResponse, GpuResponsePlaneInfo, VIRTIO_GPU_CAPSET3, VIRTIO_GPU_CAPSET_VIRGL,
+    VIRTIO_GPU_CAPSET_VIRGL2,
 };
 use crate::virtio::resource_bridge::*;
 use vm_control::VmMemoryControlRequestSocket;
@@ -631,8 +632,10 @@ impl Backend {
         let id = match index {
             0 => VIRTIO_GPU_CAPSET_VIRGL,
             1 => VIRTIO_GPU_CAPSET_VIRGL2,
+            2 => VIRTIO_GPU_CAPSET3,
             _ => return GpuResponse::ErrInvalidParameter,
         };
+
         let (version, size) = self.renderer.get_cap_set_info(id);
         GpuResponse::OkCapsetInfo { id, version, size }
     }
