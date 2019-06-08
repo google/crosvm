@@ -35,10 +35,11 @@ mod raw;
 pub mod rendernode;
 
 use std::cmp::min;
+use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::isize;
-use std::os::raw::c_void;
+use std::os::raw::{c_char, c_void};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr::null_mut;
 use std::rc::Rc;
@@ -377,6 +378,14 @@ impl Device {
         } else {
             Ok(Device(Rc::new(DeviceInner { _fd: fd, gbm })))
         }
+    }
+
+    /// Copies and returns name of GBM backend.
+    pub fn get_backend_name(&self) -> String {
+        let backend_name: *const c_char = unsafe { gbm_device_get_backend_name(self.0.gbm) };
+        let c_str: &CStr = unsafe { CStr::from_ptr(backend_name) };
+        let str_slice: &str = c_str.to_str().unwrap_or("");
+        str_slice.to_owned()
     }
 
     /// Creates a new buffer with the given metadata.
