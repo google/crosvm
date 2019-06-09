@@ -295,11 +295,12 @@ impl QcowHeader {
     }
 }
 
-fn max_refcount_clusters(refcount_order: u32, cluster_size: u32, num_clusters: u32) -> usize {
-    let refcount_bytes = (0x01u32 << refcount_order) / 8;
-    let for_data = div_round_up_u32(num_clusters * refcount_bytes, cluster_size);
-    let for_refcounts = div_round_up_u32(for_data * refcount_bytes, cluster_size);
-    for_data as usize + for_refcounts as usize
+fn max_refcount_clusters(refcount_order: u32, cluster_size: u32, num_clusters: u32) -> u64 {
+    // Use u64 as the product of the u32 inputs can overflow.
+    let refcount_bytes = (0x01 << refcount_order as u64) / 8;
+    let for_data = div_round_up_u64(num_clusters as u64 * refcount_bytes, cluster_size as u64);
+    let for_refcounts = div_round_up_u64(for_data * refcount_bytes, cluster_size as u64);
+    for_data + for_refcounts
 }
 
 /// Represents a qcow2 file. This is a sparse file format maintained by the qemu project.
@@ -419,7 +420,7 @@ impl QcowFile {
             header.refcount_order,
             cluster_size as u32,
             (num_clusters + l1_clusters + num_l2_clusters + header_clusters) as u32,
-        ) as u64;
+        );
         let refcount_block_entries = cluster_size / refcount_bytes;
         let refcounts = RefCount::new(
             &mut raw_file,
