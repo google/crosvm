@@ -8,6 +8,7 @@ openat: 1
 stat64: 1
 fcntl64: 1
 lstat64: 1
+readlink: 1
 readlinkat: 1
 getdents64: 1
 getrandom: 1
@@ -35,9 +36,12 @@ uname: 1
 # 0x5514 == USBDEVFS_RESET
 # 0x80045505 == USBDEVFS_SETCONFIGURATION
 # 0x8108551b == USBDEVFS_DISCONNECT_CLAIM
-ioctl: arg1 == 0xc0105500 || arg1 == 0x802c550a || arg1 == 0x8004551a || arg1 == 0x4004550d || arg1 == 0x8004550f || arg1 == 0x80045510 || arg1 == 0x550b || arg1 == 0x5514 || arg1 == 0x80045505 || arg1 == 0x8108551b
+# 0x40085511 == USBDEVFS_CONNECTINFO
+# 0x80305520 == USBDEVFS_CONNINFO_EX
+ioctl: arg1 == 0xc0105500 || arg1 == 0x802c550a || arg1 == 0x8004551a || arg1 == 0x4004550d || arg1 == 0x8004550f || arg1 == 0x80045510 || arg1 == 0x550b || arg1 == 0x5514 || arg1 == 0x80045505 || arg1 == 0x8108551b || arg1 == 0x40085511 || arg1 == 0x80305520
 fstat: 1
 sigaltstack: 1
 recvmsg: 1
 getrandom: 1
 getdents: 1
+lseek: 1
