@@ -764,8 +764,7 @@ fn create_pmem_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev) as Box<dyn VirtioDevice>,
-        /// TODO(jstaron) Create separate device policy for pmem_device.
-        jail: simple_jail(&cfg, "block_device.policy")?,
+        jail: simple_jail(&cfg, "pmem_device.policy")?,
     })
 }
 
