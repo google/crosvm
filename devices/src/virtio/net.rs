@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cmp;
 use std::fmt::{self, Display};
 use std::mem;
 use std::net::Ipv4Addr;
@@ -14,12 +13,13 @@ use std::thread;
 use libc::EAGAIN;
 use net_sys;
 use net_util::{Error as TapError, MacAddress, TapT};
+use sys_util::guest_memory::Error as MemoryError;
 use sys_util::Error as SysError;
 use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
 use virtio_sys::{vhost, virtio_net};
 
-use super::{Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_NET};
+use super::{Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_NET};
 
 /// The maximum buffer size when segmentation offload is enabled. This
 /// includes the 12-byte virtio net header.
@@ -108,54 +108,29 @@ where
     // if a buffer was used, and false if the frame must be deferred until a buffer
     // is made available by the driver.
     fn rx_single_frame(&mut self) -> bool {
-        let mut next_desc = self.rx_queue.pop(&self.mem);
+        let desc_chain = match self.rx_queue.pop(&self.mem) {
+            Some(desc) => desc,
+            None => return false,
+        };
 
-        if next_desc.is_none() {
-            return false;
-        }
+        let index = desc_chain.index;
+        let mut writer = Writer::new(&self.mem, desc_chain);
 
-        // We just checked that the head descriptor exists.
-        let head_index = next_desc.as_ref().unwrap().index;
-        let mut write_count = 0;
-
-        // Copy from frame into buffer, which may span multiple descriptors.
-        loop {
-            match next_desc {
-                Some(desc) => {
-                    if !desc.is_write_only() {
-                        break;
-                    }
-                    let limit = cmp::min(write_count + desc.len as usize, self.rx_count);
-                    let source_slice = &self.rx_buf[write_count..limit];
-                    let write_result = self.mem.write_at_addr(source_slice, desc.addr);
-
-                    match write_result {
-                        Ok(sz) => {
-                            write_count += sz;
-                        }
-                        Err(e) => {
-                            warn!("net: rx: failed to write slice: {}", e);
-                            break;
-                        }
-                    };
-
-                    if write_count >= self.rx_count {
-                        break;
-                    }
-                    next_desc = desc.next_descriptor();
-                }
-                None => {
-                    warn!(
-                        "net: rx: buffer is too small to hold frame of size {}",
-                        self.rx_count
-                    );
-                    break;
-                }
+        match writer.write_all(&self.rx_buf[0..self.rx_count]) {
+            Ok(()) => (),
+            Err(MemoryError::ShortWrite { .. }) => {
+                warn!(
+                    "net: rx: buffer is too small to hold frame of size {}",
+                    self.rx_count
+                );
+            }
+            Err(e) => {
+                warn!("net: rx: failed to write slice: {}", e);
             }
         }
 
         self.rx_queue
-            .add_used(&self.mem, head_index, write_count as u32);
+            .add_used(&self.mem, index, writer.bytes_written() as u32);
 
         // Interrupt the guest immediately for received frames to
         // reduce latency.
@@ -191,41 +166,24 @@ where
     fn process_tx(&mut self) {
         let mut frame = [0u8; MAX_BUFFER_SIZE];
 
-        while let Some(avail_desc) = self.tx_queue.pop(&self.mem) {
-            let head_index = avail_desc.index;
-            let mut next_desc = Some(avail_desc);
-            let mut read_count = 0;
+        while let Some(desc_chain) = self.tx_queue.pop(&self.mem) {
+            let index = desc_chain.index;
+            let mut reader = Reader::new(&self.mem, desc_chain);
 
-            // Copy buffer from across multiple descriptors.
-            while let Some(desc) = next_desc {
-                if desc.is_write_only() {
-                    break;
-                }
-                let limit = cmp::min(read_count + desc.len as usize, frame.len());
-                let read_result = self
-                    .mem
-                    .read_at_addr(&mut frame[read_count..limit as usize], desc.addr);
-                match read_result {
-                    Ok(sz) => {
-                        read_count += sz;
-                    }
-                    Err(e) => {
-                        warn!("net: tx: failed to read slice: {}", e);
-                        break;
+            match reader.read(&mut frame) {
+                // We need to copy frame into continuous buffer before writing it to tap
+                // because tap requires frame to complete in a single write.
+                Ok(read_count) => {
+                    if let Err(err) = self.tap.write_all(&frame[..read_count]) {
+                        error!("net: tx: failed to write to tap: {}", err);
                     }
                 }
-                next_desc = desc.next_descriptor();
+                Err(err) => {
+                    error!("net: tx: failed to read frame into buffer: {}", err);
+                }
             }
 
-            let write_result = self.tap.write(&frame[..read_count as usize]);
-            match write_result {
-                Ok(_) => {}
-                Err(e) => {
-                    warn!("net: tx: error failed to write to tap: {}", e);
-                }
-            };
-
-            self.tx_queue.add_used(&self.mem, head_index, 0);
+            self.tx_queue.add_used(&self.mem, index, 0);
         }
 
         self.signal_used_queue();
