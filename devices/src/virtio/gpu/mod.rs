@@ -8,7 +8,7 @@ mod protocol;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::i64;
-use std::mem::size_of;
+use std::mem::{self, size_of};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -474,7 +474,7 @@ struct Worker {
     ctrl_evt: EventFd,
     cursor_queue: Queue,
     cursor_evt: EventFd,
-    resource_bridge: Option<ResourceResponseSocket>,
+    resource_bridges: Vec<ResourceResponseSocket>,
     kill_evt: EventFd,
     state: Frontend,
 }
@@ -492,9 +492,9 @@ impl Worker {
             CtrlQueue,
             CursorQueue,
             Display,
-            ResourceBridge,
             InterruptResample,
             Kill,
+            ResourceBridge { index: usize },
         }
 
         let poll_ctx: PollContext<Token> = match PollContext::new()
@@ -517,12 +517,14 @@ impl Worker {
             }
         };
 
-        if let Some(resource_bridge) = &self.resource_bridge {
-            if let Err(e) = poll_ctx.add(resource_bridge, Token::ResourceBridge) {
+        for (index, bridge) in self.resource_bridges.iter().enumerate() {
+            if let Err(e) = poll_ctx.add(bridge, Token::ResourceBridge { index }) {
                 error!("failed to add resource bridge to PollContext: {}", e);
             }
         }
 
+        // Declare this outside the loop so we don't keep allocating and freeing the vector.
+        let mut process_resource_bridge = Vec::with_capacity(self.resource_bridges.len());
         'poll: loop {
             // If there are outstanding fences, wake up early to poll them.
             let duration = if !self.state.fence_descriptors.is_empty() {
@@ -539,7 +541,11 @@ impl Worker {
                 }
             };
             let mut signal_used = false;
-            let mut process_resource_bridge = false;
+
+            // Clear the old values and re-initialize with false.
+            process_resource_bridge.clear();
+            process_resource_bridge.resize(self.resource_bridges.len(), false);
+
             for event in events.iter_readable() {
                 match event.token() {
                     Token::CtrlQueue => {
@@ -558,7 +564,7 @@ impl Worker {
                             let _ = self.exit_evt.write(1);
                         }
                     }
-                    Token::ResourceBridge => process_resource_bridge = true,
+                    Token::ResourceBridge { index } => process_resource_bridge[index] = true,
                     Token::InterruptResample => {
                         let _ = self.interrupt_resample_evt.read();
                         if self.interrupt_status.load(Ordering::SeqCst) != 0 {
@@ -587,9 +593,11 @@ impl Worker {
             // Process the entire control queue before the resource bridge in case a resource is
             // created or destroyed by the control queue. Processing the resource bridge first may
             // lead to a race condition.
-            if process_resource_bridge {
-                if let Some(resource_bridge) = &self.resource_bridge {
-                    self.state.process_resource_bridge(resource_bridge);
+            for (bridge, &should_process) in
+                self.resource_bridges.iter().zip(&process_resource_bridge)
+            {
+                if should_process {
+                    self.state.process_resource_bridge(bridge);
                 }
             }
 
@@ -604,7 +612,7 @@ pub struct Gpu {
     config_event: bool,
     exit_evt: EventFd,
     gpu_device_socket: Option<VmMemoryControlRequestSocket>,
-    resource_bridge: Option<ResourceResponseSocket>,
+    resource_bridges: Vec<ResourceResponseSocket>,
     kill_evt: Option<EventFd>,
     wayland_socket_path: PathBuf,
 }
@@ -613,14 +621,14 @@ impl Gpu {
     pub fn new<P: AsRef<Path>>(
         exit_evt: EventFd,
         gpu_device_socket: Option<VmMemoryControlRequestSocket>,
-        resource_bridge: Option<ResourceResponseSocket>,
+        resource_bridges: Vec<ResourceResponseSocket>,
         wayland_socket_path: P,
     ) -> Gpu {
         Gpu {
             config_event: false,
             exit_evt,
             gpu_device_socket,
-            resource_bridge,
+            resource_bridges,
             kill_evt: None,
             wayland_socket_path: wayland_socket_path.as_ref().to_path_buf(),
         }
@@ -664,8 +672,8 @@ impl VirtioDevice for Gpu {
         }
 
         keep_fds.push(self.exit_evt.as_raw_fd());
-        if let Some(resource_bridge) = &self.resource_bridge {
-            keep_fds.push(resource_bridge.as_raw_fd());
+        for bridge in &self.resource_bridges {
+            keep_fds.push(bridge.as_raw_fd());
         }
         keep_fds
     }
@@ -739,7 +747,7 @@ impl VirtioDevice for Gpu {
         };
         self.kill_evt = Some(self_kill_evt);
 
-        let resource_bridge = self.resource_bridge.take();
+        let resource_bridges = mem::replace(&mut self.resource_bridges, Vec::new());
 
         let ctrl_queue = queues.remove(0);
         let ctrl_evt = queue_evts.remove(0);
@@ -802,7 +810,7 @@ impl VirtioDevice for Gpu {
                             ctrl_evt,
                             cursor_queue,
                             cursor_evt,
-                            resource_bridge,
+                            resource_bridges,
                             kill_evt,
                             state: Frontend::new(Backend::new(
                                 device,

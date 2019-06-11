@@ -552,7 +552,7 @@ fn create_gpu_device(
     cfg: &Config,
     exit_evt: &EventFd,
     gpu_device_socket: VmMemoryControlRequestSocket,
-    gpu_socket: virtio::resource_bridge::ResourceResponseSocket,
+    gpu_sockets: Vec<virtio::resource_bridge::ResourceResponseSocket>,
     wayland_socket_path: &Path,
 ) -> DeviceResult {
     let jailed_wayland_path = Path::new("/wayland-0");
@@ -560,7 +560,7 @@ fn create_gpu_device(
     let dev = virtio::Gpu::new(
         exit_evt.try_clone().map_err(Error::CloneEventFd)?,
         Some(gpu_device_socket),
-        Some(gpu_socket),
+        gpu_sockets,
         if cfg.sandbox {
             &jailed_wayland_path
         } else {
@@ -835,34 +835,43 @@ fn create_virtio_devices(
     }
 
     #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
-    let mut resource_bridge_wl_socket = None::<virtio::resource_bridge::ResourceRequestSocket>;
+    let mut resource_bridges = Vec::<virtio::resource_bridge::ResourceResponseSocket>::new();
+
+    if let Some(wayland_socket_path) = cfg.wayland_socket_path.as_ref() {
+        #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
+        let mut wl_resource_bridge = None::<virtio::resource_bridge::ResourceRequestSocket>;
+
+        #[cfg(feature = "gpu")]
+        {
+            if cfg.gpu {
+                let (wl_socket, gpu_socket) =
+                    virtio::resource_bridge::pair().map_err(Error::CreateSocket)?;
+                resource_bridges.push(gpu_socket);
+                wl_resource_bridge = Some(wl_socket);
+            }
+        }
+
+        devs.push(create_wayland_device(
+            cfg,
+            wayland_socket_path,
+            wayland_device_socket,
+            wl_resource_bridge,
+        )?);
+    }
 
     #[cfg(feature = "gpu")]
     {
         if cfg.gpu {
             if let Some(wayland_socket_path) = &cfg.wayland_socket_path {
-                let (wl_socket, gpu_socket) =
-                    virtio::resource_bridge::pair().map_err(Error::CreateSocket)?;
-                resource_bridge_wl_socket = Some(wl_socket);
-
                 devs.push(create_gpu_device(
                     cfg,
                     _exit_evt,
                     gpu_device_socket,
-                    gpu_socket,
+                    resource_bridges,
                     wayland_socket_path,
                 )?);
             }
         }
-    }
-
-    if let Some(wayland_socket_path) = cfg.wayland_socket_path.as_ref() {
-        devs.push(create_wayland_device(
-            cfg,
-            wayland_socket_path,
-            wayland_device_socket,
-            resource_bridge_wl_socket,
-        )?);
     }
 
     if let Some(cid) = cfg.cid {
