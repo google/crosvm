@@ -26,7 +26,8 @@ END_COLOR = '\033[0m'
 
 verbose = False
 
-def generate_module(module_name, whitelist, header, clang_args, lib_name):
+def generate_module(module_name, whitelist, header, clang_args, lib_name,
+                    derive_default):
   args = [
     'bindgen',
     '--no-layout-tests',
@@ -41,6 +42,9 @@ def generate_module(module_name, whitelist, header, clang_args, lib_name):
   if lib_name:
     args.extend(['--raw-line',
                  '#[link(name = "{}")] extern {{}}'.format(lib_name)])
+
+  if derive_default:
+    args.append('--with-derive-default')
 
   args.extend([header, '--'])
   args.extend(clang_args)
@@ -118,6 +122,7 @@ def main(argv):
       os.path.join(opts.sysroot, 'usr/include/virgl/virglrenderer.h'),
       clang_args,
       'virglrenderer',
+      True,
     ),
     (
       'epoxy_egl',
@@ -125,6 +130,7 @@ def main(argv):
       os.path.join(opts.sysroot, 'usr/include/epoxy/egl.h'),
       clang_args,
       'epoxy',
+      False,
     ),
     (
       'virgl_protocol',
@@ -132,6 +138,7 @@ def main(argv):
       os.path.join(virgl_src_dir, 'src/virgl_protocol.h'),
       clang_args,
       None,
+      False,
     ),
     (
       'p_defines',
@@ -139,6 +146,7 @@ def main(argv):
       os.path.join(virgl_src_dir, 'src/gallium/include/pipe/p_defines.h'),
       clang_args,
       None,
+      False,
     ),
     (
       'p_format',
@@ -146,6 +154,7 @@ def main(argv):
       os.path.join(virgl_src_dir, 'src/gallium/include/pipe/p_format.h'),
       clang_args,
       None,
+      False,
     ),
   )
 
