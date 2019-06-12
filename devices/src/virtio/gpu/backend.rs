@@ -21,6 +21,7 @@ use gpu_display::*;
 use gpu_renderer::{
     format_fourcc as renderer_fourcc, Box3, Context as RendererContext, Image as RendererImage,
     Renderer, Resource as GpuRendererResource, ResourceCreateArgs, VIRGL_RES_BIND_SCANOUT,
+    VIRGL_RES_BIND_SHARED,
 };
 
 use super::protocol::{
@@ -704,7 +705,7 @@ impl Backend {
     }
 
     pub fn allocate_using_minigbm(args: ResourceCreateArgs) -> bool {
-        args.bind & VIRGL_RES_BIND_SCANOUT != 0
+        args.bind & (VIRGL_RES_BIND_SCANOUT | VIRGL_RES_BIND_SHARED) != 0
             && args.depth == 1
             && args.array_size == 1
             && args.last_level == 0
