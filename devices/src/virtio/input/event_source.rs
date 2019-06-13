@@ -178,7 +178,7 @@ where
             // otherwise source and destination would be the same.
             if buff_size != remainder {
                 let (des, src) = self.read_buffer.buffer.split_at_mut(buff_size - remainder);
-                des[..remainder].copy_from_slice(src);
+                des[..remainder].copy_from_slice(&src[..remainder]);
             }
         }
         self.read_idx = remainder;
