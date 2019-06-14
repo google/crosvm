@@ -1793,9 +1793,9 @@ mod tests {
 
     #[test]
     fn invalid_cluster_bits() {
-        let mut header = test_huge_header();
+        let mut header = valid_header();
         header[23] = 3;
-        with_basic_file(&test_huge_header(), |disk_file: File| {
+        with_basic_file(&header, |disk_file: File| {
             QcowFile::from(disk_file).expect_err("Failed to create file.");
         });
     }
