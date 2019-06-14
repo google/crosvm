@@ -5,8 +5,9 @@
 //! Simplified tempfile which doesn't depend on the `rand` crate, instead using
 //! /dev/urandom as a source of entropy
 
-use rand_ish::urandom_str;
+use libc::mkdtemp;
 use std::env;
+use std::ffi::CString;
 use std::fs;
 use std::io::{Error, ErrorKind, Result};
 use std::path::{Path, PathBuf};
@@ -35,29 +36,41 @@ impl Builder {
     /// dropped.
     /// If the directory can not be created, `Err` is returned.
     pub fn tempdir(&self) -> Result<TempDir> {
-        for _ in 0..NUM_RETRIES {
-            let suffix = urandom_str(12)?;
-            let path = env::temp_dir().join(format!("{}.{}", self.prefix, suffix));
-
-            match fs::create_dir(&path) {
-                Ok(_) => return Ok(TempDir { path }),
-                Err(ref e) if e.kind() == ErrorKind::AlreadyExists => {}
-                Err(e) => return Err(e),
+        // mkdtemp() requires the template to end in 6 X chars, which will be replaced
+        // with random characters to make the path unique.
+        let path_template = env::temp_dir().join(format!("{}.XXXXXX", self.prefix));
+        let template = match path_template.to_str() {
+            Some(s) => CString::new(s)?,
+            None => {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "Path to string conversion failed",
+                ))
             }
-        }
-
-        Err(Error::new(
-            ErrorKind::AlreadyExists,
-            "too many tempdirs exist",
-        ))
+        };
+        let ptr = template.into_raw();
+        // Safe because ownership of the buffer is handed off to mkdtemp() only
+        // until it returns, and ownership is reclaimed by calling CString::from_raw()
+        // on the same pointer returned by into_raw().
+        let path = unsafe {
+            let ret = mkdtemp(ptr);
+            let path = CString::from_raw(ptr);
+            if ret.is_null() {
+                return Err(Error::last_os_error());
+            }
+            path
+        };
+        Ok(TempDir {
+            path: PathBuf::from(path.to_str().map_err(|_| {
+                Error::new(ErrorKind::InvalidData, "Path to string conversion failed")
+            })?),
+        })
     }
 }
 
 pub struct TempDir {
     path: PathBuf,
 }
-
-const NUM_RETRIES: u32 = 4;
 
 impl TempDir {
     /// Accesses the tempdir's [`Path`].
