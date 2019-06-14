@@ -216,10 +216,11 @@ impl PciDevice for XhciController {
         // xHCI spec 5.2.1.
         let bar0_addr = resources
             .mmio_allocator()
-            .allocate(
+            .allocate_with_align(
                 XHCI_BAR0_SIZE,
                 Alloc::PciBar { bus, dev, bar: 0 },
                 "xhci_bar0".to_string(),
+                XHCI_BAR0_SIZE,
             )
             .map_err(|e| PciDeviceError::IoAllocationFailed(XHCI_BAR0_SIZE, e))?;
         let bar0_config = PciBarConfiguration::default()

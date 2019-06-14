@@ -150,10 +150,11 @@ impl PciDevice for Ac97Dev {
         let mut ranges = Vec::new();
         let mixer_regs_addr = resources
             .mmio_allocator()
-            .allocate(
+            .allocate_with_align(
                 MIXER_REGS_SIZE,
                 Alloc::PciBar { bus, dev, bar: 0 },
                 "ac97-mixer_regs".to_string(),
+                MIXER_REGS_SIZE,
             )
             .map_err(|e| pci_device::Error::IoAllocationFailed(MIXER_REGS_SIZE, e))?;
         let mixer_config = PciBarConfiguration::default()
@@ -167,10 +168,11 @@ impl PciDevice for Ac97Dev {
 
         let master_regs_addr = resources
             .mmio_allocator()
-            .allocate(
+            .allocate_with_align(
                 MASTER_REGS_SIZE,
                 Alloc::PciBar { bus, dev, bar: 1 },
                 "ac97-master_regs".to_string(),
+                MASTER_REGS_SIZE,
             )
             .map_err(|e| pci_device::Error::IoAllocationFailed(MASTER_REGS_SIZE, e))?;
         let master_config = PciBarConfiguration::default()
