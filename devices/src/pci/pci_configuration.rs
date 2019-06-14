@@ -200,6 +200,7 @@ pub struct PciBarConfiguration {
 #[derive(Debug)]
 pub enum Error {
     BarAddressInvalid(u64, u64),
+    BarAlignmentInvalid(u64, u64),
     BarInUse(usize),
     BarInUse64(usize),
     BarInvalid(usize),
@@ -218,6 +219,7 @@ impl Display for Error {
         use self::Error::*;
         match self {
             BarAddressInvalid(a, s) => write!(f, "address {} size {} too big", a, s),
+            BarAlignmentInvalid(a, s) => write!(f, "address {} is not aligned to size {}", a, s),
             BarInUse(b) => write!(f, "bar {} already used", b),
             BarInUse64(b) => write!(f, "64bit bar {} already used(requires two regs)", b),
             BarInvalid(b) => write!(f, "bar {} invalid, max {}", b, NUM_BAR_REGS - 1),
@@ -356,6 +358,10 @@ impl PciConfiguration {
 
         if config.reg_idx >= NUM_BAR_REGS {
             return Err(Error::BarInvalid(config.reg_idx));
+        }
+
+        if config.addr % config.size != 0 {
+            return Err(Error::BarAlignmentInvalid(config.addr, config.size));
         }
 
         let bar_idx = BAR0_REG + config.reg_idx;
