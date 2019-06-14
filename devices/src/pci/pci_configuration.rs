@@ -291,7 +291,7 @@ impl PciConfiguration {
     /// Writes a 32bit register to `reg_idx` in the register map.
     pub fn write_reg(&mut self, reg_idx: usize, value: u32) {
         if let Some(r) = self.registers.get_mut(reg_idx) {
-            *r = value & self.writable_bits[reg_idx];
+            *r = (*r & !self.writable_bits[reg_idx]) | (value & self.writable_bits[reg_idx]);
         } else {
             warn!("bad PCI register write {}", reg_idx);
         }
@@ -625,5 +625,24 @@ mod tests {
         assert_eq!(class_code, 0x04);
         assert_eq!(subclass, 0x01);
         assert_eq!(prog_if, 0x5a);
+    }
+
+    #[test]
+    fn read_only_bits() {
+        let mut cfg = PciConfiguration::new(
+            0x1234,
+            0x5678,
+            PciClassCode::MultimediaController,
+            &PciMultimediaSubclass::AudioController,
+            Some(&TestPI::Test),
+            PciHeaderType::Device,
+            0xABCD,
+            0x2468,
+        );
+
+        // Attempt to overwrite vendor ID and device ID, which are read-only
+        cfg.write_reg(0, 0xBAADF00D);
+        // The original vendor and device ID should remain.
+        assert_eq!(cfg.read_reg(0), 0x56781234);
     }
 }
