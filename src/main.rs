@@ -247,7 +247,7 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
     let mut serial_setting = SerialParameters {
         type_: SerialType::Sink,
         path: None,
-        num: 0,
+        num: 1,
         console: false,
     };
 
@@ -832,11 +832,11 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::flag("cras-capture", "Enable capturing audio from CRAS server to the cras-audio device"),
           Argument::flag("null-audio", "Add an audio device to the VM that plays samples to /dev/null"),
           Argument::value("serial",
-                          "type=TYPE,[path=PATH,num=NUM,console]",
+                          "type=TYPE,[num=NUM,path=PATH,console]",
                           "Comma seperated key=value pairs for setting up serial devices. Can be given more than once.
                           Possible key values:
                           type=(stdout,syslog,sink,file) - Where to route the serial device
-                          num=(1,2,3,4) - Serial Device Number
+                          num=(1,2,3,4) - Serial Device Number. If not provided, num will default to 1.
                           path=PATH - The path to the file to write to when type=file
                           console - Use this serial device as the guest console. Can only be given once. Will default to first serial port if not provided.
                           "),
@@ -1415,6 +1415,11 @@ mod tests {
     #[test]
     fn parse_serial_vaild() {
         parse_serial_options("type=syslog,num=1,console=true").expect("parse should have succeded");
+    }
+
+    #[test]
+    fn parse_serial_valid_no_num() {
+        parse_serial_options("type=syslog").expect("parse should have succeded");
     }
 
     #[test]
