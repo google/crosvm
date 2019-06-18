@@ -425,6 +425,7 @@ bool dwl_context_setup(struct dwl_context *self, const char *socket_path)
 
 fail:
 	wl_display_disconnect(display);
+	self->display = NULL;
 	return false;
 }
 
