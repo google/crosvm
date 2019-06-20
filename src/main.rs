@@ -406,6 +406,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         #[cfg(feature = "wl-dmabuf")]
         "wayland-dmabuf" => cfg.wayland_dmabuf = true,
+        "x-display" => {
+            if cfg.x_display.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`x-display` already given".to_owned(),
+                ));
+            }
+            cfg.x_display = Some(value.unwrap().to_owned());
+        }
         "socket" => {
             if cfg.socket_path.is_some() {
                 return Err(argument::Error::TooManyArguments(
@@ -728,6 +736,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           stdin - Direct standard input to this serial device. Can only be given once. Will default to first serial port if not provided.
                           "),
           Argument::value("syslog-tag", "TAG", "When logging to syslog, use the provided tag."),
+          Argument::value("x-display", "DISPLAY", "X11 display name to use."),
           Argument::value("wayland-sock", "PATH", "Path to the Wayland socket to use."),
           #[cfg(feature = "wl-dmabuf")]
           Argument::flag("wayland-dmabuf", "Enable support for DMABufs in Wayland device."),
