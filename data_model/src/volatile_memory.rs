@@ -174,6 +174,21 @@ impl<'a> VolatileSlice<'a> {
         unsafe { Ok(VolatileSlice::new(new_addr as *mut u8, new_size)) }
     }
 
+    /// Similar to `get_slice` but the returned slice outlives this slice.
+    ///
+    /// The returned slice's lifetime is still limited by the underlying data's lifetime.
+    pub fn sub_slice(self, offset: u64, count: u64) -> Result<VolatileSlice<'a>> {
+        let mem_end = calc_offset(offset, count)?;
+        if mem_end > self.size {
+            return Err(Error::OutOfBounds { addr: mem_end });
+        }
+        Ok(VolatileSlice {
+            addr: (self.addr as u64 + offset) as *mut _,
+            size: count,
+            phantom: PhantomData,
+        })
+    }
+
     /// Sets each byte of this slice with the given byte, similar to `memset`.
     ///
     /// The bytes of this slice are accessed in an arbitray order.
