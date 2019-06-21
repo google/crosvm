@@ -56,7 +56,7 @@ lstat: 1
 # Used for sharing memory with wayland. arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING
 memfd_create: arg1 == 3
 # mmap/mprotect/open/openat differ from the common_device.policy
-mmap: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ|PROT_EXEC
+mmap: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ|PROT_EXEC || arg2 == PROT_WRITE || arg2 == PROT_READ
 mprotect: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ
 open: 1
 openat: 1
