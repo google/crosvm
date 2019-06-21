@@ -132,7 +132,7 @@ pub struct Box3 {
 impl Box3 {
     /// Constructs a 2 dimensional XY box in 3 dimensional space with unit depth and zero
     /// displacement on the Z axis.
-    pub fn new_2d(x: u32, w: u32, y: u32, h: u32) -> Box3 {
+    pub fn new_2d(x: u32, y: u32, w: u32, h: u32) -> Box3 {
         Box3 {
             x,
             y,
@@ -141,6 +141,11 @@ impl Box3 {
             h,
             d: 1,
         }
+    }
+
+    /// Returns true if this box represents a volume of zero.
+    pub fn is_empty(&self) -> bool {
+        self.w == 0 || self.h == 0 || self.d == 0
     }
 }
 
@@ -836,6 +841,9 @@ impl Resource {
         mut transfer_box: Box3,
         offset: u64,
     ) -> Result<()> {
+        if transfer_box.is_empty() {
+            return Ok(());
+        }
         // Safe because only stack variables of the appropriate type are used.
         let ret = unsafe {
             virgl_renderer_transfer_write_iov(
@@ -863,6 +871,9 @@ impl Resource {
         mut transfer_box: Box3,
         offset: u64,
     ) -> Result<()> {
+        if transfer_box.is_empty() {
+            return Ok(());
+        }
         // Safe because only stack variables of the appropriate type are used.
         let ret = unsafe {
             virgl_renderer_transfer_read_iov(
@@ -891,6 +902,9 @@ impl Resource {
         offset: u64,
         buf: &mut [u8],
     ) -> Result<()> {
+        if transfer_box.is_empty() {
+            return Ok(());
+        }
         let mut iov = VirglVec {
             base: buf.as_mut_ptr() as *mut c_void,
             len: buf.len(),
@@ -924,6 +938,9 @@ impl Resource {
         offset: u64,
         buf: VolatileSlice,
     ) -> Result<()> {
+        if transfer_box.is_empty() {
+            return Ok(());
+        }
         let mut iov = VirglVec {
             base: buf.as_ptr() as *mut c_void,
             len: buf.size() as usize,
@@ -992,7 +1009,7 @@ mod tests {
                 0,
                 50,
                 0,
-                Box3::new_2d(0, 5, 0, 1),
+                Box3::new_2d(0, 0, 5, 1),
                 0,
                 &mut pix_buf[..],
             )
