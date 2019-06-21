@@ -305,7 +305,7 @@ struct IoInfo {
 }
 
 enum DeviceData {
-    IntelGfxData,
+    IntelGfxData { opregion_index: u32 },
 }
 
 /// Implements the Vfio Pci device, then a pci device is added into vm
@@ -343,7 +343,9 @@ impl VfioPciDevice {
         let is_intel_gfx = vendor_id == INTEL_VENDOR_ID
             && class_code == PciClassCode::DisplayController.get_register_value();
         let device_data = if is_intel_gfx {
-            Some(DeviceData::IntelGfxData)
+            Some(DeviceData::IntelGfxData {
+                opregion_index: u32::max_value(),
+            })
         } else {
             None
         };
@@ -369,7 +371,7 @@ impl VfioPciDevice {
 
         if let Some(device_data) = &self.device_data {
             match *device_data {
-                DeviceData::IntelGfxData => ret = true,
+                DeviceData::IntelGfxData { .. } => ret = true,
             }
         }
 
@@ -686,9 +688,49 @@ impl PciDevice for VfioPciDevice {
 
     fn allocate_device_bars(
         &mut self,
-        _resources: &mut SystemAllocator,
+        resources: &mut SystemAllocator,
     ) -> Result<Vec<(u64, u64)>, PciDeviceError> {
-        Ok(Vec::new())
+        let mut ranges = Vec::new();
+
+        if !self.is_intel_gfx() {
+            return Ok(ranges);
+        }
+
+        // Make intel gfx's opregion as mmio bar, and allocate a gpa for it
+        // then write this gpa into pci cfg register
+        if let Some((index, size)) = self.device.get_cap_type_info(
+            VFIO_REGION_TYPE_PCI_VENDOR_TYPE | (INTEL_VENDOR_ID as u32),
+            VFIO_REGION_SUBTYPE_INTEL_IGD_OPREGION,
+        ) {
+            let (bus, dev) = self
+                .pci_bus_dev
+                .expect("assign_bus_dev must be called prior to allocate_device_bars");
+            let bar_addr = resources
+                .mmio_allocator(MmioType::Low)
+                .allocate(
+                    size,
+                    Alloc::PciBar {
+                        bus,
+                        dev,
+                        bar: (index * 4) as u8,
+                    },
+                    "vfio_bar".to_string(),
+                )
+                .map_err(|e| PciDeviceError::IoAllocationFailed(size, e))?;
+            ranges.push((bar_addr, size));
+            self.device_data = Some(DeviceData::IntelGfxData {
+                opregion_index: index,
+            });
+
+            self.mmio_regions.push(MmioInfo {
+                bar_index: index,
+                start: bar_addr,
+                length: size,
+            });
+            self.config.write_config_dword(bar_addr as u32, 0xFC);
+        }
+
+        Ok(ranges)
     }
 
     fn register_device_capabilities(&mut self) -> Result<(), PciDeviceError> {
@@ -759,6 +801,17 @@ impl PciDevice for VfioPciDevice {
 
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
         if let Some(mmio_info) = self.find_region(addr) {
+            // Ignore igd opregion's write
+            if let Some(device_data) = &self.device_data {
+                match *device_data {
+                    DeviceData::IntelGfxData { opregion_index } => {
+                        if opregion_index == mmio_info.bar_index {
+                            return;
+                        }
+                    }
+                }
+            }
+
             let offset = addr - mmio_info.start;
             self.device.region_write(mmio_info.bar_index, data, offset);
         }

@@ -289,6 +289,8 @@ struct VfioRegion {
     offset: u64,
     // vectors for mmap offset and size
     mmaps: Vec<vfio_region_sparse_mmap_area>,
+    // type and subtype for cap type
+    cap_info: Option<(u32, u32)>,
 }
 
 /// Vfio device for exposing regions which could be read/write to kernel vfio device.
@@ -497,6 +499,7 @@ impl VfioDevice {
             }
 
             let mut mmaps: Vec<vfio_region_sparse_mmap_area> = Vec::new();
+            let mut cap_info: Option<(u32, u32)> = None;
             if reg_info.argsz > argsz {
                 let cap_len: usize = (reg_info.argsz - argsz) as usize;
                 let mut region_with_cap =
@@ -527,6 +530,7 @@ impl VfioDevice {
                 let cap_header_sz = mem::size_of::<vfio_info_cap_header>() as u32;
                 let mmap_cap_sz = mem::size_of::<vfio_region_info_cap_sparse_mmap>() as u32;
                 let mmap_area_sz = mem::size_of::<vfio_region_sparse_mmap_area>() as u32;
+                let type_cap_sz = mem::size_of::<vfio_region_info_cap_type>() as u32;
                 let region_info_sz = reg_info.argsz;
 
                 // region_with_cap[0].cap_info may contain many structures, like
@@ -567,6 +571,17 @@ impl VfioDevice {
                         for area in areas.iter() {
                             mmaps.push(area.clone());
                         }
+                    } else if cap_header.id as u32 == VFIO_REGION_INFO_CAP_TYPE {
+                        if offset + type_cap_sz > region_info_sz {
+                            break;
+                        }
+                        // cap_ptr is vfio_region_info_cap_type here
+                        // Safe, this vfio_region_info_cap_type is in this function allocated
+                        // region_with_cap vec
+                        let cap_type_info =
+                            unsafe { &*(cap_ptr as *mut u8 as *const vfio_region_info_cap_type) };
+
+                        cap_info = Some((cap_type_info.type_, cap_type_info.subtype));
                     }
 
                     offset = cap_header.next;
@@ -583,6 +598,7 @@ impl VfioDevice {
                 size: reg_info.size,
                 offset: reg_info.offset,
                 mmaps,
+                cap_info,
             };
             regions.push(region);
         }
@@ -627,6 +643,26 @@ impl VfioDevice {
                 Vec::new()
             }
         }
+    }
+
+    /// find the specified cap type in device regions
+    /// Input:
+    ///      type_:  cap type
+    ///      sub_type: cap sub_type
+    /// Output:
+    ///     None: device doesn't have the specified cap type
+    ///     Some((bar_index, region_size)): device has the specified cap type, return region's
+    ///                                     index and size
+    pub fn get_cap_type_info(&self, type_: u32, sub_type: u32) -> Option<(u32, u64)> {
+        for (index, region) in self.regions.iter().enumerate() {
+            if let Some(cap_info) = &region.cap_info {
+                if cap_info.0 == type_ && cap_info.1 == sub_type {
+                    return Some((index as u32, region.size));
+                }
+            }
+        }
+
+        None
     }
 
     /// Read region's data from VFIO device into buf
