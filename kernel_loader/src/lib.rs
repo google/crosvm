@@ -26,6 +26,7 @@ pub enum Error {
     InvalidProgramHeaderSize,
     InvalidProgramHeaderOffset,
     InvalidProgramHeaderAddress,
+    InvalidProgramHeaderMemSize,
     ReadElfHeader,
     ReadKernelImage,
     ReadProgramHeader,
@@ -49,6 +50,7 @@ impl Display for Error {
             InvalidProgramHeaderSize => "invalid program header size",
             InvalidProgramHeaderOffset => "invalid program header offset",
             InvalidProgramHeaderAddress => "invalid Program Header Address",
+            InvalidProgramHeaderMemSize => "invalid Program Header memory size",
             ReadElfHeader => "unable to read elf header",
             ReadKernelImage => "unable to read kernel image",
             ReadProgramHeader => "unable to read program header",
@@ -132,7 +134,10 @@ where
             .read_to_memory(mem_offset, kernel_image, phdr.p_filesz as usize)
             .map_err(|_| Error::ReadKernelImage)?;
 
-        kernel_end = mem_offset.offset() + phdr.p_memsz;
+        kernel_end = mem_offset
+            .offset()
+            .checked_add(phdr.p_memsz)
+            .ok_or(Error::InvalidProgramHeaderMemSize)?;
     }
 
     Ok(kernel_end)
