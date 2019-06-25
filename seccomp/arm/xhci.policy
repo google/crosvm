@@ -44,4 +44,4 @@ sigaltstack: 1
 recvmsg: 1
 getrandom: 1
 getdents: 1
-lseek: 1
+_llseek: 1
