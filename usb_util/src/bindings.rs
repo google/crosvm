@@ -4012,16 +4012,13 @@ extern "C" {
     pub fn libusb_init(ctx: *mut *mut libusb_context) -> ::std::os::raw::c_int;
 }
 extern "C" {
-    pub fn libusb_init_jailed(ctx: *mut *mut libusb_context) -> ::std::os::raw::c_int;
-}
-extern "C" {
     pub fn libusb_exit(ctx: *mut libusb_context);
 }
 extern "C" {
-    pub fn libusb_get_device_from_fd(
+    pub fn libusb_wrap_sys_device(
         ctx: *mut libusb_context,
-        fd: ::std::os::raw::c_int,
-        device: *mut *mut libusb_device,
+        fd: __intptr_t,
+        handle: *mut *mut libusb_device_handle,
     ) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -4196,13 +4193,6 @@ extern "C" {
     pub fn libusb_open(
         dev: *mut libusb_device,
         dev_handle: *mut *mut libusb_device_handle,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn libusb_open_fd(
-        dev: *mut libusb_device,
-        fd: ::std::os::raw::c_int,
-        handle: *mut *mut libusb_device_handle,
     ) -> ::std::os::raw::c_int;
 }
 extern "C" {

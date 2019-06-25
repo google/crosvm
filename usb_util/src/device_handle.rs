@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::bindings;
 use crate::error::{Error, Result};
 use crate::libusb_context::LibUsbContextInner;
+use crate::libusb_device::LibUsbDevice;
 use crate::usb_transfer::{UsbTransfer, UsbTransferBuffer};
 
 /// DeviceHandle wraps libusb_device_handle.
@@ -36,6 +37,18 @@ impl DeviceHandle {
         DeviceHandle {
             _context: ctx,
             handle,
+        }
+    }
+
+    /// Get corresponding usb device.
+    pub fn get_device(&self) -> LibUsbDevice {
+        // Safe because 'self.handle' is a valid pointer to device handle and libusb_get_device()
+        // always returns a valid device.
+        unsafe {
+            LibUsbDevice::new(
+                self._context.clone(),
+                bindings::libusb_get_device(self.handle),
+            )
         }
     }
 

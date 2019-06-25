@@ -3,11 +3,14 @@
 // found in the LICENSE file.
 
 use std;
-use std::os::raw::{c_short, c_void};
+#[allow(unused_imports)]
+use std::os::raw::{c_long, c_short, c_void};
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
 
 use crate::bindings;
+#[cfg(feature = "sandboxed-libusb")]
+use crate::device_handle::DeviceHandle;
 use crate::error::{Error, Result};
 use crate::hotplug::{hotplug_cb, UsbHotplugHandler, UsbHotplugHandlerHolder};
 use crate::libusb_device::LibUsbDevice;
@@ -66,32 +69,17 @@ impl LibUsbContext {
         })
     }
 
-    /// Create a new jailed LibUsbContext.
     #[cfg(feature = "sandboxed-libusb")]
-    pub fn new_jailed() -> Result<LibUsbContext> {
-        let mut ctx: *mut bindings::libusb_context = std::ptr::null_mut();
-        // Safe because '&mut ctx' points to a valid memory (on stack).
-        try_libusb!(unsafe { bindings::libusb_init_jailed(&mut ctx) });
-        Ok(LibUsbContext {
-            inner: Arc::new(LibUsbContextInner {
-                context: ctx,
-                pollfd_change_handler: Mutex::new(None),
-            }),
-        })
-    }
-
-    /// Build device from File.
-    #[cfg(feature = "sandboxed-libusb")]
-    pub fn get_device_from_fd(&self, fd: std::fs::File) -> Result<LibUsbDevice> {
+    pub fn handle_from_file(&self, f: std::fs::File) -> Result<DeviceHandle> {
         use std::os::unix::io::IntoRawFd;
 
-        let fd = fd.into_raw_fd();
-        let mut device: *mut bindings::libusb_device = std::ptr::null_mut();
-        // Safe because fd is valid and owned, and '&mut device' points to valid memory.
+        let fd = f.into_raw_fd();
+        let mut handle: *mut bindings::libusb_device_handle = std::ptr::null_mut();
+        // Safe because fd is valid and owned, and '&mut handle' points to valid memory.
         try_libusb!(unsafe {
-            bindings::libusb_get_device_from_fd(self.inner.context, fd, &mut device)
+            bindings::libusb_wrap_sys_device(self.inner.context, fd as c_long, &mut handle)
         });
-        unsafe { Ok(LibUsbDevice::new(self.inner.clone(), device)) }
+        unsafe { Ok(DeviceHandle::new(self.inner.clone(), handle)) }
     }
 
     /// Returns a list of USB devices currently attached to the system.

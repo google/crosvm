@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 use std;
-#[cfg(feature = "sandboxed-libusb")]
-use std::os::unix::io::RawFd;
 use std::sync::Arc;
 
 use crate::bindings;
@@ -106,15 +104,5 @@ impl LibUsbDevice {
         try_libusb!(unsafe { bindings::libusb_open(self.device, &mut handle) });
         // Safe because handle points to valid memory.
         Ok(unsafe { DeviceHandle::new(self._context.clone(), handle) })
-    }
-
-    /// Get device handle of this device. Take an external fd. This function is only safe when fd
-    /// is an fd of this usb device.
-    #[cfg(feature = "sandboxed-libusb")]
-    pub unsafe fn open_fd(&self, fd: RawFd) -> Result<DeviceHandle> {
-        let mut handle: *mut bindings::libusb_device_handle = std::ptr::null_mut();
-        // Safe when 'self.device' is constructed from libusb device list and handle is on stack.
-        try_libusb!(bindings::libusb_open_fd(self.device, fd, &mut handle));
-        Ok(DeviceHandle::new(self._context.clone(), handle))
     }
 }

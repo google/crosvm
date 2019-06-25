@@ -8,8 +8,11 @@ use std::os::raw::c_short;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Weak};
 use sys_util::{error, WatchingEvents};
+#[cfg(feature = "sandboxed-libusb")]
+use usb_util::device_handle::DeviceHandle;
 use usb_util::hotplug::UsbHotplugHandler;
 use usb_util::libusb_context::{LibUsbContext, LibUsbPollfdChangeHandler};
+#[cfg(not(feature = "sandboxed-libusb"))]
 use usb_util::libusb_device::LibUsbDevice;
 use vm_control::MaybeOwnedFd;
 
@@ -22,23 +25,8 @@ pub struct Context {
 
 impl Context {
     /// Create a new context.
-    #[cfg(not(feature = "sandboxed-libusb"))]
     pub fn new(event_loop: Arc<EventLoop>) -> Result<Context> {
         let context = LibUsbContext::new().map_err(Error::CreateLibUsbContext)?;
-        let ctx = Context {
-            context: context.clone(),
-            event_loop,
-            event_handler: Arc::new(LibUsbEventHandler {
-                context: context.clone(),
-            }),
-        };
-        ctx.init_event_handler()?;
-        Ok(ctx)
-    }
-
-    #[cfg(feature = "sandboxed-libusb")]
-    pub fn new(event_loop: Arc<EventLoop>) -> Result<Context> {
-        let context = LibUsbContext::new_jailed().map_err(Error::CreateLibUsbContext)?;
         let ctx = Context {
             context: context.clone(),
             event_loop,
@@ -100,9 +88,9 @@ impl Context {
     }
 
     #[cfg(feature = "sandboxed-libusb")]
-    pub fn get_device(&self, fd: std::fs::File) -> Option<LibUsbDevice> {
-        match self.context.get_device_from_fd(fd) {
-            Ok(dev) => Some(dev),
+    pub fn get_device_handle(&self, fd: std::fs::File) -> Option<DeviceHandle> {
+        match self.context.handle_from_file(fd) {
+            Ok(handle) => Some(handle),
             Err(e) => {
                 error!("could not build device from fd: {:?}", e);
                 None

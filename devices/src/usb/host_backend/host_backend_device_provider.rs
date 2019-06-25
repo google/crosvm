@@ -209,9 +209,7 @@ impl ProviderInner {
                         }
                     };
 
-                    let device_fd = usb_file.as_raw_fd();
-
-                    let device = match self.ctx.get_device(usb_file) {
+                    let device_handle = match self.ctx.get_device_handle(usb_file) {
                         Some(d) => d,
                         None => {
                             error!(
@@ -228,22 +226,7 @@ impl ProviderInner {
                         }
                     };
 
-                    let device_handle = {
-                        // This is safe only when fd is an fd of the current device.
-                        match unsafe { device.open_fd(device_fd) } {
-                            Ok(handle) => handle,
-                            Err(e) => {
-                                error!("fail to open device: {:?}", e);
-                                // The send failure will be logged, but event loop still think
-                                // the event is handled.
-                                let _ = self
-                                    .sock
-                                    .send(&UsbControlResult::FailedToOpenDevice)
-                                    .map_err(Error::WriteControlSock);
-                                return Ok(());
-                            }
-                        }
-                    };
+                    let device = device_handle.get_device();
 
                     // Resetting the device is used to make sure it is in a known state, but it may
                     // still function if the reset fails.
