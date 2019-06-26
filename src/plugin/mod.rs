@@ -265,7 +265,7 @@ fn mmap_to_sys_err(e: MmapError) -> SysError {
     }
 }
 
-fn create_plugin_jail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
+fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
     // they run as nobody unless otherwise configured.
     let mut j = Minijail::new().map_err(Error::CreateJail)?;
@@ -287,8 +287,9 @@ fn create_plugin_jail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
     // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP, which will correctly kill
     // the entire plugin process if a worker thread commits a seccomp violation.
     j.set_seccomp_filter_tsync();
-    #[cfg(debug_assertions)]
-    j.log_seccomp_filter_failures();
+    if log_failures {
+        j.log_seccomp_filter_failures();
+    }
     j.parse_seccomp_filters(seccomp_policy)
         .map_err(Error::ParseSeccomp)?;
     j.use_seccomp_filter();
@@ -540,7 +541,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         }
 
         let policy_path = cfg.seccomp_policy_dir.join("plugin.policy");
-        let mut jail = create_plugin_jail(root_path, &policy_path)?;
+        let mut jail = create_plugin_jail(root_path, cfg.seccomp_log_failures, &policy_path)?;
 
         // Update gid map of the jail if caller provided supplemental groups.
         if !cfg.plugin_gid_maps.is_empty() {

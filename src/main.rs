@@ -114,6 +114,7 @@ pub struct Config {
     shared_dirs: Vec<(PathBuf, String)>,
     sandbox: bool,
     seccomp_policy_dir: PathBuf,
+    seccomp_log_failures: bool,
     gpu: bool,
     software_tpm: bool,
     cras_audio: bool,
@@ -158,6 +159,7 @@ impl Default for Config {
             shared_dirs: Vec::new(),
             sandbox: !cfg!(feature = "default-no-sandbox"),
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
+            seccomp_log_failures: false,
             cras_audio: false,
             cras_capture: false,
             null_audio: false,
@@ -597,6 +599,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             // `value` is Some because we are in this match so it's safe to unwrap.
             cfg.seccomp_policy_dir = PathBuf::from(value.unwrap());
         }
+        "seccomp-log-failures" => {
+            cfg.seccomp_log_failures = true;
+        }
         "plugin" => {
             if cfg.executable_path.is_some() {
                 return Err(argument::Error::TooManyArguments(format!(
@@ -856,6 +861,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("shared-dir", "PATH:TAG",
                           "Directory to be shared with a VM as a source:tag pair. Can be given more than once."),
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
+          Argument::flag("seccomp-log-failures", "Instead of seccomp filter failures being fatal, they will be logged instead."),
           #[cfg(feature = "plugin")]
           Argument::value("plugin", "PATH", "Absolute path to plugin process to run under crosvm."),
           #[cfg(feature = "plugin")]

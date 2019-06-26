@@ -270,7 +270,11 @@ impl AsRawFd for TaggedControlSocket {
     }
 }
 
-fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> {
+fn create_base_minijail(
+    root: &Path,
+    log_failures: bool,
+    seccomp_policy: &Path,
+) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
     // they run as nobody unless otherwise configured.
     let mut j = Minijail::new().map_err(Error::DeviceJail)?;
@@ -289,8 +293,9 @@ fn create_base_minijail(root: &Path, seccomp_policy: &Path) -> Result<Minijail> 
     // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP, which will correctly kill
     // the entire device process if a worker thread commits a seccomp violation.
     j.set_seccomp_filter_tsync();
-    #[cfg(debug_assertions)]
-    j.log_seccomp_filter_failures();
+    if log_failures {
+        j.log_seccomp_filter_failures();
+    }
     j.parse_seccomp_filters(seccomp_policy)
         .map_err(Error::DeviceJail)?;
     j.use_seccomp_filter();
@@ -308,7 +313,11 @@ fn simple_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
             return Err(Error::PivotRootDoesntExist(pivot_root));
         }
         let policy_path: PathBuf = cfg.seccomp_policy_dir.join(policy);
-        Ok(Some(create_base_minijail(root_path, &policy_path)?))
+        Ok(Some(create_base_minijail(
+            root_path,
+            cfg.seccomp_log_failures,
+            &policy_path,
+        )?))
     } else {
         Ok(None)
     }
