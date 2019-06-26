@@ -418,7 +418,8 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             syslog::set_proc_name(value.unwrap());
             cfg.syslog_tag = Some(value.unwrap().to_owned());
         }
-        "root" | "disk" | "rwdisk" | "qcow" | "rwqcow" => {
+        "root" | "rwroot" | "disk" | "rwdisk" | "qcow" | "rwqcow" => {
+            let read_only = !name.starts_with("rw");
             let disk_path = PathBuf::from(value.unwrap());
             if !disk_path.exists() {
                 return Err(argument::Error::InvalidValue {
@@ -426,20 +427,21 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     expected: "this disk path does not exist",
                 });
             }
-            if name == "root" {
+            if name.ends_with("root") {
                 if cfg.disks.len() >= 26 {
                     return Err(argument::Error::TooManyArguments(
                         "ran out of letters for to assign to root disk".to_owned(),
                     ));
                 }
                 cfg.params.push(format!(
-                    "root=/dev/vd{} ro",
-                    char::from(b'a' + cfg.disks.len() as u8)
+                    "root=/dev/vd{} {}",
+                    char::from(b'a' + cfg.disks.len() as u8),
+                    if read_only { "ro" } else { "rw" }
                 ));
             }
             cfg.disks.push(DiskOption {
                 path: disk_path,
-                read_only: !name.starts_with("rw"),
+                read_only,
             });
         }
         "pmem-device" | "rw-pmem-device" => {
@@ -817,6 +819,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                                 "root",
                                 "PATH",
                                 "Path to a root disk image. Like `--disk` but adds appropriate kernel command line option."),
+          Argument::value("rwroot", "PATH", "Path to a writable root disk image."),
           Argument::short_value('d', "disk", "PATH", "Path to a disk image."),
           Argument::value("qcow", "PATH", "Path to a qcow2 disk image. (Deprecated; use --disk instead.)"),
           Argument::value("rwdisk", "PATH", "Path to a writable disk image."),
