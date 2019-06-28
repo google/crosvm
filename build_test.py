@@ -26,16 +26,30 @@ AARCH64_TRIPLE = os.getenv('AARCH64_TRIPLE', 'aarch64-cros-linux-gnu')
 X86_64_TRIPLE = os.getenv('X86_64_TRIPLE', 'x86_64-cros-linux-gnu')
 
 TEST_MODULES_PARALLEL = [
+    'arch',
+    'assertions',
+    'bit_field',
     'crosvm',
     'data_model',
+    'devices',
+    'enumn',
+    'kernel_cmdline',
     'kernel_loader',
     'kvm',
     'kvm_sys',
+    'msg_socket',
     'net_sys',
     'net_util',
+    'qcow',
+    'qcow_utils',
+    'rand_ish',
+    'resources',
+    'sync',
     'syscall_defines',
+    'tpm2',
     'vhost',
     'virtio_sys',
+    'vm_control',
     'x86_64',
 ]
 
