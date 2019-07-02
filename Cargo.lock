@@ -85,6 +85,7 @@ dependencies = [
  "crosvm_plugin 0.17.0",
  "data_model 0.1.0",
  "devices 0.1.0",
+ "disk 0.1.0",
  "enumn 0.1.0",
  "gpu_buffer 0.1.0",
  "io_jail 0.1.0",
@@ -137,6 +138,7 @@ dependencies = [
  "audio_streams 0.1.0",
  "bit_field 0.1.0",
  "data_model 0.1.0",
+ "disk 0.1.0",
  "enumn 0.1.0",
  "gpu_buffer 0.1.0",
  "gpu_display 0.1.0",
@@ -160,6 +162,16 @@ dependencies = [
  "vhost 0.1.0",
  "virtio_sys 0.1.0",
  "vm_control 0.1.0",
+]
+
+[[package]]
+name = "disk"
+version = "0.1.0"
+dependencies = [
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qcow 0.1.0",
+ "remain 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sys_util 0.1.0",
 ]
 
 [[package]]
@@ -397,6 +409,7 @@ dependencies = [
 name = "qcow_utils"
 version = "0.1.0"
 dependencies = [
+ "disk 0.1.0",
  "getopts 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "qcow 0.1.0",

@@ -1,20 +1,14 @@
 [package]
-name = "qcow_utils"
+name = "disk"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [lib]
-path = "src/qcow_utils.rs"
-crate-type = ["cdylib"]
-
-[[bin]]
-name = "qcow_img"
-path = "src/qcow_img.rs"
+path = "src/disk.rs"
 
 [dependencies]
-getopts = "*"
 libc = "*"
-disk = { path = "../disk" }
+remain = "*"
 qcow = { path = "../qcow" }
 sys_util = { path = "../sys_util" }

@@ -13,7 +13,8 @@ use std::os::raw::{c_char, c_int};
 use std::os::unix::io::FromRawFd;
 use std::panic::catch_unwind;
 
-use qcow::{ImageType, QcowFile};
+use disk::ImageType;
+use qcow::QcowFile;
 use sys_util::{flock, FileSetLen, FlockOperation};
 
 trait DiskFile: FileSetLen + Seek {}
@@ -71,7 +72,7 @@ pub unsafe extern "C" fn expand_disk_image(path: *const c_char, virtual_size: u6
         return -EIO;
     }
 
-    let image_type = match qcow::detect_image_type(&raw_image) {
+    let image_type = match disk::detect_image_type(&raw_image) {
         Ok(t) => t,
         Err(_) => return -EINVAL,
     };
@@ -120,7 +121,7 @@ pub unsafe extern "C" fn convert_to_qcow2(src_fd: c_int, dst_fd: c_int) -> c_int
     match (src_file_owned, dst_file_owned) {
         (Ok(src_file), Ok(dst_file)) => {
             catch_unwind(
-                || match qcow::convert(src_file, dst_file, ImageType::Qcow2) {
+                || match disk::convert(src_file, dst_file, ImageType::Qcow2) {
                     Ok(_) => 0,
                     Err(_) => -EIO,
                 },
@@ -145,7 +146,7 @@ pub unsafe extern "C" fn convert_to_raw(src_fd: c_int, dst_fd: c_int) -> c_int {
 
     match (src_file_owned, dst_file_owned) {
         (Ok(src_file), Ok(dst_file)) => {
-            catch_unwind(|| match qcow::convert(src_file, dst_file, ImageType::Raw) {
+            catch_unwind(|| match disk::convert(src_file, dst_file, ImageType::Raw) {
                 Ok(_) => 0,
                 Err(_) => -EIO,
             })

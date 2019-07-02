@@ -13,16 +13,13 @@ use std::thread;
 use std::time::Duration;
 use std::u32;
 
+use data_model::{DataInit, Le16, Le32, Le64};
+use disk::DiskFile;
+use msg_socket::{MsgReceiver, MsgSender};
 use sync::Mutex;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
-use sys_util::{
-    error, info, warn, EventFd, FileReadWriteVolatile, FileSetLen, FileSync, GuestMemory,
-    PollContext, PollToken, PunchHole, TimerFd, WriteZeroes,
-};
-
-use data_model::{DataInit, Le16, Le32, Le64};
-use msg_socket::{MsgReceiver, MsgSender};
+use sys_util::{error, info, warn, EventFd, GuestMemory, PollContext, PollToken, TimerFd};
 use vm_control::{DiskControlCommand, DiskControlResponseSocket, DiskControlResult};
 
 use super::{
@@ -128,15 +125,6 @@ const VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP: u32 = 1 << 0;
 
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_blk_discard_write_zeroes {}
-
-pub trait DiskFile:
-    FileSetLen + FileSync + FileReadWriteVolatile + PunchHole + Seek + WriteZeroes
-{
-}
-impl<D: FileSetLen + FileSync + PunchHole + FileReadWriteVolatile + Seek + WriteZeroes> DiskFile
-    for D
-{
-}
 
 #[derive(Debug)]
 enum ExecuteError {
@@ -275,10 +263,10 @@ impl ExecuteError {
     }
 }
 
-struct Worker<T: DiskFile> {
+struct Worker {
     queues: Vec<Queue>,
     mem: GuestMemory,
-    disk_image: T,
+    disk_image: Box<dyn DiskFile>,
     disk_size: Arc<Mutex<u64>>,
     read_only: bool,
     interrupt_status: Arc<AtomicUsize>,
@@ -286,7 +274,7 @@ struct Worker<T: DiskFile> {
     interrupt_resample_evt: EventFd,
 }
 
-impl<T: DiskFile> Worker<T> {
+impl Worker {
     fn process_queue(
         &mut self,
         queue_index: usize,
@@ -305,7 +293,7 @@ impl<T: DiskFile> Worker<T> {
             let status = match Block::execute_request(
                 avail_desc,
                 self.read_only,
-                &mut self.disk_image,
+                &mut *self.disk_image,
                 *disk_size,
                 flush_timer,
                 flush_timer_armed,
@@ -480,9 +468,9 @@ impl<T: DiskFile> Worker<T> {
 }
 
 /// Virtio device for exposing block level read/write operations on a host file.
-pub struct Block<T: DiskFile> {
+pub struct Block {
     kill_evt: Option<EventFd>,
-    disk_image: Option<T>,
+    disk_image: Option<Box<dyn DiskFile>>,
     disk_size: Arc<Mutex<u64>>,
     avail_features: u64,
     read_only: bool,
@@ -504,15 +492,15 @@ fn build_config_space(disk_size: u64) -> virtio_blk_config {
     }
 }
 
-impl<T: DiskFile> Block<T> {
+impl Block {
     /// Create a new virtio block device that operates on the given file.
     ///
     /// The given file must be seekable and sizable.
     pub fn new(
-        mut disk_image: T,
+        mut disk_image: Box<dyn DiskFile>,
         read_only: bool,
         control_socket: Option<DiskControlResponseSocket>,
-    ) -> SysResult<Block<T>> {
+    ) -> SysResult<Block> {
         let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
         if disk_size % SECTOR_SIZE != 0 {
             warn!(
@@ -545,7 +533,7 @@ impl<T: DiskFile> Block<T> {
     fn execute_request(
         avail_desc: DescriptorChain,
         read_only: bool,
-        disk: &mut T,
+        disk: &mut DiskFile,
         disk_size: u64,
         flush_timer: &mut TimerFd,
         flush_timer_armed: &mut bool,
@@ -705,7 +693,7 @@ impl<T: DiskFile> Block<T> {
     }
 }
 
-impl<T: DiskFile> Drop for Block<T> {
+impl Drop for Block {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
@@ -714,7 +702,7 @@ impl<T: DiskFile> Drop for Block<T> {
     }
 }
 
-impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
+impl VirtioDevice for Block {
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut keep_fds = Vec::new();
 
@@ -820,7 +808,7 @@ mod tests {
         let f = File::create(&path).unwrap();
         f.set_len(0x1000).unwrap();
 
-        let b = Block::new(f, true, None).unwrap();
+        let b = Block::new(Box::new(f), true, None).unwrap();
         let mut num_sectors = [0u8; 4];
         b.read_config(0, &mut num_sectors);
         // size is 0x1000, so num_sectors is 8 (4096/512).
@@ -840,7 +828,7 @@ mod tests {
         // read-write block device
         {
             let f = File::create(&path).unwrap();
-            let b = Block::new(f, false, None).unwrap();
+            let b = Block::new(Box::new(f), false, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
             assert_eq!(0x100006240, b.features());
@@ -849,7 +837,7 @@ mod tests {
         // read-only block device
         {
             let f = File::create(&path).unwrap();
-            let b = Block::new(f, true, None).unwrap();
+            let b = Block::new(Box::new(f), true, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
             assert_eq!(0x100000260, b.features());

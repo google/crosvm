@@ -304,12 +304,12 @@ fn convert(src_path: &str, dst_path: &str) -> std::result::Result<(), ()> {
     };
 
     let dst_type = if dst_path.ends_with("qcow2") {
-        qcow::ImageType::Qcow2
+        disk::ImageType::Qcow2
     } else {
-        qcow::ImageType::Raw
+        disk::ImageType::Raw
     };
 
-    match qcow::convert(src_file, dst_file, dst_type) {
+    match disk::convert(src_file, dst_file, dst_type) {
         Ok(_) => {
             println!("Converted {} to {}", src_path, dst_path);
             Ok(())

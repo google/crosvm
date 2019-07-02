@@ -15,6 +15,7 @@ x = ["gpu_display/x"]
 audio_streams = "*"
 bit_field = { path = "../bit_field" }
 data_model = { path = "../data_model" }
+disk = { path = "../disk" }
 enumn = { path = "../enumn" }
 gpu_buffer = { path = "../gpu_buffer", optional = true }
 gpu_display = { path = "../gpu_display", optional = true }

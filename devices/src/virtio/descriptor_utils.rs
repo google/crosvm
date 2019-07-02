@@ -281,9 +281,9 @@ impl<'a> Reader<'a> {
     /// Returns the number of bytes read from the descriptor chain buffer.
     /// The number of bytes read can be less than `count` if there isn't
     /// enough data in the descriptor chain buffer.
-    pub fn read_to_volatile(
+    pub fn read_to_volatile<T: FileReadWriteVolatile + ?Sized>(
         &mut self,
-        dst: &mut dyn FileReadWriteVolatile,
+        dst: &mut T,
         count: usize,
     ) -> Result<usize> {
         let mem = self.mem;
@@ -399,9 +399,9 @@ impl<'a> Writer<'a> {
     /// Returns the number of bytes written to the descriptor chain buffer.
     /// The number of bytes written can be less than `count` if
     /// there isn't enough data in the descriptor chain buffer.
-    pub fn write_from_volatile(
+    pub fn write_from_volatile<T: FileReadWriteVolatile + ?Sized>(
         &mut self,
-        src: &mut dyn FileReadWriteVolatile,
+        src: &mut T,
         count: usize,
     ) -> Result<usize> {
         let mem = self.mem;

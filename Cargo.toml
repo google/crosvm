@@ -45,6 +45,7 @@ bit_field = { path = "bit_field" }
 crosvm_plugin = { path = "crosvm_plugin", optional = true }
 data_model = "*"
 devices = { path = "devices" }
+disk = { path = "disk" }
 enumn = { path = "enumn" }
 gpu_buffer = { path = "gpu_buffer", optional = true }
 io_jail = { path = "io_jail" }
