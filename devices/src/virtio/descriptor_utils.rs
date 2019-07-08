@@ -4,7 +4,6 @@
 
 use std::cmp;
 use std::io;
-use std::mem;
 use std::os::unix::io::AsRawFd;
 
 use data_model::DataInit;
@@ -171,9 +170,8 @@ impl<'a> Reader<'a> {
     }
 
     /// Reads an object from the descriptor chain buffer.
-    pub fn read_obj<T: DataInit>(&mut self) -> Result<T> {
-        // Safe because DataInit types are safe to initialize from raw data.
-        let mut object: T = unsafe { mem::uninitialized() };
+    pub fn read_obj<T: DataInit + Default>(&mut self) -> Result<T> {
+        let mut object: T = Default::default();
         self.read_exact(object.as_mut_slice()).map(|_| object)
     }
 
