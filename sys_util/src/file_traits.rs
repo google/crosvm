@@ -4,7 +4,7 @@
 
 use std::fs::File;
 use std::io::{Error, ErrorKind, Result};
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 
 use data_model::VolatileSlice;
 
@@ -115,5 +115,19 @@ impl FileReadWriteVolatile for File {
         } else {
             Err(Error::last_os_error())
         }
+    }
+}
+
+/// A trait similar to `AsRawFd` but supports an arbitrary number of file descriptors.
+pub trait AsRawFds {
+    fn as_raw_fds(&self) -> Vec<RawFd>;
+}
+
+impl<T> AsRawFds for T
+where
+    T: AsRawFd,
+{
+    fn as_raw_fds(&self) -> Vec<RawFd> {
+        vec![self.as_raw_fd()]
     }
 }

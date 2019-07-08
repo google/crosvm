@@ -707,7 +707,7 @@ impl VirtioDevice for Block {
         let mut keep_fds = Vec::new();
 
         if let Some(disk_image) = &self.disk_image {
-            keep_fds.push(disk_image.as_raw_fd());
+            keep_fds.extend(disk_image.as_raw_fds());
         }
 
         if let Some(control_socket) = &self.control_socket {

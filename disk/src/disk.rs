@@ -6,12 +6,13 @@ use std::cmp::min;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::os::unix::io::AsRawFd;
 
 use libc::EINVAL;
 use qcow::{QcowFile, QCOW_MAGIC};
 use remain::sorted;
-use sys_util::{FileReadWriteVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes};
+use sys_util::{
+    AsRawFds, FileReadWriteVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes,
+};
 
 #[sorted]
 #[derive(Debug)]
@@ -30,7 +31,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// The prerequisites necessary to support a block device.
 pub trait DiskFile:
-    FileSetLen + FileSync + FileReadWriteVolatile + PunchHole + Seek + WriteZeroes + Send + AsRawFd
+    FileSetLen + FileSync + FileReadWriteVolatile + PunchHole + Seek + WriteZeroes + Send + AsRawFds
 {
 }
 impl<
@@ -41,7 +42,7 @@ impl<
             + Seek
             + WriteZeroes
             + Send
-            + AsRawFd,
+            + AsRawFds,
     > DiskFile for D
 {
 }
