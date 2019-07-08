@@ -14,10 +14,18 @@ use sys_util::{
     AsRawFds, FileReadWriteVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes,
 };
 
+#[cfg(feature = "composite-disk")]
+mod composite;
+#[cfg(feature = "composite-disk")]
+use composite::{CompositeDiskFile, CDISK_MAGIC, CDISK_MAGIC_LEN};
+
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
     BlockDeviceNew(sys_util::Error),
+    ConversionNotSupported,
+    #[cfg(feature = "composite-disk")]
+    CreateCompositeDisk(composite::Error),
     QcowError(qcow::Error),
     ReadingData(io::Error),
     ReadingHeader(io::Error),
@@ -55,6 +63,9 @@ impl Display for Error {
         #[sorted]
         match self {
             BlockDeviceNew(e) => write!(f, "failed to create block device: {}", e),
+            ConversionNotSupported => write!(f, "requested file conversion not supported"),
+            #[cfg(feature = "composite-disk")]
+            CreateCompositeDisk(e) => write!(f, "failure in composite disk: {}", e),
             QcowError(e) => write!(f, "failure in qcow: {}", e),
             ReadingData(e) => write!(f, "failed to read data: {}", e),
             ReadingHeader(e) => write!(f, "failed to read header: {}", e),
@@ -71,6 +82,7 @@ impl Display for Error {
 pub enum ImageType {
     Raw,
     Qcow2,
+    CompositeDisk,
 }
 
 fn convert_copy<R, W>(reader: &mut R, writer: &mut W, offset: u64, size: u64) -> Result<()>
@@ -159,6 +171,7 @@ where
                 .map_err(Error::SettingFileSize)?;
             convert_reader_writer(reader, &mut dst_writer, src_size)
         }
+        _ => Err(Error::ConversionNotSupported),
     }
 }
 
@@ -177,6 +190,8 @@ pub fn convert(src_file: File, dst_file: File, dst_type: ImageType) -> Result<()
             let mut src_reader = src_file;
             convert_reader(&mut src_reader, dst_file, dst_type)
         }
+        // TODO(schuffelen): Implement Read + Write + SeekHole for CompositeDiskFile
+        _ => Err(Error::ConversionNotSupported),
     }
 }
 
@@ -188,6 +203,18 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
     let mut magic = [0u8; 4];
     f.read_exact(&mut magic).map_err(Error::ReadingHeader)?;
     let magic = u32::from_be_bytes(magic);
+    #[cfg(feature = "composite-disk")]
+    {
+        f.seek(SeekFrom::Start(0)).map_err(Error::SeekingFile)?;
+        let mut cdisk_magic = [0u8; CDISK_MAGIC_LEN];
+        f.read_exact(&mut cdisk_magic[..])
+            .map_err(Error::ReadingHeader)?;
+        if cdisk_magic == CDISK_MAGIC.as_bytes() {
+            f.seek(SeekFrom::Start(orig_seek))
+                .map_err(Error::SeekingFile)?;
+            return Ok(ImageType::CompositeDisk);
+        }
+    }
     let image_type = if magic == QCOW_MAGIC {
         ImageType::Qcow2
     } else {
@@ -206,5 +233,13 @@ pub fn create_disk_file(raw_image: File) -> Result<Box<dyn DiskFile>> {
         ImageType::Qcow2 => {
             Box::new(QcowFile::from(raw_image).map_err(Error::QcowError)?) as Box<dyn DiskFile>
         }
+        #[cfg(feature = "composite-disk")]
+        ImageType::CompositeDisk => {
+            // Valid composite disk header present
+            Box::new(CompositeDiskFile::from_file(raw_image).map_err(Error::CreateCompositeDisk)?)
+                as Box<dyn DiskFile>
+        }
+        #[cfg(not(feature = "composite-disk"))]
+        ImageType::CompositeDisk => return Err(Error::UnknownType),
     })
 }

@@ -37,6 +37,7 @@ tpm = ["devices/tpm"]
 wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
 x = ["devices/x"]
 virtio-gpu-next = ["gpu_renderer/virtio-gpu-next"]
+composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
 
 [dependencies]
 arch = { path = "arch" }

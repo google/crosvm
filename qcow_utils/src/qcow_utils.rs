@@ -83,6 +83,7 @@ pub unsafe extern "C" fn expand_disk_image(path: *const c_char, virtual_size: u6
             Ok(f) => Box::new(f),
             Err(_) => return -EINVAL,
         },
+        _ => return -EINVAL,
     };
 
     // For safety against accidentally shrinking the disk image due to a

@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+enum ReadWriteCapability {
+  READ_ONLY = 0;
+  READ_WRITE = 1;
+}
+
+message ComponentDisk {
+  string file_path = 1;
+  uint64 offset = 2;
+  ReadWriteCapability read_write_capability = 3;
+}
+
+message CompositeDisk {
+  uint64 version = 1;
+  repeated ComponentDisk component_disks = 2;
+  uint64 length = 3;
+};

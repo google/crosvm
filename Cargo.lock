@@ -171,7 +171,10 @@ dependencies = [
 name = "disk"
 version = "0.1.0"
 dependencies = [
+ "data_model 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
+ "protobuf 2.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "protos 0.1.0",
  "qcow 0.1.0",
  "remain 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
