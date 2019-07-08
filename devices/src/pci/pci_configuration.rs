@@ -25,6 +25,7 @@ const CAPABILITY_MAX_OFFSET: usize = 192;
 const INTERRUPT_LINE_PIN_REG: usize = 15;
 
 /// Represents the types of PCI headers allowed in the configuration registers.
+#[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub enum PciHeaderType {
     Device,
