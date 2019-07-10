@@ -7,34 +7,158 @@ use data_model::DataInit;
 
 use std::mem::size_of;
 
-use crate::bindings;
-
-/// Speed of usb device. See usb spec for more details.
-#[derive(Debug)]
-pub enum Speed {
-    /// The OS doesn't report or know the device speed.
-    Unknown,
-    /// The device is operating at low speed (1.5MBit/s).
-    Low,
-    /// The device is operating at full speed (12MBit/s).
-    Full,
-    /// The device is operating at high speed (480MBit/s).
-    High,
-    /// The device is operating at super speed (5000MBit/s).
-    Super,
+/// Standard USB descriptor types.
+pub enum DescriptorType {
+    Device = 0x01,
+    Configuration = 0x02,
+    Interface = 0x04,
+    Endpoint = 0x05,
 }
 
-impl From<bindings::libusb_speed> for Speed {
-    fn from(speed: bindings::libusb_speed) -> Speed {
-        match speed {
-            bindings::LIBUSB_SPEED_LOW => Speed::Low,
-            bindings::LIBUSB_SPEED_FULL => Speed::Full,
-            bindings::LIBUSB_SPEED_HIGH => Speed::High,
-            bindings::LIBUSB_SPEED_SUPER => Speed::Super,
-            _ => Speed::Unknown,
-        }
+/// Trait describing USB descriptors.
+pub trait Descriptor {
+    /// Get the expected bDescriptorType value for this type of descriptor.
+    fn descriptor_type() -> DescriptorType;
+}
+
+/// Standard USB descriptor header common to all descriptor types.
+#[allow(non_snake_case)]
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C, packed)]
+pub struct DescriptorHeader {
+    pub bLength: u8,
+    pub bDescriptorType: u8,
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for DescriptorHeader {}
+
+fn _assert_descriptor_header() {
+    const_assert!(size_of::<DescriptorHeader>() == 2);
+}
+
+/// Standard USB device descriptor as defined in USB 2.0 chapter 9,
+/// not including the standard header.
+#[allow(non_snake_case)]
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C, packed)]
+pub struct DeviceDescriptor {
+    pub bcdUSB: u16,
+    pub bDeviceClass: u8,
+    pub bDeviceSubClass: u8,
+    pub bDeviceProtocol: u8,
+    pub bMaxPacketSize0: u8,
+    pub idVendor: u16,
+    pub idProduct: u16,
+    pub bcdDevice: u16,
+    pub iManufacturer: u8,
+    pub iProduct: u8,
+    pub iSerialNumber: u8,
+    pub bNumConfigurations: u8,
+}
+
+impl Descriptor for DeviceDescriptor {
+    fn descriptor_type() -> DescriptorType {
+        DescriptorType::Device
     }
 }
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for DeviceDescriptor {}
+
+fn _assert_device_descriptor() {
+    const_assert!(size_of::<DeviceDescriptor>() == 18 - 2);
+}
+
+/// Standard USB configuration descriptor as defined in USB 2.0 chapter 9,
+/// not including the standard header.
+#[allow(non_snake_case)]
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C, packed)]
+pub struct ConfigDescriptor {
+    pub wTotalLength: u16,
+    pub bNumInterfaces: u8,
+    pub bConfigurationValue: u8,
+    pub iConfiguration: u8,
+    pub bmAttributes: u8,
+    pub bMaxPower: u8,
+}
+
+impl Descriptor for ConfigDescriptor {
+    fn descriptor_type() -> DescriptorType {
+        DescriptorType::Configuration
+    }
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for ConfigDescriptor {}
+
+fn _assert_config_descriptor() {
+    const_assert!(size_of::<ConfigDescriptor>() == 9 - 2);
+}
+
+impl ConfigDescriptor {
+    pub fn num_interfaces(&self) -> u8 {
+        self.bNumInterfaces
+    }
+}
+
+/// Standard USB interface descriptor as defined in USB 2.0 chapter 9,
+/// not including the standard header.
+#[allow(non_snake_case)]
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C, packed)]
+pub struct InterfaceDescriptor {
+    pub bInterfaceNumber: u8,
+    pub bAlternateSetting: u8,
+    pub bNumEndpoints: u8,
+    pub bInterfaceClass: u8,
+    pub bInterfaceSubClass: u8,
+    pub bInterfaceProtocol: u8,
+    pub iInterface: u8,
+}
+
+impl Descriptor for InterfaceDescriptor {
+    fn descriptor_type() -> DescriptorType {
+        DescriptorType::Interface
+    }
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for InterfaceDescriptor {}
+
+fn _assert_interface_descriptor() {
+    const_assert!(size_of::<InterfaceDescriptor>() == 9 - 2);
+}
+
+/// Standard USB endpoint descriptor as defined in USB 2.0 chapter 9,
+/// not including the standard header.
+#[allow(non_snake_case)]
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C, packed)]
+pub struct EndpointDescriptor {
+    pub bEndpointAddress: u8,
+    pub bmAttributes: u8,
+    pub wMaxPacketSize: u16,
+    pub bInterval: u8,
+}
+
+impl Descriptor for EndpointDescriptor {
+    fn descriptor_type() -> DescriptorType {
+        DescriptorType::Endpoint
+    }
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for EndpointDescriptor {}
+
+fn _assert_endpoint_descriptor() {
+    const_assert!(size_of::<EndpointDescriptor>() == 7 - 2);
+}
+
+const ENDPOINT_DESCRIPTOR_DIRECTION_MASK: u8 = 1 << 7;
+const ENDPOINT_DESCRIPTOR_NUMBER_MASK: u8 = 0xf;
+const ENDPOINT_DESCRIPTOR_ATTRIBUTES_TYPE_MASK: u8 = 0x3;
 
 /// Endpoint types.
 #[derive(PartialEq)]
@@ -53,6 +177,35 @@ pub enum EndpointDirection {
 }
 /// Endpoint direction offset.
 pub const ENDPOINT_DIRECTION_OFFSET: u8 = 7;
+
+impl EndpointDescriptor {
+    // Get direction of this endpoint.
+    pub fn get_direction(&self) -> EndpointDirection {
+        let direction = self.bEndpointAddress & ENDPOINT_DESCRIPTOR_DIRECTION_MASK;
+        if direction != 0 {
+            EndpointDirection::DeviceToHost
+        } else {
+            EndpointDirection::HostToDevice
+        }
+    }
+
+    // Get endpoint number.
+    pub fn get_endpoint_number(&self) -> u8 {
+        self.bEndpointAddress & ENDPOINT_DESCRIPTOR_NUMBER_MASK
+    }
+
+    // Get endpoint type.
+    pub fn get_endpoint_type(&self) -> Option<EndpointType> {
+        let ep_type = self.bmAttributes & ENDPOINT_DESCRIPTOR_ATTRIBUTES_TYPE_MASK;
+        match ep_type {
+            0 => Some(EndpointType::Control),
+            1 => Some(EndpointType::Isochronous),
+            2 => Some(EndpointType::Bulk),
+            3 => Some(EndpointType::Interrupt),
+            _ => None,
+        }
+    }
+}
 
 /// Offset of data phase transfer direction.
 pub const DATA_PHASE_DIRECTION_OFFSET: u8 = 7;
@@ -118,7 +271,7 @@ pub struct UsbRequestSetup {
     pub length: u16,      // wLength
 }
 
-fn _assert() {
+fn _assert_usb_request_setup() {
     const_assert!(size_of::<UsbRequestSetup>() == 8);
 }
 
@@ -192,5 +345,57 @@ impl UsbRequestSetup {
             0x12 => Some(StandardControlRequest::SynchFrame),
             _ => None,
         }
+    }
+}
+
+/// Construct a bmRequestType value for a control request.
+pub fn control_request_type(
+    type_: ControlRequestType,
+    dir: ControlRequestDataPhaseTransferDirection,
+    recipient: ControlRequestRecipient,
+) -> u8 {
+    ((type_ as u8) << CONTROL_REQUEST_TYPE_OFFSET)
+        | ((dir as u8) << DATA_PHASE_DIRECTION_OFFSET)
+        | (recipient as u8)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn control_request_types() {
+        assert_eq!(
+            control_request_type(
+                ControlRequestType::Standard,
+                ControlRequestDataPhaseTransferDirection::HostToDevice,
+                ControlRequestRecipient::Device
+            ),
+            0b0_00_00000
+        );
+        assert_eq!(
+            control_request_type(
+                ControlRequestType::Standard,
+                ControlRequestDataPhaseTransferDirection::DeviceToHost,
+                ControlRequestRecipient::Device
+            ),
+            0b1_00_00000
+        );
+        assert_eq!(
+            control_request_type(
+                ControlRequestType::Standard,
+                ControlRequestDataPhaseTransferDirection::HostToDevice,
+                ControlRequestRecipient::Interface
+            ),
+            0b0_00_00001
+        );
+        assert_eq!(
+            control_request_type(
+                ControlRequestType::Class,
+                ControlRequestDataPhaseTransferDirection::HostToDevice,
+                ControlRequestRecipient::Device
+            ),
+            0b0_01_00000
+        );
     }
 }

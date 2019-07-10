@@ -17,8 +17,7 @@ use std::mem;
 use std::sync::{Arc, Weak};
 use sync::Mutex;
 use sys_util::{error, Error as SysError, EventFd, GuestMemory};
-use usb_util::types::UsbRequestSetup;
-use usb_util::usb_transfer::TransferStatus;
+use usb_util::{TransferStatus, UsbRequestSetup};
 
 #[derive(Debug)]
 pub enum Error {
@@ -67,7 +66,7 @@ pub enum XhciTransferState {
     /// When transfer is submitted, it will contain a transfer callback, which should be invoked
     /// when the transfer is cancelled.
     Submitted {
-        cancel_callback: Box<dyn FnMut() + Send>,
+        cancel_callback: Box<dyn FnOnce() + Send>,
     },
     Cancelling,
     Cancelled,
@@ -78,9 +77,7 @@ impl XhciTransferState {
     /// Try to cancel this transfer, if it's possible.
     pub fn try_cancel(&mut self) {
         match mem::replace(self, XhciTransferState::Created) {
-            XhciTransferState::Submitted {
-                mut cancel_callback,
-            } => {
+            XhciTransferState::Submitted { cancel_callback } => {
                 *self = XhciTransferState::Cancelling;
                 cancel_callback();
             }

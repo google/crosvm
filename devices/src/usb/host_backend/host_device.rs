@@ -4,7 +4,6 @@
 
 use std::mem::drop;
 use std::sync::Arc;
-use sync::Mutex;
 
 use super::error::*;
 use super::usb_endpoint::UsbEndpoint;
@@ -14,17 +13,14 @@ use crate::usb::xhci::xhci_backend_device::{BackendType, UsbDeviceAddress, XhciB
 use crate::usb::xhci::xhci_transfer::{XhciTransfer, XhciTransferState, XhciTransferType};
 use crate::utils::AsyncJobQueue;
 use crate::utils::FailHandle;
+use data_model::DataInit;
 use std::collections::HashMap;
+use std::mem;
+use sync::Mutex;
 use sys_util::{error, warn};
-use usb_util::device_handle::DeviceHandle;
-use usb_util::error::Error as LibUsbError;
-use usb_util::libusb_device::LibUsbDevice;
-use usb_util::types::{
-    ControlRequestDataPhaseTransferDirection, ControlRequestRecipient, StandardControlRequest,
-    UsbRequestSetup,
-};
-use usb_util::usb_transfer::{
-    control_transfer, ControlTransferBuffer, TransferStatus, UsbTransfer,
+use usb_util::{
+    ConfigDescriptorTree, ControlRequestDataPhaseTransferDirection, ControlRequestRecipient,
+    Device, StandardControlRequest, Transfer, TransferStatus, UsbRequestSetup,
 };
 
 #[derive(PartialEq)]
@@ -43,11 +39,10 @@ pub struct HostDevice {
     // Endpoints only contains data endpoints (1 to 30). Control transfers are handled at device
     // level.
     endpoints: Vec<UsbEndpoint>,
-    device: LibUsbDevice,
-    device_handle: Arc<Mutex<DeviceHandle>>,
+    device: Arc<Mutex<Device>>,
     ctl_ep_state: ControlEndpointState,
-    alt_settings: HashMap<u16, u16>,
-    claimed_interfaces: Vec<i32>,
+    alt_settings: HashMap<u8, u8>,
+    claimed_interfaces: Vec<u8>,
     control_request_setup: UsbRequestSetup,
     executed: bool,
     job_queue: Arc<AsyncJobQueue>,
@@ -64,14 +59,12 @@ impl HostDevice {
     pub fn new(
         fail_handle: Arc<dyn FailHandle>,
         job_queue: Arc<AsyncJobQueue>,
-        device: LibUsbDevice,
-        device_handle: DeviceHandle,
+        device: Arc<Mutex<Device>>,
     ) -> HostDevice {
         HostDevice {
             fail_handle,
             endpoints: vec![],
             device,
-            device_handle: Arc::new(Mutex::new(device_handle)),
             ctl_ep_state: ControlEndpointState::SetupStage,
             alt_settings: HashMap::new(),
             claimed_interfaces: vec![],
@@ -79,30 +72,6 @@ impl HostDevice {
             executed: false,
             job_queue,
         }
-    }
-
-    fn get_interface_number_of_active_config(&self) -> i32 {
-        match self.device.get_active_config_descriptor() {
-            Err(LibUsbError::NotFound) => {
-                usb_debug!("device is in unconfigured state");
-                0
-            }
-            Err(e) => {
-                // device might be disconnected now.
-                error!("unexpected error: {:?}", e);
-                0
-            }
-            Ok(descriptor) => descriptor.bNumInterfaces as i32,
-        }
-    }
-
-    fn release_interfaces(&mut self) {
-        for i in &self.claimed_interfaces {
-            if let Err(e) = self.device_handle.lock().release_interface(*i) {
-                error!("could not release interface: {:?}", e);
-            }
-        }
-        self.claimed_interfaces = Vec::new();
     }
 
     // Check for requests that should be intercepted and emulated using libusb
@@ -167,20 +136,34 @@ impl HostDevice {
         xhci_transfer: Arc<XhciTransfer>,
         buffer: Option<ScatterGatherBuffer>,
     ) -> Result<()> {
-        let mut control_transfer = control_transfer(0);
-        control_transfer
-            .buffer_mut()
-            .set_request_setup(&self.control_request_setup);
-
         if self.intercepted_control_transfer(&xhci_transfer)? {
             return Ok(());
         }
+
+        // Default buffer size for control data transfer.
+        const CONTROL_DATA_BUFFER_SIZE: usize = 1024;
+
+        // Buffer type for control transfer. The first 8 bytes is a UsbRequestSetup struct.
+        #[derive(Copy, Clone)]
+        #[repr(C, packed)]
+        struct ControlTransferBuffer {
+            pub setup: UsbRequestSetup,
+            pub data: [u8; CONTROL_DATA_BUFFER_SIZE],
+        }
+
+        // Safe because it only has data and has no implicit padding.
+        unsafe impl DataInit for ControlTransferBuffer {}
+
+        let mut control_request = ControlTransferBuffer {
+            setup: self.control_request_setup,
+            data: [0; CONTROL_DATA_BUFFER_SIZE],
+        };
 
         let direction = self.control_request_setup.get_direction();
         let buffer = if direction == ControlRequestDataPhaseTransferDirection::HostToDevice {
             if let Some(buffer) = buffer {
                 buffer
-                    .read(&mut control_transfer.buffer_mut().data_buffer)
+                    .read(&mut control_request.data)
                     .map_err(Error::ReadBuffer)?;
             }
             // buffer is consumed here for HostToDevice transfers.
@@ -190,8 +173,13 @@ impl HostDevice {
             buffer
         };
 
+        let control_buffer = control_request.as_slice().to_vec();
+
+        let mut control_transfer =
+            Transfer::new_control(control_buffer).map_err(Error::CreateTransfer)?;
+
         let tmp_transfer = xhci_transfer.clone();
-        let callback = move |t: UsbTransfer<ControlTransferBuffer>| {
+        let callback = move |t: Transfer| {
             usb_debug!("setup token control transfer callback invoked");
             update_transfer_state(&xhci_transfer, &t)?;
             let state = xhci_transfer.state().lock();
@@ -207,10 +195,14 @@ impl HostDevice {
                     let status = t.status();
                     let actual_length = t.actual_length();
                     if direction == ControlRequestDataPhaseTransferDirection::DeviceToHost {
-                        if let Some(buffer) = &buffer {
-                            buffer
-                                .write(&t.buffer().data_buffer)
-                                .map_err(Error::WriteBuffer)?;
+                        if let Some(control_request_data) =
+                            t.buffer.get(mem::size_of::<UsbRequestSetup>()..)
+                        {
+                            if let Some(buffer) = &buffer {
+                                buffer
+                                    .write(&control_request_data)
+                                    .map_err(Error::WriteBuffer)?;
+                            }
                         }
                     }
                     drop(state);
@@ -231,20 +223,18 @@ impl HostDevice {
         };
 
         let fail_handle = self.fail_handle.clone();
-        control_transfer.set_callback(
-            move |t: UsbTransfer<ControlTransferBuffer>| match callback(t) {
-                Ok(_) => {}
-                Err(e) => {
-                    error!("control transfer callback failed {:?}", e);
-                    fail_handle.fail();
-                }
-            },
-        );
+        control_transfer.set_callback(move |t: Transfer| match callback(t) {
+            Ok(_) => {}
+            Err(e) => {
+                error!("control transfer callback failed {:?}", e);
+                fail_handle.fail();
+            }
+        });
         submit_transfer(
             self.fail_handle.clone(),
             &self.job_queue,
             tmp_transfer,
-            &self.device_handle,
+            &mut self.device.lock(),
             control_transfer,
         )
     }
@@ -309,40 +299,50 @@ impl HostDevice {
 
     fn set_config(&mut self) -> Result<TransferStatus> {
         // It's a standard, set_config, device request.
-        let config = (self.control_request_setup.value & 0xff) as i32;
+        let config = (self.control_request_setup.value & 0xff) as u8;
         usb_debug!(
             "Set config control transfer is received with config: {}",
             config
         );
         self.release_interfaces();
         let cur_config = self
-            .device_handle
+            .device
             .lock()
             .get_active_configuration()
             .map_err(Error::GetActiveConfig)?;
         usb_debug!("current config is: {}", cur_config);
         if config != cur_config {
-            self.device_handle
+            self.device
                 .lock()
                 .set_active_configuration(config)
                 .map_err(Error::SetActiveConfig)?;
         }
-        self.claim_interfaces();
-        self.create_endpoints()?;
+        let config_descriptor = self
+            .device
+            .lock()
+            .get_active_config_descriptor()
+            .map_err(Error::GetActiveConfig)?;
+        self.claim_interfaces(&config_descriptor);
+        self.create_endpoints(&config_descriptor)?;
         Ok(TransferStatus::Completed)
     }
 
     fn set_interface(&mut self) -> Result<TransferStatus> {
         usb_debug!("set interface");
         // It's a standard, set_interface, interface request.
-        let interface = self.control_request_setup.index;
-        let alt_setting = self.control_request_setup.value;
-        self.device_handle
+        let interface = self.control_request_setup.index as u8;
+        let alt_setting = self.control_request_setup.value as u8;
+        self.device
             .lock()
-            .set_interface_alt_setting(interface as i32, alt_setting as i32)
+            .set_interface_alt_setting(interface, alt_setting)
             .map_err(Error::SetInterfaceAltSetting)?;
         self.alt_settings.insert(interface, alt_setting);
-        self.create_endpoints()?;
+        let config_descriptor = self
+            .device
+            .lock()
+            .get_active_config_descriptor()
+            .map_err(Error::GetActiveConfig)?;
+        self.create_endpoints(&config_descriptor)?;
         Ok(TransferStatus::Completed)
     }
 
@@ -352,7 +352,7 @@ impl HostDevice {
         // It's a standard, clear_feature, endpoint request.
         const STD_FEATURE_ENDPOINT_HALT: u16 = 0;
         if request_setup.value == STD_FEATURE_ENDPOINT_HALT {
-            self.device_handle
+            self.device
                 .lock()
                 .clear_halt(request_setup.index as u8)
                 .map_err(Error::ClearHalt)?;
@@ -360,9 +360,9 @@ impl HostDevice {
         Ok(TransferStatus::Completed)
     }
 
-    fn claim_interfaces(&mut self) {
-        for i in 0..self.get_interface_number_of_active_config() {
-            match self.device_handle.lock().claim_interface(i) {
+    fn claim_interfaces(&mut self, config_descriptor: &ConfigDescriptorTree) {
+        for i in 0..config_descriptor.num_interfaces() {
+            match self.device.lock().claim_interface(i) {
                 Ok(()) => {
                     usb_debug!("claimed interface {}", i);
                     self.claimed_interfaces.push(i);
@@ -374,23 +374,16 @@ impl HostDevice {
         }
     }
 
-    fn create_endpoints(&mut self) -> Result<()> {
+    fn create_endpoints(&mut self, config_descriptor: &ConfigDescriptorTree) -> Result<()> {
         self.endpoints = Vec::new();
-        let config_descriptor = match self.device.get_active_config_descriptor() {
-            Err(e) => {
-                error!("device might be disconnected: {:?}", e);
-                return Ok(());
-            }
-            Ok(descriptor) => descriptor,
-        };
         for i in &self.claimed_interfaces {
-            let alt_setting = self.alt_settings.get(&(*i as u16)).unwrap_or(&0);
+            let alt_setting = self.alt_settings.get(i).unwrap_or(&0);
             let interface = config_descriptor
-                .get_interface_descriptor(*i as u8, *alt_setting as i32)
+                .get_interface_descriptor(*i, *alt_setting)
                 .ok_or(Error::GetInterfaceDescriptor((*i, *alt_setting)))?;
             for ep_idx in 0..interface.bNumEndpoints {
                 let ep_dp = interface
-                    .endpoint_descriptor(ep_idx)
+                    .get_endpoint_descriptor(ep_idx)
                     .ok_or(Error::GetEndpointDescriptor(ep_idx))?;
                 let ep_num = ep_dp.get_endpoint_number();
                 if ep_num == 0 {
@@ -402,7 +395,7 @@ impl HostDevice {
                 self.endpoints.push(UsbEndpoint::new(
                     self.fail_handle.clone(),
                     self.job_queue.clone(),
-                    self.device_handle.clone(),
+                    self.device.clone(),
                     ep_num,
                     direction,
                     ty,
@@ -410,6 +403,15 @@ impl HostDevice {
             }
         }
         Ok(())
+    }
+
+    fn release_interfaces(&mut self) {
+        for i in &self.claimed_interfaces {
+            if let Err(e) = self.device.lock().release_interface(*i) {
+                error!("could not release interface: {:?}", e);
+            }
+        }
+        self.claimed_interfaces = Vec::new();
     }
 
     fn submit_transfer_helper(&mut self, transfer: XhciTransfer) -> Result<()> {
@@ -430,7 +432,7 @@ impl HostDevice {
 
 impl XhciBackendDevice for HostDevice {
     fn get_backend_type(&self) -> BackendType {
-        let d = match self.device.get_device_descriptor() {
+        let d = match self.device.lock().get_device_descriptor() {
             Ok(d) => d,
             Err(_) => return BackendType::Usb2,
         };
@@ -443,16 +445,8 @@ impl XhciBackendDevice for HostDevice {
         }
     }
 
-    fn host_bus(&self) -> u8 {
-        self.device.get_bus_number()
-    }
-
-    fn host_address(&self) -> u8 {
-        self.device.get_address()
-    }
-
     fn get_vid(&self) -> u16 {
-        match self.device.get_device_descriptor() {
+        match self.device.lock().get_device_descriptor() {
             Ok(d) => d.idVendor,
             Err(e) => {
                 error!("cannot get device descriptor: {:?}", e);
@@ -462,7 +456,7 @@ impl XhciBackendDevice for HostDevice {
     }
 
     fn get_pid(&self) -> u16 {
-        match self.device.get_device_descriptor() {
+        match self.device.lock().get_device_descriptor() {
             Ok(d) => d.idProduct,
             Err(e) => {
                 error!("cannot get device descriptor: {:?}", e);
@@ -488,16 +482,9 @@ impl XhciBackendDevice for HostDevice {
 
     fn reset(&mut self) -> std::result::Result<(), ()> {
         usb_debug!("resetting host device");
-        let result = self.device_handle.lock().reset();
-        match result {
-            Err(LibUsbError::NotFound) => {
-                // libusb will return NotFound if it fails to re-claim
-                // the interface after the reset.
-                Ok(())
-            }
-            _ => result.map_err(|e| {
-                error!("failed to reset device: {:?}", e);
-            }),
-        }
+        self.device
+            .lock()
+            .reset()
+            .map_err(|e| error!("failed to reset device: {:?}", e))
     }
 }

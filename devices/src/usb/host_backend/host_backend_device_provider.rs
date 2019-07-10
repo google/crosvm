@@ -4,22 +4,23 @@
 
 use std::sync::Arc;
 
-use super::context::Context;
 use super::error::*;
 use super::host_device::HostDevice;
-use super::hotplug::HotplugHandler;
 use crate::usb::xhci::usb_hub::UsbHub;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::utils::AsyncJobQueue;
 use crate::utils::{EventHandler, EventLoop, FailHandle};
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
+use std::collections::HashMap;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
+use sync::Mutex;
 use sys_util::net::UnixSeqpacket;
 use sys_util::{error, WatchingEvents};
+use usb_util::Device;
 use vm_control::{
-    UsbControlAttachedDevice, UsbControlCommand, UsbControlResult, UsbControlSocket,
+    MaybeOwnedFd, UsbControlAttachedDevice, UsbControlCommand, UsbControlResult, UsbControlSocket,
     USB_CONTROL_MAX_PORTS,
 };
 
@@ -64,12 +65,15 @@ impl HostBackendDeviceProvider {
     ) -> Result<()> {
         match mem::replace(self, HostBackendDeviceProvider::Failed) {
             HostBackendDeviceProvider::Created { sock } => {
-                let ctx = Context::new(event_loop.clone())?;
-                let hotplug_handler = HotplugHandler::new(hub.clone());
-                ctx.set_hotplug_handler(hotplug_handler);
                 let job_queue =
                     AsyncJobQueue::init(&event_loop).map_err(Error::StartAsyncJobQueue)?;
-                let inner = Arc::new(ProviderInner::new(fail_handle, job_queue, ctx, sock, hub));
+                let inner = Arc::new(ProviderInner::new(
+                    fail_handle,
+                    job_queue,
+                    event_loop.clone(),
+                    sock,
+                    hub,
+                ));
                 let handler: Arc<dyn EventHandler> = inner.clone();
                 event_loop
                     .add_event(
@@ -123,25 +127,125 @@ impl XhciBackendDeviceProvider for HostBackendDeviceProvider {
 pub struct ProviderInner {
     fail_handle: Arc<dyn FailHandle>,
     job_queue: Arc<AsyncJobQueue>,
-    ctx: Context,
+    event_loop: Arc<EventLoop>,
     sock: MsgSocket<UsbControlResult, UsbControlCommand>,
     usb_hub: Arc<UsbHub>,
+
+    // Map of USB hub port number to per-device context.
+    devices: Mutex<HashMap<u8, HostDeviceContext>>,
+}
+
+struct HostDeviceContext {
+    event_handler: Arc<dyn EventHandler>,
+    device: Arc<Mutex<Device>>,
 }
 
 impl ProviderInner {
     fn new(
         fail_handle: Arc<dyn FailHandle>,
         job_queue: Arc<AsyncJobQueue>,
-        ctx: Context,
+        event_loop: Arc<EventLoop>,
         sock: MsgSocket<UsbControlResult, UsbControlCommand>,
         usb_hub: Arc<UsbHub>,
     ) -> ProviderInner {
         ProviderInner {
             fail_handle,
             job_queue,
-            ctx,
+            event_loop,
             sock,
             usb_hub,
+            devices: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Open a usbdevfs file to create a host USB device object.
+    /// `fd` should be an open file descriptor for a file in `/dev/bus/usb`.
+    fn handle_attach_device(&self, fd: Option<MaybeOwnedFd>) -> UsbControlResult {
+        let usb_file = match fd {
+            Some(MaybeOwnedFd::Owned(file)) => file,
+            _ => {
+                error!("missing fd in UsbControlCommand::AttachDevice message");
+                return UsbControlResult::FailedToOpenDevice;
+            }
+        };
+
+        let raw_fd = usb_file.as_raw_fd();
+        let device = match Device::new(usb_file) {
+            Ok(d) => d,
+            Err(e) => {
+                error!("could not construct USB device from fd: {}", e);
+                return UsbControlResult::NoSuchDevice;
+            }
+        };
+
+        let arc_mutex_device = Arc::new(Mutex::new(device));
+
+        let event_handler: Arc<dyn EventHandler> = Arc::new(UsbUtilEventHandler {
+            device: arc_mutex_device.clone(),
+        });
+
+        if let Err(e) = self.event_loop.add_event(
+            &MaybeOwnedFd::Borrowed(raw_fd),
+            WatchingEvents::empty().set_read().set_write(),
+            Arc::downgrade(&event_handler),
+        ) {
+            error!("failed to add USB device fd to event handler: {}", e);
+            return UsbControlResult::FailedToOpenDevice;
+        }
+
+        let device_ctx = HostDeviceContext {
+            event_handler,
+            device: arc_mutex_device.clone(),
+        };
+
+        // Resetting the device is used to make sure it is in a known state, but it may
+        // still function if the reset fails.
+        if let Err(e) = arc_mutex_device.lock().reset() {
+            error!("failed to reset device after attach: {:?}", e);
+        }
+
+        let host_device = Box::new(HostDevice::new(
+            self.fail_handle.clone(),
+            self.job_queue.clone(),
+            arc_mutex_device,
+        ));
+        let port = self.usb_hub.connect_backend(host_device);
+        match port {
+            Ok(port) => {
+                self.devices.lock().insert(port, device_ctx);
+                UsbControlResult::Ok { port }
+            }
+            Err(e) => {
+                error!("failed to connect device to hub: {}", e);
+                UsbControlResult::NoAvailablePort
+            }
+        }
+    }
+
+    fn handle_detach_device(&self, port: u8) -> UsbControlResult {
+        match self.usb_hub.disconnect_port(port) {
+            Ok(()) => {
+                if let Some(device_ctx) = self.devices.lock().remove(&port) {
+                    let _ = device_ctx.event_handler.on_event();
+                    let device = device_ctx.device.lock();
+                    let fd = device.fd();
+
+                    if let Err(e) = self
+                        .event_loop
+                        .remove_event_for_fd(&MaybeOwnedFd::Borrowed(fd.as_raw_fd()))
+                    {
+                        error!(
+                            "failed to remove poll change handler from event loop: {}",
+                            e
+                        );
+                    }
+                }
+                UsbControlResult::Ok { port }
+            }
+            Err(e) => {
+                error!("failed to disconnect device from port {}: {}", port, e);
+                UsbControlResult::NoSuchDevice
+            }
         }
     }
 
@@ -168,146 +272,13 @@ impl ProviderInner {
 
     fn on_event_helper(&self) -> Result<()> {
         let cmd = self.sock.recv().map_err(Error::ReadControlSock)?;
-        match cmd {
-            UsbControlCommand::AttachDevice {
-                bus,
-                addr,
-                vid,
-                pid,
-                fd: usb_fd,
-            } => {
-                let _ = usb_fd;
-                #[cfg(not(feature = "sandboxed-libusb"))]
-                let device = match self.ctx.get_device(bus, addr, vid, pid) {
-                    Some(d) => d,
-                    None => {
-                        error!(
-                            "cannot get device bus: {}, addr: {}, vid: {}, pid: {}",
-                            bus, addr, vid, pid
-                        );
-                        // The send failure will be logged, but event loop still think the event is
-                        // handled.
-                        let _ = self
-                            .sock
-                            .send(&UsbControlResult::NoSuchDevice)
-                            .map_err(Error::WriteControlSock)?;
-                        return Ok(());
-                    }
-                };
-                #[cfg(feature = "sandboxed-libusb")]
-                let (device, device_handle) = {
-                    use vm_control::MaybeOwnedFd;
-
-                    let usb_file = match usb_fd {
-                        Some(MaybeOwnedFd::Owned(file)) => file,
-                        _ => {
-                            let _ = self
-                                .sock
-                                .send(&UsbControlResult::FailedToOpenDevice)
-                                .map_err(Error::WriteControlSock);
-                            return Ok(());
-                        }
-                    };
-
-                    let device_handle = match self.ctx.get_device_handle(usb_file) {
-                        Some(d) => d,
-                        None => {
-                            error!(
-                                "cannot get device bus: {}, addr: {}, vid: {}, pid: {}",
-                                bus, addr, vid, pid
-                            );
-                            // The send failure will be logged, but event loop still think the event
-                            // is handled.
-                            let _ = self
-                                .sock
-                                .send(&UsbControlResult::NoSuchDevice)
-                                .map_err(Error::WriteControlSock);
-                            return Ok(());
-                        }
-                    };
-
-                    let device = device_handle.get_device();
-
-                    // Resetting the device is used to make sure it is in a known state, but it may
-                    // still function if the reset fails.
-                    if let Err(e) = device_handle.reset() {
-                        error!("failed to reset device after attach: {:?}", e);
-                    }
-                    (device, device_handle)
-                };
-
-                #[cfg(not(feature = "sandboxed-libusb"))]
-                let device_handle = match device.open() {
-                    Ok(handle) => handle,
-                    Err(e) => {
-                        error!("fail to open device: {:?}", e);
-                        // The send failure will be logged, but event loop still think the event is
-                        // handled.
-                        let _ = self
-                            .sock
-                            .send(&UsbControlResult::FailedToOpenDevice)
-                            .map_err(Error::WriteControlSock);
-                        return Ok(());
-                    }
-                };
-                let device = Box::new(HostDevice::new(
-                    self.fail_handle.clone(),
-                    self.job_queue.clone(),
-                    device,
-                    device_handle,
-                ));
-                let port = self.usb_hub.connect_backend(device);
-                match port {
-                    Ok(port) => {
-                        // The send failure will be logged, but event loop still think the event is
-                        // handled.
-                        let _ = self
-                            .sock
-                            .send(&UsbControlResult::Ok { port })
-                            .map_err(Error::WriteControlSock);
-                    }
-                    Err(e) => {
-                        error!("failed to connect device to hub: {}", e);
-                        // The send failure will be logged, but event loop still think the event is
-                        // handled.
-                        let _ = self
-                            .sock
-                            .send(&UsbControlResult::NoAvailablePort)
-                            .map_err(Error::WriteControlSock);
-                    }
-                }
-                Ok(())
-            }
-            UsbControlCommand::DetachDevice { port } => {
-                match self.usb_hub.disconnect_port(port) {
-                    Ok(()) => {
-                        // The send failure will be logged, but event loop still think the event is
-                        // handled.
-                        let _ = self
-                            .sock
-                            .send(&UsbControlResult::Ok { port })
-                            .map_err(Error::WriteControlSock);
-                    }
-                    Err(e) => {
-                        error!("failed to disconnect device from port {}: {}", port, e);
-                        // The send failure will be logged, but event loop still think the event is
-                        // handled.
-                        let _ = self
-                            .sock
-                            .send(&UsbControlResult::NoSuchDevice)
-                            .map_err(Error::WriteControlSock);
-                    }
-                }
-                Ok(())
-            }
-            UsbControlCommand::ListDevice { ports } => {
-                let result = self.handle_list_devices(ports);
-                // The send failure will be logged, but event loop still think the event is
-                // handled.
-                let _ = self.sock.send(&result).map_err(Error::WriteControlSock);
-                Ok(())
-            }
-        }
+        let result = match cmd {
+            UsbControlCommand::AttachDevice { fd, .. } => self.handle_attach_device(fd),
+            UsbControlCommand::DetachDevice { port } => self.handle_detach_device(port),
+            UsbControlCommand::ListDevice { ports } => self.handle_list_devices(ports),
+        };
+        self.sock.send(&result).map_err(Error::WriteControlSock)?;
+        Ok(())
     }
 }
 
@@ -316,5 +287,15 @@ impl EventHandler for ProviderInner {
         self.on_event_helper().map_err(|e| {
             error!("host backend device provider failed: {}", e);
         })
+    }
+}
+
+struct UsbUtilEventHandler {
+    device: Arc<Mutex<Device>>,
+}
+
+impl EventHandler for UsbUtilEventHandler {
+    fn on_event(&self) -> std::result::Result<(), ()> {
+        self.device.lock().poll_transfers().map_err(|_e| ())
     }
 }

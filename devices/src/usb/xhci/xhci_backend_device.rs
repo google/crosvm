@@ -18,10 +18,6 @@ pub enum BackendType {
 pub trait XhciBackendDevice: Send {
     /// Returns the type of USB device provided by this device.
     fn get_backend_type(&self) -> BackendType;
-    /// Returns host bus number of this device.
-    fn host_bus(&self) -> u8;
-    /// Returns host address of this device.
-    fn host_address(&self) -> u8;
     /// Get vendor id of this device.
     fn get_vid(&self) -> u16;
     /// Get product id of this device.

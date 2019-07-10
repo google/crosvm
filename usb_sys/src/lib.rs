@@ -139,6 +139,10 @@ impl Default for usbdevfs_urb {
     }
 }
 
+// The structure that embeds this should ensure that this is safe.
+unsafe impl Send for usbdevfs_urb {}
+unsafe impl Sync for usbdevfs_urb {}
+
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct usbdevfs_ioctl {

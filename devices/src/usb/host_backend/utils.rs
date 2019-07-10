@@ -4,20 +4,18 @@
 
 use std::mem;
 use std::sync::Arc;
-use sync::Mutex;
 
 use super::error::*;
 use crate::usb::xhci::xhci_transfer::{XhciTransfer, XhciTransferState};
 use crate::utils::AsyncJobQueue;
 use crate::utils::FailHandle;
 use sys_util::{error, warn};
-use usb_util::device_handle::DeviceHandle;
-use usb_util::usb_transfer::{TransferStatus, UsbTransfer, UsbTransferBuffer};
+use usb_util::{Device, Transfer, TransferStatus};
 
 /// Helper function to update xhci_transfer state.
-pub fn update_transfer_state<T: UsbTransferBuffer>(
+pub fn update_transfer_state(
     xhci_transfer: &Arc<XhciTransfer>,
-    usb_transfer: &UsbTransfer<T>,
+    usb_transfer: &Transfer,
 ) -> Result<()> {
     let status = usb_transfer.status();
     let mut state = xhci_transfer.state().lock();
@@ -44,12 +42,12 @@ pub fn update_transfer_state<T: UsbTransferBuffer>(
 }
 
 /// Helper function to submit usb_transfer to device handle.
-pub fn submit_transfer<T: UsbTransferBuffer>(
+pub fn submit_transfer(
     fail_handle: Arc<dyn FailHandle>,
     job_queue: &Arc<AsyncJobQueue>,
     xhci_transfer: Arc<XhciTransfer>,
-    device_handle: &Arc<Mutex<DeviceHandle>>,
-    usb_transfer: UsbTransfer<T>,
+    device: &mut Device,
+    usb_transfer: Transfer,
 ) -> Result<()> {
     let transfer_status = {
         // We need to hold the lock to avoid race condition.
@@ -58,7 +56,7 @@ pub fn submit_transfer<T: UsbTransferBuffer>(
         let mut state = xhci_transfer.state().lock();
         match mem::replace(&mut *state, XhciTransferState::Cancelled) {
             XhciTransferState::Created => {
-                match device_handle.lock().submit_async_transfer(usb_transfer) {
+                match device.submit_transfer(usb_transfer) {
                     Err(e) => {
                         error!("fail to submit transfer {:?}", e);
                         *state = XhciTransferState::Completed;
@@ -66,13 +64,12 @@ pub fn submit_transfer<T: UsbTransferBuffer>(
                     }
                     // If it's submitted, we don't need to send on_transfer_complete now.
                     Ok(canceller) => {
-                        // TODO(jkwang) refactor canceller to return Cancel::Ok or Cancel::Err.
-                        let cancel_callback = Box::new(move || match canceller.try_cancel() {
-                            true => {
-                                usb_debug!("cancel issued to libusb backend");
+                        let cancel_callback = Box::new(move || match canceller.cancel() {
+                            Ok(()) => {
+                                usb_debug!("cancel issued to kernel");
                             }
-                            false => {
-                                usb_debug!("fail to cancel");
+                            Err(e) => {
+                                usb_debug!("fail to cancel: {}", e);
                             }
                         });
                         *state = XhciTransferState::Submitted { cancel_callback };

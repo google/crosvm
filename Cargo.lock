@@ -530,13 +530,22 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "usb_sys"
+version = "0.1.0"
+dependencies = [
+ "sys_util 0.1.0",
+]
+
+[[package]]
 name = "usb_util"
 version = "0.1.0"
 dependencies = [
  "assertions 0.1.0",
  "data_model 0.1.0",
- "pkg-config 0.3.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "sync 0.1.0",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
+ "remain 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sys_util 0.1.0",
+ "usb_sys 0.1.0",
 ]
 
 [[package]]

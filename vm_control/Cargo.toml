@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
 
-[features]
-sandboxed-libusb = []
-
 [dependencies]
 data_model = { path = "../data_model" }
 kvm = { path = "../kvm" }

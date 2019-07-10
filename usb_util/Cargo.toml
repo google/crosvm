@@ -3,15 +3,11 @@ name = "usb_util"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
-build = "build.rs"
-
-[features]
-sandboxed-libusb = []
 
 [dependencies]
 assertions = { path = "../assertions" }
 data_model = { path = "../data_model" }
-sync = { path = "../sync" }
-
-[build-dependencies]
-pkg-config = "=0.3.11"
+libc = "*"
+remain = "*"
+sys_util = { path = "../sys_util" }
+usb_sys = { path = "../usb_sys" }
