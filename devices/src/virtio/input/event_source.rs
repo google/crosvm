@@ -44,7 +44,7 @@ impl input_event {
 /// It supports read and write operations to provide and accept events just like an event device
 /// node would, except that it handles virtio_input_event instead of input_event structures.
 /// It's necessary to call receive_events() before events are available for read.
-pub trait EventSource: Read + Write + AsRawFd {
+pub trait EventSource: AsRawFd {
     /// Perform any necessary initialization before receiving and sending events from/to the source.
     fn init(&mut self) -> Result<()> {
         Ok(())
@@ -60,6 +60,10 @@ pub trait EventSource: Read + Write + AsRawFd {
     fn receive_events(&mut self) -> Result<usize>;
     /// Returns the number of received events that have not been filtered or consumed yet.
     fn available_events_count(&self) -> usize;
+    /// Returns the next available event
+    fn pop_available_event(&mut self) -> Option<virtio_input_event>;
+    /// Sends a status update event to the source
+    fn send_event(&mut self, vio_evt: &virtio_input_event) -> Result<()>;
 }
 
 // Try to read 16 events at a time to match what the linux guest driver does.
@@ -78,54 +82,6 @@ pub struct EventSourceImpl<T> {
     read_buffer: ReadBuffer,
     // The read index accounts for incomplete events read previously.
     read_idx: usize,
-}
-
-// Reads input events from the source.
-// Events are originally read as input_event structs and converted to virtio_input_event internally.
-impl<T: Read> EventSourceImpl<T> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let mut bytes = 0usize;
-        for evt_slice in buf.chunks_exact_mut(virtio_input_event::EVENT_SIZE) {
-            match self.queue.pop_front() {
-                None => {
-                    break;
-                }
-                Some(evt) => {
-                    evt_slice.copy_from_slice(evt.as_slice());
-                    bytes += evt_slice.len();
-                }
-            }
-        }
-        Ok(bytes)
-    }
-}
-
-// Writes input events to the source.
-// Events come as virtio_input_event structs and are converted to input_event internally.
-impl<T: Write> EventSourceImpl<T> {
-    fn write<F: Fn(&virtio_input_event) -> bool>(
-        &mut self,
-        buf: &[u8],
-        event_filter: F,
-    ) -> std::io::Result<usize> {
-        for evt_slice in buf.chunks_exact(virtio_input_event::EVENT_SIZE) {
-            // Don't use from_slice() here, the buffer is not guaranteed to be properly aligned.
-            let mut vio_evt = virtio_input_event::new(0, 0, 0);
-            vio_evt.as_mut_slice().copy_from_slice(evt_slice);
-            if !event_filter(&vio_evt) {
-                continue;
-            }
-            let evt = input_event::from_virtio_input_event(&vio_evt);
-            self.source.write_all(evt.as_slice())?;
-        }
-
-        let len = buf.len() - buf.len() % virtio_input_event::EVENT_SIZE;
-        Ok(len)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.source.flush()
-    }
 }
 
 impl<T: AsRawFd> EventSourceImpl<T> {
@@ -192,6 +148,24 @@ where
         self.queue.len()
     }
 
+    fn pop_available_event(&mut self) -> Option<virtio_input_event> {
+        self.queue.pop_front()
+    }
+
+    fn send_event(&mut self, vio_evt: &virtio_input_event) -> Result<()> {
+        let evt = input_event::from_virtio_input_event(vio_evt);
+        // Miscellaneous events produced by the device are sent back to it by the kernel input
+        // subsystem, but because these events are handled by the host kernel as well as the
+        // guest the device would get them twice. Which would prompt the device to send the
+        // event to the guest again entering an infinite loop.
+        if evt.type_ != EV_MSC {
+            self.source
+                .write_all(evt.as_slice())
+                .map_err(InputError::EventsWriteError)?;
+        }
+        Ok(())
+    }
+
     fn new(source: T) -> EventSourceImpl<T> {
         EventSourceImpl {
             source,
@@ -220,25 +194,6 @@ where
     }
 }
 
-impl<T: Read> Read for SocketEventSource<T> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.evt_source_impl.read(buf)
-    }
-}
-
-impl<T> Write for SocketEventSource<T>
-where
-    T: Read + Write + AsRawFd,
-{
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.evt_source_impl.write(buf, |_evt| true)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.evt_source_impl.flush()
-    }
-}
-
 impl<T: AsRawFd> AsRawFd for SocketEventSource<T> {
     fn as_raw_fd(&self) -> RawFd {
         self.evt_source_impl.as_raw_fd()
@@ -264,6 +219,14 @@ where
     fn available_events_count(&self) -> usize {
         self.evt_source_impl.available_events()
     }
+
+    fn pop_available_event(&mut self) -> Option<virtio_input_event> {
+        self.evt_source_impl.pop_available_event()
+    }
+
+    fn send_event(&mut self, vio_evt: &virtio_input_event) -> Result<()> {
+        self.evt_source_impl.send_event(vio_evt)
+    }
 }
 
 /// Encapsulates an event device node as an event source
@@ -279,31 +242,6 @@ where
         EvdevEventSource {
             evt_source_impl: EventSourceImpl::new(source),
         }
-    }
-}
-
-impl<T: Read> Read for EvdevEventSource<T> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.evt_source_impl.read(buf)
-    }
-}
-
-impl<T> Write for EvdevEventSource<T>
-where
-    T: Read + Write + AsRawFd,
-{
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.evt_source_impl.write(buf, |evt| {
-            // Miscellaneous events produced by the device are sent back to it by the kernel input
-            // subsystem, but because these events are handled by the host kernel as well as the
-            // guest the device would get them twice. Which would prompt the device to send the
-            // event to the guest again entering an infinite loop.
-            evt.type_ != EV_MSC
-        })
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.evt_source_impl.flush()
     }
 }
 
@@ -331,6 +269,14 @@ where
 
     fn available_events_count(&self) -> usize {
         self.evt_source_impl.available_events()
+    }
+
+    fn pop_available_event(&mut self) -> Option<virtio_input_event> {
+        self.evt_source_impl.pop_available_event()
+    }
+
+    fn send_event(&mut self, vio_evt: &virtio_input_event) -> Result<()> {
+        self.evt_source_impl.send_event(vio_evt)
     }
 }
 
@@ -386,11 +332,10 @@ mod tests {
             0,
             "zero events should be available"
         );
-        let mut buffer = [0u8, 80];
         assert_eq!(
-            source.read(&mut buffer).unwrap(),
-            0,
-            "zero events should be read"
+            source.pop_available_event().is_none(),
+            true,
+            "no events should be available"
         );
     }
 
@@ -402,11 +347,10 @@ mod tests {
             0,
             "zero events should be received"
         );
-        let mut buffer = [0u8, 80];
         assert_eq!(
-            source.read(&mut buffer).unwrap(),
-            0,
-            "zero events should be read"
+            source.pop_available_event().is_none(),
+            true,
+            "no events should be available"
         );
     }
 
@@ -430,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn partial_read() {
+    fn partial_pop() {
         let evts = instantiate_input_events(4usize);
         let mut source = EventSourceImpl::new(SourceMock::new(&evts));
         assert_eq!(
@@ -438,21 +382,14 @@ mod tests {
             evts.len(),
             "should receive all events"
         );
-        let mut evt = virtio_input_event {
-            type_: Le16::from(0),
-            code: Le16::from(0),
-            value: Le32::from(0),
-        };
-        assert_eq!(
-            source.read(evt.as_mut_slice()).unwrap(),
-            virtio_input_event::EVENT_SIZE,
-            "should read a single event"
-        );
+        let mut evt_opt = source.pop_available_event();
+        assert_eq!(evt_opt.is_some(), true, "event should have been poped");
+        let evt = evt_opt.unwrap();
         assert_events_match(&evt, &evts[0]);
     }
 
     #[test]
-    fn exact_read() {
+    fn total_pop() {
         const EVENT_COUNT: usize = 4;
         let evts = instantiate_input_events(EVENT_COUNT);
         let mut source = EventSourceImpl::new(SourceMock::new(&evts));
@@ -461,59 +398,19 @@ mod tests {
             evts.len(),
             "should receive all events"
         );
-        let mut vio_evts = [0u8; EVENT_COUNT * size_of::<virtio_input_event>()];
-        assert_eq!(
-            source.read(&mut vio_evts).unwrap(),
-            EVENT_COUNT * virtio_input_event::EVENT_SIZE,
-            "should read all events"
-        );
-
-        let mut chunks = vio_evts.chunks_exact(virtio_input_event::EVENT_SIZE);
         for idx in 0..EVENT_COUNT {
-            let evt = virtio_input_event::from_slice(chunks.next().unwrap()).unwrap();
+            let evt = source.pop_available_event().unwrap();
             assert_events_match(&evt, &evts[idx]);
         }
-    }
-
-    #[test]
-    fn over_read() {
-        const EVENT_COUNT: usize = 4;
-        let evts = instantiate_input_events(EVENT_COUNT);
-        let mut source = EventSourceImpl::new(SourceMock::new(&evts));
         assert_eq!(
-            source.receive_events(|_| true).unwrap(),
-            evts.len(),
-            "should receive all events"
-        );
-        let mut vio_evts = [0u8; 2 * EVENT_COUNT * size_of::<virtio_input_event>()];
-        assert_eq!(
-            source.read(&mut vio_evts).unwrap(),
-            EVENT_COUNT * virtio_input_event::EVENT_SIZE,
-            "should only read available events"
-        );
-
-        let mut chunks = vio_evts.chunks_exact(virtio_input_event::EVENT_SIZE);
-        for idx in 0..EVENT_COUNT {
-            let evt = virtio_input_event::from_slice(chunks.next().unwrap()).unwrap();
-            assert_events_match(&evt, &evts[idx]);
-        }
-    }
-
-    #[test]
-    fn incomplete_read() {
-        const EVENT_COUNT: usize = 4;
-        let evts = instantiate_input_events(EVENT_COUNT);
-        let mut source = EventSourceImpl::new(SourceMock::new(&evts));
-        assert_eq!(
-            source.receive_events(|_| true).unwrap(),
-            evts.len(),
-            "should receive all events"
-        );
-        let mut vio_evts = [0u8; 3];
-        assert_eq!(
-            source.read(&mut vio_evts).unwrap(),
+            source.available_events(),
             0,
-            "shouldn't read incomplete events"
+            "there should be no events left"
+        );
+        assert_eq!(
+            source.pop_available_event().is_none(),
+            true,
+            "no events should pop"
         );
     }
 }
