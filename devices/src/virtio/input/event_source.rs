@@ -254,7 +254,7 @@ where
     }
 
     fn finalize(&mut self) -> Result<()> {
-        ungrab_evdev(self)
+        Ok(())
     }
 
     fn receive_events(&mut self) -> Result<usize> {
