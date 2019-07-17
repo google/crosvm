@@ -63,38 +63,6 @@ struct LinuxDirent64 {
 }
 unsafe impl DataInit for LinuxDirent64 {}
 
-/// The caching policy that the server should report to the client.
-pub enum CachePolicy {
-    /// The client should never cache file data and all I/O should be directly forwarded
-    /// to the server.
-    Never,
-
-    /// The client is free to choose when and how to cache file data.
-    Auto,
-
-    /// The client should always cache file data.
-    Always,
-}
-
-impl FromStr for CachePolicy {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "never" | "Never" | "NEVER" => Ok(CachePolicy::Never),
-            "auto" | "Auto" | "AUTO" => Ok(CachePolicy::Auto),
-            "always" | "Always" | "ALWAYS" => Ok(CachePolicy::Always),
-            _ => Err("invalid cache policy"),
-        }
-    }
-}
-
-impl Default for CachePolicy {
-    fn default() -> Self {
-        CachePolicy::Auto
-    }
-}
-
 macro_rules! scoped_cred {
     ($name:ident, $ty:ty, $syscall_nr:expr) => {
         #[derive(Debug)]
@@ -185,6 +153,99 @@ fn stat(f: &File) -> io::Result<libc::stat64> {
     }
 }
 
+/// The caching policy that the file system should report to the FUSE client. By default the FUSE
+/// protocol uses close-to-open consistency. This means that any cached contents of the file are
+/// invalidated the next time that file is opened.
+#[derive(Debug, Clone)]
+pub enum CachePolicy {
+    /// The client should never cache file data and all I/O should be directly forwarded to the
+    /// server. This policy must be selected when file contents may change without the knowledge of
+    /// the FUSE client (i.e., the file system does not have exclusive access to the directory).
+    Never,
+
+    /// The client is free to choose when and how to cache file data. This is the default policy and
+    /// uses close-to-open consistency as described in the enum documentation.
+    Auto,
+
+    /// The client should always cache file data. This means that the FUSE client will not
+    /// invalidate any cached data that was returned by the file system the last time the file was
+    /// opened. This policy should only be selected when the file system has exclusive access to the
+    /// directory.
+    Always,
+}
+
+impl FromStr for CachePolicy {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "never" | "Never" | "NEVER" => Ok(CachePolicy::Never),
+            "auto" | "Auto" | "AUTO" => Ok(CachePolicy::Auto),
+            "always" | "Always" | "ALWAYS" => Ok(CachePolicy::Always),
+            _ => Err("invalid cache policy"),
+        }
+    }
+}
+
+impl Default for CachePolicy {
+    fn default() -> Self {
+        CachePolicy::Auto
+    }
+}
+
+/// Options that configure the behavior of the file system.
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// How long the FUSE client should consider directory entries to be valid. If the contents of a
+    /// directory can only be modified by the FUSE client (i.e., the file system has exclusive
+    /// access), then this should be a large value.
+    ///
+    /// The default value for this option is 5 seconds.
+    pub entry_timeout: Duration,
+
+    /// How long the FUSE client should consider file and directory attributes to be valid. If the
+    /// attributes of a file or directory can only be modified by the FUSE client (i.e., the file
+    /// system has exclusive access), then this should be set to a large value.
+    ///
+    /// The default value for this option is 5 seconds.
+    pub attr_timeout: Duration,
+
+    /// The caching policy the file system should use. See the documentation of `CachePolicy` for
+    /// more details.
+    pub cache_policy: CachePolicy,
+
+    /// Whether the file system should enabled writeback caching. This can improve performance as it
+    /// allows the FUSE client to cache and coalesce multiple writes before sending them to the file
+    /// system. However, enabling this option can increase the risk of data corruption if the file
+    /// contents can change without the knowledge of the FUSE client (i.e., the server does **NOT**
+    /// have exclusive access). Additionally, the file system should have read access to all files
+    /// in the directory it is serving as the FUSE client may send read requests even for files
+    /// opened with `O_WRONLY`.
+    ///
+    /// Therefore callers should only enable this option when they can guarantee that: 1) the file
+    /// system has exclusive access to the directory and 2) the file system has read permissions for
+    /// all files in that directory.
+    ///
+    /// The default value for this option is `false`.
+    pub writeback: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            entry_timeout: Duration::from_secs(5),
+            attr_timeout: Duration::from_secs(5),
+            cache_policy: Default::default(),
+            writeback: false,
+        }
+    }
+}
+
+/// A file system that simply "passes through" all requests it receives to the underlying file
+/// system. To keep the implementation simple it servers the contents of its root directory. Users
+/// that wish to serve only a specific directory should set up the environment so that that
+/// directory ends up as the root of the file system process. One way to accomplish this is via a
+/// combination of mount namespaces and the pivot_root system call.
 pub struct PassthroughFs {
     // File descriptors for various points in the file system tree. These fds are always opened with
     // the `O_PATH` option so they cannot be used for reading or writing any data. See the
@@ -204,19 +265,15 @@ pub struct PassthroughFs {
     // to be serving doesn't have access to `/proc`.
     proc: File,
 
-    // Whether writeback caching is enabled for this directory. This can improve write performance
-    // as it allows the guest to complete write requests before the data has been flushed to this
-    // server. However, this also has the possibility of causing data corruption as the contents of
-    // a file may change on disk while they are still buffered in the guest. So this should only be
-    // enabled when the guest has exclusive access to the directory being shared.
+    // Whether writeback caching is enabled for this directory. This will only be true when
+    // `cfg.writeback` is true and `init` was called with `FsOptions::WRITEBACK_CACHE`.
     writeback: AtomicBool,
 
-    timeout: Duration,
-    cache_policy: CachePolicy,
+    cfg: Config,
 }
 
 impl PassthroughFs {
-    pub fn new(timeout: Duration, cache_policy: CachePolicy) -> io::Result<PassthroughFs> {
+    pub fn new(cfg: Config) -> io::Result<PassthroughFs> {
         // Safe because this is a constant value and a valid C string.
         let proc_cstr = unsafe { CStr::from_bytes_with_nul_unchecked(PROC_CSTR) };
 
@@ -245,8 +302,7 @@ impl PassthroughFs {
             proc,
 
             writeback: AtomicBool::new(false),
-            timeout,
-            cache_policy,
+            cfg,
         })
     }
 
@@ -365,8 +421,8 @@ impl PassthroughFs {
             inode,
             generation: 0,
             attr: st,
-            attr_timeout: self.timeout.clone(),
-            entry_timeout: self.timeout.clone(),
+            attr_timeout: self.cfg.attr_timeout.clone(),
+            entry_timeout: self.cfg.entry_timeout.clone(),
         })
     }
 
@@ -484,7 +540,7 @@ impl PassthroughFs {
         self.handles.write().unwrap().insert(handle, Arc::new(data));
 
         let mut opts = OpenOptions::empty();
-        match self.cache_policy {
+        match self.cfg.cache_policy {
             // We only set the direct I/O option on files.
             CachePolicy::Never => opts.set(
                 OpenOptions::DIRECT_IO,
@@ -523,7 +579,7 @@ impl PassthroughFs {
 
         let st = stat(&data.file)?;
 
-        Ok((st, self.timeout.clone()))
+        Ok((st, self.cfg.attr_timeout.clone()))
     }
 
     fn do_unlink(&self, parent: Inode, name: &CStr, flags: libc::c_int) -> io::Result<()> {
@@ -631,7 +687,7 @@ impl FileSystem for PassthroughFs {
         );
 
         let mut opts = FsOptions::DO_READDIRPLUS | FsOptions::READDIRPLUS_AUTO;
-        if capable.contains(FsOptions::WRITEBACK_CACHE) {
+        if self.cfg.writeback && capable.contains(FsOptions::WRITEBACK_CACHE) {
             opts |= FsOptions::WRITEBACK_CACHE;
             self.writeback.store(true, Ordering::Relaxed);
         }
@@ -841,7 +897,7 @@ impl FileSystem for PassthroughFs {
         self.handles.write().unwrap().insert(handle, Arc::new(data));
 
         let mut opts = OpenOptions::empty();
-        match self.cache_policy {
+        match self.cfg.cache_policy {
             CachePolicy::Never => opts |= OpenOptions::DIRECT_IO,
             CachePolicy::Always => opts |= OpenOptions::KEEP_CACHE,
             _ => {}

@@ -23,6 +23,7 @@ mod virtio_pci_common_config;
 mod virtio_pci_device;
 mod wl;
 
+pub mod fs;
 pub mod resource_bridge;
 pub mod vhost;
 
@@ -64,6 +65,7 @@ const TYPE_GPU: u32 = 16;
 const TYPE_9P: u32 = 9;
 const TYPE_INPUT: u32 = 18;
 const TYPE_VSOCK: u32 = 19;
+const TYPE_FS: u32 = 26;
 const TYPE_PMEM: u32 = 27;
 // Additional types invented by crosvm
 const TYPE_WL: u32 = 30;
@@ -89,6 +91,7 @@ pub fn type_to_str(type_: u32) -> Option<&'static str> {
         TYPE_GPU => "gpu",
         TYPE_9P => "9p",
         TYPE_VSOCK => "vsock",
+        TYPE_FS => "fs",
         TYPE_WL => "wl",
         _ => return None,
     })
