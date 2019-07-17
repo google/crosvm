@@ -14,6 +14,7 @@ use std::mem;
 use std::net::Ipv4Addr;
 #[cfg(feature = "gpu")]
 use std::num::NonZeroU8;
+use std::num::ParseIntError;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -58,7 +59,7 @@ use vm_control::{
     VmRunMode,
 };
 
-use crate::{Config, DiskOption, Executable, TouchDeviceOption};
+use crate::{Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption};
 
 use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents, VmImage};
 
@@ -101,6 +102,8 @@ pub enum Error {
     Disk(io::Error),
     DiskImageLock(sys_util::Error),
     DropCapabilities(sys_util::Error),
+    FsDeviceNew(virtio::fs::Error),
+    GetMaxOpenFiles(io::Error),
     InputDeviceNew(virtio::InputError),
     InputEventsOpen(std::io::Error),
     InvalidFdPath,
@@ -114,6 +117,7 @@ pub enum Error {
     OpenKernel(PathBuf, io::Error),
     OpenVinput(PathBuf, io::Error),
     P9DeviceNew(virtio::P9Error),
+    ParseMaxOpenFiles(ParseIntError),
     PivotRootDoesntExist(&'static str),
     PmemDeviceImageTooBig,
     PmemDeviceNew(sys_util::Error),
@@ -135,6 +139,7 @@ pub enum Error {
     ResetTimerFd(sys_util::Error),
     RngDeviceNew(virtio::RngError),
     SettingGidMap(io_jail::Error),
+    SettingMaxOpenFiles(io_jail::Error),
     SettingUidMap(io_jail::Error),
     SignalFd(sys_util::SignalFdError),
     SpawnVcpu(io::Error),
@@ -183,6 +188,8 @@ impl Display for Error {
             Disk(e) => write!(f, "failed to load disk image: {}", e),
             DiskImageLock(e) => write!(f, "failed to lock disk image: {}", e),
             DropCapabilities(e) => write!(f, "failed to drop process capabilities: {}", e),
+            FsDeviceNew(e) => write!(f, "failed to create fs device: {}", e),
+            GetMaxOpenFiles(e) => write!(f, "failed to get max number of open files: {}", e),
             InputDeviceNew(e) => write!(f, "failed to set up input device: {}", e),
             InputEventsOpen(e) => write!(f, "failed to open event device: {}", e),
             InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
@@ -201,6 +208,7 @@ impl Display for Error {
             OpenKernel(p, e) => write!(f, "failed to open kernel image {}: {}", p.display(), e),
             OpenVinput(p, e) => write!(f, "failed to open vinput device {}: {}", p.display(), e),
             P9DeviceNew(e) => write!(f, "failed to create 9p device: {}", e),
+            ParseMaxOpenFiles(e) => write!(f, "failed to parse max number of open files: {}", e),
             PivotRootDoesntExist(p) => write!(f, "{} doesn't exist, can't jail devices.", p),
             PmemDeviceImageTooBig => {
                 write!(f, "failed to create pmem device: pmem device image too big")
@@ -232,6 +240,7 @@ impl Display for Error {
             ResetTimerFd(e) => write!(f, "failed to reset timerfd: {}", e),
             RngDeviceNew(e) => write!(f, "failed to set up rng: {}", e),
             SettingGidMap(e) => write!(f, "error setting GID map: {}", e),
+            SettingMaxOpenFiles(e) => write!(f, "error setting max open files: {}", e),
             SettingUidMap(e) => write!(f, "error setting UID map: {}", e),
             SignalFd(e) => write!(f, "failed to read signal fd: {}", e),
             SpawnVcpu(e) => write!(f, "failed to spawn VCPU thread: {}", e),
@@ -276,6 +285,15 @@ impl AsRawFd for TaggedControlSocket {
     fn as_raw_fd(&self) -> RawFd {
         self.as_ref().as_raw_fd()
     }
+}
+
+fn get_max_open_files() -> Result<libc::rlim_t> {
+    let mut buf = String::with_capacity(32);
+    File::open("/proc/sys/fs/file-max")
+        .and_then(|mut f| f.read_to_string(&mut buf))
+        .map_err(Error::GetMaxOpenFiles)?;
+
+    Ok(buf.trim().parse().map_err(Error::ParseMaxOpenFiles)?)
 }
 
 fn create_base_minijail(
@@ -721,6 +739,65 @@ fn create_vhost_vsock_device(cfg: &Config, cid: u64, mem: &GuestMemory) -> Devic
     })
 }
 
+fn create_fs_device(
+    cfg: &Config,
+    uid_map: &str,
+    gid_map: &str,
+    src: &Path,
+    tag: &str,
+    fs_cfg: virtio::fs::passthrough::Config,
+) -> DeviceResult {
+    let mut j = Minijail::new().map_err(Error::DeviceJail)?;
+
+    if cfg.sandbox {
+        j.namespace_pids();
+        j.namespace_user();
+        j.namespace_user_disable_setgroups();
+        j.uidmap(uid_map).map_err(Error::SettingUidMap)?;
+        j.gidmap(gid_map).map_err(Error::SettingGidMap)?;
+
+        // Run in an empty network namespace.
+        j.namespace_net();
+
+        j.no_new_privs();
+
+        // TODO(chirantan): Enable seccomp
+        // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP, which will correctly kill
+        // the entire device process if a worker thread commits a seccomp violation.
+        // let seccomp_policy = cfg.seccomp_policy_dir.join("9p_device.policy");
+        // j.set_seccomp_filter_tsync();
+        // if cfg.seccomp_log_failures {
+        //     j.log_seccomp_filter_failures();
+        // }
+        // j.parse_seccomp_filters(&seccomp_policy)
+        //     .map_err(Error::DeviceJail)?;
+        // j.use_seccomp_filter();
+
+        // Don't do init setup.
+        j.run_as_init();
+    }
+
+    // Create a new mount namespace with the source directory as the root. We need this even when
+    // sandboxing is disabled as the server relies on the host kernel to prevent path traversals
+    // from leaking out of the shared directory.
+    j.namespace_vfs();
+    j.enter_pivot_root(src).map_err(Error::DevicePivotRoot)?;
+
+    // The file server opens a lot of fds and needs a really high open file limit.
+    let max_open_files = get_max_open_files()?;
+    j.set_rlimit(libc::RLIMIT_NOFILE, max_open_files, max_open_files)
+        .map_err(Error::SettingMaxOpenFiles)?;
+
+    // TODO(chirantan): Use more than one worker once the kernel driver has been fixed to not panic
+    // when num_queues > 1.
+    let dev = virtio::fs::Fs::new(tag, 1, fs_cfg).map_err(Error::FsDeviceNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: Some(j),
+    })
+}
+
 fn create_9p_device(cfg: &Config, chronos: Ids, src: &Path, tag: &str) -> DeviceResult {
     let (jail, root) = match simple_jail(&cfg, "9p_device.policy")? {
         Some(mut jail) => {
@@ -926,9 +1003,21 @@ fn create_virtio_devices(
     }
 
     let chronos = get_chronos_ids();
+    for shared_dir in &cfg.shared_dirs {
+        let SharedDir {
+            src,
+            tag,
+            kind,
+            uid_map,
+            gid_map,
+            cfg: fs_cfg,
+        } = shared_dir;
 
-    for (src, tag) in &cfg.shared_dirs {
-        devs.push(create_9p_device(cfg, chronos, src, tag)?);
+        let dev = match kind {
+            SharedDirKind::FS => create_fs_device(cfg, uid_map, gid_map, src, tag, fs_cfg.clone())?,
+            SharedDirKind::P9 => create_9p_device(cfg, chronos, src, tag)?,
+        };
+        devs.push(dev);
     }
 
     Ok(devs)

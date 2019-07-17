@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
-    linux, BindMount, Config, DiskOption, Executable, GidMap, TouchDeviceOption,
+    linux, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
 };
 use devices::{SerialParameters, SerialType};
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
@@ -495,9 +495,20 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             );
         }
         "shared-dir" => {
-            // Formatted as <src:tag>.
+            // This is formatted as multiple fields, each separated by ":". The first 2 fields are
+            // fixed (src:tag).  The rest may appear in any order:
+            //
+            // * type=TYPE - must be one of "p9" or "fs" (default: p9)
+            // * uidmap=UIDMAP - a uid map in the format "inner outer count[,inner outer count]"
+            //   (default: "0 <current euid> 1")
+            // * gidmap=GIDMAP - a gid map in the same format as uidmap
+            //   (default: "0 <current egid> 1")
+            // * timeout=TIMEOUT - a timeout value in seconds, which indicates how long attributes
+            //   and directory contents should be considered valid (default: 5)
+            // * cache=CACHE - one of "never", "always", or "auto" (default: auto)
+            // * writeback=BOOL - indicates whether writeback caching should be enabled (default: false)
             let param = value.unwrap();
-            let mut components = param.splitn(2, ':');
+            let mut components = param.split(':');
             let src =
                 PathBuf::from(
                     components
@@ -522,7 +533,66 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 });
             }
 
-            cfg.shared_dirs.push((src, tag));
+            let mut shared_dir = SharedDir {
+                src,
+                tag,
+                ..Default::default()
+            };
+            for opt in components {
+                let mut o = opt.splitn(2, '=');
+                let kind = o.next().ok_or_else(|| argument::Error::InvalidValue {
+                    value: opt.to_owned(),
+                    expected: "`shared-dir` options must not be empty",
+                })?;
+                let value = o.next().ok_or_else(|| argument::Error::InvalidValue {
+                    value: opt.to_owned(),
+                    expected: "`shared-dir` options must be of the form `kind=value`",
+                })?;
+
+                match kind {
+                    "type" => {
+                        shared_dir.kind =
+                            value.parse().map_err(|_| argument::Error::InvalidValue {
+                                value: value.to_owned(),
+                                expected: "`type` must be one of `fs` or `9p`",
+                            })?
+                    }
+                    "uidmap" => shared_dir.uid_map = value.into(),
+                    "gidmap" => shared_dir.gid_map = value.into(),
+                    "timeout" => {
+                        let seconds = value.parse().map_err(|_| argument::Error::InvalidValue {
+                            value: value.to_owned(),
+                            expected: "`timeout` must be an integer",
+                        })?;
+
+                        let dur = Duration::from_secs(seconds);
+                        shared_dir.cfg.entry_timeout = dur.clone();
+                        shared_dir.cfg.attr_timeout = dur;
+                    }
+                    "cache" => {
+                        let policy = value.parse().map_err(|_| argument::Error::InvalidValue {
+                            value: value.to_owned(),
+                            expected: "`cache` must be one of `never`, `always`, or `auto`",
+                        })?;
+                        shared_dir.cfg.cache_policy = policy;
+                    }
+                    "writeback" => {
+                        let writeback =
+                            value.parse().map_err(|_| argument::Error::InvalidValue {
+                                value: value.to_owned(),
+                                expected: "`writeback` must be a boolean",
+                            })?;
+                        shared_dir.cfg.writeback = writeback;
+                    }
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: kind.to_owned(),
+                            expected: "unrecognized option for `shared-dir`",
+                        })
+                    }
+                }
+            }
+            cfg.shared_dirs.push(shared_dir);
         }
         "seccomp-policy-dir" => {
             // `value` is Some because we are in this match so it's safe to unwrap.
@@ -813,8 +883,17 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                                 "Path to put the control socket. If PATH is a directory, a name will be generated."),
           Argument::flag("disable-sandbox", "Run all devices in one, non-sandboxed process."),
           Argument::value("cid", "CID", "Context ID for virtual sockets."),
-          Argument::value("shared-dir", "PATH:TAG",
-                          "Directory to be shared with a VM as a source:tag pair. Can be given more than once."),
+          Argument::value("shared-dir", "PATH:TAG[:type=TYPE:writeback=BOOL:timeout=SECONDS:uidmap=UIDMAP:gidmap=GIDMAP:cache=CACHE]",
+                          "Colon-separated options for configuring a directory to be shared with the VM.
+The first field is the directory to be shared and the second field is the tag that the VM can use to identify the device.
+The remaining fields are key=value pairs that may appear in any order.  Valid keys are:
+type=(p9, fs) - Indicates whether the directory should be shared via virtio-9p or virtio-fs (default: p9).
+uidmap=UIDMAP - The uid map to use for the device's jail in the format \"inner outer count[,inner outer count]\" (default: 0 <current euid> 1).
+gidmap=GIDMAP - The gid map to use for the device's jail in the format \"inner outer count[,inner outer count]\" (default: 0 <current egid> 1).
+cache=(never, auto, always) - Indicates whether the VM can cache the contents of the shared directory (default: auto).  When set to \"auto\" and the type is \"fs\", the VM will use close-to-open consistency for file contents.
+timeout=SECONDS - How long the VM should consider file attributes and directory entries to be valid (default: 5).  If the VM has exclusive access to the directory, then this should be a large value.  If the directory can be modified by other processes, then this should be 0.
+writeback=BOOL - Indicates whether the VM can use writeback caching (default: false).  This is only safe to do when the VM has exclusive access to the files in a directory.  Additionally, the server should have read permission for all files as the VM may issue read requests even for files that are opened write-only.
+"),
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
           Argument::flag("seccomp-log-failures", "Instead of seccomp filter failures being fatal, they will be logged instead."),
           #[cfg(feature = "plugin")]
