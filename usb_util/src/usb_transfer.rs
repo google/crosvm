@@ -241,14 +241,6 @@ impl<T: UsbTransferBuffer> UsbTransfer<T> {
         UsbTransfer { inner }
     }
 
-    /// Get canceller of this transfer.
-    pub fn get_canceller(&self) -> TransferCanceller {
-        let weak_transfer = Arc::downgrade(&self.inner.transfer);
-        TransferCanceller {
-            transfer: weak_transfer,
-        }
-    }
-
     /// Set callback function for transfer completion.
     pub fn set_callback<C: 'static + Fn(UsbTransfer<T>) + Send>(&mut self, cb: C) {
         self.inner.callback = Some(Box::new(cb));
@@ -287,11 +279,14 @@ impl<T: UsbTransferBuffer> UsbTransfer<T> {
     ///
     /// Assumes libusb_device_handle is an handled opened by libusb, self.inner.transfer.ptr is
     /// initialized with correct buffer and length.
-    pub unsafe fn submit(self, handle: *mut libusb_device_handle) -> Result<()> {
+    pub unsafe fn submit(self, handle: *mut libusb_device_handle) -> Result<TransferCanceller> {
+        let weak_transfer = Arc::downgrade(&self.inner.transfer);
         let transfer = self.into_raw();
         (*transfer).dev_handle = handle;
         match Error::from(libusb_submit_transfer(transfer)) {
-            Error::Success(_e) => Ok(()),
+            Error::Success(_e) => Ok(TransferCanceller {
+                transfer: weak_transfer,
+            }),
             err => {
                 UsbTransfer::<T>::from_raw(transfer);
                 Err(err)

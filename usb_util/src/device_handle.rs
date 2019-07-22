@@ -9,7 +9,7 @@ use crate::bindings;
 use crate::error::{Error, Result};
 use crate::libusb_context::LibUsbContextInner;
 use crate::libusb_device::LibUsbDevice;
-use crate::usb_transfer::{UsbTransfer, UsbTransferBuffer};
+use crate::usb_transfer::{TransferCanceller, UsbTransfer, UsbTransferBuffer};
 
 /// DeviceHandle wraps libusb_device_handle.
 pub struct DeviceHandle {
@@ -155,7 +155,7 @@ impl DeviceHandle {
     pub fn submit_async_transfer<T: UsbTransferBuffer>(
         &self,
         transfer: UsbTransfer<T>,
-    ) -> Result<()> {
+    ) -> Result<TransferCanceller> {
         unsafe { transfer.submit(self.handle) }
     }
 }

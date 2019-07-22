@@ -58,17 +58,6 @@ pub fn submit_transfer<T: UsbTransferBuffer>(
         let mut state = xhci_transfer.state().lock();
         match mem::replace(&mut *state, XhciTransferState::Cancelled) {
             XhciTransferState::Created => {
-                let canceller = usb_transfer.get_canceller();
-                // TODO(jkwang) refactor canceller to return Cancel::Ok or Cancel::Err.
-                let cancel_callback = Box::new(move || match canceller.try_cancel() {
-                    true => {
-                        usb_debug!("cancel issued to libusb backend");
-                    }
-                    false => {
-                        usb_debug!("fail to cancel");
-                    }
-                });
-                *state = XhciTransferState::Submitted { cancel_callback };
                 match device_handle.lock().submit_async_transfer(usb_transfer) {
                     Err(e) => {
                         error!("fail to submit transfer {:?}", e);
@@ -76,7 +65,19 @@ pub fn submit_transfer<T: UsbTransferBuffer>(
                         TransferStatus::NoDevice
                     }
                     // If it's submitted, we don't need to send on_transfer_complete now.
-                    Ok(_) => return Ok(()),
+                    Ok(canceller) => {
+                        // TODO(jkwang) refactor canceller to return Cancel::Ok or Cancel::Err.
+                        let cancel_callback = Box::new(move || match canceller.try_cancel() {
+                            true => {
+                                usb_debug!("cancel issued to libusb backend");
+                            }
+                            false => {
+                                usb_debug!("fail to cancel");
+                            }
+                        });
+                        *state = XhciTransferState::Submitted { cancel_callback };
+                        return Ok(());
+                    }
                 }
             }
             XhciTransferState::Cancelled => {
