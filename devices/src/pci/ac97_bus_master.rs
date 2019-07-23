@@ -285,9 +285,9 @@ impl Ac97BusMaster {
 
         let regs = self.regs.lock();
         match offset {
-            PI_BASE_00...PI_CR_0B => readb_func_regs(&regs.pi_regs, offset - PI_BASE_00),
-            PO_BASE_10...PO_CR_1B => readb_func_regs(&regs.po_regs, offset - PO_BASE_10),
-            MC_BASE_20...MC_CR_2B => readb_func_regs(&regs.mc_regs, offset - MC_BASE_20),
+            PI_BASE_00..=PI_CR_0B => readb_func_regs(&regs.pi_regs, offset - PI_BASE_00),
+            PO_BASE_10..=PO_CR_1B => readb_func_regs(&regs.po_regs, offset - PO_BASE_10),
+            MC_BASE_20..=MC_CR_2B => readb_func_regs(&regs.mc_regs, offset - MC_BASE_20),
             ACC_SEMA_34 => self.acc_sema,
             _ => 0,
         }
