@@ -248,7 +248,7 @@ impl MemoryMapping {
         size: usize,
         prot: c_int,
         flags: c_int,
-        fd: Option<(&AsRawFd, usize)>,
+        fd: Option<(&dyn AsRawFd, usize)>,
     ) -> Result<MemoryMapping> {
         let mut flags = flags;
         // If addr is provided, set the FIXED flag, and validate addr alignment
@@ -459,7 +459,7 @@ impl MemoryMapping {
     pub fn read_to_memory(
         &self,
         mut mem_offset: usize,
-        src: &AsRawFd,
+        src: &dyn AsRawFd,
         mut count: usize,
     ) -> Result<()> {
         self.range_end(mem_offset, count)
@@ -518,7 +518,7 @@ impl MemoryMapping {
     pub fn write_from_memory(
         &self,
         mut mem_offset: usize,
-        dst: &AsRawFd,
+        dst: &dyn AsRawFd,
         mut count: usize,
     ) -> Result<()> {
         self.range_end(mem_offset, count)
@@ -715,7 +715,7 @@ impl MemoryMappingArena {
         offset: usize,
         size: usize,
         prot: Protection,
-        fd: Option<(&AsRawFd, usize)>,
+        fd: Option<(&dyn AsRawFd, usize)>,
     ) -> Result<()> {
         self.validate_range(offset, size)?;
 

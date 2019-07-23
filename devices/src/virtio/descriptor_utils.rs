@@ -179,7 +179,7 @@ impl<'a> Reader<'a> {
     /// Returns the number of bytes read from the descriptor chain buffer.
     /// The number of bytes read can be less than `count` if there isn't
     /// enough data in the descriptor chain buffer.
-    pub fn read_to(&mut self, dst: &AsRawFd, count: usize) -> Result<usize> {
+    pub fn read_to(&mut self, dst: &dyn AsRawFd, count: usize) -> Result<usize> {
         let mem = self.mem;
         self.buffer
             .consume(|addr, count| mem.write_from_memory(addr, dst, count), count)
@@ -269,7 +269,7 @@ impl<'a> Writer<'a> {
     /// Returns the number of bytes written to the descriptor chain buffer.
     /// The number of bytes written can be less than `count` if
     /// there isn't enough data in the descriptor chain buffer.
-    pub fn write_from(&mut self, src: &AsRawFd, count: usize) -> Result<usize> {
+    pub fn write_from(&mut self, src: &dyn AsRawFd, count: usize) -> Result<usize> {
         let mem = self.mem;
         self.buffer
             .consume(|addr, count| mem.read_to_memory(addr, src, count), count)

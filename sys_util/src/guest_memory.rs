@@ -460,7 +460,7 @@ impl GuestMemory {
     pub fn read_to_memory(
         &self,
         guest_addr: GuestAddress,
-        src: &AsRawFd,
+        src: &dyn AsRawFd,
         count: usize,
     ) -> Result<()> {
         self.do_in_region(guest_addr, move |mapping, offset| {
@@ -497,7 +497,7 @@ impl GuestMemory {
     pub fn write_from_memory(
         &self,
         guest_addr: GuestAddress,
-        dst: &AsRawFd,
+        dst: &dyn AsRawFd,
         count: usize,
     ) -> Result<()> {
         self.do_in_region(guest_addr, move |mapping, offset| {
