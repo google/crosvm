@@ -296,6 +296,29 @@ impl<T: PollToken> EpollContext<T> {
         })
     }
 
+    /// Creates a new `EpollContext` and adds the slice of `fd` and `token` tuples to the new
+    /// context.
+    ///
+    /// This is equivalent to calling `new` followed by `add_many`. If there is an error, this will
+    /// return the error instead of the new context.
+    pub fn build_with(fd_tokens: &[(&dyn AsRawFd, T)]) -> Result<EpollContext<T>> {
+        let ctx = EpollContext::new()?;
+        ctx.add_many(fd_tokens)?;
+        Ok(ctx)
+    }
+
+    /// Adds the given slice of `fd` and `token` tuples to this context.
+    ///
+    /// This is equivalent to calling `add` with each `fd` and `token`. If there are any errors,
+    /// this method will stop adding `fd`s and return the first error, leaving this context in a
+    /// undefined state.
+    pub fn add_many(&self, fd_tokens: &[(&dyn AsRawFd, T)]) -> Result<()> {
+        for (fd, token) in fd_tokens {
+            self.add(*fd, T::from_raw_token(token.as_raw_token()))?;
+        }
+        Ok(())
+    }
+
     /// Adds the given `fd` to this context and associates the given `token` with the `fd`'s
     /// readable events.
     ///
@@ -505,6 +528,29 @@ impl<T: PollToken> PollContext<T> {
         })
     }
 
+    /// Creates a new `PollContext` and adds the slice of `fd` and `token` tuples to the new
+    /// context.
+    ///
+    /// This is equivalent to calling `new` followed by `add_many`. If there is an error, this will
+    /// return the error instead of the new context.
+    pub fn build_with(fd_tokens: &[(&dyn AsRawFd, T)]) -> Result<PollContext<T>> {
+        let ctx = PollContext::new()?;
+        ctx.add_many(fd_tokens)?;
+        Ok(ctx)
+    }
+
+    /// Adds the given slice of `fd` and `token` tuples to this context.
+    ///
+    /// This is equivalent to calling `add` with each `fd` and `token`. If there are any errors,
+    /// this method will stop adding `fd`s and return the first error, leaving this context in a
+    /// undefined state.
+    pub fn add_many(&self, fd_tokens: &[(&dyn AsRawFd, T)]) -> Result<()> {
+        for (fd, token) in fd_tokens {
+            self.add(*fd, T::from_raw_token(token.as_raw_token()))?;
+        }
+        Ok(())
+    }
+
     /// Adds the given `fd` to this context and associates the given `token` with the `fd`'s
     /// readable events.
     ///
@@ -643,9 +689,7 @@ mod tests {
         let evt2 = EventFd::new().unwrap();
         evt1.write(1).unwrap();
         evt2.write(1).unwrap();
-        let ctx: PollContext<u32> = PollContext::new().unwrap();
-        ctx.add(&evt1, 1).unwrap();
-        ctx.add(&evt2, 2).unwrap();
+        let ctx: PollContext<u32> = PollContext::build_with(&[(&evt1, 1), (&evt2, 2)]).unwrap();
 
         let mut evt_count = 0;
         while evt_count < 2 {
