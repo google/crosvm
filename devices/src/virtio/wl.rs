@@ -1531,15 +1531,13 @@ impl Worker {
             InterruptResample,
         }
 
-        let poll_ctx: PollContext<Token> = match PollContext::new()
-            .and_then(|pc| pc.add(&in_queue_evt, Token::InQueue).and(Ok(pc)))
-            .and_then(|pc| pc.add(&out_queue_evt, Token::OutQueue).and(Ok(pc)))
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
-            .and_then(|pc| pc.add(&self.state.poll_ctx, Token::State).and(Ok(pc)))
-            .and_then(|pc| {
-                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
-                    .and(Ok(pc))
-            }) {
+        let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
+            (&in_queue_evt, Token::InQueue),
+            (&out_queue_evt, Token::OutQueue),
+            (&kill_evt, Token::Kill),
+            (&self.state.poll_ctx, Token::State),
+            (&self.interrupt_resample_evt, Token::InterruptResample),
+        ]) {
             Ok(pc) => pc,
             Err(e) => {
                 error!("failed creating PollContext: {}", e);

@@ -624,13 +624,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let kill_signaled = Arc::new(AtomicBool::new(false));
     let mut vcpu_handles = Vec::with_capacity(vcpu_count as usize);
 
-    let poll_ctx = PollContext::new().map_err(Error::CreatePollContext)?;
-    poll_ctx
-        .add(&exit_evt, Token::Exit)
-        .map_err(Error::PollContextAdd)?;
-    poll_ctx
-        .add(&sigchld_fd, Token::ChildSignal)
-        .map_err(Error::PollContextAdd)?;
+    let poll_ctx =
+        PollContext::build_with(&[(&exit_evt, Token::Exit), (&sigchld_fd, Token::ChildSignal)])
+            .map_err(Error::PollContextAdd)?;
 
     let mut sockets_to_drop = Vec::new();
     let mut redo_poll_ctx_sockets = true;

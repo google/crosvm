@@ -198,14 +198,11 @@ impl Worker {
             Kill,
         }
 
-        let poll_ctx: PollContext<Token> = match PollContext::new()
-            .and_then(|pc| pc.add(&queue_evt, Token::QueueAvailable).and(Ok(pc)))
-            .and_then(|pc| {
-                pc.add(&self.interrupt_resample_event, Token::InterruptResample)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
-        {
+        let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
+            (&queue_evt, Token::QueueAvailable),
+            (&self.interrupt_resample_event, Token::InterruptResample),
+            (&kill_evt, Token::Kill),
+        ]) {
             Ok(pc) => pc,
             Err(e) => {
                 error!("failed creating PollContext: {}", e);

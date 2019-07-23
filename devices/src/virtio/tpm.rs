@@ -139,14 +139,11 @@ impl Worker {
             Kill,
         }
 
-        let poll_ctx = match PollContext::new()
-            .and_then(|pc| pc.add(&self.queue_evt, Token::QueueAvailable).and(Ok(pc)))
-            .and_then(|pc| {
-                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| pc.add(&self.kill_evt, Token::Kill).and(Ok(pc)))
-        {
+        let poll_ctx = match PollContext::build_with(&[
+            (&self.queue_evt, Token::QueueAvailable),
+            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (&self.kill_evt, Token::Kill),
+        ]) {
             Ok(pc) => pc,
             Err(e) => {
                 error!("vtpm failed creating PollContext: {}", e);

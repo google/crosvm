@@ -745,10 +745,9 @@ impl Worker {
             Kill,
         }
 
-        let poll_ctx: PollContext<Token> = PollContext::new()
-            .and_then(|pc| pc.add(&self.fd, Token::TimerExpire).and(Ok(pc)))
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
-            .map_err(PitError::CreatePollContext)?;
+        let poll_ctx: PollContext<Token> =
+            PollContext::build_with(&[(&self.fd, Token::TimerExpire), (&kill_evt, Token::Kill)])
+                .map_err(PitError::CreatePollContext)?;
 
         loop {
             let events = poll_ctx.wait().map_err(PitError::PollError)?;

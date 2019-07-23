@@ -772,16 +772,13 @@ impl<T: DiskFile> Worker<T> {
         };
         let mut flush_timer_armed = false;
 
-        let poll_ctx: PollContext<Token> = match PollContext::new()
-            .and_then(|pc| pc.add(&flush_timer, Token::FlushTimer).and(Ok(pc)))
-            .and_then(|pc| pc.add(&queue_evt, Token::QueueAvailable).and(Ok(pc)))
-            .and_then(|pc| pc.add(&control_socket, Token::ControlRequest).and(Ok(pc)))
-            .and_then(|pc| {
-                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
-        {
+        let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
+            (&flush_timer, Token::FlushTimer),
+            (&queue_evt, Token::QueueAvailable),
+            (&control_socket, Token::ControlRequest),
+            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (&kill_evt, Token::Kill),
+        ]) {
             Ok(pc) => pc,
             Err(e) => {
                 error!("failed creating PollContext: {}", e);

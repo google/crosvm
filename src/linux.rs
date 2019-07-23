@@ -1432,16 +1432,15 @@ fn run_control(
         .set_raw_mode()
         .expect("failed to set terminal raw mode");
 
-    let poll_ctx = PollContext::new().map_err(Error::CreatePollContext)?;
-    poll_ctx
-        .add(&linux.exit_evt, Token::Exit)
-        .map_err(Error::PollContextAdd)?;
+    let poll_ctx = PollContext::build_with(&[
+        (&linux.exit_evt, Token::Exit),
+        (&sigchld_fd, Token::ChildSignal),
+    ])
+    .map_err(Error::PollContextAdd)?;
+
     if let Err(e) = poll_ctx.add(&stdin_handle, Token::Stdin) {
         warn!("failed to add stdin to poll context: {}", e);
     }
-    poll_ctx
-        .add(&sigchld_fd, Token::ChildSignal)
-        .map_err(Error::PollContextAdd)?;
 
     if let Some(socket_server) = &control_server_socket {
         poll_ctx

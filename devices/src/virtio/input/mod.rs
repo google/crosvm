@@ -566,25 +566,13 @@ impl<T: EventSource> Worker<T> {
             InterruptResample,
             Kill,
         }
-        let poll_ctx: PollContext<Token> = match PollContext::new()
-            .and_then(|pc| {
-                pc.add(&event_queue_evt_fd, Token::EventQAvailable)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| {
-                pc.add(&status_queue_evt_fd, Token::StatusQAvailable)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| {
-                pc.add(&self.event_source, Token::InputEventsAvailable)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| {
-                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
-        {
+        let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
+            (&event_queue_evt_fd, Token::EventQAvailable),
+            (&status_queue_evt_fd, Token::StatusQAvailable),
+            (&self.event_source, Token::InputEventsAvailable),
+            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (&kill_evt, Token::Kill),
+        ]) {
             Ok(poll_ctx) => poll_ctx,
             Err(e) => {
                 error!("failed creating PollContext: {}", e);

@@ -497,19 +497,13 @@ impl Worker {
             ResourceBridge { index: usize },
         }
 
-        let poll_ctx: PollContext<Token> = match PollContext::new()
-            .and_then(|pc| pc.add(&self.ctrl_evt, Token::CtrlQueue).and(Ok(pc)))
-            .and_then(|pc| pc.add(&self.cursor_evt, Token::CursorQueue).and(Ok(pc)))
-            .and_then(|pc| {
-                pc.add(&*self.state.display().borrow(), Token::Display)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| {
-                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| pc.add(&self.kill_evt, Token::Kill).and(Ok(pc)))
-        {
+        let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
+            (&self.ctrl_evt, Token::CtrlQueue),
+            (&self.cursor_evt, Token::CursorQueue),
+            (&*self.state.display().borrow(), Token::Display),
+            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (&self.kill_evt, Token::Kill),
+        ]) {
             Ok(pc) => pc,
             Err(e) => {
                 error!("failed creating PollContext: {}", e);

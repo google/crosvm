@@ -209,16 +209,14 @@ where
             Kill,
         }
 
-        let poll_ctx: PollContext<Token> = PollContext::new()
-            .and_then(|pc| pc.add(&self.tap, Token::RxTap).and(Ok(pc)))
-            .and_then(|pc| pc.add(&rx_queue_evt, Token::RxQueue).and(Ok(pc)))
-            .and_then(|pc| pc.add(&tx_queue_evt, Token::TxQueue).and(Ok(pc)))
-            .and_then(|pc| {
-                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
-            .map_err(NetError::CreatePollContext)?;
+        let poll_ctx: PollContext<Token> = PollContext::build_with(&[
+            (&self.tap, Token::RxTap),
+            (&rx_queue_evt, Token::RxQueue),
+            (&tx_queue_evt, Token::TxQueue),
+            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (&kill_evt, Token::Kill),
+        ])
+        .map_err(NetError::CreatePollContext)?;
 
         'poll: loop {
             let events = poll_ctx.wait().map_err(NetError::PollError)?;

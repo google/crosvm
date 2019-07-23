@@ -143,19 +143,13 @@ impl Worker {
         let inflate_queue_evt = queue_evts.remove(0);
         let deflate_queue_evt = queue_evts.remove(0);
 
-        let poll_ctx: PollContext<Token> = match PollContext::new()
-            .and_then(|pc| pc.add(&inflate_queue_evt, Token::Inflate).and(Ok(pc)))
-            .and_then(|pc| pc.add(&deflate_queue_evt, Token::Deflate).and(Ok(pc)))
-            .and_then(|pc| {
-                pc.add(&self.command_socket, Token::CommandSocket)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| {
-                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
-        {
+        let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
+            (&inflate_queue_evt, Token::Inflate),
+            (&deflate_queue_evt, Token::Deflate),
+            (&self.command_socket, Token::CommandSocket),
+            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (&kill_evt, Token::Kill),
+        ]) {
             Ok(pc) => pc,
             Err(e) => {
                 error!("failed creating PollContext: {}", e);

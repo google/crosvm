@@ -124,14 +124,12 @@ impl Worker {
             Kill,
         }
 
-        let poll_ctx: PollContext<Token> = PollContext::new()
-            .and_then(|pc| pc.add(&queue_evt, Token::QueueReady).and(Ok(pc)))
-            .and_then(|pc| {
-                pc.add(&self.interrupt_resample_evt, Token::InterruptResample)
-                    .and(Ok(pc))
-            })
-            .and_then(|pc| pc.add(&kill_evt, Token::Kill).and(Ok(pc)))
-            .map_err(P9Error::CreatePollContext)?;
+        let poll_ctx: PollContext<Token> = PollContext::build_with(&[
+            (&queue_evt, Token::QueueReady),
+            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (&kill_evt, Token::Kill),
+        ])
+        .map_err(P9Error::CreatePollContext)?;
 
         loop {
             let events = poll_ctx.wait().map_err(P9Error::PollError)?;
