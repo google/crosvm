@@ -18,17 +18,17 @@ use sync::Mutex;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
 use sys_util::{
-    error, info, warn, EventFd, FileReadWriteVolatile, FileSetLen, FileSync, GuestAddress,
-    GuestMemory, GuestMemoryError, PollContext, PollToken, PunchHole, TimerFd, WriteZeroes,
+    error, info, warn, EventFd, FileReadWriteVolatile, FileSetLen, FileSync, GuestMemory,
+    PollContext, PollToken, PunchHole, TimerFd, WriteZeroes,
 };
 
-use data_model::{DataInit, Le16, Le32, Le64, VolatileMemory, VolatileMemoryError};
+use data_model::{DataInit, Le16, Le32, Le64};
 use msg_socket::{MsgReceiver, MsgSender};
 use vm_control::{DiskControlCommand, DiskControlResponseSocket, DiskControlResult};
 
 use super::{
-    DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_CONFIG_CHANGED,
-    INTERRUPT_STATUS_USED_RING, TYPE_BLOCK, VIRTIO_F_VERSION_1,
+    DescriptorChain, DescriptorError, Queue, Reader, VirtioDevice, Writer,
+    INTERRUPT_STATUS_CONFIG_CHANGED, INTERRUPT_STATUS_USED_RING, TYPE_BLOCK, VIRTIO_F_VERSION_1,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -37,6 +37,9 @@ const SECTOR_SHIFT: u8 = 9;
 const SECTOR_SIZE: u64 = 0x01 << SECTOR_SHIFT;
 const MAX_DISCARD_SECTORS: u32 = u32::MAX;
 const MAX_WRITE_ZEROES_SECTORS: u32 = u32::MAX;
+// Arbitrary limits for number of discard/write zeroes segments.
+const MAX_DISCARD_SEG: u32 = 32;
+const MAX_WRITE_ZEROES_SEG: u32 = 32;
 // Hard-coded to 64 KiB (in 512-byte sectors) for now,
 // but this should probably be based on cluster size for qcow.
 const DISCARD_SECTOR_ALIGNMENT: u32 = 128;
@@ -101,6 +104,17 @@ struct virtio_blk_config {
 }
 
 // Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for virtio_blk_req_header {}
+
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
+struct virtio_blk_req_header {
+    req_type: Le32,
+    reserved: Le32,
+    sector: Le64,
+}
+
+// Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_blk_config {}
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -125,130 +139,35 @@ impl<D: FileSetLen + FileSync + PunchHole + FileReadWriteVolatile + Seek + Write
 {
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-enum RequestType {
-    In,
-    Out,
-    Flush,
-    Discard,
-    WriteZeroes,
-    Unsupported(u32),
-}
-
-impl Display for RequestType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::RequestType::*;
-
-        match self {
-            In => write!(f, "in"),
-            Out => write!(f, "out"),
-            Flush => write!(f, "flush"),
-            Discard => write!(f, "discard"),
-            WriteZeroes => write!(f, "write zeroes"),
-            Unsupported(n) => write!(f, "unsupported({})", n),
-        }
-    }
-}
-
-#[derive(Debug)]
-enum ParseError {
-    /// Guest gave us bad memory addresses
-    GuestMemory(GuestMemoryError),
-    /// Guest gave us offsets that would have overflowed a usize.
-    CheckedOffset(GuestAddress, u64),
-    /// Guest gave us a write only descriptor that protocol says to read from.
-    UnexpectedWriteOnlyDescriptor,
-    /// Guest gave us a read only descriptor that protocol says to write to.
-    UnexpectedReadOnlyDescriptor,
-    /// Guest gave us too few descriptors in a descriptor chain.
-    DescriptorChainTooShort,
-    /// Guest gave us a descriptor that was too short to use.
-    DescriptorLengthTooSmall,
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::ParseError::*;
-
-        match self {
-            GuestMemory(e) => write!(f, "bad guest memory address: {}", e),
-            CheckedOffset(addr, offset) => write!(f, "{}+{} would overflow a usize", addr, offset),
-            UnexpectedWriteOnlyDescriptor => write!(f, "unexpected write-only descriptor"),
-            UnexpectedReadOnlyDescriptor => write!(f, "unexpected read-only descriptor"),
-            DescriptorChainTooShort => write!(f, "descriptor chain too short"),
-            DescriptorLengthTooSmall => write!(f, "descriptor length too small"),
-        }
-    }
-}
-
-fn request_type(
-    mem: &GuestMemory,
-    desc_addr: GuestAddress,
-) -> result::Result<RequestType, ParseError> {
-    let type_ = mem
-        .read_obj_from_addr(desc_addr)
-        .map_err(ParseError::GuestMemory)?;
-    match type_ {
-        VIRTIO_BLK_T_IN => Ok(RequestType::In),
-        VIRTIO_BLK_T_OUT => Ok(RequestType::Out),
-        VIRTIO_BLK_T_FLUSH => Ok(RequestType::Flush),
-        VIRTIO_BLK_T_DISCARD => Ok(RequestType::Discard),
-        VIRTIO_BLK_T_WRITE_ZEROES => Ok(RequestType::WriteZeroes),
-        t => Ok(RequestType::Unsupported(t)),
-    }
-}
-
-fn sector(mem: &GuestMemory, desc_addr: GuestAddress) -> result::Result<u64, ParseError> {
-    const SECTOR_OFFSET: u64 = 8;
-    let addr = match mem.checked_offset(desc_addr, SECTOR_OFFSET) {
-        Some(v) => v,
-        None => return Err(ParseError::CheckedOffset(desc_addr, SECTOR_OFFSET)),
-    };
-
-    mem.read_obj_from_addr(addr)
-        .map_err(ParseError::GuestMemory)
-}
-
-fn discard_write_zeroes_segment(
-    mem: &GuestMemory,
-    seg_addr: GuestAddress,
-) -> result::Result<virtio_blk_discard_write_zeroes, ParseError> {
-    mem.read_obj_from_addr(seg_addr)
-        .map_err(ParseError::GuestMemory)
-}
-
 #[derive(Debug)]
 enum ExecuteError {
+    Descriptor(DescriptorError),
     /// Error arming the flush timer.
     Flush(io::Error),
-    ReadVolatile {
-        addr: GuestAddress,
-        length: u32,
-        sector: u64,
-        volatile_memory_error: VolatileMemoryError,
-    },
     ReadIo {
-        addr: GuestAddress,
-        length: u32,
+        length: usize,
         sector: u64,
-        io_error: io::Error,
+        desc_error: DescriptorError,
+    },
+    ShortRead {
+        sector: u64,
+        expected_length: usize,
+        actual_length: usize,
     },
     Seek {
         ioerr: io::Error,
         sector: u64,
     },
     TimerFd(SysError),
-    WriteVolatile {
-        addr: GuestAddress,
-        length: u32,
-        sector: u64,
-        volatile_memory_error: VolatileMemoryError,
-    },
     WriteIo {
-        addr: GuestAddress,
-        length: u32,
+        length: usize,
         sector: u64,
-        io_error: io::Error,
+        desc_error: DescriptorError,
+    },
+    ShortWrite {
+        sector: u64,
+        expected_length: usize,
+        actual_length: usize,
     },
     DiscardWriteZeroes {
         ioerr: Option<io::Error>,
@@ -257,9 +176,10 @@ enum ExecuteError {
         flags: u32,
     },
     ReadOnly {
-        request_type: RequestType,
+        request_type: u32,
     },
     OutOfRange,
+    MissingStatus,
     Unsupported(u32),
 }
 
@@ -268,48 +188,45 @@ impl Display for ExecuteError {
         use self::ExecuteError::*;
 
         match self {
+            Descriptor(e) => write!(f, "virtio descriptor error: {}", e),
             Flush(e) => write!(f, "failed to flush: {}", e),
-            ReadVolatile {
-                addr,
-                length,
-                sector,
-                volatile_memory_error,
-            } => write!(
-                f,
-                "memory error reading {} bytes from sector {} to address {}: {}",
-                length, sector, addr, volatile_memory_error,
-            ),
             ReadIo {
-                addr,
                 length,
                 sector,
-                io_error,
+                desc_error,
             } => write!(
                 f,
-                "io error reading {} bytes from sector {} to address {}: {}",
-                length, sector, addr, io_error,
+                "io error reading {} bytes from sector {}: {}",
+                length, sector, desc_error,
+            ),
+            ShortRead {
+                sector,
+                expected_length,
+                actual_length,
+            } => write!(
+                f,
+                "short read: {} bytes of {} at sector {}",
+                actual_length, expected_length, sector
             ),
             Seek { ioerr, sector } => write!(f, "failed to seek to sector {}: {}", sector, ioerr),
             TimerFd(e) => write!(f, "{}", e),
-            WriteVolatile {
-                addr,
-                length,
-                sector,
-                volatile_memory_error,
-            } => write!(
-                f,
-                "memory error writing {} bytes from address {} to sector {}: {}",
-                length, addr, sector, volatile_memory_error,
-            ),
             WriteIo {
-                addr,
                 length,
                 sector,
-                io_error,
+                desc_error,
             } => write!(
                 f,
-                "io error writing {} bytes from address {} to sector {}: {}",
-                length, addr, sector, io_error,
+                "io error writing {} bytes to sector {}: {}",
+                length, sector, desc_error,
+            ),
+            ShortWrite {
+                sector,
+                expected_length,
+                actual_length,
+            } => write!(
+                f,
+                "short write: {} bytes of {} at sector {}",
+                actual_length, expected_length, sector
             ),
             DiscardWriteZeroes {
                 ioerr: Some(ioerr),
@@ -333,6 +250,7 @@ impl Display for ExecuteError {
             ),
             ReadOnly { request_type } => write!(f, "read only; request_type={}", request_type),
             OutOfRange => write!(f, "out of range"),
+            MissingStatus => write!(f, "not enough space in descriptor chain to write status"),
             Unsupported(n) => write!(f, "unsupported ({})", n),
         }
     }
@@ -341,314 +259,20 @@ impl Display for ExecuteError {
 impl ExecuteError {
     fn status(&self) -> u8 {
         match self {
+            ExecuteError::Descriptor(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::ReadIo { .. } => VIRTIO_BLK_S_IOERR,
-            ExecuteError::ReadVolatile { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::ShortRead { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::Seek { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::TimerFd(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::WriteIo { .. } => VIRTIO_BLK_S_IOERR,
-            ExecuteError::WriteVolatile { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::ShortWrite { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::DiscardWriteZeroes { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::ReadOnly { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::OutOfRange { .. } => VIRTIO_BLK_S_IOERR,
+            ExecuteError::MissingStatus => VIRTIO_BLK_S_IOERR,
             ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
         }
-    }
-}
-
-struct Request {
-    request_type: RequestType,
-    sector: u64,
-    data_addr: GuestAddress,
-    data_len: u32,
-    status_addr: GuestAddress,
-    discard_write_zeroes_seg: Option<virtio_blk_discard_write_zeroes>,
-}
-
-impl Request {
-    fn parse(
-        avail_desc: &DescriptorChain,
-        mem: &GuestMemory,
-    ) -> result::Result<Request, ParseError> {
-        // The head contains the request type which MUST be readable.
-        if avail_desc.is_write_only() {
-            return Err(ParseError::UnexpectedWriteOnlyDescriptor);
-        }
-
-        let req_type = request_type(&mem, avail_desc.addr)?;
-        if req_type == RequestType::Flush {
-            Request::parse_flush(avail_desc, mem)
-        } else if req_type == RequestType::Discard || req_type == RequestType::WriteZeroes {
-            Request::parse_discard_write_zeroes(avail_desc, mem, req_type)
-        } else {
-            Request::parse_read_write(avail_desc, mem, req_type)
-        }
-    }
-
-    fn parse_flush(
-        avail_desc: &DescriptorChain,
-        mem: &GuestMemory,
-    ) -> result::Result<Request, ParseError> {
-        let sector = sector(&mem, avail_desc.addr)?;
-        let status_desc = avail_desc
-            .next_descriptor()
-            .ok_or(ParseError::DescriptorChainTooShort)?;
-
-        // The status MUST always be writable
-        if !status_desc.is_write_only() {
-            return Err(ParseError::UnexpectedReadOnlyDescriptor);
-        }
-
-        if status_desc.len < 1 {
-            return Err(ParseError::DescriptorLengthTooSmall);
-        }
-
-        Ok(Request {
-            request_type: RequestType::Flush,
-            sector,
-            data_addr: GuestAddress(0),
-            data_len: 0,
-            status_addr: status_desc.addr,
-            discard_write_zeroes_seg: None,
-        })
-    }
-
-    fn parse_discard_write_zeroes(
-        avail_desc: &DescriptorChain,
-        mem: &GuestMemory,
-        req_type: RequestType,
-    ) -> result::Result<Request, ParseError> {
-        let seg_desc = avail_desc
-            .next_descriptor()
-            .ok_or(ParseError::DescriptorChainTooShort)?;
-        let status_desc = seg_desc
-            .next_descriptor()
-            .ok_or(ParseError::DescriptorChainTooShort)?;
-
-        if seg_desc.is_write_only() {
-            return Err(ParseError::UnexpectedWriteOnlyDescriptor);
-        }
-
-        // For simplicity, we currently only support a single segment
-        // for discard and write zeroes commands.  This allows the
-        // request to be represented as a single Request object.
-        if seg_desc.len < size_of::<virtio_blk_discard_write_zeroes>() as u32 {
-            return Err(ParseError::DescriptorLengthTooSmall);
-        }
-
-        let seg = discard_write_zeroes_segment(&mem, seg_desc.addr)?;
-
-        // The status MUST always be writable
-        if !status_desc.is_write_only() {
-            return Err(ParseError::UnexpectedReadOnlyDescriptor);
-        }
-
-        if status_desc.len < 1 {
-            return Err(ParseError::DescriptorLengthTooSmall);
-        }
-
-        Ok(Request {
-            request_type: req_type,
-            sector: 0,
-            data_addr: GuestAddress(0),
-            data_len: 0,
-            status_addr: status_desc.addr,
-            discard_write_zeroes_seg: Some(seg),
-        })
-    }
-
-    fn parse_read_write(
-        avail_desc: &DescriptorChain,
-        mem: &GuestMemory,
-        req_type: RequestType,
-    ) -> result::Result<Request, ParseError> {
-        let sector = sector(&mem, avail_desc.addr)?;
-        let data_desc = avail_desc
-            .next_descriptor()
-            .ok_or(ParseError::DescriptorChainTooShort)?;
-        let status_desc = data_desc
-            .next_descriptor()
-            .ok_or(ParseError::DescriptorChainTooShort)?;
-
-        if data_desc.is_write_only() && req_type == RequestType::Out {
-            return Err(ParseError::UnexpectedWriteOnlyDescriptor);
-        }
-
-        if !data_desc.is_write_only() && req_type == RequestType::In {
-            return Err(ParseError::UnexpectedReadOnlyDescriptor);
-        }
-
-        // The status MUST always be writable
-        if !status_desc.is_write_only() {
-            return Err(ParseError::UnexpectedReadOnlyDescriptor);
-        }
-
-        if status_desc.len < 1 {
-            return Err(ParseError::DescriptorLengthTooSmall);
-        }
-
-        Ok(Request {
-            request_type: req_type,
-            sector,
-            data_addr: data_desc.addr,
-            data_len: data_desc.len,
-            status_addr: status_desc.addr,
-            discard_write_zeroes_seg: None,
-        })
-    }
-
-    fn execute<T: DiskFile>(
-        &self,
-        read_only: bool,
-        disk: &mut T,
-        disk_size: u64,
-        flush_timer: &mut TimerFd,
-        flush_timer_armed: &mut bool,
-        mem: &GuestMemory,
-    ) -> result::Result<u32, ExecuteError> {
-        // Delay after a write when the file is auto-flushed.
-        let flush_delay = Duration::from_secs(60);
-
-        if read_only && self.request_type != RequestType::In {
-            return Err(ExecuteError::ReadOnly {
-                request_type: self.request_type,
-            });
-        }
-
-        /// Check that a request accesses only data within the disk's current size.
-        /// All parameters are in units of bytes.
-        fn check_range(
-            io_start: u64,
-            io_length: u64,
-            disk_size: u64,
-        ) -> result::Result<(), ExecuteError> {
-            let io_end = io_start
-                .checked_add(io_length)
-                .ok_or(ExecuteError::OutOfRange)?;
-            if io_end > disk_size {
-                Err(ExecuteError::OutOfRange)
-            } else {
-                Ok(())
-            }
-        }
-
-        match self.request_type {
-            RequestType::In => {
-                let offset = self
-                    .sector
-                    .checked_shl(u32::from(SECTOR_SHIFT))
-                    .ok_or(ExecuteError::OutOfRange)?;
-                check_range(offset, u64::from(self.data_len), disk_size)?;
-                disk.seek(SeekFrom::Start(offset))
-                    .map_err(|e| ExecuteError::Seek {
-                        ioerr: e,
-                        sector: self.sector,
-                    })?;
-                let mem_slice = mem
-                    .get_slice(self.data_addr.0, self.data_len as u64)
-                    .map_err(|volatile_memory_error| ExecuteError::ReadVolatile {
-                        addr: self.data_addr,
-                        length: self.data_len,
-                        sector: self.sector,
-                        volatile_memory_error,
-                    })?;
-                disk.read_exact_volatile(mem_slice)
-                    .map_err(|io_error| ExecuteError::ReadIo {
-                        addr: self.data_addr,
-                        length: self.data_len,
-                        sector: self.sector,
-                        io_error,
-                    })?;
-                return Ok(self.data_len);
-            }
-            RequestType::Out => {
-                let offset = self
-                    .sector
-                    .checked_shl(u32::from(SECTOR_SHIFT))
-                    .ok_or(ExecuteError::OutOfRange)?;
-                check_range(offset, u64::from(self.data_len), disk_size)?;
-                disk.seek(SeekFrom::Start(offset))
-                    .map_err(|e| ExecuteError::Seek {
-                        ioerr: e,
-                        sector: self.sector,
-                    })?;
-                let mem_slice = mem
-                    .get_slice(self.data_addr.0, self.data_len as u64)
-                    .map_err(|volatile_memory_error| ExecuteError::WriteVolatile {
-                        addr: self.data_addr,
-                        length: self.data_len,
-                        sector: self.sector,
-                        volatile_memory_error,
-                    })?;
-                disk.write_all_volatile(mem_slice)
-                    .map_err(|io_error| ExecuteError::WriteIo {
-                        addr: self.data_addr,
-                        length: self.data_len,
-                        sector: self.sector,
-                        io_error,
-                    })?;
-                if !*flush_timer_armed {
-                    flush_timer
-                        .reset(flush_delay, None)
-                        .map_err(ExecuteError::TimerFd)?;
-                    *flush_timer_armed = true;
-                }
-            }
-            RequestType::Discard | RequestType::WriteZeroes => {
-                if let Some(seg) = self.discard_write_zeroes_seg {
-                    let sector = seg.sector.to_native();
-                    let num_sectors = seg.num_sectors.to_native();
-                    let flags = seg.flags.to_native();
-
-                    let valid_flags = if self.request_type == RequestType::WriteZeroes {
-                        VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP
-                    } else {
-                        0
-                    };
-
-                    if (flags & !valid_flags) != 0 {
-                        return Err(ExecuteError::DiscardWriteZeroes {
-                            ioerr: None,
-                            sector,
-                            num_sectors,
-                            flags,
-                        });
-                    }
-
-                    let offset = sector
-                        .checked_shl(u32::from(SECTOR_SHIFT))
-                        .ok_or(ExecuteError::OutOfRange)?;
-                    let length = u64::from(num_sectors)
-                        .checked_shl(u32::from(SECTOR_SHIFT))
-                        .ok_or(ExecuteError::OutOfRange)?;
-                    check_range(offset, length, disk_size)?;
-
-                    if self.request_type == RequestType::Discard {
-                        // Since Discard is just a hint and some filesystems may not implement
-                        // FALLOC_FL_PUNCH_HOLE, ignore punch_hole errors.
-                        let _ = disk.punch_hole(offset, length);
-                    } else {
-                        disk.seek(SeekFrom::Start(offset))
-                            .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
-                        disk.write_zeroes(length as usize).map_err(|e| {
-                            ExecuteError::DiscardWriteZeroes {
-                                ioerr: Some(e),
-                                sector,
-                                num_sectors,
-                                flags,
-                            }
-                        })?;
-                    }
-                }
-            }
-            RequestType::Flush => {
-                disk.fsync().map_err(ExecuteError::Flush)?;
-                flush_timer.clear().map_err(ExecuteError::TimerFd)?;
-                *flush_timer_armed = false;
-            }
-            RequestType::Unsupported(t) => return Err(ExecuteError::Unsupported(t)),
-        };
-        Ok(0)
     }
 }
 
@@ -676,40 +300,39 @@ impl<T: DiskFile> Worker<T> {
 
         let mut needs_interrupt = false;
         while let Some(avail_desc) = queue.pop(&self.mem) {
-            let len;
-            match Request::parse(&avail_desc, &self.mem) {
-                Ok(request) => {
-                    let status = match request.execute(
-                        self.read_only,
-                        &mut self.disk_image,
-                        *disk_size,
-                        flush_timer,
-                        flush_timer_armed,
-                        &self.mem,
-                    ) {
-                        Ok(l) => {
-                            len = l;
-                            VIRTIO_BLK_S_OK
-                        }
-                        Err(e) => {
-                            error!("failed executing disk request: {}", e);
-                            len = 1; // 1 byte for the status
-                            e.status()
-                        }
-                    };
-                    // We use unwrap because the request parsing process already checked that the
-                    // status_addr was valid.
-                    self.mem
-                        .write_obj_at_addr(status, request.status_addr)
-                        .unwrap();
-                }
-                Err(e) => {
-                    error!("failed processing available descriptor chain: {}", e);
-                    len = 0;
-                }
-            }
+            let desc_index = avail_desc.index;
+            let mut status_writer = Writer::new(&self.mem, avail_desc.clone());
 
-            queue.add_used(&self.mem, avail_desc.index, len);
+            let status = match Block::execute_request(
+                avail_desc,
+                self.read_only,
+                &mut self.disk_image,
+                *disk_size,
+                flush_timer,
+                flush_timer_armed,
+                &self.mem,
+            ) {
+                Ok(()) => VIRTIO_BLK_S_OK,
+                Err(e) => {
+                    error!("failed executing disk request: {}", e);
+                    e.status()
+                }
+            };
+
+            let len = if let Ok(status_offset) = status_writer.seek(SeekFrom::End(-1)) {
+                match status_writer.write_all(&[status]) {
+                    Ok(_) => status_offset + 1,
+                    Err(e) => {
+                        error!("failed to write status: {}", e);
+                        0
+                    }
+                }
+            } else {
+                error!("failed to seek to status location");
+                0
+            };
+
+            queue.add_used(&self.mem, desc_index, len as u32);
             needs_interrupt = true;
         }
 
@@ -876,9 +499,8 @@ fn build_config_space(disk_size: u64) -> virtio_blk_config {
         discard_sector_alignment: Le32::from(DISCARD_SECTOR_ALIGNMENT),
         max_write_zeroes_sectors: Le32::from(MAX_WRITE_ZEROES_SECTORS),
         write_zeroes_may_unmap: 1,
-        // Limit number of segments to 1 - see parse_discard_write_zeroes()
-        max_discard_seg: Le32::from(1),
-        max_write_zeroes_seg: Le32::from(1),
+        max_discard_seg: Le32::from(MAX_DISCARD_SEG),
+        max_write_zeroes_seg: Le32::from(MAX_WRITE_ZEROES_SEG),
         ..Default::default()
     }
 }
@@ -919,6 +541,168 @@ impl<T: DiskFile> Block<T> {
             read_only,
             control_socket,
         })
+    }
+
+    fn execute_request(
+        avail_desc: DescriptorChain,
+        read_only: bool,
+        disk: &mut T,
+        disk_size: u64,
+        flush_timer: &mut TimerFd,
+        flush_timer_armed: &mut bool,
+        mem: &GuestMemory,
+    ) -> result::Result<(), ExecuteError> {
+        let mut reader = Reader::new(mem, avail_desc.clone());
+        let mut writer = Writer::new(mem, avail_desc);
+
+        let req_header: virtio_blk_req_header =
+            reader.read_obj().map_err(ExecuteError::Descriptor)?;
+
+        let req_type = req_header.req_type.to_native();
+        let sector = req_header.sector.to_native();
+        // Delay after a write when the file is auto-flushed.
+        let flush_delay = Duration::from_secs(60);
+
+        if read_only && req_type != VIRTIO_BLK_T_IN {
+            return Err(ExecuteError::ReadOnly {
+                request_type: req_type,
+            });
+        }
+
+        /// Check that a request accesses only data within the disk's current size.
+        /// All parameters are in units of bytes.
+        fn check_range(
+            io_start: u64,
+            io_length: u64,
+            disk_size: u64,
+        ) -> result::Result<(), ExecuteError> {
+            let io_end = io_start
+                .checked_add(io_length)
+                .ok_or(ExecuteError::OutOfRange)?;
+            if io_end > disk_size {
+                Err(ExecuteError::OutOfRange)
+            } else {
+                Ok(())
+            }
+        }
+
+        match req_type {
+            VIRTIO_BLK_T_IN => {
+                // The last byte of writer is virtio_blk_req::status, so subtract it from data_len.
+                let data_len = writer
+                    .available_bytes()
+                    .checked_sub(1)
+                    .ok_or(ExecuteError::MissingStatus)?;
+                let offset = sector
+                    .checked_shl(u32::from(SECTOR_SHIFT))
+                    .ok_or(ExecuteError::OutOfRange)?;
+                check_range(offset, data_len as u64, disk_size)?;
+                disk.seek(SeekFrom::Start(offset))
+                    .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
+                let actual_length =
+                    writer
+                        .write_from_volatile(disk, data_len)
+                        .map_err(|desc_error| ExecuteError::ReadIo {
+                            length: data_len,
+                            sector,
+                            desc_error,
+                        })?;
+                if actual_length < data_len {
+                    return Err(ExecuteError::ShortRead {
+                        sector,
+                        expected_length: data_len,
+                        actual_length,
+                    });
+                }
+            }
+            VIRTIO_BLK_T_OUT => {
+                let data_len = reader.available_bytes();
+                let offset = sector
+                    .checked_shl(u32::from(SECTOR_SHIFT))
+                    .ok_or(ExecuteError::OutOfRange)?;
+                check_range(offset, data_len as u64, disk_size)?;
+                disk.seek(SeekFrom::Start(offset))
+                    .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
+                let actual_length =
+                    reader
+                        .read_to_volatile(disk, data_len)
+                        .map_err(|desc_error| ExecuteError::WriteIo {
+                            length: data_len,
+                            sector,
+                            desc_error,
+                        })?;
+                if actual_length < data_len {
+                    return Err(ExecuteError::ShortWrite {
+                        sector,
+                        expected_length: data_len,
+                        actual_length,
+                    });
+                }
+                if !*flush_timer_armed {
+                    flush_timer
+                        .reset(flush_delay, None)
+                        .map_err(ExecuteError::TimerFd)?;
+                    *flush_timer_armed = true;
+                }
+            }
+            VIRTIO_BLK_T_DISCARD | VIRTIO_BLK_T_WRITE_ZEROES => {
+                while reader.available_bytes() >= size_of::<virtio_blk_discard_write_zeroes>() {
+                    let seg: virtio_blk_discard_write_zeroes =
+                        reader.read_obj().map_err(ExecuteError::Descriptor)?;
+
+                    let sector = seg.sector.to_native();
+                    let num_sectors = seg.num_sectors.to_native();
+                    let flags = seg.flags.to_native();
+
+                    let valid_flags = if req_type == VIRTIO_BLK_T_WRITE_ZEROES {
+                        VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP
+                    } else {
+                        0
+                    };
+
+                    if (flags & !valid_flags) != 0 {
+                        return Err(ExecuteError::DiscardWriteZeroes {
+                            ioerr: None,
+                            sector,
+                            num_sectors,
+                            flags,
+                        });
+                    }
+
+                    let offset = sector
+                        .checked_shl(u32::from(SECTOR_SHIFT))
+                        .ok_or(ExecuteError::OutOfRange)?;
+                    let length = u64::from(num_sectors)
+                        .checked_shl(u32::from(SECTOR_SHIFT))
+                        .ok_or(ExecuteError::OutOfRange)?;
+                    check_range(offset, length, disk_size)?;
+
+                    if req_type == VIRTIO_BLK_T_DISCARD {
+                        // Since Discard is just a hint and some filesystems may not implement
+                        // FALLOC_FL_PUNCH_HOLE, ignore punch_hole errors.
+                        let _ = disk.punch_hole(offset, length);
+                    } else {
+                        disk.seek(SeekFrom::Start(offset))
+                            .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
+                        disk.write_zeroes(length as usize).map_err(|e| {
+                            ExecuteError::DiscardWriteZeroes {
+                                ioerr: Some(e),
+                                sector,
+                                num_sectors,
+                                flags,
+                            }
+                        })?;
+                    }
+                }
+            }
+            VIRTIO_BLK_T_FLUSH => {
+                disk.fsync().map_err(ExecuteError::Flush)?;
+                flush_timer.clear().map_err(ExecuteError::TimerFd)?;
+                *flush_timer_armed = false;
+            }
+            t => return Err(ExecuteError::Unsupported(t)),
+        };
+        Ok(())
     }
 }
 
@@ -1032,7 +816,10 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
 #[cfg(test)]
 mod tests {
     use std::fs::{File, OpenOptions};
+    use sys_util::GuestAddress;
     use tempfile::TempDir;
+
+    use crate::virtio::descriptor_utils::{create_descriptor_chain, DescriptorType};
 
     use super::*;
 
@@ -1097,30 +884,43 @@ mod tests {
         let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
             .expect("Creating guest memory failed.");
 
-        let req = Request {
-            request_type: RequestType::In,
-            sector: 7, // Disk is 8 sectors long, so this is the last valid sector.
-            data_addr: GuestAddress(0x1000),
-            data_len: 512, // Read 1 sector of data.
-            status_addr: GuestAddress(0),
-            discard_write_zeroes_seg: None,
+        let req_hdr = virtio_blk_req_header {
+            req_type: Le32::from(VIRTIO_BLK_T_IN),
+            reserved: Le32::from(0),
+            sector: Le64::from(7), // Disk is 8 sectors long, so this is the last valid sector.
         };
+        mem.write_obj_at_addr(req_hdr, GuestAddress(0x1000))
+            .expect("writing req failed");
+
+        let avail_desc = create_descriptor_chain(
+            &mem,
+            GuestAddress(0x100),  // Place descriptor chain at 0x100.
+            GuestAddress(0x1000), // Describe buffer at 0x1000.
+            vec![
+                // Request header
+                (DescriptorType::Readable, size_of_val(&req_hdr) as u32),
+                // I/O buffer (1 sector of data)
+                (DescriptorType::Writable, 512),
+                // Request status
+                (DescriptorType::Writable, 1),
+            ],
+            0,
+        )
+        .expect("create_descriptor_chain failed");
 
         let mut flush_timer = TimerFd::new().expect("failed to create flush_timer");
         let mut flush_timer_armed = false;
 
-        assert_eq!(
-            512,
-            req.execute(
-                false,
-                &mut f,
-                disk_size,
-                &mut flush_timer,
-                &mut flush_timer_armed,
-                &mem
-            )
-            .expect("execute failed"),
-        );
+        Block::execute_request(
+            avail_desc,
+            false,
+            &mut f,
+            disk_size,
+            &mut flush_timer,
+            &mut flush_timer_armed,
+            &mem,
+        )
+        .expect("execute failed");
     }
 
     #[test]
@@ -1140,19 +940,35 @@ mod tests {
         let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
             .expect("Creating guest memory failed.");
 
-        let req = Request {
-            request_type: RequestType::In,
-            sector: 7, // Disk is 8 sectors long, so this is the last valid sector.
-            data_addr: GuestAddress(0x1000),
-            data_len: 512 * 2, // Read 2 sectors of data (overlap the end of the disk).
-            status_addr: GuestAddress(0),
-            discard_write_zeroes_seg: None,
+        let req_hdr = virtio_blk_req_header {
+            req_type: Le32::from(VIRTIO_BLK_T_IN),
+            reserved: Le32::from(0),
+            sector: Le64::from(7), // Disk is 8 sectors long, so this is the last valid sector.
         };
+        mem.write_obj_at_addr(req_hdr, GuestAddress(0x1000))
+            .expect("writing req failed");
+
+        let avail_desc = create_descriptor_chain(
+            &mem,
+            GuestAddress(0x100),  // Place descriptor chain at 0x100.
+            GuestAddress(0x1000), // Describe buffer at 0x1000.
+            vec![
+                // Request header
+                (DescriptorType::Readable, size_of_val(&req_hdr) as u32),
+                // I/O buffer (2 sectors of data - overlap the end of the disk).
+                (DescriptorType::Writable, 512 * 2),
+                // Request status
+                (DescriptorType::Writable, 1),
+            ],
+            0,
+        )
+        .expect("create_descriptor_chain failed");
 
         let mut flush_timer = TimerFd::new().expect("failed to create flush_timer");
         let mut flush_timer_armed = false;
 
-        req.execute(
+        Block::execute_request(
+            avail_desc,
             false,
             &mut f,
             disk_size,
