@@ -26,11 +26,12 @@ use data_model::{VolatileMemory, VolatileSlice};
 use sys_util::{GuestAddress, GuestMemory};
 
 use crate::generated::epoxy_egl::{
-    EGLAttrib, EGLBoolean, EGLClientBuffer, EGLConfig, EGLContext, EGLDisplay, EGLImageKHR,
-    EGLNativeDisplayType, EGLSurface, EGLenum, EGLint, EGLuint64KHR, EGLDEBUGPROCKHR,
-    EGL_CONTEXT_CLIENT_VERSION, EGL_DMA_BUF_PLANE0_FD_EXT, EGL_DMA_BUF_PLANE0_OFFSET_EXT,
-    EGL_DMA_BUF_PLANE0_PITCH_EXT, EGL_GL_TEXTURE_2D_KHR, EGL_HEIGHT, EGL_LINUX_DMA_BUF_EXT,
-    EGL_LINUX_DRM_FOURCC_EXT, EGL_NONE, EGL_OPENGL_ES_API, EGL_SURFACE_TYPE, EGL_WIDTH,
+    epoxy_has_egl_extension, EGLAttrib, EGLBoolean, EGLClientBuffer, EGLConfig, EGLContext,
+    EGLDisplay, EGLImageKHR, EGLNativeDisplayType, EGLSurface, EGLenum, EGLint, EGLuint64KHR,
+    EGLDEBUGPROCKHR, EGL_CONTEXT_CLIENT_VERSION, EGL_DMA_BUF_PLANE0_FD_EXT,
+    EGL_DMA_BUF_PLANE0_OFFSET_EXT, EGL_DMA_BUF_PLANE0_PITCH_EXT, EGL_GL_TEXTURE_2D_KHR, EGL_HEIGHT,
+    EGL_LINUX_DMA_BUF_EXT, EGL_LINUX_DRM_FOURCC_EXT, EGL_NONE, EGL_OPENGL_ES_API, EGL_SURFACE_TYPE,
+    EGL_WIDTH,
 };
 use crate::generated::p_defines::{
     PIPE_BIND_RENDER_TARGET, PIPE_BIND_SAMPLER_VIEW, PIPE_TEXTURE_1D, PIPE_TEXTURE_2D,
@@ -230,8 +231,9 @@ struct EGLFunctionsInner {
         buffer: EGLClientBuffer,
         attrib_list: *const EGLint,
     ) -> EGLImageKHR,
-    DebugMessageControlKHR:
+    DebugMessageControlKHR: Option<
         unsafe extern "C" fn(callback: EGLDEBUGPROCKHR, attrib_list: *const EGLAttrib) -> EGLint,
+    >,
     DestroyImageKHR: unsafe extern "C" fn(dpy: EGLDisplay, image: EGLImageKHR) -> EGLBoolean,
     ExportDRMImageMESA: unsafe extern "C" fn(
         dpy: EGLDisplay,
@@ -285,8 +287,7 @@ impl EGLFunctions {
                     .ok_or(Error::MissingEGLFunction("eglCreateContext"))?,
                 CreateImageKHR: epoxy_eglCreateImageKHR
                     .ok_or(Error::MissingEGLFunction("eglCreateImageKHR"))?,
-                DebugMessageControlKHR: epoxy_eglDebugMessageControlKHR
-                    .ok_or(Error::MissingEGLFunction("eglDebugMessageControlKHR"))?,
+                DebugMessageControlKHR: epoxy_eglDebugMessageControlKHR,
                 DestroyImageKHR: epoxy_eglDestroyImageKHR
                     .ok_or(Error::MissingEGLFunction("eglDestroyImageKHR"))?,
                 ExportDRMImageMESA: epoxy_eglExportDRMImageMESA
@@ -319,16 +320,21 @@ impl Deref for EGLFunctions {
 fn init_egl() -> Result<(EGLDisplay, EGLFunctions)> {
     let egl_funcs = EGLFunctions::new()?;
 
-    // Safe because only valid callbacks are given and only one thread can execute this
-    // function.
-    unsafe {
-        (egl_funcs.DebugMessageControlKHR)(Some(error_callback), null());
-    }
-
     // Trivially safe.
     let display = unsafe { (egl_funcs.GetDisplay)(null_mut()) };
     if display.is_null() {
         return Err(Error::EGLGetDisplay);
+    }
+
+    // Safe because only valid callbacks are given and only one thread can execute this
+    // function.
+    unsafe {
+        const EXTENSION_NAME: &[u8] = b"EGL_KHR_debug\0";
+        if epoxy_has_egl_extension(display, EXTENSION_NAME.as_ptr() as *const c_char) {
+            if let Some(debug_message_control) = egl_funcs.DebugMessageControlKHR {
+                debug_message_control(Some(error_callback), null());
+            }
+        }
     }
 
     // Safe because only a valid display is given.
