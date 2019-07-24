@@ -597,11 +597,25 @@ fn create_gpu_device(
             let drm_dri_path = Path::new("/dev/dri");
             jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
 
+            // If the ARM specific devices exist on the host, bind mount them in.
+            let mali0_path = Path::new("/dev/mali0");
+            if mali0_path.exists() {
+                jail.mount_bind(mali0_path, mali0_path, true)?;
+            }
+
+            let pvr_sync_path = Path::new("/dev/pvr_sync");
+            if pvr_sync_path.exists() {
+                jail.mount_bind(pvr_sync_path, pvr_sync_path, true)?;
+            }
+
             // Libraries that are required when mesa drivers are dynamically loaded.
-            let lib_path = Path::new("/lib64");
-            jail.mount_bind(lib_path, lib_path, false)?;
-            let usr_lib_path = Path::new("/usr/lib64");
-            jail.mount_bind(usr_lib_path, usr_lib_path, false)?;
+            let lib_dirs = &["/usr/lib", "/usr/lib64", "/lib", "/lib64"];
+            for dir in lib_dirs {
+                let dir_path = Path::new(dir);
+                if dir_path.exists() {
+                    jail.mount_bind(dir_path, dir_path, false)?;
+                }
+            }
 
             // Bind mount the wayland socket into jail's root. This is necessary since each
             // new wayland context must open() the socket.
