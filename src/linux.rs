@@ -623,6 +623,15 @@ fn create_gpu_device(
 
             add_crosvm_user_to_jail(&mut jail, "gpu")?;
 
+            // pvr driver requires read access to /proc/self/task/*/comm.
+            let proc_path = Path::new("/proc");
+            jail.mount(
+                proc_path,
+                proc_path,
+                "proc",
+                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_RDONLY) as usize,
+            )?;
+
             Some(jail)
         }
         None => None,

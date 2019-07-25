@@ -44,6 +44,7 @@ sendto: 1
 set_robust_list: 1
 sigaltstack: 1
 write: 1
+writev: 1
 
 ## Rules specific to gpu
 connect: 1
@@ -62,3 +63,13 @@ ioctl: arg1 & 0x6400 || arg1 & 0x8000
 ## mmap/mprotect/open/openat differ from the common_device.policy
 mmap2: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ|PROT_EXEC || arg2 == PROT_WRITE || arg2 == PROT_READ
 mprotect: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ
+
+## Rules specific to pvr
+geteuid32: 1
+getuid32: 1
+lstat64: 1
+readlink: 1
+gettid: 1
+fcntl64: 1
+tgkill: 1
+clock_gettime: 1
