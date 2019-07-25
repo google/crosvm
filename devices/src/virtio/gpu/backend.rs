@@ -14,14 +14,13 @@ use std::usize;
 use data_model::*;
 
 use msg_socket::{MsgReceiver, MsgSender};
-use sys_util::{error, warn, GuestAddress, GuestMemory};
+use sys_util::{error, GuestAddress, GuestMemory};
 
 use gpu_buffer::{Buffer, Device, Flags, Format};
 use gpu_display::*;
 use gpu_renderer::{
     format_fourcc as renderer_fourcc, Box3, Context as RendererContext, Image as RendererImage,
-    Renderer, Resource as GpuRendererResource, ResourceCreateArgs, VIRGL_RES_BIND_SCANOUT,
-    VIRGL_RES_BIND_SHARED,
+    Renderer, Resource as GpuRendererResource, ResourceCreateArgs,
 };
 
 use super::protocol::{
@@ -54,7 +53,13 @@ trait VirglResource {
     }
 
     /// Returns the renderer's concrete `GpuRendererResource` for this resource, if it has one.
-    fn gpu_renderer_resource(&mut self) -> Option<&mut GpuRendererResource> {
+    fn gpu_renderer_resource_mut(&mut self) -> Option<&mut GpuRendererResource> {
+        None
+    }
+
+    /// Returns the renderer's concrete non-mutable `GpuRendererResource` for this resource, if
+    /// it has one.
+    fn gpu_renderer_resource(&self) -> Option<&GpuRendererResource> {
         None
     }
 
@@ -111,7 +116,11 @@ impl VirglResource for GpuRendererResource {
         self.detach_backing();
     }
 
-    fn gpu_renderer_resource(&mut self) -> Option<&mut GpuRendererResource> {
+    fn gpu_renderer_resource_mut(&mut self) -> Option<&mut GpuRendererResource> {
+        Some(self)
+    }
+
+    fn gpu_renderer_resource(&self) -> Option<&GpuRendererResource> {
         Some(self)
     }
 
@@ -167,22 +176,6 @@ struct BackedBuffer {
     _image: Option<RendererImage>,
 }
 
-impl BackedBuffer {
-    fn new_renderer_registered(
-        buffer: Buffer,
-        gpu_renderer_resource: GpuRendererResource,
-        image: RendererImage,
-    ) -> BackedBuffer {
-        BackedBuffer {
-            display_import: None,
-            backing: Vec::new(),
-            buffer,
-            gpu_renderer_resource: Some(gpu_renderer_resource),
-            _image: Some(image),
-        }
-    }
-}
-
 impl From<Buffer> for BackedBuffer {
     fn from(buffer: Buffer) -> BackedBuffer {
         BackedBuffer {
@@ -220,8 +213,12 @@ impl VirglResource for BackedBuffer {
         self.backing.clear();
     }
 
-    fn gpu_renderer_resource(&mut self) -> Option<&mut GpuRendererResource> {
+    fn gpu_renderer_resource_mut(&mut self) -> Option<&mut GpuRendererResource> {
         self.gpu_renderer_resource.as_mut()
+    }
+
+    fn gpu_renderer_resource(&self) -> Option<&GpuRendererResource> {
+        self.gpu_renderer_resource.as_ref()
     }
 
     fn buffer(&self) -> Option<&Buffer> {
@@ -385,8 +382,9 @@ impl Backend {
             ResourceRequest::GetResource { id } => self
                 .resources
                 .get(&id)
-                .and_then(|resource| resource.buffer())
-                .and_then(|buffer| buffer.export_plane_fd(0).ok())
+                .and_then(|resource| resource.gpu_renderer_resource())
+                .and_then(|gpu_renderer_resource| gpu_renderer_resource.export().ok())
+                .and_then(|export| Some(export.1))
                 .map(ResourceResponse::Resource)
                 .unwrap_or(ResourceResponse::Invalid),
         };
@@ -747,7 +745,7 @@ impl Backend {
             self.contexts.get_mut(&ctx_id),
             self.resources
                 .get_mut(&res_id)
-                .and_then(|res| res.gpu_renderer_resource()),
+                .and_then(|res| res.gpu_renderer_resource_mut()),
         ) {
             (Some(ctx), Some(res)) => {
                 ctx.attach(res);
@@ -764,7 +762,7 @@ impl Backend {
             self.contexts.get_mut(&ctx_id),
             self.resources
                 .get_mut(&res_id)
-                .and_then(|res| res.gpu_renderer_resource()),
+                .and_then(|res| res.gpu_renderer_resource_mut()),
         ) {
             (Some(ctx), Some(res)) => {
                 ctx.detach(res);
@@ -773,14 +771,6 @@ impl Backend {
             (None, _) => GpuResponse::ErrInvalidContextId,
             (_, None) => GpuResponse::ErrInvalidResourceId,
         }
-    }
-
-    pub fn allocate_using_minigbm(args: ResourceCreateArgs) -> bool {
-        args.bind & (VIRGL_RES_BIND_SCANOUT | VIRGL_RES_BIND_SHARED) != 0
-            && args.depth == 1
-            && args.array_size == 1
-            && args.last_level == 0
-            && args.nr_samples == 0
     }
 
     /// Creates a 3D resource with the given properties and associated it with the given id.
@@ -819,120 +809,45 @@ impl Backend {
         match self.resources.entry(id) {
             Entry::Occupied(_) => GpuResponse::ErrInvalidResourceId,
             Entry::Vacant(slot) => {
-                if self.device.is_some() && Backend::allocate_using_minigbm(create_args) {
-                    let device = self.device.as_ref().unwrap();
-                    match renderer_fourcc(create_args.format) {
-                        Some(fourcc) => {
-                            let buffer = match device.create_buffer(
-                                width,
-                                height,
-                                Format::from(fourcc),
-                                Flags::empty().use_scanout(true).use_rendering(true),
-                            ) {
-                                Ok(buffer) => buffer,
-                                Err(_) => {
-                                    // Attempt to allocate the buffer without scanout flag.
-                                    match device.create_buffer(
-                                        width,
-                                        height,
-                                        Format::from(fourcc),
-                                        Flags::empty().use_rendering(true),
-                                    ) {
-                                        Ok(buffer) => buffer,
-                                        Err(e) => {
-                                            error!(
-                                                "failed to create buffer for 3d resource {}: {}",
-                                                format, e
-                                            );
-                                            return GpuResponse::ErrUnspec;
-                                        }
-                                    }
-                                }
-                            };
+                let res = self.renderer.create_resource(create_args);
+                match res {
+                    Ok(res) => {
+                        let query = match res.query() {
+                            Ok(query) => query,
+                            Err(_) => return GpuResponse::ErrUnspec,
+                        };
 
-                            let dma_buf_fd = match buffer.export_plane_fd(0) {
-                                Ok(dma_buf_fd) => dma_buf_fd,
-                                Err(e) => {
-                                    error!("failed to export plane fd: {}", e);
-                                    return GpuResponse::ErrUnspec;
+                        let response = match query.out_num_fds {
+                            0 => GpuResponse::OkNoData,
+                            1 => {
+                                let mut plane_info = Vec::with_capacity(4);
+                                for plane_index in 0..4 {
+                                    plane_info.push(GpuResponsePlaneInfo {
+                                        stride: query.out_strides[plane_index],
+                                        offset: query.out_offsets[plane_index],
+                                    });
                                 }
-                            };
 
-                            let image = match self.renderer.image_from_dmabuf(
-                                fourcc,
-                                width,
-                                height,
-                                dma_buf_fd.as_raw_fd(),
-                                buffer.plane_offset(0),
-                                buffer.plane_stride(0),
-                            ) {
-                                Ok(image) => image,
-                                Err(e) => {
-                                    error!("failed to create egl image: {}", e);
-                                    return GpuResponse::ErrUnspec;
-                                }
-                            };
-
-                            let res = self.renderer.import_resource(create_args, &image);
-                            match res {
-                                Ok(res) => {
-                                    let format_modifier = buffer.format_modifier();
-                                    let mut plane_info = Vec::with_capacity(buffer.num_planes());
-                                    for plane_index in 0..buffer.num_planes() {
-                                        plane_info.push(GpuResponsePlaneInfo {
-                                            stride: buffer.plane_stride(plane_index),
-                                            offset: buffer.plane_offset(plane_index),
-                                        });
-                                    }
-                                    let backed =
-                                        BackedBuffer::new_renderer_registered(buffer, res, image);
-                                    slot.insert(Box::new(backed));
-                                    GpuResponse::OkResourcePlaneInfo {
-                                        format_modifier,
-                                        plane_info,
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("failed to import renderer resource: {}", e);
-                                    GpuResponse::ErrUnspec
+                                let format_modifier = query.out_modifier;
+                                GpuResponse::OkResourcePlaneInfo {
+                                    format_modifier,
+                                    plane_info,
                                 }
                             }
-                        }
-                        None => {
-                            warn!(
-                                "failed to get fourcc for minigbm 3d resource {}, falling back",
-                                format
-                            );
-                            let res = self.renderer.create_resource(create_args);
-                            match res {
-                                Ok(res) => {
-                                    slot.insert(Box::new(res));
-                                    GpuResponse::OkNoData
-                                }
-                                Err(e) => {
-                                    error!("failed to create renderer resource: {}", e);
-                                    GpuResponse::ErrUnspec
-                                }
-                            }
-                        }
+                            _ => return GpuResponse::ErrUnspec,
+                        };
+
+                        slot.insert(Box::new(res));
+                        response
                     }
-                } else {
-                    let res = self.renderer.create_resource(create_args);
-                    match res {
-                        Ok(res) => {
-                            slot.insert(Box::new(res));
-                            GpuResponse::OkNoData
-                        }
-                        Err(e) => {
-                            error!("failed to create renderer resource: {}", e);
-                            GpuResponse::ErrUnspec
-                        }
+                    Err(e) => {
+                        error!("failed to create renderer resource: {}", e);
+                        GpuResponse::ErrUnspec
                     }
                 }
             }
         }
     }
-
     /// Copes the given 3D rectangle of pixels of the given resource's backing memory to the host
     /// side resource.
     pub fn transfer_to_resource_3d(
@@ -958,7 +873,7 @@ impl Backend {
             },
         };
         match self.resources.get_mut(&res_id) {
-            Some(res) => match res.gpu_renderer_resource() {
+            Some(res) => match res.gpu_renderer_resource_mut() {
                 Some(res) => {
                     let transfer_box = Box3 {
                         x,
@@ -1009,7 +924,7 @@ impl Backend {
             },
         };
         match self.resources.get_mut(&res_id) {
-            Some(res) => match res.gpu_renderer_resource() {
+            Some(res) => match res.gpu_renderer_resource_mut() {
                 Some(res) => {
                     let transfer_box = Box3 {
                         x,

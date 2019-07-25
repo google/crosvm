@@ -51,6 +51,8 @@ pub use crate::pipe_format_fourcc::pipe_format_fourcc as format_fourcc;
 pub type ResourceCreateArgs = virgl_renderer_resource_create_args;
 /// Information returned from `Resource::get_info`.
 pub type ResourceInfo = virgl_renderer_resource_info;
+/// Some of the information returned from `Resource::export_query`.
+pub type Query = virgl_renderer_export_query;
 
 /// An error generated while using this crate.
 #[derive(Debug)]
@@ -788,25 +790,6 @@ impl Drop for Image {
     }
 }
 
-/// A DMABUF file descriptor handle and metadata returned from `Resource::export`.
-#[derive(Debug)]
-pub struct ExportedResource {
-    /// The file descriptor that represents the DMABUF kernel object.
-    pub dmabuf: File,
-    /// The width in pixels of the exported resource.
-    pub width: u32,
-    /// The height in pixels of the exported resource.
-    pub height: u32,
-    /// The fourcc identifier for the format of the resource.
-    pub fourcc: u32,
-    /// Extra modifiers for the format.
-    pub modifiers: u64,
-    /// The number of bytes between successive rows in the exported resource.
-    pub stride: u32,
-    /// The number of bytes from the start of the exported resource to the first pixel.
-    pub offset: u32,
-}
-
 /// A resource handle used by the renderer.
 pub struct Resource {
     id: u32,
@@ -830,80 +813,40 @@ impl Resource {
         Ok(res_info)
     }
 
-    /// Performs an export of this resource so that it may be imported by other processes.
-    pub fn export(&self) -> Result<ExportedResource> {
-        let egl_funcs = match self.egl_funcs.as_ref() {
-            Some(f) => f,
-            None => return Err(Error::ExportUnsupported),
-        };
+    /// Retrieves metadata suitable for export about this resource. If "export_fd" is true,
+    /// performs an export of this resource so that it may be imported by other processes.
+    fn export_query(&self, export_fd: bool) -> Result<Query> {
+        let mut query: Query = Default::default();
+        query.hdr.stype = VIRGL_RENDERER_STRUCTURE_TYPE_EXPORT_QUERY;
+        query.hdr.stype_version = 0;
+        query.hdr.size = size_of::<Query>() as u32;
+        query.in_resource_id = self.id;
+        query.in_export_fds = if export_fd { 1 } else { 0 };
 
-        let res_info = self.get_info()?;
-        let mut fourcc = 0;
-        let mut modifiers = 0;
-        let mut fd = -1;
-        let mut stride = 0;
-        let mut offset = 0;
-        // Always safe on the same thread with an already initialized virglrenderer.
-        unsafe {
-            virgl_renderer_force_ctx_0();
-        }
-        // These are trivially safe and always return successfully because we bind the context in
-        // the previous line.
-        let egl_dpy: EGLDisplay = unsafe { (egl_funcs.GetCurrentDisplay)() };
-        let egl_ctx: EGLContext = unsafe { (egl_funcs.GetCurrentContext)() };
+        // Safe because the image parameters are stack variables of the correct type.
+        let ret =
+            unsafe { virgl_renderer_execute(&mut query as *mut _ as *mut c_void, query.hdr.size) };
 
-        // Safe because a valid display, context, and texture ID are given. The attribute list is
-        // not needed. The result is checked to ensure the returned image is valid.
-        let image = unsafe {
-            (egl_funcs.CreateImageKHR)(
-                egl_dpy,
-                egl_ctx,
-                EGL_GL_TEXTURE_2D_KHR,
-                res_info.tex_id as EGLClientBuffer,
-                null(),
-            )
-        };
+        ret_to_res(ret)?;
+        Ok(query)
+    }
 
-        if image.is_null() {
-            return Err(Error::CreateImage);
-        }
+    /// Returns resource metadata.
+    pub fn query(&self) -> Result<Query> {
+        self.export_query(false)
+    }
 
-        // Safe because the display and image are valid and each function call is checked for
-        // success. The returned image parameters are stored in stack variables of the correct type.
-        let export_success = unsafe {
-            (egl_funcs.ExportDMABUFImageQueryMESA)(
-                egl_dpy,
-                image,
-                &mut fourcc,
-                null_mut(),
-                &mut modifiers,
-            ) != 0
-                && (egl_funcs.ExportDRMImageMESA)(egl_dpy, image, &mut fd, &mut stride, &mut offset)
-                    != 0
-        };
-
-        // Safe because we checked that the image was valid and nobody else owns it. The image does
-        // not need to be around for the dmabuf to be valid.
-        unsafe {
-            (egl_funcs.DestroyImageKHR)(egl_dpy, image);
-        }
-
-        if !export_success || fd < 0 {
+    /// Returns resource metadata and exports the associated dma-buf.
+    pub fn export(&self) -> Result<(Query, File)> {
+        let query = self.export_query(true)?;
+        if query.out_num_fds != 1 || query.out_fds[0] < 0 {
             return Err(Error::ExportedResourceDmabuf);
         }
 
-        // Safe because the FD was just returned by a successful EGL call so it must be valid and
-        // owned by us.
-        let dmabuf = unsafe { File::from_raw_fd(fd) };
-        Ok(ExportedResource {
-            dmabuf,
-            width: res_info.width,
-            height: res_info.height,
-            fourcc: fourcc as u32,
-            modifiers,
-            stride: stride as u32,
-            offset: offset as u32,
-        })
+        // Safe because the FD was just returned by a successful virglrenderer call so it must
+        // be valid and owned by us.
+        let dmabuf = unsafe { File::from_raw_fd(query.out_fds[0]) };
+        Ok((query, dmabuf))
     }
 
     /// Attaches a scatter-gather mapping of guest memory to this resource which used for transfers.
