@@ -9,9 +9,9 @@ use std::io;
 use std::os::unix::io::AsRawFd;
 use std::result;
 
-use data_model::DataInit;
+use data_model::{DataInit, VolatileMemory, VolatileMemoryError};
 use sys_util::guest_memory::Error as GuestMemoryError;
-use sys_util::{GuestAddress, GuestMemory};
+use sys_util::{FileReadWriteVolatile, GuestAddress, GuestMemory};
 
 use super::DescriptorChain;
 
@@ -19,6 +19,7 @@ use super::DescriptorChain;
 pub enum Error {
     GuestMemoryError(sys_util::GuestMemoryError),
     IoError(io::Error),
+    VolatileMemoryError(VolatileMemoryError),
 }
 
 impl Display for Error {
@@ -28,6 +29,7 @@ impl Display for Error {
         match self {
             GuestMemoryError(e) => write!(f, "descriptor guest memory error: {}", e),
             IoError(e) => write!(f, "descriptor I/O error: {}", e),
+            VolatileMemoryError(e) => write!(f, "volatile memory error: {}", e),
         }
     }
 }
@@ -273,6 +275,29 @@ impl<'a> Reader<'a> {
         )
     }
 
+    /// Reads data from the descriptor chain buffer into a FileReadWriteVolatile.
+    /// Returns the number of bytes read from the descriptor chain buffer.
+    /// The number of bytes read can be less than `count` if there isn't
+    /// enough data in the descriptor chain buffer.
+    pub fn read_to_volatile(
+        &mut self,
+        dst: &mut dyn FileReadWriteVolatile,
+        count: usize,
+    ) -> Result<usize> {
+        let mem = self.mem;
+        self.buffer.consume(
+            |addr, count| {
+                let mem_volatile_slice = mem
+                    .get_slice(addr.offset(), count as u64)
+                    .map_err(Error::VolatileMemoryError)?;
+                dst.write_all_volatile(mem_volatile_slice)
+                    .map_err(Error::IoError)?;
+                Ok(())
+            },
+            count,
+        )
+    }
+
     /// Returns number of bytes available for reading.
     pub fn available_bytes(&mut self) -> usize {
         self.buffer.available_bytes()
@@ -363,6 +388,29 @@ impl<'a> Writer<'a> {
             |addr, count| {
                 mem.read_to_memory(addr, src, count)
                     .map_err(Error::GuestMemoryError)
+            },
+            count,
+        )
+    }
+
+    /// Writes data to the descriptor chain buffer from a FileReadWriteVolatile.
+    /// Returns the number of bytes written to the descriptor chain buffer.
+    /// The number of bytes written can be less than `count` if
+    /// there isn't enough data in the descriptor chain buffer.
+    pub fn write_from_volatile(
+        &mut self,
+        src: &mut dyn FileReadWriteVolatile,
+        count: usize,
+    ) -> Result<usize> {
+        let mem = self.mem;
+        self.buffer.consume(
+            |addr, count| {
+                let mem_volatile_slice = mem
+                    .get_slice(addr.offset(), count as u64)
+                    .map_err(Error::VolatileMemoryError)?;
+                src.read_exact_volatile(mem_volatile_slice)
+                    .map_err(Error::IoError)?;
+                Ok(())
             },
             count,
         )
