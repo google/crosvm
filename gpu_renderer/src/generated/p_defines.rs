@@ -199,16 +199,16 @@ pub const PIPE_QUIRK_TEXTURE_BORDER_COLOR_SWIZZLE_R600: u32 = 2;
 pub type __uint64_t = ::std::os::raw::c_ulong;
 pub type boolean = ::std::os::raw::c_uchar;
 pub const PIPE_OK: pipe_error = 0;
-/// < Generic error
+#[doc = "< Generic error"]
 pub const PIPE_ERROR: pipe_error = -1;
 pub const PIPE_ERROR_BAD_INPUT: pipe_error = -2;
 pub const PIPE_ERROR_OUT_OF_MEMORY: pipe_error = -3;
 pub const PIPE_ERROR_RETRY: pipe_error = -4;
-/// Gallium error codes.
-///
-/// - A zero value always means success.
-/// - A negative value always means failure.
-/// - The meaning of a positive value is function dependent.
+#[doc = " Gallium error codes."]
+#[doc = ""]
+#[doc = " - A zero value always means success."]
+#[doc = " - A negative value always means failure."]
+#[doc = " - The meaning of a positive value is function dependent."]
 pub type pipe_error = i32;
 pub const PIPE_LOGICOP_CLEAR: pipe_logicop = 0;
 pub const PIPE_LOGICOP_NOR: pipe_logicop = 1;
@@ -237,87 +237,87 @@ pub const PIPE_TEXTURE_1D_ARRAY: pipe_texture_target = 6;
 pub const PIPE_TEXTURE_2D_ARRAY: pipe_texture_target = 7;
 pub const PIPE_TEXTURE_CUBE_ARRAY: pipe_texture_target = 8;
 pub const PIPE_MAX_TEXTURE_TYPES: pipe_texture_target = 9;
-/// Texture types.
-/// See the documentation for info on PIPE_TEXTURE_RECT vs PIPE_TEXTURE_2D
+#[doc = " Texture types."]
+#[doc = " See the documentation for info on PIPE_TEXTURE_RECT vs PIPE_TEXTURE_2D"]
 pub type pipe_texture_target = u32;
-/// Resource contents read back (or accessed directly) at transfer
-/// create time.
+#[doc = " Resource contents read back (or accessed directly) at transfer"]
+#[doc = " create time."]
 pub const PIPE_TRANSFER_READ: pipe_transfer_usage = 1;
-/// Resource contents will be written back at transfer_unmap
-/// time (or modified as a result of being accessed directly).
+#[doc = " Resource contents will be written back at transfer_unmap"]
+#[doc = " time (or modified as a result of being accessed directly)."]
 pub const PIPE_TRANSFER_WRITE: pipe_transfer_usage = 2;
-/// Read/modify/write
+#[doc = " Read/modify/write"]
 pub const PIPE_TRANSFER_READ_WRITE: pipe_transfer_usage = 3;
-/// The transfer should map the texture storage directly. The driver may
-/// return NULL if that isn't possible, and the state tracker needs to cope
-/// with that and use an alternative path without this flag.
-///
-/// E.g. the state tracker could have a simpler path which maps textures and
-/// does read/modify/write cycles on them directly, and a more complicated
-/// path which uses minimal read and write transfers.
+#[doc = " The transfer should map the texture storage directly. The driver may"]
+#[doc = " return NULL if that isn't possible, and the state tracker needs to cope"]
+#[doc = " with that and use an alternative path without this flag."]
+#[doc = ""]
+#[doc = " E.g. the state tracker could have a simpler path which maps textures and"]
+#[doc = " does read/modify/write cycles on them directly, and a more complicated"]
+#[doc = " path which uses minimal read and write transfers."]
 pub const PIPE_TRANSFER_MAP_DIRECTLY: pipe_transfer_usage = 4;
-/// Discards the memory within the mapped region.
-///
-/// It should not be used with PIPE_TRANSFER_READ.
-///
-/// See also:
-/// - OpenGL's ARB_map_buffer_range extension, MAP_INVALIDATE_RANGE_BIT flag.
+#[doc = " Discards the memory within the mapped region."]
+#[doc = ""]
+#[doc = " It should not be used with PIPE_TRANSFER_READ."]
+#[doc = ""]
+#[doc = " See also:"]
+#[doc = " - OpenGL's ARB_map_buffer_range extension, MAP_INVALIDATE_RANGE_BIT flag."]
 pub const PIPE_TRANSFER_DISCARD_RANGE: pipe_transfer_usage = 256;
-/// Fail if the resource cannot be mapped immediately.
-///
-/// See also:
-/// - Direct3D's D3DLOCK_DONOTWAIT flag.
-/// - Mesa3D's MESA_MAP_NOWAIT_BIT flag.
-/// - WDDM's D3DDDICB_LOCKFLAGS.DonotWait flag.
+#[doc = " Fail if the resource cannot be mapped immediately."]
+#[doc = ""]
+#[doc = " See also:"]
+#[doc = " - Direct3D's D3DLOCK_DONOTWAIT flag."]
+#[doc = " - Mesa3D's MESA_MAP_NOWAIT_BIT flag."]
+#[doc = " - WDDM's D3DDDICB_LOCKFLAGS.DonotWait flag."]
 pub const PIPE_TRANSFER_DONTBLOCK: pipe_transfer_usage = 512;
-/// Do not attempt to synchronize pending operations on the resource when mapping.
-///
-/// It should not be used with PIPE_TRANSFER_READ.
-///
-/// See also:
-/// - OpenGL's ARB_map_buffer_range extension, MAP_UNSYNCHRONIZED_BIT flag.
-/// - Direct3D's D3DLOCK_NOOVERWRITE flag.
-/// - WDDM's D3DDDICB_LOCKFLAGS.IgnoreSync flag.
+#[doc = " Do not attempt to synchronize pending operations on the resource when mapping."]
+#[doc = ""]
+#[doc = " It should not be used with PIPE_TRANSFER_READ."]
+#[doc = ""]
+#[doc = " See also:"]
+#[doc = " - OpenGL's ARB_map_buffer_range extension, MAP_UNSYNCHRONIZED_BIT flag."]
+#[doc = " - Direct3D's D3DLOCK_NOOVERWRITE flag."]
+#[doc = " - WDDM's D3DDDICB_LOCKFLAGS.IgnoreSync flag."]
 pub const PIPE_TRANSFER_UNSYNCHRONIZED: pipe_transfer_usage = 1024;
-/// Written ranges will be notified later with
-/// pipe_context::transfer_flush_region.
-///
-/// It should not be used with PIPE_TRANSFER_READ.
-///
-/// See also:
-/// - pipe_context::transfer_flush_region
-/// - OpenGL's ARB_map_buffer_range extension, MAP_FLUSH_EXPLICIT_BIT flag.
+#[doc = " Written ranges will be notified later with"]
+#[doc = " pipe_context::transfer_flush_region."]
+#[doc = ""]
+#[doc = " It should not be used with PIPE_TRANSFER_READ."]
+#[doc = ""]
+#[doc = " See also:"]
+#[doc = " - pipe_context::transfer_flush_region"]
+#[doc = " - OpenGL's ARB_map_buffer_range extension, MAP_FLUSH_EXPLICIT_BIT flag."]
 pub const PIPE_TRANSFER_FLUSH_EXPLICIT: pipe_transfer_usage = 2048;
-/// Discards all memory backing the resource.
-///
-/// It should not be used with PIPE_TRANSFER_READ.
-///
-/// This is equivalent to:
-/// - OpenGL's ARB_map_buffer_range extension, MAP_INVALIDATE_BUFFER_BIT
-/// - BufferData(NULL) on a GL buffer
-/// - Direct3D's D3DLOCK_DISCARD flag.
-/// - WDDM's D3DDDICB_LOCKFLAGS.Discard flag.
-/// - D3D10 DDI's D3D10_DDI_MAP_WRITE_DISCARD flag
-/// - D3D10's D3D10_MAP_WRITE_DISCARD flag.
+#[doc = " Discards all memory backing the resource."]
+#[doc = ""]
+#[doc = " It should not be used with PIPE_TRANSFER_READ."]
+#[doc = ""]
+#[doc = " This is equivalent to:"]
+#[doc = " - OpenGL's ARB_map_buffer_range extension, MAP_INVALIDATE_BUFFER_BIT"]
+#[doc = " - BufferData(NULL) on a GL buffer"]
+#[doc = " - Direct3D's D3DLOCK_DISCARD flag."]
+#[doc = " - WDDM's D3DDDICB_LOCKFLAGS.Discard flag."]
+#[doc = " - D3D10 DDI's D3D10_DDI_MAP_WRITE_DISCARD flag"]
+#[doc = " - D3D10's D3D10_MAP_WRITE_DISCARD flag."]
 pub const PIPE_TRANSFER_DISCARD_WHOLE_RESOURCE: pipe_transfer_usage = 4096;
-/// Allows the resource to be used for rendering while mapped.
-///
-/// PIPE_RESOURCE_FLAG_MAP_PERSISTENT must be set when creating
-/// the resource.
-///
-/// If COHERENT is not set, memory_barrier(PIPE_BARRIER_MAPPED_BUFFER)
-/// must be called to ensure the device can see what the CPU has written.
+#[doc = " Allows the resource to be used for rendering while mapped."]
+#[doc = ""]
+#[doc = " PIPE_RESOURCE_FLAG_MAP_PERSISTENT must be set when creating"]
+#[doc = " the resource."]
+#[doc = ""]
+#[doc = " If COHERENT is not set, memory_barrier(PIPE_BARRIER_MAPPED_BUFFER)"]
+#[doc = " must be called to ensure the device can see what the CPU has written."]
 pub const PIPE_TRANSFER_PERSISTENT: pipe_transfer_usage = 8192;
-/// If PERSISTENT is set, this ensures any writes done by the device are
-/// immediately visible to the CPU and vice versa.
-///
-/// PIPE_RESOURCE_FLAG_MAP_COHERENT must be set when creating
-/// the resource.
+#[doc = " If PERSISTENT is set, this ensures any writes done by the device are"]
+#[doc = " immediately visible to the CPU and vice versa."]
+#[doc = ""]
+#[doc = " PIPE_RESOURCE_FLAG_MAP_COHERENT must be set when creating"]
+#[doc = " the resource."]
 pub const PIPE_TRANSFER_COHERENT: pipe_transfer_usage = 16384;
-/// Transfer object usage flags
+#[doc = " Transfer object usage flags"]
 pub type pipe_transfer_usage = u32;
 pub const PIPE_FLUSH_END_OF_FRAME: pipe_flush_flags = 1;
-/// Flags for the flush function.
+#[doc = " Flags for the flush function."]
 pub type pipe_flush_flags = u32;
 pub const PIPE_CAP_NPOT_TEXTURES: pipe_cap = 1;
 pub const PIPE_CAP_TWO_SIDED_STENCIL: pipe_cap = 2;
@@ -337,162 +337,162 @@ pub const PIPE_CAP_BLEND_EQUATION_SEPARATE: pipe_cap = 28;
 pub const PIPE_CAP_SM3: pipe_cap = 29;
 pub const PIPE_CAP_MAX_STREAM_OUTPUT_BUFFERS: pipe_cap = 30;
 pub const PIPE_CAP_PRIMITIVE_RESTART: pipe_cap = 31;
-/// blend enables and write masks per rendertarget
+#[doc = " blend enables and write masks per rendertarget"]
 pub const PIPE_CAP_INDEP_BLEND_ENABLE: pipe_cap = 33;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_INDEP_BLEND_FUNC: pipe_cap = 34;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS: pipe_cap = 36;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TGSI_FS_COORD_ORIGIN_UPPER_LEFT: pipe_cap = 37;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TGSI_FS_COORD_ORIGIN_LOWER_LEFT: pipe_cap = 38;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TGSI_FS_COORD_PIXEL_CENTER_HALF_INTEGER: pipe_cap = 39;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TGSI_FS_COORD_PIXEL_CENTER_INTEGER: pipe_cap = 40;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_DEPTH_CLIP_DISABLE: pipe_cap = 41;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_SHADER_STENCIL_EXPORT: pipe_cap = 42;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TGSI_INSTANCEID: pipe_cap = 43;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_VERTEX_ELEMENT_INSTANCE_DIVISOR: pipe_cap = 44;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_FRAGMENT_COLOR_CLAMPED: pipe_cap = 45;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MIXED_COLORBUFFER_FORMATS: pipe_cap = 46;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_SEAMLESS_CUBE_MAP: pipe_cap = 47;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_SEAMLESS_CUBE_MAP_PER_TEXTURE: pipe_cap = 48;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MIN_TEXEL_OFFSET: pipe_cap = 50;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_TEXEL_OFFSET: pipe_cap = 51;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_CONDITIONAL_RENDER: pipe_cap = 52;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TEXTURE_BARRIER: pipe_cap = 53;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_STREAM_OUTPUT_SEPARATE_COMPONENTS: pipe_cap = 55;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_STREAM_OUTPUT_INTERLEAVED_COMPONENTS: pipe_cap = 56;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_STREAM_OUTPUT_PAUSE_RESUME: pipe_cap = 57;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TGSI_CAN_COMPACT_CONSTANTS: pipe_cap = 59;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_VERTEX_COLOR_UNCLAMPED: pipe_cap = 60;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_VERTEX_COLOR_CLAMPED: pipe_cap = 61;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_GLSL_FEATURE_LEVEL: pipe_cap = 62;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_QUADS_FOLLOW_PROVOKING_VERTEX_CONVENTION: pipe_cap = 63;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_USER_VERTEX_BUFFERS: pipe_cap = 64;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_VERTEX_BUFFER_OFFSET_4BYTE_ALIGNED_ONLY: pipe_cap = 65;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_VERTEX_BUFFER_STRIDE_4BYTE_ALIGNED_ONLY: pipe_cap = 66;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_VERTEX_ELEMENT_SRC_OFFSET_4BYTE_ALIGNED_ONLY: pipe_cap = 67;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_COMPUTE: pipe_cap = 68;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_USER_INDEX_BUFFERS: pipe_cap = 69;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_USER_CONSTANT_BUFFERS: pipe_cap = 70;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_CONSTANT_BUFFER_OFFSET_ALIGNMENT: pipe_cap = 71;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_START_INSTANCE: pipe_cap = 72;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_QUERY_TIMESTAMP: pipe_cap = 73;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TEXTURE_MULTISAMPLE: pipe_cap = 74;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MIN_MAP_BUFFER_ALIGNMENT: pipe_cap = 75;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_CUBE_MAP_ARRAY: pipe_cap = 76;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TEXTURE_BUFFER_OBJECTS: pipe_cap = 77;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TEXTURE_BUFFER_OFFSET_ALIGNMENT: pipe_cap = 78;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TGSI_TEXCOORD: pipe_cap = 79;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_PREFER_BLIT_BASED_TEXTURE_TRANSFER: pipe_cap = 80;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_QUERY_PIPELINE_STATISTICS: pipe_cap = 81;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TEXTURE_BORDER_COLOR_QUIRK: pipe_cap = 82;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_TEXTURE_BUFFER_SIZE: pipe_cap = 83;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_VIEWPORTS: pipe_cap = 84;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_ENDIANNESS: pipe_cap = 85;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MIXED_FRAMEBUFFER_SIZES: pipe_cap = 86;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TGSI_VS_LAYER_VIEWPORT: pipe_cap = 87;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_GEOMETRY_OUTPUT_VERTICES: pipe_cap = 88;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS: pipe_cap = 89;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_TEXTURE_GATHER_COMPONENTS: pipe_cap = 90;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TEXTURE_GATHER_SM5: pipe_cap = 91;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_BUFFER_MAP_PERSISTENT_COHERENT: pipe_cap = 92;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_FAKE_SW_MSAA: pipe_cap = 93;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TEXTURE_QUERY_LOD: pipe_cap = 94;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MIN_TEXTURE_GATHER_OFFSET: pipe_cap = 95;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_TEXTURE_GATHER_OFFSET: pipe_cap = 96;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_SAMPLE_SHADING: pipe_cap = 97;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TEXTURE_GATHER_OFFSETS: pipe_cap = 98;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TGSI_VS_WINDOW_SPACE_POSITION: pipe_cap = 99;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_VERTEX_STREAMS: pipe_cap = 100;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_DRAW_INDIRECT: pipe_cap = 101;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_TGSI_FS_FINE_DERIVATIVE: pipe_cap = 102;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_VENDOR_ID: pipe_cap = 103;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_DEVICE_ID: pipe_cap = 104;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_ACCELERATED: pipe_cap = 105;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_VIDEO_MEMORY: pipe_cap = 106;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_UMA: pipe_cap = 107;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_CONDITIONAL_RENDER_INVERTED: pipe_cap = 108;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_MAX_VERTEX_ATTRIB_STRIDE: pipe_cap = 109;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_SAMPLER_VIEW_TARGET: pipe_cap = 110;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_CLIP_HALFZ: pipe_cap = 111;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_VERTEXID_NOBASE: pipe_cap = 112;
-/// different blend funcs per rendertarget
+#[doc = " different blend funcs per rendertarget"]
 pub const PIPE_CAP_POLYGON_OFFSET_CLAMP: pipe_cap = 113;
-/// Implementation capabilities/limits which are queried through
-/// pipe_screen::get_param()
+#[doc = " Implementation capabilities/limits which are queried through"]
+#[doc = " pipe_screen::get_param()"]
 pub type pipe_cap = u32;
 pub const PIPE_ENDIAN_LITTLE: pipe_endian = 0;
 pub const PIPE_ENDIAN_BIG: pipe_endian = 1;
@@ -508,8 +508,8 @@ pub const PIPE_CAPF_GUARD_BAND_LEFT: pipe_capf = 6;
 pub const PIPE_CAPF_GUARD_BAND_TOP: pipe_capf = 7;
 pub const PIPE_CAPF_GUARD_BAND_RIGHT: pipe_capf = 8;
 pub const PIPE_CAPF_GUARD_BAND_BOTTOM: pipe_capf = 9;
-/// Implementation limits which are queried through
-/// pipe_screen::get_paramf()
+#[doc = " Implementation limits which are queried through"]
+#[doc = " pipe_screen::get_paramf()"]
 pub type pipe_capf = u32;
 pub const PIPE_SHADER_CAP_MAX_INSTRUCTIONS: pipe_shader_cap = 0;
 pub const PIPE_SHADER_CAP_MAX_ALU_INSTRUCTIONS: pipe_shader_cap = 1;
@@ -538,7 +538,7 @@ pub type pipe_shader_cap = u32;
 pub const PIPE_SHADER_IR_TGSI: pipe_shader_ir = 0;
 pub const PIPE_SHADER_IR_LLVM: pipe_shader_ir = 1;
 pub const PIPE_SHADER_IR_NATIVE: pipe_shader_ir = 2;
-/// Shader intermediate representation.
+#[doc = " Shader intermediate representation."]
 pub type pipe_shader_ir = u32;
 pub const PIPE_COMPUTE_CAP_IR_TARGET: pipe_compute_cap = 0;
 pub const PIPE_COMPUTE_CAP_GRID_DIMENSION: pipe_compute_cap = 1;
@@ -553,51 +553,51 @@ pub const PIPE_COMPUTE_CAP_MAX_MEM_ALLOC_SIZE: pipe_compute_cap = 9;
 pub const PIPE_COMPUTE_CAP_MAX_CLOCK_FREQUENCY: pipe_compute_cap = 10;
 pub const PIPE_COMPUTE_CAP_MAX_COMPUTE_UNITS: pipe_compute_cap = 11;
 pub const PIPE_COMPUTE_CAP_IMAGES_SUPPORTED: pipe_compute_cap = 12;
-/// Compute-specific implementation capability.  They can be queried
-/// using pipe_screen::get_compute_param.
+#[doc = " Compute-specific implementation capability.  They can be queried"]
+#[doc = " using pipe_screen::get_compute_param."]
 pub type pipe_compute_cap = u32;
-/// Query result for PIPE_QUERY_SO_STATISTICS.
+#[doc = " Query result for PIPE_QUERY_SO_STATISTICS."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct pipe_query_data_so_statistics {
     pub num_primitives_written: u64,
     pub primitives_storage_needed: u64,
 }
-/// Query result for PIPE_QUERY_TIMESTAMP_DISJOINT.
+#[doc = " Query result for PIPE_QUERY_TIMESTAMP_DISJOINT."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct pipe_query_data_timestamp_disjoint {
     pub frequency: u64,
     pub disjoint: boolean,
 }
-/// Query result for PIPE_QUERY_PIPELINE_STATISTICS.
+#[doc = " Query result for PIPE_QUERY_PIPELINE_STATISTICS."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct pipe_query_data_pipeline_statistics {
-    /// < Num vertices read by the vertex fetcher.
+    #[doc = "< Num vertices read by the vertex fetcher."]
     pub ia_vertices: u64,
-    /// < Num primitives read by the vertex fetcher.
+    #[doc = "< Num primitives read by the vertex fetcher."]
     pub ia_primitives: u64,
-    /// < Num vertex shader invocations.
+    #[doc = "< Num vertex shader invocations."]
     pub vs_invocations: u64,
-    /// < Num geometry shader invocations.
+    #[doc = "< Num geometry shader invocations."]
     pub gs_invocations: u64,
-    /// < Num primitives output by a geometry shader.
+    #[doc = "< Num primitives output by a geometry shader."]
     pub gs_primitives: u64,
-    /// < Num primitives sent to the rasterizer.
+    #[doc = "< Num primitives sent to the rasterizer."]
     pub c_invocations: u64,
-    /// < Num primitives that were rendered.
+    #[doc = "< Num primitives that were rendered."]
     pub c_primitives: u64,
-    /// < Num pixel shader invocations.
+    #[doc = "< Num pixel shader invocations."]
     pub ps_invocations: u64,
-    /// < Num hull shader invocations.
+    #[doc = "< Num hull shader invocations."]
     pub hs_invocations: u64,
-    /// < Num domain shader invocations.
+    #[doc = "< Num domain shader invocations."]
     pub ds_invocations: u64,
-    /// < Num compute shader invocations.
+    #[doc = "< Num compute shader invocations."]
     pub cs_invocations: u64,
 }
-/// Query result (returned by pipe_context::get_query_result).
+#[doc = " Query result (returned by pipe_context::get_query_result)."]
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union pipe_query_result {

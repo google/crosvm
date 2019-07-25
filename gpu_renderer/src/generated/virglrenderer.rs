@@ -20,6 +20,7 @@ pub const VIRGL_RES_BIND_CURSOR: u32 = 65536;
 pub const VIRGL_RES_BIND_CUSTOM: u32 = 131072;
 pub const VIRGL_RES_BIND_SCANOUT: u32 = 262144;
 pub const VIRGL_RES_BIND_SHARED: u32 = 1048576;
+pub type __int32_t = ::std::os::raw::c_int;
 pub type __uint32_t = ::std::os::raw::c_uint;
 pub type __uint64_t = ::std::os::raw::c_ulong;
 pub type va_list = __builtin_va_list;
@@ -43,7 +44,7 @@ pub struct virgl_renderer_gl_ctx_param {
     pub minor_ver: ::std::os::raw::c_int,
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct virgl_renderer_callbacks {
     pub version: ::std::os::raw::c_int,
     pub write_fence: ::std::option::Option<
@@ -69,11 +70,6 @@ pub struct virgl_renderer_callbacks {
     pub get_drm_fd: ::std::option::Option<
         unsafe extern "C" fn(cookie: *mut ::std::os::raw::c_void) -> ::std::os::raw::c_int,
     >,
-}
-impl Default for virgl_renderer_callbacks {
-    fn default() -> Self {
-        unsafe { ::std::mem::zeroed() }
-    }
 }
 extern "C" {
     pub fn virgl_renderer_init(
@@ -118,6 +114,9 @@ extern "C" {
         offset: *mut ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_int;
 }
+pub const VIRGL_RENDERER_STRUCTURE_TYPE_NONE: virgl_renderer_structure_type_v0 = 0;
+pub const VIRGL_RENDERER_STRUCTURE_TYPE_EXPORT_QUERY: virgl_renderer_structure_type_v0 = 1;
+pub type virgl_renderer_structure_type_v0 = u32;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct virgl_renderer_resource_create_args {
@@ -132,6 +131,27 @@ pub struct virgl_renderer_resource_create_args {
     pub last_level: u32,
     pub nr_samples: u32,
     pub flags: u32,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virgl_renderer_hdr {
+    pub stype: u32,
+    pub stype_version: u32,
+    pub size: u32,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virgl_renderer_export_query {
+    pub hdr: virgl_renderer_hdr,
+    pub in_resource_id: u32,
+    pub out_num_fds: u32,
+    pub in_export_fds: u32,
+    pub out_fourcc: u32,
+    pub pad: u32,
+    pub out_fds: [i32; 4usize],
+    pub out_strides: [u32; 4usize],
+    pub out_offsets: [u32; 4usize],
+    pub out_modifier: u64,
 }
 pub type virgl_debug_callback_type = ::std::option::Option<
     unsafe extern "C" fn(fmt: *const ::std::os::raw::c_char, ap: *mut __va_list_tag),
@@ -272,6 +292,12 @@ extern "C" {
 }
 extern "C" {
     pub fn virgl_renderer_get_poll_fd() -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn virgl_renderer_execute(
+        execute_args: *mut ::std::os::raw::c_void,
+        execute_size: u32,
+    ) -> ::std::os::raw::c_int;
 }
 pub type __builtin_va_list = [__va_list_tag; 1usize];
 #[repr(C)]

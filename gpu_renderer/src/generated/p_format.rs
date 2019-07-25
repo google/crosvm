@@ -9,15 +9,15 @@ pub const PIPE_FORMAT_B5G5R5A1_UNORM: pipe_format = 5;
 pub const PIPE_FORMAT_B4G4R4A4_UNORM: pipe_format = 6;
 pub const PIPE_FORMAT_B5G6R5_UNORM: pipe_format = 7;
 pub const PIPE_FORMAT_R10G10B10A2_UNORM: pipe_format = 8;
-/// < ubyte luminance
+#[doc = "< ubyte luminance"]
 pub const PIPE_FORMAT_L8_UNORM: pipe_format = 9;
-/// < ubyte alpha
+#[doc = "< ubyte alpha"]
 pub const PIPE_FORMAT_A8_UNORM: pipe_format = 10;
-/// < ubyte intensity
+#[doc = "< ubyte intensity"]
 pub const PIPE_FORMAT_I8_UNORM: pipe_format = 11;
-/// < ubyte alpha, luminance
+#[doc = "< ubyte alpha, luminance"]
 pub const PIPE_FORMAT_L8A8_UNORM: pipe_format = 12;
-/// < ushort luminance
+#[doc = "< ushort luminance"]
 pub const PIPE_FORMAT_L16_UNORM: pipe_format = 13;
 pub const PIPE_FORMAT_UYVY: pipe_format = 14;
 pub const PIPE_FORMAT_YUYV: pipe_format = 15;
@@ -28,7 +28,7 @@ pub const PIPE_FORMAT_Z24_UNORM_S8_UINT: pipe_format = 19;
 pub const PIPE_FORMAT_S8_UINT_Z24_UNORM: pipe_format = 20;
 pub const PIPE_FORMAT_Z24X8_UNORM: pipe_format = 21;
 pub const PIPE_FORMAT_X8Z24_UNORM: pipe_format = 22;
-/// < ubyte stencil
+#[doc = "< ubyte stencil"]
 pub const PIPE_FORMAT_S8_UINT: pipe_format = 23;
 pub const PIPE_FORMAT_R64_FLOAT: pipe_format = 24;
 pub const PIPE_FORMAT_R64G64_FLOAT: pipe_format = 25;
@@ -165,7 +165,7 @@ pub const PIPE_FORMAT_L32A32_FLOAT: pipe_format = 161;
 pub const PIPE_FORMAT_I32_FLOAT: pipe_format = 162;
 pub const PIPE_FORMAT_YV12: pipe_format = 163;
 pub const PIPE_FORMAT_YV16: pipe_format = 164;
-/// < aka I420
+#[doc = "< aka I420"]
 pub const PIPE_FORMAT_IYUV: pipe_format = 165;
 pub const PIPE_FORMAT_NV12: pipe_format = 166;
 pub const PIPE_FORMAT_NV21: pipe_format = 167;
@@ -315,5 +315,5 @@ pub const PIPE_FORMAT_X1B5G5R5_UNORM: pipe_format = 310;
 pub const PIPE_FORMAT_A4B4G4R4_UNORM: pipe_format = 311;
 pub const PIPE_FORMAT_R8_SRGB: pipe_format = 312;
 pub const PIPE_FORMAT_COUNT: pipe_format = 313;
-/// Formats for textures, surfaces and vertex data
+#[doc = " Formats for textures, surfaces and vertex data"]
 pub type pipe_format = u32;

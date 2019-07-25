@@ -239,6 +239,9 @@ pub const VIRGL_COPY_TRANSFER3D_SIZE: u32 = 14;
 pub const VIRGL_COPY_TRANSFER3D_SRC_RES_HANDLE: u32 = 12;
 pub const VIRGL_COPY_TRANSFER3D_SRC_RES_OFFSET: u32 = 13;
 pub const VIRGL_COPY_TRANSFER3D_SYNCHRONIZED: u32 = 14;
+pub const VIRGL_SET_TWEAKS_SIZE: u32 = 2;
+pub const VIRGL_SET_TWEAKS_ID: u32 = 1;
+pub const VIRGL_SET_TWEAKS_VALUE: u32 = 2;
 pub type __uint32_t = ::std::os::raw::c_uint;
 pub type __uint64_t = ::std::os::raw::c_ulong;
 #[repr(C)]
@@ -307,5 +310,6 @@ pub const VIRGL_CCMD_GET_QUERY_RESULT_QBO: virgl_context_cmd = 42;
 pub const VIRGL_CCMD_TRANSFER3D: virgl_context_cmd = 43;
 pub const VIRGL_CCMD_END_TRANSFERS: virgl_context_cmd = 44;
 pub const VIRGL_CCMD_COPY_TRANSFER3D: virgl_context_cmd = 45;
-pub const VIRGL_MAX_COMMANDS: virgl_context_cmd = 46;
+pub const VIRGL_CCMD_SET_TWEAKS: virgl_context_cmd = 46;
+pub const VIRGL_MAX_COMMANDS: virgl_context_cmd = 47;
 pub type virgl_context_cmd = u32;
