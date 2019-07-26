@@ -111,8 +111,14 @@ impl DisplayWl {
             Some(None) => return Err(GpuDisplayError::InvalidPath),
             None => None,
         };
-        let setup_success =
-            unsafe { dwl_context_setup(ctx.0, cstr_path.map(|s| s.as_ptr()).unwrap_or(null())) };
+        // This grabs a pointer to cstr_path without moving the CString into the .map closure
+        // accidentally, which triggeres a really hard to catch use after free in
+        // dwl_context_setup.
+        let cstr_path_ptr = cstr_path
+            .as_ref()
+            .map(|s: &CString| CStr::as_ptr(s))
+            .unwrap_or(null());
+        let setup_success = unsafe { dwl_context_setup(ctx.0, cstr_path_ptr) };
         if !setup_success {
             return Err(GpuDisplayError::Connect);
         }
