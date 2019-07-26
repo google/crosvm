@@ -75,6 +75,7 @@ impl<'a> DescriptorChain<'a> {
         desc_table: GuestAddress,
         queue_size: u16,
         index: u16,
+        required_flags: u16,
     ) -> Option<DescriptorChain> {
         if index >= queue_size {
             return None;
@@ -104,7 +105,7 @@ impl<'a> DescriptorChain<'a> {
             next,
         };
 
-        if chain.is_valid() {
+        if chain.is_valid() && chain.flags & required_flags == required_flags {
             Some(chain)
         } else {
             None
@@ -154,12 +155,19 @@ impl<'a> DescriptorChain<'a> {
     /// the head of the next _available_ descriptor chain.
     pub fn next_descriptor(&self) -> Option<DescriptorChain<'a>> {
         if self.has_next() {
-            DescriptorChain::checked_new(self.mem, self.desc_table, self.queue_size, self.next).map(
-                |mut c| {
-                    c.ttl = self.ttl - 1;
-                    c
-                },
+            // Once we see a write-only descriptor, all subsequent descriptors must be write-only.
+            let required_flags = self.flags & VIRTQ_DESC_F_WRITE;
+            DescriptorChain::checked_new(
+                self.mem,
+                self.desc_table,
+                self.queue_size,
+                self.next,
+                required_flags,
             )
+            .map(|mut c| {
+                c.ttl = self.ttl - 1;
+                c
+            })
         } else {
             None
         }
@@ -303,7 +311,7 @@ impl Queue {
         let descriptor_index: u16 = mem.read_obj_from_addr(desc_idx_addr).unwrap();
 
         let descriptor_chain =
-            DescriptorChain::checked_new(mem, self.desc_table, queue_size, descriptor_index);
+            DescriptorChain::checked_new(mem, self.desc_table, queue_size, descriptor_index, 0);
         if descriptor_chain.is_some() {
             self.next_avail += Wrapping(1);
         }

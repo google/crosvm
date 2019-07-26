@@ -517,7 +517,8 @@ pub fn create_descriptor_chain(
         );
     }
 
-    DescriptorChain::checked_new(memory, descriptor_array_addr, 0x100, 0).ok_or(Error::InvalidChain)
+    DescriptorChain::checked_new(memory, descriptor_array_addr, 0x100, 0, 0)
+        .ok_or(Error::InvalidChain)
 }
 
 #[cfg(test)]
