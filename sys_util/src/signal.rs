@@ -100,10 +100,7 @@ fn valid_signal_num(num: c_int) -> bool {
 ///
 /// This is considered unsafe because the given handler will be called asynchronously, interrupting
 /// whatever the thread was doing and therefore must only do async-signal-safe operations.
-pub unsafe fn register_signal_handler(
-    num: c_int,
-    handler: extern "C" fn() -> (),
-) -> errno::Result<()> {
+pub unsafe fn register_signal_handler(num: c_int, handler: extern "C" fn()) -> errno::Result<()> {
     if !valid_signal_num(num) {
         return Err(errno::Error::new(EINVAL));
     }
