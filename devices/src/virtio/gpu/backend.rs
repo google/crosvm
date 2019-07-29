@@ -19,8 +19,8 @@ use sys_util::{error, GuestAddress, GuestMemory};
 use gpu_buffer::{Buffer, Device, Flags, Format};
 use gpu_display::*;
 use gpu_renderer::{
-    format_fourcc as renderer_fourcc, Box3, Context as RendererContext, Image as RendererImage,
-    Renderer, Resource as GpuRendererResource, ResourceCreateArgs,
+    format_fourcc as renderer_fourcc, Box3, Context as RendererContext, Renderer,
+    Resource as GpuRendererResource, ResourceCreateArgs,
 };
 
 use super::protocol::{
@@ -173,7 +173,6 @@ struct BackedBuffer {
     backing: Vec<(GuestAddress, usize)>,
     buffer: Buffer,
     gpu_renderer_resource: Option<GpuRendererResource>,
-    _image: Option<RendererImage>,
 }
 
 impl From<Buffer> for BackedBuffer {
@@ -183,7 +182,6 @@ impl From<Buffer> for BackedBuffer {
             backing: Vec::new(),
             buffer,
             gpu_renderer_resource: None,
-            _image: None,
         }
     }
 }

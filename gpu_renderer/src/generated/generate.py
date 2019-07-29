@@ -125,14 +125,6 @@ def main(argv):
       True,
     ),
     (
-      'epoxy_egl',
-      '(E?GL)|(epoxy)_.+',
-      os.path.join(opts.sysroot, 'usr/include/epoxy/egl.h'),
-      clang_args,
-      'epoxy',
-      False,
-    ),
-    (
       'virgl_protocol',
       '(virgl)|(VIRGL)_.+',
       os.path.join(virgl_src_dir, 'src/virgl_protocol.h'),

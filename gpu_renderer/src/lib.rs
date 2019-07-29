@@ -9,15 +9,13 @@ mod generated;
 mod pipe_format_fourcc;
 
 use std::cell::RefCell;
-use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::marker::PhantomData;
 use std::mem::{size_of, transmute};
-use std::ops::Deref;
-use std::os::raw::{c_char, c_int, c_uint, c_void};
-use std::os::unix::io::{FromRawFd, RawFd};
-use std::ptr::{null, null_mut};
+use std::os::raw::{c_char, c_void};
+use std::os::unix::io::FromRawFd;
+use std::ptr::null_mut;
 use std::rc::Rc;
 use std::result;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,14 +23,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use data_model::{VolatileMemory, VolatileSlice};
 use sys_util::{GuestAddress, GuestMemory};
 
-use crate::generated::epoxy_egl::{
-    epoxy_has_egl_extension, EGLAttrib, EGLBoolean, EGLClientBuffer, EGLConfig, EGLContext,
-    EGLDisplay, EGLImageKHR, EGLNativeDisplayType, EGLSurface, EGLenum, EGLint, EGLuint64KHR,
-    EGLDEBUGPROCKHR, EGL_CONTEXT_CLIENT_VERSION, EGL_DMA_BUF_PLANE0_FD_EXT,
-    EGL_DMA_BUF_PLANE0_OFFSET_EXT, EGL_DMA_BUF_PLANE0_PITCH_EXT, EGL_GL_TEXTURE_2D_KHR, EGL_HEIGHT,
-    EGL_LINUX_DMA_BUF_EXT, EGL_LINUX_DRM_FOURCC_EXT, EGL_NONE, EGL_OPENGL_ES_API, EGL_SURFACE_TYPE,
-    EGL_WIDTH,
-};
 use crate::generated::p_defines::{
     PIPE_BIND_RENDER_TARGET, PIPE_BIND_SAMPLER_VIEW, PIPE_TEXTURE_1D, PIPE_TEXTURE_2D,
 };
@@ -40,10 +30,6 @@ use crate::generated::p_format::PIPE_FORMAT_B8G8R8X8_UNORM;
 use crate::generated::virglrenderer::*;
 
 pub use crate::command_buffer::CommandBufferBuilder;
-pub use crate::generated::virglrenderer::{
-    virgl_renderer_resource_create_args, virgl_renderer_resource_info, VIRGL_RES_BIND_SCANOUT,
-    VIRGL_RES_BIND_SHARED,
-};
 pub use crate::generated::virtgpu_hw::virtgpu_caps;
 pub use crate::pipe_format_fourcc::pipe_format_fourcc as format_fourcc;
 
@@ -59,34 +45,14 @@ pub type Query = virgl_renderer_export_query;
 pub enum Error {
     /// Inidcates `Renderer` was already initialized, and only one renderer per process is allowed.
     AlreadyInitialized,
-    /// Indicates libeopoxy was unable to load the EGL function with the given name.
-    MissingEGLFunction(&'static str),
-    /// A call to eglGetDisplay indicated failure.
-    EGLGetDisplay,
-    /// A call to eglInitialize indicated failure.
-    EGLInitialize,
-    /// A call to eglChooseConfig indicated failure.
-    EGLChooseConfig,
-    /// A call to eglBindAPI indicated failure.
-    EGLBindAPI,
-    /// A call to eglCreateContext indicated failure.
-    EGLCreateContext,
-    /// A call to eglMakeCurrent indicated failure.
-    EGLMakeCurrent,
     /// An internal virglrenderer error was returned.
     Virglrenderer(i32),
-    /// An EGLIMageKHR could not be created, indicating a EGL driver error.
-    CreateImage,
     /// The EGL driver failed to export an EGLImageKHR as a dmabuf.
     ExportedResourceDmabuf,
     /// The indicated region of guest memory is invalid.
     InvalidIovec,
     /// A command size was submitted that was invalid.
     InvalidCommandSize(usize),
-    /// The image export request is not supported without EGL.
-    ExportUnsupported,
-    /// The image import request is not supported without EGL.
-    ImportUnsupported,
 }
 
 impl Display for Error {
@@ -95,20 +61,10 @@ impl Display for Error {
 
         match self {
             AlreadyInitialized => write!(f, "global gpu renderer was already initailized"),
-            MissingEGLFunction(name) => write!(f, "egl function `{}` was missing", name),
-            EGLGetDisplay => write!(f, "call to eglGetDisplay failed"),
-            EGLInitialize => write!(f, "call to eglInitialize failed"),
-            EGLChooseConfig => write!(f, "call to eglChooseConfig failed"),
-            EGLBindAPI => write!(f, "call to eglBindAPI failed"),
-            EGLCreateContext => write!(f, "call to eglCreateContext failed"),
-            EGLMakeCurrent => write!(f, "call to eglMakeCurrent failed"),
             Virglrenderer(ret) => write!(f, "virglrenderer failed with error {}", ret),
-            CreateImage => write!(f, "failed to create EGLImage"),
-            ExportedResourceDmabuf => write!(f, "failed to export dmabuf from EGLImageKHR"),
+            ExportedResourceDmabuf => write!(f, "failed to export dmabuf"),
             InvalidIovec => write!(f, "an iovec is outside of guest memory's range"),
             InvalidCommandSize(s) => write!(f, "command buffer submitted with invalid size: {}", s),
-            ExportUnsupported => write!(f, "can not export images without EGL"),
-            ImportUnsupported => write!(f, "can not import images without EGL"),
         }
     }
 }
@@ -195,199 +151,6 @@ const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks = &virgl_renderer_call
     get_drm_fd: None,
 };
 
-unsafe extern "C" fn error_callback(
-    error: c_uint,
-    command: *const c_char,
-    _: c_int,
-    _: *mut c_void,
-    _: *mut c_void,
-    message: *const c_char,
-) {
-    eprint!("EGL ERROR {}: {:?}", error, CStr::from_ptr(command));
-    if !message.is_null() {
-        eprint!(": {:?}", CStr::from_ptr(message));
-    }
-    eprintln!();
-}
-
-#[allow(non_snake_case)]
-struct EGLFunctionsInner {
-    BindAPI: unsafe extern "C" fn(api: EGLenum) -> EGLBoolean,
-    ChooseConfig: unsafe extern "C" fn(
-        dpy: EGLDisplay,
-        attrib_list: *const EGLint,
-        configs: *mut EGLConfig,
-        config_size: EGLint,
-        num_config: *mut EGLint,
-    ) -> EGLBoolean,
-    CreateContext: unsafe extern "C" fn(
-        dpy: EGLDisplay,
-        config: EGLConfig,
-        share_context: EGLContext,
-        attrib_list: *const EGLint,
-    ) -> EGLContext,
-    CreateImageKHR: unsafe extern "C" fn(
-        dpy: EGLDisplay,
-        ctx: EGLContext,
-        target: EGLenum,
-        buffer: EGLClientBuffer,
-        attrib_list: *const EGLint,
-    ) -> EGLImageKHR,
-    DebugMessageControlKHR: Option<
-        unsafe extern "C" fn(callback: EGLDEBUGPROCKHR, attrib_list: *const EGLAttrib) -> EGLint,
-    >,
-    DestroyImageKHR: unsafe extern "C" fn(dpy: EGLDisplay, image: EGLImageKHR) -> EGLBoolean,
-    ExportDRMImageMESA: unsafe extern "C" fn(
-        dpy: EGLDisplay,
-        image: EGLImageKHR,
-        fds: *mut ::std::os::raw::c_int,
-        strides: *mut EGLint,
-        offsets: *mut EGLint,
-    ) -> EGLBoolean,
-    ExportDMABUFImageQueryMESA: unsafe extern "C" fn(
-        dpy: EGLDisplay,
-        image: EGLImageKHR,
-        fourcc: *mut ::std::os::raw::c_int,
-        num_planes: *mut ::std::os::raw::c_int,
-        modifiers: *mut EGLuint64KHR,
-    ) -> EGLBoolean,
-    GetCurrentContext: unsafe extern "C" fn() -> EGLContext,
-    GetCurrentDisplay: unsafe extern "C" fn() -> EGLDisplay,
-    GetDisplay: unsafe extern "C" fn(display_id: EGLNativeDisplayType) -> EGLDisplay,
-    Initialize:
-        unsafe extern "C" fn(dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> EGLBoolean,
-    MakeCurrent: unsafe extern "C" fn(
-        dpy: EGLDisplay,
-        draw: EGLSurface,
-        read: EGLSurface,
-        ctx: EGLContext,
-    ) -> EGLBoolean,
-    no_sync_send: PhantomData<*mut ()>,
-}
-
-#[derive(Clone)]
-struct EGLFunctions(Rc<EGLFunctionsInner>);
-
-impl EGLFunctions {
-    fn new() -> Result<EGLFunctions> {
-        use crate::generated::epoxy_egl::{
-            epoxy_eglBindAPI, epoxy_eglChooseConfig, epoxy_eglCreateContext,
-            epoxy_eglCreateImageKHR, epoxy_eglDebugMessageControlKHR, epoxy_eglDestroyImageKHR,
-            epoxy_eglExportDMABUFImageQueryMESA, epoxy_eglExportDRMImageMESA,
-            epoxy_eglGetCurrentContext, epoxy_eglGetCurrentDisplay, epoxy_eglGetDisplay,
-            epoxy_eglInitialize, epoxy_eglMakeCurrent,
-        };
-        // This is unsafe because it is reading mutable static variables exported by epoxy. These
-        // variables are initialized during the binary's init and never modified again, so it should
-        // be safe to read them now.
-        unsafe {
-            Ok(EGLFunctions(Rc::new(EGLFunctionsInner {
-                BindAPI: epoxy_eglBindAPI.ok_or(Error::MissingEGLFunction("eglBindAPI"))?,
-                ChooseConfig: epoxy_eglChooseConfig
-                    .ok_or(Error::MissingEGLFunction("eglChooseConfig"))?,
-                CreateContext: epoxy_eglCreateContext
-                    .ok_or(Error::MissingEGLFunction("eglCreateContext"))?,
-                CreateImageKHR: epoxy_eglCreateImageKHR
-                    .ok_or(Error::MissingEGLFunction("eglCreateImageKHR"))?,
-                DebugMessageControlKHR: epoxy_eglDebugMessageControlKHR,
-                DestroyImageKHR: epoxy_eglDestroyImageKHR
-                    .ok_or(Error::MissingEGLFunction("eglDestroyImageKHR"))?,
-                ExportDRMImageMESA: epoxy_eglExportDRMImageMESA
-                    .ok_or(Error::MissingEGLFunction("eglExportDRMImageMESA"))?,
-                ExportDMABUFImageQueryMESA: epoxy_eglExportDMABUFImageQueryMESA
-                    .ok_or(Error::MissingEGLFunction("eglExportDMABUFImageQueryMESA"))?,
-                GetCurrentContext: epoxy_eglGetCurrentContext
-                    .ok_or(Error::MissingEGLFunction("eglGetCurrentContext"))?,
-                GetCurrentDisplay: epoxy_eglGetCurrentDisplay
-                    .ok_or(Error::MissingEGLFunction("eglGetCurrentDisplay"))?,
-                GetDisplay: epoxy_eglGetDisplay
-                    .ok_or(Error::MissingEGLFunction("eglGetDisplay"))?,
-                Initialize: epoxy_eglInitialize
-                    .ok_or(Error::MissingEGLFunction("eglInitialize"))?,
-                MakeCurrent: epoxy_eglMakeCurrent
-                    .ok_or(Error::MissingEGLFunction("eglMakeCurrent"))?,
-                no_sync_send: PhantomData,
-            })))
-        }
-    }
-}
-
-impl Deref for EGLFunctions {
-    type Target = EGLFunctionsInner;
-    fn deref(&self) -> &EGLFunctionsInner {
-        self.0.deref()
-    }
-}
-
-fn init_egl() -> Result<(EGLDisplay, EGLFunctions)> {
-    let egl_funcs = EGLFunctions::new()?;
-
-    // Trivially safe.
-    let display = unsafe { (egl_funcs.GetDisplay)(null_mut()) };
-    if display.is_null() {
-        return Err(Error::EGLGetDisplay);
-    }
-
-    // Safe because only valid callbacks are given and only one thread can execute this
-    // function.
-    unsafe {
-        const EXTENSION_NAME: &[u8] = b"EGL_KHR_debug\0";
-        if epoxy_has_egl_extension(display, EXTENSION_NAME.as_ptr() as *const c_char) {
-            if let Some(debug_message_control) = egl_funcs.DebugMessageControlKHR {
-                debug_message_control(Some(error_callback), null());
-            }
-        }
-    }
-
-    // Safe because only a valid display is given.
-    let ret = unsafe { (egl_funcs.Initialize)(display, null_mut(), null_mut()) };
-    if ret == 0 {
-        return Err(Error::EGLInitialize);
-    }
-
-    let config_attribs = [EGL_SURFACE_TYPE as i32, -1, EGL_NONE as i32];
-    let mut egl_config: *mut c_void = null_mut();
-    let mut num_configs = 0;
-    // Safe because only a valid, initialized display is used, along with validly sized
-    // pointers to stack variables.
-    let ret = unsafe {
-        (egl_funcs.ChooseConfig)(
-            display,
-            config_attribs.as_ptr(),
-            &mut egl_config,
-            1,
-            &mut num_configs, /* unused but can't be null */
-        )
-    };
-    if ret == 0 {
-        return Err(Error::EGLChooseConfig);
-    }
-
-    // Safe because EGL was properly initialized before here..
-    let ret = unsafe { (egl_funcs.BindAPI)(EGL_OPENGL_ES_API) };
-    if ret == 0 {
-        return Err(Error::EGLBindAPI);
-    }
-
-    let context_attribs = [EGL_CONTEXT_CLIENT_VERSION as i32, 3, EGL_NONE as i32];
-    // Safe because a valid display, config, and config_attribs pointer are given.
-    let ctx = unsafe {
-        (egl_funcs.CreateContext)(display, egl_config, null_mut(), context_attribs.as_ptr())
-    };
-    if ctx.is_null() {
-        return Err(Error::EGLCreateContext);
-    }
-
-    // Safe because a valid display and context is used, and the two null surfaces are not
-    // used.
-    let ret = unsafe { (egl_funcs.MakeCurrent)(display, null_mut(), null_mut(), ctx) };
-    if ret == 0 {
-        return Err(Error::EGLMakeCurrent);
-    }
-
-    Ok((display, egl_funcs))
-}
-
 #[derive(Copy, Clone)]
 pub struct RendererFlags(u32);
 
@@ -455,8 +218,6 @@ impl From<RendererFlags> for i32 {
 /// The global renderer handle used to query capability sets, and create resources and contexts.
 pub struct Renderer {
     no_sync_send: PhantomData<*mut ()>,
-    egl_funcs: Option<EGLFunctions>,
-    display: Option<EGLDisplay>,
     fence_state: Rc<RefCell<FenceState>>,
 }
 
@@ -471,15 +232,6 @@ impl Renderer {
         static INIT_ONCE: AtomicBool = AtomicBool::new(false);
         if INIT_ONCE.compare_and_swap(false, true, Ordering::Acquire) {
             return Err(Error::AlreadyInitialized);
-        }
-
-        let mut display = None;
-        let mut egl_funcs = None;
-        if flags.uses_egl() {
-            if let Ok((d, f)) = init_egl() {
-                display = Some(d);
-                egl_funcs = Some(f);
-            };
         }
 
         // Cookie is intentionally never freed because virglrenderer never gets uninitialized.
@@ -506,8 +258,6 @@ impl Renderer {
 
         Ok(Renderer {
             no_sync_send: PhantomData,
-            egl_funcs,
-            display,
             fence_state,
         })
     }
@@ -572,7 +322,6 @@ impl Renderer {
             id: args.handle,
             backing_iovecs: Vec::new(),
             backing_mem: None,
-            egl_funcs: self.egl_funcs.clone(),
             no_sync_send: PhantomData,
         })
     }
@@ -598,23 +347,6 @@ impl Renderer {
             nr_samples: 0,
             bind: PIPE_BIND_RENDER_TARGET,
             flags: 0,
-        })
-    }
-
-    /// Imports a resource from an EGLImage.
-    pub fn import_resource(
-        &self,
-        mut args: virgl_renderer_resource_create_args,
-        image: &Image,
-    ) -> Result<Resource> {
-        let ret = unsafe { virgl_renderer_resource_import_eglimage(&mut args, image.image) };
-        ret_to_res(ret)?;
-        Ok(Resource {
-            id: args.handle,
-            backing_iovecs: Vec::new(),
-            backing_mem: None,
-            egl_funcs: self.egl_funcs.clone(),
-            no_sync_send: PhantomData,
         })
     }
 
@@ -650,58 +382,6 @@ impl Renderer {
             nr_samples: 0,
             bind: PIPE_BIND_SAMPLER_VIEW,
             flags: 0,
-        })
-    }
-
-    /// Creates an EGLImage from a DMA buffer.
-    pub fn image_from_dmabuf(
-        &self,
-        fourcc: u32,
-        width: u32,
-        height: u32,
-        fd: RawFd,
-        offset: u32,
-        stride: u32,
-    ) -> Result<Image> {
-        let (egl_dpy, egl_funcs) = match (self.display, self.egl_funcs.clone()) {
-            (Some(d), Some(f)) => (d, f),
-            _ => return Err(Error::ImportUnsupported),
-        };
-
-        let mut attrs = [
-            EGL_WIDTH as EGLint,
-            width as EGLint,
-            EGL_HEIGHT as EGLint,
-            height as EGLint,
-            EGL_LINUX_DRM_FOURCC_EXT as EGLint,
-            fourcc as EGLint,
-            EGL_DMA_BUF_PLANE0_FD_EXT as EGLint,
-            fd as EGLint,
-            EGL_DMA_BUF_PLANE0_OFFSET_EXT as EGLint,
-            offset as EGLint,
-            EGL_DMA_BUF_PLANE0_PITCH_EXT as EGLint,
-            stride as EGLint,
-            EGL_NONE as EGLint,
-        ];
-
-        let image = unsafe {
-            (egl_funcs.CreateImageKHR)(
-                egl_dpy,
-                0 as EGLContext,
-                EGL_LINUX_DMA_BUF_EXT,
-                null_mut() as EGLClientBuffer,
-                attrs.as_mut_ptr(),
-            )
-        };
-
-        if image.is_null() {
-            return Err(Error::CreateImage);
-        }
-
-        Ok(Image {
-            egl_funcs,
-            egl_dpy,
-            image,
         })
     }
 
@@ -775,27 +455,11 @@ impl Drop for Context {
     }
 }
 
-/// A wrapper of an EGLImage to manage its destruction.
-pub struct Image {
-    egl_funcs: EGLFunctions,
-    egl_dpy: EGLDisplay,
-    image: EGLImageKHR,
-}
-
-impl Drop for Image {
-    fn drop(&mut self) {
-        unsafe {
-            (self.egl_funcs.DestroyImageKHR)(self.egl_dpy, self.image);
-        }
-    }
-}
-
 /// A resource handle used by the renderer.
 pub struct Resource {
     id: u32,
     backing_iovecs: Vec<VirglVec>,
     backing_mem: Option<GuestMemory>,
-    egl_funcs: Option<EGLFunctions>,
     no_sync_send: PhantomData<*mut ()>,
 }
 
