@@ -490,7 +490,7 @@ impl Ac97BusMaster {
     }
 
     fn start_audio(&mut self, func: Ac97Function, mixer: &Ac97Mixer) -> Result<(), Box<dyn Error>> {
-        const AUDIO_THREAD_RTPRIO: u16 = 12; // Matches other cros audio clients.
+        const AUDIO_THREAD_RTPRIO: u16 = 10; // Matches other cros audio clients.
 
         match func {
             Ac97Function::Input => {
