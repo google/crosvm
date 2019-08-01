@@ -322,9 +322,9 @@ fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) ->
 /// These variant methods must be done by matching the variant to the expected type for that method.
 /// For example, getting the dirty log from a `Memory` object starting with an ID:
 ///
-/// ```
+/// ```ignore
 /// match objects.get(&request_id) {
-///    Some(&PluginObject::Memory { slot, length }) => vm.get_dirty_log(slot, &mut dirty_log[..])
+///    Some(&PluginObject::Memory { slot, length }) => vm.get_dirty_log(slot, &mut dirty_log[..]),
 ///    _ => return Err(SysError::new(ENOENT)),
 /// }
 /// ```

@@ -7,7 +7,9 @@
 //! # Example
 //!
 //! ```
-//! const ARGUMENTS: &'static [Argument] = &[
+//! # use crosvm::argument::{Argument, Error, print_help, set_arguments};
+//! # let args: std::slice::Iter<String> = [].iter();
+//! let arguments = &[
 //!     Argument::positional("FILES", "files to operate on"),
 //!     Argument::short_value('p', "program", "PROGRAM", "Program to apply to each file"),
 //!     Argument::short_value('c', "cpus", "N", "Number of CPUs to use. (default: 1)"),
@@ -15,7 +17,7 @@
 //!     Argument::short_flag('h', "help", "Print help message."),
 //! ];
 //!
-//! let match_res = set_arguments(args, ARGUMENTS, |name, value| {
+//! let match_res = set_arguments(args, arguments, |name, value| {
 //!     match name {
 //!         "" => println!("positional arg! {}", value.unwrap()),
 //!         "program" => println!("gonna use program {}", value.unwrap()),
@@ -31,11 +33,12 @@
 //!         "help" => return Err(Error::PrintHelp),
 //!         _ => unreachable!(),
 //!     }
-//! }
+//!     unreachable!();
+//! });
 //!
 //! match match_res {
 //!     Ok(_) => println!("running with settings"),
-//!     Err(Error::PrintHelp) => print_help("best_program", "FILES", ARGUMENTS),
+//!     Err(Error::PrintHelp) => print_help("best_program", "FILES", arguments),
 //!     Err(e) => println!("{}", e),
 //! }
 //! ```
@@ -93,28 +96,32 @@ pub type Result<T> = result::Result<T, Error>;
 /// To indicate a flag style argument:
 ///
 /// ```
-/// Argument::short_flag('f', "flag", "enable awesome mode")
+/// # use crosvm::argument::Argument;
+/// Argument::short_flag('f', "flag", "enable awesome mode");
 /// ```
 ///
 /// To indicate a parameter style argument that expects a value:
 ///
 /// ```
+/// # use crosvm::argument::Argument;
 /// // "VALUE" and "NETMASK" are placeholder values displayed in the help message for these
 /// // arguments.
-/// Argument::short_value('v', "val", "VALUE", "how much do you value this usage information")
-/// Argument::value("netmask", "NETMASK", "hides your netface")
+/// Argument::short_value('v', "val", "VALUE", "how much do you value this usage information");
+/// Argument::value("netmask", "NETMASK", "hides your netface");
 /// ```
 ///
 /// To indicate an argument with no short version:
 ///
 /// ```
-/// Argument::flag("verbose", "this option is hard to type quickly")
+/// # use crosvm::argument::Argument;
+/// Argument::flag("verbose", "this option is hard to type quickly");
 /// ```
 ///
 /// To indicate a positional argument:
 ///
 /// ```
-/// Argument::positional("VALUES", "these are positional arguments")
+/// # use crosvm::argument::Argument;
+/// Argument::positional("VALUES", "these are positional arguments");
 /// ```
 #[derive(Default)]
 pub struct Argument {
