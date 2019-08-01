@@ -271,6 +271,9 @@ pub fn add_serial_devices(
 
         if param.console {
             stdio_serial_num = Some(x + 1);
+        }
+
+        if param.stdin {
             stdio_serial = Some(com.clone());
         }
     }

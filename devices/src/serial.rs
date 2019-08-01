@@ -127,6 +127,7 @@ pub struct SerialParameters {
     pub path: Option<PathBuf>,
     pub num: u8,
     pub console: bool,
+    pub stdin: bool,
 }
 
 impl SerialParameters {
@@ -169,24 +170,28 @@ pub const DEFAULT_SERIAL_PARAMS: [SerialParameters; 4] = [
         path: None,
         num: 1,
         console: true,
+        stdin: true,
     },
     SerialParameters {
         type_: SerialType::Sink,
         path: None,
         num: 2,
         console: false,
+        stdin: false,
     },
     SerialParameters {
         type_: SerialType::Sink,
         path: None,
         num: 3,
         console: false,
+        stdin: false,
     },
     SerialParameters {
         type_: SerialType::Sink,
         path: None,
         num: 4,
         console: false,
+        stdin: false,
     },
 ];
 

@@ -251,6 +251,7 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
         path: None,
         num: 1,
         console: false,
+        stdin: false,
     };
 
     let opts = s
@@ -283,6 +284,11 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
                         "serial device console is not parseable: {}",
                         e
                     ))
+                })?
+            }
+            "stdin" => {
+                serial_setting.stdin = v.parse::<bool>().map_err(|e| {
+                    argument::Error::Syntax(format!("serial device stdin is not parseable: {}", e))
                 })?
             }
             "path" => serial_setting.path = Some(PathBuf::from(v)),
@@ -406,6 +412,15 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                             params.num
                         )));
                     }
+                }
+            }
+
+            if serial_params.stdin {
+                if let Some(previous_stdin) = cfg.serial_parameters.values().find(|sp| sp.stdin) {
+                    return Err(argument::Error::TooManyArguments(format!(
+                        "serial device {} already connected to standard input",
+                        previous_stdin.num
+                    )));
                 }
             }
 
@@ -840,13 +855,14 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::flag("cras-capture", "Enable capturing audio from CRAS server to the cras-audio device"),
           Argument::flag("null-audio", "Add an audio device to the VM that plays samples to /dev/null"),
           Argument::value("serial",
-                          "type=TYPE,[num=NUM,path=PATH,console]",
+                          "type=TYPE,[num=NUM,path=PATH,console,stdin]",
                           "Comma seperated key=value pairs for setting up serial devices. Can be given more than once.
                           Possible key values:
                           type=(stdout,syslog,sink,file) - Where to route the serial device
                           num=(1,2,3,4) - Serial Device Number. If not provided, num will default to 1.
                           path=PATH - The path to the file to write to when type=file
                           console - Use this serial device as the guest console. Can only be given once. Will default to first serial port if not provided.
+                          stdin - Direct standard input to this serial device. Can only be given once. Will default to first serial port if not provided.
                           "),
           Argument::value("syslog-tag", "TAG", "When logging to syslog, use the provided tag."),
           Argument::value("wayland-sock", "PATH", "Path to the Wayland socket to use."),
@@ -1423,7 +1439,8 @@ mod tests {
 
     #[test]
     fn parse_serial_vaild() {
-        parse_serial_options("type=syslog,num=1,console=true").expect("parse should have succeded");
+        parse_serial_options("type=syslog,num=1,console=true,stdin=true")
+            .expect("parse should have succeded");
     }
 
     #[test]
@@ -1454,5 +1471,14 @@ mod tests {
     #[test]
     fn parse_serial_invalid_option() {
         parse_serial_options("type=syslog,speed=lightspeed").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_serial_invalid_two_stdin() {
+        let mut config = Config::default();
+        set_argument(&mut config, "serial", Some("num=1,type=stdout,stdin=true"))
+            .expect("should parse the first serial argument");
+        set_argument(&mut config, "serial", Some("num=2,type=stdout,stdin=true"))
+            .expect_err("should fail to parse a second serial port connected to stdin");
     }
 }
