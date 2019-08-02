@@ -9,7 +9,7 @@ use std::io;
 use std::os::unix::io::AsRawFd;
 use std::result;
 
-use data_model::{DataInit, VolatileMemory, VolatileMemoryError};
+use data_model::{DataInit, Le16, Le32, Le64, VolatileMemory, VolatileMemoryError};
 use sys_util::guest_memory::Error as GuestMemoryError;
 use sys_util::{FileReadWriteVolatile, GuestAddress, GuestMemory};
 
@@ -18,6 +18,7 @@ use super::DescriptorChain;
 #[derive(Debug)]
 pub enum Error {
     GuestMemoryError(sys_util::GuestMemoryError),
+    InvalidChain,
     IoError(io::Error),
     VolatileMemoryError(VolatileMemoryError),
 }
@@ -28,6 +29,7 @@ impl Display for Error {
 
         match self {
             GuestMemoryError(e) => write!(f, "descriptor guest memory error: {}", e),
+            InvalidChain => write!(f, "invalid descriptor chain"),
             IoError(e) => write!(f, "descriptor I/O error: {}", e),
             VolatileMemoryError(e) => write!(f, "volatile memory error: {}", e),
         }
@@ -453,72 +455,74 @@ impl<'a> io::Seek for Writer<'a> {
     }
 }
 
+const VIRTQ_DESC_F_NEXT: u16 = 0x1;
+const VIRTQ_DESC_F_WRITE: u16 = 0x2;
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum DescriptorType {
+    Readable,
+    Writable,
+}
+
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+struct virtq_desc {
+    addr: Le64,
+    len: Le32,
+    flags: Le16,
+    next: Le16,
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for virtq_desc {}
+
+/// Test utility function to create a descriptor chain in guest memory.
+pub fn create_descriptor_chain(
+    memory: &GuestMemory,
+    descriptor_array_addr: GuestAddress,
+    mut buffers_start_addr: GuestAddress,
+    descriptors: Vec<(DescriptorType, u32)>,
+    spaces_between_regions: u32,
+) -> Result<DescriptorChain> {
+    let descriptors_len = descriptors.len();
+    for (index, (type_, size)) in descriptors.into_iter().enumerate() {
+        let mut flags = 0;
+        if let DescriptorType::Writable = type_ {
+            flags |= VIRTQ_DESC_F_WRITE;
+        }
+        if index + 1 < descriptors_len {
+            flags |= VIRTQ_DESC_F_NEXT;
+        }
+
+        let index = index as u16;
+        let desc = virtq_desc {
+            addr: buffers_start_addr.offset().into(),
+            len: size.into(),
+            flags: flags.into(),
+            next: (index + 1).into(),
+        };
+
+        let offset = size + spaces_between_regions;
+        buffers_start_addr = buffers_start_addr
+            .checked_add(offset as u64)
+            .ok_or(Error::InvalidChain)?;
+
+        let _ = memory.write_obj_at_addr(
+            desc,
+            descriptor_array_addr
+                .checked_add(index as u64 * std::mem::size_of::<virtq_desc>() as u64)
+                .ok_or(Error::InvalidChain)?,
+        );
+    }
+
+    DescriptorChain::checked_new(memory, descriptor_array_addr, 0x100, 0).ok_or(Error::InvalidChain)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use data_model::{Le16, Le32, Le64};
     use std::io::{Seek, SeekFrom};
     use sys_util::{MemfdSeals, SharedMemory};
-
-    const VIRTQ_DESC_F_NEXT: u16 = 0x1;
-    const VIRTQ_DESC_F_WRITE: u16 = 0x2;
-
-    #[derive(Copy, Clone, PartialEq, Eq)]
-    enum DescriptorType {
-        Readable,
-        Writable,
-    }
-
-    #[derive(Copy, Clone, Debug)]
-    #[repr(C)]
-    struct virtq_desc {
-        addr: Le64,
-        len: Le32,
-        flags: Le16,
-        next: Le16,
-    }
-
-    // Safe because it only has data and has no implicit padding.
-    unsafe impl DataInit for virtq_desc {}
-
-    fn create_descriptor_chain(
-        memory: &GuestMemory,
-        descriptor_array_addr: GuestAddress,
-        mut buffers_start_addr: GuestAddress,
-        descriptors: Vec<(DescriptorType, u32)>,
-        spaces_between_regions: u32,
-    ) -> DescriptorChain {
-        let descriptors_len = descriptors.len();
-        for (index, (type_, size)) in descriptors.into_iter().enumerate() {
-            let mut flags = 0;
-            if let DescriptorType::Writable = type_ {
-                flags |= VIRTQ_DESC_F_WRITE;
-            }
-            if index + 1 < descriptors_len {
-                flags |= VIRTQ_DESC_F_NEXT;
-            }
-
-            let index = index as u16;
-            let desc = virtq_desc {
-                addr: buffers_start_addr.offset().into(),
-                len: size.into(),
-                flags: flags.into(),
-                next: (index + 1).into(),
-            };
-
-            let offset = size + spaces_between_regions;
-            buffers_start_addr = buffers_start_addr.checked_add(offset as u64).unwrap();
-
-            let _ = memory.write_obj_at_addr(
-                desc,
-                descriptor_array_addr
-                    .checked_add(index as u64 * std::mem::size_of::<virtq_desc>() as u64)
-                    .unwrap(),
-            );
-        }
-
-        DescriptorChain::checked_new(memory, descriptor_array_addr, 0x100, 0).unwrap()
-    }
 
     #[test]
     fn reader_test_simple_chain() {
@@ -538,7 +542,8 @@ mod tests {
                 (Readable, 64),
             ],
             0,
-        );
+        )
+        .expect("create_descriptor_chain failed");
         let mut reader = Reader::new(&memory, chain);
         assert_eq!(reader.available_bytes(), 106);
         assert_eq!(reader.bytes_read(), 0);
@@ -578,7 +583,8 @@ mod tests {
                 (Writable, 64),
             ],
             0,
-        );
+        )
+        .expect("create_descriptor_chain failed");;
         let mut writer = Writer::new(&memory, chain);
         assert_eq!(writer.available_bytes(), 106);
         assert_eq!(writer.bytes_written(), 0);
@@ -613,7 +619,8 @@ mod tests {
             GuestAddress(0x100),
             vec![(Writable, 8)],
             0,
-        );
+        )
+        .expect("create_descriptor_chain failed");;
         let mut reader = Reader::new(&memory, chain);
         assert_eq!(reader.available_bytes(), 0);
         assert_eq!(reader.bytes_read(), 0);
@@ -637,7 +644,8 @@ mod tests {
             GuestAddress(0x100),
             vec![(Readable, 8)],
             0,
-        );
+        )
+        .expect("create_descriptor_chain failed");;
         let mut writer = Writer::new(&memory, chain);
         assert_eq!(writer.available_bytes(), 0);
         assert_eq!(writer.bytes_written(), 0);
@@ -661,7 +669,8 @@ mod tests {
             GuestAddress(0x100),
             vec![(Readable, 256), (Readable, 256)],
             0,
-        );
+        )
+        .expect("create_descriptor_chain failed");;
 
         let mut reader = Reader::new(&memory, chain);
 
@@ -697,7 +706,8 @@ mod tests {
             GuestAddress(0x100),
             vec![(Writable, 256), (Writable, 256)],
             0,
-        );
+        )
+        .expect("create_descriptor_chain failed");;
 
         let mut writer = Writer::new(&memory, chain);
 
@@ -735,7 +745,8 @@ mod tests {
                 (Writable, 3),
             ],
             0,
-        );
+        )
+        .expect("create_descriptor_chain failed");;
         let mut reader = Reader::new(&memory, chain.clone());
         let mut writer = Writer::new(&memory, chain);
 
@@ -776,7 +787,8 @@ mod tests {
             GuestAddress(0x100),
             vec![(Writable, 1), (Writable, 1), (Writable, 1), (Writable, 1)],
             123,
-        );
+        )
+        .expect("create_descriptor_chain failed");;
         let mut writer = Writer::new(&memory, chain_writer);
         if let Err(_) = writer.write_obj(secret) {
             panic!("write_obj should not fail here");
@@ -789,7 +801,8 @@ mod tests {
             GuestAddress(0x100),
             vec![(Readable, 1), (Readable, 1), (Readable, 1), (Readable, 1)],
             123,
-        );
+        )
+        .expect("create_descriptor_chain failed");
         let mut reader = Reader::new(&memory, chain_reader);
         match reader.read_obj::<Le32>() {
             Err(_) => panic!("read_obj should not fail here"),
@@ -815,7 +828,8 @@ mod tests {
                 (Readable, 64),
             ],
             0,
-        );
+        )
+        .expect("create_descriptor_chain failed");;
         let mut reader = Reader::new(&memory, chain);
         assert_eq!(reader.available_bytes(), 106);
         assert_eq!(reader.bytes_read(), 0);
