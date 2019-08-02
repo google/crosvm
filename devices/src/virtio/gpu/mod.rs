@@ -24,7 +24,6 @@ use sys_util::{
     debug, error, warn, Error, EventFd, GuestAddress, GuestMemory, PollContext, PollToken,
 };
 
-use gpu_buffer::Device;
 use gpu_display::*;
 use gpu_renderer::{Renderer, RendererFlags};
 
@@ -622,32 +621,12 @@ impl DisplayBackend {
     }
 }
 
-/// Builds a Device for doing buffer allocation and sharing via dmabuf.
-fn build_buffer_device() -> Option<Device> {
-    const UNDESIRED_CARDS: &[&str] = &["vgem", "pvr"];
-    let drm_card = match gpu_buffer::rendernode::open_device(UNDESIRED_CARDS) {
-        Ok(f) => f,
-        Err(()) => {
-            error!("failed to open render node for GBM");
-            return None;
-        }
-    };
-    match Device::new(drm_card) {
-        Ok(d) => Some(d),
-        Err(()) => {
-            error!("failed to create GBM device from render node");
-            None
-        }
-    }
-}
-
 // Builds a gpu backend with one of the given possible display backends, or None if they all
 // failed.
 fn build_backend(
     possible_displays: &[DisplayBackend],
     gpu_device_socket: VmMemoryControlRequestSocket,
 ) -> Option<Backend> {
-    let mut buffer_device = None;
     let mut renderer_flags = RendererFlags::default();
     let mut display_opt = None;
     for display in possible_displays {
@@ -660,8 +639,6 @@ fn build_backend(
                 // more configurable
                 if display.is_x() {
                     renderer_flags = RendererFlags::new().use_glx(true);
-                } else {
-                    buffer_device = build_buffer_device();
                 }
                 display_opt = Some(c);
                 break;
@@ -692,12 +669,7 @@ fn build_backend(
         }
     };
 
-    Some(Backend::new(
-        buffer_device,
-        display,
-        renderer,
-        gpu_device_socket,
-    ))
+    Some(Backend::new(display, renderer, gpu_device_socket))
 }
 
 pub struct Gpu {

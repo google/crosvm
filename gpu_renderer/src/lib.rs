@@ -6,7 +6,6 @@
 
 mod command_buffer;
 mod generated;
-mod pipe_format_fourcc;
 
 use std::cell::RefCell;
 use std::fmt::{self, Display};
@@ -31,12 +30,9 @@ use crate::generated::virglrenderer::*;
 
 pub use crate::command_buffer::CommandBufferBuilder;
 pub use crate::generated::virtgpu_hw::virtgpu_caps;
-pub use crate::pipe_format_fourcc::pipe_format_fourcc as format_fourcc;
 
 /// Arguments used in `Renderer::create_resource`..
 pub type ResourceCreateArgs = virgl_renderer_resource_create_args;
-/// Information returned from `Resource::get_info`.
-pub type ResourceInfo = virgl_renderer_resource_info;
 /// Some of the information returned from `Resource::export_query`.
 pub type Query = virgl_renderer_export_query;
 
@@ -467,14 +463,6 @@ impl Resource {
     /// Gets the ID assigned to this resource when it was created.
     pub fn id(&self) -> u32 {
         self.id
-    }
-
-    /// Retrieves metadata about this resource.
-    pub fn get_info(&self) -> Result<ResourceInfo> {
-        let mut res_info = Default::default();
-        let ret = unsafe { virgl_renderer_resource_get_info(self.id as i32, &mut res_info) };
-        ret_to_res(ret)?;
-        Ok(res_info)
     }
 
     /// Retrieves metadata suitable for export about this resource. If "export_fd" is true,
