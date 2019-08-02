@@ -19,7 +19,9 @@ use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
 use virtio_sys::{vhost, virtio_net};
 
-use super::{Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_NET};
+use super::{
+    DescriptorError, Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_NET,
+};
 
 /// The maximum buffer size when segmentation offload is enabled. This
 /// includes the 12-byte virtio net header.
@@ -118,7 +120,7 @@ where
 
         match writer.write_all(&self.rx_buf[0..self.rx_count]) {
             Ok(()) => (),
-            Err(MemoryError::ShortWrite { .. }) => {
+            Err(DescriptorError::GuestMemoryError(MemoryError::ShortWrite { .. })) => {
                 warn!(
                     "net: rx: buffer is too small to hold frame of size {}",
                     self.rx_count

@@ -3,14 +3,37 @@
 // found in the LICENSE file.
 
 use std::cmp;
+use std::fmt::{self, Display};
 use std::io;
 use std::os::unix::io::AsRawFd;
+use std::result;
 
 use data_model::DataInit;
-use sys_util::guest_memory::{Error, Result};
+use sys_util::guest_memory::Error as GuestMemoryError;
 use sys_util::{GuestAddress, GuestMemory};
 
 use super::DescriptorChain;
+
+#[derive(Debug)]
+pub enum Error {
+    GuestMemoryError(sys_util::GuestMemoryError),
+    IoError(io::Error),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            GuestMemoryError(e) => write!(f, "descriptor guest memory error: {}", e),
+            IoError(e) => write!(f, "descriptor I/O error: {}", e),
+        }
+    }
+}
+
+pub type Result<T> = result::Result<T, Error>;
+
+impl std::error::Error for Error {}
 
 #[derive(PartialEq, Eq)]
 enum DescriptorFilter {
@@ -70,7 +93,9 @@ impl<'a> DescriptorChainConsumer<'a> {
                 let addr = current
                     .addr
                     .checked_add(self.offset as u64)
-                    .ok_or_else(|| Error::InvalidGuestAddress(current.addr))?;
+                    .ok_or_else(|| {
+                        Error::GuestMemoryError(GuestMemoryError::InvalidGuestAddress(current.addr))
+                    })?;
                 let len = cmp::min(count, current.len as usize - self.offset);
                 fnc(addr, len)?;
 
@@ -147,7 +172,7 @@ impl<'a> Reader<'a> {
                 if result.is_ok() {
                     read_count += count;
                 }
-                result
+                result.map_err(Error::GuestMemoryError)
             },
             len,
         )
@@ -162,10 +187,10 @@ impl<'a> Reader<'a> {
         if count == buf.len() {
             Ok(())
         } else {
-            Err(Error::ShortRead {
+            Err(Error::GuestMemoryError(GuestMemoryError::ShortRead {
                 expected: buf.len(),
                 completed: count,
-            })
+            }))
         }
     }
 
@@ -181,8 +206,13 @@ impl<'a> Reader<'a> {
     /// enough data in the descriptor chain buffer.
     pub fn read_to(&mut self, dst: &dyn AsRawFd, count: usize) -> Result<usize> {
         let mem = self.mem;
-        self.buffer
-            .consume(|addr, count| mem.write_from_memory(addr, dst, count), count)
+        self.buffer.consume(
+            |addr, count| {
+                mem.write_from_memory(addr, dst, count)
+                    .map_err(Error::GuestMemoryError)
+            },
+            count,
+        )
     }
 
     /// Returns number of bytes available for reading.
@@ -233,7 +263,7 @@ impl<'a> Writer<'a> {
                 if result.is_ok() {
                     write_count += count;
                 }
-                result
+                result.map_err(Error::GuestMemoryError)
             },
             len,
         )
@@ -248,10 +278,10 @@ impl<'a> Writer<'a> {
         if count == buf.len() {
             Ok(())
         } else {
-            Err(Error::ShortRead {
+            Err(Error::GuestMemoryError(GuestMemoryError::ShortRead {
                 expected: buf.len(),
                 completed: count,
-            })
+            }))
         }
     }
 
@@ -271,8 +301,13 @@ impl<'a> Writer<'a> {
     /// there isn't enough data in the descriptor chain buffer.
     pub fn write_from(&mut self, src: &dyn AsRawFd, count: usize) -> Result<usize> {
         let mem = self.mem;
-        self.buffer
-            .consume(|addr, count| mem.read_to_memory(addr, src, count), count)
+        self.buffer.consume(
+            |addr, count| {
+                mem.read_to_memory(addr, src, count)
+                    .map_err(Error::GuestMemoryError)
+            },
+            count,
+        )
     }
 
     /// Returns number of bytes already written to the descriptor chain buffer.
