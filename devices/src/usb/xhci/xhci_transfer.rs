@@ -290,8 +290,13 @@ impl XhciTransfer {
                 usb_debug!("device disconnected, detaching from port");
                 // If the device is gone, we don't need to send transfer completion event, cause we
                 // are going to destroy everything related to this device anyway.
-                self.port.detach().map_err(Error::DetachPort)?;
-                return Ok(());
+                return match self.port.detach() {
+                    Ok(v) => Ok(v),
+                    // It's acceptable for the port to be already disconnected
+                    // as asynchronous transfer completions are processed.
+                    Err(HubError::AlreadyDetached(_e)) => Ok(()),
+                    Err(e) => Err(Error::DetachPort(e)),
+                };
             }
             TransferStatus::Cancelled => {
                 // TODO(jkwang) According to the spec, we should send a stopped event here. But
