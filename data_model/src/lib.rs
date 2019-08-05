@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::mem::size_of;
+use std::io;
+use std::mem::{align_of, size_of};
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 
 /// Types for which it is safe to initialize from raw data.
@@ -61,6 +62,25 @@ pub unsafe trait DataInit: Copy + Send + Sync {
         match unsafe { data.align_to_mut::<Self>() } {
             ([], [mid], []) => Some(mid),
             _ => None,
+        }
+    }
+
+    /// Creates an instance of `Self` by copying raw data from an io::Read stream.
+    fn from_reader<R: io::Read>(mut read: R) -> io::Result<Self> {
+        // Allocate a Vec<u8> with enough extra space for the worst-case alignment offset.
+        let mut data = vec![0u8; size_of::<Self>() + align_of::<Self>()];
+
+        // Get a u8 slice within data with sufficient alignment for Self.
+        let align_offset = data.as_ptr().align_offset(align_of::<Self>());
+        let mut aligned_data = &mut data[align_offset..align_offset + size_of::<Self>()];
+
+        read.read_exact(&mut aligned_data)?;
+        match Self::from_slice(&aligned_data) {
+            Some(obj) => Ok(*obj),
+            None => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "from_slice failed",
+            )),
         }
     }
 
