@@ -8,4 +8,9 @@ cd "${0%/*}"
 
 src_root="$(realpath ..)"
 
-docker build -t crosvm -f Dockerfile.crosvm --build-arg UID --build-arg GID "${src_root}"
+docker build -t crosvm \
+    -f Dockerfile.crosvm \
+    --build-arg UID \
+    --build-arg GID \
+    "$@" \
+    "${src_root}"

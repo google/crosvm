@@ -14,6 +14,7 @@ docker run \
     -e TEST_RUNNER_FLAGS='--format terse' \
     -v /dev/log:/dev/log \
     -v "${src_root}":/platform/crosvm:ro \
+    "$@" \
     crosvm-base \
     bin/smoke_test
 

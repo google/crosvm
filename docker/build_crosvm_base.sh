@@ -12,4 +12,4 @@ gen_build_args() {
     done
 }
 
-docker build $(gen_build_args) -t crosvm-base .
+docker build $(gen_build_args) -t crosvm-base  "$@" .
