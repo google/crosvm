@@ -289,7 +289,6 @@ mod tests {
     use std::cmp::min;
     use std::io::Read;
     use std::io::Write;
-    use std::mem::size_of;
 
     struct SourceMock {
         events: Vec<u8>,
@@ -382,7 +381,7 @@ mod tests {
             evts.len(),
             "should receive all events"
         );
-        let mut evt_opt = source.pop_available_event();
+        let evt_opt = source.pop_available_event();
         assert_eq!(evt_opt.is_some(), true, "event should have been poped");
         let evt = evt_opt.unwrap();
         assert_events_match(&evt, &evts[0]);
