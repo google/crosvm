@@ -160,6 +160,23 @@ impl Display for CaptureError {
 
 type CaptureResult<T> = std::result::Result<T, CaptureError>;
 
+// Audio thread book-keeping data
+struct AudioThreadInfo {
+    thread: Option<thread::JoinHandle<()>>,
+    thread_run: Arc<AtomicBool>,
+    stream_control: Option<Box<dyn StreamControl>>,
+}
+
+impl AudioThreadInfo {
+    fn new() -> Self {
+        Self {
+            thread: None,
+            thread_run: Arc::new(AtomicBool::new(false)),
+            stream_control: None,
+        }
+    }
+}
+
 /// `Ac97BusMaster` emulates the bus master portion of AC97. It exposes a register read/write
 /// interface compliant with the ICH bus master.
 pub struct Ac97BusMaster {
@@ -168,15 +185,9 @@ pub struct Ac97BusMaster {
     regs: Arc<Mutex<Ac97BusMasterRegs>>,
     acc_sema: u8,
 
-    // Audio thread for capture stream.
-    audio_thread_pi: Option<thread::JoinHandle<()>>,
-    audio_thread_pi_run: Arc<AtomicBool>,
-    pi_stream_control: Option<Box<dyn StreamControl>>,
-
-    // Audio thread book keeping.
-    audio_thread_po: Option<thread::JoinHandle<()>>,
-    audio_thread_po_run: Arc<AtomicBool>,
-    po_stream_control: Option<Box<dyn StreamControl>>,
+    // Bookkeeping info for playback and capture stream.
+    po_info: AudioThreadInfo,
+    pi_info: AudioThreadInfo,
 
     // Audio server used to create playback or capture streams.
     audio_server: Box<dyn StreamSource>,
@@ -194,13 +205,8 @@ impl Ac97BusMaster {
             regs: Arc::new(Mutex::new(Ac97BusMasterRegs::new())),
             acc_sema: 0,
 
-            audio_thread_pi: None,
-            audio_thread_pi_run: Arc::new(AtomicBool::new(false)),
-            pi_stream_control: None,
-
-            audio_thread_po: None,
-            audio_thread_po_run: Arc::new(AtomicBool::new(false)),
-            po_stream_control: None,
+            po_info: AudioThreadInfo::new(),
+            pi_info: AudioThreadInfo::new(),
 
             audio_server,
 
@@ -257,7 +263,7 @@ impl Ac97BusMaster {
     /// Called when `mixer` has been changed and the new values should be applied to currently
     /// active streams.
     pub fn update_mixer_settings(&mut self, mixer: &Ac97Mixer) {
-        if let Some(control) = self.po_stream_control.as_mut() {
+        if let Some(control) = self.po_info.stream_control.as_mut() {
             // The audio server only supports one volume, not separate left and right.
             let (muted, left_volume, _right_volume) = mixer.get_master_volume();
             control.set_volume(left_volume);
@@ -302,7 +308,7 @@ impl Ac97BusMaster {
             PO_SR_16 => regs.po_regs.sr,
             PO_PICB_18 => {
                 // PO PICB
-                if !self.audio_thread_po_run.load(Ordering::Relaxed) {
+                if !self.po_info.thread_run.load(Ordering::Relaxed) {
                     // Not running, no need to estimate what has been consumed.
                     regs.po_regs.picb
                 } else {
@@ -457,8 +463,8 @@ impl Ac97BusMaster {
                     func_regs.civ = 0;
                     func_regs.sr &= !SR_DCH;
                 }
-                if self.start_audio(func, mixer).is_err() {
-                    warn!("Failed to start audio");
+                if let Err(e) = self.start_audio(func, mixer) {
+                    warn!("Failed to start audio: {}", e);
                 }
             }
             let mut regs = self.regs.lock();
@@ -479,7 +485,7 @@ impl Ac97BusMaster {
         if new_glob_cnt & GLOB_CNT_WARM_RESET != 0 {
             // Check if running and if so, ignore. Warm reset is specified to no-op when the device
             // is playing or recording audio.
-            if !self.audio_thread_po_run.load(Ordering::Relaxed) {
+            if !self.po_info.thread_run.load(Ordering::Relaxed) {
                 self.stop_all_audio();
                 let mut regs = self.regs.lock();
                 regs.glob_cnt = new_glob_cnt & !GLOB_CNT_WARM_RESET; // Auto-cleared reset bit.
@@ -492,26 +498,31 @@ impl Ac97BusMaster {
     fn start_audio(&mut self, func: Ac97Function, mixer: &Ac97Mixer) -> Result<(), Box<dyn Error>> {
         const AUDIO_THREAD_RTPRIO: u16 = 10; // Matches other cros audio clients.
 
+        let thread_info = match func {
+            Ac97Function::Microphone => return Ok(()),
+            Ac97Function::Input => &mut self.pi_info,
+            Ac97Function::Output => &mut self.po_info,
+        };
+
+        let num_channels = 2;
+        let buffer_samples = current_buffer_size(self.regs.lock().func_regs(func), &self.mem)?;
+        let buffer_frames = buffer_samples / num_channels;
+        thread_info.thread_run.store(true, Ordering::Relaxed);
+        let thread_run = thread_info.thread_run.clone();
+        let thread_mem = self.mem.clone();
+        let thread_regs = self.regs.clone();
+
         match func {
             Ac97Function::Input => {
-                let num_channels = 2;
-                let buffer_samples =
-                    current_buffer_size(self.regs.lock().func_regs(func), &self.mem)?;
-                let buffer_frames = buffer_samples / num_channels;
                 let (stream_control, input_stream) = self.audio_server.new_capture_stream(
                     num_channels,
                     DEVICE_SAMPLE_RATE,
                     buffer_frames,
                 )?;
-                self.pi_stream_control = Some(stream_control);
+                self.pi_info.stream_control = Some(stream_control);
                 self.update_mixer_settings(mixer);
 
-                self.audio_thread_pi_run.store(true, Ordering::Relaxed);
-                let thread_run = self.audio_thread_pi_run.clone();
-                let thread_mem = self.mem.clone();
-                let thread_regs = self.regs.clone();
-
-                self.audio_thread_pi = Some(thread::spawn(move || {
+                self.pi_info.thread = Some(thread::spawn(move || {
                     if set_rt_prio_limit(u64::from(AUDIO_THREAD_RTPRIO)).is_err()
                         || set_rt_round_robin(i32::from(AUDIO_THREAD_RTPRIO)).is_err()
                     {
@@ -526,27 +537,15 @@ impl Ac97BusMaster {
                 }));
             }
             Ac97Function::Output => {
-                let num_channels = 2;
-
-                let buffer_samples =
-                    current_buffer_size(self.regs.lock().func_regs(func), &self.mem)?;
-
-                let buffer_frames = buffer_samples / num_channels;
                 let (stream_control, output_stream) = self.audio_server.new_playback_stream(
                     num_channels,
                     DEVICE_SAMPLE_RATE,
                     buffer_frames,
                 )?;
-                self.po_stream_control = Some(stream_control);
-
+                self.po_info.stream_control = Some(stream_control);
                 self.update_mixer_settings(mixer);
 
-                self.audio_thread_po_run.store(true, Ordering::Relaxed);
-                let thread_run = self.audio_thread_po_run.clone();
-                let thread_mem = self.mem.clone();
-                let thread_regs = self.regs.clone();
-
-                self.audio_thread_po = Some(thread::spawn(move || {
+                self.po_info.thread = Some(thread::spawn(move || {
                     if set_rt_prio_limit(u64::from(AUDIO_THREAD_RTPRIO)).is_err()
                         || set_rt_round_robin(i32::from(AUDIO_THREAD_RTPRIO)).is_err()
                     {
@@ -561,30 +560,22 @@ impl Ac97BusMaster {
                 }));
             }
             Ac97Function::Microphone => (),
-        }
+        };
         Ok(())
     }
 
     fn stop_audio(&mut self, func: Ac97Function) {
-        match func {
-            Ac97Function::Input => {
-                self.audio_thread_pi_run.store(false, Ordering::Relaxed);
-                if let Some(thread) = self.audio_thread_pi.take() {
-                    if let Err(e) = thread.join() {
-                        error!("Failed to join the capture thread: {:?}.", e);
-                    }
-                }
-            }
-            Ac97Function::Output => {
-                self.audio_thread_po_run.store(false, Ordering::Relaxed);
-                if let Some(thread) = self.audio_thread_po.take() {
-                    if let Err(e) = thread.join() {
-                        error!("Failed to join the playback thread: {:?}.", e);
-                    }
-                }
-            }
-            Ac97Function::Microphone => (),
+        let thread_info = match func {
+            Ac97Function::Microphone => return,
+            Ac97Function::Input => &mut self.pi_info,
+            Ac97Function::Output => &mut self.po_info,
         };
+        thread_info.thread_run.store(false, Ordering::Relaxed);
+        if let Some(thread) = thread_info.thread.take() {
+            if let Err(e) = thread.join() {
+                error!("Failed to join {:?} thread: {:?}.", func, e);
+            }
+        }
     }
 
     fn stop_all_audio(&mut self) {
@@ -694,7 +685,9 @@ fn buffer_completed(
         update_sr(regs, func, new_sr);
     }
 
-    regs.po_pointer_update_time = Instant::now();
+    if func == Ac97Function::Output {
+        regs.po_pointer_update_time = Instant::now();
+    }
 
     Ok(())
 }

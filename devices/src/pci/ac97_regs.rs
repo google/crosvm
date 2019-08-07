@@ -183,7 +183,7 @@ pub const DESCRIPTOR_LENGTH: usize = 8;
 pub const BD_IOC: u32 = 1 << 31;
 
 /// The functions that are supported by the Ac97 subsystem.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Ac97Function {
     Input,
     Output,
