@@ -6,12 +6,11 @@
 
 use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::process;
 use std::time::Duration;
 use std::{self, io};
 
 use io_jail::{self, Minijail};
-use libc::pid_t;
+use libc::{self, pid_t};
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgSender, MsgSocket};
 use sys_util::{error, net::UnixSeqpacket};
 
@@ -149,8 +148,16 @@ impl ProxyDevice {
                 0 => {
                     device.on_sandboxed();
                     child_proc(child_sock, &mut device);
+
+                    // We're explicitly not using std::process::exit here to avoid the cleanup of
+                    // stdout/stderr globals. This can cause cascading panics and SIGILL if a worker
+                    // thread attempts to log to stderr after at_exit handlers have been run.
+                    // TODO(crbug.com/992494): Remove this once device shutdown ordering is clearly
+                    // defined.
+                    //
+                    // exit() is trivially safe.
                     // ! Never returns
-                    process::exit(0);
+                    libc::exit(0);
                 }
                 p => p,
             }
