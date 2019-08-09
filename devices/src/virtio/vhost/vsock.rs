@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 
-use byteorder::{ByteOrder, LittleEndian};
+use data_model::{DataInit, Le64};
 
 use ::vhost::Vsock as VhostVsockHandle;
 use sys_util::{error, warn, EventFd, GuestMemory};
@@ -15,7 +15,7 @@ use virtio_sys::vhost;
 
 use super::worker::Worker;
 use super::{Error, Result};
-use crate::virtio::{Queue, VirtioDevice, TYPE_VSOCK};
+use crate::virtio::{copy_config, Queue, VirtioDevice, TYPE_VSOCK};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 3;
@@ -116,18 +116,8 @@ impl VirtioDevice for Vsock {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        match offset {
-            0 if data.len() == 8 => LittleEndian::write_u64(data, self.cid),
-            0 if data.len() == 4 => LittleEndian::write_u32(data, (self.cid & 0xffffffff) as u32),
-            4 if data.len() == 4 => {
-                LittleEndian::write_u32(data, ((self.cid >> 32) & 0xffffffff) as u32)
-            }
-            _ => warn!(
-                "vsock: virtio-vsock received invalid read request of {} bytes at offset {}",
-                data.len(),
-                offset
-            ),
-        }
+        let cid = Le64::from(self.cid);
+        copy_config(data, 0, DataInit::as_slice(&cid), offset);
     }
 
     fn ack_features(&mut self, value: u64) {

@@ -43,6 +43,9 @@ pub use self::virtio_device::*;
 pub use self::virtio_pci_device::*;
 pub use self::wl::*;
 
+use std::cmp;
+use std::convert::TryFrom;
+
 const DEVICE_ACKNOWLEDGE: u32 = 0x01;
 const DEVICE_DRIVER: u32 = 0x02;
 const DEVICE_DRIVER_OK: u32 = 0x04;
@@ -87,4 +90,28 @@ pub fn type_to_str(type_: u32) -> Option<&'static str> {
         TYPE_WL => "wl",
         _ => return None,
     })
+}
+
+/// Copy virtio device configuration data from a subslice of `src` to a subslice of `dst`.
+/// Unlike std::slice::copy_from_slice(), this function copies as much as possible within
+/// the common subset of the two slices, truncating the requested range instead of
+/// panicking if the slices do not match in size.
+///
+/// `dst_offset` and `src_offset` specify the starting indexes of the `dst` and `src`
+/// slices, respectively; if either index is out of bounds, this function is a no-op
+/// rather than panicking.  This makes it safe to call with arbitrary user-controlled
+/// inputs.
+pub fn copy_config(dst: &mut [u8], dst_offset: u64, src: &[u8], src_offset: u64) {
+    if let Ok(dst_offset) = usize::try_from(dst_offset) {
+        if let Ok(src_offset) = usize::try_from(src_offset) {
+            if let Some(dst_slice) = dst.get_mut(dst_offset..) {
+                if let Some(src_slice) = src.get(src_offset..) {
+                    let len = cmp::min(dst_slice.len(), src_slice.len());
+                    let dst_subslice = &mut dst_slice[0..len];
+                    let src_subslice = &src_slice[0..len];
+                    dst_subslice.copy_from_slice(src_subslice);
+                }
+            }
+        }
+    }
 }

@@ -2,10 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cmp;
 use std::fmt::{self, Display};
-use std::io::{self, Seek, SeekFrom, Write};
-use std::mem::{size_of, size_of_val};
+use std::io::{self, Seek, SeekFrom};
+use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -27,7 +26,7 @@ use msg_socket::{MsgReceiver, MsgSender};
 use vm_control::{DiskControlCommand, DiskControlResponseSocket, DiskControlResult};
 
 use super::{
-    DescriptorChain, DescriptorError, Queue, Reader, VirtioDevice, Writer,
+    copy_config, DescriptorChain, DescriptorError, Queue, Reader, VirtioDevice, Writer,
     INTERRUPT_STATUS_CONFIG_CHANGED, INTERRUPT_STATUS_USED_RING, TYPE_BLOCK, VIRTIO_F_VERSION_1,
 };
 
@@ -742,23 +741,12 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
         QUEUE_SIZES
     }
 
-    fn read_config(&self, offset: u64, mut data: &mut [u8]) {
+    fn read_config(&self, offset: u64, data: &mut [u8]) {
         let config_space = {
             let disk_size = self.disk_size.lock();
             build_config_space(*disk_size)
         };
-        let config_len = size_of_val(&config_space) as u64;
-        if offset >= config_len {
-            return;
-        }
-
-        if let Some(end) = offset.checked_add(data.len() as u64) {
-            let offset = offset as usize;
-            let end = cmp::min(end, config_len) as usize;
-            // This write can't fail, offset and end are checked against config_len.
-            data.write_all(&config_space.as_slice()[offset..end])
-                .unwrap();
-        }
+        copy_config(data, 0, config_space.as_slice(), offset);
     }
 
     fn activate(
@@ -816,6 +804,7 @@ impl<T: 'static + AsRawFd + DiskFile + Send> VirtioDevice for Block<T> {
 #[cfg(test)]
 mod tests {
     use std::fs::{File, OpenOptions};
+    use std::mem::size_of_val;
     use sys_util::GuestAddress;
     use tempfile::TempDir;
 

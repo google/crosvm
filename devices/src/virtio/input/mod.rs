@@ -16,7 +16,7 @@ use data_model::{DataInit, Le16, Le32};
 use sys_util::{error, warn, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 
 use self::event_source::{input_event, EvdevEventSource, EventSource, SocketEventSource};
-use super::{Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_INPUT};
+use super::{copy_config, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_INPUT};
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::io::Read;
@@ -233,8 +233,6 @@ pub struct VirtioInputConfig {
 }
 
 impl VirtioInputConfig {
-    const CONFIG_MEM_SIZE: usize = size_of::<virtio_input_config>();
-
     fn new(
         device_ids: virtio_input_device_ids,
         name: Vec<u8>,
@@ -264,19 +262,6 @@ impl VirtioInputConfig {
             evdev::supported_events(source)?,
             evdev::abs_info(source),
         ))
-    }
-
-    fn validate_read_offsets(&self, offset: usize, len: usize) -> bool {
-        if offset + len > VirtioInputConfig::CONFIG_MEM_SIZE {
-            error!(
-                "Attempt to read from invalid config range: [{}..{}], valid ranges in [0..{}]",
-                offset,
-                offset + len,
-                VirtioInputConfig::CONFIG_MEM_SIZE
-            );
-            return false;
-        }
-        true
     }
 
     fn build_config_memory(&self) -> virtio_input_config {
@@ -322,35 +307,19 @@ impl VirtioInputConfig {
     }
 
     fn read(&self, offset: usize, data: &mut [u8]) {
-        let data_len = data.len();
-        if self.validate_read_offsets(offset, data_len) {
-            let config = self.build_config_memory();
-            data.clone_from_slice(&config.as_slice()[offset..offset + data_len]);
-        }
-    }
-
-    fn validate_write_offsets(&self, offset: usize, len: usize) -> bool {
-        const MAX_WRITABLE_BYTES: usize = 2;
-        if offset + len > MAX_WRITABLE_BYTES {
-            error!(
-                "Attempt to write to invalid config range: [{}..{}], valid ranges in [0..{}]",
-                offset,
-                offset + len,
-                MAX_WRITABLE_BYTES
-            );
-            return false;
-        }
-        true
+        copy_config(
+            data,
+            0,
+            self.build_config_memory().as_slice(),
+            offset as u64,
+        );
     }
 
     fn write(&mut self, offset: usize, data: &[u8]) {
-        let len = data.len();
-        if self.validate_write_offsets(offset, len) {
-            let mut selectors: [u8; 2] = [self.select, self.subsel];
-            selectors[offset..offset + len].clone_from_slice(&data);
-            self.select = selectors[0];
-            self.subsel = selectors[1];
-        }
+        let mut config = self.build_config_memory();
+        copy_config(config.as_mut_slice(), offset as u64, data, 0);
+        self.select = config.select;
+        self.subsel = config.subsel;
     }
 }
 

@@ -3,15 +3,13 @@
 // found in the LICENSE file.
 
 use std;
-use std::cmp;
 use std::fmt::{self, Display};
-use std::io::Write;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use data_model::{DataInit, Le32};
 use msg_socket::MsgReceiver;
 use sys_util::{
     self, error, info, warn, EventFd, GuestAddress, GuestMemory, PollContext, PollToken,
@@ -19,7 +17,7 @@ use sys_util::{
 use vm_control::{BalloonControlCommand, BalloonControlResponseSocket};
 
 use super::{
-    DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_CONFIG_CHANGED,
+    copy_config, DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_CONFIG_CHANGED,
     INTERRUPT_STATUS_USED_RING, TYPE_BALLOON, VIRTIO_F_VERSION_1,
 };
 
@@ -53,6 +51,17 @@ const VIRTIO_BALLOON_PFN_SHIFT: u32 = 12;
 // The feature bitmap for virtio balloon
 const VIRTIO_BALLOON_F_MUST_TELL_HOST: u32 = 0; // Tell before reclaiming pages
 const VIRTIO_BALLOON_F_DEFLATE_ON_OOM: u32 = 2; // Deflate balloon on OOM
+
+// virtio_balloon_config is the ballon device configuration space defined by the virtio spec.
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
+struct virtio_balloon_config {
+    num_pages: Le32,
+    actual: Le32,
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for virtio_balloon_config {}
 
 // BalloonConfig is modified by the worker and read from the device thread.
 #[derive(Default)]
@@ -242,6 +251,15 @@ impl Balloon {
             features: 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM,
         })
     }
+
+    fn get_config(&self) -> virtio_balloon_config {
+        let num_pages = self.config.num_pages.load(Ordering::Relaxed) as u32;
+        let actual_pages = self.config.actual_pages.load(Ordering::Relaxed) as u32;
+        virtio_balloon_config {
+            num_pages: num_pages.into(),
+            actual: actual_pages.into(),
+        }
+    }
 }
 
 impl Drop for Balloon {
@@ -266,37 +284,16 @@ impl VirtioDevice for Balloon {
         QUEUE_SIZES
     }
 
-    fn read_config(&self, offset: u64, mut data: &mut [u8]) {
-        if offset >= 8 {
-            return;
-        }
-        let num_pages = self.config.num_pages.load(Ordering::Relaxed) as u32;
-        let actual_pages = self.config.actual_pages.load(Ordering::Relaxed) as u32;
-        let mut config = [0u8; 8];
-        // These writes can't fail as they fit in the declared array so unwrap is fine.
-        (&mut config[0..])
-            .write_u32::<LittleEndian>(num_pages)
-            .unwrap();
-        (&mut config[4..])
-            .write_u32::<LittleEndian>(actual_pages)
-            .unwrap();
-        if let Some(end) = offset.checked_add(data.len() as u64) {
-            // This write can't fail, offset and end are checked against the length of config.
-            data.write_all(&config[offset as usize..cmp::min(end, 8) as usize])
-                .unwrap();
-        }
+    fn read_config(&self, offset: u64, data: &mut [u8]) {
+        copy_config(data, 0, self.get_config().as_slice(), offset);
     }
 
-    fn write_config(&mut self, offset: u64, mut data: &[u8]) {
-        // Only allow writing to `actual` pages from the guest.
-        if offset != 4 || data.len() != 4 {
-            return;
-        }
-        // This read can't fail as it fits in the declared array so unwrap is fine.
-        let new_actual: u32 = data.read_u32::<LittleEndian>().unwrap();
+    fn write_config(&mut self, offset: u64, data: &[u8]) {
+        let mut config = self.get_config();
+        copy_config(config.as_mut_slice(), offset, data, 0);
         self.config
             .actual_pages
-            .store(new_actual as usize, Ordering::Relaxed);
+            .store(config.actual.to_native() as usize, Ordering::Relaxed);
     }
 
     fn features(&self) -> u64 {

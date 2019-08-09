@@ -29,8 +29,8 @@ use gpu_display::*;
 use gpu_renderer::{Renderer, RendererFlags};
 
 use super::{
-    resource_bridge::*, AvailIter, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_GPU,
-    VIRTIO_F_VERSION_1,
+    copy_config, resource_bridge::*, AvailIter, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING,
+    TYPE_GPU, VIRTIO_F_VERSION_1,
 };
 
 use self::backend::Backend;
@@ -790,23 +790,12 @@ impl VirtioDevice for Gpu {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        let offset = offset as usize;
-        let len = data.len();
-        let cfg = self.get_config();
-        let cfg_slice = cfg.as_slice();
-        if offset + len <= cfg_slice.len() {
-            data.copy_from_slice(&cfg_slice[offset..offset + len]);
-        }
+        copy_config(data, 0, self.get_config().as_slice(), offset);
     }
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
-        let offset = offset as usize;
-        let len = data.len();
         let mut cfg = self.get_config();
-        let cfg_slice = cfg.as_mut_slice();
-        if offset + len <= cfg_slice.len() {
-            cfg_slice[offset..offset + len].copy_from_slice(data);
-        }
+        copy_config(cfg.as_mut_slice(), offset, data, 0);
         if (cfg.events_clear.to_native() & VIRTIO_GPU_EVENT_DISPLAY) != 0 {
             self.config_event = false;
         }

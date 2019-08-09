@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cmp::min;
 use std::fmt::{self, Display};
 use std::io::{self, Write};
 use std::mem;
@@ -17,7 +16,9 @@ use p9;
 use sys_util::{error, warn, Error as SysError, EventFd, GuestMemory, PollContext, PollToken};
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
 
-use super::{Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_9P};
+use super::{
+    copy_config, Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_9P,
+};
 
 const QUEUE_SIZE: u16 = 128;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -222,17 +223,7 @@ impl VirtioDevice for P9 {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        if offset >= self.config.len() as u64 {
-            // Nothing to see here.
-            return;
-        }
-
-        // The config length cannot be more than ::std::u16::MAX + mem::size_of::<u16>(), which
-        // is significantly smaller than ::std::usize::MAX on the architectures we care about so
-        // if we reach this point then we know that `offset` will fit into a usize.
-        let offset = offset as usize;
-        let len = min(data.len(), self.config.len() - offset);
-        data[..len].copy_from_slice(&self.config[offset..offset + len])
+        copy_config(data, 0, self.config.as_slice(), offset);
     }
 
     fn activate(

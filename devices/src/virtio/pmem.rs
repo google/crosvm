@@ -2,11 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cmp;
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::Write;
-use std::mem::{size_of, size_of_val};
+use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -21,7 +19,8 @@ use sys_util::{
 use data_model::{DataInit, Le32, Le64};
 
 use super::{
-    DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_PMEM, VIRTIO_F_VERSION_1,
+    copy_config, DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_PMEM,
+    VIRTIO_F_VERSION_1,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -297,22 +296,12 @@ impl VirtioDevice for Pmem {
         1 << VIRTIO_F_VERSION_1
     }
 
-    fn read_config(&self, offset: u64, mut data: &mut [u8]) {
+    fn read_config(&self, offset: u64, data: &mut [u8]) {
         let config = virtio_pmem_config {
             start_address: Le64::from(self.mapping_address.offset()),
             size: Le64::from(self.mapping_size as u64),
         };
-        let config_len = size_of_val(&config) as u64;
-        if offset >= config_len {
-            return;
-        }
-
-        if let Some(end) = offset.checked_add(data.len() as u64) {
-            let offset = offset as usize;
-            let end = cmp::min(end, config_len) as usize;
-            // This write can't fail, offset and end are checked against config_len.
-            data.write_all(&config.as_slice()[offset..end]).unwrap();
-        }
+        copy_config(data, 0, config.as_slice(), offset);
     }
 
     fn activate(
