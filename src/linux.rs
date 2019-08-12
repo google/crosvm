@@ -27,7 +27,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use libc::{self, c_int, gid_t, uid_t};
 
-use audio_streams::DummyStreamSource;
+use audio_streams::shm_streams::NullShmStreamSource;
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
 use devices::virtio::{self, VirtioDevice};
@@ -1171,7 +1171,7 @@ fn create_devices(
     }
 
     if cfg.null_audio {
-        let server = Box::new(DummyStreamSource::new());
+        let server = Box::new(NullShmStreamSource::new());
         let null_audio = devices::Ac97Dev::new(mem.clone(), server);
 
         pci_devices.push((

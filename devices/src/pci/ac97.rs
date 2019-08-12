@@ -4,7 +4,7 @@
 
 use std::os::unix::io::RawFd;
 
-use audio_streams::StreamSource;
+use audio_streams::shm_streams::ShmStreamSource;
 use resources::{Alloc, MmioType, SystemAllocator};
 use sys_util::{error, EventFd, GuestMemory};
 
@@ -39,7 +39,7 @@ pub struct Ac97Dev {
 impl Ac97Dev {
     /// Creates an 'Ac97Dev' that uses the given `GuestMemory` and starts with all registers at
     /// default values.
-    pub fn new(mem: GuestMemory, audio_server: Box<dyn StreamSource>) -> Self {
+    pub fn new(mem: GuestMemory, audio_server: Box<dyn ShmStreamSource>) -> Self {
         let config_regs = PciConfiguration::new(
             0x8086,
             PCI_DEVICE_ID_INTEL_82801AA_5,
@@ -236,13 +236,13 @@ impl PciDevice for Ac97Dev {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use audio_streams::DummyStreamSource;
+    use audio_streams::shm_streams::MockShmStreamSource;
     use sys_util::GuestAddress;
 
     #[test]
     fn create() {
         let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)]).unwrap();
-        let mut ac97_dev = Ac97Dev::new(mem, Box::new(DummyStreamSource::new()));
+        let mut ac97_dev = Ac97Dev::new(mem, Box::new(MockShmStreamSource::new()));
         let mut allocator = SystemAllocator::builder()
             .add_io_addresses(0x1000_0000, 0x1000_0000)
             .add_low_mmio_addresses(0x2000_0000, 0x1000_0000)

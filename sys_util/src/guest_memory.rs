@@ -4,6 +4,7 @@
 
 //! Track memory regions that are mapped to the guest VM.
 
+use std::convert::AsRef;
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -104,6 +105,12 @@ pub struct GuestMemory {
 impl AsRawFd for GuestMemory {
     fn as_raw_fd(&self) -> RawFd {
         self.memfd.as_raw_fd()
+    }
+}
+
+impl AsRef<SharedMemory> for GuestMemory {
+    fn as_ref(&self) -> &SharedMemory {
+        &self.memfd
     }
 }
 
