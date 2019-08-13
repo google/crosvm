@@ -459,7 +459,7 @@ pub struct DisplayX {
 
 impl DisplayX {
     pub fn open_display(display: Option<&str>) -> Result<DisplayX, GpuDisplayError> {
-        let display_cstr = match display.map(|s| CString::new(s)) {
+        let display_cstr = match display.map(CString::new) {
             Some(Ok(s)) => Some(s),
             Some(Err(_)) => return Err(GpuDisplayError::InvalidPath),
             None => None,
@@ -620,7 +620,7 @@ impl DisplayT for DisplayX {
         height: u32,
         fourcc: u32,
     ) -> Result<u32, GpuDisplayError> {
-        return Err(GpuDisplayError::Unsupported);
+        Err(GpuDisplayError::Unsupported)
     }
     #[allow(unused_variables)]
     fn release_import(&mut self, import_id: u32) {
