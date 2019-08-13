@@ -1352,6 +1352,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         components,
         cfg.split_irqchip,
         &cfg.serial_parameters,
+        simple_jail(&cfg, "serial.policy")?,
         |mem, vm, sys_allocator, exit_evt| {
             create_devices(
                 &cfg,
@@ -1580,7 +1581,6 @@ fn run_control(
                         Ok(count) => {
                             if let Some(ref stdio_serial) = linux.stdio_serial {
                                 stdio_serial
-                                    .lock()
                                     .queue_input_bytes(&out[..count])
                                     .expect("failed to queue bytes into serial port");
                             }

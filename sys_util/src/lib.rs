@@ -321,3 +321,24 @@ pub fn validate_raw_fd(raw_fd: RawFd) -> Result<RawFd> {
     }
     Ok(dup_fd as RawFd)
 }
+
+/// Utility function that returns true if the given FD is readable without blocking.
+///
+/// On an error, such as an invalid or incompatible FD, this will return false, which can not be
+/// distinguished from a non-ready to read FD.
+pub fn poll_in(fd: &AsRawFd) -> bool {
+    let mut fds = libc::pollfd {
+        fd: fd.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // Safe because we give a valid pointer to a list (of 1) FD and check the return value.
+    let ret = unsafe { libc::poll(&mut fds, 1, 0) };
+    // An error probably indicates an invalid FD, or an FD that can't be polled. Returning false in
+    // that case is probably correct as such an FD is unlikely to be readable, although there are
+    // probably corner cases in which that is wrong.
+    if ret == -1 {
+        return false;
+    }
+    fds.revents & libc::POLLIN != 0
+}

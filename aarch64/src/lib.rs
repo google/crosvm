@@ -195,6 +195,7 @@ impl arch::LinuxArch for AArch64 {
         mut components: VmComponents,
         _split_irqchip: bool,
         serial_parameters: &BTreeMap<u8, SerialParameters>,
+        serial_jail: Option<Minijail>,
         create_devices: F,
     ) -> Result<RunnableLinuxVm>
     where
@@ -254,6 +255,7 @@ impl arch::LinuxArch for AArch64 {
             &com_evt_1_3,
             &com_evt_2_4,
             &serial_parameters,
+            serial_jail,
         )
         .map_err(Error::CreateSerialDevices)?;
 

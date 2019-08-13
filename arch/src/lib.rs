@@ -16,13 +16,13 @@ use std::sync::Arc;
 use devices::virtio::VirtioDevice;
 use devices::{
     Bus, BusDevice, BusError, PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProxyDevice,
-    Serial, SerialParameters, DEFAULT_SERIAL_PARAMS, SERIAL_ADDR,
+    SerialInput, SerialParameters, DEFAULT_SERIAL_PARAMS, SERIAL_ADDR,
 };
 use io_jail::Minijail;
 use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
 use resources::SystemAllocator;
 use sync::Mutex;
-use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
+use sys_util::{pipe, poll_in, syslog, warn, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 
 pub enum VmImage {
     Kernel(File),
@@ -47,7 +47,7 @@ pub struct RunnableLinuxVm {
     pub vm: Vm,
     pub kvm: Kvm,
     pub resources: SystemAllocator,
-    pub stdio_serial: Option<Arc<Mutex<Serial>>>,
+    pub stdio_serial: Option<SerialInput>,
     pub exit_evt: EventFd,
     pub vcpus: Vec<Vcpu>,
     pub vcpu_affinity: Vec<usize>,
@@ -80,6 +80,7 @@ pub trait LinuxArch {
         components: VmComponents,
         split_irqchip: bool,
         serial_parameters: &BTreeMap<u8, SerialParameters>,
+        serial_jail: Option<Minijail>,
         create_devices: F,
     ) -> Result<RunnableLinuxVm, Self::Error>
     where
@@ -103,7 +104,9 @@ pub enum DeviceRegistrationError {
     AllocateIrq,
     /// Could not create the mmio device to wrap a VirtioDevice.
     CreateMmioDevice(sys_util::Error),
-    //  Unable to create serial device from serial parameters
+    // Unable to create a pipe.
+    CreatePipe(sys_util::Error),
+    // Unable to create serial device from serial parameters
     CreateSerialDevice(devices::SerialError),
     /// Could not create an event fd.
     EventFdCreate(sys_util::Error),
@@ -134,6 +137,7 @@ impl Display for DeviceRegistrationError {
             AllocateDeviceAddrs(e) => write!(f, "Allocating device addresses: {}", e),
             AllocateIrq => write!(f, "Allocating IRQ number"),
             CreateMmioDevice(e) => write!(f, "failed to create mmio device: {}", e),
+            CreatePipe(e) => write!(f, "failed to create pipe: {}", e),
             CreateSerialDevice(e) => write!(f, "failed to create serial device: {}", e),
             Cmdline(e) => write!(f, "unable to add device to kernel command line: {}", e),
             EventFdCreate(e) => write!(f, "failed to create eventfd: {}", e),
@@ -243,7 +247,8 @@ pub fn add_serial_devices(
     com_evt_1_3: &EventFd,
     com_evt_2_4: &EventFd,
     serial_parameters: &BTreeMap<u8, SerialParameters>,
-) -> Result<(Option<u8>, Option<Arc<Mutex<Serial>>>), DeviceRegistrationError> {
+    serial_jail: Option<Minijail>,
+) -> Result<(Option<u8>, Option<SerialInput>), DeviceRegistrationError> {
     let mut stdio_serial_num = None;
     let mut stdio_serial = None;
 
@@ -260,21 +265,52 @@ pub fn add_serial_devices(
             .get(&(x + 1))
             .unwrap_or(&DEFAULT_SERIAL_PARAMS[x as usize]);
 
-        let com = Arc::new(Mutex::new(
-            param
-                .create_serial_device(&com_evt)
-                .map_err(DeviceRegistrationError::CreateSerialDevice)?,
-        ));
-        io_bus
-            .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8, false)
-            .unwrap();
-
         if param.console {
             stdio_serial_num = Some(x + 1);
         }
 
-        if param.stdin {
-            stdio_serial = Some(com.clone());
+        let mut preserved_fds = Vec::new();
+        let com = param
+            .create_serial_device(&com_evt, &mut preserved_fds)
+            .map_err(DeviceRegistrationError::CreateSerialDevice)?;
+
+        match serial_jail.as_ref() {
+            Some(jail) => {
+                let (rx, tx) = pipe(true).map_err(DeviceRegistrationError::CreatePipe)?;
+                preserved_fds.push(rx.as_raw_fd());
+                let com = Arc::new(Mutex::new(
+                    ProxyDevice::new_with_user_command(com, &jail, preserved_fds, move |serial| {
+                        let mut rx_buf = [0u8; 32];
+                        // This loop may end up stealing bytes from future user callbacks, so we
+                        // check to make sure the pipe is readable so as not to block the proxy
+                        // device's loop.
+                        while poll_in(&rx) {
+                            if let Ok(count) = (&rx).read(&mut rx_buf) {
+                                if let Err(e) = serial.queue_input_bytes(&rx_buf[..count]) {
+                                    warn!("failed to queue bytes into serial device {}: {}", x, e);
+                                }
+                            }
+                        }
+                    })
+                    .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
+                ));
+                io_bus
+                    .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8, false)
+                    .unwrap();
+                if param.stdin {
+                    stdio_serial = Some(SerialInput::new_remote(tx, com));
+                }
+            }
+            None => {
+                let com = Arc::new(Mutex::new(com));
+                io_bus
+                    .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8, false)
+                    .unwrap();
+
+                if param.stdin {
+                    stdio_serial = Some(SerialInput::new_local(com));
+                }
+            }
         }
     }
 

@@ -56,6 +56,7 @@ enum Command {
         data: [u8; 4],
     },
     Shutdown,
+    RunUserCommand,
 }
 
 #[derive(MsgOnSocket)]
@@ -65,7 +66,11 @@ enum CommandResult {
     ReadConfigResult(u32),
 }
 
-fn child_proc(sock: UnixSeqpacket, device: &mut dyn BusDevice) {
+fn child_proc<D: BusDevice, F: FnMut(&mut D)>(
+    sock: UnixSeqpacket,
+    device: &mut D,
+    mut user_command: F,
+) {
     let mut running = true;
     let sock = MsgSocket::<CommandResult, Command>::new(sock);
 
@@ -107,6 +112,10 @@ fn child_proc(sock: UnixSeqpacket, device: &mut dyn BusDevice) {
                 running = false;
                 sock.send(&CommandResult::Ok)
             }
+            Command::RunUserCommand => {
+                user_command(device);
+                sock.send(&CommandResult::Ok)
+            }
         };
         if let Err(e) = res {
             error!("child device process failed send: {}", e);
@@ -132,11 +141,34 @@ impl ProxyDevice {
     ///
     /// # Arguments
     /// * `device` - The device to isolate to another process.
-    /// * `keep_fds` - File descriptors that will be kept open in the child
+    /// * `jail` - The jail to use for isolating the given device.
+    /// * `keep_fds` - File descriptors that will be kept open in the child.
     pub fn new<D: BusDevice>(
+        device: D,
+        jail: &Minijail,
+        keep_fds: Vec<RawFd>,
+    ) -> Result<ProxyDevice> {
+        Self::new_with_user_command(device, jail, keep_fds, |_| {})
+    }
+
+    /// Similar to `ProxyDevice::new`, but adds an additional custom command to be run in the forked
+    /// process when `run_user_command` is called.
+    ///
+    /// Note that the custom command closure is run in the main thread of the child process, which
+    /// also services `BusDevice` requests. Therefore, do not run blocking calls in the closure
+    /// without a timeout, or you will block any VCPU which touches this device, and every other
+    /// thread which needs to lock this device's mutex.
+    ///
+    /// # Arguments
+    /// * `device` - The device to isolate to another process.
+    /// * `jail` - The jail to use for isolating the given device.
+    /// * `keep_fds` - File descriptors that will be kept open in the child.
+    /// * `user_command` - Closure to be run in the forked process.
+    pub fn new_with_user_command<D: BusDevice, F: FnMut(&mut D)>(
         mut device: D,
         jail: &Minijail,
         mut keep_fds: Vec<RawFd>,
+        user_command: F,
     ) -> Result<ProxyDevice> {
         let debug_label = device.debug_label();
         let (child_sock, parent_sock) = UnixSeqpacket::pair().map_err(Error::Io)?;
@@ -147,7 +179,7 @@ impl ProxyDevice {
             match jail.fork(Some(&keep_fds)).map_err(Error::ForkingJail)? {
                 0 => {
                     device.on_sandboxed();
-                    child_proc(child_sock, &mut device);
+                    child_proc(child_sock, &mut device, user_command);
 
                     // We're explicitly not using std::process::exit here to avoid the cleanup of
                     // stdout/stderr globals. This can cause cascading panics and SIGILL if a worker
@@ -178,6 +210,11 @@ impl ProxyDevice {
 
     pub fn pid(&self) -> pid_t {
         self.pid
+    }
+
+    /// Runs the callback given in `new_with_custom_command` in the child device process.
+    pub fn run_user_command(&self) {
+        self.sync_send(Command::RunUserCommand);
     }
 
     fn sync_send(&self, cmd: Command) -> Option<CommandResult> {

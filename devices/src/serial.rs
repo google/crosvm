@@ -5,13 +5,17 @@
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{self, stdout};
+use std::io::{self, stdout, Write};
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 
+use sync::Mutex;
 use sys_util::{error, syslog, EventFd, Result};
 
 use crate::BusDevice;
+use crate::ProxyDevice;
 
 const LOOP_SIZE: usize = 0x40;
 
@@ -135,28 +139,38 @@ impl SerialParameters {
     ///
     /// # Arguments
     /// * `evt_fd` - eventfd used for interrupt events
-    pub fn create_serial_device(&self, evt_fd: &EventFd) -> std::result::Result<Serial, Error> {
+    /// * `keep_fds` - Vector of FDs required by this device if it were sandboxed in a child
+    ///                process. `evt_fd` will always be added to this vector by this function.
+    pub fn create_serial_device(
+        &self,
+        evt_fd: &EventFd,
+        keep_fds: &mut Vec<RawFd>,
+    ) -> std::result::Result<Serial, Error> {
+        let evt_fd = evt_fd.try_clone().map_err(Error::CloneEventFd)?;
+        keep_fds.push(evt_fd.as_raw_fd());
         match self.type_ {
-            SerialType::Stdout => Ok(Serial::new_out(
-                evt_fd.try_clone().map_err(Error::CloneEventFd)?,
-                Box::new(stdout()),
-            )),
-            SerialType::Sink => Ok(Serial::new_sink(
-                evt_fd.try_clone().map_err(Error::CloneEventFd)?,
-            )),
-            SerialType::Syslog => Ok(Serial::new_out(
-                evt_fd.try_clone().map_err(Error::CloneEventFd)?,
-                Box::new(syslog::Syslogger::new(
-                    syslog::Priority::Info,
-                    syslog::Facility::Daemon,
-                )),
-            )),
+            SerialType::Stdout => {
+                keep_fds.push(stdout().as_raw_fd());
+                Ok(Serial::new_out(evt_fd, Box::new(stdout())))
+            }
+            SerialType::Sink => Ok(Serial::new_sink(evt_fd)),
+            SerialType::Syslog => {
+                syslog::push_fds(keep_fds);
+                Ok(Serial::new_out(
+                    evt_fd,
+                    Box::new(syslog::Syslogger::new(
+                        syslog::Priority::Info,
+                        syslog::Facility::Daemon,
+                    )),
+                ))
+            }
             SerialType::File => match &self.path {
                 None => Err(Error::PathRequired),
-                Some(path) => Ok(Serial::new_out(
-                    evt_fd.try_clone().map_err(Error::CloneEventFd)?,
-                    Box::new(File::create(path.as_path()).map_err(Error::FileError)?),
-                )),
+                Some(path) => {
+                    let file = File::create(path.as_path()).map_err(Error::FileError)?;
+                    keep_fds.push(file.as_raw_fd());
+                    Ok(Serial::new_out(evt_fd, Box::new(file)))
+                }
             },
             SerialType::UnixSocket => Err(Error::Unimplemented(SerialType::UnixSocket)),
         }
@@ -213,6 +227,50 @@ pub fn get_serial_tty_string(stdio_serial_num: u8) -> String {
     }
 }
 
+/// A type for queueing input bytes to a serial device that abstracts if the device is local or part
+/// of a sandboxed device process.
+pub enum SerialInput {
+    #[doc(hidden)]
+    Local(Arc<Mutex<Serial>>),
+    #[doc(hidden)]
+    Remote {
+        input: File,
+        proxy: Arc<Mutex<ProxyDevice>>,
+    },
+}
+
+impl SerialInput {
+    /// Creates a `SerialInput` that trivially forwards queued bytes to the device in the local
+    /// process.
+    pub fn new_local(serial: Arc<Mutex<Serial>>) -> SerialInput {
+        SerialInput::Local(serial)
+    }
+
+    /// Creates a `SerialInput` that will forward bytes via `input` and will wake up the child
+    /// device process which contains the serial device so that it may process the other end of the
+    /// `input` pipe. This will use the `ProxyDevice::run_user_command` method, so the user command
+    /// closure (registered with `ProxyDevice::new_with_user_command`) should own the other side of
+    /// `input` and read from the pipe whenever the closure is run.
+    pub fn new_remote(input: File, proxy: Arc<Mutex<ProxyDevice>>) -> SerialInput {
+        SerialInput::Remote { input, proxy }
+    }
+
+    /// Just like `Serial::queue_input_bytes`, but abstracted over local and sandboxed serial
+    /// devices. In the case that the serial device is sandboxed, this method will also trigger the
+    /// user command in the `ProxyDevice`'s child process.
+    pub fn queue_input_bytes(&self, bytes: &[u8]) -> Result<()> {
+        match self {
+            SerialInput::Local(device) => device.lock().queue_input_bytes(bytes),
+            SerialInput::Remote { input, proxy } => {
+                let mut input = input;
+                input.write_all(bytes)?;
+                proxy.lock().run_user_command();
+                Ok(())
+            }
+        }
+    }
+}
+
 /// Emulates serial COM ports commonly seen on x86 I/O ports 0x3f8/0x2f8/0x3e8/0x2e8.
 ///
 /// This can optionally write the guest's output to a Write trait object. To send input to the
@@ -266,6 +324,12 @@ impl Serial {
             self.recv_data()?;
         }
         Ok(())
+    }
+
+    /// Gets the interrupt eventfd used to interrupt the driver when it needs to respond to this
+    /// device.
+    pub fn interrupt_eventfd(&self) -> &EventFd {
+        &self.interrupt_evt
     }
 
     fn is_dlab_set(&self) -> bool {

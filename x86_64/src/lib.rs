@@ -304,6 +304,7 @@ impl arch::LinuxArch for X8664arch {
         mut components: VmComponents,
         split_irqchip: bool,
         serial_parameters: &BTreeMap<u8, SerialParameters>,
+        serial_jail: Option<Minijail>,
         create_devices: F,
     ) -> Result<RunnableLinuxVm>
     where
@@ -366,7 +367,7 @@ impl arch::LinuxArch for X8664arch {
         )?;
 
         let (stdio_serial_num, stdio_serial) =
-            Self::setup_serial_devices(&mut vm, &mut io_bus, &serial_parameters)?;
+            Self::setup_serial_devices(&mut vm, &mut io_bus, serial_parameters, serial_jail)?;
 
         match components.vm_image {
             VmImage::Bios(ref mut bios) => Self::load_bios(&mem, bios)?,
@@ -715,13 +716,19 @@ impl X8664arch {
         vm: &mut Vm,
         io_bus: &mut devices::Bus,
         serial_parameters: &BTreeMap<u8, SerialParameters>,
-    ) -> Result<(Option<u8>, Option<Arc<Mutex<devices::Serial>>>)> {
+        serial_jail: Option<Minijail>,
+    ) -> Result<(Option<u8>, Option<devices::SerialInput>)> {
         let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
         let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
 
-        let (stdio_serial_num, stdio_serial) =
-            arch::add_serial_devices(io_bus, &com_evt_1_3, &com_evt_2_4, &serial_parameters)
-                .map_err(Error::CreateSerialDevices)?;
+        let (stdio_serial_num, stdio_serial) = arch::add_serial_devices(
+            io_bus,
+            &com_evt_1_3,
+            &com_evt_2_4,
+            &serial_parameters,
+            serial_jail,
+        )
+        .map_err(Error::CreateSerialDevices)?;
 
         vm.register_irqfd(&com_evt_1_3, X86_64_SERIAL_1_3_IRQ)
             .map_err(Error::RegisterIrqfd)?;
