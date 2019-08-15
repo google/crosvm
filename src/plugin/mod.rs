@@ -525,7 +525,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         // An empty directory for jailed plugin pivot root.
         let root_path = match &cfg.plugin_root {
             Some(dir) => dir,
-            None => Path::new("/var/empty"),
+            None => Path::new(option_env!("DEFAULT_PIVOT_ROOT").unwrap_or("/var/empty")),
         };
 
         if root_path.is_relative() {
