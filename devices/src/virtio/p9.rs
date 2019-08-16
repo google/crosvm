@@ -17,7 +17,8 @@ use sys_util::{error, warn, Error as SysError, EventFd, GuestMemory, PollContext
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
 
 use super::{
-    copy_config, Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_9P,
+    copy_config, DescriptorError, Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING,
+    TYPE_9P,
 };
 
 const QUEUE_SIZE: u16 = 128;
@@ -45,6 +46,8 @@ pub enum P9Error {
     NoWritableDescriptors,
     /// Failed to signal the virio used queue.
     SignalUsedQueue(SysError),
+    /// A DescriptorChain contains invalid data.
+    InvalidDescriptorChain(DescriptorError),
     /// An internal I/O error occurred.
     Internal(io::Error),
 }
@@ -73,6 +76,9 @@ impl Display for P9Error {
             NoReadableDescriptors => write!(f, "request does not have any readable descriptors"),
             NoWritableDescriptors => write!(f, "request does not have any writable descriptors"),
             SignalUsedQueue(err) => write!(f, "failed to signal used queue: {}", err),
+            InvalidDescriptorChain(err) => {
+                write!(f, "DescriptorChain contains invalid data: {}", err)
+            }
             Internal(err) => write!(f, "P9 internal server error: {}", err),
         }
     }
@@ -98,8 +104,10 @@ impl Worker {
 
     fn process_queue(&mut self) -> P9Result<()> {
         while let Some(avail_desc) = self.queue.pop(&self.mem) {
-            let mut reader = Reader::new(&self.mem, avail_desc.clone());
-            let mut writer = Writer::new(&self.mem, avail_desc.clone());
+            let mut reader = Reader::new(&self.mem, avail_desc.clone())
+                .map_err(P9Error::InvalidDescriptorChain)?;
+            let mut writer = Writer::new(&self.mem, avail_desc.clone())
+                .map_err(P9Error::InvalidDescriptorChain)?;
 
             self.server
                 .handle_message(&mut reader, &mut writer)

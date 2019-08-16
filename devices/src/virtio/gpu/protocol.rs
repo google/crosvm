@@ -7,6 +7,7 @@
 
 use std::cmp::min;
 use std::fmt::{self, Display};
+use std::io::{self, Write};
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
 use std::str::from_utf8;
@@ -589,6 +590,8 @@ pub enum GpuCommandDecodeError {
     Memory(DescriptorError),
     /// The type of the command was invalid.
     InvalidType(u32),
+    /// An I/O error occurred.
+    IO(io::Error),
 }
 
 impl Display for GpuCommandDecodeError {
@@ -602,6 +605,7 @@ impl Display for GpuCommandDecodeError {
                 e,
             ),
             InvalidType(n) => write!(f, "invalid command type ({})", n),
+            IO(e) => write!(f, "an I/O error occurred: {}", e),
         }
     }
 }
@@ -609,6 +613,12 @@ impl Display for GpuCommandDecodeError {
 impl From<DescriptorError> for GpuCommandDecodeError {
     fn from(e: DescriptorError) -> GpuCommandDecodeError {
         GpuCommandDecodeError::Memory(e)
+    }
+}
+
+impl From<io::Error> for GpuCommandDecodeError {
+    fn from(e: io::Error) -> GpuCommandDecodeError {
+        GpuCommandDecodeError::IO(e)
     }
 }
 
@@ -754,6 +764,8 @@ pub enum GpuResponseEncodeError {
     TooManyDisplays(usize),
     /// More planes than are valid were in a `OkResourcePlaneInfo`.
     TooManyPlanes(usize),
+    /// An I/O error occurred.
+    IO(io::Error),
 }
 
 impl Display for GpuResponseEncodeError {
@@ -768,6 +780,7 @@ impl Display for GpuResponseEncodeError {
             ),
             TooManyDisplays(n) => write!(f, "{} is more displays than are valid", n),
             TooManyPlanes(n) => write!(f, "{} is more planes than are valid", n),
+            IO(e) => write!(f, "an I/O error occurred: {}", e),
         }
     }
 }
@@ -775,6 +788,12 @@ impl Display for GpuResponseEncodeError {
 impl From<DescriptorError> for GpuResponseEncodeError {
     fn from(e: DescriptorError) -> GpuResponseEncodeError {
         GpuResponseEncodeError::Memory(e)
+    }
+}
+
+impl From<io::Error> for GpuResponseEncodeError {
+    fn from(e: io::Error) -> GpuResponseEncodeError {
+        GpuResponseEncodeError::IO(e)
     }
 }
 
@@ -823,7 +842,7 @@ impl GpuResponse {
             }
             GpuResponse::OkCapset(ref data) => {
                 resp.write_obj(hdr)?;
-                resp.write(data)?;
+                resp.write_all(data)?;
                 size_of_val(&hdr) + data.len()
             }
             GpuResponse::OkResourcePlaneInfo {
@@ -847,7 +866,7 @@ impl GpuResponse {
                     strides,
                     offsets,
                 };
-                if resp.available_bytes() >= size_of_val(&plane_info) {
+                if resp.available_bytes()? >= size_of_val(&plane_info) {
                     resp.write_obj(plane_info)?;
                     size_of_val(&plane_info)
                 } else {
@@ -869,7 +888,7 @@ impl GpuResponse {
                 };
 
                 resp.write_obj(resp_info)?;
-                resp.write(&res_info.response)?;
+                resp.write_all(&res_info.response)?;
                 size_of_val(&resp_info) + res_info.response.len()
             }
             _ => {

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::fmt::{self, Display};
+use std::io::{self, Read, Write};
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -13,15 +14,12 @@ use std::thread;
 use libc::{EAGAIN, EEXIST};
 use net_sys;
 use net_util::{Error as TapError, MacAddress, TapT};
-use sys_util::guest_memory::Error as MemoryError;
 use sys_util::Error as SysError;
 use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
 use virtio_sys::{vhost, virtio_net};
 
-use super::{
-    DescriptorError, Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_NET,
-};
+use super::{Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_NET};
 
 /// The maximum buffer size when segmentation offload is enabled. This
 /// includes the 12-byte virtio net header.
@@ -122,23 +120,30 @@ where
         };
 
         let index = desc_chain.index;
-        let mut writer = Writer::new(&self.mem, desc_chain);
+        let bytes_written = match Writer::new(&self.mem, desc_chain) {
+            Ok(mut writer) => {
+                match writer.write_all(&self.rx_buf[0..self.rx_count]) {
+                    Ok(()) => (),
+                    Err(ref e) if e.kind() == io::ErrorKind::WriteZero => {
+                        warn!(
+                            "net: rx: buffer is too small to hold frame of size {}",
+                            self.rx_count
+                        );
+                    }
+                    Err(e) => {
+                        warn!("net: rx: failed to write slice: {}", e);
+                    }
+                };
 
-        match writer.write_all(&self.rx_buf[0..self.rx_count]) {
-            Ok(()) => (),
-            Err(DescriptorError::GuestMemoryError(MemoryError::ShortWrite { .. })) => {
-                warn!(
-                    "net: rx: buffer is too small to hold frame of size {}",
-                    self.rx_count
-                );
+                writer.bytes_written() as u32
             }
             Err(e) => {
-                warn!("net: rx: failed to write slice: {}", e);
+                error!("net: failed to create Writer: {}", e);
+                0
             }
-        }
+        };
 
-        self.rx_queue
-            .add_used(&self.mem, index, writer.bytes_written() as u32);
+        self.rx_queue.add_used(&self.mem, index, bytes_written);
 
         // Interrupt the guest immediately for received frames to
         // reduce latency.
@@ -174,21 +179,38 @@ where
     fn process_tx(&mut self) {
         let mut frame = [0u8; MAX_BUFFER_SIZE];
 
+        // Reads up to `buf.len()` bytes or until there is no more data in `r`, whichever
+        // is smaller.
+        fn read_to_end(mut r: Reader, buf: &mut [u8]) -> io::Result<usize> {
+            let mut count = 0;
+            while count < buf.len() {
+                match r.read(&mut buf[count..]) {
+                    Ok(0) => break,
+                    Ok(n) => count += n,
+                    Err(e) => return Err(e),
+                }
+            }
+
+            Ok(count)
+        }
+
         while let Some(desc_chain) = self.tx_queue.pop(&self.mem) {
             let index = desc_chain.index;
-            let mut reader = Reader::new(&self.mem, desc_chain);
 
-            match reader.read(&mut frame) {
-                // We need to copy frame into continuous buffer before writing it to tap
-                // because tap requires frame to complete in a single write.
-                Ok(read_count) => {
-                    if let Err(err) = self.tap.write_all(&frame[..read_count]) {
-                        error!("net: tx: failed to write to tap: {}", err);
+            match Reader::new(&self.mem, desc_chain) {
+                Ok(reader) => {
+                    match read_to_end(reader, &mut frame[..]) {
+                        Ok(len) => {
+                            // We need to copy frame into continuous buffer before writing it to tap
+                            // because tap requires frame to complete in a single write.
+                            if let Err(err) = self.tap.write_all(&frame[..len]) {
+                                error!("net: tx: failed to write to tap: {}", err);
+                            }
+                        }
+                        Err(e) => error!("net: tx: failed to read frame into buffer: {}", e),
                     }
                 }
-                Err(err) => {
-                    error!("net: tx: failed to read frame into buffer: {}", err);
-                }
+                Err(e) => error!("net: failed to create Reader: {}", e),
             }
 
             self.tx_queue.add_used(&self.mem, index, 0);

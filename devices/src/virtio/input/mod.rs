@@ -17,7 +17,8 @@ use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
 
 use self::event_source::{input_event, EvdevEventSource, EventSource, SocketEventSource};
 use super::{
-    copy_config, Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_INPUT,
+    copy_config, DescriptorChain, DescriptorError, Queue, Reader, VirtioDevice, Writer,
+    INTERRUPT_STATUS_USED_RING, TYPE_INPUT,
 };
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
@@ -54,7 +55,14 @@ pub enum InputError {
     EvdevGrabError(sys_util::Error),
     // Detected error on guest side
     GuestError(String),
+    // Virtio descriptor error
+    Descriptor(DescriptorError),
+    // Error while reading from virtqueue
+    ReadQueue(std::io::Error),
+    // Error while writing to virtqueue
+    WriteQueue(std::io::Error),
 }
+
 pub type Result<T> = std::result::Result<T, InputError>;
 
 impl Display for InputError {
@@ -76,6 +84,9 @@ impl Display for InputError {
             }
             EvdevGrabError(e) => write!(f, "failed to grab event device: {}", e),
             GuestError(s) => write!(f, "detected error on guest side: {}", s),
+            Descriptor(e) => write!(f, "virtio descriptor error: {}", e),
+            ReadQueue(e) => write!(f, "failed to read from virtqueue: {}", e),
+            WriteQueue(e) => write!(f, "failed to write to virtqueue: {}", e),
         }
     }
 }
@@ -365,6 +376,27 @@ impl<T: EventSource> Worker<T> {
         self.interrupt_evt.write(1).unwrap();
     }
 
+    // Fills a virtqueue with events from the source.  Returns the number of bytes written.
+    fn fill_event_virtqueue(
+        event_source: &mut T,
+        avail_desc: DescriptorChain,
+        mem: &GuestMemory,
+    ) -> Result<usize> {
+        let mut writer = Writer::new(mem, avail_desc).map_err(InputError::Descriptor)?;
+
+        while writer.available_bytes().map_err(InputError::Descriptor)?
+            >= virtio_input_event::EVENT_SIZE
+        {
+            if let Some(evt) = event_source.pop_available_event() {
+                writer.write_obj(evt).map_err(InputError::WriteQueue)?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(writer.bytes_written())
+    }
+
     // Send events from the source to the guest
     fn send_events(&mut self) -> bool {
         let mut needs_interrupt = false;
@@ -377,26 +409,23 @@ impl<T: EventSource> Worker<T> {
                 }
                 Some(avail_desc) => {
                     let avail_desc_index = avail_desc.index;
-                    let mut writer = Writer::new(&self.guest_memory, avail_desc);
-                    while writer.available_bytes() >= virtio_input_event::EVENT_SIZE {
-                        match self.event_source.pop_available_event() {
-                            Some(evt) => {
-                                if let Err(e) = writer.write_obj(evt) {
-                                    // An error here would mean the address and length given
-                                    // in the queue descriptor are wrong: Don't try to write
-                                    // to this buffer anymore.
-                                    error!("Could not write event to guest memory: {}", e);
-                                    break;
-                                }
-                            }
-                            None => break,
+
+                    let bytes_written = match Worker::fill_event_virtqueue(
+                        &mut self.event_source,
+                        avail_desc,
+                        &self.guest_memory,
+                    ) {
+                        Ok(count) => count,
+                        Err(e) => {
+                            error!("Input: failed to send events to guest: {}", e);
+                            break;
                         }
-                    }
+                    };
 
                     self.event_queue.add_used(
                         &self.guest_memory,
                         avail_desc_index,
-                        writer.bytes_written() as u32,
+                        bytes_written as u32,
                     );
                     needs_interrupt = true;
                 }
@@ -406,38 +435,42 @@ impl<T: EventSource> Worker<T> {
         needs_interrupt
     }
 
+    // Sends events from the guest to the source.  Returns the number of bytes read.
+    fn read_event_virtqueue(
+        avail_desc: DescriptorChain,
+        event_source: &mut T,
+        mem: &GuestMemory,
+    ) -> Result<usize> {
+        let mut reader = Reader::new(mem, avail_desc).map_err(InputError::Descriptor)?;
+        while reader.available_bytes().map_err(InputError::Descriptor)?
+            >= virtio_input_event::EVENT_SIZE
+        {
+            let evt: virtio_input_event = reader.read_obj().map_err(InputError::ReadQueue)?;
+            event_source.send_event(&evt)?;
+        }
+
+        Ok(reader.bytes_read())
+    }
+
     fn process_status_queue(&mut self) -> Result<bool> {
         let mut needs_interrupt = false;
         while let Some(avail_desc) = self.status_queue.pop(&self.guest_memory) {
             let avail_desc_index = avail_desc.index;
-            let mut reader = Reader::new(&self.guest_memory, avail_desc);
-            if reader.available_bytes() % virtio_input_event::EVENT_SIZE != 0 {
-                warn!(
-                    "Ignoring buffer of unexpected size on status queue: {:0}",
-                    reader.available_bytes(),
-                );
-            } else {
-                while reader.available_bytes() >= virtio_input_event::EVENT_SIZE {
-                    match reader.read_obj::<virtio_input_event>() {
-                        Ok(evt) => {
-                            self.event_source.send_event(&evt)?;
-                        }
-                        Err(e) => {
-                            // An error here would mean the address or length in the buffer
-                            // descriptor was wrong: Don't try to read from this buffer
-                            // anymore.
-                            error!("Unable to read status event from guest memory: {}", e);
-                            break;
-                        }
-                    }
-                }
-            }
 
-            self.status_queue.add_used(
+            let bytes_read = match Worker::read_event_virtqueue(
+                avail_desc,
+                &mut self.event_source,
                 &self.guest_memory,
-                avail_desc_index,
-                reader.bytes_read() as u32,
-            );
+            ) {
+                Ok(count) => count,
+                Err(e) => {
+                    error!("Input: failed to read events from virtqueue: {}", e);
+                    break;
+                }
+            };
+
+            self.status_queue
+                .add_used(&self.guest_memory, avail_desc_index, bytes_read as u32);
             needs_interrupt = true;
         }
 

@@ -94,11 +94,29 @@ impl Worker {
             let index = avail_desc.index;
 
             if inflate {
-                let mut reader = Reader::new(&self.mem, avail_desc);
-                let data_length = reader.available_bytes();
+                let mut reader = match Reader::new(&self.mem, avail_desc) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        error!("balloon: failed to create reader: {}", e);
+                        queue.add_used(&self.mem, index, 0);
+                        needs_interrupt = true;
+                        continue;
+                    }
+                };
+                let data_length = match reader.available_bytes() {
+                    Ok(l) => l,
+                    Err(e) => {
+                        error!("balloon: failed to get available bytes: {}", e);
+                        queue.add_used(&self.mem, index, 0);
+                        needs_interrupt = true;
+                        continue;
+                    }
+                };
 
                 if data_length % 4 != 0 {
                     error!("invalid inflate buffer size: {}", data_length);
+                    queue.add_used(&self.mem, index, 0);
+                    needs_interrupt = true;
                     continue;
                 }
 

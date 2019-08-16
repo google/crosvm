@@ -51,15 +51,18 @@ impl Worker {
         let mut needs_interrupt = false;
         while let Some(avail_desc) = queue.pop(&self.mem) {
             let index = avail_desc.index;
-            let mut writer = Writer::new(&self.mem, avail_desc);
-            // Fill the entire descriptor chain buffer with random bytes.
-            let written = match writer.write_from(&self.random_file, std::usize::MAX) {
+            let random_file = &mut self.random_file;
+            let written = match Writer::new(&self.mem, avail_desc)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))
+                .and_then(|mut writer| writer.write_from(random_file, std::usize::MAX))
+            {
                 Ok(n) => n,
                 Err(e) => {
                     warn!("Failed to write random data to the guest: {}", e);
                     0
                 }
             };
+
             queue.add_used(&self.mem, index, written as u32);
             needs_interrupt = true;
         }

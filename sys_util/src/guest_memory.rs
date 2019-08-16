@@ -18,6 +18,7 @@ use data_model::DataInit;
 
 #[derive(Debug)]
 pub enum Error {
+    DescriptorChainOverflow,
     InvalidGuestAddress(GuestAddress),
     MemoryAccess(GuestAddress, mmap::Error),
     MemoryMappingFailed(mmap::Error),
@@ -28,6 +29,8 @@ pub enum Error {
     MemoryAddSealsFailed(errno::Error),
     ShortWrite { expected: usize, completed: usize },
     ShortRead { expected: usize, completed: usize },
+    SplitOutOfBounds(usize),
+    VolatileMemoryAccess(VolatileMemoryError),
 }
 pub type Result<T> = result::Result<T, Error>;
 
@@ -38,6 +41,10 @@ impl Display for Error {
         use self::Error::*;
 
         match self {
+            DescriptorChainOverflow => write!(
+                f,
+                "the combined length of all the buffers in a DescriptorChain is too large"
+            ),
             InvalidGuestAddress(addr) => write!(f, "invalid guest address {}", addr),
             MemoryAccess(addr, e) => {
                 write!(f, "invalid guest memory access at addr={}: {}", addr, e)
@@ -64,6 +71,8 @@ impl Display for Error {
                 "incomplete read of {} instead of {} bytes",
                 completed, expected,
             ),
+            SplitOutOfBounds(off) => write!(f, "DescriptorChain split is out of bounds: {}", off),
+            VolatileMemoryAccess(e) => e.fmt(f),
         }
     }
 }

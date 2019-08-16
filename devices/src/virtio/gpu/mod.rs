@@ -8,6 +8,7 @@ mod protocol;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::i64;
+use std::io::Read;
 use std::mem::{self, size_of};
 use std::num::NonZeroU8;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -124,7 +125,14 @@ impl Frontend {
                 mem,
             ),
             GpuCommand::ResourceAttachBacking(info) => {
-                if reader.available_bytes() != 0 {
+                let available_bytes = match reader.available_bytes() {
+                    Ok(count) => count,
+                    Err(e) => {
+                        debug!("invalid descriptor: {}", e);
+                        0
+                    }
+                };
+                if available_bytes != 0 {
                     let entry_count = info.nr_entries.to_native() as usize;
                     let mut iovecs = Vec::with_capacity(entry_count);
                     for _ in 0..entry_count {
@@ -247,10 +255,17 @@ impl Frontend {
                 )
             }
             GpuCommand::CmdSubmit3d(info) => {
-                if reader.available_bytes() != 0 {
+                let available_bytes = match reader.available_bytes() {
+                    Ok(count) => count,
+                    Err(e) => {
+                        debug!("invalid descriptor: {}", e);
+                        0
+                    }
+                };
+                if available_bytes != 0 {
                     let cmd_size = info.size.to_native() as usize;
                     let mut cmd_buf = vec![0; cmd_size];
-                    if reader.read(&mut cmd_buf[..]).is_ok() {
+                    if reader.read_exact(&mut cmd_buf[..]).is_ok() {
                         self.backend
                             .submit_command(info.hdr.ctx_id.to_native(), &mut cmd_buf[..])
                     } else {
@@ -263,7 +278,14 @@ impl Frontend {
                 }
             }
             GpuCommand::AllocationMetadata(info) => {
-                if reader.available_bytes() != 0 {
+                let available_bytes = match reader.available_bytes() {
+                    Ok(count) => count,
+                    Err(e) => {
+                        debug!("invalid descriptor: {}", e);
+                        0
+                    }
+                };
+                if available_bytes != 0 {
                     let id = info.request_id.to_native();
                     let request_size = info.request_size.to_native();
                     let response_size = info.response_size.to_native();
@@ -275,7 +297,7 @@ impl Frontend {
 
                     let mut request_buf = vec![0; request_size as usize];
                     let response_buf = vec![0; response_size as usize];
-                    if reader.read(&mut request_buf[..]).is_ok() {
+                    if reader.read_exact(&mut request_buf[..]).is_ok() {
                         self.backend
                             .allocation_metadata(id, request_buf, response_buf)
                     } else {
@@ -286,7 +308,14 @@ impl Frontend {
                 }
             }
             GpuCommand::ResourceCreateV2(info) => {
-                if reader.available_bytes() != 0 {
+                let available_bytes = match reader.available_bytes() {
+                    Ok(count) => count,
+                    Err(e) => {
+                        debug!("invalid descriptor: {}", e);
+                        0
+                    }
+                };
+                if available_bytes != 0 {
                     let resource_id = info.resource_id.to_native();
                     let guest_memory_type = info.guest_memory_type.to_native();
                     let size = info.size.to_native();
@@ -314,7 +343,7 @@ impl Frontend {
                         }
                     }
 
-                    match reader.read(&mut args[..]) {
+                    match reader.read_exact(&mut args[..]) {
                         Ok(_) => self.backend.resource_create_v2(
                             resource_id,
                             guest_memory_type,
@@ -346,13 +375,23 @@ impl Frontend {
         let mut signal_used = false;
         while let Some(desc) = queue.pop(mem) {
             if Frontend::validate_desc(&desc) {
-                let mut reader = Reader::new(mem, desc.clone());
-                let mut writer = Writer::new(mem, desc.clone());
-                if let Some(ret_desc) =
-                    self.process_descriptor(mem, desc.index, &mut reader, &mut writer)
-                {
-                    queue.add_used(&mem, ret_desc.index, ret_desc.len);
-                    signal_used = true;
+                match (
+                    Reader::new(mem, desc.clone()),
+                    Writer::new(mem, desc.clone()),
+                ) {
+                    (Ok(mut reader), Ok(mut writer)) => {
+                        if let Some(ret_desc) =
+                            self.process_descriptor(mem, desc.index, &mut reader, &mut writer)
+                        {
+                            queue.add_used(&mem, ret_desc.index, ret_desc.len);
+                            signal_used = true;
+                        }
+                    }
+                    (_, Err(e)) | (Err(e), _) => {
+                        debug!("invalid descriptor: {}", e);
+                        queue.add_used(&mem, desc.index, 0);
+                        signal_used = true;
+                    }
                 }
             } else {
                 let likely_type = mem.read_obj_from_addr(desc.addr).unwrap_or(Le32::from(0));
@@ -391,7 +430,16 @@ impl Frontend {
         if resp.is_err() {
             debug!("{:?} -> {:?}", gpu_cmd, resp);
         }
-        if writer.available_bytes() != 0 {
+
+        let available_bytes = match writer.available_bytes() {
+            Ok(count) => count,
+            Err(e) => {
+                debug!("invalid descriptor: {}", e);
+                0
+            }
+        };
+
+        if available_bytes != 0 {
             let mut fence_id = 0;
             let mut ctx_id = 0;
             let mut flags = 0;

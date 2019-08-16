@@ -111,7 +111,7 @@ pub trait FileReadWriteVolatile {
     }
 }
 
-impl<'a, T: FileReadWriteVolatile> FileReadWriteVolatile for &'a mut T {
+impl<'a, T: FileReadWriteVolatile + ?Sized> FileReadWriteVolatile for &'a mut T {
     fn read_volatile(&mut self, slice: VolatileSlice) -> Result<usize> {
         (**self).read_volatile(slice)
     }
@@ -208,7 +208,7 @@ pub trait FileReadWriteAtVolatile {
     }
 }
 
-impl<'a, T: FileReadWriteAtVolatile> FileReadWriteAtVolatile for &'a mut T {
+impl<'a, T: FileReadWriteAtVolatile + ?Sized> FileReadWriteAtVolatile for &'a mut T {
     fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> Result<usize> {
         (**self).read_at_volatile(slice, offset)
     }

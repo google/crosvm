@@ -5,6 +5,7 @@
 use std::env;
 use std::fmt::{self, Display};
 use std::fs;
+use std::io::{self, Read, Write};
 use std::ops::BitOrAssign;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
@@ -48,16 +49,17 @@ struct Device {
 
 impl Device {
     fn perform_work(&mut self, mem: &GuestMemory, desc: DescriptorChain) -> Result<u32> {
-        let mut reader = Reader::new(mem, desc.clone());
-        let mut writer = Writer::new(mem, desc);
+        let mut reader = Reader::new(mem, desc.clone()).map_err(Error::Descriptor)?;
+        let mut writer = Writer::new(mem, desc).map_err(Error::Descriptor)?;
 
-        if reader.available_bytes() > TPM_BUFSIZE {
+        let available_bytes = reader.available_bytes().map_err(Error::Descriptor)?;
+        if available_bytes > TPM_BUFSIZE {
             return Err(Error::CommandTooLong {
-                size: reader.available_bytes(),
+                size: available_bytes,
             });
         }
 
-        let mut command = vec![0u8; reader.available_bytes() as usize];
+        let mut command = vec![0u8; available_bytes];
         reader.read_exact(&mut command).map_err(Error::Read)?;
 
         let response = self.simulator.execute_command(&command);
@@ -68,9 +70,10 @@ impl Device {
             });
         }
 
-        if response.len() > writer.available_bytes() {
+        let writer_len = writer.available_bytes().map_err(Error::Descriptor)?;
+        if response.len() > writer_len {
             return Err(Error::BufferTooSmall {
-                size: writer.available_bytes(),
+                size: writer_len,
                 required: response.len(),
             });
         }
@@ -287,10 +290,11 @@ type Result<T> = std::result::Result<T, Error>;
 
 enum Error {
     CommandTooLong { size: usize },
-    Read(DescriptorError),
+    Descriptor(DescriptorError),
+    Read(io::Error),
     ResponseTooLong { size: usize },
     BufferTooSmall { size: usize, required: usize },
-    Write(DescriptorError),
+    Write(io::Error),
 }
 
 impl Display for Error {
@@ -303,6 +307,7 @@ impl Display for Error {
                 "vtpm command is too long: {} > {} bytes",
                 size, TPM_BUFSIZE
             ),
+            Descriptor(e) => write!(f, "virtio descriptor error: {}", e),
             Read(e) => write!(f, "vtpm failed to read from guest memory: {}", e),
             ResponseTooLong { size } => write!(
                 f,

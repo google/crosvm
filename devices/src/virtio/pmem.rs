@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt::{self, Display};
 use std::fs::File;
+use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -14,8 +16,8 @@ use sys_util::{error, EventFd, GuestAddress, GuestMemory, PollContext, PollToken
 use data_model::{DataInit, Le32, Le64};
 
 use super::{
-    copy_config, Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_PMEM,
-    VIRTIO_F_VERSION_1,
+    copy_config, DescriptorChain, DescriptorError, Queue, Reader, VirtioDevice, Writer,
+    INTERRUPT_STATUS_USED_RING, TYPE_PMEM, VIRTIO_F_VERSION_1,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -53,6 +55,32 @@ struct virtio_pmem_req {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_pmem_req {}
 
+#[derive(Debug)]
+enum Error {
+    /// Invalid virtio descriptor chain.
+    Descriptor(DescriptorError),
+    /// Failed to read from virtqueue.
+    ReadQueue(io::Error),
+    /// Failed to write to virtqueue.
+    WriteQueue(io::Error),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+
+        match self {
+            Descriptor(e) => write!(f, "virtio descriptor error: {}", e),
+            ReadQueue(e) => write!(f, "failed to read from virtqueue: {}", e),
+            WriteQueue(e) => write!(f, "failed to write to virtqueue: {}", e),
+        }
+    }
+}
+
+impl ::std::error::Error for Error {}
+
+type Result<T> = ::std::result::Result<T, Error>;
+
 struct Worker {
     queue: Queue,
     memory: GuestMemory,
@@ -79,33 +107,39 @@ impl Worker {
         }
     }
 
+    fn handle_request(&self, avail_desc: DescriptorChain) -> Result<usize> {
+        let mut reader =
+            Reader::new(&self.memory, avail_desc.clone()).map_err(Error::Descriptor)?;
+        let mut writer = Writer::new(&self.memory, avail_desc).map_err(Error::Descriptor)?;
+
+        let status_code = reader
+            .read_obj()
+            .map(|request| self.execute_request(request))
+            .map_err(Error::ReadQueue)?;
+
+        let response = virtio_pmem_resp {
+            status_code: status_code.into(),
+        };
+
+        writer.write_obj(response).map_err(Error::WriteQueue)?;
+
+        Ok(writer.bytes_written())
+    }
+
     fn process_queue(&mut self) -> bool {
         let mut needs_interrupt = false;
         while let Some(avail_desc) = self.queue.pop(&self.memory) {
             let avail_desc_index = avail_desc.index;
-            let mut reader = Reader::new(&self.memory, avail_desc.clone());
-            let mut writer = Writer::new(&self.memory, avail_desc);
 
-            let status_code = match reader.read_obj::<virtio_pmem_req>() {
-                Ok(request) => self.execute_request(request),
+            let bytes_written = match self.handle_request(avail_desc) {
+                Ok(count) => count,
                 Err(e) => {
-                    error!("failed to read virtio_pmem_req: {}", e);
-                    VIRTIO_PMEM_RESP_TYPE_EIO
+                    error!("pmem: unable to handle request: {}", e);
+                    0
                 }
             };
-
-            let response = virtio_pmem_resp {
-                status_code: status_code.into(),
-            };
-            if let Err(e) = writer.write_obj(response) {
-                error!("failed to write virtio_pmem_resp: {}", e);
-            }
-
-            self.queue.add_used(
-                &self.memory,
-                avail_desc_index,
-                writer.bytes_written() as u32,
-            );
+            self.queue
+                .add_used(&self.memory, avail_desc_index, bytes_written as u32);
             needs_interrupt = true;
         }
 

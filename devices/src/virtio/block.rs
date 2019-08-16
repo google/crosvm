@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::fmt::{self, Display};
-use std::io::{self, Seek, SeekFrom};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
@@ -129,12 +129,14 @@ unsafe impl DataInit for virtio_blk_discard_write_zeroes {}
 #[derive(Debug)]
 enum ExecuteError {
     Descriptor(DescriptorError),
+    Read(io::Error),
+    WriteStatus(io::Error),
     /// Error arming the flush timer.
     Flush(io::Error),
     ReadIo {
         length: usize,
         sector: u64,
-        desc_error: DescriptorError,
+        desc_error: io::Error,
     },
     ShortRead {
         sector: u64,
@@ -149,7 +151,7 @@ enum ExecuteError {
     WriteIo {
         length: usize,
         sector: u64,
-        desc_error: DescriptorError,
+        desc_error: io::Error,
     },
     ShortWrite {
         sector: u64,
@@ -176,6 +178,8 @@ impl Display for ExecuteError {
 
         match self {
             Descriptor(e) => write!(f, "virtio descriptor error: {}", e),
+            Read(e) => write!(f, "failed to read message: {}", e),
+            WriteStatus(e) => write!(f, "failed to write request status: {}", e),
             Flush(e) => write!(f, "failed to flush: {}", e),
             ReadIo {
                 length,
@@ -247,6 +251,8 @@ impl ExecuteError {
     fn status(&self) -> u8 {
         match self {
             ExecuteError::Descriptor(_) => VIRTIO_BLK_S_IOERR,
+            ExecuteError::Read(_) => VIRTIO_BLK_S_IOERR,
+            ExecuteError::WriteStatus(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::ReadIo { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::ShortRead { .. } => VIRTIO_BLK_S_IOERR,
@@ -275,6 +281,50 @@ struct Worker {
 }
 
 impl Worker {
+    fn process_one_request(
+        avail_desc: DescriptorChain,
+        read_only: bool,
+        disk: &mut DiskFile,
+        disk_size: u64,
+        flush_timer: &mut TimerFd,
+        flush_timer_armed: &mut bool,
+        mem: &GuestMemory,
+    ) -> result::Result<usize, ExecuteError> {
+        let mut status_writer =
+            Writer::new(mem, avail_desc.clone()).map_err(ExecuteError::Descriptor)?;
+        let available_bytes = status_writer
+            .available_bytes()
+            .map_err(ExecuteError::Descriptor)?;
+        let status_offset = available_bytes
+            .checked_sub(1)
+            .ok_or(ExecuteError::MissingStatus)?;
+
+        status_writer = status_writer
+            .split_at(status_offset)
+            .map_err(ExecuteError::Descriptor)?;
+
+        let status = match Block::execute_request(
+            avail_desc,
+            read_only,
+            disk,
+            disk_size,
+            flush_timer,
+            flush_timer_armed,
+            mem,
+        ) {
+            Ok(()) => VIRTIO_BLK_S_OK,
+            Err(e) => {
+                error!("failed executing disk request: {}", e);
+                e.status()
+            }
+        };
+
+        status_writer
+            .write_all(&[status])
+            .map_err(ExecuteError::WriteStatus)?;
+        Ok(available_bytes)
+    }
+
     fn process_queue(
         &mut self,
         queue_index: usize,
@@ -288,9 +338,8 @@ impl Worker {
         let mut needs_interrupt = false;
         while let Some(avail_desc) = queue.pop(&self.mem) {
             let desc_index = avail_desc.index;
-            let mut status_writer = Writer::new(&self.mem, avail_desc.clone());
 
-            let status = match Block::execute_request(
+            let len = match Worker::process_one_request(
                 avail_desc,
                 self.read_only,
                 &mut *self.disk_image,
@@ -299,24 +348,11 @@ impl Worker {
                 flush_timer_armed,
                 &self.mem,
             ) {
-                Ok(()) => VIRTIO_BLK_S_OK,
+                Ok(len) => len,
                 Err(e) => {
-                    error!("failed executing disk request: {}", e);
-                    e.status()
+                    error!("block: failed to handle request: {}", e);
+                    0
                 }
-            };
-
-            let len = if let Ok(status_offset) = status_writer.seek(SeekFrom::End(-1)) {
-                match status_writer.write_all(&[status]) {
-                    Ok(_) => status_offset + 1,
-                    Err(e) => {
-                        error!("failed to write status: {}", e);
-                        0
-                    }
-                }
-            } else {
-                error!("failed to seek to status location");
-                0
             };
 
             queue.add_used(&self.mem, desc_index, len as u32);
@@ -541,11 +577,10 @@ impl Block {
         flush_timer_armed: &mut bool,
         mem: &GuestMemory,
     ) -> result::Result<(), ExecuteError> {
-        let mut reader = Reader::new(mem, avail_desc.clone());
-        let mut writer = Writer::new(mem, avail_desc);
+        let mut reader = Reader::new(mem, avail_desc.clone()).map_err(ExecuteError::Descriptor)?;
+        let mut writer = Writer::new(mem, avail_desc).map_err(ExecuteError::Descriptor)?;
 
-        let req_header: virtio_blk_req_header =
-            reader.read_obj().map_err(ExecuteError::Descriptor)?;
+        let req_header: virtio_blk_req_header = reader.read_obj().map_err(ExecuteError::Read)?;
 
         let req_type = req_header.req_type.to_native();
         let sector = req_header.sector.to_native();
@@ -580,6 +615,7 @@ impl Block {
                 // The last byte of writer is virtio_blk_req::status, so subtract it from data_len.
                 let data_len = writer
                     .available_bytes()
+                    .map_err(ExecuteError::Descriptor)?
                     .checked_sub(1)
                     .ok_or(ExecuteError::MissingStatus)?;
                 let offset = sector
@@ -588,14 +624,13 @@ impl Block {
                 check_range(offset, data_len as u64, disk_size)?;
                 disk.seek(SeekFrom::Start(offset))
                     .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
-                let actual_length =
-                    writer
-                        .write_from_volatile(disk, data_len)
-                        .map_err(|desc_error| ExecuteError::ReadIo {
-                            length: data_len,
-                            sector,
-                            desc_error,
-                        })?;
+                let actual_length = writer.write_from(disk, data_len).map_err(|desc_error| {
+                    ExecuteError::ReadIo {
+                        length: data_len,
+                        sector,
+                        desc_error,
+                    }
+                })?;
                 if actual_length < data_len {
                     return Err(ExecuteError::ShortRead {
                         sector,
@@ -605,7 +640,7 @@ impl Block {
                 }
             }
             VIRTIO_BLK_T_OUT => {
-                let data_len = reader.available_bytes();
+                let data_len = reader.available_bytes().map_err(ExecuteError::Descriptor)?;
                 let offset = sector
                     .checked_shl(u32::from(SECTOR_SHIFT))
                     .ok_or(ExecuteError::OutOfRange)?;
@@ -614,7 +649,7 @@ impl Block {
                     .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
                 let actual_length =
                     reader
-                        .read_to_volatile(disk, data_len)
+                        .read_to(disk, data_len)
                         .map_err(|desc_error| ExecuteError::WriteIo {
                             length: data_len,
                             sector,
@@ -635,9 +670,11 @@ impl Block {
                 }
             }
             VIRTIO_BLK_T_DISCARD | VIRTIO_BLK_T_WRITE_ZEROES => {
-                while reader.available_bytes() >= size_of::<virtio_blk_discard_write_zeroes>() {
+                while reader.available_bytes().map_err(ExecuteError::Descriptor)?
+                    >= size_of::<virtio_blk_discard_write_zeroes>()
+                {
                     let seg: virtio_blk_discard_write_zeroes =
-                        reader.read_obj().map_err(ExecuteError::Descriptor)?;
+                        reader.read_obj().map_err(ExecuteError::Read)?;
 
                     let sector = seg.sector.to_native();
                     let num_sectors = seg.num_sectors.to_native();
