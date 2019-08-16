@@ -34,6 +34,7 @@ remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
+syscall_defines = { path = "../syscall_defines" }
 tpm2 = { path = "../tpm2", optional = true }
 usb_util = { path = "../usb_util" }
 vfio_sys = { path = "../vfio_sys" }
