@@ -89,9 +89,11 @@ RUN git clone https://github.com/anholt/libepoxy.git \
     && meson \
     && ninja install
 
-# virglrenderer is under heavy development on master and we want the very latest.
-RUN git clone https://gitlab.freedesktop.org/virgl/virglrenderer.git \
+# We've forked virglrenderer to accomodate differences in the GBM header.
+# Until we can upstream our changes, build based on this downstream tree.
+RUN git clone https://gitlab.freedesktop.org/gurchetansingh/virglrenderer.git \
     && cd virglrenderer \
+    && git checkout keep-kokoro-happy \
     && ./autogen.sh \
     && make install -j$(nproc)
 
