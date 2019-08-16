@@ -10,14 +10,15 @@ RUN apt-get update && apt-get install -y \
     autoconf \
     automake \
     curl \
-    gcc \
     g++ \
+    gcc \
     git \
+    kmod \
     libcap-dev \
     libdbus-1-dev \
     libdrm-dev \
-    libfdt-dev \
     libegl1-mesa-dev \
+    libfdt-dev \
     libgl1-mesa-dev \
     libgles1-mesa-dev \
     libgles2-mesa-dev \
