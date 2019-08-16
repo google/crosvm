@@ -422,7 +422,7 @@ impl PciDevice for VirtioPciDevice {
                 (
                     event,
                     notify_base + i as u64 * NOTIFY_OFF_MULTIPLIER as u64,
-                    Datamatch::U16(Some(i as u16)),
+                    Datamatch::AnyLength,
                 )
             })
             .collect()
