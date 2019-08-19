@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::convert::TryInto;
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
 
-use byteorder::{ByteOrder, LittleEndian};
 use sync::Mutex;
 
 use crate::pci::pci_configuration::{
@@ -184,9 +184,9 @@ impl PciConfigIo {
             ),
             2 => (
                 0x0000_ffff << (offset * 16),
-                ((data[1] as u32) << 8 | data[0] as u32) << (offset * 16),
+                u32::from(u16::from_le_bytes(data.try_into().unwrap())) << (offset * 16),
             ),
-            4 => (0xffff_ffff, LittleEndian::read_u32(data)),
+            4 => (0xffff_ffff, u32::from_le_bytes(data.try_into().unwrap())),
             _ => return,
         };
         self.config_address = (self.config_address & !mask) | value;

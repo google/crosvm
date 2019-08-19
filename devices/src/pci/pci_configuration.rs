@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use byteorder::{ByteOrder, LittleEndian};
-
+use std::convert::TryInto;
 use std::fmt::{self, Display};
 
 use crate::pci::PciInterruptPin;
@@ -300,8 +299,8 @@ impl PciConfiguration {
         let reg_offset = reg_idx * 4 + offset as usize;
         match data.len() {
             1 => self.write_byte(reg_offset, data[0]),
-            2 => self.write_word(reg_offset, LittleEndian::read_u16(data)),
-            4 => self.write_dword(reg_offset, LittleEndian::read_u32(data)),
+            2 => self.write_word(reg_offset, u16::from_le_bytes(data.try_into().unwrap())),
+            4 => self.write_dword(reg_offset, u32::from_le_bytes(data.try_into().unwrap())),
             _ => (),
         }
     }
