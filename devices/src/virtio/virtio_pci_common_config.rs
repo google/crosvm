@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use byteorder::{ByteOrder, LittleEndian};
+use std::convert::TryInto;
+
 use sys_util::{warn, GuestAddress};
 
 use super::*;
@@ -52,15 +53,15 @@ impl VirtioPciCommonConfig {
             }
             2 => {
                 let v = self.read_common_config_word(offset, queues);
-                LittleEndian::write_u16(data, v);
+                data.copy_from_slice(&v.to_le_bytes());
             }
             4 => {
                 let v = self.read_common_config_dword(offset, device);
-                LittleEndian::write_u32(data, v);
+                data.copy_from_slice(&v.to_le_bytes());
             }
             8 => {
                 let v = self.read_common_config_qword(offset);
-                LittleEndian::write_u64(data, v);
+                data.copy_from_slice(&v.to_le_bytes());
             }
             _ => (),
         }
@@ -75,11 +76,23 @@ impl VirtioPciCommonConfig {
     ) {
         match data.len() {
             1 => self.write_common_config_byte(offset, data[0]),
-            2 => self.write_common_config_word(offset, LittleEndian::read_u16(data), queues),
-            4 => {
-                self.write_common_config_dword(offset, LittleEndian::read_u32(data), queues, device)
-            }
-            8 => self.write_common_config_qword(offset, LittleEndian::read_u64(data), queues),
+            2 => self.write_common_config_word(
+                offset,
+                // This unwrap (and those below) cannot fail since data.len() is checked.
+                u16::from_le_bytes(data.try_into().unwrap()),
+                queues,
+            ),
+            4 => self.write_common_config_dword(
+                offset,
+                u32::from_le_bytes(data.try_into().unwrap()),
+                queues,
+                device,
+            ),
+            8 => self.write_common_config_qword(
+                offset,
+                u64::from_le_bytes(data.try_into().unwrap()),
+                queues,
+            ),
             _ => (),
         }
     }
@@ -284,19 +297,19 @@ mod tests {
 
         // Device features is read-only and passed through from the device.
         regs.write(0x04, &[0, 0, 0, 0], &mut queues, dev);
-        let mut read_back = vec![0, 0, 0, 0];
+        let mut read_back = [0u8; 4];
         regs.read(0x04, &mut read_back, &mut queues, dev);
-        assert_eq!(LittleEndian::read_u32(&read_back), DUMMY_FEATURES as u32);
+        assert_eq!(u32::from_le_bytes(read_back), DUMMY_FEATURES as u32);
 
         // Feature select registers are read/write.
         regs.write(0x00, &[1, 2, 3, 4], &mut queues, dev);
-        let mut read_back = vec![0, 0, 0, 0];
+        let mut read_back = [0u8; 4];
         regs.read(0x00, &mut read_back, &mut queues, dev);
-        assert_eq!(LittleEndian::read_u32(&read_back), 0x0403_0201);
+        assert_eq!(u32::from_le_bytes(read_back), 0x0403_0201);
         regs.write(0x08, &[1, 2, 3, 4], &mut queues, dev);
-        let mut read_back = vec![0, 0, 0, 0];
+        let mut read_back = [0u8; 4];
         regs.read(0x08, &mut read_back, &mut queues, dev);
-        assert_eq!(LittleEndian::read_u32(&read_back), 0x0403_0201);
+        assert_eq!(u32::from_le_bytes(read_back), 0x0403_0201);
 
         // 'queue_select' can be read and written.
         regs.write(0x16, &[0xaa, 0x55], &mut queues, dev);
