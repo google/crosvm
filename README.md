@@ -157,7 +157,6 @@ binary size by including dozens of transitive dependencies. All these
 dependencies also must be reviewed to ensure their suitability to the crosvm
 project. Currently allowed crates are:
 
-* `byteorder` - A very small library used for endian swaps.
 * `cc` - Build time dependency needed to build C source code used in crosvm.
 * `libc` - Required to use the standard library, this crate is a simple wrapper around `libc`'s symbols.
 

@@ -8,7 +8,6 @@ edition = "2018"
 sandboxed-libusb = []
 
 [dependencies]
-byteorder = "*"
 data_model = { path = "../data_model" }
 kvm = { path = "../kvm" }
 libc = "*"

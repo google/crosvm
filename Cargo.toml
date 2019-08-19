@@ -42,7 +42,6 @@ arch = { path = "arch" }
 assertions = { path = "assertions" }
 audio_streams = "*"
 bit_field = { path = "bit_field" }
-byteorder = "=1.1.0"
 crosvm_plugin = { path = "crosvm_plugin", optional = true }
 data_model = "*"
 devices = { path = "devices" }
