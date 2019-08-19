@@ -6,7 +6,6 @@ mod qcow_raw_file;
 mod refcount;
 mod vec_cache;
 
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use data_model::{VolatileMemory, VolatileSlice};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
 use remain::sorted;
@@ -184,23 +183,41 @@ pub struct QcowHeader {
     pub header_size: u32,
 }
 
+// Reads the next u16 from the file.
+fn read_u16_from_file(mut f: &File) -> Result<u16> {
+    let mut value = [0u8; 2];
+    (&mut f)
+        .read_exact(&mut value)
+        .map_err(Error::ReadingHeader)?;
+    Ok(u16::from_be_bytes(value))
+}
+
+// Reads the next u32 from the file.
+fn read_u32_from_file(mut f: &File) -> Result<u32> {
+    let mut value = [0u8; 4];
+    (&mut f)
+        .read_exact(&mut value)
+        .map_err(Error::ReadingHeader)?;
+    Ok(u32::from_be_bytes(value))
+}
+
+// Reads the next u64 from the file.
+fn read_u64_from_file(mut f: &File) -> Result<u64> {
+    let mut value = [0u8; 8];
+    (&mut f)
+        .read_exact(&mut value)
+        .map_err(Error::ReadingHeader)?;
+    Ok(u64::from_be_bytes(value))
+}
+
 impl QcowHeader {
     /// Creates a QcowHeader from a reference to a file.
     pub fn new(f: &mut File) -> Result<QcowHeader> {
         f.seek(SeekFrom::Start(0)).map_err(Error::ReadingHeader)?;
-        let magic = f.read_u32::<BigEndian>().map_err(Error::ReadingHeader)?;
+
+        let magic = read_u32_from_file(f)?;
         if magic != QCOW_MAGIC {
             return Err(Error::InvalidMagic);
-        }
-
-        // Reads the next u32 from the file.
-        fn read_u32_from_file(f: &mut File) -> Result<u32> {
-            f.read_u32::<BigEndian>().map_err(Error::ReadingHeader)
-        }
-
-        // Reads the next u64 from the file.
-        fn read_u64_from_file(f: &mut File) -> Result<u64> {
-            f.read_u64::<BigEndian>().map_err(Error::ReadingHeader)
         }
 
         Ok(QcowHeader {
@@ -276,13 +293,13 @@ impl QcowHeader {
     pub fn write_to<F: Write + Seek>(&self, file: &mut F) -> Result<()> {
         // Writes the next u32 to the file.
         fn write_u32_to_file<F: Write>(f: &mut F, value: u32) -> Result<()> {
-            f.write_u32::<BigEndian>(value)
+            f.write_all(&value.to_be_bytes())
                 .map_err(Error::WritingHeader)
         }
 
         // Writes the next u64 to the file.
         fn write_u64_to_file<F: Write>(f: &mut F, value: u64) -> Result<()> {
-            f.write_u64::<BigEndian>(value)
+            f.write_all(&value.to_be_bytes())
                 .map_err(Error::WritingHeader)
         }
 
@@ -419,12 +436,11 @@ impl QcowFile {
         let mut refcount_rebuild_required = true;
         file.seek(SeekFrom::Start(header.refcount_table_offset))
             .map_err(Error::SeekingFile)?;
-        let first_refblock_addr = file.read_u64::<BigEndian>().map_err(Error::ReadingHeader)?;
+        let first_refblock_addr = read_u64_from_file(&file)?;
         if first_refblock_addr != 0 {
             file.seek(SeekFrom::Start(first_refblock_addr))
                 .map_err(Error::SeekingFile)?;
-            let first_cluster_refcount =
-                file.read_u16::<BigEndian>().map_err(Error::ReadingHeader)?;
+            let first_cluster_refcount = read_u16_from_file(&file)?;
             if first_cluster_refcount != 0 {
                 refcount_rebuild_required = false;
             }
@@ -1695,7 +1711,7 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
     let mut f = file;
     let orig_seek = f.seek(SeekFrom::Current(0)).map_err(Error::SeekingFile)?;
     f.seek(SeekFrom::Start(0)).map_err(Error::SeekingFile)?;
-    let magic = f.read_u32::<BigEndian>().map_err(Error::ReadingHeader)?;
+    let magic = read_u32_from_file(f)?;
     let image_type = if magic == QCOW_MAGIC {
         ImageType::Qcow2
     } else {

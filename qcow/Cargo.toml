@@ -8,7 +8,6 @@ edition = "2018"
 path = "src/qcow.rs"
 
 [dependencies]
-byteorder = "*"
 libc = "*"
 remain = "*"
 sys_util = { path = "../sys_util" }

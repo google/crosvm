@@ -3,10 +3,9 @@
 // found in the LICENSE file.
 
 use std::fs::File;
-use std::io::{self, BufWriter, Seek, SeekFrom};
+use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use sys_util::WriteZeroes;
 
 /// A qcow file. Allows reading/writing clusters and appending clusters.
@@ -41,11 +40,11 @@ impl QcowRawFile {
     ) -> io::Result<Vec<u64>> {
         let mut table = vec![0; count as usize];
         self.file.seek(SeekFrom::Start(offset))?;
-        self.file.read_u64_into::<BigEndian>(&mut table)?;
-        if let Some(m) = mask {
-            for ptr in &mut table {
-                *ptr &= m;
-            }
+        let mask = mask.unwrap_or(u64::max_value());
+        for ptr in &mut table {
+            let mut value = [0u8; 8];
+            self.file.read_exact(&mut value)?;
+            *ptr = u64::from_be_bytes(value) & mask;
         }
         Ok(table)
     }
@@ -74,7 +73,7 @@ impl QcowRawFile {
             } else {
                 *addr | non_zero_flags
             };
-            buffer.write_u64::<BigEndian>(val)?;
+            buffer.write_all(&val.to_be_bytes())?;
         }
         Ok(())
     }
@@ -85,7 +84,11 @@ impl QcowRawFile {
         let count = self.cluster_size / size_of::<u16>() as u64;
         let mut table = vec![0; count as usize];
         self.file.seek(SeekFrom::Start(offset))?;
-        self.file.read_u16_into::<BigEndian>(&mut table)?;
+        for refcount in &mut table {
+            let mut value = [0u8; 2];
+            self.file.read_exact(&mut value)?;
+            *refcount = u16::from_be_bytes(value);
+        }
         Ok(table)
     }
 
@@ -94,7 +97,7 @@ impl QcowRawFile {
         self.file.seek(SeekFrom::Start(offset))?;
         let mut buffer = BufWriter::with_capacity(table.len() * size_of::<u16>(), &self.file);
         for count in table {
-            buffer.write_u16::<BigEndian>(*count)?;
+            buffer.write_all(&count.to_be_bytes())?;
         }
         Ok(())
     }
