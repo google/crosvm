@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use byteorder::{BigEndian, ByteOrder};
 use libc::{c_char, c_int, c_void};
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
@@ -106,15 +105,11 @@ pub fn property(fdt: &mut Vec<u8>, name: &str, val: &[u8]) -> Result<()> {
 }
 
 fn cpu_to_fdt32(input: u32) -> [u8; 4] {
-    let mut buf = [0; 4];
-    BigEndian::write_u32(&mut buf, input);
-    buf
+    input.to_be_bytes()
 }
 
 fn cpu_to_fdt64(input: u64) -> [u8; 8] {
-    let mut buf = [0; 8];
-    BigEndian::write_u64(&mut buf, input);
-    buf
+    input.to_be_bytes()
 }
 
 pub fn property_u32(fdt: &mut Vec<u8>, name: &str, val: u32) -> Result<()> {
