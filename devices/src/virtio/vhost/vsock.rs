@@ -194,7 +194,8 @@ impl VirtioDevice for Vsock {
 mod tests {
     use super::*;
 
-    use byteorder::{ByteOrder, LittleEndian};
+    use std::convert::TryInto;
+
     #[test]
     fn ack_features() {
         let cid = 5;
@@ -237,13 +238,19 @@ mod tests {
 
         let mut buf = [0 as u8; 8];
         vsock.read_config(0, &mut buf);
-        assert_eq!(cid, LittleEndian::read_u64(&buf));
+        assert_eq!(cid, u64::from_le_bytes(buf));
 
         vsock.read_config(0, &mut buf[..4]);
-        assert_eq!((cid & 0xffffffff) as u32, LittleEndian::read_u32(&buf[..4]));
+        assert_eq!(
+            (cid & 0xffffffff) as u32,
+            u32::from_le_bytes(buf[..4].try_into().unwrap())
+        );
 
         vsock.read_config(4, &mut buf[..4]);
-        assert_eq!((cid >> 32) as u32, LittleEndian::read_u32(&buf[..4]));
+        assert_eq!(
+            (cid >> 32) as u32,
+            u32::from_le_bytes(buf[..4].try_into().unwrap())
+        );
 
         let data: [u8; 8] = [8, 226, 5, 46, 159, 59, 89, 77];
         buf.copy_from_slice(&data);
