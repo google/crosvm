@@ -567,7 +567,6 @@ version = "0.1.0"
 dependencies = [
  "arch 0.1.0",
  "assertions 0.1.0",
- "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cc 1.0.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
  "devices 0.1.0",
