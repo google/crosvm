@@ -11,6 +11,7 @@ use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, Read};
 use std::net::Ipv4Addr;
+#[cfg(feature = "gpu")]
 use std::num::NonZeroU8;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
