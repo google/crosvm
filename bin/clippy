@@ -20,7 +20,6 @@ SUPPRESS=(
     let_unit_value
     question_mark
     range_plus_one
-    unit_arg
 
     # We don't care about these lints. Okay to remain suppressed globally.
     blacklisted_name

@@ -291,7 +291,7 @@ impl XhciTransfer {
                 // If the device is gone, we don't need to send transfer completion event, cause we
                 // are going to destroy everything related to this device anyway.
                 return match self.port.detach() {
-                    Ok(v) => Ok(v),
+                    Ok(()) => Ok(()),
                     // It's acceptable for the port to be already disconnected
                     // as asynchronous transfer completions are processed.
                     Err(HubError::AlreadyDetached(_e)) => Ok(()),
