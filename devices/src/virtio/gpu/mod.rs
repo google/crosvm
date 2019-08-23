@@ -28,8 +28,8 @@ use gpu_display::*;
 use gpu_renderer::{Renderer, RendererFlags};
 
 use super::{
-    copy_config, resource_bridge::*, AvailIter, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING,
-    TYPE_GPU, VIRTIO_F_VERSION_1,
+    copy_config, resource_bridge::*, DescriptorChain, Queue, Reader, VirtioDevice, Writer,
+    INTERRUPT_STATUS_USED_RING, TYPE_GPU, VIRTIO_F_VERSION_1,
 };
 
 use self::backend::Backend;
@@ -43,14 +43,6 @@ use vm_control::VmMemoryControlRequestSocket;
 const QUEUE_SIZES: &[u16] = &[256, 16];
 const FENCE_POLL_MS: u64 = 1;
 
-struct QueueDescriptor {
-    index: u16,
-    addr: GuestAddress,
-    len: u32,
-    data: Option<(GuestAddress, u32)>,
-    ret: Option<(GuestAddress, u32)>,
-}
-
 struct ReturnDescriptor {
     index: u16,
     len: u32,
@@ -58,13 +50,11 @@ struct ReturnDescriptor {
 
 struct FenceDescriptor {
     fence_id: u32,
+    index: u16,
     len: u32,
-    desc: QueueDescriptor,
 }
 
 struct Frontend {
-    ctrl_descriptors: VecDeque<QueueDescriptor>,
-    cursor_descriptors: VecDeque<QueueDescriptor>,
     return_ctrl_descriptors: VecDeque<ReturnDescriptor>,
     return_cursor_descriptors: VecDeque<ReturnDescriptor>,
     fence_descriptors: Vec<FenceDescriptor>,
@@ -74,8 +64,6 @@ struct Frontend {
 impl Frontend {
     fn new(backend: Backend) -> Frontend {
         Frontend {
-            ctrl_descriptors: Default::default(),
-            cursor_descriptors: Default::default(),
             return_ctrl_descriptors: Default::default(),
             return_cursor_descriptors: Default::default(),
             fence_descriptors: Default::default(),
@@ -99,7 +87,7 @@ impl Frontend {
         &mut self,
         mem: &GuestMemory,
         cmd: GpuCommand,
-        data: Option<VolatileSlice>,
+        reader: &mut Reader,
     ) -> GpuResponse {
         self.backend.force_ctx_0();
 
@@ -133,24 +121,26 @@ impl Frontend {
                 info.offset.to_native(),
                 mem,
             ),
-            GpuCommand::ResourceAttachBacking(info) if data.is_some() => {
-                let data = data.unwrap();
-                let entry_count = info.nr_entries.to_native() as usize;
-                let mut iovecs = Vec::with_capacity(entry_count);
-                for i in 0..entry_count {
-                    if let Ok(entry_ref) =
-                        data.get_ref((i * size_of::<virtio_gpu_mem_entry>()) as u64)
-                    {
-                        let entry: virtio_gpu_mem_entry = entry_ref.load();
-                        let addr = GuestAddress(entry.addr.to_native());
-                        let len = entry.length.to_native() as usize;
-                        iovecs.push((addr, len))
-                    } else {
-                        return GpuResponse::ErrUnspec;
+            GpuCommand::ResourceAttachBacking(info) => {
+                if reader.available_bytes() != 0 {
+                    let entry_count = info.nr_entries.to_native() as usize;
+                    let mut iovecs = Vec::with_capacity(entry_count);
+                    for _ in 0..entry_count {
+                        match reader.read_obj::<virtio_gpu_mem_entry>() {
+                            Ok(entry) => {
+                                let addr = GuestAddress(entry.addr.to_native());
+                                let len = entry.length.to_native() as usize;
+                                iovecs.push((addr, len))
+                            }
+                            Err(_) => return GpuResponse::ErrUnspec,
+                        }
                     }
+                    self.backend
+                        .attach_backing(info.resource_id.to_native(), mem, iovecs)
+                } else {
+                    error!("missing data for command {:?}", cmd);
+                    GpuResponse::ErrUnspec
                 }
-                self.backend
-                    .attach_backing(info.resource_id.to_native(), mem, iovecs)
             }
             GpuCommand::ResourceDetachBacking(info) => {
                 self.backend.detach_backing(info.resource_id.to_native())
@@ -255,17 +245,14 @@ impl Frontend {
                 )
             }
             GpuCommand::CmdSubmit3d(info) => {
-                if data.is_some() {
-                    let data = data.unwrap(); // guarded by this match arm
+                if reader.available_bytes() != 0 {
                     let cmd_size = info.size.to_native() as usize;
-                    match data.get_slice(0, cmd_size as u64) {
-                        Ok(cmd_slice) => {
-                            let mut cmd_buf = vec![0; cmd_size];
-                            cmd_slice.copy_to(&mut cmd_buf[..]);
-                            self.backend
-                                .submit_command(info.hdr.ctx_id.to_native(), &mut cmd_buf[..])
-                        }
-                        Err(_) => GpuResponse::ErrInvalidParameter,
+                    let mut cmd_buf = vec![0; cmd_size];
+                    if reader.read(&mut cmd_buf[..]).is_ok() {
+                        self.backend
+                            .submit_command(info.hdr.ctx_id.to_native(), &mut cmd_buf[..])
+                    } else {
+                        GpuResponse::ErrInvalidParameter
                     }
                 } else {
                     // Silently accept empty command buffers to allow for
@@ -273,166 +260,112 @@ impl Frontend {
                     GpuResponse::OkNoData
                 }
             }
-            _ => {
-                error!("unhandled command {:?}", cmd);
-                GpuResponse::ErrUnspec
-            }
         }
     }
 
-    fn take_descriptors(
-        mem: &GuestMemory,
-        desc_iter: AvailIter,
-        descriptors: &mut VecDeque<QueueDescriptor>,
-        return_descriptors: &mut VecDeque<ReturnDescriptor>,
-    ) {
-        for desc in desc_iter {
-            if desc.len as usize >= size_of::<virtio_gpu_ctrl_hdr>() && !desc.is_write_only() {
-                let mut q_desc = QueueDescriptor {
-                    index: desc.index,
-                    addr: desc.addr,
-                    len: desc.len,
-                    data: None,
-                    ret: None,
-                };
-                if let Some(extra_desc) = desc.next_descriptor() {
-                    if extra_desc.is_write_only() {
-                        q_desc.ret = Some((extra_desc.addr, extra_desc.len));
-                    } else {
-                        q_desc.data = Some((extra_desc.addr, extra_desc.len));
-                    }
-                    if let Some(extra_desc) = extra_desc.next_descriptor() {
-                        if extra_desc.is_write_only() && q_desc.ret.is_none() {
-                            q_desc.ret = Some((extra_desc.addr, extra_desc.len));
-                        }
-                    }
+    fn validate_desc(desc: &DescriptorChain) -> bool {
+        desc.len as usize >= size_of::<virtio_gpu_ctrl_hdr>() && !desc.is_write_only()
+    }
+
+    fn process_queue(&mut self, mem: &GuestMemory, queue: &mut Queue) -> bool {
+        let mut signal_used = false;
+        while let Some(desc) = queue.pop(mem) {
+            if Frontend::validate_desc(&desc) {
+                let mut reader = Reader::new(mem, desc.clone());
+                let mut writer = Writer::new(mem, desc.clone());
+                if let Some(ret_desc) =
+                    self.process_descriptor(mem, desc.index, &mut reader, &mut writer)
+                {
+                    queue.add_used(&mem, ret_desc.index, ret_desc.len);
+                    signal_used = true;
                 }
-                descriptors.push_back(q_desc);
             } else {
                 let likely_type = mem.read_obj_from_addr(desc.addr).unwrap_or(Le32::from(0));
                 debug!(
-                    "ctrl queue bad descriptor index = {} len = {} write = {} type = {}",
+                    "queue bad descriptor index = {} len = {} write = {} type = {}",
                     desc.index,
                     desc.len,
                     desc.is_write_only(),
                     virtio_gpu_cmd_str(likely_type.to_native())
                 );
-                return_descriptors.push_back(ReturnDescriptor {
-                    index: desc.index,
-                    len: 0,
-                });
+                queue.add_used(&mem, desc.index, 0);
+                signal_used = true;
             }
         }
-    }
 
-    fn take_ctrl_descriptors(&mut self, mem: &GuestMemory, desc_iter: AvailIter) {
-        Frontend::take_descriptors(
-            mem,
-            desc_iter,
-            &mut self.ctrl_descriptors,
-            &mut self.return_ctrl_descriptors,
-        );
-    }
-
-    fn take_cursor_descriptors(&mut self, mem: &GuestMemory, desc_iter: AvailIter) {
-        Frontend::take_descriptors(
-            mem,
-            desc_iter,
-            &mut self.cursor_descriptors,
-            &mut self.return_cursor_descriptors,
-        );
+        signal_used
     }
 
     fn process_descriptor(
         &mut self,
         mem: &GuestMemory,
-        desc: QueueDescriptor,
+        desc_index: u16,
+        reader: &mut Reader,
+        writer: &mut Writer,
     ) -> Option<ReturnDescriptor> {
         let mut resp = GpuResponse::ErrUnspec;
         let mut gpu_cmd = None;
         let mut len = 0;
-        if let Ok(desc_mem) = mem.get_slice(desc.addr.offset(), desc.len as u64) {
-            match GpuCommand::decode(desc_mem) {
-                Ok(cmd) => {
-                    match desc.data {
-                        Some(data_desc) => {
-                            match mem.get_slice(data_desc.0.offset(), data_desc.1 as u64) {
-                                Ok(data_mem) => {
-                                    resp = self.process_gpu_command(mem, cmd, Some(data_mem))
-                                }
-                                Err(e) => debug!("ctrl queue invalid data descriptor: {}", e),
-                            }
-                        }
-                        None => resp = self.process_gpu_command(mem, cmd, None),
-                    }
-                    gpu_cmd = Some(cmd);
-                }
-                Err(e) => debug!("ctrl queue decode error: {}", e),
+        match GpuCommand::decode(reader) {
+            Ok(cmd) => {
+                resp = self.process_gpu_command(mem, cmd, reader);
+                gpu_cmd = Some(cmd);
             }
+            Err(e) => debug!("descriptor decode error: {}", e),
         }
         if resp.is_err() {
             debug!("{:?} -> {:?}", gpu_cmd, resp);
         }
-        if let Some(ret_desc) = desc.ret {
-            if let Ok(ret_desc_mem) = mem.get_slice(ret_desc.0.offset(), ret_desc.1 as u64) {
-                let mut fence_id = 0;
-                let mut ctx_id = 0;
-                let mut flags = 0;
-                if let Some(cmd) = gpu_cmd {
-                    let ctrl_hdr = cmd.ctrl_hdr();
-                    if ctrl_hdr.flags.to_native() & VIRTIO_GPU_FLAG_FENCE != 0 {
-                        fence_id = ctrl_hdr.fence_id.to_native();
-                        ctx_id = ctrl_hdr.ctx_id.to_native();
-                        flags = VIRTIO_GPU_FLAG_FENCE;
+        if writer.available_bytes() != 0 {
+            let mut fence_id = 0;
+            let mut ctx_id = 0;
+            let mut flags = 0;
+            if let Some(cmd) = gpu_cmd {
+                let ctrl_hdr = cmd.ctrl_hdr();
+                if ctrl_hdr.flags.to_native() & VIRTIO_GPU_FLAG_FENCE != 0 {
+                    fence_id = ctrl_hdr.fence_id.to_native();
+                    ctx_id = ctrl_hdr.ctx_id.to_native();
+                    flags = VIRTIO_GPU_FLAG_FENCE;
 
-                        let fence_resp = self.backend.create_fence(ctx_id, fence_id as u32);
-                        if fence_resp.is_err() {
-                            warn!("create_fence {} -> {:?}", fence_id, fence_resp);
-                            resp = fence_resp;
-                        }
+                    let fence_resp = self.backend.create_fence(ctx_id, fence_id as u32);
+                    if fence_resp.is_err() {
+                        warn!("create_fence {} -> {:?}", fence_id, fence_resp);
+                        resp = fence_resp;
                     }
                 }
-
-                // Prepare the response now, even if it is going to wait until
-                // fence is complete.
-                match resp.encode(flags, fence_id, ctx_id, ret_desc_mem) {
-                    Ok(l) => len = l,
-                    Err(e) => debug!("ctrl queue response encode error: {}", e),
-                }
-
-                if flags & VIRTIO_GPU_FLAG_FENCE != 0 {
-                    self.fence_descriptors.push(FenceDescriptor {
-                        fence_id: fence_id as u32,
-                        len,
-                        desc,
-                    });
-
-                    return None;
-                }
-
-                // No fence, respond now.
             }
+
+            // Prepare the response now, even if it is going to wait until
+            // fence is complete.
+            match resp.encode(flags, fence_id, ctx_id, writer) {
+                Ok(l) => len = l,
+                Err(e) => debug!("ctrl queue response encode error: {}", e),
+            }
+
+            if flags & VIRTIO_GPU_FLAG_FENCE != 0 {
+                self.fence_descriptors.push(FenceDescriptor {
+                    fence_id: fence_id as u32,
+                    index: desc_index,
+                    len,
+                });
+
+                return None;
+            }
+
+            // No fence, respond now.
         }
         Some(ReturnDescriptor {
-            index: desc.index,
+            index: desc_index,
             len,
         })
     }
 
-    fn process_ctrl(&mut self, mem: &GuestMemory) -> Option<ReturnDescriptor> {
-        self.return_ctrl_descriptors.pop_front().or_else(|| {
-            self.ctrl_descriptors
-                .pop_front()
-                .and_then(|desc| self.process_descriptor(mem, desc))
-        })
+    fn return_cursor(&mut self) -> Option<ReturnDescriptor> {
+        self.return_cursor_descriptors.pop_front()
     }
 
-    fn process_cursor(&mut self, mem: &GuestMemory) -> Option<ReturnDescriptor> {
-        self.return_cursor_descriptors.pop_front().or_else(|| {
-            self.cursor_descriptors
-                .pop_front()
-                .and_then(|desc| self.process_descriptor(mem, desc))
-        })
+    fn return_ctrl(&mut self) -> Option<ReturnDescriptor> {
+        self.return_ctrl_descriptors.pop_front()
     }
 
     fn fence_poll(&mut self) {
@@ -443,7 +376,7 @@ impl Frontend {
                 true
             } else {
                 return_descs.push_back(ReturnDescriptor {
-                    index: f_desc.desc.index,
+                    index: f_desc.index,
                     len: f_desc.len,
                 });
                 false
@@ -505,6 +438,14 @@ impl Worker {
             }
         }
 
+        // TODO(davidriley): The entire main loop processing is somewhat racey and incorrect with
+        // respect to cursor vs control queue processing.  As both currently and originally
+        // written, while the control queue is only processed/read from after the the cursor queue
+        // is finished, the entire queue will be processed at that time.  The end effect of this
+        // racyiness is that control queue descriptors that are issued after cursors descriptors
+        // might be handled first instead of the other way around.  In practice, the cursor queue
+        // isn't used so this isn't a huge issue.
+
         // Declare this outside the loop so we don't keep allocating and freeing the vector.
         let mut process_resource_bridge = Vec::with_capacity(self.resource_bridges.len());
         'poll: loop {
@@ -523,6 +464,7 @@ impl Worker {
                 }
             };
             let mut signal_used = false;
+            let mut ctrl_available = false;
 
             // Clear the old values and re-initialize with false.
             process_resource_bridge.clear();
@@ -532,13 +474,15 @@ impl Worker {
                 match event.token() {
                     Token::CtrlQueue => {
                         let _ = self.ctrl_evt.read();
-                        self.state
-                            .take_ctrl_descriptors(&self.mem, self.ctrl_queue.iter(&self.mem));
+                        // Set flag that control queue is available to be read, but defer reading
+                        // until rest of the events are processed.
+                        ctrl_available = true;
                     }
                     Token::CursorQueue => {
                         let _ = self.cursor_evt.read();
-                        self.state
-                            .take_cursor_descriptors(&self.mem, self.cursor_queue.iter(&self.mem));
+                        if self.state.process_queue(&self.mem, &mut self.cursor_queue) {
+                            signal_used = true;
+                        }
                     }
                     Token::Display => {
                         let close_requested = self.state.process_display();
@@ -560,14 +504,18 @@ impl Worker {
             }
 
             // All cursor commands go first because they have higher priority.
-            while let Some(desc) = self.state.process_cursor(&self.mem) {
+            while let Some(desc) = self.state.return_cursor() {
                 self.cursor_queue.add_used(&self.mem, desc.index, desc.len);
+                signal_used = true;
+            }
+
+            if ctrl_available && self.state.process_queue(&self.mem, &mut self.ctrl_queue) {
                 signal_used = true;
             }
 
             self.state.fence_poll();
 
-            while let Some(desc) = self.state.process_ctrl(&self.mem) {
+            while let Some(desc) = self.state.return_ctrl() {
                 self.ctrl_queue.add_used(&self.mem, desc.index, desc.len);
                 signal_used = true;
             }
@@ -575,6 +523,9 @@ impl Worker {
             // Process the entire control queue before the resource bridge in case a resource is
             // created or destroyed by the control queue. Processing the resource bridge first may
             // lead to a race condition.
+            // TODO(davidriley): This is still inherently racey if both the control queue request
+            // and the resource bridge request come in at the same time after the control queue is
+            // processed above and before the corresponding bridge is processed below.
             for (bridge, &should_process) in
                 self.resource_bridges.iter().zip(&process_resource_bridge)
             {
