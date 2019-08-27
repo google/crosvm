@@ -40,12 +40,13 @@ pub type Result<T> = result::Result<T, Error>;
 
 impl std::error::Error for Error {}
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum DescriptorFilter {
     OnlyReadable,
     OnlyWritable,
 }
 
+#[derive(Clone)]
 struct DescriptorChainConsumer<'a> {
     offset: usize,
     desc_chain: Option<DescriptorChain<'a>>,
@@ -200,6 +201,7 @@ impl<'a> DescriptorChainConsumer<'a> {
 /// descriptors after any device-readable descriptors (2.6.4.2 in Virtio Spec v1.1).
 /// Reader will skip iterating over descriptor chain when first writable
 /// descriptor is encountered.
+#[derive(Clone)]
 pub struct Reader<'a> {
     mem: &'a GuestMemory,
     buffer: DescriptorChainConsumer<'a>,
