@@ -5,6 +5,7 @@
 # Rules from common_device.policy with some rules removed because they block certain flags needed
 # for gpu.
 brk: 1
+clock_gettime: 1
 clone: arg0 & CLONE_THREAD
 close: 1
 dup2: 1
@@ -17,6 +18,7 @@ exit: 1
 exit_group: 1
 futex: 1
 getpid: 1
+gettid: 1
 gettimeofday: 1
 kill: 1
 madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE
