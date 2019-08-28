@@ -7,4 +7,3 @@ pub mod p_defines;
 pub mod p_format;
 pub mod virgl_protocol;
 pub mod virglrenderer;
-pub mod virtgpu_hw;

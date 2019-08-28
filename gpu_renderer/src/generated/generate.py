@@ -177,7 +177,6 @@ def main(argv):
     print('#![allow(non_upper_case_globals)]', file=f)
     for module in modules:
       print('pub mod', module[0] + ';', file=f)
-    print('pub mod virtgpu_hw;', file=f)
 
 
 if __name__ == '__main__':
