@@ -13,7 +13,7 @@ use kvm_sys::kvm_msr_entry;
 use kvm_sys::kvm_msrs;
 use kvm_sys::kvm_regs;
 use kvm_sys::kvm_sregs;
-use sys_util::{self, GuestAddress, GuestMemory, LayoutAllocation};
+use sys_util::{self, warn, GuestAddress, GuestMemory, LayoutAllocation};
 
 use crate::gdt;
 
@@ -65,7 +65,102 @@ impl Display for Error {
     }
 }
 
-fn create_msr_entries() -> Vec<kvm_msr_entry> {
+const MTRR_MEMTYPE_UC: u8 = 0x0;
+const MTRR_MEMTYPE_WB: u8 = 0x6;
+const MTRR_VAR_VALID: u64 = 0x800;
+const MTRR_ENABLE: u64 = 0x800;
+const MTRR_PHYS_BASE_MSR: u32 = 0x200;
+const MTRR_PHYS_MASK_MSR: u32 = 0x201;
+const VAR_MTRR_NUM_MASK: u64 = 0xFF;
+
+// Returns the value of the highest bit in a 64-bit value. Equivalent to
+// 1 << HighBitSet(x)
+fn get_power_of_two(data: u64) -> u64 {
+    1 << (64 - data.leading_zeros() - 1)
+}
+
+// Returns the max length which suitable for mtrr setting based on the
+// specified (base, len)
+fn get_max_len(base: u64, len: u64) -> u64 {
+    let mut ret = get_power_of_two(len);
+
+    while base % ret != 0 {
+        ret >>= 1;
+    }
+
+    ret
+}
+
+// For the specified (Base, Len), returns (base, len) pair which could be
+// set into mtrr register. mtrr requires: the base-address alignment value can't be
+// less than its length
+fn get_mtrr_pairs(base: u64, len: u64) -> Vec<(u64, u64)> {
+    let mut vecs = Vec::new();
+
+    let mut remains = len;
+    let mut new = base;
+    while remains != 0 {
+        let max = get_max_len(new, remains);
+        vecs.push((new, max));
+        remains -= max;
+        new += max;
+    }
+
+    vecs
+}
+
+fn create_mtrr_entries(vpu: &kvm::Vcpu, pci_start: u64) -> Vec<kvm_msr_entry> {
+    let mut entries = Vec::<kvm_msr_entry>::new();
+
+    // Get VAR MTRR num from MSR_MTRRcap
+    let mut msrs = vec![kvm_msr_entry {
+        index: crate::msr_index::MSR_MTRRcap,
+        ..Default::default()
+    }];
+    if vpu.get_msrs(&mut msrs).is_err() {
+        warn!("get msrs fail, guest with pass through device may be very slow");
+        return entries;
+    }
+    let var_num = msrs[0].data & VAR_MTRR_NUM_MASK;
+
+    // Set pci_start .. 4G as UC
+    // all others are set to default WB
+    let pci_len = (1 << 32) - pci_start;
+    let vecs = get_mtrr_pairs(pci_start, pci_len);
+    if vecs.len() as u64 > var_num {
+        warn!(
+            "mtrr fail for pci mmio, please check pci_start addr,
+              guest with pass through device may be very slow"
+        );
+        return entries;
+    }
+
+    let phys_mask: u64 = (1 << crate::cpuid::phy_max_address_bits()) - 1;
+    for (idx, (base, len)) in vecs.iter().enumerate() {
+        let reg_idx = idx as u32 * 2;
+        entries.push(kvm_msr_entry {
+            index: MTRR_PHYS_BASE_MSR + reg_idx,
+            data: base | MTRR_MEMTYPE_UC as u64,
+            ..Default::default()
+        });
+        let mask: u64 = len.wrapping_neg() & phys_mask | MTRR_VAR_VALID;
+        entries.push(kvm_msr_entry {
+            index: MTRR_PHYS_MASK_MSR + reg_idx,
+            data: mask,
+            ..Default::default()
+        });
+    }
+    // Disable fixed MTRRs and enable variable MTRRs, set default type as WB
+    entries.push(kvm_msr_entry {
+        index: crate::msr_index::MSR_MTRRdefType,
+        data: MTRR_ENABLE | MTRR_MEMTYPE_WB as u64,
+        ..Default::default()
+    });
+
+    entries
+}
+
+fn create_msr_entries(vcpu: &kvm::Vcpu, pci_start: u64) -> Vec<kvm_msr_entry> {
     let mut entries = Vec::<kvm_msr_entry>::new();
 
     entries.push(kvm_msr_entry {
@@ -121,6 +216,10 @@ fn create_msr_entries() -> Vec<kvm_msr_entry> {
         ..Default::default()
     });
 
+    let mut mtrr_entries = create_mtrr_entries(vcpu, pci_start);
+
+    entries.append(&mut mtrr_entries);
+
     entries
 }
 
@@ -129,14 +228,14 @@ fn create_msr_entries() -> Vec<kvm_msr_entry> {
 /// # Arguments
 ///
 /// * `vcpu` - Structure for the vcpu that holds the vcpu fd.
-pub fn setup_msrs(vcpu: &kvm::Vcpu) -> Result<()> {
+pub fn setup_msrs(vcpu: &kvm::Vcpu, pci_start: u64) -> Result<()> {
     const SIZE_OF_MSRS: usize = mem::size_of::<kvm_msrs>();
     const SIZE_OF_ENTRY: usize = mem::size_of::<kvm_msr_entry>();
     const ALIGN_OF_MSRS: usize = mem::align_of::<kvm_msrs>();
     const ALIGN_OF_ENTRY: usize = mem::align_of::<kvm_msr_entry>();
     const_assert!(ALIGN_OF_MSRS >= ALIGN_OF_ENTRY);
 
-    let entry_vec = create_msr_entries();
+    let entry_vec = create_msr_entries(vcpu, pci_start);
     let size = SIZE_OF_MSRS + entry_vec.len() * SIZE_OF_ENTRY;
     let layout = Layout::from_size_align(size, ALIGN_OF_MSRS).expect("impossible layout");
     let mut allocation = LayoutAllocation::zeroed(layout);

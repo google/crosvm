@@ -157,6 +157,7 @@ impl std::error::Error for Error {}
 pub struct X8664arch;
 
 const BOOT_STACK_POINTER: u64 = 0x8000;
+// Make sure it align to 256MB for MTRR convenient
 const MEM_32BIT_GAP_SIZE: u64 = (768 << 20);
 const FIRST_ADDR_PAST_32BITS: u64 = (1 << 32);
 const END_ADDR_BEFORE_32BITS: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
@@ -758,7 +759,7 @@ impl X8664arch {
     ) -> Result<()> {
         let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
         cpuid::setup_cpuid(kvm, vcpu, cpu_id, num_cpus).map_err(Error::SetupCpuid)?;
-        regs::setup_msrs(vcpu).map_err(Error::SetupMsrs)?;
+        regs::setup_msrs(vcpu, END_ADDR_BEFORE_32BITS).map_err(Error::SetupMsrs)?;
         let kernel_end = guest_mem
             .checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
             .ok_or(Error::KernelOffsetPastEnd)?;

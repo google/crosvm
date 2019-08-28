@@ -121,6 +121,41 @@ pub fn setup_cpuid(kvm: &kvm::Kvm, vcpu: &kvm::Vcpu, cpu_id: u64, nrcpus: u64) -
         .map_err(Error::SetSupportedCpusFailed)
 }
 
+/// get host cpu max physical address bits
+pub fn phy_max_address_bits() -> u32 {
+    let mut eax: u32 = 0;
+    let mut ebx: u32 = 0;
+    let mut ecx: u32 = 0;
+    let mut edx: u32 = 0;
+    let mut phys_bits: u32 = 36;
+
+    unsafe {
+        host_cpuid(
+            0x80000000,
+            0,
+            &mut eax as *mut u32,
+            &mut ebx as *mut u32,
+            &mut ecx as *mut u32,
+            &mut edx as *mut u32,
+        );
+    }
+    if eax >= 0x80000008 {
+        unsafe {
+            host_cpuid(
+                0x80000008,
+                0,
+                &mut eax as *mut u32,
+                &mut ebx as *mut u32,
+                &mut ecx as *mut u32,
+                &mut edx as *mut u32,
+            );
+        }
+        phys_bits = eax & 0xff;
+    }
+
+    phys_bits
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
