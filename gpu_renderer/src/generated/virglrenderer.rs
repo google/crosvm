@@ -116,6 +116,7 @@ extern "C" {
 }
 pub const VIRGL_RENDERER_STRUCTURE_TYPE_NONE: virgl_renderer_structure_type_v0 = 0;
 pub const VIRGL_RENDERER_STRUCTURE_TYPE_EXPORT_QUERY: virgl_renderer_structure_type_v0 = 1;
+pub const VIRGL_RENDERER_STRUCTURE_TYPE_SUPPORTED_STRUCTURES: virgl_renderer_structure_type_v0 = 2;
 pub type virgl_renderer_structure_type_v0 = u32;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -152,6 +153,13 @@ pub struct virgl_renderer_export_query {
     pub out_strides: [u32; 4usize],
     pub out_offsets: [u32; 4usize],
     pub out_modifier: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virgl_renderer_supported_structures {
+    pub hdr: virgl_renderer_hdr,
+    pub in_stype_version: u32,
+    pub out_supported_structures_mask: u32,
 }
 pub type virgl_debug_callback_type = ::std::option::Option<
     unsafe extern "C" fn(fmt: *const ::std::os::raw::c_char, ap: *mut __va_list_tag),
@@ -297,6 +305,26 @@ extern "C" {
     pub fn virgl_renderer_execute(
         execute_args: *mut ::std::os::raw::c_void,
         execute_size: u32,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn virgl_renderer_allocation_metadata(
+        request: *const ::std::os::raw::c_void,
+        response: *mut ::std::os::raw::c_void,
+        request_size: u32,
+        response_size: u32,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn virgl_renderer_resource_create_v2(
+        resource_id: u32,
+        guest_memory_type: u32,
+        guest_caching_type: u32,
+        size: u64,
+        iovec: *const iovec,
+        num_iovs: u32,
+        args: *const ::std::os::raw::c_void,
+        args_size: u32,
     ) -> ::std::os::raw::c_int;
 }
 pub type __builtin_va_list = [__va_list_tag; 1usize];
