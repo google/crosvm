@@ -91,7 +91,7 @@ pub fn test_one_input(data: *const u8, size: usize) -> i32 {
 
         let shm = SharedMemory::new(None).unwrap();
         let disk_file: File = shm.into();
-        let mut block = Block::new(disk_file, false, None).unwrap();
+        let mut block = Block::new(Box::new(disk_file), false, None).unwrap();
 
         block.activate(
             mem,
