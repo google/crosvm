@@ -38,8 +38,10 @@ pub enum VfioError {
     InvalidPath,
     IommuDmaMap(Error),
     IommuDmaUnmap(Error),
-    VfioMsiEnable(Error),
-    VfioMsiDisable(Error),
+    VfioIrqEnable(Error),
+    VfioIrqDisable(Error),
+    VfioIrqUnmask(Error),
+    VfioIrqMask(Error),
 }
 
 impl fmt::Display for VfioError {
@@ -61,8 +63,10 @@ impl fmt::Display for VfioError {
             VfioError::InvalidPath => write!(f,"invalid file path"),
             VfioError::IommuDmaMap(e) => write!(f, "failed to add guest memory map into iommu table: {}", e),
             VfioError::IommuDmaUnmap(e) => write!(f, "failed to remove guest memory map from iommu table: {}", e),
-            VfioError::VfioMsiEnable(e) => write!(f, "failed to enable vfio deviece's MSI: {}", e),
-            VfioError::VfioMsiDisable(e) => write!(f, "failed to disable vfio deviece's MSI: {}", e),
+            VfioError::VfioIrqEnable(e) => write!(f, "failed to enable vfio deviece's irq: {}", e),
+            VfioError::VfioIrqDisable(e) => write!(f, "failed to disable vfio deviece's irq: {}", e),
+            VfioError::VfioIrqUnmask(e) => write!(f, "failed to unmask vfio deviece's irq: {}", e),
+            VfioError::VfioIrqMask(e) => write!(f, "failed to mask vfio deviece's irq: {}", e),
         }
     }
 }
@@ -269,6 +273,13 @@ impl AsRawFd for VfioGroup {
     }
 }
 
+/// Vfio Irq type used to enable/disable/mask/unmask vfio irq
+pub enum VfioIrqType {
+    Intx,
+    Msi,
+    Msix,
+}
+
 struct VfioRegion {
     flags: u32,
     size: u64,
@@ -310,12 +321,16 @@ impl VfioDevice {
         })
     }
 
-    /// enable vfio device's MSI and associate EventFd with this MSI
-    pub fn msi_enable(&self, fd: &EventFd) -> Result<(), VfioError> {
+    /// enable vfio device's irq and associate Irqfd EventFd with device
+    pub fn irq_enable(&self, fd: &EventFd, irq_type: VfioIrqType) -> Result<(), VfioError> {
         let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(1);
         irq_set[0].argsz = (mem::size_of::<vfio_irq_set>() + mem::size_of::<u32>()) as u32;
         irq_set[0].flags = VFIO_IRQ_SET_DATA_EVENTFD | VFIO_IRQ_SET_ACTION_TRIGGER;
-        irq_set[0].index = VFIO_PCI_MSI_IRQ_INDEX;
+        match irq_type {
+            VfioIrqType::Intx => irq_set[0].index = VFIO_PCI_INTX_IRQ_INDEX,
+            VfioIrqType::Msi => irq_set[0].index = VFIO_PCI_MSI_IRQ_INDEX,
+            VfioIrqType::Msix => irq_set[0].index = VFIO_PCI_MSIX_IRQ_INDEX,
+        }
         irq_set[0].start = 0;
         irq_set[0].count = 1;
 
@@ -331,24 +346,108 @@ impl VfioDevice {
         // Safe as we are the owner of self and irq_set which are valid value
         let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
-            Err(VfioError::VfioMsiEnable(get_error()))
+            Err(VfioError::VfioIrqEnable(get_error()))
         } else {
             Ok(())
         }
     }
 
-    pub fn msi_disable(&self) -> Result<(), VfioError> {
+    /// When intx is enabled, irqfd is used to trigger a level interrupt into guest, resample irqfd
+    /// is used to get guest EOI notification.
+    /// When host hw generates interrupt, vfio irq handler in host kernel receive and handle it,
+    /// this handler disable hw irq first, then trigger irqfd to inject interrupt into guest. When
+    /// resample irqfd is triggered by guest EOI, vfio kernel could enable hw irq, so hw could
+    /// generate another interrupts.
+    /// This function enable resample irqfd and let vfio kernel could get EOI notification.
+    ///
+    /// fd: should be resample IrqFd.
+    pub fn resample_virq_enable(&self, fd: &EventFd) -> Result<(), VfioError> {
+        let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(1);
+        irq_set[0].argsz = (mem::size_of::<vfio_irq_set>() + mem::size_of::<u32>()) as u32;
+        irq_set[0].flags = VFIO_IRQ_SET_DATA_EVENTFD | VFIO_IRQ_SET_ACTION_UNMASK;
+        irq_set[0].index = VFIO_PCI_INTX_IRQ_INDEX;
+        irq_set[0].start = 0;
+        irq_set[0].count = 1;
+
+        {
+            // irq_set.data could be none, bool or fd according to flags, so irq_set.data
+            // is u8 default, here irq_set.data is fd as u32, so 4 default u8 are combined
+            // together as u32. It is safe as enough space is reserved through
+            // vec_with_array_field(u32)<1>.
+            let fds = unsafe { irq_set[0].data.as_mut_slice(4) };
+            fds.copy_from_slice(&fd.as_raw_fd().to_le_bytes()[..]);
+        }
+
+        // Safe as we are the owner of self and irq_set which are valid value
+        let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
+        if ret < 0 {
+            Err(VfioError::VfioIrqEnable(get_error()))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// disable vfio device's irq and disconnect Irqfd EventFd with device
+    pub fn irq_disable(&self, irq_type: VfioIrqType) -> Result<(), VfioError> {
         let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(0);
         irq_set[0].argsz = mem::size_of::<vfio_irq_set>() as u32;
         irq_set[0].flags = VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_ACTION_TRIGGER;
-        irq_set[0].index = VFIO_PCI_MSI_IRQ_INDEX;
+        match irq_type {
+            VfioIrqType::Intx => irq_set[0].index = VFIO_PCI_INTX_IRQ_INDEX,
+            VfioIrqType::Msi => irq_set[0].index = VFIO_PCI_MSI_IRQ_INDEX,
+            VfioIrqType::Msix => irq_set[0].index = VFIO_PCI_MSIX_IRQ_INDEX,
+        }
         irq_set[0].start = 0;
         irq_set[0].count = 0;
 
         // Safe as we are the owner of self and irq_set which are valid value
         let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
-            Err(VfioError::VfioMsiDisable(get_error()))
+            Err(VfioError::VfioIrqDisable(get_error()))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Unmask vfio device irq
+    pub fn irq_unmask(&self, irq_type: VfioIrqType) -> Result<(), VfioError> {
+        let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(0);
+        irq_set[0].argsz = mem::size_of::<vfio_irq_set>() as u32;
+        irq_set[0].flags = VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_ACTION_UNMASK;
+        match irq_type {
+            VfioIrqType::Intx => irq_set[0].index = VFIO_PCI_INTX_IRQ_INDEX,
+            VfioIrqType::Msi => irq_set[0].index = VFIO_PCI_MSI_IRQ_INDEX,
+            VfioIrqType::Msix => irq_set[0].index = VFIO_PCI_MSIX_IRQ_INDEX,
+        }
+        irq_set[0].start = 0;
+        irq_set[0].count = 1;
+
+        // Safe as we are the owner of self and irq_set which are valid value
+        let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
+        if ret < 0 {
+            Err(VfioError::VfioIrqUnmask(get_error()))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Mask vfio device irq
+    pub fn irq_mask(&self, irq_type: VfioIrqType) -> Result<(), VfioError> {
+        let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(0);
+        irq_set[0].argsz = mem::size_of::<vfio_irq_set>() as u32;
+        irq_set[0].flags = VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_ACTION_MASK;
+        match irq_type {
+            VfioIrqType::Intx => irq_set[0].index = VFIO_PCI_INTX_IRQ_INDEX,
+            VfioIrqType::Msi => irq_set[0].index = VFIO_PCI_MSI_IRQ_INDEX,
+            VfioIrqType::Msix => irq_set[0].index = VFIO_PCI_MSIX_IRQ_INDEX,
+        }
+        irq_set[0].start = 0;
+        irq_set[0].count = 1;
+
+        // Safe as we are the owner of self and irq_set which are valid value
+        let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
+        if ret < 0 {
+            Err(VfioError::VfioIrqMask(get_error()))
         } else {
             Ok(())
         }

@@ -15,7 +15,9 @@ use vfio_sys::*;
 use crate::pci::pci_device::{Error as PciDeviceError, PciDevice};
 use crate::pci::PciInterruptPin;
 
-use crate::vfio::VfioDevice;
+use crate::vfio::{VfioDevice, VfioIrqType};
+
+const PCI_INTERRUPT_PIN: u32 = 0x3D;
 
 struct VfioPciConfig {
     device: Arc<VfioDevice>,
@@ -225,6 +227,7 @@ pub struct VfioPciDevice {
     mmio_regions: Vec<MmioInfo>,
     io_regions: Vec<IoInfo>,
     msi_cap: Option<VfioMsiCap>,
+    irq_type: Option<VfioIrqType>,
 }
 
 impl VfioPciDevice {
@@ -243,6 +246,7 @@ impl VfioPciDevice {
             mmio_regions: Vec::new(),
             io_regions: Vec::new(),
             msi_cap,
+            irq_type: None,
         }
     }
 
@@ -258,6 +262,45 @@ impl VfioPciDevice {
         }
 
         None
+    }
+
+    fn enable_intx(&mut self) {
+        if self.interrupt_evt.is_none() || self.interrupt_resample_evt.is_none() {
+            return;
+        }
+
+        if let Some(ref interrupt_evt) = self.interrupt_evt {
+            if let Err(e) = self.device.irq_enable(interrupt_evt, VfioIrqType::Intx) {
+                error!("Intx enable failed: {}", e);
+                return;
+            }
+            if let Some(ref irq_resample_evt) = self.interrupt_resample_evt {
+                if let Err(e) = self.device.irq_mask(VfioIrqType::Intx) {
+                    error!("Intx mask failed: {}", e);
+                    self.disable_intx();
+                    return;
+                }
+                if let Err(e) = self.device.resample_virq_enable(irq_resample_evt) {
+                    error!("resample enable failed: {}", e);
+                    self.disable_intx();
+                    return;
+                }
+                if let Err(e) = self.device.irq_unmask(VfioIrqType::Intx) {
+                    error!("Intx unmask failed: {}", e);
+                    self.disable_intx();
+                    return;
+                }
+            }
+        }
+
+        self.irq_type = Some(VfioIrqType::Intx);
+    }
+
+    fn disable_intx(&mut self) {
+        if let Err(e) = self.device.irq_disable(VfioIrqType::Intx) {
+            error!("Intx disable failed: {}", e);
+        }
+        self.irq_type = None;
     }
 }
 
@@ -286,12 +329,16 @@ impl PciDevice for VfioPciDevice {
         irq_evt: EventFd,
         irq_resample_evt: EventFd,
         irq_num: u32,
-        irq_pin: PciInterruptPin,
+        _irq_pin: PciInterruptPin,
     ) {
         self.config.write_config_byte(irq_num as u8, 0x3C);
-        self.config.write_config_byte(irq_pin as u8 + 1, 0x3D);
         self.interrupt_evt = Some(irq_evt);
         self.interrupt_resample_evt = Some(irq_resample_evt);
+
+        // enable INTX
+        if self.config.read_config_byte(PCI_INTERRUPT_PIN) > 0 {
+            self.enable_intx();
+        }
     }
 
     fn allocate_io_bars(
@@ -420,12 +467,13 @@ impl PciDevice for VfioPciDevice {
                 if let Some(ref interrupt_evt) = self.interrupt_evt {
                     match msi_cap.write_msi_reg(start, data) {
                         Some(VfioMsiChange::Enable) => {
-                            if let Err(e) = self.device.msi_enable(interrupt_evt) {
+                            if let Err(e) = self.device.irq_enable(interrupt_evt, VfioIrqType::Msi)
+                            {
                                 error!("{}", e);
                             }
                         }
                         Some(VfioMsiChange::Disable) => {
-                            if let Err(e) = self.device.msi_disable() {
+                            if let Err(e) = self.device.irq_disable(VfioIrqType::Msi) {
                                 error!("{}", e);
                             }
                         }
