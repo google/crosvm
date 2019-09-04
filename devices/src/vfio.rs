@@ -485,7 +485,7 @@ impl VfioDevice {
             // and we verify the return value.
             ret = unsafe { ioctl_with_mut_ref(dev, VFIO_DEVICE_GET_REGION_INFO(), &mut reg_info) };
             if ret < 0 {
-                return Err(VfioError::VfioDeviceGetRegionInfo(get_error()));
+                continue;
             }
 
             let region = VfioRegion {
