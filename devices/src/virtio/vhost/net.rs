@@ -25,6 +25,7 @@ use crate::virtio::{Queue, VirtioDevice, TYPE_NET};
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
+const NUM_MSIX_VECTORS: u16 = NUM_QUEUES as u16;
 
 pub struct Net<T: TapT, U: VhostNetT<T>> {
     workers_kill_evt: Option<EventFd>,
@@ -32,7 +33,7 @@ pub struct Net<T: TapT, U: VhostNetT<T>> {
     worker_thread: Option<thread::JoinHandle<()>>,
     tap: Option<T>,
     vhost_net_handle: Option<U>,
-    vhost_interrupt: Option<EventFd>,
+    vhost_interrupt: Option<Vec<EventFd>>,
     avail_features: u64,
     acked_features: u64,
 }
@@ -84,13 +85,18 @@ where
             | 1 << virtio_sys::vhost::VIRTIO_F_NOTIFY_ON_EMPTY
             | 1 << virtio_sys::vhost::VIRTIO_F_VERSION_1;
 
+        let mut vhost_interrupt = Vec::new();
+        for _ in 0..NUM_MSIX_VECTORS {
+            vhost_interrupt.push(EventFd::new().map_err(Error::VhostIrqCreate)?);
+        }
+
         Ok(Net {
             workers_kill_evt: Some(kill_evt.try_clone().map_err(Error::CloneKillEventFd)?),
             kill_evt,
             worker_thread: None,
             tap: Some(tap),
             vhost_net_handle: Some(vhost_net_handle),
-            vhost_interrupt: Some(EventFd::new().map_err(Error::VhostIrqCreate)?),
+            vhost_interrupt: Some(vhost_interrupt),
             avail_features,
             acked_features: 0u64,
         })
@@ -132,7 +138,9 @@ where
         }
 
         if let Some(vhost_interrupt) = &self.vhost_interrupt {
-            keep_fds.push(vhost_interrupt.as_raw_fd());
+            for vhost_int in vhost_interrupt.iter() {
+                keep_fds.push(vhost_int.as_raw_fd());
+            }
         }
 
         if let Some(workers_kill_evt) = &self.workers_kill_evt {
@@ -144,6 +152,10 @@ where
 
     fn device_type(&self) -> u32 {
         TYPE_NET
+    }
+
+    fn msix_vectors(&self) -> u16 {
+        NUM_MSIX_VECTORS
     }
 
     fn queue_max_sizes(&self) -> &[u16] {
@@ -173,7 +185,7 @@ where
         _: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
-        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
@@ -198,6 +210,7 @@ where
                                     status,
                                     interrupt_evt,
                                     interrupt_resample_evt,
+                                    msix_config,
                                     acked_features,
                                 );
                                 let activate_vqs = |handle: &U| -> Result<()> {

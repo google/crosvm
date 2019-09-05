@@ -30,6 +30,7 @@ use super::{
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
+const NUM_MSIX_VECTORS: u16 = 2;
 const SECTOR_SHIFT: u8 = 9;
 const SECTOR_SIZE: u64 = 0x01 << SECTOR_SHIFT;
 const MAX_DISCARD_SECTORS: u32 = u32::MAX;
@@ -279,6 +280,7 @@ struct Worker {
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
     interrupt_resample_evt: EventFd,
+    msix_config: Option<Arc<Mutex<MsixConfig>>>,
 }
 
 impl Worker {
@@ -381,7 +383,14 @@ impl Worker {
         DiskControlResult::Ok
     }
 
-    fn signal_used_queue(&self) {
+    fn signal_used_queue(&self, vector: u16) {
+        if let Some(msix_config) = &self.msix_config {
+            let mut msix_config = msix_config.lock();
+            if msix_config.enabled() {
+                msix_config.trigger(vector);
+                return;
+            }
+        }
         self.interrupt_status
             .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
         self.interrupt_evt.write(1).unwrap();
@@ -440,7 +449,6 @@ impl Worker {
                 }
             };
 
-            let mut needs_interrupt = false;
             let mut needs_config_interrupt = false;
             for event in events.iter_readable() {
                 match event.token() {
@@ -459,8 +467,9 @@ impl Worker {
                             error!("failed reading queue EventFd: {}", e);
                             break 'poll;
                         }
-                        needs_interrupt |=
-                            self.process_queue(0, &mut flush_timer, &mut flush_timer_armed);
+                        if self.process_queue(0, &mut flush_timer, &mut flush_timer_armed) {
+                            self.signal_used_queue(self.queues[0].vector);
+                        }
                     }
                     Token::ControlRequest => {
                         let req = match control_socket.recv() {
@@ -491,9 +500,6 @@ impl Worker {
                     }
                     Token::Kill => break 'poll,
                 }
-            }
-            if needs_interrupt {
-                self.signal_used_queue();
             }
             if needs_config_interrupt {
                 self.signal_config_changed();
@@ -764,6 +770,10 @@ impl VirtioDevice for Block {
         TYPE_BLOCK
     }
 
+    fn msix_vectors(&self) -> u16 {
+        NUM_MSIX_VECTORS
+    }
+
     fn queue_max_sizes(&self) -> &[u16] {
         QUEUE_SIZES
     }
@@ -781,7 +791,7 @@ impl VirtioDevice for Block {
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
-        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
@@ -816,6 +826,7 @@ impl VirtioDevice for Block {
                                 interrupt_status: status,
                                 interrupt_evt,
                                 interrupt_resample_evt,
+                                msix_config,
                             };
                             worker.run(queue_evts.remove(0), kill_evt, control_socket);
                         });

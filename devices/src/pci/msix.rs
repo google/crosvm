@@ -83,7 +83,7 @@ impl MsixConfig {
     /// Check whether the Function Mask bit in Message Control word in set or not.
     /// if 1, all of the vectors associated with the function are masked,
     /// regardless of their per-vector Mask bit states.
-    /// If 0, each vector’s Mask bit determines whether the vector is masked or not.
+    /// If 0, each vector's Mask bit determines whether the vector is masked or not.
     pub fn masked(&self) -> bool {
         self.masked
     }
@@ -201,7 +201,7 @@ impl MsixConfig {
     /// For all accesses to MSI-X Table and MSI-X PBA fields, software must use aligned full
     /// DWORD or aligned full QWORD transactions; otherwise, the result is undefined.
     ///
-    ///             DWORD3            DWORD2      DWORD1            DWORD0
+    ///   location: DWORD3            DWORD2      DWORD1            DWORD0
     ///   entry 0:  Vector Control    Msg Data    Msg Upper Addr    Msg Addr
     ///   entry 1:  Vector Control    Msg Data    Msg Upper Addr    Msg Addr
     ///   entry 2:  Vector Control    Msg Data    Msg Upper Addr    Msg Addr
@@ -253,7 +253,7 @@ impl MsixConfig {
     ///     for the memory write transaction; different MSI-X vectors have
     ///     different Message Address values
     /// Message Data: the contents of this field specifies the data driven
-    ///     on AD[31::00] during the memory write transaction’s data phase.
+    ///     on AD[31::00] during the memory write transaction's data phase.
     /// Vector Control: only bit 0 (Mask Bit) is not reserved: when this bit
     ///     is set, the function is prohibited from sending a message using
     ///     this MSI-X Table entry.

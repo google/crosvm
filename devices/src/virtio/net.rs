@@ -28,7 +28,9 @@ use super::{Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYP
 /// http://docs.oasis-open.org/virtio/virtio/v1.0/virtio-v1.0.html#x1-1740003
 const MAX_BUFFER_SIZE: usize = 65562;
 const QUEUE_SIZE: u16 = 256;
+const NUM_QUEUES: usize = 2;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
+const NUM_MSIX_VECTORS: u16 = NUM_QUEUES as u16;
 
 #[derive(Debug)]
 pub enum NetError {
@@ -93,6 +95,7 @@ struct Worker<T: TapT> {
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
     interrupt_resample_evt: EventFd,
+    msix_config: Option<Arc<Mutex<MsixConfig>>>,
     rx_buf: [u8; MAX_BUFFER_SIZE],
     rx_count: usize,
     deferred_rx: bool,
@@ -106,7 +109,14 @@ impl<T> Worker<T>
 where
     T: TapT,
 {
-    fn signal_used_queue(&self) {
+    fn signal_used_queue(&self, vector: u16) {
+        if let Some(msix_config) = &self.msix_config {
+            let mut msix_config = msix_config.lock();
+            if msix_config.enabled() {
+                msix_config.trigger(vector);
+                return;
+            }
+        }
         self.interrupt_status
             .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
         self.interrupt_evt.write(1).unwrap();
@@ -164,7 +174,7 @@ where
                         self.deferred_rx = true;
                         break;
                     } else if first_frame {
-                        self.signal_used_queue();
+                        self.signal_used_queue(self.rx_queue.vector);
                         first_frame = false;
                     } else {
                         needs_interrupt = true;
@@ -224,7 +234,7 @@ where
             self.tx_queue.add_used(&self.mem, index, 0);
         }
 
-        self.signal_used_queue();
+        self.signal_used_queue(self.tx_queue.vector);
     }
 
     fn run(
@@ -318,7 +328,7 @@ where
                 }
 
                 if needs_interrupt_rx {
-                    self.signal_used_queue();
+                    self.signal_used_queue(self.rx_queue.vector);
                 }
             }
         }
@@ -466,6 +476,10 @@ where
         TYPE_NET
     }
 
+    fn msix_vectors(&self) -> u16 {
+        NUM_MSIX_VECTORS
+    }
+
     fn queue_max_sizes(&self) -> &[u16] {
         QUEUE_SIZES
     }
@@ -493,13 +507,13 @@ where
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
-        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
     ) {
-        if queues.len() != 2 || queue_evts.len() != 2 {
-            error!("net: expected 2 queues, got {}", queues.len());
+        if queues.len() != NUM_QUEUES || queue_evts.len() != NUM_QUEUES {
+            error!("net: expected {} queues, got {}", NUM_QUEUES, queues.len());
             return;
         }
 
@@ -520,6 +534,7 @@ where
                                 tap,
                                 interrupt_status: status,
                                 interrupt_evt,
+                                msix_config,
                                 interrupt_resample_evt,
                                 rx_buf: [0u8; MAX_BUFFER_SIZE],
                                 rx_count: 0,
