@@ -3,7 +3,8 @@
 // found in the LICENSE file.
 
 use std::fmt::{self, Debug};
-use std::sync::{Condvar as StdCondvar, MutexGuard};
+use std::sync::{Condvar as StdCondvar, MutexGuard, WaitTimeoutResult};
+use std::time::Duration;
 
 /// A Condition Variable.
 #[derive(Default)]
@@ -23,6 +24,19 @@ impl Condvar {
     pub fn wait<'a, T>(&self, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
         match self.std.wait(guard) {
             Ok(guard) => guard,
+            Err(_) => panic!("condvar is poisoned"),
+        }
+    }
+
+    /// Waits on a condvar, blocking the current thread until it is notified
+    /// or the specified duration has elapsed.
+    pub fn wait_timeout<'a, T>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        dur: Duration,
+    ) -> (MutexGuard<'a, T>, WaitTimeoutResult) {
+        match self.std.wait_timeout(guard, dur) {
+            Ok(result) => result,
             Err(_) => panic!("condvar is poisoned"),
         }
     }
