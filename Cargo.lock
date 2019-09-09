@@ -88,6 +88,7 @@ dependencies = [
  "disk 0.1.0",
  "enumn 0.1.0",
  "gpu_buffer 0.1.0",
+ "gpu_renderer 0.1.0",
  "io_jail 0.1.0",
  "kernel_cmdline 0.1.0",
  "kernel_loader 0.1.0",

@@ -48,6 +48,8 @@ pub enum Error {
     InvalidIovec,
     /// A command size was submitted that was invalid.
     InvalidCommandSize(usize),
+    /// The command is unsupported.
+    Unsupported,
 }
 
 impl Display for Error {
@@ -60,6 +62,7 @@ impl Display for Error {
             ExportedResourceDmabuf => write!(f, "failed to export dmabuf"),
             InvalidIovec => write!(f, "an iovec is outside of guest memory's range"),
             InvalidCommandSize(s) => write!(f, "command buffer submitted with invalid size: {}", s),
+            Unsupported => write!(f, "gpu renderer function unsupported"),
         }
     }
 }
