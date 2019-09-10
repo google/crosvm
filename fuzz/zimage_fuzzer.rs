@@ -15,7 +15,7 @@ use std::slice;
 const MEM_SIZE: u64 = 256 * 1024 * 1024;
 
 fn make_elf_bin(elf_bytes: &[u8]) -> File {
-    let mut shm = SharedMemory::new(None).expect("failed to create shared memory");
+    let mut shm = SharedMemory::anon().expect("failed to create shared memory");
     shm.set_size(elf_bytes.len() as u64)
         .expect("failed to set shared memory size");
     shm.write_all(elf_bytes)

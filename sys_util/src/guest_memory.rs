@@ -4,7 +4,6 @@
 
 //! Track memory regions that are mapped to the guest VM.
 
-use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
@@ -118,9 +117,7 @@ impl GuestMemory {
         seals.set_grow_seal();
         seals.set_seal_seal();
 
-        let mut memfd =
-            SharedMemory::new(Some(CStr::from_bytes_with_nul(b"crosvm_guest\0").unwrap()))
-                .map_err(Error::MemoryCreationFailed)?;
+        let mut memfd = SharedMemory::named("crosvm_guest").map_err(Error::MemoryCreationFailed)?;
         memfd
             .set_size(aligned_size)
             .map_err(Error::MemorySetSizeFailed)?;

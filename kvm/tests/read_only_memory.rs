@@ -20,7 +20,7 @@ fn test_run() {
     let mem_size = 0x2000;
     let load_addr = GuestAddress(0x1000);
     let guest_mem = GuestMemory::new(&[]).unwrap();
-    let mut mem = SharedMemory::new(None).expect("failed to create shared memory");
+    let mut mem = SharedMemory::anon().expect("failed to create shared memory");
     mem.set_size(mem_size)
         .expect("failed to set shared memory size");
     let mmap =
@@ -55,7 +55,7 @@ fn test_run() {
 
     // Give some read only memory for the test code to read from and force a vcpu exit when it reads
     // from it.
-    let mut mem_ro = SharedMemory::new(None).expect("failed to create shared memory");
+    let mut mem_ro = SharedMemory::anon().expect("failed to create shared memory");
     mem_ro
         .set_size(0x1000)
         .expect("failed to set shared memory size");

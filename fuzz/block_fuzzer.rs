@@ -89,7 +89,7 @@ pub fn test_one_input(data: *const u8, size: usize) -> i32 {
         let queue_fd = queue_evts[0].as_raw_fd();
         let queue_evt = unsafe { EventFd::from_raw_fd(libc::dup(queue_fd)) };
 
-        let shm = SharedMemory::new(None).unwrap();
+        let shm = SharedMemory::anon().unwrap();
         let disk_file: File = shm.into();
         let mut block = Block::new(Box::new(disk_file), false, None).unwrap();
 

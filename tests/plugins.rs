@@ -135,13 +135,13 @@ fn keep_fd_on_exec<F: AsRawFd>(f: &F) {
 /// Takes assembly source code and returns the resulting assembly code.
 fn build_assembly(src: &str) -> Vec<u8> {
     // Creates a shared memory region with the assembly source code in it.
-    let in_shm = SharedMemory::new(None).unwrap();
+    let in_shm = SharedMemory::anon().unwrap();
     let mut in_shm_file: File = in_shm.into();
     keep_fd_on_exec(&in_shm_file);
     in_shm_file.write_all(src.as_bytes()).unwrap();
 
     // Creates a shared memory region that will hold the nasm output.
-    let mut out_shm_file: File = SharedMemory::new(None).unwrap().into();
+    let mut out_shm_file: File = SharedMemory::anon().unwrap().into();
     keep_fd_on_exec(&out_shm_file);
 
     // Runs nasm with the input and output files set to the FDs of the above shared memory regions,

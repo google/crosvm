@@ -1646,7 +1646,7 @@ mod tests {
     where
         F: FnMut(File),
     {
-        let shm = SharedMemory::new(None).unwrap();
+        let shm = SharedMemory::anon().unwrap();
         let mut disk_file: File = shm.into();
         disk_file.write_all(&header).unwrap();
         disk_file.set_len(0x1_0000_0000).unwrap();
@@ -1659,7 +1659,7 @@ mod tests {
     where
         F: FnMut(QcowFile),
     {
-        let shm = SharedMemory::new(None).unwrap();
+        let shm = SharedMemory::anon().unwrap();
         let qcow_file = QcowFile::new(shm.into(), file_size).unwrap();
 
         testfn(qcow_file); // File closed when the function exits.
@@ -1668,7 +1668,7 @@ mod tests {
     #[test]
     fn default_header() {
         let header = QcowHeader::create_for_size(0x10_0000);
-        let shm = SharedMemory::new(None).unwrap();
+        let shm = SharedMemory::anon().unwrap();
         let mut disk_file: File = shm.into();
         header
             .write_to(&mut disk_file)

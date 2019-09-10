@@ -204,10 +204,8 @@ impl DisplayT for DisplayWl {
         let row_size = width * BYTES_PER_PIXEL;
         let fb_size = row_size * height;
         let buffer_size = round_up_to_page_size(fb_size as usize * BUFFER_COUNT);
-        let mut buffer_shm = SharedMemory::new(Some(
-            CStr::from_bytes_with_nul(b"GpuDisplaySurface\0").unwrap(),
-        ))
-        .map_err(GpuDisplayError::CreateShm)?;
+        let mut buffer_shm =
+            SharedMemory::named("GpuDisplaySurface").map_err(GpuDisplayError::CreateShm)?;
         buffer_shm
             .set_size(buffer_size as u64)
             .map_err(GpuDisplayError::SetSize)?;

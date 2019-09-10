@@ -675,7 +675,7 @@ mod tests {
         let mut reader = Reader::new(&memory, chain);
 
         // GuestMemory's write_from_memory requires raw file descriptor.
-        let mut shm = SharedMemory::new(None).unwrap();
+        let mut shm = SharedMemory::anon().unwrap();
         shm.set_size(384).unwrap();
 
         // Prevent shared memory from growing on `write` call.
@@ -712,7 +712,7 @@ mod tests {
         let mut writer = Writer::new(&memory, chain);
 
         // GuestMemory's read_to_memory requires raw file descriptor.
-        let mut shm = SharedMemory::new(None).unwrap();
+        let mut shm = SharedMemory::anon().unwrap();
         shm.set_size(384).unwrap();
 
         if let Ok(_) = writer.write_from(&shm, 512) {
