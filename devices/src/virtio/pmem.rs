@@ -246,6 +246,7 @@ impl Worker {
 
 pub struct Pmem {
     kill_event: Option<EventFd>,
+    worker_thread: Option<thread::JoinHandle<()>>,
     disk_image: Option<File>,
     mapping_address: GuestAddress,
     mapping_size: u64,
@@ -259,6 +260,7 @@ impl Pmem {
     ) -> SysResult<Pmem> {
         Ok(Pmem {
             kill_event: None,
+            worker_thread: None,
             disk_image: Some(disk_image),
             mapping_address,
             mapping_size,
@@ -271,6 +273,10 @@ impl Drop for Pmem {
         if let Some(kill_evt) = self.kill_event.take() {
             // Ignore the result because there is nothing we can do about it.
             let _ = kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
         }
     }
 }
@@ -344,9 +350,15 @@ impl VirtioDevice for Pmem {
                     };
                     worker.run(queue_event, kill_event);
                 });
-            if let Err(e) = worker_result {
-                error!("failed to spawn virtio_pmem worker: {}", e);
-                return;
+
+            match worker_result {
+                Err(e) => {
+                    error!("failed to spawn virtio_pmem worker: {}", e);
+                    return;
+                }
+                Ok(join_handle) => {
+                    self.worker_thread = Some(join_handle);
+                }
             }
         }
     }

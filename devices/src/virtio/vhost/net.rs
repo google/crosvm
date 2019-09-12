@@ -27,6 +27,7 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 pub struct Net<T: TapT, U: VhostNetT<T>> {
     workers_kill_evt: Option<EventFd>,
     kill_evt: EventFd,
+    worker_thread: Option<thread::JoinHandle<()>>,
     tap: Option<T>,
     vhost_net_handle: Option<U>,
     vhost_interrupt: Option<EventFd>,
@@ -84,6 +85,7 @@ where
         Ok(Net {
             workers_kill_evt: Some(kill_evt.try_clone().map_err(Error::CloneKillEventFd)?),
             kill_evt,
+            worker_thread: None,
             tap: Some(tap),
             vhost_net_handle: Some(vhost_net_handle),
             vhost_interrupt: Some(EventFd::new().map_err(Error::VhostIrqCreate)?),
@@ -103,6 +105,10 @@ where
         if self.workers_kill_evt.is_none() {
             // Ignore the result because there is nothing we can do about it.
             let _ = self.kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
         }
     }
 }
@@ -206,9 +212,14 @@ where
                                 }
                             });
 
-                        if let Err(e) = worker_result {
-                            error!("failed to spawn vhost_net worker: {}", e);
-                            return;
+                        match worker_result {
+                            Err(e) => {
+                                error!("failed to spawn vhost_net worker: {}", e);
+                                return;
+                            }
+                            Ok(join_handle) => {
+                                self.worker_thread = Some(join_handle);
+                            }
                         }
                     }
                 }

@@ -678,6 +678,7 @@ pub struct Gpu {
     gpu_device_socket: Option<VmMemoryControlRequestSocket>,
     resource_bridges: Vec<ResourceResponseSocket>,
     kill_evt: Option<EventFd>,
+    worker_thread: Option<thread::JoinHandle<()>>,
     num_scanouts: NonZeroU8,
     display_backends: Vec<DisplayBackend>,
 }
@@ -696,6 +697,7 @@ impl Gpu {
             gpu_device_socket,
             resource_bridges,
             kill_evt: None,
+            worker_thread: None,
             num_scanouts,
             display_backends,
         }
@@ -720,6 +722,10 @@ impl Drop for Gpu {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
             let _ = kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
         }
     }
 }
@@ -837,9 +843,14 @@ impl VirtioDevice for Gpu {
                         .run()
                     });
 
-            if let Err(e) = worker_result {
-                error!("failed to spawn virtio_gpu worker: {}", e);
-                return;
+            match worker_result {
+                Err(e) => {
+                    error!("failed to spawn virtio_gpu worker: {}", e);
+                    return;
+                }
+                Ok(join_handle) => {
+                    self.worker_thread = Some(join_handle);
+                }
             }
         }
     }

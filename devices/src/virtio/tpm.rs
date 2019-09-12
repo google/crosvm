@@ -190,6 +190,7 @@ impl Worker {
 pub struct Tpm {
     storage: PathBuf,
     kill_evt: Option<EventFd>,
+    worker_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Tpm {
@@ -197,6 +198,7 @@ impl Tpm {
         Tpm {
             storage,
             kill_evt: None,
+            worker_thread: None,
         }
     }
 }
@@ -205,6 +207,10 @@ impl Drop for Tpm {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
             let _ = kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
         }
     }
 }
@@ -271,9 +277,14 @@ impl VirtioDevice for Tpm {
             .name("virtio_tpm".to_string())
             .spawn(|| worker.run());
 
-        if let Err(e) = worker_result {
-            error!("vtpm failed to spawn virtio_tpm worker: {}", e);
-            return;
+        match worker_result {
+            Err(e) => {
+                error!("vtpm failed to spawn virtio_tpm worker: {}", e);
+                return;
+            }
+            Ok(join_handle) => {
+                self.worker_thread = Some(join_handle);
+            }
         }
     }
 }

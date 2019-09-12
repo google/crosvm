@@ -14,6 +14,7 @@ use crate::usb::host_backend::host_backend_device_provider::HostBackendDevicePro
 use crate::utils::{Error as UtilsError, EventLoop, FailHandle};
 use std::fmt::{self, Display};
 use std::sync::Arc;
+use std::thread;
 use sync::Mutex;
 use sys_util::{error, EventFd, GuestAddress, GuestMemory};
 
@@ -65,6 +66,8 @@ pub struct Xhci {
     interrupter: Arc<Mutex<Interrupter>>,
     command_ring_controller: Arc<CommandRingController>,
     device_slots: DeviceSlots,
+    event_loop: Arc<EventLoop>,
+    event_loop_join_handle: Option<thread::JoinHandle<()>>,
     // resample handler and device provider only lives on EventLoop to handle corresponding events.
     // By design, event loop only hold weak reference. We need to keep a strong reference here to
     // keep it alive.
@@ -84,7 +87,7 @@ impl Xhci {
         irq_resample_evt: EventFd,
         regs: XhciRegs,
     ) -> Result<Arc<Self>> {
-        let (event_loop, _join_handle) =
+        let (event_loop, join_handle) =
             EventLoop::start("xhci".to_string(), Some(fail_handle.clone()))
                 .map_err(Error::StartEventLoop)?;
         let interrupter = Arc::new(Mutex::new(Interrupter::new(mem.clone(), irq_evt, &regs)));
@@ -122,6 +125,8 @@ impl Xhci {
             command_ring_controller,
             device_slots,
             device_provider,
+            event_loop,
+            event_loop_join_handle: Some(join_handle),
         });
         Self::init_reg_callbacks(&xhci);
         Ok(xhci)
@@ -388,5 +393,14 @@ impl Xhci {
                 usbsts.set_bits(USB_STS_HALTED);
             }));
         Ok(())
+    }
+}
+
+impl Drop for Xhci {
+    fn drop(&mut self) {
+        self.event_loop.stop();
+        if let Some(join_handle) = self.event_loop_join_handle.take() {
+            let _ = join_handle.join();
+        }
     }
 }

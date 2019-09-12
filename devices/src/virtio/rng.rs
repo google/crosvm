@@ -135,6 +135,7 @@ impl Worker {
 /// Virtio device for exposing entropy to the guest OS through virtio.
 pub struct Rng {
     kill_evt: Option<EventFd>,
+    worker_thread: Option<thread::JoinHandle<()>>,
     random_file: Option<File>,
 }
 
@@ -144,6 +145,7 @@ impl Rng {
         let random_file = File::open("/dev/urandom").map_err(RngError::AccessingRandomDev)?;
         Ok(Rng {
             kill_evt: None,
+            worker_thread: None,
             random_file: Some(random_file),
         })
     }
@@ -154,6 +156,10 @@ impl Drop for Rng {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
             let _ = kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
         }
     }
 }
@@ -217,9 +223,14 @@ impl VirtioDevice for Rng {
                         worker.run(queue_evts.remove(0), kill_evt);
                     });
 
-            if let Err(e) = worker_result {
-                error!("failed to spawn virtio_rng worker: {}", e);
-                return;
+            match worker_result {
+                Err(e) => {
+                    error!("failed to spawn virtio_rng worker: {}", e);
+                    return;
+                }
+                Ok(join_handle) => {
+                    self.worker_thread = Some(join_handle);
+                }
             }
         }
     }

@@ -1669,6 +1669,7 @@ impl Worker {
 
 pub struct Wl {
     kill_evt: Option<EventFd>,
+    worker_thread: Option<thread::JoinHandle<()>>,
     wayland_path: PathBuf,
     vm_socket: Option<VmMemoryControlRequestSocket>,
     resource_bridge: Option<ResourceRequestSocket>,
@@ -1683,6 +1684,7 @@ impl Wl {
     ) -> Result<Wl> {
         Ok(Wl {
             kill_evt: None,
+            worker_thread: None,
             wayland_path: wayland_path.as_ref().to_owned(),
             vm_socket: Some(vm_socket),
             resource_bridge,
@@ -1696,6 +1698,10 @@ impl Drop for Wl {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
             let _ = kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
         }
     }
 }
@@ -1777,9 +1783,14 @@ impl VirtioDevice for Wl {
                         .run(queue_evts, kill_evt);
                     });
 
-            if let Err(e) = worker_result {
-                error!("failed to spawn virtio_wl worker: {}", e);
-                return;
+            match worker_result {
+                Err(e) => {
+                    error!("failed to spawn virtio_wl worker: {}", e);
+                    return;
+                }
+                Ok(join_handle) => {
+                    self.worker_thread = Some(join_handle);
+                }
             }
         }
     }

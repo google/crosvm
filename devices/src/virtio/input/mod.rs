@@ -610,6 +610,7 @@ impl<T: EventSource> Worker<T> {
 
 pub struct Input<T: EventSource> {
     kill_evt: Option<EventFd>,
+    worker_thread: Option<thread::JoinHandle<()>>,
     config: VirtioInputConfig,
     source: Option<T>,
 }
@@ -619,6 +620,10 @@ impl<T: EventSource> Drop for Input<T> {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
             let _ = kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
         }
     }
 }
@@ -695,9 +700,14 @@ where
                     worker.run(event_queue_evt_fd, status_queue_evt_fd, kill_evt);
                 });
 
-            if let Err(e) = worker_result {
-                error!("failed to spawn virtio_input worker: {}", e);
-                return;
+            match worker_result {
+                Err(e) => {
+                    error!("failed to spawn virtio_input worker: {}", e);
+                    return;
+                }
+                Ok(join_handle) => {
+                    self.worker_thread = Some(join_handle);
+                }
             }
         } else {
             error!("tried to activate device without a source for events");
@@ -713,6 +723,7 @@ where
 {
     Ok(Input {
         kill_evt: None,
+        worker_thread: None,
         config: VirtioInputConfig::from_evdev(&source)?,
         source: Some(EvdevEventSource::new(source)),
     })
@@ -729,6 +740,7 @@ where
 {
     Ok(Input {
         kill_evt: None,
+        worker_thread: None,
         config: defaults::new_single_touch_config(width, height),
         source: Some(SocketEventSource::new(source)),
     })
@@ -742,6 +754,7 @@ where
 {
     Ok(Input {
         kill_evt: None,
+        worker_thread: None,
         config: defaults::new_trackpad_config(width, height),
         source: Some(SocketEventSource::new(source)),
     })
@@ -754,6 +767,7 @@ where
 {
     Ok(Input {
         kill_evt: None,
+        worker_thread: None,
         config: defaults::new_mouse_config(),
         source: Some(SocketEventSource::new(source)),
     })
@@ -766,6 +780,7 @@ where
 {
     Ok(Input {
         kill_evt: None,
+        worker_thread: None,
         config: defaults::new_keyboard_config(),
         source: Some(SocketEventSource::new(source)),
     })

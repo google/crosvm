@@ -470,6 +470,7 @@ impl Worker {
 /// Virtio device for exposing block level read/write operations on a host file.
 pub struct Block {
     kill_evt: Option<EventFd>,
+    worker_thread: Option<thread::JoinHandle<()>>,
     disk_image: Option<Box<dyn DiskFile>>,
     disk_size: Arc<Mutex<u64>>,
     avail_features: u64,
@@ -522,6 +523,7 @@ impl Block {
 
         Ok(Block {
             kill_evt: None,
+            worker_thread: None,
             disk_image: Some(disk_image),
             disk_size: Arc::new(Mutex::new(disk_size)),
             avail_features,
@@ -699,6 +701,10 @@ impl Drop for Block {
             // Ignore the result because there is nothing we can do about it.
             let _ = kill_evt.write(1);
         }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
+        }
     }
 }
 
@@ -780,9 +786,14 @@ impl VirtioDevice for Block {
                             worker.run(queue_evts.remove(0), kill_evt, control_socket);
                         });
 
-                if let Err(e) = worker_result {
-                    error!("failed to spawn virtio_blk worker: {}", e);
-                    return;
+                match worker_result {
+                    Err(e) => {
+                        error!("failed to spawn virtio_blk worker: {}", e);
+                        return;
+                    }
+                    Ok(join_handle) => {
+                        self.worker_thread = Some(join_handle);
+                    }
                 }
             }
         }

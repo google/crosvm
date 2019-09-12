@@ -270,6 +270,7 @@ where
 pub struct Net<T: TapT> {
     workers_kill_evt: Option<EventFd>,
     kill_evt: EventFd,
+    worker_thread: Option<thread::JoinHandle<()>>,
     tap: Option<T>,
     avail_features: u64,
     acked_features: u64,
@@ -317,6 +318,7 @@ where
         Ok(Net {
             workers_kill_evt: Some(kill_evt.try_clone().map_err(NetError::CloneKillEventFd)?),
             kill_evt,
+            worker_thread: None,
             tap: Some(tap),
             avail_features,
             acked_features: 0u64,
@@ -375,6 +377,10 @@ where
         if self.workers_kill_evt.is_none() {
             // Ignore the result because there is nothing we can do about it.
             let _ = self.kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
         }
     }
 }
@@ -468,9 +474,14 @@ where
                             }
                         });
 
-                if let Err(e) = worker_result {
-                    error!("failed to spawn virtio_net worker: {}", e);
-                    return;
+                match worker_result {
+                    Err(e) => {
+                        error!("failed to spawn virtio_net worker: {}", e);
+                        return;
+                    }
+                    Ok(join_handle) => {
+                        self.worker_thread = Some(join_handle);
+                    }
                 }
             }
         }

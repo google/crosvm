@@ -235,6 +235,7 @@ pub struct Balloon {
     config: Arc<BalloonConfig>,
     features: u64,
     kill_evt: Option<EventFd>,
+    worker_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Balloon {
@@ -247,6 +248,7 @@ impl Balloon {
                 actual_pages: AtomicUsize::new(0),
             }),
             kill_evt: None,
+            worker_thread: None,
             // TODO(dgreid) - Add stats queue feature.
             features: 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM,
         })
@@ -267,6 +269,10 @@ impl Drop for Balloon {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do with a failure.
             let _ = kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
         }
     }
 }
@@ -345,9 +351,15 @@ impl VirtioDevice for Balloon {
                 };
                 worker.run(queue_evts, kill_evt);
             });
-        if let Err(e) = worker_result {
-            error!("failed to spawn virtio_balloon worker: {}", e);
-            return;
+
+        match worker_result {
+            Err(e) => {
+                error!("failed to spawn virtio_balloon worker: {}", e);
+                return;
+            }
+            Ok(join_handle) => {
+                self.worker_thread = Some(join_handle);
+            }
         }
     }
 }
