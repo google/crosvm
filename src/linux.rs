@@ -10,6 +10,7 @@ use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, Read};
+use std::mem;
 use std::net::Ipv4Addr;
 #[cfg(feature = "gpu")]
 use std::num::NonZeroU8;
@@ -1517,7 +1518,8 @@ fn run_control(
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpus.len() + 1));
     let run_mode_arc = Arc::new(VcpuRunMode::default());
     setup_vcpu_signal_handler()?;
-    for (cpu_id, vcpu) in linux.vcpus.into_iter().enumerate() {
+    let vcpus = linux.vcpus.split_off(0);
+    for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
         let handle = run_vcpu(
             vcpu,
             cpu_id as u32,
@@ -1803,6 +1805,10 @@ fn run_control(
             Err(e) => error!("failed to kill vcpu thread: {}", e),
         }
     }
+
+    // Explicitly drop the VM structure here to allow the devices to clean up before the
+    // control sockets are closed when this function exits.
+    mem::drop(linux);
 
     stdin_lock
         .set_canon_mode()
