@@ -14,8 +14,8 @@ use sys_util::{EventFd, GuestMemory, Result};
 
 use super::*;
 use crate::pci::{
-    PciBarConfiguration, PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciDevice,
-    PciDeviceError, PciHeaderType, PciInterruptPin, PciSubclass,
+    MsixCap, PciBarConfiguration, PciCapability, PciCapabilityID, PciClassCode, PciConfiguration,
+    PciDevice, PciDeviceError, PciHeaderType, PciInterruptPin, PciSubclass,
 };
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
@@ -136,7 +136,9 @@ const DEVICE_CONFIG_BAR_OFFSET: u64 = 0x2000;
 const DEVICE_CONFIG_SIZE: u64 = 0x1000;
 const NOTIFICATION_BAR_OFFSET: u64 = 0x3000;
 const NOTIFICATION_SIZE: u64 = 0x1000;
-const CAPABILITY_BAR_SIZE: u64 = 0x4000;
+const MSIX_TABLE_BAR_OFFSET: u64 = 0x6000;
+const MSIX_PBA_BAR_OFFSET: u64 = 0x7000;
+const CAPABILITY_BAR_SIZE: u64 = 0x8000;
 
 const NOTIFY_OFF_MULTIPLIER: u32 = 4; // A dword per notification address.
 
@@ -160,7 +162,7 @@ pub struct VirtioPciDevice {
     queue_evts: Vec<EventFd>,
     mem: Option<GuestMemory>,
     settings_bar: u8,
-
+    msix_cap_reg_idx: Option<usize>,
     common_config: VirtioPciCommonConfig,
 }
 
@@ -202,6 +204,7 @@ impl VirtioPciDevice {
             queue_evts,
             mem: Some(mem),
             settings_bar: 0,
+            msix_cap_reg_idx: None,
             common_config: VirtioPciCommonConfig {
                 driver_status: 0,
                 config_generation: 0,
@@ -291,6 +294,21 @@ impl VirtioPciDevice {
         self.config_regs
             .add_capability(&configuration_cap)
             .map_err(PciDeviceError::CapabilitiesSetup)?;
+
+        if self.device.msix_vectors() > 0 {
+            let msix_cap = MsixCap::new(
+                settings_bar,
+                self.device.msix_vectors(),
+                MSIX_TABLE_BAR_OFFSET as u32,
+                settings_bar,
+                MSIX_PBA_BAR_OFFSET as u32,
+            );
+            let msix_offset = self
+                .config_regs
+                .add_capability(&msix_cap)
+                .map_err(PciDeviceError::CapabilitiesSetup)?;
+            self.msix_cap_reg_idx = Some(msix_offset / 4);
+        }
 
         self.settings_bar = settings_bar;
         Ok(())

@@ -34,6 +34,11 @@ pub trait VirtioDevice: Send {
     /// The virtio device type.
     fn device_type(&self) -> u32;
 
+    /// number of MSI-X vectors. 0 means MSI-X not supported.
+    fn msix_vectors(&self) -> u16 {
+        0
+    }
+
     /// The maximum size of each queue that this device supports.
     fn queue_max_sizes(&self) -> &[u16];
 
