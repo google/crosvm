@@ -27,6 +27,8 @@ use sys_util::{
 use gpu_display::*;
 use gpu_renderer::{Renderer, RendererFlags};
 
+use resources::Alloc;
+
 use super::{
     copy_config, resource_bridge::*, DescriptorChain, Queue, Reader, VirtioDevice, Writer,
     INTERRUPT_STATUS_USED_RING, TYPE_GPU, VIRTIO_F_VERSION_1,
@@ -577,6 +579,7 @@ impl DisplayBackend {
 fn build_backend(
     possible_displays: &[DisplayBackend],
     gpu_device_socket: VmMemoryControlRequestSocket,
+    pci_bar: Alloc,
 ) -> Option<Backend> {
     let mut renderer_flags = RendererFlags::default();
     let mut display_opt = None;
@@ -620,7 +623,7 @@ fn build_backend(
         }
     };
 
-    Some(Backend::new(display, renderer, gpu_device_socket))
+    Some(Backend::new(display, renderer, gpu_device_socket, pci_bar))
 }
 
 pub struct Gpu {
@@ -632,6 +635,7 @@ pub struct Gpu {
     worker_thread: Option<thread::JoinHandle<()>>,
     num_scanouts: NonZeroU8,
     display_backends: Vec<DisplayBackend>,
+    pci_bar: Option<Alloc>,
 }
 
 impl Gpu {
@@ -651,6 +655,7 @@ impl Gpu {
             worker_thread: None,
             num_scanouts,
             display_backends,
+            pci_bar: None,
         }
     }
 
@@ -770,15 +775,18 @@ impl VirtioDevice for Gpu {
         let cursor_queue = queues.remove(0);
         let cursor_evt = queue_evts.remove(0);
         let display_backends = self.display_backends.clone();
-        if let Some(gpu_device_socket) = self.gpu_device_socket.take() {
+        if let (Some(gpu_device_socket), Some(pci_bar)) =
+            (self.gpu_device_socket.take(), self.pci_bar.take())
+        {
             let worker_result =
                 thread::Builder::new()
                     .name("virtio_gpu".to_string())
                     .spawn(move || {
-                        let backend = match build_backend(&display_backends, gpu_device_socket) {
-                            Some(backend) => backend,
-                            None => return,
-                        };
+                        let backend =
+                            match build_backend(&display_backends, gpu_device_socket, pci_bar) {
+                                Some(backend) => backend,
+                                None => return,
+                            };
 
                         Worker {
                             exit_evt,
@@ -810,9 +818,11 @@ impl VirtioDevice for Gpu {
     }
 
     // Require 1 BAR for mapping 3D buffers
-    fn get_device_bars(&self) -> Vec<PciBarConfiguration> {
+    fn get_device_bars(&mut self, bus: u8, dev: u8) -> Vec<PciBarConfiguration> {
+        let bar: u8 = 4;
+        self.pci_bar = Some(Alloc::PciBar { bus, dev, bar });
         vec![PciBarConfiguration::new(
-            4,
+            bar as usize,
             1 << 33,
             PciBarRegionType::Memory64BitRegion,
             PciBarPrefetchable::NotPrefetchable,

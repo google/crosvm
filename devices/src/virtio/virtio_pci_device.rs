@@ -375,7 +375,7 @@ impl PciDevice for VirtioPciDevice {
             .pci_bus_dev
             .expect("assign_bus_dev must be called prior to allocate_device_bars");
         let mut ranges = Vec::new();
-        for config in self.device.get_device_bars() {
+        for config in self.device.get_device_bars(bus, dev) {
             let device_addr = resources
                 .device_allocator()
                 .allocate_with_align(

@@ -14,6 +14,7 @@ use std::usize;
 use data_model::*;
 
 use msg_socket::{MsgReceiver, MsgSender};
+use resources::Alloc;
 use sys_util::{error, GuestAddress, GuestMemory};
 
 use gpu_display::*;
@@ -148,6 +149,8 @@ pub struct Backend {
     cursor_surface: Option<u32>,
     scanout_resource: u32,
     cursor_resource: u32,
+    #[allow(dead_code)]
+    pci_bar: Alloc,
 }
 
 impl Backend {
@@ -160,6 +163,7 @@ impl Backend {
         display: GpuDisplay,
         renderer: Renderer,
         gpu_device_socket: VmMemoryControlRequestSocket,
+        pci_bar: Alloc,
     ) -> Backend {
         Backend {
             display: Rc::new(RefCell::new(display)),
@@ -171,6 +175,7 @@ impl Backend {
             cursor_surface: None,
             scanout_resource: 0,
             cursor_resource: 0,
+            pci_bar,
         }
     }
 

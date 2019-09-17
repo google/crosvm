@@ -77,7 +77,7 @@ pub trait VirtioDevice: Send {
     }
 
     /// Returns any additional BAR configuration required by the device.
-    fn get_device_bars(&self) -> Vec<PciBarConfiguration> {
+    fn get_device_bars(&mut self, _bus: u8, _dev: u8) -> Vec<PciBarConfiguration> {
         Vec::new()
     }
 
