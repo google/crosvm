@@ -3,8 +3,11 @@
 // found in the LICENSE file.
 
 use crate::pci::{PciCapability, PciCapabilityID};
+use msg_socket::{MsgReceiver, MsgSender};
 use std::convert::TryInto;
+use std::os::unix::io::{AsRawFd, RawFd};
 use sys_util::{error, EventFd};
+use vm_control::{MaybeOwnedFd, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
 
 use data_model::DataInit;
 
@@ -52,11 +55,12 @@ pub struct MsixConfig {
     irq_vec: Vec<IrqfdGsi>,
     masked: bool,
     enabled: bool,
+    msi_device_socket: VmIrqRequestSocket,
     msix_num: u16,
 }
 
 impl MsixConfig {
-    pub fn new(msix_vectors: u16) -> Self {
+    pub fn new(msix_vectors: u16, vm_socket: VmIrqRequestSocket) -> Self {
         assert!(msix_vectors <= MAX_MSIX_VECTORS_PER_DEVICE);
 
         let mut table_entries: Vec<MsixTableEntry> = Vec::new();
@@ -71,6 +75,7 @@ impl MsixConfig {
             irq_vec: Vec::new(),
             masked: false,
             enabled: false,
+            msi_device_socket: vm_socket,
             msix_num: msix_vectors,
         }
     }
@@ -139,28 +144,46 @@ impl MsixConfig {
         }
     }
 
-    fn add_msi_route(&self, index: u16, _gsi: u32) {
+    fn add_msi_route(&self, index: u16, gsi: u32) {
         let mut data: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
         self.read_msix_table((index * 16).into(), data.as_mut());
         let msi_address: u64 = u64::from_le_bytes(data);
         let mut data: [u8; 4] = [0, 0, 0, 0];
         self.read_msix_table((index * 16 + 8).into(), data.as_mut());
-        let _msi_data: u32 = u32::from_le_bytes(data);
+        let msi_data: u32 = u32::from_le_bytes(data);
 
         if msi_address == 0 {
             return;
         }
 
-        // TODO: IPC to vm_control for VmIrqRequest::AddMsiRoute()
+        if let Err(e) = self.msi_device_socket.send(&VmIrqRequest::AddMsiRoute {
+            gsi,
+            msi_address,
+            msi_data,
+        }) {
+            error!("failed to send AddMsiRoute request: {:?}", e);
+            return;
+        }
+        if self.msi_device_socket.recv().is_err() {
+            error!("Faied to receive AddMsiRoute Response");
+        }
     }
 
     fn msix_enable(&mut self) {
         self.irq_vec.clear();
         for i in 0..self.msix_num {
             let irqfd = EventFd::new().unwrap();
-            let irq_num: u32 = 0;
-
-            // TODO: IPC to vm_control for VmIrqRequest::AllocateOneMsi()
+            if let Err(e) = self.msi_device_socket.send(&VmIrqRequest::AllocateOneMsi {
+                irqfd: MaybeOwnedFd::Borrowed(irqfd.as_raw_fd()),
+            }) {
+                error!("failed to send AllocateOneMsi request: {:?}", e);
+                continue;
+            }
+            let irq_num: u32;
+            match self.msi_device_socket.recv() {
+                Ok(VmIrqResponse::AllocateOneMsi { gsi }) => irq_num = gsi,
+                _ => continue,
+            }
             self.irq_vec.push(IrqfdGsi {
                 irqfd,
                 gsi: irq_num,
@@ -399,6 +422,11 @@ impl MsixConfig {
         } else if let Some(irq) = self.irq_vec.get(vector as usize) {
             irq.irqfd.write(1).unwrap();
         }
+    }
+
+    /// Return the raw fd of the MSI device socket
+    pub fn get_msi_socket(&self) -> RawFd {
+        self.msi_device_socket.as_ref().as_raw_fd()
     }
 }
 

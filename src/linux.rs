@@ -53,8 +53,9 @@ use vhost;
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
     DiskControlCommand, DiskControlRequestSocket, DiskControlResponseSocket, DiskControlResult,
-    UsbControlSocket, VmControlResponseSocket, VmIrqResponseSocket, VmMemoryControlRequestSocket,
-    VmMemoryControlResponseSocket, VmMemoryRequest, VmMemoryResponse, VmRunMode,
+    UsbControlSocket, VmControlResponseSocket, VmIrqRequest, VmIrqResponse, VmIrqResponseSocket,
+    VmMemoryControlRequestSocket, VmMemoryControlResponseSocket, VmMemoryRequest, VmMemoryResponse,
+    VmRunMode,
 };
 
 use crate::{Config, DiskOption, Executable, TouchDeviceOption};
@@ -935,6 +936,7 @@ fn create_devices(
     vm: &mut Vm,
     resources: &mut SystemAllocator,
     exit_evt: &EventFd,
+    control_sockets: &mut Vec<TaggedControlSocket>,
     wayland_device_socket: VmMemoryControlRequestSocket,
     gpu_device_socket: VmMemoryControlRequestSocket,
     balloon_device_socket: BalloonControlResponseSocket,
@@ -956,7 +958,17 @@ fn create_devices(
     let mut pci_devices = Vec::new();
 
     for stub in stubs {
-        let dev = VirtioPciDevice::new(mem.clone(), stub.dev).map_err(Error::VirtioPciDev)?;
+        let dev = if stub.dev.msix_vectors() > 0 {
+            let (msi_host_socket, msi_device_socket) =
+                msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
+            control_sockets.push(TaggedControlSocket::VmIrq(msi_host_socket));
+
+            VirtioPciDevice::new(mem.clone(), stub.dev, Some(msi_device_socket))
+                .map_err(Error::VirtioPciDev)?
+        } else {
+            VirtioPciDevice::new(mem.clone(), stub.dev, None).map_err(Error::VirtioPciDev)?
+        };
+
         let dev = Box::new(dev) as Box<dyn PciDevice>;
         pci_devices.push((dev, stub.jail));
     }
@@ -1363,6 +1375,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 vm,
                 sys_allocator,
                 exit_evt,
+                &mut control_sockets,
                 wayland_device_socket,
                 gpu_device_socket,
                 balloon_device_socket,
