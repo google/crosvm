@@ -13,6 +13,7 @@ use std::thread;
 use std::time::Duration;
 use std::u32;
 
+use crate::pci::MsixConfig;
 use data_model::{DataInit, Le16, Le32, Le64};
 use disk::DiskFile;
 use msg_socket::{MsgReceiver, MsgSender};
@@ -785,6 +786,7 @@ impl VirtioDevice for Block {
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
+        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,

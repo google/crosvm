@@ -11,7 +11,9 @@ use std::result;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
+use sync::Mutex;
 
+use crate::pci::MsixConfig;
 use p9;
 use sys_util::{error, warn, Error as SysError, EventFd, GuestMemory, PollContext, PollToken};
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
@@ -239,6 +241,7 @@ impl VirtioDevice for P9 {
         guest_mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
+        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,

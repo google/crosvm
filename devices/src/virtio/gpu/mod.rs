@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use sync::Mutex;
 
 use data_model::*;
 
@@ -37,7 +38,7 @@ use super::{
 
 use self::backend::Backend;
 use self::protocol::*;
-use crate::pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType};
+use crate::pci::{MsixConfig, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType};
 
 use vm_control::VmMemoryControlRequestSocket;
 
@@ -864,6 +865,7 @@ impl VirtioDevice for Gpu {
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
+        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
         interrupt_status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,

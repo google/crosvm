@@ -8,7 +8,9 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
+use sync::Mutex;
 
+use crate::pci::MsixConfig;
 use data_model::{DataInit, Le32};
 use msg_socket::MsgReceiver;
 use sys_util::{
@@ -340,6 +342,7 @@ impl VirtioDevice for Balloon {
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
+        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,

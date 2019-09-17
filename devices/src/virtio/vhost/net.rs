@@ -8,6 +8,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
+use sync::Mutex;
 
 use net_sys;
 use net_util::{MacAddress, TapT};
@@ -18,6 +19,7 @@ use virtio_sys::virtio_net;
 
 use super::worker::Worker;
 use super::{Error, Result};
+use crate::pci::MsixConfig;
 use crate::virtio::{Queue, VirtioDevice, TYPE_NET};
 
 const QUEUE_SIZE: u16 = 256;
@@ -171,6 +173,7 @@ where
         _: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
+        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
@@ -288,6 +291,7 @@ pub mod tests {
             guest_memory,
             EventFd::new().unwrap(),
             EventFd::new().unwrap(),
+            None,
             Arc::new(AtomicUsize::new(0)),
             vec![Queue::new(1)],
             vec![EventFd::new().unwrap()],

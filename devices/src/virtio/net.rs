@@ -10,7 +10,9 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
+use sync::Mutex;
 
+use crate::pci::MsixConfig;
 use libc::{EAGAIN, EEXIST};
 use net_sys;
 use net_util::{Error as TapError, MacAddress, TapT};
@@ -491,6 +493,7 @@ where
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
+        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,

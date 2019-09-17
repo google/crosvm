@@ -36,6 +36,7 @@ pub struct VirtioPciCommonConfig {
     pub device_feature_select: u32,
     pub driver_feature_select: u32,
     pub queue_select: u16,
+    pub msix_config: u16,
 }
 
 impl VirtioPciCommonConfig {
@@ -236,9 +237,11 @@ impl VirtioPciCommonConfig {
 mod tests {
     use super::*;
 
+    use crate::pci::MsixConfig;
     use std::os::unix::io::RawFd;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
+    use sync::Mutex;
     use sys_util::{EventFd, GuestMemory};
 
     struct DummyDevice(u32);
@@ -260,6 +263,7 @@ mod tests {
             _mem: GuestMemory,
             _interrupt_evt: EventFd,
             _interrupt_resample_evt: EventFd,
+            _msix_config: Option<Arc<Mutex<MsixConfig>>>,
             _status: Arc<AtomicUsize>,
             _queues: Vec<Queue>,
             _queue_evts: Vec<EventFd>,
@@ -278,6 +282,7 @@ mod tests {
             device_feature_select: 0x0,
             driver_feature_select: 0x0,
             queue_select: 0xff,
+            msix_config: 0x00,
         };
 
         let dev = &mut DummyDevice(0) as &mut dyn VirtioDevice;

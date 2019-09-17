@@ -48,6 +48,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use sync::Mutex;
 
 #[cfg(feature = "wl-dmabuf")]
 use libc::{dup, EBADF, EINVAL};
@@ -73,6 +74,7 @@ use super::resource_bridge::*;
 use super::{
     DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_WL, VIRTIO_F_VERSION_1,
 };
+use crate::pci::MsixConfig;
 use vm_control::{MaybeOwnedFd, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse};
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
@@ -1743,6 +1745,7 @@ impl VirtioDevice for Wl {
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
+        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,

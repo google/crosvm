@@ -6,6 +6,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
+use sync::Mutex;
 
 use data_model::{DataInit, Le64};
 
@@ -14,6 +15,7 @@ use vhost::Vsock as VhostVsockHandle;
 
 use super::worker::Worker;
 use super::{Error, Result};
+use crate::pci::MsixConfig;
 use crate::virtio::{copy_config, Queue, VirtioDevice, TYPE_VSOCK};
 
 const QUEUE_SIZE: u16 = 256;
@@ -138,6 +140,7 @@ impl VirtioDevice for Vsock {
         _: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
+        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,

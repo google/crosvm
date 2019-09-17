@@ -9,11 +9,14 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
+use sync::Mutex;
 
 use sys_util::Result as SysResult;
 use sys_util::{error, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 
 use data_model::{DataInit, Le32, Le64};
+
+use crate::pci::MsixConfig;
 
 use super::{
     copy_config, DescriptorChain, DescriptorError, Queue, Reader, VirtioDevice, Writer,
@@ -278,6 +281,7 @@ impl VirtioDevice for Pmem {
         memory: GuestMemory,
         interrupt_event: EventFd,
         interrupt_resample_event: EventFd,
+        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_events: Vec<EventFd>,

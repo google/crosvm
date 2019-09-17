@@ -13,6 +13,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
+use crate::pci::MsixConfig;
+use sync::Mutex;
 use sys_util::{error, EventFd, GuestMemory, PollContext, PollToken};
 use tpm2;
 
@@ -216,6 +218,7 @@ impl VirtioDevice for Tpm {
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
+        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
         interrupt_status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,

@@ -6,6 +6,7 @@ use std;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use sync::Mutex;
 
 use data_model::{DataInit, Le32};
 use kvm::Datamatch;
@@ -14,8 +15,8 @@ use sys_util::{EventFd, GuestMemory, Result};
 
 use super::*;
 use crate::pci::{
-    MsixCap, PciBarConfiguration, PciCapability, PciCapabilityID, PciClassCode, PciConfiguration,
-    PciDevice, PciDeviceError, PciHeaderType, PciInterruptPin, PciSubclass,
+    MsixCap, MsixConfig, PciBarConfiguration, PciCapability, PciCapabilityID, PciClassCode,
+    PciConfiguration, PciDevice, PciDeviceError, PciHeaderType, PciInterruptPin, PciSubclass,
 };
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
@@ -137,7 +138,9 @@ const DEVICE_CONFIG_SIZE: u64 = 0x1000;
 const NOTIFICATION_BAR_OFFSET: u64 = 0x3000;
 const NOTIFICATION_SIZE: u64 = 0x1000;
 const MSIX_TABLE_BAR_OFFSET: u64 = 0x6000;
+const MSIX_TABLE_SIZE: u64 = 0x1000;
 const MSIX_PBA_BAR_OFFSET: u64 = 0x7000;
+const MSIX_PBA_SIZE: u64 = 0x1000;
 const CAPABILITY_BAR_SIZE: u64 = 0x8000;
 
 const NOTIFY_OFF_MULTIPLIER: u32 = 4; // A dword per notification address.
@@ -162,6 +165,7 @@ pub struct VirtioPciDevice {
     queue_evts: Vec<EventFd>,
     mem: Option<GuestMemory>,
     settings_bar: u8,
+    msix_config: Option<Arc<Mutex<MsixConfig>>>,
     msix_cap_reg_idx: Option<usize>,
     common_config: VirtioPciCommonConfig,
 }
@@ -180,6 +184,14 @@ impl VirtioPciDevice {
             .collect();
 
         let pci_device_id = VIRTIO_PCI_DEVICE_ID_BASE + device.device_type() as u16;
+
+        let msix_num = device.msix_vectors();
+        let msix_config = if msix_num > 0 {
+            let msix_config = Arc::new(Mutex::new(MsixConfig::new(msix_num)));
+            Some(msix_config)
+        } else {
+            None
+        };
 
         let config_regs = PciConfiguration::new(
             VIRTIO_PCI_VENDOR_ID,
@@ -204,6 +216,7 @@ impl VirtioPciDevice {
             queue_evts,
             mem: Some(mem),
             settings_bar: 0,
+            msix_config,
             msix_cap_reg_idx: None,
             common_config: VirtioPciCommonConfig {
                 driver_status: 0,
@@ -211,6 +224,7 @@ impl VirtioPciDevice {
                 device_feature_select: 0,
                 driver_feature_select: 0,
                 queue_select: 0,
+                msix_config: 0,
             },
         })
     }
@@ -295,7 +309,7 @@ impl VirtioPciDevice {
             .add_capability(&configuration_cap)
             .map_err(PciDeviceError::CapabilitiesSetup)?;
 
-        if self.device.msix_vectors() > 0 {
+        if self.msix_config.is_some() && self.device.msix_vectors() > 0 {
             let msix_cap = MsixCap::new(
                 settings_bar,
                 self.device.msix_vectors(),
@@ -447,10 +461,27 @@ impl PciDevice for VirtioPciDevice {
     }
 
     fn read_config_register(&self, reg_idx: usize) -> u32 {
-        self.config_regs.read_reg(reg_idx)
+        let mut data: u32 = self.config_regs.read_reg(reg_idx);
+        if let Some(msix_cap_reg_idx) = self.msix_cap_reg_idx {
+            if let Some(msix_config) = &self.msix_config {
+                if msix_cap_reg_idx == reg_idx {
+                    data = msix_config.lock().read_msix_capability(data);
+                }
+            }
+        }
+
+        data
     }
 
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+        if let Some(msix_cap_reg_idx) = self.msix_cap_reg_idx {
+            if let Some(msix_config) = &self.msix_config {
+                if msix_cap_reg_idx == reg_idx {
+                    msix_config.lock().write_msix_capability(offset, data);
+                }
+            }
+        }
+
         (&mut self.config_regs).write_reg(reg_idx, offset, data)
     }
 
@@ -489,6 +520,23 @@ impl PciDevice for VirtioPciDevice {
             {
                 // Handled with ioeventfds.
             }
+
+            o if MSIX_TABLE_BAR_OFFSET <= o && o < MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE => {
+                if let Some(msix_config) = &self.msix_config {
+                    msix_config
+                        .lock()
+                        .read_msix_table(o - MSIX_TABLE_BAR_OFFSET, data);
+                }
+            }
+
+            o if MSIX_PBA_BAR_OFFSET <= o && o < MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE => {
+                if let Some(msix_config) = &self.msix_config {
+                    msix_config
+                        .lock()
+                        .read_pba_entries(o - MSIX_PBA_BAR_OFFSET, data);
+                }
+            }
+
             _ => (),
         }
     }
@@ -524,6 +572,21 @@ impl PciDevice for VirtioPciDevice {
             {
                 // Handled with ioeventfds.
             }
+            o if MSIX_TABLE_BAR_OFFSET <= o && o < MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE => {
+                if let Some(msix_config) = &self.msix_config {
+                    msix_config
+                        .lock()
+                        .write_msix_table(o - MSIX_TABLE_BAR_OFFSET, data);
+                }
+            }
+            o if MSIX_PBA_BAR_OFFSET <= o && o < MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE => {
+                if let Some(msix_config) = &self.msix_config {
+                    msix_config
+                        .lock()
+                        .write_pba_entries(o - MSIX_PBA_BAR_OFFSET, data);
+                }
+            }
+
             _ => (),
         };
 
@@ -531,10 +594,17 @@ impl PciDevice for VirtioPciDevice {
             if let Some(interrupt_evt) = self.interrupt_evt.take() {
                 if let Some(interrupt_resample_evt) = self.interrupt_resample_evt.take() {
                     if let Some(mem) = self.mem.take() {
+                        let msix_config = if let Some(msix_config) = &self.msix_config {
+                            Some(msix_config.clone())
+                        } else {
+                            None
+                        };
+
                         self.device.activate(
                             mem,
                             interrupt_evt,
                             interrupt_resample_evt,
+                            msix_config,
                             self.interrupt_status.clone(),
                             self.queues.clone(),
                             self.queue_evts.split_off(0),
