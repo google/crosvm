@@ -673,7 +673,7 @@ impl Block {
                     } else {
                         disk.seek(SeekFrom::Start(offset))
                             .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
-                        disk.write_zeroes(length as usize).map_err(|e| {
+                        disk.write_zeroes_all(length as usize).map_err(|e| {
                             ExecuteError::DiscardWriteZeroes {
                                 ioerr: Some(e),
                                 sector,

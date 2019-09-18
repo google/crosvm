@@ -264,7 +264,7 @@ fn dd(file_path: &str, source_path: &str, count: Option<usize>) -> std::result::
         let nread = src_file.read(&mut buf[..this_count]).map_err(|_| ())?;
         // If this block is all zeros, then use write_zeros so the output file is sparse.
         if buf.iter().all(|b| *b == 0) {
-            qcow_file.write_zeroes(CHUNK_SIZE).map_err(|_| ())?;
+            qcow_file.write_zeroes_all(CHUNK_SIZE).map_err(|_| ())?;
         } else {
             qcow_file.write(&buf).map_err(|_| ())?;
         }

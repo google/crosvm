@@ -1239,7 +1239,7 @@ impl QcowFile {
                 if let Some(offset) = self.file_offset_read(curr_addr)? {
                     // Partial cluster - zero it out.
                     self.raw_file.file_mut().seek(SeekFrom::Start(offset))?;
-                    self.raw_file.file_mut().write_zeroes(count)?;
+                    self.raw_file.file_mut().write_zeroes_all(count)?;
                 }
             }
 
@@ -1822,8 +1822,7 @@ mod tests {
             q.write(&b).expect("Failed to write test string.");
             // Overwrite the test data with zeroes.
             q.seek(SeekFrom::Start(0xfff2000)).expect("Failed to seek.");
-            let nwritten = q.write_zeroes(0x200).expect("Failed to write zeroes.");
-            assert_eq!(nwritten, 0x200);
+            q.write_zeroes_all(0x200).expect("Failed to write zeroes.");
             // Verify that the correct part of the data was zeroed out.
             let mut buf = [0u8; 0x1000];
             q.seek(SeekFrom::Start(0xfff2000)).expect("Failed to seek.");
@@ -1848,8 +1847,8 @@ mod tests {
             q.write(&b).expect("Failed to write test string.");
             // Overwrite the full cluster with zeroes.
             q.seek(SeekFrom::Start(0)).expect("Failed to seek.");
-            let nwritten = q.write_zeroes(CHUNK_SIZE).expect("Failed to write zeroes.");
-            assert_eq!(nwritten, CHUNK_SIZE);
+            q.write_zeroes_all(CHUNK_SIZE)
+                .expect("Failed to write zeroes.");
             // Verify that the data was zeroed out.
             let mut buf = [0u8; CHUNK_SIZE];
             q.seek(SeekFrom::Start(0)).expect("Failed to seek.");

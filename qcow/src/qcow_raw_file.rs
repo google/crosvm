@@ -142,7 +142,7 @@ impl QcowRawFile {
     pub fn zero_cluster(&mut self, address: u64) -> io::Result<()> {
         let cluster_size = self.cluster_size as usize;
         self.file.seek(SeekFrom::Start(address))?;
-        self.file.write_zeroes(cluster_size)?;
+        self.file.write_zeroes_all(cluster_size)?;
         Ok(())
     }
 }
