@@ -2,24 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
 use std::fs::File;
-use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::result;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
 use sys_util::Result as SysResult;
-use sys_util::{
-    error, EventFd, GuestAddress, GuestMemory, GuestMemoryError, PollContext, PollToken,
-};
+use sys_util::{error, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 
 use data_model::{DataInit, Le32, Le64};
 
 use super::{
-    copy_config, DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_PMEM,
+    copy_config, Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_PMEM,
     VIRTIO_F_VERSION_1,
 };
 
@@ -58,84 +53,6 @@ struct virtio_pmem_req {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_pmem_req {}
 
-#[derive(Debug)]
-enum ParseError {
-    /// Guest gave us bad memory addresses.
-    GuestMemory(GuestMemoryError),
-    /// Guest gave us a write only descriptor that protocol says to read from.
-    UnexpectedWriteOnlyDescriptor,
-    /// Guest gave us a read only descriptor that protocol says to write to.
-    UnexpectedReadOnlyDescriptor,
-    /// Guest gave us too few descriptors in a descriptor chain.
-    DescriptorChainTooShort,
-    /// Guest gave us a buffer that was too short to use.
-    BufferLengthTooSmall,
-    /// Guest sent us invalid request.
-    InvalidRequest,
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::ParseError::*;
-
-        match self {
-            BufferLengthTooSmall => write!(f, "buffer length too small"),
-            DescriptorChainTooShort => write!(f, "descriptor chain too short"),
-            GuestMemory(e) => write!(f, "bad guest memory address: {}", e),
-            InvalidRequest => write!(f, "invalid request"),
-            UnexpectedReadOnlyDescriptor => write!(f, "unexpected read-only descriptor"),
-            UnexpectedWriteOnlyDescriptor => write!(f, "unexpected write-only descriptor"),
-        }
-    }
-}
-
-enum Request {
-    Flush { status_address: GuestAddress },
-}
-
-impl Request {
-    fn parse(
-        avail_desc: &DescriptorChain,
-        memory: &GuestMemory,
-    ) -> result::Result<Request, ParseError> {
-        // The head contains the request type which MUST be readable.
-        if avail_desc.is_write_only() {
-            return Err(ParseError::UnexpectedWriteOnlyDescriptor);
-        }
-
-        if avail_desc.len as usize != size_of::<virtio_pmem_req>() {
-            return Err(ParseError::InvalidRequest);
-        }
-
-        let request: virtio_pmem_req = memory
-            .read_obj_from_addr(avail_desc.addr)
-            .map_err(ParseError::GuestMemory)?;
-
-        // Currently, there is only one virtio-pmem request, FLUSH.
-        if request.type_ != VIRTIO_PMEM_REQ_TYPE_FLUSH {
-            error!("unknown request type: {}", request.type_.to_native());
-            return Err(ParseError::InvalidRequest);
-        }
-
-        let status_desc = avail_desc
-            .next_descriptor()
-            .ok_or(ParseError::DescriptorChainTooShort)?;
-
-        // The status MUST always be writable
-        if status_desc.is_read_only() {
-            return Err(ParseError::UnexpectedReadOnlyDescriptor);
-        }
-
-        if (status_desc.len as usize) < size_of::<virtio_pmem_resp>() {
-            return Err(ParseError::BufferLengthTooSmall);
-        }
-
-        Ok(Request::Flush {
-            status_address: status_desc.addr,
-        })
-    }
-}
-
 struct Worker {
     queue: Queue,
     memory: GuestMemory,
@@ -146,37 +63,49 @@ struct Worker {
 }
 
 impl Worker {
+    fn execute_request(&self, request: virtio_pmem_req) -> u32 {
+        match request.type_.to_native() {
+            VIRTIO_PMEM_REQ_TYPE_FLUSH => match self.disk_image.sync_all() {
+                Ok(()) => VIRTIO_PMEM_RESP_TYPE_OK,
+                Err(e) => {
+                    error!("failed flushing disk image: {}", e);
+                    VIRTIO_PMEM_RESP_TYPE_EIO
+                }
+            },
+            _ => {
+                error!("unknown request type: {}", request.type_.to_native());
+                VIRTIO_PMEM_RESP_TYPE_EIO
+            }
+        }
+    }
+
     fn process_queue(&mut self) -> bool {
         let mut needs_interrupt = false;
         while let Some(avail_desc) = self.queue.pop(&self.memory) {
-            let len;
-            match Request::parse(&avail_desc, &self.memory) {
-                Ok(Request::Flush { status_address }) => {
-                    let status_code = match self.disk_image.sync_all() {
-                        Ok(()) => VIRTIO_PMEM_RESP_TYPE_OK,
-                        Err(e) => {
-                            error!("failed flushing disk image: {}", e);
-                            VIRTIO_PMEM_RESP_TYPE_EIO
-                        }
-                    };
+            let avail_desc_index = avail_desc.index;
+            let mut reader = Reader::new(&self.memory, avail_desc.clone());
+            let mut writer = Writer::new(&self.memory, avail_desc);
 
-                    let response = virtio_pmem_resp {
-                        status_code: status_code.into(),
-                    };
-                    len = match self.memory.write_obj_at_addr(response, status_address) {
-                        Ok(_) => size_of::<virtio_pmem_resp>() as u32,
-                        Err(e) => {
-                            error!("bad guest memory address: {}", e);
-                            0
-                        }
-                    }
-                }
+            let status_code = match reader.read_obj::<virtio_pmem_req>() {
+                Ok(request) => self.execute_request(request),
                 Err(e) => {
-                    error!("failed processing available descriptor chain: {}", e);
-                    len = 0;
+                    error!("failed to read virtio_pmem_req: {}", e);
+                    VIRTIO_PMEM_RESP_TYPE_EIO
                 }
+            };
+
+            let response = virtio_pmem_resp {
+                status_code: status_code.into(),
+            };
+            if let Err(e) = writer.write_obj(response) {
+                error!("failed to write virtio_pmem_resp: {}", e);
             }
-            self.queue.add_used(&self.memory, avail_desc.index, len);
+
+            self.queue.add_used(
+                &self.memory,
+                avail_desc_index,
+                writer.bytes_written() as u32,
+            );
             needs_interrupt = true;
         }
 
