@@ -13,10 +13,12 @@ use self::constants::*;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use data_model::{DataInit, Le16, Le32};
-use sys_util::{error, warn, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
+use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
 
 use self::event_source::{input_event, EvdevEventSource, EventSource, SocketEventSource};
-use super::{copy_config, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_INPUT};
+use super::{
+    copy_config, Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_INPUT,
+};
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::io::Read;
@@ -337,63 +339,12 @@ unsafe impl DataInit for virtio_input_event {}
 impl virtio_input_event {
     const EVENT_SIZE: usize = size_of::<virtio_input_event>();
 
-    fn write_to_guest_memory(&self, guest_memory: &GuestMemory, addr: GuestAddress) -> Result<()> {
-        let evt_slice = self.as_slice();
-        let mut bytes_written = 0usize;
-        while bytes_written < evt_slice.len() {
-            bytes_written += guest_memory
-                .write_at_addr(
-                    &evt_slice[bytes_written..],
-                    addr.checked_add(bytes_written as u64)
-                        .ok_or(InputError::GuestError(format!(
-                            "Writing an event at address {} would overflow",
-                            addr
-                        )))?,
-                )
-                .map_err(|e| {
-                    InputError::GuestError(format!("Failed to write event to guest memory: {}", e))
-                })?;
-        }
-        Ok(())
-    }
-
-    fn new(type_: u16, code: u16, value: u32) -> virtio_input_event {
-        virtio_input_event {
-            type_: Le16::from(type_),
-            code: Le16::from(code),
-            value: Le32::from(value),
-        }
-    }
-
     fn from_input_event(other: &input_event) -> virtio_input_event {
         virtio_input_event {
             type_: Le16::from(other.type_),
             code: Le16::from(other.code),
             value: Le32::from(other.value),
         }
-    }
-
-    fn from_guest_memory(
-        guest_memory: &GuestMemory,
-        addr: GuestAddress,
-    ) -> Result<virtio_input_event> {
-        let mut vio_evt = virtio_input_event::new(0, 0, 0);
-        let mut bytes_read = 0usize;
-        while bytes_read < virtio_input_event::EVENT_SIZE {
-            bytes_read += guest_memory
-                .read_at_addr(
-                    &mut vio_evt.as_mut_slice()[bytes_read..],
-                    addr.checked_add(bytes_read as u64)
-                        .ok_or(InputError::GuestError(format!(
-                            "Reading an event from address {} would overflow",
-                            addr
-                        )))?,
-                )
-                .map_err(|e| {
-                    InputError::GuestError(format!("Failed to read event from guest memory: {}", e))
-                })?;
-        }
-        Ok(vio_evt)
     }
 }
 
@@ -425,27 +376,12 @@ impl<T: EventSource> Worker<T> {
                     break;
                 }
                 Some(avail_desc) => {
-                    if !avail_desc.is_write_only() {
-                        error!("Received a read only descriptor on event queue");
-                        continue;
-                    }
-
-                    let cnt = avail_desc.len as usize / virtio_input_event::EVENT_SIZE;
-                    let mut len = 0usize;
-                    for idx in 0..cnt {
+                    let avail_desc_index = avail_desc.index;
+                    let mut writer = Writer::new(&self.guest_memory, avail_desc);
+                    while writer.available_bytes() >= virtio_input_event::EVENT_SIZE {
                         match self.event_source.pop_available_event() {
                             Some(evt) => {
-                                if let Err(e) = evt.write_to_guest_memory(
-                                    &self.guest_memory,
-                                    // This won't overflow as long as the length specified
-                                    // on the queue descriptor is valid since idx < cnt and
-                                    // cnt = buffer_len / EVENT_SIZE. In any case,
-                                    // write_to_guest_memory will check for overflow for
-                                    // good measure.
-                                    avail_desc.addr.unchecked_add(
-                                        (idx * virtio_input_event::EVENT_SIZE) as u64,
-                                    ),
-                                ) {
+                                if let Err(e) = writer.write_obj(evt) {
                                     // An error here would mean the address and length given
                                     // in the queue descriptor are wrong: Don't try to write
                                     // to this buffer anymore.
@@ -455,11 +391,13 @@ impl<T: EventSource> Worker<T> {
                             }
                             None => break,
                         }
-                        len += virtio_input_event::EVENT_SIZE;
                     }
 
-                    self.event_queue
-                        .add_used(&self.guest_memory, avail_desc.index, len as u32);
+                    self.event_queue.add_used(
+                        &self.guest_memory,
+                        avail_desc_index,
+                        writer.bytes_written() as u32,
+                    );
                     needs_interrupt = true;
                 }
             }
@@ -471,29 +409,16 @@ impl<T: EventSource> Worker<T> {
     fn process_status_queue(&mut self) -> Result<bool> {
         let mut needs_interrupt = false;
         while let Some(avail_desc) = self.status_queue.pop(&self.guest_memory) {
-            if !avail_desc.is_read_only() {
-                error!("Received a writable descriptor on status queue");
-                continue;
-            }
-            let len = avail_desc.len as usize;
-            let count = len / virtio_input_event::EVENT_SIZE;
-            if len % virtio_input_event::EVENT_SIZE != 0 {
+            let avail_desc_index = avail_desc.index;
+            let mut reader = Reader::new(&self.guest_memory, avail_desc);
+            if reader.available_bytes() % virtio_input_event::EVENT_SIZE != 0 {
                 warn!(
                     "Ignoring buffer of unexpected size on status queue: {:0}",
-                    len
+                    reader.available_bytes(),
                 );
             } else {
-                for idx in 0usize..count {
-                    match virtio_input_event::from_guest_memory(
-                        &self.guest_memory,
-                        avail_desc
-                            .addr
-                            // This won't overflow as long as the buffer length specified
-                            // in the queue descriptor is valid because idx < count and
-                            // count = buffer_len / EVENT_SIZE. In any case,
-                            // from_guest_memory will check for overflow anyways.
-                            .unchecked_add((idx * virtio_input_event::EVENT_SIZE) as u64),
-                    ) {
+                while reader.available_bytes() >= virtio_input_event::EVENT_SIZE {
+                    match reader.read_obj::<virtio_input_event>() {
                         Ok(evt) => {
                             self.event_source.send_event(&evt)?;
                         }
@@ -508,8 +433,11 @@ impl<T: EventSource> Worker<T> {
                 }
             }
 
-            self.status_queue
-                .add_used(&self.guest_memory, avail_desc.index, len as u32);
+            self.status_queue.add_used(
+                &self.guest_memory,
+                avail_desc_index,
+                reader.bytes_read() as u32,
+            );
             needs_interrupt = true;
         }
 
