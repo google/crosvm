@@ -6,12 +6,15 @@ use std::cmp;
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
 use std::io::{self, Read, Write};
+use std::marker::PhantomData;
 use std::mem::{size_of, MaybeUninit};
 use std::ptr::copy_nonoverlapping;
 use std::result;
 
 use data_model::{DataInit, Le16, Le32, Le64, VolatileMemory, VolatileMemoryError, VolatileSlice};
-use sys_util::{FileReadWriteAtVolatile, FileReadWriteVolatile, GuestAddress, GuestMemory};
+use sys_util::{
+    FileReadWriteAtVolatile, FileReadWriteVolatile, GuestAddress, GuestMemory, IntoIovec,
+};
 
 use super::DescriptorChain;
 
@@ -177,6 +180,27 @@ impl<'a> DescriptorChainConsumer<'a> {
             Err(Error::SplitOutOfBounds(offset))
         }
     }
+
+    fn get_iovec(&mut self, len: usize) -> io::Result<DescriptorIovec<'a>> {
+        let mut iovec = Vec::new();
+
+        self.consume(len, |bufs| {
+            let mut total = 0;
+            for vs in bufs {
+                iovec.push(libc::iovec {
+                    iov_base: vs.as_ptr() as *mut libc::c_void,
+                    iov_len: vs.size() as usize,
+                });
+                total += vs.size() as usize;
+            }
+            Ok(total)
+        })?;
+
+        Ok(DescriptorIovec {
+            iovec,
+            mem: PhantomData,
+        })
+    }
 }
 
 /// Provides high-level interface over the sequence of memory regions
@@ -302,6 +326,12 @@ impl<'a> Reader<'a> {
     /// `offset > self.available_bytes()`.
     pub fn split_at(&mut self, offset: usize) -> Result<Reader<'a>> {
         self.buffer.split_at(offset).map(|buffer| Reader { buffer })
+    }
+
+    /// Returns a DescriptorIovec for the next `len` bytes of the descriptor chain
+    /// buffer, which can be used as an IntoIovec.
+    pub fn get_iovec(&mut self, len: usize) -> io::Result<DescriptorIovec<'a>> {
+        self.buffer.get_iovec(len)
     }
 }
 
@@ -442,6 +472,12 @@ impl<'a> Writer<'a> {
     pub fn split_at(&mut self, offset: usize) -> Result<Writer<'a>> {
         self.buffer.split_at(offset).map(|buffer| Writer { buffer })
     }
+
+    /// Returns a DescriptorIovec for the next `len` bytes of the descriptor chain
+    /// buffer, which can be used as an IntoIovec.
+    pub fn get_iovec(&mut self, len: usize) -> io::Result<DescriptorIovec<'a>> {
+        self.buffer.get_iovec(len)
+    }
 }
 
 impl<'a> io::Write for Writer<'a> {
@@ -468,6 +504,18 @@ impl<'a> io::Write for Writer<'a> {
     fn flush(&mut self) -> io::Result<()> {
         // Nothing to flush since the writes go straight into the buffer.
         Ok(())
+    }
+}
+
+pub struct DescriptorIovec<'a> {
+    iovec: Vec<libc::iovec>,
+    mem: PhantomData<&'a GuestMemory>,
+}
+
+// Safe because the lifetime of DescriptorIovec is tied to the underlying GuestMemory.
+unsafe impl<'a> IntoIovec for DescriptorIovec<'a> {
+    fn into_iovec(&self) -> Vec<libc::iovec> {
+        self.iovec.clone()
     }
 }
 
