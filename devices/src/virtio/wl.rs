@@ -16,8 +16,8 @@
 //! page frame number that the guest can access the memory from.
 //!
 //! The types starting with `Ctrl` are structures representing the virtio wayland protocol "on the
-//! wire." They are decoded/encoded as some variant of `WlOp` for requests and `WlResp` for
-//! responses.
+//! wire." They are decoded and executed in the `execute` function and encoded as some variant of
+//! `WlResp` for responses.
 //!
 //! There is one `WlState` instance that contains every known vfd and the current state of `in`
 //! queue. The `in` queue requires extra state to buffer messages to the guest in case the `in`
@@ -35,8 +35,8 @@ use std::convert::From;
 use std::error::Error as StdError;
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom};
-use std::mem::{size_of, size_of_val};
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::mem::size_of;
 #[cfg(feature = "wl-dmabuf")]
 use std::os::raw::{c_uint, c_ulonglong};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
@@ -62,16 +62,17 @@ use resources::GpuMemoryDesc;
 #[cfg(feature = "wl-dmabuf")]
 use sys_util::ioctl_iow_nr;
 use sys_util::{
-    error, pipe, round_up_to_page_size, warn, Error, EventFd, FileFlags, FileReadWriteVolatile,
-    GuestAddress, GuestMemory, GuestMemoryError, PollContext, PollToken, Result, ScmSocket,
-    SharedMemory,
+    error, pipe, round_up_to_page_size, warn, Error, EventFd, FileFlags, GuestMemory,
+    GuestMemoryError, PollContext, PollToken, Result, ScmSocket, SharedMemory,
 };
 
 #[cfg(feature = "wl-dmabuf")]
 use sys_util::ioctl_with_ref;
 
 use super::resource_bridge::*;
-use super::{DescriptorChain, Interrupt, Queue, VirtioDevice, TYPE_WL, VIRTIO_F_VERSION_1};
+use super::{
+    DescriptorChain, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_WL, VIRTIO_F_VERSION_1,
+};
 use crate::pci::MsixConfig;
 use vm_control::{MaybeOwnedFd, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse};
 
@@ -134,171 +135,14 @@ ioctl_iow_nr!(DMA_BUF_IOCTL_SYNC, DMA_BUF_IOCTL_BASE, 0, dma_buf_sync);
 const VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL: u32 = 0;
 const VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU: u32 = 1;
 
-fn parse_new(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
-    const ID_OFFSET: u64 = 8;
-    const FLAGS_OFFSET: u64 = 12;
-    const SIZE_OFFSET: u64 = 24;
-
-    let id: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, ID_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    let flags: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, FLAGS_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    let size: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, SIZE_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    Ok(WlOp::NewAlloc {
-        id: id.into(),
-        flags: flags.into(),
-        size: size.into(),
-    })
-}
-
-fn parse_new_pipe(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
-    const ID_OFFSET: u64 = 8;
-    const FLAGS_OFFSET: u64 = 12;
-
-    let id: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, ID_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    let flags: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, FLAGS_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    Ok(WlOp::NewPipe {
-        id: id.into(),
-        flags: flags.into(),
-    })
-}
-
-#[cfg(feature = "wl-dmabuf")]
-fn parse_new_dmabuf(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
-    const ID_OFFSET: u64 = 8;
-    const WIDTH_OFFSET: u64 = 28;
-    const HEIGHT_OFFSET: u64 = 32;
-    const FORMAT_OFFSET: u64 = 36;
-
-    let id: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, ID_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    let width: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, WIDTH_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    let height: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, HEIGHT_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    let format: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, FORMAT_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    Ok(WlOp::NewDmabuf {
-        id: id.into(),
-        width: width.into(),
-        height: height.into(),
-        format: format.into(),
-    })
-}
-
-#[cfg(feature = "wl-dmabuf")]
-fn parse_dmabuf_sync(addr: GuestAddress, mem: &GuestMemory) -> WlResult<WlOp> {
-    const ID_OFFSET: u64 = 8;
-    const FLAGS_OFFSET: u64 = 12;
-    let id: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, ID_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    let flags: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, FLAGS_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    Ok(WlOp::DmabufSync {
-        id: id.into(),
-        flags: flags.into(),
-    })
-}
-
-fn parse_send(addr: GuestAddress, len: u32, foreign_id: bool, mem: &GuestMemory) -> WlResult<WlOp> {
-    const ID_OFFSET: u64 = 8;
-    const VFD_COUNT_OFFSET: u64 = 12;
-    const VFDS_OFFSET: u64 = 16;
-
-    let id: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, ID_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    let vfd_count: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, VFD_COUNT_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    let vfd_count: u32 = vfd_count.into();
-    let vfds_addr = mem
-        .checked_offset(addr, VFDS_OFFSET)
-        .ok_or(WlError::CheckedOffset)?;
-    let vfds_element_size = if foreign_id {
-        size_of::<CtrlVfdSendVfd>()
-    } else {
-        size_of::<Le32>()
-    } as u32;
-    let data_addr = mem
-        .checked_offset(vfds_addr, (vfd_count * vfds_element_size) as u64)
-        .ok_or(WlError::CheckedOffset)?;
-    Ok(WlOp::Send {
-        id: id.into(),
-        foreign_id,
-        vfds_addr,
-        vfd_count,
-        data_addr,
-        data_len: len - (VFDS_OFFSET as u32) - vfd_count * vfds_element_size,
-    })
-}
-
-fn parse_id(addr: GuestAddress, mem: &GuestMemory) -> WlResult<u32> {
-    const ID_OFFSET: u64 = 8;
-    let id: Le32 = mem.read_obj_from_addr(
-        mem.checked_offset(addr, ID_OFFSET)
-            .ok_or(WlError::CheckedOffset)?,
-    )?;
-    Ok(id.into())
-}
-
-fn parse_desc(desc: &DescriptorChain, mem: &GuestMemory) -> WlResult<WlOp> {
-    let type_: Le32 = mem.read_obj_from_addr(desc.addr)?;
-    match type_.into() {
-        VIRTIO_WL_CMD_VFD_NEW => parse_new(desc.addr, mem),
-        VIRTIO_WL_CMD_VFD_CLOSE => Ok(WlOp::Close {
-            id: parse_id(desc.addr, mem)?,
-        }),
-        VIRTIO_WL_CMD_VFD_SEND => parse_send(desc.addr, desc.len, false, mem),
-        VIRTIO_WL_CMD_VFD_NEW_CTX => Ok(WlOp::NewCtx {
-            id: parse_id(desc.addr, mem)?,
-        }),
-        VIRTIO_WL_CMD_VFD_NEW_PIPE => parse_new_pipe(desc.addr, mem),
-        #[cfg(feature = "wl-dmabuf")]
-        VIRTIO_WL_CMD_VFD_NEW_DMABUF => parse_new_dmabuf(desc.addr, mem),
-        #[cfg(feature = "wl-dmabuf")]
-        VIRTIO_WL_CMD_VFD_DMABUF_SYNC => parse_dmabuf_sync(desc.addr, mem),
-        #[cfg(feature = "gpu")]
-        VIRTIO_WL_CMD_VFD_SEND_FOREIGN_ID => parse_send(desc.addr, desc.len, true, mem),
-        v => Ok(WlOp::InvalidCommand { op_type: v }),
-    }
-}
-
 fn encode_vfd_new(
-    desc_mem: VolatileSlice,
+    writer: &mut Writer,
     resp: bool,
     vfd_id: u32,
     flags: u32,
     pfn: u64,
     size: u32,
-) -> WlResult<u32> {
+) -> WlResult<()> {
     let ctrl_vfd_new = CtrlVfdNew {
         hdr: CtrlHeader {
             type_: Le32::from(if resp {
@@ -314,19 +158,20 @@ fn encode_vfd_new(
         size: Le32::from(size),
     };
 
-    desc_mem.get_ref(0)?.store(ctrl_vfd_new);
-    Ok(size_of::<CtrlVfdNew>() as u32)
+    writer
+        .write_obj(ctrl_vfd_new)
+        .map_err(WlError::WriteResponse)
 }
 
 #[cfg(feature = "wl-dmabuf")]
 fn encode_vfd_new_dmabuf(
-    desc_mem: VolatileSlice,
+    writer: &mut Writer,
     vfd_id: u32,
     flags: u32,
     pfn: u64,
     size: u32,
     desc: GpuMemoryDesc,
-) -> WlResult<u32> {
+) -> WlResult<()> {
     let ctrl_vfd_new_dmabuf = CtrlVfdNewDmabuf {
         hdr: CtrlHeader {
             type_: Le32::from(VIRTIO_WL_RESP_VFD_NEW_DMABUF),
@@ -347,16 +192,12 @@ fn encode_vfd_new_dmabuf(
         offset2: Le32::from(desc.planes[2].offset),
     };
 
-    desc_mem.get_ref(0)?.store(ctrl_vfd_new_dmabuf);
-    Ok(size_of::<CtrlVfdNewDmabuf>() as u32)
+    writer
+        .write_obj(ctrl_vfd_new_dmabuf)
+        .map_err(WlError::WriteResponse)
 }
 
-fn encode_vfd_recv(
-    desc_mem: VolatileSlice,
-    vfd_id: u32,
-    data: &[u8],
-    vfd_ids: &[u32],
-) -> WlResult<u32> {
+fn encode_vfd_recv(writer: &mut Writer, vfd_id: u32, data: &[u8], vfd_ids: &[u32]) -> WlResult<()> {
     let ctrl_vfd_recv = CtrlVfdRecv {
         hdr: CtrlHeader {
             type_: Le32::from(VIRTIO_WL_CMD_VFD_RECV),
@@ -365,28 +206,20 @@ fn encode_vfd_recv(
         id: Le32::from(vfd_id),
         vfd_count: Le32::from(vfd_ids.len() as u32),
     };
-    desc_mem.get_ref(0)?.store(ctrl_vfd_recv);
+    writer
+        .write_obj(ctrl_vfd_recv)
+        .map_err(WlError::WriteResponse)?;
 
-    let vfd_slice = desc_mem.get_slice(
-        size_of::<CtrlVfdRecv>() as u64,
-        (vfd_ids.len() * size_of::<Le32>()) as u64,
-    )?;
-    for (i, &recv_vfd_id) in vfd_ids.iter().enumerate() {
-        vfd_slice
-            .get_ref((size_of::<Le32>() * i) as u64)?
-            .store(recv_vfd_id);
+    for &recv_vfd_id in vfd_ids.iter() {
+        writer
+            .write_obj(Le32::from(recv_vfd_id))
+            .map_err(WlError::WriteResponse)?;
     }
 
-    let data_slice = desc_mem.get_slice(
-        (size_of::<CtrlVfdRecv>() + vfd_ids.len() * size_of::<Le32>()) as u64,
-        data.len() as u64,
-    )?;
-    data_slice.copy_from(data);
-
-    Ok((size_of::<CtrlVfdRecv>() + vfd_ids.len() * size_of::<Le32>() + data.len()) as u32)
+    writer.write_all(data).map_err(WlError::WriteResponse)
 }
 
-fn encode_vfd_hup(desc_mem: VolatileSlice, vfd_id: u32) -> WlResult<u32> {
+fn encode_vfd_hup(writer: &mut Writer, vfd_id: u32) -> WlResult<()> {
     let ctrl_vfd_new = CtrlVfd {
         hdr: CtrlHeader {
             type_: Le32::from(VIRTIO_WL_CMD_VFD_HUP),
@@ -395,11 +228,12 @@ fn encode_vfd_hup(desc_mem: VolatileSlice, vfd_id: u32) -> WlResult<u32> {
         id: Le32::from(vfd_id),
     };
 
-    desc_mem.get_ref(0)?.store(ctrl_vfd_new);
-    Ok(size_of_val(&ctrl_vfd_new) as u32)
+    writer
+        .write_obj(ctrl_vfd_new)
+        .map_err(WlError::WriteResponse)
 }
 
-fn encode_resp(desc_mem: VolatileSlice, resp: WlResp) -> WlResult<u32> {
+fn encode_resp(writer: &mut Writer, resp: WlResp) -> WlResult<()> {
     match resp {
         WlResp::VfdNew {
             id,
@@ -407,7 +241,7 @@ fn encode_resp(desc_mem: VolatileSlice, resp: WlResp) -> WlResult<u32> {
             pfn,
             size,
             resp,
-        } => encode_vfd_new(desc_mem, resp, id, flags, pfn, size),
+        } => encode_vfd_new(writer, resp, id, flags, pfn, size),
         #[cfg(feature = "wl-dmabuf")]
         WlResp::VfdNewDmabuf {
             id,
@@ -415,13 +249,12 @@ fn encode_resp(desc_mem: VolatileSlice, resp: WlResp) -> WlResult<u32> {
             pfn,
             size,
             desc,
-        } => encode_vfd_new_dmabuf(desc_mem, id, flags, pfn, size, desc),
-        WlResp::VfdRecv { id, data, vfds } => encode_vfd_recv(desc_mem, id, data, vfds),
-        WlResp::VfdHup { id } => encode_vfd_hup(desc_mem, id),
-        r => {
-            desc_mem.get_ref(0)?.store(Le32::from(r.get_code()));
-            Ok(size_of::<Le32>() as u32)
-        }
+        } => encode_vfd_new_dmabuf(writer, id, flags, pfn, size, desc),
+        WlResp::VfdRecv { id, data, vfds } => encode_vfd_recv(writer, id, data, vfds),
+        WlResp::VfdHup { id } => encode_vfd_hup(writer, id),
+        r => writer
+            .write_obj(Le32::from(r.get_code()))
+            .map_err(WlError::WriteResponse),
     }
 }
 
@@ -436,6 +269,7 @@ enum WlError {
     VmControl(MsgError),
     VmBadResponse,
     CheckedOffset,
+    ParseDesc(io::Error),
     GuestMemory(GuestMemoryError),
     VolatileMemory(VolatileMemoryError),
     SendVfd(Error),
@@ -444,6 +278,7 @@ enum WlError {
     ReadPipe(io::Error),
     PollContextAdd(Error),
     DmabufSync(io::Error),
+    WriteResponse(io::Error),
 }
 
 impl Display for WlError {
@@ -459,6 +294,7 @@ impl Display for WlError {
             VmControl(e) => write!(f, "failed to control parent VM: {}", e),
             VmBadResponse => write!(f, "invalid response from parent VM"),
             CheckedOffset => write!(f, "overflow in calculation"),
+            ParseDesc(e) => write!(f, "error parsing descriptor: {}", e),
             GuestMemory(e) => write!(f, "access violation in guest memory: {}", e),
             VolatileMemory(e) => write!(f, "access violating in guest volatile memory: {}", e),
             SendVfd(e) => write!(f, "failed to send on a socket: {}", e),
@@ -467,6 +303,7 @@ impl Display for WlError {
             ReadPipe(e) => write!(f, "failed to read a pipe: {}", e),
             PollContextAdd(e) => write!(f, "failed to listen to FD on poll context: {}", e),
             DmabufSync(e) => write!(f, "failed to synchronize DMABuf access: {}", e),
+            WriteResponse(e) => write!(f, "failed to write response: {}", e),
         }
     }
 }
@@ -508,14 +345,14 @@ impl VmRequester {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 struct CtrlHeader {
     type_: Le32,
     flags: Le32,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 struct CtrlVfdNew {
     hdr: CtrlHeader,
     id: Le32,
@@ -527,7 +364,7 @@ struct CtrlVfdNew {
 unsafe impl DataInit for CtrlVfdNew {}
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[cfg(feature = "wl-dmabuf")]
 struct CtrlVfdNewDmabuf {
     hdr: CtrlHeader,
@@ -550,6 +387,18 @@ struct CtrlVfdNewDmabuf {
 unsafe impl DataInit for CtrlVfdNewDmabuf {}
 
 #[repr(C)]
+#[derive(Copy, Clone, Default)]
+#[cfg(feature = "wl-dmabuf")]
+struct CtrlVfdDmabufSync {
+    hdr: CtrlHeader,
+    id: Le32,
+    flags: Le32,
+}
+
+#[cfg(feature = "wl-dmabuf")]
+unsafe impl DataInit for CtrlVfdDmabufSync {}
+
+#[repr(C)]
 #[derive(Copy, Clone)]
 struct CtrlVfdRecv {
     hdr: CtrlHeader,
@@ -560,7 +409,7 @@ struct CtrlVfdRecv {
 unsafe impl DataInit for CtrlVfdRecv {}
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 struct CtrlVfd {
     hdr: CtrlHeader,
     id: Le32,
@@ -570,54 +419,23 @@ unsafe impl DataInit for CtrlVfd {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
+struct CtrlVfdSend {
+    hdr: CtrlHeader,
+    id: Le32,
+    vfd_count: Le32,
+    // Remainder is an array of vfd_count IDs followed by data.
+}
+
+unsafe impl DataInit for CtrlVfdSend {}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
 struct CtrlVfdSendVfd {
     kind: Le32,
     id: Le32,
 }
 
 unsafe impl DataInit for CtrlVfdSendVfd {}
-
-#[derive(Debug)]
-enum WlOp {
-    NewAlloc {
-        id: u32,
-        flags: u32,
-        size: u32,
-    },
-    Close {
-        id: u32,
-    },
-    Send {
-        id: u32,
-        foreign_id: bool,
-        vfds_addr: GuestAddress,
-        vfd_count: u32,
-        data_addr: GuestAddress,
-        data_len: u32,
-    },
-    NewCtx {
-        id: u32,
-    },
-    NewPipe {
-        id: u32,
-        flags: u32,
-    },
-    #[cfg(feature = "wl-dmabuf")]
-    NewDmabuf {
-        id: u32,
-        width: u32,
-        height: u32,
-        format: u32,
-    },
-    #[cfg(feature = "wl-dmabuf")]
-    DmabufSync {
-        id: u32,
-        flags: u32,
-    },
-    InvalidCommand {
-        op_type: u32,
-    },
-}
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -900,17 +718,22 @@ impl WlVfd {
     }
 
     // Sends data/files from the guest to the host over this VFD.
-    fn send(&mut self, fds: &[RawFd], data: VolatileSlice) -> WlResult<WlResp> {
+    fn send(&mut self, fds: &[RawFd], data: &mut Reader) -> WlResult<WlResp> {
         if let Some(socket) = &self.socket {
-            socket.send_with_fds(data, fds).map_err(WlError::SendVfd)?;
+            socket
+                .send_with_fds(
+                    data.get_iovec(usize::max_value())
+                        .map_err(WlError::ParseDesc)?,
+                    fds,
+                )
+                .map_err(WlError::SendVfd)?;
             Ok(WlResp::Ok)
         } else if let Some((_, local_pipe)) = &mut self.local_pipe {
             // Impossible to send fds over a simple pipe.
             if !fds.is_empty() {
                 return Ok(WlResp::InvalidType);
             }
-            local_pipe
-                .write_volatile(data)
+            data.read_to(local_pipe, usize::max_value())
                 .map_err(WlError::WritePipe)?;
             Ok(WlResp::Ok)
         } else {
@@ -1214,30 +1037,22 @@ impl WlState {
     fn send(
         &mut self,
         vfd_id: u32,
+        vfd_count: usize,
         foreign_id: bool,
-        vfds: VolatileSlice,
-        data: VolatileSlice,
+        reader: &mut Reader,
     ) -> WlResult<WlResp> {
         // First stage gathers and normalizes all id information from guest memory.
         let mut send_vfd_ids = [CtrlVfdSendVfd::default(); VIRTWL_SEND_MAX_ALLOCS];
-        let vfd_count = if foreign_id {
-            vfds.copy_to(&mut send_vfd_ids[..]);
-            vfds.size() as usize / size_of::<CtrlVfdSendVfd>()
-        } else {
-            let vfd_count = vfds.size() as usize / size_of::<Le32>();
-            let mut vfd_ids = [Le32::from(0); VIRTWL_SEND_MAX_ALLOCS];
-            vfds.copy_to(&mut vfd_ids[..]);
-            send_vfd_ids[..vfd_count]
-                .iter_mut()
-                .zip(&vfd_ids[..vfd_count])
-                .for_each(|(send_vfd_id, &vfd_id)| {
-                    *send_vfd_id = CtrlVfdSendVfd {
-                        kind: Le32::from(VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL),
-                        id: vfd_id,
-                    }
-                });
-            vfd_count
-        };
+        for vfd_id in send_vfd_ids.iter_mut().take(vfd_count) {
+            *vfd_id = if foreign_id {
+                reader.read_obj().map_err(WlError::ParseDesc)?
+            } else {
+                CtrlVfdSendVfd {
+                    kind: Le32::from(VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL),
+                    id: reader.read_obj().map_err(WlError::ParseDesc)?,
+                }
+            }
+        }
 
         // Next stage collects corresponding file descriptors for each id.
         let mut fds = [0; VIRTWL_SEND_MAX_ALLOCS];
@@ -1301,7 +1116,7 @@ impl WlState {
 
         // Final stage sends file descriptors and data to the target vfd's socket.
         match self.vfds.get_mut(&vfd_id) {
-            Some(vfd) => match vfd.send(&fds[..vfd_count], data)? {
+            Some(vfd) => match vfd.send(&fds[..vfd_count], reader)? {
                 WlResp::Ok => {}
                 _ => return Ok(WlResp::InvalidType),
             },
@@ -1349,39 +1164,77 @@ impl WlState {
         Ok(())
     }
 
-    fn execute(&mut self, mem: &GuestMemory, op: WlOp) -> WlResult<WlResp> {
-        match op {
-            WlOp::NewAlloc { id, flags, size } => self.new_alloc(id, flags, size),
-            WlOp::Close { id } => self.close(id),
-            WlOp::Send {
-                id,
-                foreign_id,
-                vfds_addr,
-                vfd_count,
-                data_addr,
-                data_len,
-            } => {
-                let vfd_size = if foreign_id {
-                    size_of::<CtrlVfdSendVfd>()
-                } else {
-                    size_of::<Le32>()
-                } as u32;
-                let vfd_mem = mem.get_slice(vfds_addr.0, (vfd_count * vfd_size) as u64)?;
-                let data_mem = mem.get_slice(data_addr.0, data_len as u64)?;
-                self.send(id, foreign_id, vfd_mem, data_mem)
+    fn execute(&mut self, reader: &mut Reader) -> WlResult<WlResp> {
+        let type_ = {
+            let mut type_reader = reader.clone();
+            type_reader.read_obj::<Le32>().map_err(WlError::ParseDesc)?
+        };
+        match type_.into() {
+            VIRTIO_WL_CMD_VFD_NEW => {
+                let ctrl = reader
+                    .read_obj::<CtrlVfdNew>()
+                    .map_err(WlError::ParseDesc)?;
+                self.new_alloc(ctrl.id.into(), ctrl.flags.into(), ctrl.size.into())
             }
-            WlOp::NewCtx { id } => self.new_context(id),
-            WlOp::NewPipe { id, flags } => self.new_pipe(id, flags),
+            VIRTIO_WL_CMD_VFD_CLOSE => {
+                let ctrl = reader.read_obj::<CtrlVfd>().map_err(WlError::ParseDesc)?;
+                self.close(ctrl.id.into())
+            }
+            VIRTIO_WL_CMD_VFD_SEND => {
+                let ctrl = reader
+                    .read_obj::<CtrlVfdSend>()
+                    .map_err(WlError::ParseDesc)?;
+                let foreign_id = false;
+                self.send(
+                    ctrl.id.into(),
+                    ctrl.vfd_count.to_native() as usize,
+                    foreign_id,
+                    reader,
+                )
+            }
+            #[cfg(feature = "gpu")]
+            VIRTIO_WL_CMD_VFD_SEND_FOREIGN_ID => {
+                let ctrl = reader
+                    .read_obj::<CtrlVfdSend>()
+                    .map_err(WlError::ParseDesc)?;
+                let foreign_id = true;
+                self.send(
+                    ctrl.id.into(),
+                    ctrl.vfd_count.to_native() as usize,
+                    foreign_id,
+                    reader,
+                )
+            }
+            VIRTIO_WL_CMD_VFD_NEW_CTX => {
+                let ctrl = reader.read_obj::<CtrlVfd>().map_err(WlError::ParseDesc)?;
+                self.new_context(ctrl.id.into())
+            }
+            VIRTIO_WL_CMD_VFD_NEW_PIPE => {
+                let ctrl = reader
+                    .read_obj::<CtrlVfdNew>()
+                    .map_err(WlError::ParseDesc)?;
+                self.new_pipe(ctrl.id.into(), ctrl.flags.into())
+            }
             #[cfg(feature = "wl-dmabuf")]
-            WlOp::NewDmabuf {
-                id,
-                width,
-                height,
-                format,
-            } => self.new_dmabuf(id, width, height, format),
+            VIRTIO_WL_CMD_VFD_NEW_DMABUF => {
+                let ctrl = reader
+                    .read_obj::<CtrlVfdNewDmabuf>()
+                    .map_err(WlError::ParseDesc)?;
+                self.new_dmabuf(
+                    ctrl.id.into(),
+                    ctrl.width.into(),
+                    ctrl.height.into(),
+                    ctrl.format.into(),
+                )
+            }
             #[cfg(feature = "wl-dmabuf")]
-            WlOp::DmabufSync { id, flags } => self.dmabuf_sync(id, flags),
-            WlOp::InvalidCommand { op_type } => {
+            VIRTIO_WL_CMD_VFD_DMABUF_SYNC => {
+                let ctrl = reader
+                    .read_obj::<CtrlVfdDmabufSync>()
+                    .map_err(WlError::ParseDesc)?;
+                self.dmabuf_sync(ctrl.id.into(), ctrl.flags.into())
+            }
+            op_type => {
                 warn!("unexpected command {}", op_type);
                 Ok(WlResp::InvalidCommand)
             }
@@ -1475,7 +1328,6 @@ struct Worker {
     in_queue: Queue,
     out_queue: Queue,
     state: WlState,
-    in_desc_chains: VecDeque<(u16, GuestAddress, u32)>,
 }
 
 impl Worker {
@@ -1508,11 +1360,12 @@ impl Worker {
                 use_transition_flags,
                 resource_bridge,
             ),
-            in_desc_chains: VecDeque::with_capacity(QUEUE_SIZE as usize),
         }
     }
 
     fn run(&mut self, mut queue_evts: Vec<EventFd>, kill_evt: EventFd) {
+        let mut in_desc_chains: VecDeque<DescriptorChain> =
+            VecDeque::with_capacity(QUEUE_SIZE as usize);
         let in_queue_evt = queue_evts.remove(0);
         let out_queue_evt = queue_evts.remove(0);
         #[derive(PollToken)]
@@ -1559,19 +1412,18 @@ impl Worker {
                         let min_in_desc_len = (size_of::<CtrlVfdRecv>()
                             + size_of::<Le32>() * VIRTWL_SEND_MAX_ALLOCS)
                             as u32;
-                        self.in_desc_chains
-                            .extend(self.in_queue.iter(&self.mem).filter_map(|d| {
-                                if d.len >= min_in_desc_len && d.is_write_only() {
-                                    Some((d.index, d.addr, d.len))
-                                } else {
-                                    // Can not use queue.add_used directly because it's being borrowed
-                                    // for the iterator chain, so we buffer the descriptor index in
-                                    // rejects.
-                                    rejects[rejects_len] = d.index;
-                                    rejects_len += 1;
-                                    None
-                                }
-                            }));
+                        in_desc_chains.extend(self.in_queue.iter(&self.mem).filter_map(|d| {
+                            if d.len >= min_in_desc_len && d.is_write_only() {
+                                Some(d)
+                            } else {
+                                // Can not use queue.add_used directly because it's being borrowed
+                                // for the iterator chain, so we buffer the descriptor index in
+                                // rejects.
+                                rejects[rejects_len] = d.index;
+                                rejects_len += 1;
+                                None
+                            }
+                        }));
                         for &reject in &rejects[..rejects_len] {
                             signal_used_in = true;
                             self.in_queue.add_used(&self.mem, reject, 0);
@@ -1579,39 +1431,40 @@ impl Worker {
                     }
                     Token::OutQueue => {
                         let _ = out_queue_evt.read();
-                        let min_resp_desc_len = size_of::<CtrlHeader>() as u32;
                         while let Some(desc) = self.out_queue.pop(&self.mem) {
-                            // Expects that each descriptor chain is made of one "in" followed by
-                            // one "out" descriptor.
-                            if !desc.is_write_only() {
-                                if let Some(resp_desc) = desc.next_descriptor() {
-                                    if resp_desc.is_write_only()
-                                        && resp_desc.len >= min_resp_desc_len
-                                    {
-                                        let resp = match parse_desc(&desc, &self.mem) {
-                                            Ok(op) => match self.state.execute(&self.mem, op) {
-                                                Ok(r) => r,
-                                                Err(e) => WlResp::Err(Box::new(e)),
-                                            },
-                                            Err(e) => WlResp::Err(Box::new(e)),
-                                        };
+                            let desc_index = desc.index;
+                            match (
+                                Reader::new(&self.mem, desc.clone()),
+                                Writer::new(&self.mem, desc),
+                            ) {
+                                (Ok(mut reader), Ok(mut writer)) => {
+                                    let resp = match self.state.execute(&mut reader) {
+                                        Ok(r) => r,
+                                        Err(e) => WlResp::Err(Box::new(e)),
+                                    };
 
-                                        let resp_mem = self
-                                            .mem
-                                            .get_slice(resp_desc.addr.0, resp_desc.len as u64)
-                                            .unwrap();
-                                        let used_len =
-                                            encode_resp(resp_mem, resp).unwrap_or_default();
-
-                                        self.out_queue.add_used(&self.mem, desc.index, used_len);
-                                        signal_used_out = true;
+                                    match encode_resp(&mut writer, resp) {
+                                        Ok(()) => {}
+                                        Err(e) => {
+                                            error!(
+                                                "failed to encode response to descriptor chain: {}",
+                                                e
+                                            );
+                                        }
                                     }
+
+                                    self.out_queue.add_used(
+                                        &self.mem,
+                                        desc_index,
+                                        writer.bytes_written() as u32,
+                                    );
+                                    signal_used_out = true;
                                 }
-                            } else {
-                                // Chains that are unusable get sent straight back to the used
-                                // queue.
-                                self.out_queue.add_used(&self.mem, desc.index, 0);
-                                signal_used_out = true;
+                                (_, Err(e)) | (Err(e), _) => {
+                                    error!("invalid descriptor: {}", e);
+                                    self.out_queue.add_used(&self.mem, desc_index, 0);
+                                    signal_used_out = true;
+                                }
                             }
                         }
                     }
@@ -1625,27 +1478,32 @@ impl Worker {
 
             // Because this loop should be retried after the in queue is usable or after one of the
             // VFDs was read, we do it after the poll event responses.
-            while !self.in_desc_chains.is_empty() {
+            while !in_desc_chains.is_empty() {
                 let mut should_pop = false;
                 if let Some(in_resp) = self.state.next_recv() {
-                    // self.in_desc_chains is not empty (checked by loop condition) so unwrap is
-                    // safe.
-                    let (index, addr, desc_len) = self.in_desc_chains.pop_front().unwrap();
-                    // This memory location is valid because it came from a queue which always
-                    // checks the descriptor memory locations.
-                    let desc_mem = self.mem.get_slice(addr.0, desc_len as u64).unwrap();
-                    let len = match encode_resp(desc_mem, in_resp) {
-                        Ok(len) => {
-                            should_pop = true;
-                            len
+                    // in_desc_chains is not empty (checked by loop condition) so unwrap is safe.
+                    let desc = in_desc_chains.pop_front().unwrap();
+                    let index = desc.index;
+                    match Writer::new(&self.mem, desc) {
+                        Ok(mut writer) => {
+                            match encode_resp(&mut writer, in_resp) {
+                                Ok(()) => {
+                                    should_pop = true;
+                                }
+                                Err(e) => {
+                                    error!("failed to encode response to descriptor chain: {}", e);
+                                }
+                            };
+                            signal_used_in = true;
+                            self.in_queue
+                                .add_used(&self.mem, index, writer.bytes_written() as u32);
                         }
                         Err(e) => {
-                            error!("failed to encode response to descriptor chain: {}", e);
-                            0
+                            error!("invalid descriptor: {}", e);
+                            self.in_queue.add_used(&self.mem, index, 0);
+                            signal_used_in = true;
                         }
-                    };
-                    signal_used_in = true;
-                    self.in_queue.add_used(&self.mem, index, len);
+                    }
                 } else {
                     break;
                 }
