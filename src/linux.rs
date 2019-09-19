@@ -53,7 +53,7 @@ use vhost;
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
     DiskControlCommand, DiskControlRequestSocket, DiskControlResponseSocket, DiskControlResult,
-    UsbControlSocket, VmControlResponseSocket, VmMemoryControlRequestSocket,
+    UsbControlSocket, VmControlResponseSocket, VmIrqResponseSocket, VmMemoryControlRequestSocket,
     VmMemoryControlResponseSocket, VmMemoryRequest, VmMemoryResponse, VmRunMode,
 };
 
@@ -257,6 +257,8 @@ type Result<T> = std::result::Result<T, Error>;
 enum TaggedControlSocket {
     Vm(VmControlResponseSocket),
     VmMemory(VmMemoryControlResponseSocket),
+    #[allow(dead_code)]
+    VmIrq(VmIrqResponseSocket),
 }
 
 impl AsRef<UnixSeqpacket> for TaggedControlSocket {
@@ -265,6 +267,7 @@ impl AsRef<UnixSeqpacket> for TaggedControlSocket {
         match &self {
             Vm(ref socket) => socket,
             VmMemory(ref socket) => socket,
+            VmIrq(ref socket) => socket,
         }
     }
 }
@@ -1752,6 +1755,22 @@ fn run_control(
                                         vm_control_indices_to_remove.push(index);
                                     } else {
                                         error!("failed to recv VmMemoryControlRequest: {}", e);
+                                    }
+                                }
+                            },
+                            TaggedControlSocket::VmIrq(socket) => match socket.recv() {
+                                Ok(request) => {
+                                    let response =
+                                        request.execute(&mut linux.vm, &mut linux.resources);
+                                    if let Err(e) = socket.send(&response) {
+                                        error!("failed to send VmIrqResponse: {}", e);
+                                    }
+                                }
+                                Err(e) => {
+                                    if let MsgError::BadRecvSize { actual: 0, .. } = e {
+                                        vm_control_indices_to_remove.push(index);
+                                    } else {
+                                        error!("failed to recv VmIrqRequest: {}", e);
                                     }
                                 }
                             },

@@ -17,10 +17,10 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
 use libc::{EINVAL, EIO, ENODEV};
 
-use kvm::Vm;
+use kvm::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{Alloc, GpuMemoryDesc, SystemAllocator};
-use sys_util::{error, Error as SysError, GuestAddress, MemoryMapping, MmapError, Result};
+use sys_util::{error, Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError, Result};
 
 /// A file descriptor either borrowed or owned by this.
 #[derive(Debug)]
@@ -284,6 +284,70 @@ pub enum VmMemoryResponse {
     Err(SysError),
 }
 
+#[derive(MsgOnSocket, Debug)]
+pub enum VmIrqRequest {
+    /// Allocate one gsi, and associate gsi to irqfd with register_irqfd()
+    AllocateOneMsi { irqfd: MaybeOwnedFd },
+    /// Add one msi route entry into kvm
+    AddMsiRoute {
+        gsi: u32,
+        msi_address: u64,
+        msi_data: u32,
+    },
+}
+
+impl VmIrqRequest {
+    /// Executes this request on the given Vm.
+    ///
+    /// # Arguments
+    /// * `vm` - The `Vm` to perform the request on.
+    ///
+    /// This does not return a result, instead encapsulating the success or failure in a
+    /// `VmIrqResponse` with the intended purpose of sending the response back over the socket
+    /// that received this `VmIrqResponse`.
+    pub fn execute(&self, vm: &mut Vm, sys_allocator: &mut SystemAllocator) -> VmIrqResponse {
+        use self::VmIrqRequest::*;
+        match *self {
+            AllocateOneMsi { ref irqfd } => {
+                if let Some(irq_num) = sys_allocator.allocate_irq() {
+                    let evt = unsafe { EventFd::from_raw_fd(irqfd.as_raw_fd()) };
+                    match vm.register_irqfd(&evt, irq_num) {
+                        Ok(_) => VmIrqResponse::AllocateOneMsi { gsi: irq_num },
+                        Err(e) => VmIrqResponse::Err(e),
+                    }
+                } else {
+                    VmIrqResponse::Err(SysError::new(EINVAL))
+                }
+            }
+            AddMsiRoute {
+                gsi,
+                msi_address,
+                msi_data,
+            } => {
+                let route = IrqRoute {
+                    gsi,
+                    source: IrqSource::Msi {
+                        address: msi_address,
+                        data: msi_data,
+                    },
+                };
+
+                match vm.add_irq_route_entry(route) {
+                    Ok(_) => VmIrqResponse::Ok,
+                    Err(e) => VmIrqResponse::Err(e),
+                }
+            }
+        }
+    }
+}
+
+#[derive(MsgOnSocket, Debug)]
+pub enum VmIrqResponse {
+    AllocateOneMsi { gsi: u32 },
+    Ok,
+    Err(SysError),
+}
+
 pub type BalloonControlRequestSocket = MsgSocket<BalloonControlCommand, ()>;
 pub type BalloonControlResponseSocket = MsgSocket<(), BalloonControlCommand>;
 
@@ -294,6 +358,9 @@ pub type UsbControlSocket = MsgSocket<UsbControlCommand, UsbControlResult>;
 
 pub type VmMemoryControlRequestSocket = MsgSocket<VmMemoryRequest, VmMemoryResponse>;
 pub type VmMemoryControlResponseSocket = MsgSocket<VmMemoryResponse, VmMemoryRequest>;
+
+pub type VmIrqRequestSocket = MsgSocket<VmIrqRequest, VmIrqResponse>;
+pub type VmIrqResponseSocket = MsgSocket<VmIrqResponse, VmIrqRequest>;
 
 pub type VmControlRequestSocket = MsgSocket<VmRequest, VmResponse>;
 pub type VmControlResponseSocket = MsgSocket<VmResponse, VmRequest>;
