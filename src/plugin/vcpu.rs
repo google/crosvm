@@ -30,7 +30,7 @@ use sys_util::{error, LayoutAllocation};
 use super::*;
 
 /// Identifier for an address space in the VM.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum IoSpace {
     Ioport,
     Mmio,
@@ -137,11 +137,32 @@ fn set_vcpu_state(vcpu: &Vcpu, state_set: VcpuRequest_StateSet, state: &[u8]) ->
     }
 }
 
+pub struct CallHintDetails {
+    pub match_rax: bool,
+    pub match_rbx: bool,
+    pub match_rcx: bool,
+    pub match_rdx: bool,
+    pub rax: u64,
+    pub rbx: u64,
+    pub rcx: u64,
+    pub rdx: u64,
+    pub send_sregs: bool,
+    pub send_debugregs: bool,
+}
+
+pub struct CallHint {
+    io_space: IoSpace,
+    addr: u64,
+    on_write: bool,
+    regs: Vec<CallHintDetails>,
+}
+
 /// State shared by every VCPU, grouped together to make edits to the state coherent across VCPUs.
 #[derive(Default)]
 pub struct SharedVcpuState {
     ioport_regions: BTreeSet<Range>,
     mmio_regions: BTreeSet<Range>,
+    hint: Option<CallHint>,
 }
 
 impl SharedVcpuState {
@@ -191,6 +212,26 @@ impl SharedVcpuState {
         }
     }
 
+    pub fn set_hint(
+        &mut self,
+        space: IoSpace,
+        addr: u64,
+        on_write: bool,
+        regs: Vec<CallHintDetails>,
+    ) {
+        if addr == 0 {
+            self.hint = None;
+        } else {
+            let hint = CallHint {
+                io_space: space,
+                addr,
+                on_write,
+                regs,
+            };
+            self.hint = Some(hint);
+        }
+    }
+
     fn is_reserved(&self, space: IoSpace, addr: u64) -> bool {
         if let Some(Range(start, len)) = self.first_before(space, addr) {
             let offset = addr - start;
@@ -211,6 +252,28 @@ impl SharedVcpuState {
             Some(next_addr) => space.range(..Range(next_addr, 0)).next_back().cloned(),
             None => None,
         }
+    }
+
+    fn matches_hint(&self, io_space: IoSpace, addr: u64, is_write: bool) -> bool {
+        if let Some(hint) = &self.hint {
+            return io_space == hint.io_space && addr == hint.addr && is_write == hint.on_write;
+        }
+        false
+    }
+
+    fn check_hint_details(&self, regs: &kvm_regs) -> (bool, bool) {
+        if let Some(hint) = &self.hint {
+            for entry in hint.regs.iter() {
+                if (!entry.match_rax || entry.rax == regs.rax)
+                    && (!entry.match_rbx || entry.rbx == regs.rbx)
+                    && (!entry.match_rcx || entry.rcx == regs.rcx)
+                    && (!entry.match_rdx || entry.rdx == regs.rdx)
+                {
+                    return (entry.send_sregs, entry.send_debugregs);
+                }
+            }
+        }
+        (false, false)
     }
 }
 
@@ -338,9 +401,6 @@ impl PluginVcpu {
         };
 
         let first_before_addr = vcpu_state_lock.first_before(io_space, addr);
-        // Drops the read lock as soon as possible, to prevent holding lock while blocked in
-        // `handle_until_resume`.
-        drop(vcpu_state_lock);
 
         match first_before_addr {
             Some(Range(start, len)) => {
@@ -358,6 +418,25 @@ impl PluginVcpu {
                 io.address = addr;
                 io.is_write = data.is_write();
                 io.data = data.as_slice().to_vec();
+                if vcpu_state_lock.matches_hint(io_space, addr, io.is_write) {
+                    if let Ok(regs) = vcpu.get_regs() {
+                        let (has_sregs, has_debugregs) = vcpu_state_lock.check_hint_details(&regs);
+                        io.regs = VcpuRegs(regs).as_slice().to_vec();
+                        if has_sregs {
+                            if let Ok(state) = get_vcpu_state(vcpu, VcpuRequest_StateSet::SREGS) {
+                                io.sregs = state;
+                            }
+                        }
+                        if has_debugregs {
+                            if let Ok(state) = get_vcpu_state(vcpu, VcpuRequest_StateSet::DEBUGREGS)
+                            {
+                                io.debugregs = state;
+                            }
+                        }
+                    }
+                }
+                // don't hold lock while blocked in `handle_until_resume`.
+                drop(vcpu_state_lock);
 
                 self.wait_reason.set(Some(wait_reason));
                 match self.handle_until_resume(vcpu) {

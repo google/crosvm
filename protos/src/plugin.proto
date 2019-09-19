@@ -151,6 +151,27 @@ message MainRequest {
     message GetVcpus {}
     message Start {}
 
+    message SetCallHint {
+        message RegHint {
+	    bool match_rax = 1;
+	    bool match_rbx = 2;
+	    bool match_rcx = 3;
+	    bool match_rdx = 4;
+	    uint64 rax = 5;
+	    uint64 rbx = 6;
+	    uint64 rcx = 7;
+	    uint64 rdx = 8;
+	    bool send_sregs = 9;
+	    bool send_debugregs = 10;
+	}
+
+        AddressSpace space = 1;
+        uint64 address = 2;
+        bool on_write = 3;
+
+        repeated RegHint hints = 4;
+    }
+
     message MemoryDirtyLog {
         uint32 id = 1;
     }
@@ -178,6 +199,7 @@ message MainRequest {
         PauseVcpus pause_vcpus = 16;
         GetVcpus get_vcpus = 17;
         Start start = 18;
+        SetCallHint set_call_hint = 19;
         // Method for a Memory type object for retrieving the dirty bitmap. Only valid if the memory
         // object was created with dirty_log set.
         MemoryDirtyLog dirty_log = 101;
@@ -225,6 +247,7 @@ message MainResponse {
     // socket. The VcpuRequest/VcpuResponse protocol is run over each of the returned fds.
     message GetVcpus {}
     message Start {}
+    message SetCallHint {}
     message MemoryDirtyLog {
         bytes bitmap = 1;
     }
@@ -252,6 +275,7 @@ message MainResponse {
         PauseVcpus pause_vcpus = 17;
         GetVcpus get_vcpus = 18;
         Start start = 19;
+        SetCallHint set_call_hint = 20;
         MemoryDirtyLog dirty_log = 101;
     }
 }
@@ -361,6 +385,11 @@ message VcpuResponse  {
             uint64 address = 2;
             bool is_write = 3;
             bytes data = 4;
+
+            // The following can be eagerly provided.
+            bytes regs = 5;
+            bytes sregs = 6;
+            bytes debugregs = 7;
         }
 
         // This type of wait reason is only generated after a PuaseVcpus request on this VCPU.

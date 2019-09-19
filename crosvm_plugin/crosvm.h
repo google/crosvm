@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 17
+#define CROSVM_API_MINOR 18
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -228,6 +228,79 @@ static_assert(sizeof(struct crosvm_irq_route) == 24,
  */
 int crosvm_set_irq_routing(struct crosvm*, uint32_t __route_count,
                            const struct crosvm_irq_route* __routes);
+
+/* Hint on what information is queried for a particular hypercall. */
+struct crosvm_hint_detail {
+  bool match_rax;
+  bool match_rbx;
+  bool match_rcx;
+  bool match_rdx;
+  uint8_t _reserved[4];
+  uint64_t rax;
+  uint64_t rbx;
+  uint64_t rcx;
+  uint64_t rdx;
+  bool send_sregs;
+  bool send_debugregs;
+  uint8_t _reserved2[6];
+};
+
+#ifdef static_assert
+static_assert(sizeof(struct crosvm_hint_detail) == 48,
+              "extra padding in struct crosvm_hint_detail");
+#endif
+
+/* Maximum # of hints that can be passed to crosvm_set_hypercall_hint(). */
+#define CROSVM_MAX_HINT_COUNT 1
+
+/* Maximum # of hint details that can be provided for a hint. */
+#define CROSVM_MAX_HINT_DETAIL_COUNT 32
+
+#define CROSVM_HINT_ON_WRITE 0x1
+
+/* Hint on what information is queried for a particular hypercall. */
+struct crosvm_hint {
+  uint32_t hint_version;  /* For now only 0 is defined. */
+  uint32_t _reserved;     /* Must be zero. */
+  uint32_t address_space; /* Value from crosvm_address_space. */
+  uint16_t address_flags; /* 0: read/in; CROSVM_HINT_ON_WRITE: write/out. */
+  uint16_t details_count; /* # of elements in |details|. */
+  uint64_t address;
+  union {
+    struct crosvm_hint_detail *details;
+    uint64_t _reserved2; /* forcing pointer length to 64-bit */
+  };
+};
+
+#ifdef static_assert
+static_assert(sizeof(struct crosvm_hint) == 32,
+              "extra padding in struct crosvm_hint");
+#endif
+
+/*
+ * Sets performance hint(s) for a hypercall port.
+ *
+ * If a VM does an io access the specified |address_space|, |address|
+ * (|address| must be non-zero), and direction (|address_flags|), then
+ * crosvm will assume the plugin is likely to call crosvm_vcpu_get_regs()
+ * (and thus utilize a cache to improve performance).
+ *
+ * Additional hints can be provided via |details| (the element length of
+ * |details| is limited to CROSVM_MAX_HINT_DETAIL_COUNT) on when to also cache
+ * information for crosvm_vcpu_get_sregs() and crosvm_vcpu_get_debugregs()
+ * based on values in the vcpu registers.  |match_XXX| indicates which of
+ * 1 or more of |XXX| needs to be equal to the vcpu registers to be a match.
+ * On a match |send_sregs| and |send_debugregs| are used to determine what
+ * data to proactively cache for the plugin's use.  Once a match is found
+ * the remaining hints are not consulted.
+ *
+ * To remove all hints, pass 0 for |__hint_count|.  The value of
+ * |__hint_count| can be at most CROSVM_MAX_HINT_COUNT.  Currently the API
+ * is limited to 1 hint (i.e., |__hint_count| must be 0 or 1).  Each call
+ * to this API will replace the values specified by any prior call to this API.
+ */
+int crosvm_set_hypercall_hint(struct crosvm *, uint32_t __hints_count,
+                              const struct crosvm_hint* __hints);
 
 /* Gets the state of interrupt controller in a VM. */
 int crosvm_get_pic_state(struct crosvm *, bool __primary,

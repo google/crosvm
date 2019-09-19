@@ -226,6 +226,11 @@ fn test_adder() {
 }
 
 #[test]
+fn test_hint() {
+    test_plugin(include_str!("plugin_hint.c"));
+}
+
+#[test]
 fn test_dirty_log() {
     test_plugin(include_str!("plugin_dirty_log.c"));
 }
