@@ -107,15 +107,12 @@ fn raw_sendmsg<D: IntoIovec>(fd: RawFd, out_data: D, out_fds: &[RawFd]) -> Resul
     let cmsg_capacity = CMSG_SPACE!(size_of::<RawFd>() * out_fds.len());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
-    let mut iovec = iovec {
-        iov_base: out_data.as_ptr() as *mut c_void,
-        iov_len: out_data.size(),
-    };
+    let mut iovec = out_data.into_iovec();
 
     let mut msg = msghdr {
         msg_name: null_mut(),
         msg_namelen: 0,
-        msg_iov: &mut iovec as *mut iovec,
+        msg_iov: iovec.as_mut_ptr(),
         msg_iovlen: 1,
         msg_control: null_mut(),
         msg_controllen: 0,
@@ -307,36 +304,29 @@ impl ScmSocket for UnixSeqpacket {
 /// This trait is unsafe because interfaces that use this trait depend on the base pointer and size
 /// being accurate.
 pub unsafe trait IntoIovec {
-    /// Gets the base pointer of this `iovec`.
-    fn as_ptr(&self) -> *const c_void;
-
-    /// Gets the size in bytes of this `iovec`.
-    fn size(&self) -> usize;
+    /// Gets a vector of structures describing each contiguous region of a memory buffer.
+    fn into_iovec(&self) -> Vec<libc::iovec>;
 }
 
 // Safe because this slice can not have another mutable reference and it's pointer and size are
 // guaranteed to be valid.
 unsafe impl<'a> IntoIovec for &'a [u8] {
-    // Clippy false positive: https://github.com/rust-lang/rust-clippy/issues/3480
-    #[allow(clippy::useless_asref)]
-    fn as_ptr(&self) -> *const c_void {
-        self.as_ref().as_ptr() as *const c_void
-    }
-
-    fn size(&self) -> usize {
-        self.len()
+    fn into_iovec(&self) -> Vec<libc::iovec> {
+        vec![libc::iovec {
+            iov_base: self.as_ref().as_ptr() as *const c_void as *mut c_void,
+            iov_len: self.len(),
+        }]
     }
 }
 
 // Safe because volatile slices are only ever accessed with other volatile interfaces and the
 // pointer and size are guaranteed to be accurate.
 unsafe impl<'a> IntoIovec for VolatileSlice<'a> {
-    fn as_ptr(&self) -> *const c_void {
-        self.as_ptr() as *const c_void
-    }
-
-    fn size(&self) -> usize {
-        self.size() as usize
+    fn into_iovec(&self) -> Vec<libc::iovec> {
+        vec![libc::iovec {
+            iov_base: self.as_ptr() as *const c_void as *mut c_void,
+            iov_len: self.size() as usize,
+        }]
     }
 }
 
