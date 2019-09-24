@@ -100,8 +100,8 @@ pub struct VfioPciDevice {
 
 impl VfioPciDevice {
     /// Constructs a new Vfio Pci device for the give Vfio device
-    pub fn new(device: Box<VfioDevice>) -> Self {
-        let dev = Arc::new(*device);
+    pub fn new(device: VfioDevice) -> Self {
+        let dev = Arc::new(device);
         let config = VfioPciConfig::new(Arc::clone(&dev));
         VfioPciDevice {
             device: dev,
@@ -131,7 +131,7 @@ impl VfioPciDevice {
 
 impl PciDevice for VfioPciDevice {
     fn debug_label(&self) -> String {
-        format!("vfio pci device")
+        "vfio pci device".to_string()
     }
 
     fn assign_bus_dev(&mut self, bus: u8, device: u8) {

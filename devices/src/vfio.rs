@@ -78,7 +78,7 @@ impl VfioContainer {
             .read(true)
             .write(true)
             .open("/dev/vfio/vfio")
-            .map_err(|e| VfioError::OpenContainer(e))?;
+            .map_err(VfioError::OpenContainer)?;
 
         Ok(VfioContainer { container })
     }
@@ -164,7 +164,7 @@ impl VfioGroup {
             .read(true)
             .write(true)
             .open(Path::new(&group_path))
-            .map_err(|e| VfioError::OpenGroup(e))?;
+            .map_err(VfioError::OpenGroup)?;
 
         let mut group_status = vfio_group_status {
             argsz: mem::size_of::<vfio_group_status>() as u32,
@@ -217,7 +217,7 @@ impl VfioGroup {
             flags: 0,
         };
         vm.create_device(&mut vfio_dev)
-            .map_err(|e| VfioError::CreateVfioKvmDevice(e))?;
+            .map_err(VfioError::CreateVfioKvmDevice)?;
 
         // Safe as we are the owner of vfio_dev.fd which is valid value.
         let vfio_dev_fd = unsafe { File::from_raw_fd(vfio_dev.fd as i32) };

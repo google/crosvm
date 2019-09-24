@@ -990,7 +990,7 @@ fn create_devices(
     if cfg.vfio.is_some() {
         let vfio_path = cfg.vfio.as_ref().unwrap().as_path();
         let vfiodevice =
-            Box::new(VfioDevice::new(vfio_path, vm, mem.clone()).map_err(Error::CreateVfioDevice)?);
+            VfioDevice::new(vfio_path, vm, mem.clone()).map_err(Error::CreateVfioDevice)?;
         let vfiopcidevice = Box::new(VfioPciDevice::new(vfiodevice));
         pci_devices.push((vfiopcidevice, simple_jail(&cfg, "vfio_device.policy")?));
     }
