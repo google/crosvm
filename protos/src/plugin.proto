@@ -370,8 +370,6 @@ message VcpuResponse  {
         }
     }
 
-    message Resume {}
-
     message GetState {
         // The in memory representation of a struct kvm_regs, struct kvm_sregs,
         // struct kvm_fpu, struct kvm_debugregs, struct kvm_lapic_state,
@@ -399,7 +397,7 @@ message VcpuResponse  {
     // VcpuRequest.
     oneof message {
         Wait wait = 2;
-        Resume resume = 3;
+        // resume was 3 but no longer gets a reply.
         GetState get_state = 4;
         SetState set_state = 5;
         GetMsrs get_msrs = 6;

@@ -396,6 +396,7 @@ impl PluginVcpu {
         let mut do_recv = true;
         let mut resume_data = None;
         let mut response = VcpuResponse::new();
+        let mut send_response = true;
 
         // Typically a response is sent for every request received.  The odd (yet common)
         // case is when a resume request is received.  This function will skip sending
@@ -442,7 +443,7 @@ impl PluginVcpu {
                 self.wait_reason.set(wait_reason);
                 Err(SysError::new(EPROTO))
             } else if request.has_resume() {
-                response.mut_resume();
+                send_response = false;
                 resume_data = Some(request.take_resume().take_data());
                 Ok(())
             } else if request.has_get_state() {
@@ -540,7 +541,7 @@ impl PluginVcpu {
 
         // Send the response, except if it's a resume response (in which case
         // we'll go run the VM and afterwards send a wait response message).
-        if !response.has_resume() {
+        if send_response {
             let mut response_buffer = self.response_buffer.borrow_mut();
             response_buffer.clear();
             response
