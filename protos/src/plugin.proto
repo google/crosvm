@@ -268,6 +268,11 @@ message VcpuRequest {
         // The data is only necessary for non-write (read) I/O accesses. In all other cases, data is
         // ignored.
         bytes data = 1;
+
+        // The following tracks what deferred set calls to apply.
+        bytes regs = 2;
+        bytes sregs = 3;
+        bytes debugregs = 4;
     }
 
     // Each type refers to certain piece of VCPU state (a set registers, or something else).

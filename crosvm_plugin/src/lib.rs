@@ -922,6 +922,11 @@ pub struct crosvm_vcpu_event {
     event: anon_vcpu_event,
 }
 
+pub struct crosvm_vcpu_reg_cache {
+    set: bool,
+    cache: Vec<u8>,
+}
+
 pub struct crosvm_vcpu {
     read_pipe: File,
     write_pipe: File,
@@ -929,6 +934,10 @@ pub struct crosvm_vcpu {
     request_buffer: Vec<u8>,
     response_buffer: Vec<u8>,
     resume_data: Vec<u8>,
+
+    regs: crosvm_vcpu_reg_cache,
+    sregs: crosvm_vcpu_reg_cache,
+    debugregs: crosvm_vcpu_reg_cache,
 }
 
 impl crosvm_vcpu {
@@ -940,6 +949,18 @@ impl crosvm_vcpu {
             request_buffer: Vec::new(),
             response_buffer: vec![0; MAX_DATAGRAM_SIZE],
             resume_data: Vec::new(),
+            regs: crosvm_vcpu_reg_cache {
+                set: false,
+                cache: vec![],
+            },
+            sregs: crosvm_vcpu_reg_cache {
+                set: false,
+                cache: vec![],
+            },
+            debugregs: crosvm_vcpu_reg_cache {
+                set: false,
+                cache: vec![],
+            },
         }
     }
     fn vcpu_send(&mut self, request: &VcpuRequest) -> result::Result<(), c_int> {
@@ -1017,6 +1038,19 @@ impl crosvm_vcpu {
         let resume: &mut VcpuRequest_Resume = r.mut_resume();
         swap(&mut resume.data, &mut self.resume_data);
 
+        if self.regs.set {
+            swap(&mut resume.regs, &mut self.regs.cache);
+            self.regs.set = false;
+        }
+        if self.sregs.set {
+            swap(&mut resume.sregs, &mut self.sregs.cache);
+            self.sregs.set = false;
+        }
+        if self.debugregs.set {
+            swap(&mut resume.debugregs, &mut self.debugregs.cache);
+            self.debugregs.set = false;
+        }
+
         self.vcpu_send(&r)?;
         Ok(())
     }
@@ -1049,6 +1083,33 @@ impl crosvm_vcpu {
         let set_state: &mut VcpuRequest_SetState = r.mut_set_state();
         set_state.set = state_set;
         set_state.state = new_state.to_vec();
+
+        self.vcpu_transaction(&r)?;
+        Ok(())
+    }
+
+    fn set_state_from_cache(
+        &mut self,
+        state_set: VcpuRequest_StateSet,
+    ) -> result::Result<(), c_int> {
+        let mut r = VcpuRequest::new();
+        let set_state: &mut VcpuRequest_SetState = r.mut_set_state();
+        set_state.set = state_set;
+        match state_set {
+            VcpuRequest_StateSet::REGS => {
+                swap(&mut set_state.state, &mut self.regs.cache);
+                self.regs.set = false;
+            }
+            VcpuRequest_StateSet::SREGS => {
+                swap(&mut set_state.state, &mut self.sregs.cache);
+                self.sregs.set = false;
+            }
+            VcpuRequest_StateSet::DEBUGREGS => {
+                swap(&mut set_state.state, &mut self.debugregs.cache);
+                self.debugregs.set = false;
+            }
+            _ => return Err(EINVAL),
+        }
 
         self.vcpu_transaction(&r)?;
         Ok(())
@@ -1464,6 +1525,11 @@ pub unsafe extern "C" fn crosvm_vcpu_get_regs(
 ) -> c_int {
     let _u = STATS.record(Stat::VcpuGetRegs);
     let this = &mut *this;
+    if this.regs.set {
+        if let Err(e) = this.set_state_from_cache(VcpuRequest_StateSet::REGS) {
+            return -e;
+        }
+    }
     let regs = from_raw_parts_mut(regs as *mut u8, size_of::<kvm_regs>());
     let ret = this.get_state(VcpuRequest_StateSet::REGS, regs);
     to_crosvm_rc(ret)
@@ -1477,8 +1543,9 @@ pub unsafe extern "C" fn crosvm_vcpu_set_regs(
     let _u = STATS.record(Stat::VcpuSetRegs);
     let this = &mut *this;
     let regs = from_raw_parts(regs as *mut u8, size_of::<kvm_regs>());
-    let ret = this.set_state(VcpuRequest_StateSet::REGS, regs);
-    to_crosvm_rc(ret)
+    this.regs.set = true;
+    this.regs.cache = regs.to_vec();
+    0
 }
 
 #[no_mangle]
@@ -1488,6 +1555,11 @@ pub unsafe extern "C" fn crosvm_vcpu_get_sregs(
 ) -> c_int {
     let _u = STATS.record(Stat::VcpuGetSregs);
     let this = &mut *this;
+    if this.sregs.set {
+        if let Err(e) = this.set_state_from_cache(VcpuRequest_StateSet::SREGS) {
+            return -e;
+        }
+    }
     let sregs = from_raw_parts_mut(sregs as *mut u8, size_of::<kvm_sregs>());
     let ret = this.get_state(VcpuRequest_StateSet::SREGS, sregs);
     to_crosvm_rc(ret)
@@ -1501,8 +1573,9 @@ pub unsafe extern "C" fn crosvm_vcpu_set_sregs(
     let _u = STATS.record(Stat::VcpuSetSregs);
     let this = &mut *this;
     let sregs = from_raw_parts(sregs as *mut u8, size_of::<kvm_sregs>());
-    let ret = this.set_state(VcpuRequest_StateSet::SREGS, sregs);
-    to_crosvm_rc(ret)
+    this.sregs.set = true;
+    this.sregs.cache = sregs.to_vec();
+    0
 }
 
 #[no_mangle]
@@ -1530,6 +1603,11 @@ pub unsafe extern "C" fn crosvm_vcpu_get_debugregs(
 ) -> c_int {
     let _u = STATS.record(Stat::GetDebugRegs);
     let this = &mut *this;
+    if this.debugregs.set {
+        if let Err(e) = this.set_state_from_cache(VcpuRequest_StateSet::DEBUGREGS) {
+            return -e;
+        }
+    }
     let dregs = from_raw_parts_mut(dregs as *mut u8, size_of::<kvm_debugregs>());
     let ret = this.get_state(VcpuRequest_StateSet::DEBUGREGS, dregs);
     to_crosvm_rc(ret)
@@ -1543,8 +1621,9 @@ pub unsafe extern "C" fn crosvm_vcpu_set_debugregs(
     let _u = STATS.record(Stat::SetDebugRegs);
     let this = &mut *this;
     let dregs = from_raw_parts(dregs as *mut u8, size_of::<kvm_debugregs>());
-    let ret = this.set_state(VcpuRequest_StateSet::DEBUGREGS, dregs);
-    to_crosvm_rc(ret)
+    this.debugregs.set = true;
+    this.debugregs.cache = dregs.to_vec();
+    0
 }
 
 #[no_mangle]

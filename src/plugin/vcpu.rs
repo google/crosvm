@@ -444,6 +444,20 @@ impl PluginVcpu {
                 Err(SysError::new(EPROTO))
             } else if request.has_resume() {
                 send_response = false;
+                let resume = request.get_resume();
+                if !resume.get_regs().is_empty() {
+                    set_vcpu_state(vcpu, VcpuRequest_StateSet::REGS, resume.get_regs())?;
+                }
+                if !resume.get_sregs().is_empty() {
+                    set_vcpu_state(vcpu, VcpuRequest_StateSet::SREGS, resume.get_sregs())?;
+                }
+                if !resume.get_debugregs().is_empty() {
+                    set_vcpu_state(
+                        vcpu,
+                        VcpuRequest_StateSet::DEBUGREGS,
+                        resume.get_debugregs(),
+                    )?;
+                }
                 resume_data = Some(request.take_resume().take_data());
                 Ok(())
             } else if request.has_get_state() {
