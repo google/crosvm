@@ -13,6 +13,8 @@ const VIRTQ_DESC_F_WRITE: u16 = 0x2;
 #[allow(dead_code)]
 const VIRTQ_DESC_F_INDIRECT: u16 = 0x4;
 
+const VIRTIO_MSI_NO_VECTOR: u16 = 0xffff;
+
 /// An iterator over a single descriptor chain.  Not to be confused with AvailIter,
 /// which iterates over the descriptor chain heads in a queue.
 pub struct DescIter<'a> {
@@ -205,6 +207,9 @@ pub struct Queue {
     /// Inidcates if the queue is finished with configuration
     pub ready: bool,
 
+    /// MSI-X vector for the queue. Don't care for INTx
+    pub vector: u16,
+
     /// Guest physical address of the descriptor table
     pub desc_table: GuestAddress,
 
@@ -225,6 +230,7 @@ impl Queue {
             max_size,
             size: max_size,
             ready: false,
+            vector: VIRTIO_MSI_NO_VECTOR,
             desc_table: GuestAddress(0),
             avail_ring: GuestAddress(0),
             used_ring: GuestAddress(0),

@@ -4,7 +4,7 @@
 
 use crate::pci::{PciCapability, PciCapabilityID};
 use std::convert::TryInto;
-use sys_util::error;
+use sys_util::{error, EventFd};
 
 use data_model::DataInit;
 
@@ -24,7 +24,6 @@ struct MsixTableEntry {
 }
 
 impl MsixTableEntry {
-    #[allow(dead_code)]
     fn masked(&self) -> bool {
         self.vector_ctl & 0x1 == 0x1
     }
@@ -41,13 +40,19 @@ impl Default for MsixTableEntry {
     }
 }
 
+struct IrqfdGsi {
+    irqfd: EventFd,
+    gsi: u32,
+}
+
 /// Wrapper over MSI-X Capability Structure and MSI-X Tables
 pub struct MsixConfig {
     table_entries: Vec<MsixTableEntry>,
     pba_entries: Vec<u64>,
+    irq_vec: Vec<IrqfdGsi>,
     masked: bool,
     enabled: bool,
-    _msix_num: u16,
+    msix_num: u16,
 }
 
 impl MsixConfig {
@@ -63,9 +68,10 @@ impl MsixConfig {
         MsixConfig {
             table_entries,
             pba_entries,
+            irq_vec: Vec::new(),
             masked: false,
             enabled: false,
-            _msix_num: msix_vectors,
+            msix_num: msix_vectors,
         }
     }
 
@@ -104,14 +110,63 @@ impl MsixConfig {
     pub fn write_msix_capability(&mut self, offset: u64, data: &[u8]) {
         if offset == 2 && data.len() == 2 {
             let reg = u16::from_le_bytes([data[0], data[1]]);
+            let old_masked = self.masked;
+            let old_enabled = self.enabled;
 
             self.masked = (reg & FUNCTION_MASK_BIT) == FUNCTION_MASK_BIT;
             self.enabled = (reg & MSIX_ENABLE_BIT) == MSIX_ENABLE_BIT;
+
+            if !old_enabled && self.enabled {
+                self.msix_enable();
+            }
+
+            // If the Function Mask bit was set, and has just been cleared, it's
+            // important to go through the entire PBA to check if there was any
+            // pending MSI-X message to inject, given that the vector is not
+            // masked.
+            if old_masked && !self.masked {
+                for (index, entry) in self.table_entries.clone().iter().enumerate() {
+                    if !entry.masked() && self.get_pba_bit(index as u16) == 1 {
+                        self.inject_msix_and_clear_pba(index);
+                    }
+                }
+            }
         } else {
             error!(
                 "invalid write to MSI-X Capability Structure offset {:x}",
                 offset
             );
+        }
+    }
+
+    fn add_msi_route(&self, index: u16, _gsi: u32) {
+        let mut data: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
+        self.read_msix_table((index * 16).into(), data.as_mut());
+        let msi_address: u64 = u64::from_le_bytes(data);
+        let mut data: [u8; 4] = [0, 0, 0, 0];
+        self.read_msix_table((index * 16 + 8).into(), data.as_mut());
+        let _msi_data: u32 = u32::from_le_bytes(data);
+
+        if msi_address == 0 {
+            return;
+        }
+
+        // TODO: IPC to vm_control for VmIrqRequest::AddMsiRoute()
+    }
+
+    fn msix_enable(&mut self) {
+        self.irq_vec.clear();
+        for i in 0..self.msix_num {
+            let irqfd = EventFd::new().unwrap();
+            let irq_num: u32 = 0;
+
+            // TODO: IPC to vm_control for VmIrqRequest::AllocateOneMsi()
+            self.irq_vec.push(IrqfdGsi {
+                irqfd,
+                gsi: irq_num,
+            });
+
+            self.add_msi_route(i, irq_num);
         }
     }
 
@@ -183,6 +238,9 @@ impl MsixConfig {
         let index: usize = (offset / MSIX_TABLE_ENTRIES_MODULO) as usize;
         let modulo_offset = offset % MSIX_TABLE_ENTRIES_MODULO;
 
+        // Store the value of the entry before modification
+        let old_entry = self.table_entries[index].clone();
+
         match data.len() {
             4 => {
                 let value = u32::from_le_bytes(data.try_into().unwrap());
@@ -210,6 +268,34 @@ impl MsixConfig {
             }
             _ => error!("invalid data length"),
         };
+
+        let new_entry = self.table_entries[index].clone();
+        if self.enabled()
+            && !self.masked()
+            && (old_entry.msg_addr_lo != new_entry.msg_addr_lo
+                || old_entry.msg_addr_hi != new_entry.msg_addr_hi
+                || old_entry.msg_data != new_entry.msg_data)
+        {
+            let irq_num = self.irq_vec[index].gsi;
+            self.add_msi_route(index as u16, irq_num);
+        }
+
+        // After the MSI-X table entry has been updated, it is necessary to
+        // check if the vector control masking bit has changed. In case the
+        // bit has been flipped from 1 to 0, we need to inject a MSI message
+        // if the corresponding pending bit from the PBA is set. Once the MSI
+        // has been injected, the pending bit in the PBA needs to be cleared.
+        // All of this is valid only if MSI-X has not been masked for the whole
+        // device.
+
+        // Check if bit has been flipped
+        if !self.masked()
+            && old_entry.masked()
+            && !self.table_entries[index].masked()
+            && self.get_pba_bit(index as u16) == 1
+        {
+            self.inject_msix_and_clear_pba(index);
+        }
     }
 
     /// Read PBA Entries
@@ -259,7 +345,6 @@ impl MsixConfig {
         error!("Pending Bit Array is read only");
     }
 
-    #[allow(dead_code)]
     fn set_pba_bit(&mut self, vector: u16, set: bool) {
         assert!(vector < MAX_MSIX_VECTORS_PER_DEVICE);
 
@@ -275,7 +360,6 @@ impl MsixConfig {
         }
     }
 
-    #[allow(dead_code)]
     fn get_pba_bit(&self, vector: u16) -> u8 {
         assert!(vector < MAX_MSIX_VECTORS_PER_DEVICE);
 
@@ -283,6 +367,38 @@ impl MsixConfig {
         let shift: usize = (vector as usize) % BITS_PER_PBA_ENTRY;
 
         ((self.pba_entries[index] >> shift) & 0x0000_0001u64) as u8
+    }
+
+    fn inject_msix_and_clear_pba(&mut self, vector: usize) {
+        if let Some(irq) = self.irq_vec.get(vector) {
+            irq.irqfd.write(1).unwrap();
+        }
+
+        // Clear the bit from PBA
+        self.set_pba_bit(vector as u16, false);
+    }
+
+    /// Inject virtual interrupt to the guest
+    ///
+    ///  # Arguments
+    ///  * 'vector' - the index to the MSI-X Table entry
+    ///
+    /// PCI Spec 3.0 6.8.3.5: while a vector is masked, the function is
+    /// prohibited from sending the associated message, and the function
+    /// must set the associated Pending bit whenever the function would
+    /// otherwise send the message. When software unmasks a vector whose
+    /// associated Pending bit is set, the function must schedule sending
+    /// the associated message, and clear the Pending bit as soon as the
+    /// message has been sent.
+    ///
+    /// If the vector is unmasked, writing to irqfd which wakes up KVM to
+    /// inject virtual interrupt to the guest.
+    pub fn trigger(&mut self, vector: u16) {
+        if self.table_entries[vector as usize].masked() || self.masked() {
+            self.set_pba_bit(vector, true);
+        } else if let Some(irq) = self.irq_vec.get(vector as usize) {
+            irq.irqfd.write(1).unwrap();
+        }
     }
 }
 
