@@ -95,23 +95,17 @@ impl Display for GuestMemoryError {
     }
 }
 
-impl From<GuestMemoryError> for PlaybackError {
+impl From<GuestMemoryError> for AudioError {
     fn from(err: GuestMemoryError) -> Self {
-        PlaybackError::ReadingGuestError(err)
-    }
-}
-
-impl From<GuestMemoryError> for CaptureError {
-    fn from(err: GuestMemoryError) -> Self {
-        CaptureError::ReadingGuestError(err)
+        AudioError::ReadingGuestError(err)
     }
 }
 
 type GuestMemoryResult<T> = std::result::Result<T, GuestMemoryError>;
 
-// Internal error type used for reporting errors from the audio playback thread.
+// Internal error type used for reporting errors from the audio thread.
 #[derive(Debug)]
-enum PlaybackError {
+enum AudioError {
     // Failure to read guest memory.
     ReadingGuestError(GuestMemoryError),
     // Failure to get an buffer from the stream.
@@ -120,11 +114,11 @@ enum PlaybackError {
     WritingOutput(std::io::Error),
 }
 
-impl std::error::Error for PlaybackError {}
+impl std::error::Error for AudioError {}
 
-impl Display for PlaybackError {
+impl Display for AudioError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::PlaybackError::*;
+        use self::AudioError::*;
 
         match self {
             ReadingGuestError(e) => write!(f, "Failed to read guest memory: {}.", e),
@@ -134,31 +128,7 @@ impl Display for PlaybackError {
     }
 }
 
-type PlaybackResult<T> = std::result::Result<T, PlaybackError>;
-
-// Internal error type used for reporting errors from the audio capture thread.
-#[derive(Debug)]
-enum CaptureError {
-    // Failure to read guest memory.
-    ReadingGuestError(GuestMemoryError),
-    // Failure to get an buffer from the stream.
-    StreamError(Box<dyn Error>),
-}
-
-impl std::error::Error for CaptureError {}
-
-impl Display for CaptureError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::CaptureError::*;
-
-        match self {
-            ReadingGuestError(e) => write!(f, "Failed to read guest memory: {}.", e),
-            StreamError(e) => write!(f, "Failed to get a buffer from the stream: {}", e),
-        }
-    }
-}
-
-type CaptureResult<T> = std::result::Result<T, CaptureError>;
+type AudioResult<T> = std::result::Result<T, AudioError>;
 
 // Audio thread book-keeping data
 struct AudioThreadInfo {
@@ -633,7 +603,7 @@ fn play_buffer(
     regs: &mut Ac97BusMasterRegs,
     mem: &GuestMemory,
     out_buffer: &mut PlaybackBuffer,
-) -> PlaybackResult<()> {
+) -> AudioResult<()> {
     // If the current buffer had any samples in it, mark it as done.
     if regs.func_regs_mut(Ac97Function::Output).picb > 0 {
         buffer_completed(regs, mem, Ac97Function::Output)?
@@ -646,7 +616,7 @@ fn play_buffer(
         let zeros = vec![0u8; buffer_len as usize];
         out_buffer
             .write(&zeros)
-            .map_err(PlaybackError::WritingOutput)?;
+            .map_err(AudioError::WritingOutput)?;
     }
     Ok(())
 }
@@ -695,11 +665,11 @@ fn audio_out_thread(
     mem: GuestMemory,
     thread_run: &AtomicBool,
     mut output_stream: Box<dyn PlaybackBufferStream>,
-) -> PlaybackResult<()> {
+) -> AudioResult<()> {
     while thread_run.load(Ordering::Relaxed) {
         output_stream
             .next_playback_buffer()
-            .map_err(PlaybackError::StreamError)
+            .map_err(AudioError::StreamError)
             .and_then(|mut pb_buf| play_buffer(&mut regs.lock(), &mem, &mut pb_buf))?;
     }
     Ok(())
@@ -710,7 +680,7 @@ fn capture_buffer(
     regs: &mut Ac97BusMasterRegs,
     mem: &GuestMemory,
     in_buffer: &mut CaptureBuffer,
-) -> CaptureResult<()> {
+) -> AudioResult<()> {
     // If the current buffer had any samples in it, mark it as done.
     if regs.func_regs_mut(Ac97Function::Input).picb > 0 {
         buffer_completed(regs, mem, Ac97Function::Input)?
@@ -728,11 +698,11 @@ fn audio_in_thread(
     mem: GuestMemory,
     thread_run: &AtomicBool,
     mut input_stream: Box<dyn CaptureBufferStream>,
-) -> CaptureResult<()> {
+) -> AudioResult<()> {
     while thread_run.load(Ordering::Relaxed) {
         input_stream
             .next_capture_buffer()
-            .map_err(CaptureError::StreamError)
+            .map_err(AudioError::StreamError)
             .and_then(|mut cp_buf| capture_buffer(&mut regs.lock(), &mem, &mut cp_buf))?;
     }
     Ok(())
