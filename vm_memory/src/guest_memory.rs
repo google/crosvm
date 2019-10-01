@@ -252,7 +252,7 @@ impl GuestMemory {
 
     /// Madvise away the address range in the host that is associated with the given guest range.
     pub fn remove_range(&self, addr: GuestAddress, count: u64) -> Result<()> {
-        self.do_in_region(addr, move |mapping, offset| {
+        self.do_in_region(addr, move |mapping, offset, _| {
             mapping
                 .remove_range(offset, count as usize)
                 .map_err(|e| Error::MemoryAccess(addr, e))
@@ -303,7 +303,7 @@ impl GuestMemory {
     /// # }
     /// ```
     pub fn write_at_addr(&self, buf: &[u8], guest_addr: GuestAddress) -> Result<usize> {
-        self.do_in_region(guest_addr, move |mapping, offset| {
+        self.do_in_region(guest_addr, move |mapping, offset, _| {
             mapping
                 .write_slice(buf, offset)
                 .map_err(|e| Error::MemoryAccess(guest_addr, e))
@@ -362,7 +362,7 @@ impl GuestMemory {
     /// # }
     /// ```
     pub fn read_at_addr(&self, buf: &mut [u8], guest_addr: GuestAddress) -> Result<usize> {
-        self.do_in_region(guest_addr, move |mapping, offset| {
+        self.do_in_region(guest_addr, move |mapping, offset, _| {
             mapping
                 .read_slice(buf, offset)
                 .map_err(|e| Error::MemoryAccess(guest_addr, e))
@@ -422,7 +422,7 @@ impl GuestMemory {
     /// # }
     /// ```
     pub fn read_obj_from_addr<T: DataInit>(&self, guest_addr: GuestAddress) -> Result<T> {
-        self.do_in_region(guest_addr, |mapping, offset| {
+        self.do_in_region(guest_addr, |mapping, offset, _| {
             mapping
                 .read_obj(offset)
                 .map_err(|e| Error::MemoryAccess(guest_addr, e))
@@ -446,7 +446,7 @@ impl GuestMemory {
     /// # }
     /// ```
     pub fn write_obj_at_addr<T: DataInit>(&self, val: T, guest_addr: GuestAddress) -> Result<()> {
-        self.do_in_region(guest_addr, move |mapping, offset| {
+        self.do_in_region(guest_addr, move |mapping, offset, _| {
             mapping
                 .write_obj(val, offset)
                 .map_err(|e| Error::MemoryAccess(guest_addr, e))
@@ -543,7 +543,7 @@ impl GuestMemory {
         src: &dyn AsRawDescriptor,
         count: usize,
     ) -> Result<()> {
-        self.do_in_region(guest_addr, move |mapping, offset| {
+        self.do_in_region(guest_addr, move |mapping, offset, _| {
             mapping
                 .read_to_memory(offset, src, count)
                 .map_err(|e| Error::MemoryAccess(guest_addr, e))
@@ -581,7 +581,7 @@ impl GuestMemory {
         dst: &dyn AsRawDescriptor,
         count: usize,
     ) -> Result<()> {
-        self.do_in_region(guest_addr, move |mapping, offset| {
+        self.do_in_region(guest_addr, move |mapping, offset, _| {
             mapping
                 .write_from_memory(offset, dst, count)
                 .map_err(|e| Error::MemoryAccess(guest_addr, e))
@@ -609,16 +609,25 @@ impl GuestMemory {
     /// # }
     /// ```
     pub fn get_host_address(&self, guest_addr: GuestAddress) -> Result<*const u8> {
-        self.do_in_region(guest_addr, |mapping, offset| {
+        self.do_in_region(guest_addr, |mapping, offset, _| {
             // This is safe; `do_in_region` already checks that offset is in
             // bounds.
             Ok(unsafe { mapping.as_ptr().add(offset) } as *const u8)
         })
     }
 
+    /// Loops over all guest memory regions of `self`, and performs the callback function `F` in
+    /// the target region that contains `guest_addr`.  The callback function `F` takes in:
+    ///
+    /// (i) the memory mapping associated with the target region.
+    /// (ii) the relative offset from the start of the target region to `guest_addr`.
+    /// (iii) the absolute offset from the start of the memory mapping to the target region.
+    ///
+    /// If no target region is found, an error is returned.  The callback function `F` may return
+    /// an Ok(`T`) on success or a `GuestMemoryError` on failure.
     pub fn do_in_region<F, T>(&self, guest_addr: GuestAddress, cb: F) -> Result<T>
     where
-        F: FnOnce(&MemoryMapping, usize) -> Result<T>,
+        F: FnOnce(&MemoryMapping, usize, u64) -> Result<T>,
     {
         self.regions
             .iter()
@@ -628,6 +637,7 @@ impl GuestMemory {
                 cb(
                     &region.mapping,
                     guest_addr.offset_from(region.start()) as usize,
+                    region.memfd_offset,
                 )
             })
     }
@@ -800,7 +810,7 @@ mod tests {
 
     // Get the base address of the mapping for a GuestAddress.
     fn get_mapping(mem: &GuestMemory, addr: GuestAddress) -> Result<*const u8> {
-        mem.do_in_region(addr, |mapping, _| Ok(mapping.as_ptr() as *const u8))
+        mem.do_in_region(addr, |mapping, _, _| Ok(mapping.as_ptr() as *const u8))
     }
 
     #[test]
