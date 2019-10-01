@@ -95,15 +95,12 @@ fn region_end(region: &MemoryRegion) -> GuestAddress {
 #[derive(Clone)]
 pub struct GuestMemory {
     regions: Arc<Vec<MemoryRegion>>,
-    memfd: Option<Arc<SharedMemory>>,
+    memfd: Arc<SharedMemory>,
 }
 
 impl AsRawFd for GuestMemory {
     fn as_raw_fd(&self) -> RawFd {
-        match &self.memfd {
-            Some(memfd) => memfd.as_raw_fd(),
-            None => panic!("GuestMemory is not backed by a memfd"),
-        }
+        self.memfd.as_raw_fd()
     }
 }
 
@@ -142,19 +139,7 @@ impl GuestMemory {
     pub fn new(ranges: &[(GuestAddress, u64)]) -> Result<GuestMemory> {
         // Create memfd
 
-        // TODO(prilik) remove optional memfd once parallel CQ lands (crbug.com/942183).
-        // Many classic CQ builders run old kernels without memfd support, resulting in test
-        // failures. It's less effort to introduce this temporary optional path than to
-        // manually mark all affected tests as ignore.
-        let memfd = match GuestMemory::create_memfd(ranges) {
-            Err(Error::MemoryCreationFailed { .. }) => {
-                warn!("GuestMemory is not backed by a memfd");
-                None
-            }
-            Err(e) => return Err(e),
-            Ok(memfd) => Some(memfd),
-        };
-
+        let memfd = GuestMemory::create_memfd(ranges)?;
         // Create memory regions
         let mut regions = Vec::<MemoryRegion>::new();
         let mut offset = 0;
@@ -170,12 +155,8 @@ impl GuestMemory {
                 }
             }
 
-            let mapping = match &memfd {
-                Some(memfd) => MemoryMapping::from_fd_offset(memfd, range.1 as usize, offset),
-                None => MemoryMapping::new(range.1 as usize),
-            }
-            .map_err(Error::MemoryMappingFailed)?;
-
+            let mapping = MemoryMapping::from_fd_offset(&memfd, range.1 as usize, offset)
+                .map_err(Error::MemoryMappingFailed)?;
             regions.push(MemoryRegion {
                 mapping,
                 guest_base: range.0,
@@ -187,10 +168,7 @@ impl GuestMemory {
 
         Ok(GuestMemory {
             regions: Arc::new(regions),
-            memfd: match memfd {
-                Some(memfd) => Some(Arc::new(memfd)),
-                None => None,
-            },
+            memfd: Arc::new(memfd),
         })
     }
 
