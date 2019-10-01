@@ -52,6 +52,7 @@ composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
 virgl_renderer = ["devices/virgl_renderer"]
 gfxstream = ["devices/gfxstream"]
 gdb = ["gdbstub", "thiserror",  "arch/gdb", "vm_control/gdb", "x86_64/gdb"]
+udmabuf = ["devices/udmabuf"]
 
 [dependencies]
 arch = { path = "arch" }

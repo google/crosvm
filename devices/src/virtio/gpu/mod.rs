@@ -880,6 +880,8 @@ pub struct Gpu {
     external_blob: bool,
     rutabaga_component: RutabagaComponentType,
     base_features: u64,
+    #[allow(dead_code)]
+    mem: GuestMemory,
 }
 
 impl Gpu {
@@ -895,6 +897,7 @@ impl Gpu {
         external_blob: bool,
         base_features: u64,
         channels: BTreeMap<String, PathBuf>,
+        mem: GuestMemory,
     ) -> Gpu {
         let virglrenderer_flags = VirglRendererFlags::new()
             .use_egl(gpu_parameters.renderer_use_egl)
@@ -958,6 +961,7 @@ impl Gpu {
             external_blob,
             rutabaga_component: component,
             base_features,
+            mem,
         }
     }
 
@@ -1023,6 +1027,9 @@ impl VirtioDevice for Gpu {
             keep_rds.push(libc::STDERR_FILENO);
         }
 
+        #[cfg(feature = "udmabuf")]
+        keep_rds.push(self.mem.as_raw_descriptor());
+
         if let Some(ref gpu_device_socket) = self.gpu_device_socket {
             keep_rds.push(gpu_device_socket.as_raw_descriptor());
         }
@@ -1031,6 +1038,7 @@ impl VirtioDevice for Gpu {
         for bridge in &self.resource_bridges {
             keep_rds.push(bridge.as_raw_descriptor());
         }
+
         keep_rds
     }
 

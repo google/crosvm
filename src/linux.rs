@@ -854,6 +854,7 @@ fn create_gpu_device(
     x_display: Option<String>,
     event_devices: Vec<EventDevice>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
+    mem: &GuestMemory,
 ) -> DeviceResult {
     let jailed_wayland_path = Path::new("/wayland-0");
 
@@ -885,6 +886,7 @@ fn create_gpu_device(
         cfg.sandbox,
         virtio::base_features(cfg.protected_vm),
         cfg.wayland_socket_paths.clone(),
+        mem.clone(),
     );
 
     let jail = match simple_jail(&cfg, "gpu_device")? {
@@ -1562,6 +1564,7 @@ fn create_virtio_devices(
                 cfg.x_display.clone(),
                 event_devices,
                 map_request,
+                mem,
             )?);
         }
     }
