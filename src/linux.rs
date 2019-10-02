@@ -44,10 +44,10 @@ use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketLis
 
 use sys_util::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
-    get_group_id, get_user_id, getegid, geteuid, info, register_signal_handler, set_cpu_affinity,
-    validate_raw_fd, warn, EventFd, FlockOperation, GuestAddress, GuestMemory, Killable,
-    MemoryMapping, PollContext, PollToken, Protection, SignalFd, Terminal, TimerFd, WatchingEvents,
-    SIGRTMIN,
+    get_group_id, get_user_id, getegid, geteuid, info, register_rt_signal_handler,
+    set_cpu_affinity, validate_raw_fd, warn, EventFd, FlockOperation, GuestAddress, GuestMemory,
+    Killable, MemoryMapping, PollContext, PollToken, Protection, SignalFd, Terminal, TimerFd,
+    WatchingEvents, SIGRTMIN,
 };
 use vhost;
 use vm_control::{
@@ -1085,7 +1085,7 @@ fn setup_vcpu_signal_handler() -> Result<()> {
     unsafe {
         extern "C" fn handle_signal() {}
         // Our signal handler does nothing and is trivially async signal safe.
-        register_signal_handler(SIGRTMIN() + 0, handle_signal)
+        register_rt_signal_handler(SIGRTMIN() + 0, handle_signal)
             .map_err(Error::RegisterSignalHandler)?;
     }
     block_signal(SIGRTMIN() + 0).map_err(Error::BlockSignal)?;

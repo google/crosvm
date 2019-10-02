@@ -90,21 +90,15 @@ pub fn SIGRTMAX() -> c_int {
     unsafe { __libc_current_sigrtmax() }
 }
 
-fn valid_signal_num(num: c_int) -> bool {
+fn valid_rt_signal_num(num: c_int) -> bool {
     num >= SIGRTMIN() && num <= SIGRTMAX()
 }
 
 /// Registers `handler` as the signal handler of signum `num`.
 ///
-/// The value of `num` must be within [`SIGRTMIN`, `SIGRTMAX`] range.
-///
 /// This is considered unsafe because the given handler will be called asynchronously, interrupting
 /// whatever the thread was doing and therefore must only do async-signal-safe operations.
 pub unsafe fn register_signal_handler(num: c_int, handler: extern "C" fn()) -> errno::Result<()> {
-    if !valid_signal_num(num) {
-        return Err(errno::Error::new(EINVAL));
-    }
-
     let mut sigact: sigaction = mem::zeroed();
     sigact.sa_flags = SA_RESTART;
     sigact.sa_sigaction = handler as *const () as usize;
@@ -115,6 +109,23 @@ pub unsafe fn register_signal_handler(num: c_int, handler: extern "C" fn()) -> e
     }
 
     Ok(())
+}
+
+/// Registers `handler` as the signal handler for the real-time signal with signum `num`.
+///
+/// The value of `num` must be within [`SIGRTMIN`, `SIGRTMAX`] range.
+///
+/// This is considered unsafe because the given handler will be called asynchronously, interrupting
+/// whatever the thread was doing and therefore must only do async-signal-safe operations.
+pub unsafe fn register_rt_signal_handler(
+    num: c_int,
+    handler: extern "C" fn(),
+) -> errno::Result<()> {
+    if !valid_rt_signal_num(num) {
+        return Err(errno::Error::new(EINVAL));
+    }
+
+    register_signal_handler(num, handler)
 }
 
 /// Creates `sigset` from an array of signal numbers.
@@ -260,7 +271,7 @@ pub unsafe trait Killable {
     ///
     /// The value of `num` must be within [`SIGRTMIN`, `SIGRTMAX`] range.
     fn kill(&self, num: c_int) -> errno::Result<()> {
-        if !valid_signal_num(num) {
+        if !valid_rt_signal_num(num) {
             return Err(errno::Error::new(EINVAL));
         }
 
