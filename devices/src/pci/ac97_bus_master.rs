@@ -772,12 +772,6 @@ fn update_sr(regs: &mut Ac97BusMasterRegs, func: Ac97Function, val: u16) {
         }
     } else {
         regs.glob_sta &= !int_mask;
-        if regs.glob_sta & (GS_PIINT | GS_POINT | GS_MINT) == 0 {
-            if let Some(irq_evt) = regs.irq_evt.as_ref() {
-                // Ignore write failure, nothing can be done about it from here.
-                let _ = irq_evt.write(0);
-            }
-        }
     }
 }
 
