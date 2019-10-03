@@ -38,6 +38,10 @@ pub enum NetError {
     CreatePollContext(SysError),
     /// Cloning kill eventfd failed.
     CloneKillEventFd(SysError),
+    /// Adding the tap fd back to the poll context failed.
+    PollAddTap(SysError),
+    /// Removing the tap fd from the poll context failed.
+    PollDeleteTap(SysError),
     /// Open tap device failed.
     TapOpen(TapError),
     /// Setting tap IP failed.
@@ -66,6 +70,8 @@ impl Display for NetError {
             CreateKillEventFd(e) => write!(f, "failed to create kill eventfd: {}", e),
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             CloneKillEventFd(e) => write!(f, "failed to clone kill eventfd: {}", e),
+            PollAddTap(e) => write!(f, "failed to add tap fd to poll context: {}", e),
+            PollDeleteTap(e) => write!(f, "failed to remove tap fd from poll context: {}", e),
             TapOpen(e) => write!(f, "failed to open tap device: {}", e),
             TapSetIp(e) => write!(f, "failed to set tap IP: {}", e),
             TapSetNetmask(e) => write!(f, "failed to set tap netmask: {}", e),
@@ -231,6 +237,9 @@ where
                             if self.rx_single_frame() {
                                 self.deferred_rx = false;
                             } else {
+                                // The guest has not yet made any buffers available. Remove the
+                                // tapfd from the poll context until more are made available.
+                                poll_ctx.delete(&self.tap).map_err(NetError::PollDeleteTap);
                                 continue;
                             }
                         }
@@ -243,6 +252,11 @@ where
                         }
                         // There should be a buffer available now to receive the frame into.
                         if self.deferred_rx && self.rx_single_frame() {
+                            // The guest has made buffers available, so add the tap back to the
+                            // poll context.
+                            poll_ctx
+                                .add(&self.tap, Token::RxTap)
+                                .map_err(NetError::PollAddTap);
                             self.deferred_rx = false;
                         }
                     }
