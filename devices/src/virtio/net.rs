@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use libc::EAGAIN;
+use libc::{EAGAIN, EEXIST};
 use net_sys;
 use net_util::{Error as TapError, MacAddress, TapT};
 use sys_util::guest_memory::Error as MemoryError;
@@ -237,9 +237,12 @@ where
                             if self.rx_single_frame() {
                                 self.deferred_rx = false;
                             } else {
-                                // The guest has not yet made any buffers available. Remove the
-                                // tapfd from the poll context until more are made available.
-                                poll_ctx.delete(&self.tap).map_err(NetError::PollDeleteTap);
+                                // There is an outstanding deferred frame and the guest has not yet
+                                // made any buffers available. Remove the tapfd from the poll
+                                // context until more are made available.
+                                poll_ctx
+                                    .delete(&self.tap)
+                                    .map_err(NetError::PollDeleteTap)?;
                                 continue;
                             }
                         }
@@ -253,10 +256,14 @@ where
                         // There should be a buffer available now to receive the frame into.
                         if self.deferred_rx && self.rx_single_frame() {
                             // The guest has made buffers available, so add the tap back to the
-                            // poll context.
-                            poll_ctx
-                                .add(&self.tap, Token::RxTap)
-                                .map_err(NetError::PollAddTap);
+                            // poll context in case it was removed.
+                            match poll_ctx.add(&self.tap, Token::RxTap) {
+                                Ok(_) => {}
+                                Err(e) if e.errno() == EEXIST => {}
+                                Err(e) => {
+                                    return Err(NetError::PollAddTap(e));
+                                }
+                            }
                             self.deferred_rx = false;
                         }
                     }
