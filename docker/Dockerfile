@@ -16,12 +16,12 @@ RUN apt-get update && apt-get install -y \
     kmod \
     libcap-dev \
     libdbus-1-dev \
-    libdrm-dev \
     libegl1-mesa-dev \
     libfdt-dev \
     libgl1-mesa-dev \
     libgles1-mesa-dev \
     libgles2-mesa-dev \
+    libpciaccess-dev \
     libssl1.0-dev \
     libtool \
     libusb-1.0-0-dev \
@@ -65,6 +65,22 @@ RUN git clone https://android.googlesource.com/platform/external/minijail \
     && make -j$(nproc) \
     && cp libminijail.so /usr/lib/x86_64-linux-gnu/
 
+# New libepoxy and libdrm-dev requires newer meson than is in Debian stretch.
+ARG MESON_COMMIT=master
+RUN git clone https://github.com/mesonbuild/meson \
+    && cd meson \
+    && git checkout $MESON_COMMIT \
+    && ln -s $PWD/meson.py /usr/bin/meson
+
+# The libdrm-dev in distro can be too old to build minigbm,
+# so we build it from upstream.
+ARG DRM_COMMIT=master
+RUN git clone https://gitlab.freedesktop.org/mesa/drm \
+    && cd drm \
+    && git checkout $DRM_COMMIT \
+    && meson build \
+    && ninja -C build/ install
+
 # The gbm used by upstream linux distros is not compatible with crosvm, which must use Chrome OS's
 # minigbm.
 RUN dpkg --force-depends -r libgbm1
@@ -72,13 +88,6 @@ RUN git clone https://chromium.googlesource.com/chromiumos/platform/minigbm \
     && cd minigbm \
     && sed 's/-Wall/-Wno-maybe-uninitialized/g' -i Makefile \
     && make install -j$(nproc)
-
-# New libepoxy requires newer meson than is in Debian stretch.
-ARG MESON_COMMIT=master
-RUN git clone https://github.com/mesonbuild/meson \
-    && cd meson \
-    && git checkout $MESON_COMMIT \
-    && ln -s $PWD/meson.py /usr/bin/meson
 
 # New libepoxy has EGL_KHR_DEBUG entry points needed by crosvm.
 ARG LIBEPOXY_COMMIT=master
