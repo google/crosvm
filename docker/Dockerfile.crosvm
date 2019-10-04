@@ -15,7 +15,7 @@ RUN export uid=$UID gid=$GID && \
 
 # Install nvidia proprietary drivers if requested.
 ARG NVIDIA_VERSION=
-RUN if [ -n NVIDIA_VERSION ]; then \
+RUN if [ -n "${NVIDIA_VERSION}" ]; then \
         nvidia_url=http://us.download.nvidia.com/XFree86/Linux-x86_64 && \
         nvidia_binary=NVIDIA-Linux-x86_64-"${NVIDIA_VERSION}".run && \
         curl -LO "${nvidia_url}"/"${NVIDIA_VERSION}"/"${nvidia_binary}" && \
