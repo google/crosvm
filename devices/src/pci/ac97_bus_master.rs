@@ -235,19 +235,12 @@ impl Ac97BusMaster {
                 {
                     // Scope for the lock on thread_regs.
                     let regs = thread_regs.lock();
-                    // Check output irq
+                    // Check output and input irq
                     let po_int_mask = regs.func_regs(Ac97Function::Output).int_mask();
-                    if regs.func_regs(Ac97Function::Output).sr & po_int_mask != 0 {
-                        if let Some(irq_evt) = regs.irq_evt.as_ref() {
-                            if let Err(e) = irq_evt.write(1) {
-                                error!("Failed to set the irq from the resample thread: {}.", e);
-                                break;
-                            }
-                        }
-                    }
-                    // Check input irq
                     let pi_int_mask = regs.func_regs(Ac97Function::Input).int_mask();
-                    if regs.func_regs(Ac97Function::Input).sr & pi_int_mask != 0 {
+                    if regs.func_regs(Ac97Function::Output).sr & po_int_mask != 0
+                        || regs.func_regs(Ac97Function::Input).sr & pi_int_mask != 0
+                    {
                         if let Some(irq_evt) = regs.irq_evt.as_ref() {
                             if let Err(e) = irq_evt.write(1) {
                                 error!("Failed to set the irq from the resample thread: {}.", e);
@@ -753,14 +746,17 @@ fn update_sr(regs: &mut Ac97BusMasterRegs, func: Ac97Function, val: u16) {
 
     {
         let func_regs = regs.func_regs_mut(func);
+        let old_sr = func_regs.sr;
         func_regs.sr = val;
-        if val & SR_INT_MASK != 0 {
+        if (old_sr ^ val) & SR_INT_MASK != 0 {
             if (val & SR_LVBCI) != 0 && (func_regs.cr & CR_LVBIE) != 0 {
                 interrupt_high = true;
             }
             if (val & SR_BCIS) != 0 && (func_regs.cr & CR_IOCE) != 0 {
                 interrupt_high = true;
             }
+        } else {
+            return;
         }
     }
 
