@@ -10,7 +10,8 @@ use data_model::{VolatileMemory, VolatileSlice};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
 use remain::sorted;
 use sys_util::{
-    error, FileReadWriteVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes,
+    error, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync, PunchHole,
+    SeekHole, WriteZeroes,
 };
 
 use std::cmp::{max, min};
@@ -1526,6 +1527,28 @@ impl FileReadWriteVolatile for QcowFile {
         )?;
         self.current_offset += write_count as u64;
         Ok(write_count)
+    }
+}
+
+impl FileReadWriteAtVolatile for QcowFile {
+    fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
+        self.read_cb(offset, slice.size() as usize, |file, offset, count| {
+            let sub_slice = slice.get_slice(offset as u64, count as u64).unwrap();
+            match file {
+                Some(f) => f.read_exact_volatile(sub_slice),
+                None => {
+                    sub_slice.write_bytes(0);
+                    Ok(())
+                }
+            }
+        })
+    }
+
+    fn write_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
+        self.write_cb(offset, slice.size() as usize, |file, offset, count| {
+            let sub_slice = slice.get_slice(offset as u64, count as u64).unwrap();
+            file.write_all_volatile(sub_slice)
+        })
     }
 }
 
