@@ -601,15 +601,14 @@ impl Block {
                     .checked_shl(u32::from(SECTOR_SHIFT))
                     .ok_or(ExecuteError::OutOfRange)?;
                 check_range(offset, data_len as u64, disk_size)?;
-                disk.seek(SeekFrom::Start(offset))
-                    .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
-                let actual_length = writer.write_from(disk, data_len).map_err(|desc_error| {
-                    ExecuteError::ReadIo {
-                        length: data_len,
-                        sector,
-                        desc_error,
-                    }
-                })?;
+                let actual_length =
+                    writer
+                        .write_from_at(disk, data_len, offset)
+                        .map_err(|desc_error| ExecuteError::ReadIo {
+                            length: data_len,
+                            sector,
+                            desc_error,
+                        })?;
                 if actual_length < data_len {
                     return Err(ExecuteError::ShortRead {
                         sector,
@@ -624,11 +623,9 @@ impl Block {
                     .checked_shl(u32::from(SECTOR_SHIFT))
                     .ok_or(ExecuteError::OutOfRange)?;
                 check_range(offset, data_len as u64, disk_size)?;
-                disk.seek(SeekFrom::Start(offset))
-                    .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
                 let actual_length =
                     reader
-                        .read_to(disk, data_len)
+                        .read_to_at(disk, data_len, offset)
                         .map_err(|desc_error| ExecuteError::WriteIo {
                             length: data_len,
                             sector,

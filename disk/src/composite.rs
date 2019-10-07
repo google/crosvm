@@ -14,7 +14,7 @@ use crate::{create_disk_file, DiskFile, ImageType};
 use data_model::VolatileSlice;
 use protos::cdisk_spec;
 use remain::sorted;
-use sys_util::{AsRawFds, FileReadWriteVolatile, FileSetLen, FileSync, PunchHole, WriteZeroes};
+use sys_util::{AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroes};
 
 #[sorted]
 #[derive(Debug)]
@@ -235,12 +235,10 @@ impl FileSync for CompositeDiskFile {
 //
 // If one of the component disks does a partial read or write, that also gets passed
 // transparently to the parent.
-impl FileReadWriteVolatile for CompositeDiskFile {
-    fn read_volatile(&mut self, slice: VolatileSlice) -> io::Result<usize> {
-        let cursor_location = self.cursor_location;
+impl FileReadWriteAtVolatile for CompositeDiskFile {
+    fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
+        let cursor_location = offset;
         let disk = self.disk_at_offset(cursor_location)?;
-        disk.file
-            .seek(SeekFrom::Start(cursor_location - disk.offset))?;
         let subslice = if cursor_location + slice.size() > disk.offset + disk.length {
             let new_size = disk.offset + disk.length - cursor_location;
             slice
@@ -249,17 +247,12 @@ impl FileReadWriteVolatile for CompositeDiskFile {
         } else {
             slice
         };
-        let result = disk.file.read_volatile(subslice);
-        if let Ok(size) = result {
-            self.cursor_location += size as u64;
-        }
-        result
+        disk.file
+            .read_at_volatile(subslice, cursor_location - disk.offset)
     }
-    fn write_volatile(&mut self, slice: VolatileSlice) -> io::Result<usize> {
-        let cursor_location = self.cursor_location;
+    fn write_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
+        let cursor_location = offset;
         let disk = self.disk_at_offset(cursor_location)?;
-        disk.file
-            .seek(SeekFrom::Start(cursor_location - disk.offset))?;
         let subslice = if cursor_location + slice.size() > disk.offset + disk.length {
             let new_size = disk.offset + disk.length - cursor_location;
             slice
@@ -268,11 +261,8 @@ impl FileReadWriteVolatile for CompositeDiskFile {
         } else {
             slice
         };
-        let result = disk.file.write_volatile(subslice);
-        if let Ok(size) = result {
-            self.cursor_location += size as u64;
-        }
-        result
+        disk.file
+            .write_at_volatile(subslice, cursor_location - disk.offset)
     }
 }
 

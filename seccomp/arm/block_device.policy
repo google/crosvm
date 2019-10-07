@@ -10,6 +10,8 @@ fstat64: 1
 fsync: 1
 ftruncate64: 1
 _llseek: 1
+preadv: 1
+pwritev: 1
 timerfd_create: 1
 timerfd_gettime: 1
 timerfd_settime: 1

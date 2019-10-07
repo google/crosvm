@@ -11,7 +11,7 @@ use libc::EINVAL;
 use qcow::{QcowFile, QCOW_MAGIC};
 use remain::sorted;
 use sys_util::{
-    AsRawFds, FileReadWriteVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes,
+    AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes,
 };
 
 #[cfg(feature = "composite-disk")]
@@ -38,15 +38,23 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// The prerequisites necessary to support a block device.
+#[rustfmt::skip] // rustfmt won't wrap the long list of trait bounds.
 pub trait DiskFile:
-    FileSetLen + FileSync + FileReadWriteVolatile + PunchHole + Seek + WriteZeroes + Send + AsRawFds
+    FileSetLen
+    + FileSync
+    + FileReadWriteAtVolatile
+    + PunchHole
+    + Seek
+    + WriteZeroes
+    + Send
+    + AsRawFds
 {
 }
 impl<
         D: FileSetLen
             + FileSync
             + PunchHole
-            + FileReadWriteVolatile
+            + FileReadWriteAtVolatile
             + Seek
             + WriteZeroes
             + Send
