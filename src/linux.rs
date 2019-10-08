@@ -1099,14 +1099,24 @@ fn create_input_socket(path: &Path) -> Result<UnixStream> {
     }
 }
 
-fn setup_vcpu_signal_handler() -> Result<()> {
-    unsafe {
-        extern "C" fn handle_signal() {}
-        // Our signal handler does nothing and is trivially async signal safe.
-        register_rt_signal_handler(SIGRTMIN() + 0, handle_signal)
-            .map_err(Error::RegisterSignalHandler)?;
+fn setup_vcpu_signal_handler(use_kvm_signals: bool) -> Result<()> {
+    if use_kvm_signals {
+        unsafe {
+            extern "C" fn handle_signal() {}
+            // Our signal handler does nothing and is trivially async signal safe.
+            register_rt_signal_handler(SIGRTMIN() + 0, handle_signal)
+                .map_err(Error::RegisterSignalHandler)?;
+        }
+        block_signal(SIGRTMIN() + 0).map_err(Error::BlockSignal)?;
+    } else {
+        unsafe {
+            extern "C" fn handle_signal() {
+                Vcpu::set_local_immediate_exit(true);
+            }
+            register_rt_signal_handler(SIGRTMIN() + 0, handle_signal)
+                .map_err(Error::RegisterSignalHandler)?;
+        }
     }
-    block_signal(SIGRTMIN() + 0).map_err(Error::BlockSignal)?;
     Ok(())
 }
 
@@ -1124,7 +1134,7 @@ impl VcpuRunMode {
 }
 
 fn run_vcpu(
-    vcpu: Vcpu,
+    mut vcpu: Vcpu,
     cpu_id: u32,
     vcpu_affinity: Vec<usize>,
     start_barrier: Arc<Barrier>,
@@ -1133,6 +1143,7 @@ fn run_vcpu(
     exit_evt: EventFd,
     requires_kvmclock_ctrl: bool,
     run_mode_arc: Arc<VcpuRunMode>,
+    use_kvm_signals: bool,
 ) -> Result<JoinHandle<()>> {
     thread::Builder::new()
         .name(format!("crosvm_vcpu{}", cpu_id))
@@ -1144,25 +1155,29 @@ fn run_vcpu(
             }
 
             let mut sig_ok = true;
-            match get_blocked_signals() {
-                Ok(mut v) => {
-                    v.retain(|&x| x != SIGRTMIN() + 0);
-                    if let Err(e) = vcpu.set_signal_mask(&v) {
+            if use_kvm_signals {
+                match get_blocked_signals() {
+                    Ok(mut v) => {
+                        v.retain(|&x| x != SIGRTMIN() + 0);
+                        if let Err(e) = vcpu.set_signal_mask(&v) {
+                            error!(
+                                "Failed to set the KVM_SIGNAL_MASK for vcpu {} : {}",
+                                cpu_id, e
+                            );
+                            sig_ok = false;
+                        }
+                    }
+                    Err(e) => {
                         error!(
-                            "Failed to set the KVM_SIGNAL_MASK for vcpu {} : {}",
+                            "Failed to retrieve signal mask for vcpu {} : {}",
                             cpu_id, e
                         );
                         sig_ok = false;
                     }
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to retrieve signal mask for vcpu {} : {}",
-                        cpu_id, e
-                    );
-                    sig_ok = false;
-                }
-            };
+                };
+            } else {
+                vcpu.set_thread_id(SIGRTMIN() + 0);
+            }
 
             start_barrier.wait();
 
@@ -1220,11 +1235,15 @@ fn run_vcpu(
                     }
 
                     if interrupted_by_signal {
-                        // Try to clear the signal that we use to kick VCPU if it is pending before
-                        // attempting to handle pause requests.
-                        if let Err(e) = clear_signal(SIGRTMIN() + 0) {
-                            error!("failed to clear pending signal: {}", e);
-                            break;
+                        if use_kvm_signals {
+                            // Try to clear the signal that we use to kick VCPU if it is pending before
+                            // attempting to handle pause requests.
+                            if let Err(e) = clear_signal(SIGRTMIN() + 0) {
+                                error!("failed to clear pending signal: {}", e);
+                                break;
+                            }
+                        } else {
+                            vcpu.set_immediate_exit(false);
                         }
                         let mut run_mode_lock = run_mode_arc.mtx.lock();
                         loop {
@@ -1550,7 +1569,8 @@ fn run_control(
     let mut vcpu_handles = Vec::with_capacity(linux.vcpus.len());
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpus.len() + 1));
     let run_mode_arc = Arc::new(VcpuRunMode::default());
-    setup_vcpu_signal_handler()?;
+    let use_kvm_signals = !linux.kvm.check_extension(Cap::ImmediateExit);
+    setup_vcpu_signal_handler(use_kvm_signals)?;
     let vcpus = linux.vcpus.split_off(0);
     for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
         let handle = run_vcpu(
@@ -1563,6 +1583,7 @@ fn run_control(
             linux.exit_evt.try_clone().map_err(Error::CloneEventFd)?,
             linux.vm.check_extension(Cap::KvmclockCtrl),
             run_mode_arc.clone(),
+            use_kvm_signals,
         )?;
         vcpu_handles.push(handle);
     }
