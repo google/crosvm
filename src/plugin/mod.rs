@@ -27,7 +27,7 @@ use protobuf::ProtobufError;
 use remain::sorted;
 
 use io_jail::{self, Minijail};
-use kvm::{Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
+use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use net_util::{Error as TapError, Tap, TapT};
 use sys_util::{
     block_signal, clear_signal, drop_capabilities, error, getegid, geteuid, info, pipe,
@@ -377,33 +377,63 @@ pub fn run_vcpus(
     vcpu_handles: &mut Vec<thread::JoinHandle<()>>,
 ) -> Result<()> {
     let vcpu_thread_barrier = Arc::new(Barrier::new((vcpu_count) as usize));
+    let use_kvm_signals = !kvm.check_extension(Cap::ImmediateExit);
+
+    // If we need to force a vcpu to exit from a VM then a SIGRTMIN signal is sent
+    // to that vcpu's thread.  If KVM is running the VM then it'll return -EINTR.
+    // An issue is what to do when KVM isn't running the VM (where we could be
+    // in the kernel or in the app).
+    //
+    // If KVM supports "immediate exit" then we set a signal handler that will
+    // set the |immediate_exit| flag that tells KVM to return -EINTR before running
+    // the VM.
+    //
+    // If KVM doesn't support immediate exit then we'll block SIGRTMIN in the app
+    // and tell KVM to unblock SIGRTMIN before running the VM (at which point a blocked
+    // signal might get asserted).  There's overhead to have KVM unblock and re-block
+    // SIGRTMIN each time it runs the VM, so this mode should be avoided.
+
+    if use_kvm_signals {
+        unsafe {
+            extern "C" fn handle_signal() {}
+            // Our signal handler does nothing and is trivially async signal safe.
+            // We need to install this signal handler even though we do block
+            // the signal below, to ensure that this signal will interrupt
+            // execution of KVM_RUN (this is implementation issue).
+            register_rt_signal_handler(SIGRTMIN() + 0, handle_signal)
+                .expect("failed to register vcpu signal handler");
+        }
+        // We do not really want the signal handler to run...
+        block_signal(SIGRTMIN() + 0).expect("failed to block signal");
+    } else {
+        unsafe {
+            extern "C" fn handle_signal() {
+                Vcpu::set_local_immediate_exit(true);
+            }
+            register_rt_signal_handler(SIGRTMIN() + 0, handle_signal)
+                .expect("failed to register vcpu signal handler");
+        }
+    }
+
     for cpu_id in 0..vcpu_count {
         let kill_signaled = kill_signaled.clone();
         let vcpu_thread_barrier = vcpu_thread_barrier.clone();
         let vcpu_exit_evt = exit_evt.try_clone().map_err(Error::CloneEventFd)?;
         let vcpu_plugin = plugin.create_vcpu(cpu_id)?;
-        let vcpu = Vcpu::new(cpu_id as c_ulong, kvm, vm).map_err(Error::CreateVcpu)?;
+        let mut vcpu = Vcpu::new(cpu_id as c_ulong, kvm, vm).map_err(Error::CreateVcpu)?;
 
         vcpu_handles.push(
             thread::Builder::new()
                 .name(format!("crosvm_vcpu{}", cpu_id))
                 .spawn(move || {
-                    unsafe {
-                        extern "C" fn handle_signal() {}
-                        // Our signal handler does nothing and is trivially async signal safe.
-                        // We need to install this signal handler even though we do block
-                        // the signal below, to ensure that this signal will interrupt
-                        // execution of KVM_RUN (this is implementation issue).
-                        register_rt_signal_handler(SIGRTMIN() + 0, handle_signal)
-                            .expect("failed to register vcpu signal handler");
+                    if use_kvm_signals {
+                        // Tell KVM to not block anything when entering kvm run
+                        // because we will be using first RT signal to kick the VCPU.
+                        vcpu.set_signal_mask(&[])
+                            .expect("failed to set up KVM VCPU signal mask");
+                    } else {
+                        vcpu.set_thread_id(SIGRTMIN() + 0);
                     }
-
-                    // We do not really want the signal handler to run...
-                    block_signal(SIGRTMIN() + 0).expect("failed to block signal");
-                    // Tell KVM to not block anything when entering kvm run
-                    // because we will be using first RT signal to kick the VCPU.
-                    vcpu.set_signal_mask(&[])
-                        .expect("failed to set up KVM VCPU signal mask");
 
                     let res = vcpu_plugin.init(&vcpu);
                     vcpu_thread_barrier.wait();
@@ -489,8 +519,13 @@ pub fn run_vcpus(
                             // The assumption is that pause requests aren't common
                             // or frequent so it's better to optimize for the non-pause execution paths.
                             if interrupted_by_signal {
-                                clear_signal(SIGRTMIN() + 0)
-                                    .expect("failed to clear pending signal");
+                                if use_kvm_signals {
+                                    clear_signal(SIGRTMIN() + 0)
+                                        .expect("failed to clear pending signal");
+                                } else {
+                                    vcpu.set_immediate_exit(false);
+                                }
+
                                 if let Err(e) = vcpu_plugin.pre_run(&vcpu) {
                                     error!("failed to process pause on vcpu {}: {}", cpu_id, e);
                                     break;
