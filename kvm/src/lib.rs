@@ -6,6 +6,7 @@
 
 mod cap;
 
+use std::cell::RefCell;
 use std::cmp::{min, Ordering};
 use std::collections::{BinaryHeap, HashMap};
 use std::fs::File;
@@ -22,9 +23,9 @@ use kvm_sys::*;
 use msg_socket::MsgOnSocket;
 #[allow(unused_imports)]
 use sys_util::{
-    ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
-    pagesize, signal, vec_with_array_field, warn, Error, EventFd, GuestAddress, GuestMemory,
-    MemoryMapping, MemoryMappingArena, Result,
+    block_signal, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
+    ioctl_with_val, pagesize, signal, unblock_signal, vec_with_array_field, warn, Error, EventFd,
+    GuestAddress, GuestMemory, MemoryMapping, MemoryMappingArena, Result, SIGRTMIN,
 };
 
 pub use crate::cap::*;
@@ -1149,6 +1150,13 @@ pub struct Vcpu {
     guest_mem: GuestMemory,
 }
 
+pub struct VcpuThread {
+    run: *mut kvm_run,
+    signal_num: c_int,
+}
+
+thread_local!(static VCPU_THREAD: RefCell<Option<VcpuThread>> = RefCell::new(None));
+
 impl Vcpu {
     /// Constructs a new VCPU for `vm`.
     ///
@@ -1176,6 +1184,34 @@ impl Vcpu {
             run_mmap,
             guest_mem,
         })
+    }
+
+    /// Sets the thread id for the vcpu and stores it in a hash map that can be used
+    /// by signal handlers to call set_local_immediate_exit(). Signal
+    /// number (if provided, otherwise use -1) will be temporily blocked when the vcpu
+    /// is added to the map, or later destroyed/removed from the map.
+    pub fn set_thread_id(&mut self, signal_num: c_int) {
+        // Block signal while we add -- if a signal fires (very unlikely,
+        // as this means something is trying to pause the vcpu before it has
+        // even started) it'll try to grab the read lock while this write
+        // lock is grabbed and cause a deadlock.
+        let mut unblock = false;
+        if signal_num >= 0 {
+            unblock = true;
+            // Assuming that a failure to block means it's already blocked.
+            if let Err(_) = block_signal(signal_num) {
+                unblock = false;
+            }
+        }
+        VCPU_THREAD.with(|v| {
+            *v.borrow_mut() = Some(VcpuThread {
+                run: self.run_mmap.as_ptr() as *mut kvm_run,
+                signal_num,
+            });
+        });
+        if unblock {
+            let _ = unblock_signal(signal_num).expect("failed to restore signal mask");
+        }
     }
 
     /// Gets a reference to the guest memory owned by this VM of this VCPU.
@@ -1233,6 +1269,27 @@ impl Vcpu {
             }
             _ => Err(Error::new(EINVAL)),
         }
+    }
+
+    /// Sets the bit that requests an immediate exit.
+    #[allow(clippy::cast_ptr_alignment)]
+    pub fn set_immediate_exit(&self, exit: bool) {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was. The pointer is page aligned so casting to a different
+        // type is well defined, hence the clippy allow attribute.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        run.immediate_exit = if exit { 1 } else { 0 };
+    }
+
+    /// Sets/clears the bit for immediate exit for the vcpu on the current thread.
+    pub fn set_local_immediate_exit(exit: bool) {
+        VCPU_THREAD.with(|v| {
+            if let Some(state) = &(*v.borrow()) {
+                unsafe {
+                    (*state.run).immediate_exit = if exit { 1 } else { 0 };
+                };
+            }
+        });
     }
 
     /// Runs the VCPU until it exits, returning the reason.
@@ -1722,6 +1779,29 @@ impl Vcpu {
         } else {
             Ok(())
         }
+    }
+}
+
+impl Drop for Vcpu {
+    fn drop(&mut self) {
+        VCPU_THREAD.with(|v| {
+            let mut unblock = false;
+            let mut signal_num: c_int = -1;
+            if let Some(state) = &(*v.borrow()) {
+                if state.signal_num >= 0 {
+                    unblock = true;
+                    signal_num = state.signal_num;
+                    // Assuming that a failure to block means it's already blocked.
+                    if let Err(_) = block_signal(signal_num) {
+                        unblock = false;
+                    }
+                }
+            };
+            *v.borrow_mut() = None;
+            if unblock {
+                let _ = unblock_signal(signal_num).expect("failed to restore signal mask");
+            }
+        });
     }
 }
 
