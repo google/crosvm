@@ -436,6 +436,7 @@ pub const KVM_CAP_GUEST_DEBUG_HW_BPS: ::std::os::raw::c_uint = 119;
 pub const KVM_CAP_GUEST_DEBUG_HW_WPS: ::std::os::raw::c_uint = 120;
 pub const KVM_CAP_SPLIT_IRQCHIP: ::std::os::raw::c_uint = 121;
 pub const KVM_CAP_IOEVENTFD_ANY_LENGTH: ::std::os::raw::c_uint = 122;
+pub const KVM_CAP_IMMEDIATE_EXIT: ::std::os::raw::c_uint = 136;
 pub const KVM_IRQ_ROUTING_IRQCHIP: ::std::os::raw::c_uint = 1;
 pub const KVM_IRQ_ROUTING_MSI: ::std::os::raw::c_uint = 2;
 pub const KVM_IRQ_ROUTING_S390_ADAPTER: ::std::os::raw::c_uint = 3;
@@ -1652,7 +1653,8 @@ fn bindgen_test_layout_kvm_s390_skeys() {
 #[derive(Copy, Clone)]
 pub struct kvm_run {
     pub request_interrupt_window: __u8,
-    pub padding1: [__u8; 7usize],
+    pub immediate_exit: __u8,
+    pub padding1: [__u8; 6usize],
     pub exit_reason: __u32,
     pub ready_for_interrupt_injection: __u8,
     pub if_flag: __u8,
@@ -3143,8 +3145,18 @@ fn bindgen_test_layout_kvm_run() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<kvm_run>())).padding1 as *const _ as usize },
+        unsafe { &(*(::std::ptr::null::<kvm_run>())).immediate_exit as *const _ as usize },
         1usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_run),
+            "::",
+            stringify!(immediate_exit)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<kvm_run>())).padding1 as *const _ as usize },
+        2usize,
         concat!(
             "Offset of field: ",
             stringify!(kvm_run),
