@@ -31,7 +31,7 @@ use kvm::{Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use net_util::{Error as TapError, Tap, TapT};
 use sys_util::{
     block_signal, clear_signal, drop_capabilities, error, getegid, geteuid, info, pipe,
-    register_signal_handler, validate_raw_fd, warn, Error as SysError, EventFd, GuestMemory,
+    register_rt_signal_handler, validate_raw_fd, warn, Error as SysError, EventFd, GuestMemory,
     Killable, MmapError, PollContext, PollToken, Result as SysResult, SignalFd, SignalFdError,
     SIGRTMIN,
 };
@@ -394,7 +394,7 @@ pub fn run_vcpus(
                         // We need to install this signal handler even though we do block
                         // the signal below, to ensure that this signal will interrupt
                         // execution of KVM_RUN (this is implementation issue).
-                        register_signal_handler(SIGRTMIN() + 0, handle_signal)
+                        register_rt_signal_handler(SIGRTMIN() + 0, handle_signal)
                             .expect("failed to register vcpu signal handler");
                     }
 
