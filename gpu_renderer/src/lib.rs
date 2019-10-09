@@ -19,6 +19,8 @@ use std::rc::Rc;
 use std::result;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use libc::close;
+
 use data_model::{VolatileMemory, VolatileSlice};
 use sys_util::{GuestAddress, GuestMemory};
 
@@ -564,6 +566,13 @@ impl Resource {
     pub fn export(&self) -> Result<(Query, File)> {
         let query = self.export_query(true)?;
         if query.out_num_fds != 1 || query.out_fds[0] < 0 {
+            for fd in &query.out_fds {
+                if *fd >= 0 {
+                    // Safe because the FD was just returned by a successful virglrenderer
+                    // call so it must be valid and owned by us.
+                    unsafe { close(*fd) };
+                }
+            }
             return Err(Error::ExportedResourceDmabuf);
         }
 
