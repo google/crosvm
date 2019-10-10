@@ -22,8 +22,6 @@ const DESC_SIZE: u64 = 16; // Bytes in one virtio descriptor.
 const QUEUE_SIZE: u16 = 16; // Max entries in the queue.
 const CMD_SIZE: usize = 16; // Bytes in the command.
 
-// Take the first 64 bits of data as an address and the next 64 bits as data to
-// store there. The rest of the data is used as a qcow image.
 #[export_name = "LLVMFuzzerTestOneInput"]
 pub fn test_one_input(data: *const u8, size: usize) -> i32 {
     // We cannot unwind past ffi boundaries.
