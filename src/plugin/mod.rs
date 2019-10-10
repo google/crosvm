@@ -479,16 +479,22 @@ pub fn run_vcpus(
                                 break;
                             }
 
-                            // Try to clear the signal that we use to kick VCPU if it is
-                            // pending before attempting to handle pause requests.
+                            // Only handle the pause request if kvm reported that it was
+                            // interrupted by a signal.  This helps to entire that KVM has had a chance
+                            // to finish emulating any IO that may have immediately happened.
+                            // If we eagerly check pre_run() then any IO that we
+                            // just reported to the plugin won't have been processed yet by KVM.
+                            // Not eagerly calling pre_run() also helps to reduce
+                            // any overhead from checking if a pause request is pending.
+                            // The assumption is that pause requests aren't common
+                            // or frequent so it's better to optimize for the non-pause execution paths.
                             if interrupted_by_signal {
                                 clear_signal(SIGRTMIN() + 0)
                                     .expect("failed to clear pending signal");
-                            }
-
-                            if let Err(e) = vcpu_plugin.pre_run(&vcpu) {
-                                error!("failed to process pause on vcpu {}: {}", cpu_id, e);
-                                break;
+                                if let Err(e) = vcpu_plugin.pre_run(&vcpu) {
+                                    error!("failed to process pause on vcpu {}: {}", cpu_id, e);
+                                    break;
+                                }
                             }
                         }
                     }
