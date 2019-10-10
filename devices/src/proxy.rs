@@ -92,7 +92,8 @@ fn child_proc<D: BusDevice, F: FnMut(&mut D)>(
             Command::Write { len, offset, data } => {
                 let len = len as usize;
                 device.write(offset, &data[0..len]);
-                sock.send(&CommandResult::Ok)
+                // Command::Write does not have a result.
+                Ok(())
             }
             Command::ReadConfig(idx) => {
                 let val = device.config_register_read(idx as usize);
@@ -106,7 +107,8 @@ fn child_proc<D: BusDevice, F: FnMut(&mut D)>(
             } => {
                 let len = len as usize;
                 device.config_register_write(reg_idx as usize, offset as u64, &data[0..len]);
-                sock.send(&CommandResult::Ok)
+                // Command::WriteConfig does not have a result.
+                Ok(())
             }
             Command::Shutdown => {
                 running = false;
@@ -217,14 +219,20 @@ impl ProxyDevice {
         self.sync_send(Command::RunUserCommand);
     }
 
-    fn sync_send(&self, cmd: Command) -> Option<CommandResult> {
+    /// Send a command that does not expect a response from the child device process.
+    fn send_no_result(&self, cmd: Command) {
         let res = self.sock.send(&cmd);
         if let Err(e) = res {
             error!(
                 "failed write to child device process {}: {}",
                 self.debug_label, e,
             );
-        };
+        }
+    }
+
+    /// Send a command and read its response from the child device process.
+    fn sync_send(&self, cmd: Command) -> Option<CommandResult> {
+        self.send_no_result(cmd);
         match self.sock.recv() {
             Err(e) => {
                 error!(
@@ -249,7 +257,7 @@ impl BusDevice for ProxyDevice {
         buffer[0..data.len()].clone_from_slice(data);
         let reg_idx = reg_idx as u32;
         let offset = offset as u32;
-        self.sync_send(Command::WriteConfig {
+        self.send_no_result(Command::WriteConfig {
             reg_idx,
             offset,
             len,
@@ -280,7 +288,7 @@ impl BusDevice for ProxyDevice {
         let mut buffer = [0u8; 8];
         let len = data.len() as u32;
         buffer[0..data.len()].clone_from_slice(data);
-        self.sync_send(Command::Write {
+        self.send_no_result(Command::Write {
             len,
             offset,
             data: buffer,
