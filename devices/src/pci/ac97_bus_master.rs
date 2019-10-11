@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use audio_streams::{
     capture::{CaptureBuffer, CaptureBufferStream},
-    PlaybackBuffer, PlaybackBufferStream, StreamControl, StreamSource,
+    PlaybackBuffer, PlaybackBufferStream, SampleFormat, StreamControl, StreamSource,
 };
 use data_model::{VolatileMemory, VolatileSlice};
 use sync::Mutex;
@@ -509,6 +509,7 @@ impl Ac97BusMaster {
             Ac97Function::Input => {
                 let (stream_control, input_stream) = self.audio_server.new_capture_stream(
                     num_channels,
+                    SampleFormat::S16LE,
                     DEVICE_SAMPLE_RATE,
                     buffer_frames,
                 )?;
@@ -532,6 +533,7 @@ impl Ac97BusMaster {
             Ac97Function::Output => {
                 let (stream_control, output_stream) = self.audio_server.new_playback_stream(
                     num_channels,
+                    SampleFormat::S16LE,
                     DEVICE_SAMPLE_RATE,
                     buffer_frames,
                 )?;
