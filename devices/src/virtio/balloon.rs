@@ -105,15 +105,7 @@ impl Worker {
                         continue;
                     }
                 };
-                let data_length = match reader.available_bytes() {
-                    Ok(l) => l,
-                    Err(e) => {
-                        error!("balloon: failed to get available bytes: {}", e);
-                        queue.add_used(&self.mem, index, 0);
-                        needs_interrupt = true;
-                        continue;
-                    }
-                };
+                let data_length = reader.available_bytes();
 
                 if data_length % 4 != 0 {
                     error!("invalid inflate buffer size: {}", data_length);

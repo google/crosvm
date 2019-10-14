@@ -293,9 +293,7 @@ impl Worker {
     ) -> result::Result<usize, ExecuteError> {
         let mut status_writer =
             Writer::new(mem, avail_desc.clone()).map_err(ExecuteError::Descriptor)?;
-        let available_bytes = status_writer
-            .available_bytes()
-            .map_err(ExecuteError::Descriptor)?;
+        let available_bytes = status_writer.available_bytes();
         let status_offset = available_bytes
             .checked_sub(1)
             .ok_or(ExecuteError::MissingStatus)?;
@@ -616,7 +614,6 @@ impl Block {
                 // The last byte of writer is virtio_blk_req::status, so subtract it from data_len.
                 let data_len = writer
                     .available_bytes()
-                    .map_err(ExecuteError::Descriptor)?
                     .checked_sub(1)
                     .ok_or(ExecuteError::MissingStatus)?;
                 let offset = sector
@@ -641,7 +638,7 @@ impl Block {
                 }
             }
             VIRTIO_BLK_T_OUT => {
-                let data_len = reader.available_bytes().map_err(ExecuteError::Descriptor)?;
+                let data_len = reader.available_bytes();
                 let offset = sector
                     .checked_shl(u32::from(SECTOR_SHIFT))
                     .ok_or(ExecuteError::OutOfRange)?;
@@ -671,9 +668,7 @@ impl Block {
                 }
             }
             VIRTIO_BLK_T_DISCARD | VIRTIO_BLK_T_WRITE_ZEROES => {
-                while reader.available_bytes().map_err(ExecuteError::Descriptor)?
-                    >= size_of::<virtio_blk_discard_write_zeroes>()
-                {
+                while reader.available_bytes() >= size_of::<virtio_blk_discard_write_zeroes>() {
                     let seg: virtio_blk_discard_write_zeroes =
                         reader.read_obj().map_err(ExecuteError::Read)?;
 

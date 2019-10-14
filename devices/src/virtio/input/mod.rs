@@ -387,9 +387,7 @@ impl<T: EventSource> Worker<T> {
     ) -> Result<usize> {
         let mut writer = Writer::new(mem, avail_desc).map_err(InputError::Descriptor)?;
 
-        while writer.available_bytes().map_err(InputError::Descriptor)?
-            >= virtio_input_event::EVENT_SIZE
-        {
+        while writer.available_bytes() >= virtio_input_event::EVENT_SIZE {
             if let Some(evt) = event_source.pop_available_event() {
                 writer.write_obj(evt).map_err(InputError::WriteQueue)?;
             } else {
@@ -445,9 +443,7 @@ impl<T: EventSource> Worker<T> {
         mem: &GuestMemory,
     ) -> Result<usize> {
         let mut reader = Reader::new(mem, avail_desc).map_err(InputError::Descriptor)?;
-        while reader.available_bytes().map_err(InputError::Descriptor)?
-            >= virtio_input_event::EVENT_SIZE
-        {
+        while reader.available_bytes() >= virtio_input_event::EVENT_SIZE {
             let evt: virtio_input_event = reader.read_obj().map_err(InputError::ReadQueue)?;
             event_source.send_event(&evt)?;
         }

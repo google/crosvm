@@ -866,7 +866,7 @@ impl GpuResponse {
                     strides,
                     offsets,
                 };
-                if resp.available_bytes()? >= size_of_val(&plane_info) {
+                if resp.available_bytes() >= size_of_val(&plane_info) {
                     resp.write_obj(plane_info)?;
                     size_of_val(&plane_info)
                 } else {

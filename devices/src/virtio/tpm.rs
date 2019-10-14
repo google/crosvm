@@ -54,7 +54,7 @@ impl Device {
         let mut reader = Reader::new(mem, desc.clone()).map_err(Error::Descriptor)?;
         let mut writer = Writer::new(mem, desc).map_err(Error::Descriptor)?;
 
-        let available_bytes = reader.available_bytes().map_err(Error::Descriptor)?;
+        let available_bytes = reader.available_bytes();
         if available_bytes > TPM_BUFSIZE {
             return Err(Error::CommandTooLong {
                 size: available_bytes,
@@ -72,7 +72,7 @@ impl Device {
             });
         }
 
-        let writer_len = writer.available_bytes().map_err(Error::Descriptor)?;
+        let writer_len = writer.available_bytes();
         if response.len() > writer_len {
             return Err(Error::BufferTooSmall {
                 size: writer_len,

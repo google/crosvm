@@ -126,13 +126,7 @@ impl Frontend {
                 mem,
             ),
             GpuCommand::ResourceAttachBacking(info) => {
-                let available_bytes = match reader.available_bytes() {
-                    Ok(count) => count,
-                    Err(e) => {
-                        debug!("invalid descriptor: {}", e);
-                        0
-                    }
-                };
+                let available_bytes = reader.available_bytes();
                 if available_bytes != 0 {
                     let entry_count = info.nr_entries.to_native() as usize;
                     let mut iovecs = Vec::with_capacity(entry_count);
@@ -256,14 +250,7 @@ impl Frontend {
                 )
             }
             GpuCommand::CmdSubmit3d(info) => {
-                let available_bytes = match reader.available_bytes() {
-                    Ok(count) => count,
-                    Err(e) => {
-                        debug!("invalid descriptor: {}", e);
-                        0
-                    }
-                };
-                if available_bytes != 0 {
+                if reader.available_bytes() != 0 {
                     let cmd_size = info.size.to_native() as usize;
                     let mut cmd_buf = vec![0; cmd_size];
                     if reader.read_exact(&mut cmd_buf[..]).is_ok() {
@@ -279,14 +266,7 @@ impl Frontend {
                 }
             }
             GpuCommand::AllocationMetadata(info) => {
-                let available_bytes = match reader.available_bytes() {
-                    Ok(count) => count,
-                    Err(e) => {
-                        debug!("invalid descriptor: {}", e);
-                        0
-                    }
-                };
-                if available_bytes != 0 {
+                if reader.available_bytes() != 0 {
                     let id = info.request_id.to_native();
                     let request_size = info.request_size.to_native();
                     let response_size = info.response_size.to_native();
@@ -309,14 +289,7 @@ impl Frontend {
                 }
             }
             GpuCommand::ResourceCreateV2(info) => {
-                let available_bytes = match reader.available_bytes() {
-                    Ok(count) => count,
-                    Err(e) => {
-                        debug!("invalid descriptor: {}", e);
-                        0
-                    }
-                };
-                if available_bytes != 0 {
+                if reader.available_bytes() != 0 {
                     let resource_id = info.resource_id.to_native();
                     let guest_memory_type = info.guest_memory_type.to_native();
                     let size = info.size.to_native();
@@ -432,15 +405,7 @@ impl Frontend {
             debug!("{:?} -> {:?}", gpu_cmd, resp);
         }
 
-        let available_bytes = match writer.available_bytes() {
-            Ok(count) => count,
-            Err(e) => {
-                debug!("invalid descriptor: {}", e);
-                0
-            }
-        };
-
-        if available_bytes != 0 {
+        if writer.available_bytes() != 0 {
             let mut fence_id = 0;
             let mut ctx_id = 0;
             let mut flags = 0;
