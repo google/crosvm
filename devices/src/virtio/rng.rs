@@ -7,14 +7,14 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
 
 use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
 
-use super::{Queue, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_RNG};
+use super::{Interrupt, Queue, VirtioDevice, Writer, TYPE_RNG};
 
 use crate::pci::MsixConfig;
 
@@ -39,12 +39,10 @@ impl Display for RngError {
 }
 
 struct Worker {
+    interrupt: Interrupt,
     queue: Queue,
     mem: GuestMemory,
     random_file: File,
-    interrupt_status: Arc<AtomicUsize>,
-    interrupt_evt: EventFd,
-    interrupt_resample_evt: EventFd,
 }
 
 impl Worker {
@@ -73,12 +71,6 @@ impl Worker {
         needs_interrupt
     }
 
-    fn signal_used_queue(&self) {
-        self.interrupt_status
-            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
-        self.interrupt_evt.write(1).unwrap();
-    }
-
     fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd) {
         #[derive(PollToken)]
         enum Token {
@@ -89,7 +81,7 @@ impl Worker {
 
         let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
             (&queue_evt, Token::QueueAvailable),
-            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ]) {
             Ok(pc) => pc,
@@ -119,16 +111,13 @@ impl Worker {
                         needs_interrupt |= self.process_queue();
                     }
                     Token::InterruptResample => {
-                        let _ = self.interrupt_resample_evt.read();
-                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
-                            self.interrupt_evt.write(1).unwrap();
-                        }
+                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => break 'poll,
                 }
             }
             if needs_interrupt {
-                self.signal_used_queue();
+                self.interrupt.signal_used_queue(self.queue.vector);
             }
         }
     }
@@ -190,7 +179,7 @@ impl VirtioDevice for Rng {
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
-        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
@@ -216,12 +205,15 @@ impl VirtioDevice for Rng {
                     .name("virtio_rng".to_string())
                     .spawn(move || {
                         let mut worker = Worker {
+                            interrupt: Interrupt::new(
+                                status,
+                                interrupt_evt,
+                                interrupt_resample_evt,
+                                msix_config,
+                            ),
                             queue,
                             mem,
                             random_file,
-                            interrupt_status: status,
-                            interrupt_evt,
-                            interrupt_resample_evt,
                         };
                         worker.run(queue_evts.remove(0), kill_evt);
                     });

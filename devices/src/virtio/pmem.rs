@@ -6,7 +6,7 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
@@ -19,8 +19,8 @@ use data_model::{DataInit, Le32, Le64};
 use crate::pci::MsixConfig;
 
 use super::{
-    copy_config, DescriptorChain, DescriptorError, Queue, Reader, VirtioDevice, Writer,
-    INTERRUPT_STATUS_USED_RING, TYPE_PMEM, VIRTIO_F_VERSION_1,
+    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
+    TYPE_PMEM, VIRTIO_F_VERSION_1,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -85,12 +85,10 @@ impl ::std::error::Error for Error {}
 type Result<T> = ::std::result::Result<T, Error>;
 
 struct Worker {
+    interrupt: Interrupt,
     queue: Queue,
     memory: GuestMemory,
     disk_image: File,
-    interrupt_status: Arc<AtomicUsize>,
-    interrupt_event: EventFd,
-    interrupt_resample_event: EventFd,
 }
 
 impl Worker {
@@ -149,12 +147,6 @@ impl Worker {
         needs_interrupt
     }
 
-    fn signal_used_queue(&self) {
-        self.interrupt_status
-            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
-        self.interrupt_event.write(1).unwrap();
-    }
-
     fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd) {
         #[derive(PollToken)]
         enum Token {
@@ -165,7 +157,7 @@ impl Worker {
 
         let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
             (&queue_evt, Token::QueueAvailable),
-            (&self.interrupt_resample_event, Token::InterruptResample),
+            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ]) {
             Ok(pc) => pc,
@@ -195,16 +187,13 @@ impl Worker {
                         needs_interrupt |= self.process_queue();
                     }
                     Token::InterruptResample => {
-                        let _ = self.interrupt_resample_event.read();
-                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
-                            self.interrupt_event.write(1).unwrap();
-                        }
+                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => break 'poll,
                 }
             }
             if needs_interrupt {
-                self.signal_used_queue();
+                self.interrupt.signal_used_queue(self.queue.vector);
             }
         }
     }
@@ -281,7 +270,7 @@ impl VirtioDevice for Pmem {
         memory: GuestMemory,
         interrupt_event: EventFd,
         interrupt_resample_event: EventFd,
-        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_events: Vec<EventFd>,
@@ -308,12 +297,15 @@ impl VirtioDevice for Pmem {
                 .name("virtio_pmem".to_string())
                 .spawn(move || {
                     let mut worker = Worker {
+                        interrupt: Interrupt::new(
+                            status,
+                            interrupt_event,
+                            interrupt_resample_event,
+                            msix_config,
+                        ),
                         memory,
                         disk_image,
                         queue,
-                        interrupt_status: status,
-                        interrupt_event,
-                        interrupt_resample_event,
                     };
                     worker.run(queue_event, kill_event);
                 });

@@ -10,6 +10,7 @@ mod descriptor_utils;
 #[cfg(feature = "gpu")]
 mod gpu;
 mod input;
+mod interrupt;
 mod net;
 mod p9;
 mod pmem;
@@ -32,6 +33,7 @@ pub use self::descriptor_utils::*;
 #[cfg(feature = "gpu")]
 pub use self::gpu::*;
 pub use self::input::*;
+pub use self::interrupt::*;
 pub use self::net::*;
 pub use self::p9::*;
 pub use self::pmem::*;

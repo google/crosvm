@@ -7,7 +7,7 @@ use std::io::{self, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -24,8 +24,8 @@ use sys_util::{error, info, warn, EventFd, GuestMemory, PollContext, PollToken, 
 use vm_control::{DiskControlCommand, DiskControlResponseSocket, DiskControlResult};
 
 use super::{
-    copy_config, DescriptorChain, DescriptorError, Queue, Reader, VirtioDevice, Writer,
-    INTERRUPT_STATUS_CONFIG_CHANGED, INTERRUPT_STATUS_USED_RING, TYPE_BLOCK, VIRTIO_F_VERSION_1,
+    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
+    TYPE_BLOCK, VIRTIO_F_VERSION_1,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -272,15 +272,12 @@ impl ExecuteError {
 }
 
 struct Worker {
+    interrupt: Interrupt,
     queues: Vec<Queue>,
     mem: GuestMemory,
     disk_image: Box<dyn DiskFile>,
     disk_size: Arc<Mutex<u64>>,
     read_only: bool,
-    interrupt_status: Arc<AtomicUsize>,
-    interrupt_evt: EventFd,
-    interrupt_resample_evt: EventFd,
-    msix_config: Option<Arc<Mutex<MsixConfig>>>,
 }
 
 impl Worker {
@@ -383,25 +380,6 @@ impl Worker {
         DiskControlResult::Ok
     }
 
-    fn signal_used_queue(&self, vector: u16) {
-        if let Some(msix_config) = &self.msix_config {
-            let mut msix_config = msix_config.lock();
-            if msix_config.enabled() {
-                msix_config.trigger(vector);
-                return;
-            }
-        }
-        self.interrupt_status
-            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
-        self.interrupt_evt.write(1).unwrap();
-    }
-
-    fn signal_config_changed(&self) {
-        self.interrupt_status
-            .fetch_or(INTERRUPT_STATUS_CONFIG_CHANGED as usize, Ordering::SeqCst);
-        self.interrupt_evt.write(1).unwrap();
-    }
-
     fn run(
         &mut self,
         queue_evt: EventFd,
@@ -430,7 +408,7 @@ impl Worker {
             (&flush_timer, Token::FlushTimer),
             (&queue_evt, Token::QueueAvailable),
             (&control_socket, Token::ControlRequest),
-            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ]) {
             Ok(pc) => pc,
@@ -468,7 +446,7 @@ impl Worker {
                             break 'poll;
                         }
                         if self.process_queue(0, &mut flush_timer, &mut flush_timer_armed) {
-                            self.signal_used_queue(self.queues[0].vector);
+                            self.interrupt.signal_used_queue(self.queues[0].vector);
                         }
                     }
                     Token::ControlRequest => {
@@ -493,16 +471,13 @@ impl Worker {
                         }
                     }
                     Token::InterruptResample => {
-                        let _ = self.interrupt_resample_evt.read();
-                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
-                            self.interrupt_evt.write(1).unwrap();
-                        }
+                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => break 'poll,
                 }
             }
             if needs_config_interrupt {
-                self.signal_config_changed();
+                self.interrupt.signal_config_changed();
             }
         }
     }
@@ -818,15 +793,17 @@ impl VirtioDevice for Block {
                         .name("virtio_blk".to_string())
                         .spawn(move || {
                             let mut worker = Worker {
+                                interrupt: Interrupt::new(
+                                    status,
+                                    interrupt_evt,
+                                    interrupt_resample_evt,
+                                    msix_config,
+                                ),
                                 queues,
                                 mem,
                                 disk_image,
                                 disk_size,
                                 read_only,
-                                interrupt_status: status,
-                                interrupt_evt,
-                                interrupt_resample_evt,
-                                msix_config,
                             };
                             worker.run(queue_evts.remove(0), kill_evt, control_socket);
                         });

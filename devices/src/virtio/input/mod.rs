@@ -17,15 +17,15 @@ use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
 
 use self::event_source::{input_event, EvdevEventSource, EventSource, SocketEventSource};
 use super::{
-    copy_config, DescriptorChain, DescriptorError, Queue, Reader, VirtioDevice, Writer,
-    INTERRUPT_STATUS_USED_RING, TYPE_INPUT,
+    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
+    TYPE_INPUT,
 };
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::io::Read;
 use std::io::Write;
 use std::mem::size_of;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
@@ -363,22 +363,14 @@ impl virtio_input_event {
 }
 
 struct Worker<T: EventSource> {
+    interrupt: Interrupt,
     event_source: T,
     event_queue: Queue,
     status_queue: Queue,
     guest_memory: GuestMemory,
-    interrupt_status: Arc<AtomicUsize>,
-    interrupt_evt: EventFd,
-    interrupt_resample_evt: EventFd,
 }
 
 impl<T: EventSource> Worker<T> {
-    fn signal_used_queue(&self) {
-        self.interrupt_status
-            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
-        self.interrupt_evt.write(1).unwrap();
-    }
-
     // Fills a virtqueue with events from the source.  Returns the number of bytes written.
     fn fill_event_virtqueue(
         event_source: &mut T,
@@ -499,7 +491,7 @@ impl<T: EventSource> Worker<T> {
             (&event_queue_evt_fd, Token::EventQAvailable),
             (&status_queue_evt_fd, Token::StatusQAvailable),
             (&self.event_source, Token::InputEventsAvailable),
-            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ]) {
             Ok(poll_ctx) => poll_ctx,
@@ -543,10 +535,7 @@ impl<T: EventSource> Worker<T> {
                         Ok(_cnt) => needs_interrupt |= self.send_events(),
                     },
                     Token::InterruptResample => {
-                        let _ = self.interrupt_resample_evt.read();
-                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
-                            self.interrupt_evt.write(1).unwrap();
-                        }
+                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => {
                         let _ = kill_evt.read();
@@ -555,7 +544,7 @@ impl<T: EventSource> Worker<T> {
                 }
             }
             if needs_interrupt {
-                self.signal_used_queue();
+                self.interrupt.signal_used_queue(self.event_queue.vector);
             }
         }
 
@@ -620,7 +609,7 @@ where
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
-        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
@@ -650,13 +639,16 @@ where
                 .name(String::from("virtio_input"))
                 .spawn(move || {
                     let mut worker = Worker {
+                        interrupt: Interrupt::new(
+                            status,
+                            interrupt_evt,
+                            interrupt_resample_evt,
+                            msix_config,
+                        ),
                         event_source: source,
                         event_queue,
                         status_queue,
                         guest_memory: mem,
-                        interrupt_status: status,
-                        interrupt_evt,
-                        interrupt_resample_evt,
                     };
                     worker.run(event_queue_evt_fd, status_queue_evt_fd, kill_evt);
                 });

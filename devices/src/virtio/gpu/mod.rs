@@ -14,7 +14,7 @@ use std::num::NonZeroU8;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -32,8 +32,8 @@ use gpu_renderer::{Renderer, RendererFlags};
 use resources::Alloc;
 
 use super::{
-    copy_config, resource_bridge::*, DescriptorChain, Queue, Reader, VirtioDevice, Writer,
-    INTERRUPT_STATUS_USED_RING, TYPE_GPU, VIRTIO_F_VERSION_1,
+    copy_config, resource_bridge::*, DescriptorChain, Interrupt, Queue, Reader, VirtioDevice,
+    Writer, TYPE_GPU, VIRTIO_F_VERSION_1,
 };
 
 use self::backend::Backend;
@@ -475,11 +475,9 @@ impl Frontend {
 }
 
 struct Worker {
+    interrupt: Interrupt,
     exit_evt: EventFd,
     mem: GuestMemory,
-    interrupt_evt: EventFd,
-    interrupt_resample_evt: EventFd,
-    interrupt_status: Arc<AtomicUsize>,
     ctrl_queue: Queue,
     ctrl_evt: EventFd,
     cursor_queue: Queue,
@@ -490,12 +488,6 @@ struct Worker {
 }
 
 impl Worker {
-    fn signal_used_queue(&self) {
-        self.interrupt_status
-            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
-        let _ = self.interrupt_evt.write(1);
-    }
-
     fn run(&mut self) {
         #[derive(PollToken)]
         enum Token {
@@ -511,7 +503,7 @@ impl Worker {
             (&self.ctrl_evt, Token::CtrlQueue),
             (&self.cursor_evt, Token::CursorQueue),
             (&*self.state.display().borrow(), Token::Display),
-            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&self.kill_evt, Token::Kill),
         ]) {
             Ok(pc) => pc,
@@ -552,7 +544,8 @@ impl Worker {
                     break;
                 }
             };
-            let mut signal_used = false;
+            let mut signal_used_cursor = false;
+            let mut signal_used_ctrl = false;
             let mut ctrl_available = false;
 
             // Clear the old values and re-initialize with false.
@@ -570,7 +563,7 @@ impl Worker {
                     Token::CursorQueue => {
                         let _ = self.cursor_evt.read();
                         if self.state.process_queue(&self.mem, &mut self.cursor_queue) {
-                            signal_used = true;
+                            signal_used_cursor = true;
                         }
                     }
                     Token::Display => {
@@ -581,10 +574,7 @@ impl Worker {
                     }
                     Token::ResourceBridge { index } => process_resource_bridge[index] = true,
                     Token::InterruptResample => {
-                        let _ = self.interrupt_resample_evt.read();
-                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
-                            self.interrupt_evt.write(1).unwrap();
-                        }
+                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => {
                         break 'poll;
@@ -595,18 +585,18 @@ impl Worker {
             // All cursor commands go first because they have higher priority.
             while let Some(desc) = self.state.return_cursor() {
                 self.cursor_queue.add_used(&self.mem, desc.index, desc.len);
-                signal_used = true;
+                signal_used_cursor = true;
             }
 
             if ctrl_available && self.state.process_queue(&self.mem, &mut self.ctrl_queue) {
-                signal_used = true;
+                signal_used_ctrl = true;
             }
 
             self.state.fence_poll();
 
             while let Some(desc) = self.state.return_ctrl() {
                 self.ctrl_queue.add_used(&self.mem, desc.index, desc.len);
-                signal_used = true;
+                signal_used_ctrl = true;
             }
 
             // Process the entire control queue before the resource bridge in case a resource is
@@ -623,8 +613,12 @@ impl Worker {
                 }
             }
 
-            if signal_used {
-                self.signal_used_queue();
+            if signal_used_ctrl {
+                self.interrupt.signal_used_queue(self.ctrl_queue.vector);
+            }
+
+            if signal_used_cursor {
+                self.interrupt.signal_used_queue(self.cursor_queue.vector);
             }
         }
     }
@@ -830,7 +824,7 @@ impl VirtioDevice for Gpu {
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
-        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        msix_config: Option<Arc<Mutex<MsixConfig>>>,
         interrupt_status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
@@ -877,11 +871,14 @@ impl VirtioDevice for Gpu {
                             };
 
                         Worker {
+                            interrupt: Interrupt::new(
+                                interrupt_status,
+                                interrupt_evt,
+                                interrupt_resample_evt,
+                                msix_config,
+                            ),
                             exit_evt,
                             mem,
-                            interrupt_evt,
-                            interrupt_resample_evt,
-                            interrupt_status,
                             ctrl_queue,
                             ctrl_evt,
                             cursor_queue,

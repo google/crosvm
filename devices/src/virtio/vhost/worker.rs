@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::os::raw::c_ulonglong;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use sync::Mutex;
 
@@ -12,20 +12,17 @@ use vhost::Vhost;
 
 use super::{Error, Result};
 use crate::pci::MsixConfig;
-use crate::virtio::{Queue, INTERRUPT_STATUS_USED_RING};
+use crate::virtio::{Interrupt, Queue};
 
 /// Worker that takes care of running the vhost device.  This mainly involves forwarding interrupts
 /// from the vhost driver to the guest VM because crosvm only supports the virtio-mmio transport,
 /// which requires a bit to be set in the interrupt status register before triggering the interrupt
 /// and the vhost driver doesn't do this for us.
 pub struct Worker<T: Vhost> {
+    interrupt: Interrupt,
     queues: Vec<Queue>,
     vhost_handle: T,
     vhost_interrupt: Vec<EventFd>,
-    interrupt_status: Arc<AtomicUsize>,
-    interrupt_evt: EventFd,
-    interrupt_resample_evt: EventFd,
-    msix_config: Option<Arc<Mutex<MsixConfig>>>,
     acked_features: u64,
 }
 
@@ -41,29 +38,17 @@ impl<T: Vhost> Worker<T> {
         acked_features: u64,
     ) -> Worker<T> {
         Worker {
+            interrupt: Interrupt::new(
+                interrupt_status,
+                interrupt_evt,
+                interrupt_resample_evt,
+                msix_config,
+            ),
             queues,
             vhost_handle,
             vhost_interrupt,
-            interrupt_status,
-            interrupt_evt,
-            interrupt_resample_evt,
-            msix_config,
             acked_features,
         }
-    }
-
-    fn signal_used_queue(&self, vector: u16) {
-        if let Some(msix_config) = &self.msix_config {
-            let mut msix_config = msix_config.lock();
-            if msix_config.enabled() {
-                msix_config.trigger(vector);
-                return;
-            }
-        }
-
-        self.interrupt_status
-            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
-        self.interrupt_evt.write(1).unwrap();
     }
 
     pub fn run<F>(
@@ -133,7 +118,7 @@ impl<T: Vhost> Worker<T> {
         }
 
         let poll_ctx: PollContext<Token> = PollContext::build_with(&[
-            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ])
         .map_err(Error::CreatePollContext)?;
@@ -153,13 +138,10 @@ impl<T: Vhost> Worker<T> {
                         self.vhost_interrupt[index]
                             .read()
                             .map_err(Error::VhostIrqRead)?;
-                        self.signal_used_queue(self.queues[index].vector);
+                        self.interrupt.signal_used_queue(self.queues[index].vector);
                     }
                     Token::InterruptResample => {
-                        let _ = self.interrupt_resample_evt.read();
-                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
-                            self.interrupt_evt.write(1).unwrap();
-                        }
+                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => break 'poll,
                 }

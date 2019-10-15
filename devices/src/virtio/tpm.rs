@@ -9,7 +9,7 @@ use std::io::{self, Read, Write};
 use std::ops::BitOrAssign;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 
@@ -19,8 +19,7 @@ use sys_util::{error, EventFd, GuestMemory, PollContext, PollToken};
 use tpm2;
 
 use super::{
-    DescriptorChain, DescriptorError, Queue, Reader, VirtioDevice, Writer,
-    INTERRUPT_STATUS_USED_RING, TYPE_TPM,
+    DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_TPM,
 };
 
 // A single queue of size 2. The guest kernel driver will enqueue a single
@@ -35,13 +34,11 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
 const TPM_BUFSIZE: usize = 4096;
 
 struct Worker {
+    interrupt: Interrupt,
     queue: Queue,
     mem: GuestMemory,
-    interrupt_status: Arc<AtomicUsize>,
     queue_evt: EventFd,
     kill_evt: EventFd,
-    interrupt_evt: EventFd,
-    interrupt_resample_evt: EventFd,
     device: Device,
 }
 
@@ -107,12 +104,6 @@ impl Worker {
         NeedsInterrupt::Yes
     }
 
-    fn signal_used_queue(&self) {
-        self.interrupt_status
-            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
-        let _ = self.interrupt_evt.write(1);
-    }
-
     fn run(mut self) {
         #[derive(PollToken, Debug)]
         enum Token {
@@ -126,7 +117,7 @@ impl Worker {
 
         let poll_ctx = match PollContext::build_with(&[
             (&self.queue_evt, Token::QueueAvailable),
-            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&self.kill_evt, Token::Kill),
         ]) {
             Ok(pc) => pc,
@@ -156,16 +147,13 @@ impl Worker {
                         needs_interrupt |= self.process_queue();
                     }
                     Token::InterruptResample => {
-                        let _ = self.interrupt_resample_evt.read();
-                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
-                            let _ = self.interrupt_evt.write(1);
-                        }
+                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => break 'poll,
                 }
             }
             if needs_interrupt == NeedsInterrupt::Yes {
-                self.signal_used_queue();
+                self.interrupt.signal_used_queue(self.queue.vector);
             }
         }
     }
@@ -218,7 +206,7 @@ impl VirtioDevice for Tpm {
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
-        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        msix_config: Option<Arc<Mutex<MsixConfig>>>,
         interrupt_status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
@@ -249,12 +237,15 @@ impl VirtioDevice for Tpm {
         self.kill_evt = Some(self_kill_evt);
 
         let worker = Worker {
+            interrupt: Interrupt::new(
+                interrupt_status,
+                interrupt_evt,
+                interrupt_resample_evt,
+                msix_config,
+            ),
             queue,
             mem,
-            interrupt_status,
             queue_evt,
-            interrupt_evt,
-            interrupt_resample_evt,
             kill_evt,
             device: Device { simulator },
         };

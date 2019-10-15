@@ -8,7 +8,7 @@ use std::mem;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::result;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
@@ -19,8 +19,7 @@ use sys_util::{error, warn, Error as SysError, EventFd, GuestMemory, PollContext
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
 
 use super::{
-    copy_config, DescriptorError, Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING,
-    TYPE_9P,
+    copy_config, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_9P,
 };
 
 const QUEUE_SIZE: u16 = 128;
@@ -89,21 +88,13 @@ impl Display for P9Error {
 pub type P9Result<T> = result::Result<T, P9Error>;
 
 struct Worker {
+    interrupt: Interrupt,
     mem: GuestMemory,
     queue: Queue,
     server: p9::Server,
-    irq_status: Arc<AtomicUsize>,
-    irq_evt: EventFd,
-    interrupt_resample_evt: EventFd,
 }
 
 impl Worker {
-    fn signal_used_queue(&self) -> P9Result<()> {
-        self.irq_status
-            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
-        self.irq_evt.write(1).map_err(P9Error::SignalUsedQueue)
-    }
-
     fn process_queue(&mut self) -> P9Result<()> {
         while let Some(avail_desc) = self.queue.pop(&self.mem) {
             let mut reader = Reader::new(&self.mem, avail_desc.clone())
@@ -119,7 +110,7 @@ impl Worker {
                 .add_used(&self.mem, avail_desc.index, writer.bytes_written() as u32);
         }
 
-        self.signal_used_queue()?;
+        self.interrupt.signal_used_queue(self.queue.vector);
 
         Ok(())
     }
@@ -137,7 +128,7 @@ impl Worker {
 
         let poll_ctx: PollContext<Token> = PollContext::build_with(&[
             (&queue_evt, Token::QueueReady),
-            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ])
         .map_err(P9Error::CreatePollContext)?;
@@ -151,10 +142,7 @@ impl Worker {
                         self.process_queue()?;
                     }
                     Token::InterruptResample => {
-                        let _ = self.interrupt_resample_evt.read();
-                        if self.irq_status.load(Ordering::SeqCst) != 0 {
-                            self.irq_evt.write(1).unwrap();
-                        }
+                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => return Ok(()),
                 }
@@ -241,7 +229,7 @@ impl VirtioDevice for P9 {
         guest_mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
-        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
@@ -265,12 +253,15 @@ impl VirtioDevice for P9 {
                     .name("virtio_9p".to_string())
                     .spawn(move || {
                         let mut worker = Worker {
+                            interrupt: Interrupt::new(
+                                status,
+                                interrupt_evt,
+                                interrupt_resample_evt,
+                                msix_config,
+                            ),
                             mem: guest_mem,
                             queue: queues.remove(0),
                             server,
-                            irq_status: status,
-                            irq_evt: interrupt_evt,
-                            interrupt_resample_evt,
                         };
 
                         worker.run(queue_evts.remove(0), kill_evt)

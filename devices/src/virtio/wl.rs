@@ -44,7 +44,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::result;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -71,9 +71,7 @@ use sys_util::{
 use sys_util::ioctl_with_ref;
 
 use super::resource_bridge::*;
-use super::{
-    DescriptorChain, Queue, VirtioDevice, INTERRUPT_STATUS_USED_RING, TYPE_WL, VIRTIO_F_VERSION_1,
-};
+use super::{DescriptorChain, Interrupt, Queue, VirtioDevice, TYPE_WL, VIRTIO_F_VERSION_1};
 use crate::pci::MsixConfig;
 use vm_control::{MaybeOwnedFd, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse};
 
@@ -1472,10 +1470,8 @@ impl WlState {
 }
 
 struct Worker {
+    interrupt: Interrupt,
     mem: GuestMemory,
-    interrupt_evt: EventFd,
-    interrupt_resample_evt: EventFd,
-    interrupt_status: Arc<AtomicUsize>,
     in_queue: Queue,
     out_queue: Queue,
     state: WlState,
@@ -1488,6 +1484,7 @@ impl Worker {
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
         interrupt_status: Arc<AtomicUsize>,
+        msix_config: Option<Arc<Mutex<MsixConfig>>>,
         in_queue: Queue,
         out_queue: Queue,
         wayland_path: PathBuf,
@@ -1496,10 +1493,13 @@ impl Worker {
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> Worker {
         Worker {
+            interrupt: Interrupt::new(
+                interrupt_status,
+                interrupt_evt,
+                interrupt_resample_evt,
+                msix_config,
+            ),
             mem,
-            interrupt_evt,
-            interrupt_resample_evt,
-            interrupt_status,
             in_queue,
             out_queue,
             state: WlState::new(
@@ -1510,12 +1510,6 @@ impl Worker {
             ),
             in_desc_chains: VecDeque::with_capacity(QUEUE_SIZE as usize),
         }
-    }
-
-    fn signal_used_queue(&self) {
-        self.interrupt_status
-            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
-        let _ = self.interrupt_evt.write(1);
     }
 
     fn run(&mut self, mut queue_evts: Vec<EventFd>, kill_evt: EventFd) {
@@ -1535,7 +1529,7 @@ impl Worker {
             (&out_queue_evt, Token::OutQueue),
             (&kill_evt, Token::Kill),
             (&self.state.poll_ctx, Token::State),
-            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (self.interrupt.get_resample_evt(), Token::InterruptResample),
         ]) {
             Ok(pc) => pc,
             Err(e) => {
@@ -1545,7 +1539,8 @@ impl Worker {
         };
 
         'poll: loop {
-            let mut signal_used = false;
+            let mut signal_used_in = false;
+            let mut signal_used_out = false;
             let events = match poll_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
@@ -1578,7 +1573,7 @@ impl Worker {
                                 }
                             }));
                         for &reject in &rejects[..rejects_len] {
-                            signal_used = true;
+                            signal_used_in = true;
                             self.in_queue.add_used(&self.mem, reject, 0);
                         }
                     }
@@ -1609,24 +1604,21 @@ impl Worker {
                                             encode_resp(resp_mem, resp).unwrap_or_default();
 
                                         self.out_queue.add_used(&self.mem, desc.index, used_len);
-                                        signal_used = true;
+                                        signal_used_out = true;
                                     }
                                 }
                             } else {
                                 // Chains that are unusable get sent straight back to the used
                                 // queue.
                                 self.out_queue.add_used(&self.mem, desc.index, 0);
-                                signal_used = true;
+                                signal_used_out = true;
                             }
                         }
                     }
                     Token::Kill => break 'poll,
                     Token::State => self.state.process_poll_context(),
                     Token::InterruptResample => {
-                        let _ = self.interrupt_resample_evt.read();
-                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
-                            self.interrupt_evt.write(1).unwrap();
-                        }
+                        self.interrupt.interrupt_resample();
                     }
                 }
             }
@@ -1652,7 +1644,7 @@ impl Worker {
                             0
                         }
                     };
-                    signal_used = true;
+                    signal_used_in = true;
                     self.in_queue.add_used(&self.mem, index, len);
                 } else {
                     break;
@@ -1662,8 +1654,12 @@ impl Worker {
                 }
             }
 
-            if signal_used {
-                self.signal_used_queue();
+            if signal_used_in {
+                self.interrupt.signal_used_queue(self.in_queue.vector);
+            }
+
+            if signal_used_out {
+                self.interrupt.signal_used_queue(self.out_queue.vector);
             }
         }
     }
@@ -1745,7 +1741,7 @@ impl VirtioDevice for Wl {
         mem: GuestMemory,
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
-        _msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        msix_config: Option<Arc<Mutex<MsixConfig>>>,
         status: Arc<AtomicUsize>,
         mut queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
@@ -1776,6 +1772,7 @@ impl VirtioDevice for Wl {
                             interrupt_evt,
                             interrupt_resample_evt,
                             status,
+                            msix_config,
                             queues.remove(0),
                             queues.remove(0),
                             wayland_path,

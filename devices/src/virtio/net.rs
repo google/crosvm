@@ -7,7 +7,7 @@ use std::io::{self, Read, Write};
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
@@ -21,7 +21,7 @@ use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
 use virtio_sys::{vhost, virtio_net};
 
-use super::{Queue, Reader, VirtioDevice, Writer, INTERRUPT_STATUS_USED_RING, TYPE_NET};
+use super::{Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_NET};
 
 /// The maximum buffer size when segmentation offload is enabled. This
 /// includes the 12-byte virtio net header.
@@ -88,14 +88,11 @@ impl Display for NetError {
 }
 
 struct Worker<T: TapT> {
+    interrupt: Interrupt,
     mem: GuestMemory,
     rx_queue: Queue,
     tx_queue: Queue,
     tap: T,
-    interrupt_status: Arc<AtomicUsize>,
-    interrupt_evt: EventFd,
-    interrupt_resample_evt: EventFd,
-    msix_config: Option<Arc<Mutex<MsixConfig>>>,
     rx_buf: [u8; MAX_BUFFER_SIZE],
     rx_count: usize,
     deferred_rx: bool,
@@ -109,19 +106,6 @@ impl<T> Worker<T>
 where
     T: TapT,
 {
-    fn signal_used_queue(&self, vector: u16) {
-        if let Some(msix_config) = &self.msix_config {
-            let mut msix_config = msix_config.lock();
-            if msix_config.enabled() {
-                msix_config.trigger(vector);
-                return;
-            }
-        }
-        self.interrupt_status
-            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
-        self.interrupt_evt.write(1).unwrap();
-    }
-
     // Copies a single frame from `self.rx_buf` into the guest. Returns true
     // if a buffer was used, and false if the frame must be deferred until a buffer
     // is made available by the driver.
@@ -174,7 +158,7 @@ where
                         self.deferred_rx = true;
                         break;
                     } else if first_frame {
-                        self.signal_used_queue(self.rx_queue.vector);
+                        self.interrupt.signal_used_queue(self.rx_queue.vector);
                         first_frame = false;
                     } else {
                         needs_interrupt = true;
@@ -234,7 +218,7 @@ where
             self.tx_queue.add_used(&self.mem, index, 0);
         }
 
-        self.signal_used_queue(self.tx_queue.vector);
+        self.interrupt.signal_used_queue(self.tx_queue.vector);
     }
 
     fn run(
@@ -261,7 +245,7 @@ where
             (&self.tap, Token::RxTap),
             (&rx_queue_evt, Token::RxQueue),
             (&tx_queue_evt, Token::TxQueue),
-            (&self.interrupt_resample_evt, Token::InterruptResample),
+            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ])
         .map_err(NetError::CreatePollContext)?;
@@ -319,16 +303,13 @@ where
                         self.process_tx();
                     }
                     Token::InterruptResample => {
-                        let _ = self.interrupt_resample_evt.read();
-                        if self.interrupt_status.load(Ordering::SeqCst) != 0 {
-                            self.interrupt_evt.write(1).unwrap();
-                        }
+                        self.interrupt.interrupt_resample();
                     }
                     Token::Kill => break 'poll,
                 }
 
                 if needs_interrupt_rx {
-                    self.signal_used_queue(self.rx_queue.vector);
+                    self.interrupt.signal_used_queue(self.rx_queue.vector);
                 }
             }
         }
@@ -528,14 +509,16 @@ where
                             let rx_queue = queues.remove(0);
                             let tx_queue = queues.remove(0);
                             let mut worker = Worker {
+                                interrupt: Interrupt::new(
+                                    status,
+                                    interrupt_evt,
+                                    interrupt_resample_evt,
+                                    msix_config,
+                                ),
                                 mem,
                                 rx_queue,
                                 tx_queue,
                                 tap,
-                                interrupt_status: status,
-                                interrupt_evt,
-                                msix_config,
-                                interrupt_resample_evt,
                                 rx_buf: [0u8; MAX_BUFFER_SIZE],
                                 rx_count: 0,
                                 deferred_rx: false,
