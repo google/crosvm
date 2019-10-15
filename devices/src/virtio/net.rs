@@ -145,14 +145,13 @@ where
 
         self.rx_queue.add_used(&self.mem, index, bytes_written);
 
-        // Interrupt the guest immediately for received frames to
-        // reduce latency.
-        self.signal_used_queue();
-
         true
     }
 
-    fn process_rx(&mut self) {
+    fn process_rx(&mut self) -> bool {
+        let mut needs_interrupt = false;
+        let mut first_frame = true;
+
         // Read as many frames as possible.
         loop {
             let res = self.tap.read(&mut self.rx_buf);
@@ -162,6 +161,11 @@ where
                     if !self.rx_single_frame() {
                         self.deferred_rx = true;
                         break;
+                    } else if first_frame {
+                        self.signal_used_queue();
+                        first_frame = false;
+                    } else {
+                        needs_interrupt = true;
                     }
                 }
                 Err(e) => {
@@ -174,6 +178,8 @@ where
                 }
             }
         }
+
+        needs_interrupt
     }
 
     fn process_tx(&mut self) {
@@ -251,6 +257,7 @@ where
         'poll: loop {
             let events = poll_ctx.wait().map_err(NetError::PollError)?;
             for event in events.iter_readable() {
+                let mut needs_interrupt_rx = false;
                 match event.token() {
                     Token::RxTap => {
                         // Process a deferred frame first if available. Don't read from tap again
@@ -258,6 +265,7 @@ where
                         if self.deferred_rx {
                             if self.rx_single_frame() {
                                 self.deferred_rx = false;
+                                needs_interrupt_rx = true;
                             } else {
                                 // There is an outstanding deferred frame and the guest has not yet
                                 // made any buffers available. Remove the tapfd from the poll
@@ -268,7 +276,7 @@ where
                                 continue;
                             }
                         }
-                        self.process_rx();
+                        needs_interrupt_rx |= self.process_rx();
                     }
                     Token::RxQueue => {
                         if let Err(e) = rx_queue_evt.read() {
@@ -277,6 +285,8 @@ where
                         }
                         // There should be a buffer available now to receive the frame into.
                         if self.deferred_rx && self.rx_single_frame() {
+                            needs_interrupt_rx = true;
+
                             // The guest has made buffers available, so add the tap back to the
                             // poll context in case it was removed.
                             match poll_ctx.add(&self.tap, Token::RxTap) {
@@ -303,6 +313,10 @@ where
                         }
                     }
                     Token::Kill => break 'poll,
+                }
+
+                if needs_interrupt_rx {
+                    self.signal_used_queue();
                 }
             }
         }
