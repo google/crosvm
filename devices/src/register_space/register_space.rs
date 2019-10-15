@@ -293,5 +293,4 @@ mod tests {
         regs.read(8, &mut data);
         assert_eq!([0, 0, 0xff, 0xee, 0xff, 0xee, 0xff, 0xee], data);
     }
-
 }

@@ -32,7 +32,6 @@ pub struct Builder {
     prefix: String,
 }
 
-
 // Note: we implement a builder because the protoc-rust crate uses this API from
 // crates.io's tempfile. Our code mostly uses TempDir::new directly.
 impl Builder {
@@ -90,7 +89,6 @@ impl Builder {
 /// dropped.
 pub struct TempDir {
     path: PathBuf,
-
     // When adding new fields to TempDir: note that anything with a Drop impl
     // will need to be dropped explicitly via ptr::read inside TempDir::remove
     // or else it gets leaked (memory safe but not ideal).

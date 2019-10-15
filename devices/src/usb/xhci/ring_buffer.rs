@@ -264,5 +264,4 @@ mod test {
         let descriptor = transfer_ring.dequeue_transfer_descriptor().unwrap();
         assert_eq!(descriptor.is_none(), true);
     }
-
 }
