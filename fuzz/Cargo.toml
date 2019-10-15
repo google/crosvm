@@ -10,6 +10,7 @@ kernel_loader = { path = "../kernel_loader" }
 libc = "*"
 qcow = { path = "../qcow" }
 sys_util = { path = "../sys_util" }
+usb_util = { path = "../usb_util" }
 
 # Prevent this from interfering with workspaces
 [workspace]
@@ -22,6 +23,10 @@ path = "block_fuzzer.rs"
 [[bin]]
 name = "crosvm_qcow_fuzzer"
 path = "qcow_fuzzer.rs"
+
+[[bin]]
+name = "crosvm_usb_descriptor_fuzzer"
+path = "usb_descriptor_fuzzer.rs"
 
 [[bin]]
 name = "crosvm_zimage_fuzzer"

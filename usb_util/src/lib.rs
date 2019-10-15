@@ -7,7 +7,9 @@ mod device;
 mod error;
 mod types;
 
-pub use self::descriptor::{ConfigDescriptorTree, DeviceDescriptorTree, InterfaceDescriptorTree};
+pub use self::descriptor::{
+    parse_usbfs_descriptors, ConfigDescriptorTree, DeviceDescriptorTree, InterfaceDescriptorTree,
+};
 pub use self::device::{Device, Transfer, TransferStatus};
 pub use self::error::{Error, Result};
 pub use self::types::{
