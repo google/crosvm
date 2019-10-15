@@ -5,10 +5,13 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
+cros_fuzz = "*"
+data_model = { path = "../data_model" }
 devices = { path = "../devices" }
 kernel_loader = { path = "../kernel_loader" }
 libc = "*"
 qcow = { path = "../qcow" }
+rand = "0.6"
 sys_util = { path = "../sys_util" }
 usb_util = { path = "../usb_util" }
 
@@ -27,6 +30,10 @@ path = "qcow_fuzzer.rs"
 [[bin]]
 name = "crosvm_usb_descriptor_fuzzer"
 path = "usb_descriptor_fuzzer.rs"
+
+[[bin]]
+name = "crosvm_virtqueue_fuzzer"
+path = "virtqueue_fuzzer.rs"
 
 [[bin]]
 name = "crosvm_zimage_fuzzer"
