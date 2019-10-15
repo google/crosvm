@@ -111,7 +111,8 @@ impl GpuMemoryAllocator for GpuBufferDevice {
 }
 
 #[cfg(feature = "wl-dmabuf")]
-pub fn create_gpu_memory_allocator() -> Result<Option<Box<GpuMemoryAllocator>>, GpuAllocatorError> {
+pub fn create_gpu_memory_allocator(
+) -> Result<Option<Box<dyn GpuMemoryAllocator>>, GpuAllocatorError> {
     let undesired: &[&str] = &["vgem", "pvr"];
     let fd = gpu_buffer::rendernode::open_device(undesired)
         .map_err(|_| GpuAllocatorError::OpenGpuBufferDevice)?;

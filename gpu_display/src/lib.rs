@@ -159,7 +159,7 @@ trait DisplayT: AsRawFd {
 /// The user of `GpuDisplay` can use `AsRawFd` to poll on the compositor connection's file
 /// descriptor. When the connection is readable, `dispatch_events` can be called to process it.
 pub struct GpuDisplay {
-    inner: Box<DisplayT>,
+    inner: Box<dyn DisplayT>,
 }
 
 impl GpuDisplay {

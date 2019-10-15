@@ -326,7 +326,7 @@ pub fn validate_raw_fd(raw_fd: RawFd) -> Result<RawFd> {
 ///
 /// On an error, such as an invalid or incompatible FD, this will return false, which can not be
 /// distinguished from a non-ready to read FD.
-pub fn poll_in(fd: &AsRawFd) -> bool {
+pub fn poll_in(fd: &dyn AsRawFd) -> bool {
     let mut fds = libc::pollfd {
         fd: fd.as_raw_fd(),
         events: libc::POLLIN,

@@ -284,7 +284,7 @@ impl Worker {
     fn process_one_request(
         avail_desc: DescriptorChain,
         read_only: bool,
-        disk: &mut DiskFile,
+        disk: &mut dyn DiskFile,
         disk_size: u64,
         flush_timer: &mut TimerFd,
         flush_timer_armed: &mut bool,
@@ -571,7 +571,7 @@ impl Block {
     fn execute_request(
         avail_desc: DescriptorChain,
         read_only: bool,
-        disk: &mut DiskFile,
+        disk: &mut dyn DiskFile,
         disk_size: u64,
         flush_timer: &mut TimerFd,
         flush_timer_armed: &mut bool,

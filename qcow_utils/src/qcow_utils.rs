@@ -77,7 +77,7 @@ pub unsafe extern "C" fn expand_disk_image(path: *const c_char, virtual_size: u6
         Err(_) => return -EINVAL,
     };
 
-    let mut disk_image: Box<DiskFile> = match image_type {
+    let mut disk_image: Box<dyn DiskFile> = match image_type {
         ImageType::Raw => Box::new(raw_image),
         ImageType::Qcow2 => match QcowFile::from(raw_image) {
             Ok(f) => Box::new(f),

@@ -236,7 +236,7 @@ mod tests {
             cvar: Condvar::new(),
             evt,
         });
-        let t: Arc<EventHandler> = h.clone();
+        let t: Arc<dyn EventHandler> = h.clone();
         l.add_event(
             &h.evt,
             WatchingEvents::empty().set_read(),

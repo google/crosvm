@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn static_register_interface_test() {
-        let r: Box<RegisterInterface> = Box::new(static_register! {
+        let r: Box<dyn RegisterInterface> = Box::new(static_register! {
             ty: u8,
             offset: 3,
             value: 32,
