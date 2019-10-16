@@ -24,6 +24,10 @@ name = "crosvm_block_fuzzer"
 path = "block_fuzzer.rs"
 
 [[bin]]
+name = "crosvm_fs_server_fuzzer"
+path = "fs_server_fuzzer.rs"
+
+[[bin]]
 name = "crosvm_qcow_fuzzer"
 path = "qcow_fuzzer.rs"
 

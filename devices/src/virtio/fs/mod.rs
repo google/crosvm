@@ -23,6 +23,8 @@ use crate::virtio::{
 mod filesystem;
 #[allow(dead_code)]
 mod fuse;
+#[cfg(fuzzing)]
+pub mod fuzzing;
 mod multikey;
 pub mod passthrough;
 mod server;
