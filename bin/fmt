@@ -4,7 +4,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# Run `cargo fmt` on all Rust code contained in crosvm. This is different from
+# Run `rustfmt` on all Rust code contained in crosvm. This is different from
 # `cargo fmt --all` which formats multiple crates but a single workspace only.
 # Crosvm consists of multiple workspaces.
 #
@@ -26,19 +26,4 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # Jump up to root directory of crosvm repo.
 cd ..
 
-# Keep track of whether any cargo fmt invocation exited with error.
-EXIT=0
-
-FIND_CARGO_TOMLS="$(find "$PWD" -name Cargo.toml)"
-
-while read path_to_cargo_toml; do
-    cd "$(dirname "$path_to_cargo_toml")"
-
-    if grep --quiet '\[workspace\]' Cargo.toml; then
-        if ! cargo fmt --all -- "$@"; then
-            EXIT=1
-        fi
-    fi
-done <<< "$FIND_CARGO_TOMLS"
-
-exit $EXIT
+find . -name '*.rs' -print0 | xargs -0 rustfmt "$@" --
