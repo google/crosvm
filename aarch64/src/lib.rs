@@ -373,8 +373,8 @@ impl AArch64 {
     /// This returns a base part of the kernel command for this architecture
     fn get_base_linux_cmdline(stdio_serial_num: Option<u8>) -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(sys_util::pagesize());
-        if stdio_serial_num.is_some() {
-            let tty_string = get_serial_tty_string(stdio_serial_num.unwrap());
+        if let Some(stdio_serial_num) = stdio_serial_num {
+            let tty_string = get_serial_tty_string(stdio_serial_num);
             cmdline.insert("console", &tty_string).unwrap();
         }
         cmdline.insert_str("panic=-1").unwrap();

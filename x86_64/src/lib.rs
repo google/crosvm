@@ -594,8 +594,8 @@ impl X8664arch {
     /// This returns a minimal kernel command for this architecture
     fn get_base_linux_cmdline(stdio_serial_num: Option<u8>) -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
-        if stdio_serial_num.is_some() {
-            let tty_string = get_serial_tty_string(stdio_serial_num.unwrap());
+        if let Some(stdio_serial_num) = stdio_serial_num {
+            let tty_string = get_serial_tty_string(stdio_serial_num);
             cmdline.insert("console", &tty_string).unwrap();
         }
         cmdline.insert_str("noacpi reboot=k panic=-1").unwrap();
