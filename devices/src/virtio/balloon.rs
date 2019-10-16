@@ -364,7 +364,6 @@ impl VirtioDevice for Balloon {
         match worker_result {
             Err(e) => {
                 error!("failed to spawn virtio_balloon worker: {}", e);
-                return;
             }
             Ok(join_handle) => {
                 self.worker_thread = Some(join_handle);

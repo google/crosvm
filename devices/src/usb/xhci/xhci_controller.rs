@@ -158,7 +158,6 @@ impl XhciController {
             }
             _ => {
                 error!("xhci controller is in a wrong state");
-                return;
             }
         }
     }
@@ -201,7 +200,6 @@ impl PciDevice for XhciController {
             }
             _ => {
                 error!("xhci controller is in a wrong state");
-                return;
             }
         }
     }
@@ -254,7 +252,6 @@ impl PciDevice for XhciController {
             }
             _ => {
                 error!("xhci controller is in a wrong state");
-                return;
             }
         }
     }
@@ -274,10 +271,10 @@ impl PciDevice for XhciController {
             }
             _ => {
                 error!("xhci controller is in a wrong state");
-                return;
             }
         }
     }
+
     fn on_device_sandboxed(&mut self) {
         self.init_when_forked();
     }

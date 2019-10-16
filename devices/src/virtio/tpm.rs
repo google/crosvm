@@ -257,7 +257,6 @@ impl VirtioDevice for Tpm {
         match worker_result {
             Err(e) => {
                 error!("vtpm failed to spawn virtio_tpm worker: {}", e);
-                return;
             }
             Ok(join_handle) => {
                 self.worker_thread = Some(join_handle);

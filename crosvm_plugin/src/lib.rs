@@ -1478,7 +1478,7 @@ pub unsafe extern "C" fn crosvm_set_hypercall_hint(
         hint.address_flags == CROSVM_HINT_ON_WRITE,
         slice::from_raw_parts(hint.details, hint.details_count as usize),
     );
-    return to_crosvm_rc(ret);
+    to_crosvm_rc(ret)
 }
 
 #[no_mangle]

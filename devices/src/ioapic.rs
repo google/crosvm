@@ -142,7 +142,6 @@ impl BusDevice for Ioapic {
             }
             _ => {
                 warn!("IOAPIC: Bad write to offset {}", offset);
-                return;
             }
         }
     }
