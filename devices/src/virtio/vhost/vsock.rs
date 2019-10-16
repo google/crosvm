@@ -9,9 +9,8 @@ use std::thread;
 
 use data_model::{DataInit, Le64};
 
-use ::vhost::Vsock as VhostVsockHandle;
 use sys_util::{error, warn, EventFd, GuestMemory};
-use virtio_sys::vhost;
+use vhost::Vsock as VhostVsockHandle;
 
 use super::worker::Worker;
 use super::{Error, Result};
@@ -37,12 +36,12 @@ impl Vsock {
         let kill_evt = EventFd::new().map_err(Error::CreateKillEventFd)?;
         let handle = VhostVsockHandle::new(mem).map_err(Error::VhostOpen)?;
 
-        let avail_features = 1 << vhost::VIRTIO_F_NOTIFY_ON_EMPTY
-            | 1 << vhost::VIRTIO_RING_F_INDIRECT_DESC
-            | 1 << vhost::VIRTIO_RING_F_EVENT_IDX
-            | 1 << vhost::VHOST_F_LOG_ALL
-            | 1 << vhost::VIRTIO_F_ANY_LAYOUT
-            | 1 << vhost::VIRTIO_F_VERSION_1;
+        let avail_features = 1 << virtio_sys::vhost::VIRTIO_F_NOTIFY_ON_EMPTY
+            | 1 << virtio_sys::vhost::VIRTIO_RING_F_INDIRECT_DESC
+            | 1 << virtio_sys::vhost::VIRTIO_RING_F_EVENT_IDX
+            | 1 << virtio_sys::vhost::VHOST_F_LOG_ALL
+            | 1 << virtio_sys::vhost::VIRTIO_F_ANY_LAYOUT
+            | 1 << virtio_sys::vhost::VIRTIO_F_VERSION_1;
 
         Ok(Vsock {
             worker_kill_evt: Some(kill_evt.try_clone().map_err(Error::CloneKillEventFd)?),

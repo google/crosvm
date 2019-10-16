@@ -12,9 +12,9 @@ use std::thread;
 use net_sys;
 use net_util::{MacAddress, TapT};
 
-use ::vhost::NetT as VhostNetT;
 use sys_util::{error, warn, EventFd, GuestMemory};
-use virtio_sys::{vhost, virtio_net};
+use vhost::NetT as VhostNetT;
+use virtio_sys::virtio_net;
 
 use super::worker::Worker;
 use super::{Error, Result};
@@ -77,10 +77,10 @@ where
             | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
             | 1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF
-            | 1 << vhost::VIRTIO_RING_F_INDIRECT_DESC
-            | 1 << vhost::VIRTIO_RING_F_EVENT_IDX
-            | 1 << vhost::VIRTIO_F_NOTIFY_ON_EMPTY
-            | 1 << vhost::VIRTIO_F_VERSION_1;
+            | 1 << virtio_sys::vhost::VIRTIO_RING_F_INDIRECT_DESC
+            | 1 << virtio_sys::vhost::VIRTIO_RING_F_EVENT_IDX
+            | 1 << virtio_sys::vhost::VIRTIO_F_NOTIFY_ON_EMPTY
+            | 1 << virtio_sys::vhost::VIRTIO_F_VERSION_1;
 
         Ok(Net {
             workers_kill_evt: Some(kill_evt.try_clone().map_err(Error::CloneKillEventFd)?),
@@ -231,10 +231,10 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ::vhost::net::fakes::FakeNet;
     use net_util::fakes::FakeTap;
     use std::result;
     use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
+    use vhost::net::fakes::FakeNet;
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);
