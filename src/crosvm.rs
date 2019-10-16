@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 use devices::SerialParameters;
 
-static SECCOMP_POLICY_DIR: &'static str = "/usr/share/policy/crosvm";
+static SECCOMP_POLICY_DIR: &str = "/usr/share/policy/crosvm";
 
 /// Indicates the location and kind of executable kernel for a VM.
 #[derive(Debug)]

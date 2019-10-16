@@ -14,7 +14,7 @@ use sys_util::{ioctl_with_ref, GuestMemory};
 
 use super::{ioctl_result, Error, Result, Vhost};
 
-static DEVICE: &'static str = "/dev/vhost-net";
+static DEVICE: &str = "/dev/vhost-net";
 
 /// Handle to run VHOST_NET ioctls.
 ///
