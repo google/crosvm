@@ -163,7 +163,7 @@ impl<'a> VolatileSlice<'a> {
             return Err(VolatileMemoryError::Overflow {
                 base: self.addr as u64,
                 offset: count,
-            })?;
+            });
         }
         let new_size = self
             .size
