@@ -11,10 +11,10 @@ use libc::{EAGAIN, ENODEV, ENOENT};
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
-use std::mem::{size_of, size_of_val};
+use std::mem::size_of_val;
 use std::os::raw::{c_int, c_uint, c_ulong, c_void};
 use std::sync::Arc;
-use sys_util::handle_eintr_errno;
+use sys_util::{handle_eintr_errno, vec_with_array_field};
 
 /// Device represents a USB device.
 pub struct Device {
@@ -307,23 +307,6 @@ impl Device {
 
         Ok(())
     }
-}
-
-// Returns a `Vec<T>` with a size in bytes at least as large as `size_in_bytes`.
-fn vec_with_size_in_bytes<T: Default>(size_in_bytes: usize) -> Vec<T> {
-    let rounded_size = (size_in_bytes + size_of::<T>() - 1) / size_of::<T>();
-    let mut v = Vec::with_capacity(rounded_size);
-    for _ in 0..rounded_size {
-        v.push(T::default())
-    }
-    v
-}
-
-// This function has been borrowed from kvm - see the doc comment there for details.
-fn vec_with_array_field<T: Default, F>(count: usize) -> Vec<T> {
-    let element_space = count * size_of::<F>();
-    let vec_size_bytes = size_of::<T>() + element_space;
-    vec_with_size_in_bytes(vec_size_bytes)
 }
 
 impl Transfer {
