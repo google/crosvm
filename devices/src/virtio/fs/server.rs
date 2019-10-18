@@ -835,7 +835,13 @@ impl<F: FileSystem + Sync> Server<F> {
 
         match self.fs.init(capable) {
             Ok(want) => {
-                let enabled = capable & (want | supported);
+                let mut enabled = capable & (want | supported);
+
+                // HANDLE_KILLPRIV doesn't work correctly when writeback caching is enabled so turn
+                // it off.
+                if enabled.contains(FsOptions::WRITEBACK_CACHE) {
+                    enabled.remove(FsOptions::HANDLE_KILLPRIV);
+                }
 
                 let out = InitOut {
                     major: KERNEL_VERSION,
