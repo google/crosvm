@@ -66,14 +66,16 @@ unsafe impl DataInit for LinuxDirent64 {}
 macro_rules! scoped_cred {
     ($name:ident, $ty:ty, $syscall_nr:expr) => {
         #[derive(Debug)]
-        struct $name;
+        struct $name {
+            old: $ty,
+        }
 
         impl $name {
-            // Changes the effective uid/gid of the current thread to `val`.  Changes
-            // the thread's credentials back to root when the returned struct is dropped.
-            fn new(val: $ty) -> io::Result<Option<$name>> {
-                if val == 0 {
-                    // Nothing to do since we are already uid 0.
+            // Changes the effective uid/gid of the current thread to `val`. Changes the thread's
+            // credentials back to `old` when the returned struct is dropped.
+            fn new(val: $ty, old: $ty) -> io::Result<Option<$name>> {
+                if val == old {
+                    // Nothing to do since we already have the correct value.
                     return Ok(None);
                 }
 
@@ -93,7 +95,7 @@ macro_rules! scoped_cred {
                 // check the return value.
                 let res = unsafe { libc::syscall($syscall_nr, -1, val, -1) };
                 if res == 0 {
-                    Ok(Some($name))
+                    Ok(Some($name { old }))
                 } else {
                     Err(io::Error::last_os_error())
                 }
@@ -102,10 +104,11 @@ macro_rules! scoped_cred {
 
         impl Drop for $name {
             fn drop(&mut self) {
-                let res = unsafe { libc::syscall($syscall_nr, -1, 0, -1) };
+                let res = unsafe { libc::syscall($syscall_nr, -1, self.old, -1) };
                 if res < 0 {
                     error!(
-                        "failed to change credentials back to root: {}",
+                        "failed to change credentials back to {}: {}",
+                        self.old,
                         io::Error::last_os_error(),
                     );
                 }
@@ -116,13 +119,23 @@ macro_rules! scoped_cred {
 scoped_cred!(ScopedUid, libc::uid_t, libc::SYS_setresuid);
 scoped_cred!(ScopedGid, libc::gid_t, libc::SYS_setresgid);
 
+thread_local! {
+    // Both these calls are safe because they take no parameters, and only return an integer value.
+    // The kernel also guarantees that they can never fail.
+    static THREAD_EUID: libc::uid_t = unsafe { libc::syscall(libc::SYS_geteuid) as libc::uid_t };
+    static THREAD_EGID: libc::gid_t = unsafe { libc::syscall(libc::SYS_getegid) as libc::gid_t };
+}
+
 fn set_creds(
     uid: libc::uid_t,
     gid: libc::gid_t,
 ) -> io::Result<(Option<ScopedUid>, Option<ScopedGid>)> {
+    let olduid = THREAD_EUID.with(|uid| *uid);
+    let oldgid = THREAD_EGID.with(|gid| *gid);
+
     // We have to change the gid before we change the uid because if we change the uid first then we
     // lose the capability to change the gid.  However changing back can happen in any order.
-    ScopedGid::new(gid).and_then(|gid| Ok((ScopedUid::new(uid)?, gid)))
+    ScopedGid::new(gid, oldgid).and_then(|gid| Ok((ScopedUid::new(uid, olduid)?, gid)))
 }
 
 fn ebadf() -> io::Error {
