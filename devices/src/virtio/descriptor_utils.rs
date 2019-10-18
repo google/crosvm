@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use std::fmt::{self, Display};
 use std::io::{self, Read, Write};
 use std::mem::{size_of, MaybeUninit};
+use std::ptr::copy_nonoverlapping;
 use std::result;
 
 use data_model::{DataInit, Le16, Le32, Le64, VolatileMemory, VolatileMemoryError, VolatileSlice};
@@ -303,7 +304,14 @@ impl<'a> io::Read for Reader<'a> {
                 // This is guaranteed by the implementation of `consume`.
                 debug_assert_eq!(vs.size(), cmp::min(rem.len() as u64, vs.size()));
 
-                vs.copy_to(rem);
+                // Safe because we have already verified that `vs` points to valid memory.
+                unsafe {
+                    copy_nonoverlapping(
+                        vs.as_ptr() as *const u8,
+                        rem.as_mut_ptr(),
+                        vs.size() as usize,
+                    );
+                }
                 let copied = vs.size() as usize;
                 rem = &mut rem[copied..];
                 total += copied;
@@ -427,7 +435,10 @@ impl<'a> io::Write for Writer<'a> {
                 // This is guaranteed by the implementation of `consume`.
                 debug_assert_eq!(vs.size(), cmp::min(rem.len() as u64, vs.size()));
 
-                vs.copy_from(rem);
+                // Safe because we have already verified that `vs` points to valid memory.
+                unsafe {
+                    copy_nonoverlapping(rem.as_ptr(), vs.as_ptr(), vs.size() as usize);
+                }
                 let copied = vs.size() as usize;
                 rem = &rem[copied..];
                 total += copied;
