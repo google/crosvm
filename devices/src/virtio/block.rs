@@ -261,25 +261,28 @@ impl Worker {
         flush_timer_armed: &mut bool,
         mem: &GuestMemory,
     ) -> result::Result<usize, ExecuteError> {
-        let mut status_writer =
-            Writer::new(mem, avail_desc.clone()).map_err(ExecuteError::Descriptor)?;
-        let available_bytes = status_writer.available_bytes();
+        let mut reader = Reader::new(mem, avail_desc.clone()).map_err(ExecuteError::Descriptor)?;
+        let mut writer = Writer::new(mem, avail_desc).map_err(ExecuteError::Descriptor)?;
+
+        // The last byte of the buffer is virtio_blk_req::status.
+        // Split it into a separate Writer so that status_writer is the final byte and
+        // the original writer is left with just the actual block I/O data.
+        let available_bytes = writer.available_bytes();
         let status_offset = available_bytes
             .checked_sub(1)
             .ok_or(ExecuteError::MissingStatus)?;
-
-        status_writer = status_writer
+        let mut status_writer = writer
             .split_at(status_offset)
             .map_err(ExecuteError::Descriptor)?;
 
         let status = match Block::execute_request(
-            avail_desc,
+            &mut reader,
+            &mut writer,
             read_only,
             disk,
             disk_size,
             flush_timer,
             flush_timer_armed,
-            mem,
         ) {
             Ok(()) => VIRTIO_BLK_S_OK,
             Err(e) => {
@@ -530,18 +533,19 @@ impl Block {
         })
     }
 
+    // Execute a single block device request.
+    // `writer` includes the data region only; the status byte is not included.
+    // It is up to the caller to convert the result of this function into a status byte
+    // and write it to the expected location in guest memory.
     fn execute_request(
-        avail_desc: DescriptorChain,
+        reader: &mut Reader,
+        writer: &mut Writer,
         read_only: bool,
         disk: &mut dyn DiskFile,
         disk_size: u64,
         flush_timer: &mut TimerFd,
         flush_timer_armed: &mut bool,
-        mem: &GuestMemory,
     ) -> result::Result<(), ExecuteError> {
-        let mut reader = Reader::new(mem, avail_desc.clone()).map_err(ExecuteError::Descriptor)?;
-        let mut writer = Writer::new(mem, avail_desc).map_err(ExecuteError::Descriptor)?;
-
         let req_header: virtio_blk_req_header = reader.read_obj().map_err(ExecuteError::Read)?;
 
         let req_type = req_header.req_type.to_native();
@@ -574,11 +578,7 @@ impl Block {
 
         match req_type {
             VIRTIO_BLK_T_IN => {
-                // The last byte of writer is virtio_blk_req::status, so subtract it from data_len.
-                let data_len = writer
-                    .available_bytes()
-                    .checked_sub(1)
-                    .ok_or(ExecuteError::MissingStatus)?;
+                let data_len = writer.available_bytes();
                 let offset = sector
                     .checked_shl(u32::from(SECTOR_SHIFT))
                     .ok_or(ExecuteError::OutOfRange)?;
@@ -881,7 +881,7 @@ mod tests {
         let mut flush_timer = TimerFd::new().expect("failed to create flush_timer");
         let mut flush_timer_armed = false;
 
-        Block::execute_request(
+        Worker::process_one_request(
             avail_desc,
             false,
             &mut f,
@@ -891,6 +891,10 @@ mod tests {
             &mem,
         )
         .expect("execute failed");
+
+        let status_offset = GuestAddress((0x1000 + size_of_val(&req_hdr) + 512) as u64);
+        let status = mem.read_obj_from_addr::<u8>(status_offset).unwrap();
+        assert_eq!(status, VIRTIO_BLK_S_OK);
     }
 
     #[test]
@@ -937,7 +941,7 @@ mod tests {
         let mut flush_timer = TimerFd::new().expect("failed to create flush_timer");
         let mut flush_timer_armed = false;
 
-        Block::execute_request(
+        Worker::process_one_request(
             avail_desc,
             false,
             &mut f,
@@ -946,6 +950,10 @@ mod tests {
             &mut flush_timer_armed,
             &mem,
         )
-        .expect_err("execute was supposed to fail");
+        .expect("execute failed");
+
+        let status_offset = GuestAddress((0x1000 + size_of_val(&req_hdr) + 512 * 2) as u64);
+        let status = mem.read_obj_from_addr::<u8>(status_offset).unwrap();
+        assert_eq!(status, VIRTIO_BLK_S_IOERR);
     }
 }
