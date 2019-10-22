@@ -102,8 +102,6 @@ pub enum DeviceRegistrationError {
     AllocateDeviceAddrs(PciDeviceError),
     /// Could not allocate an IRQ number.
     AllocateIrq,
-    /// Could not create the mmio device to wrap a VirtioDevice.
-    CreateMmioDevice(sys_util::Error),
     // Unable to create a pipe.
     CreatePipe(sys_util::Error),
     // Unable to create serial device from serial parameters
@@ -136,7 +134,6 @@ impl Display for DeviceRegistrationError {
             AllocateIoAddrs(e) => write!(f, "Allocating IO addresses: {}", e),
             AllocateDeviceAddrs(e) => write!(f, "Allocating device addresses: {}", e),
             AllocateIrq => write!(f, "Allocating IRQ number"),
-            CreateMmioDevice(e) => write!(f, "failed to create mmio device: {}", e),
             CreatePipe(e) => write!(f, "failed to create pipe: {}", e),
             CreateSerialDevice(e) => write!(f, "failed to create serial device: {}", e),
             Cmdline(e) => write!(f, "unable to add device to kernel command line: {}", e),
