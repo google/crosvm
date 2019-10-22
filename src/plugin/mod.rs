@@ -420,7 +420,7 @@ pub fn run_vcpus(
         let vcpu_thread_barrier = vcpu_thread_barrier.clone();
         let vcpu_exit_evt = exit_evt.try_clone().map_err(Error::CloneEventFd)?;
         let vcpu_plugin = plugin.create_vcpu(cpu_id)?;
-        let mut vcpu = Vcpu::new(cpu_id as c_ulong, kvm, vm).map_err(Error::CreateVcpu)?;
+        let vcpu = Vcpu::new(cpu_id as c_ulong, kvm, vm).map_err(Error::CreateVcpu)?;
 
         vcpu_handles.push(
             thread::Builder::new()
@@ -431,9 +431,11 @@ pub fn run_vcpus(
                         // because we will be using first RT signal to kick the VCPU.
                         vcpu.set_signal_mask(&[])
                             .expect("failed to set up KVM VCPU signal mask");
-                    } else {
-                        vcpu.set_thread_id(SIGRTMIN() + 0);
                     }
+
+                    let vcpu = vcpu
+                        .to_runnable(Some(SIGRTMIN() + 0))
+                        .expect("Failed to set thread id");
 
                     let res = vcpu_plugin.init(&vcpu);
                     vcpu_thread_barrier.wait();

@@ -74,8 +74,9 @@ fn test_run() {
     // Ensure we get exactly 1 exit from attempting to write to read only memory.
     let mut exits = 0;
 
+    let runnable_vcpu = vcpu.to_runnable(None).unwrap();
     loop {
-        match vcpu.run().expect("run failed") {
+        match runnable_vcpu.run().expect("run failed") {
             VcpuExit::Hlt => break,
             VcpuExit::MmioWrite {
                 address,

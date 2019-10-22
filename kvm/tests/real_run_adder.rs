@@ -49,8 +49,9 @@ fn test_run() {
     vcpu.set_regs(&vcpu_regs).expect("set regs failed");
 
     let mut out = String::new();
+    let runnable_vcpu = vcpu.to_runnable(None).unwrap();
     loop {
-        match vcpu.run().expect("run failed") {
+        match runnable_vcpu.run().expect("run failed") {
             VcpuExit::IoOut {
                 port: 0x3f8,
                 size,

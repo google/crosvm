@@ -1207,8 +1207,38 @@ impl VcpuRunMode {
     }
 }
 
+// Converts a vcpu into a runnable vcpu if possible. On failure, returns `None`.
+fn runnable_vcpu(vcpu: Vcpu, use_kvm_signals: bool, cpu_id: u32) -> Option<RunnableVcpu> {
+    if use_kvm_signals {
+        match get_blocked_signals() {
+            Ok(mut v) => {
+                v.retain(|&x| x != SIGRTMIN() + 0);
+                if let Err(e) = vcpu.set_signal_mask(&v) {
+                    error!(
+                        "Failed to set the KVM_SIGNAL_MASK for vcpu {} : {}",
+                        cpu_id, e
+                    );
+                    return None;
+                }
+            }
+            Err(e) => {
+                error!("Failed to retrieve signal mask for vcpu {} : {}", cpu_id, e);
+                return None;
+            }
+        };
+    }
+
+    match vcpu.to_runnable(Some(SIGRTMIN() + 0)) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            error!("Failed to set thread id for vcpu {} : {}", cpu_id, e);
+            None
+        }
+    }
+}
+
 fn run_vcpu(
-    mut vcpu: Vcpu,
+    vcpu: Vcpu,
     cpu_id: u32,
     vcpu_affinity: Vec<usize>,
     start_barrier: Arc<Barrier>,
@@ -1228,34 +1258,11 @@ fn run_vcpu(
                 }
             }
 
-            let mut sig_ok = true;
-            if use_kvm_signals {
-                match get_blocked_signals() {
-                    Ok(mut v) => {
-                        v.retain(|&x| x != SIGRTMIN() + 0);
-                        if let Err(e) = vcpu.set_signal_mask(&v) {
-                            error!(
-                                "Failed to set the KVM_SIGNAL_MASK for vcpu {} : {}",
-                                cpu_id, e
-                            );
-                            sig_ok = false;
-                        }
-                    }
-                    Err(e) => {
-                        error!(
-                            "Failed to retrieve signal mask for vcpu {} : {}",
-                            cpu_id, e
-                        );
-                        sig_ok = false;
-                    }
-                };
-            } else {
-                vcpu.set_thread_id(SIGRTMIN() + 0);
-            }
+            let vcpu = runnable_vcpu(vcpu, use_kvm_signals, cpu_id);
 
             start_barrier.wait();
 
-            if sig_ok {
+            if let Some(vcpu) = vcpu {
                 'vcpu_loop: loop {
                     let mut interrupted_by_signal = false;
                     match vcpu.run() {
