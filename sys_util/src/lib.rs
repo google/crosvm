@@ -80,7 +80,7 @@ use std::ptr;
 
 use libc::{
     c_long, gid_t, kill, pid_t, pipe2, syscall, sysconf, uid_t, waitpid, O_CLOEXEC, SIGKILL,
-    WNOHANG, _SC_PAGESIZE,
+    WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
 };
 
 use syscall_defines::linux::LinuxSyscall::SYS_getpid;
@@ -90,6 +90,12 @@ use syscall_defines::linux::LinuxSyscall::SYS_getpid;
 pub fn pagesize() -> usize {
     // Trivially safe
     unsafe { sysconf(_SC_PAGESIZE) as usize }
+}
+
+/// Safe wrapper for `sysconf(_SC_IOV_MAX)`.
+pub fn iov_max() -> usize {
+    // Trivially safe
+    unsafe { sysconf(_SC_IOV_MAX) as usize }
 }
 
 /// Uses the system's page size in bytes to round the given value up to the nearest page boundary.

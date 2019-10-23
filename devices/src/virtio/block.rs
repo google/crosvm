@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cmp::{max, min};
 use std::fmt::{self, Display};
 use std::io::{self, Seek, SeekFrom, Write};
 use std::mem::size_of;
@@ -20,7 +21,7 @@ use msg_socket::{MsgReceiver, MsgSender};
 use sync::Mutex;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
-use sys_util::{error, info, warn, EventFd, GuestMemory, PollContext, PollToken, TimerFd};
+use sys_util::{error, info, iov_max, warn, EventFd, GuestMemory, PollContext, PollToken, TimerFd};
 use vm_control::{DiskControlCommand, DiskControlResponseSocket, DiskControlResult};
 
 use super::{
@@ -51,6 +52,7 @@ const VIRTIO_BLK_S_OK: u8 = 0;
 const VIRTIO_BLK_S_IOERR: u8 = 1;
 const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
+const VIRTIO_BLK_F_SEG_MAX: u32 = 2;
 const VIRTIO_BLK_F_RO: u32 = 5;
 const VIRTIO_BLK_F_BLK_SIZE: u32 = 6;
 const VIRTIO_BLK_F_FLUSH: u32 = 9;
@@ -490,13 +492,15 @@ pub struct Block {
     disk_size: Arc<Mutex<u64>>,
     avail_features: u64,
     read_only: bool,
+    seg_max: u32,
     control_socket: Option<DiskControlResponseSocket>,
 }
 
-fn build_config_space(disk_size: u64) -> virtio_blk_config {
+fn build_config_space(disk_size: u64, seg_max: u32) -> virtio_blk_config {
     virtio_blk_config {
         // If the image is not a multiple of the sector size, the tail bits are not exposed.
         capacity: Le64::from(disk_size >> SECTOR_SHIFT),
+        seg_max: Le32::from(seg_max),
         blk_size: Le32::from(SECTOR_SIZE as u32),
         max_discard_sectors: Le32::from(MAX_DISCARD_SECTORS),
         discard_sector_alignment: Le32::from(DISCARD_SECTOR_ALIGNMENT),
@@ -534,7 +538,15 @@ impl Block {
             avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
         }
         avail_features |= 1 << VIRTIO_F_VERSION_1;
+        avail_features |= 1 << VIRTIO_BLK_F_SEG_MAX;
         avail_features |= 1 << VIRTIO_BLK_F_BLK_SIZE;
+
+        let seg_max = min(max(iov_max(), 1), u32::max_value() as usize) as u32;
+
+        // Since we do not currently support indirect descriptors, the maximum
+        // number of segments must be smaller than the queue size.
+        // In addition, the request header and status each consume a descriptor.
+        let seg_max = min(seg_max, u32::from(QUEUE_SIZE) - 2);
 
         Ok(Block {
             kill_evt: None,
@@ -543,6 +555,7 @@ impl Block {
             disk_size: Arc::new(Mutex::new(disk_size)),
             avail_features,
             read_only,
+            seg_max,
             control_socket,
         })
     }
@@ -748,7 +761,7 @@ impl VirtioDevice for Block {
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let config_space = {
             let disk_size = self.disk_size.lock();
-            build_config_space(*disk_size)
+            build_config_space(*disk_size, self.seg_max)
         };
         copy_config(data, 0, config_space.as_slice(), offset);
     }
@@ -856,7 +869,8 @@ mod tests {
             let b = Block::new(Box::new(f), false, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
-            assert_eq!(0x100006240, b.features());
+            // + VIRTIO_BLK_F_SEG_MAX
+            assert_eq!(0x100006244, b.features());
         }
 
         // read-only block device
@@ -864,8 +878,8 @@ mod tests {
             let f = File::create(&path).unwrap();
             let b = Block::new(Box::new(f), true, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
-            // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
-            assert_eq!(0x100000260, b.features());
+            // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
+            assert_eq!(0x100000264, b.features());
         }
     }
 
