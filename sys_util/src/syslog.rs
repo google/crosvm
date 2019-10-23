@@ -610,6 +610,7 @@ mod tests {
             shm_unlink(shm_name.as_ptr());
             let fd = shm_open(shm_name.as_ptr(), O_RDWR | O_CREAT | O_EXCL, 0666);
             assert!(fd >= 0, "error creating shared memory;");
+            shm_unlink(shm_name.as_ptr());
             File::from_raw_fd(fd)
         };
 
