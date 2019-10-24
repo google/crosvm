@@ -458,7 +458,7 @@ impl PciDevice for VirtioPciDevice {
     }
 
     fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
-        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize) as u64;
+        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
         let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
         self.queue_evts()
             .iter()
@@ -504,7 +504,7 @@ impl PciDevice for VirtioPciDevice {
     #[allow(clippy::absurd_extreme_comparisons)]
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
         // The driver is only allowed to do aligned, properly sized access.
-        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize) as u64;
+        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
         let offset = addr - bar0;
         match offset {
             o if COMMON_CONFIG_BAR_OFFSET <= o
@@ -556,7 +556,7 @@ impl PciDevice for VirtioPciDevice {
 
     #[allow(clippy::absurd_extreme_comparisons)]
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize) as u64;
+        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
         let offset = addr - bar0;
         match offset {
             o if COMMON_CONFIG_BAR_OFFSET <= o

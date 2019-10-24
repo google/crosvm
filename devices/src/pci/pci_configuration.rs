@@ -177,7 +177,7 @@ pub struct PciConfiguration {
 }
 
 /// See pci_regs.h in kernel
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PciBarRegionType {
     Memory32BitRegion = 0,
     IORegion = 0x01,
@@ -430,11 +430,38 @@ impl PciConfiguration {
         Ok(config.reg_idx)
     }
 
+    /// Returns the type of the given BAR region.
+    pub fn get_bar_type(&self, bar_num: usize) -> Option<PciBarRegionType> {
+        let reg_idx = BAR0_REG + bar_num;
+        let reg_value = self.registers.get(reg_idx)?;
+
+        match (reg_value & 1, (reg_value >> 1u32) & 3) {
+            (1, _) => Some(PciBarRegionType::IORegion),
+            (0, 0b00) => Some(PciBarRegionType::Memory32BitRegion),
+            (0, 0b10) => Some(PciBarRegionType::Memory64BitRegion),
+            _ => None,
+        }
+    }
+
     /// Returns the address of the given BAR region.
-    pub fn get_bar_addr(&self, bar_num: usize) -> u32 {
+    pub fn get_bar_addr(&self, bar_num: usize) -> u64 {
         let bar_idx = BAR0_REG + bar_num;
 
-        self.registers[bar_idx] & BAR_MEM_ADDR_MASK
+        let bar_type = match self.get_bar_type(bar_num) {
+            Some(t) => t,
+            None => return 0,
+        };
+
+        match bar_type {
+            PciBarRegionType::IORegion => u64::from(self.registers[bar_idx] & BAR_IO_ADDR_MASK),
+            PciBarRegionType::Memory32BitRegion => {
+                u64::from(self.registers[bar_idx] & BAR_MEM_ADDR_MASK)
+            }
+            PciBarRegionType::Memory64BitRegion => {
+                u64::from(self.registers[bar_idx] & BAR_MEM_ADDR_MASK)
+                    | u64::from(self.registers[bar_idx + 1]) << 32
+            }
+        }
     }
 
     /// Configures the IRQ line and pin used by this device.
@@ -666,5 +693,95 @@ mod tests {
         cfg.write_reg(0, 0, &[0xBA, 0xAD, 0xF0, 0x0D]);
         // The original vendor and device ID should remain.
         assert_eq!(cfg.read_reg(0), 0x56781234);
+    }
+
+    #[test]
+    fn add_pci_bar_mem_64bit() {
+        let mut cfg = PciConfiguration::new(
+            0x1234,
+            0x5678,
+            PciClassCode::MultimediaController,
+            &PciMultimediaSubclass::AudioController,
+            Some(&TestPI::Test),
+            PciHeaderType::Device,
+            0xABCD,
+            0x2468,
+        );
+
+        cfg.add_pci_bar(
+            &PciBarConfiguration::new(
+                0,
+                0x4,
+                PciBarRegionType::Memory64BitRegion,
+                PciBarPrefetchable::NotPrefetchable,
+            )
+            .set_address(0x01234567_89ABCDE0),
+        )
+        .expect("add_pci_bar failed");
+
+        assert_eq!(
+            cfg.get_bar_type(0),
+            Some(PciBarRegionType::Memory64BitRegion)
+        );
+        assert_eq!(cfg.get_bar_addr(0), 0x01234567_89ABCDE0);
+    }
+
+    #[test]
+    fn add_pci_bar_mem_32bit() {
+        let mut cfg = PciConfiguration::new(
+            0x1234,
+            0x5678,
+            PciClassCode::MultimediaController,
+            &PciMultimediaSubclass::AudioController,
+            Some(&TestPI::Test),
+            PciHeaderType::Device,
+            0xABCD,
+            0x2468,
+        );
+
+        cfg.add_pci_bar(
+            &PciBarConfiguration::new(
+                0,
+                0x4,
+                PciBarRegionType::Memory32BitRegion,
+                PciBarPrefetchable::NotPrefetchable,
+            )
+            .set_address(0x12345670),
+        )
+        .expect("add_pci_bar failed");
+
+        assert_eq!(
+            cfg.get_bar_type(0),
+            Some(PciBarRegionType::Memory32BitRegion)
+        );
+        assert_eq!(cfg.get_bar_addr(0), 0x12345670);
+    }
+
+    #[test]
+    fn add_pci_bar_io() {
+        let mut cfg = PciConfiguration::new(
+            0x1234,
+            0x5678,
+            PciClassCode::MultimediaController,
+            &PciMultimediaSubclass::AudioController,
+            Some(&TestPI::Test),
+            PciHeaderType::Device,
+            0xABCD,
+            0x2468,
+        );
+
+        cfg.add_pci_bar(
+            &PciBarConfiguration::new(
+                0,
+                0x4,
+                PciBarRegionType::IORegion,
+                PciBarPrefetchable::NotPrefetchable,
+            )
+            .set_address(0x1230),
+        )
+        .expect("add_pci_bar failed");
+
+        assert_eq!(cfg.get_bar_type(0), Some(PciBarRegionType::IORegion));
+        assert_eq!(cfg.get_bar_addr(0), 0x1230);
     }
 }

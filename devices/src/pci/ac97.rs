@@ -203,8 +203,8 @@ impl PciDevice for Ac97Dev {
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
-        let bar0 = u64::from(self.config_regs.get_bar_addr(0));
-        let bar1 = u64::from(self.config_regs.get_bar_addr(1));
+        let bar0 = self.config_regs.get_bar_addr(0);
+        let bar1 = self.config_regs.get_bar_addr(1);
         match addr {
             a if a >= bar0 && a < bar0 + MIXER_REGS_SIZE => self.read_mixer(addr - bar0, data),
             a if a >= bar1 && a < bar1 + MASTER_REGS_SIZE => {
@@ -215,8 +215,8 @@ impl PciDevice for Ac97Dev {
     }
 
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        let bar0 = u64::from(self.config_regs.get_bar_addr(0));
-        let bar1 = u64::from(self.config_regs.get_bar_addr(1));
+        let bar0 = self.config_regs.get_bar_addr(0);
+        let bar1 = self.config_regs.get_bar_addr(1);
         match addr {
             a if a >= bar0 && a < bar0 + MIXER_REGS_SIZE => self.write_mixer(addr - bar0, data),
             a if a >= bar1 && a < bar1 + MASTER_REGS_SIZE => {
