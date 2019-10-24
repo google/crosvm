@@ -95,6 +95,7 @@ pub fn test_one_input(data: *const u8, size: usize) -> i32 {
             mem,
             EventFd::new().unwrap(),
             EventFd::new().unwrap(),
+            None, // msix_config
             Arc::new(AtomicUsize::new(0)),
             vec![q],
             queue_evts,
