@@ -4,24 +4,10 @@
 
 #![no_main]
 
-use std::panic;
-use std::process;
-use std::slice;
+use cros_fuzz::fuzz_target;
 
 use usb_util::parse_usbfs_descriptors;
 
-#[export_name = "LLVMFuzzerTestOneInput"]
-pub fn test_one_input(data: *const u8, size: usize) -> i32 {
-    // We cannot unwind past ffi boundaries.
-    panic::catch_unwind(|| {
-        // Safe because the libfuzzer runtime will guarantee that `data` is at least
-        // `size` bytes long and that it will be valid for the lifetime of this
-        // function.
-        let bytes = unsafe { slice::from_raw_parts(data, size) };
-        let _ = parse_usbfs_descriptors(bytes);
-    })
-    .err()
-    .map(|_| process::abort());
-
-    0
-}
+fuzz_target!(|data| {
+    let _ = parse_usbfs_descriptors(data);
+});
