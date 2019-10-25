@@ -6,5 +6,6 @@ edition = "2018"
 
 [dependencies]
 libc = "*"
+data_model = { path = "../data_model" }
 net_sys = { path = "../net_sys" }
 sys_util = { path = "../sys_util" }

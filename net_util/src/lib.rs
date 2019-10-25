@@ -15,7 +15,8 @@ use std::str::FromStr;
 use libc::EPERM;
 
 use sys_util::Error as SysError;
-use sys_util::{ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val};
+use sys_util::FileReadWriteVolatile;
+use sys_util::{ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, volatile_impl};
 
 #[derive(Debug)]
 pub enum Error {
@@ -189,7 +190,7 @@ impl Tap {
     }
 }
 
-pub trait TapT: Read + Write + AsRawFd + Send + Sized {
+pub trait TapT: FileReadWriteVolatile + Read + Write + AsRawFd + Send + Sized {
     /// Create a new tap interface. Set the `vnet_hdr` flag to true to allow offloading on this tap,
     /// which will add an extra 12 byte virtio net header to incoming frames. Offloading cannot
     /// be used if `vnet_hdr` is false.
@@ -484,6 +485,8 @@ impl AsRawFd for Tap {
     }
 }
 
+volatile_impl!(Tap);
+
 pub mod fakes {
     use super::*;
     use std::fs::remove_file;
@@ -580,6 +583,7 @@ pub mod fakes {
             self.tap_file.as_raw_fd()
         }
     }
+    volatile_impl!(FakeTap);
 }
 
 #[cfg(test)]
