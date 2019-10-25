@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::fmt::{self, Display};
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -178,37 +178,24 @@ where
     }
 
     fn process_tx(&mut self) {
-        let mut frame = [0u8; MAX_BUFFER_SIZE];
-
-        // Reads up to `buf.len()` bytes or until there is no more data in `r`, whichever
-        // is smaller.
-        fn read_to_end(mut r: Reader, buf: &mut [u8]) -> io::Result<usize> {
-            let mut count = 0;
-            while count < buf.len() {
-                match r.read(&mut buf[count..]) {
-                    Ok(0) => break,
-                    Ok(n) => count += n,
-                    Err(e) => return Err(e),
-                }
-            }
-
-            Ok(count)
-        }
-
         while let Some(desc_chain) = self.tx_queue.pop(&self.mem) {
             let index = desc_chain.index;
 
             match Reader::new(&self.mem, desc_chain) {
-                Ok(reader) => {
-                    match read_to_end(reader, &mut frame[..]) {
-                        Ok(len) => {
-                            // We need to copy frame into continuous buffer before writing it to tap
-                            // because tap requires frame to complete in a single write.
-                            if let Err(err) = self.tap.write_all(&frame[..len]) {
-                                error!("net: tx: failed to write to tap: {}", err);
+                Ok(mut reader) => {
+                    let expected_count = reader.available_bytes();
+                    match reader.read_to(&mut self.tap, expected_count) {
+                        Ok(count) => {
+                            // Tap writes must be done in one call. If the entire frame was not
+                            // written, it's an error.
+                            if count != expected_count {
+                                error!(
+                                    "net: tx: wrote only {} bytes of {} byte frame",
+                                    count, expected_count
+                                );
                             }
                         }
-                        Err(e) => error!("net: tx: failed to read frame into buffer: {}", e),
+                        Err(e) => error!("net: tx: failed to write frame to tap: {}", e),
                     }
                 }
                 Err(e) => error!("net: failed to create Reader: {}", e),
