@@ -8,11 +8,6 @@ use std::os::unix::io::{AsRawFd, RawFd};
 
 use data_model::VolatileSlice;
 
-use libc::{
-    c_int, c_void, off64_t, pread64, preadv64, pwrite64, pwritev64, read, readv, size_t, write,
-    writev,
-};
-
 use crate::SharedMemory;
 
 /// A trait for flushing the contents of a file to disk.
@@ -234,32 +229,50 @@ impl<'a, T: FileReadWriteAtVolatile + ?Sized> FileReadWriteAtVolatile for &'a mu
     }
 }
 
+// This module allows the below macros to refer to $crate::file_traits::lib::X and ensures other
+// crates don't need to add additional crates to their Cargo.toml.
+pub mod lib {
+    pub use libc::{
+        c_int, c_void, iovec, off64_t, pread64, preadv64, pwrite64, pwritev64, read, readv, size_t,
+        write, writev,
+    };
+
+    pub use data_model::VolatileSlice;
+}
+
+#[macro_export]
 macro_rules! volatile_impl {
     ($ty:ty) => {
         impl FileReadWriteVolatile for $ty {
-            fn read_volatile(&mut self, slice: VolatileSlice) -> Result<usize> {
+            fn read_volatile(
+                &mut self,
+                slice: $crate::file_traits::lib::VolatileSlice,
+            ) -> std::io::Result<usize> {
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
                 // to handle arbitrary memory for I/O.
                 let ret = unsafe {
-                    read(
+                    $crate::file_traits::lib::read(
                         self.as_raw_fd(),
-                        slice.as_ptr() as *mut c_void,
+                        slice.as_ptr() as *mut std::ffi::c_void,
                         slice.size() as usize,
                     )
                 };
                 if ret >= 0 {
                     Ok(ret as usize)
                 } else {
-                    Err(Error::last_os_error())
+                    Err(std::io::Error::last_os_error())
                 }
             }
 
-            fn read_vectored_volatile(&mut self, bufs: &[VolatileSlice]) -> Result<usize> {
-                let iovecs: Vec<libc::iovec> = bufs
+            fn read_vectored_volatile(
+                &mut self,
+                bufs: &[$crate::file_traits::lib::VolatileSlice],
+            ) -> std::io::Result<usize> {
+                let iovecs: Vec<$crate::file_traits::lib::iovec> = bufs
                     .iter()
-                    .map(|s| libc::iovec {
-                        iov_base: s.as_ptr() as *mut c_void,
-                        iov_len: s.size() as size_t,
+                    .map(|s| $crate::file_traits::lib::iovec {
+                        iov_base: s.as_ptr() as *mut std::ffi::c_void,
+                        iov_len: s.size() as $crate::file_traits::lib::size_t,
                     })
                     .collect();
 
@@ -269,37 +282,49 @@ macro_rules! volatile_impl {
 
                 // Safe because only bytes inside the buffers are accessed and the kernel is
                 // expected to handle arbitrary memory for I/O.
-                let ret = unsafe { readv(self.as_raw_fd(), &iovecs[0], iovecs.len() as c_int) };
+                let ret = unsafe {
+                    $crate::file_traits::lib::readv(
+                        self.as_raw_fd(),
+                        &iovecs[0],
+                        iovecs.len() as std::os::raw::c_int,
+                    )
+                };
                 if ret >= 0 {
                     Ok(ret as usize)
                 } else {
-                    Err(Error::last_os_error())
+                    Err(std::io::Error::last_os_error())
                 }
             }
 
-            fn write_volatile(&mut self, slice: VolatileSlice) -> Result<usize> {
+            fn write_volatile(
+                &mut self,
+                slice: $crate::file_traits::lib::VolatileSlice,
+            ) -> std::io::Result<usize> {
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
                 // to handle arbitrary memory for I/O.
                 let ret = unsafe {
-                    write(
+                    $crate::file_traits::lib::write(
                         self.as_raw_fd(),
-                        slice.as_ptr() as *const c_void,
+                        slice.as_ptr() as *const std::ffi::c_void,
                         slice.size() as usize,
                     )
                 };
                 if ret >= 0 {
                     Ok(ret as usize)
                 } else {
-                    Err(Error::last_os_error())
+                    Err(std::io::Error::last_os_error())
                 }
             }
 
-            fn write_vectored_volatile(&mut self, bufs: &[VolatileSlice]) -> Result<usize> {
-                let iovecs: Vec<libc::iovec> = bufs
+            fn write_vectored_volatile(
+                &mut self,
+                bufs: &[$crate::file_traits::lib::VolatileSlice],
+            ) -> std::io::Result<usize> {
+                let iovecs: Vec<$crate::file_traits::lib::iovec> = bufs
                     .iter()
-                    .map(|s| libc::iovec {
-                        iov_base: s.as_ptr() as *mut c_void,
-                        iov_len: s.size() as size_t,
+                    .map(|s| $crate::file_traits::lib::iovec {
+                        iov_base: s.as_ptr() as *mut std::ffi::c_void,
+                        iov_len: s.size() as $crate::file_traits::lib::size_t,
                     })
                     .collect();
 
@@ -309,45 +334,60 @@ macro_rules! volatile_impl {
 
                 // Safe because only bytes inside the buffers are accessed and the kernel is
                 // expected to handle arbitrary memory for I/O.
-                let ret = unsafe { writev(self.as_raw_fd(), &iovecs[0], iovecs.len() as c_int) };
+                let ret = unsafe {
+                    $crate::file_traits::lib::writev(
+                        self.as_raw_fd(),
+                        &iovecs[0],
+                        iovecs.len() as std::os::raw::c_int,
+                    )
+                };
                 if ret >= 0 {
                     Ok(ret as usize)
                 } else {
-                    Err(Error::last_os_error())
+                    Err(std::io::Error::last_os_error())
                 }
             }
         }
+    };
+}
 
+#[macro_export]
+macro_rules! volatile_at_impl {
+    ($ty:ty) => {
         impl FileReadWriteAtVolatile for $ty {
-            fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> Result<usize> {
+            fn read_at_volatile(
+                &mut self,
+                slice: $crate::file_traits::lib::VolatileSlice,
+                offset: u64,
+            ) -> std::io::Result<usize> {
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
                 // to handle arbitrary memory for I/O.
                 let ret = unsafe {
-                    pread64(
+                    $crate::file_traits::lib::pread64(
                         self.as_raw_fd(),
-                        slice.as_ptr() as *mut c_void,
+                        slice.as_ptr() as *mut std::ffi::c_void,
                         slice.size() as usize,
-                        offset as off64_t,
+                        offset as $crate::file_traits::lib::off64_t,
                     )
                 };
 
                 if ret >= 0 {
                     Ok(ret as usize)
                 } else {
-                    Err(Error::last_os_error())
+                    Err(std::io::Error::last_os_error())
                 }
             }
 
             fn read_vectored_at_volatile(
                 &mut self,
-                bufs: &[VolatileSlice],
+                bufs: &[$crate::file_traits::lib::VolatileSlice],
                 offset: u64,
-            ) -> Result<usize> {
-                let iovecs: Vec<libc::iovec> = bufs
+            ) -> std::io::Result<usize> {
+                let iovecs: Vec<$crate::file_traits::lib::iovec> = bufs
                     .iter()
-                    .map(|s| libc::iovec {
-                        iov_base: s.as_ptr() as *mut c_void,
-                        iov_len: s.size() as size_t,
+                    .map(|s| $crate::file_traits::lib::iovec {
+                        iov_base: s.as_ptr() as *mut std::ffi::c_void,
+                        iov_len: s.size() as $crate::file_traits::lib::size_t,
                     })
                     .collect();
 
@@ -358,49 +398,53 @@ macro_rules! volatile_impl {
                 // Safe because only bytes inside the buffers are accessed and the kernel is
                 // expected to handle arbitrary memory for I/O.
                 let ret = unsafe {
-                    preadv64(
+                    $crate::file_traits::lib::preadv64(
                         self.as_raw_fd(),
                         &iovecs[0],
-                        iovecs.len() as c_int,
-                        offset as off64_t,
+                        iovecs.len() as std::os::raw::c_int,
+                        offset as $crate::file_traits::lib::off64_t,
                     )
                 };
                 if ret >= 0 {
                     Ok(ret as usize)
                 } else {
-                    Err(Error::last_os_error())
+                    Err(std::io::Error::last_os_error())
                 }
             }
 
-            fn write_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> Result<usize> {
+            fn write_at_volatile(
+                &mut self,
+                slice: $crate::file_traits::lib::VolatileSlice,
+                offset: u64,
+            ) -> std::io::Result<usize> {
                 // Safe because only bytes inside the slice are accessed and the kernel is expected
                 // to handle arbitrary memory for I/O.
                 let ret = unsafe {
-                    pwrite64(
+                    $crate::file_traits::lib::pwrite64(
                         self.as_raw_fd(),
-                        slice.as_ptr() as *const c_void,
+                        slice.as_ptr() as *const std::ffi::c_void,
                         slice.size() as usize,
-                        offset as off64_t,
+                        offset as $crate::file_traits::lib::off64_t,
                     )
                 };
 
                 if ret >= 0 {
                     Ok(ret as usize)
                 } else {
-                    Err(Error::last_os_error())
+                    Err(std::io::Error::last_os_error())
                 }
             }
 
             fn write_vectored_at_volatile(
                 &mut self,
-                bufs: &[VolatileSlice],
+                bufs: &[$crate::file_traits::lib::VolatileSlice],
                 offset: u64,
-            ) -> Result<usize> {
-                let iovecs: Vec<libc::iovec> = bufs
+            ) -> std::io::Result<usize> {
+                let iovecs: Vec<$crate::file_traits::lib::iovec> = bufs
                     .iter()
-                    .map(|s| libc::iovec {
-                        iov_base: s.as_ptr() as *mut c_void,
-                        iov_len: s.size() as size_t,
+                    .map(|s| $crate::file_traits::lib::iovec {
+                        iov_base: s.as_ptr() as *mut std::ffi::c_void,
+                        iov_len: s.size() as $crate::file_traits::lib::size_t,
                     })
                     .collect();
 
@@ -411,17 +455,17 @@ macro_rules! volatile_impl {
                 // Safe because only bytes inside the buffers are accessed and the kernel is
                 // expected to handle arbitrary memory for I/O.
                 let ret = unsafe {
-                    pwritev64(
+                    $crate::file_traits::lib::pwritev64(
                         self.as_raw_fd(),
                         &iovecs[0],
-                        iovecs.len() as c_int,
-                        offset as off64_t,
+                        iovecs.len() as std::os::raw::c_int,
+                        offset as $crate::file_traits::lib::off64_t,
                     )
                 };
                 if ret >= 0 {
                     Ok(ret as usize)
                 } else {
-                    Err(Error::last_os_error())
+                    Err(std::io::Error::last_os_error())
                 }
             }
         }
@@ -429,7 +473,9 @@ macro_rules! volatile_impl {
 }
 
 volatile_impl!(File);
+volatile_at_impl!(File);
 volatile_impl!(SharedMemory);
+volatile_at_impl!(SharedMemory);
 
 /// A trait similar to `AsRawFd` but supports an arbitrary number of file descriptors.
 pub trait AsRawFds {

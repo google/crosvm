@@ -17,7 +17,7 @@ mod clock;
 mod errno;
 mod eventfd;
 mod file_flags;
-mod file_traits;
+pub mod file_traits;
 mod fork;
 mod guest_address;
 pub mod guest_memory;
