@@ -310,7 +310,7 @@ impl Queue {
             return None;
         }
 
-        let desc_idx_addr_offset = (4 + (self.next_avail.0 % queue_size) * 2) as u64;
+        let desc_idx_addr_offset = 4 + (u64::from(self.next_avail.0 % queue_size) * 2);
         let desc_idx_addr = mem.checked_offset(self.avail_ring, desc_idx_addr_offset)?;
 
         // This index is checked below in checked_new.
