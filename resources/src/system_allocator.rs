@@ -13,7 +13,7 @@ use crate::{Alloc, Error, Result};
 /// # Example - Use the `SystemAddress` builder.
 ///
 /// ```
-/// # use resources::{Alloc, SystemAllocator};
+/// # use resources::{Alloc, MmioType, SystemAllocator};
 ///   if let Ok(mut a) = SystemAllocator::builder()
 ///           .add_io_addresses(0x1000, 0x10000)
 ///           .add_device_addresses(0x10000000, 0x10000000)
@@ -22,7 +22,7 @@ use crate::{Alloc, Error, Result};
 ///       assert_eq!(a.allocate_irq(), Some(5));
 ///       assert_eq!(a.allocate_irq(), Some(6));
 ///       assert_eq!(
-///           a.device_allocator()
+///           a.mmio_allocator(MmioType::Device)
 ///              .allocate(
 ///                  0x100,
 ///                  Alloc::PciBar { bus: 0, dev: 0, bar: 0 },
@@ -31,11 +31,20 @@ use crate::{Alloc, Error, Result};
 ///           Ok(0x10000000)
 ///       );
 ///       assert_eq!(
-///           a.device_allocator().get(&Alloc::PciBar { bus: 0, dev: 0, bar: 0 }),
+///           a.mmio_allocator(MmioType::Device).get(&Alloc::PciBar { bus: 0, dev: 0, bar: 0 }),
 ///           Some(&(0x10000000, 0x100, "bar0".to_string()))
 ///       );
 ///   }
 /// ```
+
+/// MMIO address Type
+///    Mmio: address allocated from mmio_address_space
+///    Device: address allocated from device_address_space
+pub enum MmioType {
+    Mmio,
+    Device,
+}
+
 #[derive(Debug)]
 pub struct SystemAllocator {
     io_address_space: Option<AddressAllocator>,
@@ -108,14 +117,12 @@ impl SystemAllocator {
         self.io_address_space.as_mut()
     }
 
-    /// Gets an allocator to be used for device memory.
-    pub fn device_allocator(&mut self) -> &mut AddressAllocator {
-        &mut self.device_address_space
-    }
-
-    /// Gets an allocator to be used for MMIO memory.
-    pub fn mmio_allocator(&mut self) -> &mut AddressAllocator {
-        &mut self.mmio_address_space
+    /// Gets an allocator to be used for MMIO allocation.
+    pub fn mmio_allocator(&mut self, mmio_type: MmioType) -> &mut AddressAllocator {
+        match mmio_type {
+            MmioType::Device => &mut self.device_address_space,
+            MmioType::Mmio => &mut self.mmio_address_space,
+        }
     }
 
     /// Gets an allocator to be used for GPU memory.

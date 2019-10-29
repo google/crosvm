@@ -38,7 +38,7 @@ use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 use net_util::{Error as NetError, MacAddress, Tap};
 use rand_ish::SimpleRng;
 use remain::sorted;
-use resources::{Alloc, SystemAllocator};
+use resources::{Alloc, MmioType, SystemAllocator};
 use sync::{Condvar, Mutex};
 use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 
@@ -784,7 +784,7 @@ fn create_pmem_device(
     };
 
     let mapping_address = resources
-        .device_allocator()
+        .mmio_allocator(MmioType::Device)
         .allocate_with_align(
             image_size,
             Alloc::PmemDevice(index),
@@ -1424,7 +1424,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         // guest address space.
         let gpu_addr = linux
             .resources
-            .device_allocator()
+            .mmio_allocator(MmioType::Device)
             .allocate(
                 RENDER_NODE_HOST_SIZE,
                 Alloc::GpuRenderNode,

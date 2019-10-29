@@ -17,7 +17,7 @@ pub use crate::address_allocator::AddressAllocator;
 pub use crate::gpu_allocator::{
     GpuAllocatorError, GpuMemoryAllocator, GpuMemoryDesc, GpuMemoryPlaneDesc,
 };
-pub use crate::system_allocator::SystemAllocator;
+pub use crate::system_allocator::{MmioType, SystemAllocator};
 
 mod address_allocator;
 mod gpu_allocator;

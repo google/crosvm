@@ -19,7 +19,7 @@ use libc::{EINVAL, EIO, ENODEV};
 
 use kvm::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
-use resources::{Alloc, GpuMemoryDesc, SystemAllocator};
+use resources::{Alloc, GpuMemoryDesc, MmioType, SystemAllocator};
 use sys_util::{error, Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError, Result};
 
 /// A file descriptor either borrowed or owned by this.
@@ -404,7 +404,7 @@ fn register_memory(
     let addr = match allocation {
         Some((Alloc::PciBar { bus, dev, bar }, address)) => {
             match allocator
-                .device_allocator()
+                .mmio_allocator(MmioType::Device)
                 .get(&Alloc::PciBar { bus, dev, bar })
             {
                 Some((start_addr, length, _)) => {
@@ -420,7 +420,7 @@ fn register_memory(
         }
         None => {
             let alloc = allocator.get_anon_alloc();
-            match allocator.device_allocator().allocate(
+            match allocator.mmio_allocator(MmioType::Device).allocate(
                 size as u64,
                 alloc,
                 "vmcontrol_register_memory".to_string(),

@@ -10,7 +10,7 @@ use sync::Mutex;
 
 use data_model::{DataInit, Le32};
 use kvm::Datamatch;
-use resources::{Alloc, SystemAllocator};
+use resources::{Alloc, MmioType, SystemAllocator};
 use sys_util::{EventFd, GuestMemory, Result};
 
 use super::*;
@@ -384,7 +384,7 @@ impl PciDevice for VirtioPciDevice {
         // Allocate one bar for the structures pointed to by the capability structures.
         let mut ranges = Vec::new();
         let settings_config_addr = resources
-            .mmio_allocator()
+            .mmio_allocator(MmioType::Mmio)
             .allocate_with_align(
                 CAPABILITY_BAR_SIZE,
                 Alloc::PciBar { bus, dev, bar: 0 },
@@ -422,7 +422,7 @@ impl PciDevice for VirtioPciDevice {
         let mut ranges = Vec::new();
         for config in self.device.get_device_bars(bus, dev) {
             let device_addr = resources
-                .device_allocator()
+                .mmio_allocator(MmioType::Device)
                 .allocate_with_align(
                     config.get_size(),
                     Alloc::PciBar {

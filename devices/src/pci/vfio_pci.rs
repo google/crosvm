@@ -8,7 +8,7 @@ use std::u32;
 
 use kvm::Datamatch;
 use msg_socket::{MsgReceiver, MsgSender};
-use resources::{Alloc, SystemAllocator};
+use resources::{Alloc, MmioType, SystemAllocator};
 use sys_util::{error, EventFd};
 
 use vfio_sys::*;
@@ -502,7 +502,7 @@ impl PciDevice for VfioPciDevice {
                 size |= u64::from(low);
                 size = !size + 1;
                 let bar_addr = resources
-                    .mmio_allocator()
+                    .mmio_allocator(MmioType::Mmio)
                     .allocate_with_align(
                         size,
                         Alloc::PciBar {

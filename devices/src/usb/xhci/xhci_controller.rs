@@ -12,7 +12,7 @@ use crate::usb::xhci::xhci::Xhci;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::usb::xhci::xhci_regs::{init_xhci_mmio_space_and_regs, XhciRegs};
 use crate::utils::FailHandle;
-use resources::{Alloc, SystemAllocator};
+use resources::{Alloc, MmioType, SystemAllocator};
 use std::mem;
 use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -213,7 +213,7 @@ impl PciDevice for XhciController {
             .expect("assign_bus_dev must be called prior to allocate_io_bars");
         // xHCI spec 5.2.1.
         let bar0_addr = resources
-            .mmio_allocator()
+            .mmio_allocator(MmioType::Mmio)
             .allocate_with_align(
                 XHCI_BAR0_SIZE,
                 Alloc::PciBar { bus, dev, bar: 0 },

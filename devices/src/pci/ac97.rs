@@ -5,7 +5,7 @@
 use std::os::unix::io::RawFd;
 
 use audio_streams::StreamSource;
-use resources::{Alloc, SystemAllocator};
+use resources::{Alloc, MmioType, SystemAllocator};
 use sys_util::{error, EventFd, GuestMemory};
 
 use crate::pci::ac97_bus_master::Ac97BusMaster;
@@ -149,7 +149,7 @@ impl PciDevice for Ac97Dev {
             .expect("assign_bus_dev must be called prior to allocate_io_bars");
         let mut ranges = Vec::new();
         let mixer_regs_addr = resources
-            .mmio_allocator()
+            .mmio_allocator(MmioType::Mmio)
             .allocate_with_align(
                 MIXER_REGS_SIZE,
                 Alloc::PciBar { bus, dev, bar: 0 },
@@ -167,7 +167,7 @@ impl PciDevice for Ac97Dev {
         ranges.push((mixer_regs_addr, MIXER_REGS_SIZE));
 
         let master_regs_addr = resources
-            .mmio_allocator()
+            .mmio_allocator(MmioType::Mmio)
             .allocate_with_align(
                 MASTER_REGS_SIZE,
                 Alloc::PciBar { bus, dev, bar: 1 },
