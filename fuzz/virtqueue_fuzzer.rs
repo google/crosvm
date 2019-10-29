@@ -4,51 +4,108 @@
 
 #![no_main]
 
+use std::mem::size_of;
+
 use cros_fuzz::fuzz_target;
 use cros_fuzz::rand::FuzzRng;
 use data_model::VolatileMemory;
-use devices::virtio::Queue;
-use rand::Rng;
+use devices::virtio::{DescriptorChain, Queue};
+use rand::{Rng, RngCore};
 use sys_util::{GuestAddress, GuestMemory};
 
-const MAX_QUEUE_SIZE: u16 = 512;
-const MEM_SIZE: u64 = 256 * 1024 * 1024;
+const MAX_QUEUE_SIZE: u16 = 256;
+const MEM_SIZE: u64 = 1024 * 1024;
 
 thread_local! {
     static GUEST_MEM: GuestMemory = GuestMemory::new(&[(GuestAddress(0), MEM_SIZE)]).unwrap();
 }
 
+// These are taken from the virtio spec and can be used as a reference for the size calculations in
+// the fuzzer.
+#[repr(C, packed)]
+struct virtq_desc {
+    addr: u64,
+    len: u32,
+    flags: u16,
+    next: u16,
+}
+
+#[repr(C, packed)]
+struct virtq_avail {
+    flags: u16,
+    idx: u16,
+    ring: [u16; MAX_QUEUE_SIZE as usize],
+    used_event: u16,
+}
+
+#[repr(C, packed)]
+struct virtq_used_elem {
+    id: u32,
+    len: u32,
+}
+
+#[repr(C, packed)]
+struct virtq_used {
+    flags: u16,
+    idx: u16,
+    ring: [virtq_used_elem; MAX_QUEUE_SIZE as usize],
+    avail_event: u16,
+}
+
 fuzz_target!(|data: &[u8]| {
     let mut q = Queue::new(MAX_QUEUE_SIZE);
     let mut rng = FuzzRng::new(data);
-    q.max_size = rng.gen();
     q.size = rng.gen();
     q.ready = true;
-    q.desc_table = GuestAddress(rng.gen_range(0, MEM_SIZE));
-    q.avail_ring = GuestAddress(rng.gen_range(0, MEM_SIZE));
-    q.used_ring = GuestAddress(rng.gen_range(0, MEM_SIZE));
 
-    let back = rng.into_inner();
+    // For each of {desc_table,avail_ring,used_ring} generate a random address that includes enough
+    // space to hold the relevant struct with the largest possible queue size.
+    let max_table_size = MAX_QUEUE_SIZE as u64 * size_of::<virtq_desc>() as u64;
+    q.desc_table = GuestAddress(rng.gen_range(0, MEM_SIZE - max_table_size));
+    q.avail_ring = GuestAddress(rng.gen_range(0, MEM_SIZE - size_of::<virtq_avail>() as u64));
+    q.used_ring = GuestAddress(rng.gen_range(0, MEM_SIZE - size_of::<virtq_used>() as u64));
+
     GUEST_MEM.with(|mem| {
+        if !q.is_valid(mem) {
+            return;
+        }
+
         // First zero out all of the memory.
         let vs = mem.get_slice(0, MEM_SIZE).unwrap();
         vs.write_bytes(0);
 
-        // Then fill in the descriptor table.
-        let mut off = mem.write_at_addr(back, q.desc_table).unwrap();
+        // Fill in the descriptor table.
+        let queue_size = q.size as usize;
+        let mut buf = vec![0u8; queue_size * size_of::<virtq_desc>()];
 
-        // If there's any more data left, then fill in the available ring.
-        if off < back.len() {
-            off += mem.write_at_addr(&back[off..], q.avail_ring).unwrap();
-        }
+        rng.fill_bytes(&mut buf[..]);
+        mem.write_all_at_addr(&buf[..], q.desc_table).unwrap();
 
-        // If there's still more put it in the used ring.
-        if off < back.len() {
-            mem.write_at_addr(&back[off..], q.used_ring).unwrap();
-        }
+        // Fill in the available ring. See the definition of virtq_avail above for the source of
+        // these numbers.
+        let avail_size = 4 + (queue_size * 2) + 2;
+        buf.resize(avail_size, 0);
+        rng.fill_bytes(&mut buf[..]);
+        mem.write_all_at_addr(&buf[..], q.avail_ring).unwrap();
 
-        while let Some(desc_chain) = q.pop(mem) {
-            let _ = desc_chain.into_iter().count();
+        // Fill in the used ring. See the definition of virtq_used above for the source of
+        // these numbers.
+        let used_size = 4 + (queue_size * size_of::<virtq_used_elem>()) + 2;
+        buf.resize(used_size, 0);
+        rng.fill_bytes(&mut buf[..]);
+        mem.write_all_at_addr(&buf[..], q.used_ring).unwrap();
+
+        while let Some(avail_desc) = q.pop(mem) {
+            let idx = avail_desc.index;
+            let total = avail_desc
+                .into_iter()
+                .filter(DescriptorChain::is_write_only)
+                .try_fold(0u32, |sum, cur| sum.checked_add(cur.len));
+            if let Some(len) = total {
+                q.add_used(mem, idx, len);
+            } else {
+                q.add_used(mem, idx, 0);
+            }
         }
     });
 });
