@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std;
-use std::cmp::min;
+use std::cmp::max;
 use std::convert::TryFrom;
 use std::error::Error as StdError;
 use std::ffi::CStr;
@@ -23,7 +23,7 @@ use std::str;
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use libc::{self, c_int, gid_t, uid_t};
 
@@ -38,7 +38,6 @@ use io_jail::{self, Minijail};
 use kvm::*;
 use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 use net_util::{Error as NetError, MacAddress, Tap};
-use rand_ish::SimpleRng;
 use remain::sorted;
 use resources::{Alloc, MmioType, SystemAllocator};
 use sync::{Condvar, Mutex};
@@ -119,8 +118,7 @@ pub enum Error {
     PmemDeviceNew(sys_util::Error),
     PollContextAdd(sys_util::Error),
     PollContextDelete(sys_util::Error),
-    ReadLowmemAvailable(io::Error),
-    ReadLowmemMargin(io::Error),
+    ReadMemAvailable(io::Error),
     RegisterBalloon(arch::DeviceRegistrationError),
     RegisterBlock(arch::DeviceRegistrationError),
     RegisterGpu(arch::DeviceRegistrationError),
@@ -213,16 +211,7 @@ impl Display for Error {
             PmemDeviceNew(e) => write!(f, "failed to create pmem device: {}", e),
             PollContextAdd(e) => write!(f, "failed to add fd to poll context: {}", e),
             PollContextDelete(e) => write!(f, "failed to remove fd from poll context: {}", e),
-            ReadLowmemAvailable(e) => write!(
-                f,
-                "failed to read /sys/kernel/mm/chromeos-low_mem/available: {}",
-                e
-            ),
-            ReadLowmemMargin(e) => write!(
-                f,
-                "failed to read /sys/kernel/mm/chromeos-low_mem/margin: {}",
-                e
-            ),
+            ReadMemAvailable(e) => write!(f, "failed to read /proc/meminfo: {}", e),
             RegisterBalloon(e) => write!(f, "error registering balloon device: {}", e),
             RegisterBlock(e) => write!(f, "error registering block device: {}", e),
             RegisterGpu(e) => write!(f, "error registering gpu device: {}", e),
@@ -1509,9 +1498,9 @@ fn run_vcpu(
         .map_err(Error::SpawnVcpu)
 }
 
-// Reads the contents of a file and converts the space-separated fields into a Vec of u64s.
+// Reads the contents of a file and converts the space-separated fields into a Vec of i64s.
 // Returns an error if any of the fields fail to parse.
-fn file_fields_to_u64<P: AsRef<Path>>(path: P) -> io::Result<Vec<u64>> {
+fn file_fields_to_i64<P: AsRef<Path>>(path: P) -> io::Result<Vec<i64>> {
     let mut file = File::open(path)?;
 
     let mut buf = [0u8; 32];
@@ -1523,7 +1512,7 @@ fn file_fields_to_u64<P: AsRef<Path>>(path: P) -> io::Result<Vec<u64>> {
         .trim()
         .split_whitespace()
         .map(|x| {
-            x.parse::<u64>()
+            x.parse::<i64>()
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
         })
         .collect()
@@ -1531,8 +1520,8 @@ fn file_fields_to_u64<P: AsRef<Path>>(path: P) -> io::Result<Vec<u64>> {
 
 // Reads the contents of a file and converts them into a u64, and if there
 // are multiple fields it only returns the first one.
-fn file_to_u64<P: AsRef<Path>>(path: P) -> io::Result<u64> {
-    file_fields_to_u64(path)?
+fn file_to_i64<P: AsRef<Path>>(path: P) -> io::Result<i64> {
+    file_fields_to_i64(path)?
         .into_iter()
         .next()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty file"))
@@ -1672,35 +1661,16 @@ fn run_control(
     sigchld_fd: SignalFd,
     sandbox: bool,
 ) -> Result<()> {
-    // Paths to get the currently available memory and the low memory threshold.
-    const LOWMEM_MARGIN: &str = "/sys/kernel/mm/chromeos-low_mem/margin";
     const LOWMEM_AVAILABLE: &str = "/sys/kernel/mm/chromeos-low_mem/available";
-
-    // The amount of additional memory to claim back from the VM whenever the system is
-    // low on memory.
-    const ONE_GB: u64 = (1 << 30);
-
-    let max_balloon_memory = match linux.vm.get_memory().memory_size() {
-        // If the VM has at least 1.5 GB, the balloon driver can consume all but the last 1 GB.
-        n if n >= (ONE_GB / 2) * 3 => n - ONE_GB,
-        // Otherwise, if the VM has at least 500MB the balloon driver will consume at most
-        // half of it.
-        n if n >= (ONE_GB / 2) => n / 2,
-        // Otherwise, the VM is too small for us to take memory away from it.
-        _ => 0,
-    };
-    let mut current_balloon_memory: u64 = 0;
-    let balloon_memory_increment: u64 = max_balloon_memory / 16;
 
     #[derive(PollToken)]
     enum Token {
         Exit,
         Suspend,
         ChildSignal,
-        CheckAvailableMemory,
         IrqFd { gsi: usize },
-        LowMemory,
-        LowmemTimer,
+        BalanceMemory,
+        BalloonResult,
         VmControlServer,
         VmControl { index: usize },
     }
@@ -1727,28 +1697,6 @@ fn run_control(
             .map_err(Error::PollContextAdd)?;
     }
 
-    // Watch for low memory notifications and take memory back from the VM.
-    let low_mem = File::open("/dev/chromeos-low-mem").ok();
-    if let Some(low_mem) = &low_mem {
-        poll_ctx
-            .add(low_mem, Token::LowMemory)
-            .map_err(Error::PollContextAdd)?;
-    } else {
-        warn!("Unable to open low mem indicator, maybe not a chrome os kernel");
-    }
-
-    // Used to rate limit balloon requests.
-    let mut lowmem_timer = TimerFd::new().map_err(Error::CreateTimerFd)?;
-    poll_ctx
-        .add(&lowmem_timer, Token::LowmemTimer)
-        .map_err(Error::PollContextAdd)?;
-
-    // Used to check whether it's ok to start giving memory back to the VM.
-    let mut freemem_timer = TimerFd::new().map_err(Error::CreateTimerFd)?;
-    poll_ctx
-        .add(&freemem_timer, Token::CheckAvailableMemory)
-        .map_err(Error::PollContextAdd)?;
-
     if let Some(gsi_relay) = &linux.gsi_relay {
         for (gsi, evt) in gsi_relay.irqfd.iter().enumerate() {
             if let Some(evt) = evt {
@@ -1759,14 +1707,26 @@ fn run_control(
         }
     }
 
-    // Used to add jitter to timer values so that we don't have a thundering herd problem when
-    // multiple VMs are running.
-    let mut simple_rng = SimpleRng::new(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("time went backwards")
-            .subsec_nanos() as u64,
-    );
+    // Balance available memory between guest and host every second.
+    let mut balancemem_timer = TimerFd::new().map_err(Error::CreateTimerFd)?;
+    if Path::new(LOWMEM_AVAILABLE).exists() {
+        // Create timer request balloon stats every 1s.
+        poll_ctx
+            .add(&balancemem_timer, Token::BalanceMemory)
+            .map_err(Error::PollContextAdd)?;
+        let balancemem_dur = Duration::from_secs(1);
+        let balancemem_int = Duration::from_secs(1);
+        balancemem_timer
+            .reset(balancemem_dur, Some(balancemem_int))
+            .map_err(Error::ResetTimerFd)?;
+
+        // Listen for balloon statistics from the guest so we can balance.
+        poll_ctx
+            .add(&balloon_host_socket, Token::BalloonResult)
+            .map_err(Error::PollContextAdd)?;
+    } else {
+        warn!("Unable to open low mem available, maybe not a chrome os kernel");
+    }
 
     if sandbox {
         // Before starting VCPUs, in case we started with some capabilities, drop them all.
@@ -1859,39 +1819,6 @@ fn run_control(
                     }
                     break 'poll;
                 }
-                Token::CheckAvailableMemory => {
-                    // Acknowledge the timer.
-                    freemem_timer.wait().map_err(Error::TimerFd)?;
-                    if current_balloon_memory == 0 {
-                        // Nothing to see here.
-                        if let Err(e) = freemem_timer.clear() {
-                            warn!("unable to clear available memory check timer: {}", e);
-                        }
-                        continue;
-                    }
-
-                    // Otherwise see if we can free up some memory.
-                    let margin = file_to_u64(LOWMEM_MARGIN).map_err(Error::ReadLowmemMargin)?;
-                    let available =
-                        file_to_u64(LOWMEM_AVAILABLE).map_err(Error::ReadLowmemAvailable)?;
-
-                    // `available` and `margin` are specified in MB while `balloon_memory_increment` is in
-                    // bytes.  So to correctly compare them we need to turn the increment value into MB.
-                    if available >= margin + 2 * (balloon_memory_increment >> 20) {
-                        current_balloon_memory =
-                            if current_balloon_memory >= balloon_memory_increment {
-                                current_balloon_memory - balloon_memory_increment
-                            } else {
-                                0
-                            };
-                        let command = BalloonControlCommand::Adjust {
-                            num_bytes: current_balloon_memory,
-                        };
-                        if let Err(e) = balloon_host_socket.send(&command) {
-                            warn!("failed to send memory value to balloon device: {}", e);
-                        }
-                    }
-                }
                 Token::IrqFd { gsi } => {
                     if let Some((pic, ioapic)) = &linux.split_irqchip {
                         // This will never fail because gsi_relay is Some iff split_irqchip is
@@ -1933,52 +1860,76 @@ fn run_control(
                         panic!("split irqchip not found, should be impossible.");
                     }
                 }
-                Token::LowMemory => {
-                    if let Some(low_mem) = &low_mem {
-                        let old_balloon_memory = current_balloon_memory;
-                        current_balloon_memory = min(
-                            current_balloon_memory + balloon_memory_increment,
-                            max_balloon_memory,
-                        );
-                        if current_balloon_memory != old_balloon_memory {
-                            let command = BalloonControlCommand::Adjust {
-                                num_bytes: current_balloon_memory,
-                            };
-                            if let Err(e) = balloon_host_socket.send(&command) {
-                                warn!("failed to send memory value to balloon device: {}", e);
-                            }
-                        }
-
-                        // Stop polling the lowmem device until the timer fires.
-                        poll_ctx.delete(low_mem).map_err(Error::PollContextDelete)?;
-
-                        // Add some jitter to the timer so that if there are multiple VMs running
-                        // they don't all start ballooning at exactly the same time.
-                        let lowmem_dur = Duration::from_millis(1000 + simple_rng.rng() % 200);
-                        lowmem_timer
-                            .reset(lowmem_dur, None)
-                            .map_err(Error::ResetTimerFd)?;
-
-                        // Also start a timer to check when we can start giving memory back.  Do the
-                        // first check after a minute (with jitter) and subsequent checks after
-                        // every 30 seconds (with jitter).
-                        let freemem_dur = Duration::from_secs(60 + simple_rng.rng() % 12);
-                        let freemem_int = Duration::from_secs(30 + simple_rng.rng() % 6);
-                        freemem_timer
-                            .reset(freemem_dur, Some(freemem_int))
-                            .map_err(Error::ResetTimerFd)?;
+                Token::BalanceMemory => {
+                    balancemem_timer.wait().map_err(Error::TimerFd)?;
+                    let command = BalloonControlCommand::Stats {};
+                    if let Err(e) = balloon_host_socket.send(&command) {
+                        warn!("failed to send stats request to balloon device: {}", e);
                     }
                 }
-                Token::LowmemTimer => {
-                    // Acknowledge the timer.
-                    lowmem_timer.wait().map_err(Error::TimerFd)?;
+                Token::BalloonResult => {
+                    match balloon_host_socket.recv() {
+                        Ok(BalloonControlResult::Stats {
+                            stats,
+                            balloon_actual: balloon_actual_u,
+                        }) => {
+                            // Available memory is reported in MB, and we need bytes.
+                            let host_available = file_to_i64(LOWMEM_AVAILABLE)
+                                .map_err(Error::ReadMemAvailable)?
+                                << 20;
+                            let guest_available_u = if let Some(available) = stats.available_memory
+                            {
+                                available
+                            } else {
+                                warn!("guest available_memory stat is missing");
+                                continue;
+                            };
+                            if guest_available_u > i64::max_value() as u64 {
+                                warn!("guest available memory is too large");
+                                continue;
+                            }
+                            if balloon_actual_u > i64::max_value() as u64 {
+                                warn!("actual balloon size is too large");
+                                continue;
+                            }
+                            // Guest and host available memory is balanced equally.
+                            const GUEST_SHARE: i64 = 1;
+                            const HOST_SHARE: i64 = 1;
+                            // Tell the guest to change the balloon size if the
+                            // target balloon size is more than 5% different
+                            // from the current balloon size.
+                            const RESIZE_PERCENT: i64 = 5;
+                            let balloon_actual = balloon_actual_u as i64;
+                            let guest_available = guest_available_u as i64;
+                            // Compute how much memory the guest should have
+                            // available after we rebalance.
+                            let guest_available_target = (GUEST_SHARE
+                                * (guest_available + host_available))
+                                / (GUEST_SHARE + HOST_SHARE);
+                            let guest_available_delta = guest_available_target - guest_available;
+                            // How much do we have to change the balloon to
+                            // balance.
+                            let balloon_target = max(balloon_actual - guest_available_delta, 0);
+                            // Compute the change in balloon size in percent.
+                            // If the balloon size is 0, use 1 so we don't
+                            // overflow from the infinity % increase.
+                            let balloon_change_percent = (balloon_actual - balloon_target).abs()
+                                * 100
+                                / max(balloon_actual, 1);
 
-                    if let Some(low_mem) = &low_mem {
-                        // Start polling the lowmem device again.
-                        poll_ctx
-                            .add(low_mem, Token::LowMemory)
-                            .map_err(Error::PollContextAdd)?;
-                    }
+                            if balloon_change_percent >= RESIZE_PERCENT {
+                                let command = BalloonControlCommand::Adjust {
+                                    num_bytes: balloon_target as u64,
+                                };
+                                if let Err(e) = balloon_host_socket.send(&command) {
+                                    warn!("failed to send memory value to balloon device: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("failed to recv BalloonControlResult: {}", e);
+                        }
+                    };
                 }
                 Token::VmControlServer => {
                     if let Some(socket_server) = &control_server_socket {
@@ -2091,10 +2042,9 @@ fn run_control(
                 Token::Exit => {}
                 Token::Suspend => {}
                 Token::ChildSignal => {}
-                Token::CheckAvailableMemory => {}
                 Token::IrqFd { gsi: _ } => {}
-                Token::LowMemory => {}
-                Token::LowmemTimer => {}
+                Token::BalanceMemory => {}
+                Token::BalloonResult => {}
                 Token::VmControlServer => {}
                 Token::VmControl { index } => {
                     // It's possible more data is readable and buffered while the socket is hungup,
