@@ -54,6 +54,8 @@ pub enum Error {
     OpenDevNull(io::Error),
     /// Setting the specified alt-syscall table failed with errno. Is the table in the kernel?
     SetAltSyscallTable { errno: i32, name: String },
+    /// Setting the specified rlimit failed with errno.
+    SetRlimit { errno: i32, kind: libc::c_int },
     /// chroot failed with the provided errno.
     SettingChrootDirectory(i32, PathBuf),
     /// pivot_root failed with the provided errno.
@@ -125,6 +127,7 @@ impl Display for Error {
                 name,
                 io::Error::from_raw_os_error(*errno),
             ),
+            SetRlimit { errno, kind } => write!(f, "failed to set rlimit {}: {}", kind, errno),
             SettingChrootDirectory(errno, p) => write!(
                 f,
                 "failed to set chroot {}: {}",
@@ -231,6 +234,19 @@ impl Minijail {
     pub fn keep_supplementary_gids(&mut self) {
         unsafe {
             libminijail::minijail_keep_supplementary_gids(self.jail);
+        }
+    }
+    pub fn set_rlimit(
+        &mut self,
+        kind: libc::c_int,
+        cur: libc::rlim_t,
+        max: libc::rlim_t,
+    ) -> Result<()> {
+        let errno = unsafe { libminijail::minijail_rlimit(self.jail, kind, cur, max) };
+        if errno == 0 {
+            Ok(())
+        } else {
+            Err(Error::SetRlimit { errno, kind })
         }
     }
     pub fn use_seccomp(&mut self) {
