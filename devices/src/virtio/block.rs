@@ -30,7 +30,6 @@ use super::{
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
-const NUM_MSIX_VECTORS: u16 = 2;
 const SECTOR_SHIFT: u8 = 9;
 const SECTOR_SIZE: u64 = 0x01 << SECTOR_SHIFT;
 const MAX_DISCARD_SECTORS: u32 = u32::MAX;
@@ -740,10 +739,6 @@ impl VirtioDevice for Block {
 
     fn device_type(&self) -> u32 {
         TYPE_BLOCK
-    }
-
-    fn msix_vectors(&self) -> u16 {
-        NUM_MSIX_VECTORS
     }
 
     fn queue_max_sizes(&self) -> &[u16] {
