@@ -341,7 +341,7 @@ impl AArch64 {
             }
             None => None,
         };
-        let (pci_device_base, pci_device_size) = Self::get_device_addr_base_size(mem_size);
+        let (pci_device_base, pci_device_size) = Self::get_high_mmio_base_size(mem_size);
         fdt::create_fdt(
             AARCH64_FDT_MAX_SIZE as usize,
             mem,
@@ -364,7 +364,7 @@ impl AArch64 {
         Ok(mem)
     }
 
-    fn get_device_addr_base_size(mem_size: u64) -> (u64, u64) {
+    fn get_high_mmio_base_size(mem_size: u64) -> (u64, u64) {
         let base = AARCH64_PHYS_MEM_START + mem_size;
         let size = u64::max_value() - base;
         (base, size)
@@ -383,10 +383,10 @@ impl AArch64 {
 
     /// Returns a system resource allocator.
     fn get_resource_allocator(mem_size: u64, gpu_allocation: bool) -> SystemAllocator {
-        let (device_addr_base, device_addr_size) = Self::get_device_addr_base_size(mem_size);
+        let (high_mmio_base, high_mmio_size) = Self::get_high_mmio_base_size(mem_size);
         SystemAllocator::builder()
-            .add_device_addresses(device_addr_base, device_addr_size)
-            .add_mmio_addresses(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
+            .add_high_mmio_addresses(high_mmio_base, high_mmio_size)
+            .add_low_mmio_addresses(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
             .create_allocator(AARCH64_IRQ_BASE, gpu_allocation)
             .unwrap()
     }

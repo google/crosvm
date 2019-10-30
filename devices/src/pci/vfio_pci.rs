@@ -502,7 +502,7 @@ impl PciDevice for VfioPciDevice {
                 size |= u64::from(low);
                 size = !size + 1;
                 let bar_addr = resources
-                    .mmio_allocator(MmioType::Mmio)
+                    .mmio_allocator(MmioType::Low)
                     .allocate_with_align(
                         size,
                         Alloc::PciBar {

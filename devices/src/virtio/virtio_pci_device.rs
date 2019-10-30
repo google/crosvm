@@ -384,7 +384,7 @@ impl PciDevice for VirtioPciDevice {
         // Allocate one bar for the structures pointed to by the capability structures.
         let mut ranges = Vec::new();
         let settings_config_addr = resources
-            .mmio_allocator(MmioType::Mmio)
+            .mmio_allocator(MmioType::Low)
             .allocate_with_align(
                 CAPABILITY_BAR_SIZE,
                 Alloc::PciBar { bus, dev, bar: 0 },
@@ -422,7 +422,7 @@ impl PciDevice for VirtioPciDevice {
         let mut ranges = Vec::new();
         for config in self.device.get_device_bars(bus, dev) {
             let device_addr = resources
-                .mmio_allocator(MmioType::Device)
+                .mmio_allocator(MmioType::High)
                 .allocate_with_align(
                     config.get_size(),
                     Alloc::PciBar {

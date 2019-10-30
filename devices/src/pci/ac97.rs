@@ -149,7 +149,7 @@ impl PciDevice for Ac97Dev {
             .expect("assign_bus_dev must be called prior to allocate_io_bars");
         let mut ranges = Vec::new();
         let mixer_regs_addr = resources
-            .mmio_allocator(MmioType::Mmio)
+            .mmio_allocator(MmioType::Low)
             .allocate_with_align(
                 MIXER_REGS_SIZE,
                 Alloc::PciBar { bus, dev, bar: 0 },
@@ -167,7 +167,7 @@ impl PciDevice for Ac97Dev {
         ranges.push((mixer_regs_addr, MIXER_REGS_SIZE));
 
         let master_regs_addr = resources
-            .mmio_allocator(MmioType::Mmio)
+            .mmio_allocator(MmioType::Low)
             .allocate_with_align(
                 MASTER_REGS_SIZE,
                 Alloc::PciBar { bus, dev, bar: 1 },
@@ -245,8 +245,8 @@ mod tests {
         let mut ac97_dev = Ac97Dev::new(mem, Box::new(DummyStreamSource::new()));
         let mut allocator = SystemAllocator::builder()
             .add_io_addresses(0x1000_0000, 0x1000_0000)
-            .add_mmio_addresses(0x2000_0000, 0x1000_0000)
-            .add_device_addresses(0x3000_0000, 0x1000_0000)
+            .add_low_mmio_addresses(0x2000_0000, 0x1000_0000)
+            .add_high_mmio_addresses(0x3000_0000, 0x1000_0000)
             .create_allocator(5, false)
             .unwrap();
         ac97_dev.assign_bus_dev(0, 0);

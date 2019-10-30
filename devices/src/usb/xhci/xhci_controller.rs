@@ -213,7 +213,7 @@ impl PciDevice for XhciController {
             .expect("assign_bus_dev must be called prior to allocate_io_bars");
         // xHCI spec 5.2.1.
         let bar0_addr = resources
-            .mmio_allocator(MmioType::Mmio)
+            .mmio_allocator(MmioType::Low)
             .allocate_with_align(
                 XHCI_BAR0_SIZE,
                 Alloc::PciBar { bus, dev, bar: 0 },

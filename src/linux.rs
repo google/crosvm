@@ -784,7 +784,7 @@ fn create_pmem_device(
     };
 
     let mapping_address = resources
-        .mmio_allocator(MmioType::Device)
+        .mmio_allocator(MmioType::High)
         .allocate_with_align(
             image_size,
             Alloc::PmemDevice(index),
@@ -794,7 +794,7 @@ fn create_pmem_device(
         )
         .map_err(Error::AllocatePmemDeviceAddress)?;
 
-    vm.add_device_memory(
+    vm.add_mmio_memory(
         GuestAddress(mapping_address),
         memory_mapping,
         /* read_only = */ disk.read_only,
@@ -1420,11 +1420,11 @@ pub fn run_config(cfg: Config) -> Result<()> {
             MemoryMapping::new_protection(RENDER_NODE_HOST_SIZE as usize, Protection::none())
                 .map_err(Error::ReserveGpuMemory)?;
 
-        // Put the non-accessible memory map into device memory so that no other devices use that
+        // Put the non-accessible memory map into high mmio so that no other devices use that
         // guest address space.
         let gpu_addr = linux
             .resources
-            .mmio_allocator(MmioType::Device)
+            .mmio_allocator(MmioType::High)
             .allocate(
                 RENDER_NODE_HOST_SIZE,
                 Alloc::GpuRenderNode,
@@ -1437,7 +1437,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         // Makes the gpu memory accessible at allocated address.
         linux
             .vm
-            .add_device_memory(
+            .add_mmio_memory(
                 GuestAddress(gpu_addr),
                 gpu_mmap,
                 /* read_only = */ false,

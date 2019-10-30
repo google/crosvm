@@ -578,12 +578,12 @@ impl X8664arch {
         Ok(None)
     }
 
-    /// This returns the start address of device memory
+    /// This returns the start address of high mmio
     ///
     /// # Arguments
     ///
     /// * mem: The memory to be used by the guest
-    fn get_dev_memory_base(mem: &GuestMemory) -> u64 {
+    fn get_high_mmio_base(mem: &GuestMemory) -> u64 {
         // Put device memory at a 2MB boundary after physical memory or 4gb, whichever is greater.
         const MB: u64 = 1 << 20;
         const GB: u64 = 1 << 30;
@@ -605,12 +605,12 @@ impl X8664arch {
 
     /// Returns a system resource allocator.
     fn get_resource_allocator(mem: &GuestMemory, gpu_allocation: bool) -> SystemAllocator {
-        const MMIO_BASE: u64 = 0xe0000000;
-        let device_addr_start = Self::get_dev_memory_base(mem);
+        const LOW_MMIO_BASE: u64 = 0xe0000000;
+        let high_mmio_start = Self::get_high_mmio_base(mem);
         SystemAllocator::builder()
             .add_io_addresses(0xc000, 0x10000)
-            .add_mmio_addresses(MMIO_BASE, 0x100000)
-            .add_device_addresses(device_addr_start, u64::max_value() - device_addr_start)
+            .add_low_mmio_addresses(LOW_MMIO_BASE, 0x100000)
+            .add_high_mmio_addresses(high_mmio_start, u64::max_value() - high_mmio_start)
             .create_allocator(X86_64_IRQ_BASE, gpu_allocation)
             .unwrap()
     }

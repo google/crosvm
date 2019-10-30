@@ -228,7 +228,7 @@ impl VmMemoryRequest {
                     Err(e) => VmMemoryResponse::Err(e),
                 }
             }
-            UnregisterMemory(slot) => match vm.remove_device_memory(slot) {
+            UnregisterMemory(slot) => match vm.remove_mmio_memory(slot) {
                 Ok(_) => VmMemoryResponse::Ok,
                 Err(e) => VmMemoryResponse::Err(e),
             },
@@ -404,7 +404,7 @@ fn register_memory(
     let addr = match allocation {
         Some((Alloc::PciBar { bus, dev, bar }, address)) => {
             match allocator
-                .mmio_allocator(MmioType::Device)
+                .mmio_allocator(MmioType::High)
                 .get(&Alloc::PciBar { bus, dev, bar })
             {
                 Some((start_addr, length, _)) => {
@@ -420,7 +420,7 @@ fn register_memory(
         }
         None => {
             let alloc = allocator.get_anon_alloc();
-            match allocator.mmio_allocator(MmioType::Device).allocate(
+            match allocator.mmio_allocator(MmioType::High).allocate(
                 size as u64,
                 alloc,
                 "vmcontrol_register_memory".to_string(),
@@ -432,7 +432,7 @@ fn register_memory(
         _ => return Err(SysError::new(EINVAL)),
     };
 
-    let slot = match vm.add_device_memory(GuestAddress(addr), mmap, false, false) {
+    let slot = match vm.add_mmio_memory(GuestAddress(addr), mmap, false, false) {
         Ok(v) => v,
         Err(e) => return Err(e),
     };

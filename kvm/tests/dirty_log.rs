@@ -43,7 +43,7 @@ fn test_run() {
     vcpu_regs.rbx = 0x12;
     vcpu.set_regs(&vcpu_regs).expect("set regs failed");
     let slot = vm
-        .add_device_memory(
+        .add_mmio_memory(
             GuestAddress(0),
             MemoryMapping::from_fd(&mem, mem_size as usize)
                 .expect("failed to create memory mapping"),

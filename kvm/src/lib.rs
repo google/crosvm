@@ -304,7 +304,7 @@ impl PartialOrd for MemSlot {
 pub struct Vm {
     vm: File,
     guest_mem: GuestMemory,
-    device_memory: HashMap<u32, MemoryMapping>,
+    mmio_memory: HashMap<u32, MemoryMapping>,
     mmap_arenas: HashMap<u32, MemoryMappingArena>,
     mem_slot_gaps: BinaryHeap<MemSlot>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -338,7 +338,7 @@ impl Vm {
             Ok(Vm {
                 vm: vm_file,
                 guest_mem,
-                device_memory: HashMap::new(),
+                mmio_memory: HashMap::new(),
                 mmap_arenas: HashMap::new(),
                 mem_slot_gaps: BinaryHeap::new(),
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -361,7 +361,7 @@ impl Vm {
         let slot = match self.mem_slot_gaps.pop() {
             Some(gap) => gap.0,
             None => {
-                (self.device_memory.len()
+                (self.mmio_memory.len()
                     + self.guest_mem.num_regions() as usize
                     + self.mmap_arenas.len()) as u32
             }
@@ -405,8 +405,8 @@ impl Vm {
 
     /// Inserts the given `MemoryMapping` into the VM's address space at `guest_addr`.
     ///
-    /// The slot that was assigned the device memory mapping is returned on success. The slot can be
-    /// given to `Vm::remove_device_memory` to remove the memory from the VM's address space and
+    /// The slot that was assigned the mmio memory mapping is returned on success. The slot can be
+    /// given to `Vm::remove_mmio_memory` to remove the memory from the VM's address space and
     /// take back ownership of `mem`.
     ///
     /// Note that memory inserted into the VM's address space must not overlap with any other memory
@@ -417,7 +417,7 @@ impl Vm {
     ///
     /// If `log_dirty_pages` is true, the slot number can be used to retrieve the pages written to
     /// by the guest with `get_dirty_log`.
-    pub fn add_device_memory(
+    pub fn add_mmio_memory(
         &mut self,
         guest_addr: GuestAddress,
         mem: MemoryMapping,
@@ -441,22 +441,22 @@ impl Vm {
                 mem.as_ptr(),
             )?
         };
-        self.device_memory.insert(slot, mem);
+        self.mmio_memory.insert(slot, mem);
 
         Ok(slot)
     }
 
-    /// Removes device memory that was previously added at the given slot.
+    /// Removes mmio memory that was previously added at the given slot.
     ///
     /// Ownership of the host memory mapping associated with the given slot is returned on success.
-    pub fn remove_device_memory(&mut self, slot: u32) -> Result<MemoryMapping> {
-        if self.device_memory.contains_key(&slot) {
-            // Safe because the slot is checked against the list of device memory slots.
+    pub fn remove_mmio_memory(&mut self, slot: u32) -> Result<MemoryMapping> {
+        if self.mmio_memory.contains_key(&slot) {
+            // Safe because the slot is checked against the list of mmio memory slots.
             unsafe {
                 self.remove_user_memory_region(slot)?;
             }
             // Safe to unwrap since map is checked to contain key
-            Ok(self.device_memory.remove(&slot).unwrap())
+            Ok(self.mmio_memory.remove(&slot).unwrap())
         } else {
             Err(Error::new(ENOENT))
         }
@@ -464,7 +464,7 @@ impl Vm {
 
     /// Inserts the given `MemoryMappingArena` into the VM's address space at `guest_addr`.
     ///
-    /// The slot that was assigned the device memory mapping is returned on success. The slot can be
+    /// The slot that was assigned the mmio memory mapping is returned on success. The slot can be
     /// given to `Vm::remove_mmap_arena` to remove the memory from the VM's address space and
     /// take back ownership of `mmap_arena`.
     ///
@@ -510,7 +510,7 @@ impl Vm {
     /// Ownership of the host memory mapping associated with the given slot is returned on success.
     pub fn remove_mmap_arena(&mut self, slot: u32) -> Result<MemoryMappingArena> {
         if self.mmap_arenas.contains_key(&slot) {
-            // Safe because the slot is checked against the list of device memory slots.
+            // Safe because the slot is checked against the list of mmio memory slots.
             unsafe {
                 self.remove_user_memory_region(slot)?;
             }
@@ -533,7 +533,7 @@ impl Vm {
     /// region `slot` represents. For example, if the size of `slot` is 16 pages, `dirty_log` must
     /// be 2 bytes or greater.
     pub fn get_dirty_log(&self, slot: u32, dirty_log: &mut [u8]) -> Result<()> {
-        match self.device_memory.get(&slot) {
+        match self.mmio_memory.get(&slot) {
             Some(mmap) => {
                 // Ensures that there are as many bytes in dirty_log as there are pages in the mmap.
                 if dirty_log_bitmap_size(mmap.size()) > dirty_log.len() {
@@ -560,7 +560,7 @@ impl Vm {
 
     /// Gets a reference to the guest memory owned by this VM.
     ///
-    /// Note that `GuestMemory` does not include any device memory that may have been added after
+    /// Note that `GuestMemory` does not include any mmio memory that may have been added after
     /// this VM was constructed.
     pub fn get_memory(&self) -> &GuestMemory {
         &self.guest_mem
@@ -1927,7 +1927,7 @@ mod tests {
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMapping::new(mem_size).unwrap();
-        vm.add_device_memory(GuestAddress(0x1000), mem, false, false)
+        vm.add_mmio_memory(GuestAddress(0x1000), mem, false, false)
             .unwrap();
     }
 
@@ -1938,7 +1938,7 @@ mod tests {
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMapping::new(mem_size).unwrap();
-        vm.add_device_memory(GuestAddress(0x1000), mem, true, false)
+        vm.add_mmio_memory(GuestAddress(0x1000), mem, true, false)
             .unwrap();
     }
 
@@ -1951,9 +1951,9 @@ mod tests {
         let mem = MemoryMapping::new(mem_size).unwrap();
         let mem_ptr = mem.as_ptr();
         let slot = vm
-            .add_device_memory(GuestAddress(0x1000), mem, false, false)
+            .add_mmio_memory(GuestAddress(0x1000), mem, false, false)
             .unwrap();
-        let mem = vm.remove_device_memory(slot).unwrap();
+        let mem = vm.remove_mmio_memory(slot).unwrap();
         assert_eq!(mem.size(), mem_size);
         assert_eq!(mem.as_ptr(), mem_ptr);
     }
@@ -1963,7 +1963,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
         let mut vm = Vm::new(&kvm, gm).unwrap();
-        assert!(vm.remove_device_memory(0).is_err());
+        assert!(vm.remove_mmio_memory(0).is_err());
     }
 
     #[test]
@@ -1974,7 +1974,7 @@ mod tests {
         let mem_size = 0x2000;
         let mem = MemoryMapping::new(mem_size).unwrap();
         assert!(vm
-            .add_device_memory(GuestAddress(0x2000), mem, false, false)
+            .add_mmio_memory(GuestAddress(0x2000), mem, false, false)
             .is_err());
     }
 

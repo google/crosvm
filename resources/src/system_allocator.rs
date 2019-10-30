@@ -16,13 +16,13 @@ use crate::{Alloc, Error, Result};
 /// # use resources::{Alloc, MmioType, SystemAllocator};
 ///   if let Ok(mut a) = SystemAllocator::builder()
 ///           .add_io_addresses(0x1000, 0x10000)
-///           .add_device_addresses(0x10000000, 0x10000000)
-///           .add_mmio_addresses(0x30000000, 0x10000)
+///           .add_high_mmio_addresses(0x10000000, 0x10000000)
+///           .add_low_mmio_addresses(0x30000000, 0x10000)
 ///           .create_allocator(5, false) {
 ///       assert_eq!(a.allocate_irq(), Some(5));
 ///       assert_eq!(a.allocate_irq(), Some(6));
 ///       assert_eq!(
-///           a.mmio_allocator(MmioType::Device)
+///           a.mmio_allocator(MmioType::High)
 ///              .allocate(
 ///                  0x100,
 ///                  Alloc::PciBar { bus: 0, dev: 0, bar: 0 },
@@ -31,25 +31,25 @@ use crate::{Alloc, Error, Result};
 ///           Ok(0x10000000)
 ///       );
 ///       assert_eq!(
-///           a.mmio_allocator(MmioType::Device).get(&Alloc::PciBar { bus: 0, dev: 0, bar: 0 }),
+///           a.mmio_allocator(MmioType::High).get(&Alloc::PciBar { bus: 0, dev: 0, bar: 0 }),
 ///           Some(&(0x10000000, 0x100, "bar0".to_string()))
 ///       );
 ///   }
 /// ```
 
 /// MMIO address Type
-///    Mmio: address allocated from mmio_address_space
-///    Device: address allocated from device_address_space
+///    Low: address allocated from low_address_space
+///    High: address allocated from high_address_space
 pub enum MmioType {
-    Mmio,
-    Device,
+    Low,
+    High,
 }
 
 #[derive(Debug)]
 pub struct SystemAllocator {
     io_address_space: Option<AddressAllocator>,
-    device_address_space: AddressAllocator,
-    mmio_address_space: AddressAllocator,
+    high_mmio_address_space: AddressAllocator,
+    low_mmio_address_space: AddressAllocator,
     gpu_allocator: Option<Box<dyn GpuMemoryAllocator>>,
     next_irq: u32,
     next_anon_id: usize,
@@ -62,19 +62,19 @@ impl SystemAllocator {
     ///
     /// * `io_base` - The starting address of IO memory.
     /// * `io_size` - The size of IO memory.
-    /// * `dev_base` - The starting address of device memory.
-    /// * `dev_size` - The size of device memory.
-    /// * `mmio_base` - The starting address of MMIO space.
-    /// * `mmio_size` - The size of MMIO space.
+    /// * `high_base` - The starting address of high MMIO space.
+    /// * `high_size` - The size of high MMIO space.
+    /// * `low_base` - The starting address of low MMIO space.
+    /// * `low_size` - The size of low MMIO space.
     /// * `create_gpu_allocator` - If true, enable gpu memory allocation.
     /// * `first_irq` - The first irq number to give out.
     fn new(
         io_base: Option<u64>,
         io_size: Option<u64>,
-        dev_base: u64,
-        dev_size: u64,
-        mmio_base: u64,
-        mmio_size: u64,
+        high_base: u64,
+        high_size: u64,
+        low_base: u64,
+        low_size: u64,
         create_gpu_allocator: bool,
         first_irq: u32,
     ) -> Result<Self> {
@@ -85,8 +85,8 @@ impl SystemAllocator {
             } else {
                 None
             },
-            device_address_space: AddressAllocator::new(dev_base, dev_size, Some(page_size))?,
-            mmio_address_space: AddressAllocator::new(mmio_base, mmio_size, Some(page_size))?,
+            high_mmio_address_space: AddressAllocator::new(high_base, high_size, Some(page_size))?,
+            low_mmio_address_space: AddressAllocator::new(low_base, low_size, Some(page_size))?,
             gpu_allocator: if create_gpu_allocator {
                 gpu_allocator::create_gpu_memory_allocator().map_err(Error::CreateGpuAllocator)?
             } else {
@@ -118,10 +118,12 @@ impl SystemAllocator {
     }
 
     /// Gets an allocator to be used for MMIO allocation.
+    ///    MmioType::Low: low mmio allocator
+    ///    MmioType::High: high mmio allocator
     pub fn mmio_allocator(&mut self, mmio_type: MmioType) -> &mut AddressAllocator {
         match mmio_type {
-            MmioType::Device => &mut self.device_address_space,
-            MmioType::Mmio => &mut self.mmio_address_space,
+            MmioType::Low => &mut self.low_mmio_address_space,
+            MmioType::High => &mut self.high_mmio_address_space,
         }
     }
 
@@ -141,10 +143,10 @@ impl SystemAllocator {
 pub struct SystemAllocatorBuilder {
     io_base: Option<u64>,
     io_size: Option<u64>,
-    mmio_base: Option<u64>,
-    mmio_size: Option<u64>,
-    device_base: Option<u64>,
-    device_size: Option<u64>,
+    low_mmio_base: Option<u64>,
+    low_mmio_size: Option<u64>,
+    high_mmio_base: Option<u64>,
+    high_mmio_size: Option<u64>,
 }
 
 impl SystemAllocatorBuilder {
@@ -152,10 +154,10 @@ impl SystemAllocatorBuilder {
         SystemAllocatorBuilder {
             io_base: None,
             io_size: None,
-            mmio_base: None,
-            mmio_size: None,
-            device_base: None,
-            device_size: None,
+            low_mmio_base: None,
+            low_mmio_size: None,
+            high_mmio_base: None,
+            high_mmio_size: None,
         }
     }
 
@@ -165,15 +167,15 @@ impl SystemAllocatorBuilder {
         self
     }
 
-    pub fn add_mmio_addresses(mut self, base: u64, size: u64) -> Self {
-        self.mmio_base = Some(base);
-        self.mmio_size = Some(size);
+    pub fn add_low_mmio_addresses(mut self, base: u64, size: u64) -> Self {
+        self.low_mmio_base = Some(base);
+        self.low_mmio_size = Some(size);
         self
     }
 
-    pub fn add_device_addresses(mut self, base: u64, size: u64) -> Self {
-        self.device_base = Some(base);
-        self.device_size = Some(size);
+    pub fn add_high_mmio_addresses(mut self, base: u64, size: u64) -> Self {
+        self.high_mmio_base = Some(base);
+        self.high_mmio_size = Some(size);
         self
     }
 
@@ -185,10 +187,10 @@ impl SystemAllocatorBuilder {
         SystemAllocator::new(
             self.io_base,
             self.io_size,
-            self.device_base.ok_or(Error::MissingDeviceAddresses)?,
-            self.device_size.ok_or(Error::MissingDeviceAddresses)?,
-            self.mmio_base.ok_or(Error::MissingMMIOAddresses)?,
-            self.mmio_size.ok_or(Error::MissingMMIOAddresses)?,
+            self.high_mmio_base.ok_or(Error::MissingHighMMIOAddresses)?,
+            self.high_mmio_size.ok_or(Error::MissingHighMMIOAddresses)?,
+            self.low_mmio_base.ok_or(Error::MissingLowMMIOAddresses)?,
+            self.low_mmio_size.ok_or(Error::MissingLowMMIOAddresses)?,
             gpu_allocation,
             first_irq,
         )
