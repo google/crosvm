@@ -894,7 +894,7 @@ impl<F: FileSystem + Sync> Server<F> {
             );
         }
 
-        let available_bytes = w.available_bytes().map_err(Error::InvalidDescriptorChain)?;
+        let available_bytes = w.available_bytes();
         if available_bytes < size as usize {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
