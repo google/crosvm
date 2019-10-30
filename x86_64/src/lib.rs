@@ -282,16 +282,13 @@ fn arch_memory_regions(size: u64, has_bios: bool) -> Vec<(GuestAddress, u64)> {
         }
     } else {
         regions.push((GuestAddress(0), end_32bit_gap_start.offset()));
-        if mem_end > first_addr_past_32bits {
-            let region_start = if has_bios {
-                GuestAddress(BIOS_START)
-            } else {
-                first_addr_past_32bits
-            };
-            regions.push((region_start, mem_end.offset_from(first_addr_past_32bits)));
-        } else if has_bios {
+        if has_bios {
             regions.push((GuestAddress(BIOS_START), BIOS_LEN as u64));
         }
+        regions.push((
+            first_addr_past_32bits,
+            mem_end.offset_from(end_32bit_gap_start),
+        ));
     }
 
     regions
@@ -810,8 +807,10 @@ mod tests {
     #[test]
     fn regions_gt_4gb_bios() {
         let regions = arch_memory_regions((1u64 << 32) + 0x8000, /* has_bios */ true);
-        assert_eq!(2, regions.len());
+        assert_eq!(3, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
         assert_eq!(GuestAddress(BIOS_START), regions[1].0);
+        assert_eq!(BIOS_LEN as u64, regions[1].1);
+        assert_eq!(GuestAddress(1u64 << 32), regions[2].0);
     }
 }

@@ -224,13 +224,20 @@ impl GuestMemory {
 
     /// Returns true if the given address is within the memory range available to the guest.
     pub fn address_in_range(&self, addr: GuestAddress) -> bool {
-        addr < self.end_addr()
+        self.regions
+            .iter()
+            .any(|region| region.guest_base <= addr && addr < region_end(region))
     }
 
     /// Returns the address plus the offset if it is in range.
     pub fn checked_offset(&self, addr: GuestAddress, offset: u64) -> Option<GuestAddress> {
-        addr.checked_add(offset)
-            .and_then(|a| if a < self.end_addr() { Some(a) } else { None })
+        addr.checked_add(offset).and_then(|a| {
+            if self.address_in_range(a) {
+                Some(a)
+            } else {
+                None
+            }
+        })
     }
 
     /// Returns the size of the memory region in bytes.
@@ -596,6 +603,20 @@ mod tests {
         let start_addr1 = GuestAddress(0x0);
         let start_addr2 = GuestAddress(0x1000);
         assert!(GuestMemory::new(&vec![(start_addr1, 0x2000), (start_addr2, 0x2000)]).is_err());
+    }
+
+    #[test]
+    fn region_hole() {
+        let start_addr1 = GuestAddress(0x0);
+        let start_addr2 = GuestAddress(0x4000);
+        let gm = GuestMemory::new(&vec![(start_addr1, 0x2000), (start_addr2, 0x2000)]).unwrap();
+        assert_eq!(gm.address_in_range(GuestAddress(0x1000)), true);
+        assert_eq!(gm.address_in_range(GuestAddress(0x3000)), false);
+        assert_eq!(gm.address_in_range(GuestAddress(0x5000)), true);
+        assert_eq!(gm.address_in_range(GuestAddress(0x6000)), false);
+        assert!(gm.checked_offset(GuestAddress(0x1000), 0x1000).is_none());
+        assert!(gm.checked_offset(GuestAddress(0x5000), 0x800).is_some());
+        assert!(gm.checked_offset(GuestAddress(0x5000), 0x1000).is_none());
     }
 
     #[test]
