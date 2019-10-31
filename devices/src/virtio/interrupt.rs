@@ -45,16 +45,14 @@ impl Interrupt {
             }
         }
 
+        // Set BIT0 in ISR and inject the interrupt if it was not already pending.
         // Don't need to inject the interrupt if the guest hasn't processed it.
         if self
             .interrupt_status
             .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst)
-            & INTERRUPT_STATUS_USED_RING as usize
             == 0
         {
-            // Set BIT0 in ISR and write to irqfd to inject INTx interrupt
-            self.interrupt_status
-                .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst);
+            // Write to irqfd to inject INTx interrupt
             self.interrupt_evt.write(1).unwrap();
         }
     }
