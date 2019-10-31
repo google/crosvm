@@ -8,12 +8,12 @@ use std::sync::atomic::{fence, Ordering};
 
 use sys_util::{error, GuestAddress, GuestMemory};
 
+use super::VIRTIO_MSI_NO_VECTOR;
+
 const VIRTQ_DESC_F_NEXT: u16 = 0x1;
 const VIRTQ_DESC_F_WRITE: u16 = 0x2;
 #[allow(dead_code)]
 const VIRTQ_DESC_F_INDIRECT: u16 = 0x4;
-
-const VIRTIO_MSI_NO_VECTOR: u16 = 0xffff;
 
 /// An iterator over a single descriptor chain.  Not to be confused with AvailIter,
 /// which iterates over the descriptor chain heads in a queue.

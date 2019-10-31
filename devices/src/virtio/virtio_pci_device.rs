@@ -233,7 +233,7 @@ impl VirtioPciDevice {
                 device_feature_select: 0,
                 driver_feature_select: 0,
                 queue_select: 0,
-                msix_config: 0,
+                msix_config: VIRTIO_MSI_NO_VECTOR,
             },
         })
     }

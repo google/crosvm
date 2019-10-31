@@ -77,6 +77,8 @@ const VIRTIO_F_VERSION_1: u32 = 32;
 const INTERRUPT_STATUS_USED_RING: u32 = 0x1;
 const INTERRUPT_STATUS_CONFIG_CHANGED: u32 = 0x2;
 
+const VIRTIO_MSI_NO_VECTOR: u16 = 0xffff;
+
 /// Offset from the base MMIO address of a virtio device used by the guest to notify the device of
 /// queue events.
 pub const NOTIFY_REG_OFFSET: u32 = 0x50;
