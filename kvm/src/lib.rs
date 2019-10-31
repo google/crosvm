@@ -16,7 +16,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr::copy_nonoverlapping;
 
 use libc::sigset_t;
-use libc::{open, EINVAL, ENOENT, ENOSPC, O_CLOEXEC, O_RDWR};
+use libc::{open, EINVAL, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
 
 use kvm_sys::*;
 
@@ -424,7 +424,9 @@ impl Vm {
         read_only: bool,
         log_dirty_pages: bool,
     ) -> Result<u32> {
-        if guest_addr < self.guest_mem.end_addr() {
+        let size = mem.size() as u64;
+        let end_addr = guest_addr.checked_add(size).ok_or(Error::new(EOVERFLOW))?;
+        if self.guest_mem.range_overlap(guest_addr, end_addr) {
             return Err(Error::new(ENOSPC));
         }
 
@@ -437,7 +439,7 @@ impl Vm {
                 read_only,
                 log_dirty_pages,
                 guest_addr.offset() as u64,
-                mem.size() as u64,
+                size,
                 mem.as_ptr(),
             )?
         };
@@ -483,7 +485,9 @@ impl Vm {
         read_only: bool,
         log_dirty_pages: bool,
     ) -> Result<u32> {
-        if guest_addr < self.guest_mem.end_addr() {
+        let size = mmap_arena.size() as u64;
+        let end_addr = guest_addr.checked_add(size).ok_or(Error::new(EOVERFLOW))?;
+        if self.guest_mem.range_overlap(guest_addr, end_addr) {
             return Err(Error::new(ENOSPC));
         }
 
@@ -496,7 +500,7 @@ impl Vm {
                 read_only,
                 log_dirty_pages,
                 guest_addr.offset() as u64,
-                mmap_arena.size() as u64,
+                size,
                 mmap_arena.as_ptr(),
             )?
         };
@@ -1923,11 +1927,18 @@ mod tests {
     #[test]
     fn add_memory() {
         let kvm = Kvm::new().unwrap();
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&vec![
+            (GuestAddress(0), 0x1000),
+            (GuestAddress(0x5000), 0x5000),
+        ])
+        .unwrap();
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMapping::new(mem_size).unwrap();
         vm.add_mmio_memory(GuestAddress(0x1000), mem, false, false)
+            .unwrap();
+        let mem = MemoryMapping::new(mem_size).unwrap();
+        vm.add_mmio_memory(GuestAddress(0x10000), mem, false, false)
             .unwrap();
     }
 

@@ -229,6 +229,14 @@ impl GuestMemory {
             .any(|region| region.guest_base <= addr && addr < region_end(region))
     }
 
+    /// Returns true if the given range (start, end) is overlap with the memory range
+    /// available to the guest.
+    pub fn range_overlap(&self, start: GuestAddress, end: GuestAddress) -> bool {
+        self.regions
+            .iter()
+            .any(|region| region.guest_base < end && start < region_end(region))
+    }
+
     /// Returns the address plus the offset if it is in range.
     pub fn checked_offset(&self, addr: GuestAddress, offset: u64) -> Option<GuestAddress> {
         addr.checked_add(offset).and_then(|a| {
@@ -614,6 +622,19 @@ mod tests {
         assert_eq!(gm.address_in_range(GuestAddress(0x3000)), false);
         assert_eq!(gm.address_in_range(GuestAddress(0x5000)), true);
         assert_eq!(gm.address_in_range(GuestAddress(0x6000)), false);
+        assert_eq!(gm.address_in_range(GuestAddress(0x6000)), false);
+        assert_eq!(
+            gm.range_overlap(GuestAddress(0x1000), GuestAddress(0x3000)),
+            true
+        );
+        assert_eq!(
+            gm.range_overlap(GuestAddress(0x3000), GuestAddress(0x4000)),
+            false
+        );
+        assert_eq!(
+            gm.range_overlap(GuestAddress(0x3000), GuestAddress(0x7000)),
+            true
+        );
         assert!(gm.checked_offset(GuestAddress(0x1000), 0x1000).is_none());
         assert!(gm.checked_offset(GuestAddress(0x5000), 0x800).is_some());
         assert!(gm.checked_offset(GuestAddress(0x5000), 0x1000).is_none());
