@@ -37,7 +37,7 @@ impl Display for Error {
 
 const SOCKET_TIMEOUT_MS: u64 = 2000;
 
-#[derive(MsgOnSocket)]
+#[derive(Debug, MsgOnSocket)]
 enum Command {
     Read {
         len: u32,
@@ -216,12 +216,12 @@ impl ProxyDevice {
 
     /// Runs the callback given in `new_with_custom_command` in the child device process.
     pub fn run_user_command(&self) {
-        self.sync_send(Command::RunUserCommand);
+        self.sync_send(&Command::RunUserCommand);
     }
 
     /// Send a command that does not expect a response from the child device process.
-    fn send_no_result(&self, cmd: Command) {
-        let res = self.sock.send(&cmd);
+    fn send_no_result(&self, cmd: &Command) {
+        let res = self.sock.send(cmd);
         if let Err(e) = res {
             error!(
                 "failed write to child device process {}: {}",
@@ -231,13 +231,13 @@ impl ProxyDevice {
     }
 
     /// Send a command and read its response from the child device process.
-    fn sync_send(&self, cmd: Command) -> Option<CommandResult> {
+    fn sync_send(&self, cmd: &Command) -> Option<CommandResult> {
         self.send_no_result(cmd);
         match self.sock.recv() {
             Err(e) => {
                 error!(
-                    "failed read from child device process {}: {}",
-                    self.debug_label, e,
+                    "failed to read result of {:?} from child device process {}: {}",
+                    cmd, self.debug_label, e,
                 );
                 None
             }
@@ -257,7 +257,7 @@ impl BusDevice for ProxyDevice {
         buffer[0..data.len()].clone_from_slice(data);
         let reg_idx = reg_idx as u32;
         let offset = offset as u32;
-        self.send_no_result(Command::WriteConfig {
+        self.send_no_result(&Command::WriteConfig {
             reg_idx,
             offset,
             len,
@@ -266,7 +266,7 @@ impl BusDevice for ProxyDevice {
     }
 
     fn config_register_read(&self, reg_idx: usize) -> u32 {
-        let res = self.sync_send(Command::ReadConfig(reg_idx as u32));
+        let res = self.sync_send(&Command::ReadConfig(reg_idx as u32));
         if let Some(CommandResult::ReadConfigResult(val)) = res {
             val
         } else {
@@ -277,7 +277,7 @@ impl BusDevice for ProxyDevice {
     fn read(&mut self, offset: u64, data: &mut [u8]) {
         let len = data.len() as u32;
         if let Some(CommandResult::ReadResult(buffer)) =
-            self.sync_send(Command::Read { len, offset })
+            self.sync_send(&Command::Read { len, offset })
         {
             let len = data.len();
             data.clone_from_slice(&buffer[0..len]);
@@ -288,7 +288,7 @@ impl BusDevice for ProxyDevice {
         let mut buffer = [0u8; 8];
         let len = data.len() as u32;
         buffer[0..data.len()].clone_from_slice(data);
-        self.send_no_result(Command::Write {
+        self.send_no_result(&Command::Write {
             len,
             offset,
             data: buffer,
@@ -298,6 +298,6 @@ impl BusDevice for ProxyDevice {
 
 impl Drop for ProxyDevice {
     fn drop(&mut self) {
-        self.sync_send(Command::Shutdown);
+        self.sync_send(&Command::Shutdown);
     }
 }
