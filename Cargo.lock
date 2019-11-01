@@ -19,6 +19,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "acpi_tables"
+version = "0.1.0"
+dependencies = [
+ "data_model 0.1.0",
+]
+
+[[package]]
 name = "arch"
 version = "0.1.0"
 dependencies = [
@@ -100,6 +107,7 @@ name = "crosvm"
 version = "0.1.0"
 dependencies = [
  "aarch64 0.1.0",
+ "acpi_tables 0.1.0",
  "arch 0.1.0",
  "assertions 0.1.0",
  "audio_streams 0.1.0",
