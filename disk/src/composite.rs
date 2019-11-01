@@ -134,7 +134,7 @@ impl CompositeDiskFile {
         open_options.read(true);
         let mut disks: Vec<ComponentDiskPart> = proto
             .get_component_disks()
-            .into_iter()
+            .iter()
             .map(|disk| {
                 open_options.write(
                     disk.get_read_write_capability() == cdisk_spec::ReadWriteCapability::READ_WRITE,
