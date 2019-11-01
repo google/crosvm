@@ -8,12 +8,8 @@ use std::mem;
 use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
 use std::thread;
-use sync::Mutex;
 
-use crate::pci::MsixConfig;
 use net_sys;
 use net_util::{Error as TapError, MacAddress, TapT};
 use sys_util::Error as SysError;
@@ -435,10 +431,7 @@ where
     fn activate(
         &mut self,
         mem: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
-        status: Arc<AtomicUsize>,
+        interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
     ) {
@@ -458,12 +451,7 @@ where
                             let rx_queue = queues.remove(0);
                             let tx_queue = queues.remove(0);
                             let mut worker = Worker {
-                                interrupt: Interrupt::new(
-                                    status,
-                                    interrupt_evt,
-                                    interrupt_resample_evt,
-                                    msix_config,
-                                ),
+                                interrupt,
                                 mem,
                                 rx_queue,
                                 tx_queue,

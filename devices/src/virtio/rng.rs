@@ -7,16 +7,11 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
 use std::thread;
-use sync::Mutex;
 
 use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
 
 use super::{Interrupt, Queue, VirtioDevice, Writer, TYPE_RNG};
-
-use crate::pci::MsixConfig;
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -177,10 +172,7 @@ impl VirtioDevice for Rng {
     fn activate(
         &mut self,
         mem: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
-        status: Arc<AtomicUsize>,
+        interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
     ) {
@@ -205,12 +197,7 @@ impl VirtioDevice for Rng {
                     .name("virtio_rng".to_string())
                     .spawn(move || {
                         let mut worker = Worker {
-                            interrupt: Interrupt::new(
-                                status,
-                                interrupt_evt,
-                                interrupt_resample_evt,
-                                msix_config,
-                            ),
+                            interrupt,
                             queue,
                             mem,
                             random_file,

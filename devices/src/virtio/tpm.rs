@@ -9,12 +9,8 @@ use std::io::{self, Read, Write};
 use std::ops::BitOrAssign;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
 use std::thread;
 
-use crate::pci::MsixConfig;
-use sync::Mutex;
 use sys_util::{error, EventFd, GuestMemory, PollContext, PollToken};
 use tpm2;
 
@@ -204,10 +200,7 @@ impl VirtioDevice for Tpm {
     fn activate(
         &mut self,
         mem: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
-        interrupt_status: Arc<AtomicUsize>,
+        interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
     ) {
@@ -237,12 +230,7 @@ impl VirtioDevice for Tpm {
         self.kill_evt = Some(self_kill_evt);
 
         let worker = Worker {
-            interrupt: Interrupt::new(
-                interrupt_status,
-                interrupt_evt,
-                interrupt_resample_evt,
-                msix_config,
-            ),
+            interrupt,
             queue,
             mem,
             queue_evt,

@@ -8,13 +8,11 @@ use std::io::{self, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use std::u32;
 
-use crate::pci::MsixConfig;
 use data_model::{DataInit, Le16, Le32, Le64};
 use disk::DiskFile;
 use msg_socket::{MsgReceiver, MsgSender};
@@ -723,10 +721,7 @@ impl VirtioDevice for Block {
     fn activate(
         &mut self,
         mem: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
-        status: Arc<AtomicUsize>,
+        interrupt: Interrupt,
         queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
     ) {
@@ -752,12 +747,7 @@ impl VirtioDevice for Block {
                         .name("virtio_blk".to_string())
                         .spawn(move || {
                             let mut worker = Worker {
-                                interrupt: Interrupt::new(
-                                    status,
-                                    interrupt_evt,
-                                    interrupt_resample_evt,
-                                    msix_config,
-                                ),
+                                interrupt,
                                 queues,
                                 mem,
                                 disk_image,

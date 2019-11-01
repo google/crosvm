@@ -44,11 +44,8 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::result;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use sync::Mutex;
 
 #[cfg(feature = "wl-dmabuf")]
 use libc::{dup, EBADF, EINVAL};
@@ -73,7 +70,6 @@ use super::resource_bridge::*;
 use super::{
     DescriptorChain, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_WL, VIRTIO_F_VERSION_1,
 };
-use crate::pci::MsixConfig;
 use vm_control::{MaybeOwnedFd, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse};
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
@@ -1333,10 +1329,7 @@ struct Worker {
 impl Worker {
     fn new(
         mem: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        interrupt_status: Arc<AtomicUsize>,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        interrupt: Interrupt,
         in_queue: Queue,
         out_queue: Queue,
         wayland_path: PathBuf,
@@ -1345,12 +1338,7 @@ impl Worker {
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> Worker {
         Worker {
-            interrupt: Interrupt::new(
-                interrupt_status,
-                interrupt_evt,
-                interrupt_resample_evt,
-                msix_config,
-            ),
+            interrupt,
             mem,
             in_queue,
             out_queue,
@@ -1597,10 +1585,7 @@ impl VirtioDevice for Wl {
     fn activate(
         &mut self,
         mem: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
-        status: Arc<AtomicUsize>,
+        interrupt: Interrupt,
         mut queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
     ) {
@@ -1627,10 +1612,7 @@ impl VirtioDevice for Wl {
                     .spawn(move || {
                         Worker::new(
                             mem,
-                            interrupt_evt,
-                            interrupt_resample_evt,
-                            status,
-                            msix_config,
+                            interrupt,
                             queues.remove(0),
                             queues.remove(0),
                             wayland_path,

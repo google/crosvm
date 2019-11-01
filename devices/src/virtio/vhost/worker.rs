@@ -3,15 +3,11 @@
 // found in the LICENSE file.
 
 use std::os::raw::c_ulonglong;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
-use sync::Mutex;
 
 use sys_util::{EventFd, PollContext, PollToken};
 use vhost::Vhost;
 
 use super::{Error, Result};
-use crate::pci::MsixConfig;
 use crate::virtio::{Interrupt, Queue};
 
 /// Worker that takes care of running the vhost device.  This mainly involves forwarding interrupts
@@ -31,19 +27,11 @@ impl<T: Vhost> Worker<T> {
         queues: Vec<Queue>,
         vhost_handle: T,
         vhost_interrupt: Vec<EventFd>,
-        interrupt_status: Arc<AtomicUsize>,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        interrupt: Interrupt,
         acked_features: u64,
     ) -> Worker<T> {
         Worker {
-            interrupt: Interrupt::new(
-                interrupt_status,
-                interrupt_evt,
-                interrupt_resample_evt,
-                msix_config,
-            ),
+            interrupt,
             queues,
             vhost_handle,
             vhost_interrupt,

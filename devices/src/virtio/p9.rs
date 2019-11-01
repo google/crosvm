@@ -8,12 +8,8 @@ use std::mem;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::result;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
 use std::thread;
-use sync::Mutex;
 
-use crate::pci::MsixConfig;
 use p9;
 use sys_util::{error, warn, Error as SysError, EventFd, GuestMemory, PollContext, PollToken};
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
@@ -227,10 +223,7 @@ impl VirtioDevice for P9 {
     fn activate(
         &mut self,
         guest_mem: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
-        status: Arc<AtomicUsize>,
+        interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
     ) {
@@ -253,12 +246,7 @@ impl VirtioDevice for P9 {
                     .name("virtio_9p".to_string())
                     .spawn(move || {
                         let mut worker = Worker {
-                            interrupt: Interrupt::new(
-                                status,
-                                interrupt_evt,
-                                interrupt_resample_evt,
-                                msix_config,
-                            ),
+                            interrupt,
                             mem: guest_mem,
                             queue: queues.remove(0),
                             server,

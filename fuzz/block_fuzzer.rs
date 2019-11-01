@@ -12,7 +12,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use cros_fuzz::fuzz_target;
-use devices::virtio::{Block, Queue, VirtioDevice};
+use devices::virtio::{Block, Interrupt, Queue, VirtioDevice};
 use sys_util::{EventFd, GuestAddress, GuestMemory, SharedMemory};
 
 const MEM_SIZE: u64 = 256 * 1024 * 1024;
@@ -84,10 +84,12 @@ fuzz_target!(|bytes| {
 
     block.activate(
         mem,
-        EventFd::new().unwrap(),
-        EventFd::new().unwrap(),
-        None, // msix_config
-        Arc::new(AtomicUsize::new(0)),
+        Interrupt::new(
+            Arc::new(AtomicUsize::new(0)),
+            EventFd::new().unwrap(),
+            EventFd::new().unwrap(),
+            None, // msix_config
+        ),
         vec![q],
         queue_evts,
     );

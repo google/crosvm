@@ -14,11 +14,8 @@ use std::num::NonZeroU8;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use sync::Mutex;
 
 use data_model::*;
 
@@ -38,7 +35,7 @@ use super::{
 
 use self::backend::Backend;
 use self::protocol::*;
-use crate::pci::{MsixConfig, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType};
+use crate::pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType};
 
 use vm_control::VmMemoryControlRequestSocket;
 
@@ -822,10 +819,7 @@ impl VirtioDevice for Gpu {
     fn activate(
         &mut self,
         mem: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
-        interrupt_status: Arc<AtomicUsize>,
+        interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<EventFd>,
     ) {
@@ -871,12 +865,7 @@ impl VirtioDevice for Gpu {
                             };
 
                         Worker {
-                            interrupt: Interrupt::new(
-                                interrupt_status,
-                                interrupt_evt,
-                                interrupt_resample_evt,
-                                msix_config,
-                            ),
+                            interrupt,
                             exit_evt,
                             mem,
                             ctrl_queue,

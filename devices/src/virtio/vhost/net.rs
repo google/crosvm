@@ -5,10 +5,7 @@
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
 use std::thread;
-use sync::Mutex;
 
 use net_sys;
 use net_util::{MacAddress, TapT};
@@ -19,8 +16,7 @@ use virtio_sys::virtio_net;
 
 use super::worker::Worker;
 use super::{Error, Result};
-use crate::pci::MsixConfig;
-use crate::virtio::{Queue, VirtioDevice, TYPE_NET};
+use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_NET};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -179,10 +175,7 @@ where
     fn activate(
         &mut self,
         _: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
-        status: Arc<AtomicUsize>,
+        interrupt: Interrupt,
         queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
     ) {
@@ -203,10 +196,7 @@ where
                                     queues,
                                     vhost_net_handle,
                                     vhost_interrupt,
-                                    status,
-                                    interrupt_evt,
-                                    interrupt_resample_evt,
-                                    msix_config,
+                                    interrupt,
                                     acked_features,
                                 );
                                 let activate_vqs = |handle: &U| -> Result<()> {
@@ -245,6 +235,8 @@ pub mod tests {
     use super::*;
     use net_util::fakes::FakeTap;
     use std::result;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::Arc;
     use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
     use vhost::net::fakes::FakeNet;
 
@@ -298,10 +290,12 @@ pub mod tests {
         // Just testing that we don't panic, for now
         net.activate(
             guest_memory,
-            EventFd::new().unwrap(),
-            EventFd::new().unwrap(),
-            None,
-            Arc::new(AtomicUsize::new(0)),
+            Interrupt::new(
+                Arc::new(AtomicUsize::new(0)),
+                EventFd::new().unwrap(),
+                EventFd::new().unwrap(),
+                None,
+            ),
             vec![Queue::new(1)],
             vec![EventFd::new().unwrap()],
         );

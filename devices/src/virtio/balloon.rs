@@ -8,9 +8,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use sync::Mutex;
 
-use crate::pci::MsixConfig;
 use data_model::{DataInit, Le32};
 use msg_socket::MsgReceiver;
 use sys_util::{
@@ -320,10 +318,7 @@ impl VirtioDevice for Balloon {
     fn activate(
         &mut self,
         mem: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
-        status: Arc<AtomicUsize>,
+        interrupt: Interrupt,
         mut queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
     ) {
@@ -346,12 +341,7 @@ impl VirtioDevice for Balloon {
             .name("virtio_balloon".to_string())
             .spawn(move || {
                 let mut worker = Worker {
-                    interrupt: Interrupt::new(
-                        status,
-                        interrupt_evt,
-                        interrupt_resample_evt,
-                        msix_config,
-                    ),
+                    interrupt,
                     mem,
                     inflate_queue: queues.remove(0),
                     deflate_queue: queues.remove(0),

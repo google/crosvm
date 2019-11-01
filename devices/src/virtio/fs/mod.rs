@@ -7,15 +7,12 @@ use std::fmt;
 use std::io;
 use std::mem;
 use std::os::unix::io::RawFd;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 
 use data_model::{DataInit, Le32};
-use sync::Mutex;
 use sys_util::{error, warn, Error as SysError, EventFd, GuestMemory};
 
-use crate::pci::MsixConfig;
 use crate::virtio::{
     copy_config, DescriptorError, Interrupt, Queue, VirtioDevice, TYPE_FS, VIRTIO_F_VERSION_1,
 };
@@ -226,10 +223,7 @@ impl VirtioDevice for Fs {
     fn activate(
         &mut self,
         guest_mem: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
-        status: Arc<AtomicUsize>,
+        interrupt: Interrupt,
         queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
     ) {
@@ -240,12 +234,7 @@ impl VirtioDevice for Fs {
         let fs = self.fs.take().expect("missing file system implementation");
 
         let server = Arc::new(Server::new(fs));
-        let irq = Arc::new(Interrupt::new(
-            status,
-            interrupt_evt,
-            interrupt_resample_evt,
-            msix_config,
-        ));
+        let irq = Arc::new(interrupt);
 
         for (idx, (queue, evt)) in queues.into_iter().zip(queue_evts.into_iter()).enumerate() {
             let (self_kill_evt, kill_evt) =

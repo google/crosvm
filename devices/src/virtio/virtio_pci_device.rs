@@ -613,12 +613,16 @@ impl PciDevice for VirtioPciDevice {
                             None
                         };
 
-                        self.device.activate(
-                            mem,
+                        let interrupt = Interrupt::new(
+                            self.interrupt_status.clone(),
                             interrupt_evt,
                             interrupt_resample_evt,
                             msix_config,
-                            self.interrupt_status.clone(),
+                        );
+
+                        self.device.activate(
+                            mem,
+                            interrupt,
                             self.queues.clone(),
                             self.queue_evts.split_off(0),
                         );

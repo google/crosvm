@@ -238,11 +238,7 @@ impl VirtioPciCommonConfig {
 mod tests {
     use super::*;
 
-    use crate::pci::MsixConfig;
     use std::os::unix::io::RawFd;
-    use std::sync::atomic::AtomicUsize;
-    use std::sync::Arc;
-    use sync::Mutex;
     use sys_util::{EventFd, GuestMemory};
 
     struct DummyDevice(u32);
@@ -262,10 +258,7 @@ mod tests {
         fn activate(
             &mut self,
             _mem: GuestMemory,
-            _interrupt_evt: EventFd,
-            _interrupt_resample_evt: EventFd,
-            _msix_config: Option<Arc<Mutex<MsixConfig>>>,
-            _status: Arc<AtomicUsize>,
+            _interrupt: Interrupt,
             _queues: Vec<Queue>,
             _queue_evts: Vec<EventFd>,
         ) {

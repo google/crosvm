@@ -3,14 +3,11 @@
 // found in the LICENSE file.
 
 use std::os::unix::io::RawFd;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
-use sync::Mutex;
 
 use sys_util::{EventFd, GuestMemory};
 
 use super::*;
-use crate::pci::{MsixConfig, PciBarConfiguration, PciCapability};
+use crate::pci::{PciBarConfiguration, PciCapability};
 
 /// Trait for virtio devices to be driven by a virtio transport.
 ///
@@ -69,10 +66,7 @@ pub trait VirtioDevice: Send {
     fn activate(
         &mut self,
         mem: GuestMemory,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
-        msix_config: Option<Arc<Mutex<MsixConfig>>>,
-        status: Arc<AtomicUsize>,
+        interrupt: Interrupt,
         queues: Vec<Queue>,
         queue_evts: Vec<EventFd>,
     );
