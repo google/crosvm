@@ -618,6 +618,7 @@ impl PciDevice for VirtioPciDevice {
                             interrupt_evt,
                             interrupt_resample_evt,
                             msix_config,
+                            self.common_config.msix_config,
                         );
 
                         self.device.activate(

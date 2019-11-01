@@ -14,6 +14,7 @@ pub struct Interrupt {
     interrupt_evt: EventFd,
     interrupt_resample_evt: EventFd,
     msix_config: Option<Arc<Mutex<MsixConfig>>>,
+    config_msix_vector: u16,
 }
 
 impl Interrupt {
@@ -22,12 +23,14 @@ impl Interrupt {
         interrupt_evt: EventFd,
         interrupt_resample_evt: EventFd,
         msix_config: Option<Arc<Mutex<MsixConfig>>>,
+        config_msix_vector: u16,
     ) -> Interrupt {
         Interrupt {
             interrupt_status,
             interrupt_evt,
             interrupt_resample_evt,
             msix_config,
+            config_msix_vector,
         }
     }
 
@@ -64,12 +67,9 @@ impl Interrupt {
         self.signal(vector, INTERRUPT_STATUS_USED_RING)
     }
 
-    /// Notification of Device Configuration Changes
-    /// Set BIT1 in ISR and write to irqfd
+    /// Notify the driver that the device configuration has changed.
     pub fn signal_config_changed(&self) {
-        self.interrupt_status
-            .fetch_or(INTERRUPT_STATUS_CONFIG_CHANGED as usize, Ordering::SeqCst);
-        self.interrupt_evt.write(1).unwrap();
+        self.signal(self.config_msix_vector, INTERRUPT_STATUS_CONFIG_CHANGED)
     }
 
     /// Handle interrupt resampling event

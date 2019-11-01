@@ -233,6 +233,7 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::virtio::VIRTIO_MSI_NO_VECTOR;
     use net_util::fakes::FakeTap;
     use std::result;
     use std::sync::atomic::AtomicUsize;
@@ -295,6 +296,7 @@ pub mod tests {
                 EventFd::new().unwrap(),
                 EventFd::new().unwrap(),
                 None,
+                VIRTIO_MSI_NO_VECTOR,
             ),
             vec![Queue::new(1)],
             vec![EventFd::new().unwrap()],

@@ -88,7 +88,8 @@ fuzz_target!(|bytes| {
             Arc::new(AtomicUsize::new(0)),
             EventFd::new().unwrap(),
             EventFd::new().unwrap(),
-            None, // msix_config
+            None,   // msix_config
+            0xFFFF, // VIRTIO_MSI_NO_VECTOR
         ),
         vec![q],
         queue_evts,
