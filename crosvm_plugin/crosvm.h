@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 18
+#define CROSVM_API_MINOR 19
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -173,6 +173,23 @@ int crosvm_net_get_config(struct crosvm*, struct crosvm_net_config*);
  */
 int crosvm_reserve_range(struct crosvm*, uint32_t __space, uint64_t __start,
                          uint64_t __length);
+
+/*
+ * Registers a range in the given address space that, when accessed via write,
+ * will cause a notification in crosvm_vcpu_wait() but the VM will continue
+ * running.
+ * For this type of notification (where |no_resume| is set) the next call
+ * should be crosvm_vcpu_wait() (without an inbetween call to
+ * crosvm_vcpu_resume() ).
+ *
+ * The requested range must not overlap any prior (and currently active)
+ * reservation to crosvm_reserve_range() or crosvm_reserve_async_write_range().
+ *
+ * To unreserve a range previously reserved by this function, pass the |__space|
+ * and |__start| of the old reservation with a 0 |__length|.
+ */
+int crosvm_reserve_async_write_range(struct crosvm*, uint32_t __space,
+                                     uint64_t __start, uint64_t __length);
 
 /*
  * Sets the state of the given irq pin.
@@ -509,7 +526,13 @@ struct crosvm_vcpu_event {
        */
       uint8_t is_write;
 
-      uint8_t _reserved[3];
+      /*
+       * Valid when |is_write| is true -- indicates that VM has continued
+       * to run.  The only next valid call for the vcpu is crosvm_vcpu_wait().
+       */
+      uint8_t no_resume;
+
+      uint8_t _reserved[2];
     } io_access;
 
     /* CROSVM_VCPU_EVENT_KIND_PAUSED */

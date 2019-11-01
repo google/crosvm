@@ -171,6 +171,7 @@ pub enum Stat {
     GetMsrIndexList,
     NetGetConfig,
     ReserveRange,
+    ReserveAsyncWriteRange,
     SetIrq,
     SetIrqRouting,
     GetPicState,
@@ -466,12 +467,19 @@ impl crosvm {
         Ok(())
     }
 
-    fn reserve_range(&mut self, space: u32, start: u64, length: u64) -> result::Result<(), c_int> {
+    fn reserve_range(
+        &mut self,
+        space: u32,
+        start: u64,
+        length: u64,
+        async_write: bool,
+    ) -> result::Result<(), c_int> {
         let mut r = MainRequest::new();
         let reserve: &mut MainRequest_ReserveRange = r.mut_reserve_range();
         reserve.space = AddressSpace::from_i32(space as i32).ok_or(EINVAL)?;
         reserve.start = start;
         reserve.length = length;
+        reserve.async_write = async_write;
 
         self.main_transaction(&r, &[])?;
         Ok(())
@@ -910,7 +918,8 @@ struct anon_io_access {
     data: *mut u8,
     length: u32,
     is_write: u8,
-    __reserved1: u8,
+    no_resume: u8,
+    __reserved1: [u8; 2],
 }
 
 #[repr(C)]
@@ -949,11 +958,32 @@ pub struct crosvm_vcpu {
     send_init: bool,
     request_buffer: Vec<u8>,
     response_buffer: Vec<u8>,
+    response_base: usize,
+    response_length: usize,
     resume_data: Vec<u8>,
 
     regs: crosvm_vcpu_reg_cache,
     sregs: crosvm_vcpu_reg_cache,
     debugregs: crosvm_vcpu_reg_cache,
+}
+
+fn read_varint32(data: &[u8]) -> (u32, usize) {
+    let mut value: u32 = 0;
+    let mut shift: u32 = 0;
+    for (i, &b) in data.iter().enumerate() {
+        if b < 0x80 {
+            return match (b as u32).checked_shl(shift) {
+                None => (0, 0),
+                Some(b) => (value | b, i + 1),
+            };
+        }
+        match ((b as u32) & 0x7F).checked_shl(shift) {
+            None => return (0, 0),
+            Some(b) => value |= b,
+        }
+        shift += 7;
+    }
+    (0, 0)
 }
 
 impl crosvm_vcpu {
@@ -964,6 +994,8 @@ impl crosvm_vcpu {
             send_init: true,
             request_buffer: Vec::new(),
             response_buffer: vec![0; MAX_DATAGRAM_SIZE],
+            response_base: 0,
+            response_length: 0,
             resume_data: Vec::new(),
             regs: crosvm_vcpu_reg_cache {
                 get: false,
@@ -994,13 +1026,30 @@ impl crosvm_vcpu {
     }
 
     fn vcpu_recv(&mut self) -> result::Result<VcpuResponse, c_int> {
-        let msg_size = self
-            .read_pipe
-            .read(&mut self.response_buffer)
-            .map_err(|e| -e.raw_os_error().unwrap_or(EINVAL))?;
-
-        let response: VcpuResponse =
-            parse_from_bytes(&self.response_buffer[..msg_size]).map_err(proto_error_to_int)?;
+        if self.response_length == 0 {
+            let msg_size = self
+                .read_pipe
+                .read(&mut self.response_buffer)
+                .map_err(|e| -e.raw_os_error().unwrap_or(EINVAL))?;
+            self.response_base = 0;
+            self.response_length = msg_size;
+        }
+        if self.response_length == 0 {
+            return Err(EINVAL);
+        }
+        let (value, bytes) = read_varint32(
+            &self.response_buffer[self.response_base..self.response_base + self.response_length],
+        );
+        let total_size: usize = bytes + value as usize;
+        if bytes == 0 || total_size > self.response_length {
+            return Err(EINVAL);
+        }
+        let response: VcpuResponse = parse_from_bytes(
+            &self.response_buffer[self.response_base + bytes..self.response_base + total_size],
+        )
+        .map_err(proto_error_to_int)?;
+        self.response_base += total_size;
+        self.response_length -= total_size;
         if response.errno != 0 {
             return Err(response.errno);
         }
@@ -1041,6 +1090,7 @@ impl crosvm_vcpu {
                 data: io.data.as_mut_ptr(),
                 length: io.data.len() as u32,
                 is_write: io.is_write as u8,
+                no_resume: io.no_resume as u8,
                 __reserved1: Default::default(),
             };
             self.resume_data = io.data;
@@ -1359,7 +1409,20 @@ pub unsafe extern "C" fn crosvm_reserve_range(
 ) -> c_int {
     let _u = record(Stat::ReserveRange);
     let self_ = &mut (*self_);
-    let ret = self_.reserve_range(space, start, length);
+    let ret = self_.reserve_range(space, start, length, false);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_reserve_async_write_range(
+    self_: *mut crosvm,
+    space: u32,
+    start: u64,
+    length: u64,
+) -> c_int {
+    let _u = record(Stat::ReserveAsyncWriteRange);
+    let self_ = &mut (*self_);
+    let ret = self_.reserve_range(space, start, length, true);
     to_crosvm_rc(ret)
 }
 

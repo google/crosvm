@@ -231,6 +231,11 @@ fn test_hint() {
 }
 
 #[test]
+fn test_async_write() {
+    test_plugin(include_str!("plugin_async_write.c"));
+}
+
+#[test]
 fn test_dirty_log() {
     test_plugin(include_str!("plugin_dirty_log.c"));
 }

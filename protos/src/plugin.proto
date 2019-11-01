@@ -84,6 +84,7 @@ message MainRequest {
         AddressSpace space = 1;
         uint64 start = 2;
         uint64 length = 3;
+        bool async_write = 4;
     }
 
     message SetIrq {
@@ -384,12 +385,13 @@ message VcpuResponse  {
             AddressSpace space = 1;
             uint64 address = 2;
             bool is_write = 3;
-            bytes data = 4;
+            bool no_resume = 4;
+            bytes data = 5;
 
             // The following can be eagerly provided.
-            bytes regs = 5;
-            bytes sregs = 6;
-            bytes debugregs = 7;
+            bytes regs = 6;
+            bytes sregs = 7;
+            bytes debugregs = 8;
         }
 
         // This type of wait reason is only generated after a PuaseVcpus request on this VCPU.

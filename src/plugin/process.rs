@@ -380,7 +380,12 @@ impl Process {
                 };
                 match reserve_range.length {
                     0 => lock.unreserve_range(space, reserve_range.start),
-                    _ => lock.reserve_range(space, reserve_range.start, reserve_range.length),
+                    _ => lock.reserve_range(
+                        space,
+                        reserve_range.start,
+                        reserve_range.length,
+                        reserve_range.async_write,
+                    ),
                 }
             }
             Err(_) => Err(SysError::new(EDEADLK)),
