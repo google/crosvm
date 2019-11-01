@@ -2105,6 +2105,7 @@ mod tests {
         let evtfd1 = EventFd::new().unwrap();
         let evtfd2 = EventFd::new().unwrap();
         let evtfd3 = EventFd::new().unwrap();
+        vm.create_irq_chip().unwrap();
         vm.register_irqfd(&evtfd1, 4).unwrap();
         vm.register_irqfd(&evtfd2, 8).unwrap();
         vm.register_irqfd(&evtfd3, 4).unwrap();
@@ -2119,6 +2120,7 @@ mod tests {
         let evtfd1 = EventFd::new().unwrap();
         let evtfd2 = EventFd::new().unwrap();
         let evtfd3 = EventFd::new().unwrap();
+        vm.create_irq_chip().unwrap();
         vm.register_irqfd(&evtfd1, 4).unwrap();
         vm.register_irqfd(&evtfd2, 8).unwrap();
         vm.register_irqfd(&evtfd3, 4).unwrap();
@@ -2134,6 +2136,7 @@ mod tests {
         let vm = Vm::new(&kvm, gm).unwrap();
         let evtfd1 = EventFd::new().unwrap();
         let evtfd2 = EventFd::new().unwrap();
+        vm.create_irq_chip().unwrap();
         vm.register_irqfd_resample(&evtfd1, &evtfd2, 4).unwrap();
         vm.unregister_irqfd(&evtfd1, 4).unwrap();
         // Ensures the ioctl is actually reading the resamplefd.
