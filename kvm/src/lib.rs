@@ -1190,6 +1190,7 @@ impl Vcpu {
     /// by signal handlers to call set_local_immediate_exit(). Signal
     /// number (if provided, otherwise use -1) will be temporily blocked when the vcpu
     /// is added to the map, or later destroyed/removed from the map.
+    #[allow(clippy::cast_ptr_alignment)]
     pub fn set_thread_id(&mut self, signal_num: c_int) {
         // Block signal while we add -- if a signal fires (very unlikely,
         // as this means something is trying to pause the vcpu before it has
