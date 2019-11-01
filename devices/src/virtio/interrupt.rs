@@ -35,7 +35,7 @@ impl Interrupt {
     ///
     /// If MSI-X is enabled in this device, MSI-X interrupt is preferred.
     /// Write to the irqfd to VMM to deliver virtual interrupt to the guest
-    pub fn signal_used_queue(&self, vector: u16) {
+    fn signal(&self, vector: u16, interrupt_status_mask: u32) {
         // Don't need to set ISR for MSI-X interrupts
         if let Some(msix_config) = &self.msix_config {
             let mut msix_config = msix_config.lock();
@@ -47,16 +47,21 @@ impl Interrupt {
             }
         }
 
-        // Set BIT0 in ISR and inject the interrupt if it was not already pending.
+        // Set bit in ISR and inject the interrupt if it was not already pending.
         // Don't need to inject the interrupt if the guest hasn't processed it.
         if self
             .interrupt_status
-            .fetch_or(INTERRUPT_STATUS_USED_RING as usize, Ordering::SeqCst)
+            .fetch_or(interrupt_status_mask as usize, Ordering::SeqCst)
             == 0
         {
             // Write to irqfd to inject INTx interrupt
             self.interrupt_evt.write(1).unwrap();
         }
+    }
+
+    /// Notify the driver that buffers have been placed in the used queue.
+    pub fn signal_used_queue(&self, vector: u16) {
+        self.signal(vector, INTERRUPT_STATUS_USED_RING)
     }
 
     /// Notification of Device Configuration Changes
