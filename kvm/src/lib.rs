@@ -1200,7 +1200,7 @@ impl Vcpu {
         if signal_num >= 0 {
             unblock = true;
             // Assuming that a failure to block means it's already blocked.
-            if let Err(_) = block_signal(signal_num) {
+            if block_signal(signal_num).is_err() {
                 unblock = false;
             }
         }
@@ -1793,7 +1793,7 @@ impl Drop for Vcpu {
                     unblock = true;
                     signal_num = state.signal_num;
                     // Assuming that a failure to block means it's already blocked.
-                    if let Err(_) = block_signal(signal_num) {
+                    if block_signal(signal_num).is_err() {
                         unblock = false;
                     }
                 }
