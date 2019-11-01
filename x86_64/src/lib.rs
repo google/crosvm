@@ -66,6 +66,7 @@ use sys_util::{Clock, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
+    AllocateIrq,
     CloneEventFd(sys_util::Error),
     Cmdline(kernel_cmdline::Error),
     ConfigureSystem,
@@ -112,6 +113,7 @@ impl Display for Error {
 
         #[sorted]
         match self {
+            AllocateIrq => write!(f, "error allocating a single irq"),
             CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
             Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
             ConfigureSystem => write!(f, "error configuring the system"),
@@ -192,6 +194,7 @@ fn configure_system(
     setup_data: Option<GuestAddress>,
     initrd: Option<(GuestAddress, usize)>,
     mut params: boot_params,
+    sci_irq: u32,
 ) -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
@@ -255,7 +258,7 @@ fn configure_system(
         .write_obj_at_addr(params, zero_page_addr)
         .map_err(|_| Error::ZeroPageSetup)?;
 
-    let rsdp_addr = acpi::create_acpi_tables(guest_mem, num_cpus, 9);
+    let rsdp_addr = acpi::create_acpi_tables(guest_mem, num_cpus, sci_irq);
     params.acpi_rsdp_addr = rsdp_addr.0;
 
     Ok(())
@@ -368,6 +371,8 @@ impl arch::LinuxArch for X8664arch {
 
         // Event used to notify crosvm that guest OS is trying to suspend.
         let suspend_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+        // allocate sci_irq to fill the ACPI FACP table
+        let sci_irq = resources.allocate_irq().ok_or(Error::AllocateIrq)?;
 
         let mut io_bus = Self::setup_io_bus(
             &mut vm,
@@ -430,6 +435,7 @@ impl arch::LinuxArch for X8664arch {
                     components.android_fstab,
                     kernel_end,
                     params,
+                    sci_irq,
                 )?;
             }
         }
@@ -514,6 +520,7 @@ impl X8664arch {
         android_fstab: Option<File>,
         kernel_end: u64,
         params: boot_params,
+        sci_irq: u32,
     ) -> Result<()> {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)
             .map_err(Error::LoadCmdline)?;
@@ -575,6 +582,7 @@ impl X8664arch {
             setup_data,
             initrd,
             params,
+            sci_irq,
         )?;
         Ok(())
     }
