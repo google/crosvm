@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::{INTERRUPT_STATUS_CONFIG_CHANGED, INTERRUPT_STATUS_USED_RING};
+use super::{INTERRUPT_STATUS_CONFIG_CHANGED, INTERRUPT_STATUS_USED_RING, VIRTIO_MSI_NO_VECTOR};
 use crate::pci::MsixConfig;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -40,7 +40,9 @@ impl Interrupt {
         if let Some(msix_config) = &self.msix_config {
             let mut msix_config = msix_config.lock();
             if msix_config.enabled() {
-                msix_config.trigger(vector);
+                if vector != VIRTIO_MSI_NO_VECTOR {
+                    msix_config.trigger(vector);
+                }
                 return;
             }
         }
