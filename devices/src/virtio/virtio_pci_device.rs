@@ -238,18 +238,6 @@ impl VirtioPciDevice {
         })
     }
 
-    /// Gets the list of queue events that must be triggered whenever the VM writes to
-    /// `virtio::NOTIFY_REG_OFFSET` past the MMIO base. Each event must be triggered when the
-    /// value being written equals the index of the event in this list.
-    pub fn queue_evts(&self) -> &[EventFd] {
-        self.queue_evts.as_slice()
-    }
-
-    /// Gets the event this device uses to interrupt the VM when the used queue is changed.
-    pub fn interrupt_evt(&self) -> Option<&EventFd> {
-        self.interrupt_evt.as_ref()
-    }
-
     fn is_driver_ready(&self) -> bool {
         let ready_bits =
             (DEVICE_ACKNOWLEDGE | DEVICE_DRIVER | DEVICE_DRIVER_OK | DEVICE_FEATURES_OK) as u8;
@@ -460,7 +448,7 @@ impl PciDevice for VirtioPciDevice {
     fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
         let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
-        self.queue_evts()
+        self.queue_evts
             .iter()
             .enumerate()
             .map(|(i, event)| {
