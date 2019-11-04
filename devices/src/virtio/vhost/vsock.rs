@@ -8,6 +8,7 @@ use std::thread;
 use data_model::{DataInit, Le64};
 
 use sys_util::{error, warn, EventFd, GuestMemory};
+use vhost::Vhost;
 use vhost::Vsock as VhostVsockHandle;
 
 use super::worker::Worker;
@@ -191,6 +192,18 @@ impl VirtioDevice for Vsock {
                         return;
                     }
                 }
+            }
+        }
+    }
+
+    fn on_device_sandboxed(&mut self) {
+        // ignore the error but to log the error. We don't need to do
+        // anything here because when activate, the other vhost set up
+        // will be failed to stop the activate thread.
+        if let Some(vhost_handle) = &self.vhost_handle {
+            match vhost_handle.set_owner() {
+                Ok(_) => {}
+                Err(e) => error!("{}: failed to set owner: {:?}", self.debug_label(), e),
             }
         }
     }

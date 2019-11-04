@@ -51,11 +51,6 @@ impl<T: Vhost> Worker<T> {
         F1: FnOnce(&T) -> Result<()>,
         F2: FnOnce(&T) -> Result<()>,
     {
-        // Preliminary setup for vhost net.
-        self.vhost_handle
-            .set_owner()
-            .map_err(Error::VhostSetOwner)?;
-
         let avail_features = self
             .vhost_handle
             .get_features()

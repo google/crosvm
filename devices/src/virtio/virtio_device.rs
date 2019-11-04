@@ -83,4 +83,7 @@ pub trait VirtioDevice: Send {
     fn get_device_caps(&self) -> Vec<Box<dyn PciCapability>> {
         Vec::new()
     }
+
+    /// Invoked when the device is sandboxed.
+    fn on_device_sandboxed(&mut self) {}
 }

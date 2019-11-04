@@ -703,4 +703,8 @@ impl PciDevice for VirtioPciDevice {
             self.common_config.queue_select = 0;
         }
     }
+
+    fn on_device_sandboxed(&mut self) {
+        self.device.on_device_sandboxed();
+    }
 }
