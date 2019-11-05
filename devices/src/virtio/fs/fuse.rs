@@ -654,12 +654,12 @@ impl Into<libc::stat64> for SetattrIn {
         out.st_uid = self.uid;
         out.st_gid = self.gid;
         out.st_size = self.size as i64;
-        out.st_atime = self.atime as i64;
-        out.st_mtime = self.mtime as i64;
-        out.st_ctime = self.ctime as i64;
-        out.st_atime_nsec = self.atimensec as i64;
-        out.st_mtime_nsec = self.mtimensec as i64;
-        out.st_ctime_nsec = self.ctimensec as i64;
+        out.st_atime = self.atime as libc::time_t;
+        out.st_mtime = self.mtime as libc::time_t;
+        out.st_ctime = self.ctime as libc::time_t;
+        out.st_atime_nsec = self.atimensec as libc::c_long;
+        out.st_mtime_nsec = self.mtimensec as libc::c_long;
+        out.st_ctime_nsec = self.ctimensec as libc::c_long;
 
         out
     }

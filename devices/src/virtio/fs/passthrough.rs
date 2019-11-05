@@ -1005,11 +1005,11 @@ impl FileSystem for PassthroughFs {
         if valid.contains(SetattrValid::SIZE) {
             // Safe because this doesn't modify any memory and we check the return value.
             let res = match data {
-                Data::Handle(_, fd) => unsafe { libc::ftruncate(fd, attr.st_size) },
+                Data::Handle(_, fd) => unsafe { libc::ftruncate64(fd, attr.st_size) },
                 _ => {
                     // There is no `ftruncateat` so we need to get a new fd and truncate it.
                     let f = self.open_inode(inode, libc::O_NONBLOCK | libc::O_RDWR)?;
-                    unsafe { libc::ftruncate(f.as_raw_fd(), attr.st_size) }
+                    unsafe { libc::ftruncate64(f.as_raw_fd(), attr.st_size) }
                 }
             };
             if res < 0 {
