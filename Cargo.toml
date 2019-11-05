@@ -55,7 +55,7 @@ kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
 kvm = { path = "kvm" }
 kvm_sys = { path = "kvm_sys" }
-libc = "=0.2.44"
+libc = "0.2"
 libcras = "*"
 msg_socket = { path = "msg_socket" }
 net_util = { path = "net_util" }
