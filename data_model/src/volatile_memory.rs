@@ -25,7 +25,7 @@ use std::marker::PhantomData;
 use std::mem::size_of;
 use std::ptr::{copy, null_mut, read_volatile, write_bytes, write_volatile};
 use std::result;
-use std::{isize, usize};
+use std::usize;
 
 use crate::DataInit;
 
