@@ -7,8 +7,6 @@
 mod balloon;
 mod block;
 mod descriptor_utils;
-#[cfg(feature = "gpu")]
-mod gpu;
 mod input;
 mod interrupt;
 mod net;
@@ -24,6 +22,8 @@ mod virtio_pci_device;
 mod wl;
 
 pub mod fs;
+#[cfg(feature = "gpu")]
+pub mod gpu;
 pub mod resource_bridge;
 pub mod vhost;
 

@@ -30,9 +30,6 @@ use crate::virtio::resource_bridge::*;
 
 use vm_control::{MaybeOwnedFd, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse};
 
-const DEFAULT_WIDTH: u32 = 1280;
-const DEFAULT_HEIGHT: u32 = 1024;
-
 struct VirtioGpuResource {
     width: u32,
     height: u32,
@@ -52,12 +49,15 @@ impl VirtioGpuResource {
         }
     }
 
-    pub fn v2_new(kvm_slot: u32, gpu_resource: GpuRendererResource) -> VirtioGpuResource {
-        // Choose DEFAULT_WIDTH and DEFAULT_HEIGHT, since that matches the default modes
-        // for virtgpu-kms.
+    pub fn v2_new(
+        width: u32,
+        height: u32,
+        kvm_slot: u32,
+        gpu_resource: GpuRendererResource,
+    ) -> VirtioGpuResource {
         VirtioGpuResource {
-            width: DEFAULT_WIDTH,
-            height: DEFAULT_HEIGHT,
+            width,
+            height,
             gpu_resource,
             display_import: None,
             kvm_slot: Some(kvm_slot),
@@ -155,6 +155,8 @@ impl VirtioGpuResource {
 /// failure, or requested data for the given command.
 pub struct Backend {
     display: Rc<RefCell<GpuDisplay>>,
+    display_width: u32,
+    display_height: u32,
     renderer: Renderer,
     resources: Map<u32, VirtioGpuResource>,
     contexts: Map<u32, RendererContext>,
@@ -174,12 +176,16 @@ impl Backend {
     /// data is copied as needed.
     pub fn new(
         display: GpuDisplay,
+        display_width: u32,
+        display_height: u32,
         renderer: Renderer,
         gpu_device_socket: VmMemoryControlRequestSocket,
         pci_bar: Alloc,
     ) -> Backend {
         Backend {
             display: Rc::new(RefCell::new(display)),
+            display_width,
+            display_height,
             renderer,
             gpu_device_socket,
             resources: Default::default(),
@@ -231,8 +237,8 @@ impl Backend {
     }
 
     /// Gets the list of supported display resolutions as a slice of `(width, height)` tuples.
-    pub fn display_info(&self) -> &[(u32, u32)] {
-        &[(DEFAULT_WIDTH, DEFAULT_HEIGHT)]
+    pub fn display_info(&self) -> [(u32, u32); 1] {
+        [(self.display_width, self.display_height)]
     }
 
     /// Creates a 2D resource with the given properties and associated it with the given id.
@@ -291,7 +297,7 @@ impl Backend {
             self.scanout_resource = id;
 
             if self.scanout_surface.is_none() {
-                match display.create_surface(None, DEFAULT_WIDTH, DEFAULT_HEIGHT) {
+                match display.create_surface(None, self.display_width, self.display_height) {
                     Ok(surface) => self.scanout_surface = Some(surface),
                     Err(e) => error!("failed to create display surface: {}", e),
                 }
@@ -328,7 +334,13 @@ impl Backend {
             return GpuResponse::OkNoData;
         }
 
-        let fb = match display.framebuffer_region(surface_id, 0, 0, DEFAULT_WIDTH, DEFAULT_HEIGHT) {
+        let fb = match display.framebuffer_region(
+            surface_id,
+            0,
+            0,
+            self.display_width,
+            self.display_height,
+        ) {
             Some(fb) => fb,
             None => {
                 error!("failed to access framebuffer for surface {}", surface_id);
@@ -339,8 +351,8 @@ impl Backend {
         resource.read_to_volatile(
             0,
             0,
-            DEFAULT_WIDTH,
-            DEFAULT_HEIGHT,
+            self.display_width,
+            self.display_height,
             fb.as_volatile_slice(),
             fb.stride(),
         );
@@ -866,7 +878,12 @@ impl Backend {
                             Ok(_resq) => match self.gpu_device_socket.recv() {
                                 Ok(response) => match response {
                                     VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
-                                        entry.insert(VirtioGpuResource::v2_new(slot, resource));
+                                        entry.insert(VirtioGpuResource::v2_new(
+                                            self.display_width,
+                                            self.display_height,
+                                            slot,
+                                            resource,
+                                        ));
                                         GpuResponse::OkNoData
                                     }
                                     VmMemoryResponse::Err(e) => {
@@ -891,8 +908,8 @@ impl Backend {
                     }
                     _ => {
                         entry.insert(VirtioGpuResource::new(
-                            DEFAULT_WIDTH,
-                            DEFAULT_HEIGHT,
+                            self.display_width,
+                            self.display_height,
                             resource,
                         ));
 

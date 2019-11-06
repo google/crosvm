@@ -618,6 +618,7 @@ fn create_gpu_device(
         NonZeroU8::new(1).unwrap(), // number of scanouts
         gpu_sockets,
         display_backends,
+        cfg.gpu_parameters.as_ref().unwrap(),
     );
 
     let jail = match simple_jail(&cfg, "gpu_device.policy")? {
@@ -970,7 +971,7 @@ fn create_virtio_devices(
 
         #[cfg(feature = "gpu")]
         {
-            if cfg.gpu {
+            if cfg.gpu_parameters.is_some() {
                 let (wl_socket, gpu_socket) =
                     virtio::resource_bridge::pair().map_err(Error::CreateSocket)?;
                 resource_bridges.push(gpu_socket);
@@ -988,7 +989,7 @@ fn create_virtio_devices(
 
     #[cfg(feature = "gpu")]
     {
-        if cfg.gpu {
+        if cfg.gpu_parameters.is_some() {
             devs.push(create_gpu_device(
                 cfg,
                 _exit_evt,

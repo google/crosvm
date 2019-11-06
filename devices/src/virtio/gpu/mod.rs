@@ -39,6 +39,20 @@ use crate::pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType};
 
 use vm_control::VmMemoryControlRequestSocket;
 
+pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
+pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
+
+#[derive(Debug)]
+pub struct GpuParameters {
+    pub display_width: u32,
+    pub display_height: u32,
+}
+
+pub const DEFAULT_GPU_PARAMS: GpuParameters = GpuParameters {
+    display_width: DEFAULT_DISPLAY_WIDTH,
+    display_height: DEFAULT_DISPLAY_HEIGHT,
+};
+
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.
 const QUEUE_SIZES: &[u16] = &[256, 16];
@@ -656,6 +670,8 @@ impl DisplayBackend {
 // failed.
 fn build_backend(
     possible_displays: &[DisplayBackend],
+    display_width: u32,
+    display_height: u32,
     gpu_device_socket: VmMemoryControlRequestSocket,
     pci_bar: Alloc,
 ) -> Option<Backend> {
@@ -701,7 +717,14 @@ fn build_backend(
         }
     };
 
-    Some(Backend::new(display, renderer, gpu_device_socket, pci_bar))
+    Some(Backend::new(
+        display,
+        display_width,
+        display_height,
+        renderer,
+        gpu_device_socket,
+        pci_bar,
+    ))
 }
 
 pub struct Gpu {
@@ -713,6 +736,8 @@ pub struct Gpu {
     worker_thread: Option<thread::JoinHandle<()>>,
     num_scanouts: NonZeroU8,
     display_backends: Vec<DisplayBackend>,
+    display_width: u32,
+    display_height: u32,
     pci_bar: Option<Alloc>,
 }
 
@@ -723,6 +748,7 @@ impl Gpu {
         num_scanouts: NonZeroU8,
         resource_bridges: Vec<ResourceResponseSocket>,
         display_backends: Vec<DisplayBackend>,
+        gpu_parameters: &GpuParameters,
     ) -> Gpu {
         Gpu {
             config_event: false,
@@ -733,6 +759,8 @@ impl Gpu {
             worker_thread: None,
             num_scanouts,
             display_backends,
+            display_width: gpu_parameters.display_width,
+            display_height: gpu_parameters.display_height,
             pci_bar: None,
         }
     }
@@ -851,6 +879,8 @@ impl VirtioDevice for Gpu {
         let cursor_queue = queues.remove(0);
         let cursor_evt = queue_evts.remove(0);
         let display_backends = self.display_backends.clone();
+        let display_width = self.display_width;
+        let display_height = self.display_height;
         if let (Some(gpu_device_socket), Some(pci_bar)) =
             (self.gpu_device_socket.take(), self.pci_bar.take())
         {
@@ -858,11 +888,16 @@ impl VirtioDevice for Gpu {
                 thread::Builder::new()
                     .name("virtio_gpu".to_string())
                     .spawn(move || {
-                        let backend =
-                            match build_backend(&display_backends, gpu_device_socket, pci_bar) {
-                                Some(backend) => backend,
-                                None => return,
-                            };
+                        let backend = match build_backend(
+                            &display_backends,
+                            display_width,
+                            display_height,
+                            gpu_device_socket,
+                            pci_bar,
+                        ) {
+                            Some(backend) => backend,
+                            None => return,
+                        };
 
                         Worker {
                             interrupt,

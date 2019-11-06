@@ -19,6 +19,8 @@ use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
     linux, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
 };
+#[cfg(feature = "gpu")]
+use devices::virtio::gpu::{GpuParameters, DEFAULT_GPU_PARAMS};
 use devices::{SerialParameters, SerialType};
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use qcow::QcowFile;
@@ -106,6 +108,48 @@ fn parse_cpu_set(s: &str) -> argument::Result<Vec<usize>> {
         }
     }
     Ok(cpuset)
+}
+
+#[cfg(feature = "gpu")]
+fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
+    let mut gpu_params = DEFAULT_GPU_PARAMS;
+
+    if let Some(s) = s {
+        let opts = s
+            .split(",")
+            .map(|frag| frag.split("="))
+            .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
+
+        for (k, v) in opts {
+            match k {
+                "width" => {
+                    gpu_params.display_width =
+                        v.parse::<u32>()
+                            .map_err(|_| argument::Error::InvalidValue {
+                                value: v.to_string(),
+                                expected: "gpu parameter 'width' must be a valid integer",
+                            })?;
+                }
+                "height" => {
+                    gpu_params.display_height =
+                        v.parse::<u32>()
+                            .map_err(|_| argument::Error::InvalidValue {
+                                value: v.to_string(),
+                                expected: "gpu parameter 'height' must be a valid integer",
+                            })?;
+                }
+                "" => {}
+                _ => {
+                    return Err(argument::Error::UnknownArgument(format!(
+                        "gpu parameter {}",
+                        k
+                    )));
+                }
+            }
+        }
+    }
+
+    Ok(gpu_params)
 }
 
 fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
@@ -713,8 +757,10 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     })?,
             );
         }
+        #[cfg(feature = "gpu")]
         "gpu" => {
-            cfg.gpu = true;
+            let params = parse_gpu_options(value)?;
+            cfg.gpu_parameters = Some(params);
         }
         "software-tpm" => {
             cfg.software_tpm = true;
@@ -864,7 +910,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::flag("null-audio", "Add an audio device to the VM that plays samples to /dev/null"),
           Argument::value("serial",
                           "type=TYPE,[num=NUM,path=PATH,console,stdin]",
-                          "Comma seperated key=value pairs for setting up serial devices. Can be given more than once.
+                          "Comma separated key=value pairs for setting up serial devices. Can be given more than once.
                           Possible key values:
                           type=(stdout,syslog,sink,file) - Where to route the serial device
                           num=(1,2,3,4) - Serial Device Number. If not provided, num will default to 1.
@@ -909,7 +955,13 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                           "fd",
                           "File descriptor for configured tap device. A different virtual network card will be added each time this argument is given."),
           #[cfg(feature = "gpu")]
-          Argument::flag("gpu", "(EXPERIMENTAL) enable virtio-gpu device"),
+          Argument::flag_or_value("gpu",
+                                  "[width=INT,height=INT]",
+                                  "(EXPERIMENTAL) Comma separated key=value pairs for setting up a virtio-gpu device
+                                  Possible key values:
+                                  width=INT - The width of the virtual display connected to the virtio-gpu.
+                                  height=INT - The height of the virtual display connected to the virtio-gpu.
+                                  "),
           #[cfg(feature = "tpm")]
           Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),
           Argument::value("evdev", "PATH", "Path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host"),

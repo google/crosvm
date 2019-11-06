@@ -17,6 +17,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use devices::virtio::fs::passthrough;
+#[cfg(feature = "gpu")]
+use devices::virtio::gpu::GpuParameters;
 use devices::SerialParameters;
 use libc::{getegid, geteuid};
 
@@ -146,7 +148,8 @@ pub struct Config {
     pub sandbox: bool,
     pub seccomp_policy_dir: PathBuf,
     pub seccomp_log_failures: bool,
-    pub gpu: bool,
+    #[cfg(feature = "gpu")]
+    pub gpu_parameters: Option<GpuParameters>,
     pub software_tpm: bool,
     pub cras_audio: bool,
     pub cras_capture: bool,
@@ -184,7 +187,8 @@ impl Default for Config {
             vhost_net: false,
             tap_fd: Vec::new(),
             cid: None,
-            gpu: false,
+            #[cfg(feature = "gpu")]
+            gpu_parameters: None,
             software_tpm: false,
             wayland_socket_path: None,
             wayland_dmabuf: false,
