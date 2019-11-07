@@ -295,8 +295,9 @@ impl Queue {
         }
     }
 
-    /// If a new DescriptorHead is available, returns one and removes it from the queue.
-    pub fn pop<'a>(&mut self, mem: &'a GuestMemory) -> Option<DescriptorChain<'a>> {
+    /// Get the first available descriptor chain without removing it from the queue.
+    /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
+    pub fn peek<'a>(&mut self, mem: &'a GuestMemory) -> Option<DescriptorChain<'a>> {
         if !self.is_valid(mem) {
             return None;
         }
@@ -316,10 +317,20 @@ impl Queue {
         // This index is checked below in checked_new.
         let descriptor_index: u16 = mem.read_obj_from_addr(desc_idx_addr).unwrap();
 
-        let descriptor_chain =
-            DescriptorChain::checked_new(mem, self.desc_table, queue_size, descriptor_index, 0);
+        DescriptorChain::checked_new(mem, self.desc_table, queue_size, descriptor_index, 0)
+    }
+
+    /// Remove the first available descriptor chain from the queue.
+    /// This function should only be called immediately following `peek`.
+    pub fn pop_peeked(&mut self) {
+        self.next_avail += Wrapping(1);
+    }
+
+    /// If a new DescriptorHead is available, returns one and removes it from the queue.
+    pub fn pop<'a>(&mut self, mem: &'a GuestMemory) -> Option<DescriptorChain<'a>> {
+        let descriptor_chain = self.peek(mem);
         if descriptor_chain.is_some() {
-            self.next_avail += Wrapping(1);
+            self.pop_peeked();
         }
         descriptor_chain
     }
