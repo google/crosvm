@@ -648,7 +648,7 @@ mod tests {
             ],
             0,
         )
-        .expect("create_descriptor_chain failed");;
+        .expect("create_descriptor_chain failed");
         let mut writer = Writer::new(&memory, chain).expect("failed to create Writer");
         assert_eq!(writer.available_bytes(), 106);
         assert_eq!(writer.bytes_written(), 0);
@@ -684,7 +684,7 @@ mod tests {
             vec![(Writable, 8)],
             0,
         )
-        .expect("create_descriptor_chain failed");;
+        .expect("create_descriptor_chain failed");
         let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
         assert_eq!(reader.available_bytes(), 0);
         assert_eq!(reader.bytes_read(), 0);
@@ -709,7 +709,7 @@ mod tests {
             vec![(Readable, 8)],
             0,
         )
-        .expect("create_descriptor_chain failed");;
+        .expect("create_descriptor_chain failed");
         let mut writer = Writer::new(&memory, chain).expect("failed to create Writer");
         assert_eq!(writer.available_bytes(), 0);
         assert_eq!(writer.bytes_written(), 0);
@@ -734,7 +734,7 @@ mod tests {
             vec![(Readable, 256), (Readable, 256)],
             0,
         )
-        .expect("create_descriptor_chain failed");;
+        .expect("create_descriptor_chain failed");
 
         let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
 
@@ -926,7 +926,7 @@ mod tests {
             ],
             0,
         )
-        .expect("create_descriptor_chain failed");;
+        .expect("create_descriptor_chain failed");
         let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
 
         let other = reader.split_at(32).expect("failed to split Reader");

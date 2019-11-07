@@ -166,11 +166,11 @@ mod test {
 
         let mut d = [0; 4];
         gm.read_exact_at_addr(&mut d, GuestAddress(0x100)).unwrap();
-        assert_eq!(d, [7, 6, 5, 4]);;
+        assert_eq!(d, [7, 6, 5, 4]);
         gm.read_exact_at_addr(&mut d, GuestAddress(0x200)).unwrap();
-        assert_eq!(d, [3, 2, 0, 0]);;
+        assert_eq!(d, [3, 2, 0, 0]);
         gm.read_exact_at_addr(&mut d, GuestAddress(0x300)).unwrap();
-        assert_eq!(d, [1, 0, 0, 0]);;
+        assert_eq!(d, [1, 0, 0, 0]);
 
         let mut data_read = [0; 7];
         buffer.read(&mut data_read).unwrap();
