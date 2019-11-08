@@ -3,21 +3,21 @@
 // found in the LICENSE file.
 
 use std::fmt::{self, Display};
-use std::io::{self, Write};
+use std::io;
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::result;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
 
 use crate::pci::MsixConfig;
-use libc::{EAGAIN, EEXIST};
 use net_sys;
 use net_util::{Error as TapError, MacAddress, TapT};
 use sys_util::Error as SysError;
-use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
+use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken, WatchingEvents};
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
 use virtio_sys::{vhost, virtio_net};
 
@@ -26,7 +26,6 @@ use super::{Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_NET};
 /// The maximum buffer size when segmentation offload is enabled. This
 /// includes the 12-byte virtio net header.
 /// http://docs.oasis-open.org/virtio/virtio/v1.0/virtio-v1.0.html#x1-1740003
-const MAX_BUFFER_SIZE: usize = 65562;
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
@@ -39,10 +38,14 @@ pub enum NetError {
     CreatePollContext(SysError),
     /// Cloning kill eventfd failed.
     CloneKillEventFd(SysError),
-    /// Adding the tap fd back to the poll context failed.
-    PollAddTap(SysError),
-    /// Removing the tap fd from the poll context failed.
-    PollDeleteTap(SysError),
+    /// Removing EPOLLIN from the tap fd events failed.
+    PollDisableTap(SysError),
+    /// Adding EPOLLIN to the tap fd events failed.
+    PollEnableTap(SysError),
+    /// Error while polling for events.
+    PollError(SysError),
+    /// There are no more available descriptors to receive into.
+    RxDescriptorsExhausted,
     /// Open tap device failed.
     TapOpen(TapError),
     /// Setting tap IP failed.
@@ -59,8 +62,8 @@ pub enum NetError {
     TapEnable(TapError),
     /// Validating tap interface failed.
     TapValidate(String),
-    /// Error while polling for events.
-    PollError(SysError),
+    /// Writing to a buffer in the guest failed.
+    WriteBuffer(io::Error),
 }
 
 impl Display for NetError {
@@ -71,8 +74,10 @@ impl Display for NetError {
             CreateKillEventFd(e) => write!(f, "failed to create kill eventfd: {}", e),
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             CloneKillEventFd(e) => write!(f, "failed to clone kill eventfd: {}", e),
-            PollAddTap(e) => write!(f, "failed to add tap fd to poll context: {}", e),
-            PollDeleteTap(e) => write!(f, "failed to remove tap fd from poll context: {}", e),
+            PollDisableTap(e) => write!(f, "failed to disable EPOLLIN on tap fd: {}", e),
+            PollEnableTap(e) => write!(f, "failed to enable EPOLLIN on tap fd: {}", e),
+            PollError(e) => write!(f, "error while polling for events: {}", e),
+            RxDescriptorsExhausted => write!(f, "no rx descriptors available"),
             TapOpen(e) => write!(f, "failed to open tap device: {}", e),
             TapSetIp(e) => write!(f, "failed to set tap IP: {}", e),
             TapSetNetmask(e) => write!(f, "failed to set tap netmask: {}", e),
@@ -81,7 +86,7 @@ impl Display for NetError {
             TapSetVnetHdrSize(e) => write!(f, "failed to set vnet header size: {}", e),
             TapEnable(e) => write!(f, "failed to enable tap interface: {}", e),
             TapValidate(s) => write!(f, "failed to validate tap interface: {}", s),
-            PollError(e) => write!(f, "error while polling for events: {}", e),
+            WriteBuffer(e) => write!(f, "failed to write to guest buffer: {}", e),
         }
     }
 }
@@ -92,9 +97,6 @@ struct Worker<T: TapT> {
     rx_queue: Queue,
     tx_queue: Queue,
     tap: T,
-    rx_buf: [u8; MAX_BUFFER_SIZE],
-    rx_count: usize,
-    deferred_rx: bool,
     // TODO(smbarber): http://crbug.com/753630
     // Remove once MRG_RXBUF is supported and this variable is actually used.
     #[allow(dead_code)]
@@ -105,76 +107,63 @@ impl<T> Worker<T>
 where
     T: TapT,
 {
-    // Copies a single frame from `self.rx_buf` into the guest. Returns true
-    // if a buffer was used, and false if the frame must be deferred until a buffer
-    // is made available by the driver.
-    fn rx_single_frame(&mut self) -> bool {
-        let desc_chain = match self.rx_queue.pop(&self.mem) {
-            Some(desc) => desc,
-            None => return false,
-        };
-
-        let index = desc_chain.index;
-        let bytes_written = match Writer::new(&self.mem, desc_chain) {
-            Ok(mut writer) => {
-                match writer.write_all(&self.rx_buf[0..self.rx_count]) {
-                    Ok(()) => (),
-                    Err(ref e) if e.kind() == io::ErrorKind::WriteZero => {
-                        warn!(
-                            "net: rx: buffer is too small to hold frame of size {}",
-                            self.rx_count
-                        );
-                    }
-                    Err(e) => {
-                        warn!("net: rx: failed to write slice: {}", e);
-                    }
-                };
-
-                writer.bytes_written() as u32
-            }
-            Err(e) => {
-                error!("net: failed to create Writer: {}", e);
-                0
-            }
-        };
-
-        self.rx_queue.add_used(&self.mem, index, bytes_written);
-
-        true
-    }
-
-    fn process_rx(&mut self) -> bool {
+    fn process_rx(&mut self) -> result::Result<(), NetError> {
         let mut needs_interrupt = false;
-        let mut first_frame = true;
+        let mut exhausted_queue = false;
 
         // Read as many frames as possible.
         loop {
-            let res = self.tap.read(&mut self.rx_buf);
-            match res {
-                Ok(count) => {
-                    self.rx_count = count;
-                    if !self.rx_single_frame() {
-                        self.deferred_rx = true;
-                        break;
-                    } else if first_frame {
-                        self.interrupt.signal_used_queue(self.rx_queue.vector);
-                        first_frame = false;
-                    } else {
-                        needs_interrupt = true;
-                    }
-                }
-                Err(e) => {
-                    // The tap device is nonblocking, so any error aside from EAGAIN is
-                    // unexpected.
-                    if e.raw_os_error().unwrap() != EAGAIN {
-                        warn!("net: rx: failed to read tap: {}", e);
-                    }
+            let desc_chain = match self.rx_queue.peek(&self.mem) {
+                Some(desc) => desc,
+                None => {
+                    exhausted_queue = true;
                     break;
                 }
+            };
+
+            let index = desc_chain.index;
+            let bytes_written = match Writer::new(&self.mem, desc_chain) {
+                Ok(mut writer) => {
+                    match writer.write_from(&mut self.tap, writer.available_bytes()) {
+                        Ok(_) => {}
+                        Err(ref e) if e.kind() == io::ErrorKind::WriteZero => {
+                            warn!("net: rx: buffer is too small to hold frame");
+                            break;
+                        }
+                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                            // No more to read from the tap.
+                            break;
+                        }
+                        Err(e) => {
+                            warn!("net: rx: failed to write slice: {}", e);
+                            return Err(NetError::WriteBuffer(e));
+                        }
+                    };
+
+                    writer.bytes_written() as u32
+                }
+                Err(e) => {
+                    error!("net: failed to create Writer: {}", e);
+                    0
+                }
+            };
+
+            if bytes_written > 0 {
+                self.rx_queue.pop_peeked();
+                self.rx_queue.add_used(&self.mem, index, bytes_written);
+                needs_interrupt = true;
             }
         }
 
-        needs_interrupt
+        if needs_interrupt {
+            self.interrupt.signal_used_queue(self.rx_queue.vector);
+        }
+
+        if exhausted_queue {
+            Err(NetError::RxDescriptorsExhausted)
+        } else {
+            Ok(())
+        }
     }
 
     fn process_tx(&mut self) {
@@ -236,49 +225,31 @@ where
         ])
         .map_err(NetError::CreatePollContext)?;
 
+        let mut tap_polling_enabled = true;
         'poll: loop {
             let events = poll_ctx.wait().map_err(NetError::PollError)?;
             for event in events.iter_readable() {
-                let mut needs_interrupt_rx = false;
                 match event.token() {
-                    Token::RxTap => {
-                        // Process a deferred frame first if available. Don't read from tap again
-                        // until we manage to receive this deferred frame.
-                        if self.deferred_rx {
-                            if self.rx_single_frame() {
-                                self.deferred_rx = false;
-                                needs_interrupt_rx = true;
-                            } else {
-                                // There is an outstanding deferred frame and the guest has not yet
-                                // made any buffers available. Remove the tapfd from the poll
-                                // context until more are made available.
-                                poll_ctx
-                                    .delete(&self.tap)
-                                    .map_err(NetError::PollDeleteTap)?;
-                                continue;
-                            }
+                    Token::RxTap => match self.process_rx() {
+                        Ok(()) => {}
+                        Err(NetError::RxDescriptorsExhausted) => {
+                            poll_ctx
+                                .modify(&self.tap, WatchingEvents::empty(), Token::RxTap)
+                                .map_err(NetError::PollDisableTap)?;
+                            tap_polling_enabled = false;
                         }
-                        needs_interrupt_rx |= self.process_rx();
-                    }
+                        Err(e) => return Err(e),
+                    },
                     Token::RxQueue => {
                         if let Err(e) = rx_queue_evt.read() {
                             error!("net: error reading rx queue EventFd: {}", e);
                             break 'poll;
                         }
-                        // There should be a buffer available now to receive the frame into.
-                        if self.deferred_rx && self.rx_single_frame() {
-                            needs_interrupt_rx = true;
-
-                            // The guest has made buffers available, so add the tap back to the
-                            // poll context in case it was removed.
-                            match poll_ctx.add(&self.tap, Token::RxTap) {
-                                Ok(_) => {}
-                                Err(e) if e.errno() == EEXIST => {}
-                                Err(e) => {
-                                    return Err(NetError::PollAddTap(e));
-                                }
-                            }
-                            self.deferred_rx = false;
+                        if !tap_polling_enabled {
+                            poll_ctx
+                                .modify(&self.tap, WatchingEvents::empty().set_read(), Token::RxTap)
+                                .map_err(NetError::PollEnableTap)?;
+                            tap_polling_enabled = true;
                         }
                     }
                     Token::TxQueue => {
@@ -292,10 +263,6 @@ where
                         self.interrupt.interrupt_resample();
                     }
                     Token::Kill => break 'poll,
-                }
-
-                if needs_interrupt_rx {
-                    self.interrupt.signal_used_queue(self.rx_queue.vector);
                 }
             }
         }
@@ -501,9 +468,6 @@ where
                                 rx_queue,
                                 tx_queue,
                                 tap,
-                                rx_buf: [0u8; MAX_BUFFER_SIZE],
-                                rx_count: 0,
-                                deferred_rx: false,
                                 acked_features,
                             };
                             let rx_queue_evt = queue_evts.remove(0);
