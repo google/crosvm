@@ -516,7 +516,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             syslog::set_proc_name(value.unwrap());
             cfg.syslog_tag = Some(value.unwrap().to_owned());
         }
-        "root" | "rwroot" | "disk" | "rwdisk" | "qcow" | "rwqcow" => {
+        "root" | "rwroot" | "disk" | "rwdisk" => {
             let param = value.unwrap();
             let mut components = param.split(',');
             let read_only = !name.starts_with("rw");
@@ -1162,10 +1162,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                               Valid keys:
                               sparse=BOOL - Indicates whether the disk should support the discard operation (default: true)
                               block_size=BYTES - Set the reported block size of the disk (default: 512)"),
-          Argument::value("qcow", "PATH", "Path to a qcow2 disk image. (Deprecated; use --disk instead.)"),
           Argument::value("rwdisk", "PATH[,key=value[,key=value[,...]]", "Path to a writable disk image followed by optional comma-separated options.
                               See --disk for valid options."),
-          Argument::value("rwqcow", "PATH", "Path to a writable qcow2 disk image. (Deprecated; use --rwdisk instead.)"),
           Argument::value("rw-pmem-device", "PATH", "Path to a writable disk image."),
           Argument::value("pmem-device", "PATH", "Path to a disk image."),
           Argument::value("pstore", "path=PATH,size=SIZE", "Path to pstore buffer backend file follewed by size."),
