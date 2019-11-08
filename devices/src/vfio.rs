@@ -329,10 +329,14 @@ impl VfioDevice {
         })
     }
 
-    /// enable vfio device's irq and associate Irqfd EventFd with device
-    pub fn irq_enable(&self, fd: &EventFd, irq_type: VfioIrqType) -> Result<(), VfioError> {
-        let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(1);
-        irq_set[0].argsz = (mem::size_of::<vfio_irq_set>() + mem::size_of::<u32>()) as u32;
+    /// Enable vfio device's irq and associate Irqfd EventFd with device.
+    /// When MSIx is enabled, multi vectors will be supported, so fds is vector and the vector
+    /// length is the num of MSIx vectors
+    pub fn irq_enable(&self, fds: Vec<&EventFd>, irq_type: VfioIrqType) -> Result<(), VfioError> {
+        let count = fds.len();
+        let u32_size = mem::size_of::<u32>();
+        let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(count);
+        irq_set[0].argsz = (mem::size_of::<vfio_irq_set>() + count * u32_size) as u32;
         irq_set[0].flags = VFIO_IRQ_SET_DATA_EVENTFD | VFIO_IRQ_SET_ACTION_TRIGGER;
         match irq_type {
             VfioIrqType::Intx => irq_set[0].index = VFIO_PCI_INTX_IRQ_INDEX,
@@ -340,15 +344,17 @@ impl VfioDevice {
             VfioIrqType::Msix => irq_set[0].index = VFIO_PCI_MSIX_IRQ_INDEX,
         }
         irq_set[0].start = 0;
-        irq_set[0].count = 1;
+        irq_set[0].count = count as u32;
 
-        {
-            // irq_set.data could be none, bool or fd according to flags, so irq_set.data
-            // is u8 default, here irq_set.data is fd as u32, so 4 default u8 are combined
-            // together as u32. It is safe as enough space is reserved through
-            // vec_with_array_field(u32)<1>.
-            let fds = unsafe { irq_set[0].data.as_mut_slice(4) };
-            fds.copy_from_slice(&fd.as_raw_fd().to_le_bytes()[..]);
+        // irq_set.data could be none, bool or fd according to flags, so irq_set.data
+        // is u8 default, here irq_set.data is fd as u32, so 4 default u8 are combined
+        // together as u32. It is safe as enough space is reserved through
+        // vec_with_array_field(u32)<count>.
+        let mut data = unsafe { irq_set[0].data.as_mut_slice(count * u32_size) };
+        for fd in fds.iter().take(count) {
+            let (left, right) = data.split_at_mut(u32_size);
+            left.copy_from_slice(&fd.as_raw_fd().to_ne_bytes()[..]);
+            data = right;
         }
 
         // Safe as we are the owner of self and irq_set which are valid value

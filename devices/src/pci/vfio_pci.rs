@@ -468,7 +468,9 @@ impl VfioPciDevice {
         }
 
         if let Some(ref interrupt_evt) = self.interrupt_evt {
-            if let Err(e) = self.device.irq_enable(interrupt_evt, VfioIrqType::Intx) {
+            let mut fds = Vec::new();
+            fds.push(interrupt_evt);
+            if let Err(e) = self.device.irq_enable(fds, VfioIrqType::Intx) {
                 error!("Intx enable failed: {}", e);
                 return;
             }
@@ -524,7 +526,9 @@ impl VfioPciDevice {
             }
         };
 
-        if let Err(e) = self.device.irq_enable(irqfd, VfioIrqType::Msi) {
+        let mut fds = Vec::new();
+        fds.push(irqfd);
+        if let Err(e) = self.device.irq_enable(fds, VfioIrqType::Msi) {
             error!("failed to enable msi: {}", e);
             self.enable_intx();
             return;
