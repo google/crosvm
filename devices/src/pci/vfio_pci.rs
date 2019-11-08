@@ -17,6 +17,8 @@ use vm_control::{
     VmMemoryRequest, VmMemoryResponse,
 };
 
+use crate::pci::msix::MsixConfig;
+
 use crate::pci::pci_device::{Error as PciDeviceError, PciDevice};
 use crate::pci::{PciClassCode, PciInterruptPin};
 
@@ -94,6 +96,7 @@ impl VfioPciConfig {
 
 const PCI_CAPABILITY_LIST: u32 = 0x34;
 const PCI_CAP_ID_MSI: u8 = 0x05;
+const PCI_CAP_ID_MSIX: u8 = 0x11;
 
 // MSI registers
 const PCI_MSI_NEXT_POINTER: u32 = 0x1; // Next cap pointer
@@ -122,43 +125,37 @@ struct VfioMsiCap {
     ctl: u16,
     address: u64,
     data: u16,
-    vm_socket_irq: VmIrqRequestSocket,
+    vm_socket_irq: Arc<VmIrqRequestSocket>,
     irqfd: Option<EventFd>,
     gsi: Option<u32>,
 }
 
 impl VfioMsiCap {
-    fn new(config: &VfioPciConfig, vm_socket_irq: VmIrqRequestSocket) -> Option<Self> {
+    fn new(
+        config: &VfioPciConfig,
+        msi_cap_start: u32,
+        vm_socket_irq: Arc<VmIrqRequestSocket>,
+    ) -> Self {
         // msi minimum size is 0xa
         let mut msi_len: u32 = MSI_LENGTH_32BIT;
-        let mut cap_next: u32 = config.read_config_byte(PCI_CAPABILITY_LIST).into();
-        while cap_next != 0 {
-            let cap_id = config.read_config_byte(cap_next);
-            // find msi cap
-            if cap_id == PCI_CAP_ID_MSI {
-                let msi_ctl = config.read_config_word(cap_next + PCI_MSI_FLAGS);
-                if msi_ctl & PCI_MSI_FLAGS_64BIT != 0 {
-                    msi_len = MSI_LENGTH_64BIT_WITHOUT_MASK;
-                }
-                if msi_ctl & PCI_MSI_FLAGS_MASKBIT != 0 {
-                    msi_len = MSI_LENGTH_64BIT_WITH_MASK;
-                }
-                return Some(VfioMsiCap {
-                    offset: cap_next,
-                    size: msi_len,
-                    ctl: 0,
-                    address: 0,
-                    data: 0,
-                    vm_socket_irq,
-                    irqfd: None,
-                    gsi: None,
-                });
-            }
-            let offset = cap_next + PCI_MSI_NEXT_POINTER;
-            cap_next = config.read_config_byte(offset).into();
+        let msi_ctl = config.read_config_word(msi_cap_start + PCI_MSI_FLAGS);
+        if msi_ctl & PCI_MSI_FLAGS_64BIT != 0 {
+            msi_len = MSI_LENGTH_64BIT_WITHOUT_MASK;
+        }
+        if msi_ctl & PCI_MSI_FLAGS_MASKBIT != 0 {
+            msi_len = MSI_LENGTH_64BIT_WITH_MASK;
         }
 
-        None
+        VfioMsiCap {
+            offset: msi_cap_start,
+            size: msi_len,
+            ctl: 0,
+            address: 0,
+            data: 0,
+            vm_socket_irq,
+            irqfd: None,
+            gsi: None,
+        }
     }
 
     fn is_msi_reg(&self, index: u64, len: usize) -> bool {
@@ -290,9 +287,53 @@ impl VfioMsiCap {
     fn get_msi_irqfd(&self) -> Option<&EventFd> {
         self.irqfd.as_ref()
     }
+}
 
-    fn get_vm_socket(&self) -> RawFd {
-        self.vm_socket_irq.as_ref().as_raw_fd()
+// MSI-X registers in MSI-X capability
+const PCI_MSIX_FLAGS: u32 = 0x02; // Message Control
+const PCI_MSIX_FLAGS_QSIZE: u16 = 0x07FF; // Table size
+const PCI_MSIX_TABLE: u32 = 0x04; // Table offset
+const PCI_MSIX_TABLE_BIR: u32 = 0x07; // BAR index
+const PCI_MSIX_TABLE_OFFSET: u32 = 0xFFFFFFF8; // Offset into specified BAR
+const PCI_MSIX_PBA: u32 = 0x08; // Pending bit Array offset
+const PCI_MSIX_PBA_BIR: u32 = 0x07; // BAR index
+const PCI_MSIX_PBA_OFFSET: u32 = 0xFFFFFFF8; // Offset into specified BAR
+
+#[allow(dead_code)]
+struct VfioMsixCap {
+    config: MsixConfig,
+    offset: u32,
+    table_size: u16,
+    table_pci_bar: u32,
+    table_offset: u64,
+    pba_pci_bar: u32,
+    pba_offset: u64,
+}
+
+impl VfioMsixCap {
+    fn new(
+        config: &VfioPciConfig,
+        msix_cap_start: u32,
+        vm_socket_irq: Arc<VmIrqRequestSocket>,
+    ) -> Self {
+        let msix_ctl = config.read_config_word(msix_cap_start + PCI_MSIX_FLAGS);
+        let table_size = (msix_ctl & PCI_MSIX_FLAGS_QSIZE) + 1;
+        let table = config.read_config_dword(msix_cap_start + PCI_MSIX_TABLE);
+        let table_pci_bar = table & PCI_MSIX_TABLE_BIR;
+        let table_offset = (table & PCI_MSIX_TABLE_OFFSET) as u64;
+        let pba = config.read_config_dword(msix_cap_start + PCI_MSIX_PBA);
+        let pba_pci_bar = pba & PCI_MSIX_PBA_BIR;
+        let pba_offset = (pba & PCI_MSIX_PBA_OFFSET) as u64;
+
+        VfioMsixCap {
+            config: MsixConfig::new(table_size, vm_socket_irq),
+            offset: msix_cap_start,
+            table_size,
+            table_pci_bar,
+            table_offset,
+            pba_pci_bar,
+            pba_offset,
+        }
     }
 }
 
@@ -311,6 +352,7 @@ enum DeviceData {
 }
 
 /// Implements the Vfio Pci device, then a pci device is added into vm
+#[allow(dead_code)]
 pub struct VfioPciDevice {
     device: Arc<VfioDevice>,
     config: VfioPciConfig,
@@ -320,8 +362,10 @@ pub struct VfioPciDevice {
     mmio_regions: Vec<MmioInfo>,
     io_regions: Vec<IoInfo>,
     msi_cap: Option<VfioMsiCap>,
+    msix_cap: Option<VfioMsixCap>,
     irq_type: Option<VfioIrqType>,
     vm_socket_mem: VmMemoryControlRequestSocket,
+    vm_socket_irq: Arc<VmIrqRequestSocket>,
     device_data: Option<DeviceData>,
 
     // scratch MemoryMapping to avoid unmap beform vm exit
@@ -337,7 +381,29 @@ impl VfioPciDevice {
     ) -> Self {
         let dev = Arc::new(device);
         let config = VfioPciConfig::new(Arc::clone(&dev));
-        let msi_cap = VfioMsiCap::new(&config, vfio_device_socket_irq);
+        let vm_socket_irq = Arc::new(vfio_device_socket_irq);
+        let mut msi_cap: Option<VfioMsiCap> = None;
+        let mut msix_cap: Option<VfioMsixCap> = None;
+
+        let mut cap_next: u32 = config.read_config_byte(PCI_CAPABILITY_LIST).into();
+        while cap_next != 0 {
+            let cap_id = config.read_config_byte(cap_next);
+            if cap_id == PCI_CAP_ID_MSI {
+                msi_cap = Some(VfioMsiCap::new(
+                    &config,
+                    cap_next,
+                    Arc::clone(&vm_socket_irq),
+                ));
+            } else if cap_id == PCI_CAP_ID_MSIX {
+                msix_cap = Some(VfioMsixCap::new(
+                    &config,
+                    cap_next,
+                    Arc::clone(&vm_socket_irq),
+                ));
+            }
+            let offset = cap_next + PCI_MSI_NEXT_POINTER;
+            cap_next = config.read_config_byte(offset).into();
+        }
 
         let vendor_id = config.read_config_word(PCI_VENDOR_ID);
         let class_code = config.read_config_byte(PCI_BASE_CLASS_CODE);
@@ -361,8 +427,10 @@ impl VfioPciDevice {
             mmio_regions: Vec::new(),
             io_regions: Vec::new(),
             msi_cap,
+            msix_cap,
             irq_type: None,
             vm_socket_mem: vfio_device_socket_mem,
+            vm_socket_irq,
             device_data,
             mem: Vec::new(),
         }
@@ -566,10 +634,8 @@ impl PciDevice for VfioPciDevice {
         if let Some(ref interrupt_resample_evt) = self.interrupt_resample_evt {
             fds.push(interrupt_resample_evt.as_raw_fd());
         }
-        if let Some(msi_cap) = &self.msi_cap {
-            fds.push(msi_cap.get_vm_socket());
-        }
         fds.push(self.vm_socket_mem.as_raw_fd());
+        fds.push(self.vm_socket_irq.as_ref().as_raw_fd());
         fds
     }
 

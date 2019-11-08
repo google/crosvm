@@ -6,6 +6,7 @@ use crate::pci::{PciCapability, PciCapabilityID};
 use msg_socket::{MsgReceiver, MsgSender};
 use std::convert::TryInto;
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::sync::Arc;
 use sys_util::{error, EventFd};
 use vm_control::{MaybeOwnedFd, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
 
@@ -55,12 +56,12 @@ pub struct MsixConfig {
     irq_vec: Vec<IrqfdGsi>,
     masked: bool,
     enabled: bool,
-    msi_device_socket: VmIrqRequestSocket,
+    msi_device_socket: Arc<VmIrqRequestSocket>,
     msix_num: u16,
 }
 
 impl MsixConfig {
-    pub fn new(msix_vectors: u16, vm_socket: VmIrqRequestSocket) -> Self {
+    pub fn new(msix_vectors: u16, vm_socket: Arc<VmIrqRequestSocket>) -> Self {
         assert!(msix_vectors <= MAX_MSIX_VECTORS_PER_DEVICE);
 
         let mut table_entries: Vec<MsixTableEntry> = Vec::new();
