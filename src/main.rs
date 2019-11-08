@@ -299,11 +299,21 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.syslog_tag = Some(value.unwrap().to_owned());
         }
         "root" | "rwroot" | "disk" | "rwdisk" | "qcow" | "rwqcow" => {
+            let param = value.unwrap();
+            let mut components = param.split(',');
             let read_only = !name.starts_with("rw");
-            let disk_path = PathBuf::from(value.unwrap());
+            let disk_path =
+                PathBuf::from(
+                    components
+                        .next()
+                        .ok_or_else(|| argument::Error::InvalidValue {
+                            value: param.to_owned(),
+                            expected: "missing disk path",
+                        })?,
+                );
             if !disk_path.exists() {
                 return Err(argument::Error::InvalidValue {
-                    value: value.unwrap().to_owned(),
+                    value: param.to_owned(),
                     expected: "this disk path does not exist",
                 });
             }
@@ -319,10 +329,42 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     if read_only { "ro" } else { "rw" }
                 ));
             }
-            cfg.disks.push(DiskOption {
+
+            let mut disk = DiskOption {
                 path: disk_path,
                 read_only,
-            });
+                sparse: true,
+            };
+
+            for opt in components {
+                let mut o = opt.splitn(2, '=');
+                let kind = o.next().ok_or_else(|| argument::Error::InvalidValue {
+                    value: opt.to_owned(),
+                    expected: "disk options must not be empty",
+                })?;
+                let value = o.next().ok_or_else(|| argument::Error::InvalidValue {
+                    value: opt.to_owned(),
+                    expected: "disk options must be of the form `kind=value`",
+                })?;
+
+                match kind {
+                    "sparse" => {
+                        let sparse = value.parse().map_err(|_| argument::Error::InvalidValue {
+                            value: value.to_owned(),
+                            expected: "`sparse` must be a boolean",
+                        })?;
+                        disk.sparse = sparse;
+                    }
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: kind.to_owned(),
+                            expected: "unrecognized disk option",
+                        });
+                    }
+                }
+            }
+
+            cfg.disks.push(disk);
         }
         "pmem-device" | "rw-pmem-device" => {
             let disk_path = PathBuf::from(value.unwrap());
@@ -336,6 +378,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.pmem_devices.push(DiskOption {
                 path: disk_path,
                 read_only: !name.starts_with("rw"),
+                sparse: false,
             });
         }
         "host_ip" => {
@@ -726,12 +769,18 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                                 "Amount of guest memory in MiB. (default: 256)"),
           Argument::short_value('r',
                                 "root",
-                                "PATH",
-                                "Path to a root disk image. Like `--disk` but adds appropriate kernel command line option."),
-          Argument::value("rwroot", "PATH", "Path to a writable root disk image."),
-          Argument::short_value('d', "disk", "PATH", "Path to a disk image."),
+                                "PATH[,key=value[,key=value[,...]]",
+                                "Path to a root disk image followed by optional comma-separated options.
+                              Like `--disk` but adds appropriate kernel command line option.
+                              See --disk for valid options."),
+          Argument::value("rwroot", "PATH[,key=value[,key=value[,...]]", "Path to a writable root disk image followed by optional comma-separated options.
+                              See --disk for valid options."),
+          Argument::short_value('d', "disk", "PATH[,key=value[,key=value[,...]]", "Path to a disk image followed by optional comma-separated options.
+                              Valid keys:
+                              sparse=BOOL - Indicates whether the disk should support the discard operation (default: true)"),
           Argument::value("qcow", "PATH", "Path to a qcow2 disk image. (Deprecated; use --disk instead.)"),
-          Argument::value("rwdisk", "PATH", "Path to a writable disk image."),
+          Argument::value("rwdisk", "PATH[,key=value[,key=value[,...]]", "Path to a writable disk image followed by optional comma-separated options.
+                              See --disk for valid options."),
           Argument::value("rwqcow", "PATH", "Path to a writable qcow2 disk image. (Deprecated; use --rwdisk instead.)"),
           Argument::value("rw-pmem-device", "PATH", "Path to a writable disk image."),
           Argument::value("pmem-device", "PATH", "Path to a disk image."),

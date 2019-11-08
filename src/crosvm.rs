@@ -33,6 +33,7 @@ pub enum Executable {
 pub struct DiskOption {
     pub path: PathBuf,
     pub read_only: bool,
+    pub sparse: bool,
 }
 
 /// A bind mount for directories in the plugin process.

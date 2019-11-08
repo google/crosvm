@@ -248,12 +248,14 @@ struct Worker {
     disk_image: Box<dyn DiskFile>,
     disk_size: Arc<Mutex<u64>>,
     read_only: bool,
+    sparse: bool,
 }
 
 impl Worker {
     fn process_one_request(
         avail_desc: DescriptorChain,
         read_only: bool,
+        sparse: bool,
         disk: &mut dyn DiskFile,
         disk_size: u64,
         flush_timer: &mut TimerFd,
@@ -278,6 +280,7 @@ impl Worker {
             &mut reader,
             &mut writer,
             read_only,
+            sparse,
             disk,
             disk_size,
             flush_timer,
@@ -313,6 +316,7 @@ impl Worker {
             let len = match Worker::process_one_request(
                 avail_desc,
                 self.read_only,
+                self.sparse,
                 &mut *self.disk_image,
                 *disk_size,
                 flush_timer,
@@ -464,6 +468,7 @@ pub struct Block {
     disk_size: Arc<Mutex<u64>>,
     avail_features: u64,
     read_only: bool,
+    sparse: bool,
     seg_max: u32,
     control_socket: Option<DiskControlResponseSocket>,
 }
@@ -491,6 +496,7 @@ impl Block {
     pub fn new(
         mut disk_image: Box<dyn DiskFile>,
         read_only: bool,
+        sparse: bool,
         control_socket: Option<DiskControlResponseSocket>,
     ) -> SysResult<Block> {
         let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
@@ -506,7 +512,9 @@ impl Block {
         if read_only {
             avail_features |= 1 << VIRTIO_BLK_F_RO;
         } else {
-            avail_features |= 1 << VIRTIO_BLK_F_DISCARD;
+            if sparse {
+                avail_features |= 1 << VIRTIO_BLK_F_DISCARD;
+            }
             avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
         }
         avail_features |= 1 << VIRTIO_F_VERSION_1;
@@ -527,6 +535,7 @@ impl Block {
             disk_size: Arc::new(Mutex::new(disk_size)),
             avail_features,
             read_only,
+            sparse,
             seg_max,
             control_socket,
         })
@@ -540,6 +549,7 @@ impl Block {
         reader: &mut Reader,
         writer: &mut Writer,
         read_only: bool,
+        sparse: bool,
         disk: &mut dyn DiskFile,
         disk_size: u64,
         flush_timer: &mut TimerFd,
@@ -611,6 +621,10 @@ impl Block {
                 }
             }
             VIRTIO_BLK_T_DISCARD | VIRTIO_BLK_T_WRITE_ZEROES => {
+                if req_type == VIRTIO_BLK_T_DISCARD && !sparse {
+                    return Err(ExecuteError::Unsupported(req_type));
+                }
+
                 while reader.available_bytes() >= size_of::<virtio_blk_discard_write_zeroes>() {
                     let seg: virtio_blk_discard_write_zeroes =
                         reader.read_obj().map_err(ExecuteError::Read)?;
@@ -744,6 +758,7 @@ impl VirtioDevice for Block {
         self.kill_evt = Some(self_kill_evt);
 
         let read_only = self.read_only;
+        let sparse = self.sparse;
         let disk_size = self.disk_size.clone();
         if let Some(disk_image) = self.disk_image.take() {
             if let Some(control_socket) = self.control_socket.take() {
@@ -758,6 +773,7 @@ impl VirtioDevice for Block {
                                 disk_image,
                                 disk_size,
                                 read_only,
+                                sparse,
                             };
                             worker.run(queue_evts.remove(0), kill_evt, control_socket);
                         });
@@ -795,7 +811,7 @@ mod tests {
         let f = File::create(&path).unwrap();
         f.set_len(0x1000).unwrap();
 
-        let b = Block::new(Box::new(f), true, None).unwrap();
+        let b = Block::new(Box::new(f), true, false, None).unwrap();
         let mut num_sectors = [0u8; 4];
         b.read_config(0, &mut num_sectors);
         // size is 0x1000, so num_sectors is 8 (4096/512).
@@ -815,17 +831,27 @@ mod tests {
         // read-write block device
         {
             let f = File::create(&path).unwrap();
-            let b = Block::new(Box::new(f), false, None).unwrap();
+            let b = Block::new(Box::new(f), false, true, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
             // + VIRTIO_BLK_F_SEG_MAX
             assert_eq!(0x100006244, b.features());
         }
 
+        // read-write block device, non-sparse
+        {
+            let f = File::create(&path).unwrap();
+            let b = Block::new(Box::new(f), false, false, None).unwrap();
+            // writable device should set VIRTIO_BLK_F_FLUSH
+            // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
+            // + VIRTIO_BLK_F_SEG_MAX
+            assert_eq!(0x100004244, b.features());
+        }
+
         // read-only block device
         {
             let f = File::create(&path).unwrap();
-            let b = Block::new(Box::new(f), true, None).unwrap();
+            let b = Block::new(Box::new(f), true, true, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
             assert_eq!(0x100000264, b.features());
@@ -879,6 +905,7 @@ mod tests {
         Worker::process_one_request(
             avail_desc,
             false,
+            true,
             &mut f,
             disk_size,
             &mut flush_timer,
@@ -939,6 +966,7 @@ mod tests {
         Worker::process_one_request(
             avail_desc,
             false,
+            true,
             &mut f,
             disk_size,
             &mut flush_timer,

@@ -358,8 +358,13 @@ fn create_block_device(
     flock(&raw_image, lock_op, true).map_err(Error::DiskImageLock)?;
 
     let disk_file = disk::create_disk_file(raw_image).map_err(Error::CreateDiskError)?;
-    let dev = virtio::Block::new(disk_file, disk.read_only, Some(disk_device_socket))
-        .map_err(Error::BlockDeviceNew)?;
+    let dev = virtio::Block::new(
+        disk_file,
+        disk.read_only,
+        disk.sparse,
+        Some(disk_device_socket),
+    )
+    .map_err(Error::BlockDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
