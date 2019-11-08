@@ -13,9 +13,9 @@ use vm_control::{MaybeOwnedFd, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
 use data_model::DataInit;
 
 const MAX_MSIX_VECTORS_PER_DEVICE: u16 = 2048;
-const MSIX_TABLE_ENTRIES_MODULO: u64 = 16;
-const MSIX_PBA_ENTRIES_MODULO: u64 = 8;
-const BITS_PER_PBA_ENTRY: usize = 64;
+pub const MSIX_TABLE_ENTRIES_MODULO: u64 = 16;
+pub const MSIX_PBA_ENTRIES_MODULO: u64 = 8;
+pub const BITS_PER_PBA_ENTRY: usize = 64;
 const FUNCTION_MASK_BIT: u16 = 0x4000;
 const MSIX_ENABLE_BIT: u16 = 0x8000;
 
@@ -432,6 +432,17 @@ impl MsixConfig {
     /// Return the raw fd of the MSI device socket
     pub fn get_msi_socket(&self) -> RawFd {
         self.msi_device_socket.as_ref().as_raw_fd()
+    }
+
+    /// Return irqfd of MSI-X Table entry
+    ///
+    ///  # Arguments
+    ///  * 'vector' - the index to the MSI-X table entry
+    pub fn get_irqfd(&self, vector: usize) -> Option<&EventFd> {
+        match self.irq_vec.get(vector) {
+            Some(irq) => Some(&irq.irqfd),
+            None => None,
+        }
     }
 }
 
