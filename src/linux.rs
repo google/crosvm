@@ -945,6 +945,12 @@ fn create_gpu_device(
                 jail.mount_bind(pvr_sync_path, pvr_sync_path, true)?;
             }
 
+            // If the udmabuf driver exists on the host, bind mount it in.
+            let udmabuf_path = Path::new("/dev/udmabuf");
+            if udmabuf_path.exists() {
+                jail.mount_bind(udmabuf_path, udmabuf_path, true)?;
+            }
+
             // Libraries that are required when mesa drivers are dynamically loaded.
             let lib_dirs = &[
                 "/usr/lib",
