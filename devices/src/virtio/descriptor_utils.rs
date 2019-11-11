@@ -309,6 +309,32 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
+    pub fn read_exact_to_at<F: FileReadWriteAtVolatile>(
+        &mut self,
+        mut dst: F,
+        mut count: usize,
+        mut off: u64,
+    ) -> io::Result<()> {
+        while count > 0 {
+            match self.read_to_at(&mut dst, count, off) {
+                Ok(0) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "failed to fill whole buffer",
+                    ))
+                }
+                Ok(n) => {
+                    count -= n;
+                    off += n as u64;
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(())
+    }
+
     /// Returns number of bytes available for reading.  May return an error if the combined
     /// lengths of all the buffers in the DescriptorChain would cause an integer overflow.
     pub fn available_bytes(&self) -> usize {
@@ -457,6 +483,31 @@ impl<'a> Writer<'a> {
             }
         }
 
+        Ok(())
+    }
+
+    pub fn write_all_from_at<F: FileReadWriteAtVolatile>(
+        &mut self,
+        mut src: F,
+        mut count: usize,
+        mut off: u64,
+    ) -> io::Result<()> {
+        while count > 0 {
+            match self.write_from_at(&mut src, count, off) {
+                Ok(0) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "failed to write whole buffer",
+                    ))
+                }
+                Ok(n) => {
+                    count -= n;
+                    off += n as u64;
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
         Ok(())
     }
 

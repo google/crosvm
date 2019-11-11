@@ -141,11 +141,6 @@ enum ExecuteError {
         sector: u64,
         desc_error: io::Error,
     },
-    ShortRead {
-        sector: u64,
-        expected_length: usize,
-        actual_length: usize,
-    },
     Seek {
         ioerr: io::Error,
         sector: u64,
@@ -155,11 +150,6 @@ enum ExecuteError {
         length: usize,
         sector: u64,
         desc_error: io::Error,
-    },
-    ShortWrite {
-        sector: u64,
-        expected_length: usize,
-        actual_length: usize,
     },
     DiscardWriteZeroes {
         ioerr: Option<io::Error>,
@@ -193,15 +183,6 @@ impl Display for ExecuteError {
                 "io error reading {} bytes from sector {}: {}",
                 length, sector, desc_error,
             ),
-            ShortRead {
-                sector,
-                expected_length,
-                actual_length,
-            } => write!(
-                f,
-                "short read: {} bytes of {} at sector {}",
-                actual_length, expected_length, sector
-            ),
             Seek { ioerr, sector } => write!(f, "failed to seek to sector {}: {}", sector, ioerr),
             TimerFd(e) => write!(f, "{}", e),
             WriteIo {
@@ -212,15 +193,6 @@ impl Display for ExecuteError {
                 f,
                 "io error writing {} bytes to sector {}: {}",
                 length, sector, desc_error,
-            ),
-            ShortWrite {
-                sector,
-                expected_length,
-                actual_length,
-            } => write!(
-                f,
-                "short write: {} bytes of {} at sector {}",
-                actual_length, expected_length, sector
             ),
             DiscardWriteZeroes {
                 ioerr: Some(ioerr),
@@ -258,11 +230,9 @@ impl ExecuteError {
             ExecuteError::WriteStatus(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::ReadIo { .. } => VIRTIO_BLK_S_IOERR,
-            ExecuteError::ShortRead { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::Seek { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::TimerFd(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::WriteIo { .. } => VIRTIO_BLK_S_IOERR,
-            ExecuteError::ShortWrite { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::DiscardWriteZeroes { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::ReadOnly { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::OutOfRange { .. } => VIRTIO_BLK_S_IOERR,
@@ -613,21 +583,13 @@ impl Block {
                     .checked_shl(u32::from(SECTOR_SHIFT))
                     .ok_or(ExecuteError::OutOfRange)?;
                 check_range(offset, data_len as u64, disk_size)?;
-                let actual_length =
-                    writer
-                        .write_from_at(disk, data_len, offset)
-                        .map_err(|desc_error| ExecuteError::ReadIo {
-                            length: data_len,
-                            sector,
-                            desc_error,
-                        })?;
-                if actual_length < data_len {
-                    return Err(ExecuteError::ShortRead {
+                writer
+                    .write_all_from_at(disk, data_len, offset)
+                    .map_err(|desc_error| ExecuteError::ReadIo {
+                        length: data_len,
                         sector,
-                        expected_length: data_len,
-                        actual_length,
-                    });
-                }
+                        desc_error,
+                    })?;
             }
             VIRTIO_BLK_T_OUT => {
                 let data_len = reader.available_bytes();
@@ -635,21 +597,13 @@ impl Block {
                     .checked_shl(u32::from(SECTOR_SHIFT))
                     .ok_or(ExecuteError::OutOfRange)?;
                 check_range(offset, data_len as u64, disk_size)?;
-                let actual_length =
-                    reader
-                        .read_to_at(disk, data_len, offset)
-                        .map_err(|desc_error| ExecuteError::WriteIo {
-                            length: data_len,
-                            sector,
-                            desc_error,
-                        })?;
-                if actual_length < data_len {
-                    return Err(ExecuteError::ShortWrite {
+                reader
+                    .read_exact_to_at(disk, data_len, offset)
+                    .map_err(|desc_error| ExecuteError::WriteIo {
+                        length: data_len,
                         sector,
-                        expected_length: data_len,
-                        actual_length,
-                    });
-                }
+                        desc_error,
+                    })?;
                 if !*flush_timer_armed {
                     flush_timer
                         .reset(flush_delay, None)
