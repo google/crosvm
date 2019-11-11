@@ -890,13 +890,6 @@ impl PciDevice for VfioPciDevice {
             }
         }
 
-        if let Err(e) = self.device.setup_dma_map() {
-            error!(
-                "failed to add all guest memory regions into iommu table: {}",
-                e
-            );
-        }
-
         // Quirk, enable igd memory for guest vga arbitrate, otherwise kernel vga arbitrate
         // driver doesn't claim this vga device, then xorg couldn't boot up.
         if self.is_intel_gfx() {

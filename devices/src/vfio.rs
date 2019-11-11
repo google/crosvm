@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use data_model::vec_with_array_field;
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -11,7 +12,9 @@ use std::mem;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::prelude::FileExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::u32;
+use sync::Mutex;
 
 use kvm::Vm;
 use sys_util::{
@@ -76,25 +79,34 @@ fn get_error() -> Error {
     Error::last()
 }
 
-struct VfioContainer {
+/// VfioContainer contain multi VfioGroup, and delegate an IOMMU domain table
+pub struct VfioContainer {
     container: File,
+    kvm_vfio_dev: Option<File>,
+    groups: HashMap<u32, Arc<VfioGroup>>,
 }
 
 const VFIO_API_VERSION: u8 = 0;
 impl VfioContainer {
-    fn new() -> Result<Self, VfioError> {
+    /// Open VfioContainer
+    pub fn new() -> Result<Self, VfioError> {
         let container = OpenOptions::new()
             .read(true)
             .write(true)
             .open("/dev/vfio/vfio")
             .map_err(VfioError::OpenContainer)?;
 
-        Ok(VfioContainer { container })
-    }
-
-    fn get_api_version(&self) -> i32 {
         // Safe as file is vfio container fd and ioctl is defined by kernel.
-        unsafe { ioctl(self, VFIO_GET_API_VERSION()) }
+        let version = unsafe { ioctl(&container, VFIO_GET_API_VERSION()) };
+        if version as u8 != VFIO_API_VERSION {
+            return Err(VfioError::VfioApiVersion);
+        }
+
+        Ok(VfioContainer {
+            container,
+            kvm_vfio_dev: None,
+            groups: HashMap::new(),
+        })
     }
 
     fn check_extension(&self, val: u32) -> bool {
@@ -150,6 +162,66 @@ impl VfioContainer {
 
         Ok(())
     }
+
+    fn init(&mut self, vm: &Vm, guest_mem: &GuestMemory) -> Result<(), VfioError> {
+        if !self.check_extension(VFIO_TYPE1v2_IOMMU) {
+            return Err(VfioError::VfioType1V2);
+        }
+
+        if self.set_iommu(VFIO_TYPE1v2_IOMMU) < 0 {
+            return Err(VfioError::ContainerSetIOMMU(get_error()));
+        }
+
+        // Add all guest memory regions into vfio container's iommu table,
+        // then vfio kernel driver could access guest memory from gfn
+        guest_mem.with_regions(|_index, guest_addr, size, host_addr, _fd_offset| {
+            // Safe because the guest regions are guaranteed not to overlap
+            unsafe { self.vfio_dma_map(guest_addr.0, size as u64, host_addr as u64) }
+        })?;
+
+        let mut vfio_dev = kvm_sys::kvm_create_device {
+            type_: kvm_sys::kvm_device_type_KVM_DEV_TYPE_VFIO,
+            fd: 0,
+            flags: 0,
+        };
+        vm.create_device(&mut vfio_dev)
+            .map_err(VfioError::CreateVfioKvmDevice)?;
+        // Safe as we are the owner of vfio_dev.fd which is valid value.
+        let kvm_vfio_file = unsafe { File::from_raw_fd(vfio_dev.fd as i32) };
+        self.kvm_vfio_dev = Some(kvm_vfio_file);
+
+        Ok(())
+    }
+
+    fn get_group(
+        &mut self,
+        id: u32,
+        vm: &Vm,
+        guest_mem: &GuestMemory,
+    ) -> Result<Arc<VfioGroup>, VfioError> {
+        match self.groups.get(&id) {
+            Some(group) => Ok(group.clone()),
+            None => {
+                let group = Arc::new(VfioGroup::new(self, id)?);
+
+                if self.groups.is_empty() {
+                    // Before the first group is added into container, do once cotainer
+                    // initialize for a vm
+                    self.init(vm, guest_mem)?;
+                }
+
+                let kvm_vfio_file = self
+                    .kvm_vfio_dev
+                    .as_ref()
+                    .expect("kvm vfio device should exist");
+                group.kvm_device_add_group(kvm_vfio_file)?;
+
+                self.groups.insert(id, group.clone());
+
+                Ok(group)
+            }
+        }
+    }
 }
 
 impl AsRawFd for VfioContainer {
@@ -160,11 +232,10 @@ impl AsRawFd for VfioContainer {
 
 struct VfioGroup {
     group: File,
-    container: VfioContainer,
 }
 
 impl VfioGroup {
-    fn new(id: u32, vm: &Vm) -> Result<Self, VfioError> {
+    fn new(container: &VfioContainer, id: u32) -> Result<Self, VfioError> {
         let mut group_path = String::from("/dev/vfio/");
         let s_id = &id;
         group_path.push_str(s_id.to_string().as_str());
@@ -190,14 +261,6 @@ impl VfioGroup {
             return Err(VfioError::GroupViable);
         }
 
-        let container = VfioContainer::new()?;
-        if container.get_api_version() as u8 != VFIO_API_VERSION {
-            return Err(VfioError::VfioApiVersion);
-        }
-        if !container.check_extension(VFIO_TYPE1v2_IOMMU) {
-            return Err(VfioError::VfioType1V2);
-        }
-
         // Safe as we are the owner of group_file and container_raw_fd which are valid value,
         // and we verify the ret value
         let container_raw_fd = container.as_raw_fd();
@@ -206,32 +269,11 @@ impl VfioGroup {
             return Err(VfioError::GroupSetContainer(get_error()));
         }
 
-        ret = container.set_iommu(VFIO_TYPE1v2_IOMMU);
-        if ret < 0 {
-            return Err(VfioError::ContainerSetIOMMU(get_error()));
-        }
-
-        Self::kvm_device_add_group(vm, &group_file)?;
-
-        Ok(VfioGroup {
-            group: group_file,
-            container,
-        })
+        Ok(VfioGroup { group: group_file })
     }
 
-    fn kvm_device_add_group(vm: &Vm, group: &File) -> Result<File, VfioError> {
-        let mut vfio_dev = kvm_sys::kvm_create_device {
-            type_: kvm_sys::kvm_device_type_KVM_DEV_TYPE_VFIO,
-            fd: 0,
-            flags: 0,
-        };
-        vm.create_device(&mut vfio_dev)
-            .map_err(VfioError::CreateVfioKvmDevice)?;
-
-        // Safe as we are the owner of vfio_dev.fd which is valid value.
-        let vfio_dev_fd = unsafe { File::from_raw_fd(vfio_dev.fd as i32) };
-
-        let group_fd = group.as_raw_fd();
+    fn kvm_device_add_group(&self, kvm_vfio_file: &File) -> Result<(), VfioError> {
+        let group_fd = self.as_raw_fd();
         let group_fd_ptr = &group_fd as *const i32;
         let vfio_dev_attr = kvm_sys::kvm_device_attr {
             flags: 0,
@@ -243,12 +285,16 @@ impl VfioGroup {
         // Safe as we are the owner of vfio_dev_fd and vfio_dev_attr which are valid value,
         // and we verify the return value.
         if 0 != unsafe {
-            ioctl_with_ref(&vfio_dev_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &vfio_dev_attr)
+            ioctl_with_ref(
+                kvm_vfio_file,
+                kvm_sys::KVM_SET_DEVICE_ATTR(),
+                &vfio_dev_attr,
+            )
         } {
             return Err(VfioError::KvmSetDeviceAttr(get_error()));
         }
 
-        Ok(vfio_dev_fd)
+        Ok(())
     }
 
     fn get_device(&self, name: &Path) -> Result<File, VfioError> {
@@ -296,17 +342,22 @@ struct VfioRegion {
 /// Vfio device for exposing regions which could be read/write to kernel vfio device.
 pub struct VfioDevice {
     dev: File,
-    group: VfioGroup,
+    container: Arc<Mutex<VfioContainer>>,
+    group_fd: RawFd,
     // vec for vfio device's regions
     regions: Vec<VfioRegion>,
-    guest_mem: GuestMemory,
 }
 
 impl VfioDevice {
     /// Create a new vfio device, then guest read/write on this device could be
     /// transfered into kernel vfio.
     /// sysfspath specify the vfio device path in sys file system.
-    pub fn new(sysfspath: &Path, vm: &Vm, guest_mem: GuestMemory) -> Result<Self, VfioError> {
+    pub fn new(
+        sysfspath: &Path,
+        vm: &Vm,
+        guest_mem: &GuestMemory,
+        container: Arc<Mutex<VfioContainer>>,
+    ) -> Result<Self, VfioError> {
         let mut uuid_path = PathBuf::new();
         uuid_path.push(sysfspath);
         uuid_path.push("iommu_group");
@@ -317,15 +368,15 @@ impl VfioDevice {
             .parse::<u32>()
             .map_err(|_| VfioError::InvalidPath)?;
 
-        let group = VfioGroup::new(group_id, vm)?;
+        let group = container.lock().get_group(group_id, vm, guest_mem)?;
         let new_dev = group.get_device(sysfspath)?;
         let dev_regions = Self::get_regions(&new_dev)?;
 
         Ok(VfioDevice {
             dev: new_dev,
-            group,
+            container,
+            group_fd: group.as_raw_fd(),
             regions: dev_regions,
-            guest_mem,
         })
     }
 
@@ -740,8 +791,8 @@ impl VfioDevice {
     pub fn keep_fds(&self) -> Vec<RawFd> {
         let mut fds = Vec::new();
         fds.push(self.as_raw_fd());
-        fds.push(self.group.as_raw_fd());
-        fds.push(self.group.container.as_raw_fd());
+        fds.push(self.group_fd);
+        fds.push(self.container.lock().as_raw_fd());
         fds
     }
 
@@ -752,23 +803,12 @@ impl VfioDevice {
         size: u64,
         user_addr: u64,
     ) -> Result<(), VfioError> {
-        self.group.container.vfio_dma_map(iova, size, user_addr)
+        self.container.lock().vfio_dma_map(iova, size, user_addr)
     }
 
     /// Remove (iova, user_addr) map from vfio container iommu table
     pub fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<(), VfioError> {
-        self.group.container.vfio_dma_unmap(iova, size)
-    }
-
-    /// Add all guest memory regions into vfio container's iommu table,
-    /// then vfio kernel driver could access guest memory from gfn
-    pub fn setup_dma_map(&self) -> Result<(), VfioError> {
-        self.guest_mem
-            .with_regions(|_index, guest_addr, size, host_addr, _fd_offset| {
-                // Safe because the guest regions are guaranteed not to overlap
-                unsafe { self.vfio_dma_map(guest_addr.0, size as u64, host_addr as u64) }
-            })?;
-        Ok(())
+        self.container.lock().vfio_dma_unmap(iova, size)
     }
 }
 

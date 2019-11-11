@@ -44,5 +44,5 @@ pub use self::serial::{
 };
 pub use self::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
 pub use self::usb::xhci::xhci_controller::XhciController;
-pub use self::vfio::VfioDevice;
+pub use self::vfio::{VfioContainer, VfioDevice};
 pub use self::virtio::VirtioPciDevice;

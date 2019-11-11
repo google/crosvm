@@ -32,8 +32,8 @@ use audio_streams::shm_streams::NullShmStreamSource;
 use devices::virtio::EventDevice;
 use devices::virtio::{self, VirtioDevice};
 use devices::{
-    self, HostBackendDeviceProvider, PciDevice, VfioDevice, VfioPciDevice, VirtioPciDevice,
-    XhciController,
+    self, HostBackendDeviceProvider, PciDevice, VfioContainer, VfioDevice, VfioPciDevice,
+    VirtioPciDevice, XhciController,
 };
 use io_jail::{self, Minijail};
 use kvm::*;
@@ -1176,7 +1176,11 @@ fn create_devices(
     let usb_controller = Box::new(XhciController::new(mem.clone(), usb_provider));
     pci_devices.push((usb_controller, simple_jail(&cfg, "xhci")?));
 
-    if cfg.vfio.is_some() {
+    if let Some(vfio_path) = &cfg.vfio {
+        let vfio_container = Arc::new(Mutex::new(
+            VfioContainer::new().map_err(Error::CreateVfioDevice)?,
+        ));
+
         let (vfio_host_socket_irq, vfio_device_socket_irq) =
             msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
         control_sockets.push(TaggedControlSocket::VmIrq(vfio_host_socket_irq));
@@ -1185,9 +1189,9 @@ fn create_devices(
             msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>().map_err(Error::CreateSocket)?;
         control_sockets.push(TaggedControlSocket::VmMemory(vfio_host_socket_mem));
 
-        let vfio_path = cfg.vfio.as_ref().unwrap().as_path();
-        let vfiodevice =
-            VfioDevice::new(vfio_path, vm, mem.clone()).map_err(Error::CreateVfioDevice)?;
+        let vfio_path = vfio_path.as_path();
+        let vfiodevice = VfioDevice::new(vfio_path, vm, mem, vfio_container.clone())
+            .map_err(Error::CreateVfioDevice)?;
         let vfiopcidevice = Box::new(VfioPciDevice::new(
             vfiodevice,
             vfio_device_socket_irq,
