@@ -58,18 +58,23 @@ const DEVICE_FAILED: u32 = 0x80;
 // Types taken from linux/virtio_ids.h
 const TYPE_NET: u32 = 1;
 const TYPE_BLOCK: u32 = 2;
+const TYPE_CONSOLE: u32 = 3;
 const TYPE_RNG: u32 = 4;
 const TYPE_BALLOON: u32 = 5;
-#[allow(dead_code)]
-const TYPE_GPU: u32 = 16;
+const TYPE_RPMSG: u32 = 7;
+const TYPE_SCSI: u32 = 8;
 const TYPE_9P: u32 = 9;
+const TYPE_RPROC_SERIAL: u32 = 11;
+const TYPE_CAIF: u32 = 12;
+const TYPE_GPU: u32 = 16;
 const TYPE_INPUT: u32 = 18;
 const TYPE_VSOCK: u32 = 19;
+const TYPE_CRYPTO: u32 = 20;
+const TYPE_IOMMU: u32 = 23;
 const TYPE_FS: u32 = 26;
 const TYPE_PMEM: u32 = 27;
 // Additional types invented by crosvm
 const TYPE_WL: u32 = 30;
-#[cfg(feature = "tpm")]
 const TYPE_TPM: u32 = 31;
 
 const VIRTIO_F_VERSION_1: u32 = 32;
@@ -88,13 +93,23 @@ pub fn type_to_str(type_: u32) -> Option<&'static str> {
     Some(match type_ {
         TYPE_NET => "net",
         TYPE_BLOCK => "block",
+        TYPE_CONSOLE => "console",
         TYPE_RNG => "rng",
         TYPE_BALLOON => "balloon",
-        TYPE_GPU => "gpu",
+        TYPE_RPMSG => "rpmsg",
+        TYPE_SCSI => "scsi",
         TYPE_9P => "9p",
+        TYPE_RPROC_SERIAL => "rproc-serial",
+        TYPE_CAIF => "caif",
+        TYPE_INPUT => "input",
+        TYPE_GPU => "gpu",
         TYPE_VSOCK => "vsock",
+        TYPE_CRYPTO => "crypto",
+        TYPE_IOMMU => "iommu",
         TYPE_FS => "fs",
+        TYPE_PMEM => "pmem",
         TYPE_WL => "wl",
+        TYPE_TPM => "tpm",
         _ => return None,
     })
 }
