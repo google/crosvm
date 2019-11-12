@@ -202,7 +202,7 @@ pub struct Config {
     pub virtio_keyboard: Option<PathBuf>,
     pub virtio_input_evdevs: Vec<PathBuf>,
     pub split_irqchip: bool,
-    pub vfio: Option<PathBuf>,
+    pub vfio: Vec<PathBuf>,
 }
 
 impl Default for Config {
@@ -251,7 +251,7 @@ impl Default for Config {
             virtio_keyboard: None,
             virtio_input_evdevs: Vec::new(),
             split_irqchip: false,
-            vfio: None,
+            vfio: Vec::new(),
         }
     }
 }

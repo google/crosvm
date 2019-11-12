@@ -1088,7 +1088,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 });
             }
 
-            cfg.vfio = Some(vfio_path);
+            cfg.vfio.push(vfio_path);
         }
 
         "help" => return Err(argument::Error::PrintHelp),

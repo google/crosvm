@@ -1176,28 +1176,31 @@ fn create_devices(
     let usb_controller = Box::new(XhciController::new(mem.clone(), usb_provider));
     pci_devices.push((usb_controller, simple_jail(&cfg, "xhci")?));
 
-    if let Some(vfio_path) = &cfg.vfio {
+    if !cfg.vfio.is_empty() {
         let vfio_container = Arc::new(Mutex::new(
             VfioContainer::new().map_err(Error::CreateVfioDevice)?,
         ));
 
-        let (vfio_host_socket_irq, vfio_device_socket_irq) =
-            msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
-        control_sockets.push(TaggedControlSocket::VmIrq(vfio_host_socket_irq));
+        for vfio_path in &cfg.vfio {
+            // create one Irq and Mem request socket for each vfio device
+            let (vfio_host_socket_irq, vfio_device_socket_irq) =
+                msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
+            control_sockets.push(TaggedControlSocket::VmIrq(vfio_host_socket_irq));
 
-        let (vfio_host_socket_mem, vfio_device_socket_mem) =
-            msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>().map_err(Error::CreateSocket)?;
-        control_sockets.push(TaggedControlSocket::VmMemory(vfio_host_socket_mem));
+            let (vfio_host_socket_mem, vfio_device_socket_mem) =
+                msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>()
+                    .map_err(Error::CreateSocket)?;
+            control_sockets.push(TaggedControlSocket::VmMemory(vfio_host_socket_mem));
 
-        let vfio_path = vfio_path.as_path();
-        let vfiodevice = VfioDevice::new(vfio_path, vm, mem, vfio_container.clone())
-            .map_err(Error::CreateVfioDevice)?;
-        let vfiopcidevice = Box::new(VfioPciDevice::new(
-            vfiodevice,
-            vfio_device_socket_irq,
-            vfio_device_socket_mem,
-        ));
-        pci_devices.push((vfiopcidevice, simple_jail(&cfg, "vfio_device")?));
+            let vfiodevice = VfioDevice::new(vfio_path.as_path(), vm, mem, vfio_container.clone())
+                .map_err(Error::CreateVfioDevice)?;
+            let vfiopcidevice = Box::new(VfioPciDevice::new(
+                vfiodevice,
+                vfio_device_socket_irq,
+                vfio_device_socket_mem,
+            ));
+            pci_devices.push((vfiopcidevice, simple_jail(&cfg, "vfio_device")?));
+        }
     }
 
     Ok(pci_devices)
