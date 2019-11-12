@@ -87,14 +87,13 @@ pub trait WriteZeroesAt {
 
 impl WriteZeroesAt for File {
     fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
-        // Try to punch a hole first.
-        if let Ok(()) = self.punch_hole(offset, length as u64) {
+        // Try to use fallocate() first.
+        if fallocate(self, FallocateMode::ZeroRange, true, offset, length as u64).is_ok() {
             return Ok(length);
         }
 
         // fall back to write()
-
-        // punch_hole() failed; fall back to writing a buffer of zeroes
+        // fallocate() failed; fall back to writing a buffer of zeroes
         // until we have written up to length.
         let buf_size = min(length, 0x10000);
         let buf = vec![0u8; buf_size];
