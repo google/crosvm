@@ -14,7 +14,7 @@ use crate::{create_disk_file, DiskFile, ImageType};
 use data_model::VolatileSlice;
 use protos::cdisk_spec;
 use remain::sorted;
-use sys_util::{AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroes};
+use sys_util::{AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt};
 
 #[sorted]
 #[derive(Debug)]
@@ -300,22 +300,17 @@ impl Seek for CompositeDiskFile {
     }
 }
 
-impl WriteZeroes for CompositeDiskFile {
-    fn write_zeroes(&mut self, length: usize) -> io::Result<usize> {
-        let cursor_location = self.cursor_location;
+impl WriteZeroesAt for CompositeDiskFile {
+    fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
+        let cursor_location = offset;
         let disk = self.disk_at_offset(cursor_location)?;
-        disk.file
-            .seek(SeekFrom::Start(cursor_location - disk.offset))?;
+        let offset_within_disk = cursor_location - disk.offset;
         let new_length = if cursor_location + length as u64 > disk.offset + disk.length {
             (disk.offset + disk.length - cursor_location) as usize
         } else {
             length
         };
-        let result = disk.file.write_zeroes(new_length);
-        if let Ok(size) = result {
-            self.cursor_location += size as u64;
-        }
-        result
+        disk.file.write_zeroes_at(offset_within_disk, new_length)
     }
 }
 
@@ -524,10 +519,11 @@ mod tests {
         composite
             .write_all_at_volatile(input_volatile_memory.get_slice(0, 300).unwrap(), 0)
             .unwrap();
-        composite.seek(SeekFrom::Start(50)).unwrap();
         let mut zeroes_written = 0;
         while zeroes_written < 200 {
-            zeroes_written += composite.write_zeroes(200 - zeroes_written).unwrap();
+            zeroes_written += composite
+                .write_zeroes_at(50 + zeroes_written as u64, 200 - zeroes_written)
+                .unwrap();
         }
         let mut output_memory = [0u8; 300];
         let output_volatile_memory = &mut output_memory[..];

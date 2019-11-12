@@ -11,7 +11,7 @@ use libc::EINVAL;
 use qcow::{QcowFile, QCOW_MAGIC};
 use remain::sorted;
 use sys_util::{
-    AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroes,
+    AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroesAt,
 };
 
 #[cfg(feature = "composite-disk")]
@@ -45,7 +45,7 @@ pub trait DiskFile:
     + FileReadWriteAtVolatile
     + PunchHole
     + Seek
-    + WriteZeroes
+    + WriteZeroesAt
     + Send
     + AsRawFds
 {
@@ -56,7 +56,7 @@ impl<
             + PunchHole
             + FileReadWriteAtVolatile
             + Seek
-            + WriteZeroes
+            + WriteZeroesAt
             + Send
             + AsRawFds,
     > DiskFile for D

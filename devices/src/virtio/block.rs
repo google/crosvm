@@ -140,10 +140,6 @@ enum ExecuteError {
         sector: u64,
         desc_error: io::Error,
     },
-    Seek {
-        ioerr: io::Error,
-        sector: u64,
-    },
     TimerFd(SysError),
     WriteIo {
         length: usize,
@@ -182,7 +178,6 @@ impl Display for ExecuteError {
                 "io error reading {} bytes from sector {}: {}",
                 length, sector, desc_error,
             ),
-            Seek { ioerr, sector } => write!(f, "failed to seek to sector {}: {}", sector, ioerr),
             TimerFd(e) => write!(f, "{}", e),
             WriteIo {
                 length,
@@ -229,7 +224,6 @@ impl ExecuteError {
             ExecuteError::WriteStatus(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::ReadIo { .. } => VIRTIO_BLK_S_IOERR,
-            ExecuteError::Seek { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::TimerFd(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::WriteIo { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::DiscardWriteZeroes { .. } => VIRTIO_BLK_S_IOERR,
@@ -661,16 +655,13 @@ impl Block {
                         // FALLOC_FL_PUNCH_HOLE, ignore punch_hole errors.
                         let _ = disk.punch_hole(offset, length);
                     } else {
-                        disk.seek(SeekFrom::Start(offset))
-                            .map_err(|e| ExecuteError::Seek { ioerr: e, sector })?;
-                        disk.write_zeroes_all(length as usize).map_err(|e| {
-                            ExecuteError::DiscardWriteZeroes {
+                        disk.write_zeroes_all_at(offset, length as usize)
+                            .map_err(|e| ExecuteError::DiscardWriteZeroes {
                                 ioerr: Some(e),
                                 sector,
                                 num_sectors,
                                 flags,
-                            }
-                        })?;
+                            })?;
                     }
                 }
             }
