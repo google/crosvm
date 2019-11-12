@@ -4,7 +4,8 @@
 
 use std::cmp::min;
 use std::fs::File;
-use std::io::{self, Error, ErrorKind, Seek, SeekFrom, Write};
+use std::io::{self, Error, ErrorKind, Seek, SeekFrom};
+use std::os::unix::fs::FileExt;
 
 use crate::fallocate;
 use crate::FallocateMode;
@@ -51,13 +52,43 @@ pub trait WriteZeroes {
     }
 }
 
-impl<T: PunchHole + Seek + Write> WriteZeroes for T {
-    fn write_zeroes(&mut self, length: usize) -> io::Result<usize> {
+/// A trait for writing zeroes to an arbitrary position in a file.
+pub trait WriteZeroesAt {
+    /// Write up to `length` bytes of zeroes starting at `offset`, returning how many bytes were
+    /// written.
+    fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize>;
+
+    /// Write zeroes starting at `offset` until `length` bytes have been written.
+    ///
+    /// This method will continuously call `write_zeroes_at` until the requested
+    /// `length` is satisfied or an error is encountered.
+    fn write_zeroes_all_at(&mut self, mut offset: u64, mut length: usize) -> io::Result<()> {
+        while length > 0 {
+            match self.write_zeroes_at(offset, length) {
+                Ok(0) => return Err(Error::from(ErrorKind::WriteZero)),
+                Ok(bytes_written) => {
+                    length = length
+                        .checked_sub(bytes_written)
+                        .ok_or(Error::from(ErrorKind::Other))?;
+                    offset = offset
+                        .checked_add(bytes_written as u64)
+                        .ok_or(Error::from(ErrorKind::Other))?;
+                }
+                Err(e) => {
+                    if e.kind() != ErrorKind::Interrupted {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl WriteZeroesAt for File {
+    fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
         // Try to punch a hole first.
-        let offset = self.seek(SeekFrom::Current(0))?;
         if let Ok(()) = self.punch_hole(offset, length as u64) {
-            // Advance the seek cursor as if we had done a real write().
-            self.seek(SeekFrom::Current(length as i64))?;
             return Ok(length);
         }
 
@@ -71,8 +102,18 @@ impl<T: PunchHole + Seek + Write> WriteZeroes for T {
         while nwritten < length {
             let remaining = length - nwritten;
             let write_size = min(remaining, buf_size);
-            nwritten += self.write(&buf[0..write_size])?;
+            nwritten += self.write_at(&buf[0..write_size], offset + nwritten as u64)?;
         }
+        Ok(length)
+    }
+}
+
+impl<T: WriteZeroesAt + Seek> WriteZeroes for T {
+    fn write_zeroes(&mut self, length: usize) -> io::Result<usize> {
+        let offset = self.seek(SeekFrom::Current(0))?;
+        let nwritten = self.write_zeroes_at(offset, length)?;
+        // Advance the seek cursor as if we had done a real write().
+        self.seek(SeekFrom::Current(nwritten as i64))?;
         Ok(length)
     }
 }
@@ -81,7 +122,7 @@ impl<T: PunchHole + Seek + Write> WriteZeroes for T {
 mod tests {
     use super::*;
     use std::fs::OpenOptions;
-    use std::io::{Read, Seek, SeekFrom};
+    use std::io::{Read, Seek, SeekFrom, Write};
     use tempfile::TempDir;
 
     #[test]

@@ -70,7 +70,7 @@ pub use crate::guest_memory::Error as GuestMemoryError;
 pub use crate::mmap::Error as MmapError;
 pub use crate::seek_hole::SeekHole;
 pub use crate::signalfd::Error as SignalFdError;
-pub use crate::write_zeroes::{PunchHole, WriteZeroes};
+pub use crate::write_zeroes::{PunchHole, WriteZeroes, WriteZeroesAt};
 
 use std::ffi::CStr;
 use std::fs::{remove_file, File};

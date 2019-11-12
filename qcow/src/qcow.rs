@@ -11,7 +11,7 @@ use libc::{EINVAL, ENOSPC, ENOTSUP};
 use remain::sorted;
 use sys_util::{
     error, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync, PunchHole,
-    SeekHole, WriteZeroes,
+    SeekHole, WriteZeroesAt,
 };
 
 use std::cmp::{max, min};
@@ -1239,8 +1239,9 @@ impl QcowFile {
                 // unallocated clusters already read back as zeroes.
                 if let Some(offset) = self.file_offset_read(curr_addr)? {
                     // Partial cluster - zero it out.
-                    self.raw_file.file_mut().seek(SeekFrom::Start(offset))?;
-                    self.raw_file.file_mut().write_zeroes_all(count)?;
+                    self.raw_file
+                        .file_mut()
+                        .write_zeroes_all_at(offset, count)?;
                 }
             }
 
@@ -1581,6 +1582,13 @@ impl PunchHole for QcowFile {
     }
 }
 
+impl WriteZeroesAt for QcowFile {
+    fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
+        self.punch_hole(offset, length as u64)?;
+        Ok(length)
+    }
+}
+
 impl SeekHole for QcowFile {
     fn seek_hole(&mut self, offset: u64) -> io::Result<Option<u64>> {
         match self.find_allocated_cluster(offset, false) {
@@ -1634,7 +1642,7 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::{Read, Seek, SeekFrom, Write};
-    use sys_util::SharedMemory;
+    use sys_util::{SharedMemory, WriteZeroes};
 
     fn valid_header() -> Vec<u8> {
         vec![
