@@ -294,7 +294,6 @@ impl MsixConfig {
 
         let new_entry = self.table_entries[index].clone();
         if self.enabled()
-            && !self.masked()
             && (old_entry.msg_addr_lo != new_entry.msg_addr_lo
                 || old_entry.msg_addr_hi != new_entry.msg_addr_hi
                 || old_entry.msg_data != new_entry.msg_data)
