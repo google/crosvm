@@ -384,13 +384,12 @@ mod tests {
         let mut input_memory = [55u8; 5];
         let input_volatile_memory = &mut input_memory[..];
         composite
-            .write_all_volatile(input_volatile_memory.get_slice(0, 5).unwrap())
+            .write_all_at_volatile(input_volatile_memory.get_slice(0, 5).unwrap(), 0)
             .unwrap();
-        composite.seek(SeekFrom::Start(0)).unwrap();
         let mut output_memory = [0u8; 5];
         let output_volatile_memory = &mut output_memory[..];
         composite
-            .read_exact_volatile(output_volatile_memory.get_slice(0, 5).unwrap())
+            .read_exact_at_volatile(output_volatile_memory.get_slice(0, 5).unwrap(), 0)
             .unwrap();
         assert_eq!(input_memory, output_memory);
     }
@@ -445,17 +444,15 @@ mod tests {
         };
         let mut composite =
             CompositeDiskFile::new(vec![disk_part1, disk_part2, disk_part3]).unwrap();
-        composite.seek(SeekFrom::Start(50)).unwrap();
         let mut input_memory = [55u8; 200];
         let input_volatile_memory = &mut input_memory[..];
         composite
-            .write_all_volatile(input_volatile_memory.get_slice(0, 200).unwrap())
+            .write_all_at_volatile(input_volatile_memory.get_slice(0, 200).unwrap(), 50)
             .unwrap();
-        composite.seek(SeekFrom::Start(50)).unwrap();
         let mut output_memory = [0u8; 200];
         let output_volatile_memory = &mut output_memory[..];
         composite
-            .read_exact_volatile(output_volatile_memory.get_slice(0, 200).unwrap())
+            .read_exact_at_volatile(output_volatile_memory.get_slice(0, 200).unwrap(), 50)
             .unwrap();
         assert!(input_memory.into_iter().eq(output_memory.into_iter()));
     }
@@ -482,18 +479,16 @@ mod tests {
         };
         let mut composite =
             CompositeDiskFile::new(vec![disk_part1, disk_part2, disk_part3]).unwrap();
-        composite.seek(SeekFrom::Start(0)).unwrap();
         let mut input_memory = [55u8; 300];
         let input_volatile_memory = &mut input_memory[..];
         composite
-            .write_all_volatile(input_volatile_memory.get_slice(0, 300).unwrap())
+            .write_all_at_volatile(input_volatile_memory.get_slice(0, 300).unwrap(), 0)
             .unwrap();
         composite.punch_hole(50, 200).unwrap();
-        composite.seek(SeekFrom::Start(0)).unwrap();
         let mut output_memory = [0u8; 300];
         let output_volatile_memory = &mut output_memory[..];
         composite
-            .read_exact_volatile(output_volatile_memory.get_slice(0, 300).unwrap())
+            .read_exact_at_volatile(output_volatile_memory.get_slice(0, 300).unwrap(), 0)
             .unwrap();
 
         for i in 50..250 {
@@ -524,22 +519,20 @@ mod tests {
         };
         let mut composite =
             CompositeDiskFile::new(vec![disk_part1, disk_part2, disk_part3]).unwrap();
-        composite.seek(SeekFrom::Start(0)).unwrap();
         let mut input_memory = [55u8; 300];
         let input_volatile_memory = &mut input_memory[..];
         composite
-            .write_all_volatile(input_volatile_memory.get_slice(0, 300).unwrap())
+            .write_all_at_volatile(input_volatile_memory.get_slice(0, 300).unwrap(), 0)
             .unwrap();
         composite.seek(SeekFrom::Start(50)).unwrap();
         let mut zeroes_written = 0;
         while zeroes_written < 200 {
             zeroes_written += composite.write_zeroes(200 - zeroes_written).unwrap();
         }
-        composite.seek(SeekFrom::Start(0)).unwrap();
         let mut output_memory = [0u8; 300];
         let output_volatile_memory = &mut output_memory[..];
         composite
-            .read_exact_volatile(output_volatile_memory.get_slice(0, 300).unwrap())
+            .read_exact_at_volatile(output_volatile_memory.get_slice(0, 300).unwrap(), 0)
             .unwrap();
 
         for i in 50..250 {
