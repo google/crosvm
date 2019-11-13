@@ -827,6 +827,23 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.seccomp_policy_dir = PathBuf::from(value.unwrap());
         }
         "seccomp-log-failures" => {
+            // A side-effect of this flag is to force the use of .policy files
+            // instead of .bpf files (.bpf files are expected and assumed to be
+            // compiled to fail an unpermitted action with "trap").
+            // Normally crosvm will first attempt to use a .bpf file, and if
+            // not present it will then try to use a .policy file.  It's up
+            // to the build to decide which of these files is present for
+            // crosvm to use (for CrOS the build will use .bpf files for
+            // x64 builds and .policy files for arm/arm64 builds).
+            //
+            // This flag will likely work as expected for builds that use
+            // .policy files.  For builds that only use .bpf files the initial
+            // result when using this flag is likely to be a file-not-found
+            // error (since the .policy files are not present).
+            // For .bpf builds you can either 1) manually add the .policy files,
+            // or 2) do not use this command-line parameter and instead
+            // temporarily change the build by passing "log" rather than
+            // "trap" as the "--default-action" to compile_seccomp_policy.py.
             cfg.seccomp_log_failures = true;
         }
         "plugin" => {

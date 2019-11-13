@@ -287,14 +287,28 @@ fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) ->
     // Run in an empty network namespace.
     j.namespace_net();
     j.no_new_privs();
-    // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP, which will correctly kill
-    // the entire plugin process if a worker thread commits a seccomp violation.
-    j.set_seccomp_filter_tsync();
-    if log_failures {
-        j.log_seccomp_filter_failures();
+    // By default we'll prioritize using the pre-compiled .bpf over the .policy
+    // file (the .bpf is expected to be compiled using "trap" as the failure
+    // behavior instead of the default "kill" behavior).
+    // Refer to the code comment for the "seccomp-log-failures"
+    // command-line parameter for an explanation about why the |log_failures|
+    // flag forces the use of .policy files (and the build-time alternative to
+    // this run-time flag).
+    let bpf_policy_file = seccomp_policy.with_extension("bpf");
+    if bpf_policy_file.exists() && !log_failures {
+        j.parse_seccomp_program(&bpf_policy_file)
+            .map_err(Error::ParseSeccomp)?;
+    } else {
+        // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP,
+        // which will correctly kill the entire device process if a worker
+        // thread commits a seccomp violation.
+        j.set_seccomp_filter_tsync();
+        if log_failures {
+            j.log_seccomp_filter_failures();
+        }
+        j.parse_seccomp_filters(&seccomp_policy.with_extension("policy"))
+            .map_err(Error::ParseSeccomp)?;
     }
-    j.parse_seccomp_filters(seccomp_policy)
-        .map_err(Error::ParseSeccomp)?;
     j.use_seccomp_filter();
     // Don't do init setup.
     j.run_as_init();
@@ -596,7 +610,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
             return Err(Error::RootNotDir);
         }
 
-        let policy_path = cfg.seccomp_policy_dir.join("plugin.policy");
+        let policy_path = cfg.seccomp_policy_dir.join("plugin");
         let mut jail = create_plugin_jail(root_path, cfg.seccomp_log_failures, &policy_path)?;
 
         // Update gid map of the jail if caller provided supplemental groups.

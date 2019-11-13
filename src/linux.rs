@@ -324,14 +324,29 @@ fn create_base_minijail(
         .map_err(Error::SettingMaxOpenFiles)?;
     // Apply the block device seccomp policy.
     j.no_new_privs();
-    // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP, which will correctly kill
-    // the entire device process if a worker thread commits a seccomp violation.
-    j.set_seccomp_filter_tsync();
-    if log_failures {
-        j.log_seccomp_filter_failures();
+
+    // By default we'll prioritize using the pre-compiled .bpf over the .policy
+    // file (the .bpf is expected to be compiled using "trap" as the failure
+    // behavior instead of the default "kill" behavior).
+    // Refer to the code comment for the "seccomp-log-failures"
+    // command-line parameter for an explanation about why the |log_failures|
+    // flag forces the use of .policy files (and the build-time alternative to
+    // this run-time flag).
+    let bpf_policy_file = seccomp_policy.with_extension("bpf");
+    if bpf_policy_file.exists() && !log_failures {
+        j.parse_seccomp_program(&bpf_policy_file)
+            .map_err(Error::DeviceJail)?;
+    } else {
+        // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP,
+        // which will correctly kill the entire device process if a worker
+        // thread commits a seccomp violation.
+        j.set_seccomp_filter_tsync();
+        if log_failures {
+            j.log_seccomp_filter_failures();
+        }
+        j.parse_seccomp_filters(&seccomp_policy.with_extension("policy"))
+            .map_err(Error::DeviceJail)?;
     }
-    j.parse_seccomp_filters(seccomp_policy)
-        .map_err(Error::DeviceJail)?;
     j.use_seccomp_filter();
     // Don't do init setup.
     j.run_as_init();
@@ -395,7 +410,7 @@ fn create_block_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "block_device.policy")?,
+        jail: simple_jail(&cfg, "block_device")?,
     })
 }
 
@@ -404,7 +419,7 @@ fn create_rng_device(cfg: &Config) -> DeviceResult {
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "rng_device.policy")?,
+        jail: simple_jail(&cfg, "rng_device")?,
     })
 }
 
@@ -416,7 +431,7 @@ fn create_tpm_device(cfg: &Config) -> DeviceResult {
     use sys_util::chown;
 
     let tpm_storage: PathBuf;
-    let mut tpm_jail = simple_jail(&cfg, "tpm_device.policy")?;
+    let mut tpm_jail = simple_jail(&cfg, "tpm_device")?;
 
     match &mut tpm_jail {
         Some(jail) => {
@@ -467,7 +482,7 @@ fn create_single_touch_device(cfg: &Config, single_touch_spec: &TouchDeviceOptio
         .map_err(Error::InputDeviceNew)?;
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device.policy")?,
+        jail: simple_jail(&cfg, "input_device")?,
     })
 }
 
@@ -482,7 +497,7 @@ fn create_trackpad_device(cfg: &Config, trackpad_spec: &TouchDeviceOption) -> De
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device.policy")?,
+        jail: simple_jail(&cfg, "input_device")?,
     })
 }
 
@@ -496,7 +511,7 @@ fn create_mouse_device<T: IntoUnixStream>(cfg: &Config, mouse_socket: T) -> Devi
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device.policy")?,
+        jail: simple_jail(&cfg, "input_device")?,
     })
 }
 
@@ -510,7 +525,7 @@ fn create_keyboard_device<T: IntoUnixStream>(cfg: &Config, keyboard_socket: T) -
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device.policy")?,
+        jail: simple_jail(&cfg, "input_device")?,
     })
 }
 
@@ -525,7 +540,7 @@ fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device.policy")?,
+        jail: simple_jail(&cfg, "input_device")?,
     })
 }
 
@@ -534,7 +549,7 @@ fn create_balloon_device(cfg: &Config, socket: BalloonControlResponseSocket) -> 
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "balloon_device.policy")?,
+        jail: simple_jail(&cfg, "balloon_device")?,
     })
 }
 
@@ -549,7 +564,7 @@ fn create_tap_net_device(cfg: &Config, tap_fd: RawFd) -> DeviceResult {
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "net_device.policy")?,
+        jail: simple_jail(&cfg, "net_device")?,
     })
 }
 
@@ -572,9 +587,9 @@ fn create_net_device(
     };
 
     let policy = if cfg.vhost_net {
-        "vhost_net_device.policy"
+        "vhost_net_device"
     } else {
-        "net_device.policy"
+        "net_device"
     };
 
     Ok(VirtioDeviceStub {
@@ -621,7 +636,7 @@ fn create_gpu_device(
         event_devices,
     );
 
-    let jail = match simple_jail(&cfg, "gpu_device.policy")? {
+    let jail = match simple_jail(&cfg, "gpu_device")? {
         Some(mut jail) => {
             // Create a tmpfs in the device's root directory so that we can bind mount the
             // dri directory into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
@@ -704,7 +719,7 @@ fn create_wayland_device(
     let dev = virtio::Wl::new(cfg.wayland_socket_paths.clone(), socket, resource_bridge)
         .map_err(Error::WaylandDeviceNew)?;
 
-    let jail = match simple_jail(&cfg, "wl_device.policy")? {
+    let jail = match simple_jail(&cfg, "wl_device")? {
         Some(mut jail) => {
             // Create a tmpfs in the device's root directory so that we can bind mount the wayland
             // socket directory into it. The size=67108864 is size=64*1024*1024 or size=64MB.
@@ -741,7 +756,7 @@ fn create_vhost_vsock_device(cfg: &Config, cid: u64, mem: &GuestMemory) -> Devic
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "vhost_vsock_device.policy")?,
+        jail: simple_jail(&cfg, "vhost_vsock_device")?,
     })
 }
 
@@ -769,7 +784,7 @@ fn create_fs_device(
 
         // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP, which will correctly kill
         // the entire device process if a worker thread commits a seccomp violation.
-        let seccomp_policy = cfg.seccomp_policy_dir.join("fs_device.policy");
+        let seccomp_policy = cfg.seccomp_policy_dir.join("fs_device");
         j.set_seccomp_filter_tsync();
         if cfg.seccomp_log_failures {
             j.log_seccomp_filter_failures();
@@ -804,7 +819,7 @@ fn create_fs_device(
 }
 
 fn create_9p_device(cfg: &Config, src: &Path, tag: &str) -> DeviceResult {
-    let (jail, root) = match simple_jail(&cfg, "9p_device.policy")? {
+    let (jail, root) = match simple_jail(&cfg, "9p_device")? {
         Some(mut jail) => {
             //  The shared directory becomes the root of the device's file system.
             let root = Path::new("/");
@@ -907,7 +922,7 @@ fn create_pmem_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev) as Box<dyn VirtioDevice>,
-        jail: simple_jail(&cfg, "pmem_device.policy")?,
+        jail: simple_jail(&cfg, "pmem_device")?,
     })
 }
 
@@ -1015,7 +1030,7 @@ fn create_virtio_devices(
                     .map_err(Error::InputDeviceNew)?;
                 devs.push(VirtioDeviceStub {
                     dev: Box::new(dev),
-                    jail: simple_jail(&cfg, "input_device.policy")?,
+                    jail: simple_jail(&cfg, "input_device")?,
                 });
                 event_devices.push(EventDevice::touchscreen(event_device_socket));
             }
@@ -1025,7 +1040,7 @@ fn create_virtio_devices(
                 let dev = virtio::new_keyboard(virtio_dev_socket).map_err(Error::InputDeviceNew)?;
                 devs.push(VirtioDeviceStub {
                     dev: Box::new(dev),
-                    jail: simple_jail(&cfg, "input_device.policy")?,
+                    jail: simple_jail(&cfg, "input_device")?,
                 });
                 event_devices.push(EventDevice::keyboard(event_device_socket));
             }
@@ -1112,7 +1127,7 @@ fn create_devices(
 
         pci_devices.push((
             Box::new(cras_audio),
-            simple_jail(&cfg, "cras_audio_device.policy")?,
+            simple_jail(&cfg, "cras_audio_device")?,
         ));
     }
 
@@ -1122,12 +1137,12 @@ fn create_devices(
 
         pci_devices.push((
             Box::new(null_audio),
-            simple_jail(&cfg, "null_audio_device.policy")?,
+            simple_jail(&cfg, "null_audio_device")?,
         ));
     }
     // Create xhci controller.
     let usb_controller = Box::new(XhciController::new(mem.clone(), usb_provider));
-    pci_devices.push((usb_controller, simple_jail(&cfg, "xhci.policy")?));
+    pci_devices.push((usb_controller, simple_jail(&cfg, "xhci")?));
 
     if cfg.vfio.is_some() {
         let (vfio_host_socket_irq, vfio_device_socket_irq) =
@@ -1146,7 +1161,7 @@ fn create_devices(
             vfio_device_socket_irq,
             vfio_device_socket_mem,
         ));
-        pci_devices.push((vfiopcidevice, simple_jail(&cfg, "vfio_device.policy")?));
+        pci_devices.push((vfiopcidevice, simple_jail(&cfg, "vfio_device")?));
     }
 
     Ok(pci_devices)
@@ -1538,7 +1553,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         components,
         cfg.split_irqchip,
         &cfg.serial_parameters,
-        simple_jail(&cfg, "serial.policy")?,
+        simple_jail(&cfg, "serial")?,
         |mem, vm, sys_allocator, exit_evt| {
             create_devices(
                 &cfg,
