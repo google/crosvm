@@ -236,6 +236,7 @@ name = "io_jail"
 version = "0.1.0"
 dependencies = [
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
+ "net_sys 0.1.0",
 ]
 
 [[package]]

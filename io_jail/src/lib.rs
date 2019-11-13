@@ -9,10 +9,12 @@
 mod libminijail;
 
 use libc::pid_t;
+use net_sys::{sock_filter, sock_fprog};
 use std::ffi::CString;
 use std::fmt::{self, Display};
 use std::fs;
 use std::io;
+use std::os::raw::c_ushort;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
@@ -52,6 +54,8 @@ pub enum Error {
     DupDevNull(i32),
     /// Failed to set up /dev/null for FDs 0, 1, or 2.
     OpenDevNull(io::Error),
+    /// Failed to read policy bpf from file.
+    ReadProgram(io::Error),
     /// Setting the specified alt-syscall table failed with errno. Is the table in the kernel?
     SetAltSyscallTable { errno: i32, name: String },
     /// Setting the specified rlimit failed with errno.
@@ -68,6 +72,10 @@ pub enum Error {
     ProcFd(String),
     /// Minijail refused to preserve an FD in the inherit list of `fork()`.
     PreservingFd(i32),
+    /// Program size is too large
+    ProgramTooLarge,
+    /// File size should be non-zero and a multiple of sock_filter
+    WrongProgramSize,
 }
 
 impl Display for Error {
@@ -121,6 +129,7 @@ impl Display for Error {
                 "fail to open /dev/null for setting FDs 0, 1, or 2: {}",
                 e,
             ),
+            ReadProgram(e) => write!(f, "failed to read from bpf file: {}", e),
             SetAltSyscallTable { name, errno } => write!(
                 f,
                 "failed to set alt-syscall table {}: {}",
@@ -144,6 +153,8 @@ impl Display for Error {
             ReadFdDir(e) => write!(f, "failed to open /proc/self/fd: {}", e),
             ProcFd(s) => write!(f, "an entry in /proc/self/fd is not an integer: {}", s),
             PreservingFd(e) => write!(f, "fork failed in minijail_preserve_fd with error {}", e),
+            ProgramTooLarge => write!(f, "bpf program is too large (max 64K instructions)"),
+            WrongProgramSize => write!(f, "bpf file was empty or not a multiple of sock_filter"),
         }
     }
 }
@@ -268,6 +279,28 @@ impl Minijail {
         unsafe {
             libminijail::minijail_set_seccomp_filter_tsync(self.jail);
         }
+    }
+    pub fn parse_seccomp_program(&mut self, path: &Path) -> Result<()> {
+        if !path.is_file() {
+            return Err(Error::SeccompPath(path.to_owned()));
+        }
+
+        let buffer = fs::read(path).map_err(Error::ReadProgram)?;
+        if buffer.len() % std::mem::size_of::<sock_filter>() != 0 {
+            return Err(Error::WrongProgramSize);
+        }
+        let count = buffer.len() / std::mem::size_of::<sock_filter>();
+        if count > (!0 as u16) as usize {
+            return Err(Error::ProgramTooLarge);
+        }
+        let header = sock_fprog {
+            len: count as c_ushort,
+            filter: buffer.as_ptr() as *mut sock_filter,
+        };
+        unsafe {
+            libminijail::minijail_set_seccomp_filters(self.jail, &header);
+        }
+        Ok(())
     }
     pub fn parse_seccomp_filters(&mut self, path: &Path) -> Result<()> {
         if !path.is_file() {
