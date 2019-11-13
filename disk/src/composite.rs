@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cmp::{max, min};
-use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom};
@@ -14,7 +13,9 @@ use crate::{create_disk_file, DiskFile, ImageType};
 use data_model::VolatileSlice;
 use protos::cdisk_spec;
 use remain::sorted;
-use sys_util::{AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt};
+use sys_util::{
+    AsRawFds, FileGetLen, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt,
+};
 
 #[sorted]
 #[derive(Debug)]
@@ -68,7 +69,6 @@ impl ComponentDiskPart {
 /// and not overlapping.
 pub struct CompositeDiskFile {
     component_disks: Vec<ComponentDiskPart>,
-    cursor_location: u64,
 }
 
 fn ranges_overlap(a: &Range<u64>, b: &Range<u64>) -> bool {
@@ -109,7 +109,6 @@ impl CompositeDiskFile {
         }
         Ok(CompositeDiskFile {
             component_disks: disks,
-            cursor_location: 0,
         })
     }
 
@@ -211,6 +210,12 @@ impl CompositeDiskFile {
     }
 }
 
+impl FileGetLen for CompositeDiskFile {
+    fn get_len(&self) -> io::Result<u64> {
+        Ok(self.length())
+    }
+}
+
 impl FileSetLen for CompositeDiskFile {
     fn set_len(&self, _len: u64) -> io::Result<()> {
         Err(io::Error::new(ErrorKind::Other, "unsupported operation"))
@@ -287,19 +292,6 @@ impl PunchHole for CompositeDiskFile {
     }
 }
 
-impl Seek for CompositeDiskFile {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        let cursor_location = match pos {
-            SeekFrom::Start(offset) => Ok(offset),
-            SeekFrom::End(offset) => u64::try_from(self.length() as i64 + offset),
-            SeekFrom::Current(offset) => u64::try_from(self.cursor_location as i64 + offset),
-        }
-        .map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
-        self.cursor_location = cursor_location;
-        Ok(cursor_location)
-    }
-}
-
 impl WriteZeroesAt for CompositeDiskFile {
     fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
         let cursor_location = offset;
@@ -349,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn seek_to_end() {
+    fn get_len() {
         let file1: File = SharedMemory::new(None).unwrap().into();
         let file2: File = SharedMemory::new(None).unwrap().into();
         let disk_part1 = ComponentDiskPart {
@@ -362,9 +354,9 @@ mod tests {
             offset: 100,
             length: 100,
         };
-        let mut composite = CompositeDiskFile::new(vec![disk_part1, disk_part2]).unwrap();
-        let location = composite.seek(SeekFrom::End(0)).unwrap();
-        assert_eq!(location, 200);
+        let composite = CompositeDiskFile::new(vec![disk_part1, disk_part2]).unwrap();
+        let len = composite.get_len().unwrap();
+        assert_eq!(len, 200);
     }
 
     #[test]

@@ -41,6 +41,21 @@ impl FileSetLen for File {
     }
 }
 
+/// A trait for getting the size of a file.
+/// This is equivalent to File's metadata().len() method,
+/// but wrapped in a trait so that it can be implemented for
+/// other types.
+pub trait FileGetLen {
+    /// Get the current length of the file in bytes.
+    fn get_len(&self) -> Result<u64>;
+}
+
+impl FileGetLen for File {
+    fn get_len(&self) -> Result<u64> {
+        Ok(self.metadata()?.len())
+    }
+}
+
 /// A trait similar to `Read` and `Write`, but uses volatile memory as buffers.
 pub trait FileReadWriteVolatile {
     /// Read bytes from this file into the given slice, returning the number of bytes read on

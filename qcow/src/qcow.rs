@@ -10,8 +10,8 @@ use data_model::{VolatileMemory, VolatileSlice};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
 use remain::sorted;
 use sys_util::{
-    error, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync, PunchHole,
-    SeekHole, WriteZeroesAt,
+    error, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync,
+    PunchHole, SeekHole, WriteZeroesAt,
 };
 
 use std::cmp::{max, min};
@@ -1565,6 +1565,12 @@ impl FileSetLen for QcowFile {
             std::io::ErrorKind::Other,
             "set_len() not supported for QcowFile",
         ))
+    }
+}
+
+impl FileGetLen for QcowFile {
+    fn get_len(&self) -> io::Result<u64> {
+        Ok(self.virtual_size())
     }
 }
 

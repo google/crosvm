@@ -64,7 +64,7 @@ pub use crate::timerfd::*;
 pub use poll_token_derive::*;
 
 pub use crate::file_traits::{
-    AsRawFds, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync,
+    AsRawFds, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync,
 };
 pub use crate::guest_memory::Error as GuestMemoryError;
 pub use crate::mmap::Error as MmapError;

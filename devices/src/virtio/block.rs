@@ -4,7 +4,7 @@
 
 use std::cmp::{max, min};
 use std::fmt::{self, Display};
-use std::io::{self, Seek, SeekFrom, Write};
+use std::io::{self, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
@@ -344,7 +344,7 @@ impl Worker {
             return DiskControlResult::Err(SysError::new(libc::EIO));
         }
 
-        if let Ok(new_disk_size) = self.disk_image.seek(SeekFrom::End(0)) {
+        if let Ok(new_disk_size) = self.disk_image.get_len() {
             let mut disk_size = self.disk_size.lock();
             *disk_size = new_disk_size;
         }
@@ -484,16 +484,14 @@ fn build_config_space(disk_size: u64, seg_max: u32) -> virtio_blk_config {
 }
 
 impl Block {
-    /// Create a new virtio block device that operates on the given file.
-    ///
-    /// The given file must be seekable and sizable.
+    /// Create a new virtio block device that operates on the given DiskFile.
     pub fn new(
-        mut disk_image: Box<dyn DiskFile>,
+        disk_image: Box<dyn DiskFile>,
         read_only: bool,
         sparse: bool,
         control_socket: Option<DiskControlResponseSocket>,
     ) -> SysResult<Block> {
-        let disk_size = disk_image.seek(SeekFrom::End(0))? as u64;
+        let disk_size = disk_image.get_len()?;
         if disk_size % SECTOR_SIZE != 0 {
             warn!(
                 "Disk size {} is not a multiple of sector size {}; \

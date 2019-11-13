@@ -11,7 +11,8 @@ use libc::EINVAL;
 use qcow::{QcowFile, QCOW_MAGIC};
 use remain::sorted;
 use sys_util::{
-    AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroesAt,
+    AsRawFds, FileGetLen, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole,
+    WriteZeroesAt,
 };
 
 #[cfg(feature = "composite-disk")]
@@ -41,10 +42,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[rustfmt::skip] // rustfmt won't wrap the long list of trait bounds.
 pub trait DiskFile:
     FileSetLen
+    + FileGetLen
     + FileSync
     + FileReadWriteAtVolatile
     + PunchHole
-    + Seek
     + WriteZeroesAt
     + Send
     + AsRawFds
@@ -52,10 +53,10 @@ pub trait DiskFile:
 }
 impl<
         D: FileSetLen
+            + FileGetLen
             + FileSync
             + PunchHole
             + FileReadWriteAtVolatile
-            + Seek
             + WriteZeroesAt
             + Send
             + AsRawFds,
