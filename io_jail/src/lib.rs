@@ -250,9 +250,10 @@ impl Minijail {
     pub fn set_rlimit(
         &mut self,
         kind: libc::c_int,
-        cur: libc::rlim_t,
-        max: libc::rlim_t,
+        cur: libc::rlim64_t,
+        max: libc::rlim64_t,
     ) -> Result<()> {
+        // TODO(chirantan): Switch to minijail_rlimit64 once that lands in libminijail.
         let errno = unsafe { libminijail::minijail_rlimit(self.jail, kind, cur, max) };
         if errno == 0 {
             Ok(())

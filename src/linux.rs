@@ -287,7 +287,7 @@ impl AsRawFd for TaggedControlSocket {
     }
 }
 
-fn get_max_open_files() -> Result<libc::rlim_t> {
+fn get_max_open_files() -> Result<libc::rlim64_t> {
     let mut buf = String::with_capacity(32);
     File::open("/proc/sys/fs/file-max")
         .and_then(|mut f| f.read_to_string(&mut buf))

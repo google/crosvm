@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{gid_t, pid_t, rlim_t, uid_t};
+use libc::{gid_t, pid_t, uid_t};
 use std::os::raw::{c_char, c_int, c_long, c_ulong};
 
 /// Struct minijail is an opaque type inside libminijail.
@@ -19,7 +19,7 @@ extern "C" {
     pub fn minijail_keep_supplementary_gids(j: *mut minijail);
     pub fn minijail_change_user(j: *mut minijail, user: *const c_char) -> c_int;
     pub fn minijail_change_group(j: *mut minijail, group: *const c_char) -> c_int;
-    pub fn minijail_rlimit(j: *mut minijail, kind: c_int, cur: rlim_t, max: rlim_t) -> c_int;
+    pub fn minijail_rlimit(j: *mut minijail, kind: c_int, cur: u64, max: u64) -> c_int;
     pub fn minijail_use_seccomp(j: *mut minijail);
     pub fn minijail_no_new_privs(j: *mut minijail);
     pub fn minijail_use_seccomp_filter(j: *mut minijail);
