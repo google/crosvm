@@ -761,17 +761,16 @@ fn create_fs_device(
 
         j.no_new_privs();
 
-        // TODO(chirantan): Enable seccomp
         // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP, which will correctly kill
         // the entire device process if a worker thread commits a seccomp violation.
-        // let seccomp_policy = cfg.seccomp_policy_dir.join("9p_device.policy");
-        // j.set_seccomp_filter_tsync();
-        // if cfg.seccomp_log_failures {
-        //     j.log_seccomp_filter_failures();
-        // }
-        // j.parse_seccomp_filters(&seccomp_policy)
-        //     .map_err(Error::DeviceJail)?;
-        // j.use_seccomp_filter();
+        let seccomp_policy = cfg.seccomp_policy_dir.join("fs_device.policy");
+        j.set_seccomp_filter_tsync();
+        if cfg.seccomp_log_failures {
+            j.log_seccomp_filter_failures();
+        }
+        j.parse_seccomp_filters(&seccomp_policy)
+            .map_err(Error::DeviceJail)?;
+        j.use_seccomp_filter();
 
         // Don't do init setup.
         j.run_as_init();

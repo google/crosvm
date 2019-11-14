@@ -1,0 +1,32 @@
+# Copyright 2019 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+openat: 1
+
+@include /usr/share/policy/crosvm/common_device.policy
+
+fchmodat: 1
+fchownat: 1
+fgetxattr: 1
+fsetxattr: 1
+fstatfs: 1
+ftruncate: 1
+getdents64: 1
+getegid: 1
+geteuid: 1
+linkat: 1
+lseek: 1
+mkdirat: 1
+mknodat: 1
+newfstatat: 1
+preadv: 1
+pwritev: 1
+readlinkat: 1
+renameat2: 1
+setresgid: 1
+setresuid: 1
+symlinkat: 1
+umask: 1
+unlinkat: 1
+utimensat: 1
