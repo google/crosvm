@@ -25,6 +25,7 @@ use super::{Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_NET};
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
+const NUM_MSIX_VECTORS: u16 = NUM_QUEUES as u16;
 
 #[derive(Debug)]
 pub enum NetError {
@@ -404,6 +405,10 @@ where
 
     fn device_type(&self) -> u32 {
         TYPE_NET
+    }
+
+    fn msix_vectors(&self) -> u16 {
+        NUM_MSIX_VECTORS
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

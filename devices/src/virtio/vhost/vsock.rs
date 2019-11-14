@@ -112,6 +112,10 @@ impl VirtioDevice for Vsock {
         TYPE_VSOCK
     }
 
+    fn msix_vectors(&self) -> u16 {
+        NUM_MSIX_VECTORS
+    }
+
     fn queue_max_sizes(&self) -> &[u16] {
         QUEUE_SIZES
     }
