@@ -1845,10 +1845,26 @@ fn run_control(
         }
 
         // Sort in reverse so the highest indexes are removed first. This removal algorithm
-        // preserved correct indexes as each element is removed.
+        // preserves correct indexes as each element is removed.
         vm_control_indices_to_remove.sort_unstable_by(|a, b| b.cmp(a));
         vm_control_indices_to_remove.dedup();
         for index in vm_control_indices_to_remove {
+            // Delete the socket from the `poll_ctx` synchronously. Otherwise, the kernel will do
+            // this automatically when the FD inserted into the `poll_ctx` is closed after this
+            // if-block, but this removal can be deferred unpredictably. In some instances where the
+            // system is under heavy load, we can even get events returned by `poll_ctx` for an FD
+            // that has already been closed. Because the token associated with that spurious event
+            // now belongs to a different socket, the control loop will start to interact with
+            // sockets that might not be ready to use. This can cause incorrect hangup detection or
+            // blocking on a socket that will never be ready. See also: crbug.com/1019986
+            if let Some(socket) = control_sockets.get(index) {
+                poll_ctx.delete(socket).map_err(Error::PollContextDelete)?;
+            }
+
+            // This line implicitly drops the socket at `index` when it gets returned by
+            // `swap_remove`. After this line, the socket at `index` is not the one from
+            // `vm_control_indices_to_remove`. Because of this socket's change in index, we need to
+            // use `poll_ctx.modify` to change the associated index in its `Token::VmControl`.
             control_sockets.swap_remove(index);
             if let Some(socket) = control_sockets.get(index) {
                 poll_ctx
