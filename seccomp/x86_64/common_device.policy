@@ -24,8 +24,6 @@ mprotect: arg2 in ~PROT_EXEC
 mremap: 1
 munmap: 1
 nanosleep: 1
-open: return ENOENT
-openat: return ENOENT
 pipe2: 1
 poll: 1
 ppoll: 1

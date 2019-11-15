@@ -2,8 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-openat: 1
-
 @include /usr/share/policy/crosvm/common_device.policy
 
 fchmodat: 1
@@ -21,6 +19,8 @@ lseek: 1
 mkdirat: 1
 mknodat: 1
 newfstatat: 1
+open: return ENOENT
+openat: 1
 preadv: 1
 pwritev: 1
 readlinkat: 1

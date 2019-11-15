@@ -7,7 +7,6 @@ openat: 1
 
 @include /usr/share/policy/crosvm/common_device.policy
 
-writev: 1
 pwrite64: 1
 stat: 1
 statx: 1

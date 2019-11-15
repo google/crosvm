@@ -9,9 +9,6 @@ socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
 # arg1 == FIONBIO || arg1 == DMA_BUF_IOCTL_SYNC
 ioctl: arg1 == 0x5421 || arg1 == 0x40086200
 connect: 1
-# Used to communicate with wayland
-recvmsg: 1
-sendmsg: 1
 # Used for sharing memory with wayland. arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING
 memfd_create: arg1 == 3
 # Used to set of size new memfd
@@ -20,3 +17,5 @@ ftruncate: 1
 lseek: 1
 # Allow F_GETFL only
 fcntl: arg1 == 3
+open: return ENOENT
+openat: return ENOENT

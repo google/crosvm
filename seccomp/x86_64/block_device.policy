@@ -10,6 +10,8 @@ fstat: 1
 fsync: 1
 ftruncate: 1
 lseek: 1
+open: return ENOENT
+openat: return ENOENT
 pread64: 1
 preadv: 1
 pwrite64: 1
