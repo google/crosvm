@@ -96,7 +96,6 @@ pub struct XhciController {
     config_regs: PciConfiguration,
     pci_bus_dev: Option<(u8, u8)>,
     mem: GuestMemory,
-    bar0: u64, // bar0 in config_regs will be changed by guest. Not sure why.
     state: XhciControllerState,
 }
 
@@ -117,7 +116,6 @@ impl XhciController {
             config_regs,
             pci_bus_dev: None,
             mem,
-            bar0: 0,
             state: XhciControllerState::Created {
                 device_provider: usb_provider,
             },
@@ -228,7 +226,6 @@ impl PciDevice for XhciController {
         self.config_regs
             .add_pci_bar(&bar0_config)
             .map_err(|e| PciDeviceError::IoRegistrationFailed(bar0_addr, e))?;
-        self.bar0 = bar0_addr;
         Ok(vec![(bar0_addr, XHCI_BAR0_SIZE)])
     }
 
@@ -241,7 +238,7 @@ impl PciDevice for XhciController {
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
-        let bar0 = self.bar0;
+        let bar0 = self.config_regs.get_bar_addr(0);
         if addr < bar0 || addr > bar0 + XHCI_BAR0_SIZE {
             return;
         }
@@ -257,7 +254,7 @@ impl PciDevice for XhciController {
     }
 
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        let bar0 = self.bar0;
+        let bar0 = self.config_regs.get_bar_addr(0);
         if addr < bar0 || addr > bar0 + XHCI_BAR0_SIZE {
             return;
         }
