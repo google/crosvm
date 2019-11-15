@@ -56,7 +56,12 @@ impl<F: FileSystem + Sync> Worker<F> {
         Ok(())
     }
 
-    pub fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd) -> Result<()> {
+    pub fn run(
+        &mut self,
+        queue_evt: EventFd,
+        kill_evt: EventFd,
+        watch_resample_event: bool,
+    ) -> Result<()> {
         #[derive(PollToken)]
         enum Token {
             // A request is ready on the queue.
@@ -67,12 +72,15 @@ impl<F: FileSystem + Sync> Worker<F> {
             Kill,
         }
 
-        let poll_ctx = PollContext::build_with(&[
-            (&queue_evt, Token::QueueReady),
-            (&kill_evt, Token::Kill),
-            (self.irq.get_resample_evt(), Token::InterruptResample),
-        ])
-        .map_err(Error::CreatePollContext)?;
+        let poll_ctx =
+            PollContext::build_with(&[(&queue_evt, Token::QueueReady), (&kill_evt, Token::Kill)])
+                .map_err(Error::CreatePollContext)?;
+
+        if watch_resample_event {
+            poll_ctx
+                .add(self.irq.get_resample_evt(), Token::InterruptResample)
+                .map_err(Error::CreatePollContext)?;
+        }
 
         loop {
             let events = poll_ctx.wait().map_err(Error::PollError)?;

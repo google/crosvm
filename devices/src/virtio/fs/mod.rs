@@ -236,6 +236,7 @@ impl VirtioDevice for Fs {
         let server = Arc::new(Server::new(fs));
         let irq = Arc::new(interrupt);
 
+        let mut watch_resample_event = true;
         for (idx, (queue, evt)) in queues.into_iter().zip(queue_evts.into_iter()).enumerate() {
             let (self_kill_evt, kill_evt) =
                 match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
@@ -255,8 +256,12 @@ impl VirtioDevice for Fs {
                 .name(format!("virtio-fs worker {}", idx))
                 .spawn(move || {
                     let mut worker = Worker::new(mem, queue, server, irq);
-                    worker.run(evt, kill_evt)
+                    worker.run(evt, kill_evt, watch_resample_event)
                 });
+
+            if watch_resample_event {
+                watch_resample_event = false;
+            }
 
             match worker_result {
                 Ok(worker) => self.workers.push((self_kill_evt, worker)),
