@@ -14,8 +14,8 @@ fstatat64: 1
 fstatfs64: 1
 ftruncate64: 1
 getdents64: 1
-getegid: 1
-geteuid: 1
+getegid32: 1
+geteuid32: 1
 linkat: 1
 _llseek: 1
 mkdirat: 1
@@ -24,8 +24,8 @@ preadv: 1
 pwritev: 1
 readlinkat: 1
 renameat2: 1
-setresgid: 1
-setresuid: 1
+setresgid32: 1
+setresuid32: 1
 symlinkat: 1
 umask: 1
 unlinkat: 1

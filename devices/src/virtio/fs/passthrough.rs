@@ -116,14 +116,31 @@ macro_rules! scoped_cred {
         }
     };
 }
+#[cfg(not(target_arch = "arm"))]
 scoped_cred!(ScopedUid, libc::uid_t, libc::SYS_setresuid);
+#[cfg(target_arch = "arm")]
+scoped_cred!(ScopedUid, libc::uid_t, libc::SYS_setresuid32);
+
+#[cfg(not(target_arch = "arm"))]
 scoped_cred!(ScopedGid, libc::gid_t, libc::SYS_setresgid);
+#[cfg(target_arch = "arm")]
+scoped_cred!(ScopedGid, libc::gid_t, libc::SYS_setresgid32);
+
+#[cfg(not(target_arch = "arm"))]
+const SYS_GETEUID: libc::c_long = libc::SYS_geteuid;
+#[cfg(target_arch = "arm")]
+const SYS_GETEUID: libc::c_long = libc::SYS_geteuid32;
+
+#[cfg(not(target_arch = "arm"))]
+const SYS_GETEGID: libc::c_long = libc::SYS_getegid;
+#[cfg(target_arch = "arm")]
+const SYS_GETEGID: libc::c_long = libc::SYS_getegid32;
 
 thread_local! {
     // Both these calls are safe because they take no parameters, and only return an integer value.
     // The kernel also guarantees that they can never fail.
-    static THREAD_EUID: libc::uid_t = unsafe { libc::syscall(libc::SYS_geteuid) as libc::uid_t };
-    static THREAD_EGID: libc::gid_t = unsafe { libc::syscall(libc::SYS_getegid) as libc::gid_t };
+    static THREAD_EUID: libc::uid_t = unsafe { libc::syscall(SYS_GETEUID) as libc::uid_t };
+    static THREAD_EGID: libc::gid_t = unsafe { libc::syscall(SYS_GETEGID) as libc::gid_t };
 }
 
 fn set_creds(
