@@ -285,6 +285,7 @@ dependencies = [
  "cras-sys 0.1.0",
  "data_model 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sync 0.1.0",
  "sys_util 0.1.0",
 ]
 
