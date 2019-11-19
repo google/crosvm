@@ -206,8 +206,14 @@ where
                                     }
                                     Ok(())
                                 };
-                                let result =
-                                    worker.run(queue_evts, QUEUE_SIZES, kill_evt, activate_vqs);
+                                let cleanup_vqs = |_handle: &U| -> Result<()> { Ok(()) };
+                                let result = worker.run(
+                                    queue_evts,
+                                    QUEUE_SIZES,
+                                    kill_evt,
+                                    activate_vqs,
+                                    cleanup_vqs,
+                                );
                                 if let Err(e) = result {
                                     error!("net worker thread exited with error: {}", e);
                                 }
