@@ -1044,17 +1044,11 @@ fn create_devices(
     let mut pci_devices = Vec::new();
 
     for stub in stubs {
-        let dev = if stub.dev.msix_vectors() > 0 {
-            let (msi_host_socket, msi_device_socket) =
-                msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
-            control_sockets.push(TaggedControlSocket::VmIrq(msi_host_socket));
-
-            VirtioPciDevice::new(mem.clone(), stub.dev, Some(msi_device_socket))
-                .map_err(Error::VirtioPciDev)?
-        } else {
-            VirtioPciDevice::new(mem.clone(), stub.dev, None).map_err(Error::VirtioPciDev)?
-        };
-
+        let (msi_host_socket, msi_device_socket) =
+            msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
+        control_sockets.push(TaggedControlSocket::VmIrq(msi_host_socket));
+        let dev = VirtioPciDevice::new(mem.clone(), stub.dev, msi_device_socket)
+            .map_err(Error::VirtioPciDev)?;
         let dev = Box::new(dev) as Box<dyn PciDevice>;
         pci_devices.push((dev, stub.jail));
     }

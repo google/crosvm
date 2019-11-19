@@ -17,7 +17,6 @@ use crate::virtio::{copy_config, Interrupt, Queue, VirtioDevice, TYPE_VSOCK};
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 3;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
-const NUM_MSIX_VECTORS: u16 = NUM_QUEUES as u16;
 
 pub struct Vsock {
     worker_kill_evt: Option<EventFd>,
@@ -43,7 +42,7 @@ impl Vsock {
             | 1 << virtio_sys::vhost::VIRTIO_F_VERSION_1;
 
         let mut interrupts = Vec::new();
-        for _ in 0..NUM_MSIX_VECTORS {
+        for _ in 0..NUM_QUEUES {
             interrupts.push(EventFd::new().map_err(Error::VhostIrqCreate)?);
         }
 
@@ -110,10 +109,6 @@ impl VirtioDevice for Vsock {
 
     fn device_type(&self) -> u32 {
         TYPE_VSOCK
-    }
-
-    fn msix_vectors(&self) -> u16 {
-        NUM_MSIX_VECTORS
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

@@ -80,6 +80,11 @@ impl MsixConfig {
         }
     }
 
+    /// Get the number of MSI-X vectors in this configuration.
+    pub fn num_vectors(&self) -> u16 {
+        self.msix_num
+    }
+
     /// Check whether the Function Mask bit in Message Control word in set or not.
     /// if 1, all of the vectors associated with the function are masked,
     /// regardless of their per-vector Mask bit states.

@@ -192,10 +192,6 @@ impl VirtioDevice for Fs {
         TYPE_FS
     }
 
-    fn msix_vectors(&self) -> u16 {
-        self.queue_sizes.len() as u16
-    }
-
     fn queue_max_sizes(&self) -> &[u16] {
         &self.queue_sizes
     }
