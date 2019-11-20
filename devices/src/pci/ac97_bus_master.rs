@@ -416,7 +416,7 @@ impl Ac97BusMaster {
             && func_regs.sr & SR_DCH == SR_DCH
             && func_regs.civ != func_regs.lvi
         {
-            func_regs.sr &= !SR_DCH;
+            func_regs.sr &= !(SR_DCH | SR_CELV);
         }
     }
 
@@ -664,8 +664,7 @@ fn buffer_completed(
         .read_obj_from_addr(GuestAddress(u64::from(descriptor_addr) + 4))
         .map_err(GuestMemoryError::ReadingGuestBufferAddress)?;
 
-    let mut new_sr = regs.func_regs(func).sr;
-
+    let mut new_sr = regs.func_regs(func).sr & !SR_CELV;
     if control_reg & BD_IOC != 0 {
         new_sr |= SR_BCIS;
     }
@@ -681,9 +680,7 @@ fn buffer_completed(
         func_regs.piv = (func_regs.piv + 1) % 32; // move piv to the next buffer.
     }
 
-    if new_sr != regs.func_regs(func).sr {
-        update_sr(regs, func, new_sr);
-    }
+    update_sr(regs, func, new_sr);
 
     if func == Ac97Function::Output {
         regs.po_pointer_update_time = Instant::now();
@@ -941,6 +938,7 @@ mod test {
         std::thread::sleep(time::Duration::from_millis(500));
         assert!(bm.readw(PO_SR_16) & SR_LVBCI != 0); // Hit last buffer
         assert!(bm.readw(PO_SR_16) & SR_DCH == SR_DCH); // DMA stopped because of lack of buffers.
+        assert_eq!(bm.readw(PO_SR_16) & SR_CELV, SR_CELV);
         assert_eq!(bm.readb(PO_LVI_15), bm.readb(PO_CIV_14));
         assert!(
             bm.readl(GLOB_STA_30) & GS_POINT != 0,
@@ -952,6 +950,7 @@ mod test {
         // Reset the LVI to the last buffer and check that playback resumes
         bm.writeb(PO_LVI_15, LVI_MASK, &mixer);
         assert!(bm.readw(PO_SR_16) & SR_DCH == 0); // DMA restarts.
+        assert_eq!(bm.readw(PO_SR_16) & SR_CELV, 0);
 
         let (restart_civ, restart_picb) = (bm.readb(PO_CIV_14), bm.readw(PO_PICB_18));
         std::thread::sleep(time::Duration::from_millis(20));
@@ -1022,6 +1021,7 @@ mod test {
         std::thread::sleep(time::Duration::from_millis(5000));
         assert_ne!(bm.readw(PI_SR_06) & SR_LVBCI, 0); // Hit last buffer
         assert_eq!(bm.readw(PI_SR_06) & SR_DCH, SR_DCH); // DMA stopped because of lack of buffers.
+        assert_eq!(bm.readw(PI_SR_06) & SR_CELV, SR_CELV);
         assert_eq!(bm.readb(PI_LVI_05), bm.readb(PI_CIV_04));
         assert!(
             bm.readl(GLOB_STA_30) & GS_PIINT != 0,
@@ -1034,6 +1034,7 @@ mod test {
         // Reset the LVI to the last buffer and check that playback resumes
         bm.writeb(PI_LVI_05, LVI_MASK, &mixer);
         assert!(bm.readw(PI_SR_06) & SR_DCH == 0); // DMA restarts.
+        assert_eq!(bm.readw(PI_SR_06) & SR_CELV, 0);
 
         let restart_civ = bm.readb(PI_CIV_04);
         std::thread::sleep(time::Duration::from_millis(200));
