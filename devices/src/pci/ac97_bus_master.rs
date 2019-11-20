@@ -436,9 +436,8 @@ impl Ac97BusMaster {
 
     fn set_cr(&mut self, func: Ac97Function, val: u8, mixer: &Ac97Mixer) {
         if val & CR_RR != 0 {
-            self.stop_audio(func);
             let mut regs = self.regs.lock();
-            regs.func_regs_mut(func).do_reset();
+            Self::reset_func_regs(&mut regs, func);
         } else {
             let cr = self.regs.lock().func_regs(func).cr;
             if val & CR_RPBM == 0 {
@@ -579,12 +578,18 @@ impl Ac97BusMaster {
         self.stop_audio(Ac97Function::Microphone);
     }
 
+    // Helper function for resetting function registers.
+    fn reset_func_regs(regs: &mut Ac97BusMasterRegs, func: Ac97Function) {
+        regs.func_regs_mut(func).do_reset();
+        update_sr(regs, func, SR_DCH);
+    }
+
     fn reset_audio_regs(&mut self) {
         self.stop_all_audio();
         let mut regs = self.regs.lock();
-        regs.pi_regs.do_reset();
-        regs.po_regs.do_reset();
-        regs.mc_regs.do_reset();
+        Self::reset_func_regs(&mut regs, Ac97Function::Input);
+        Self::reset_func_regs(&mut regs, Ac97Function::Output);
+        Self::reset_func_regs(&mut regs, Ac97Function::Microphone);
     }
 }
 
@@ -899,7 +904,7 @@ mod test {
         bm.writeb(PO_LVI_15, LVI_MASK, &mixer);
 
         // Start.
-        bm.writeb(PO_CR_1B, CR_RPBM, &mixer);
+        bm.writeb(PO_CR_1B, CR_IOCE | CR_RPBM, &mixer);
 
         std::thread::sleep(time::Duration::from_millis(50));
         let picb = bm.readw(PO_PICB_18);
@@ -937,6 +942,10 @@ mod test {
         assert!(bm.readw(PO_SR_16) & SR_LVBCI != 0); // Hit last buffer
         assert!(bm.readw(PO_SR_16) & SR_DCH == SR_DCH); // DMA stopped because of lack of buffers.
         assert_eq!(bm.readb(PO_LVI_15), bm.readb(PO_CIV_14));
+        assert!(
+            bm.readl(GLOB_STA_30) & GS_POINT != 0,
+            "POINT bit should be set."
+        );
         // Clear the LVB bit
         bm.writeb(PO_SR_16, SR_LVBCI as u8, &mixer);
         assert!(bm.readw(PO_SR_16) & SR_LVBCI == 0);
@@ -951,6 +960,11 @@ mod test {
         // Stop.
         bm.writeb(PO_CR_1B, 0, &mixer);
         assert!(bm.readw(PO_SR_16) & 0x01 != 0); // DMA is not running.
+        bm.writeb(PO_CR_1B, CR_RR, &mixer);
+        assert!(
+            bm.readl(GLOB_STA_30) & GS_POINT == 0,
+            "POINT bit should be disabled."
+        );
     }
 
     #[test]
@@ -984,7 +998,7 @@ mod test {
         bm.writeb(PI_LVI_05, LVI_MASK, &mixer);
 
         // Start.
-        bm.writeb(PI_CR_0B, CR_RPBM, &mixer);
+        bm.writeb(PI_CR_0B, CR_IOCE | CR_RPBM, &mixer);
         assert_eq!(bm.readw(PI_PICB_08), 0);
 
         std::thread::sleep(time::Duration::from_millis(50));
@@ -1009,6 +1023,10 @@ mod test {
         assert_ne!(bm.readw(PI_SR_06) & SR_LVBCI, 0); // Hit last buffer
         assert_eq!(bm.readw(PI_SR_06) & SR_DCH, SR_DCH); // DMA stopped because of lack of buffers.
         assert_eq!(bm.readb(PI_LVI_05), bm.readb(PI_CIV_04));
+        assert!(
+            bm.readl(GLOB_STA_30) & GS_PIINT != 0,
+            "PIINT bit should be set."
+        );
 
         // Clear the LVB bit
         bm.writeb(PI_SR_06, SR_LVBCI as u8, &mixer);
@@ -1024,5 +1042,10 @@ mod test {
         // Stop.
         bm.writeb(PI_CR_0B, 0, &mixer);
         assert!(bm.readw(PI_SR_06) & 0x01 != 0); // DMA is not running.
+        bm.writeb(PI_CR_0B, CR_RR, &mixer);
+        assert!(
+            bm.readl(GLOB_STA_30) & GS_PIINT == 0,
+            "PIINT bit should be disabled."
+        );
     }
 }

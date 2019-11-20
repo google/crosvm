@@ -215,12 +215,11 @@ impl Ac97FunctionRegs {
         regs
     }
 
-    /// Reset all the registers to the PoR defaults.
+    /// Reset all the registers to the PoR defaults. `sr` should be updated by `update_sr`.
     pub fn do_reset(&mut self) {
         self.bdbar = 0;
         self.civ = 0;
         self.lvi = 0;
-        self.sr = SR_DCH;
         self.picb = 0;
         self.piv = 0;
         self.cr &= CR_DONT_CLEAR_MASK;
