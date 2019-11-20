@@ -600,7 +600,7 @@ impl X8664arch {
             let tty_string = get_serial_tty_string(stdio_serial_num);
             cmdline.insert("console", &tty_string).unwrap();
         }
-        cmdline.insert_str("noacpi reboot=k panic=-1").unwrap();
+        cmdline.insert_str("acpi=off reboot=k panic=-1").unwrap();
 
         cmdline
     }
