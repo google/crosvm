@@ -47,11 +47,19 @@ pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
 pub struct GpuParameters {
     pub display_width: u32,
     pub display_height: u32,
+    pub renderer_use_egl: bool,
+    pub renderer_use_gles: bool,
+    pub renderer_use_glx: bool,
+    pub renderer_use_surfaceless: bool,
 }
 
 pub const DEFAULT_GPU_PARAMS: GpuParameters = GpuParameters {
     display_width: DEFAULT_DISPLAY_WIDTH,
     display_height: DEFAULT_DISPLAY_HEIGHT,
+    renderer_use_egl: true,
+    renderer_use_gles: true,
+    renderer_use_glx: false,
+    renderer_use_surfaceless: true,
 };
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
@@ -675,11 +683,12 @@ fn build_backend(
     possible_displays: &[DisplayBackend],
     display_width: u32,
     display_height: u32,
+    renderer_flags: RendererFlags,
     event_devices: Vec<EventDevice>,
     gpu_device_socket: VmMemoryControlRequestSocket,
     pci_bar: Alloc,
 ) -> Option<Backend> {
-    let mut renderer_flags = RendererFlags::default();
+    let mut renderer_flags = renderer_flags;
     let mut display_opt = None;
     for display in possible_displays {
         match display.build() {
@@ -749,6 +758,7 @@ pub struct Gpu {
     display_backends: Vec<DisplayBackend>,
     display_width: u32,
     display_height: u32,
+    renderer_flags: RendererFlags,
     pci_bar: Option<Alloc>,
 }
 
@@ -762,6 +772,12 @@ impl Gpu {
         gpu_parameters: &GpuParameters,
         event_devices: Vec<EventDevice>,
     ) -> Gpu {
+        let renderer_flags = RendererFlags::new()
+            .use_egl(gpu_parameters.renderer_use_egl)
+            .use_gles(gpu_parameters.renderer_use_gles)
+            .use_glx(gpu_parameters.renderer_use_glx)
+            .use_surfaceless(gpu_parameters.renderer_use_surfaceless);
+
         Gpu {
             exit_evt,
             gpu_device_socket,
@@ -774,6 +790,7 @@ impl Gpu {
             display_backends,
             display_width: gpu_parameters.display_width,
             display_height: gpu_parameters.display_height,
+            renderer_flags,
             pci_bar: None,
         }
     }
@@ -894,6 +911,7 @@ impl VirtioDevice for Gpu {
         let display_backends = self.display_backends.clone();
         let display_width = self.display_width;
         let display_height = self.display_height;
+        let renderer_flags = self.renderer_flags;
         let event_devices = self.event_devices.split_off(0);
         if let (Some(gpu_device_socket), Some(pci_bar)) =
             (self.gpu_device_socket.take(), self.pci_bar.take())
@@ -906,6 +924,7 @@ impl VirtioDevice for Gpu {
                             &display_backends,
                             display_width,
                             display_height,
+                            renderer_flags,
                             event_devices,
                             gpu_device_socket,
                             pci_bar,

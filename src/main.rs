@@ -122,6 +122,62 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
 
         for (k, v) in opts {
             match k {
+                "egl" => match v {
+                    "true" | "" => {
+                        gpu_params.renderer_use_egl = true;
+                    }
+                    "false" => {
+                        gpu_params.renderer_use_egl = false;
+                    }
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: "gpu parameter 'egl' should be a boolean",
+                        });
+                    }
+                },
+                "gles" => match v {
+                    "true" | "" => {
+                        gpu_params.renderer_use_gles = true;
+                    }
+                    "false" => {
+                        gpu_params.renderer_use_gles = false;
+                    }
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: "gpu parameter 'gles' should be a boolean",
+                        });
+                    }
+                },
+                "glx" => match v {
+                    "true" | "" => {
+                        gpu_params.renderer_use_glx = true;
+                    }
+                    "false" => {
+                        gpu_params.renderer_use_glx = false;
+                    }
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: "gpu parameter 'glx' should be a boolean",
+                        });
+                    }
+                },
+                "surfaceless" => match v {
+                    "true" | "" => {
+                        gpu_params.renderer_use_surfaceless = true;
+                    }
+                    "false" => {
+                        gpu_params.renderer_use_surfaceless = false;
+                    }
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: "gpu parameter 'surfaceless' should be a boolean",
+                        });
+                    }
+                },
                 "width" => {
                     gpu_params.display_width =
                         v.parse::<u32>()
@@ -980,6 +1036,9 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                                   Possible key values:
                                   width=INT - The width of the virtual display connected to the virtio-gpu.
                                   height=INT - The height of the virtual display connected to the virtio-gpu.
+                                  egl[=true|=false] - If the virtio-gpu backend should use a EGL context for rendering.
+                                  glx[=true|=false] - If the virtio-gpu backend should use a GLX context for rendering.
+                                  surfaceless[=true|=false] - If the virtio-gpu backend should use a surfaceless context for rendering.
                                   "),
           #[cfg(feature = "tpm")]
           Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),
