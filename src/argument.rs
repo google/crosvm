@@ -64,6 +64,8 @@ pub enum Error {
     TooManyArguments(String),
     /// The argument expects a value.
     ExpectedValue(String),
+    /// The argument does not expect a value.
+    UnexpectedValue(String),
     /// The help information was requested
     PrintHelp,
 }
@@ -81,6 +83,7 @@ impl Display for Error {
             }
             TooManyArguments(s) => write!(f, "too many arguments: {}", s),
             ExpectedValue(s) => write!(f, "expected parameter value: {}", s),
+            UnexpectedValue(s) => write!(f, "unexpected parameter value: {}", s),
             PrintHelp => write!(f, "help was requested"),
         }
     }
@@ -88,6 +91,20 @@ impl Display for Error {
 
 /// Result of a argument parsing.
 pub type Result<T> = result::Result<T, Error>;
+
+#[derive(Debug, PartialEq)]
+pub enum ArgumentValueMode {
+    /// Specifies that an argument requires a value and that an error should be generated if
+    /// no value is provided during parsing.
+    Required,
+
+    /// Specifies that an argument does not allow a value and that an error should be returned
+    /// if a value is provided during parsing.
+    Disallowed,
+
+    /// Specifies that an argument may have a value during parsing but is not required to.
+    Optional,
+}
 
 /// Information about an argument expected from the command line.
 ///
@@ -123,11 +140,11 @@ pub type Result<T> = result::Result<T, Error>;
 /// # use crosvm::argument::Argument;
 /// Argument::positional("VALUES", "these are positional arguments");
 /// ```
-#[derive(Default)]
 pub struct Argument {
-    /// The name of the value to display in the usage information. Use None to indicate that there
-    /// is no value expected for this argument.
+    /// The name of the value to display in the usage information.
     pub value: Option<&'static str>,
+    /// Specifies how values should be handled for this this argument.
+    pub value_mode: ArgumentValueMode,
     /// Optional single character shortened argument name.
     pub short: Option<char>,
     /// The long name of this argument.
@@ -140,18 +157,20 @@ impl Argument {
     pub fn positional(value: &'static str, help: &'static str) -> Argument {
         Argument {
             value: Some(value),
+            value_mode: ArgumentValueMode::Required,
+            short: None,
             long: "",
             help,
-            ..Default::default()
         }
     }
 
     pub fn value(long: &'static str, value: &'static str, help: &'static str) -> Argument {
         Argument {
             value: Some(value),
+            value_mode: ArgumentValueMode::Required,
+            short: None,
             long,
             help,
-            ..Default::default()
         }
     }
 
@@ -163,6 +182,7 @@ impl Argument {
     ) -> Argument {
         Argument {
             value: Some(value),
+            value_mode: ArgumentValueMode::Required,
             short: Some(short),
             long,
             help,
@@ -171,18 +191,31 @@ impl Argument {
 
     pub fn flag(long: &'static str, help: &'static str) -> Argument {
         Argument {
+            value: None,
+            value_mode: ArgumentValueMode::Disallowed,
+            short: None,
             long,
             help,
-            ..Default::default()
         }
     }
 
     pub fn short_flag(short: char, long: &'static str, help: &'static str) -> Argument {
         Argument {
+            value: None,
+            value_mode: ArgumentValueMode::Disallowed,
             short: Some(short),
             long,
             help,
-            ..Default::default()
+        }
+    }
+
+    pub fn flag_or_value(long: &'static str, value: &'static str, help: &'static str) -> Argument {
+        Argument {
+            value: Some(value),
+            value_mode: ArgumentValueMode::Optional,
+            short: None,
+            long,
+            help,
         }
     }
 }
@@ -204,72 +237,81 @@ where
     let mut s = State::Top;
     for arg in args {
         let arg = arg.as_ref();
-        s = match s {
-            State::Top => {
-                if arg == "--" {
-                    State::Positional
-                } else if arg.starts_with("--") {
-                    let param = arg.trim_start_matches('-');
-                    if param.contains('=') {
-                        let mut iter = param.splitn(2, '=');
-                        let name = iter.next().unwrap();
-                        let value = iter.next().unwrap();
-                        if name.is_empty() {
-                            return Err(Error::Syntax(
-                                "expected parameter name before `=`".to_owned(),
-                            ));
-                        }
-                        if value.is_empty() {
-                            return Err(Error::Syntax(
-                                "expected parameter value after `=`".to_owned(),
-                            ));
-                        }
-                        f(name, Some(value))?;
-                        State::Top
-                    } else if let Err(e) = f(param, None) {
-                        if let Error::ExpectedValue(_) = e {
+        loop {
+            let mut arg_consumed = true;
+            s = match s {
+                State::Top => {
+                    if arg == "--" {
+                        State::Positional
+                    } else if arg.starts_with("--") {
+                        let param = arg.trim_start_matches('-');
+                        if param.contains('=') {
+                            let mut iter = param.splitn(2, '=');
+                            let name = iter.next().unwrap();
+                            let value = iter.next().unwrap();
+                            if name.is_empty() {
+                                return Err(Error::Syntax(
+                                    "expected parameter name before `=`".to_owned(),
+                                ));
+                            }
+                            if value.is_empty() {
+                                return Err(Error::Syntax(
+                                    "expected parameter value after `=`".to_owned(),
+                                ));
+                            }
+                            f(name, Some(value))?;
+                            State::Top
+                        } else {
                             State::Value {
                                 name: param.to_owned(),
                             }
-                        } else {
-                            return Err(e);
                         }
-                    } else {
-                        State::Top
-                    }
-                } else if arg.starts_with('-') {
-                    if arg.len() == 1 {
-                        return Err(Error::Syntax(
-                            "expected argument short name after `-`".to_owned(),
-                        ));
-                    }
-                    let name = &arg[1..2];
-                    let value = if arg.len() > 2 { Some(&arg[2..]) } else { None };
-                    if let Err(e) = f(name, value) {
-                        if let Error::ExpectedValue(_) = e {
-                            State::Value {
-                                name: name.to_owned(),
+                    } else if arg.starts_with('-') {
+                        if arg.len() == 1 {
+                            return Err(Error::Syntax(
+                                "expected argument short name after `-`".to_owned(),
+                            ));
+                        }
+                        let name = &arg[1..2];
+                        let value = if arg.len() > 2 { Some(&arg[2..]) } else { None };
+                        if let Err(e) = f(name, value) {
+                            if let Error::ExpectedValue(_) = e {
+                                State::Value {
+                                    name: name.to_owned(),
+                                }
+                            } else {
+                                return Err(e);
                             }
                         } else {
-                            return Err(e);
+                            State::Top
                         }
                     } else {
-                        State::Top
+                        f("", Some(&arg))?;
+                        State::Positional
                     }
-                } else {
+                }
+                State::Positional => {
                     f("", Some(&arg))?;
                     State::Positional
                 }
+                State::Value { name } => {
+                    if arg.starts_with("-") {
+                        arg_consumed = false;
+                        f(&name, None)?;
+                    } else {
+                        if let Err(_) = f(&name, Some(&arg)) {
+                            arg_consumed = false;
+                            f(&name, None)?;
+                        }
+                    }
+                    State::Top
+                }
+            };
+
+            if arg_consumed {
+                break;
             }
-            State::Positional => {
-                f("", Some(&arg))?;
-                State::Positional
-            }
-            State::Value { name } => {
-                f(&name, Some(&arg))?;
-                State::Top
-            }
-        };
+        }
     }
     Ok(())
 }
@@ -301,8 +343,11 @@ where
                 }
             }
             if matches.is_none() && arg.long == name {
-                if value.is_some() != arg.value.is_some() {
+                if value.is_none() && arg.value_mode == ArgumentValueMode::Required {
                     return Err(Error::ExpectedValue(arg.long.to_owned()));
+                }
+                if value.is_some() && arg.value_mode == ArgumentValueMode::Disallowed {
+                    return Err(Error::UnexpectedValue(arg.long.to_owned()));
                 }
                 matches = Some(arg.long);
             }
@@ -428,5 +473,71 @@ mod tests {
             },
         );
         assert!(match_res.is_ok());
+    }
+
+    #[test]
+    fn flag_or_value() {
+        let run_case = |args| -> Option<String> {
+            let arguments = [
+                Argument::positional("FILES", "files to operate on"),
+                Argument::flag_or_value("gpu", "[2D|3D]", "Enable or configure gpu"),
+                Argument::flag("foo", "Enable foo."),
+                Argument::value("bar", "stuff", "Configure bar."),
+            ];
+
+            let mut gpu_value: Option<String> = None;
+            let match_res =
+                set_arguments(args, &arguments[..], |name: &str, value: Option<&str>| {
+                    match name {
+                        "" => assert_eq!(value.unwrap(), "file1"),
+                        "foo" => assert!(value.is_none()),
+                        "bar" => assert_eq!(value.unwrap(), "stuff"),
+                        "gpu" => match value {
+                            Some(v) => {
+                                match v {
+                                    "2D" => {
+                                        gpu_value = Some("2D".to_string());
+                                    }
+                                    "3D" => {
+                                        gpu_value = Some("3D".to_string());
+                                    }
+                                    _ => {
+                                        return Err(Error::InvalidValue {
+                                            value: v.to_string(),
+                                            expected: "2D or 3D",
+                                        })
+                                    }
+                                }
+                                gpu_value = Some(v.to_string());
+                            }
+                            None => {
+                                gpu_value = None;
+                            }
+                        },
+                        _ => unreachable!(),
+                    };
+                    Ok(())
+                });
+
+            assert!(match_res.is_ok());
+            gpu_value
+        };
+
+        // Used as flag and followed by positional
+        assert_eq!(run_case(["--gpu", "file1"].iter()), None);
+        // Used as flag and followed by flag
+        assert_eq!(run_case(["--gpu", "--foo", "file1",].iter()), None);
+        // Used as flag and followed by value
+        assert_eq!(run_case(["--gpu", "--bar=stuff", "file1"].iter()), None);
+
+        // Used as value and followed by positional
+        assert_eq!(run_case(["--gpu=2D", "file1"].iter()).unwrap(), "2D");
+        // Used as value and followed by flag
+        assert_eq!(run_case(["--gpu=2D", "--foo"].iter()).unwrap(), "2D");
+        // Used as value and followed by value
+        assert_eq!(
+            run_case(["--gpu=2D", "--bar=stuff", "file1"].iter()).unwrap(),
+            "2D"
+        );
     }
 }
