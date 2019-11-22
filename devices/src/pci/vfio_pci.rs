@@ -27,6 +27,8 @@ const INTEL_VENDOR_ID: u16 = 0x8086;
 const PCI_COMMAND: u32 = 0x4;
 const PCI_COMMAND_MEMORY: u8 = 0x2;
 const PCI_BASE_CLASS_CODE: u32 = 0x0B;
+const PCI_HEADER_TYPE: usize = 0x0E;
+const PCI_MULTI_FLAG: u32 = 0x0080_0000;
 
 const PCI_INTERRUPT_PIN: u32 = 0x3D;
 
@@ -753,6 +755,10 @@ impl PciDevice for VfioPciDevice {
                     config = 0;
                 }
             }
+        } else if reg_idx == PCI_HEADER_TYPE / 4 {
+            // Clear multifunction flags as pci_root doesn't
+            // support multifunction.
+            config &= !PCI_MULTI_FLAG;
         }
 
         // Quirk for intel graphic, set stolen memory size to 0 in pci_cfg[0x51]
