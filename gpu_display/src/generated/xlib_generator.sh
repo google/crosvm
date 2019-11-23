@@ -38,6 +38,7 @@ bindgen --no-layout-tests --no-derive-debug \
   --whitelist-function XFreeGC \
   --whitelist-function XGetVisualInfo \
   --whitelist-function XInternAtom \
+  --whitelist-function XKeycodeToKeysym \
   --whitelist-function XMapRaised \
   --whitelist-function XNextEvent \
   --whitelist-function XOpenDisplay \
@@ -53,11 +54,20 @@ bindgen --no-layout-tests --no-derive-debug \
   --whitelist-function XShmGetEventBase \
   --whitelist-function XShmPutImage \
   --whitelist-function XShmQueryExtension \
+  --whitelist-var 'XK_.*' \
+  --whitelist-var ButtonPressMask \
+  --whitelist-var ButtonReleaseMask \
   --whitelist-var ClientMessage \
   --whitelist-var Expose \
   --whitelist-var ExposureMask \
+  --whitelist-var KeyPress \
+  --whitelist-var KeyPressMask \
+  --whitelist-var KeyRelease \
+  --whitelist-var KeyReleaseMask \
+  --whitelist-var MotionNotify \
   --whitelist-var PMaxSize \
   --whitelist-var PMinSize \
+  --whitelist-var PointerMotionMask \
   --whitelist-var ShmCompletion \
   --whitelist-var VisualBlueMaskMask \
   --whitelist-var VisualDepthMask \
