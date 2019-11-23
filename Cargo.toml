@@ -19,6 +19,7 @@ overflow-checks = true
 members = ["qcow_utils"]
 exclude = [
     "assertions",
+    "async_core",
     "cros_async",
     "data_model",
     "rand_ish",
