@@ -22,7 +22,7 @@ use std::rc::Rc;
 
 use libc::{shmat, shmctl, shmdt, shmget, IPC_CREAT, IPC_PRIVATE, IPC_RMID};
 
-use crate::{DisplayT, GpuDisplayError, GpuDisplayFramebuffer};
+use crate::{DisplayT, EventDevice, GpuDisplayError, GpuDisplayFramebuffer};
 
 use data_model::VolatileSlice;
 
@@ -636,6 +636,15 @@ impl DisplayT for DisplayX {
     }
     #[allow(unused_variables)]
     fn set_position(&mut self, surface_id: u32, x: u32, y: u32) {
+        // unsupported
+    }
+    fn import_event_device(&mut self, _event_device: EventDevice) -> Result<u32, GpuDisplayError> {
+        Err(GpuDisplayError::Unsupported)
+    }
+    fn release_event_device(&mut self, _event_device_id: u32) {
+        // unsupported
+    }
+    fn attach_event_device(&mut self, surface_id: u32, event_device_id: u32) {
         // unsupported
     }
 }

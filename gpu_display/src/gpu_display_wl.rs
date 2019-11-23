@@ -12,7 +12,7 @@ mod dwl;
 
 use dwl::*;
 
-use crate::{DisplayT, GpuDisplayError, GpuDisplayFramebuffer};
+use crate::{DisplayT, EventDevice, GpuDisplayError, GpuDisplayFramebuffer};
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -340,6 +340,16 @@ impl DisplayT for DisplayWl {
             }
             None => debug_assert!(false, "invalid surface_id {}", surface_id),
         }
+    }
+
+    fn import_event_device(&mut self, _event_device: EventDevice) -> Result<u32, GpuDisplayError> {
+        Err(GpuDisplayError::Unsupported)
+    }
+    fn release_event_device(&mut self, _event_device_id: u32) {
+        // unsupported
+    }
+    fn attach_event_device(&mut self, surface_id: u32, event_device_id: u32) {
+        // unsupported
     }
 }
 

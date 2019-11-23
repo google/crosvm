@@ -155,6 +155,9 @@ trait DisplayT: AsRawFd {
     fn flip_to(&mut self, surface_id: u32, import_id: u32);
     fn close_requested(&self, surface_id: u32) -> bool;
     fn set_position(&mut self, surface_id: u32, x: u32, y: u32);
+    fn import_event_device(&mut self, event_device: EventDevice) -> Result<u32, GpuDisplayError>;
+    fn release_event_device(&mut self, event_device_id: u32);
+    fn attach_event_device(&mut self, surface_id: u32, event_device_id: u32);
 }
 
 /// A connection to the compositor and associated collection of state.
@@ -290,6 +293,21 @@ impl GpuDisplay {
     /// The change in position will not be visible until `commit` is called for the parent surface.
     pub fn set_position(&mut self, surface_id: u32, x: u32, y: u32) {
         self.inner.set_position(surface_id, x, y)
+    }
+
+    pub fn import_event_device(
+        &mut self,
+        event_device: EventDevice,
+    ) -> Result<u32, GpuDisplayError> {
+        self.inner.import_event_device(event_device)
+    }
+
+    pub fn release_event_device(&mut self, event_device_id: u32) {
+        self.inner.release_event_device(event_device_id)
+    }
+
+    pub fn attach_event_device(&mut self, surface_id: u32, event_device_id: u32) {
+        self.inner.attach_event_device(surface_id, event_device_id);
     }
 }
 
