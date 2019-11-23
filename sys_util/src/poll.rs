@@ -201,6 +201,15 @@ impl<'a, T: PollToken> PollEvents<'a, T> {
         }
     }
 
+    /// Iterates over each writable event.
+    pub fn iter_writable(&self) -> PollEventIter<slice::Iter<epoll_event>, T> {
+        PollEventIter {
+            mask: EPOLLOUT as u32,
+            iter: self.events[..self.count].iter(),
+            tokens: PhantomData,
+        }
+    }
+
     /// Iterates over each hungup event.
     pub fn iter_hungup(&self) -> PollEventIter<slice::Iter<epoll_event>, T> {
         PollEventIter {
