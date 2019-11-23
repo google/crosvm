@@ -28,6 +28,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use libc::{self, c_int, gid_t, uid_t};
 
 use audio_streams::DummyStreamSource;
+#[cfg(feature = "gpu")]
+use devices::virtio::EventDevice;
 use devices::virtio::{self, VirtioDevice};
 use devices::{
     self, HostBackendDeviceProvider, PciDevice, VfioDevice, VfioPciDevice, VirtioPciDevice,
@@ -456,7 +458,7 @@ fn create_tpm_device(cfg: &Config) -> DeviceResult {
 }
 
 fn create_single_touch_device(cfg: &Config, single_touch_spec: &TouchDeviceOption) -> DeviceResult {
-    let socket = create_input_socket(&single_touch_spec.path).map_err(|e| {
+    let socket = single_touch_spec.path.into_unix_stream().map_err(|e| {
         error!("failed configuring virtio single touch: {:?}", e);
         e
     })?;
@@ -470,7 +472,7 @@ fn create_single_touch_device(cfg: &Config, single_touch_spec: &TouchDeviceOptio
 }
 
 fn create_trackpad_device(cfg: &Config, trackpad_spec: &TouchDeviceOption) -> DeviceResult {
-    let socket = create_input_socket(&trackpad_spec.path).map_err(|e| {
+    let socket = trackpad_spec.path.into_unix_stream().map_err(|e| {
         error!("failed configuring virtio trackpad: {}", e);
         e
     })?;
@@ -484,8 +486,8 @@ fn create_trackpad_device(cfg: &Config, trackpad_spec: &TouchDeviceOption) -> De
     })
 }
 
-fn create_mouse_device(cfg: &Config, mouse_socket: &Path) -> DeviceResult {
-    let socket = create_input_socket(&mouse_socket).map_err(|e| {
+fn create_mouse_device<T: IntoUnixStream>(cfg: &Config, mouse_socket: T) -> DeviceResult {
+    let socket = mouse_socket.into_unix_stream().map_err(|e| {
         error!("failed configuring virtio mouse: {}", e);
         e
     })?;
@@ -498,8 +500,8 @@ fn create_mouse_device(cfg: &Config, mouse_socket: &Path) -> DeviceResult {
     })
 }
 
-fn create_keyboard_device(cfg: &Config, keyboard_socket: &Path) -> DeviceResult {
-    let socket = create_input_socket(&keyboard_socket).map_err(|e| {
+fn create_keyboard_device<T: IntoUnixStream>(cfg: &Config, keyboard_socket: T) -> DeviceResult {
+    let socket = keyboard_socket.into_unix_stream().map_err(|e| {
         error!("failed configuring virtio keyboard: {}", e);
         e
     })?;
@@ -589,6 +591,7 @@ fn create_gpu_device(
     gpu_sockets: Vec<virtio::resource_bridge::ResourceResponseSocket>,
     wayland_socket_path: Option<PathBuf>,
     x_display: Option<String>,
+    event_devices: Vec<EventDevice>,
 ) -> DeviceResult {
     let jailed_wayland_path = Path::new("/wayland-0");
 
@@ -615,6 +618,7 @@ fn create_gpu_device(
         gpu_sockets,
         display_backends,
         cfg.gpu_parameters.as_ref().unwrap(),
+        event_devices,
     );
 
     let jail = match simple_jail(&cfg, "gpu_device.policy")? {
@@ -986,6 +990,31 @@ fn create_virtio_devices(
     #[cfg(feature = "gpu")]
     {
         if cfg.gpu_parameters.is_some() {
+            let mut event_devices = Vec::new();
+            if cfg.display_window_mouse {
+                let (event_device_socket, virtio_dev_socket) =
+                    UnixStream::pair().map_err(Error::CreateSocket)?;
+                // TODO(nkgold): the width/height here should match the display's height/width. When
+                // those settings are available as CLI options, we should use the CLI options here
+                // as well.
+                let dev = virtio::new_single_touch(virtio_dev_socket, 1280, 1024)
+                    .map_err(Error::InputDeviceNew)?;
+                devs.push(VirtioDeviceStub {
+                    dev: Box::new(dev),
+                    jail: simple_jail(&cfg, "input_device.policy")?,
+                });
+                event_devices.push(EventDevice::touchscreen(event_device_socket));
+            }
+            if cfg.display_window_keyboard {
+                let (event_device_socket, virtio_dev_socket) =
+                    UnixStream::pair().map_err(Error::CreateSocket)?;
+                let dev = virtio::new_keyboard(virtio_dev_socket).map_err(Error::InputDeviceNew)?;
+                devs.push(VirtioDeviceStub {
+                    dev: Box::new(dev),
+                    jail: simple_jail(&cfg, "input_device.policy")?,
+                });
+                event_devices.push(EventDevice::keyboard(event_device_socket));
+            }
             devs.push(create_gpu_device(
                 cfg,
                 _exit_evt,
@@ -993,6 +1022,7 @@ fn create_virtio_devices(
                 resource_bridges,
                 cfg.wayland_socket_path.clone(),
                 cfg.x_display.clone(),
+                event_devices,
             )?);
         }
     }
@@ -1160,12 +1190,29 @@ fn raw_fd_from_path(path: &Path) -> Result<RawFd> {
     validate_raw_fd(raw_fd).map_err(Error::ValidateRawFd)
 }
 
-fn create_input_socket(path: &Path) -> Result<UnixStream> {
-    if path.parent() == Some(Path::new("/proc/self/fd")) {
-        // Safe because we will validate |raw_fd|.
-        unsafe { Ok(UnixStream::from_raw_fd(raw_fd_from_path(path)?)) }
-    } else {
-        UnixStream::connect(path).map_err(Error::InputEventsOpen)
+trait IntoUnixStream {
+    fn into_unix_stream(self) -> Result<UnixStream>;
+}
+
+impl<'a> IntoUnixStream for &'a Path {
+    fn into_unix_stream(self) -> Result<UnixStream> {
+        if self.parent() == Some(Path::new("/proc/self/fd")) {
+            // Safe because we will validate |raw_fd|.
+            unsafe { Ok(UnixStream::from_raw_fd(raw_fd_from_path(self)?)) }
+        } else {
+            UnixStream::connect(self).map_err(Error::InputEventsOpen)
+        }
+    }
+}
+impl<'a> IntoUnixStream for &'a PathBuf {
+    fn into_unix_stream(self) -> Result<UnixStream> {
+        self.as_path().into_unix_stream()
+    }
+}
+
+impl IntoUnixStream for UnixStream {
+    fn into_unix_stream(self) -> Result<UnixStream> {
+        Ok(self)
     }
 }
 

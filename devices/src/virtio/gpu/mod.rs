@@ -23,6 +23,7 @@ use sys_util::{
     debug, error, warn, Error, EventFd, GuestAddress, GuestMemory, PollContext, PollToken,
 };
 
+pub use gpu_display::EventDevice;
 use gpu_display::*;
 use gpu_renderer::{Renderer, RendererFlags};
 
@@ -119,7 +120,9 @@ impl Frontend {
             GpuCommand::ResourceUnref(info) => {
                 self.backend.unref_resource(info.resource_id.to_native())
             }
-            GpuCommand::SetScanout(info) => self.backend.set_scanout(info.resource_id.to_native()),
+            GpuCommand::SetScanout(info) => self
+                .backend
+                .set_scanout(info.scanout_id.to_native(), info.resource_id.to_native()),
             GpuCommand::ResourceFlush(info) => self.backend.flush_resource(
                 info.resource_id.to_native(),
                 info.r.x.to_native(),
@@ -672,6 +675,7 @@ fn build_backend(
     possible_displays: &[DisplayBackend],
     display_width: u32,
     display_height: u32,
+    event_devices: Vec<EventDevice>,
     gpu_device_socket: VmMemoryControlRequestSocket,
     pci_bar: Alloc,
 ) -> Option<Backend> {
@@ -717,22 +721,29 @@ fn build_backend(
         }
     };
 
-    Some(Backend::new(
+    let mut backend = Backend::new(
         display,
         display_width,
         display_height,
         renderer,
         gpu_device_socket,
         pci_bar,
-    ))
+    );
+
+    for event_device in event_devices {
+        backend.import_event_device(event_device, 0);
+    }
+
+    Some(backend)
 }
 
 pub struct Gpu {
-    config_event: bool,
     exit_evt: EventFd,
     gpu_device_socket: Option<VmMemoryControlRequestSocket>,
     resource_bridges: Vec<ResourceResponseSocket>,
+    event_devices: Vec<EventDevice>,
     kill_evt: Option<EventFd>,
+    config_event: bool,
     worker_thread: Option<thread::JoinHandle<()>>,
     num_scanouts: NonZeroU8,
     display_backends: Vec<DisplayBackend>,
@@ -749,15 +760,17 @@ impl Gpu {
         resource_bridges: Vec<ResourceResponseSocket>,
         display_backends: Vec<DisplayBackend>,
         gpu_parameters: &GpuParameters,
+        event_devices: Vec<EventDevice>,
     ) -> Gpu {
         Gpu {
-            config_event: false,
             exit_evt,
             gpu_device_socket,
+            num_scanouts,
             resource_bridges,
+            event_devices,
+            config_event: false,
             kill_evt: None,
             worker_thread: None,
-            num_scanouts,
             display_backends,
             display_width: gpu_parameters.display_width,
             display_height: gpu_parameters.display_height,
@@ -881,6 +894,7 @@ impl VirtioDevice for Gpu {
         let display_backends = self.display_backends.clone();
         let display_width = self.display_width;
         let display_height = self.display_height;
+        let event_devices = self.event_devices.split_off(0);
         if let (Some(gpu_device_socket), Some(pci_bar)) =
             (self.gpu_device_socket.take(), self.pci_bar.take())
         {
@@ -892,6 +906,7 @@ impl VirtioDevice for Gpu {
                             &display_backends,
                             display_width,
                             display_height,
+                            event_devices,
                             gpu_device_socket,
                             pci_bar,
                         ) {

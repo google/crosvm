@@ -11,6 +11,8 @@ use std::os::unix::io::AsRawFd;
 use std::rc::Rc;
 use std::usize;
 
+use libc::EINVAL;
+
 use data_model::*;
 
 use msg_socket::{MsgReceiver, MsgSender};
@@ -19,7 +21,8 @@ use sys_util::{error, GuestAddress, GuestMemory};
 
 use gpu_display::*;
 use gpu_renderer::{
-    Box3, Context as RendererContext, Renderer, Resource as GpuRendererResource, ResourceCreateArgs,
+    Box3, Context as RendererContext, Error as GpuRendererError, Renderer,
+    Resource as GpuRendererResource, ResourceCreateArgs,
 };
 
 use super::protocol::{
@@ -73,6 +76,7 @@ impl VirtioGpuResource {
 
         let (query, dmabuf) = match self.gpu_resource.export() {
             Ok(export) => (export.0, export.1),
+            Err(GpuRendererError::Virglrenderer(e)) if e == -EINVAL => return None,
             Err(e) => {
                 error!("failed to query resource: {}", e);
                 return None;
@@ -160,6 +164,8 @@ pub struct Backend {
     renderer: Renderer,
     resources: Map<u32, VirtioGpuResource>,
     contexts: Map<u32, RendererContext>,
+    // Maps event devices to scanout number.
+    event_devices: Map<u32, u32>,
     gpu_device_socket: VmMemoryControlRequestSocket,
     scanout_surface: Option<u32>,
     cursor_surface: Option<u32>,
@@ -187,9 +193,10 @@ impl Backend {
             display_width,
             display_height,
             renderer,
-            gpu_device_socket,
             resources: Default::default(),
             contexts: Default::default(),
+            event_devices: Default::default(),
+            gpu_device_socket,
             scanout_surface: None,
             cursor_surface: None,
             scanout_resource: 0,
@@ -201,6 +208,25 @@ impl Backend {
     /// Gets a reference to the display passed into `new`.
     pub fn display(&self) -> &Rc<RefCell<GpuDisplay>> {
         &self.display
+    }
+
+    pub fn import_event_device(&mut self, event_device: EventDevice, scanout: u32) {
+        // TODO(zachr): support more than one scanout.
+        if scanout != 0 {
+            return;
+        }
+
+        let mut display = self.display.borrow_mut();
+        let event_device_id = match display.import_event_device(event_device) {
+            Ok(id) => id,
+            Err(e) => {
+                error!("error importing event device: {}", e);
+                return;
+            }
+        };
+        self.scanout_surface
+            .map(|s| display.attach_event_device(s, event_device_id));
+        self.event_devices.insert(event_device_id, scanout);
     }
 
     /// Processes the internal `display` events and returns `true` if the main display was closed.
@@ -281,9 +307,9 @@ impl Backend {
     }
 
     /// Sets the given resource id as the source of scanout to the display.
-    pub fn set_scanout(&mut self, id: u32) -> GpuResponse {
+    pub fn set_scanout(&mut self, _scanout_id: u32, resource_id: u32) -> GpuResponse {
         let mut display = self.display.borrow_mut();
-        if id == 0 {
+        if resource_id == 0 {
             if let Some(surface) = self.scanout_surface.take() {
                 display.release_surface(surface);
             }
@@ -293,12 +319,19 @@ impl Backend {
             }
             self.cursor_resource = 0;
             GpuResponse::OkNoData
-        } else if self.resources.get_mut(&id).is_some() {
-            self.scanout_resource = id;
+        } else if self.resources.get_mut(&resource_id).is_some() {
+            self.scanout_resource = resource_id;
 
             if self.scanout_surface.is_none() {
                 match display.create_surface(None, self.display_width, self.display_height) {
-                    Ok(surface) => self.scanout_surface = Some(surface),
+                    Ok(surface) => {
+                        // TODO(zachr): do not assume every event device belongs to this scanout_id;
+                        // in other words, support multiple display outputs.
+                        for &event_device in self.event_devices.keys() {
+                            display.attach_event_device(surface, event_device);
+                        }
+                        self.scanout_surface = Some(surface);
+                    }
                     Err(e) => error!("failed to create display surface: {}", e),
                 }
             }

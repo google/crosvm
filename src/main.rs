@@ -511,6 +511,12 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.x_display = Some(value.unwrap().to_owned());
         }
+        "display-window-keyboard" => {
+            cfg.display_window_keyboard = true;
+        }
+        "display-window-mouse" => {
+            cfg.display_window_mouse = true;
+        }
         "socket" => {
             if cfg.socket_path.is_some() {
                 return Err(argument::Error::TooManyArguments(
@@ -931,6 +937,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           "),
           Argument::value("syslog-tag", "TAG", "When logging to syslog, use the provided tag."),
           Argument::value("x-display", "DISPLAY", "X11 display name to use."),
+          Argument::flag("display-window-keyboard", "Capture keyboard input from the display window."),
+          Argument::flag("display-window-mouse", "Capture keyboard input from the display window."),
           Argument::value("wayland-sock", "PATH", "Path to the Wayland socket to use."),
           #[cfg(feature = "wl-dmabuf")]
           Argument::flag("wayland-dmabuf", "Enable support for DMABufs in Wayland device."),
