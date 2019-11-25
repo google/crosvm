@@ -34,9 +34,11 @@ use super::{
     Writer, TYPE_GPU, VIRTIO_F_VERSION_1,
 };
 
+use super::{PciCapabilityType, VirtioPciShmCap, VirtioPciShmCapID};
+
 use self::backend::Backend;
 use self::protocol::*;
-use crate::pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType};
+use crate::pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability};
 
 use vm_control::VmMemoryControlRequestSocket;
 
@@ -66,6 +68,10 @@ pub const DEFAULT_GPU_PARAMS: GpuParameters = GpuParameters {
 // there to be fewer of.
 const QUEUE_SIZES: &[u16] = &[256, 16];
 const FENCE_POLL_MS: u64 = 1;
+
+const GPU_BAR_NUM: u8 = 4;
+const GPU_BAR_OFFSET: u64 = 0;
+const GPU_BAR_SIZE: u64 = 1 << 33;
 
 struct ReturnDescriptor {
     index: u16,
@@ -971,13 +977,26 @@ impl VirtioDevice for Gpu {
 
     // Require 1 BAR for mapping 3D buffers
     fn get_device_bars(&mut self, bus: u8, dev: u8) -> Vec<PciBarConfiguration> {
-        let bar: u8 = 4;
-        self.pci_bar = Some(Alloc::PciBar { bus, dev, bar });
+        self.pci_bar = Some(Alloc::PciBar {
+            bus,
+            dev,
+            bar: GPU_BAR_NUM,
+        });
         vec![PciBarConfiguration::new(
-            bar as usize,
-            1 << 33,
+            GPU_BAR_NUM as usize,
+            GPU_BAR_SIZE,
             PciBarRegionType::Memory64BitRegion,
             PciBarPrefetchable::NotPrefetchable,
         )]
+    }
+
+    fn get_device_caps(&self) -> Vec<Box<dyn PciCapability>> {
+        vec![Box::new(VirtioPciShmCap::new(
+            PciCapabilityType::SharedMemoryConfig,
+            GPU_BAR_NUM,
+            GPU_BAR_OFFSET,
+            GPU_BAR_SIZE,
+            VirtioPciShmCapID::Cache,
+        ))]
     }
 }
