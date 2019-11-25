@@ -253,7 +253,6 @@ impl Minijail {
         cur: libc::rlim64_t,
         max: libc::rlim64_t,
     ) -> Result<()> {
-        // TODO(chirantan): Switch to minijail_rlimit64 once that lands in libminijail.
         let errno = unsafe { libminijail::minijail_rlimit(self.jail, kind, cur, max) };
         if errno == 0 {
             Ok(())
