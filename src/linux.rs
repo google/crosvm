@@ -110,6 +110,7 @@ pub enum Error {
     InvalidWaylandPath,
     IoJail(io_jail::Error),
     LoadKernel(Box<dyn StdError>),
+    MemoryTooLarge,
     NetDeviceNew(virtio::NetError),
     OpenAndroidFstab(PathBuf, io::Error),
     OpenBios(PathBuf, io::Error),
@@ -196,6 +197,7 @@ impl Display for Error {
             InvalidWaylandPath => write!(f, "wayland socket path has no parent or file name"),
             IoJail(e) => write!(f, "{}", e),
             LoadKernel(e) => write!(f, "failed to load kernel: {}", e),
+            MemoryTooLarge => write!(f, "requested memory size too large"),
             NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {}", e),
             OpenAndroidFstab(p, e) => write!(
                 f,
@@ -1404,7 +1406,11 @@ pub fn run_config(cfg: Config) -> Result<()> {
     };
 
     let components = VmComponents {
-        memory_size: (cfg.memory.unwrap_or(256) << 20) as u64,
+        memory_size: cfg
+            .memory
+            .unwrap_or(256)
+            .checked_mul(1024 * 1024)
+            .ok_or(Error::MemoryTooLarge)?,
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
         vm_image,

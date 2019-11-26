@@ -122,7 +122,7 @@ impl Default for SharedDir {
 pub struct Config {
     pub vcpu_count: Option<u32>,
     pub vcpu_affinity: Vec<usize>,
-    pub memory: Option<usize>,
+    pub memory: Option<u64>,
     pub executable_path: Option<Executable>,
     pub android_fstab: Option<PathBuf>,
     pub initrd_path: Option<PathBuf>,
