@@ -4,6 +4,7 @@
 
 //! Track memory regions that are mapped to the guest VM.
 
+use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
@@ -23,6 +24,7 @@ pub enum Error {
     MemoryAccess(GuestAddress, mmap::Error),
     MemoryMappingFailed(mmap::Error),
     MemoryRegionOverlap,
+    MemoryRegionTooLarge(u64),
     MemoryNotAligned,
     MemoryCreationFailed(errno::Error),
     MemorySetSizeFailed(errno::Error),
@@ -51,6 +53,7 @@ impl Display for Error {
             }
             MemoryMappingFailed(e) => write!(f, "failed to map guest memory: {}", e),
             MemoryRegionOverlap => write!(f, "memory regions overlap"),
+            MemoryRegionTooLarge(size) => write!(f, "memory region size {} is too large", size),
             MemoryNotAligned => write!(f, "memfd regions must be page aligned"),
             MemoryCreationFailed(_) => write!(f, "failed to create memfd region"),
             MemorySetSizeFailed(e) => write!(f, "failed to set memfd region size: {}", e),
@@ -155,7 +158,9 @@ impl GuestMemory {
                 }
             }
 
-            let mapping = MemoryMapping::from_fd_offset(&memfd, range.1 as usize, offset)
+            let size =
+                usize::try_from(range.1).map_err(|_| Error::MemoryRegionTooLarge(range.1))?;
+            let mapping = MemoryMapping::from_fd_offset(&memfd, size, offset)
                 .map_err(Error::MemoryMappingFailed)?;
             regions.push(MemoryRegion {
                 mapping,
@@ -163,7 +168,7 @@ impl GuestMemory {
                 memfd_offset: offset,
             });
 
-            offset += range.1 as usize;
+            offset += size;
         }
 
         Ok(GuestMemory {
