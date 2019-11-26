@@ -797,22 +797,14 @@ fn create_fs_device(
     })
 }
 
-fn create_9p_device(cfg: &Config, chronos: Ids, src: &Path, tag: &str) -> DeviceResult {
+fn create_9p_device(cfg: &Config, src: &Path, tag: &str) -> DeviceResult {
     let (jail, root) = match simple_jail(&cfg, "9p_device.policy")? {
         Some(mut jail) => {
             //  The shared directory becomes the root of the device's file system.
             let root = Path::new("/");
             jail.mount_bind(src, root, true)?;
 
-            // Set the uid/gid for the jailed process, and give a basic id map. This
-            // is required for the above bind mount to work.
-            jail.change_uid(chronos.uid);
-            jail.change_gid(chronos.gid);
-            jail.uidmap(&format!("{0} {0} 1", chronos.uid))
-                .map_err(Error::SettingUidMap)?;
-            jail.gidmap(&format!("{0} {0} 1", chronos.gid))
-                .map_err(Error::SettingGidMap)?;
-
+            add_crosvm_user_to_jail(&mut jail, "p9")?;
             (Some(jail), root)
         }
         None => {
@@ -1001,7 +993,6 @@ fn create_virtio_devices(
         devs.push(create_vhost_vsock_device(cfg, cid, mem)?);
     }
 
-    let chronos = get_chronos_ids();
     for shared_dir in &cfg.shared_dirs {
         let SharedDir {
             src,
@@ -1014,7 +1005,7 @@ fn create_virtio_devices(
 
         let dev = match kind {
             SharedDirKind::FS => create_fs_device(cfg, uid_map, gid_map, src, tag, fs_cfg.clone())?,
-            SharedDirKind::P9 => create_9p_device(cfg, chronos, src, tag)?,
+            SharedDirKind::P9 => create_9p_device(cfg, src, tag)?,
         };
         devs.push(dev);
     }
@@ -1107,34 +1098,10 @@ fn create_devices(
 }
 
 #[derive(Copy, Clone)]
+#[cfg_attr(not(feature = "tpm"), allow(dead_code))]
 struct Ids {
     uid: uid_t,
     gid: gid_t,
-}
-
-fn get_chronos_ids() -> Ids {
-    let chronos_user_group = CStr::from_bytes_with_nul(b"chronos\0").unwrap();
-
-    let chronos_uid = match get_user_id(&chronos_user_group) {
-        Ok(u) => u,
-        Err(e) => {
-            warn!("falling back to current user id for 9p: {}", e);
-            geteuid()
-        }
-    };
-
-    let chronos_gid = match get_group_id(&chronos_user_group) {
-        Ok(u) => u,
-        Err(e) => {
-            warn!("falling back to current group id for 9p: {}", e);
-            getegid()
-        }
-    };
-
-    Ids {
-        uid: chronos_uid,
-        gid: chronos_gid,
-    }
 }
 
 // Set the uid/gid for the jailed process and give a basic id map. This is
