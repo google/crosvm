@@ -44,6 +44,7 @@ const AARCH64_AXI_BASE: u64 = 0x40000000;
 // address space.
 const AARCH64_GIC_DIST_BASE: u64 = AARCH64_AXI_BASE - AARCH64_GIC_DIST_SIZE;
 const AARCH64_GIC_CPUI_BASE: u64 = AARCH64_GIC_DIST_BASE - AARCH64_GIC_CPUI_SIZE;
+const AARCH64_GIC_REDIST_SIZE: u64 = 0x20000;
 
 // This is the minimum number of SPI interrupts aligned to 32 + 32 for the
 // PPI (16) and GSI (16).
@@ -230,7 +231,7 @@ impl arch::LinuxArch for AArch64 {
 
         let vcpu_affinity = components.vcpu_affinity;
 
-        let irq_chip = Self::create_irq_chip(&vm)?;
+        let (irq_chip, is_gicv3) = Self::create_irq_chip(&vm, vcpu_count as u64)?;
 
         let mut mmio_bus = devices::Bus::new();
 
@@ -298,6 +299,7 @@ impl arch::LinuxArch for AArch64 {
             pci_irqs,
             components.android_fstab,
             kernel_end,
+            is_gicv3,
         )?;
 
         Ok(RunnableLinuxVm {
@@ -326,6 +328,7 @@ impl AArch64 {
         pci_irqs: Vec<(u32, PciInterruptPin)>,
         android_fstab: Option<File>,
         kernel_end: u64,
+        is_gicv3: bool,
     ) -> Result<()> {
         let initrd = match initrd_file {
             Some(initrd_file) => {
@@ -353,6 +356,7 @@ impl AArch64 {
             cmdline,
             initrd,
             android_fstab,
+            is_gicv3,
         )
         .map_err(Error::CreateFdt)?;
         Ok(())
@@ -416,11 +420,14 @@ impl AArch64 {
     /// # Arguments
     ///
     /// * `vm` - the vm object
-    fn create_irq_chip(vm: &Vm) -> Result<Option<File>> {
+    /// * `vcpu_count` - the number of vCPUs
+    fn create_irq_chip(vm: &Vm, vcpu_count: u64) -> Result<(Option<File>, bool)> {
         let cpu_if_addr: u64 = AARCH64_GIC_CPUI_BASE;
         let dist_if_addr: u64 = AARCH64_GIC_DIST_BASE;
+        let redist_addr: u64 = dist_if_addr - (AARCH64_GIC_REDIST_SIZE * vcpu_count);
         let raw_cpu_if_addr = &cpu_if_addr as *const u64;
         let raw_dist_if_addr = &dist_if_addr as *const u64;
+        let raw_redist_addr = &redist_addr as *const u64;
 
         let cpu_if_attr = kvm_device_attr {
             group: kvm_sys::KVM_DEV_ARM_VGIC_GRP_ADDR,
@@ -428,19 +435,40 @@ impl AArch64 {
             addr: raw_cpu_if_addr as u64,
             flags: 0,
         };
-        let dist_attr = kvm_device_attr {
+        let redist_attr = kvm_device_attr {
             group: kvm_sys::KVM_DEV_ARM_VGIC_GRP_ADDR,
-            attr: kvm_sys::KVM_VGIC_V2_ADDR_TYPE_DIST as u64,
-            addr: raw_dist_if_addr as u64,
+            attr: kvm_sys::KVM_VGIC_V3_ADDR_TYPE_REDIST as u64,
+            addr: raw_redist_addr as u64,
             flags: 0,
         };
+        let mut dist_attr = kvm_device_attr {
+            group: kvm_sys::KVM_DEV_ARM_VGIC_GRP_ADDR,
+            addr: raw_dist_if_addr as u64,
+            attr: 0,
+            flags: 0,
+        };
+
         let mut kcd = kvm_sys::kvm_create_device {
-            type_: kvm_sys::kvm_device_type_KVM_DEV_TYPE_ARM_VGIC_V2,
+            type_: kvm_sys::kvm_device_type_KVM_DEV_TYPE_ARM_VGIC_V3,
             fd: 0,
             flags: 0,
         };
-        vm.create_device(&mut kcd)
-            .map_err(|e| Error::CreateGICFailure(e))?;
+
+        let mut cpu_redist_attr = redist_attr;
+        let mut is_gicv3 = true;
+        dist_attr.attr = kvm_sys::KVM_VGIC_V3_ADDR_TYPE_DIST as u64;
+        if vm.create_device(&mut kcd).is_err() {
+            is_gicv3 = false;
+            cpu_redist_attr = cpu_if_attr;
+            kcd.type_ = kvm_sys::kvm_device_type_KVM_DEV_TYPE_ARM_VGIC_V2;
+            dist_attr.attr = kvm_sys::KVM_VGIC_V2_ADDR_TYPE_DIST as u64;
+            vm.create_device(&mut kcd)
+                .map_err(|e| Error::CreateGICFailure(e))?;
+        }
+
+        let is_gicv3 = is_gicv3;
+        let cpu_redist_attr = cpu_redist_attr;
+        let dist_attr = dist_attr;
 
         // Safe because the kernel is passing us an FD back inside
         // the struct after we successfully did the create_device ioctl
@@ -448,7 +476,7 @@ impl AArch64 {
 
         // Safe because we allocated the struct that's being passed in
         let ret = unsafe {
-            sys_util::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &cpu_if_attr)
+            sys_util::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &cpu_redist_attr)
         };
         if ret != 0 {
             return Err(Error::CreateGICFailure(sys_util::Error::new(ret)));
@@ -494,7 +522,7 @@ impl AArch64 {
         if ret != 0 {
             return Err(Error::SetDeviceAttr(sys_util::Error::new(ret)));
         }
-        Ok(Some(vgic_fd))
+        Ok((Some(vgic_fd), is_gicv3))
     }
 
     fn configure_vcpu(
