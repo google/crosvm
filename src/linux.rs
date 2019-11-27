@@ -314,6 +314,9 @@ fn create_base_minijail(
     j.enter_pivot_root(root).map_err(Error::DevicePivotRoot)?;
     // Run in an empty network namespace.
     j.namespace_net();
+    // Most devices don't need to open many fds.
+    j.set_rlimit(libc::RLIMIT_NOFILE, 1024, 1024)
+        .map_err(Error::SettingMaxOpenFiles)?;
     // Apply the block device seccomp policy.
     j.no_new_privs();
     // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP, which will correctly kill
