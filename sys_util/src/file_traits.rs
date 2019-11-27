@@ -8,8 +8,6 @@ use std::os::unix::io::{AsRawFd, RawFd};
 
 use data_model::VolatileSlice;
 
-use crate::SharedMemory;
-
 /// A trait for flushing the contents of a file to disk.
 /// This is equivalent to File's `sync_all` method, but
 /// wrapped in a trait so that it can be implemented for
@@ -489,8 +487,6 @@ macro_rules! volatile_at_impl {
 
 volatile_impl!(File);
 volatile_at_impl!(File);
-volatile_impl!(SharedMemory);
-volatile_at_impl!(SharedMemory);
 
 /// A trait similar to `AsRawFd` but supports an arbitrary number of file descriptors.
 pub trait AsRawFds {
