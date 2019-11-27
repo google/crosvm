@@ -637,7 +637,8 @@ pub fn create_descriptor_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sys_util::{MemfdSeals, SharedMemory};
+    use std::fs::{File, OpenOptions};
+    use tempfile::TempDir;
 
     #[test]
     fn reader_test_simple_chain() {
@@ -789,22 +790,14 @@ mod tests {
 
         let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
 
-        // GuestMemory's write_from_memory requires raw file descriptor.
-        let mut shm = SharedMemory::anon().unwrap();
-        shm.set_size(384).unwrap();
-
-        // Prevent shared memory from growing on `write` call.
-        let mut fd_seals = MemfdSeals::new();
-        fd_seals.set_grow_seal();
-        shm.add_seals(fd_seals).unwrap();
+        // Open a file in read-only mode so writes to it to trigger an I/O error.
+        let mut ro_file = File::open("/dev/zero").expect("failed to open /dev/zero");
 
         reader
-            .read_exact_to(&mut shm, 512)
+            .read_exact_to(&mut ro_file, 512)
             .expect_err("successfully read more bytes than SharedMemory size");
 
-        // Linux doesn't do partial writes if you give a buffer larger than the remaining length of
-        // the shared memory. And since we passed an iovec with the full contents of the
-        // DescriptorChain we ended up not writing any bytes at all.
+        // The write above should have failed entirely, so we end up not writing any bytes at all.
         assert_eq!(reader.available_bytes(), 512);
         assert_eq!(reader.bytes_read(), 0);
     }
@@ -827,12 +820,21 @@ mod tests {
 
         let mut writer = Writer::new(&memory, chain).expect("failed to create Writer");
 
-        // GuestMemory's read_to_memory requires raw file descriptor.
-        let mut shm = SharedMemory::anon().unwrap();
-        shm.set_size(384).unwrap();
+        let tempdir = TempDir::new().unwrap();
+        let mut path = tempdir.path().to_owned();
+        path.push("test_file");
+
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .expect("failed to create temp file");
+
+        file.set_len(384).unwrap();
 
         writer
-            .write_all_from(&mut shm, 512)
+            .write_all_from(&mut file, 512)
             .expect_err("successfully wrote more bytes than in SharedMemory");
 
         assert_eq!(writer.available_bytes(), 128);
