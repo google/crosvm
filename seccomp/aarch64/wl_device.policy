@@ -1,0 +1,22 @@
+# Copyright 2019 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+@include /usr/share/policy/crosvm/common_device.policy
+
+# Used to connect to wayland. arg0 == AF_UNIX && arg1 == SOCK_STREAM|SOCK_CLOEXEC
+socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
+# arg1 == FIONBIO || arg1 == DMA_BUF_IOCTL_SYNC
+ioctl: arg1 == 0x5421 || arg1 == 0x40086200
+connect: 1
+# Used to communicate with wayland
+recvmsg: 1
+sendmsg: 1
+# Used for sharing memory with wayland. arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING
+memfd_create: arg1 == 3
+# Used to set of size new memfd
+ftruncate: 1
+# Used to determine shm size after recvmsg with fd
+lseek: 1
+# Allow F_GETFL only
+fcntl: arg1 == 3

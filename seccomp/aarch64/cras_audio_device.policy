@@ -1,0 +1,14 @@
+# Copyright 2019 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+@include /usr/share/policy/crosvm/common_device.policy
+
+madvise: 1
+prlimit64: 1
+setrlimit: 1
+recvmsg: 1
+sched_setscheduler: 1
+sendmsg: 1
+socketpair: arg0 == AF_UNIX
+clock_gettime: 1
