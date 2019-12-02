@@ -48,7 +48,7 @@ pub struct MsiAddressMessage {
 
 #[bitfield]
 #[derive(Clone, Copy, PartialEq)]
-struct MsiDataMessage {
+pub struct MsiDataMessage {
     vector: BitField8,
     #[bits = 3]
     delivery_mode: DeliveryMode,

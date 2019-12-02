@@ -8,7 +8,10 @@
 use crate::split_irqchip_common::*;
 use crate::BusDevice;
 use bit_field::*;
-use sys_util::warn;
+use kvm::Vm;
+use msg_socket::{MsgReceiver, MsgSender};
+use sys_util::{error, warn, EventFd, Result};
+use vm_control::{VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
 
 #[bitfield]
 #[derive(Clone, Copy, PartialEq)]
@@ -88,6 +91,8 @@ pub struct Ioapic {
     redirect_table: [RedirectionTableEntry; kvm::NUM_IOAPIC_PINS],
     // IOREGSEL is technically 32 bits, but only bottom 8 are writable: all others are fixed to 0.
     ioregsel: u8,
+    irqfd: Vec<EventFd>,
+    socket: VmIrqRequestSocket,
 }
 
 impl BusDevice for Ioapic {
@@ -148,17 +153,24 @@ impl BusDevice for Ioapic {
 }
 
 impl Ioapic {
-    pub fn new() -> Ioapic {
+    pub fn new(vm: &mut Vm, socket: VmIrqRequestSocket) -> Result<Ioapic> {
         let mut entry = RedirectionTableEntry::new();
         entry.set_interrupt_mask(true);
         let entries = [entry; kvm::NUM_IOAPIC_PINS];
-        Ioapic {
+        let mut irqfd = vec![];
+        for i in 0..kvm::NUM_IOAPIC_PINS {
+            irqfd.push(EventFd::new()?);
+            vm.register_irqfd(&irqfd[i], i as u32)?;
+        }
+        Ok(Ioapic {
             id: 0,
             rtc_remote_irr: false,
             current_interrupt_level_bitmap: 0,
             redirect_table: entries,
             ioregsel: 0,
-        }
+            irqfd,
+            socket,
+        })
     }
 
     // The ioapic must be informed about EOIs in order to avoid sending multiple interrupts of the
@@ -218,8 +230,7 @@ impl Ioapic {
             return false;
         }
 
-        // TODO(mutexlox): Pulse (assert and deassert) interrupt
-        let injected = true;
+        let injected = self.irqfd[irq].write(1).is_ok();
 
         if entry.get_trigger_mode() == TriggerMode::Level && level && injected {
             entry.set_remote_irr(true);
@@ -267,12 +278,41 @@ impl Ioapic {
                     // is the fix for this.
                 }
 
-                // TODO(mutexlox): route MSI.
                 if self.redirect_table[index].get_trigger_mode() == TriggerMode::Level
                     && self.current_interrupt_level_bitmap & (1 << index) != 0
                     && !self.redirect_table[index].get_interrupt_mask()
                 {
                     self.service_irq(index, true);
+                }
+
+                let mut address = MsiAddressMessage::new();
+                let mut data = MsiDataMessage::new();
+                let entry = &self.redirect_table[index];
+                address.set_destination_mode(entry.get_dest_mode());
+                address.set_destination_id(entry.get_dest_id());
+                address.set_always_0xfee(0xfee);
+                data.set_vector(entry.get_vector());
+                data.set_delivery_mode(entry.get_delivery_mode());
+                data.set_trigger(entry.get_trigger_mode());
+
+                let request = VmIrqRequest::AddMsiRoute {
+                    gsi: index as u32,
+                    msi_address: address.get(0, 32),
+                    msi_data: data.get(0, 32) as u32,
+                };
+                if let Err(e) = self.socket.send(&request) {
+                    error!("IOAPIC: failed to send AddMsiRoute request: {}", e);
+                    return;
+                }
+                match self.socket.recv() {
+                    Ok(response) => {
+                        if let VmIrqResponse::Err(e) = response {
+                            error!("IOAPIC: failed to add msi route: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("IOAPIC: failed to receive AddMsiRoute response: {}", e);
+                    }
                 }
             }
         }
@@ -307,6 +347,15 @@ mod tests {
     const DEFAULT_VECTOR: u8 = 0x3a;
     const DEFAULT_DESTINATION_ID: u8 = 0x5f;
 
+    fn new() -> Ioapic {
+        let kvm = kvm::Kvm::new().unwrap();
+        let gm = sys_util::GuestMemory::new(&vec![(sys_util::GuestAddress(0), 0x1000)]).unwrap();
+        let mut vm = Vm::new(&kvm, gm).unwrap();
+        vm.enable_split_irqchip().unwrap();
+        let (_, device_socket) = msg_socket::pair::<VmIrqResponse, VmIrqRequest>().unwrap();
+        Ioapic::new(&mut vm, device_socket).unwrap()
+    }
+
     fn set_up(trigger: TriggerMode) -> (Ioapic, usize) {
         let irq = kvm::NUM_IOAPIC_PINS - 1;
         let ioapic = set_up_with_irq(irq, trigger);
@@ -314,7 +363,7 @@ mod tests {
     }
 
     fn set_up_with_irq(irq: usize, trigger: TriggerMode) -> Ioapic {
-        let mut ioapic = Ioapic::new();
+        let mut ioapic = self::new();
         set_up_redirection_table_entry(&mut ioapic, irq, trigger);
         ioapic
     }
@@ -377,7 +426,7 @@ mod tests {
 
     #[test]
     fn write_read_ioregsel() {
-        let mut ioapic = Ioapic::new();
+        let mut ioapic = self::new();
         let data_write = [0x0f, 0xf0, 0x01, 0xff];
         let mut data_read = [0; 4];
 
@@ -391,7 +440,7 @@ mod tests {
     // Verify that version register is actually read-only.
     #[test]
     fn write_read_ioaic_reg_version() {
-        let mut ioapic = Ioapic::new();
+        let mut ioapic = self::new();
         let before = read_reg(&mut ioapic, IOAPIC_REG_VERSION);
         let data_write = !before;
 
@@ -402,7 +451,7 @@ mod tests {
     // Verify that only bits 27:24 of the IOAPICID are readable/writable.
     #[test]
     fn write_read_ioapic_reg_id() {
-        let mut ioapic = Ioapic::new();
+        let mut ioapic = self::new();
 
         write_reg(&mut ioapic, IOAPIC_REG_ID, 0x1f3e5d7c);
         assert_eq!(read_reg(&mut ioapic, IOAPIC_REG_ID), 0x0f000000);
@@ -411,7 +460,7 @@ mod tests {
     // Write to read-only register IOAPICARB.
     #[test]
     fn write_read_ioapic_arbitration_id() {
-        let mut ioapic = Ioapic::new();
+        let mut ioapic = self::new();
 
         let data_write_id = 0x1f3e5d7c;
         let expected_result = 0x0f000000;
@@ -436,7 +485,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "index out of bounds: the len is 24 but the index is 24")]
     fn service_invalid_irq() {
-        let mut ioapic = Ioapic::new();
+        let mut ioapic = self::new();
         ioapic.service_irq(kvm::NUM_IOAPIC_PINS, false);
     }
 

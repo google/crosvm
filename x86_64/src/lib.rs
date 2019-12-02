@@ -581,12 +581,26 @@ impl X8664arch {
     /// * `split_irqchip` - Whether to use a split IRQ chip.
     /// * `mem` - The memory to be used by the guest.
     fn create_vm(kvm: &Kvm, split_irqchip: bool, mem: GuestMemory) -> Result<Vm> {
-        let vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
+        let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
         let tss_addr = GuestAddress(0xfffbd000);
         vm.set_tss_addr(tss_addr).map_err(Error::SetTssAddr)?;
         if !split_irqchip {
             vm.create_pit().map_err(Error::CreatePit)?;
             vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
+        } else {
+            for i in 0..kvm::NUM_IOAPIC_PINS {
+                // Add dummy MSI routes to replace the default IRQChip routes.
+                let route = IrqRoute {
+                    gsi: i as u32,
+                    source: IrqSource::Msi {
+                        address: 0,
+                        data: 0,
+                    },
+                };
+                // Safe to ignore errors because errors are caused by the default routes and dummy
+                // MSI routes will always be registered.
+                let _ = vm.add_irq_route_entry(route);
+            }
         }
         Ok(vm)
     }
