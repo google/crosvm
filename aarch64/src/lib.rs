@@ -21,6 +21,7 @@ use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
 use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError};
+use vm_control::VmIrqRequestSocket;
 
 use kvm::*;
 use kvm_sys::kvm_device_attr;
@@ -195,6 +196,7 @@ impl arch::LinuxArch for AArch64 {
     fn build_vm<F, E>(
         mut components: VmComponents,
         _split_irqchip: bool,
+        _ioapic_device_socket: VmIrqRequestSocket,
         serial_parameters: &BTreeMap<u8, SerialParameters>,
         serial_jail: Option<Minijail>,
         create_devices: F,
@@ -314,6 +316,7 @@ impl arch::LinuxArch for AArch64 {
             vcpus,
             vcpu_affinity,
             irq_chip,
+            split_irqchip: None,
             io_bus,
             mmio_bus,
             pid_debug_label_map,

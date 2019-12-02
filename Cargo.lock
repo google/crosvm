@@ -16,6 +16,7 @@ dependencies = [
  "resources 0.1.0",
  "sync 0.1.0",
  "sys_util 0.1.0",
+ "vm_control 0.1.0",
 ]
 
 [[package]]
@@ -37,6 +38,7 @@ dependencies = [
  "resources 0.1.0",
  "sync 0.1.0",
  "sys_util 0.1.0",
+ "vm_control 0.1.0",
 ]
 
 [[package]]
@@ -776,6 +778,7 @@ dependencies = [
  "resources 0.1.0",
  "sync 0.1.0",
  "sys_util 0.1.0",
+ "vm_control 0.1.0",
 ]
 
 [metadata]

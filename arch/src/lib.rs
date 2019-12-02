@@ -25,6 +25,7 @@ use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
 use resources::SystemAllocator;
 use sync::Mutex;
 use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
+use vm_control::VmIrqRequestSocket;
 
 pub enum VmImage {
     Kernel(File),
@@ -60,6 +61,7 @@ pub struct RunnableLinuxVm {
     pub vcpus: Vec<Vcpu>,
     pub vcpu_affinity: Vec<usize>,
     pub irq_chip: Option<File>,
+    pub split_irqchip: Option<(Arc<Mutex<devices::Pic>>, Arc<Mutex<devices::Ioapic>>)>,
     pub io_bus: Bus,
     pub mmio_bus: Bus,
     pub pid_debug_label_map: BTreeMap<u32, String>,
@@ -88,6 +90,7 @@ pub trait LinuxArch {
     fn build_vm<F, E>(
         components: VmComponents,
         split_irqchip: bool,
+        ioapic_device_socket: VmIrqRequestSocket,
         serial_parameters: &BTreeMap<u8, SerialParameters>,
         serial_jail: Option<Minijail>,
         create_devices: F,

@@ -13,3 +13,4 @@ libc = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
+vm_control = { path = "../vm_control" }

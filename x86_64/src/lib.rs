@@ -55,13 +55,17 @@ use std::sync::Arc;
 
 use crate::bootparam::boot_params;
 use arch::{RunnableLinuxVm, VmComponents, VmImage};
-use devices::{get_serial_tty_string, PciConfigIo, PciDevice, PciInterruptPin, SerialParameters};
+use devices::{
+    get_serial_tty_string, Ioapic, PciConfigIo, PciDevice, PciInterruptPin, Pic, SerialParameters,
+    IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES,
+};
 use io_jail::Minijail;
 use kvm::*;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
 use sys_util::{Clock, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
+use vm_control::VmIrqRequestSocket;
 
 #[sorted]
 #[derive(Debug)]
@@ -73,6 +77,7 @@ pub enum Error {
     CreateDevices(Box<dyn StdError>),
     CreateEventFd(sys_util::Error),
     CreateFdt(arch::fdt::Error),
+    CreateIoapicDevice(sys_util::Error),
     CreateIrqChip(sys_util::Error),
     CreateKvm(sys_util::Error),
     CreatePciRoot(arch::DeviceRegistrationError),
@@ -120,6 +125,7 @@ impl Display for Error {
             CreateDevices(e) => write!(f, "error creating devices: {}", e),
             CreateEventFd(e) => write!(f, "unable to make an EventFd: {}", e),
             CreateFdt(e) => write!(f, "failed to create fdt: {}", e),
+            CreateIoapicDevice(e) => write!(f, "failed to create IOAPIC device: {}", e),
             CreateIrqChip(e) => write!(f, "failed to create irq chip: {}", e),
             CreateKvm(e) => write!(f, "failed to open /dev/kvm: {}", e),
             CreatePciRoot(e) => write!(f, "failed to create a PCI root hub: {}", e),
@@ -314,6 +320,7 @@ impl arch::LinuxArch for X8664arch {
     fn build_vm<F, E>(
         mut components: VmComponents,
         split_irqchip: bool,
+        ioapic_device_socket: VmIrqRequestSocket,
         serial_parameters: &BTreeMap<u8, SerialParameters>,
         serial_jail: Option<Minijail>,
         create_devices: F,
@@ -362,6 +369,23 @@ impl arch::LinuxArch for X8664arch {
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
 
+        let split_irqchip = if split_irqchip {
+            let pic = Arc::new(Mutex::new(Pic::new()));
+            let ioapic = Arc::new(Mutex::new(
+                Ioapic::new(&mut vm, ioapic_device_socket).map_err(Error::CreateIoapicDevice)?,
+            ));
+            mmio_bus
+                .insert(
+                    ioapic.clone(),
+                    IOAPIC_BASE_ADDRESS,
+                    IOAPIC_MEM_LENGTH_BYTES,
+                    false,
+                )
+                .unwrap();
+            Some((pic, ioapic))
+        } else {
+            None
+        };
         let pci_devices = create_devices(&mem, &mut vm, &mut resources, &exit_evt)
             .map_err(|e| Error::CreateDevices(Box::new(e)))?;
         let (pci, pci_irqs, pid_debug_label_map) =
@@ -376,7 +400,7 @@ impl arch::LinuxArch for X8664arch {
 
         let mut io_bus = Self::setup_io_bus(
             &mut vm,
-            split_irqchip,
+            split_irqchip.is_some(),
             exit_evt.try_clone().map_err(Error::CloneEventFd)?,
             Some(pci_bus.clone()),
             components.memory_size,
@@ -393,6 +417,17 @@ impl arch::LinuxArch for X8664arch {
             ),
             None => None,
         };
+
+        if let Some((pic, _)) = &split_irqchip {
+            io_bus.insert(pic.clone(), 0x20, 0x2, true).unwrap();
+            io_bus.insert(pic.clone(), 0xa0, 0x2, true).unwrap();
+            io_bus.insert(pic.clone(), 0x4d0, 0x2, true).unwrap();
+
+            let mut irq_num = resources.allocate_irq().unwrap();
+            while irq_num < kvm::NUM_IOAPIC_PINS as u32 {
+                irq_num = resources.allocate_irq().unwrap();
+            }
+        }
 
         match components.vm_image {
             VmImage::Bios(ref mut bios) => Self::load_bios(&mem, bios)?,
@@ -447,6 +482,7 @@ impl arch::LinuxArch for X8664arch {
             vcpus,
             vcpu_affinity,
             irq_chip,
+            split_irqchip,
             io_bus,
             mmio_bus,
             pid_debug_label_map,

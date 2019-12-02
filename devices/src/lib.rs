@@ -28,7 +28,7 @@ pub use self::bus::Error as BusError;
 pub use self::bus::{Bus, BusDevice, BusRange, BusResumeDevice};
 pub use self::cmos::Cmos;
 pub use self::i8042::I8042Device;
-pub use self::ioapic::Ioapic;
+pub use self::ioapic::{Ioapic, IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES};
 pub use self::pci::{
     Ac97Dev, PciConfigIo, PciConfigMmio, PciDevice, PciDeviceError, PciInterruptPin, PciRoot,
     VfioPciDevice,

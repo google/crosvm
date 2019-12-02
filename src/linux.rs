@@ -1356,6 +1356,7 @@ fn run_vcpu(
     start_barrier: Arc<Barrier>,
     io_bus: devices::Bus,
     mmio_bus: devices::Bus,
+    split_irqchip: Option<(Arc<Mutex<devices::Pic>>, Arc<Mutex<devices::Ioapic>>)>,
     exit_evt: EventFd,
     requires_kvmclock_ctrl: bool,
     run_mode_arc: Arc<VcpuRunMode>,
@@ -1417,6 +1418,13 @@ fn run_vcpu(
                         }) => {
                             mmio_bus.write(address, &data[..size]);
                         }
+                        Ok(VcpuExit::IoapicEoi{vector}) => {
+                            if let Some((_, ioapic)) = &split_irqchip {
+                                ioapic.lock().end_of_interrupt(vector);
+                            } else {
+                                panic!("userspace ioapic not found in split irqchip mode, should be impossible.");
+                            }
+                        },
                         Ok(VcpuExit::Hlt) => break,
                         Ok(VcpuExit::Shutdown) => break,
                         Ok(VcpuExit::FailEntry {
@@ -1589,10 +1597,15 @@ pub fn run_config(cfg: Config) -> Result<()> {
         msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>().map_err(Error::CreateSocket)?;
     control_sockets.push(TaggedControlSocket::VmMemory(gpu_host_socket));
 
+    let (ioapic_host_socket, ioapic_device_socket) =
+        msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
+    control_sockets.push(TaggedControlSocket::VmIrq(ioapic_host_socket));
+
     let sandbox = cfg.sandbox;
     let linux = Arch::build_vm(
         components,
         cfg.split_irqchip,
+        ioapic_device_socket,
         &cfg.serial_parameters,
         simple_jail(&cfg, "serial")?,
         |mem, vm, sys_allocator, exit_evt| {
@@ -1739,6 +1752,7 @@ fn run_control(
             vcpu_thread_barrier.clone(),
             linux.io_bus.clone(),
             linux.mmio_bus.clone(),
+            linux.split_irqchip.clone(),
             linux.exit_evt.try_clone().map_err(Error::CloneEventFd)?,
             linux.vm.check_extension(Cap::KvmclockCtrl),
             run_mode_arc.clone(),

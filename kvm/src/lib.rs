@@ -1121,6 +1121,9 @@ pub enum VcpuExit {
         size: usize,
         data: [u8; 8],
     },
+    IoapicEoi {
+        vector: u8,
+    },
     Unknown,
     Exception,
     Hypercall,
@@ -1810,6 +1813,12 @@ impl RunnableVcpu {
                     } else {
                         Ok(VcpuExit::MmioRead { address, size })
                     }
+                }
+                KVM_EXIT_IOAPIC_EOI => {
+                    // Safe because the exit_reason (which comes from the kernel) told us which
+                    // union field to use.
+                    let vector = unsafe { run.__bindgen_anon_1.eoi.vector };
+                    Ok(VcpuExit::IoapicEoi { vector })
                 }
                 KVM_EXIT_UNKNOWN => Ok(VcpuExit::Unknown),
                 KVM_EXIT_EXCEPTION => Ok(VcpuExit::Exception),

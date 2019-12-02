@@ -40,11 +40,9 @@ pub enum DeliveryStatus {
 }
 
 const IOAPIC_VERSION_ID: u32 = 0x00170011;
-#[allow(dead_code)]
-const IOAPIC_BASE_ADDRESS: u32 = 0xfec00000;
+pub const IOAPIC_BASE_ADDRESS: u64 = 0xfec00000;
 // The Intel manual does not specify this size, but KVM uses it.
-#[allow(dead_code)]
-const IOAPIC_MEM_LENGTH_BYTES: usize = 0x100;
+pub const IOAPIC_MEM_LENGTH_BYTES: u64 = 0x100;
 
 // Constants for IOAPIC direct register offset.
 const IOAPIC_REG_ID: u8 = 0x00;
@@ -52,10 +50,10 @@ const IOAPIC_REG_VERSION: u8 = 0x01;
 const IOAPIC_REG_ARBITRATION_ID: u8 = 0x02;
 
 // Register offsets
-pub const IOREGSEL_OFF: u8 = 0x0;
-pub const IOREGSEL_DUMMY_UPPER_32_BITS_OFF: u8 = 0x4;
-pub const IOWIN_OFF: u8 = 0x10;
-pub const IOWIN_SCALE: u8 = 0x2;
+const IOREGSEL_OFF: u8 = 0x0;
+const IOREGSEL_DUMMY_UPPER_32_BITS_OFF: u8 = 0x4;
+const IOWIN_OFF: u8 = 0x10;
+const IOWIN_SCALE: u8 = 0x2;
 
 /// Given an IRQ and whether or not the selector should refer to the high bits, return a selector
 /// suitable to use as an offset to read to/write from.
