@@ -10,6 +10,7 @@ use crate::BusDevice;
 use bit_field::*;
 use kvm::Vm;
 use msg_socket::{MsgReceiver, MsgSender};
+use std::sync::Arc;
 use sys_util::{error, warn, EventFd, Result};
 use vm_control::{VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
 
@@ -89,6 +90,7 @@ pub struct Ioapic {
     redirect_table: [RedirectionTableEntry; kvm::NUM_IOAPIC_PINS],
     // IOREGSEL is technically 32 bits, but only bottom 8 are writable: all others are fixed to 0.
     ioregsel: u8,
+    relay: Arc<GsiRelay>,
     irqfd: Vec<EventFd>,
     socket: VmIrqRequestSocket,
 }
@@ -166,9 +168,14 @@ impl Ioapic {
             current_interrupt_level_bitmap: 0,
             redirect_table: entries,
             ioregsel: 0,
+            relay: Default::default(),
             irqfd,
             socket,
         })
+    }
+
+    pub fn register_relay(&mut self, relay: Arc<GsiRelay>) {
+        self.relay = relay;
     }
 
     // The ioapic must be informed about EOIs in order to avoid sending multiple interrupts of the
@@ -183,6 +190,12 @@ impl Ioapic {
             if self.redirect_table[i].get_vector() == vector
                 && self.redirect_table[i].get_trigger_mode() == TriggerMode::Level
             {
+                if self.relay.irqfd_resample[i].is_some() {
+                    self.service_irq(i, false);
+                }
+                if let Some(resample_evt) = &self.relay.irqfd_resample[i] {
+                    resample_evt.write(1).unwrap();
+                }
                 self.redirect_table[i].set_remote_irr(false);
             }
             // There is an inherent race condition in hardware if the OS is finished processing an

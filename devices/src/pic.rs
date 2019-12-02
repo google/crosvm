@@ -12,7 +12,9 @@
 // For the purposes of both using more descriptive terms and avoiding terms with lots of charged
 // emotional context, this file refers to them instead as "primary" and "secondary" PICs.
 
+use crate::split_irqchip_common::GsiRelay;
 use crate::BusDevice;
+use std::sync::Arc;
 use sys_util::{debug, warn};
 
 #[repr(usize)]
@@ -30,7 +32,7 @@ enum PicInitState {
     Icw4 = 3,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Default)]
 struct PicState {
     last_irr: u8,     // Edge detection.
     irr: u8,          // Interrupt Request Register.
@@ -53,6 +55,8 @@ struct PicState {
     elcr: u8,
     elcr_mask: u8,
     init_state: Option<PicInitState>,
+    is_primary: bool,
+    relay: Arc<GsiRelay>,
 }
 
 pub struct Pic {
@@ -176,10 +180,16 @@ impl Pic {
         // that should be masked here. In this case, bits 8 - 8 = 0 and 13 - 8 = 5.
         secondary_pic.elcr_mask = !((1 << 0) | (1 << 5));
 
+        primary_pic.is_primary = true;
         Pic {
             interrupt_request: false,
             pics: [primary_pic, secondary_pic],
         }
+    }
+
+    pub fn register_relay(&mut self, relay: Arc<GsiRelay>) {
+        self.pics[0].relay = relay.clone();
+        self.pics[1].relay = relay;
     }
 
     pub fn service_irq(&mut self, irq: u8, level: bool) -> bool {
@@ -391,6 +401,11 @@ impl Pic {
     fn clear_isr(pic: &mut PicState, irq: u8) {
         assert!(irq <= 7, "Unexpectedly high value for irq: {} vs 7", irq);
         pic.isr &= !(1 << irq);
+        Pic::set_irq_internal(pic, irq, false);
+        let irq = if pic.is_primary { irq } else { irq + 8 };
+        if let Some(resample_evt) = &pic.relay.irqfd_resample[irq as usize] {
+            resample_evt.write(1).unwrap();
+        }
     }
 
     fn update_irq(&mut self) -> bool {
@@ -1086,26 +1101,6 @@ mod tests {
         // The EOI should have cleared isr.
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].isr, 0);
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].priority_add, 6);
-    }
-
-    /// Verify that no-op doesn't change state.
-    #[test]
-    fn no_op_ocw2() {
-        let mut data = set_up();
-        icw_init_both_with_icw4(&mut data.pic, FULLY_NESTED_NO_AUTO_EOI);
-
-        // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.service_irq(/*irq=*/ 5, /*level=*/ true);
-        assert_eq!(data.pic.get_external_interrupt(), Some(0x08 + 5));
-        data.pic.service_irq(/*irq=*/ 5, /*level=*/ false);
-
-        let orig = data.pic.pics[PicSelect::Primary as usize].clone();
-
-        // Run a no-op.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x40]);
-
-        // Nothing should have changed.
-        assert_eq!(orig, data.pic.pics[PicSelect::Primary as usize]);
     }
 
     /// Tests cascade IRQ that happens on secondary PIC.

@@ -5,6 +5,7 @@
 // Common constants and types used for Split IRQ chip devices (e.g. PIC, PIT, IOAPIC).
 
 use bit_field::*;
+use sys_util::EventFd;
 
 #[bitfield]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -57,4 +58,37 @@ pub struct MsiDataMessage {
     #[bits = 1]
     trigger: TriggerMode,
     reserved2: BitField16,
+}
+
+/// Acts as a relay of interrupt signals between devices and IRQ chips.
+#[derive(Default)]
+pub struct GsiRelay {
+    pub irqfd: [Option<EventFd>; kvm::NUM_IOAPIC_PINS],
+    pub irqfd_resample: [Option<EventFd>; kvm::NUM_IOAPIC_PINS],
+}
+
+impl GsiRelay {
+    pub fn new() -> GsiRelay {
+        GsiRelay {
+            irqfd: Default::default(),
+            irqfd_resample: Default::default(),
+        }
+    }
+
+    pub fn register_irqfd(&mut self, evt: EventFd, gsi: usize) {
+        if gsi >= kvm::NUM_IOAPIC_PINS {
+            // Invalid gsi; ignore.
+            return;
+        }
+        self.irqfd[gsi] = Some(evt);
+    }
+
+    pub fn register_irqfd_resample(&mut self, evt: EventFd, resample_evt: EventFd, gsi: usize) {
+        if gsi >= kvm::NUM_IOAPIC_PINS {
+            // Invalid gsi; ignore.
+            return;
+        }
+        self.irqfd[gsi] = Some(evt);
+        self.irqfd_resample[gsi] = Some(resample_evt);
+    }
 }

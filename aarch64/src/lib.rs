@@ -245,9 +245,14 @@ impl arch::LinuxArch for AArch64 {
 
         let pci_devices = create_devices(&mem, &mut vm, &mut resources, &exit_evt)
             .map_err(|e| Error::CreateDevices(Box::new(e)))?;
-        let (pci, pci_irqs, pid_debug_label_map) =
-            arch::generate_pci_root(pci_devices, &mut mmio_bus, &mut resources, &mut vm)
-                .map_err(Error::CreatePciRoot)?;
+        let (pci, pci_irqs, pid_debug_label_map) = arch::generate_pci_root(
+            pci_devices,
+            &mut None,
+            &mut mmio_bus,
+            &mut resources,
+            &mut vm,
+        )
+        .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci)));
 
         // ARM doesn't really use the io bus like x86, so just create an empty bus.
@@ -317,6 +322,7 @@ impl arch::LinuxArch for AArch64 {
             vcpu_affinity,
             irq_chip,
             split_irqchip: None,
+            gsi_relay: None,
             io_bus,
             mmio_bus,
             pid_debug_label_map,

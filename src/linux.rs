@@ -1699,6 +1699,7 @@ fn run_control(
         Suspend,
         ChildSignal,
         CheckAvailableMemory,
+        IrqFd { gsi: usize },
         LowMemory,
         LowmemTimer,
         VmControlServer,
@@ -1749,6 +1750,16 @@ fn run_control(
         .add(&freemem_timer, Token::CheckAvailableMemory)
         .map_err(Error::PollContextAdd)?;
 
+    if let Some(gsi_relay) = &linux.gsi_relay {
+        for (gsi, evt) in gsi_relay.irqfd.into_iter().enumerate() {
+            if let Some(evt) = evt {
+                poll_ctx
+                    .add(evt, Token::IrqFd { gsi })
+                    .map_err(Error::PollContextAdd)?;
+            }
+        }
+    }
+
     // Used to add jitter to timer values so that we don't have a thundering herd problem when
     // multiple VMs are running.
     let mut simple_rng = SimpleRng::new(
@@ -1787,6 +1798,7 @@ fn run_control(
     }
     vcpu_thread_barrier.wait();
 
+    let mut ioapic_delayed = Vec::<usize>::default();
     'poll: loop {
         let events = {
             match poll_ctx.wait() {
@@ -1797,6 +1809,26 @@ fn run_control(
                 }
             }
         };
+
+        ioapic_delayed.retain(|&gsi| {
+            if let Some((_, ioapic)) = &linux.split_irqchip {
+                if let Ok(mut ioapic) = ioapic.try_lock() {
+                    // The unwrap will never fail because gsi_relay is Some iff split_irqchip is
+                    // Some.
+                    if linux.gsi_relay.as_ref().unwrap().irqfd_resample[gsi].is_some() {
+                        ioapic.service_irq(gsi, true);
+                    } else {
+                        ioapic.service_irq(gsi, true);
+                        ioapic.service_irq(gsi, false);
+                    }
+                    false
+                } else {
+                    true
+                }
+            } else {
+                true
+            }
+        });
 
         let mut vm_control_indices_to_remove = Vec::new();
         for event in events.iter_readable() {
@@ -1859,6 +1891,47 @@ fn run_control(
                         if let Err(e) = balloon_host_socket.send(&command) {
                             warn!("failed to send memory value to balloon device: {}", e);
                         }
+                    }
+                }
+                Token::IrqFd { gsi } => {
+                    if let Some((pic, ioapic)) = &linux.split_irqchip {
+                        // This will never fail because gsi_relay is Some iff split_irqchip is
+                        // Some.
+                        let gsi_relay = linux.gsi_relay.as_ref().unwrap();
+                        if let Some(eventfd) = &gsi_relay.irqfd[gsi] {
+                            eventfd.read().unwrap();
+                        } else {
+                            warn!(
+                                "irqfd {} not found in GSI relay, should be impossible.",
+                                gsi
+                            );
+                        }
+
+                        let mut pic = pic.lock();
+                        if gsi_relay.irqfd_resample[gsi].is_some() {
+                            pic.service_irq(gsi as u8, true);
+                        } else {
+                            pic.service_irq(gsi as u8, true);
+                            pic.service_irq(gsi as u8, false);
+                        }
+                        if let Err(e) = vcpu_handles[0].kill(SIGRTMIN() + 0) {
+                            warn!("PIC: failed to kick vCPU0: {}", e);
+                        }
+
+                        // When IOAPIC is configuring its redirection table, we should first
+                        // process its AddMsiRoute request, otherwise we would deadlock.
+                        if let Ok(mut ioapic) = ioapic.try_lock() {
+                            if gsi_relay.irqfd_resample[gsi].is_some() {
+                                ioapic.service_irq(gsi, true);
+                            } else {
+                                ioapic.service_irq(gsi, true);
+                                ioapic.service_irq(gsi, false);
+                            }
+                        } else {
+                            ioapic_delayed.push(gsi);
+                        }
+                    } else {
+                        panic!("split irqchip not found, should be impossible.");
                     }
                 }
                 Token::LowMemory => {
@@ -2020,6 +2093,7 @@ fn run_control(
                 Token::Suspend => {}
                 Token::ChildSignal => {}
                 Token::CheckAvailableMemory => {}
+                Token::IrqFd { gsi: _ } => {}
                 Token::LowMemory => {}
                 Token::LowmemTimer => {}
                 Token::VmControlServer => {}
