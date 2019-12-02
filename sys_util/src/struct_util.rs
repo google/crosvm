@@ -18,10 +18,10 @@ fn vec_with_size_in_bytes<T: Default>(size_in_bytes: usize) -> Vec<T> {
 
 /// The kvm API has many structs that resemble the following `Foo` structure:
 ///
-/// ```
+/// ```ignore
 /// #[repr(C)]
 /// struct Foo {
-///    some_data: u32
+///    some_data: u32,
 ///    entries: __IncompleteArrayField<__u32>,
 /// }
 /// ```
