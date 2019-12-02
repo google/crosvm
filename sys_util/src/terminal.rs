@@ -7,11 +7,11 @@ use std::mem::zeroed;
 use std::os::unix::io::RawFd;
 
 use libc::{
-    c_int, fcntl, isatty, read, tcgetattr, tcsetattr, termios, ECHO, F_GETFL, F_SETFL, ICANON,
-    ISIG, O_NONBLOCK, STDIN_FILENO, TCSANOW,
+    isatty, read, tcgetattr, tcsetattr, termios, ECHO, ICANON, ISIG, O_NONBLOCK, STDIN_FILENO,
+    TCSANOW,
 };
 
-use crate::{errno_result, Result};
+use crate::{add_fd_flags, clear_fd_flags, errno_result, Result};
 
 fn modify_mode<F: FnOnce(&mut termios)>(fd: RawFd, f: F) -> Result<()> {
     // Safe because we check the return value of isatty.
@@ -34,24 +34,6 @@ fn modify_mode<F: FnOnce(&mut termios)>(fd: RawFd, f: F) -> Result<()> {
         return errno_result();
     }
 
-    Ok(())
-}
-
-fn get_flags(fd: RawFd) -> Result<c_int> {
-    // Safe because no third parameter is expected and we check the return result.
-    let ret = unsafe { fcntl(fd, F_GETFL) };
-    if ret < 0 {
-        return errno_result();
-    }
-    Ok(ret)
-}
-
-fn set_flags(fd: RawFd, flags: c_int) -> Result<()> {
-    // Safe because we supply the third parameter and we check the return result.
-    let ret = unsafe { fcntl(fd, F_SETFL, flags) };
-    if ret < 0 {
-        return errno_result();
-    }
     Ok(())
 }
 
@@ -78,16 +60,11 @@ pub unsafe trait Terminal {
     /// If `non_block` is `true`, then `read_raw` will not block. If `non_block` is `false`, then
     /// `read_raw` may block if there is nothing to read.
     fn set_non_block(&self, non_block: bool) -> Result<()> {
-        let old_flags = get_flags(self.tty_fd())?;
-        let new_flags = if non_block {
-            old_flags | O_NONBLOCK
+        if non_block {
+            add_fd_flags(self.tty_fd(), O_NONBLOCK)
         } else {
-            old_flags & !O_NONBLOCK
-        };
-        if new_flags != old_flags {
-            set_flags(self.tty_fd(), new_flags)?
+            clear_fd_flags(self.tty_fd(), O_NONBLOCK)
         }
-        Ok(())
     }
 
     /// Reads up to `out.len()` bytes from this terminal without any buffering.

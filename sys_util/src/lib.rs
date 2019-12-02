@@ -79,8 +79,8 @@ use std::os::unix::net::UnixDatagram;
 use std::ptr;
 
 use libc::{
-    c_long, gid_t, kill, pid_t, pipe2, syscall, sysconf, uid_t, waitpid, O_CLOEXEC, SIGKILL,
-    WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
+    c_int, c_long, fcntl, gid_t, kill, pid_t, pipe2, syscall, sysconf, uid_t, waitpid, F_GETFL,
+    F_SETFL, O_CLOEXEC, SIGKILL, WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
 };
 
 use syscall_defines::linux::LinuxSyscall::SYS_getpid;
@@ -347,4 +347,46 @@ pub fn poll_in(fd: &dyn AsRawFd) -> bool {
         return false;
     }
     fds.revents & libc::POLLIN != 0
+}
+
+/// Returns the file flags set for the given `RawFD`
+///
+/// Returns an error if the OS indicates the flags can't be retrieved.
+fn get_fd_flags(fd: RawFd) -> Result<c_int> {
+    // Safe because no third parameter is expected and we check the return result.
+    let ret = unsafe { fcntl(fd, F_GETFL) };
+    if ret < 0 {
+        return errno_result();
+    }
+    Ok(ret)
+}
+
+/// Sets the file flags set for the given `RawFD`.
+///
+/// Returns an error if the OS indicates the flags can't be retrieved.
+fn set_fd_flags(fd: RawFd, flags: c_int) -> Result<()> {
+    // Safe because we supply the third parameter and we check the return result.
+    // fcntlt is trusted not to modify the memory of the calling process.
+    let ret = unsafe { fcntl(fd, F_SETFL, flags) };
+    if ret < 0 {
+        return errno_result();
+    }
+    Ok(())
+}
+
+/// Performs a logical OR of the given flags with the FD's flags, setting the given bits for the
+/// FD.
+///
+/// Returns an error if the OS indicates the flags can't be retrieved or set.
+pub fn add_fd_flags(fd: RawFd, set_flags: c_int) -> Result<()> {
+    let start_flags = get_fd_flags(fd)?;
+    set_fd_flags(fd, start_flags | set_flags)
+}
+
+/// Clears the given flags in the FD's flags.
+///
+/// Returns an error if the OS indicates the flags can't be retrieved or set.
+pub fn clear_fd_flags(fd: RawFd, clear_flags: c_int) -> Result<()> {
+    let start_flags = get_fd_flags(fd)?;
+    set_fd_flags(fd, start_flags & !clear_flags)
 }
