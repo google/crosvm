@@ -1313,6 +1313,26 @@ impl Vcpu {
         });
     }
 
+    /// Request the VCPU to exit when it becomes possible to inject interrupts into the guest.
+    #[allow(clippy::cast_ptr_alignment)]
+    pub fn request_interrupt_window(&self) {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was. The pointer is page aligned so casting to a different
+        // type is well defined, hence the clippy allow attribute.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        run.request_interrupt_window = 1;
+    }
+
+    /// Checks if we can inject an interrupt into the VCPU.
+    #[allow(clippy::cast_ptr_alignment)]
+    pub fn ready_for_interrupt(&self) -> bool {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was. The pointer is page aligned so casting to a different
+        // type is well defined, hence the clippy allow attribute.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        run.ready_for_interrupt_injection != 0 && run.if_flag != 0
+    }
+
     /// Gets the VCPU registers.
     #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
     pub fn get_regs(&self) -> Result<kvm_regs> {

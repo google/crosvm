@@ -7,10 +7,10 @@
 // modern OSs that use a legacy BIOS.
 // The PIC is connected to the Local APIC on CPU0.
 
-// Terminology note: The 8259A spec refers to "master" and "slave" PITs; the "slave"s are daisy
+// Terminology note: The 8259A spec refers to "master" and "slave" PICs; the "slave"s are daisy
 // chained to the "master"s.
 // For the purposes of both using more descriptive terms and avoiding terms with lots of charged
-// emotional context, this file refers to them instead as "primary" and "secondary" PITs.
+// emotional context, this file refers to them instead as "primary" and "secondary" PICs.
 
 use crate::BusDevice;
 use sys_util::{debug, warn};
@@ -56,9 +56,9 @@ struct PicState {
 }
 
 pub struct Pic {
-    // TODO(mutexlox): Implement an APIC and add necessary state to the Pic.
-
-    // index 0 (aka PicSelect::Primary) is the primary pic, the rest are secondary.
+    // Indicates a pending INTR signal to LINT0 of vCPU, checked by vCPU thread.
+    interrupt_request: bool,
+    // Index 0 (aka PicSelect::Primary) is the primary pic, the rest are secondary.
     pics: [PicState; 2],
 }
 
@@ -175,9 +175,9 @@ impl Pic {
         // The secondary PIC has IRQs 8-15, so we subtract 8 from the IRQ number to get the bit
         // that should be masked here. In this case, bits 8 - 8 = 0 and 13 - 8 = 5.
         secondary_pic.elcr_mask = !((1 << 0) | (1 << 5));
-        // TODO(mutexlox): Add logic to initialize APIC interrupt-related fields.
 
         Pic {
+            interrupt_request: false,
             pics: [primary_pic, secondary_pic],
         }
     }
@@ -205,8 +205,14 @@ impl Pic {
         self.get_irq(PicSelect::Primary).is_some()
     }
 
+    /// Determines whether the PIC has fired an interrupt to LAPIC.
+    pub fn interrupt_requested(&self) -> bool {
+        self.interrupt_request
+    }
+
     /// Determines the external interrupt number that the PIC is prepared to inject, if any.
     pub fn get_external_interrupt(&mut self) -> Option<u8> {
+        self.interrupt_request = false;
         let irq_primary = if let Some(irq) = self.get_irq(PicSelect::Primary) {
             irq
         } else {
@@ -403,7 +409,7 @@ impl Pic {
         }
 
         if self.get_irq(PicSelect::Primary).is_some() {
-            // TODO(mutexlox): Signal local interrupt on APIC bus.
+            self.interrupt_request = true;
             // Note: this does not check if the interrupt is succesfully injected into
             // the CPU, just whether or not one is fired.
             true

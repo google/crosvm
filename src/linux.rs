@@ -1349,6 +1349,26 @@ fn runnable_vcpu(vcpu: Vcpu, use_kvm_signals: bool, cpu_id: u32) -> Option<Runna
     }
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn inject_interrupt(pic: &Arc<Mutex<devices::Pic>>, vcpu: &RunnableVcpu) {
+    let mut pic = pic.lock();
+    if pic.interrupt_requested() && vcpu.ready_for_interrupt() {
+        if let Some(vector) = pic.get_external_interrupt() {
+            if let Err(e) = vcpu.interrupt(vector as u32) {
+                error!("PIC: failed to inject interrupt to vCPU0: {}", e);
+            }
+        }
+        // The second interrupt request should be handled immediately, so ask
+        // vCPU to exit as soon as possible.
+        if pic.interrupt_requested() {
+            vcpu.request_interrupt_window();
+        }
+    }
+}
+
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+fn inject_interrupt(pic: &Arc<Mutex<devices::Pic>>, vcpu: &RunnableVcpu) {}
+
 fn run_vcpu(
     vcpu: Vcpu,
     cpu_id: u32,
@@ -1479,6 +1499,11 @@ fn run_vcpu(
                             // unblock and return a new exclusive lock.
                             run_mode_lock = run_mode_arc.cvar.wait(run_mode_lock);
                         }
+                    }
+
+                    if cpu_id != 0 { continue; }
+                    if let Some((pic, _)) = &split_irqchip {
+                        inject_interrupt(pic, &vcpu);
                     }
                 }
             }
