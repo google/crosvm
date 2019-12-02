@@ -653,18 +653,12 @@ impl X8664arch {
                 false,
             )
             .unwrap();
-        io_bus
-            .insert(
-                Arc::new(Mutex::new(devices::I8042Device::new(
-                    exit_evt.try_clone().map_err(Error::CloneEventFd)?,
-                ))),
-                0x061,
-                0x4,
-                false,
-            )
-            .unwrap();
 
         let nul_device = Arc::new(Mutex::new(NoDevice));
+        let i8042 = Arc::new(Mutex::new(devices::I8042Device::new(
+            exit_evt.try_clone().map_err(Error::CloneEventFd)?,
+        )));
+
         if split_irqchip {
             let pit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
             let pit = Arc::new(Mutex::new(
@@ -674,14 +668,16 @@ impl X8664arch {
                 )
                 .map_err(Error::CreatePitDevice)?,
             ));
-            // Reserve from 0x40 to 0x61 (the speaker).
-            io_bus.insert(pit.clone(), 0x040, 0x22, false).unwrap();
+            io_bus.insert(pit.clone(), 0x040, 0x8, true).unwrap();
+            io_bus.insert(pit.clone(), 0x061, 0x1, true).unwrap();
+            io_bus.insert(i8042, 0x062, 0x3, true).unwrap();
             vm.register_irqfd(&pit_evt, 0)
                 .map_err(Error::RegisterIrqfd)?;
         } else {
             io_bus
                 .insert(nul_device.clone(), 0x040, 0x8, false)
                 .unwrap(); // ignore pit
+            io_bus.insert(i8042, 0x061, 0x4, true).unwrap();
         }
 
         io_bus
