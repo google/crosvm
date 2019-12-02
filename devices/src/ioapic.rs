@@ -186,14 +186,9 @@ impl Ioapic {
 
     pub fn service_irq(&mut self, irq: usize, level: bool) -> bool {
         let entry = &mut self.redirect_table[irq];
-        let line_status = if entry.get_polarity() == 1 {
-            !level
-        } else {
-            level
-        };
 
         // De-assert the interrupt.
-        if !line_status {
+        if !level {
             self.current_interrupt_level_bitmap &= !(1 << irq);
             return true;
         }
@@ -226,7 +221,7 @@ impl Ioapic {
         // TODO(mutexlox): Pulse (assert and deassert) interrupt
         let injected = true;
 
-        if entry.get_trigger_mode() == TriggerMode::Level && line_status && injected {
+        if entry.get_trigger_mode() == TriggerMode::Level && level && injected {
             entry.set_remote_irr(true);
         } else if irq == RTC_IRQ && injected {
             self.rtc_remote_irr = true;
