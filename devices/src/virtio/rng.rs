@@ -121,7 +121,7 @@ impl Worker {
 /// Virtio device for exposing entropy to the guest OS through virtio.
 pub struct Rng {
     kill_evt: Option<EventFd>,
-    worker_thread: Option<thread::JoinHandle<()>>,
+    worker_thread: Option<thread::JoinHandle<Worker>>,
     random_file: Option<File>,
 }
 
@@ -203,6 +203,7 @@ impl VirtioDevice for Rng {
                             random_file,
                         };
                         worker.run(queue_evts.remove(0), kill_evt);
+                        worker
                     });
 
             match worker_result {
@@ -215,5 +216,28 @@ impl VirtioDevice for Rng {
                 }
             }
         }
+    }
+
+    fn reset(&mut self) -> bool {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            if kill_evt.write(1).is_err() {
+                error!("{}: failed to notify the kill event", self.debug_label());
+                return false;
+            }
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            match worker_thread.join() {
+                Err(_) => {
+                    error!("{}: failed to get back resources", self.debug_label());
+                    return false;
+                }
+                Ok(worker) => {
+                    self.random_file = Some(worker.random_file);
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

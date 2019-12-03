@@ -242,6 +242,7 @@ struct Worker {
     disk_size: Arc<Mutex<u64>>,
     read_only: bool,
     sparse: bool,
+    control_socket: DiskControlResponseSocket,
 }
 
 impl Worker {
@@ -350,12 +351,7 @@ impl Worker {
         DiskControlResult::Ok
     }
 
-    fn run(
-        &mut self,
-        queue_evt: EventFd,
-        kill_evt: EventFd,
-        control_socket: DiskControlResponseSocket,
-    ) {
+    fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd) {
         #[derive(PollToken)]
         enum Token {
             FlushTimer,
@@ -377,7 +373,7 @@ impl Worker {
         let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
             (&flush_timer, Token::FlushTimer),
             (&queue_evt, Token::QueueAvailable),
-            (&control_socket, Token::ControlRequest),
+            (&self.control_socket, Token::ControlRequest),
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ]) {
@@ -420,7 +416,7 @@ impl Worker {
                         }
                     }
                     Token::ControlRequest => {
-                        let req = match control_socket.recv() {
+                        let req = match self.control_socket.recv() {
                             Ok(req) => req,
                             Err(e) => {
                                 error!("control socket failed recv: {}", e);
@@ -435,7 +431,7 @@ impl Worker {
                             }
                         };
 
-                        if let Err(e) = control_socket.send(&resp) {
+                        if let Err(e) = self.control_socket.send(&resp) {
                             error!("control socket failed send: {}", e);
                             break 'poll;
                         }
@@ -456,7 +452,7 @@ impl Worker {
 /// Virtio device for exposing block level read/write operations on a host file.
 pub struct Block {
     kill_evt: Option<EventFd>,
-    worker_thread: Option<thread::JoinHandle<()>>,
+    worker_thread: Option<thread::JoinHandle<Worker>>,
     disk_image: Option<Box<dyn DiskFile>>,
     disk_size: Arc<Mutex<u64>>,
     avail_features: u64,
@@ -768,8 +764,10 @@ impl VirtioDevice for Block {
                                 disk_size,
                                 read_only,
                                 sparse,
+                                control_socket,
                             };
-                            worker.run(queue_evts.remove(0), kill_evt, control_socket);
+                            worker.run(queue_evts.remove(0), kill_evt);
+                            worker
                         });
 
                 match worker_result {
@@ -783,6 +781,30 @@ impl VirtioDevice for Block {
                 }
             }
         }
+    }
+
+    fn reset(&mut self) -> bool {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            if kill_evt.write(1).is_err() {
+                error!("{}: failed to notify the kill event", self.debug_label());
+                return false;
+            }
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            match worker_thread.join() {
+                Err(_) => {
+                    error!("{}: failed to get back resources", self.debug_label());
+                    return false;
+                }
+                Ok(worker) => {
+                    self.disk_image = Some(worker.disk_image);
+                    self.control_socket = Some(worker.control_socket);
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
 

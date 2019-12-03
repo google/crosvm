@@ -97,6 +97,7 @@ struct Worker<T: TapT> {
     // Remove once MRG_RXBUF is supported and this variable is actually used.
     #[allow(dead_code)]
     acked_features: u64,
+    kill_evt: EventFd,
 }
 
 impl<T> Worker<T>
@@ -192,12 +193,7 @@ where
         self.interrupt.signal_used_queue(self.tx_queue.vector);
     }
 
-    fn run(
-        &mut self,
-        rx_queue_evt: EventFd,
-        tx_queue_evt: EventFd,
-        kill_evt: EventFd,
-    ) -> Result<(), NetError> {
+    fn run(&mut self, rx_queue_evt: EventFd, tx_queue_evt: EventFd) -> Result<(), NetError> {
         #[derive(PollToken)]
         enum Token {
             // A frame is available for reading from the tap device to receive in the guest.
@@ -217,7 +213,7 @@ where
             (&rx_queue_evt, Token::RxQueue),
             (&tx_queue_evt, Token::TxQueue),
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
-            (&kill_evt, Token::Kill),
+            (&self.kill_evt, Token::Kill),
         ])
         .map_err(NetError::CreatePollContext)?;
 
@@ -258,7 +254,10 @@ where
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
                     }
-                    Token::Kill => break 'poll,
+                    Token::Kill => {
+                        let _ = self.kill_evt.read();
+                        break 'poll;
+                    }
                 }
             }
         }
@@ -269,7 +268,7 @@ where
 pub struct Net<T: TapT> {
     workers_kill_evt: Option<EventFd>,
     kill_evt: EventFd,
-    worker_thread: Option<thread::JoinHandle<()>>,
+    worker_thread: Option<thread::JoinHandle<Worker<T>>>,
     tap: Option<T>,
     avail_features: u64,
     acked_features: u64,
@@ -398,6 +397,7 @@ where
         if let Some(workers_kill_evt) = &self.workers_kill_evt {
             keep_fds.push(workers_kill_evt.as_raw_fd());
         }
+        keep_fds.push(self.kill_evt.as_raw_fd());
 
         keep_fds
     }
@@ -457,13 +457,15 @@ where
                                 tx_queue,
                                 tap,
                                 acked_features,
+                                kill_evt,
                             };
                             let rx_queue_evt = queue_evts.remove(0);
                             let tx_queue_evt = queue_evts.remove(0);
-                            let result = worker.run(rx_queue_evt, tx_queue_evt, kill_evt);
+                            let result = worker.run(rx_queue_evt, tx_queue_evt);
                             if let Err(e) = result {
                                 error!("net worker thread exited with error: {}", e);
                             }
+                            worker
                         });
 
                 match worker_result {
@@ -477,5 +479,30 @@ where
                 }
             }
         }
+    }
+
+    fn reset(&mut self) -> bool {
+        // Only kill the child if it claimed its eventfd.
+        if self.workers_kill_evt.is_none() {
+            if self.kill_evt.write(1).is_err() {
+                error!("{}: failed to notify the kill event", self.debug_label());
+                return false;
+            }
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            match worker_thread.join() {
+                Err(_) => {
+                    error!("{}: failed to get back resources", self.debug_label());
+                    return false;
+                }
+                Ok(worker) => {
+                    self.tap = Some(worker.tap);
+                    self.workers_kill_evt = Some(worker.kill_evt);
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
