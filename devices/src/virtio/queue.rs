@@ -245,6 +245,18 @@ impl Queue {
         min(self.size, self.max_size)
     }
 
+    /// Reset queue to a clean state
+    pub fn reset(&mut self) {
+        self.ready = false;
+        self.size = self.max_size;
+        self.vector = VIRTIO_MSI_NO_VECTOR;
+        self.desc_table = GuestAddress(0);
+        self.avail_ring = GuestAddress(0);
+        self.used_ring = GuestAddress(0);
+        self.next_avail = Wrapping(0);
+        self.next_used = Wrapping(0);
+    }
+
     pub fn is_valid(&self, mem: &GuestMemory) -> bool {
         let queue_size = self.actual_size() as usize;
         let desc_table = self.desc_table;

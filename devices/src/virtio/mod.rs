@@ -49,6 +49,7 @@ pub use self::wl::*;
 use std::cmp;
 use std::convert::TryFrom;
 
+const DEVICE_RESET: u32 = 0x0;
 const DEVICE_ACKNOWLEDGE: u32 = 0x01;
 const DEVICE_DRIVER: u32 = 0x02;
 const DEVICE_DRIVER_OK: u32 = 0x04;

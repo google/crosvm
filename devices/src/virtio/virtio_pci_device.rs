@@ -297,6 +297,11 @@ impl VirtioPciDevice {
             && self.common_config.driver_status & DEVICE_FAILED as u8 == 0
     }
 
+    /// Determines if the driver has requested the device reset itself
+    fn is_reset_requested(&self) -> bool {
+        self.common_config.driver_status == DEVICE_RESET as u8
+    }
+
     fn are_queues_valid(&self) -> bool {
         if let Some(mem) = self.mem.as_ref() {
             self.queues.iter().all(|q| q.is_valid(mem))
@@ -686,6 +691,17 @@ impl PciDevice for VirtioPciDevice {
                         }
                     }
                 }
+            }
+        }
+
+        // Device has been reset by the driver
+        if self.device_activated && self.is_reset_requested() {
+            if self.device.reset() {
+                self.device_activated = false;
+                // reset queues
+                self.queues.iter_mut().for_each(Queue::reset);
+                // select queue 0 by default
+                self.common_config.queue_select = 0;
             }
         }
     }
