@@ -561,7 +561,7 @@ impl<T: EventSource> Worker<T> {
 
 pub struct Input<T: EventSource> {
     kill_evt: Option<EventFd>,
-    worker_thread: Option<thread::JoinHandle<()>>,
+    worker_thread: Option<thread::JoinHandle<Worker<T>>>,
     config: VirtioInputConfig,
     source: Option<T>,
 }
@@ -645,6 +645,7 @@ where
                         guest_memory: mem,
                     };
                     worker.run(event_queue_evt_fd, status_queue_evt_fd, kill_evt);
+                    worker
                 });
 
             match worker_result {
@@ -658,6 +659,29 @@ where
         } else {
             error!("tried to activate device without a source for events");
         }
+    }
+
+    fn reset(&mut self) -> bool {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            if kill_evt.write(1).is_err() {
+                error!("{}: failed to notify the kill event", self.debug_label());
+                return false;
+            }
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            match worker_thread.join() {
+                Err(_) => {
+                    error!("{}: failed to get back resources", self.debug_label());
+                    return false;
+                }
+                Ok(worker) => {
+                    self.source = Some(worker.event_source);
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
