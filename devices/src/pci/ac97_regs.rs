@@ -243,4 +243,11 @@ impl Ac97FunctionRegs {
         }
         int_mask
     }
+
+    /// Sets the current buffer to the next buffer by updating CIV to PIV, and
+    /// updates related fields.
+    pub fn move_to_next_buffer(&mut self) {
+        self.civ = self.piv;
+        self.piv = (self.piv + 1) % 32; // move piv to the next buffer.
+    }
 }

@@ -621,7 +621,8 @@ fn play_buffer(
     Ok(())
 }
 
-// Moves to the next buffer for the given function and registers.
+// Marks the current buffer completed and moves to the next buffer for the given
+// function and registers.
 fn buffer_completed(
     regs: &mut Ac97BusMasterRegs,
     mem: &GuestMemory,
@@ -645,13 +646,12 @@ fn buffer_completed(
     if civ == lvi {
         new_sr |= SR_DCH | SR_CELV | SR_LVBCI;
     } else {
-        let func_regs = regs.func_regs_mut(func);
-        func_regs.civ = func_regs.piv;
-        func_regs.piv = (func_regs.piv + 1) % 32; // move piv to the next buffer.
+        regs.func_regs_mut(func).move_to_next_buffer();
     }
 
     update_sr(regs, func, new_sr);
 
+    regs.func_regs_mut(func).picb = current_buffer_size(regs.func_regs(func), &mem)? as u16;
     if func == Ac97Function::Output {
         regs.po_pointer_update_time = Instant::now();
     }
