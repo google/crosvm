@@ -339,27 +339,24 @@ const IOCTL_32BIT: u32 = 8;
 const IOCTL_DIR: u32 = 16;
 
 /// Maximum of in_iovecs + out_iovecs
-const IOCTL_MAX_IOV: u32 = 256;
+pub const IOCTL_MAX_IOV: usize = 256;
 
 bitflags! {
     pub struct IoctlFlags: u32 {
         /// 32bit compat ioctl on 64bit machine
-        const IOCTL_COMPAT = IOCTL_COMPAT;
+        const COMPAT = IOCTL_COMPAT;
 
         /// Not restricted to well-formed ioctls, retry allowed
-        const IOCTL_UNRESTRICTED = IOCTL_UNRESTRICTED;
+        const UNRESTRICTED = IOCTL_UNRESTRICTED;
 
         /// Retry with new iovecs
-        const IOCTL_RETRY = IOCTL_RETRY;
+        const RETRY = IOCTL_RETRY;
 
         /// 32bit ioctl
         const IOCTL_32BIT = IOCTL_32BIT;
 
         /// Is a directory
-        const IOCTL_DIR = IOCTL_DIR;
-
-        /// Maximum of in_iovecs + out_iovecs
-        const IOCTL_MAX_IOV = IOCTL_MAX_IOV;
+        const DIR = IOCTL_DIR;
     }
 }
 
@@ -872,10 +869,16 @@ pub struct IoctlIn {
 }
 unsafe impl DataInit for IoctlIn {}
 
+/// Describes a region of memory in the address space of the process that made the ioctl syscall.
+/// Similar to `libc::iovec` but uses `u64`s for the address and the length.
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct IoctlIovec {
+    /// The start address of the memory region. This must be in the address space of the process
+    /// that made the ioctl syscall.
     pub base: u64,
+
+    /// The length of the memory region.
     pub len: u64,
 }
 unsafe impl DataInit for IoctlIovec {}

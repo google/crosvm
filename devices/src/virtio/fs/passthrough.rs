@@ -17,11 +17,11 @@ use std::time::Duration;
 use data_model::DataInit;
 use libc;
 use sync::Mutex;
-use sys_util::error;
+use sys_util::{error, ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ptr, ioctl_with_ptr};
 
 use crate::virtio::fs::filesystem::{
-    Context, DirEntry, Entry, FileSystem, FsOptions, GetxattrReply, ListxattrReply, OpenOptions,
-    SetattrValid, ZeroCopyReader, ZeroCopyWriter,
+    Context, DirEntry, Entry, FileSystem, FsOptions, GetxattrReply, IoctlFlags, IoctlIovec,
+    IoctlReply, ListxattrReply, OpenOptions, SetattrValid, ZeroCopyReader, ZeroCopyWriter,
 };
 use crate::virtio::fs::fuse;
 use crate::virtio::fs::multikey::MultikeyBTreeMap;
@@ -31,6 +31,22 @@ const PARENT_DIR_CSTR: &[u8] = b"..\0";
 const EMPTY_CSTR: &[u8] = b"\0";
 const ROOT_CSTR: &[u8] = b"/\0";
 const PROC_CSTR: &[u8] = b"/proc\0";
+
+const FSCRYPT_KEY_DESCRIPTOR_SIZE: usize = 8;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct fscrypt_policy_v1 {
+    _version: u8,
+    _contents_encryption_mode: u8,
+    _filenames_encryption_mode: u8,
+    _flags: u8,
+    _master_key_descriptor: [u8; FSCRYPT_KEY_DESCRIPTOR_SIZE],
+}
+unsafe impl DataInit for fscrypt_policy_v1 {}
+
+ioctl_ior_nr!(FS_IOC_SET_ENCRYPTION_POLICY, 0x66, 19, fscrypt_policy_v1);
+ioctl_iow_nr!(FS_IOC_GET_ENCRYPTION_POLICY, 0x66, 21, fscrypt_policy_v1);
 
 type Inode = u64;
 type Handle = u64;
@@ -627,6 +643,50 @@ impl PassthroughFs {
             Ok(())
         } else {
             Err(io::Error::last_os_error())
+        }
+    }
+
+    fn get_encryption_policy(&self, handle: Handle) -> io::Result<IoctlReply> {
+        let data = self
+            .handles
+            .read()
+            .unwrap()
+            .get(&handle)
+            .map(Arc::clone)
+            .ok_or_else(ebadf)?;
+
+        let mut buf = MaybeUninit::<fscrypt_policy_v1>::zeroed();
+        let file = data.file.lock();
+
+        // Safe because the kernel will only write to `buf` and we check the return value.
+        let res =
+            unsafe { ioctl_with_mut_ptr(&*file, FS_IOC_GET_ENCRYPTION_POLICY(), buf.as_mut_ptr()) };
+        if res < 0 {
+            Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
+        } else {
+            // Safe because the kernel guarantees that the policy is now initialized.
+            let policy = unsafe { buf.assume_init() };
+            Ok(IoctlReply::Done(Ok(policy.as_slice().to_vec())))
+        }
+    }
+
+    fn set_encryption_policy<R: io::Read>(&self, handle: Handle, r: R) -> io::Result<IoctlReply> {
+        let data = self
+            .handles
+            .read()
+            .unwrap()
+            .get(&handle)
+            .map(Arc::clone)
+            .ok_or_else(ebadf)?;
+
+        let policy = fscrypt_policy_v1::from_reader(r)?;
+        let file = data.file.lock();
+        // Safe because the kernel will only read from `policy` and we check the return value.
+        let res = unsafe { ioctl_with_ptr(&*file, FS_IOC_SET_ENCRYPTION_POLICY(), &policy) };
+        if res < 0 {
+            Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
+        } else {
+            Ok(IoctlReply::Done(Ok(Vec::new())))
         }
     }
 }
@@ -1585,6 +1645,48 @@ impl FileSystem for PassthroughFs {
             Ok(())
         } else {
             Err(io::Error::last_os_error())
+        }
+    }
+
+    fn ioctl<R: io::Read>(
+        &self,
+        _ctx: Context,
+        handle: Handle,
+        _flags: IoctlFlags,
+        cmd: u32,
+        arg: u64,
+        in_size: u32,
+        out_size: u32,
+        r: R,
+    ) -> io::Result<IoctlReply> {
+        // Normally, we wouldn't need to retry the FS_IOC_GET_ENCRYPTION_POLICY and
+        // FS_IOC_SET_ENCRYPTION_POLICY ioctls. Unfortunately, the I/O directions for both of them
+        // are encoded backwards so they can only be handled as unrestricted fuse ioctls.
+        if cmd == FS_IOC_GET_ENCRYPTION_POLICY() as u32 {
+            if out_size < size_of::<fscrypt_policy_v1>() as u32 {
+                let input = Vec::new();
+                let output = vec![IoctlIovec {
+                    base: arg,
+                    len: size_of::<fscrypt_policy_v1>() as u64,
+                }];
+                Ok(IoctlReply::Retry { input, output })
+            } else {
+                self.get_encryption_policy(handle)
+            }
+        } else if cmd == FS_IOC_SET_ENCRYPTION_POLICY() as u32 {
+            if in_size < size_of::<fscrypt_policy_v1>() as u32 {
+                let input = vec![IoctlIovec {
+                    base: arg,
+                    len: size_of::<fscrypt_policy_v1>() as u64,
+                }];
+                let output = Vec::new();
+                Ok(IoctlReply::Retry { input, output })
+            } else {
+                self.set_encryption_policy(handle, r)
+            }
+        } else {
+            // Did you know that a file/directory is not a TTY?
+            Err(io::Error::from_raw_os_error(libc::ENOTTY))
         }
     }
 }

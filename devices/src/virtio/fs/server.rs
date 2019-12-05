@@ -12,8 +12,8 @@ use libc;
 use sys_util::error;
 
 use crate::virtio::fs::filesystem::{
-    Context, DirEntry, Entry, FileSystem, GetxattrReply, ListxattrReply, ZeroCopyReader,
-    ZeroCopyWriter,
+    Context, DirEntry, Entry, FileSystem, GetxattrReply, IoctlReply, ListxattrReply,
+    ZeroCopyReader, ZeroCopyWriter,
 };
 use crate::virtio::fs::fuse::*;
 use crate::virtio::fs::{Error, Result};
@@ -1097,11 +1097,35 @@ impl<F: FileSystem + Sync> Server<F> {
         Ok(0)
     }
 
-    fn ioctl(&self, in_header: InHeader, _r: Reader, w: Writer) -> Result<usize> {
-        if let Err(e) = self.fs.ioctl() {
-            reply_error(e, in_header.unique, w)
-        } else {
-            Ok(0)
+    fn ioctl(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
+        let IoctlIn {
+            fh,
+            flags,
+            cmd,
+            arg,
+            in_size,
+            out_size,
+        } = r.read_obj().map_err(Error::DecodeMessage)?;
+
+        let res = self.fs.ioctl(
+            in_header.into(),
+            fh.into(),
+            IoctlFlags::from_bits_truncate(flags),
+            cmd,
+            arg,
+            in_size,
+            out_size,
+            r,
+        );
+
+        match res {
+            Ok(reply) => match reply {
+                IoctlReply::Retry { input, output } => {
+                    retry_ioctl(in_header.unique, input, output, w)
+                }
+                IoctlReply::Done(res) => finish_ioctl(in_header.unique, res, w),
+            },
+            Err(e) => reply_error(e, in_header.unique, w),
         }
     }
 
@@ -1184,6 +1208,67 @@ impl<F: FileSystem + Sync> Server<F> {
             Ok(0)
         }
     }
+}
+
+fn retry_ioctl(
+    unique: u64,
+    input: Vec<IoctlIovec>,
+    output: Vec<IoctlIovec>,
+    mut w: Writer,
+) -> Result<usize> {
+    // We don't need to check for overflow here because if adding these 2 values caused an overflow
+    // we would have run out of memory before reaching this point.
+    if input.len() + output.len() > IOCTL_MAX_IOV {
+        return Err(Error::TooManyIovecs((
+            input.len() + output.len(),
+            IOCTL_MAX_IOV,
+        )));
+    }
+
+    let len = size_of::<OutHeader>()
+        + size_of::<IoctlOut>()
+        + (input.len() * size_of::<IoctlIovec>())
+        + (output.len() * size_of::<IoctlIovec>());
+    let header = OutHeader {
+        len: len as u32,
+        error: 0,
+        unique,
+    };
+    let out = IoctlOut {
+        result: 0,
+        flags: IoctlFlags::RETRY.bits(),
+        in_iovs: input.len() as u32,
+        out_iovs: output.len() as u32,
+    };
+
+    w.write_obj(header).map_err(Error::EncodeMessage)?;
+    w.write_obj(out).map_err(Error::EncodeMessage)?;
+    for i in input.into_iter().chain(output.into_iter()) {
+        w.write_obj(i).map_err(Error::EncodeMessage)?;
+    }
+
+    debug_assert_eq!(len, w.bytes_written());
+    Ok(w.bytes_written())
+}
+
+fn finish_ioctl(unique: u64, res: io::Result<Vec<u8>>, w: Writer) -> Result<usize> {
+    let (out, data) = match res {
+        Ok(data) => {
+            let out = IoctlOut {
+                result: 0,
+                ..Default::default()
+            };
+            (out, Some(data))
+        }
+        Err(e) => {
+            let out = IoctlOut {
+                result: -e.raw_os_error().unwrap_or(libc::EIO),
+                ..Default::default()
+            };
+            (out, None)
+        }
+    };
+    reply_ok(Some(out), data.as_ref().map(|d| &d[..]), unique, w)
 }
 
 fn reply_ok<T: DataInit>(

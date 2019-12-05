@@ -13,10 +13,7 @@ use libc;
 
 use crate::virtio::fs::fuse;
 
-pub use fuse::FsOptions;
-pub use fuse::OpenOptions;
-pub use fuse::SetattrValid;
-pub use fuse::ROOT_ID;
+pub use fuse::{FsOptions, IoctlFlags, IoctlIovec, OpenOptions, SetattrValid, ROOT_ID};
 
 /// Information about a path in the filesystem.
 pub struct Entry {
@@ -109,6 +106,26 @@ pub enum ListxattrReply {
     /// calls and so should not assume that a subsequent call to `listxattr` with the returned count
     /// will always succeed.
     Count(u32),
+}
+
+/// A reply to an `ioctl` method call.
+pub enum IoctlReply {
+    /// Indicates that the ioctl should be retried. This is only a valid reply when the `flags`
+    /// field of the ioctl request contains `IoctlFlags::UNRESTRICTED`. The kernel will read in data
+    /// and prepare output buffers as specified in the `input` and `output` fields before re-sending
+    /// the ioctl message.
+    Retry {
+        /// Data that should be read by the kernel module and sent to the server when the ioctl is
+        /// retried.
+        input: Vec<IoctlIovec>,
+
+        /// Buffer space that should be prepared so that the server can send back the response to
+        /// the ioctl.
+        output: Vec<IoctlIovec>,
+    },
+
+    /// Indicates that the ioctl was processed.
+    Done(io::Result<Vec<u8>>),
 }
 
 /// A trait for directly copying data from the fuse transport into a `File` without first storing it
@@ -1054,6 +1071,40 @@ pub trait FileSystem {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
+    /// Perform an ioctl on a file or directory.
+    ///
+    /// `handle` is the `Handle` returned by the file system from the `open` or `opendir` methods,
+    /// if any. If the file system did not return a `Handle` from then the contents of `handle` are
+    /// undefined.
+    ///
+    /// If `flags` contains `IoctlFlags::UNRESTRICTED` then the file system may retry the ioctl
+    /// after informing the kernel about the input and output areas. If `flags` does not contain
+    /// `IoctlFlags::UNRESTRICTED` then the kernel will prepare the input and output areas according
+    /// to the encoding in the ioctl command. In that case the ioctl cannot be retried.
+    ///
+    /// `cmd` is the ioctl request made by the calling process, truncated to 32 bits.
+    ///
+    /// `arg` is the argument provided by the calling process.
+    ///
+    /// `in_size` is the length of the additional data that accompanies the request. The file system
+    /// may fetch this data from `reader`.
+    ///
+    /// `out_size` is the length of the output area prepared by the kernel to hold the response to
+    /// the ioctl.
+    fn ioctl<R: io::Read>(
+        &self,
+        ctx: Context,
+        handle: Self::Handle,
+        flags: IoctlFlags,
+        cmd: u32,
+        arg: u64,
+        in_size: u32,
+        out_size: u32,
+        reader: R,
+    ) -> io::Result<IoctlReply> {
+        Err(io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
     /// TODO: support this
     fn getlk(&self) -> io::Result<()> {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
@@ -1066,11 +1117,6 @@ pub trait FileSystem {
 
     /// TODO: support this
     fn setlkw(&self) -> io::Result<()> {
-        Err(io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// TODO: support this
-    fn ioctl(&self) -> io::Result<()> {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
 

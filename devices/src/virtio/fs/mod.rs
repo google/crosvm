@@ -84,6 +84,8 @@ pub enum Error {
     /// The `size` field of the `SetxattrIn` message does not match the length
     /// of the decoded value.
     InvalidXattrSize((u32, usize)),
+    /// Requested too many `iovec`s for an `ioctl` retry.
+    TooManyIovecs((usize, usize)),
 }
 
 impl ::std::error::Error for Error {}
@@ -115,6 +117,11 @@ impl fmt::Display for Error {
                 "The `size` field of the `SetxattrIn` message does not match the length of the\
                  decoded value: size = {}, value.len() = {}",
                 size, len
+            ),
+            TooManyIovecs((count, max)) => write!(
+                f,
+                "requested too many `iovec`s for an `ioctl` retry reply: requested {}, max: {}",
+                count, max
             ),
         }
     }
