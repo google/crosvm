@@ -7,7 +7,6 @@ openat: 1
 @include /usr/share/policy/crosvm/common_device.policy
 
 lstat: 1
-gettid: 1
 readlink: 1
 readlinkat: 1
 timerfd_create: 1
