@@ -66,10 +66,12 @@ pub trait VirtioDevice: Send {
         queue_evts: Vec<EventFd>,
     );
 
-    /// Optionally deactivates this device and returns ownership of the guest memory map, interrupt
-    /// event, and queue events.
-    fn reset(&mut self) -> Option<(EventFd, Vec<EventFd>)> {
-        None
+    /// Optionally deactivates this device. If the reset method is
+    /// not able to reset the virtio device, or the virtio device model doesn't
+    /// implement the reset method, a false value is returned to indicate
+    /// the reset is not successful. Otherwise a true value should be returned.
+    fn reset(&mut self) -> bool {
+        false
     }
 
     /// Returns any additional BAR configuration required by the device.

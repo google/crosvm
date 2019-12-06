@@ -12,7 +12,7 @@ use data_model::{DataInit, Le32};
 use kvm::Datamatch;
 use libc::ERANGE;
 use resources::{Alloc, MmioType, SystemAllocator};
-use sys_util::{EventFd, GuestMemory, Result};
+use sys_util::{warn, EventFd, GuestMemory, Result};
 
 use super::*;
 use crate::pci::{
@@ -318,6 +318,10 @@ impl VirtioPciDevice {
         self.settings_bar = settings_bar;
         Ok(())
     }
+
+    fn clone_queue_evts(&self) -> Result<Vec<EventFd>> {
+        self.queue_evts.iter().map(|e| e.try_clone()).collect()
+    }
 }
 
 impl PciDevice for VirtioPciDevice {
@@ -573,8 +577,31 @@ impl PciDevice for VirtioPciDevice {
 
         if !self.device_activated && self.is_driver_ready() && self.are_queues_valid() {
             if let Some(interrupt_evt) = self.interrupt_evt.take() {
+                self.interrupt_evt = match interrupt_evt.try_clone() {
+                    Ok(evt) => Some(evt),
+                    Err(e) => {
+                        warn!(
+                            "{} failed to clone interrupt_evt: {}",
+                            self.debug_label(),
+                            e
+                        );
+                        None
+                    }
+                };
                 if let Some(interrupt_resample_evt) = self.interrupt_resample_evt.take() {
+                    self.interrupt_resample_evt = match interrupt_resample_evt.try_clone() {
+                        Ok(evt) => Some(evt),
+                        Err(e) => {
+                            warn!(
+                                "{} failed to clone interrupt_resample_evt: {}",
+                                self.debug_label(),
+                                e
+                            );
+                            None
+                        }
+                    };
                     if let Some(mem) = self.mem.take() {
+                        self.mem = Some(mem.clone());
                         let interrupt = Interrupt::new(
                             self.interrupt_status.clone(),
                             interrupt_evt,
@@ -583,13 +610,24 @@ impl PciDevice for VirtioPciDevice {
                             self.common_config.msix_config,
                         );
 
-                        self.device.activate(
-                            mem,
-                            interrupt,
-                            self.queues.clone(),
-                            self.queue_evts.split_off(0),
-                        );
-                        self.device_activated = true;
+                        match self.clone_queue_evts() {
+                            Ok(queue_evts) => {
+                                self.device.activate(
+                                    mem,
+                                    interrupt,
+                                    self.queues.clone(),
+                                    queue_evts,
+                                );
+                                self.device_activated = true;
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "{} not activate due to failed to clone queue_evts: {}",
+                                    self.debug_label(),
+                                    e
+                                );
+                            }
+                        }
                     }
                 }
             }
