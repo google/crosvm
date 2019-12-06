@@ -415,6 +415,14 @@ impl VfioMsixCap {
         self.config.write_pba_entries(offset, data);
     }
 
+    fn is_msix_bar(&self, bar_index: u32) -> bool {
+        if bar_index == self.table_pci_bar || bar_index == self.pba_pci_bar {
+            true
+        } else {
+            false
+        }
+    }
+
     fn get_msix_irqfds(&self) -> Option<Vec<&EventFd>> {
         let mut irqfds = Vec::new();
 
@@ -683,6 +691,14 @@ impl VfioPciDevice {
     fn add_bar_mmap(&self, index: u32, bar_addr: u64) -> Vec<MemoryMapping> {
         let mut mem_map: Vec<MemoryMapping> = Vec::new();
         if self.device.get_region_flags(index) & VFIO_REGION_INFO_FLAG_MMAP != 0 {
+            // the bar storing msix table and pba couldn't mmap.
+            // these bars should be trapped, so that msix could be emulated.
+            if let Some(msix_cap) = &self.msix_cap {
+                if msix_cap.is_msix_bar(index) {
+                    return mem_map;
+                }
+            }
+
             let mmaps = self.device.get_region_mmap(index);
             if mmaps.is_empty() {
                 return mem_map;
