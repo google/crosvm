@@ -59,6 +59,9 @@ getdents64: 1
 # 0x6400 == DRM_IOCTL_BASE, 0x8000 = KBASE_IOCTL_TYPE (mali)
 ioctl: arg1 & 0x6400 || arg1 & 0x8000
 
+# Used for sharing memory with wayland. arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING
+memfd_create: arg1 == 3
+
 ## mmap/mprotect/openat differ from the common_device.policy
 mmap2: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ|PROT_EXEC || arg2 == PROT_WRITE || arg2 == PROT_READ
 mprotect: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ
