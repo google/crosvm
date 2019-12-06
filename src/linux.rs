@@ -386,6 +386,7 @@ fn create_block_device(
         disk_file,
         disk.read_only,
         disk.sparse,
+        disk.block_size,
         Some(disk_device_socket),
     )
     .map_err(Error::BlockDeviceNew)?;

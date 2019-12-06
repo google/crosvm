@@ -378,6 +378,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 path: disk_path,
                 read_only,
                 sparse: true,
+                block_size: 512,
             };
 
             for opt in components {
@@ -398,6 +399,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                             expected: "`sparse` must be a boolean",
                         })?;
                         disk.sparse = sparse;
+                    }
+                    "block_size" => {
+                        let block_size =
+                            value.parse().map_err(|_| argument::Error::InvalidValue {
+                                value: value.to_owned(),
+                                expected: "`block_size` must be an integer",
+                            })?;
+                        disk.block_size = block_size;
                     }
                     _ => {
                         return Err(argument::Error::InvalidValue {
@@ -423,6 +432,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 path: disk_path,
                 read_only: !name.starts_with("rw"),
                 sparse: false,
+                block_size: sys_util::pagesize() as u32,
             });
         }
         "host_ip" => {
@@ -893,7 +903,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                               See --disk for valid options."),
           Argument::short_value('d', "disk", "PATH[,key=value[,key=value[,...]]", "Path to a disk image followed by optional comma-separated options.
                               Valid keys:
-                              sparse=BOOL - Indicates whether the disk should support the discard operation (default: true)"),
+                              sparse=BOOL - Indicates whether the disk should support the discard operation (default: true)
+                              block_size=BYTES - Set the reported block size of the disk (default: 512)"),
           Argument::value("qcow", "PATH", "Path to a qcow2 disk image. (Deprecated; use --disk instead.)"),
           Argument::value("rwdisk", "PATH[,key=value[,key=value[,...]]", "Path to a writable disk image followed by optional comma-separated options.
                               See --disk for valid options."),

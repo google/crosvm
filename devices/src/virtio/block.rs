@@ -463,15 +463,16 @@ pub struct Block {
     read_only: bool,
     sparse: bool,
     seg_max: u32,
+    block_size: u32,
     control_socket: Option<DiskControlResponseSocket>,
 }
 
-fn build_config_space(disk_size: u64, seg_max: u32) -> virtio_blk_config {
+fn build_config_space(disk_size: u64, seg_max: u32, block_size: u32) -> virtio_blk_config {
     virtio_blk_config {
         // If the image is not a multiple of the sector size, the tail bits are not exposed.
         capacity: Le64::from(disk_size >> SECTOR_SHIFT),
         seg_max: Le32::from(seg_max),
-        blk_size: Le32::from(SECTOR_SIZE as u32),
+        blk_size: Le32::from(block_size),
         max_discard_sectors: Le32::from(MAX_DISCARD_SECTORS),
         discard_sector_alignment: Le32::from(DISCARD_SECTOR_ALIGNMENT),
         max_write_zeroes_sectors: Le32::from(MAX_WRITE_ZEROES_SECTORS),
@@ -488,14 +489,22 @@ impl Block {
         disk_image: Box<dyn DiskFile>,
         read_only: bool,
         sparse: bool,
+        block_size: u32,
         control_socket: Option<DiskControlResponseSocket>,
     ) -> SysResult<Block> {
+        if block_size % SECTOR_SIZE as u32 != 0 {
+            error!(
+                "Block size {} is not a multiple of {}.",
+                block_size, SECTOR_SIZE,
+            );
+            return Err(SysError::new(libc::EINVAL));
+        }
         let disk_size = disk_image.get_len()?;
-        if disk_size % SECTOR_SIZE != 0 {
+        if disk_size % block_size as u64 != 0 {
             warn!(
-                "Disk size {} is not a multiple of sector size {}; \
+                "Disk size {} is not a multiple of block size {}; \
                  the remainder will not be visible to the guest.",
-                disk_size, SECTOR_SIZE
+                disk_size, block_size,
             );
         }
 
@@ -528,6 +537,7 @@ impl Block {
             read_only,
             sparse,
             seg_max,
+            block_size,
             control_socket,
         })
     }
@@ -716,7 +726,7 @@ impl VirtioDevice for Block {
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let config_space = {
             let disk_size = self.disk_size.lock();
-            build_config_space(*disk_size, self.seg_max)
+            build_config_space(*disk_size, self.seg_max, self.block_size)
         };
         copy_config(data, 0, config_space.as_slice(), offset);
     }
@@ -795,7 +805,7 @@ mod tests {
         let f = File::create(&path).unwrap();
         f.set_len(0x1000).unwrap();
 
-        let b = Block::new(Box::new(f), true, false, None).unwrap();
+        let b = Block::new(Box::new(f), true, false, 512, None).unwrap();
         let mut num_sectors = [0u8; 4];
         b.read_config(0, &mut num_sectors);
         // size is 0x1000, so num_sectors is 8 (4096/512).
@@ -807,6 +817,21 @@ mod tests {
     }
 
     #[test]
+    fn read_block_size() {
+        let tempdir = TempDir::new().unwrap();
+        let mut path = tempdir.path().to_owned();
+        path.push("disk_image");
+        let f = File::create(&path).unwrap();
+        f.set_len(0x1000).unwrap();
+
+        let b = Block::new(Box::new(f), true, false, 4096, None).unwrap();
+        let mut blk_size = [0u8; 4];
+        b.read_config(20, &mut blk_size);
+        // blk_size should be 4096 (0x1000).
+        assert_eq!([0x00, 0x10, 0x00, 0x00], blk_size);
+    }
+
+    #[test]
     fn read_features() {
         let tempdir = TempDir::new().unwrap();
         let mut path = tempdir.path().to_owned();
@@ -815,7 +840,7 @@ mod tests {
         // read-write block device
         {
             let f = File::create(&path).unwrap();
-            let b = Block::new(Box::new(f), false, true, None).unwrap();
+            let b = Block::new(Box::new(f), false, true, 512, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
             // + VIRTIO_BLK_F_SEG_MAX
@@ -825,7 +850,7 @@ mod tests {
         // read-write block device, non-sparse
         {
             let f = File::create(&path).unwrap();
-            let b = Block::new(Box::new(f), false, false, None).unwrap();
+            let b = Block::new(Box::new(f), false, false, 512, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
             // + VIRTIO_BLK_F_SEG_MAX
@@ -835,7 +860,7 @@ mod tests {
         // read-only block device
         {
             let f = File::create(&path).unwrap();
-            let b = Block::new(Box::new(f), true, true, None).unwrap();
+            let b = Block::new(Box::new(f), true, true, 512, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
             assert_eq!(0x100000264, b.features());

@@ -39,6 +39,7 @@ pub struct DiskOption {
     pub path: PathBuf,
     pub read_only: bool,
     pub sparse: bool,
+    pub block_size: u32,
 }
 
 /// A bind mount for directories in the plugin process.
