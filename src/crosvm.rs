@@ -202,6 +202,8 @@ pub struct Config {
     pub virtio_input_evdevs: Vec<PathBuf>,
     pub split_irqchip: bool,
     pub vfio: Vec<PathBuf>,
+    pub video_dec: bool,
+    pub video_enc: bool,
 }
 
 impl Default for Config {
@@ -250,6 +252,8 @@ impl Default for Config {
             virtio_input_evdevs: Vec::new(),
             split_irqchip: false,
             vfio: Vec::new(),
+            video_dec: false,
+            video_enc: false,
         }
     }
 }

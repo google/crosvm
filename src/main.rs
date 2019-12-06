@@ -1226,6 +1226,12 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
 
             cfg.vfio.push(vfio_path);
         }
+        "video-decoder" => {
+            cfg.video_dec = true;
+        }
+        "video-encoder" => {
+            cfg.video_enc = true;
+        }
 
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
@@ -1396,6 +1402,10 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           Argument::flag("split-irqchip", "(EXPERIMENTAL) enable split-irqchip support"),
           Argument::value("bios", "PATH", "Path to BIOS/firmware ROM"),
           Argument::value("vfio", "PATH", "Path to sysfs of pass through or mdev device"),
+          #[cfg(feature = "video-decoder")]
+          Argument::flag("video-decoder", "(EXPERIMENTAL) enable virtio-video decoder device"),
+          #[cfg(feature = "video-encoder")]
+          Argument::flag("video-encoder", "(EXPERIMENTAL) enable virtio-video encoder device"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

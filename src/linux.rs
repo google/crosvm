@@ -792,6 +792,70 @@ fn create_wayland_device(
     })
 }
 
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+fn create_video_device(
+    cfg: &Config,
+    typ: devices::virtio::VideoDeviceType,
+    resource_bridge: virtio::resource_bridge::ResourceRequestSocket,
+) -> DeviceResult {
+    let jail = match simple_jail(&cfg, "video_device")? {
+        Some(mut jail) => {
+            match typ {
+                devices::virtio::VideoDeviceType::Decoder => {
+                    add_crosvm_user_to_jail(&mut jail, "video-decoder")?
+                }
+                devices::virtio::VideoDeviceType::Encoder => {
+                    add_crosvm_user_to_jail(&mut jail, "video-encoder")?
+                }
+            };
+
+            // Create a tmpfs in the device's root directory so that we can bind mount files.
+            jail.mount_with_data(
+                Path::new("none"),
+                Path::new("/"),
+                "tmpfs",
+                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                "size=67108864",
+            )?;
+
+            // Render node for libvda.
+            let dev_dri_path = Path::new("/dev/dri/renderD128");
+            jail.mount_bind(dev_dri_path, dev_dri_path, false)?;
+
+            // Device nodes required by libchrome which establishes Mojo connection in libvda.
+            let dev_urandom_path = Path::new("/dev/urandom");
+            jail.mount_bind(dev_urandom_path, dev_urandom_path, false)?;
+            let system_bus_socket_path = Path::new("/run/dbus/system_bus_socket");
+            jail.mount_bind(system_bus_socket_path, system_bus_socket_path, true)?;
+
+            Some(jail)
+        }
+        None => None,
+    };
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(devices::virtio::VideoDevice::new(
+            typ,
+            Some(resource_bridge),
+        )),
+        jail,
+    })
+}
+
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+fn register_video_device(
+    devs: &mut Vec<VirtioDeviceStub>,
+    resource_bridges: &mut Vec<virtio::resource_bridge::ResourceResponseSocket>,
+    cfg: &Config,
+    typ: devices::virtio::VideoDeviceType,
+) -> std::result::Result<(), Error> {
+    let (video_socket, gpu_socket) =
+        virtio::resource_bridge::pair().map_err(Error::CreateSocket)?;
+    resource_bridges.push(gpu_socket);
+    devs.push(create_video_device(cfg, typ, video_socket)?);
+    Ok(())
+}
+
 fn create_vhost_vsock_device(cfg: &Config, cid: u64, mem: &GuestMemory) -> DeviceResult {
     let dev = virtio::vhost::Vsock::new(cid, mem).map_err(Error::VhostVsockDeviceNew)?;
 
@@ -1086,6 +1150,30 @@ fn create_virtio_devices(
             wayland_device_socket,
             wl_resource_bridge,
         )?);
+    }
+
+    #[cfg(feature = "video-decoder")]
+    {
+        if cfg.video_dec {
+            register_video_device(
+                &mut devs,
+                &mut resource_bridges,
+                cfg,
+                devices::virtio::VideoDeviceType::Decoder,
+            )?;
+        }
+    }
+
+    #[cfg(feature = "video-encoder")]
+    {
+        if cfg.video_enc {
+            register_video_device(
+                &mut devs,
+                &mut resource_bridges,
+                cfg,
+                devices::virtio::VideoDeviceType::Encoder,
+            )?;
+        }
     }
 
     #[cfg(feature = "gpu")]

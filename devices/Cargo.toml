@@ -7,6 +7,8 @@ edition = "2018"
 [features]
 gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
 tpm = ["protos/trunks", "tpm2"]
+video-decoder = ["libvda"]
+video-encoder = ["libvda"]
 wl-dmabuf = []
 x = ["gpu_display/x"]
 gfxstream = ["gpu"]
@@ -28,6 +30,7 @@ kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 libcras = "*"
+libvda = { version = "*", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
 msg_on_socket_derive = { path = "../msg_socket/msg_on_socket_derive" }
 msg_socket = { path = "../msg_socket" }

@@ -183,6 +183,7 @@ dependencies = [
  "kvm_sys 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "libcras 0.1.0",
+ "libvda 0.1.0",
  "linux_input_sys 0.1.0",
  "msg_on_socket_derive 0.1.0",
  "msg_socket 0.1.0",
@@ -409,6 +410,15 @@ dependencies = [
  "data_model 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
+]
+
+[[package]]
+name = "libvda"
+version = "0.1.0"
+dependencies = [
+ "enumn 0.1.0",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pkg-config 0.3.11 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

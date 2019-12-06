@@ -1,0 +1,24 @@
+# Copyright 2020 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+@include /usr/share/policy/crosvm/common_device.policy
+
+# Syscalls specific to video devices.
+clock_getres: 1
+connect: 1
+fcntl: arg1 == F_GETFL || arg1 == F_SETFL || arg1 == F_DUPFD_CLOEXEC || arg1 == F_GETFD || arg1 == F_SETFD
+getdents: 1
+getegid: 1
+geteuid: 1
+getgid: 1
+getresgid: 1
+getresuid: 1
+getsockname: 1
+getuid: 1
+# ioctl: arg1 == DRM_IOCTL_*
+ioctl: arg1 & 0x6400
+openat: 1
+setpriority: 1
+socket: arg0 == AF_UNIX
+stat: 1

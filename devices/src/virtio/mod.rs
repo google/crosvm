@@ -17,6 +17,8 @@ mod queue;
 mod rng;
 #[cfg(feature = "tpm")]
 mod tpm;
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+mod video;
 mod virtio_device;
 mod virtio_pci_common_config;
 mod virtio_pci_device;
@@ -44,6 +46,8 @@ pub use self::queue::*;
 pub use self::rng::*;
 #[cfg(feature = "tpm")]
 pub use self::tpm::*;
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+pub use self::video::*;
 pub use self::virtio_device::*;
 pub use self::virtio_pci_device::*;
 pub use self::wl::*;
@@ -76,6 +80,8 @@ const TYPE_CRYPTO: u32 = 20;
 const TYPE_IOMMU: u32 = 23;
 const TYPE_FS: u32 = 26;
 const TYPE_PMEM: u32 = 27;
+const TYPE_VIDEO_ENC: u32 = 30;
+const TYPE_VIDEO_DEC: u32 = 31;
 // Additional types invented by crosvm
 const MAX_VIRTIO_DEVICE_ID: u32 = 63;
 const TYPE_WL: u32 = MAX_VIRTIO_DEVICE_ID;
@@ -114,6 +120,8 @@ pub fn type_to_str(type_: u32) -> Option<&'static str> {
         TYPE_PMEM => "pmem",
         TYPE_WL => "wl",
         TYPE_TPM => "tpm",
+        TYPE_VIDEO_DEC => "video-decoder",
+        TYPE_VIDEO_ENC => "video-encoder",
         _ => return None,
     })
 }
