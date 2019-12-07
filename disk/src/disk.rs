@@ -22,11 +22,15 @@ mod composite;
 #[cfg(feature = "composite-disk")]
 use composite::{CompositeDiskFile, CDISK_MAGIC, CDISK_MAGIC_LEN};
 
+mod android_sparse;
+use android_sparse::{AndroidSparse, SPARSE_HEADER_MAGIC};
+
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
     BlockDeviceNew(sys_util::Error),
     ConversionNotSupported,
+    CreateAndroidSparseDisk(android_sparse::Error),
     #[cfg(feature = "composite-disk")]
     CreateCompositeDisk(composite::Error),
     QcowError(qcow::Error),
@@ -95,6 +99,7 @@ impl Display for Error {
         match self {
             BlockDeviceNew(e) => write!(f, "failed to create block device: {}", e),
             ConversionNotSupported => write!(f, "requested file conversion not supported"),
+            CreateAndroidSparseDisk(e) => write!(f, "failure in android sparse disk: {}", e),
             #[cfg(feature = "composite-disk")]
             CreateCompositeDisk(e) => write!(f, "failure in composite disk: {}", e),
             QcowError(e) => write!(f, "failure in qcow: {}", e),
@@ -114,6 +119,7 @@ pub enum ImageType {
     Raw,
     Qcow2,
     CompositeDisk,
+    AndroidSparse,
 }
 
 fn convert_copy<R, W>(reader: &mut R, writer: &mut W, offset: u64, size: u64) -> Result<()>
@@ -248,6 +254,8 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
     }
     let image_type = if magic == QCOW_MAGIC {
         ImageType::Qcow2
+    } else if magic == SPARSE_HEADER_MAGIC.to_be() {
+        ImageType::AndroidSparse
     } else {
         ImageType::Raw
     };
@@ -272,5 +280,9 @@ pub fn create_disk_file(raw_image: File) -> Result<Box<dyn DiskFile>> {
         }
         #[cfg(not(feature = "composite-disk"))]
         ImageType::CompositeDisk => return Err(Error::UnknownType),
+        ImageType::AndroidSparse => {
+            Box::new(AndroidSparse::from_file(raw_image).map_err(Error::CreateAndroidSparseDisk)?)
+                as Box<dyn DiskFile>
+        }
     })
 }
