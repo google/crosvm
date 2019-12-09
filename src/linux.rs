@@ -18,6 +18,7 @@ use std::num::ParseIntError;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::ptr;
 use std::str;
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -290,12 +291,17 @@ impl AsRawFd for TaggedControlSocket {
 }
 
 fn get_max_open_files() -> Result<libc::rlim64_t> {
-    let mut buf = String::with_capacity(32);
-    File::open("/proc/sys/fs/file-max")
-        .and_then(|mut f| f.read_to_string(&mut buf))
-        .map_err(Error::GetMaxOpenFiles)?;
+    let mut buf = mem::MaybeUninit::<libc::rlimit64>::zeroed();
 
-    Ok(buf.trim().parse().map_err(Error::ParseMaxOpenFiles)?)
+    // Safe because this will only modify `buf` and we check the return value.
+    let res = unsafe { libc::prlimit64(0, libc::RLIMIT_NOFILE, ptr::null(), buf.as_mut_ptr()) };
+    if res == 0 {
+        // Safe because the kernel guarantees that the struct is fully initialized.
+        let limit = unsafe { buf.assume_init() };
+        Ok(limit.rlim_max)
+    } else {
+        Err(Error::GetMaxOpenFiles(io::Error::last_os_error()))
+    }
 }
 
 fn create_base_minijail(
