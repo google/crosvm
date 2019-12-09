@@ -30,7 +30,6 @@ exclude = [
 [features]
 default-no-sandbox = []
 gpu = ["devices/gpu"]
-gpu-forward = ["render_node_forward"]
 plugin = ["protos/plugin", "crosvm_plugin", "protobuf"]
 tpm = ["devices/tpm"]
 wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
@@ -65,7 +64,6 @@ protos = { path = "protos", optional = true }
 qcow = { path = "qcow" }
 rand_ish = { path = "rand_ish" }
 remain = "*"
-render_node_forward = { path = "render_node_forward", optional = true }
 resources = { path = "resources" }
 sync = { path = "sync" }
 sys_util = "*"

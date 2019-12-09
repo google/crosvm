@@ -109,7 +109,6 @@ dependencies = [
  "qcow 0.1.0",
  "rand_ish 0.1.0",
  "remain 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "render_node_forward 0.1.0",
  "resources 0.1.0",
  "sync 0.1.0",
  "sys_util 0.1.0",
@@ -452,13 +451,6 @@ dependencies = [
  "proc-macro2 0.4.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 0.6.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 0.15.26 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "render_node_forward"
-version = "0.1.0"
-dependencies = [
- "sys_util 0.1.0",
 ]
 
 [[package]]

@@ -69,11 +69,6 @@ use aarch64::AArch64 as Arch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::X8664arch as Arch;
 
-#[cfg(feature = "gpu-forward")]
-use render_node_forward::*;
-#[cfg(not(feature = "gpu-forward"))]
-type RenderNodeHost = ();
-
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
@@ -1493,45 +1488,6 @@ pub fn run_config(cfg: Config) -> Result<()> {
     )
     .map_err(Error::BuildVm)?;
 
-    let _render_node_host = ();
-    #[cfg(feature = "gpu-forward")]
-    let (_render_node_host, linux) = {
-        // Rebinds linux as mutable.
-        let mut linux = linux;
-
-        // Reserve memory range for GPU buffer allocation in advance to bypass region count
-        // limitation. We use mremap/MAP_FIXED later to make sure GPU buffers fall into this range.
-        let gpu_mmap =
-            MemoryMapping::new_protection(RENDER_NODE_HOST_SIZE as usize, Protection::none())
-                .map_err(Error::ReserveGpuMemory)?;
-
-        // Put the non-accessible memory map into high mmio so that no other devices use that
-        // guest address space.
-        let gpu_addr = linux
-            .resources
-            .mmio_allocator(MmioType::High)
-            .allocate(
-                RENDER_NODE_HOST_SIZE,
-                Alloc::GpuRenderNode,
-                "gpu_render_node".to_string(),
-            )
-            .map_err(|_| Error::AllocateGpuDeviceAddress)?;
-
-        let host = RenderNodeHost::start(&gpu_mmap, gpu_addr, linux.vm.get_memory().clone());
-
-        // Makes the gpu memory accessible at allocated address.
-        linux
-            .vm
-            .add_mmio_memory(
-                GuestAddress(gpu_addr),
-                gpu_mmap,
-                /* read_only = */ false,
-                /* log_dirty_pages = */ false,
-            )
-            .map_err(Error::AddGpuDeviceMemory)?;
-        (host, linux)
-    };
-
     run_control(
         linux,
         control_server_socket,
@@ -1540,7 +1496,6 @@ pub fn run_config(cfg: Config) -> Result<()> {
         &disk_host_sockets,
         usb_control_socket,
         sigchld_fd,
-        _render_node_host,
         sandbox,
     )
 }
@@ -1553,7 +1508,6 @@ fn run_control(
     disk_host_sockets: &[DiskControlRequestSocket],
     usb_control_socket: UsbControlSocket,
     sigchld_fd: SignalFd,
-    _render_node_host: RenderNodeHost,
     sandbox: bool,
 ) -> Result<()> {
     // Paths to get the currently available memory and the low memory threshold.
