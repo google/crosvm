@@ -629,19 +629,45 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 )
         }
         "wayland-sock" => {
-            if cfg.wayland_socket_path.is_some() {
-                return Err(argument::Error::TooManyArguments(
-                    "`wayland-sock` already given".to_owned(),
-                ));
+            let mut components = value.unwrap().split(',');
+            let path =
+                PathBuf::from(
+                    components
+                        .next()
+                        .ok_or_else(|| argument::Error::InvalidValue {
+                            value: value.unwrap().to_owned(),
+                            expected: "missing socket path",
+                        })?,
+                );
+            let mut name = "";
+            for c in components {
+                let mut kv = c.splitn(2, '=');
+                let (kind, value) = match (kv.next(), kv.next()) {
+                    (Some(kind), Some(value)) => (kind, value),
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: c.to_owned(),
+                            expected: "option must be of the form `kind=value`",
+                        })
+                    }
+                };
+                match kind {
+                    "name" => name = value,
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: kind.to_owned(),
+                            expected: "unrecognized option",
+                        })
+                    }
+                }
             }
-            let wayland_socket_path = PathBuf::from(value.unwrap());
-            if !wayland_socket_path.exists() {
-                return Err(argument::Error::InvalidValue {
-                    value: value.unwrap().to_string(),
-                    expected: "Wayland socket does not exist",
-                });
+            if cfg.wayland_socket_paths.contains_key(name) {
+                return Err(argument::Error::TooManyArguments(format!(
+                    "wayland socket name already used: '{}'",
+                    name
+                )));
             }
-            cfg.wayland_socket_path = Some(wayland_socket_path);
+            cfg.wayland_socket_paths.insert(name.to_string(), path);
         }
         #[cfg(feature = "wl-dmabuf")]
         "wayland-dmabuf" => cfg.wayland_dmabuf = true,
@@ -1038,7 +1064,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("x-display", "DISPLAY", "X11 display name to use."),
           Argument::flag("display-window-keyboard", "Capture keyboard input from the display window."),
           Argument::flag("display-window-mouse", "Capture keyboard input from the display window."),
-          Argument::value("wayland-sock", "PATH", "Path to the Wayland socket to use."),
+          Argument::value("wayland-sock", "PATH[,name=NAME]", "Path to the Wayland socket to use. The unnamed one is used for displaying virtual screens. Named ones are only for IPC."),
           #[cfg(feature = "wl-dmabuf")]
           Argument::flag("wayland-dmabuf", "Enable support for DMABufs in Wayland device."),
           Argument::short_value('s',

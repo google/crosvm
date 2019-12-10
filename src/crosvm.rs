@@ -142,7 +142,7 @@ pub struct Config {
     pub vhost_net: bool,
     pub tap_fd: Vec<RawFd>,
     pub cid: Option<u64>,
-    pub wayland_socket_path: Option<PathBuf>,
+    pub wayland_socket_paths: BTreeMap<String, PathBuf>,
     pub wayland_dmabuf: bool,
     pub x_display: Option<String>,
     pub shared_dirs: Vec<SharedDir>,
@@ -193,7 +193,7 @@ impl Default for Config {
             #[cfg(feature = "gpu")]
             gpu_parameters: None,
             software_tpm: false,
-            wayland_socket_path: None,
+            wayland_socket_paths: BTreeMap::new(),
             wayland_dmabuf: false,
             x_display: None,
             display_window_keyboard: false,

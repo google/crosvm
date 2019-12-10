@@ -86,6 +86,7 @@ const VIRTIO_WL_CMD_VFD_NEW_DMABUF: u32 = 263;
 const VIRTIO_WL_CMD_VFD_DMABUF_SYNC: u32 = 264;
 #[cfg(feature = "gpu")]
 const VIRTIO_WL_CMD_VFD_SEND_FOREIGN_ID: u32 = 265;
+const VIRTIO_WL_CMD_VFD_NEW_CTX_NAMED: u32 = 266;
 const VIRTIO_WL_RESP_OK: u32 = 4096;
 const VIRTIO_WL_RESP_VFD_NEW: u32 = 4097;
 #[cfg(feature = "wl-dmabuf")]
@@ -275,6 +276,8 @@ enum WlError {
     PollContextAdd(Error),
     DmabufSync(io::Error),
     WriteResponse(io::Error),
+    InvalidString(std::str::Utf8Error),
+    UnknownSocketName(String),
 }
 
 impl Display for WlError {
@@ -300,6 +303,8 @@ impl Display for WlError {
             PollContextAdd(e) => write!(f, "failed to listen to FD on poll context: {}", e),
             DmabufSync(e) => write!(f, "failed to synchronize DMABuf access: {}", e),
             WriteResponse(e) => write!(f, "failed to write response: {}", e),
+            InvalidString(e) => write!(f, "invalid string: {}", e),
+            UnknownSocketName(name) => write!(f, "unknown socket name: {}", name),
         }
     }
 }
@@ -358,6 +363,19 @@ struct CtrlVfdNew {
 }
 
 unsafe impl DataInit for CtrlVfdNew {}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+struct CtrlVfdNewCtxNamed {
+    hdr: CtrlHeader,
+    id: Le32,
+    flags: Le32, // Ignored.
+    pfn: Le64,   // Ignored.
+    size: Le32,  // Ignored.
+    name: [u8; 32],
+}
+
+unsafe impl DataInit for CtrlVfdNewCtxNamed {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
@@ -808,7 +826,7 @@ enum WlRecv {
 }
 
 struct WlState {
-    wayland_path: PathBuf,
+    wayland_paths: Map<String, PathBuf>,
     vm: VmRequester,
     resource_bridge: Option<ResourceRequestSocket>,
     use_transition_flags: bool,
@@ -823,13 +841,13 @@ struct WlState {
 
 impl WlState {
     fn new(
-        wayland_path: PathBuf,
+        wayland_paths: Map<String, PathBuf>,
         vm_socket: VmMemoryControlRequestSocket,
         use_transition_flags: bool,
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> WlState {
         WlState {
-            wayland_path,
+            wayland_paths,
             vm: VmRequester::new(vm_socket),
             resource_bridge,
             poll_ctx: PollContext::new().expect("failed to create PollContext"),
@@ -950,7 +968,7 @@ impl WlState {
         }
     }
 
-    fn new_context(&mut self, id: u32) -> WlResult<WlResp> {
+    fn new_context(&mut self, id: u32, name: &str) -> WlResult<WlResp> {
         if id & VFD_ID_HOST_MASK != 0 {
             return Ok(WlResp::InvalidId);
         }
@@ -963,7 +981,12 @@ impl WlState {
 
         match self.vfds.entry(id) {
             Entry::Vacant(entry) => {
-                let vfd = entry.insert(WlVfd::connect(&self.wayland_path)?);
+                let vfd = entry.insert(WlVfd::connect(
+                    &self
+                        .wayland_paths
+                        .get(name)
+                        .ok_or(WlError::UnknownSocketName(name.to_string()))?,
+                )?);
                 self.poll_ctx
                     .add(vfd.poll_fd().unwrap(), id)
                     .map_err(WlError::PollContextAdd)?;
@@ -1203,7 +1226,7 @@ impl WlState {
             }
             VIRTIO_WL_CMD_VFD_NEW_CTX => {
                 let ctrl = reader.read_obj::<CtrlVfd>().map_err(WlError::ParseDesc)?;
-                self.new_context(ctrl.id.into())
+                self.new_context(ctrl.id.into(), "")
             }
             VIRTIO_WL_CMD_VFD_NEW_PIPE => {
                 let ctrl = reader
@@ -1229,6 +1252,19 @@ impl WlState {
                     .read_obj::<CtrlVfdDmabufSync>()
                     .map_err(WlError::ParseDesc)?;
                 self.dmabuf_sync(ctrl.id.into(), ctrl.flags.into())
+            }
+            VIRTIO_WL_CMD_VFD_NEW_CTX_NAMED => {
+                let ctrl = reader
+                    .read_obj::<CtrlVfdNewCtxNamed>()
+                    .map_err(WlError::ParseDesc)?;
+                let name_len = ctrl
+                    .name
+                    .iter()
+                    .position(|x| x == &0)
+                    .unwrap_or(ctrl.name.len());
+                let name =
+                    std::str::from_utf8(&ctrl.name[..name_len]).map_err(WlError::InvalidString)?;
+                self.new_context(ctrl.id.into(), name)
             }
             op_type => {
                 warn!("unexpected command {}", op_type);
@@ -1332,7 +1368,7 @@ impl Worker {
         interrupt: Interrupt,
         in_queue: Queue,
         out_queue: Queue,
-        wayland_path: PathBuf,
+        wayland_paths: Map<String, PathBuf>,
         vm_socket: VmMemoryControlRequestSocket,
         use_transition_flags: bool,
         resource_bridge: Option<ResourceRequestSocket>,
@@ -1343,7 +1379,7 @@ impl Worker {
             in_queue,
             out_queue,
             state: WlState::new(
-                wayland_path,
+                wayland_paths,
                 vm_socket,
                 use_transition_flags,
                 resource_bridge,
@@ -1514,22 +1550,22 @@ impl Worker {
 pub struct Wl {
     kill_evt: Option<EventFd>,
     worker_thread: Option<thread::JoinHandle<()>>,
-    wayland_path: PathBuf,
+    wayland_paths: Map<String, PathBuf>,
     vm_socket: Option<VmMemoryControlRequestSocket>,
     resource_bridge: Option<ResourceRequestSocket>,
     use_transition_flags: bool,
 }
 
 impl Wl {
-    pub fn new<P: AsRef<Path>>(
-        wayland_path: P,
+    pub fn new(
+        wayland_paths: Map<String, PathBuf>,
         vm_socket: VmMemoryControlRequestSocket,
         resource_bridge: Option<ResourceRequestSocket>,
     ) -> Result<Wl> {
         Ok(Wl {
             kill_evt: None,
             worker_thread: None,
-            wayland_path: wayland_path.as_ref().to_owned(),
+            wayland_paths,
             vm_socket: Some(vm_socket),
             resource_bridge,
             use_transition_flags: false,
@@ -1603,7 +1639,7 @@ impl VirtioDevice for Wl {
         self.kill_evt = Some(self_kill_evt);
 
         if let Some(vm_socket) = self.vm_socket.take() {
-            let wayland_path = self.wayland_path.clone();
+            let wayland_paths = self.wayland_paths.clone();
             let use_transition_flags = self.use_transition_flags;
             let resource_bridge = self.resource_bridge.take();
             let worker_result =
@@ -1615,7 +1651,7 @@ impl VirtioDevice for Wl {
                             interrupt,
                             queues.remove(0),
                             queues.remove(0),
-                            wayland_path,
+                            wayland_paths,
                             vm_socket,
                             use_transition_flags,
                             resource_bridge,

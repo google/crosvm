@@ -589,7 +589,7 @@ fn create_gpu_device(
     exit_evt: &EventFd,
     gpu_device_socket: VmMemoryControlRequestSocket,
     gpu_sockets: Vec<virtio::resource_bridge::ResourceResponseSocket>,
-    wayland_socket_path: Option<PathBuf>,
+    wayland_socket_path: Option<&PathBuf>,
     x_display: Option<String>,
     event_devices: Vec<EventDevice>,
 ) -> DeviceResult {
@@ -600,7 +600,7 @@ fn create_gpu_device(
         virtio::DisplayBackend::Null,
     ];
 
-    if let Some(socket_path) = wayland_socket_path.as_ref() {
+    if let Some(socket_path) = wayland_socket_path {
         display_backends.insert(
             0,
             virtio::DisplayBackend::Wayland(if cfg.sandbox {
@@ -664,7 +664,7 @@ fn create_gpu_device(
             // Bind mount the wayland socket into jail's root. This is necessary since each
             // new wayland context must open() the socket.
             if let Some(path) = wayland_socket_path {
-                jail.mount_bind(path.as_ref(), jailed_wayland_path, true)?;
+                jail.mount_bind(path, jailed_wayland_path, true)?;
             }
 
             add_crosvm_user_to_jail(&mut jail, "gpu")?;
@@ -691,25 +691,18 @@ fn create_gpu_device(
 
 fn create_wayland_device(
     cfg: &Config,
-    socket_path: &Path,
     socket: VmMemoryControlRequestSocket,
     resource_bridge: Option<virtio::resource_bridge::ResourceRequestSocket>,
 ) -> DeviceResult {
-    let wayland_socket_dir = socket_path.parent().ok_or(Error::InvalidWaylandPath)?;
-    let wayland_socket_name = socket_path.file_name().ok_or(Error::InvalidWaylandPath)?;
-    let jailed_wayland_dir = Path::new("/wayland");
-    let jailed_wayland_path = jailed_wayland_dir.join(wayland_socket_name);
+    let wayland_socket_dirs = cfg
+        .wayland_socket_paths
+        .iter()
+        .map(|(_name, path)| path.parent())
+        .collect::<Option<Vec<_>>>()
+        .ok_or(Error::InvalidWaylandPath)?;
 
-    let dev = virtio::Wl::new(
-        if cfg.sandbox {
-            &jailed_wayland_path
-        } else {
-            socket_path
-        },
-        socket,
-        resource_bridge,
-    )
-    .map_err(Error::WaylandDeviceNew)?;
+    let dev = virtio::Wl::new(cfg.wayland_socket_paths.clone(), socket, resource_bridge)
+        .map_err(Error::WaylandDeviceNew)?;
 
     let jail = match simple_jail(&cfg, "wl_device.policy")? {
         Some(mut jail) => {
@@ -727,8 +720,9 @@ fn create_wayland_device(
             // each new wayland context must open() the socket. If the wayland socket is ever
             // destroyed and remade in the same host directory, new connections will be possible
             // without restarting the wayland device.
-            jail.mount_bind(wayland_socket_dir, jailed_wayland_dir, true)?;
-
+            for dir in &wayland_socket_dirs {
+                jail.mount_bind(dir, dir, true)?;
+            }
             add_crosvm_user_to_jail(&mut jail, "Wayland")?;
 
             Some(jail)
@@ -965,7 +959,7 @@ fn create_virtio_devices(
     #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
     let mut resource_bridges = Vec::<virtio::resource_bridge::ResourceResponseSocket>::new();
 
-    if let Some(wayland_socket_path) = cfg.wayland_socket_path.as_ref() {
+    if !cfg.wayland_socket_paths.is_empty() {
         #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
         let mut wl_resource_bridge = None::<virtio::resource_bridge::ResourceRequestSocket>;
 
@@ -981,7 +975,6 @@ fn create_virtio_devices(
 
         devs.push(create_wayland_device(
             cfg,
-            wayland_socket_path,
             wayland_device_socket,
             wl_resource_bridge,
         )?);
@@ -1020,7 +1013,8 @@ fn create_virtio_devices(
                 _exit_evt,
                 gpu_device_socket,
                 resource_bridges,
-                cfg.wayland_socket_path.clone(),
+                // Use the unnamed socket for GPU display screens.
+                cfg.wayland_socket_paths.get(""),
                 cfg.x_display.clone(),
                 event_devices,
             )?);
