@@ -58,6 +58,7 @@ kvm = { path = "kvm" }
 kvm_sys = { path = "kvm_sys" }
 libc = "0.2.44"
 libcras = "*"
+minijail-sys = "*" # provided by ebuild
 msg_socket = { path = "msg_socket" }
 net_util = { path = "net_util" }
 p9 = { path = "p9" }
@@ -85,6 +86,7 @@ assertions = { path = "assertions" }
 audio_streams = { path = "../../third_party/adhd/audio_streams" } # ignored by ebuild
 data_model = { path = "data_model" }
 libcras = { path = "../../third_party/adhd/cras/client/libcras" } # ignored by ebuild
+minijail-sys = { path = "../../aosp/external/minijail" } # ignored by ebuild
 poll_token_derive = { path = "sys_util/poll_token_derive" }
 sync = { path = "sync" }
 sys_util = { path = "sys_util" }
