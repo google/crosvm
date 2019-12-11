@@ -1,0 +1,10 @@
+[package]
+name = "linux_input_sys"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2018"
+
+[dependencies]
+data_model = { path = "../data_model" }
+libc = "*"
+sys_util = { path = "../sys_util" }
