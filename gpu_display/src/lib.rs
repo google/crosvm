@@ -15,6 +15,7 @@ mod event_device;
 mod gpu_display_wl;
 #[cfg(feature = "x")]
 mod gpu_display_x;
+mod keycode_converter;
 
 pub use event_device::{EventDevice, EventDeviceKind, EventEncoded};
 
