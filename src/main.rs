@@ -834,7 +834,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             let reader = BufReader::new(file);
             for l in reader.lines() {
                 let line = l.unwrap();
-                let trimmed_line = line.trim_end_matches("#").trim();
+                let trimmed_line = line.splitn(2, '#').nth(0).unwrap().trim();
                 if !trimmed_line.is_empty() {
                     let mount = parse_plugin_mount_option(trimmed_line)?;
                     cfg.plugin_mounts.push(mount);
@@ -853,7 +853,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             let reader = BufReader::new(file);
             for l in reader.lines() {
                 let line = l.unwrap();
-                let trimmed_line = line.trim_end_matches("#").trim();
+                let trimmed_line = line.splitn(2, '#').nth(0).unwrap().trim();
                 if !trimmed_line.is_empty() {
                     let map = parse_plugin_gid_map_option(trimmed_line)?;
                     cfg.plugin_gid_maps.push(map);
