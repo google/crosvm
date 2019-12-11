@@ -80,7 +80,7 @@ fuzz_target!(|bytes| {
 
     let shm = SharedMemory::anon().unwrap();
     let disk_file: File = shm.into();
-    let mut block = Block::new(Box::new(disk_file), false, true, None).unwrap();
+    let mut block = Block::new(Box::new(disk_file), false, true, 512, None).unwrap();
 
     block.activate(
         mem,
