@@ -8,6 +8,7 @@ pub mod panic_hook;
 
 use std::fmt;
 use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader};
 use std::num::ParseIntError;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::{Path, PathBuf};
@@ -818,9 +819,39 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             let mount = parse_plugin_mount_option(value.unwrap())?;
             cfg.plugin_mounts.push(mount);
         }
+        "plugin-mount-file" => {
+            let file = File::open(value.unwrap()).map_err(|_| argument::Error::InvalidValue {
+                value: value.unwrap().to_owned(),
+                expected: "unable to open `plugin-mount-file` file",
+            })?;
+            let reader = BufReader::new(file);
+            for l in reader.lines() {
+                let line = l.unwrap();
+                let trimmed_line = line.trim_end_matches("#").trim();
+                if !trimmed_line.is_empty() {
+                    let mount = parse_plugin_mount_option(trimmed_line)?;
+                    cfg.plugin_mounts.push(mount);
+                }
+            }
+        }
         "plugin-gid-map" => {
             let map = parse_plugin_gid_map_option(value.unwrap())?;
             cfg.plugin_gid_maps.push(map);
+        }
+        "plugin-gid-map-file" => {
+            let file = File::open(value.unwrap()).map_err(|_| argument::Error::InvalidValue {
+                value: value.unwrap().to_owned(),
+                expected: "unable to open `plugin-gid-map-file` file",
+            })?;
+            let reader = BufReader::new(file);
+            for l in reader.lines() {
+                let line = l.unwrap();
+                let trimmed_line = line.trim_end_matches("#").trim();
+                if !trimmed_line.is_empty() {
+                    let map = parse_plugin_gid_map_option(trimmed_line)?;
+                    cfg.plugin_gid_maps.push(map);
+                }
+            }
         }
         "vhost-net" => cfg.vhost_net = true,
         "tap-fd" => {
@@ -1029,7 +1060,11 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           #[cfg(feature = "plugin")]
           Argument::value("plugin-mount", "PATH:PATH:BOOL", "Path to be mounted into the plugin's root filesystem.  Can be given more than once."),
           #[cfg(feature = "plugin")]
+          Argument::value("plugin-mount-file", "PATH", "Path to the file listing paths be mounted into the plugin's root filesystem.  Can be given more than once."),
+          #[cfg(feature = "plugin")]
           Argument::value("plugin-gid-map", "GID:GID:INT", "Supplemental GIDs that should be mapped in plugin jail.  Can be given more than once."),
+          #[cfg(feature = "plugin")]
+          Argument::value("plugin-gid-map-file", "PATH", "Path to the file listing supplemental GIDs that should be mapped in plugin jail.  Can be given more than once."),
           Argument::flag("vhost-net", "Use vhost for networking."),
           Argument::value("tap-fd",
                           "fd",
