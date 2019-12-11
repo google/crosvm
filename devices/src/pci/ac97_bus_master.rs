@@ -447,7 +447,9 @@ impl Ac97BusMaster {
         if new_glob_cnt & GLOB_CNT_WARM_RESET != 0 {
             // Check if running and if so, ignore. Warm reset is specified to no-op when the device
             // is playing or recording audio.
-            if !self.po_info.thread_run.load(Ordering::Relaxed) {
+            if !self.po_info.thread_run.load(Ordering::Relaxed)
+                && !self.pi_info.thread_run.load(Ordering::Relaxed)
+            {
                 self.stop_all_audio();
                 let mut regs = self.regs.lock();
                 regs.glob_cnt = new_glob_cnt & !GLOB_CNT_WARM_RESET; // Auto-cleared reset bit.
