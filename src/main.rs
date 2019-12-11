@@ -267,6 +267,84 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
     Ok(serial_setting)
 }
 
+fn parse_plugin_mount_option(value: &str) -> argument::Result<BindMount> {
+    let components: Vec<&str> = value.split(":").collect();
+    if components.len() != 3 {
+        return Err(argument::Error::InvalidValue {
+            value: value.to_owned(),
+            expected: "`plugin-mount` must have exactly 3 components: <src>:<dst>:<writable>",
+        });
+    }
+
+    let src = PathBuf::from(components[0]);
+    if src.is_relative() {
+        return Err(argument::Error::InvalidValue {
+            value: components[0].to_owned(),
+            expected: "the source path for `plugin-mount` must be absolute",
+        });
+    }
+    if !src.exists() {
+        return Err(argument::Error::InvalidValue {
+            value: components[0].to_owned(),
+            expected: "the source path for `plugin-mount` does not exist",
+        });
+    }
+
+    let dst = PathBuf::from(components[1]);
+    if dst.is_relative() {
+        return Err(argument::Error::InvalidValue {
+            value: components[1].to_owned(),
+            expected: "the destination path for `plugin-mount` must be absolute",
+        });
+    }
+
+    let writable: bool = components[2]
+        .parse()
+        .map_err(|_| argument::Error::InvalidValue {
+            value: components[2].to_owned(),
+            expected: "the <writable> component for `plugin-mount` is not valid bool",
+        })?;
+
+    Ok(BindMount { src, dst, writable })
+}
+
+fn parse_plugin_gid_map_option(value: &str) -> argument::Result<GidMap> {
+    let components: Vec<&str> = value.split(":").collect();
+    if components.len() != 3 {
+        return Err(argument::Error::InvalidValue {
+            value: value.to_owned(),
+            expected: "`plugin-gid-map` must have exactly 3 components: <inner>:<outer>:<count>",
+        });
+    }
+
+    let inner: libc::gid_t = components[0]
+        .parse()
+        .map_err(|_| argument::Error::InvalidValue {
+            value: components[0].to_owned(),
+            expected: "the <inner> component for `plugin-gid-map` is not valid gid",
+        })?;
+
+    let outer: libc::gid_t = components[1]
+        .parse()
+        .map_err(|_| argument::Error::InvalidValue {
+            value: components[1].to_owned(),
+            expected: "the <outer> component for `plugin-gid-map` is not valid gid",
+        })?;
+
+    let count: u32 = components[2]
+        .parse()
+        .map_err(|_| argument::Error::InvalidValue {
+            value: components[2].to_owned(),
+            expected: "the <count> component for `plugin-gid-map` is not valid number",
+        })?;
+
+    Ok(GidMap {
+        inner,
+        outer,
+        count,
+    })
+}
+
 fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::Result<()> {
     match name {
         "" => {
@@ -737,85 +815,12 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.plugin_root = Some(PathBuf::from(value.unwrap().to_owned()));
         }
         "plugin-mount" => {
-            let components: Vec<&str> = value.unwrap().split(":").collect();
-            if components.len() != 3 {
-                return Err(argument::Error::InvalidValue {
-                    value: value.unwrap().to_owned(),
-                    expected:
-                        "`plugin-mount` must have exactly 3 components: <src>:<dst>:<writable>",
-                });
-            }
-
-            let src = PathBuf::from(components[0]);
-            if src.is_relative() {
-                return Err(argument::Error::InvalidValue {
-                    value: components[0].to_owned(),
-                    expected: "the source path for `plugin-mount` must be absolute",
-                });
-            }
-            if !src.exists() {
-                return Err(argument::Error::InvalidValue {
-                    value: components[0].to_owned(),
-                    expected: "the source path for `plugin-mount` does not exist",
-                });
-            }
-
-            let dst = PathBuf::from(components[1]);
-            if dst.is_relative() {
-                return Err(argument::Error::InvalidValue {
-                    value: components[1].to_owned(),
-                    expected: "the destination path for `plugin-mount` must be absolute",
-                });
-            }
-
-            let writable: bool =
-                components[2]
-                    .parse()
-                    .map_err(|_| argument::Error::InvalidValue {
-                        value: components[2].to_owned(),
-                        expected: "the <writable> component for `plugin-mount` is not valid bool",
-                    })?;
-
-            cfg.plugin_mounts.push(BindMount { src, dst, writable });
+            let mount = parse_plugin_mount_option(value.unwrap())?;
+            cfg.plugin_mounts.push(mount);
         }
         "plugin-gid-map" => {
-            let components: Vec<&str> = value.unwrap().split(":").collect();
-            if components.len() != 3 {
-                return Err(argument::Error::InvalidValue {
-                    value: value.unwrap().to_owned(),
-                    expected:
-                        "`plugin-gid-map` must have exactly 3 components: <inner>:<outer>:<count>",
-                });
-            }
-
-            let inner: libc::gid_t =
-                components[0]
-                    .parse()
-                    .map_err(|_| argument::Error::InvalidValue {
-                        value: components[0].to_owned(),
-                        expected: "the <inner> component for `plugin-gid-map` is not valid gid",
-                    })?;
-
-            let outer: libc::gid_t =
-                components[1]
-                    .parse()
-                    .map_err(|_| argument::Error::InvalidValue {
-                        value: components[1].to_owned(),
-                        expected: "the <outer> component for `plugin-gid-map` is not valid gid",
-                    })?;
-
-            let count: u32 = components[2]
-                .parse()
-                .map_err(|_| argument::Error::InvalidValue {
-                    value: components[2].to_owned(),
-                    expected: "the <count> component for `plugin-gid-map` is not valid number",
-                })?;
-
-            cfg.plugin_gid_maps.push(GidMap {
-                inner,
-                outer,
-                count,
-            });
+            let map = parse_plugin_gid_map_option(value.unwrap())?;
+            cfg.plugin_gid_maps.push(map);
         }
         "vhost-net" => cfg.vhost_net = true,
         "tap-fd" => {
