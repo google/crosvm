@@ -40,11 +40,17 @@ impl From<io::Error> for Error {
     }
 }
 
+impl From<Error> for io::Error {
+    fn from(e: Error) -> io::Error {
+        io::Error::from_raw_os_error(e.0)
+    }
+}
+
 impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        io::Error::from_raw_os_error(self.0).fmt(f)
+        Into::<io::Error>::into(*self).fmt(f)
     }
 }
 

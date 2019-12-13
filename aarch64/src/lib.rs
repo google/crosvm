@@ -251,7 +251,7 @@ impl arch::LinuxArch for AArch64 {
 
         let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
         let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
-        let (stdio_serial_num, stdio_serial) = arch::add_serial_devices(
+        let stdio_serial_num = arch::add_serial_devices(
             &mut mmio_bus,
             &com_evt_1_3,
             &com_evt_2_4,
@@ -306,7 +306,6 @@ impl arch::LinuxArch for AArch64 {
             vm,
             kvm,
             resources,
-            stdio_serial,
             exit_evt,
             vcpus,
             vcpu_affinity,

@@ -5,17 +5,18 @@
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{self, stdout, Write};
+use std::io::{self, stdin, stdout, Read, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
+use std::thread::{self};
 
-use sync::Mutex;
-use sys_util::{error, syslog, EventFd, Result};
+use sys_util::{error, read_raw_stdin, syslog, EventFd, Result};
 
 use crate::BusDevice;
-use crate::ProxyDevice;
 
 const LOOP_SIZE: usize = 0x40;
 
@@ -151,7 +152,24 @@ impl SerialParameters {
         match self.type_ {
             SerialType::Stdout => {
                 keep_fds.push(stdout().as_raw_fd());
-                Ok(Serial::new_out(evt_fd, Box::new(stdout())))
+                if self.stdin {
+                    keep_fds.push(stdin().as_raw_fd());
+                    // This wrapper is used in place of the libstd native version because we don't
+                    // want buffering for stdin.
+                    struct StdinWrapper;
+                    impl io::Read for StdinWrapper {
+                        fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+                            read_raw_stdin(out).map_err(|e| e.into())
+                        }
+                    }
+                    Ok(Serial::new_in_out(
+                        evt_fd,
+                        Box::new(StdinWrapper),
+                        Box::new(stdout()),
+                    ))
+                } else {
+                    Ok(Serial::new_out(evt_fd, Box::new(stdout())))
+                }
             }
             SerialType::Sink => Ok(Serial::new_sink(evt_fd)),
             SerialType::Syslog => {
@@ -227,56 +245,14 @@ pub fn get_serial_tty_string(stdio_serial_num: u8) -> String {
     }
 }
 
-/// A type for queueing input bytes to a serial device that abstracts if the device is local or part
-/// of a sandboxed device process.
-pub enum SerialInput {
-    #[doc(hidden)]
-    Local(Arc<Mutex<Serial>>),
-    #[doc(hidden)]
-    Remote {
-        input: File,
-        proxy: Arc<Mutex<ProxyDevice>>,
-    },
-}
-
-impl SerialInput {
-    /// Creates a `SerialInput` that trivially forwards queued bytes to the device in the local
-    /// process.
-    pub fn new_local(serial: Arc<Mutex<Serial>>) -> SerialInput {
-        SerialInput::Local(serial)
-    }
-
-    /// Creates a `SerialInput` that will forward bytes via `input` and will wake up the child
-    /// device process which contains the serial device so that it may process the other end of the
-    /// `input` pipe. This will use the `ProxyDevice::run_user_command` method, so the user command
-    /// closure (registered with `ProxyDevice::new_with_user_command`) should own the other side of
-    /// `input` and read from the pipe whenever the closure is run.
-    pub fn new_remote(input: File, proxy: Arc<Mutex<ProxyDevice>>) -> SerialInput {
-        SerialInput::Remote { input, proxy }
-    }
-
-    /// Just like `Serial::queue_input_bytes`, but abstracted over local and sandboxed serial
-    /// devices. In the case that the serial device is sandboxed, this method will also trigger the
-    /// user command in the `ProxyDevice`'s child process.
-    pub fn queue_input_bytes(&self, bytes: &[u8]) -> Result<()> {
-        match self {
-            SerialInput::Local(device) => device.lock().queue_input_bytes(bytes),
-            SerialInput::Remote { input, proxy } => {
-                let mut input = input;
-                input.write_all(bytes)?;
-                proxy.lock().run_user_command();
-                Ok(())
-            }
-        }
-    }
-}
-
 /// Emulates serial COM ports commonly seen on x86 I/O ports 0x3f8/0x2f8/0x3e8/0x2e8.
 ///
 /// This can optionally write the guest's output to a Write trait object. To send input to the
-/// guest, use `queue_input_bytes`.
+/// guest, use `queue_input_bytes` directly, or give a Read trait object which will be used queue
+/// bytes when `used_command` is called.
 pub struct Serial {
-    interrupt_enable: u8,
+    // Serial port registers
+    interrupt_enable: Arc<AtomicU8>,
     interrupt_identification: u8,
     interrupt_evt: EventFd,
     line_control: u8,
@@ -285,14 +261,22 @@ pub struct Serial {
     modem_status: u8,
     scratch: u8,
     baud_divisor: u16,
+
+    // Host input/output
     in_buffer: VecDeque<u8>,
+    in_channel: Option<Receiver<u8>>,
+    input: Option<Box<dyn io::Read + Send>>,
     out: Option<Box<dyn io::Write + Send>>,
 }
 
 impl Serial {
-    fn new(interrupt_evt: EventFd, out: Option<Box<dyn io::Write + Send>>) -> Serial {
+    fn new(
+        interrupt_evt: EventFd,
+        input: Option<Box<dyn io::Read + Send>>,
+        out: Option<Box<dyn io::Write + Send>>,
+    ) -> Serial {
         Serial {
-            interrupt_enable: 0,
+            interrupt_enable: Default::default(),
             interrupt_identification: DEFAULT_INTERRUPT_IDENTIFICATION,
             interrupt_evt,
             line_control: DEFAULT_LINE_CONTROL,
@@ -301,29 +285,128 @@ impl Serial {
             modem_status: DEFAULT_MODEM_STATUS,
             scratch: 0,
             baud_divisor: DEFAULT_BAUD_DIVISOR,
-            in_buffer: VecDeque::new(),
+            in_buffer: Default::default(),
+            in_channel: None,
+            input,
             out,
         }
     }
 
-    /// Constructs a Serial port ready for output.
-    pub fn new_out(interrupt_evt: EventFd, out: Box<dyn io::Write + Send>) -> Serial {
-        Self::new(interrupt_evt, Some(out))
+    /// Constructs a Serial port ready for input and output.
+    ///
+    /// The stream `input` should not block, instead returning 0 bytes if are no bytes available.
+    pub fn new_in_out(
+        interrupt_evt: EventFd,
+        input: Box<dyn io::Read + Send>,
+        out: Box<dyn io::Write + Send>,
+    ) -> Serial {
+        Self::new(interrupt_evt, Some(input), Some(out))
     }
 
-    /// Constructs a Serial port with no connected output.
+    /// Constructs a Serial port ready for output but not input.
+    pub fn new_out(interrupt_evt: EventFd, out: Box<dyn io::Write + Send>) -> Serial {
+        Self::new(interrupt_evt, None, Some(out))
+    }
+
+    /// Constructs a Serial port with no connected input or output.
     pub fn new_sink(interrupt_evt: EventFd) -> Serial {
-        Self::new(interrupt_evt, None)
+        Self::new(interrupt_evt, None, None)
     }
 
     /// Queues raw bytes for the guest to read and signals the interrupt if the line status would
-    /// change.
+    /// change. These bytes will be read by the guest before any bytes from the input stream that
+    /// have not already been queued.
     pub fn queue_input_bytes(&mut self, c: &[u8]) -> Result<()> {
-        if !self.is_loop() {
+        if !c.is_empty() && !self.is_loop() {
             self.in_buffer.extend(c);
-            self.recv_data()?;
+            self.set_data_bit();
+            self.trigger_recv_interrupt()?;
         }
+
         Ok(())
+    }
+
+    fn spawn_input_thread(&mut self) {
+        let mut rx = match self.input.take() {
+            Some(input) => input,
+            None => return,
+        };
+
+        let (send_channel, recv_channel) = channel();
+
+        // The interrupt enable and interrupt event are used to trigger the guest serial driver to
+        // read the serial device, which will give the VCPU threads time to queue input bytes from
+        // the input thread's buffer, changing the serial device state accordingly.
+        let interrupt_enable = self.interrupt_enable.clone();
+        let interrupt_evt = match self.interrupt_evt.try_clone() {
+            Ok(e) => e,
+            Err(e) => {
+                error!("failed to clone interrupt eventfd: {}", e);
+                return;
+            }
+        };
+
+        // The input thread runs in detached mode and will exit when channel is disconnected because
+        // the serial device has been dropped. Initial versions of this kept a `JoinHandle` and had
+        // the drop implementation of serial join on this thread, but the input thread can block
+        // indefinitely depending on the `Box<io::Read>` implementation.
+        let res = thread::Builder::new()
+            .name(format!("{} input thread", self.debug_label()))
+            .spawn(move || {
+                let mut rx_buf = [0u8; 1];
+                loop {
+                    match rx.read(&mut rx_buf) {
+                        Ok(0) => break, // Assume the stream of input has ended.
+                        Ok(_) => {
+                            if send_channel.send(rx_buf[0]).is_err() {
+                                // The receiver has disconnected.
+                                break;
+                            }
+                            if (interrupt_enable.load(Ordering::SeqCst) & IER_RECV_BIT) != 0 {
+                                interrupt_evt.write(1).unwrap();
+                            }
+                        }
+                        Err(e) => {
+                            // Being interrupted is not an error, but everything else is.
+                            if e.kind() != io::ErrorKind::Interrupted {
+                                error!(
+                                    "failed to read for bytes to queue into serial device: {}",
+                                    e
+                                );
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        if let Err(e) = res {
+            error!("failed to spawn input thread: {}", e);
+            return;
+        }
+        self.in_channel = Some(recv_channel);
+    }
+
+    fn handle_input_thread(&mut self) {
+        if self.input.is_some() {
+            self.spawn_input_thread();
+        }
+
+        loop {
+            let in_channel = match self.in_channel.as_ref() {
+                Some(v) => v,
+                None => return,
+            };
+            match in_channel.try_recv() {
+                Ok(byte) => {
+                    self.queue_input_bytes(&[byte]).unwrap();
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    self.in_channel = None;
+                    return;
+                }
+            }
+        }
     }
 
     /// Gets the interrupt eventfd used to interrupt the driver when it needs to respond to this
@@ -337,11 +420,11 @@ impl Serial {
     }
 
     fn is_recv_intr_enabled(&self) -> bool {
-        (self.interrupt_enable & IER_RECV_BIT) != 0
+        (self.interrupt_enable.load(Ordering::SeqCst) & IER_RECV_BIT) != 0
     }
 
     fn is_thr_intr_enabled(&self) -> bool {
-        (self.interrupt_enable & IER_THR_BIT) != 0
+        (self.interrupt_enable.load(Ordering::SeqCst) & IER_THR_BIT) != 0
     }
 
     fn is_loop(&self) -> bool {
@@ -360,7 +443,7 @@ impl Serial {
         }
     }
 
-    fn thr_empty(&mut self) -> Result<()> {
+    fn trigger_thr_empty(&mut self) -> Result<()> {
         if self.is_thr_intr_enabled() {
             self.add_intr_bit(IIR_THR_BIT);
             self.trigger_interrupt()?
@@ -368,17 +451,24 @@ impl Serial {
         Ok(())
     }
 
-    fn recv_data(&mut self) -> Result<()> {
+    fn trigger_recv_interrupt(&mut self) -> Result<()> {
         if self.is_recv_intr_enabled() {
-            self.add_intr_bit(IIR_RECV_BIT);
-            self.trigger_interrupt()?
+            // Only bother triggering the interrupt if the identification bit wasn't set or
+            // acknowledged.
+            if self.interrupt_identification & IIR_RECV_BIT == 0 {
+                self.add_intr_bit(IIR_RECV_BIT);
+                self.trigger_interrupt()?
+            }
         }
-        self.line_status |= LSR_DATA_BIT;
         Ok(())
     }
 
     fn trigger_interrupt(&mut self) -> Result<()> {
         self.interrupt_evt.write(1)
+    }
+
+    fn set_data_bit(&mut self) {
+        self.line_status |= LSR_DATA_BIT;
     }
 
     fn iir_reset(&mut self) {
@@ -397,17 +487,20 @@ impl Serial {
                 if self.is_loop() {
                     if self.in_buffer.len() < LOOP_SIZE {
                         self.in_buffer.push_back(v);
-                        self.recv_data()?;
+                        self.set_data_bit();
+                        self.trigger_recv_interrupt()?;
                     }
                 } else {
                     if let Some(out) = self.out.as_mut() {
                         out.write_all(&[v])?;
                         out.flush()?;
                     }
-                    self.thr_empty()?;
+                    self.trigger_thr_empty()?;
                 }
             }
-            IER => self.interrupt_enable = v & IER_FIFO_BITS,
+            IER => self
+                .interrupt_enable
+                .store(v & IER_FIFO_BITS, Ordering::SeqCst),
             LCR => self.line_control = v,
             MCR => self.modem_control = v,
             SCR => self.scratch = v,
@@ -437,6 +530,8 @@ impl BusDevice for Serial {
             return;
         }
 
+        self.handle_input_thread();
+
         data[0] = match offset as u8 {
             DLAB_LOW if self.is_dlab_set() => self.baud_divisor as u8,
             DLAB_HIGH if self.is_dlab_set() => (self.baud_divisor >> 8) as u8,
@@ -447,7 +542,7 @@ impl BusDevice for Serial {
                 }
                 self.in_buffer.pop_front().unwrap_or_default()
             }
-            IER => self.interrupt_enable,
+            IER => self.interrupt_enable.load(Ordering::SeqCst),
             IIR => {
                 let v = self.interrupt_identification | IIR_FIFO_BITS;
                 self.iir_reset();

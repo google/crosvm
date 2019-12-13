@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::StdinLock;
+use std::io::Stdin;
 use std::mem::zeroed;
 use std::os::unix::io::RawFd;
 
@@ -37,6 +37,26 @@ fn modify_mode<F: FnOnce(&mut termios)>(fd: RawFd, f: F) -> Result<()> {
     Ok(())
 }
 
+/// Safe only when the FD given is valid and reading the fd will have no Rust safety implications.
+unsafe fn read_raw(fd: RawFd, out: &mut [u8]) -> Result<usize> {
+    let ret = read(fd, out.as_mut_ptr() as *mut _, out.len());
+    if ret < 0 {
+        return errno_result();
+    }
+
+    Ok(ret as usize)
+}
+
+/// Read raw bytes from stdin.
+///
+/// This will block depending on the underlying mode of stdin. This will ignore the usual lock
+/// around stdin that the stdlib usually uses. If other code is using stdin, it is undefined who
+/// will get the underlying bytes.
+pub fn read_raw_stdin(out: &mut [u8]) -> Result<usize> {
+    // Safe because reading from stdin shouldn't have any safety implications.
+    unsafe { read_raw(STDIN_FILENO, out) }
+}
+
 /// Trait for file descriptors that are TTYs, according to `isatty(3)`.
 ///
 /// This is marked unsafe because the implementation must promise that the returned RawFd is a valid
@@ -66,25 +86,10 @@ pub unsafe trait Terminal {
             clear_fd_flags(self.tty_fd(), O_NONBLOCK)
         }
     }
-
-    /// Reads up to `out.len()` bytes from this terminal without any buffering.
-    ///
-    /// This may block, depending on if non-blocking was enabled with `set_non_block` or if there
-    /// are any bytes to read. If there is at least one byte that is readable, this will not block.
-    fn read_raw(&self, out: &mut [u8]) -> Result<usize> {
-        // Safe because read will only modify the pointer up to the length we give it and we check
-        // the return result.
-        let ret = unsafe { read(self.tty_fd(), out.as_mut_ptr() as *mut _, out.len()) };
-        if ret < 0 {
-            return errno_result();
-        }
-
-        Ok(ret as usize)
-    }
 }
 
 // Safe because we return a genuine terminal fd that never changes and shares our lifetime.
-unsafe impl<'a> Terminal for StdinLock<'a> {
+unsafe impl Terminal for Stdin {
     fn tty_fd(&self) -> RawFd {
         STDIN_FILENO
     }

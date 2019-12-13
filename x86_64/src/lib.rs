@@ -366,7 +366,7 @@ impl arch::LinuxArch for X8664arch {
             components.memory_size,
         )?;
 
-        let (stdio_serial_num, stdio_serial) =
+        let stdio_serial_num =
             Self::setup_serial_devices(&mut vm, &mut io_bus, serial_parameters, serial_jail)?;
 
         match components.vm_image {
@@ -398,7 +398,6 @@ impl arch::LinuxArch for X8664arch {
             vm,
             kvm,
             resources,
-            stdio_serial,
             exit_evt,
             vcpus,
             vcpu_affinity,
@@ -712,11 +711,11 @@ impl X8664arch {
         io_bus: &mut devices::Bus,
         serial_parameters: &BTreeMap<u8, SerialParameters>,
         serial_jail: Option<Minijail>,
-    ) -> Result<(Option<u8>, Option<devices::SerialInput>)> {
+    ) -> Result<(Option<u8>)> {
         let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
         let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
 
-        let (stdio_serial_num, stdio_serial) = arch::add_serial_devices(
+        let stdio_serial_num = arch::add_serial_devices(
             io_bus,
             &com_evt_1_3,
             &com_evt_2_4,
@@ -730,7 +729,7 @@ impl X8664arch {
         vm.register_irqfd(&com_evt_2_4, X86_64_SERIAL_2_4_IRQ)
             .map_err(Error::RegisterIrqfd)?;
 
-        Ok((stdio_serial_num, stdio_serial))
+        Ok(stdio_serial_num)
     }
 
     /// Configures the vcpu and should be called once per vcpu from the vcpu's thread.

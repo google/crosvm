@@ -1602,7 +1602,6 @@ fn run_control(
     #[derive(PollToken)]
     enum Token {
         Exit,
-        Stdin,
         ChildSignal,
         CheckAvailableMemory,
         LowMemory,
@@ -1611,9 +1610,7 @@ fn run_control(
         VmControl { index: usize },
     }
 
-    let stdin_handle = stdin();
-    let stdin_lock = stdin_handle.lock();
-    stdin_lock
+    stdin()
         .set_raw_mode()
         .expect("failed to set terminal raw mode");
 
@@ -1622,10 +1619,6 @@ fn run_control(
         (&sigchld_fd, Token::ChildSignal),
     ])
     .map_err(Error::PollContextAdd)?;
-
-    if let Err(e) = poll_ctx.add(&stdin_handle, Token::Stdin) {
-        warn!("failed to add stdin to poll context: {}", e);
-    }
 
     if let Some(socket_server) = &control_server_socket {
         poll_ctx
@@ -1714,26 +1707,6 @@ fn run_control(
                 Token::Exit => {
                     info!("vcpu requested shutdown");
                     break 'poll;
-                }
-                Token::Stdin => {
-                    let mut out = [0u8; 64];
-                    match stdin_lock.read_raw(&mut out[..]) {
-                        Ok(0) => {
-                            // Zero-length read indicates EOF. Remove from pollables.
-                            let _ = poll_ctx.delete(&stdin_handle);
-                        }
-                        Err(e) => {
-                            warn!("error while reading stdin: {}", e);
-                            let _ = poll_ctx.delete(&stdin_handle);
-                        }
-                        Ok(count) => {
-                            if let Some(ref stdio_serial) = linux.stdio_serial {
-                                stdio_serial
-                                    .queue_input_bytes(&out[..count])
-                                    .expect("failed to queue bytes into serial port");
-                            }
-                        }
-                    }
                 }
                 Token::ChildSignal => {
                     // Print all available siginfo structs, then exit the loop.
@@ -1928,9 +1901,6 @@ fn run_control(
         for event in events.iter_hungup() {
             match event.token() {
                 Token::Exit => {}
-                Token::Stdin => {
-                    let _ = poll_ctx.delete(&stdin_handle);
-                }
                 Token::ChildSignal => {}
                 Token::CheckAvailableMemory => {}
                 Token::LowMemory => {}
@@ -2003,7 +1973,7 @@ fn run_control(
     // control sockets are closed when this function exits.
     mem::drop(linux);
 
-    stdin_lock
+    stdin()
         .set_canon_mode()
         .expect("failed to restore canonical mode for terminal");
 

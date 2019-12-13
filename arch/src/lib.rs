@@ -16,13 +16,13 @@ use std::sync::Arc;
 use devices::virtio::VirtioDevice;
 use devices::{
     Bus, BusDevice, BusError, PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProxyDevice,
-    SerialInput, SerialParameters, DEFAULT_SERIAL_PARAMS, SERIAL_ADDR,
+    SerialParameters, DEFAULT_SERIAL_PARAMS, SERIAL_ADDR,
 };
 use io_jail::Minijail;
 use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
 use resources::SystemAllocator;
 use sync::Mutex;
-use sys_util::{pipe, poll_in, syslog, warn, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
+use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 
 pub enum VmImage {
     Kernel(File),
@@ -47,7 +47,6 @@ pub struct RunnableLinuxVm {
     pub vm: Vm,
     pub kvm: Kvm,
     pub resources: SystemAllocator,
-    pub stdio_serial: Option<SerialInput>,
     pub exit_evt: EventFd,
     pub vcpus: Vec<Vcpu>,
     pub vcpu_affinity: Vec<usize>,
@@ -245,9 +244,8 @@ pub fn add_serial_devices(
     com_evt_2_4: &EventFd,
     serial_parameters: &BTreeMap<u8, SerialParameters>,
     serial_jail: Option<Minijail>,
-) -> Result<(Option<u8>, Option<SerialInput>), DeviceRegistrationError> {
+) -> Result<Option<u8>, DeviceRegistrationError> {
     let mut stdio_serial_num = None;
-    let mut stdio_serial = None;
 
     for x in 0..=3 {
         let com_evt = match x {
@@ -273,45 +271,24 @@ pub fn add_serial_devices(
 
         match serial_jail.as_ref() {
             Some(jail) => {
-                let (rx, tx) = pipe(true).map_err(DeviceRegistrationError::CreatePipe)?;
-                preserved_fds.push(rx.as_raw_fd());
                 let com = Arc::new(Mutex::new(
-                    ProxyDevice::new_with_user_command(com, &jail, preserved_fds, move |serial| {
-                        let mut rx_buf = [0u8; 32];
-                        // This loop may end up stealing bytes from future user callbacks, so we
-                        // check to make sure the pipe is readable so as not to block the proxy
-                        // device's loop.
-                        while poll_in(&rx) {
-                            if let Ok(count) = (&rx).read(&mut rx_buf) {
-                                if let Err(e) = serial.queue_input_bytes(&rx_buf[..count]) {
-                                    warn!("failed to queue bytes into serial device {}: {}", x, e);
-                                }
-                            }
-                        }
-                    })
-                    .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
+                    ProxyDevice::new(com, &jail, preserved_fds)
+                        .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
                 ));
                 io_bus
                     .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8, false)
                     .unwrap();
-                if param.stdin {
-                    stdio_serial = Some(SerialInput::new_remote(tx, com));
-                }
             }
             None => {
                 let com = Arc::new(Mutex::new(com));
                 io_bus
                     .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8, false)
                     .unwrap();
-
-                if param.stdin {
-                    stdio_serial = Some(SerialInput::new_local(com));
-                }
             }
         }
     }
 
-    Ok((stdio_serial_num, stdio_serial))
+    Ok(stdio_serial_num)
 }
 
 /// Errors for image loading.
