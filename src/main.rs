@@ -270,10 +270,10 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
 
 fn parse_plugin_mount_option(value: &str) -> argument::Result<BindMount> {
     let components: Vec<&str> = value.split(":").collect();
-    if components.len() != 3 {
+    if components.is_empty() || components.len() > 3 || components[0].is_empty() {
         return Err(argument::Error::InvalidValue {
             value: value.to_owned(),
-            expected: "`plugin-mount` must have exactly 3 components: <src>:<dst>:<writable>",
+            expected: "`plugin-mount` should be in a form of: <src>[:[<dst>][:<writable>]]",
         });
     }
 
@@ -291,7 +291,10 @@ fn parse_plugin_mount_option(value: &str) -> argument::Result<BindMount> {
         });
     }
 
-    let dst = PathBuf::from(components[1]);
+    let dst = PathBuf::from(match components.get(1) {
+        None | Some(&"") => components[0],
+        Some(path) => path,
+    });
     if dst.is_relative() {
         return Err(argument::Error::InvalidValue {
             value: components[1].to_owned(),
@@ -299,22 +302,24 @@ fn parse_plugin_mount_option(value: &str) -> argument::Result<BindMount> {
         });
     }
 
-    let writable: bool = components[2]
-        .parse()
-        .map_err(|_| argument::Error::InvalidValue {
+    let writable: bool = match components.get(2) {
+        None => false,
+        Some(s) => s.parse().map_err(|_| argument::Error::InvalidValue {
             value: components[2].to_owned(),
             expected: "the <writable> component for `plugin-mount` is not valid bool",
-        })?;
+        })?,
+    };
 
     Ok(BindMount { src, dst, writable })
 }
 
 fn parse_plugin_gid_map_option(value: &str) -> argument::Result<GidMap> {
     let components: Vec<&str> = value.split(":").collect();
-    if components.len() != 3 {
+    if components.is_empty() || components.len() > 3 || components[0].is_empty() {
         return Err(argument::Error::InvalidValue {
             value: value.to_owned(),
-            expected: "`plugin-gid-map` must have exactly 3 components: <inner>:<outer>:<count>",
+            expected:
+                "`plugin-gid-map` must have exactly 3 components: <inner>[:[<outer>][:<count>]]",
         });
     }
 
@@ -325,19 +330,21 @@ fn parse_plugin_gid_map_option(value: &str) -> argument::Result<GidMap> {
             expected: "the <inner> component for `plugin-gid-map` is not valid gid",
         })?;
 
-    let outer: libc::gid_t = components[1]
-        .parse()
-        .map_err(|_| argument::Error::InvalidValue {
+    let outer: libc::gid_t = match components.get(1) {
+        None | Some(&"") => inner,
+        Some(s) => s.parse().map_err(|_| argument::Error::InvalidValue {
             value: components[1].to_owned(),
             expected: "the <outer> component for `plugin-gid-map` is not valid gid",
-        })?;
+        })?,
+    };
 
-    let count: u32 = components[2]
-        .parse()
-        .map_err(|_| argument::Error::InvalidValue {
+    let count: u32 = match components.get(2) {
+        None => 1,
+        Some(s) => s.parse().map_err(|_| argument::Error::InvalidValue {
             value: components[2].to_owned(),
             expected: "the <count> component for `plugin-gid-map` is not valid number",
-        })?;
+        })?,
+    };
 
     Ok(GidMap {
         inner,
@@ -1671,5 +1678,93 @@ mod tests {
             .expect("should parse the first serial argument");
         set_argument(&mut config, "serial", Some("num=2,type=stdout,stdin=true"))
             .expect_err("should fail to parse a second serial port connected to stdin");
+    }
+
+    #[test]
+    fn parse_plugin_mount_valid() {
+        let mut config = Config::default();
+        set_argument(
+            &mut config,
+            "plugin-mount",
+            Some("/dev/null:/dev/zero:true"),
+        )
+        .expect("parse should succeed");
+        assert_eq!(config.plugin_mounts[0].src, PathBuf::from("/dev/null"));
+        assert_eq!(config.plugin_mounts[0].dst, PathBuf::from("/dev/zero"));
+        assert_eq!(config.plugin_mounts[0].writable, true);
+    }
+
+    #[test]
+    fn parse_plugin_mount_valid_shorthand() {
+        let mut config = Config::default();
+        set_argument(&mut config, "plugin-mount", Some("/dev/null")).expect("parse should succeed");
+        assert_eq!(config.plugin_mounts[0].dst, PathBuf::from("/dev/null"));
+        assert_eq!(config.plugin_mounts[0].writable, false);
+        set_argument(&mut config, "plugin-mount", Some("/dev/null:/dev/zero"))
+            .expect("parse should succeed");
+        assert_eq!(config.plugin_mounts[1].dst, PathBuf::from("/dev/zero"));
+        assert_eq!(config.plugin_mounts[1].writable, false);
+        set_argument(&mut config, "plugin-mount", Some("/dev/null::true"))
+            .expect("parse should succeed");
+        assert_eq!(config.plugin_mounts[2].dst, PathBuf::from("/dev/null"));
+        assert_eq!(config.plugin_mounts[2].writable, true);
+    }
+
+    #[test]
+    fn parse_plugin_mount_invalid() {
+        let mut config = Config::default();
+        set_argument(&mut config, "plugin-mount", Some("")).expect_err("parse should fail");
+        set_argument(
+            &mut config,
+            "plugin-mount",
+            Some("/dev/null:/dev/null:true:false"),
+        )
+        .expect_err("parse should fail because too many arguments");
+        set_argument(&mut config, "plugin-mount", Some("null:/dev/null:true"))
+            .expect_err("parse should fail because source is not absolute");
+        set_argument(&mut config, "plugin-mount", Some("/dev/null:null:true"))
+            .expect_err("parse should fail because source is not absolute");
+        set_argument(&mut config, "plugin-mount", Some("/dev/null:null:blah"))
+            .expect_err("parse should fail because flag is not boolean");
+    }
+
+    #[test]
+    fn parse_plugin_gid_map_valid() {
+        let mut config = Config::default();
+        set_argument(&mut config, "plugin-gid-map", Some("1:2:3")).expect("parse should succeed");
+        assert_eq!(config.plugin_gid_maps[0].inner, 1);
+        assert_eq!(config.plugin_gid_maps[0].outer, 2);
+        assert_eq!(config.plugin_gid_maps[0].count, 3);
+    }
+
+    #[test]
+    fn parse_plugin_gid_map_valid_shorthand() {
+        let mut config = Config::default();
+        set_argument(&mut config, "plugin-gid-map", Some("1")).expect("parse should succeed");
+        assert_eq!(config.plugin_gid_maps[0].inner, 1);
+        assert_eq!(config.plugin_gid_maps[0].outer, 1);
+        assert_eq!(config.plugin_gid_maps[0].count, 1);
+        set_argument(&mut config, "plugin-gid-map", Some("1:2")).expect("parse should succeed");
+        assert_eq!(config.plugin_gid_maps[1].inner, 1);
+        assert_eq!(config.plugin_gid_maps[1].outer, 2);
+        assert_eq!(config.plugin_gid_maps[1].count, 1);
+        set_argument(&mut config, "plugin-gid-map", Some("1::3")).expect("parse should succeed");
+        assert_eq!(config.plugin_gid_maps[2].inner, 1);
+        assert_eq!(config.plugin_gid_maps[2].outer, 1);
+        assert_eq!(config.plugin_gid_maps[2].count, 3);
+    }
+
+    #[test]
+    fn parse_plugin_gid_map_invalid() {
+        let mut config = Config::default();
+        set_argument(&mut config, "plugin-gid-map", Some("")).expect_err("parse should fail");
+        set_argument(&mut config, "plugin-gid-map", Some("1:2:3:4"))
+            .expect_err("parse should fail because too many arguments");
+        set_argument(&mut config, "plugin-gid-map", Some("blah:2:3"))
+            .expect_err("parse should fail because inner is not a number");
+        set_argument(&mut config, "plugin-gid-map", Some("1:blah:3"))
+            .expect_err("parse should fail because outer is not a number");
+        set_argument(&mut config, "plugin-gid-map", Some("1:2:blah"))
+            .expect_err("parse should fail because count is not a number");
     }
 }
