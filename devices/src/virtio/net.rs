@@ -3,28 +3,30 @@
 // found in the LICENSE file.
 
 use std::fmt::{self, Display};
-use std::io;
+use std::io::{self, Write};
 use std::mem;
 use std::net::Ipv4Addr;
+use std::os::raw::c_uint;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::thread;
 
+use data_model::{DataInit, Le64};
 use net_sys;
 use net_util::{Error as TapError, MacAddress, TapT};
 use sys_util::Error as SysError;
 use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken, WatchingEvents};
-use virtio_sys::virtio_net::virtio_net_hdr_v1;
+use virtio_sys::virtio_net::{
+    virtio_net_hdr_v1, VIRTIO_NET_CTRL_GUEST_OFFLOADS, VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET,
+    VIRTIO_NET_ERR, VIRTIO_NET_OK,
+};
 use virtio_sys::{vhost, virtio_net};
 
-use super::{Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_NET};
+use super::{DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_NET};
 
-/// The maximum buffer size when segmentation offload is enabled. This
-/// includes the 12-byte virtio net header.
-/// http://docs.oasis-open.org/virtio/virtio/v1.0/virtio-v1.0.html#x1-1740003
 const QUEUE_SIZE: u16 = 256;
-const NUM_QUEUES: usize = 2;
-const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
+const NUM_QUEUES: usize = 3;
+const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE];
 
 #[derive(Debug)]
 pub enum NetError {
@@ -34,12 +36,18 @@ pub enum NetError {
     CreatePollContext(SysError),
     /// Cloning kill eventfd failed.
     CloneKillEventFd(SysError),
+    /// Descriptor chain was invalid.
+    DescriptorChain(DescriptorError),
     /// Removing EPOLLIN from the tap fd events failed.
     PollDisableTap(SysError),
     /// Adding EPOLLIN to the tap fd events failed.
     PollEnableTap(SysError),
     /// Error while polling for events.
     PollError(SysError),
+    /// Error reading data from control queue.
+    ReadCtrlData(io::Error),
+    /// Error reading header from control queue.
+    ReadCtrlHeader(io::Error),
     /// There are no more available descriptors to receive into.
     RxDescriptorsExhausted,
     /// Open tap device failed.
@@ -58,6 +66,8 @@ pub enum NetError {
     TapEnable(TapError),
     /// Validating tap interface failed.
     TapValidate(String),
+    /// Failed writing an ack in response to a control message.
+    WriteAck(io::Error),
     /// Writing to a buffer in the guest failed.
     WriteBuffer(io::Error),
 }
@@ -70,9 +80,12 @@ impl Display for NetError {
             CreateKillEventFd(e) => write!(f, "failed to create kill eventfd: {}", e),
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             CloneKillEventFd(e) => write!(f, "failed to clone kill eventfd: {}", e),
+            DescriptorChain(e) => write!(f, "failed to valildate descriptor chain: {}", e),
             PollDisableTap(e) => write!(f, "failed to disable EPOLLIN on tap fd: {}", e),
             PollEnableTap(e) => write!(f, "failed to enable EPOLLIN on tap fd: {}", e),
             PollError(e) => write!(f, "error while polling for events: {}", e),
+            ReadCtrlData(e) => write!(f, "failed to read control message data: {}", e),
+            ReadCtrlHeader(e) => write!(f, "failed to read control message header: {}", e),
             RxDescriptorsExhausted => write!(f, "no rx descriptors available"),
             TapOpen(e) => write!(f, "failed to open tap device: {}", e),
             TapSetIp(e) => write!(f, "failed to set tap IP: {}", e),
@@ -82,9 +95,41 @@ impl Display for NetError {
             TapSetVnetHdrSize(e) => write!(f, "failed to set vnet header size: {}", e),
             TapEnable(e) => write!(f, "failed to enable tap interface: {}", e),
             TapValidate(s) => write!(f, "failed to validate tap interface: {}", s),
+            WriteAck(e) => write!(f, "failed to write control message ack: {}", e),
             WriteBuffer(e) => write!(f, "failed to write to guest buffer: {}", e),
         }
     }
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy)]
+pub struct virtio_net_ctrl_hdr {
+    pub class: u8,
+    pub cmd: u8,
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for virtio_net_ctrl_hdr {}
+
+fn virtio_features_to_tap_offload(features: u64) -> c_uint {
+    let mut tap_offloads: c_uint = 0;
+    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM) != 0 {
+        tap_offloads |= net_sys::TUN_F_CSUM;
+    }
+    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4) != 0 {
+        tap_offloads |= net_sys::TUN_F_TSO4;
+    }
+    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_TSO6) != 0 {
+        tap_offloads |= net_sys::TUN_F_TSO6;
+    }
+    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_ECN) != 0 {
+        tap_offloads |= net_sys::TUN_F_TSO_ECN;
+    }
+    if features & (1 << virtio_net::VIRTIO_NET_F_GUEST_UFO) != 0 {
+        tap_offloads |= net_sys::TUN_F_UFO;
+    }
+
+    tap_offloads
 }
 
 struct Worker<T: TapT> {
@@ -92,6 +137,7 @@ struct Worker<T: TapT> {
     mem: GuestMemory,
     rx_queue: Queue,
     tx_queue: Queue,
+    ctrl_queue: Queue,
     tap: T,
     // TODO(smbarber): http://crbug.com/753630
     // Remove once MRG_RXBUF is supported and this variable is actually used.
@@ -193,7 +239,56 @@ where
         self.interrupt.signal_used_queue(self.tx_queue.vector);
     }
 
-    fn run(&mut self, rx_queue_evt: EventFd, tx_queue_evt: EventFd) -> Result<(), NetError> {
+    fn process_ctrl(&mut self) -> Result<(), NetError> {
+        while let Some(desc_chain) = self.ctrl_queue.pop(&self.mem) {
+            let index = desc_chain.index;
+
+            let mut reader =
+                Reader::new(&self.mem, desc_chain.clone()).map_err(NetError::DescriptorChain)?;
+            let mut writer =
+                Writer::new(&self.mem, desc_chain).map_err(NetError::DescriptorChain)?;
+            let ctrl_hdr: virtio_net_ctrl_hdr =
+                reader.read_obj().map_err(NetError::ReadCtrlHeader)?;
+
+            match ctrl_hdr.class as c_uint {
+                VIRTIO_NET_CTRL_GUEST_OFFLOADS => {
+                    if ctrl_hdr.cmd != VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET as u8 {
+                        error!(
+                            "invalid cmd for VIRTIO_NET_CTRL_GUEST_OFFLOADS: {}",
+                            ctrl_hdr.cmd
+                        );
+                        let ack = VIRTIO_NET_ERR as u8;
+                        writer.write_all(&[ack]).map_err(NetError::WriteAck)?;
+                        self.ctrl_queue.add_used(&self.mem, index, 0);
+                        continue;
+                    }
+                    let offloads: Le64 = reader.read_obj().map_err(NetError::ReadCtrlData)?;
+                    let tap_offloads = virtio_features_to_tap_offload(offloads.into());
+                    self.tap
+                        .set_offload(tap_offloads)
+                        .map_err(NetError::TapSetOffload)?;
+                    let ack = VIRTIO_NET_OK as u8;
+                    writer.write_all(&[ack]).map_err(NetError::WriteAck)?;
+                }
+                _ => warn!(
+                    "unimplemented class for VIRTIO_NET_CTRL_GUEST_OFFLOADS: {}",
+                    ctrl_hdr.class
+                ),
+            }
+
+            self.ctrl_queue.add_used(&self.mem, index, 0);
+        }
+
+        self.interrupt.signal_used_queue(self.ctrl_queue.vector);
+        Ok(())
+    }
+
+    fn run(
+        &mut self,
+        rx_queue_evt: EventFd,
+        tx_queue_evt: EventFd,
+        ctrl_queue_evt: EventFd,
+    ) -> Result<(), NetError> {
         #[derive(PollToken)]
         enum Token {
             // A frame is available for reading from the tap device to receive in the guest.
@@ -202,6 +297,8 @@ where
             RxQueue,
             // The transmit queue has a frame that is ready to send from the guest.
             TxQueue,
+            // The control queue has a message.
+            CtrlQueue,
             // Check if any interrupts need to be re-asserted.
             InterruptResample,
             // crosvm has requested the device to shut down.
@@ -212,6 +309,7 @@ where
             (&self.tap, Token::RxTap),
             (&rx_queue_evt, Token::RxQueue),
             (&tx_queue_evt, Token::TxQueue),
+            (&ctrl_queue_evt, Token::CtrlQueue),
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&self.kill_evt, Token::Kill),
         ])
@@ -250,6 +348,16 @@ where
                             break 'poll;
                         }
                         self.process_tx();
+                    }
+                    Token::CtrlQueue => {
+                        if let Err(e) = ctrl_queue_evt.read() {
+                            error!("net: error reading ctrl queue EventFd: {}", e);
+                            break 'poll;
+                        }
+                        if let Err(e) = self.process_ctrl() {
+                            error!("net: failed to process control message: {}", e);
+                            break 'poll;
+                        }
                     }
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
@@ -306,6 +414,8 @@ where
 
         let avail_features = 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CSUM
+            | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ
+            | 1 << virtio_net::VIRTIO_NET_F_CTRL_GUEST_OFFLOADS
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_UFO
             | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
@@ -352,12 +462,6 @@ fn validate_and_configure_tap<T: TapT>(tap: &T) -> Result<(), NetError> {
             missing_flags
         )));
     }
-
-    // Set offload flags to match the virtio features below.
-    tap.set_offload(
-        net_sys::TUN_F_CSUM | net_sys::TUN_F_UFO | net_sys::TUN_F_TSO4 | net_sys::TUN_F_TSO6,
-    )
-    .map_err(NetError::TapSetOffload)?;
 
     let vnet_hdr_size = mem::size_of::<virtio_net_hdr_v1>() as i32;
     tap.set_vnet_hdr_size(vnet_hdr_size)
@@ -426,6 +530,19 @@ where
             v &= !unrequested_features;
         }
         self.acked_features |= v;
+
+        // Set offload flags to match acked virtio features.
+        if let Err(e) = self
+            .tap
+            .as_ref()
+            .expect("missing tap in ack_features")
+            .set_offload(virtio_features_to_tap_offload(self.acked_features))
+        {
+            warn!(
+                "net: failed to set tap offload to match acked features: {}",
+                e
+            );
+        }
     }
 
     fn activate(
@@ -447,21 +564,24 @@ where
                     thread::Builder::new()
                         .name("virtio_net".to_string())
                         .spawn(move || {
-                            // First queue is rx, second is tx.
+                            // First queue is rx, second is tx, third is ctrl.
                             let rx_queue = queues.remove(0);
                             let tx_queue = queues.remove(0);
+                            let ctrl_queue = queues.remove(0);
                             let mut worker = Worker {
                                 interrupt,
                                 mem,
                                 rx_queue,
                                 tx_queue,
+                                ctrl_queue,
                                 tap,
                                 acked_features,
                                 kill_evt,
                             };
                             let rx_queue_evt = queue_evts.remove(0);
                             let tx_queue_evt = queue_evts.remove(0);
-                            let result = worker.run(rx_queue_evt, tx_queue_evt);
+                            let ctrl_queue_evt = queue_evts.remove(0);
+                            let result = worker.run(rx_queue_evt, tx_queue_evt, ctrl_queue_evt);
                             if let Err(e) = result {
                                 error!("net worker thread exited with error: {}", e);
                             }

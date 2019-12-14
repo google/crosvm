@@ -3,3 +3,6 @@
 # found in the LICENSE file.
 
 @include /usr/share/policy/crosvm/common_device.policy
+
+# TUNSETOFFLOAD
+ioctl: arg1 == 0x400454d0
