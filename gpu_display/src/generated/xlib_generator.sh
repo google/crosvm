@@ -55,7 +55,11 @@ bindgen --no-layout-tests --no-derive-debug \
   --whitelist-function XShmPutImage \
   --whitelist-function XShmQueryExtension \
   --whitelist-var 'XK_.*' \
+  --whitelist-var ButtonPress \
   --whitelist-var ButtonPressMask \
+  --whitelist-var Button1 \
+  --whitelist-var Button1Mask \
+  --whitelist-var ButtonRelease \
   --whitelist-var ButtonReleaseMask \
   --whitelist-var ClientMessage \
   --whitelist-var Expose \

@@ -11,6 +11,8 @@
 )]
 mod xlib;
 
+use linux_input_sys::input_event;
+use std::cmp::max;
 use std::collections::BTreeMap;
 use std::ffi::{c_void, CStr, CString};
 use std::mem::{transmute_copy, zeroed};
@@ -18,17 +20,22 @@ use std::num::NonZeroU32;
 use std::os::raw::c_ulong;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::ptr::{null, null_mut, NonNull};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
+use std::time::Duration;
 
 use libc::{shmat, shmctl, shmdt, shmget, IPC_CREAT, IPC_PRIVATE, IPC_RMID};
 
-use crate::{DisplayT, EventDevice, GpuDisplayError, GpuDisplayFramebuffer};
+use crate::{
+    keycode_converter::KeycodeTranslator, keycode_converter::KeycodeTypes, DisplayT, EventDevice,
+    EventDeviceKind, GpuDisplayError, GpuDisplayFramebuffer,
+};
 
 use data_model::VolatileSlice;
+use sys_util::{error, PollContext, PollToken, WatchingEvents};
 
 const BUFFER_COUNT: usize = 2;
 
-type SurfaceId = NonZeroU32;
+type ObjectId = NonZeroU32;
 
 /// A wrapper for XFree that takes any type.
 unsafe fn x_free<T>(t: *mut T) {
@@ -119,6 +126,16 @@ impl XEvent {
     // Some of the event types are dynamic so they need to be passed in.
     fn as_enum(&self, shm_complete_type: u32) -> XEventEnum {
         match self.type_() {
+            xlib::KeyPress | xlib::KeyRelease => XEventEnum::KeyEvent(unsafe { self.0.xkey }),
+            xlib::ButtonPress => XEventEnum::ButtonEvent {
+                event: unsafe { self.0.xbutton },
+                pressed: true,
+            },
+            xlib::ButtonRelease => XEventEnum::ButtonEvent {
+                event: unsafe { self.0.xbutton },
+                pressed: false,
+            },
+            xlib::MotionNotify => XEventEnum::Motion(unsafe { self.0.xmotion }),
             xlib::Expose => XEventEnum::Expose,
             xlib::ClientMessage => {
                 XEventEnum::ClientMessage(unsafe { self.0.xclient.data.l[0] as u64 })
@@ -136,6 +153,12 @@ impl XEvent {
 }
 
 enum XEventEnum {
+    KeyEvent(xlib::XKeyEvent),
+    ButtonEvent {
+        event: xlib::XButtonEvent,
+        pressed: bool,
+    },
+    Motion(xlib::XMotionEvent),
     Expose,
     ClientMessage(u64),
     ShmCompletionEvent(xlib::ShmSeg),
@@ -201,6 +224,8 @@ struct Surface {
     gc: xlib::GC,
     width: u32,
     height: u32,
+    event_devices: BTreeMap<ObjectId, EventDevice>,
+    keycode_translator: KeycodeTranslator,
 
     // Fields for handling the buffer swap chain.
     buffers: [Option<Buffer>; BUFFER_COUNT],
@@ -220,6 +245,7 @@ impl Surface {
         width: u32,
         height: u32,
     ) -> Result<Surface, GpuDisplayError> {
+        let keycode_translator = KeycodeTranslator::new(KeycodeTypes::XkbScancode);
         unsafe {
             let depth = xlib::XDefaultDepthOfScreen(screen.as_ptr()) as u32;
 
@@ -263,7 +289,16 @@ impl Surface {
             x_free(size_hints);
 
             // We will use redraw the buffer when we are exposed.
-            xlib::XSelectInput(display.as_ptr(), window, xlib::ExposureMask as i64);
+            xlib::XSelectInput(
+                display.as_ptr(),
+                window,
+                (xlib::ExposureMask
+                    | xlib::KeyPressMask
+                    | xlib::KeyReleaseMask
+                    | xlib::ButtonPressMask
+                    | xlib::ButtonReleaseMask
+                    | xlib::PointerMotionMask) as i64,
+            );
 
             xlib::XClearWindow(display.as_ptr(), window);
             xlib::XMapRaised(display.as_ptr(), window);
@@ -279,6 +314,8 @@ impl Surface {
                 gc,
                 width,
                 height,
+                event_devices: Default::default(),
+                keycode_translator,
                 buffers: Default::default(),
                 buffer_next: 0,
                 buffer_completion_type,
@@ -296,8 +333,53 @@ impl Surface {
         }
     }
 
+    fn dispatch_to_event_devices(&mut self, events: &[input_event], device_type: EventDeviceKind) {
+        for event_device in self.event_devices.values_mut() {
+            if event_device.kind() != device_type {
+                continue;
+            }
+            if let Err(e) = event_device.send_report(events.iter().cloned()) {
+                error!("error sending events to event device: {}", e);
+            }
+        }
+    }
+
     fn handle_event(&mut self, ev: XEvent) {
         match ev.as_enum(self.buffer_completion_type) {
+            XEventEnum::KeyEvent(key) => {
+                if let Some(linux_keycode) = self.keycode_translator.translate(key.keycode) {
+                    let events = &[input_event::key(
+                        linux_keycode,
+                        key.type_ == xlib::KeyPress as i32,
+                    )];
+                    self.dispatch_to_event_devices(events, EventDeviceKind::Keyboard);
+                }
+            }
+            XEventEnum::ButtonEvent {
+                event: button_event,
+                pressed,
+            } => {
+                // We only support a single touch from button 1 (left mouse button).
+                if button_event.button & xlib::Button1 != 0 {
+                    // The touch event *must* be first per the Linux input subsystem's guidance.
+                    let events = &[
+                        input_event::touch(pressed),
+                        input_event::absolute_x(max(0, button_event.x) as u32),
+                        input_event::absolute_y(max(0, button_event.y) as u32),
+                    ];
+                    self.dispatch_to_event_devices(events, EventDeviceKind::Touchscreen);
+                }
+            }
+            XEventEnum::Motion(motion) => {
+                if motion.state & xlib::Button1Mask != 0 {
+                    let events = &[
+                        input_event::touch(true),
+                        input_event::absolute_x(max(0, motion.x) as u32),
+                        input_event::absolute_y(max(0, motion.y) as u32),
+                    ];
+                    self.dispatch_to_event_devices(events, EventDeviceKind::Touchscreen);
+                }
+            }
             XEventEnum::Expose => self.draw_buffer(self.current_buffer()),
             XEventEnum::ClientMessage(xclient_data) => {
                 if xclient_data == self.delete_window_atom {
@@ -449,16 +531,26 @@ impl Drop for Surface {
     }
 }
 
+#[derive(PollToken)]
+enum DisplayXPollToken {
+    Display,
+    EventDevice { event_device_id: u32 },
+}
+
 pub struct DisplayX {
+    poll_ctx: PollContext<DisplayXPollToken>,
     display: XDisplay,
     screen: XScreen,
     visual: *mut xlib::Visual,
-    next_surface_id: SurfaceId,
-    surfaces: BTreeMap<SurfaceId, Surface>,
+    next_id: ObjectId,
+    surfaces: BTreeMap<ObjectId, Surface>,
+    event_devices: BTreeMap<ObjectId, EventDevice>,
 }
 
 impl DisplayX {
     pub fn open_display(display: Option<&str>) -> Result<DisplayX, GpuDisplayError> {
+        let poll_ctx = PollContext::new().map_err(|_| GpuDisplayError::Allocate)?;
+
         let display_cstr = match display.map(CString::new) {
             Some(Ok(s)) => Some(s),
             Some(Err(_)) => return Err(GpuDisplayError::InvalidPath),
@@ -476,6 +568,10 @@ impl DisplayX {
                 Some(display_ptr) => XDisplay(Rc::new(display_ptr)),
                 None => return Err(GpuDisplayError::Connect),
             };
+
+            poll_ctx
+                .add(&display, DisplayXPollToken::Display)
+                .map_err(|_| GpuDisplayError::Allocate)?;
 
             // Check for required extension.
             if !display.supports_shm() {
@@ -518,21 +614,31 @@ impl DisplayX {
             x_free(visual_info);
 
             Ok(DisplayX {
+                poll_ctx,
                 display,
                 screen,
                 visual,
-                next_surface_id: SurfaceId::new(1).unwrap(),
+                next_id: ObjectId::new(1).unwrap(),
                 surfaces: Default::default(),
+                event_devices: Default::default(),
             })
         }
     }
 
     fn surface_ref(&self, surface_id: u32) -> Option<&Surface> {
-        SurfaceId::new(surface_id).and_then(move |id| self.surfaces.get(&id))
+        ObjectId::new(surface_id).and_then(move |id| self.surfaces.get(&id))
     }
 
     fn surface_mut(&mut self, surface_id: u32) -> Option<&mut Surface> {
-        SurfaceId::new(surface_id).and_then(move |id| self.surfaces.get_mut(&id))
+        ObjectId::new(surface_id).and_then(move |id| self.surfaces.get_mut(&id))
+    }
+
+    fn event_device(&self, event_device_id: u32) -> Option<&EventDevice> {
+        ObjectId::new(event_device_id).and_then(move |id| self.event_devices.get(&id))
+    }
+
+    fn event_device_mut(&mut self, event_device_id: u32) -> Option<&mut EventDevice> {
+        ObjectId::new(event_device_id).and_then(move |id| self.event_devices.get_mut(&id))
     }
 
     fn handle_event(&mut self, ev: XEvent) {
@@ -545,10 +651,8 @@ impl DisplayX {
             return;
         }
     }
-}
 
-impl DisplayT for DisplayX {
-    fn dispatch_events(&mut self) {
+    fn dispatch_display_events(&mut self) {
         loop {
             self.display.flush();
             if !self.display.pending_events() {
@@ -556,6 +660,54 @@ impl DisplayT for DisplayX {
             }
             let ev = self.display.next_event();
             self.handle_event(ev);
+        }
+    }
+
+    fn handle_event_device(&mut self, event_device_id: u32) {
+        if let Some(event_device) = self.event_device(event_device_id) {
+            // TODO(zachr): decode the event and forward to the device.
+            let _ = event_device.recv_event_encoded();
+        }
+    }
+
+    fn handle_poll_ctx(&mut self) -> sys_util::Result<()> {
+        let poll_events = self.poll_ctx.wait_timeout(Duration::default())?.to_owned();
+        for poll_event in poll_events.as_ref().iter_writable() {
+            if let DisplayXPollToken::EventDevice { event_device_id } = poll_event.token() {
+                if let Some(event_device) = self.event_device_mut(event_device_id) {
+                    if !event_device.flush_buffered_events()? {
+                        continue;
+                    }
+                }
+                // Although this looks exactly like the previous if-block, we need to reborrow self
+                // as immutable in order to make use of self.poll_ctx.
+                if let Some(event_device) = self.event_device(event_device_id) {
+                    self.poll_ctx.modify(
+                        event_device,
+                        WatchingEvents::empty().set_read(),
+                        DisplayXPollToken::EventDevice { event_device_id },
+                    )?;
+                }
+            }
+        }
+
+        for poll_event in poll_events.as_ref().iter_readable() {
+            match poll_event.token() {
+                DisplayXPollToken::Display => self.dispatch_display_events(),
+                DisplayXPollToken::EventDevice { event_device_id } => {
+                    self.handle_event_device(event_device_id)
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl DisplayT for DisplayX {
+    fn dispatch_events(&mut self) {
+        if let Err(e) = self.handle_poll_ctx() {
+            error!("failed to dispatch events: {}", e);
         }
     }
 
@@ -576,15 +728,19 @@ impl DisplayT for DisplayX {
             width,
             height,
         )?;
-        let new_surface_id = self.next_surface_id;
+        let new_surface_id = self.next_id;
         self.surfaces.insert(new_surface_id, new_surface);
-        self.next_surface_id = SurfaceId::new(self.next_surface_id.get() + 1).unwrap();
+        self.next_id = ObjectId::new(self.next_id.get() + 1).unwrap();
 
         Ok(new_surface_id.get())
     }
 
     fn release_surface(&mut self, surface_id: u32) {
-        SurfaceId::new(surface_id).and_then(|id| self.surfaces.remove(&id));
+        if let Some(mut surface) =
+            ObjectId::new(surface_id).and_then(|id| self.surfaces.remove(&id))
+        {
+            self.event_devices.append(&mut surface.event_devices);
+        }
     }
 
     fn framebuffer(&mut self, surface_id: u32) -> Option<GpuDisplayFramebuffer> {
@@ -638,19 +794,46 @@ impl DisplayT for DisplayX {
     fn set_position(&mut self, surface_id: u32, x: u32, y: u32) {
         // unsupported
     }
-    fn import_event_device(&mut self, _event_device: EventDevice) -> Result<u32, GpuDisplayError> {
-        Err(GpuDisplayError::Unsupported)
+
+    fn import_event_device(&mut self, event_device: EventDevice) -> Result<u32, GpuDisplayError> {
+        let new_event_device_id = self.next_id;
+
+        self.poll_ctx
+            .add(
+                &event_device,
+                DisplayXPollToken::EventDevice {
+                    event_device_id: new_event_device_id.get(),
+                },
+            )
+            .map_err(|_| GpuDisplayError::Allocate)?;
+
+        self.event_devices.insert(new_event_device_id, event_device);
+        self.next_id = ObjectId::new(self.next_id.get() + 1).unwrap();
+
+        Ok(new_event_device_id.get())
     }
-    fn release_event_device(&mut self, _event_device_id: u32) {
-        // unsupported
+
+    fn release_event_device(&mut self, event_device_id: u32) {
+        ObjectId::new(event_device_id).and_then(|id| self.event_devices.remove(&id));
     }
+
     fn attach_event_device(&mut self, surface_id: u32, event_device_id: u32) {
-        // unsupported
+        let event_device_id = match ObjectId::new(event_device_id) {
+            Some(id) => id,
+            None => return,
+        };
+        let surface_id = match ObjectId::new(surface_id) {
+            Some(id) => id,
+            None => return,
+        };
+        let surface = self.surfaces.get_mut(&surface_id).unwrap();
+        let event_device = self.event_devices.remove(&event_device_id).unwrap();
+        surface.event_devices.insert(event_device_id, event_device);
     }
 }
 
 impl AsRawFd for DisplayX {
     fn as_raw_fd(&self) -> RawFd {
-        self.display.as_raw_fd()
+        self.poll_ctx.as_raw_fd()
     }
 }

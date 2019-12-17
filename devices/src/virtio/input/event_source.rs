@@ -8,6 +8,7 @@ use super::virtio_input_event;
 use super::InputError;
 use super::Result;
 use data_model::DataInit;
+use linux_input_sys::input_event;
 use std::collections::VecDeque;
 use std::io::Read;
 use std::io::Write;
@@ -15,20 +16,11 @@ use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 use sys_util::{error, warn};
 
-#[derive(Copy, Clone, Debug, Default)]
-#[repr(C)]
-pub struct input_event {
-    timestamp_fields: [u64; 2],
-    pub type_: u16,
-    pub code: u16,
-    pub value: u32,
+trait ConvertFromVirtioInputEvent {
+    fn from_virtio_input_event(other: &virtio_input_event) -> input_event;
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for input_event {}
 
-impl input_event {
-    const EVENT_SIZE: usize = size_of::<input_event>();
-
+impl ConvertFromVirtioInputEvent for input_event {
     fn from_virtio_input_event(other: &virtio_input_event) -> input_event {
         input_event {
             timestamp_fields: [0, 0],
