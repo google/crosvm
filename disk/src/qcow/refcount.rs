@@ -8,8 +8,8 @@ use std::io;
 
 use libc::EINVAL;
 
-use crate::qcow_raw_file::QcowRawFile;
-use crate::vec_cache::{CacheMap, Cacheable, VecCache};
+use crate::qcow::qcow_raw_file::QcowRawFile;
+use crate::qcow::vec_cache::{CacheMap, Cacheable, VecCache};
 
 #[derive(Debug)]
 pub enum Error {

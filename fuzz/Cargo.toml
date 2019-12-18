@@ -8,9 +8,9 @@ edition = "2018"
 cros_fuzz = "*"
 data_model = { path = "../data_model" }
 devices = { path = "../devices" }
+disk = { path = "../disk" }
 kernel_loader = { path = "../kernel_loader" }
 libc = "*"
-qcow = { path = "../qcow" }
 rand = "0.6"
 sys_util = { path = "../sys_util" }
 usb_util = { path = "../usb_util" }

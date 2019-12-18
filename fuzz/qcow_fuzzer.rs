@@ -5,7 +5,7 @@
 #![no_main]
 
 use cros_fuzz::fuzz_target;
-use qcow::QcowFile;
+use disk::QcowFile;
 use sys_util::SharedMemory;
 
 use std::fs::File;

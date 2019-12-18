@@ -10,8 +10,7 @@ use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom};
 use std::os::raw::{c_char, c_int};
 
-use disk::ImageType;
-use qcow::QcowFile;
+use disk::{ImageType, QcowFile};
 use sys_util::{flock, FileSetLen, FlockOperation};
 
 trait DiskFile: FileSetLen + Seek {}

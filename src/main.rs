@@ -23,8 +23,8 @@ use crosvm::{
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{GpuParameters, DEFAULT_GPU_PARAMS};
 use devices::{SerialParameters, SerialType};
+use disk::QcowFile;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
-use qcow::QcowFile;
 use sys_util::{
     debug, error, getpid, info, kill_process_group, net::UnixSeqpacket, reap_child, syslog,
     validate_raw_fd, warn,

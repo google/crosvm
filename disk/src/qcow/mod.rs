@@ -21,9 +21,9 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use crate::qcow_raw_file::QcowRawFile;
-use crate::refcount::RefCount;
-use crate::vec_cache::{CacheMap, Cacheable, VecCache};
+use crate::qcow::qcow_raw_file::QcowRawFile;
+use crate::qcow::refcount::RefCount;
+use crate::qcow::vec_cache::{CacheMap, Cacheable, VecCache};
 
 #[sorted]
 #[derive(Debug)]
@@ -342,7 +342,7 @@ fn max_refcount_clusters(refcount_order: u32, cluster_size: u32, num_clusters: u
 ///
 /// ```
 /// # use std::io::{Read, Seek, SeekFrom};
-/// # use qcow::{self, QcowFile};
+/// # use disk::QcowFile;
 /// # fn test(file: std::fs::File) -> std::io::Result<()> {
 ///     let mut q = QcowFile::from(file).expect("Can't open qcow file");
 ///     let mut buf = [0u8; 12];
