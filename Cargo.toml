@@ -62,7 +62,6 @@ net_util = { path = "net_util" }
 p9 = { path = "p9" }
 protobuf = { version = "2.3", optional = true }
 protos = { path = "protos", optional = true }
-qcow = { path = "qcow" }
 rand_ish = { path = "rand_ish" }
 remain = "*"
 render_node_forward = { path = "render_node_forward", optional = true }

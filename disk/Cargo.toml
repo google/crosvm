@@ -8,13 +8,12 @@ edition = "2018"
 path = "src/disk.rs"
 
 [features]
-composite-disk = ["data_model", "protos", "protobuf"]
+composite-disk = ["protos", "protobuf"]
 
 [dependencies]
 libc = "*"
 protobuf = { version = "2.3", optional = true }
 remain = "*"
-data_model = { path = "../data_model", optional = true }
+data_model = { path = "../data_model" }
 protos = { path = "../protos", optional = true }
-qcow = { path = "../qcow" }
 sys_util = { path = "../sys_util" }

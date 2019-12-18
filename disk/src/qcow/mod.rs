@@ -21,9 +21,9 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use crate::qcow_raw_file::QcowRawFile;
-use crate::refcount::RefCount;
-use crate::vec_cache::{CacheMap, Cacheable, VecCache};
+use crate::qcow::qcow_raw_file::QcowRawFile;
+use crate::qcow::refcount::RefCount;
+use crate::qcow::vec_cache::{CacheMap, Cacheable, VecCache};
 
 #[sorted]
 #[derive(Debug)]
@@ -342,7 +342,7 @@ fn max_refcount_clusters(refcount_order: u32, cluster_size: u32, num_clusters: u
 ///
 /// ```
 /// # use std::io::{Read, Seek, SeekFrom};
-/// # use qcow::{self, QcowFile};
+/// # use disk::QcowFile;
 /// # fn test(file: std::fs::File) -> std::io::Result<()> {
 ///     let mut q = QcowFile::from(file).expect("Can't open qcow file");
 ///     let mut buf = [0u8; 12];
@@ -742,11 +742,14 @@ impl QcowFile {
             let mut ref_table = vec![0; refcount_table_entries as usize];
             let mut first_free_cluster: u64 = 0;
             for refblock_addr in &mut ref_table {
-                while refcounts[first_free_cluster as usize] != 0 {
-                    first_free_cluster += 1;
+                loop {
                     if first_free_cluster >= refcounts.len() as u64 {
                         return Err(Error::NotEnoughSpaceForRefcounts);
                     }
+                    if refcounts[first_free_cluster as usize] == 0 {
+                        break;
+                    }
+                    first_free_cluster += 1;
                 }
 
                 *refblock_addr = first_free_cluster * cluster_size;

@@ -8,12 +8,14 @@ use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
 use libc::EINVAL;
-use qcow::{QcowFile, QCOW_MAGIC};
 use remain::sorted;
 use sys_util::{
     AsRawFds, FileGetLen, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole,
     WriteZeroesAt,
 };
+
+mod qcow;
+pub use qcow::{QcowFile, QCOW_MAGIC};
 
 #[cfg(feature = "composite-disk")]
 mod composite;

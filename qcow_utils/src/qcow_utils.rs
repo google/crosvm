@@ -13,8 +13,7 @@ use std::os::raw::{c_char, c_int};
 use std::os::unix::io::FromRawFd;
 use std::panic::catch_unwind;
 
-use disk::ImageType;
-use qcow::QcowFile;
+use disk::{ImageType, QcowFile};
 use sys_util::{flock, FileSetLen, FlockOperation};
 
 trait DiskFile: FileSetLen + Seek {}
