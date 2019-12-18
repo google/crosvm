@@ -1513,6 +1513,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
             .as_ref()
             .map(|x| File::open(x).map_err(|e| Error::OpenAndroidFstab(x.to_path_buf(), e)))
             .map_or(Ok(None), |v| v.map(Some))?,
+        pstore: cfg.pstore.clone(),
         initrd_image,
         extra_kernel_params: cfg.params.clone(),
         wayland_dmabuf: cfg.wayland_dmabuf,

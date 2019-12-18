@@ -4,6 +4,7 @@
 
 pub mod android;
 pub mod fdt;
+pub mod pstore;
 
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
@@ -11,6 +12,7 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::os::unix::io::AsRawFd;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use devices::virtio::VirtioDevice;
@@ -29,6 +31,12 @@ pub enum VmImage {
     Bios(File),
 }
 
+#[derive(Clone)]
+pub struct Pstore {
+    pub path: PathBuf,
+    pub size: u32,
+}
+
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
 /// create a `RunnableLinuxVm`.
 pub struct VmComponents {
@@ -37,6 +45,7 @@ pub struct VmComponents {
     pub vcpu_affinity: Vec<usize>,
     pub vm_image: VmImage,
     pub android_fstab: Option<File>,
+    pub pstore: Option<Pstore>,
     pub initrd_image: Option<File>,
     pub extra_kernel_params: Vec<String>,
     pub wayland_dmabuf: bool,

@@ -36,6 +36,8 @@ pub enum Alloc {
     GpuRenderNode,
     /// Pmem device region with associated device index.
     PmemDevice(usize),
+    /// pstore region.
+    Pstore,
 }
 
 #[derive(Debug, Eq, PartialEq)]

@@ -87,6 +87,7 @@ pub enum Error {
     LoadCmdline(kernel_loader::Error),
     LoadInitrd(arch::LoadImageError),
     LoadKernel(kernel_loader::Error),
+    Pstore(arch::pstore::Error),
     RegisterIrqfd(sys_util::Error),
     RegisterVsock(arch::DeviceRegistrationError),
     SetLint(interrupts::Error),
@@ -132,6 +133,7 @@ impl Display for Error {
             LoadCmdline(e) => write!(f, "error loading command line: {}", e),
             LoadInitrd(e) => write!(f, "error loading initrd: {}", e),
             LoadKernel(e) => write!(f, "error loading Kernel: {}", e),
+            Pstore(e) => write!(f, "failed to allocate pstore region: {}", e),
             RegisterIrqfd(e) => write!(f, "error registering an IrqFd: {}", e),
             RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
             SetLint(e) => write!(f, "failed to set interrupts: {}", e),
@@ -369,12 +371,39 @@ impl arch::LinuxArch for X8664arch {
         let stdio_serial_num =
             Self::setup_serial_devices(&mut vm, &mut io_bus, serial_parameters, serial_jail)?;
 
+        let ramoops_region = match components.pstore {
+            Some(pstore) => Some(
+                arch::pstore::create_memory_region(&mut vm, &mut resources, &pstore)
+                    .map_err(Error::Pstore)?,
+            ),
+            None => None,
+        };
+
         match components.vm_image {
             VmImage::Bios(ref mut bios) => Self::load_bios(&mem, bios)?,
             VmImage::Kernel(ref mut kernel_image) => {
                 let mut cmdline = Self::get_base_linux_cmdline(stdio_serial_num);
                 for param in components.extra_kernel_params {
                     cmdline.insert_str(&param).map_err(Error::Cmdline)?;
+                }
+
+                // It seems that default record_size is only 4096 byte even if crosvm allocates
+                // more memory. It means that one crash can only 4096 byte.
+                // Set record_size and console_size to 1/4 of allocated memory size.
+                // This configulation is same as the host.
+                if let Some(ramoops_region) = ramoops_region {
+                    let ramoops_opts = [
+                        ("mem_address", ramoops_region.address),
+                        ("mem_size", ramoops_region.size as u64),
+                        ("console_size", (ramoops_region.size / 4) as u64),
+                        ("record_size", (ramoops_region.size / 4) as u64),
+                        ("dump_oops", 1_u64),
+                    ];
+                    for (name, val) in &ramoops_opts {
+                        cmdline
+                            .insert_str(format!("ramoops.{}={:#x}", name, val))
+                            .map_err(Error::Cmdline)?;
+                    }
                 }
 
                 // separate out load_kernel from other setup to get a specific error for

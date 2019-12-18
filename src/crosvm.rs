@@ -16,6 +16,7 @@ use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use arch::Pstore;
 use devices::virtio::fs::passthrough;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
@@ -136,6 +137,7 @@ pub struct Config {
     pub plugin_gid_maps: Vec<GidMap>,
     pub disks: Vec<DiskOption>,
     pub pmem_devices: Vec<DiskOption>,
+    pub pstore: Option<Pstore>,
     pub host_ip: Option<net::Ipv4Addr>,
     pub netmask: Option<net::Ipv4Addr>,
     pub mac_address: Option<net_util::MacAddress>,
@@ -184,6 +186,7 @@ impl Default for Config {
             plugin_gid_maps: Vec::new(),
             disks: Vec::new(),
             pmem_devices: Vec::new(),
+            pstore: None,
             host_ip: None,
             netmask: None,
             mac_address: None,
