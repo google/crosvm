@@ -531,7 +531,7 @@ impl Worker {
     }
 
     fn run(&mut self) {
-        #[derive(PollToken)]
+        #[derive(PartialEq, PollToken)]
         enum Token {
             CtrlQueue,
             CursorQueue,
@@ -592,6 +592,14 @@ impl Worker {
             // Clear the old values and re-initialize with false.
             process_resource_bridge.clear();
             process_resource_bridge.resize(self.resource_bridges.len(), false);
+
+            // This display isn't typically used when the virt-wl device is available and it can
+            // lead to hung fds (crbug.com/1027379). Disable if it's hung.
+            for event in events.iter_hungup() {
+                if event.token() == Token::Display {
+                    let _ = poll_ctx.delete(&*self.state.display().borrow());
+                }
+            }
 
             for event in events.iter_readable() {
                 match event.token() {
