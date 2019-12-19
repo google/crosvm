@@ -313,7 +313,14 @@ where
             }
         }
     }
-    Ok(())
+
+    // If we ran out of arguments while parsing the last parameter, which may be either a
+    // value parameter or a flag, try to parse it as a flag. This will produce "missing value"
+    // error if the parameter is in fact a value parameter, which is the desired outcome.
+    match s {
+        State::Value { name } => f(&name, None),
+        _ => Ok(()),
+    }
 }
 
 /// Parses the given `args` against the list of know arguments `arg_list` and calls `f` with each
@@ -473,6 +480,16 @@ mod tests {
             },
         );
         assert!(match_res.is_ok());
+        let not_match_res = set_arguments(
+            ["-c", "5", "--cpus"].iter(),
+            &arguments[..],
+            |name, value| {
+                assert_eq!(name, "cpus");
+                assert_eq!(value, Some("5"));
+                Ok(())
+            },
+        );
+        assert!(not_match_res.is_err());
     }
 
     #[test]
