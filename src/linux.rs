@@ -1346,6 +1346,12 @@ fn run_vcpu(
                         }
                         Ok(VcpuExit::Hlt) => break,
                         Ok(VcpuExit::Shutdown) => break,
+                        Ok(VcpuExit::FailEntry {
+                            hardware_entry_failure_reason,
+                        }) => {
+                            error!("vcpu hw run failure: {:#x}", hardware_entry_failure_reason);
+                            break;
+                        },
                         Ok(VcpuExit::SystemEvent(_, _)) => break,
                         Ok(r) => warn!("unexpected vcpu exit: {:?}", r),
                         Err(e) => match e.errno() {

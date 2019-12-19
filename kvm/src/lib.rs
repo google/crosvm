@@ -1128,7 +1128,9 @@ pub enum VcpuExit {
     Hlt,
     IrqWindowOpen,
     Shutdown,
-    FailEntry,
+    FailEntry {
+        hardware_entry_failure_reason: u64,
+    },
     Intr,
     SetTpr,
     TprAccess,
@@ -1786,7 +1788,18 @@ impl RunnableVcpu {
                 KVM_EXIT_HLT => Ok(VcpuExit::Hlt),
                 KVM_EXIT_IRQ_WINDOW_OPEN => Ok(VcpuExit::IrqWindowOpen),
                 KVM_EXIT_SHUTDOWN => Ok(VcpuExit::Shutdown),
-                KVM_EXIT_FAIL_ENTRY => Ok(VcpuExit::FailEntry),
+                KVM_EXIT_FAIL_ENTRY => {
+                    // Safe because the exit_reason (which comes from the kernel) told us which
+                    // union field to use.
+                    let hardware_entry_failure_reason = unsafe {
+                        run.__bindgen_anon_1
+                            .fail_entry
+                            .hardware_entry_failure_reason
+                    };
+                    Ok(VcpuExit::FailEntry {
+                        hardware_entry_failure_reason,
+                    })
+                }
                 KVM_EXIT_INTR => Ok(VcpuExit::Intr),
                 KVM_EXIT_SET_TPR => Ok(VcpuExit::SetTpr),
                 KVM_EXIT_TPR_ACCESS => Ok(VcpuExit::TprAccess),
