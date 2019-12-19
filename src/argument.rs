@@ -299,9 +299,9 @@ where
                         arg_consumed = false;
                         f(&name, None)?;
                     } else {
-                        if let Err(_) = f(&name, Some(&arg)) {
+                        if let Err(e) = f(&name, Some(&arg)) {
                             arg_consumed = false;
-                            f(&name, None)?;
+                            f(&name, None).map_err(|_| e)?;
                         }
                     }
                     State::Top
