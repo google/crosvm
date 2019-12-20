@@ -229,7 +229,7 @@ impl PortId {
         *self.0.lock() = 0;
     }
 
-    fn get(&self) -> Result<(u8)> {
+    fn get(&self) -> Result<u8> {
         let val = *self.0.lock();
         if val == 0 {
             return Err(Error::BadPortId(val));

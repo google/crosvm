@@ -631,7 +631,7 @@ impl X8664arch {
         exit_evt: EventFd,
         pci: Option<Arc<Mutex<devices::PciConfigIo>>>,
         mem_size: u64,
-    ) -> Result<(devices::Bus)> {
+    ) -> Result<devices::Bus> {
         struct NoDevice;
         impl devices::BusDevice for NoDevice {
             fn debug_label(&self) -> String {
