@@ -50,7 +50,7 @@ use sys_util::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_rt_signal_handler,
     set_cpu_affinity, validate_raw_fd, warn, EventFd, FlockOperation, GuestAddress, GuestMemory,
-    Killable, MemoryMapping, PollContext, PollToken, Protection, SignalFd, Terminal, TimerFd,
+    Killable, MemoryMappingArena, PollContext, PollToken, Protection, SignalFd, Terminal, TimerFd,
     WatchingEvents, SIGRTMIN,
 };
 use vhost;
@@ -841,9 +841,26 @@ fn create_pmem_device(
         .open(&disk.path)
         .map_err(Error::Disk)?;
 
-    let image_size = {
+    let (disk_size, arena_size) = {
         let metadata = std::fs::metadata(&disk.path).map_err(Error::Disk)?;
-        metadata.len()
+        let disk_len = metadata.len();
+        // Linux requires pmem region sizes to be 2 MiB aligned. Linux will fill any partial page
+        // at the end of an mmap'd file and won't write back beyond the actual file length, but if
+        // we just align the size of the file to 2 MiB then access beyond the last page of the
+        // mapped file will generate SIGBUS. So use a memory mapping arena that will provide
+        // padding up to 2 MiB.
+        let alignment = 2 * 1024 * 1024;
+        let align_adjust = if disk_len % alignment != 0 {
+            alignment - (disk_len % alignment)
+        } else {
+            0
+        };
+        (
+            disk_len,
+            disk_len
+                .checked_add(align_adjust)
+                .ok_or(Error::PmemDeviceImageTooBig)?,
+        )
     };
 
     let protection = {
@@ -854,18 +871,22 @@ fn create_pmem_device(
         }
     };
 
-    let memory_mapping = {
+    let arena = {
         // Conversion from u64 to usize may fail on 32bit system.
-        let image_size = usize::try_from(image_size).map_err(|_| Error::PmemDeviceImageTooBig)?;
+        let arena_size = usize::try_from(arena_size).map_err(|_| Error::PmemDeviceImageTooBig)?;
+        let disk_size = usize::try_from(disk_size).map_err(|_| Error::PmemDeviceImageTooBig)?;
 
-        MemoryMapping::from_fd_offset_protection(&fd, image_size, 0, protection)
-            .map_err(Error::ReservePmemMemory)?
+        let mut arena = MemoryMappingArena::new(arena_size).map_err(Error::ReservePmemMemory)?;
+        arena
+            .add_fd_offset_protection(0, disk_size, &fd, 0, protection)
+            .map_err(Error::ReservePmemMemory)?;
+        arena
     };
 
     let mapping_address = resources
         .mmio_allocator(MmioType::High)
         .allocate_with_align(
-            image_size,
+            arena_size,
             Alloc::PmemDevice(index),
             format!("pmem_disk_image_{}", index),
             // Linux kernel requires pmem namespaces to be 128 MiB aligned.
@@ -873,15 +894,15 @@ fn create_pmem_device(
         )
         .map_err(Error::AllocatePmemDeviceAddress)?;
 
-    vm.add_mmio_memory(
+    vm.add_mmap_arena(
         GuestAddress(mapping_address),
-        memory_mapping,
+        arena,
         /* read_only = */ disk.read_only,
         /* log_dirty_pages = */ false,
     )
     .map_err(Error::AddPmemDeviceMemory)?;
 
-    let dev = virtio::Pmem::new(fd, GuestAddress(mapping_address), image_size)
+    let dev = virtio::Pmem::new(fd, GuestAddress(mapping_address), arena_size)
         .map_err(Error::PmemDeviceNew)?;
 
     Ok(VirtioDeviceStub {
