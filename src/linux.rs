@@ -320,7 +320,7 @@ fn create_base_minijail(
     // Run in an empty network namespace.
     j.namespace_net();
     // Most devices don't need to open many fds.
-    j.set_rlimit(libc::RLIMIT_NOFILE, 1024, 1024)
+    j.set_rlimit(libc::RLIMIT_NOFILE as i32, 1024, 1024)
         .map_err(Error::SettingMaxOpenFiles)?;
     // Apply the block device seccomp policy.
     j.no_new_privs();
@@ -796,7 +796,7 @@ fn create_fs_device(
 
     // The file server opens a lot of fds and needs a really high open file limit.
     let max_open_files = get_max_open_files()?;
-    j.set_rlimit(libc::RLIMIT_NOFILE, max_open_files, max_open_files)
+    j.set_rlimit(libc::RLIMIT_NOFILE as i32, max_open_files, max_open_files)
         .map_err(Error::SettingMaxOpenFiles)?;
 
     // TODO(chirantan): Use more than one worker once the kernel driver has been fixed to not panic
