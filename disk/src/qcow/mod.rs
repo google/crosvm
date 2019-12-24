@@ -10,31 +10,35 @@ use data_model::{VolatileMemory, VolatileSlice};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
 use remain::sorted;
 use sys_util::{
-    error, FileAllocate, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync,
-    PunchHole, SeekHole, WriteZeroesAt,
+    error, AsRawFds, FileAllocate, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen,
+    FileSync, PunchHole, SeekHole, WriteZeroesAt,
 };
 
 use std::cmp::{max, min};
 use std::fmt::{self, Display};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::str;
 
 use crate::qcow::qcow_raw_file::QcowRawFile;
 use crate::qcow::refcount::RefCount;
 use crate::qcow::vec_cache::{CacheMap, Cacheable, VecCache};
-use crate::{DiskFile, DiskGetLen};
+use crate::{create_disk_file, DiskFile, DiskGetLen};
 
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
-    BackingFilesNotSupported,
+    BackingFileIo(io::Error),
+    BackingFileOpen(Box<crate::Error>),
+    BackingFileTooLong(usize),
     CompressedBlocksNotSupported,
     EvictingCache(io::Error),
     FileTooBig(u64),
     GettingFileSize(io::Error),
     GettingRefcount(refcount::Error),
+    InvalidBackingFileName(str::Utf8Error),
     InvalidClusterIndex,
     InvalidClusterSize,
     InvalidIndex,
@@ -74,7 +78,11 @@ impl Display for Error {
 
         #[sorted]
         match self {
-            BackingFilesNotSupported => write!(f, "backing files not supported"),
+            BackingFileIo(e) => write!(f, "backing file io error: {}", e),
+            BackingFileOpen(e) => write!(f, "backing file open error: {}", *e),
+            BackingFileTooLong(len) => {
+                write!(f, "backing file name is too long: {} bytes over", len)
+            }
             CompressedBlocksNotSupported => write!(f, "compressed blocks not supported"),
             EvictingCache(e) => write!(f, "failed to evict cache: {}", e),
             FileTooBig(size) => write!(
@@ -84,6 +92,7 @@ impl Display for Error {
             ),
             GettingFileSize(e) => write!(f, "failed to get file size: {}", e),
             GettingRefcount(e) => write!(f, "failed to get refcount: {}", e),
+            InvalidBackingFileName(e) => write!(f, "failed to parse filename: {}", e),
             InvalidClusterIndex => write!(f, "invalid cluster index"),
             InvalidClusterSize => write!(f, "invalid cluster size"),
             InvalidIndex => write!(f, "invalid index"),
@@ -144,8 +153,14 @@ const COMPRESSED_FLAG: u64 = 1 << 62;
 const CLUSTER_USED_FLAG: u64 = 1 << 63;
 const COMPATIBLE_FEATURES_LAZY_REFCOUNTS: u64 = 1 << 0;
 
+// The format supports a "header extension area", that crosvm does not use.
+const QCOW_EMPTY_HEADER_EXTENSION_SIZE: u32 = 8;
+
+// Defined by the specification
+const MAX_BACKING_FILE_SIZE: u32 = 1023;
+
 /// Contains the information from the header of a qcow file.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct QcowHeader {
     pub magic: u32,
     pub version: u32,
@@ -172,6 +187,9 @@ pub struct QcowHeader {
     pub autoclear_features: u64,
     pub refcount_order: u32,
     pub header_size: u32,
+
+    // Post-header entries
+    pub backing_file_path: Option<String>,
 }
 
 // Reads the next u16 from the file.
@@ -211,7 +229,7 @@ impl QcowHeader {
             return Err(Error::InvalidMagic);
         }
 
-        Ok(QcowHeader {
+        let mut header = QcowHeader {
             magic,
             version: read_u32_from_file(f)?,
             backing_file_offset: read_u64_from_file(f)?,
@@ -230,24 +248,50 @@ impl QcowHeader {
             autoclear_features: read_u64_from_file(f)?,
             refcount_order: read_u32_from_file(f)?,
             header_size: read_u32_from_file(f)?,
-        })
+            backing_file_path: None,
+        };
+        if header.backing_file_size > MAX_BACKING_FILE_SIZE {
+            return Err(Error::BackingFileTooLong(header.backing_file_size as usize));
+        }
+        if header.backing_file_offset != 0 {
+            f.seek(SeekFrom::Start(header.backing_file_offset))
+                .map_err(Error::ReadingHeader)?;
+            let mut backing_file_name_bytes = vec![0u8; header.backing_file_size as usize];
+            f.read_exact(&mut backing_file_name_bytes)
+                .map_err(Error::ReadingHeader)?;
+            header.backing_file_path = Some(
+                String::from_utf8(backing_file_name_bytes)
+                    .map_err(|err| Error::InvalidBackingFileName(err.utf8_error()))?,
+            );
+        }
+        Ok(header)
     }
 
-    /// Create a header for the given `size`.
-    pub fn create_for_size(size: u64) -> QcowHeader {
+    pub fn create_for_size_and_path(size: u64, backing_file: Option<&str>) -> Result<QcowHeader> {
         let cluster_bits: u32 = DEFAULT_CLUSTER_BITS;
         let cluster_size: u32 = 0x01 << cluster_bits;
+        let max_length: usize =
+            (cluster_size - V3_BARE_HEADER_SIZE - QCOW_EMPTY_HEADER_EXTENSION_SIZE) as usize;
+        if let Some(path) = backing_file {
+            if path.len() > max_length {
+                return Err(Error::BackingFileTooLong(path.len() - max_length));
+            }
+        }
         // L2 blocks are always one cluster long. They contain cluster_size/sizeof(u64) addresses.
         let l2_size: u32 = cluster_size / size_of::<u64>() as u32;
         let num_clusters: u32 = div_round_up_u64(size, u64::from(cluster_size)) as u32;
         let num_l2_clusters: u32 = div_round_up_u32(num_clusters, l2_size);
         let l1_clusters: u32 = div_round_up_u32(num_l2_clusters, cluster_size);
         let header_clusters = div_round_up_u32(size_of::<QcowHeader>() as u32, cluster_size);
-        QcowHeader {
+        Ok(QcowHeader {
             magic: QCOW_MAGIC,
             version: 3,
-            backing_file_offset: 0,
-            backing_file_size: 0,
+            backing_file_offset: (if backing_file.is_none() {
+                0
+            } else {
+                V3_BARE_HEADER_SIZE + QCOW_EMPTY_HEADER_EXTENSION_SIZE
+            }) as u64,
+            backing_file_size: backing_file.map_or(0, |x| x.len()) as u32,
             cluster_bits: DEFAULT_CLUSTER_BITS,
             size,
             crypt_method: 0,
@@ -277,7 +321,8 @@ impl QcowHeader {
             autoclear_features: 0,
             refcount_order: DEFAULT_REFCOUNT_ORDER,
             header_size: V3_BARE_HEADER_SIZE,
-        }
+            backing_file_path: backing_file.map(|x| String::from(x)),
+        })
     }
 
     /// Write the header to `file`.
@@ -312,6 +357,11 @@ impl QcowHeader {
         write_u64_to_file(file, self.autoclear_features)?;
         write_u32_to_file(file, self.refcount_order)?;
         write_u32_to_file(file, self.header_size)?;
+        write_u32_to_file(file, 0)?; // header extension type: end of header extension area
+        write_u32_to_file(file, 0)?; // length of header extension data: 0
+        if let Some(backing_file_path) = self.backing_file_path.as_ref() {
+            write!(file, "{}", backing_file_path).map_err(Error::WritingHeader)?;
+        }
 
         // Set the file length by seeking and writing a zero to the last byte. This avoids needing
         // a `File` instead of anything that implements seek as the `file` argument.
@@ -365,7 +415,7 @@ pub struct QcowFile {
     // List of unreferenced clusters available to be used. unref clusters become available once the
     // removal of references to them have been synced to disk.
     avail_clusters: Vec<u64>,
-    //TODO(dgreid) Add support for backing files. - backing_file: Option<Box<QcowFile<T>>>,
+    backing_file: Option<Box<dyn DiskFile>>,
 }
 
 impl QcowFile {
@@ -394,10 +444,18 @@ impl QcowFile {
             return Err(Error::FileTooBig(header.size));
         }
 
-        // No current support for backing files.
-        if header.backing_file_offset != 0 {
-            return Err(Error::BackingFilesNotSupported);
-        }
+        let backing_file = if let Some(backing_file_path) = header.backing_file_path.as_ref() {
+            let path = backing_file_path.clone();
+            let backing_raw_file = OpenOptions::new()
+                .read(true)
+                .open(path)
+                .map_err(Error::BackingFileIo)?;
+            let backing_file = create_disk_file(backing_raw_file)
+                .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
+            Some(backing_file)
+        } else {
+            None
+        };
 
         // Only support two byte refcounts.
         let refcount_bits: u64 = 0x01u64
@@ -412,7 +470,6 @@ impl QcowFile {
         if header.refcount_table_clusters == 0 {
             return Err(Error::NoRefcountClusters);
         }
-        offset_is_cluster_boundary(header.backing_file_offset, header.cluster_bits)?;
         offset_is_cluster_boundary(header.l1_table_offset, header.cluster_bits)?;
         offset_is_cluster_boundary(header.snapshots_offset, header.cluster_bits)?;
         // refcount table must be a cluster boundary, and within the file's virtual or actual size.
@@ -444,7 +501,7 @@ impl QcowFile {
         let mut raw_file =
             QcowRawFile::from(file, cluster_size).ok_or(Error::InvalidClusterSize)?;
         if refcount_rebuild_required {
-            QcowFile::rebuild_refcounts(&mut raw_file, header)?;
+            QcowFile::rebuild_refcounts(&mut raw_file, header.clone())?;
         }
 
         let l2_size = cluster_size / size_of::<u64>() as u64;
@@ -500,6 +557,7 @@ impl QcowFile {
             current_offset: 0,
             unref_clusters: Vec::new(),
             avail_clusters: Vec::new(),
+            backing_file,
         };
 
         // Check that the L1 and refcount tables fit in a 64bit address space.
@@ -518,8 +576,27 @@ impl QcowFile {
     }
 
     /// Creates a new QcowFile at the given path.
-    pub fn new(mut file: File, virtual_size: u64) -> Result<QcowFile> {
-        let header = QcowHeader::create_for_size(virtual_size);
+    pub fn new(file: File, virtual_size: u64) -> Result<QcowFile> {
+        let header = QcowHeader::create_for_size_and_path(virtual_size, None)?;
+        QcowFile::new_from_header(file, header)
+    }
+
+    /// Creates a new QcowFile at the given path.
+    pub fn new_from_backing(file: File, backing_file_name: &str) -> Result<QcowFile> {
+        let backing_raw_file = OpenOptions::new()
+            .read(true)
+            .open(backing_file_name)
+            .map_err(Error::BackingFileIo)?;
+        let backing_file =
+            create_disk_file(backing_raw_file).map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
+        let size = backing_file.get_len().map_err(Error::BackingFileIo)?;
+        let header = QcowHeader::create_for_size_and_path(size, Some(backing_file_name))?;
+        let mut result = QcowFile::new_from_header(file, header)?;
+        result.backing_file = Some(backing_file);
+        Ok(result)
+    }
+
+    fn new_from_header(mut file: File, header: QcowHeader) -> Result<QcowFile> {
         file.seek(SeekFrom::Start(0)).map_err(Error::SeekingFile)?;
         header.write_to(&mut file)?;
 
@@ -862,9 +939,9 @@ impl QcowFile {
 
         // Find all references clusters and rebuild refcounts.
         set_header_refcount(&mut refcounts, cluster_size)?;
-        set_l1_refcounts(&mut refcounts, header, cluster_size)?;
-        set_data_refcounts(&mut refcounts, header, cluster_size, raw_file)?;
-        set_refcount_table_refcounts(&mut refcounts, header, cluster_size)?;
+        set_l1_refcounts(&mut refcounts, header.clone(), cluster_size)?;
+        set_data_refcounts(&mut refcounts, header.clone(), cluster_size, raw_file)?;
+        set_refcount_table_refcounts(&mut refcounts, header.clone(), cluster_size)?;
 
         // Allocate clusters to store the new reference count blocks.
         let ref_table = alloc_refblocks(
@@ -1424,9 +1501,13 @@ impl Drop for QcowFile {
     }
 }
 
-impl AsRawFd for QcowFile {
-    fn as_raw_fd(&self) -> RawFd {
-        self.raw_file.file().as_raw_fd()
+impl AsRawFds for QcowFile {
+    fn as_raw_fds(&self) -> Vec<RawFd> {
+        let mut fds = vec![self.raw_file.file().as_raw_fd()];
+        if let Some(backing) = &self.backing_file {
+            fds.append(&mut backing.as_raw_fds());
+        }
+        fds
     }
 }
 
@@ -1739,10 +1820,11 @@ mod tests {
 
     #[test]
     fn default_header() {
-        let header = QcowHeader::create_for_size(0x10_0000);
+        let header = QcowHeader::create_for_size_and_path(0x10_0000, None);
         let shm = SharedMemory::anon().unwrap();
         let mut disk_file: File = shm.into();
         header
+            .expect("Failed to create header.")
             .write_to(&mut disk_file)
             .expect("Failed to write header to shm.");
         disk_file.seek(SeekFrom::Start(0)).unwrap();
@@ -1754,6 +1836,24 @@ mod tests {
         with_basic_file(&valid_header(), |mut disk_file: File| {
             QcowHeader::new(&mut disk_file).expect("Failed to create Header.");
         });
+    }
+
+    #[test]
+    fn header_with_backing() {
+        let header = QcowHeader::create_for_size_and_path(0x10_0000, Some("/my/path/to/a/file"))
+            .expect("Failed to create header.");
+        let shm = SharedMemory::anon().unwrap();
+        let mut disk_file: File = shm.into();
+        header
+            .write_to(&mut disk_file)
+            .expect("Failed to write header to shm.");
+        disk_file.seek(SeekFrom::Start(0)).unwrap();
+        let read_header = QcowHeader::new(&mut disk_file).expect("Failed to create header.");
+        assert_eq!(
+            header.backing_file_path,
+            Some(String::from("/my/path/to/a/file"))
+        );
+        assert_eq!(read_header.backing_file_path, header.backing_file_path);
     }
 
     #[test]

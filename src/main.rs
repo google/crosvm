@@ -1385,34 +1385,82 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::BalloonCommand(command), args)
 }
 
-fn create_qcow2(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() != 2 {
-        print_help("crosvm create_qcow2", "PATH SIZE", &[]);
-        println!("Create a new QCOW2 image at `PATH` of the specified `SIZE` in bytes.");
+fn create_qcow2(args: std::env::Args) -> std::result::Result<(), ()> {
+    let arguments = [
+        Argument::positional("PATH", "where to create the qcow2 image"),
+        Argument::positional("[SIZE]", "the expanded size of the image"),
+        Argument::value(
+            "backing_file",
+            "path/to/file",
+            " the file to back the image",
+        ),
+    ];
+    let mut positional_index = 0;
+    let mut file_path = String::from("");
+    let mut size: Option<u64> = None;
+    let mut backing_file: Option<String> = None;
+    set_arguments(args, &arguments[..], |name, value| {
+        match (name, positional_index) {
+            ("", 0) => {
+                // NAME
+                positional_index += 1;
+                file_path = value.unwrap().to_owned();
+            }
+            ("", 1) => {
+                // [SIZE]
+                positional_index += 1;
+                size = Some(value.unwrap().parse::<u64>().map_err(|_| {
+                    argument::Error::InvalidValue {
+                        value: value.unwrap().to_owned(),
+                        expected: "SIZE should be a nonnegative integer",
+                    }
+                })?);
+            }
+            ("", _) => {
+                return Err(argument::Error::TooManyArguments(
+                    "Expected at most 2 positional arguments".to_owned(),
+                ));
+            }
+            ("backing_file", _) => {
+                backing_file = value.map(|x| x.to_owned());
+            }
+            _ => unreachable!(),
+        };
+        Ok(())
+    })
+    .map_err(|e| {
+        error!("Unable to parse command line arguments: {}", e);
+    })?;
+    if file_path.len() == 0 || !(size.is_some() ^ backing_file.is_some()) {
+        print_help("crosvm create_qcow2", "PATH [SIZE]", &arguments);
+        println!(
+            "Create a new QCOW2 image at `PATH` of either the specified `SIZE` in bytes or
+with a '--backing_file'."
+        );
         return Err(());
     }
-    let file_path = args.nth(0).unwrap();
-    let size: u64 = match args.nth(0).unwrap().parse::<u64>() {
-        Ok(n) => n,
-        Err(_) => {
-            error!("Failed to parse size of the disk.");
-            return Err(());
-        }
-    };
 
     let file = OpenOptions::new()
         .create(true)
         .read(true)
         .write(true)
+        .truncate(true)
         .open(&file_path)
         .map_err(|e| {
             error!("Failed opening qcow file at '{}': {}", file_path, e);
         })?;
 
-    QcowFile::new(file, size).map_err(|e| {
-        error!("Failed to create qcow file at '{}': {}", file_path, e);
-    })?;
-
+    match (size, backing_file) {
+        (Some(size), None) => QcowFile::new(file, size).map_err(|e| {
+            error!("Failed to create qcow file at '{}': {}", file_path, e);
+        })?,
+        (None, Some(backing_file)) => {
+            QcowFile::new_from_backing(file, &backing_file).map_err(|e| {
+                error!("Failed to create qcow file at '{}': {}", file_path, e);
+            })?
+        }
+        _ => unreachable!(),
+    };
     Ok(())
 }
 
