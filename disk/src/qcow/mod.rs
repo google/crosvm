@@ -24,7 +24,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use crate::qcow::qcow_raw_file::QcowRawFile;
 use crate::qcow::refcount::RefCount;
 use crate::qcow::vec_cache::{CacheMap, Cacheable, VecCache};
-use crate::DiskGetLen;
+use crate::{DiskFile, DiskGetLen};
 
 #[sorted]
 #[derive(Debug)]
@@ -1364,13 +1364,13 @@ impl QcowFile {
         Ok(())
     }
 
-    // Reads `count` bytes starting at `address`, calling `cb` repeatedly with the backing file,
-    // number of bytes read so far, and number of bytes to read from the file in that invocation. If
-    // None is given to `cb` in place of the backing file, the `cb` should infer zeros would have
-    // been read.
+    // Reads `count` bytes starting at `address`, calling `cb` repeatedly with the data source,
+    // number of bytes read so far, offset to read from, and number of bytes to read from the file
+    // in that invocation. If None is given to `cb` in place of the backing file, the `cb` should
+    // infer zeros would have been read.
     fn read_cb<F>(&mut self, address: u64, count: usize, mut cb: F) -> std::io::Result<usize>
     where
-        F: FnMut(Option<&mut File>, usize, usize) -> std::io::Result<()>,
+        F: FnMut(Option<&mut dyn DiskFile>, usize, u64, usize) -> std::io::Result<()>,
     {
         let read_count: usize = self.limit_range_file(address, count);
 
@@ -1381,10 +1381,9 @@ impl QcowFile {
             let count = self.limit_range_cluster(curr_addr, read_count - nread);
 
             if let Some(offset) = file_offset {
-                self.raw_file.file_mut().seek(SeekFrom::Start(offset))?;
-                cb(Some(self.raw_file.file_mut()), nread, count)?;
+                cb(Some(self.raw_file.file_mut()), nread, offset, count)?;
             } else {
-                cb(None, nread, count)?;
+                cb(None, nread, 0, count)?;
             }
 
             nread += count;
@@ -1433,20 +1432,21 @@ impl AsRawFd for QcowFile {
 
 impl Read for QcowFile {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let read_count =
-            self.read_cb(
-                self.current_offset,
-                buf.len(),
-                |file, offset, count| match file {
-                    Some(f) => f.read_exact(&mut buf[offset..(offset + count)]),
+        let slice = buf.get_slice(0, buf.len() as u64).unwrap();
+        let read_count = self.read_cb(
+            self.current_offset,
+            buf.len(),
+            |file, already_read, offset, count| {
+                let sub_slice = slice.get_slice(already_read as u64, count as u64).unwrap();
+                match file {
+                    Some(f) => f.read_exact_at_volatile(sub_slice, offset),
                     None => {
-                        for b in &mut buf[offset..(offset + count)] {
-                            *b = 0;
-                        }
+                        sub_slice.write_bytes(0);
                         Ok(())
                     }
-                },
-            )?;
+                }
+            },
+        )?;
         self.current_offset += read_count as u64;
         Ok(read_count)
     }
@@ -1506,10 +1506,10 @@ impl FileReadWriteVolatile for QcowFile {
         let read_count = self.read_cb(
             self.current_offset,
             slice.size() as usize,
-            |file, offset, count| {
-                let sub_slice = slice.get_slice(offset as u64, count as u64).unwrap();
+            |file, read, offset, count| {
+                let sub_slice = slice.get_slice(read as u64, count as u64).unwrap();
                 match file {
-                    Some(f) => f.read_exact_volatile(sub_slice),
+                    Some(f) => f.read_exact_at_volatile(sub_slice, offset),
                     None => {
                         sub_slice.write_bytes(0);
                         Ok(())
@@ -1537,16 +1537,20 @@ impl FileReadWriteVolatile for QcowFile {
 
 impl FileReadWriteAtVolatile for QcowFile {
     fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
-        self.read_cb(offset, slice.size() as usize, |file, offset, count| {
-            let sub_slice = slice.get_slice(offset as u64, count as u64).unwrap();
-            match file {
-                Some(f) => f.read_exact_volatile(sub_slice),
-                None => {
-                    sub_slice.write_bytes(0);
-                    Ok(())
+        self.read_cb(
+            offset,
+            slice.size() as usize,
+            |file, read, offset, count| {
+                let sub_slice = slice.get_slice(read as u64, count as u64).unwrap();
+                match file {
+                    Some(f) => f.read_exact_at_volatile(sub_slice, offset),
+                    None => {
+                        sub_slice.write_bytes(0);
+                        Ok(())
+                    }
                 }
-            }
-        })
+            },
+        )
     }
 
     fn write_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
