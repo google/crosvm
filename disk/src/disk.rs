@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::cmp::min;
-use std::fmt::{self, Display};
+use std::fmt::{self, Debug, Display};
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
@@ -66,6 +66,7 @@ pub trait DiskFile:
     + WriteZeroesAt
     + Send
     + AsRawFds
+    + Debug
 {
 }
 impl<
@@ -76,7 +77,8 @@ impl<
             + FileReadWriteAtVolatile
             + WriteZeroesAt
             + Send
-            + AsRawFds,
+            + AsRawFds
+            + Debug,
     > DiskFile for D
 {
 }

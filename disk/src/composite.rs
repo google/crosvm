@@ -49,6 +49,7 @@ impl Display for Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Debug)]
 struct ComponentDiskPart {
     file: Box<dyn DiskFile>,
     offset: u64,
@@ -65,6 +66,7 @@ impl ComponentDiskPart {
 /// disk by a protocol buffer file that lists out the component file locations and their offsets
 /// and lengths on the virtual disk. The spaces covered by the component disks must be contiguous
 /// and not overlapping.
+#[derive(Debug)]
 pub struct CompositeDiskFile {
     component_disks: Vec<ComponentDiskPart>,
 }
