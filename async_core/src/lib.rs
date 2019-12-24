@@ -7,5 +7,8 @@
 //! crate.
 
 mod eventfd;
+mod timerfd;
 
 pub use eventfd::EventFd;
+pub use timerfd::Error as TimerFdError;
+pub use timerfd::TimerFd;
