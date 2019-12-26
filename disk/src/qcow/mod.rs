@@ -620,6 +620,10 @@ impl QcowFile {
         Ok(qcow)
     }
 
+    pub fn set_backing_file(&mut self, backing: Option<Box<dyn DiskFile>>) {
+        self.backing_file = backing;
+    }
+
     /// Returns the `QcowHeader` for this file.
     pub fn header(&self) -> &QcowHeader {
         &self.header
@@ -1459,6 +1463,8 @@ impl QcowFile {
 
             if let Some(offset) = file_offset {
                 cb(Some(self.raw_file.file_mut()), nread, offset, count)?;
+            } else if let Some(backing) = self.backing_file.as_mut() {
+                cb(Some(backing.as_mut()), nread, curr_addr, count)?;
             } else {
                 cb(None, nread, 0, count)?;
             }
@@ -1795,17 +1801,20 @@ mod tests {
         ]
     }
 
-    fn with_basic_file<F>(header: &[u8], mut testfn: F)
-    where
-        F: FnMut(File),
-    {
+    fn basic_file(header: &[u8]) -> File {
         let shm = SharedMemory::anon().unwrap();
         let mut disk_file: File = shm.into();
         disk_file.write_all(&header).unwrap();
         disk_file.set_len(0x1_0000_0000).unwrap();
         disk_file.seek(SeekFrom::Start(0)).unwrap();
+        disk_file
+    }
 
-        testfn(disk_file); // File closed when the function exits.
+    fn with_basic_file<F>(header: &[u8], mut testfn: F)
+    where
+        F: FnMut(File),
+    {
+        testfn(basic_file(header)); // File closed when the function exits.
     }
 
     fn with_default_file<F>(file_size: u64, mut testfn: F)
@@ -1968,6 +1977,22 @@ mod tests {
             q.read(&mut buf).expect("Failed to read.");
             assert_eq!(&buf, b"test");
         });
+    }
+
+    #[test]
+    fn write_read_start_backing() {
+        let disk_file = basic_file(&valid_header());
+        let mut backing = QcowFile::from(disk_file).unwrap();
+        backing
+            .write(b"test first bytes")
+            .expect("Failed to write test string.");
+        let mut buf = [0u8; 4];
+        let wrapping_disk_file = basic_file(&valid_header());
+        let mut wrapping = QcowFile::from(wrapping_disk_file).unwrap();
+        wrapping.set_backing_file(Some(Box::new(backing)));
+        wrapping.seek(SeekFrom::Start(0)).expect("Failed to seek.");
+        wrapping.read(&mut buf).expect("Failed to read.");
+        assert_eq!(&buf, b"test");
     }
 
     #[test]
