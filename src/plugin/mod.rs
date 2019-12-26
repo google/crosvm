@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use libc::{
     c_int, c_ulong, fcntl, ioctl, socketpair, AF_UNIX, EAGAIN, EBADF, EDEADLK, EEXIST, EINTR,
     EINVAL, ENOENT, EOVERFLOW, EPERM, FIOCLEX, F_SETPIPE_SZ, MS_NODEV, MS_NOEXEC, MS_NOSUID,
-    SIGCHLD, SOCK_SEQPACKET,
+    MS_RDONLY, SIGCHLD, SOCK_SEQPACKET,
 };
 
 use protobuf::ProtobufError;
@@ -70,6 +70,7 @@ pub enum Error {
     MountLib64(io_jail::Error),
     MountPlugin(io_jail::Error),
     MountPluginLib(io_jail::Error),
+    MountProc(io_jail::Error),
     MountRoot(io_jail::Error),
     NoRootDir,
     ParsePivotRoot(io_jail::Error),
@@ -133,7 +134,9 @@ impl Display for Error {
             DropCapabilities(e) => write!(f, "failed to drop process capabilities: {}", e),
             EncodeResponse(e) => write!(f, "failed to encode plugin response: {}", e),
             Mount(e) | MountDev(e) | MountLib(e) | MountLib64(e) | MountPlugin(e)
-            | MountPluginLib(e) | MountRoot(e) => write!(f, "failed to mount: {}", e),
+            | MountPluginLib(e) | MountProc(e) | MountRoot(e) => {
+                write!(f, "failed to mount: {}", e)
+            }
             NoRootDir => write!(f, "no root directory for jailed process to pivot root into"),
             ParsePivotRoot(e) => write!(f, "failed to set jail pivot root: {}", e),
             ParseSeccomp(e) => write!(f, "failed to parse jail seccomp filter: {}", e),
@@ -306,6 +309,16 @@ fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) ->
         "size=67108864",
     )
     .map_err(Error::MountRoot)?;
+
+    // Because we requested to "run as init", minijail will not mount /proc for us even though
+    // plugin will be running in its own PID namespace, so we have to mount it ourselves.
+    j.mount(
+        Path::new("proc"),
+        Path::new("/proc"),
+        "proc",
+        (MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RDONLY) as usize,
+    )
+    .map_err(Error::MountProc)?;
 
     Ok(j)
 }
