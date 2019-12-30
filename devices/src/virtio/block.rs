@@ -298,13 +298,13 @@ impl Worker {
         queue_index: usize,
         flush_timer: &mut TimerFd,
         flush_timer_armed: &mut bool,
-    ) -> bool {
+    ) {
         let queue = &mut self.queues[queue_index];
 
         let disk_size = self.disk_size.lock();
 
-        let mut needs_interrupt = false;
         while let Some(avail_desc) = queue.pop(&self.mem) {
+            queue.set_notify(&self.mem, false);
             let desc_index = avail_desc.index;
 
             let len = match Worker::process_one_request(
@@ -325,10 +325,9 @@ impl Worker {
             };
 
             queue.add_used(&self.mem, desc_index, len as u32);
-            needs_interrupt = true;
+            self.interrupt.signal_used_queue(queue.vector);
+            queue.set_notify(&self.mem, true);
         }
-
-        needs_interrupt
     }
 
     fn resize(&mut self, new_size: u64) -> DiskControlResult {
@@ -419,9 +418,7 @@ impl Worker {
                             error!("failed reading queue EventFd: {}", e);
                             break 'poll;
                         }
-                        if self.process_queue(0, &mut flush_timer, &mut flush_timer_armed) {
-                            self.interrupt.signal_used_queue(self.queues[0].vector);
-                        }
+                        self.process_queue(0, &mut flush_timer, &mut flush_timer_armed);
                     }
                     Token::ControlRequest => {
                         let req = match self.control_socket.recv() {

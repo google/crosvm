@@ -15,6 +15,8 @@ const VIRTQ_DESC_F_WRITE: u16 = 0x2;
 #[allow(dead_code)]
 const VIRTQ_DESC_F_INDIRECT: u16 = 0x4;
 
+const VIRTQ_USED_F_NO_NOTIFY: u16 = 0x1;
+
 /// An iterator over a single descriptor chain.  Not to be confused with AvailIter,
 /// which iterates over the descriptor chain heads in a queue.
 pub struct DescIter<'a> {
@@ -380,5 +382,17 @@ impl Queue {
 
         mem.write_obj_at_addr(self.next_used.0 as u16, used_ring.unchecked_add(2))
             .unwrap();
+    }
+
+    /// Enable / Disable guest notify device that requests are available on
+    /// the descriptor chain.
+    pub fn set_notify(&mut self, mem: &GuestMemory, enable: bool) {
+        let mut used_flags: u16 = mem.read_obj_from_addr(self.used_ring).unwrap();
+        if enable {
+            used_flags &= !VIRTQ_USED_F_NO_NOTIFY;
+        } else {
+            used_flags |= VIRTQ_USED_F_NO_NOTIFY;
+        }
+        mem.write_obj_at_addr(used_flags, self.used_ring).unwrap();
     }
 }
