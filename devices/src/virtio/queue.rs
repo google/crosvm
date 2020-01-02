@@ -224,6 +224,9 @@ pub struct Queue {
 
     next_avail: Wrapping<u16>,
     next_used: Wrapping<u16>,
+
+    // Device feature bits accepted by the driver
+    features: u64,
 }
 
 impl Queue {
@@ -239,6 +242,7 @@ impl Queue {
             used_ring: GuestAddress(0),
             next_avail: Wrapping(0),
             next_used: Wrapping(0),
+            features: 0,
         }
     }
 
@@ -258,6 +262,7 @@ impl Queue {
         self.used_ring = GuestAddress(0);
         self.next_avail = Wrapping(0);
         self.next_used = Wrapping(0);
+        self.features = 0;
     }
 
     pub fn is_valid(&self, mem: &GuestMemory) -> bool {
@@ -412,5 +417,10 @@ impl Queue {
         if self.available_interrupt_enabled(mem) {
             interrupt.signal_used_queue(self.vector);
         }
+    }
+
+    /// Acknowledges that this set of features should be enabled on this queue.
+    pub fn ack_features(&mut self, features: u64) {
+        self.features |= features;
     }
 }

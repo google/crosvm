@@ -185,7 +185,11 @@ impl VirtioPciCommonConfig {
             0x08 => self.driver_feature_select = value,
             0x0c => {
                 if self.driver_feature_select < 2 {
-                    device.ack_features((value as u64) << (self.driver_feature_select * 32));
+                    let features: u64 = (value as u64) << (self.driver_feature_select * 32);
+                    device.ack_features(features);
+                    for queue in queues.iter_mut() {
+                        queue.ack_features(features);
+                    }
                 } else {
                     warn!(
                         "invalid ack_features (page {}, value 0x{:x})",
