@@ -7,6 +7,7 @@ use std::num::Wrapping;
 use std::sync::atomic::{fence, Ordering};
 
 use sys_util::{error, GuestAddress, GuestMemory};
+use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 
 use super::{Interrupt, VIRTIO_MSI_NO_VECTOR};
 
@@ -227,6 +228,7 @@ pub struct Queue {
 
     // Device feature bits accepted by the driver
     features: u64,
+    last_used: Wrapping<u16>,
 }
 
 impl Queue {
@@ -243,6 +245,7 @@ impl Queue {
             next_avail: Wrapping(0),
             next_used: Wrapping(0),
             features: 0,
+            last_used: Wrapping(0),
         }
     }
 
@@ -263,6 +266,7 @@ impl Queue {
         self.next_avail = Wrapping(0);
         self.next_used = Wrapping(0);
         self.features = 0;
+        self.last_used = Wrapping(0);
     }
 
     pub fn is_valid(&self, mem: &GuestMemory) -> bool {
@@ -344,15 +348,22 @@ impl Queue {
 
     /// Remove the first available descriptor chain from the queue.
     /// This function should only be called immediately following `peek`.
-    pub fn pop_peeked(&mut self) {
+    pub fn pop_peeked(&mut self, mem: &GuestMemory) {
         self.next_avail += Wrapping(1);
+        if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
+            let avail_event_off = self
+                .used_ring
+                .unchecked_add((4 + 8 * self.actual_size()).into());
+            mem.write_obj_at_addr(self.next_avail.0 as u16, avail_event_off)
+                .unwrap();
+        }
     }
 
     /// If a new DescriptorHead is available, returns one and removes it from the queue.
     pub fn pop<'a>(&mut self, mem: &'a GuestMemory) -> Option<DescriptorChain<'a>> {
         let descriptor_chain = self.peek(mem);
         if descriptor_chain.is_some() {
-            self.pop_peeked();
+            self.pop_peeked(mem);
         }
         descriptor_chain
     }
@@ -393,28 +404,55 @@ impl Queue {
     /// Enable / Disable guest notify device that requests are available on
     /// the descriptor chain.
     pub fn set_notify(&mut self, mem: &GuestMemory, enable: bool) {
-        let mut used_flags: u16 = mem.read_obj_from_addr(self.used_ring).unwrap();
-        if enable {
-            used_flags &= !VIRTQ_USED_F_NO_NOTIFY;
+        if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
+            let avail_index_addr = mem.checked_offset(self.avail_ring, 2).unwrap();
+            let avail_index: u16 = mem.read_obj_from_addr(avail_index_addr).unwrap();
+            let avail_event_off = self
+                .used_ring
+                .unchecked_add((4 + 8 * self.actual_size()).into());
+            mem.write_obj_at_addr(avail_index, avail_event_off).unwrap();
         } else {
-            used_flags |= VIRTQ_USED_F_NO_NOTIFY;
+            let mut used_flags: u16 = mem.read_obj_from_addr(self.used_ring).unwrap();
+            if enable {
+                used_flags &= !VIRTQ_USED_F_NO_NOTIFY;
+            } else {
+                used_flags |= VIRTQ_USED_F_NO_NOTIFY;
+            }
+            mem.write_obj_at_addr(used_flags, self.used_ring).unwrap();
         }
-        mem.write_obj_at_addr(used_flags, self.used_ring).unwrap();
     }
 
     // Check Whether guest enable interrupt injection or not.
     fn available_interrupt_enabled(&self, mem: &GuestMemory) -> bool {
-        let avail_flags: u16 = mem.read_obj_from_addr(self.avail_ring).unwrap();
-        if avail_flags & VIRTQ_AVAIL_F_NO_INTERRUPT == VIRTQ_AVAIL_F_NO_INTERRUPT {
-            false
+        if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
+            let used_event_off = self
+                .avail_ring
+                .unchecked_add((4 + 2 * self.actual_size()).into());
+            let used_event: u16 = mem.read_obj_from_addr(used_event_off).unwrap();
+            // if used_event >= self.last_used, driver handle interrupt quickly enough, new
+            // interrupt could be injected.
+            // if used_event < self.last_used, driver hasn't finished the last interrupt,
+            // so no need to inject new interrupt.
+            if self.next_used - Wrapping(used_event) - Wrapping(1) < self.next_used - self.last_used
+            {
+                true
+            } else {
+                false
+            }
         } else {
-            true
+            let avail_flags: u16 = mem.read_obj_from_addr(self.avail_ring).unwrap();
+            if avail_flags & VIRTQ_AVAIL_F_NO_INTERRUPT == VIRTQ_AVAIL_F_NO_INTERRUPT {
+                false
+            } else {
+                true
+            }
         }
     }
 
     /// inject interrupt into guest on this queue
-    pub fn trigger_interrupt(&self, mem: &GuestMemory, interrupt: &Interrupt) {
+    pub fn trigger_interrupt(&mut self, mem: &GuestMemory, interrupt: &Interrupt) {
         if self.available_interrupt_enabled(mem) {
+            self.last_used = self.next_used;
             interrupt.signal_used_queue(self.vector);
         }
     }

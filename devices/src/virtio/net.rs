@@ -192,7 +192,7 @@ where
             };
 
             if bytes_written > 0 {
-                self.rx_queue.pop_peeked();
+                self.rx_queue.pop_peeked(&self.mem);
                 self.rx_queue.add_used(&self.mem, index, bytes_written);
                 needs_interrupt = true;
             }
