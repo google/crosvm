@@ -531,7 +531,7 @@ impl Worker {
     }
 
     fn run(&mut self) {
-        #[derive(PartialEq, PollToken)]
+        #[derive(PollToken)]
         enum Token {
             CtrlQueue,
             CursorQueue,
@@ -596,7 +596,8 @@ impl Worker {
             // This display isn't typically used when the virt-wl device is available and it can
             // lead to hung fds (crbug.com/1027379). Disable if it's hung.
             for event in events.iter_hungup() {
-                if event.token() == Token::Display {
+                if let Token::Display = event.token() {
+                    error!("default display hang-up detected");
                     let _ = poll_ctx.delete(&*self.state.display().borrow());
                 }
             }
