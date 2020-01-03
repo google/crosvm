@@ -7,14 +7,10 @@
 use libc::{EINVAL, EIO, ENOSYS};
 use std::ffi::CStr;
 use std::fs::OpenOptions;
-use std::io::{Seek, SeekFrom};
 use std::os::raw::{c_char, c_int};
 
-use disk::{ImageType, QcowFile};
-use sys_util::{flock, FileSetLen, FlockOperation};
-
-trait DiskFile: FileSetLen + Seek {}
-impl<D: FileSetLen + Seek> DiskFile for D {}
+use disk::{DiskFile, ImageType, QcowFile};
+use sys_util::{flock, FlockOperation};
 
 #[no_mangle]
 pub unsafe extern "C" fn create_qcow_with_size(path: *const c_char, virtual_size: u64) -> c_int {
@@ -73,7 +69,7 @@ pub unsafe extern "C" fn expand_disk_image(path: *const c_char, virtual_size: u6
         Err(_) => return -EINVAL,
     };
 
-    let mut disk_image: Box<dyn DiskFile> = match image_type {
+    let disk_image: Box<dyn DiskFile> = match image_type {
         ImageType::Raw => Box::new(raw_image),
         ImageType::Qcow2 => match QcowFile::from(raw_image) {
             Ok(f) => Box::new(f),
@@ -89,7 +85,7 @@ pub unsafe extern "C" fn expand_disk_image(path: *const c_char, virtual_size: u6
     // acquired by other instances of this function as well as crosvm
     // itself when running a VM, so this should be safe in all cases that
     // can access a disk image in normal operation.
-    let current_size = match disk_image.seek(SeekFrom::End(0)) {
+    let current_size = match disk_image.get_len() {
         Ok(len) => len,
         Err(_) => return -EIO,
     };
