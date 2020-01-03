@@ -1542,6 +1542,19 @@ fn print_usage() {
     println!("    create_qcow2  - Create a new qcow2 disk image file.");
     println!("    disk - Manage attached virtual disk devices.");
     println!("    usb - Manage attached virtual USB devices.");
+    println!("    version - Show package version.");
+}
+
+fn pkg_version() -> std::result::Result<(), ()> {
+    const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
+    const PKG_VERSION: Option<&'static str> = option_env!("PKG_VERSION");
+
+    print!("crosvm {}", VERSION.unwrap_or("UNKNOWN"));
+    match PKG_VERSION {
+        Some(v) => println!("-{}", v),
+        None => println!(""),
+    }
+    Ok(())
 }
 
 fn crosvm_main() -> std::result::Result<(), ()> {
@@ -1572,6 +1585,7 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         Some("create_qcow2") => create_qcow2(args),
         Some("disk") => disk_cmd(args),
         Some("usb") => modify_usb(args),
+        Some("version") => pkg_version(),
         Some(c) => {
             println!("invalid subcommand: {:?}", c);
             print_usage();
