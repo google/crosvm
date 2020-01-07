@@ -695,14 +695,12 @@ impl PciDevice for VirtioPciDevice {
         }
 
         // Device has been reset by the driver
-        if self.device_activated && self.is_reset_requested() {
-            if self.device.reset() {
-                self.device_activated = false;
-                // reset queues
-                self.queues.iter_mut().for_each(Queue::reset);
-                // select queue 0 by default
-                self.common_config.queue_select = 0;
-            }
+        if self.device_activated && self.is_reset_requested() && self.device.reset() {
+            self.device_activated = false;
+            // reset queues
+            self.queues.iter_mut().for_each(Queue::reset);
+            // select queue 0 by default
+            self.common_config.queue_select = 0;
         }
     }
 }

@@ -804,7 +804,7 @@ impl VirtioDevice for Block {
                 }
             }
         }
-        return false;
+        false
     }
 }
 

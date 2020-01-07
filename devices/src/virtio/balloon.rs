@@ -382,6 +382,6 @@ impl VirtioDevice for Balloon {
                 }
             }
         }
-        return false;
+        false
     }
 }

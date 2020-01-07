@@ -603,11 +603,9 @@ where
 
     fn reset(&mut self) -> bool {
         // Only kill the child if it claimed its eventfd.
-        if self.workers_kill_evt.is_none() {
-            if self.kill_evt.write(1).is_err() {
-                error!("{}: failed to notify the kill event", self.debug_label());
-                return false;
-            }
+        if self.workers_kill_evt.is_none() && self.kill_evt.write(1).is_err() {
+            error!("{}: failed to notify the kill event", self.debug_label());
+            return false;
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {
@@ -623,6 +621,6 @@ where
                 }
             }
         }
-        return false;
+        false
     }
 }

@@ -238,6 +238,6 @@ impl VirtioDevice for Rng {
                 }
             }
         }
-        return false;
+        false
     }
 }
