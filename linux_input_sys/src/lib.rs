@@ -7,10 +7,13 @@ use std::mem::size_of;
 
 const EV_SYN: u16 = 0x00;
 const EV_KEY: u16 = 0x01;
+#[allow(dead_code)]
 const EV_REL: u16 = 0x02;
 const EV_ABS: u16 = 0x03;
 const SYN_REPORT: u16 = 0;
+#[allow(dead_code)]
 const REL_X: u16 = 0x00;
+#[allow(dead_code)]
 const REL_Y: u16 = 0x01;
 const ABS_X: u16 = 0x00;
 const ABS_Y: u16 = 0x01;
