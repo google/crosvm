@@ -9,13 +9,11 @@ use std::io::{self, ErrorKind, Read, Seek, SeekFrom};
 use std::ops::Range;
 use std::os::unix::io::RawFd;
 
-use crate::{create_disk_file, DiskFile, ImageType};
+use crate::{create_disk_file, DiskFile, DiskGetLen, ImageType};
 use data_model::VolatileSlice;
 use protos::cdisk_spec;
 use remain::sorted;
-use sys_util::{
-    AsRawFds, FileGetLen, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt,
-};
+use sys_util::{AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt};
 
 #[sorted]
 #[derive(Debug)]
@@ -210,7 +208,7 @@ impl CompositeDiskFile {
     }
 }
 
-impl FileGetLen for CompositeDiskFile {
+impl DiskGetLen for CompositeDiskFile {
     fn get_len(&self) -> io::Result<u64> {
         Ok(self.length())
     }
