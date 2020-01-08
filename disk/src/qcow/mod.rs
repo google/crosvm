@@ -10,8 +10,8 @@ use data_model::{VolatileMemory, VolatileSlice};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
 use remain::sorted;
 use sys_util::{
-    error, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync,
-    PunchHole, SeekHole, WriteZeroesAt,
+    error, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync, PunchHole,
+    SeekHole, WriteZeroesAt,
 };
 
 use std::cmp::{max, min};
@@ -24,6 +24,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use crate::qcow::qcow_raw_file::QcowRawFile;
 use crate::qcow::refcount::RefCount;
 use crate::qcow::vec_cache::{CacheMap, Cacheable, VecCache};
+use crate::DiskGetLen;
 
 #[sorted]
 #[derive(Debug)]
@@ -1571,7 +1572,7 @@ impl FileSetLen for QcowFile {
     }
 }
 
-impl FileGetLen for QcowFile {
+impl DiskGetLen for QcowFile {
     fn get_len(&self) -> io::Result<u64> {
         Ok(self.virtual_size())
     }

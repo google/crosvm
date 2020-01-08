@@ -10,8 +10,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use libc::EINVAL;
 use remain::sorted;
 use sys_util::{
-    AsRawFds, FileGetLen, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole,
-    WriteZeroesAt,
+    AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroesAt,
 };
 
 mod qcow;
@@ -40,11 +39,27 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// A trait for getting the length of a disk image or raw block device.
+pub trait DiskGetLen {
+    /// Get the current length of the disk in bytes.
+    fn get_len(&self) -> io::Result<u64>;
+}
+
+impl DiskGetLen for File {
+    fn get_len(&self) -> io::Result<u64> {
+        let mut s = self;
+        let orig_seek = s.seek(SeekFrom::Current(0))?;
+        let end = s.seek(SeekFrom::End(0))? as u64;
+        s.seek(SeekFrom::Start(orig_seek))?;
+        Ok(end)
+    }
+}
+
 /// The prerequisites necessary to support a block device.
 #[rustfmt::skip] // rustfmt won't wrap the long list of trait bounds.
 pub trait DiskFile:
     FileSetLen
-    + FileGetLen
+    + DiskGetLen
     + FileSync
     + FileReadWriteAtVolatile
     + PunchHole
@@ -55,7 +70,7 @@ pub trait DiskFile:
 }
 impl<
         D: FileSetLen
-            + FileGetLen
+            + DiskGetLen
             + FileSync
             + PunchHole
             + FileReadWriteAtVolatile
