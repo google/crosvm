@@ -126,10 +126,11 @@ impl<M: MsgOnSocket> AsRawFd for Receiver<M> {
 }
 
 /// Types that could send a message.
-pub trait MsgSender<M: MsgOnSocket>: AsRef<UnixSeqpacket> {
-    fn send(&self, msg: &M) -> MsgResult<()> {
-        let msg_size = M::msg_size();
-        let fd_size = M::max_fd_count();
+pub trait MsgSender: AsRef<UnixSeqpacket> {
+    type M: MsgOnSocket;
+    fn send(&self, msg: &Self::M) -> MsgResult<()> {
+        let msg_size = Self::M::msg_size();
+        let fd_size = Self::M::max_fd_count();
         let mut msg_buffer: Vec<u8> = vec![0; msg_size];
         let mut fd_buffer: Vec<RawFd> = vec![0; fd_size];
 
@@ -147,10 +148,11 @@ pub trait MsgSender<M: MsgOnSocket>: AsRef<UnixSeqpacket> {
 }
 
 /// Types that could receive a message.
-pub trait MsgReceiver<M: MsgOnSocket>: AsRef<UnixSeqpacket> {
-    fn recv(&self) -> MsgResult<M> {
-        let msg_size = M::msg_size();
-        let fd_size = M::max_fd_count();
+pub trait MsgReceiver: AsRef<UnixSeqpacket> {
+    type M: MsgOnSocket;
+    fn recv(&self) -> MsgResult<Self::M> {
+        let msg_size = Self::M::msg_size();
+        let fd_size = Self::M::max_fd_count();
         let mut msg_buffer: Vec<u8> = vec![0; msg_size];
         let mut fd_buffer: Vec<RawFd> = vec![0; fd_size];
 
@@ -175,7 +177,7 @@ pub trait MsgReceiver<M: MsgOnSocket>: AsRef<UnixSeqpacket> {
         }
         // Safe because fd buffer is read from socket.
         let (v, read_fd_size) = unsafe {
-            M::read_from_buffer(&msg_buffer[0..recv_msg_size], &fd_buffer[0..recv_fd_size])?
+            Self::M::read_from_buffer(&msg_buffer[0..recv_msg_size], &fd_buffer[0..recv_fd_size])?
         };
         if recv_fd_size != read_fd_size {
             return Err(MsgError::NotExpectFd);
@@ -184,8 +186,16 @@ pub trait MsgReceiver<M: MsgOnSocket>: AsRef<UnixSeqpacket> {
     }
 }
 
-impl<I: MsgOnSocket, O: MsgOnSocket> MsgSender<I> for MsgSocket<I, O> {}
-impl<I: MsgOnSocket, O: MsgOnSocket> MsgReceiver<O> for MsgSocket<I, O> {}
+impl<I: MsgOnSocket, O: MsgOnSocket> MsgSender for MsgSocket<I, O> {
+    type M = I;
+}
+impl<I: MsgOnSocket, O: MsgOnSocket> MsgReceiver for MsgSocket<I, O> {
+    type M = O;
+}
 
-impl<M: MsgOnSocket> MsgSender<M> for Sender<M> {}
-impl<M: MsgOnSocket> MsgReceiver<M> for Receiver<M> {}
+impl<I: MsgOnSocket> MsgSender for Sender<I> {
+    type M = I;
+}
+impl<O: MsgOnSocket> MsgReceiver for Receiver<O> {
+    type M = O;
+}
