@@ -666,7 +666,7 @@ pub enum DisplayBackend {
     /// Open a connection to the X server at the given display if given.
     X(Option<String>),
     /// Emulate a display without actually displaying it.
-    Null,
+    Stub,
 }
 
 impl DisplayBackend {
@@ -674,7 +674,7 @@ impl DisplayBackend {
         match self {
             DisplayBackend::Wayland(path) => GpuDisplay::open_wayland(path.as_ref()),
             DisplayBackend::X(display) => GpuDisplay::open_x(display.as_ref()),
-            DisplayBackend::Null => unimplemented!(),
+            DisplayBackend::Stub => GpuDisplay::open_stub(),
         }
     }
 

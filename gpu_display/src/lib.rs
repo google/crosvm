@@ -12,6 +12,7 @@ use data_model::VolatileSlice;
 use sys_util::Error as SysError;
 
 mod event_device;
+mod gpu_display_stub;
 mod gpu_display_wl;
 #[cfg(feature = "x")]
 mod gpu_display_x;
@@ -26,6 +27,8 @@ pub enum GpuDisplayError {
     Allocate,
     /// Connecting to the compositor failed.
     Connect,
+    /// Creating event file descriptor failed.
+    CreateEventFd,
     /// Creating shared memory failed.
     CreateShm(SysError),
     /// Setting the size of shared memory failed.
@@ -51,6 +54,7 @@ impl Display for GpuDisplayError {
         match self {
             Allocate => write!(f, "internal allocation failed"),
             Connect => write!(f, "failed to connect to compositor"),
+            CreateEventFd => write!(f, "failed to create event file descriptor"),
             CreateShm(e) => write!(f, "failed to create shared memory: {}", e),
             CreateSurface => write!(f, "failed to crate surface on the compositor"),
             FailedImport => write!(f, "failed to import a buffer to the compositor"),
@@ -193,6 +197,12 @@ impl GpuDisplay {
             Some(s) => gpu_display_wl::DisplayWl::new(Some(s.as_ref()))?,
             None => gpu_display_wl::DisplayWl::new(None)?,
         };
+        let inner = Box::new(display);
+        Ok(GpuDisplay { inner })
+    }
+
+    pub fn open_stub() -> Result<GpuDisplay, GpuDisplayError> {
+        let display = gpu_display_stub::DisplayStub::new()?;
         let inner = Box::new(display);
         Ok(GpuDisplay { inner })
     }

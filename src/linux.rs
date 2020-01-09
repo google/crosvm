@@ -597,7 +597,7 @@ fn create_gpu_device(
 
     let mut display_backends = vec![
         virtio::DisplayBackend::X(x_display),
-        virtio::DisplayBackend::Null,
+        virtio::DisplayBackend::Stub,
     ];
 
     if let Some(socket_path) = wayland_socket_path {
