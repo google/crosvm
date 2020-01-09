@@ -4,5 +4,6 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 
+fcntl: 1
 open: return ENOENT
 openat: return ENOENT

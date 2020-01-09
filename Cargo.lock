@@ -253,6 +253,7 @@ dependencies = [
  "disk",
  "enumn",
  "fuse",
+ "futures",
  "gpu_display",
  "hypervisor",
  "kvm_sys",

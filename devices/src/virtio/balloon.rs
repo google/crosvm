@@ -2,42 +2,44 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use base::{
-    self, error, info, warn, AsRawDescriptor, Event, PollToken, RawDescriptor, WaitContext,
-};
+use futures::{channel::mpsc, pin_mut, StreamExt};
+use remain::sorted;
+use thiserror::Error as ThisError;
+
+use base::{self, error, info, warn, AsRawDescriptor, Event, RawDescriptor};
+use cros_async::{select6, EventAsync, Executor};
 use data_model::{DataInit, Le16, Le32, Le64};
-use msg_socket::{MsgReceiver, MsgSender};
+use msg_socket::MsgSender;
 use vm_control::{
     BalloonControlCommand, BalloonControlResponseSocket, BalloonControlResult, BalloonStats,
 };
 use vm_memory::{GuestAddress, GuestMemory};
 
-use super::{copy_config, Interrupt, Queue, Reader, VirtioDevice, TYPE_BALLOON};
+use super::{
+    copy_config, descriptor_utils, DescriptorChain, Interrupt, Queue, Reader, VirtioDevice,
+    TYPE_BALLOON,
+};
 
-#[derive(Debug)]
+#[sorted]
+#[derive(ThisError, Debug)]
 pub enum BalloonError {
-    /// Request to adjust memory size can't provide the number of pages requested.
-    NotEnoughPages,
-    /// Failure wriitng the config notification event.
+    /// Failed to create async message receiver.
+    #[error("failed to create async message receiver: {0}")]
+    CreatingMessageReceiver(msg_socket::MsgError),
+    /// Failed to receive command message.
+    #[error("failed to receive command message: {0}")]
+    ReceivingCommand(msg_socket::MsgError),
+    /// Failed to write config event.
+    #[error("failed to write config event: {0}")]
     WritingConfigEvent(base::Error),
 }
 pub type Result<T> = std::result::Result<T, BalloonError>;
-
-impl Display for BalloonError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::BalloonError::*;
-
-        match self {
-            NotEnoughPages => write!(f, "not enough pages"),
-            WritingConfigEvent(e) => write!(f, "failed to write config event: {}", e),
-        }
-    }
-}
 
 // Balloon has three virt IO queues: Inflate, Deflate, and Stats.
 const QUEUE_SIZE: u16 = 128;
@@ -50,7 +52,7 @@ const VIRTIO_BALLOON_F_MUST_TELL_HOST: u32 = 0; // Tell before reclaiming pages
 const VIRTIO_BALLOON_F_STATS_VQ: u32 = 1; // Stats reporting enabled
 const VIRTIO_BALLOON_F_DEFLATE_ON_OOM: u32 = 2; // Deflate balloon on OOM
 
-// virtio_balloon_config is the ballon device configuration space defined by the virtio spec.
+// virtio_balloon_config is the balloon device configuration space defined by the virtio spec.
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
 struct virtio_balloon_config {
@@ -109,214 +111,248 @@ impl BalloonStat {
     }
 }
 
-struct Worker {
-    interrupt: Interrupt,
-    mem: GuestMemory,
-    inflate_queue: Queue,
-    deflate_queue: Queue,
-    stats_queue: Queue,
-    stats_desc_index: Option<u16>,
-    config: Arc<BalloonConfig>,
-    command_socket: BalloonControlResponseSocket,
+// Processes one message's list of addresses.
+fn handle_address_chain<F>(
+    avail_desc: DescriptorChain,
+    mem: &GuestMemory,
+    desc_handler: &mut F,
+) -> descriptor_utils::Result<()>
+where
+    F: FnMut(GuestAddress),
+{
+    let mut reader = Reader::new(mem.clone(), avail_desc)?;
+    for res in reader.iter::<Le32>() {
+        let pfn = match res {
+            Ok(pfn) => pfn,
+            Err(e) => {
+                error!("error while reading unused pages: {}", e);
+                break;
+            }
+        };
+        let guest_address = GuestAddress((u64::from(pfn.to_native())) << VIRTIO_BALLOON_PFN_SHIFT);
+
+        desc_handler(guest_address);
+    }
+    Ok(())
 }
 
-impl Worker {
-    fn process_inflate_deflate(&mut self, inflate: bool) -> bool {
-        let queue = if inflate {
-            &mut self.inflate_queue
-        } else {
-            &mut self.deflate_queue
-        };
-
-        let mut needs_interrupt = false;
-        while let Some(avail_desc) = queue.pop(&self.mem) {
-            let index = avail_desc.index;
-
-            if inflate {
-                let mut reader = match Reader::new(self.mem.clone(), avail_desc) {
-                    Ok(r) => r,
-                    Err(e) => {
-                        error!("balloon: failed to create reader: {}", e);
-                        queue.add_used(&self.mem, index, 0);
-                        needs_interrupt = true;
-                        continue;
-                    }
-                };
-                for res in reader.iter::<Le32>() {
-                    let pfn = match res {
-                        Ok(pfn) => pfn,
-                        Err(e) => {
-                            error!("error while reading unused pages: {}", e);
-                            break;
-                        }
-                    };
-                    let guest_address =
-                        GuestAddress((u64::from(pfn.to_native())) << VIRTIO_BALLOON_PFN_SHIFT);
-                    if self
-                        .mem
-                        .remove_range(guest_address, 1 << VIRTIO_BALLOON_PFN_SHIFT)
-                        .is_err()
-                    {
-                        warn!("Marking pages unused failed; addr={}", guest_address);
-                        continue;
-                    }
-                }
-            }
-            queue.add_used(&self.mem, index, 0);
-            needs_interrupt = true;
-        }
-
-        needs_interrupt
-    }
-
-    fn process_stats(&mut self) {
-        let queue = &mut self.stats_queue;
-        while let Some(stats_desc) = queue.pop(&self.mem) {
-            if let Some(prev_desc) = self.stats_desc_index {
-                // We shouldn't ever have an extra buffer if the driver follows
-                // the protocol, but return it if we find one.
-                warn!("balloon: driver is not compliant, more than one stats buffer received");
-                queue.add_used(&self.mem, prev_desc, 0);
-            }
-            self.stats_desc_index = Some(stats_desc.index);
-            let mut reader = match Reader::new(self.mem.clone(), stats_desc) {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("balloon: failed to create reader: {}", e);
-                    continue;
-                }
-            };
-            let mut stats: BalloonStats = Default::default();
-            for res in reader.iter::<BalloonStat>() {
-                match res {
-                    Ok(stat) => stat.update_stats(&mut stats),
-                    Err(e) => {
-                        error!("error while reading stats: {}", e);
-                        break;
-                    }
-                };
-            }
-            let actual_pages = self.config.actual_pages.load(Ordering::Relaxed) as u64;
-            let result = BalloonControlResult::Stats {
-                balloon_actual: actual_pages << VIRTIO_BALLOON_PFN_SHIFT,
-                stats,
-            };
-            if let Err(e) = self.command_socket.send(&result) {
-                warn!("failed to send stats result: {}", e);
-            }
-        }
-    }
-
-    fn request_stats(&mut self) {
-        if let Some(index) = self.stats_desc_index.take() {
-            self.stats_queue.add_used(&self.mem, index, 0);
-            self.interrupt.signal_used_queue(self.stats_queue.vector);
-        }
-    }
-
-    fn run(&mut self, mut queue_evts: Vec<Event>, kill_evt: Event) {
-        #[derive(PartialEq, PollToken)]
-        enum Token {
-            Inflate,
-            Deflate,
-            Stats,
-            CommandSocket,
-            InterruptResample,
-            Kill,
-        }
-
-        let inflate_queue_evt = queue_evts.remove(0);
-        let deflate_queue_evt = queue_evts.remove(0);
-        let stats_queue_evt = queue_evts.remove(0);
-
-        let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
-            (&inflate_queue_evt, Token::Inflate),
-            (&deflate_queue_evt, Token::Deflate),
-            (&stats_queue_evt, Token::Stats),
-            (&self.command_socket, Token::CommandSocket),
-            (self.interrupt.get_resample_evt(), Token::InterruptResample),
-            (&kill_evt, Token::Kill),
-        ]) {
-            Ok(pc) => pc,
+// Async task that handles the main balloon inflate and deflate queues.
+async fn handle_queue<F>(
+    mem: &GuestMemory,
+    mut queue: Queue,
+    mut queue_event: EventAsync,
+    interrupt: Rc<RefCell<Interrupt>>,
+    mut desc_handler: F,
+) where
+    F: FnMut(GuestAddress),
+{
+    loop {
+        let avail_desc = match queue.next_async(mem, &mut queue_event).await {
             Err(e) => {
-                error!("failed creating WaitContext: {}", e);
+                error!("Failed to read descriptor {}", e);
                 return;
             }
+            Ok(d) => d,
         };
+        let index = avail_desc.index;
+        if let Err(e) = handle_address_chain(avail_desc, mem, &mut desc_handler) {
+            error!("balloon: failed to process inflate addresses: {}", e);
+        }
+        queue.add_used(mem, index, 0);
+        interrupt.borrow_mut().signal_used_queue(queue.vector);
+    }
+}
 
-        'wait: loop {
-            let events = match wait_ctx.wait() {
-                Ok(v) => v,
+// Async task that handles the stats queue. Note that the cadence of this is driven by requests for
+// balloon stats from the control pipe.
+// The guests queues an initial buffer on boot, which is read and then this future will block until
+// signaled from the command socket that stats should be collected again.
+async fn handle_stats_queue(
+    mem: &GuestMemory,
+    mut queue: Queue,
+    mut queue_event: EventAsync,
+    mut stats_rx: mpsc::Receiver<()>,
+    command_socket: &BalloonControlResponseSocket,
+    config: Arc<BalloonConfig>,
+    interrupt: Rc<RefCell<Interrupt>>,
+) {
+    loop {
+        let stats_desc = match queue.next_async(mem, &mut queue_event).await {
+            Err(e) => {
+                error!("Failed to read descriptor {}", e);
+                return;
+            }
+            Ok(d) => d,
+        };
+        let index = stats_desc.index;
+        let mut reader = match Reader::new(mem.clone(), stats_desc) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("balloon: failed to CREATE Reader: {}", e);
+                continue;
+            }
+        };
+        let mut stats: BalloonStats = Default::default();
+        for res in reader.iter::<BalloonStat>() {
+            match res {
+                Ok(stat) => stat.update_stats(&mut stats),
                 Err(e) => {
-                    error!("failed polling for events: {}", e);
+                    error!("error while reading stats: {}", e);
                     break;
                 }
             };
+        }
+        let actual_pages = config.actual_pages.load(Ordering::Relaxed) as u64;
+        let result = BalloonControlResult::Stats {
+            balloon_actual: actual_pages << VIRTIO_BALLOON_PFN_SHIFT,
+            stats,
+        };
+        if let Err(e) = command_socket.send(&result) {
+            error!("failed to send stats result: {}", e);
+        }
 
-            let mut needs_interrupt_inflate = false;
-            let mut needs_interrupt_deflate = false;
-            for event in events.iter().filter(|e| e.is_readable) {
-                match event.token {
-                    Token::Inflate => {
-                        if let Err(e) = inflate_queue_evt.read() {
-                            error!("failed reading inflate queue Event: {}", e);
-                            break 'wait;
-                        }
-                        needs_interrupt_inflate |= self.process_inflate_deflate(true);
-                    }
-                    Token::Deflate => {
-                        if let Err(e) = deflate_queue_evt.read() {
-                            error!("failed reading deflate queue Event: {}", e);
-                            break 'wait;
-                        }
-                        needs_interrupt_deflate |= self.process_inflate_deflate(false);
-                    }
-                    Token::Stats => {
-                        if let Err(e) = stats_queue_evt.read() {
-                            error!("failed reading stats queue Event: {}", e);
-                            break 'wait;
-                        }
-                        self.process_stats();
-                    }
-                    Token::CommandSocket => {
-                        if let Ok(req) = self.command_socket.recv() {
-                            match req {
-                                BalloonControlCommand::Adjust { num_bytes } => {
-                                    let num_pages =
-                                        (num_bytes >> VIRTIO_BALLOON_PFN_SHIFT) as usize;
-                                    info!("ballon config changed to consume {} pages", num_pages);
+        // Wait for a request to read the stats again.
+        if stats_rx.next().await.is_none() {
+            error!("stats signal channel was closed");
+            break;
+        }
 
-                                    self.config.num_pages.store(num_pages, Ordering::Relaxed);
-                                    self.interrupt.signal_config_changed();
-                                }
-                                BalloonControlCommand::Stats => {
-                                    self.request_stats();
-                                }
-                            };
-                        }
-                    }
-                    Token::InterruptResample => {
-                        self.interrupt.interrupt_resample();
-                    }
-                    Token::Kill => break 'wait,
+        // Request a new stats_desc to the guest.
+        queue.add_used(&mem, index, 0);
+        interrupt.borrow_mut().signal_used_queue(queue.vector);
+    }
+}
+
+// Async task that handles the command socket. The command socket handles messages from the host
+// requesting that the guest balloon be adjusted or to report guest memory statistics.
+async fn handle_command_socket(
+    ex: &Executor,
+    command_socket: &BalloonControlResponseSocket,
+    interrupt: Rc<RefCell<Interrupt>>,
+    config: Arc<BalloonConfig>,
+    mut stats_tx: mpsc::Sender<()>,
+) -> Result<()> {
+    let mut async_messages = command_socket
+        .async_receiver(ex)
+        .map_err(BalloonError::CreatingMessageReceiver)?;
+    loop {
+        match async_messages.next().await {
+            Ok(command) => match command {
+                BalloonControlCommand::Adjust { num_bytes } => {
+                    let num_pages = (num_bytes >> VIRTIO_BALLOON_PFN_SHIFT) as usize;
+                    info!("balloon config changed to consume {} pages", num_pages);
+
+                    config.num_pages.store(num_pages, Ordering::Relaxed);
+                    interrupt.borrow_mut().signal_config_changed();
                 }
-            }
-            for event in events.iter().filter(|e| e.is_hungup) {
-                if event.token == Token::CommandSocket && !event.is_readable {
-                    // If this call fails, the command socket was already removed from the
-                    // WaitContext.
-                    let _ = wait_ctx.delete(&self.command_socket);
+                BalloonControlCommand::Stats => {
+                    if let Err(e) = stats_tx.try_send(()) {
+                        error!("failed to signal the stat handler: {}", e);
+                    }
                 }
-            }
-
-            if needs_interrupt_inflate {
-                self.interrupt.signal_used_queue(self.inflate_queue.vector);
-            }
-
-            if needs_interrupt_deflate {
-                self.interrupt.signal_used_queue(self.deflate_queue.vector);
+            },
+            Err(e) => {
+                return Err(BalloonError::ReceivingCommand(e));
             }
         }
+    }
+}
+
+// Async task that resamples the status of the interrupt when the guest sends a request by
+// signalling the resample event associated with the interrupt.
+async fn handle_irq_resample(ex: &Executor, interrupt: Rc<RefCell<Interrupt>>) {
+    let resample_evt = interrupt
+        .borrow_mut()
+        .get_resample_evt()
+        .try_clone()
+        .unwrap();
+    let resample_evt = EventAsync::new(resample_evt.0, ex).unwrap();
+    while resample_evt.next_val().await.is_ok() {
+        interrupt.borrow_mut().do_interrupt_resample();
+    }
+}
+
+// Async task that waits for a signal from the kill event given to the device at startup.  Once this event is
+// readable, exit. Exiting this future will cause the main loop to break and the worker thread to
+// exit.
+async fn wait_kill(kill_evt: EventAsync) {
+    let _ = kill_evt.next_val().await;
+}
+
+// The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
+// to be processed.
+fn run_worker(
+    mut queue_evts: Vec<Event>,
+    mut queues: Vec<Queue>,
+    command_socket: &BalloonControlResponseSocket,
+    interrupt: Interrupt,
+    kill_evt: Event,
+    mem: GuestMemory,
+    config: Arc<BalloonConfig>,
+) {
+    // Wrap the interrupt in a `RefCell` so it can be shared between async functions.
+    let interrupt = Rc::new(RefCell::new(interrupt));
+
+    let ex = Executor::new().unwrap();
+
+    // The first queue is used for inflate messages
+    let inflate_event =
+        EventAsync::new(queue_evts.remove(0).0, &ex).expect("failed to set up the inflate event");
+    let inflate = handle_queue(
+        &mem,
+        queues.remove(0),
+        inflate_event,
+        interrupt.clone(),
+        |guest_address| {
+            if let Err(e) = mem.remove_range(guest_address, 1 << VIRTIO_BALLOON_PFN_SHIFT) {
+                warn!("Marking pages unused failed: {}, addr={}", e, guest_address);
+            }
+        },
+    );
+    pin_mut!(inflate);
+
+    // The second queue is used for deflate messages
+    let deflate_event =
+        EventAsync::new(queue_evts.remove(0).0, &ex).expect("failed to set up the deflate event");
+    let deflate = handle_queue(
+        &mem,
+        queues.remove(0),
+        deflate_event,
+        interrupt.clone(),
+        std::mem::drop, // Ignore these.
+    );
+    pin_mut!(deflate);
+
+    // The third queue is used for stats messages
+    let (stats_tx, stats_rx) = mpsc::channel::<()>(1);
+    let stats_event =
+        EventAsync::new(queue_evts.remove(0).0, &ex).expect("failed to set up the stats event");
+    let stats = handle_stats_queue(
+        &mem,
+        queues.remove(0),
+        stats_event,
+        stats_rx,
+        command_socket,
+        config.clone(),
+        interrupt.clone(),
+    );
+    pin_mut!(stats);
+
+    // Future to handle command messages that resize the balloon.
+    let command = handle_command_socket(&ex, command_socket, interrupt.clone(), config, stats_tx);
+    pin_mut!(command);
+
+    // Process any requests to resample the irq value.
+    let resample = handle_irq_resample(&ex, interrupt.clone());
+    pin_mut!(resample);
+
+    // Exit if the kill event is triggered.
+    let kill_evt = EventAsync::new(kill_evt.0, &ex).expect("failed to set up the kill event");
+    let kill = wait_kill(kill_evt);
+    pin_mut!(kill);
+
+    if let Err(e) = ex.run_until(select6(inflate, deflate, stats, command, resample, kill)) {
+        error!("error happened in executor: {}", e);
     }
 }
 
@@ -326,11 +362,11 @@ pub struct Balloon {
     config: Arc<BalloonConfig>,
     features: u64,
     kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<Worker>>,
+    worker_thread: Option<thread::JoinHandle<BalloonControlResponseSocket>>,
 }
 
 impl Balloon {
-    /// Create a new virtio balloon device.
+    /// Creates a new virtio balloon device.
     pub fn new(
         base_features: u64,
         command_socket: BalloonControlResponseSocket,
@@ -410,7 +446,7 @@ impl VirtioDevice for Balloon {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<Queue>,
+        queues: Vec<Queue>,
         queue_evts: Vec<Event>,
     ) {
         if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
@@ -431,18 +467,16 @@ impl VirtioDevice for Balloon {
         let worker_result = thread::Builder::new()
             .name("virtio_balloon".to_string())
             .spawn(move || {
-                let mut worker = Worker {
+                run_worker(
+                    queue_evts,
+                    queues,
+                    &command_socket,
                     interrupt,
+                    kill_evt,
                     mem,
-                    inflate_queue: queues.remove(0),
-                    deflate_queue: queues.remove(0),
-                    stats_queue: queues.remove(0),
-                    stats_desc_index: None,
-                    command_socket,
                     config,
-                };
-                worker.run(queue_evts, kill_evt);
-                worker
+                );
+                command_socket // Return the command socket so it can be re-used.
             });
 
         match worker_result {
@@ -469,12 +503,54 @@ impl VirtioDevice for Balloon {
                     error!("{}: failed to get back resources", self.debug_label());
                     return false;
                 }
-                Ok(worker) => {
-                    self.command_socket = Some(worker.command_socket);
+                Ok(command_socket) => {
+                    self.command_socket = Some(command_socket);
                     return true;
                 }
             }
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::virtio::descriptor_utils::{create_descriptor_chain, DescriptorType};
+
+    #[test]
+    fn desc_parsing_inflate() {
+        // Check that the memory addresses are parsed correctly by 'handle_address_chain' and passed
+        // to the closure.
+        let memory_start_addr = GuestAddress(0x0);
+        let memory = GuestMemory::new(&vec![(memory_start_addr, 0x10000)]).unwrap();
+        memory
+            .write_obj_at_addr(0x10u32, GuestAddress(0x100))
+            .unwrap();
+        memory
+            .write_obj_at_addr(0xaa55aa55u32, GuestAddress(0x104))
+            .unwrap();
+
+        let chain = create_descriptor_chain(
+            &memory,
+            GuestAddress(0x0),
+            GuestAddress(0x100),
+            vec![(DescriptorType::Readable, 8)],
+            0,
+        )
+        .expect("create_descriptor_chain failed");
+
+        let mut addrs = Vec::new();
+        let res = handle_address_chain(chain, &memory, &mut |guest_address| {
+            addrs.push(guest_address);
+        });
+        assert!(res.is_ok());
+        assert_eq!(addrs.len(), 2);
+        assert_eq!(addrs[0], GuestAddress(0x10u64 << VIRTIO_BALLOON_PFN_SHIFT));
+        assert_eq!(
+            addrs[1],
+            GuestAddress(0xaa55aa55u64 << VIRTIO_BALLOON_PFN_SHIFT)
+        );
     }
 }
