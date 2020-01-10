@@ -311,6 +311,12 @@ impl VirtioInputConfig {
             VIRTIO_INPUT_CFG_ID_DEVIDS => {
                 cfg.set_device_ids(&self.device_ids);
             }
+            VIRTIO_INPUT_CFG_UNSET => {
+                // Per the virtio spec at https://docs.oasis-open.org/virtio/virtio/v1.1/cs01/virtio-v1.1-cs01.html#x1-3390008,
+                // there is no action required of us when this is set. It's unclear whether we
+                // should be zeroing the virtio_input_config, but empirically we know that the
+                // existing behavior of doing nothing works with the Linux virtio-input frontend.
+            }
             _ => {
                 warn!("Unsuported virtio input config selection: {}", self.select);
             }

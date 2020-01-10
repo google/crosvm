@@ -730,6 +730,7 @@ pub const REP_MAX: u16 = 0x01;
 pub const REP_CNT: u16 = (REP_MAX + 1);
 
 // Should match linux/virtio_input.h
+pub const VIRTIO_INPUT_CFG_UNSET: u8 = 0x00;
 pub const VIRTIO_INPUT_CFG_ID_NAME: u8 = 0x01;
 pub const VIRTIO_INPUT_CFG_ID_SERIAL: u8 = 0x02;
 pub const VIRTIO_INPUT_CFG_PROP_BITS: u8 = 0x10;
