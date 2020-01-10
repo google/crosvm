@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! Implementation for the transport agnostic virtio-gpu protocol, including display and rendering.
+//! Implementation of a virtio-gpu protocol command processor which supports display and accelerated
+//! rendering.
 
 use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
+use std::fs::File;
 use std::os::unix::io::AsRawFd;
 use std::rc::Rc;
 use std::usize;
@@ -14,14 +16,13 @@ use std::usize;
 use libc::EINVAL;
 
 use data_model::*;
-
 use msg_socket::{MsgReceiver, MsgSender};
 use resources::Alloc;
-use sys_util::{error, GuestAddress, GuestMemory};
+use sys_util::{error, warn, Error, GuestAddress, GuestMemory};
 
 use gpu_display::*;
 use gpu_renderer::{
-    Box3, Context as RendererContext, Error as GpuRendererError, Renderer,
+    Box3, Context as RendererContext, Error as GpuRendererError, Renderer, RendererFlags,
     Resource as GpuRendererResource, ResourceCreateArgs,
 };
 
@@ -29,11 +30,15 @@ use super::protocol::{
     AllocationMetadataResponse, GpuResponse, GpuResponsePlaneInfo, VIRTIO_GPU_CAPSET3,
     VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2, VIRTIO_GPU_MEMORY_HOST_COHERENT,
 };
-use crate::virtio::resource_bridge::*;
+pub use crate::virtio::gpu::virtio_backend::{VirtioBackend, VirtioResource};
+use crate::virtio::gpu::{
+    Backend, DisplayBackend, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_HOST_COHERENT, VIRTIO_GPU_F_MEMORY,
+    VIRTIO_GPU_F_VIRGL,
+};
 
 use vm_control::{MaybeOwnedFd, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse};
 
-struct VirtioGpuResource {
+struct Virtio3DResource {
     width: u32,
     height: u32,
     gpu_resource: GpuRendererResource,
@@ -41,9 +46,9 @@ struct VirtioGpuResource {
     kvm_slot: Option<u32>,
 }
 
-impl VirtioGpuResource {
-    pub fn new(width: u32, height: u32, gpu_resource: GpuRendererResource) -> VirtioGpuResource {
-        VirtioGpuResource {
+impl Virtio3DResource {
+    pub fn new(width: u32, height: u32, gpu_resource: GpuRendererResource) -> Virtio3DResource {
+        Virtio3DResource {
             width,
             height,
             gpu_resource,
@@ -57,8 +62,8 @@ impl VirtioGpuResource {
         height: u32,
         kvm_slot: u32,
         gpu_resource: GpuRendererResource,
-    ) -> VirtioGpuResource {
-        VirtioGpuResource {
+    ) -> Virtio3DResource {
+        Virtio3DResource {
             width,
             height,
             gpu_resource,
@@ -67,7 +72,21 @@ impl VirtioGpuResource {
         }
     }
 
-    pub fn import_to_display(&mut self, display: &Rc<RefCell<GpuDisplay>>) -> Option<u32> {
+    fn as_mut(&mut self) -> &mut dyn VirtioResource {
+        self
+    }
+}
+
+impl VirtioResource for Virtio3DResource {
+    fn width(&self) -> u32 {
+        self.width
+    }
+
+    fn height(&self) -> u32 {
+        self.height
+    }
+
+    fn import_to_display(&mut self, display: &Rc<RefCell<GpuDisplay>>) -> Option<u32> {
         if let Some((self_display, import)) = &self.display_import {
             if Rc::ptr_eq(self_display, display) {
                 return Some(*import);
@@ -103,7 +122,7 @@ impl VirtioGpuResource {
         }
     }
 
-    pub fn write_from_guest_memory(
+    fn write_from_guest_memory(
         &mut self,
         x: u32,
         y: u32,
@@ -128,7 +147,7 @@ impl VirtioGpuResource {
         }
     }
 
-    pub fn read_to_volatile(
+    fn read_to_volatile(
         &mut self,
         x: u32,
         y: u32,
@@ -152,29 +171,17 @@ impl VirtioGpuResource {
     }
 }
 
-/// The virtio-gpu backend state tracker.
-///
-/// Commands from the virtio-gpu protocol can be submitted here using the methods, and they will be
-/// realized on the hardware. Most methods return a `GpuResponse` that indicate the success,
-/// failure, or requested data for the given command.
-pub struct Backend {
-    display: Rc<RefCell<GpuDisplay>>,
-    display_width: u32,
-    display_height: u32,
+/// The virtio-gpu backend state tracker which supports accelerated rendering.
+pub struct Virtio3DBackend {
+    base: VirtioBackend,
     renderer: Renderer,
-    resources: Map<u32, VirtioGpuResource>,
+    resources: Map<u32, Virtio3DResource>,
     contexts: Map<u32, RendererContext>,
-    // Maps event devices to scanout number.
-    event_devices: Map<u32, u32>,
     gpu_device_socket: VmMemoryControlRequestSocket,
-    scanout_surface: Option<u32>,
-    cursor_surface: Option<u32>,
-    scanout_resource: u32,
-    cursor_resource: u32,
     pci_bar: Alloc,
 }
 
-impl Backend {
+impl Virtio3DBackend {
     /// Creates a new backend for virtio-gpu that realizes all commands using the given `display`
     /// for showing the results, and `renderer` for submitting rendering commands.
     ///
@@ -187,94 +194,166 @@ impl Backend {
         renderer: Renderer,
         gpu_device_socket: VmMemoryControlRequestSocket,
         pci_bar: Alloc,
-    ) -> Backend {
-        Backend {
-            display: Rc::new(RefCell::new(display)),
-            display_width,
-            display_height,
+    ) -> Virtio3DBackend {
+        Virtio3DBackend {
+            base: VirtioBackend {
+                display: Rc::new(RefCell::new(display)),
+                display_width,
+                display_height,
+                event_devices: Default::default(),
+                scanout_resource_id: None,
+                scanout_surface_id: None,
+                cursor_resource_id: None,
+                cursor_surface_id: None,
+            },
             renderer,
             resources: Default::default(),
             contexts: Default::default(),
-            event_devices: Default::default(),
             gpu_device_socket,
-            scanout_surface: None,
-            cursor_surface: None,
-            scanout_resource: 0,
-            cursor_resource: 0,
             pci_bar,
         }
     }
+}
 
-    /// Gets a reference to the display passed into `new`.
-    pub fn display(&self) -> &Rc<RefCell<GpuDisplay>> {
-        &self.display
+impl Backend for Virtio3DBackend {
+    /// Returns the number of capsets provided by the Backend.
+    fn capsets() -> u32 {
+        3
     }
 
-    pub fn import_event_device(&mut self, event_device: EventDevice, scanout: u32) {
-        // TODO(zachr): support more than one scanout.
-        if scanout != 0 {
-            return;
-        }
+    /// Returns the bitset of virtio features provided by the Backend.
+    fn features() -> u64 {
+        1 << VIRTIO_GPU_F_VIRGL
+            | 1 << VIRTIO_F_VERSION_1
+            | 1 << VIRTIO_GPU_F_MEMORY
+            | 1 << VIRTIO_GPU_F_HOST_COHERENT
+    }
 
-        let mut display = self.display.borrow_mut();
-        let event_device_id = match display.import_event_device(event_device) {
-            Ok(id) => id,
-            Err(e) => {
-                error!("error importing event device: {}", e);
-                return;
+    /// Returns the underlying Backend.
+    fn build(
+        possible_displays: &[DisplayBackend],
+        display_width: u32,
+        display_height: u32,
+        renderer_flags: RendererFlags,
+        event_devices: Vec<EventDevice>,
+        gpu_device_socket: VmMemoryControlRequestSocket,
+        pci_bar: Alloc,
+    ) -> Option<Box<dyn Backend>> {
+        let mut renderer_flags = renderer_flags;
+        let mut display_opt = None;
+        for display in possible_displays {
+            match display.build() {
+                Ok(c) => {
+                    // If X11 is being used, that's an indication that the renderer should also be
+                    // using glx. Otherwise, we are likely in an enviroment in which GBM will work
+                    // for doing allocations of buffers we wish to display. TODO(zachr): this is a
+                    // heuristic (or terrible hack depending on your POV). We should do something
+                    // either smarter or more configurable.
+                    if display.is_x() {
+                        renderer_flags = RendererFlags::new().use_glx(true);
+                    }
+                    display_opt = Some(c);
+                    break;
+                }
+                Err(e) => error!("failed to open display: {}", e),
+            };
+        }
+        let display = match display_opt {
+            Some(d) => d,
+            None => {
+                error!("failed to open any displays");
+                return None;
             }
         };
-        self.scanout_surface
-            .map(|s| display.attach_event_device(s, event_device_id));
-        self.event_devices.insert(event_device_id, scanout);
+
+        if cfg!(debug_assertions) {
+            let ret = unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
+            if ret == -1 {
+                warn!("unable to dup2 stdout to stderr: {}", Error::last());
+            }
+        }
+
+        let renderer = match Renderer::init(renderer_flags) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("failed to initialize gpu renderer: {}", e);
+                return None;
+            }
+        };
+
+        let mut backend_3d = Virtio3DBackend::new(
+            display,
+            display_width,
+            display_height,
+            renderer,
+            gpu_device_socket,
+            pci_bar,
+        );
+
+        for event_device in event_devices {
+            backend_3d.import_event_device(event_device, 0);
+        }
+
+        Some(Box::new(backend_3d))
+    }
+
+    /// Gets a reference to the display passed into `new`.
+    fn display(&self) -> &Rc<RefCell<GpuDisplay>> {
+        &self.base.display
     }
 
     /// Processes the internal `display` events and returns `true` if the main display was closed.
-    pub fn process_display(&mut self) -> bool {
-        let mut display = self.display.borrow_mut();
-        display.dispatch_events();
-        self.scanout_surface
-            .map(|s| display.close_requested(s))
-            .unwrap_or(false)
-    }
-
-    pub fn process_resource_bridge(&self, resource_bridge: &ResourceResponseSocket) {
-        let request = match resource_bridge.recv() {
-            Ok(msg) => msg,
-            Err(e) => {
-                error!("error receiving resource bridge request: {}", e);
-                return;
-            }
-        };
-
-        let response = match request {
-            ResourceRequest::GetResource { id } => self
-                .resources
-                .get(&id)
-                .and_then(|resource| resource.gpu_resource.export().ok())
-                .and_then(|export| Some(export.1))
-                .map(ResourceResponse::Resource)
-                .unwrap_or(ResourceResponse::Invalid),
-        };
-
-        if let Err(e) = resource_bridge.send(&response) {
-            error!("error sending resource bridge request: {}", e);
-        }
+    fn process_display(&mut self) -> bool {
+        self.base.process_display()
     }
 
     /// Gets the list of supported display resolutions as a slice of `(width, height)` tuples.
-    pub fn display_info(&self) -> [(u32, u32); 1] {
-        [(self.display_width, self.display_height)]
+    fn display_info(&self) -> [(u32, u32); 1] {
+        self.base.display_info()
+    }
+
+    /// Attaches the given input device to the given surface of the display (to allow for input
+    /// from an X11 window for example).
+    fn import_event_device(&mut self, event_device: EventDevice, scanout: u32) {
+        self.base.import_event_device(event_device, scanout);
+    }
+
+    /// If supported, export the resource with the given id to a file.
+    fn export_resource(&mut self, id: u32) -> Option<File> {
+        let test: Option<File> = self
+            .resources
+            .get(&id) // Option<resource>
+            .and_then(|resource| resource.gpu_resource.export().ok()) // Option<(Query, File)>
+            .and_then(|t| Some(t.1)); // Option<File>
+        return test;
+    }
+
+    /// Creates a fence with the given id that can be used to determine when the previous command
+    /// completed.
+    fn create_fence(&mut self, ctx_id: u32, fence_id: u32) -> GpuResponse {
+        // There is a mismatch of ordering that is intentional.
+        // This create_fence matches the other functions in Backend, yet
+        // the renderer matches the virgl interface.
+        match self.renderer.create_fence(fence_id, ctx_id) {
+            Ok(_) => GpuResponse::OkNoData,
+            Err(e) => {
+                error!("failed to create fence: {}", e);
+                GpuResponse::ErrUnspec
+            }
+        }
+    }
+
+    /// Returns the id of the latest fence to complete.
+    fn fence_poll(&mut self) -> u32 {
+        self.renderer.poll()
+    }
+
+    fn force_ctx_0(&mut self) {
+        self.renderer.force_ctx_0();
     }
 
     /// Creates a 2D resource with the given properties and associated it with the given id.
-    pub fn create_resource_2d(
-        &mut self,
-        id: u32,
-        width: u32,
-        height: u32,
-        format: u32,
-    ) -> GpuResponse {
+    fn create_resource_2d(&mut self, id: u32, width: u32, height: u32, format: u32) -> GpuResponse {
         if id == 0 {
             return GpuResponse::ErrInvalidResourceId;
         }
@@ -284,7 +363,7 @@ impl Backend {
                 match gpu_resource {
                     Ok(gpu_resource) => {
                         let virtio_gpu_resource =
-                            VirtioGpuResource::new(width, height, gpu_resource);
+                            Virtio3DResource::new(width, height, gpu_resource);
                         slot.insert(virtio_gpu_resource);
                         GpuResponse::OkNoData
                     }
@@ -299,7 +378,7 @@ impl Backend {
     }
 
     /// Removes the guest's reference count for the given resource id.
-    pub fn unref_resource(&mut self, id: u32) -> GpuResponse {
+    fn unref_resource(&mut self, id: u32) -> GpuResponse {
         match self.resources.remove(&id) {
             Some(_) => GpuResponse::OkNoData,
             None => GpuResponse::ErrInvalidResourceId,
@@ -307,130 +386,38 @@ impl Backend {
     }
 
     /// Sets the given resource id as the source of scanout to the display.
-    pub fn set_scanout(&mut self, _scanout_id: u32, resource_id: u32) -> GpuResponse {
-        let mut display = self.display.borrow_mut();
-        if resource_id == 0 {
-            if let Some(surface) = self.scanout_surface.take() {
-                display.release_surface(surface);
-            }
-            self.scanout_resource = 0;
-            if let Some(surface) = self.cursor_surface.take() {
-                display.release_surface(surface);
-            }
-            self.cursor_resource = 0;
-            GpuResponse::OkNoData
-        } else if self.resources.get_mut(&resource_id).is_some() {
-            self.scanout_resource = resource_id;
-
-            if self.scanout_surface.is_none() {
-                match display.create_surface(None, self.display_width, self.display_height) {
-                    Ok(surface) => {
-                        // TODO(zachr): do not assume every event device belongs to this scanout_id;
-                        // in other words, support multiple display outputs.
-                        for &event_device in self.event_devices.keys() {
-                            display.attach_event_device(surface, event_device);
-                        }
-                        self.scanout_surface = Some(surface);
-                    }
-                    Err(e) => error!("failed to create display surface: {}", e),
-                }
-            }
-            GpuResponse::OkNoData
+    fn set_scanout(&mut self, _scanout_id: u32, resource_id: u32) -> GpuResponse {
+        if resource_id == 0 || self.resources.get_mut(&resource_id).is_some() {
+            self.base.set_scanout(resource_id)
         } else {
             GpuResponse::ErrInvalidResourceId
         }
     }
 
-    fn flush_resource_to_surface(
+    /// Flushes the given rectangle of pixels of the given resource to the display.
+    fn flush_resource(
         &mut self,
-        resource_id: u32,
-        surface_id: u32,
+        id: u32,
         _x: u32,
         _y: u32,
         _width: u32,
         _height: u32,
     ) -> GpuResponse {
-        let resource = match self.resources.get_mut(&resource_id) {
-            Some(r) => r,
-            None => return GpuResponse::ErrInvalidResourceId,
-        };
-
-        if let Some(import_id) = resource.import_to_display(&self.display) {
-            self.display.borrow_mut().flip_to(surface_id, import_id);
-            return GpuResponse::OkNoData;
-        }
-
-        // Import failed, fall back to a copy.
-        let mut display = self.display.borrow_mut();
-        // Prevent overwriting a buffer that is currently being used by the compositor.
-        if display.next_buffer_in_use(surface_id) {
-            return GpuResponse::OkNoData;
-        }
-
-        let fb = match display.framebuffer_region(
-            surface_id,
-            0,
-            0,
-            self.display_width,
-            self.display_height,
-        ) {
-            Some(fb) => fb,
-            None => {
-                error!("failed to access framebuffer for surface {}", surface_id);
-                return GpuResponse::ErrUnspec;
-            }
-        };
-
-        resource.read_to_volatile(
-            0,
-            0,
-            self.display_width,
-            self.display_height,
-            fb.as_volatile_slice(),
-            fb.stride(),
-        );
-        display.flip(surface_id);
-
-        GpuResponse::OkNoData
-    }
-
-    /// Flushes the given rectangle of pixels of the given resource to the display.
-    pub fn flush_resource(
-        &mut self,
-        id: u32,
-        x: u32,
-        y: u32,
-        width: u32,
-        height: u32,
-    ) -> GpuResponse {
         if id == 0 {
             return GpuResponse::OkNoData;
         }
 
-        let mut response = GpuResponse::OkNoData;
+        let resource = match self.resources.get_mut(&id) {
+            Some(r) => r,
+            None => return GpuResponse::ErrInvalidResourceId,
+        };
 
-        if id == self.scanout_resource {
-            if let Some(surface_id) = self.scanout_surface {
-                response = self.flush_resource_to_surface(id, surface_id, x, y, width, height);
-            }
-        }
-
-        if response != GpuResponse::OkNoData {
-            return response;
-        }
-
-        if id == self.cursor_resource {
-            if let Some(surface_id) = self.cursor_surface {
-                response = self.flush_resource_to_surface(id, surface_id, x, y, width, height);
-            }
-        }
-
-        response
+        self.base.flush_resource(resource, id)
     }
 
     /// Copes the given rectangle of pixels of the given resource's backing memory to the host side
     /// resource.
-    pub fn transfer_to_resource_2d(
+    fn transfer_to_resource_2d(
         &mut self,
         id: u32,
         x: u32,
@@ -451,7 +438,7 @@ impl Backend {
 
     /// Attaches backing memory to the given resource, represented by a `Vec` of `(address, size)`
     /// tuples in the guest's physical address space.
-    pub fn attach_backing(
+    fn attach_backing(
         &mut self,
         id: u32,
         mem: &GuestMemory,
@@ -467,7 +454,7 @@ impl Backend {
     }
 
     /// Detaches any backing memory from the given resource, if there is any.
-    pub fn detach_backing(&mut self, id: u32) -> GpuResponse {
+    fn detach_backing(&mut self, id: u32) -> GpuResponse {
         match self.resources.get_mut(&id) {
             Some(resource) => {
                 resource.gpu_resource.detach_backing();
@@ -478,71 +465,19 @@ impl Backend {
     }
 
     /// Updates the cursor's memory to the given id, and sets its position to the given coordinates.
-    pub fn update_cursor(&mut self, id: u32, x: u32, y: u32) -> GpuResponse {
-        if id == 0 {
-            if let Some(surface) = self.cursor_surface.take() {
-                self.display.borrow_mut().release_surface(surface);
-            }
-            self.cursor_resource = 0;
-            GpuResponse::OkNoData
-        } else if let Some(resource) = self.resources.get_mut(&id) {
-            self.cursor_resource = id;
-            if self.cursor_surface.is_none() {
-                match self.display.borrow_mut().create_surface(
-                    self.scanout_surface,
-                    resource.width,
-                    resource.height,
-                ) {
-                    Ok(surface) => self.cursor_surface = Some(surface),
-                    Err(e) => {
-                        error!("failed to create cursor surface: {}", e);
-                        return GpuResponse::ErrUnspec;
-                    }
-                }
-            }
+    fn update_cursor(&mut self, id: u32, x: u32, y: u32) -> GpuResponse {
+        let resource = self.resources.get_mut(&id).map(|r| r.as_mut());
 
-            let cursor_surface = self.cursor_surface.unwrap();
-            self.display.borrow_mut().set_position(cursor_surface, x, y);
-
-            // Gets the resource's pixels into the display by importing the buffer.
-            if let Some(import_id) = resource.import_to_display(&self.display) {
-                self.display.borrow_mut().flip_to(cursor_surface, import_id);
-                return GpuResponse::OkNoData;
-            }
-
-            // Importing failed, so try copying the pixels into the surface's slower shared memory
-            // framebuffer.
-            if let Some(fb) = self.display.borrow_mut().framebuffer(cursor_surface) {
-                resource.read_to_volatile(
-                    0,
-                    0,
-                    resource.width,
-                    resource.height,
-                    fb.as_volatile_slice(),
-                    fb.stride(),
-                )
-            }
-            self.display.borrow_mut().flip(cursor_surface);
-            GpuResponse::OkNoData
-        } else {
-            GpuResponse::ErrInvalidResourceId
-        }
+        self.base.update_cursor(id, x, y, resource)
     }
 
     /// Moves the cursor's position to the given coordinates.
-    pub fn move_cursor(&mut self, x: u32, y: u32) -> GpuResponse {
-        if let Some(cursor_surface) = self.cursor_surface {
-            if let Some(scanout_surface) = self.scanout_surface {
-                let mut display = self.display.borrow_mut();
-                display.set_position(cursor_surface, x, y);
-                display.commit(scanout_surface);
-            }
-        }
-        GpuResponse::OkNoData
+    fn move_cursor(&mut self, x: u32, y: u32) -> GpuResponse {
+        self.base.move_cursor(x, y)
     }
 
     /// Gets the renderer's capset information associated with `index`.
-    pub fn get_capset_info(&self, index: u32) -> GpuResponse {
+    fn get_capset_info(&self, index: u32) -> GpuResponse {
         let id = match index {
             0 => VIRTIO_GPU_CAPSET_VIRGL,
             1 => VIRTIO_GPU_CAPSET_VIRGL2,
@@ -555,12 +490,12 @@ impl Backend {
     }
 
     /// Gets the capset of `version` associated with `id`.
-    pub fn get_capset(&self, id: u32, version: u32) -> GpuResponse {
+    fn get_capset(&self, id: u32, version: u32) -> GpuResponse {
         GpuResponse::OkCapset(self.renderer.get_cap_set(id, version))
     }
 
     /// Creates a fresh renderer context with the given `id`.
-    pub fn create_renderer_context(&mut self, id: u32) -> GpuResponse {
+    fn create_renderer_context(&mut self, id: u32) -> GpuResponse {
         if id == 0 {
             return GpuResponse::ErrInvalidContextId;
         }
@@ -580,7 +515,7 @@ impl Backend {
     }
 
     /// Destorys the renderer context associated with `id`.
-    pub fn destroy_renderer_context(&mut self, id: u32) -> GpuResponse {
+    fn destroy_renderer_context(&mut self, id: u32) -> GpuResponse {
         match self.contexts.remove(&id) {
             Some(_) => GpuResponse::OkNoData,
             None => GpuResponse::ErrInvalidContextId,
@@ -588,7 +523,7 @@ impl Backend {
     }
 
     /// Attaches the indicated resource to the given context.
-    pub fn context_attach_resource(&mut self, ctx_id: u32, res_id: u32) -> GpuResponse {
+    fn context_attach_resource(&mut self, ctx_id: u32, res_id: u32) -> GpuResponse {
         match (
             self.contexts.get_mut(&ctx_id),
             self.resources.get_mut(&res_id),
@@ -603,7 +538,7 @@ impl Backend {
     }
 
     /// detaches the indicated resource to the given context.
-    pub fn context_detach_resource(&mut self, ctx_id: u32, res_id: u32) -> GpuResponse {
+    fn context_detach_resource(&mut self, ctx_id: u32, res_id: u32) -> GpuResponse {
         match (
             self.contexts.get_mut(&ctx_id),
             self.resources.get_mut(&res_id),
@@ -618,7 +553,7 @@ impl Backend {
     }
 
     /// Creates a 3D resource with the given properties and associated it with the given id.
-    pub fn resource_create_3d(
+    fn resource_create_3d(
         &mut self,
         id: u32,
         target: u32,
@@ -682,7 +617,7 @@ impl Backend {
                         };
 
                         let virtio_gpu_resource =
-                            VirtioGpuResource::new(width, height, gpu_resource);
+                            Virtio3DResource::new(width, height, gpu_resource);
                         slot.insert(virtio_gpu_resource);
                         response
                     }
@@ -696,7 +631,7 @@ impl Backend {
     }
     /// Copes the given 3D rectangle of pixels of the given resource's backing memory to the host
     /// side resource.
-    pub fn transfer_to_resource_3d(
+    fn transfer_to_resource_3d(
         &mut self,
         ctx_id: u32,
         res_id: u32,
@@ -750,7 +685,7 @@ impl Backend {
 
     /// Copes the given rectangle of pixels from the resource to the given resource's backing
     /// memory.
-    pub fn transfer_from_resource_3d(
+    fn transfer_from_resource_3d(
         &mut self,
         ctx_id: u32,
         res_id: u32,
@@ -803,7 +738,7 @@ impl Backend {
     }
 
     /// Submits a command buffer to the given rendering context.
-    pub fn submit_command(&mut self, ctx_id: u32, commands: &mut [u8]) -> GpuResponse {
+    fn submit_command(&mut self, ctx_id: u32, commands: &mut [u8]) -> GpuResponse {
         match self.contexts.get_mut(&ctx_id) {
             Some(ctx) => match ctx.submit(&mut commands[..]) {
                 Ok(_) => GpuResponse::OkNoData,
@@ -816,28 +751,7 @@ impl Backend {
         }
     }
 
-    pub fn create_fence(&mut self, ctx_id: u32, fence_id: u32) -> GpuResponse {
-        // There is a mismatch of ordering that is intentional.
-        // This create_fence matches the other functions in Backend, yet
-        // the renderer matches the virgl interface.
-        match self.renderer.create_fence(fence_id, ctx_id) {
-            Ok(_) => GpuResponse::OkNoData,
-            Err(e) => {
-                error!("failed to create fence: {}", e);
-                GpuResponse::ErrUnspec
-            }
-        }
-    }
-
-    pub fn fence_poll(&mut self) -> u32 {
-        self.renderer.poll()
-    }
-
-    pub fn force_ctx_0(&mut self) {
-        self.renderer.force_ctx_0();
-    }
-
-    pub fn allocation_metadata(
+    fn allocation_metadata(
         &mut self,
         request_id: u32,
         request: Vec<u8>,
@@ -861,7 +775,7 @@ impl Backend {
         }
     }
 
-    pub fn resource_create_v2(
+    fn resource_create_v2(
         &mut self,
         resource_id: u32,
         guest_memory_type: u32,
@@ -911,9 +825,9 @@ impl Backend {
                             Ok(_resq) => match self.gpu_device_socket.recv() {
                                 Ok(response) => match response {
                                     VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
-                                        entry.insert(VirtioGpuResource::v2_new(
-                                            self.display_width,
-                                            self.display_height,
+                                        entry.insert(Virtio3DResource::v2_new(
+                                            self.base.display_width,
+                                            self.base.display_height,
                                             slot,
                                             resource,
                                         ));
@@ -940,9 +854,9 @@ impl Backend {
                         }
                     }
                     _ => {
-                        entry.insert(VirtioGpuResource::new(
-                            self.display_width,
-                            self.display_height,
+                        entry.insert(Virtio3DResource::new(
+                            self.base.display_width,
+                            self.base.display_height,
                             resource,
                         ));
 
@@ -954,7 +868,7 @@ impl Backend {
         }
     }
 
-    pub fn resource_v2_unref(&mut self, resource_id: u32) -> GpuResponse {
+    fn resource_v2_unref(&mut self, resource_id: u32) -> GpuResponse {
         match self.resources.remove(&resource_id) {
             Some(entry) => match entry.kvm_slot {
                 Some(kvm_slot) => {

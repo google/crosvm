@@ -2,11 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-mod backend;
 mod protocol;
+mod virtio_2d_backend;
+mod virtio_3d_backend;
+mod virtio_backend;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::fs::File;
 use std::i64;
 use std::io::Read;
 use std::mem::{self, size_of};
@@ -19,14 +22,12 @@ use std::time::Duration;
 
 use data_model::*;
 
-use sys_util::{
-    debug, error, warn, Error, EventFd, GuestAddress, GuestMemory, PollContext, PollToken,
-};
+use sys_util::{debug, error, warn, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 
 pub use gpu_display::EventDevice;
 use gpu_display::*;
-use gpu_renderer::{Renderer, RendererFlags};
-
+use gpu_renderer::RendererFlags;
+use msg_socket::{MsgReceiver, MsgSender};
 use resources::Alloc;
 
 use super::{
@@ -36,14 +37,21 @@ use super::{
 
 use super::{PciCapabilityType, VirtioPciShmCap, VirtioPciShmCapID};
 
-use self::backend::Backend;
 use self::protocol::*;
+use self::virtio_2d_backend::Virtio2DBackend;
+use self::virtio_3d_backend::Virtio3DBackend;
 use crate::pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability};
 
 use vm_control::VmMemoryControlRequestSocket;
 
 pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
 pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum GpuMode {
+    Mode2D,
+    Mode3D,
+}
 
 #[derive(Debug)]
 pub struct GpuParameters {
@@ -53,6 +61,7 @@ pub struct GpuParameters {
     pub renderer_use_gles: bool,
     pub renderer_use_glx: bool,
     pub renderer_use_surfaceless: bool,
+    pub mode: GpuMode,
 }
 
 pub const DEFAULT_GPU_PARAMS: GpuParameters = GpuParameters {
@@ -62,6 +71,7 @@ pub const DEFAULT_GPU_PARAMS: GpuParameters = GpuParameters {
     renderer_use_gles: true,
     renderer_use_glx: false,
     renderer_use_surfaceless: true,
+    mode: GpuMode::Mode3D,
 };
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
@@ -72,6 +82,277 @@ const FENCE_POLL_MS: u64 = 1;
 const GPU_BAR_NUM: u8 = 4;
 const GPU_BAR_OFFSET: u64 = 0;
 const GPU_BAR_SIZE: u64 = 1 << 33;
+
+/// A virtio-gpu backend state tracker which supports display and potentially accelerated rendering.
+///
+/// Commands from the virtio-gpu protocol can be submitted here using the methods, and they will be
+/// realized on the hardware. Most methods return a `GpuResponse` that indicate the success,
+/// failure, or requested data for the given command.
+trait Backend {
+    /// Returns the number of capsets provided by the Backend.
+    fn capsets() -> u32
+    where
+        Self: Sized;
+
+    /// Returns the bitset of virtio features provided by the Backend.
+    fn features() -> u64
+    where
+        Self: Sized;
+
+    /// Constructs a backend.
+    fn build(
+        possible_displays: &[DisplayBackend],
+        display_width: u32,
+        display_height: u32,
+        renderer_flags: RendererFlags,
+        event_devices: Vec<EventDevice>,
+        gpu_device_socket: VmMemoryControlRequestSocket,
+        pci_bar: Alloc,
+    ) -> Option<Box<dyn Backend>>
+    where
+        Self: Sized;
+
+    fn display(&self) -> &Rc<RefCell<GpuDisplay>>;
+
+    /// Processes the internal `display` events and returns `true` if the main display was closed.
+    fn process_display(&mut self) -> bool;
+
+    /// Creates a fence with the given id that can be used to determine when the previous command
+    /// completed.
+    fn create_fence(&mut self, ctx_id: u32, fence_id: u32) -> GpuResponse;
+
+    /// Returns the id of the latest fence to complete.
+    fn fence_poll(&mut self) -> u32;
+
+    /// For accelerated rendering capable backends, switch to the default rendering context.
+    fn force_ctx_0(&mut self) {}
+
+    /// Attaches the given input device to the given surface of the display (to allow for input
+    /// from a X11 window for example).
+    fn import_event_device(&mut self, event_device: EventDevice, scanout: u32);
+
+    /// If supported, export the resource with the given id to a file.
+    fn export_resource(&mut self, id: u32) -> Option<File>;
+
+    /// Gets the list of supported display resolutions as a slice of `(width, height)` tuples.
+    fn display_info(&self) -> [(u32, u32); 1];
+
+    /// Creates a 2D resource with the given properties and associates it with the given id.
+    fn create_resource_2d(&mut self, id: u32, width: u32, height: u32, format: u32) -> GpuResponse;
+
+    /// Removes the guest's reference count for the given resource id.
+    fn unref_resource(&mut self, id: u32) -> GpuResponse;
+
+    /// Sets the given resource id as the source of scanout to the display.
+    fn set_scanout(&mut self, _scanout_id: u32, resource_id: u32) -> GpuResponse;
+
+    /// Flushes the given rectangle of pixels of the given resource to the display.
+    fn flush_resource(&mut self, id: u32, x: u32, y: u32, width: u32, height: u32) -> GpuResponse;
+
+    /// Copes the given rectangle of pixels of the given resource's backing memory to the host side
+    /// resource.
+    fn transfer_to_resource_2d(
+        &mut self,
+        id: u32,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        src_offset: u64,
+        mem: &GuestMemory,
+    ) -> GpuResponse;
+
+    /// Attaches backing memory to the given resource, represented by a `Vec` of `(address, size)`
+    /// tuples in the guest's physical address space.
+    fn attach_backing(
+        &mut self,
+        id: u32,
+        mem: &GuestMemory,
+        vecs: Vec<(GuestAddress, usize)>,
+    ) -> GpuResponse;
+
+    /// Detaches any backing memory from the given resource, if there is any.
+    fn detach_backing(&mut self, id: u32) -> GpuResponse;
+
+    /// Updates the cursor's memory to the given id, and sets its position to the given coordinates.
+    fn update_cursor(&mut self, id: u32, x: u32, y: u32) -> GpuResponse;
+
+    /// Moves the cursor's position to the given coordinates.
+    fn move_cursor(&mut self, x: u32, y: u32) -> GpuResponse;
+
+    /// Gets the renderer's capset information associated with `index`.
+    fn get_capset_info(&self, index: u32) -> GpuResponse;
+
+    /// Gets the capset of `version` associated with `id`.
+    fn get_capset(&self, id: u32, version: u32) -> GpuResponse;
+
+    /// Creates a fresh renderer context with the given `id`.
+    fn create_renderer_context(&mut self, _id: u32) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
+    /// Destorys the renderer context associated with `id`.
+    fn destroy_renderer_context(&mut self, _id: u32) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
+    /// Attaches the indicated resource to the given context.
+    fn context_attach_resource(&mut self, _ctx_id: u32, _res_id: u32) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
+    /// detaches the indicated resource to the given context.
+    fn context_detach_resource(&mut self, _ctx_id: u32, _res_id: u32) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
+    /// Creates a 3D resource with the given properties and associates it with the given id.
+    fn resource_create_3d(
+        &mut self,
+        _id: u32,
+        _target: u32,
+        _format: u32,
+        _bind: u32,
+        _width: u32,
+        _height: u32,
+        _depth: u32,
+        _array_size: u32,
+        _last_level: u32,
+        _nr_samples: u32,
+        _flags: u32,
+    ) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
+    /// Copes the given 3D rectangle of pixels of the given resource's backing memory to the host
+    /// side resource.
+    fn transfer_to_resource_3d(
+        &mut self,
+        _ctx_id: u32,
+        _res_id: u32,
+        _x: u32,
+        _y: u32,
+        _z: u32,
+        _width: u32,
+        _height: u32,
+        _depth: u32,
+        _level: u32,
+        _stride: u32,
+        _layer_stride: u32,
+        _offset: u64,
+    ) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
+    /// Copes the given rectangle of pixels from the resource to the given resource's backing
+    /// memory.
+    fn transfer_from_resource_3d(
+        &mut self,
+        _ctx_id: u32,
+        _res_id: u32,
+        _x: u32,
+        _y: u32,
+        _z: u32,
+        _width: u32,
+        _height: u32,
+        _depth: u32,
+        _level: u32,
+        _stride: u32,
+        _layer_stride: u32,
+        _offset: u64,
+    ) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
+    /// Submits a command buffer to the given rendering context.
+    fn submit_command(&mut self, _ctx_id: u32, _commands: &mut [u8]) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
+    fn allocation_metadata(
+        &mut self,
+        _request_id: u32,
+        _request: Vec<u8>,
+        mut _response: Vec<u8>,
+    ) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
+    fn resource_create_v2(
+        &mut self,
+        _resource_id: u32,
+        _guest_memory_type: u32,
+        _guest_caching_type: u32,
+        _size: u64,
+        _pci_addr: u64,
+        _mem: &GuestMemory,
+        _vecs: Vec<(GuestAddress, usize)>,
+        _args: Vec<u8>,
+    ) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
+    fn resource_v2_unref(&mut self, _resource_id: u32) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+}
+
+#[derive(Clone)]
+enum BackendKind {
+    Virtio2D,
+    Virtio3D,
+}
+
+impl BackendKind {
+    /// Returns the number of capsets provided by the Backend.
+    fn capsets(&self) -> u32 {
+        match self {
+            BackendKind::Virtio2D => Virtio2DBackend::capsets(),
+            BackendKind::Virtio3D => Virtio3DBackend::capsets(),
+        }
+    }
+
+    /// Returns the bitset of virtio features provided by the Backend.
+    fn features(&self) -> u64 {
+        match self {
+            BackendKind::Virtio2D => Virtio2DBackend::features(),
+            BackendKind::Virtio3D => Virtio3DBackend::features(),
+        }
+    }
+
+    /// Initializes the backend.
+    fn build(
+        &self,
+        possible_displays: &[DisplayBackend],
+        display_width: u32,
+        display_height: u32,
+        renderer_flags: RendererFlags,
+        event_devices: Vec<EventDevice>,
+        gpu_device_socket: VmMemoryControlRequestSocket,
+        pci_bar: Alloc,
+    ) -> Option<Box<dyn Backend>> {
+        match self {
+            BackendKind::Virtio2D => Virtio2DBackend::build(
+                possible_displays,
+                display_width,
+                display_height,
+                renderer_flags,
+                event_devices,
+                gpu_device_socket,
+                pci_bar,
+            ),
+            BackendKind::Virtio3D => Virtio3DBackend::build(
+                possible_displays,
+                display_width,
+                display_height,
+                renderer_flags,
+                event_devices,
+                gpu_device_socket,
+                pci_bar,
+            ),
+        }
+    }
+}
 
 struct ReturnDescriptor {
     index: u16,
@@ -88,11 +369,11 @@ struct Frontend {
     return_ctrl_descriptors: VecDeque<ReturnDescriptor>,
     return_cursor_descriptors: VecDeque<ReturnDescriptor>,
     fence_descriptors: Vec<FenceDescriptor>,
-    backend: Backend,
+    backend: Box<dyn Backend>,
 }
 
 impl Frontend {
-    fn new(backend: Backend) -> Frontend {
+    fn new(backend: Box<dyn Backend>) -> Frontend {
         Frontend {
             return_ctrl_descriptors: Default::default(),
             return_cursor_descriptors: Default::default(),
@@ -101,7 +382,7 @@ impl Frontend {
         }
     }
 
-    fn display(&self) -> &Rc<RefCell<GpuDisplay>> {
+    fn display(&mut self) -> &Rc<RefCell<GpuDisplay>> {
         self.backend.display()
     }
 
@@ -109,8 +390,26 @@ impl Frontend {
         self.backend.process_display()
     }
 
-    fn process_resource_bridge(&self, resource_bridge: &ResourceResponseSocket) {
-        self.backend.process_resource_bridge(resource_bridge);
+    fn process_resource_bridge(&mut self, resource_bridge: &ResourceResponseSocket) {
+        let request = match resource_bridge.recv() {
+            Ok(msg) => msg,
+            Err(e) => {
+                error!("error receiving resource bridge request: {}", e);
+                return;
+            }
+        };
+
+        let response = match request {
+            ResourceRequest::GetResource { id } => self
+                .backend
+                .export_resource(id)
+                .map(ResourceResponse::Resource)
+                .unwrap_or(ResourceResponse::Invalid),
+        };
+
+        if let Err(e) = resource_bridge.send(&response) {
+            error!("error sending resource bridge request: {}", e);
+        }
     }
 
     fn process_gpu_command(
@@ -609,7 +908,9 @@ impl Worker {
                             let _ = self.exit_evt.write(1);
                         }
                     }
-                    Token::ResourceBridge { index } => process_resource_bridge[index] = true,
+                    Token::ResourceBridge { index } => {
+                        process_resource_bridge[index] = true;
+                    }
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
                     }
@@ -692,75 +993,6 @@ impl DisplayBackend {
     }
 }
 
-// Builds a gpu backend with one of the given possible display backends, or None if they all
-// failed.
-fn build_backend(
-    possible_displays: &[DisplayBackend],
-    display_width: u32,
-    display_height: u32,
-    renderer_flags: RendererFlags,
-    event_devices: Vec<EventDevice>,
-    gpu_device_socket: VmMemoryControlRequestSocket,
-    pci_bar: Alloc,
-) -> Option<Backend> {
-    let mut renderer_flags = renderer_flags;
-    let mut display_opt = None;
-    for display in possible_displays {
-        match display.build() {
-            Ok(c) => {
-                // If X11 is being used, that's an indication that the renderer should also be using
-                // glx. Otherwise, we are likely in an enviroment in which GBM will work for doing
-                // allocations of buffers we wish to display. TODO(zachr): this is a heuristic (or
-                // terrible hack depending on your POV). We should do something either smarter or
-                // more configurable
-                if display.is_x() {
-                    renderer_flags = RendererFlags::new().use_glx(true);
-                }
-                display_opt = Some(c);
-                break;
-            }
-            Err(e) => error!("failed to open display: {}", e),
-        };
-    }
-    let display = match display_opt {
-        Some(d) => d,
-        None => {
-            error!("failed to open any displays");
-            return None;
-        }
-    };
-
-    if cfg!(debug_assertions) {
-        let ret = unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
-        if ret == -1 {
-            warn!("unable to dup2 stdout to stderr: {}", Error::last());
-        }
-    }
-
-    let renderer = match Renderer::init(renderer_flags) {
-        Ok(r) => r,
-        Err(e) => {
-            error!("failed to initialize gpu renderer: {}", e);
-            return None;
-        }
-    };
-
-    let mut backend = Backend::new(
-        display,
-        display_width,
-        display_height,
-        renderer,
-        gpu_device_socket,
-        pci_bar,
-    );
-
-    for event_device in event_devices {
-        backend.import_event_device(event_device, 0);
-    }
-
-    Some(backend)
-}
-
 pub struct Gpu {
     exit_evt: EventFd,
     gpu_device_socket: Option<VmMemoryControlRequestSocket>,
@@ -775,6 +1007,7 @@ pub struct Gpu {
     display_height: u32,
     renderer_flags: RendererFlags,
     pci_bar: Option<Alloc>,
+    backend_kind: BackendKind,
 }
 
 impl Gpu {
@@ -793,6 +1026,11 @@ impl Gpu {
             .use_glx(gpu_parameters.renderer_use_glx)
             .use_surfaceless(gpu_parameters.renderer_use_surfaceless);
 
+        let backend_kind = match gpu_parameters.mode {
+            GpuMode::Mode2D => BackendKind::Virtio2D,
+            GpuMode::Mode3D => BackendKind::Virtio3D,
+        };
+
         Gpu {
             exit_evt,
             gpu_device_socket,
@@ -807,6 +1045,7 @@ impl Gpu {
             display_height: gpu_parameters.display_height,
             renderer_flags,
             pci_bar: None,
+            backend_kind,
         }
     }
 
@@ -819,7 +1058,7 @@ impl Gpu {
             events_read: Le32::from(events_read),
             events_clear: Le32::from(0),
             num_scanouts: Le32::from(self.num_scanouts.get() as u32),
-            num_capsets: Le32::from(3),
+            num_capsets: Le32::from(self.backend_kind.capsets()),
         }
     }
 }
@@ -867,10 +1106,7 @@ impl VirtioDevice for Gpu {
     }
 
     fn features(&self) -> u64 {
-        1 << VIRTIO_GPU_F_VIRGL
-            | 1 << VIRTIO_F_VERSION_1
-            | 1 << VIRTIO_GPU_F_MEMORY
-            | 1 << VIRTIO_GPU_F_HOST_COHERENT
+        self.backend_kind.features()
     }
 
     fn ack_features(&mut self, value: u64) {
@@ -919,6 +1155,7 @@ impl VirtioDevice for Gpu {
 
         let resource_bridges = mem::replace(&mut self.resource_bridges, Vec::new());
 
+        let backend_kind = self.backend_kind.clone();
         let ctrl_queue = queues.remove(0);
         let ctrl_evt = queue_evts.remove(0);
         let cursor_queue = queues.remove(0);
@@ -935,7 +1172,7 @@ impl VirtioDevice for Gpu {
                 thread::Builder::new()
                     .name("virtio_gpu".to_string())
                     .spawn(move || {
-                        let backend = match build_backend(
+                        let backend = match backend_kind.build(
                             &display_backends,
                             display_width,
                             display_height,

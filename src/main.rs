@@ -22,7 +22,7 @@ use crosvm::{
     linux, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
 };
 #[cfg(feature = "gpu")]
-use devices::virtio::gpu::{GpuParameters, DEFAULT_GPU_PARAMS};
+use devices::virtio::gpu::{GpuMode, GpuParameters, DEFAULT_GPU_PARAMS};
 use devices::{SerialParameters, SerialType};
 use disk::QcowFile;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
@@ -124,6 +124,12 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
 
         for (k, v) in opts {
             match k {
+                "2d" | "2D" => {
+                    gpu_params.mode = GpuMode::Mode2D;
+                }
+                "3d" | "3D" => {
+                    gpu_params.mode = GpuMode::Mode3D;
+                }
                 "egl" => match v {
                     "true" | "" => {
                         gpu_params.renderer_use_egl = true;

@@ -348,7 +348,7 @@ impl DisplayT for DisplayWl {
     fn release_event_device(&mut self, _event_device_id: u32) {
         // unsupported
     }
-    fn attach_event_device(&mut self, surface_id: u32, event_device_id: u32) {
+    fn attach_event_device(&mut self, _surface_id: u32, _event_device_id: u32) {
         // unsupported
     }
 }
