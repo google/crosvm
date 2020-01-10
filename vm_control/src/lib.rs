@@ -99,7 +99,33 @@ pub const USB_CONTROL_MAX_PORTS: usize = 16;
 #[derive(MsgOnSocket, Debug)]
 pub enum BalloonControlCommand {
     /// Set the size of the VM's balloon.
-    Adjust { num_bytes: u64 },
+    Adjust {
+        num_bytes: u64,
+    },
+    Stats,
+}
+
+// BalloonStats holds stats returned from the stats_queue.
+#[derive(Default, MsgOnSocket, Debug)]
+pub struct BalloonStats {
+    pub swap_in: Option<u64>,
+    pub swap_out: Option<u64>,
+    pub major_faults: Option<u64>,
+    pub minor_faults: Option<u64>,
+    pub free_memory: Option<u64>,
+    pub total_memory: Option<u64>,
+    pub available_memory: Option<u64>,
+    pub disk_caches: Option<u64>,
+    pub hugetlb_allocations: Option<u64>,
+    pub hugetlb_failures: Option<u64>,
+}
+
+#[derive(MsgOnSocket, Debug)]
+pub enum BalloonControlResult {
+    Stats {
+        stats: BalloonStats,
+        balloon_actual: u64,
+    },
 }
 
 #[derive(MsgOnSocket, Debug)]
@@ -379,8 +405,8 @@ pub enum VmIrqResponse {
     Err(SysError),
 }
 
-pub type BalloonControlRequestSocket = MsgSocket<BalloonControlCommand, ()>;
-pub type BalloonControlResponseSocket = MsgSocket<(), BalloonControlCommand>;
+pub type BalloonControlRequestSocket = MsgSocket<BalloonControlCommand, BalloonControlResult>;
+pub type BalloonControlResponseSocket = MsgSocket<BalloonControlResult, BalloonControlCommand>;
 
 pub type DiskControlRequestSocket = MsgSocket<DiskControlCommand, DiskControlResult>;
 pub type DiskControlResponseSocket = MsgSocket<DiskControlResult, DiskControlCommand>;

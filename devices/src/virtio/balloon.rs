@@ -9,12 +9,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use data_model::{DataInit, Le32};
-use msg_socket::MsgReceiver;
+use data_model::{DataInit, Le16, Le32, Le64};
+use msg_socket::{MsgReceiver, MsgSender};
 use sys_util::{
     self, error, info, warn, EventFd, GuestAddress, GuestMemory, PollContext, PollToken,
 };
-use vm_control::{BalloonControlCommand, BalloonControlResponseSocket};
+use vm_control::{
+    BalloonControlCommand, BalloonControlResponseSocket, BalloonControlResult, BalloonStats,
+};
 
 use super::{
     copy_config, Interrupt, Queue, Reader, VirtioDevice, TYPE_BALLOON, VIRTIO_F_VERSION_1,
@@ -41,14 +43,14 @@ impl Display for BalloonError {
 }
 
 // Balloon has three virt IO queues: Inflate, Deflate, and Stats.
-// Stats is currently not used.
 const QUEUE_SIZE: u16 = 128;
-const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
+const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE];
 
 const VIRTIO_BALLOON_PFN_SHIFT: u32 = 12;
 
 // The feature bitmap for virtio balloon
 const VIRTIO_BALLOON_F_MUST_TELL_HOST: u32 = 0; // Tell before reclaiming pages
+const VIRTIO_BALLOON_F_STATS_VQ: u32 = 1; // Stats reporting enabled
 const VIRTIO_BALLOON_F_DEFLATE_ON_OOM: u32 = 2; // Deflate balloon on OOM
 
 // virtio_balloon_config is the ballon device configuration space defined by the virtio spec.
@@ -69,11 +71,54 @@ struct BalloonConfig {
     actual_pages: AtomicUsize,
 }
 
+// The constants defining stats types in virtio_baloon_stat
+const VIRTIO_BALLOON_S_SWAP_IN: u16 = 0;
+const VIRTIO_BALLOON_S_SWAP_OUT: u16 = 1;
+const VIRTIO_BALLOON_S_MAJFLT: u16 = 2;
+const VIRTIO_BALLOON_S_MINFLT: u16 = 3;
+const VIRTIO_BALLOON_S_MEMFREE: u16 = 4;
+const VIRTIO_BALLOON_S_MEMTOT: u16 = 5;
+const VIRTIO_BALLOON_S_AVAIL: u16 = 6;
+const VIRTIO_BALLOON_S_CACHES: u16 = 7;
+const VIRTIO_BALLOON_S_HTLB_PGALLOC: u16 = 8;
+const VIRTIO_BALLOON_S_HTLB_PGFAIL: u16 = 9;
+
+// BalloonStat is used to deserialize stats from the stats_queue.
+#[derive(Copy, Clone)]
+#[repr(C, packed)]
+struct BalloonStat {
+    tag: Le16,
+    val: Le64,
+}
+// Safe because it only has data.
+unsafe impl DataInit for BalloonStat {}
+
+impl BalloonStat {
+    fn update_stats(&self, stats: &mut BalloonStats) {
+        let val = Some(self.val.to_native());
+        match self.tag.to_native() {
+            VIRTIO_BALLOON_S_SWAP_IN => stats.swap_in = val,
+            VIRTIO_BALLOON_S_SWAP_OUT => stats.swap_out = val,
+            VIRTIO_BALLOON_S_MAJFLT => stats.major_faults = val,
+            VIRTIO_BALLOON_S_MINFLT => stats.minor_faults = val,
+            VIRTIO_BALLOON_S_MEMFREE => stats.free_memory = val,
+            VIRTIO_BALLOON_S_MEMTOT => stats.total_memory = val,
+            VIRTIO_BALLOON_S_AVAIL => stats.available_memory = val,
+            VIRTIO_BALLOON_S_CACHES => stats.disk_caches = val,
+            VIRTIO_BALLOON_S_HTLB_PGALLOC => stats.hugetlb_allocations = val,
+            VIRTIO_BALLOON_S_HTLB_PGFAIL => stats.hugetlb_failures = val,
+            _ => (),
+        }
+    }
+}
+
 struct Worker {
     interrupt: Interrupt,
     mem: GuestMemory,
     inflate_queue: Queue,
     deflate_queue: Queue,
+    stats_queue: Queue,
+    stats_desc_index: Option<u16>,
     config: Arc<BalloonConfig>,
     command_socket: BalloonControlResponseSocket,
 }
@@ -100,27 +145,16 @@ impl Worker {
                         continue;
                     }
                 };
-                let data_length = reader.available_bytes();
-
-                if data_length % 4 != 0 {
-                    error!("invalid inflate buffer size: {}", data_length);
-                    queue.add_used(&self.mem, index, 0);
-                    needs_interrupt = true;
-                    continue;
-                }
-
-                let num_addrs = data_length / 4;
-                for _ in 0..num_addrs as usize {
-                    let guest_input = match reader.read_obj::<Le32>() {
-                        Ok(a) => a.to_native(),
-                        Err(err) => {
-                            error!("error while reading unused pages: {}", err);
+                for res in reader.iter::<Le32>() {
+                    let pfn = match res {
+                        Ok(pfn) => pfn,
+                        Err(e) => {
+                            error!("error while reading unused pages: {}", e);
                             break;
                         }
                     };
                     let guest_address =
-                        GuestAddress((u64::from(guest_input)) << VIRTIO_BALLOON_PFN_SHIFT);
-
+                        GuestAddress((u64::from(pfn.to_native())) << VIRTIO_BALLOON_PFN_SHIFT);
                     if self
                         .mem
                         .remove_range(guest_address, 1 << VIRTIO_BALLOON_PFN_SHIFT)
@@ -131,7 +165,6 @@ impl Worker {
                     }
                 }
             }
-
             queue.add_used(&self.mem, index, 0);
             needs_interrupt = true;
         }
@@ -139,11 +172,57 @@ impl Worker {
         needs_interrupt
     }
 
+    fn process_stats(&mut self) {
+        let queue = &mut self.stats_queue;
+        while let Some(stats_desc) = queue.pop(&self.mem) {
+            if let Some(prev_desc) = self.stats_desc_index {
+                // We shouldn't ever have an extra buffer if the driver follows
+                // the protocol, but return it if we find one.
+                warn!("balloon: driver is not compliant, more than one stats buffer received");
+                queue.add_used(&self.mem, prev_desc, 0);
+            }
+            self.stats_desc_index = Some(stats_desc.index);
+            let mut reader = match Reader::new(&self.mem, stats_desc) {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("balloon: failed to create reader: {}", e);
+                    continue;
+                }
+            };
+            let mut stats: BalloonStats = Default::default();
+            for res in reader.iter::<BalloonStat>() {
+                match res {
+                    Ok(stat) => stat.update_stats(&mut stats),
+                    Err(e) => {
+                        error!("error while reading stats: {}", e);
+                        break;
+                    }
+                };
+            }
+            let actual_pages = self.config.actual_pages.load(Ordering::Relaxed) as u64;
+            let result = BalloonControlResult::Stats {
+                balloon_actual: actual_pages << VIRTIO_BALLOON_PFN_SHIFT,
+                stats,
+            };
+            if let Err(e) = self.command_socket.send(&result) {
+                warn!("failed to send stats result: {}", e);
+            }
+        }
+    }
+
+    fn request_stats(&mut self) {
+        if let Some(index) = self.stats_desc_index.take() {
+            self.stats_queue.add_used(&self.mem, index, 0);
+            self.interrupt.signal_used_queue(self.stats_queue.vector);
+        }
+    }
+
     fn run(&mut self, mut queue_evts: Vec<EventFd>, kill_evt: EventFd) {
         #[derive(PartialEq, PollToken)]
         enum Token {
             Inflate,
             Deflate,
+            Stats,
             CommandSocket,
             InterruptResample,
             Kill,
@@ -151,10 +230,12 @@ impl Worker {
 
         let inflate_queue_evt = queue_evts.remove(0);
         let deflate_queue_evt = queue_evts.remove(0);
+        let stats_queue_evt = queue_evts.remove(0);
 
         let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
             (&inflate_queue_evt, Token::Inflate),
             (&deflate_queue_evt, Token::Deflate),
+            (&stats_queue_evt, Token::Stats),
             (&self.command_socket, Token::CommandSocket),
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
@@ -193,6 +274,13 @@ impl Worker {
                         }
                         needs_interrupt_deflate |= self.process_inflate_deflate(false);
                     }
+                    Token::Stats => {
+                        if let Err(e) = stats_queue_evt.read() {
+                            error!("failed reading stats queue EventFd: {}", e);
+                            break 'poll;
+                        }
+                        self.process_stats();
+                    }
                     Token::CommandSocket => {
                         if let Ok(req) = self.command_socket.recv() {
                             match req {
@@ -203,6 +291,9 @@ impl Worker {
 
                                     self.config.num_pages.store(num_pages, Ordering::Relaxed);
                                     self.interrupt.signal_config_changed();
+                                }
+                                BalloonControlCommand::Stats => {
+                                    self.request_stats();
                                 }
                             };
                         }
@@ -252,8 +343,10 @@ impl Balloon {
             }),
             kill_evt: None,
             worker_thread: None,
-            // TODO(dgreid) - Add stats queue feature.
-            features: 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM,
+            features: 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST
+                | 1 << VIRTIO_BALLOON_F_STATS_VQ
+                | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM
+                | 1 << VIRTIO_F_VERSION_1,
         })
     }
 
@@ -306,9 +399,7 @@ impl VirtioDevice for Balloon {
     }
 
     fn features(&self) -> u64 {
-        1 << VIRTIO_BALLOON_F_MUST_TELL_HOST
-            | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM
-            | 1 << VIRTIO_F_VERSION_1
+        self.features
     }
 
     fn ack_features(&mut self, value: u64) {
@@ -345,6 +436,8 @@ impl VirtioDevice for Balloon {
                     mem,
                     inflate_queue: queues.remove(0),
                     deflate_queue: queues.remove(0),
+                    stats_queue: queues.remove(0),
+                    stats_desc_index: None,
                     command_socket,
                     config,
                 };

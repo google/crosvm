@@ -54,10 +54,10 @@ use sys_util::{
 use vhost;
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
-    DiskControlCommand, DiskControlRequestSocket, DiskControlResponseSocket, DiskControlResult,
-    UsbControlSocket, VmControlResponseSocket, VmIrqRequest, VmIrqResponse, VmIrqResponseSocket,
-    VmMemoryControlRequestSocket, VmMemoryControlResponseSocket, VmMemoryRequest, VmMemoryResponse,
-    VmRunMode,
+    BalloonControlResult, DiskControlCommand, DiskControlRequestSocket, DiskControlResponseSocket,
+    DiskControlResult, UsbControlSocket, VmControlResponseSocket, VmIrqRequest, VmIrqResponse,
+    VmIrqResponseSocket, VmMemoryControlRequestSocket, VmMemoryControlResponseSocket,
+    VmMemoryRequest, VmMemoryResponse, VmRunMode,
 };
 
 use crate::{Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption};
@@ -1589,7 +1589,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
     control_sockets.push(TaggedControlSocket::VmMemory(wayland_host_socket));
     // Balloon gets a special socket so balloon requests can be forwarded from the main process.
     let (balloon_host_socket, balloon_device_socket) =
-        msg_socket::pair::<BalloonControlCommand, ()>().map_err(Error::CreateSocket)?;
+        msg_socket::pair::<BalloonControlCommand, BalloonControlResult>()
+            .map_err(Error::CreateSocket)?;
 
     // Create one control socket per disk.
     let mut disk_device_sockets = Vec::new();
