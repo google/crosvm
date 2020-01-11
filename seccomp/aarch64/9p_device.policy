@@ -2,12 +2,14 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+open: 1
+openat: 1
+
 @include /usr/share/policy/crosvm/common_device.policy
 
 pread64: 1
 pwrite64: 1
 statx: 1
-openat: 1
 fstat: 1
 ioctl: arg1 == FIOCLEX
 getdents64: 1
