@@ -711,7 +711,7 @@ impl X8664arch {
         io_bus: &mut devices::Bus,
         serial_parameters: &BTreeMap<u8, SerialParameters>,
         serial_jail: Option<Minijail>,
-    ) -> Result<(Option<u8>)> {
+    ) -> Result<Option<u8>> {
         let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
         let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
 
