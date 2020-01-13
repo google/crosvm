@@ -5,6 +5,9 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
+cros_async = { path = "../cros_async" }
 data_model = { path = "../data_model" }
+futures = "*"
+libc = "*"
 msg_on_socket_derive = { path = "msg_on_socket_derive" }
 sys_util = { path = "../sys_util"  }

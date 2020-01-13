@@ -15,6 +15,8 @@ use sys_util::{Error as SysError, EventFd};
 #[derive(Debug, PartialEq)]
 /// An error during transaction or serialization/deserialization.
 pub enum MsgError {
+    /// Error adding a waker for async read.
+    AddingWaker(cros_async::fd_executor::Error),
     /// Error while sending a request or response.
     Send(SysError),
     /// Error while receiving a request or response.
@@ -28,6 +30,8 @@ pub enum MsgError {
     ExpectFd,
     /// There was some associated file descriptor received but not used when deserialize.
     NotExpectFd,
+    /// Failed to set flags on the file descriptor.
+    SettingFdFlags(SysError),
     /// Trying to serialize/deserialize, but fd buffer size is too small. This typically happens
     /// when max_fd_count() returns a value that is too small.
     WrongFdBufferSize,
@@ -43,6 +47,7 @@ impl Display for MsgError {
         use self::MsgError::*;
 
         match self {
+            AddingWaker(e) => write!(f, "failed to add a waker: {}", e),
             Send(e) => write!(f, "failed to send request or response: {}", e),
             Recv(e) => write!(f, "failed to receive request or response: {}", e),
             InvalidType => write!(f, "invalid type"),
@@ -53,6 +58,7 @@ impl Display for MsgError {
             ),
             ExpectFd => write!(f, "missing associated file descriptor for request"),
             NotExpectFd => write!(f, "unexpected file descriptor is unused"),
+            SettingFdFlags(e) => write!(f, "failed setting flags on the message FD: {}", e),
             WrongFdBufferSize => write!(f, "fd buffer size too small"),
             WrongMsgBufferSize => write!(f, "msg buffer size too small"),
         }
