@@ -25,7 +25,7 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 pub struct Net<T: TapT, U: VhostNetT<T>> {
     workers_kill_evt: Option<EventFd>,
     kill_evt: EventFd,
-    worker_thread: Option<thread::JoinHandle<()>>,
+    worker_thread: Option<thread::JoinHandle<(Worker<U>, T)>>,
     tap: Option<T>,
     vhost_net_handle: Option<U>,
     vhost_interrupt: Option<Vec<EventFd>>,
@@ -141,6 +141,7 @@ where
         if let Some(workers_kill_evt) = &self.workers_kill_evt {
             keep_fds.push(workers_kill_evt.as_raw_fd());
         }
+        keep_fds.push(self.kill_evt.as_raw_fd());
 
         keep_fds
     }
@@ -220,6 +221,7 @@ where
                                 if let Err(e) = result {
                                     error!("net worker thread exited with error: {}", e);
                                 }
+                                (worker, tap)
                             });
 
                         match worker_result {
@@ -247,6 +249,31 @@ where
                 Err(e) => error!("{}: failed to set owner: {:?}", self.debug_label(), e),
             }
         }
+    }
+
+    fn reset(&mut self) -> bool {
+        // Only kill the child if it claimed its eventfd.
+        if self.workers_kill_evt.is_none() && self.kill_evt.write(1).is_err() {
+            error!("{}: failed to notify the kill event", self.debug_label());
+            return false;
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            match worker_thread.join() {
+                Err(_) => {
+                    error!("{}: failed to get back resources", self.debug_label());
+                    return false;
+                }
+                Ok((worker, tap)) => {
+                    self.vhost_net_handle = Some(worker.vhost_handle);
+                    self.tap = Some(tap);
+                    self.vhost_interrupt = Some(worker.vhost_interrupt);
+                    self.workers_kill_evt = Some(worker.kill_evt);
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 

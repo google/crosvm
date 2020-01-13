@@ -17,10 +17,10 @@ use crate::virtio::{Interrupt, Queue};
 pub struct Worker<T: Vhost> {
     interrupt: Interrupt,
     queues: Vec<Queue>,
-    vhost_handle: T,
-    vhost_interrupt: Vec<EventFd>,
+    pub vhost_handle: T,
+    pub vhost_interrupt: Vec<EventFd>,
     acked_features: u64,
-    kill_evt: EventFd,
+    pub kill_evt: EventFd,
 }
 
 impl<T: Vhost> Worker<T> {
@@ -130,7 +130,10 @@ impl<T: Vhost> Worker<T> {
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
                     }
-                    Token::Kill => break 'poll,
+                    Token::Kill => {
+                        let _ = self.kill_evt.read();
+                        break 'poll;
+                    }
                 }
             }
         }
