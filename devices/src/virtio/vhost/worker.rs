@@ -20,6 +20,7 @@ pub struct Worker<T: Vhost> {
     vhost_handle: T,
     vhost_interrupt: Vec<EventFd>,
     acked_features: u64,
+    kill_evt: EventFd,
 }
 
 impl<T: Vhost> Worker<T> {
@@ -29,6 +30,7 @@ impl<T: Vhost> Worker<T> {
         vhost_interrupt: Vec<EventFd>,
         interrupt: Interrupt,
         acked_features: u64,
+        kill_evt: EventFd,
     ) -> Worker<T> {
         Worker {
             interrupt,
@@ -36,6 +38,7 @@ impl<T: Vhost> Worker<T> {
             vhost_handle,
             vhost_interrupt,
             acked_features,
+            kill_evt,
         }
     }
 
@@ -43,7 +46,6 @@ impl<T: Vhost> Worker<T> {
         &mut self,
         queue_evts: Vec<EventFd>,
         queue_sizes: &[u16],
-        kill_evt: EventFd,
         activate_vqs: F1,
         cleanup_vqs: F2,
     ) -> Result<()>
@@ -104,7 +106,7 @@ impl<T: Vhost> Worker<T> {
 
         let poll_ctx: PollContext<Token> = PollContext::build_with(&[
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
-            (&kill_evt, Token::Kill),
+            (&self.kill_evt, Token::Kill),
         ])
         .map_err(Error::CreatePollContext)?;
 

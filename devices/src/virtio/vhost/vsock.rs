@@ -168,6 +168,7 @@ impl VirtioDevice for Vsock {
                                 interrupts,
                                 interrupt,
                                 acked_features,
+                                kill_evt,
                             );
                             let activate_vqs = |handle: &VhostVsockHandle| -> Result<()> {
                                 handle.set_cid(cid).map_err(Error::VhostVsockSetCid)?;
@@ -175,13 +176,8 @@ impl VirtioDevice for Vsock {
                                 Ok(())
                             };
                             let cleanup_vqs = |_handle: &VhostVsockHandle| -> Result<()> { Ok(()) };
-                            let result = worker.run(
-                                queue_evts,
-                                QUEUE_SIZES,
-                                kill_evt,
-                                activate_vqs,
-                                cleanup_vqs,
-                            );
+                            let result =
+                                worker.run(queue_evts, QUEUE_SIZES, activate_vqs, cleanup_vqs);
                             if let Err(e) = result {
                                 error!("vsock worker thread exited with error: {:?}", e);
                             }
