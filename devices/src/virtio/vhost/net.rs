@@ -201,12 +201,19 @@ where
                                 let activate_vqs = |handle: &U| -> Result<()> {
                                     for idx in 0..NUM_QUEUES {
                                         handle
-                                            .set_backend(idx, &tap)
+                                            .set_backend(idx, Some(&tap))
                                             .map_err(Error::VhostNetSetBackend)?;
                                     }
                                     Ok(())
                                 };
-                                let cleanup_vqs = |_handle: &U| -> Result<()> { Ok(()) };
+                                let cleanup_vqs = |handle: &U| -> Result<()> {
+                                    for idx in 0..NUM_QUEUES {
+                                        handle
+                                            .set_backend(idx, None)
+                                            .map_err(Error::VhostNetSetBackend)?;
+                                    }
+                                    Ok(())
+                                };
                                 let result = worker.run(
                                     queue_evts,
                                     QUEUE_SIZES,

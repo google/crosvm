@@ -38,7 +38,7 @@ pub trait NetT<T: TapT>: Vhost + AsRawFd + Send + Sized {
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
     /// * `fd` - Tap interface that will be used as the backend.
-    fn set_backend(&self, queue_index: usize, fd: &T) -> Result<()>;
+    fn set_backend(&self, queue_index: usize, fd: Option<&T>) -> Result<()>;
 }
 
 impl<T> NetT<T> for Net<T>
@@ -62,10 +62,10 @@ where
         })
     }
 
-    fn set_backend(&self, queue_index: usize, fd: &T) -> Result<()> {
+    fn set_backend(&self, queue_index: usize, fd: Option<&T>) -> Result<()> {
         let vring_file = virtio_sys::vhost_vring_file {
             index: queue_index as u32,
-            fd: fd.as_raw_fd(),
+            fd: fd.map_or(-1, |fd| fd.as_raw_fd()),
         };
 
         // This ioctl is called on a valid vhost_net fd and has its
@@ -127,7 +127,7 @@ pub mod fakes {
             })
         }
 
-        fn set_backend(&self, _queue_index: usize, _fd: &T) -> Result<()> {
+        fn set_backend(&self, _queue_index: usize, _fd: Option<&T>) -> Result<()> {
             Ok(())
         }
     }
