@@ -63,6 +63,7 @@ pub struct RunnableLinuxVm {
     pub io_bus: Bus,
     pub mmio_bus: Bus,
     pub pid_debug_label_map: BTreeMap<u32, String>,
+    pub suspend_evt: EventFd,
 }
 
 /// The device and optional jail.

@@ -237,6 +237,10 @@ impl arch::LinuxArch for AArch64 {
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
 
+        // Event used by PMDevice to notify crosvm that
+        // guest OS is trying to suspend.
+        let suspend_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+
         let pci_devices = create_devices(&mem, &mut vm, &mut resources, &exit_evt)
             .map_err(|e| Error::CreateDevices(Box::new(e)))?;
         let (pci, pci_irqs, pid_debug_label_map) =
@@ -313,6 +317,7 @@ impl arch::LinuxArch for AArch64 {
             io_bus,
             mmio_bus,
             pid_debug_label_map,
+            suspend_evt,
         })
     }
 }

@@ -360,12 +360,16 @@ impl arch::LinuxArch for X8664arch {
                 .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
 
+        // Event used to notify crosvm that guest OS is trying to suspend.
+        let suspend_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+
         let mut io_bus = Self::setup_io_bus(
             &mut vm,
             split_irqchip,
             exit_evt.try_clone().map_err(Error::CloneEventFd)?,
             Some(pci_bus.clone()),
             components.memory_size,
+            suspend_evt.try_clone().map_err(Error::CloneEventFd)?,
         )?;
 
         let stdio_serial_num =
@@ -434,6 +438,7 @@ impl arch::LinuxArch for X8664arch {
             io_bus,
             mmio_bus,
             pid_debug_label_map,
+            suspend_evt,
         })
     }
 }
@@ -653,12 +658,14 @@ impl X8664arch {
     /// * - `split_irqchip`: whether to use a split IRQ chip (i.e. userspace PIT/PIC/IOAPIC)
     /// * - `exit_evt` - the event fd object which should receive exit events
     /// * - `mem_size` - the size in bytes of physical ram for the guest
+    /// * - `suspend_evt` - the event fd object which used to suspend the vm
     fn setup_io_bus(
         vm: &mut Vm,
         split_irqchip: bool,
         exit_evt: EventFd,
         pci: Option<Arc<Mutex<devices::PciConfigIo>>>,
         mem_size: u64,
+        suspend_evt: EventFd,
     ) -> Result<devices::Bus> {
         struct NoDevice;
         impl devices::BusDevice for NoDevice {
@@ -723,6 +730,16 @@ impl X8664arch {
                 .insert(nul_device.clone(), 0xcf8, 0x8, false)
                 .unwrap();
         }
+
+        let pm = Arc::new(Mutex::new(devices::ACPIPMResource::new(suspend_evt)));
+        io_bus
+            .insert(
+                pm,
+                devices::acpi::ACPIPM_RESOURCE_BASE,
+                devices::acpi::ACPIPM_RESOURCE_LEN,
+                false,
+            )
+            .unwrap();
 
         Ok(io_bus)
     }

@@ -15,6 +15,7 @@ pub mod pl030;
 mod proxy;
 #[macro_use]
 mod register_space;
+pub mod acpi;
 mod serial;
 pub mod split_irqchip_common;
 pub mod usb;
@@ -22,6 +23,7 @@ mod utils;
 pub mod vfio;
 pub mod virtio;
 
+pub use self::acpi::ACPIPMResource;
 pub use self::bus::Error as BusError;
 pub use self::bus::{Bus, BusDevice, BusRange};
 pub use self::cmos::Cmos;
