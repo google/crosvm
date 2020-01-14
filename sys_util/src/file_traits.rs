@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::fs::File;
-use std::io::{Error, ErrorKind, Result, Seek, SeekFrom};
+use std::io::{Error, ErrorKind, Result};
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use data_model::VolatileSlice;
