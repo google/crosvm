@@ -64,7 +64,8 @@ pub use crate::timerfd::*;
 pub use poll_token_derive::*;
 
 pub use crate::file_traits::{
-    AsRawFds, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync,
+    AsRawFds, FileAllocate, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen,
+    FileSync,
 };
 pub use crate::guest_memory::Error as GuestMemoryError;
 pub use crate::mmap::Error as MmapError;
@@ -175,6 +176,7 @@ pub fn flock(file: &dyn AsRawFd, op: FlockOperation, nonblocking: bool) -> Resul
 pub enum FallocateMode {
     PunchHole,
     ZeroRange,
+    Allocate,
 }
 
 /// Safe wrapper for `fallocate()`.
@@ -200,6 +202,7 @@ pub fn fallocate(
     let mut mode = match mode {
         FallocateMode::PunchHole => libc::FALLOC_FL_PUNCH_HOLE,
         FallocateMode::ZeroRange => libc::FALLOC_FL_ZERO_RANGE,
+        FallocateMode::Allocate => 0,
     };
 
     if keep_size {

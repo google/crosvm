@@ -8,6 +8,8 @@ use std::os::unix::io::{AsRawFd, RawFd};
 
 use data_model::VolatileSlice;
 
+use crate::{fallocate, FallocateMode};
+
 /// A trait for flushing the contents of a file to disk.
 /// This is equivalent to File's `sync_all` method, but
 /// wrapped in a trait so that it can be implemented for
@@ -51,6 +53,20 @@ pub trait FileGetLen {
 impl FileGetLen for File {
     fn get_len(&self) -> Result<u64> {
         Ok(self.metadata()?.len())
+    }
+}
+
+/// A trait for allocating disk space in a sparse file.
+/// This is equivalent to fallocate() with no special flags.
+pub trait FileAllocate {
+    /// Allocate storage for the region of the file starting at `offset` and extending `len` bytes.
+    fn allocate(&mut self, offset: u64, len: u64) -> Result<()>;
+}
+
+impl FileAllocate for File {
+    fn allocate(&mut self, offset: u64, len: u64) -> Result<()> {
+        fallocate(self, FallocateMode::Allocate, true, offset, len)
+            .map_err(|e| Error::from_raw_os_error(e.errno()))
     }
 }
 

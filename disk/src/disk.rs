@@ -10,7 +10,8 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use libc::EINVAL;
 use remain::sorted;
 use sys_util::{
-    AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroesAt,
+    AsRawFds, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole,
+    WriteZeroesAt,
 };
 
 mod qcow;
@@ -64,6 +65,7 @@ pub trait DiskFile:
     + FileReadWriteAtVolatile
     + PunchHole
     + WriteZeroesAt
+    + FileAllocate
     + Send
     + AsRawFds
     + Debug
@@ -76,6 +78,7 @@ impl<
             + PunchHole
             + FileReadWriteAtVolatile
             + WriteZeroesAt
+            + FileAllocate
             + Send
             + AsRawFds
             + Debug,

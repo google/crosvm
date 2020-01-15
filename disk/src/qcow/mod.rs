@@ -10,8 +10,8 @@ use data_model::{VolatileMemory, VolatileSlice};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
 use remain::sorted;
 use sys_util::{
-    error, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync, PunchHole,
-    SeekHole, WriteZeroesAt,
+    error, FileAllocate, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync,
+    PunchHole, SeekHole, WriteZeroesAt,
 };
 
 use std::cmp::{max, min};
@@ -1579,6 +1579,15 @@ impl FileSetLen for QcowFile {
 impl DiskGetLen for QcowFile {
     fn get_len(&self) -> io::Result<u64> {
         Ok(self.virtual_size())
+    }
+}
+
+impl FileAllocate for QcowFile {
+    fn allocate(&mut self, offset: u64, len: u64) -> io::Result<()> {
+        // Call write_cb with a do-nothing callback, which will have the effect
+        // of allocating all clusters in the specified range.
+        self.write_cb(offset, len as usize, |_file, _offset, _count| Ok(()))?;
+        Ok(())
     }
 }
 

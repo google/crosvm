@@ -13,7 +13,9 @@ use crate::{create_disk_file, DiskFile, DiskGetLen, ImageType};
 use data_model::VolatileSlice;
 use protos::cdisk_spec;
 use remain::sorted;
-use sys_util::{AsRawFds, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt};
+use sys_util::{
+    AsRawFds, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt,
+};
 
 #[sorted]
 #[derive(Debug)]
@@ -281,6 +283,27 @@ impl PunchHole for CompositeDiskFile {
                 continue;
             }
             let result = disk.file.punch_hole(
+                intersection.start - disk.offset,
+                intersection.end - intersection.start,
+            );
+            if result.is_err() {
+                return result;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl FileAllocate for CompositeDiskFile {
+    fn allocate(&mut self, offset: u64, length: u64) -> io::Result<()> {
+        let range = offset..(offset + length);
+        let disks = self.disks_in_range(&range);
+        for disk in disks {
+            let intersection = range_intersection(&range, &disk.range());
+            if intersection.start >= intersection.end {
+                continue;
+            }
+            let result = disk.file.allocate(
                 intersection.start - disk.offset,
                 intersection.end - intersection.start,
             );
