@@ -6,6 +6,7 @@ use std::cmp;
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
 use std::io::{self, Read, Write};
+use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::mem::{size_of, MaybeUninit};
 use std::ptr::copy_nonoverlapping;
@@ -215,6 +216,24 @@ pub struct Reader<'a> {
     buffer: DescriptorChainConsumer<'a>,
 }
 
+// An iterator over `DataInit` objects on readable descriptors in the descriptor chain.
+struct ReaderIterator<'a, T: DataInit> {
+    reader: &'a mut Reader<'a>,
+    phantom: PhantomData<T>,
+}
+
+impl<'a, T: DataInit> Iterator for ReaderIterator<'a, T> {
+    type Item = io::Result<T>;
+
+    fn next(&mut self) -> Option<io::Result<T>> {
+        if self.reader.available_bytes() == 0 {
+            None
+        } else {
+            Some(self.reader.read_obj())
+        }
+    }
+}
+
 impl<'a> Reader<'a> {
     /// Construct a new Reader wrapper over `desc_chain`.
     pub fn new(mem: &'a GuestMemory, desc_chain: DescriptorChain<'a>) -> Result<Reader<'a>> {
@@ -258,6 +277,16 @@ impl<'a> Reader<'a> {
         // Safe because any type that implements `DataInit` can be considered initialized
         // even if it is filled with random data.
         Ok(unsafe { obj.assume_init() })
+    }
+
+    /// Reads objects by consuming all the remaining data in the descriptor chain buffer and returns
+    /// them as a collection. Returns an error if the size of the remaining data is indivisible by
+    /// the size of an object of type `T`.
+    pub fn collect<C: FromIterator<io::Result<T>>, T: DataInit>(&'a mut self) -> C {
+        C::from_iter(ReaderIterator {
+            reader: self,
+            phantom: PhantomData,
+        })
     }
 
     /// Reads data from the descriptor chain buffer into a file descriptor.
@@ -429,6 +458,11 @@ impl<'a> Writer<'a> {
     /// Writes an object to the descriptor chain buffer.
     pub fn write_obj<T: DataInit>(&mut self, val: T) -> io::Result<()> {
         self.write_all(val.as_slice())
+    }
+
+    /// Writes a collection of objects into the descriptor chain buffer.
+    pub fn consume<T: DataInit, C: IntoIterator<Item = T>>(&mut self, vals: C) -> io::Result<()> {
+        vals.into_iter().map(|v| self.write_obj(v)).collect()
     }
 
     /// Returns number of bytes available for writing.  May return an error if the combined
@@ -1149,5 +1183,45 @@ mod tests {
             writer.write(&buf[..]).expect("failed to write from buffer"),
             48
         );
+    }
+
+    #[test]
+    fn consume_collect() {
+        use DescriptorType::*;
+
+        let memory_start_addr = GuestAddress(0x0);
+        let memory = GuestMemory::new(&vec![(memory_start_addr, 0x10000)]).unwrap();
+        let vs: Vec<Le64> = vec![
+            0x0101010101010101.into(),
+            0x0202020202020202.into(),
+            0x0303030303030303.into(),
+        ];
+
+        let write_chain = create_descriptor_chain(
+            &memory,
+            GuestAddress(0x0),
+            GuestAddress(0x100),
+            vec![(Writable, 24)],
+            0,
+        )
+        .expect("create_descriptor_chain failed");
+        let mut writer = Writer::new(&memory, write_chain).expect("failed to create Writer");
+        writer
+            .consume(vs.clone())
+            .expect("failed to consume() a vector");
+
+        let read_chain = create_descriptor_chain(
+            &memory,
+            GuestAddress(0x0),
+            GuestAddress(0x100),
+            vec![(Readable, 24)],
+            0,
+        )
+        .expect("create_descriptor_chain failed");
+        let mut reader = Reader::new(&memory, read_chain).expect("failed to create Reader");
+        let vs_read = reader
+            .collect::<io::Result<Vec<Le64>>, _>()
+            .expect("failed to collect() values");
+        assert_eq!(vs, vs_read);
     }
 }
