@@ -344,6 +344,14 @@ impl Worker {
             return DiskControlResult::Err(SysError::new(libc::EIO));
         }
 
+        if !self.sparse {
+            // Allocate new space if the disk image is not sparse.
+            if let Err(e) = self.disk_image.allocate(0, new_size) {
+                error!("Allocating disk space after resize failed! {}", e);
+                return DiskControlResult::Err(SysError::new(libc::EIO));
+            }
+        }
+
         if let Ok(new_disk_size) = self.disk_image.get_len() {
             let mut disk_size = self.disk_size.lock();
             *disk_size = new_disk_size;
