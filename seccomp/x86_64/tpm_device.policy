@@ -55,3 +55,4 @@ open: 1
 openat: 1
 socket: return EACCES
 stat: 1
+statx: 1

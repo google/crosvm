@@ -10,6 +10,7 @@ openat: 1
 writev: 1
 pwrite64: 1
 stat: 1
+statx: 1
 lstat: 1
 fstat: 1
 ioctl: arg1 == FIOCLEX

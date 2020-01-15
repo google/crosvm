@@ -68,6 +68,7 @@ openat: 1
 readlink: 1
 socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
 stat: 1
+statx: 1
 sysinfo: 1
 
 # Rules specific to AMD gpus.

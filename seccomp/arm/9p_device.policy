@@ -11,6 +11,7 @@ pread64: 1
 pwrite64: 1
 lstat64: 1
 stat64: 1
+statx: 1
 fstat64: 1
 ioctl: arg1 == FIOCLEX
 getdents64: 1
