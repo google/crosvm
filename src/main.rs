@@ -1188,7 +1188,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
             Ok(())
         }
         Err(e) => {
-            println!("{}", e);
+            error!("{}", e);
             Err(())
         }
     }
