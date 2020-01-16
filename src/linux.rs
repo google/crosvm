@@ -274,9 +274,9 @@ impl AsRef<UnixSeqpacket> for TaggedControlSocket {
     fn as_ref(&self) -> &UnixSeqpacket {
         use self::TaggedControlSocket::*;
         match &self {
-            Vm(ref socket) => socket,
-            VmMemory(ref socket) => socket,
-            VmIrq(ref socket) => socket,
+            Vm(ref socket) => socket.as_ref(),
+            VmMemory(ref socket) => socket.as_ref(),
+            VmIrq(ref socket) => socket.as_ref(),
         }
     }
 }

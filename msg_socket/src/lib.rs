@@ -6,7 +6,6 @@ mod msg_on_socket;
 
 use std::io::Result;
 use std::marker::PhantomData;
-use std::ops::Deref;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use sys_util::{handle_eintr, net::UnixSeqpacket, Error as SysError, ScmSocket};
@@ -47,13 +46,6 @@ impl<I: MsgOnSocket, O: MsgOnSocket> MsgSocket<I, O> {
             _i: PhantomData,
             _o: PhantomData,
         }
-    }
-}
-
-impl<I: MsgOnSocket, O: MsgOnSocket> Deref for MsgSocket<I, O> {
-    type Target = UnixSeqpacket;
-    fn deref(&self) -> &Self::Target {
-        &self.sock
     }
 }
 
