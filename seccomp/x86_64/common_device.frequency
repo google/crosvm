@@ -1,0 +1,45 @@
+# Copyright 2020 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+capget: 30
+capset: 30
+chdir: 30
+chroot: 15
+clone: 30
+close: 1185
+dup: 50
+dup2: 160
+epoll_ctl: 25
+epoll_wait: 90
+eventfd2: 75
+exit: 15
+exit_group: 15
+fchdir: 30
+fstat: 90
+futex: 20
+getdents: 55
+ioctl: 350
+mmap: 95
+mount: 45
+mprotect: 45
+openat: 515
+pipe: 15
+pivot_root: 15
+prctl: 570
+prlimit64: 15
+read: 82415
+recvmsg: 85
+restart_syscall: 15
+rt_sigaction: 20
+rt_sigreturn: 15
+seccomp: 25
+sendmsg: 390
+setsockopt: 30
+socket: 20
+socketpair: 30
+stat: 30
+umount2: 15
+unshare: 30
+wait4: 20
+write: 56100
