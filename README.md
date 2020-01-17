@@ -1,11 +1,10 @@
 # crosvm - The Chrome OS Virtual Machine Monitor
 
 This component, known as crosvm, runs untrusted operating systems along with
-virtualized devices. No actual hardware is emulated. This only runs VMs
-through the Linux's KVM interface. What makes crosvm unique is a focus on
-safety within the programming language and a sandbox around the virtual
-devices to protect the kernel from attack in case of an exploit in the
-devices.
+virtualized devices. This only runs VMs through the Linux's KVM interface. What
+makes crosvm unique is a focus on safety within the programming language and a
+sandbox around the virtual devices to protect the kernel from attack in case of
+an exploit in the devices.
 
 ## Building with Docker
 
