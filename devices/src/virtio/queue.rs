@@ -8,7 +8,7 @@ use std::sync::atomic::{fence, Ordering};
 
 use sys_util::{error, GuestAddress, GuestMemory};
 
-use super::VIRTIO_MSI_NO_VECTOR;
+use super::{Interrupt, VIRTIO_MSI_NO_VECTOR};
 
 const VIRTQ_DESC_F_NEXT: u16 = 0x1;
 const VIRTQ_DESC_F_WRITE: u16 = 0x2;
@@ -16,6 +16,7 @@ const VIRTQ_DESC_F_WRITE: u16 = 0x2;
 const VIRTQ_DESC_F_INDIRECT: u16 = 0x4;
 
 const VIRTQ_USED_F_NO_NOTIFY: u16 = 0x1;
+const VIRTQ_AVAIL_F_NO_INTERRUPT: u16 = 0x1;
 
 /// An iterator over a single descriptor chain.  Not to be confused with AvailIter,
 /// which iterates over the descriptor chain heads in a queue.
@@ -394,5 +395,22 @@ impl Queue {
             used_flags |= VIRTQ_USED_F_NO_NOTIFY;
         }
         mem.write_obj_at_addr(used_flags, self.used_ring).unwrap();
+    }
+
+    // Check Whether guest enable interrupt injection or not.
+    fn available_interrupt_enabled(&self, mem: &GuestMemory) -> bool {
+        let avail_flags: u16 = mem.read_obj_from_addr(self.avail_ring).unwrap();
+        if avail_flags & VIRTQ_AVAIL_F_NO_INTERRUPT == VIRTQ_AVAIL_F_NO_INTERRUPT {
+            false
+        } else {
+            true
+        }
+    }
+
+    /// inject interrupt into guest on this queue
+    pub fn trigger_interrupt(&self, mem: &GuestMemory, interrupt: &Interrupt) {
+        if self.available_interrupt_enabled(mem) {
+            interrupt.signal_used_queue(self.vector);
+        }
     }
 }
