@@ -13,8 +13,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -36,6 +38,7 @@
 #define KILL_ADDRESS 0x3f9
 
 static char g_serial_out[16];
+static int g_next_evt;
 static int g_kill_evt;
 
 static bool g_paused;
@@ -70,7 +73,7 @@ static void *vcpu_thread_fn(void *arg) {
 
             /* Signal the main thread that init is done */
             uint64_t dummy = 1;
-            write(g_kill_evt, &dummy, sizeof(dummy));
+            write(g_next_evt, &dummy, sizeof(dummy));
         }
         else if (evt.kind == CROSVM_VCPU_EVENT_KIND_IO_ACCESS &&
                  evt.io_access.address_space == CROSVM_ADDRESS_SPACE_IOPORT &&
@@ -85,7 +88,7 @@ static void *vcpu_thread_fn(void *arg) {
         else if (evt.kind == CROSVM_VCPU_EVENT_KIND_PAUSED) {
             /* Signal that we paused */
             uint64_t dummy = 1;
-            write(g_kill_evt, &dummy, sizeof(dummy));
+            write(g_next_evt, &dummy, sizeof(dummy));
 
             /* Wait till we can continue again */
             pthread_mutex_lock(&g_pause_mutex);
@@ -101,7 +104,7 @@ static void *vcpu_thread_fn(void *arg) {
             }
 
             /* Signal that we are no longer paused */
-            write(g_kill_evt, &dummy, sizeof(dummy));
+            write(g_next_evt, &dummy, sizeof(dummy));
 
             pthread_mutex_unlock(&g_pause_mutex);
         }
@@ -146,6 +149,12 @@ int main(int argc, char** argv) {
         0xee,
         0xf4
     };
+
+    g_next_evt = eventfd(0, 0);
+    if (g_next_evt == -1) {
+        fprintf(stderr, "failed to create eventfd: %d\n", errno);
+        return 1;
+    }
 
     struct crosvm *crosvm;
     int ret = crosvm_connect(&crosvm);
@@ -220,7 +229,7 @@ int main(int argc, char** argv) {
 
     /* Wait till VCPU thread tells us that its initialization is done */
     uint64_t dummy;
-    read(g_kill_evt, &dummy, sizeof(dummy));
+    read(g_next_evt, &dummy, sizeof(dummy));
 
     ret = signal_pause(crosvm);
     if (ret) {
@@ -229,7 +238,7 @@ int main(int argc, char** argv) {
     }
 
     /* Wait till VCPU thread tells us it is paused */
-    read(g_kill_evt, &dummy, sizeof(dummy));
+    read(g_next_evt, &dummy, sizeof(dummy));
 
     /* Try pausing VCPUs 2nd time to make sure we do not deadlock */
     ret = signal_pause(crosvm);
@@ -241,7 +250,7 @@ int main(int argc, char** argv) {
     signal_unpause(crosvm, false);
 
     /* Wait until VCPU thread tells us that it is no longer paused */
-    read(g_kill_evt, &dummy, sizeof(dummy));
+    read(g_next_evt, &dummy, sizeof(dummy));
 
     /*
      * Try pausing VCPUs 3rd time to see if we will miss pause
@@ -254,9 +263,6 @@ int main(int argc, char** argv) {
     }
 
     signal_unpause(crosvm, true);
-
-    /* Wait until VCPU thread tells us that it is no longer paused */
-    read(g_kill_evt, &dummy, sizeof(dummy));
 
     /* Wait for crosvm to request that we exit otherwise we will be killed. */
     read(g_kill_evt, &dummy, sizeof(dummy));
