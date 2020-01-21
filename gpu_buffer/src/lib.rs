@@ -392,12 +392,6 @@ impl Buffer {
         unsafe { gbm_bo_get_stride(self.0) }
     }
 
-    /// Length in bytes of the stride or tiling.
-    pub fn stride_or_tiling(&self) -> u32 {
-        // This is always safe to call with a valid gbm_bo pointer.
-        unsafe { gbm_bo_get_stride_or_tiling(self.0) }
-    }
-
     /// `Format` of the buffer.
     pub fn format(&self) -> Format {
         // This is always safe to call with a valid gbm_bo pointer.
@@ -413,7 +407,7 @@ impl Buffer {
     /// Number of planes present in this buffer.
     pub fn num_planes(&self) -> usize {
         // This is always safe to call with a valid gbm_bo pointer.
-        unsafe { gbm_bo_get_plane_count(self.0) }
+        unsafe { gbm_bo_get_plane_count(self.0) as usize }
     }
 
     /// Handle as u64 for the given plane.
