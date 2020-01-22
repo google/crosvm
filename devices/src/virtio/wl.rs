@@ -1092,26 +1092,18 @@ impl WlState {
                 },
                 #[cfg(feature = "gpu")]
                 VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU if self.resource_bridge.is_some() => {
-                    if let Err(e) = self
-                        .resource_bridge
-                        .as_ref()
-                        .unwrap()
-                        .send(&ResourceRequest::GetResource { id })
-                    {
-                        error!("error sending resource bridge request: {}", e);
-                        return Ok(WlResp::InvalidId);
-                    }
-                    match self.resource_bridge.as_ref().unwrap().recv() {
-                        Ok(ResourceResponse::Resource(bridged_file)) => {
+                    let sock = self.resource_bridge.as_ref().unwrap();
+                    match get_resource_fd(sock, id) {
+                        Ok(bridged_file) => {
                             *fd = bridged_file.as_raw_fd();
                             bridged_files.push(bridged_file);
                         }
-                        Ok(ResourceResponse::Invalid) => {
-                            warn!("attempt to send non-existant gpu resource {}", id);
+                        Err(ResourceBridgeError::InvalidResource(id)) => {
+                            warn!("attempt to send non-existent gpu resource {}", id);
                             return Ok(WlResp::InvalidId);
                         }
                         Err(e) => {
-                            error!("error receiving resource bridge response: {}", e);
+                            error!("{}", e);
                             // If there was an error with the resource bridge, it can no longer be
                             // trusted to continue to function.
                             self.resource_bridge = None;
