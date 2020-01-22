@@ -307,24 +307,21 @@ extern "C" {
         execute_size: u32,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
-    pub fn virgl_renderer_allocation_metadata(
-        request: *const ::std::os::raw::c_void,
-        response: *mut ::std::os::raw::c_void,
-        request_size: u32,
-        response_size: u32,
-    ) -> ::std::os::raw::c_int;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct virgl_renderer_resource_create_v2_args {
+    pub version: u32,
+    pub res_handle: u32,
+    pub ctx_id: u32,
+    pub flags: u32,
+    pub size: u64,
+    pub memory_id: u64,
+    pub iovecs: *mut iovec,
+    pub num_iovs: u32,
 }
 extern "C" {
     pub fn virgl_renderer_resource_create_v2(
-        resource_id: u32,
-        guest_memory_type: u32,
-        guest_caching_type: u32,
-        size: u64,
-        iovec: *const iovec,
-        num_iovs: u32,
-        args: *const ::std::os::raw::c_void,
-        args_size: u32,
+        args: *mut virgl_renderer_resource_create_v2_args,
     ) -> ::std::os::raw::c_int;
 }
 pub type __builtin_va_list = [__va_list_tag; 1usize];

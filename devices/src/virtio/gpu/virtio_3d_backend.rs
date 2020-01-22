@@ -26,13 +26,13 @@ use gpu_renderer::{
 };
 
 use super::protocol::{
-    AllocationMetadataResponse, GpuResponse, GpuResponsePlaneInfo, VIRTIO_GPU_CAPSET3,
-    VIRTIO_GPU_CAPSET_VIRGL, VIRTIO_GPU_CAPSET_VIRGL2, VIRTIO_GPU_MEMORY_HOST_COHERENT,
+    GpuResponse, GpuResponsePlaneInfo, VIRTIO_GPU_CAPSET3, VIRTIO_GPU_CAPSET_VIRGL,
+    VIRTIO_GPU_CAPSET_VIRGL2, VIRTIO_GPU_RESOURCE_USE_MAPPABLE, VIRTIO_GPU_RESOURCE_USE_MASK,
 };
 pub use crate::virtio::gpu::virtio_backend::{VirtioBackend, VirtioResource};
 use crate::virtio::gpu::{
-    Backend, DisplayBackend, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_HOST_COHERENT, VIRTIO_GPU_F_MEMORY,
-    VIRTIO_GPU_F_VIRGL,
+    Backend, DisplayBackend, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_HOST_VISIBLE,
+    VIRTIO_GPU_F_RESOURCE_UUID, VIRTIO_GPU_F_RESOURCE_V2, VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_F_VULKAN,
 };
 use crate::virtio::resource_bridge::{PlaneInfo, ResourceInfo, ResourceResponse};
 
@@ -225,8 +225,10 @@ impl Backend for Virtio3DBackend {
     fn features() -> u64 {
         1 << VIRTIO_GPU_F_VIRGL
             | 1 << VIRTIO_F_VERSION_1
-            | 1 << VIRTIO_GPU_F_MEMORY
-            | 1 << VIRTIO_GPU_F_HOST_COHERENT
+            | 1 << VIRTIO_GPU_F_RESOURCE_UUID
+            | 1 << VIRTIO_GPU_F_RESOURCE_V2
+            | 1 << VIRTIO_GPU_F_HOST_VISIBLE
+            | 1 << VIRTIO_GPU_F_VULKAN
     }
 
     /// Returns the underlying Backend.
@@ -757,51 +759,27 @@ impl Backend for Virtio3DBackend {
         }
     }
 
-    fn allocation_metadata(
-        &mut self,
-        request_id: u32,
-        request: Vec<u8>,
-        mut response: Vec<u8>,
-    ) -> GpuResponse {
-        let res = self.renderer.allocation_metadata(&request, &mut response);
-
-        match res {
-            Ok(_) => {
-                let res_info = AllocationMetadataResponse {
-                    request_id,
-                    response,
-                };
-
-                GpuResponse::OkAllocationMetadata { res_info }
-            }
-            Err(_) => {
-                error!("failed to get metadata");
-                GpuResponse::ErrUnspec
-            }
-        }
-    }
-
     fn resource_create_v2(
         &mut self,
         resource_id: u32,
-        guest_memory_type: u32,
-        guest_caching_type: u32,
+        ctx_id: u32,
+        flags: u32,
         size: u64,
         pci_addr: u64,
-        mem: &GuestMemory,
+        memory_id: u64,
         vecs: Vec<(GuestAddress, usize)>,
-        args: Vec<u8>,
+        mem: &GuestMemory,
     ) -> GpuResponse {
         match self.resources.entry(resource_id) {
             Entry::Vacant(entry) => {
                 let resource = match self.renderer.resource_create_v2(
                     resource_id,
-                    guest_memory_type,
-                    guest_caching_type,
+                    ctx_id,
+                    flags,
                     size,
-                    mem,
+                    memory_id,
                     &vecs,
-                    &args,
+                    mem,
                 ) {
                     Ok(resource) => resource,
                     Err(e) => {
@@ -810,8 +788,9 @@ impl Backend for Virtio3DBackend {
                     }
                 };
 
-                match guest_memory_type {
-                    VIRTIO_GPU_MEMORY_HOST_COHERENT => {
+                let use_flags = VIRTIO_GPU_RESOURCE_USE_MASK & flags;
+                match use_flags {
+                    VIRTIO_GPU_RESOURCE_USE_MAPPABLE => {
                         let dma_buf_fd = match resource.export() {
                             Ok(export) => export.1,
                             Err(e) => {

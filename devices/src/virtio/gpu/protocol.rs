@@ -19,9 +19,10 @@ use data_model::{DataInit, Le32, Le64};
 pub const VIRTIO_GPU_F_VIRGL: u32 = 0;
 pub const VIRTIO_GPU_F_EDID: u32 = 1;
 /* The following capabilities are not upstreamed. */
-pub const VIRTIO_GPU_F_MEMORY: u32 = 2;
-pub const VIRTIO_GPU_F_SHARED_GUEST: u32 = 3;
-pub const VIRTIO_GPU_F_HOST_COHERENT: u32 = 4;
+pub const VIRTIO_GPU_F_RESOURCE_UUID: u32 = 2;
+pub const VIRTIO_GPU_F_RESOURCE_V2: u32 = 3;
+pub const VIRTIO_GPU_F_HOST_VISIBLE: u32 = 4;
+pub const VIRTIO_GPU_F_VULKAN: u32 = 5;
 
 pub const VIRTIO_GPU_UNDEFINED: u32 = 0x0;
 
@@ -50,7 +51,6 @@ pub const VIRTIO_GPU_CMD_SUBMIT_3D: u32 = 0x207;
 /* The following hypercalls are not upstreamed. */
 pub const VIRTIO_GPU_CMD_RESOURCE_CREATE_V2: u32 = 0x208;
 pub const VIRTIO_GPU_CMD_RESOURCE_CREATE_V2_UNREF: u32 = 0x209;
-pub const VIRTIO_GPU_CMD_ALLOCATION_METADATA: u32 = 0x20a;
 
 /* cursor commands */
 pub const VIRTIO_GPU_CMD_UPDATE_CURSOR: u32 = 0x300;
@@ -63,7 +63,6 @@ pub const VIRTIO_GPU_RESP_OK_CAPSET_INFO: u32 = 0x1102;
 pub const VIRTIO_GPU_RESP_OK_CAPSET: u32 = 0x1103;
 pub const VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO: u32 = 0x1104;
 pub const VIRTIO_GPU_RESP_OK_EDID: u32 = 0x1105;
-pub const VIRTIO_GPU_RESP_OK_ALLOCATION_METADATA: u32 = 0x1106;
 
 /* error responses */
 pub const VIRTIO_GPU_RESP_ERR_UNSPEC: u32 = 0x1200;
@@ -73,20 +72,22 @@ pub const VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID: u32 = 0x1203;
 pub const VIRTIO_GPU_RESP_ERR_INVALID_CONTEXT_ID: u32 = 0x1204;
 pub const VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER: u32 = 0x1205;
 
-/* guest memory types (not upstreamed) */
-pub const VIRTIO_GPU_MEMORY_UNDEFINED: u32 = 0;
-pub const VIRTIO_GPU_MEMORY_TRANSFER: u32 = 1;
-pub const VIRTIO_GPU_MEMORY_SHARED_GUEST: u32 = 2;
-pub const VIRTIO_GPU_MEMORY_HOST_COHERENT: u32 = 3;
+/* Resource flags (not upstreamed) */
+pub const VIRTIO_GPU_RESOURCE_GUEST_NONE: u32 = 0x0000;
+pub const VIRTIO_GPU_RESOURCE_GUEST_MASK: u32 = 0x000f;
+pub const VIRTIO_GPU_RESOURCE_GUEST_SYSTEM: u32 = 0x0001;
 
-/* guest caching types (not upstreamed) */
-pub const VIRTIO_GPU_UNDEFINED_CACHING: u32 = 0;
-pub const VIRTIO_GPU_CACHED: u32 = 1;
-pub const VIRTIO_GPU_WRITE_COMBINE: u32 = 2;
-pub const VIRTIO_GPU_UNCACHED: u32 = 3;
+pub const VIRTIO_GPU_RESOURCE_HOST_NONE: u32 = 0x0000;
+pub const VIRTIO_GPU_RESOURCE_HOST_MASK: u32 = 0x00f0;
+pub const VIRTIO_GPU_RESOURCE_HOST: u32 = 0x0010;
+pub const VIRTIO_GPU_RESOURCE_HOST_FROM_GUEST: u32 = 0x0020;
 
-/* Limits on virtio-gpu stream (not upstreamed) */
-pub const VIRTIO_GPU_MAX_BLOB_ARGUMENT_SIZE: u32 = 4096;
+pub const VIRTIO_GPU_RESOURCE_USE_NONE: u32 = 0x0000;
+pub const VIRTIO_GPU_RESOURCE_USE_MASK: u32 = 0x0f00;
+pub const VIRTIO_GPU_RESOURCE_USE_MAPPABLE: u32 = 0x0100;
+pub const VIRTIO_GPU_RESOURCE_USE_SHAREABLE: u32 = 0x0200;
+pub const VIRTIO_GPU_RESOURCE_USE_CROSS_DEVICE: u32 = 0x0400;
+
 /* This matches the limit in udmabuf.c */
 pub const VIRTIO_GPU_MAX_IOVEC_ENTRIES: u32 = 1024;
 
@@ -113,7 +114,6 @@ pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
         VIRTIO_GPU_CMD_SUBMIT_3D => "VIRTIO_GPU_CMD_SUBMIT_3D",
         VIRTIO_GPU_CMD_RESOURCE_CREATE_V2 => "VIRTIO_GPU_CMD_RESOURCE_CREATE_V2",
         VIRTIO_GPU_CMD_RESOURCE_CREATE_V2_UNREF => "VIRTIO_GPU_CMD_RESOURCE_CREATE_V2_UNREF",
-        VIRTIO_GPU_CMD_ALLOCATION_METADATA => "VIRTIO_GPU_CMD_ALLOCATION_METADATA",
         VIRTIO_GPU_CMD_UPDATE_CURSOR => "VIRTIO_GPU_CMD_UPDATE_CURSOR",
         VIRTIO_GPU_CMD_MOVE_CURSOR => "VIRTIO_GPU_CMD_MOVE_CURSOR",
         VIRTIO_GPU_RESP_OK_NODATA => "VIRTIO_GPU_RESP_OK_NODATA",
@@ -497,39 +497,15 @@ unsafe impl DataInit for virtio_gpu_config {}
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
-pub struct virtio_gpu_allocation_metadata {
-    pub hdr: virtio_gpu_ctrl_hdr,
-    pub request_id: Le32,
-    pub padding: Le32,
-    pub request_size: Le32,
-    pub response_size: Le32,
-}
-
-unsafe impl DataInit for virtio_gpu_allocation_metadata {}
-
-/* VIRTIO_GPU_RESP_OK_ALLOCATION_METADATA */
-#[derive(Copy, Clone, Debug, Default)]
-#[repr(C)]
-pub struct virtio_gpu_resp_allocation_metadata {
-    pub hdr: virtio_gpu_ctrl_hdr,
-    pub request_id: Le32,
-    pub response_size: Le32,
-}
-
-unsafe impl DataInit for virtio_gpu_resp_allocation_metadata {}
-
-#[derive(Copy, Clone, Debug, Default)]
-#[repr(C)]
 pub struct virtio_gpu_resource_create_v2 {
     pub hdr: virtio_gpu_ctrl_hdr,
     pub resource_id: Le32,
-    pub guest_memory_type: Le32,
-    pub guest_caching_type: Le32,
-    pub padding: Le32,
+    pub flags: Le32,
     pub size: Le64,
     pub pci_addr: Le64,
-    pub args_size: Le32,
+    pub memory_id: Le64,
     pub nr_entries: Le32,
+    pub padding: Le32,
 }
 
 unsafe impl DataInit for virtio_gpu_resource_create_v2 {}
@@ -577,7 +553,6 @@ pub enum GpuCommand {
     CmdSubmit3d(virtio_gpu_cmd_submit),
     ResourceCreateV2(virtio_gpu_resource_create_v2),
     ResourceV2Unref(virtio_gpu_resource_v2_unref),
-    AllocationMetadata(virtio_gpu_allocation_metadata),
     UpdateCursor(virtio_gpu_update_cursor),
     MoveCursor(virtio_gpu_update_cursor),
 }
@@ -646,7 +621,6 @@ impl fmt::Debug for GpuCommand {
             CmdSubmit3d(_info) => f.debug_struct("CmdSubmit3d").finish(),
             ResourceCreateV2(_info) => f.debug_struct("ResourceCreateV2").finish(),
             ResourceV2Unref(_info) => f.debug_struct("ResourceV2Unref").finish(),
-            AllocationMetadata(_info) => f.debug_struct("AllocationMetadata").finish(),
             UpdateCursor(_info) => f.debug_struct("UpdateCursor").finish(),
             MoveCursor(_info) => f.debug_struct("MoveCursor").finish(),
         }
@@ -679,7 +653,6 @@ impl GpuCommand {
             VIRTIO_GPU_CMD_SUBMIT_3D => CmdSubmit3d(cmd.read_obj()?),
             VIRTIO_GPU_CMD_RESOURCE_CREATE_V2 => ResourceCreateV2(cmd.read_obj()?),
             VIRTIO_GPU_CMD_RESOURCE_CREATE_V2_UNREF => ResourceV2Unref(cmd.read_obj()?),
-            VIRTIO_GPU_CMD_ALLOCATION_METADATA => AllocationMetadata(cmd.read_obj()?),
             VIRTIO_GPU_CMD_UPDATE_CURSOR => UpdateCursor(cmd.read_obj()?),
             VIRTIO_GPU_CMD_MOVE_CURSOR => MoveCursor(cmd.read_obj()?),
             _ => return Err(GpuCommandDecodeError::InvalidType(hdr.type_.into())),
@@ -710,7 +683,6 @@ impl GpuCommand {
             CmdSubmit3d(info) => &info.hdr,
             ResourceCreateV2(info) => &info.hdr,
             ResourceV2Unref(info) => &info.hdr,
-            AllocationMetadata(info) => &info.hdr,
             UpdateCursor(info) => &info.hdr,
             MoveCursor(info) => &info.hdr,
         }
@@ -721,12 +693,6 @@ impl GpuCommand {
 pub struct GpuResponsePlaneInfo {
     pub stride: u32,
     pub offset: u32,
-}
-
-#[derive(Default, Debug, PartialEq)]
-pub struct AllocationMetadataResponse {
-    pub request_id: u32,
-    pub response: Vec<u8>,
 }
 
 /// A response to a `GpuCommand`. These correspond to `VIRTIO_GPU_RESP_*`.
@@ -743,9 +709,6 @@ pub enum GpuResponse {
     OkResourcePlaneInfo {
         format_modifier: u64,
         plane_info: Vec<GpuResponsePlaneInfo>,
-    },
-    OkAllocationMetadata {
-        res_info: AllocationMetadataResponse,
     },
     ErrUnspec,
     ErrOutOfMemory,
@@ -880,17 +843,6 @@ impl GpuResponse {
                     size_of_val(&hdr)
                 }
             }
-            GpuResponse::OkAllocationMetadata { ref res_info } => {
-                let resp_info = virtio_gpu_resp_allocation_metadata {
-                    hdr,
-                    request_id: Le32::from(res_info.request_id),
-                    response_size: Le32::from(res_info.response.len() as u32),
-                };
-
-                resp.write_obj(resp_info)?;
-                resp.write_all(&res_info.response)?;
-                size_of_val(&resp_info) + res_info.response.len()
-            }
             _ => {
                 resp.write_obj(hdr)?;
                 size_of_val(&hdr)
@@ -907,7 +859,6 @@ impl GpuResponse {
             GpuResponse::OkCapsetInfo { .. } => VIRTIO_GPU_RESP_OK_CAPSET_INFO,
             GpuResponse::OkCapset(_) => VIRTIO_GPU_RESP_OK_CAPSET,
             GpuResponse::OkResourcePlaneInfo { .. } => VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO,
-            GpuResponse::OkAllocationMetadata { .. } => VIRTIO_GPU_RESP_OK_ALLOCATION_METADATA,
             GpuResponse::ErrUnspec => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrOutOfMemory => VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY,
             GpuResponse::ErrInvalidScanoutId => VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID,
@@ -925,7 +876,6 @@ impl GpuResponse {
             GpuResponse::OkCapsetInfo { .. } => true,
             GpuResponse::OkCapset(_) => true,
             GpuResponse::OkResourcePlaneInfo { .. } => true,
-            GpuResponse::OkAllocationMetadata { .. } => true,
             _ => false,
         }
     }
