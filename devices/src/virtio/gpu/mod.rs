@@ -182,6 +182,10 @@ trait Backend {
     /// Detaches any backing memory from the given resource, if there is any.
     fn detach_backing(&mut self, id: u32) -> GpuResponse;
 
+    fn resource_assign_uuid(&mut self, _id: u32) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
     /// Updates the cursor's memory to the given id, and sets its position to the given coordinates.
     fn update_cursor(&mut self, id: u32, x: u32, y: u32) -> GpuResponse;
 
@@ -497,6 +501,10 @@ impl Frontend {
             GpuCommand::MoveCursor(info) => self
                 .backend
                 .move_cursor(info.pos.x.into(), info.pos.y.into()),
+            GpuCommand::ResourceAssignUuid(info) => {
+                let resource_id = info.resource_id.to_native();
+                self.backend.resource_assign_uuid(resource_id)
+            }
             GpuCommand::GetCapsetInfo(info) => {
                 self.backend.get_capset_info(info.capset_index.to_native())
             }

@@ -497,6 +497,23 @@ impl Backend for Virtio3DBackend {
         self.base.move_cursor(x, y)
     }
 
+    /// Returns a uuid for the resource.
+    fn resource_assign_uuid(&mut self, id: u32) -> GpuResponse {
+        match self.resources.entry(id) {
+            Entry::Vacant(_) => GpuResponse::ErrInvalidResourceId,
+            Entry::Occupied(_) => {
+                // TODO(stevensd): use real uuids once the virtio wayland protocol is updated to
+                // handle more than 32 bits. For now, the virtwl driver knows that the uuid is
+                // actually just the resource id.
+                let mut uuid: [u8; 16] = [0; 16];
+                for (idx, byte) in id.to_be_bytes().iter().enumerate() {
+                    uuid[12 + idx] = *byte;
+                }
+                GpuResponse::OkResourceUuid { uuid }
+            }
+        }
+    }
+
     /// Gets the renderer's capset information associated with `index`.
     fn get_capset_info(&self, index: u32) -> GpuResponse {
         let id = match index {

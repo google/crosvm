@@ -38,6 +38,7 @@ pub const VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING: u32 = 0x107;
 pub const VIRTIO_GPU_CMD_GET_CAPSET_INFO: u32 = 0x108;
 pub const VIRTIO_GPU_CMD_GET_CAPSET: u32 = 0x109;
 pub const VIRTIO_GPU_CMD_GET_EDID: u32 = 0x10a;
+pub const VIRTIO_GPU_CMD_RESOURCE_ASSIGN_UUID: u32 = 0x10b;
 
 /* 3d commands */
 pub const VIRTIO_GPU_CMD_CTX_CREATE: u32 = 0x200;
@@ -64,6 +65,7 @@ pub const VIRTIO_GPU_RESP_OK_CAPSET_INFO: u32 = 0x1102;
 pub const VIRTIO_GPU_RESP_OK_CAPSET: u32 = 0x1103;
 pub const VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO: u32 = 0x1104;
 pub const VIRTIO_GPU_RESP_OK_EDID: u32 = 0x1105;
+pub const VIRTIO_GPU_RESP_OK_RESOURCE_UUID: u32 = 0x1105;
 
 /* error responses */
 pub const VIRTIO_GPU_RESP_ERR_UNSPEC: u32 = 0x1200;
@@ -109,6 +111,7 @@ pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
         VIRTIO_GPU_CMD_CTX_DESTROY => "VIRTIO_GPU_CMD_CTX_DESTROY",
         VIRTIO_GPU_CMD_CTX_ATTACH_RESOURCE => "VIRTIO_GPU_CMD_CTX_ATTACH_RESOURCE",
         VIRTIO_GPU_CMD_CTX_DETACH_RESOURCE => "VIRTIO_GPU_CMD_CTX_DETACH_RESOURCE",
+        VIRTIO_GPU_CMD_RESOURCE_ASSIGN_UUID => "VIRTIO_GPU_CMD_RESOURCE_ASSIGN_UUID",
         VIRTIO_GPU_CMD_RESOURCE_CREATE_3D => "VIRTIO_GPU_CMD_RESOURCE_CREATE_3D",
         VIRTIO_GPU_CMD_TRANSFER_TO_HOST_3D => "VIRTIO_GPU_CMD_TRANSFER_TO_HOST_3D",
         VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D => "VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D",
@@ -123,6 +126,7 @@ pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
         VIRTIO_GPU_RESP_OK_CAPSET_INFO => "VIRTIO_GPU_RESP_OK_CAPSET_INFO",
         VIRTIO_GPU_RESP_OK_CAPSET => "VIRTIO_GPU_RESP_OK_CAPSET",
         VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO => "VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO",
+        VIRTIO_GPU_RESP_OK_RESOURCE_UUID => "VIRTIO_GPU_RESP_OK_RESOURCE_UUID",
         VIRTIO_GPU_RESP_ERR_UNSPEC => "VIRTIO_GPU_RESP_ERR_UNSPEC",
         VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY => "VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY",
         VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID => "VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID",
@@ -532,6 +536,25 @@ pub struct virtio_gpu_resource_unmap {
 
 unsafe impl DataInit for virtio_gpu_resource_unmap {}
 
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
+pub struct virtio_gpu_resource_assign_uuid {
+    pub hdr: virtio_gpu_ctrl_hdr,
+    pub resource_id: Le32,
+    pub padding: Le32,
+}
+
+unsafe impl DataInit for virtio_gpu_resource_assign_uuid {}
+
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
+pub struct virtio_gpu_resp_resource_uuid {
+    pub hdr: virtio_gpu_ctrl_hdr,
+    pub uuid: [u8; 16],
+}
+
+unsafe impl DataInit for virtio_gpu_resp_resource_uuid {}
+
 /* simple formats for fbcon/X use */
 pub const VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM: u32 = 1;
 pub const VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM: u32 = 2;
@@ -568,6 +591,7 @@ pub enum GpuCommand {
     ResourceUnmap(virtio_gpu_resource_unmap),
     UpdateCursor(virtio_gpu_update_cursor),
     MoveCursor(virtio_gpu_update_cursor),
+    ResourceAssignUuid(virtio_gpu_resource_assign_uuid),
 }
 
 /// An error indicating something went wrong decoding a `GpuCommand`. These correspond to
@@ -637,6 +661,7 @@ impl fmt::Debug for GpuCommand {
             ResourceUnmap(_info) => f.debug_struct("ResourceUnmap").finish(),
             UpdateCursor(_info) => f.debug_struct("UpdateCursor").finish(),
             MoveCursor(_info) => f.debug_struct("MoveCursor").finish(),
+            ResourceAssignUuid(_info) => f.debug_struct("ResourceAssignUuid").finish(),
         }
     }
 }
@@ -670,6 +695,7 @@ impl GpuCommand {
             VIRTIO_GPU_CMD_RESOURCE_UNMAP => ResourceUnmap(cmd.read_obj()?),
             VIRTIO_GPU_CMD_UPDATE_CURSOR => UpdateCursor(cmd.read_obj()?),
             VIRTIO_GPU_CMD_MOVE_CURSOR => MoveCursor(cmd.read_obj()?),
+            VIRTIO_GPU_CMD_RESOURCE_ASSIGN_UUID => ResourceAssignUuid(cmd.read_obj()?),
             _ => return Err(GpuCommandDecodeError::InvalidType(hdr.type_.into())),
         })
     }
@@ -701,6 +727,7 @@ impl GpuCommand {
             ResourceUnmap(info) => &info.hdr,
             UpdateCursor(info) => &info.hdr,
             MoveCursor(info) => &info.hdr,
+            ResourceAssignUuid(info) => &info.hdr,
         }
     }
 }
@@ -725,6 +752,9 @@ pub enum GpuResponse {
     OkResourcePlaneInfo {
         format_modifier: u64,
         plane_info: Vec<GpuResponsePlaneInfo>,
+    },
+    OkResourceUuid {
+        uuid: [u8; 16],
     },
     ErrUnspec,
     ErrOutOfMemory,
@@ -859,6 +889,12 @@ impl GpuResponse {
                     size_of_val(&hdr)
                 }
             }
+            GpuResponse::OkResourceUuid { uuid } => {
+                let resp_info = virtio_gpu_resp_resource_uuid { hdr, uuid };
+
+                resp.write_obj(resp_info)?;
+                size_of_val(&resp_info)
+            }
             _ => {
                 resp.write_obj(hdr)?;
                 size_of_val(&hdr)
@@ -875,6 +911,7 @@ impl GpuResponse {
             GpuResponse::OkCapsetInfo { .. } => VIRTIO_GPU_RESP_OK_CAPSET_INFO,
             GpuResponse::OkCapset(_) => VIRTIO_GPU_RESP_OK_CAPSET,
             GpuResponse::OkResourcePlaneInfo { .. } => VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO,
+            GpuResponse::OkResourceUuid { .. } => VIRTIO_GPU_RESP_OK_RESOURCE_UUID,
             GpuResponse::ErrUnspec => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrOutOfMemory => VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY,
             GpuResponse::ErrInvalidScanoutId => VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID,
@@ -892,6 +929,7 @@ impl GpuResponse {
             GpuResponse::OkCapsetInfo { .. } => true,
             GpuResponse::OkCapset(_) => true,
             GpuResponse::OkResourcePlaneInfo { .. } => true,
+            GpuResponse::OkResourceUuid { .. } => true,
             _ => false,
         }
     }
