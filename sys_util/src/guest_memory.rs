@@ -553,6 +553,38 @@ impl GuestMemory {
         }
         Err(Error::InvalidGuestAddress(guest_addr))
     }
+
+    /// Convert a GuestAddress into an offset within self.memfd.
+    ///
+    /// Due to potential gaps within GuestMemory, it is helpful to know the
+    /// offset within the memfd where a given address is found. This offset
+    /// can then be passed to another process mapping the memfd to read data
+    /// starting at that address.
+    ///
+    /// # Arguments
+    /// * `guest_addr` - Guest address to convert.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use sys_util::{GuestAddress, GuestMemory};
+    /// let addr_a = GuestAddress(0x1000);
+    /// let addr_b = GuestAddress(0x8000);
+    /// let mut gm = GuestMemory::new(&vec![
+    ///     (addr_a, 0x2000),
+    ///     (addr_b, 0x3000)]).expect("failed to create GuestMemory");
+    /// let offset = gm.offset_from_base(GuestAddress(0x9500))
+    ///                .expect("failed to get offset");
+    /// assert_eq!(offset, 0x3500);
+    /// ```
+    pub fn offset_from_base(&self, guest_addr: GuestAddress) -> Result<usize> {
+        for region in self.regions.iter() {
+            if guest_addr >= region.guest_base && guest_addr < region_end(region) {
+                return Ok(region.memfd_offset + guest_addr.offset_from(region.guest_base) as usize);
+            }
+        }
+        Err(Error::InvalidGuestAddress(guest_addr))
+    }
 }
 
 impl VolatileMemory for GuestMemory {
