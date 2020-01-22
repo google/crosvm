@@ -17,7 +17,6 @@ use crate::virtio::Writer;
 /// An error indicating something went wrong while encoding or decoding.
 /// Unlike `virtio::video::Error`, `VideoError` is not fatal for `Worker`.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum VideoError {
     /// Invalid argument.
     InvalidArgument,

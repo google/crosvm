@@ -21,7 +21,6 @@ pub trait Response {
 }
 
 /// A response to a `VideoCmd`. These correspond to `VIRTIO_VIDEO_RESP_*`.
-#[allow(dead_code)] // TODO(keiichiw): Remove this attribute
 #[derive(Debug)]
 pub enum CmdResponse {
     NoData,

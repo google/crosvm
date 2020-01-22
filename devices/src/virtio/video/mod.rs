@@ -43,6 +43,8 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 /// An error indicating something went wrong in virtio-video's worker.
 #[derive(Debug)]
 pub enum Error {
+    /// Failed to create a libvda instance.
+    LibvdaCreationFailed(libvda::Error),
     /// Creating PollContext failed.
     PollContextCreationFailed(SysError),
     /// A DescriptorChain contains invalid data.
@@ -70,6 +72,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Error::*;
         match self {
+            LibvdaCreationFailed(e) => write!(f, "failed to create a libvda instance: {}", e),
             PollContextCreationFailed(e) => write!(f, "failed to create PollContext: {}", e),
             InvalidDescriptorChain(e) => write!(f, "DescriptorChain contains invalid data: {}", e),
             InvalidEOSResource {
@@ -229,7 +232,9 @@ impl VirtioDevice for VideoDevice {
             VideoDeviceType::Decoder => thread::Builder::new()
                 .name("virtio video decoder".to_owned())
                 .spawn(move || {
-                    let device = decoder::Decoder::new();
+                    let vda = libvda::VdaInstance::new(libvda::VdaImplType::Gavda)
+                        .map_err(Error::LibvdaCreationFailed)?;
+                    let device = decoder::Decoder::new(&vda);
                     worker.run(cmd_queue, event_queue, device)
                 }),
             VideoDeviceType::Encoder => thread::Builder::new()

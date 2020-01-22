@@ -21,10 +21,10 @@ pub enum QueryCtrlType {
     Level(Format),
 }
 
-#[allow(dead_code)] // TODO(keiichiw): Remove this attribute
 #[derive(Debug)]
 pub enum QueryCtrlResponse {
     Profile(Vec<Profile>),
+    #[allow(dead_code)]
     Level(Vec<Level>),
 }
 

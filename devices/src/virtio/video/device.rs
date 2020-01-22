@@ -4,8 +4,6 @@
 
 //! Definition of the trait `Device` that each backend video device must implement.
 
-#![allow(dead_code)] // TODO(keiichiw): Remove this attribute
-
 use sys_util::{PollContext, PollToken};
 
 use crate::virtio::resource_bridge::ResourceRequestSocket;

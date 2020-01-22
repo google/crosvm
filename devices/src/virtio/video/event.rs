@@ -13,7 +13,6 @@ use crate::virtio::video::protocol::*;
 use crate::virtio::video::response::Response;
 use crate::virtio::Writer;
 
-#[allow(dead_code)] // TODO(keiichiw): Remove this attribute
 #[derive(Debug, Copy, Clone, N)]
 pub enum EvtType {
     Error = VIRTIO_VIDEO_EVENT_ERROR as isize,
