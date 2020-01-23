@@ -284,14 +284,17 @@ trait Backend {
         _flags: u32,
         _size: u64,
         _memory_id: u64,
-        _pci_addr: u64,
         _vecs: Vec<(GuestAddress, usize)>,
         _mem: &GuestMemory,
     ) -> GpuResponse {
         GpuResponse::ErrUnspec
     }
 
-    fn resource_v2_unref(&mut self, _resource_id: u32) -> GpuResponse {
+    fn resource_map(&mut self, _resource_id: u32, _pci_addr: u64) -> GpuResponse {
+        GpuResponse::ErrUnspec
+    }
+
+    fn resource_unmap(&mut self, _resource_id: u32) -> GpuResponse {
         GpuResponse::ErrUnspec
     }
 }
@@ -606,7 +609,6 @@ impl Frontend {
                 let ctx_id = info.hdr.ctx_id.to_native();
                 let flags = info.flags.to_native();
                 let size = info.size.to_native();
-                let pci_addr = info.pci_addr.to_native();
                 let memory_id = info.memory_id.to_native();
                 let entry_count = info.nr_entries.to_native();
                 if entry_count > VIRTIO_GPU_MAX_IOVEC_ENTRIES
@@ -632,15 +634,19 @@ impl Frontend {
                     ctx_id,
                     flags,
                     size,
-                    pci_addr,
                     memory_id,
                     vecs,
                     mem,
                 )
             }
-            GpuCommand::ResourceV2Unref(info) => {
+            GpuCommand::ResourceMap(info) => {
                 let resource_id = info.resource_id.to_native();
-                self.backend.resource_v2_unref(resource_id)
+                let offset = info.offset.to_native();
+                self.backend.resource_map(resource_id, offset)
+            }
+            GpuCommand::ResourceUnmap(info) => {
+                let resource_id = info.resource_id.to_native();
+                self.backend.resource_unmap(resource_id)
             }
         }
     }

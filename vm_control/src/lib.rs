@@ -192,7 +192,7 @@ pub enum VmMemoryRequest {
     RegisterMemory(MaybeOwnedFd, usize),
     /// Similiar to `VmMemoryRequest::RegisterMemory`, but doesn't allocate new address space.
     /// Useful for cases where the address space is already allocated (PCI regions).
-    RegisterMemoryAtAddress(Alloc, MaybeOwnedFd, usize, u64),
+    RegisterFdAtPciBarOffset(Alloc, MaybeOwnedFd, usize, u64),
     /// Unregister the given memory slot that was previously registereed with `RegisterMemory`.
     UnregisterMemory(u32),
     /// Allocate GPU buffer of a given size/format and register the memory into guest address space.
@@ -230,8 +230,8 @@ impl VmMemoryRequest {
                     Err(e) => VmMemoryResponse::Err(e),
                 }
             }
-            RegisterMemoryAtAddress(alloc, ref fd, size, guest_addr) => {
-                match register_memory(vm, sys_allocator, fd, size, Some((alloc, guest_addr))) {
+            RegisterFdAtPciBarOffset(alloc, ref fd, size, offset) => {
+                match register_memory(vm, sys_allocator, fd, size, Some((alloc, offset))) {
                     Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
                     Err(e) => VmMemoryResponse::Err(e),
                 }
@@ -433,12 +433,13 @@ fn register_memory(
     };
 
     let addr = match allocation {
-        Some((Alloc::PciBar { bus, dev, bar }, address)) => {
+        Some((Alloc::PciBar { bus, dev, bar }, offset)) => {
             match allocator
                 .mmio_allocator(MmioType::High)
                 .get(&Alloc::PciBar { bus, dev, bar })
             {
                 Some((start_addr, length, _)) => {
+                    let address = *start_addr + offset;
                     let range = *start_addr..*start_addr + *length;
                     let end = address + (size as u64);
                     match (range.contains(&address), range.contains(&end)) {

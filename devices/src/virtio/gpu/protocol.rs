@@ -50,7 +50,8 @@ pub const VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D: u32 = 0x206;
 pub const VIRTIO_GPU_CMD_SUBMIT_3D: u32 = 0x207;
 /* The following hypercalls are not upstreamed. */
 pub const VIRTIO_GPU_CMD_RESOURCE_CREATE_V2: u32 = 0x208;
-pub const VIRTIO_GPU_CMD_RESOURCE_CREATE_V2_UNREF: u32 = 0x209;
+pub const VIRTIO_GPU_CMD_RESOURCE_MAP: u32 = 0x209;
+pub const VIRTIO_GPU_CMD_RESOURCE_UNMAP: u32 = 0x20a;
 
 /* cursor commands */
 pub const VIRTIO_GPU_CMD_UPDATE_CURSOR: u32 = 0x300;
@@ -113,7 +114,8 @@ pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
         VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D => "VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D",
         VIRTIO_GPU_CMD_SUBMIT_3D => "VIRTIO_GPU_CMD_SUBMIT_3D",
         VIRTIO_GPU_CMD_RESOURCE_CREATE_V2 => "VIRTIO_GPU_CMD_RESOURCE_CREATE_V2",
-        VIRTIO_GPU_CMD_RESOURCE_CREATE_V2_UNREF => "VIRTIO_GPU_CMD_RESOURCE_CREATE_V2_UNREF",
+        VIRTIO_GPU_CMD_RESOURCE_MAP => "VIRTIO_GPU_RESOURCE_MAP",
+        VIRTIO_GPU_CMD_RESOURCE_UNMAP => "VIRTIO_GPU_RESOURCE_UNMAP",
         VIRTIO_GPU_CMD_UPDATE_CURSOR => "VIRTIO_GPU_CMD_UPDATE_CURSOR",
         VIRTIO_GPU_CMD_MOVE_CURSOR => "VIRTIO_GPU_CMD_MOVE_CURSOR",
         VIRTIO_GPU_RESP_OK_NODATA => "VIRTIO_GPU_RESP_OK_NODATA",
@@ -502,7 +504,6 @@ pub struct virtio_gpu_resource_create_v2 {
     pub resource_id: Le32,
     pub flags: Le32,
     pub size: Le64,
-    pub pci_addr: Le64,
     pub memory_id: Le64,
     pub nr_entries: Le32,
     pub padding: Le32,
@@ -512,13 +513,24 @@ unsafe impl DataInit for virtio_gpu_resource_create_v2 {}
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
-pub struct virtio_gpu_resource_v2_unref {
+pub struct virtio_gpu_resource_map {
+    pub hdr: virtio_gpu_ctrl_hdr,
+    pub resource_id: Le32,
+    pub map_flags: Le32,
+    pub offset: Le64,
+}
+
+unsafe impl DataInit for virtio_gpu_resource_map {}
+
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
+pub struct virtio_gpu_resource_unmap {
     pub hdr: virtio_gpu_ctrl_hdr,
     pub resource_id: Le32,
     pub padding: Le32,
 }
 
-unsafe impl DataInit for virtio_gpu_resource_v2_unref {}
+unsafe impl DataInit for virtio_gpu_resource_unmap {}
 
 /* simple formats for fbcon/X use */
 pub const VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM: u32 = 1;
@@ -552,7 +564,8 @@ pub enum GpuCommand {
     TransferFromHost3d(virtio_gpu_transfer_host_3d),
     CmdSubmit3d(virtio_gpu_cmd_submit),
     ResourceCreateV2(virtio_gpu_resource_create_v2),
-    ResourceV2Unref(virtio_gpu_resource_v2_unref),
+    ResourceMap(virtio_gpu_resource_map),
+    ResourceUnmap(virtio_gpu_resource_unmap),
     UpdateCursor(virtio_gpu_update_cursor),
     MoveCursor(virtio_gpu_update_cursor),
 }
@@ -620,7 +633,8 @@ impl fmt::Debug for GpuCommand {
             TransferFromHost3d(_info) => f.debug_struct("TransferFromHost3d").finish(),
             CmdSubmit3d(_info) => f.debug_struct("CmdSubmit3d").finish(),
             ResourceCreateV2(_info) => f.debug_struct("ResourceCreateV2").finish(),
-            ResourceV2Unref(_info) => f.debug_struct("ResourceV2Unref").finish(),
+            ResourceMap(_info) => f.debug_struct("ResourceMap").finish(),
+            ResourceUnmap(_info) => f.debug_struct("ResourceUnmap").finish(),
             UpdateCursor(_info) => f.debug_struct("UpdateCursor").finish(),
             MoveCursor(_info) => f.debug_struct("MoveCursor").finish(),
         }
@@ -652,7 +666,8 @@ impl GpuCommand {
             VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D => TransferFromHost3d(cmd.read_obj()?),
             VIRTIO_GPU_CMD_SUBMIT_3D => CmdSubmit3d(cmd.read_obj()?),
             VIRTIO_GPU_CMD_RESOURCE_CREATE_V2 => ResourceCreateV2(cmd.read_obj()?),
-            VIRTIO_GPU_CMD_RESOURCE_CREATE_V2_UNREF => ResourceV2Unref(cmd.read_obj()?),
+            VIRTIO_GPU_CMD_RESOURCE_MAP => ResourceMap(cmd.read_obj()?),
+            VIRTIO_GPU_CMD_RESOURCE_UNMAP => ResourceUnmap(cmd.read_obj()?),
             VIRTIO_GPU_CMD_UPDATE_CURSOR => UpdateCursor(cmd.read_obj()?),
             VIRTIO_GPU_CMD_MOVE_CURSOR => MoveCursor(cmd.read_obj()?),
             _ => return Err(GpuCommandDecodeError::InvalidType(hdr.type_.into())),
@@ -682,7 +697,8 @@ impl GpuCommand {
             TransferFromHost3d(info) => &info.hdr,
             CmdSubmit3d(info) => &info.hdr,
             ResourceCreateV2(info) => &info.hdr,
-            ResourceV2Unref(info) => &info.hdr,
+            ResourceMap(info) => &info.hdr,
+            ResourceUnmap(info) => &info.hdr,
             UpdateCursor(info) => &info.hdr,
             MoveCursor(info) => &info.hdr,
         }
