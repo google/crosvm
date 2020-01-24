@@ -14,7 +14,7 @@ use std::ffi::CString;
 use std::fmt::{self, Display};
 use std::fs;
 use std::io;
-use std::os::raw::c_ushort;
+use std::os::raw::{c_ulong, c_ushort};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
@@ -397,6 +397,9 @@ impl Minijail {
         unsafe {
             libminijail::minijail_remount_proc_readonly(self.jail);
         }
+    }
+    pub fn set_remount_mode(&mut self, mode: c_ulong) {
+        unsafe { libminijail::minijail_remount_mode(self.jail, mode) }
     }
     pub fn uidmap(&mut self, uid_map: &str) -> Result<()> {
         let map_cstring =

@@ -825,6 +825,10 @@ fn create_9p_device(cfg: &Config, src: &Path, tag: &str) -> DeviceResult {
             let root = Path::new("/");
             jail.mount_bind(src, root, true)?;
 
+            // We want bind mounts from the parent namespaces to propagate into the 9p server's
+            // namespace.
+            jail.set_remount_mode(libc::MS_SLAVE);
+
             add_crosvm_user_to_jail(&mut jail, "p9")?;
             (Some(jail), root)
         }
