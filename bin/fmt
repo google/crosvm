@@ -26,4 +26,4 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # Jump up to root directory of crosvm repo.
 cd ..
 
-find . -name '*.rs' -print0 | grep -vz '^./target/' | xargs -0 rustfmt "$@" --
+find . -name '*.rs' -print0 | grep -vz '^./target/' | xargs -0 rustfmt --edition=2018 "$@" --
