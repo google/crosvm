@@ -75,8 +75,9 @@ const TYPE_IOMMU: u32 = 23;
 const TYPE_FS: u32 = 26;
 const TYPE_PMEM: u32 = 27;
 // Additional types invented by crosvm
-const TYPE_WL: u32 = 30;
-const TYPE_TPM: u32 = 31;
+const MAX_VIRTIO_DEVICE_ID: u32 = 63;
+const TYPE_WL: u32 = MAX_VIRTIO_DEVICE_ID;
+const TYPE_TPM: u32 = MAX_VIRTIO_DEVICE_ID - 1;
 
 const VIRTIO_F_VERSION_1: u32 = 32;
 
