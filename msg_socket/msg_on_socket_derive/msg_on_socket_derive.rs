@@ -8,8 +8,10 @@ extern crate proc_macro;
 use std::vec::Vec;
 
 use proc_macro2::{Span, TokenStream};
-use quote::quote;
-use syn::{parse_macro_input, Data, DataEnum, DataStruct, DeriveInput, Fields, Ident};
+use quote::{format_ident, quote};
+use syn::{
+    parse_macro_input, Data, DataEnum, DataStruct, DeriveInput, Fields, Ident, Index, Member, Type,
+};
 
 /// The function that derives the recursive implementation for struct or enum.
 #[proc_macro_derive(MsgOnSocket)]
@@ -50,13 +52,14 @@ fn is_named_struct(ds: &DataStruct) -> bool {
 /************************** Named Struct Impls ********************************************/
 fn impl_for_named_struct(name: Ident, ds: DataStruct) -> TokenStream {
     let fields = get_struct_fields(ds);
-    let fields_types = get_types_from_fields_vec(&fields);
-    let buffer_sizes_impls = define_buffer_size_for_struct(&fields_types);
+    let uses_fd_impl = define_uses_fd_for_struct(&fields);
+    let buffer_sizes_impls = define_buffer_size_for_struct(&fields);
 
     let read_buffer = define_read_buffer_for_struct(&name, &fields);
     let write_buffer = define_write_buffer_for_struct(&name, &fields);
     quote! {
         impl msg_socket::MsgOnSocket for #name {
+            #uses_fd_impl
             #buffer_sizes_impls
             #read_buffer
             #write_buffer
@@ -64,17 +67,8 @@ fn impl_for_named_struct(name: Ident, ds: DataStruct) -> TokenStream {
     }
 }
 
-fn get_types_from_fields_vec(v: &[(Ident, syn::Type)]) -> Vec<syn::Type> {
-    let mut fields_types = Vec::new();
-    for (_i, t) in v {
-        fields_types.push(t.clone());
-    }
-    fields_types
-}
-
 // Flatten struct fields.
-// "myfield : Type" -> \(ident\("myfield"\), Token\(Type\)\)
-fn get_struct_fields(ds: DataStruct) -> Vec<(Ident, syn::Type)> {
+fn get_struct_fields(ds: DataStruct) -> Vec<(Member, Type)> {
     let fields = match ds.fields {
         Fields::Named(fields_named) => fields_named.named,
         _ => {
@@ -83,35 +77,52 @@ fn get_struct_fields(ds: DataStruct) -> Vec<(Ident, syn::Type)> {
     };
     let mut vec = Vec::new();
     for field in fields {
-        let ident = match field.ident {
-            Some(ident) => ident,
+        let member = match field.ident {
+            Some(ident) => Member::Named(ident),
             None => panic!("Unknown Error."),
         };
         let ty = field.ty;
-        vec.push((ident, ty));
+        vec.push((member, ty));
     }
     vec
 }
 
-fn define_buffer_size_for_struct(field_types: &[syn::Type]) -> TokenStream {
-    let (msg_size, max_fd_count) = get_fields_buffer_size_sum(field_types);
+fn define_uses_fd_for_struct(fields: &[(Member, Type)]) -> TokenStream {
+    if fields.len() == 0 {
+        return quote!();
+    }
+
+    let field_types = fields.iter().map(|(_, ty)| ty);
     quote! {
-        fn msg_size() -> usize {
-            #msg_size
-        }
-        fn max_fd_count() -> usize {
-            #max_fd_count
+        fn uses_fd() -> bool {
+            #(<#field_types>::uses_fd())||*
         }
     }
 }
 
-fn define_read_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) -> TokenStream {
+fn define_buffer_size_for_struct(fields: &[(Member, Type)]) -> TokenStream {
+    let (msg_size, fd_count) = get_fields_buffer_size_sum(fields);
+    quote! {
+        fn msg_size(&self) -> usize {
+            #msg_size
+        }
+        fn fd_count(&self) -> usize {
+            #fd_count
+        }
+    }
+}
+
+fn define_read_buffer_for_struct(_name: &Ident, fields: &[(Member, Type)]) -> TokenStream {
     let mut read_fields = Vec::new();
     let mut init_fields = Vec::new();
-    for f in fields {
-        let read_field = read_from_buffer_and_move_offset(&f.0, &f.1);
+    for (field_member, field_ty) in fields {
+        let ident = match field_member {
+            Member::Named(ident) => ident,
+            Member::Unnamed(_) => unreachable!(),
+        };
+        let read_field = read_from_buffer_and_move_offset(&ident, &field_ty);
         read_fields.push(read_field);
-        let name = f.0.clone();
+        let name = ident.clone();
         init_fields.push(quote!(#name));
     }
     quote! {
@@ -132,10 +143,14 @@ fn define_read_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) -
     }
 }
 
-fn define_write_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) -> TokenStream {
+fn define_write_buffer_for_struct(_name: &Ident, fields: &[(Member, Type)]) -> TokenStream {
     let mut write_fields = Vec::new();
-    for f in fields {
-        let write_field = write_to_buffer_and_move_offset(&f.0, &f.1);
+    for (field_member, _) in fields {
+        let ident = match field_member {
+            Member::Named(ident) => ident,
+            Member::Unnamed(_) => unreachable!(),
+        };
+        let write_field = write_to_buffer_and_move_offset(&ident);
         write_fields.push(write_field);
     }
     quote! {
@@ -154,13 +169,13 @@ fn define_write_buffer_for_struct(_name: &Ident, fields: &[(Ident, syn::Type)]) 
 
 /************************** Enum Impls ********************************************/
 fn impl_for_enum(name: Ident, de: DataEnum) -> TokenStream {
-    let variants = get_enum_variant_types(&de);
-    let buffer_sizes_impls = define_buffer_size_for_enum(&variants);
-
+    let uses_fd_impl = define_uses_fd_for_enum(&de);
+    let buffer_sizes_impls = define_buffer_size_for_enum(&name, &de);
     let read_buffer = define_read_buffer_for_enum(&name, &de);
     let write_buffer = define_write_buffer_for_enum(&name, &de);
     quote! {
         impl msg_socket::MsgOnSocket for #name {
+            #uses_fd_impl
             #buffer_sizes_impls
             #read_buffer
             #write_buffer
@@ -168,74 +183,103 @@ fn impl_for_enum(name: Ident, de: DataEnum) -> TokenStream {
     }
 }
 
-fn define_buffer_size_for_enum(variants: &[(Ident, Vec<syn::Type>)]) -> TokenStream {
-    let mut variant_buffer_sizes = Vec::new();
-    let mut variant_fd_sizes = Vec::new();
-    for v in variants {
-        let (msg_size_impl, fd_count_impl) = get_fields_buffer_size_sum(&v.1);
-        variant_buffer_sizes.push(msg_size_impl);
-        variant_fd_sizes.push(fd_count_impl);
+fn define_uses_fd_for_enum(de: &DataEnum) -> TokenStream {
+    let mut variant_field_types = Vec::new();
+    for variant in &de.variants {
+        for variant_field_ty in variant.fields.iter().map(|f| &f.ty) {
+            variant_field_types.push(variant_field_ty);
+        }
     }
     quote! {
-        fn msg_size() -> usize {
-            // First byte is used for variant.
-            [#(#variant_buffer_sizes,)*].iter().max().unwrap().clone() as usize + 1
-        }
-        fn max_fd_count() -> usize {
-            [#(#variant_fd_sizes,)*].iter().max().unwrap().clone() as usize
+        fn uses_fd() -> bool {
+            #(<#variant_field_types>::uses_fd())||*
         }
     }
 }
 
-// Flatten enum variants. Return value = \[variant_name, \[types_of_this_variant\]\]
-fn get_enum_variant_types(de: &DataEnum) -> Vec<(Ident, Vec<syn::Type>)> {
-    let mut variants = Vec::new();
-    let de = de.clone();
-    for v in de.variants {
-        let name = v.ident;
-        match v.fields {
-            Fields::Unnamed(fields) => {
-                let mut vec = Vec::new();
-                for field in fields.unnamed {
-                    let ty = field.ty;
-                    vec.push(ty);
+fn define_buffer_size_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
+    let mut msg_size_match_variants = Vec::new();
+    let mut fd_count_match_variants = Vec::new();
+
+    for variant in &de.variants {
+        let variant_name = &variant.ident;
+        match &variant.fields {
+            Fields::Named(fields) => {
+                let mut tmp_names = Vec::new();
+                for field in &fields.named {
+                    tmp_names.push(field.ident.clone().unwrap());
                 }
-                variants.push((name, vec));
+
+                let v = quote! {
+                    #name::#variant_name { #(#tmp_names),* } => #(#tmp_names.msg_size())+*,
+                };
+                msg_size_match_variants.push(v);
+
+                let v = quote! {
+                    #name::#variant_name { #(#tmp_names),* } => #(#tmp_names.fd_count())+*,
+                };
+                fd_count_match_variants.push(v);
+            }
+            Fields::Unnamed(fields) => {
+                let mut tmp_names = Vec::new();
+                for idx in 0..fields.unnamed.len() {
+                    let tmp_name = format!("enum_field{}", idx);
+                    let tmp_name = Ident::new(&tmp_name, Span::call_site());
+                    tmp_names.push(tmp_name.clone());
+                }
+
+                let v = quote! {
+                    #name::#variant_name(#(#tmp_names),*) => #(#tmp_names.msg_size())+*,
+                };
+                msg_size_match_variants.push(v);
+
+                let v = quote! {
+                    #name::#variant_name(#(#tmp_names),*) => #(#tmp_names.fd_count())+*,
+                };
+                fd_count_match_variants.push(v);
             }
             Fields::Unit => {
-                variants.push((name, Vec::new()));
-                continue;
+                let v = quote! {
+                    #name::#variant_name => 0,
+                };
+                msg_size_match_variants.push(v.clone());
+                fd_count_match_variants.push(v);
             }
-            Fields::Named(fields) => {
-                let mut vec = Vec::new();
-                for field in fields.named {
-                    let ty = field.ty;
-                    vec.push(ty);
-                }
-                variants.push((name, vec));
-            }
-        };
+        }
     }
-    variants
+
+    quote! {
+        fn msg_size(&self) -> usize {
+            1 + match self {
+                #(#msg_size_match_variants)*
+            }
+        }
+        fn fd_count(&self) -> usize {
+            match self {
+                #(#fd_count_match_variants)*
+            }
+        }
+    }
 }
 
 fn define_read_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
     let mut match_variants = Vec::new();
     let de = de.clone();
-    let mut i = 0u8;
-    for v in de.variants {
-        let variant_name = v.ident;
-        match v.fields {
+    for (idx, variant) in de.variants.iter().enumerate() {
+        let idx = idx as u8;
+        let variant_name = &variant.ident;
+        match &variant.fields {
             Fields::Named(fields) => {
                 let mut tmp_names = Vec::new();
                 let mut read_tmps = Vec::new();
-                for f in fields.named {
+                for f in &fields.named {
                     tmp_names.push(f.ident.clone());
-                    let read_tmp = read_from_buffer_and_move_offset(&f.ident.unwrap(), &f.ty);
+                    let read_tmp =
+                        read_from_buffer_and_move_offset(f.ident.as_ref().unwrap(), &f.ty);
                     read_tmps.push(read_tmp);
                 }
                 let v = quote! {
-                    #i => {
+                    #idx => {
                         let mut __offset = 1usize;
                         let mut __fd_offset = 0usize;
                         #(#read_tmps)*
@@ -247,18 +291,15 @@ fn define_read_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
             Fields::Unnamed(fields) => {
                 let mut tmp_names = Vec::new();
                 let mut read_tmps = Vec::new();
-                let mut j = 0usize;
-                for f in fields.unnamed {
-                    let tmp_name = format!("enum_variant_tmp{}", j);
-                    let tmp_name = Ident::new(&tmp_name, Span::call_site());
+                for (idx, field) in fields.unnamed.iter().enumerate() {
+                    let tmp_name = format_ident!("enum_field{}", idx);
                     tmp_names.push(tmp_name.clone());
-                    let read_tmp = read_from_buffer_and_move_offset(&tmp_name, &f.ty);
+                    let read_tmp = read_from_buffer_and_move_offset(&tmp_name, &field.ty);
                     read_tmps.push(read_tmp);
-                    j += 1;
                 }
 
                 let v = quote! {
-                    #i => {
+                    #idx => {
                         let mut __offset = 1usize;
                         let mut __fd_offset = 0usize;
                         #(#read_tmps)*
@@ -269,19 +310,18 @@ fn define_read_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
             }
             Fields::Unit => {
                 let v = quote! {
-                    #i => Ok((#name::#variant_name, 0)),
+                    #idx => Ok((#name::#variant_name, 0)),
                 };
                 match_variants.push(v);
             }
         }
-        i += 1;
     }
     quote! {
         unsafe fn read_from_buffer(
             buffer: &[u8],
             fds: &[std::os::unix::io::RawFd],
         ) -> msg_socket::MsgResult<(Self, usize)> {
-            let v = buffer[0];
+            let v = buffer.get(0).ok_or(msg_socket::MsgError::WrongMsgBufferSize)?;
             match v {
                 #(#match_variants)*
                 _ => Err(msg_socket::MsgError::InvalidType),
@@ -292,23 +332,24 @@ fn define_read_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
 
 fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
     let mut match_variants = Vec::new();
-    let mut i = 0u8;
     let de = de.clone();
-    for v in de.variants {
-        let variant_name = v.ident;
-        match v.fields {
+    for (idx, variant) in de.variants.iter().enumerate() {
+        let idx = idx as u8;
+        let variant_name = &variant.ident;
+        match &variant.fields {
             Fields::Named(fields) => {
                 let mut tmp_names = Vec::new();
                 let mut write_tmps = Vec::new();
-                for f in fields.named {
+                for f in &fields.named {
                     tmp_names.push(f.ident.clone().unwrap());
-                    let write_tmp = enum_write_to_buffer_and_move_offset(&f.ident.unwrap(), &f.ty);
+                    let write_tmp =
+                        enum_write_to_buffer_and_move_offset(&f.ident.as_ref().unwrap());
                     write_tmps.push(write_tmp);
                 }
 
                 let v = quote! {
                     #name::#variant_name { #(#tmp_names),* } => {
-                        buffer[0] = #i;
+                        buffer[0] = #idx;
                         let mut __offset = 1usize;
                         let mut __fd_offset = 0usize;
                         #(#write_tmps)*
@@ -320,19 +361,16 @@ fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
             Fields::Unnamed(fields) => {
                 let mut tmp_names = Vec::new();
                 let mut write_tmps = Vec::new();
-                let mut j = 0usize;
-                for f in fields.unnamed {
-                    let tmp_name = format!("enum_variant_tmp{}", j);
-                    let tmp_name = Ident::new(&tmp_name, Span::call_site());
+                for idx in 0..fields.unnamed.len() {
+                    let tmp_name = format_ident!("enum_field{}", idx);
                     tmp_names.push(tmp_name.clone());
-                    let write_tmp = enum_write_to_buffer_and_move_offset(&tmp_name, &f.ty);
+                    let write_tmp = enum_write_to_buffer_and_move_offset(&tmp_name);
                     write_tmps.push(write_tmp);
-                    j += 1;
                 }
 
                 let v = quote! {
                     #name::#variant_name(#(#tmp_names),*) => {
-                        buffer[0] = #i;
+                        buffer[0] = #idx;
                         let mut __offset = 1usize;
                         let mut __fd_offset = 0usize;
                         #(#write_tmps)*
@@ -344,14 +382,13 @@ fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
             Fields::Unit => {
                 let v = quote! {
                     #name::#variant_name => {
-                        buffer[0] = #i;
+                        buffer[0] = #idx;
                         Ok(0)
                     }
                 };
                 match_variants.push(v);
             }
         }
-        i += 1;
     }
 
     quote! {
@@ -360,6 +397,9 @@ fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
             buffer: &mut [u8],
             fds: &mut [std::os::unix::io::RawFd],
         ) -> msg_socket::MsgResult<usize> {
+            if buffer.is_empty() {
+                return Err(msg_socket::MsgError::WrongMsgBufferSize)
+            }
             match self {
                 #(#match_variants)*
             }
@@ -367,24 +407,25 @@ fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
     }
 }
 
-fn enum_write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream {
+fn enum_write_to_buffer_and_move_offset(name: &Ident) -> TokenStream {
     quote! {
         let o = #name.write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
-        __offset += <#ty>::msg_size();
+        __offset += #name.msg_size();
         __fd_offset += o;
     }
 }
 
 /************************** Tuple Impls ********************************************/
 fn impl_for_tuple_struct(name: Ident, ds: DataStruct) -> TokenStream {
-    let types = get_tuple_types(ds);
+    let fields = get_tuple_fields(ds);
 
-    let buffer_sizes_impls = define_buffer_size_for_struct(&types);
-
-    let read_buffer = define_read_buffer_for_tuples(&name, &types);
-    let write_buffer = define_write_buffer_for_tuples(&name, &types);
+    let uses_fd_impl = define_uses_fd_for_tuples(&fields);
+    let buffer_sizes_impls = define_buffer_size_for_struct(&fields);
+    let read_buffer = define_read_buffer_for_tuples(&name, &fields);
+    let write_buffer = define_write_buffer_for_tuples(&name, &fields);
     quote! {
         impl msg_socket::MsgOnSocket for #name {
+            #uses_fd_impl
             #buffer_sizes_impls
             #read_buffer
             #write_buffer
@@ -392,28 +433,42 @@ fn impl_for_tuple_struct(name: Ident, ds: DataStruct) -> TokenStream {
     }
 }
 
-fn get_tuple_types(ds: DataStruct) -> Vec<syn::Type> {
-    let mut types = Vec::new();
+fn get_tuple_fields(ds: DataStruct) -> Vec<(Member, Type)> {
+    let mut field_idents = Vec::new();
     let fields = match ds.fields {
         Fields::Unnamed(fields_unnamed) => fields_unnamed.unnamed,
         _ => {
             panic!("Tuple struct must have unnamed fields.");
         }
     };
-    for field in fields {
-        let ty = field.ty;
-        types.push(ty);
+    for (idx, field) in fields.iter().enumerate() {
+        let member = Member::Unnamed(Index::from(idx));
+        let ty = field.ty.clone();
+        field_idents.push((member, ty));
     }
-    types
+    field_idents
 }
 
-fn define_read_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> TokenStream {
+fn define_uses_fd_for_tuples(fields: &[(Member, Type)]) -> TokenStream {
+    if fields.len() == 0 {
+        return quote!();
+    }
+
+    let field_types = fields.iter().map(|(_, ty)| ty);
+    quote! {
+        fn uses_fd() -> bool {
+            #(<#field_types>::uses_fd())||*
+        }
+    }
+}
+
+fn define_read_buffer_for_tuples(name: &Ident, fields: &[(Member, Type)]) -> TokenStream {
     let mut read_fields = Vec::new();
     let mut init_fields = Vec::new();
-    for i in 0..fields.len() {
-        let tmp_name = format!("tuple_tmp{}", i);
+    for (idx, (_, field_ty)) in fields.iter().enumerate() {
+        let tmp_name = format!("tuple_tmp{}", idx);
         let tmp_name = Ident::new(&tmp_name, Span::call_site());
-        let read_field = read_from_buffer_and_move_offset(&tmp_name, &fields[i]);
+        let read_field = read_from_buffer_and_move_offset(&tmp_name, field_ty);
         read_fields.push(read_field);
         init_fields.push(quote!(#tmp_name));
     }
@@ -436,13 +491,12 @@ fn define_read_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> TokenStr
     }
 }
 
-fn define_write_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> TokenStream {
+fn define_write_buffer_for_tuples(name: &Ident, fields: &[(Member, Type)]) -> TokenStream {
     let mut write_fields = Vec::new();
     let mut tmp_names = Vec::new();
-    for i in 0..fields.len() {
-        let tmp_name = format!("tuple_tmp{}", i);
-        let tmp_name = Ident::new(&tmp_name, Span::call_site());
-        let write_field = enum_write_to_buffer_and_move_offset(&tmp_name, &fields[i]);
+    for idx in 0..fields.len() {
+        let tmp_name = format_ident!("tuple_tmp{}", idx);
+        let write_field = enum_write_to_buffer_and_move_offset(&tmp_name);
         write_fields.push(write_field);
         tmp_names.push(tmp_name);
     }
@@ -461,14 +515,15 @@ fn define_write_buffer_for_tuples(name: &Ident, fields: &[syn::Type]) -> TokenSt
     }
 }
 /************************** Helpers ********************************************/
-fn get_fields_buffer_size_sum(field_types: &[syn::Type]) -> (TokenStream, TokenStream) {
-    if field_types.len() > 0 {
+fn get_fields_buffer_size_sum(fields: &[(Member, Type)]) -> (TokenStream, TokenStream) {
+    let fields: Vec<_> = fields.iter().map(|(m, _)| m).collect();
+    if fields.len() > 0 {
         (
             quote! {
-                #( <#field_types>::msg_size() as usize )+*
+                #( self.#fields.msg_size() as usize )+*
             },
             quote! {
-                #( <#field_types>::max_fd_count() as usize )+*
+                #( self.#fields.fd_count() as usize )+*
             },
         )
     } else {
@@ -476,19 +531,19 @@ fn get_fields_buffer_size_sum(field_types: &[syn::Type]) -> (TokenStream, TokenS
     }
 }
 
-fn read_from_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream {
+fn read_from_buffer_and_move_offset(name: &Ident, ty: &Type) -> TokenStream {
     quote! {
         let t = <#ty>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
-        __offset += <#ty>::msg_size();
+        __offset += t.0.msg_size();
         __fd_offset += t.1;
         let #name = t.0;
     }
 }
 
-fn write_to_buffer_and_move_offset(name: &Ident, ty: &syn::Type) -> TokenStream {
+fn write_to_buffer_and_move_offset(name: &Ident) -> TokenStream {
     quote! {
         let o = self.#name.write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
-        __offset += <#ty>::msg_size();
+        __offset += self.#name.msg_size();
         __fd_offset += o;
     }
 }
@@ -511,15 +566,18 @@ mod tests {
 
         let expected = quote! {
             impl msg_socket::MsgOnSocket for MyMsg {
-                fn msg_size() -> usize {
-                    <u8>::msg_size() as usize
-                        + <RawFd>::msg_size() as usize
-                        + <u32>::msg_size() as usize
+                fn uses_fd() -> bool {
+                    <u8>::uses_fd() || <RawFd>::uses_fd() || <u32>::uses_fd()
                 }
-                fn max_fd_count() -> usize {
-                    <u8>::max_fd_count() as usize
-                        + <RawFd>::max_fd_count() as usize
-                        + <u32>::max_fd_count() as usize
+                fn msg_size(&self) -> usize {
+                    self.a.msg_size() as usize
+                        + self.b.msg_size() as usize
+                        + self.c.msg_size() as usize
+                }
+                fn fd_count(&self) -> usize {
+                    self.a.fd_count() as usize
+                        + self.b.fd_count() as usize
+                        + self.c.fd_count() as usize
                 }
                 unsafe fn read_from_buffer(
                     buffer: &[u8],
@@ -528,15 +586,15 @@ mod tests {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
                     let t = <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
-                    __offset += <u8>::msg_size();
+                    __offset += t.0.msg_size();
                     __fd_offset += t.1;
                     let a = t.0;
                     let t = <RawFd>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
-                    __offset += <RawFd>::msg_size();
+                    __offset += t.0.msg_size();
                     __fd_offset += t.1;
                     let b = t.0;
                     let t = <u32>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
-                    __offset += <u32>::msg_size();
+                    __offset += t.0.msg_size();
                     __fd_offset += t.1;
                     let c = t.0;
                     Ok((Self { a, b, c }, __fd_offset))
@@ -548,21 +606,25 @@ mod tests {
                 ) -> msg_socket::MsgResult<usize> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
-                    let o = self.a
+                    let o = self
+                        .a
                         .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
-                    __offset += <u8>::msg_size();
+                    __offset += self.a.msg_size();
                     __fd_offset += o;
-                    let o = self.b
+                    let o = self
+                        .b
                         .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
-                    __offset += <RawFd>::msg_size();
+                    __offset += self.b.msg_size();
                     __fd_offset += o;
-                    let o = self.c
+                    let o = self
+                        .c
                         .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
-                    __offset += <u32>::msg_size();
+                    __offset += self.c.msg_size();
                     __fd_offset += o;
                     Ok(__fd_offset)
                 }
             }
+
         };
 
         assert_eq!(socket_msg_impl(input).to_string(), expected.to_string());
@@ -576,15 +638,17 @@ mod tests {
 
         let expected = quote! {
             impl msg_socket::MsgOnSocket for MyMsg {
-                fn msg_size() -> usize {
-                    <u8>::msg_size() as usize
-                        + <u32>::msg_size() as usize
-                        + <File>::msg_size() as usize
+                fn uses_fd() -> bool {
+                    <u8>::uses_fd() || <u32>::uses_fd() || <File>::uses_fd()
                 }
-                fn max_fd_count() -> usize {
-                    <u8>::max_fd_count() as usize
-                        + <u32>::max_fd_count() as usize
-                        + <File>::max_fd_count() as usize
+                fn msg_size(&self) -> usize {
+                    self.0.msg_size() as usize
+                        + self.1.msg_size() as usize + self.2.msg_size() as usize
+                }
+                fn fd_count(&self) -> usize {
+                    self.0.fd_count() as usize
+                        + self.1.fd_count() as usize
+                        + self.2.fd_count() as usize
                 }
                 unsafe fn read_from_buffer(
                     buffer: &[u8],
@@ -593,15 +657,15 @@ mod tests {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
                     let t = <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
-                    __offset += <u8>::msg_size();
+                    __offset += t.0.msg_size();
                     __fd_offset += t.1;
                     let tuple_tmp0 = t.0;
                     let t = <u32>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
-                    __offset += <u32>::msg_size();
+                    __offset += t.0.msg_size();
                     __fd_offset += t.1;
                     let tuple_tmp1 = t.0;
                     let t = <File>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
-                    __offset += <File>::msg_size();
+                    __offset += t.0.msg_size();
                     __fd_offset += t.1;
                     let tuple_tmp2 = t.0;
                     Ok((MyMsg(tuple_tmp0, tuple_tmp1, tuple_tmp2), __fd_offset))
@@ -614,17 +678,14 @@ mod tests {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
                     let MyMsg(tuple_tmp0, tuple_tmp1, tuple_tmp2) = self;
-                    let o = tuple_tmp0
-                        .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
-                    __offset += <u8>::msg_size();
+                    let o = tuple_tmp0.write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
+                    __offset += tuple_tmp0.msg_size();
                     __fd_offset += o;
-                    let o = tuple_tmp1
-                        .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
-                    __offset += <u32>::msg_size();
+                    let o = tuple_tmp1.write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
+                    __offset += tuple_tmp1.msg_size();
                     __fd_offset += o;
-                    let o = tuple_tmp2
-                        .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
-                    __offset += <File>::msg_size();
+                    let o = tuple_tmp2.write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
+                    __offset += tuple_tmp2.msg_size();
                     __fd_offset += o;
                     Ok(__fd_offset)
                 }
@@ -649,52 +710,50 @@ mod tests {
 
         let expected = quote! {
             impl msg_socket::MsgOnSocket for MyMsg {
-                fn msg_size() -> usize {
-                    [
-                        <u8>::msg_size() as usize,
-                        0,
-                        <u8>::msg_size() as usize + <RawFd>::msg_size() as usize,
-                    ].iter()
-                        .max().unwrap().clone() as usize+ 1
+                fn uses_fd() -> bool {
+                    <u8>::uses_fd() || <u8>::uses_fd() || <RawFd>::uses_fd()
                 }
-                fn max_fd_count() -> usize {
-                    [
-                        <u8>::max_fd_count() as usize,
-                        0,
-                        <u8>::max_fd_count() as usize + <RawFd>::max_fd_count() as usize,
-                    ].iter()
-                        .max().unwrap().clone() as usize
+                fn msg_size(&self) -> usize {
+                    1 + match self {
+                        MyMsg::A(enum_field0) => enum_field0.msg_size(),
+                        MyMsg::B => 0,
+                        MyMsg::C { f0, f1 } => f0.msg_size() + f1.msg_size(),
+                    }
+                }
+                fn fd_count(&self) -> usize {
+                    match self {
+                        MyMsg::A(enum_field0) => enum_field0.fd_count(),
+                        MyMsg::B => 0,
+                        MyMsg::C { f0, f1 } => f0.fd_count() + f1.fd_count(),
+                    }
                 }
                 unsafe fn read_from_buffer(
                     buffer: &[u8],
                     fds: &[std::os::unix::io::RawFd],
                 ) -> msg_socket::MsgResult<(Self, usize)> {
-                    let v = buffer[0];
+                    let v = buffer
+                        .get(0)
+                        .ok_or(msg_socket::MsgError::WrongMsgBufferSize)?;
                     match v {
                         0u8 => {
                             let mut __offset = 1usize;
                             let mut __fd_offset = 0usize;
-                            let t =
-                                <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
-                            __offset += <u8>::msg_size();
+                            let t = <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
+                            __offset += t.0.msg_size();
                             __fd_offset += t.1;
-                            let enum_variant_tmp0 = t.0;
-                            Ok((MyMsg::A(enum_variant_tmp0), __fd_offset))
+                            let enum_field0 = t.0;
+                            Ok((MyMsg::A(enum_field0), __fd_offset))
                         }
                         1u8 => Ok((MyMsg::B, 0)),
                         2u8 => {
                             let mut __offset = 1usize;
                             let mut __fd_offset = 0usize;
-                            let t =
-                                <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
-                            __offset += <u8>::msg_size();
+                            let t = <u8>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
+                            __offset += t.0.msg_size();
                             __fd_offset += t.1;
                             let f0 = t.0;
-                            let t = <RawFd>::read_from_buffer(
-                                &buffer[__offset..],
-                                &fds[__fd_offset..]
-                            )?;
-                            __offset += <RawFd>::msg_size();
+                            let t = <RawFd>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
+                            __offset += t.0.msg_size();
                             __fd_offset += t.1;
                             let f1 = t.0;
                             Ok((MyMsg::C { f0, f1 }, __fd_offset))
@@ -707,14 +766,17 @@ mod tests {
                     buffer: &mut [u8],
                     fds: &mut [std::os::unix::io::RawFd],
                 ) -> msg_socket::MsgResult<usize> {
+                    if buffer.is_empty() {
+                        return Err(msg_socket::MsgError::WrongMsgBufferSize)
+                    }
                     match self {
-                        MyMsg::A(enum_variant_tmp0) => {
+                        MyMsg::A(enum_field0) => {
                             buffer[0] = 0u8;
                             let mut __offset = 1usize;
                             let mut __fd_offset = 0usize;
-                            let o = enum_variant_tmp0
+                            let o = enum_field0
                                 .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
-                            __offset += <u8>::msg_size();
+                            __offset += enum_field0.msg_size();
                             __fd_offset += o;
                             Ok(__fd_offset)
                         }
@@ -726,20 +788,17 @@ mod tests {
                             buffer[0] = 2u8;
                             let mut __offset = 1usize;
                             let mut __fd_offset = 0usize;
-                            let o = f0
-                                .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
-                            __offset += <u8>::msg_size();
+                            let o = f0.write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
+                            __offset += f0.msg_size();
                             __fd_offset += o;
-                            let o = f1
-                                .write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
-                            __offset += <RawFd>::msg_size();
+                            let o = f1.write_to_buffer(&mut buffer[__offset..], &mut fds[__fd_offset..])?;
+                            __offset += f1.msg_size();
                             __fd_offset += o;
                             Ok(__fd_offset)
                         }
                     }
                 }
             }
-
         };
 
         assert_eq!(socket_msg_impl(input).to_string(), expected.to_string());

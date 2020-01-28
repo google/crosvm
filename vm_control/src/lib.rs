@@ -43,10 +43,13 @@ impl AsRawFd for MaybeOwnedFd {
 
 // When sent, it could be owned or borrowed. On the receiver end, it always owned.
 impl MsgOnSocket for MaybeOwnedFd {
-    fn msg_size() -> usize {
-        0usize
+    fn uses_fd() -> bool {
+        true
     }
-    fn max_fd_count() -> usize {
+    fn fixed_size() -> Option<usize> {
+        Some(0)
+    }
+    fn fd_count(&self) -> usize {
         1usize
     }
     unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {

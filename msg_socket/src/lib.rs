@@ -127,8 +127,8 @@ impl<M: MsgOnSocket> AsRawFd for Receiver<M> {
 pub trait MsgSender: AsRef<UnixSeqpacket> {
     type M: MsgOnSocket;
     fn send(&self, msg: &Self::M) -> MsgResult<()> {
-        let msg_size = Self::M::msg_size();
-        let fd_size = Self::M::max_fd_count();
+        let msg_size = msg.msg_size();
+        let fd_size = msg.fd_count();
         let mut msg_buffer: Vec<u8> = vec![0; msg_size];
         let mut fd_buffer: Vec<RawFd> = vec![0; fd_size];
 
@@ -149,34 +149,23 @@ pub trait MsgSender: AsRef<UnixSeqpacket> {
 pub trait MsgReceiver: AsRef<UnixSeqpacket> {
     type M: MsgOnSocket;
     fn recv(&self) -> MsgResult<Self::M> {
-        let msg_size = Self::M::msg_size();
-        let fd_size = Self::M::max_fd_count();
-
         let sock: &UnixSeqpacket = self.as_ref();
 
         let (msg_buffer, fd_buffer) = {
-            if fd_size == 0 {
+            if Self::M::uses_fd() {
+                sock.recv_as_vec_with_fds()
+                    .map_err(|e| MsgError::Recv(SysError::new(e.raw_os_error().unwrap_or(0))))?
+            } else {
                 (
                     sock.recv_as_vec().map_err(|e| {
                         MsgError::Recv(SysError::new(e.raw_os_error().unwrap_or(0)))
                     })?,
                     vec![],
                 )
-            } else {
-                sock.recv_as_vec_with_fds()
-                    .map_err(|e| MsgError::Recv(SysError::new(e.raw_os_error().unwrap_or(0))))?
             }
         };
-
-        if msg_size != msg_buffer.len() {
-            return Err(MsgError::BadRecvSize {
-                expected: msg_size,
-                actual: msg_buffer.len(),
-            });
-        }
         // Safe because fd buffer is read from socket.
-        let (v, read_fd_size) =
-            unsafe { Self::M::read_from_buffer(&msg_buffer[..], &fd_buffer[..])? };
+        let (v, read_fd_size) = unsafe { Self::M::read_from_buffer(&msg_buffer, &fd_buffer)? };
         if fd_buffer.len() != read_fd_size {
             return Err(MsgError::NotExpectFd);
         }
