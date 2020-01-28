@@ -5,9 +5,9 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
-proc-macro2 = "=0.4"
-quote = "=0.6"
-syn = "=0.15"
+proc-macro2 = "^1"
+quote = "^1"
+syn = "^1"
 
 [lib]
 proc-macro = true

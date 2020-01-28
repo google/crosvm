@@ -134,14 +134,16 @@ fn testable_derive(input: DeriveInput) -> proc_macro2::TokenStream {
     let mut repr = None;
     for attr in input.attrs {
         if let Ok(Meta::List(list)) = attr.parse_meta() {
-            if list.ident == "repr" {
-                if let Some(NestedMeta::Meta(Meta::Word(word))) = list.nested.into_iter().next() {
-                    match word.to_string().as_str() {
-                        "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32"
-                        | "i64" | "i128" | "isize" => {
-                            repr = Some(word);
+            if list.path.is_ident("repr") {
+                if let Some(NestedMeta::Meta(Meta::Path(word))) = list.nested.into_iter().next() {
+                    if let Some(s) = word.get_ident() {
+                        match s.to_string().as_str() {
+                            "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16"
+                            | "i32" | "i64" | "i128" | "isize" => {
+                                repr = Some(word);
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
                 }
             }
