@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::xhci_abi::{Error as TrbError, NormalTrb, TransferDescriptor, TrbCast, TrbType};
+use super::xhci_abi::{
+    AddressedTrb, Error as TrbError, NormalTrb, TransferDescriptor, TrbCast, TrbType,
+};
 use bit_field::Error as BitFieldError;
 use std::fmt::{self, Display};
 use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
@@ -14,6 +16,7 @@ pub enum Error {
     UnknownTrbType(BitFieldError),
     CastTrb(TrbError),
     BadTrbType(TrbType),
+    ImmediateDataTooLong(usize),
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -28,6 +31,7 @@ impl Display for Error {
             UnknownTrbType(e) => write!(f, "unknown trb type: {}", e),
             CastTrb(e) => write!(f, "cannot cast trb: {}", e),
             BadTrbType(t) => write!(f, "should not build buffer from trb type: {:?}", t),
+            ImmediateDataTooLong(l) => write!(f, "immediate data longer than allowed: {}", l),
         }
     }
 }
@@ -67,13 +71,30 @@ impl ScatterGatherBuffer {
         Ok(total_len)
     }
 
+    /// Get the guest address and length of the TRB's data buffer.
+    /// This is usually a separate buffer pointed to by the TRB,
+    /// but it can also be within the TRB itself in the case of immediate data.
+    fn get_trb_data(&self, atrb: &AddressedTrb) -> Result<(GuestAddress, usize)> {
+        let normal_trb = atrb.trb.cast::<NormalTrb>().map_err(Error::CastTrb)?;
+        let len = normal_trb.get_trb_transfer_length() as usize;
+        let addr = if normal_trb.get_immediate_data() == 1 {
+            // If the Immediate Data flag is set, the first <= 8 bytes of the TRB hold the data.
+            if len > 8 {
+                return Err(Error::ImmediateDataTooLong(len));
+            }
+            atrb.gpa
+        } else {
+            normal_trb.get_data_buffer()
+        };
+        Ok((GuestAddress(addr), len))
+    }
+
     /// Read content to buffer, return number of bytes read.
     pub fn read(&self, buffer: &mut [u8]) -> Result<usize> {
         let mut total_size = 0usize;
         let mut offset = 0;
         for atrb in &self.td {
-            let normal_trb = atrb.trb.cast::<NormalTrb>().map_err(Error::CastTrb)?;
-            let len = normal_trb.get_trb_transfer_length() as usize;
+            let (guest_address, len) = self.get_trb_data(&atrb)?;
             let buffer_len = {
                 if offset == buffer.len() {
                     return Ok(total_size);
@@ -89,7 +110,7 @@ impl ScatterGatherBuffer {
             offset = buffer_end;
             total_size += self
                 .mem
-                .read_at_addr(cur_buffer, GuestAddress(normal_trb.get_data_buffer()))
+                .read_at_addr(cur_buffer, guest_address)
                 .map_err(Error::ReadGuestMemory)?;
         }
         Ok(total_size)
@@ -100,8 +121,7 @@ impl ScatterGatherBuffer {
         let mut total_size = 0usize;
         let mut offset = 0;
         for atrb in &self.td {
-            let normal_trb = atrb.trb.cast::<NormalTrb>().map_err(Error::CastTrb)?;
-            let len = normal_trb.get_trb_transfer_length() as usize;
+            let (guest_address, len) = self.get_trb_data(&atrb)?;
             let buffer_len = {
                 if offset == buffer.len() {
                     return Ok(total_size);
@@ -117,7 +137,7 @@ impl ScatterGatherBuffer {
             offset = buffer_end;
             total_size += self
                 .mem
-                .write_at_addr(cur_buffer, GuestAddress(normal_trb.get_data_buffer()))
+                .write_at_addr(cur_buffer, guest_address)
                 .map_err(Error::WriteGuestMemory)?;
         }
         Ok(total_size)
@@ -175,5 +195,29 @@ mod test {
         let mut data_read = [0; 7];
         buffer.read(&mut data_read).unwrap();
         assert_eq!(data_to_write, data_read);
+    }
+
+    #[test]
+    fn immediate_data_test() {
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let mut td = TransferDescriptor::new();
+
+        let expected_immediate_data: [u8; 8] = [0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0D, 0xCA, 0xFE];
+
+        let mut trb = Trb::new();
+        let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
+        ntrb.set_trb_type(TrbType::Normal);
+        ntrb.set_data_buffer(u64::from_le_bytes(expected_immediate_data));
+        ntrb.set_trb_transfer_length(8);
+        ntrb.set_immediate_data(1);
+        td.push(AddressedTrb { trb, gpa: 0xC00 });
+
+        gm.write_obj_at_addr(trb, GuestAddress(0xc00)).unwrap();
+
+        let buffer = ScatterGatherBuffer::new(gm.clone(), td).unwrap();
+
+        let mut data_read = [0; 8];
+        buffer.read(&mut data_read).unwrap();
+        assert_eq!(data_read, expected_immediate_data);
     }
 }
