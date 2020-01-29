@@ -4,7 +4,9 @@
 
 use std::fs::File;
 use std::mem;
+use std::ops::Deref;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::ptr;
 
 use libc::{c_void, dup, eventfd, read, write};
 
@@ -106,6 +108,50 @@ impl IntoRawFd for EventFd {
     }
 }
 
+/// An `EventFd` wrapper which triggers when it goes out of scope.
+///
+/// If the underlying `EventFd` fails to trigger during drop, a panic is triggered instead.
+pub struct ScopedEvent(EventFd);
+
+impl ScopedEvent {
+    /// Creates a new `ScopedEvent` which triggers when it goes out of scope.
+    pub fn new() -> Result<ScopedEvent> {
+        Ok(EventFd::new()?.into())
+    }
+}
+
+impl From<EventFd> for ScopedEvent {
+    fn from(e: EventFd) -> Self {
+        Self(e)
+    }
+}
+
+impl From<ScopedEvent> for EventFd {
+    fn from(scoped_event: ScopedEvent) -> Self {
+        // Rust doesn't allow moving out of types with a Drop implementation, so we have to use
+        // something that copies instead of moves. This is safe because we prevent the drop of
+        // `scoped_event` using `mem::forget`, so the underlying `EventFd` will not experience a
+        // double-drop.
+        let evt = unsafe { ptr::read(&scoped_event.0) };
+        mem::forget(scoped_event);
+        evt
+    }
+}
+
+impl Deref for ScopedEvent {
+    type Target = EventFd;
+
+    fn deref(&self) -> &EventFd {
+        &self.0
+    }
+}
+
+impl Drop for ScopedEvent {
+    fn drop(&mut self) {
+        self.write(1).expect("failed to trigger scoped event");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,5 +174,20 @@ mod tests {
         let evt_clone = evt.try_clone().unwrap();
         evt.write(923).unwrap();
         assert_eq!(evt_clone.read(), Ok(923));
+    }
+
+    #[test]
+    fn scoped_event() {
+        let scoped_evt = ScopedEvent::new().unwrap();
+        let evt_clone: EventFd = scoped_evt.try_clone().unwrap();
+        drop(scoped_evt);
+        assert_eq!(evt_clone.read(), Ok(1));
+    }
+
+    #[test]
+    fn eventfd_from_scoped_event() {
+        let scoped_evt = ScopedEvent::new().unwrap();
+        let evt: EventFd = scoped_evt.into();
+        evt.write(1).unwrap();
     }
 }
