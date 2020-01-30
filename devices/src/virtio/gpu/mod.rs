@@ -6,6 +6,7 @@ mod protocol;
 mod virtio_2d_backend;
 mod virtio_3d_backend;
 mod virtio_backend;
+mod virtio_gfxstream_backend;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -40,6 +41,8 @@ use super::{PciCapabilityType, VirtioPciShmCap, VirtioPciShmCapID};
 use self::protocol::*;
 use self::virtio_2d_backend::Virtio2DBackend;
 use self::virtio_3d_backend::Virtio3DBackend;
+#[cfg(feature = "gfxstream")]
+use self::virtio_gfxstream_backend::VirtioGfxStreamBackend;
 use crate::pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability};
 
 use vm_control::VmMemoryControlRequestSocket;
@@ -51,6 +54,8 @@ pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
 pub enum GpuMode {
     Mode2D,
     Mode3D,
+    #[cfg(feature = "gfxstream")]
+    ModeGfxStream,
 }
 
 #[derive(Debug)]
@@ -305,6 +310,8 @@ trait Backend {
 enum BackendKind {
     Virtio2D,
     Virtio3D,
+    #[cfg(feature = "gfxstream")]
+    VirtioGfxStream,
 }
 
 impl BackendKind {
@@ -313,6 +320,8 @@ impl BackendKind {
         match self {
             BackendKind::Virtio2D => Virtio2DBackend::capsets(),
             BackendKind::Virtio3D => Virtio3DBackend::capsets(),
+            #[cfg(feature = "gfxstream")]
+            BackendKind::VirtioGfxStream => VirtioGfxStreamBackend::capsets(),
         }
     }
 
@@ -321,6 +330,8 @@ impl BackendKind {
         match self {
             BackendKind::Virtio2D => Virtio2DBackend::features(),
             BackendKind::Virtio3D => Virtio3DBackend::features(),
+            #[cfg(feature = "gfxstream")]
+            BackendKind::VirtioGfxStream => VirtioGfxStreamBackend::features(),
         }
     }
 
@@ -346,6 +357,16 @@ impl BackendKind {
                 pci_bar,
             ),
             BackendKind::Virtio3D => Virtio3DBackend::build(
+                possible_displays,
+                display_width,
+                display_height,
+                renderer_flags,
+                event_devices,
+                gpu_device_socket,
+                pci_bar,
+            ),
+            #[cfg(feature = "gfxstream")]
+            BackendKind::VirtioGfxStream => VirtioGfxStreamBackend::build(
                 possible_displays,
                 display_width,
                 display_height,
@@ -1033,6 +1054,8 @@ impl Gpu {
         let backend_kind = match gpu_parameters.mode {
             GpuMode::Mode2D => BackendKind::Virtio2D,
             GpuMode::Mode3D => BackendKind::Virtio3D,
+            #[cfg(feature = "gfxstream")]
+            GpuMode::ModeGfxStream => BackendKind::VirtioGfxStream,
         };
 
         Gpu {

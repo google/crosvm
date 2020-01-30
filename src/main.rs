@@ -124,12 +124,37 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
 
         for (k, v) in opts {
             match k {
+                // Deprecated: Specifying --gpu=<mode> Not great as the mode can be set multiple
+                // times if the user specifies several modes (--gpu=2d,3d,gfxstream)
                 "2d" | "2D" => {
                     gpu_params.mode = GpuMode::Mode2D;
                 }
                 "3d" | "3D" => {
                     gpu_params.mode = GpuMode::Mode3D;
                 }
+                #[cfg(feature = "gfxstream")]
+                "gfxstream" => {
+                    gpu_params.mode = GpuMode::ModeGfxStream;
+                }
+                // Preferred: Specifying --gpu,backend=<mode>
+                "backend" => match v {
+                    "2d" | "2D" => {
+                        gpu_params.mode = GpuMode::Mode2D;
+                    }
+                    "3d" | "3D" => {
+                        gpu_params.mode = GpuMode::Mode3D;
+                    }
+                    #[cfg(feature = "gfxstream")]
+                    "gfxstream" => {
+                        gpu_params.mode = GpuMode::ModeGfxStream;
+                    }
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: "gpu parameter 'backend' should be one of (2d|3d|gfxstream)",
+                        });
+                    }
+                },
                 "egl" => match v {
                     "true" | "" => {
                         gpu_params.renderer_use_egl = true;
@@ -1209,6 +1234,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                                   "[width=INT,height=INT]",
                                   "(EXPERIMENTAL) Comma separated key=value pairs for setting up a virtio-gpu device
                                   Possible key values:
+                                  backend=(2d|3d|gfxstream) - Which backend to use for virtio-gpu (determining rendering protocol)
                                   width=INT - The width of the virtual display connected to the virtio-gpu.
                                   height=INT - The height of the virtual display connected to the virtio-gpu.
                                   egl[=true|=false] - If the virtio-gpu backend should use a EGL context for rendering.

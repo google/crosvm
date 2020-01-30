@@ -9,6 +9,7 @@ gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
 tpm = ["protos/trunks", "tpm2"]
 wl-dmabuf = []
 x = ["gpu_display/x"]
+gfxstream = ["gpu"]
 
 [dependencies]
 audio_streams = "*"
