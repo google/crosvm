@@ -50,8 +50,8 @@ use sys_util::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_rt_signal_handler,
     set_cpu_affinity, validate_raw_fd, warn, EventFd, FlockOperation, GuestAddress, GuestMemory,
-    Killable, MemoryMappingArena, PollContext, PollToken, Protection, SignalFd, Terminal, TimerFd,
-    WatchingEvents, SIGRTMIN,
+    Killable, MemoryMappingArena, PollContext, PollToken, Protection, ScopedEvent, SignalFd,
+    Terminal, TimerFd, WatchingEvents, SIGRTMIN,
 };
 use vhost;
 use vm_control::{
@@ -1325,6 +1325,10 @@ fn run_vcpu(
     thread::Builder::new()
         .name(format!("crosvm_vcpu{}", cpu_id))
         .spawn(move || {
+            // The VCPU thread must trigger the `exit_evt` in all paths, and a `ScopedEvent`'s Drop
+            // implementation accomplishes that.
+            let _scoped_exit_evt = ScopedEvent::from(exit_evt);
+
             if vcpu_affinity.len() != 0 {
                 if let Err(e) = set_cpu_affinity(vcpu_affinity) {
                     error!("Failed to set CPU affinity: {}", e);
@@ -1336,7 +1340,7 @@ fn run_vcpu(
             start_barrier.wait();
 
             if let Some(vcpu) = vcpu {
-                'vcpu_loop: loop {
+                loop {
                     let mut interrupted_by_signal = false;
                     match vcpu.run() {
                         Ok(VcpuExit::IoIn { port, mut size }) => {
@@ -1421,7 +1425,7 @@ fn run_vcpu(
                                         }
                                     }
                                 }
-                                VmRunMode::Exiting => break 'vcpu_loop,
+                                VmRunMode::Exiting => return,
                             }
                             // Give ownership of our exclusive lock to the condition variable that
                             // will block. When the condition variable is notified, `wait` will
@@ -1431,9 +1435,6 @@ fn run_vcpu(
                     }
                 }
             }
-            exit_evt
-                .write(1)
-                .expect("failed to signal vcpu exit eventfd");
         })
         .map_err(Error::SpawnVcpu)
 }
