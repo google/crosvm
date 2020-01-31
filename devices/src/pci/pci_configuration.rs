@@ -411,7 +411,7 @@ impl PciConfiguration {
                 }
 
                 self.registers[bar_idx + 1] = (config.addr >> 32) as u32;
-                self.writable_bits[bar_idx + 1] = !((config.size >> 32).wrapping_sub(1)) as u32;
+                self.writable_bits[bar_idx + 1] = !((config.size - 1) >> 32) as u32;
                 self.bar_used[config.reg_idx + 1] = true;
             }
         }
@@ -724,6 +724,8 @@ mod tests {
             Some(PciBarRegionType::Memory64BitRegion)
         );
         assert_eq!(cfg.get_bar_addr(0), 0x01234567_89ABCDE0);
+        assert_eq!(cfg.writable_bits[BAR0_REG + 1], 0xFFFFFFFF);
+        assert_eq!(cfg.writable_bits[BAR0_REG + 0], 0xFFFFFFFC);
     }
 
     #[test]
@@ -755,6 +757,7 @@ mod tests {
             Some(PciBarRegionType::Memory32BitRegion)
         );
         assert_eq!(cfg.get_bar_addr(0), 0x12345670);
+        assert_eq!(cfg.writable_bits[BAR0_REG], 0xFFFFFFFC);
     }
 
     #[test]
@@ -783,5 +786,6 @@ mod tests {
 
         assert_eq!(cfg.get_bar_type(0), Some(PciBarRegionType::IORegion));
         assert_eq!(cfg.get_bar_addr(0), 0x1230);
+        assert_eq!(cfg.writable_bits[BAR0_REG], 0xFFFFFFFC);
     }
 }
