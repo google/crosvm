@@ -16,6 +16,7 @@ mod clock;
 mod descriptor;
 mod errno;
 mod eventfd;
+mod external_mapping;
 mod file_flags;
 pub mod file_traits;
 mod fork;
@@ -44,6 +45,7 @@ pub use crate::clock::{Clock, FakeClock};
 pub use crate::descriptor::*;
 pub use crate::errno::{errno_result, Error, Result};
 pub use crate::eventfd::*;
+pub use crate::external_mapping::*;
 pub use crate::file_flags::*;
 pub use crate::fork::*;
 pub use crate::guest_address::*;
@@ -64,6 +66,8 @@ pub use crate::terminal::*;
 pub use crate::timerfd::*;
 pub use poll_token_derive::*;
 
+pub use crate::external_mapping::Error as ExternalMappingError;
+pub use crate::external_mapping::Result as ExternalMappingResult;
 pub use crate::file_traits::{
     AsRawFds, FileAllocate, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen,
     FileSync,

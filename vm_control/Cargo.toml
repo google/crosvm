@@ -10,4 +10,5 @@ kvm = { path = "../kvm" }
 libc = "*"
 msg_socket = { path = "../msg_socket" }
 resources = { path = "../resources" }
+sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
