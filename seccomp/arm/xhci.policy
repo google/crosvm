@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-openat: 1
 @include /usr/share/policy/crosvm/common_device.policy
 
 stat64: 1
@@ -11,7 +10,6 @@ lstat64: 1
 readlink: 1
 readlinkat: 1
 getdents64: 1
-getrandom: 1
 name_to_handle_at: 1
 access: 1
 clock_gettime: 1
@@ -40,8 +38,8 @@ uname: 1
 # 0x80185520 == USBDEVFS_CONNINFO_EX
 ioctl: arg1 == 0xc0105500 || arg1 == 0x802c550a || arg1 == 0x8004551a || arg1 == 0x4004550d || arg1 == 0x8004550f || arg1 == 0x80045510 || arg1 == 0x550b || arg1 == 0x5514 || arg1 == 0x80045505 || arg1 == 0x8108551b || arg1 == 0x40085511 || arg1 == 0x80185520
 fstat: 1
-sigaltstack: 1
-recvmsg: 1
 getrandom: 1
 getdents: 1
 _llseek: 1
+open: return ENOENT
+openat: 1

@@ -5,6 +5,8 @@
 @include /usr/share/policy/crosvm/common_device.policy
 
 madvise: 1
+open: return ENOENT
+openat: return ENOENT
 prlimit64: 1
 setrlimit: 1
 clock_gettime: 1

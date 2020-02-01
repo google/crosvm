@@ -17,7 +17,6 @@ fdatasync: 1
 fsync: 1
 mkdirat: 1
 renameat: 1
-writev: 1
 linkat: 1
 unlinkat: 1
 socket: arg0 == AF_UNIX

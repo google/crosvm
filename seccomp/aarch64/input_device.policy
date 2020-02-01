@@ -7,3 +7,4 @@
 ioctl: 1
 fcntl: 1
 getsockname: 1
+openat: return ENOENT

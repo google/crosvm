@@ -3,3 +3,6 @@
 # found in the LICENSE file.
 
 @include /usr/share/policy/crosvm/common_device.policy
+
+open: return ENOENT
+openat: return ENOENT

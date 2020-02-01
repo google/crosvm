@@ -2,9 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-open: 1
-openat: 1
-
 @include /usr/share/policy/crosvm/common_device.policy
 
 pread64: 1
@@ -18,9 +15,10 @@ getdents64: 1
 fdatasync: 1
 fsync: 1
 mkdir: 1
+open: 1
+openat: 1
 rmdir: 1
 rename: 1
-writev: 1
 link: 1
 unlink: 1
 socket: arg0 == AF_UNIX

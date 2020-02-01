@@ -6,3 +6,4 @@
 
 fdatasync: 1
 fsync: 1
+openat: return ENOENT

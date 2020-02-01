@@ -6,3 +6,4 @@
 
 # TUNSETOFFLOAD
 ioctl: arg1 == 0x400454d0
+openat: return ENOENT
