@@ -13,6 +13,7 @@
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
+use std::mem::ManuallyDrop;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
 use libc::{EINVAL, EIO, ENODEV};
@@ -332,7 +333,15 @@ impl VmIrqRequest {
         match *self {
             AllocateOneMsi { ref irqfd } => {
                 if let Some(irq_num) = sys_allocator.allocate_irq() {
-                    let evt = unsafe { EventFd::from_raw_fd(irqfd.as_raw_fd()) };
+                    // Beacuse of the limitation of `MaybeOwnedFd` not fitting into `register_irqfd`
+                    // which expects an `&EventFd`, we use the unsafe `from_raw_fd` to assume that
+                    // the fd given is an `EventFd`, and we ignore the ownership question using
+                    // `ManuallyDrop`. This is safe because `ManuallyDrop` prevents any Drop
+                    // implementation from triggering on `irqfd` which already has an owner, and the
+                    // `EventFd` methods are never called. The underlying fd is merely passed to the
+                    // kernel which doesn't care about ownership and deals with incorrect FDs, in
+                    // the case of bugs on our part.
+                    let evt = unsafe { ManuallyDrop::new(EventFd::from_raw_fd(irqfd.as_raw_fd())) };
                     match vm.register_irqfd(&evt, irq_num) {
                         Ok(_) => VmIrqResponse::AllocateOneMsi { gsi: irq_num },
                         Err(e) => VmIrqResponse::Err(e),
