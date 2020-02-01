@@ -3,14 +3,14 @@
 // found in the LICENSE file.
 
 use data_model::DataInit;
-use linux_input_sys::input_event;
+use linux_input_sys::{virtio_input_event, InputEventDecoder};
 use std::collections::VecDeque;
 use std::io::{self, Error, ErrorKind, Read, Write};
 use std::iter::ExactSizeIterator;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 
-const EVENT_SIZE: usize = input_event::EVENT_SIZE;
+const EVENT_SIZE: usize = virtio_input_event::SIZE;
 const EVENT_BUFFER_LEN_MAX: usize = 16 * EVENT_SIZE;
 
 // /// Half-way build `EventDevice` with only the `event_socket` defined. Finish building the
@@ -93,7 +93,7 @@ impl EventDevice {
         self.event_buffer.is_empty()
     }
 
-    pub fn send_report<E: IntoIterator<Item = input_event>>(
+    pub fn send_report<E: IntoIterator<Item = virtio_input_event>>(
         &mut self,
         events: E,
     ) -> io::Result<bool>
@@ -111,14 +111,14 @@ impl EventDevice {
         }
 
         self.event_buffer
-            .extend(input_event::syn().as_slice().iter());
+            .extend(virtio_input_event::syn().as_slice().iter());
 
         self.flush_buffered_events()
     }
 
     /// Sends the given `event`, returning `Ok(true)` if, after this function returns, there are no
     /// buffered events remaining.
-    pub fn send_event_encoded(&mut self, event: input_event) -> io::Result<bool> {
+    pub fn send_event_encoded(&mut self, event: virtio_input_event) -> io::Result<bool> {
         if !self.flush_buffered_events()? {
             return Ok(false);
         }
@@ -137,14 +137,14 @@ impl EventDevice {
         Ok(false)
     }
 
-    pub fn recv_event_encoded(&self) -> io::Result<input_event> {
+    pub fn recv_event_encoded(&self) -> io::Result<virtio_input_event> {
         let mut event_bytes = [0u8; 24];
         (&self.event_socket).read_exact(&mut event_bytes)?;
-        match input_event::from_slice(&event_bytes) {
+        match virtio_input_event::from_slice(&event_bytes) {
             Some(event) => Ok(*event),
             None => Err(Error::new(
                 ErrorKind::InvalidInput,
-                "failed to read input_event",
+                "failed to read virtio_input_event",
             )),
         }
     }

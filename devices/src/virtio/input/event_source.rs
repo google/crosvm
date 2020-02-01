@@ -4,32 +4,15 @@
 
 use super::constants::*;
 use super::evdev::{grab_evdev, ungrab_evdev};
-use super::virtio_input_event;
 use super::InputError;
 use super::Result;
 use data_model::DataInit;
-use linux_input_sys::input_event;
+use linux_input_sys::{input_event, virtio_input_event, InputEventDecoder};
 use std::collections::VecDeque;
 use std::io::Read;
 use std::io::Write;
-use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, RawFd};
-use sys_util::{error, warn};
-
-trait ConvertFromVirtioInputEvent {
-    fn from_virtio_input_event(other: &virtio_input_event) -> input_event;
-}
-
-impl ConvertFromVirtioInputEvent for input_event {
-    fn from_virtio_input_event(other: &virtio_input_event) -> input_event {
-        input_event {
-            timestamp_fields: [0, 0],
-            type_: other.type_.into(),
-            code: other.code.into(),
-            value: other.value.into(),
-        }
-    }
-}
+use sys_util::warn;
 
 /// Encapsulates a socket or device node into an abstract event source, providing a common
 /// interface.
@@ -58,21 +41,11 @@ pub trait EventSource: AsRawFd {
     fn send_event(&mut self, vio_evt: &virtio_input_event) -> Result<()>;
 }
 
-// Try to read 16 events at a time to match what the linux guest driver does.
-const READ_BUFFER_SIZE: usize = 16 * size_of::<input_event>();
-
-// The read buffer needs to be aligned to the alignment of input_event, which is aligned as u64
-#[repr(align(8))]
-pub struct ReadBuffer {
-    buffer: [u8; READ_BUFFER_SIZE],
-}
-
 /// Encapsulates implementation details common to all kinds of event sources.
 pub struct EventSourceImpl<T> {
     source: T,
     queue: VecDeque<virtio_input_event>,
-    read_buffer: ReadBuffer,
-    // The read index accounts for incomplete events read previously.
+    read_buffer: Vec<u8>,
     read_idx: usize,
 }
 
@@ -86,38 +59,19 @@ impl<T> EventSourceImpl<T>
 where
     T: Read + Write,
 {
-    // Receive events from the source and store them in a queue, unless they should be filtered out.
-    fn receive_events<F: Fn(&input_event) -> bool>(&mut self, event_filter: F) -> Result<usize> {
+    // Receive events from the source and store them in a queue.
+    fn receive_events<E: InputEventDecoder>(&mut self) -> Result<usize> {
         let read = self
             .source
-            .read(&mut self.read_buffer.buffer[self.read_idx..])
+            .read(&mut self.read_buffer[self.read_idx..])
             .map_err(InputError::EventsReadError)?;
         let buff_size = read + self.read_idx;
 
-        for evt_slice in self.read_buffer.buffer[..buff_size].chunks_exact(input_event::EVENT_SIZE)
-        {
-            let input_evt = match input_event::from_slice(evt_slice) {
-                Some(x) => x,
-                None => {
-                    // This shouldn't happen because all slices (even the last one) are guaranteed
-                    // to have the correct size and be properly aligned.
-                    error!(
-                        "Failed converting a slice of sice {} to input_event",
-                        evt_slice.len()
-                    );
-                    // Skipping the event here effectively means no events will be received, because
-                    // if from_slice fails once it will fail always.
-                    continue;
-                }
-            };
-            if !event_filter(&input_evt) {
-                continue;
-            }
-            let vio_evt = virtio_input_event::from_input_event(input_evt);
-            self.queue.push_back(vio_evt);
+        for evt_slice in self.read_buffer[..buff_size].chunks_exact(E::SIZE) {
+            self.queue.push_back(E::decode(evt_slice));
         }
 
-        let remainder = buff_size % input_event::EVENT_SIZE;
+        let remainder = buff_size % E::SIZE;
         // If there is an incomplete event at the end of the buffer, it needs to be moved to the
         // beginning and the next read operation must write right after it.
         if remainder != 0 {
@@ -125,13 +79,13 @@ where
             // The copy should only happen if there is at least one complete event in the buffer,
             // otherwise source and destination would be the same.
             if buff_size != remainder {
-                let (des, src) = self.read_buffer.buffer.split_at_mut(buff_size - remainder);
+                let (des, src) = self.read_buffer.split_at_mut(buff_size - remainder);
                 des[..remainder].copy_from_slice(&src[..remainder]);
             }
         }
         self.read_idx = remainder;
 
-        let received_events = buff_size / input_event::EVENT_SIZE;
+        let received_events = buff_size / E::SIZE;
 
         Ok(received_events)
     }
@@ -144,30 +98,40 @@ where
         self.queue.pop_front()
     }
 
-    fn send_event(&mut self, vio_evt: &virtio_input_event) -> Result<()> {
-        let evt = input_event::from_virtio_input_event(vio_evt);
+    fn send_event(&mut self, vio_evt: &virtio_input_event, encoding: EventType) -> Result<()> {
         // Miscellaneous events produced by the device are sent back to it by the kernel input
         // subsystem, but because these events are handled by the host kernel as well as the
         // guest the device would get them twice. Which would prompt the device to send the
         // event to the guest again entering an infinite loop.
-        if evt.type_ != EV_MSC {
+        if vio_evt.type_ != EV_MSC {
+            let evt;
+            let event_bytes = match encoding {
+                EventType::InputEvent => {
+                    evt = input_event::from_virtio_input_event(vio_evt);
+                    evt.as_slice()
+                }
+                EventType::VirtioInputEvent => vio_evt.as_slice(),
+            };
             self.source
-                .write_all(evt.as_slice())
+                .write_all(event_bytes)
                 .map_err(InputError::EventsWriteError)?;
         }
         Ok(())
     }
 
-    fn new(source: T) -> EventSourceImpl<T> {
+    fn new(source: T, capacity: usize) -> EventSourceImpl<T> {
         EventSourceImpl {
             source,
             queue: VecDeque::new(),
-            read_buffer: ReadBuffer {
-                buffer: [0u8; READ_BUFFER_SIZE],
-            },
+            read_buffer: vec![0; capacity],
             read_idx: 0,
         }
     }
+}
+
+enum EventType {
+    VirtioInputEvent,
+    InputEvent,
 }
 
 /// Encapsulates a (unix) socket as an event source.
@@ -181,7 +145,7 @@ where
 {
     pub fn new(source: T) -> SocketEventSource<T> {
         SocketEventSource {
-            evt_source_impl: EventSourceImpl::new(source),
+            evt_source_impl: EventSourceImpl::new(source, 16 * virtio_input_event::SIZE),
         }
     }
 }
@@ -205,7 +169,7 @@ where
     }
 
     fn receive_events(&mut self) -> Result<usize> {
-        self.evt_source_impl.receive_events(|_evt| true)
+        self.evt_source_impl.receive_events::<virtio_input_event>()
     }
 
     fn available_events_count(&self) -> usize {
@@ -217,7 +181,8 @@ where
     }
 
     fn send_event(&mut self, vio_evt: &virtio_input_event) -> Result<()> {
-        self.evt_source_impl.send_event(vio_evt)
+        self.evt_source_impl
+            .send_event(vio_evt, EventType::VirtioInputEvent)
     }
 }
 
@@ -232,7 +197,7 @@ where
 {
     pub fn new(source: T) -> EvdevEventSource<T> {
         EvdevEventSource {
-            evt_source_impl: EventSourceImpl::new(source),
+            evt_source_impl: EventSourceImpl::new(source, 16 * input_event::SIZE),
         }
     }
 }
@@ -256,7 +221,7 @@ where
     }
 
     fn receive_events(&mut self) -> Result<usize> {
-        self.evt_source_impl.receive_events(|_evt| true)
+        self.evt_source_impl.receive_events::<input_event>()
     }
 
     fn available_events_count(&self) -> usize {
@@ -268,19 +233,20 @@ where
     }
 
     fn send_event(&mut self, vio_evt: &virtio_input_event) -> Result<()> {
-        self.evt_source_impl.send_event(vio_evt)
+        self.evt_source_impl
+            .send_event(vio_evt, EventType::InputEvent)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::virtio::input::event_source::input_event;
-    use crate::virtio::input::event_source::EventSourceImpl;
-    use crate::virtio::input::virtio_input_event;
-    use data_model::{DataInit, Le16, Le32};
     use std::cmp::min;
-    use std::io::Read;
-    use std::io::Write;
+    use std::io::{Read, Write};
+
+    use data_model::{DataInit, Le16, Le32};
+    use linux_input_sys::InputEventDecoder;
+
+    use crate::virtio::input::event_source::{input_event, virtio_input_event, EventSourceImpl};
 
     struct SourceMock {
         events: Vec<u8>,
@@ -317,7 +283,7 @@ mod tests {
 
     #[test]
     fn empty_new() {
-        let mut source = EventSourceImpl::new(SourceMock::new(&vec![]));
+        let mut source = EventSourceImpl::new(SourceMock::new(&vec![]), 128);
         assert_eq!(
             source.available_events(),
             0,
@@ -332,9 +298,9 @@ mod tests {
 
     #[test]
     fn empty_receive() {
-        let mut source = EventSourceImpl::new(SourceMock::new(&vec![]));
+        let mut source = EventSourceImpl::new(SourceMock::new(&vec![]), 128);
         assert_eq!(
-            source.receive_events(|_| true).unwrap(),
+            source.receive_events::<input_event>().unwrap(),
             0,
             "zero events should be received"
         );
@@ -367,9 +333,9 @@ mod tests {
     #[test]
     fn partial_pop() {
         let evts = instantiate_input_events(4usize);
-        let mut source = EventSourceImpl::new(SourceMock::new(&evts));
+        let mut source = EventSourceImpl::new(SourceMock::new(&evts), input_event::SIZE * 4);
         assert_eq!(
-            source.receive_events(|_| true).unwrap(),
+            source.receive_events::<input_event>().unwrap(),
             evts.len(),
             "should receive all events"
         );
@@ -383,9 +349,9 @@ mod tests {
     fn total_pop() {
         const EVENT_COUNT: usize = 4;
         let evts = instantiate_input_events(EVENT_COUNT);
-        let mut source = EventSourceImpl::new(SourceMock::new(&evts));
+        let mut source = EventSourceImpl::new(SourceMock::new(&evts), input_event::SIZE * 4);
         assert_eq!(
-            source.receive_events(|_| true).unwrap(),
+            source.receive_events::<input_event>().unwrap(),
             evts.len(),
             "should receive all events"
         );

@@ -20,12 +20,11 @@ use super::{
     copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
     TYPE_INPUT,
 };
-use linux_input_sys::input_event;
+use linux_input_sys::{virtio_input_event, InputEventDecoder};
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::io::Read;
 use std::io::Write;
-use std::mem::size_of;
 use std::thread;
 
 const EVENT_QUEUE_SIZE: u16 = 64;
@@ -341,29 +340,6 @@ impl VirtioInputConfig {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default)]
-#[repr(C)]
-pub struct virtio_input_event {
-    type_: Le16,
-    code: Le16,
-    value: Le32,
-}
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_input_event {}
-
-impl virtio_input_event {
-    const EVENT_SIZE: usize = size_of::<virtio_input_event>();
-
-    fn from_input_event(other: &input_event) -> virtio_input_event {
-        virtio_input_event {
-            type_: Le16::from(other.type_),
-            code: Le16::from(other.code),
-            value: Le32::from(other.value),
-        }
-    }
-}
-
 struct Worker<T: EventSource> {
     interrupt: Interrupt,
     event_source: T,
@@ -381,7 +357,7 @@ impl<T: EventSource> Worker<T> {
     ) -> Result<usize> {
         let mut writer = Writer::new(mem, avail_desc).map_err(InputError::Descriptor)?;
 
-        while writer.available_bytes() >= virtio_input_event::EVENT_SIZE {
+        while writer.available_bytes() >= virtio_input_event::SIZE {
             if let Some(evt) = event_source.pop_available_event() {
                 writer.write_obj(evt).map_err(InputError::WriteQueue)?;
             } else {
@@ -437,7 +413,7 @@ impl<T: EventSource> Worker<T> {
         mem: &GuestMemory,
     ) -> Result<usize> {
         let mut reader = Reader::new(mem, avail_desc).map_err(InputError::Descriptor)?;
-        while reader.available_bytes() >= virtio_input_event::EVENT_SIZE {
+        while reader.available_bytes() >= virtio_input_event::SIZE {
             let evt: virtio_input_event = reader.read_obj().map_err(InputError::ReadQueue)?;
             event_source.send_event(&evt)?;
         }

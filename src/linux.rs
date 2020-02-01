@@ -63,10 +63,6 @@ use vm_control::{
 };
 
 use crate::{Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption};
-
-#[cfg(feature = "gpu")]
-use crate::{DEFAULT_TOUCH_DEVICE_HEIGHT, DEFAULT_TOUCH_DEVICE_WIDTH};
-
 use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents, VmImage};
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -1048,19 +1044,16 @@ fn create_virtio_devices(
 
     #[cfg(feature = "gpu")]
     {
-        if cfg.gpu_parameters.is_some() {
+        if let Some(gpu_parameters) = &cfg.gpu_parameters {
             let mut event_devices = Vec::new();
             if cfg.display_window_mouse {
                 let (event_device_socket, virtio_dev_socket) =
                     UnixStream::pair().map_err(Error::CreateSocket)?;
-                // TODO(nkgold): the width/height here should match the display's height/width. When
-                // those settings are available as CLI options, we should use the CLI options here
-                // as well.
                 let (single_touch_width, single_touch_height) = cfg
                     .virtio_single_touch
                     .as_ref()
                     .map(|single_touch_spec| single_touch_spec.get_size())
-                    .unwrap_or((DEFAULT_TOUCH_DEVICE_WIDTH, DEFAULT_TOUCH_DEVICE_HEIGHT));
+                    .unwrap_or((gpu_parameters.display_width, gpu_parameters.display_height));
                 let dev = virtio::new_single_touch(
                     virtio_dev_socket,
                     single_touch_width,

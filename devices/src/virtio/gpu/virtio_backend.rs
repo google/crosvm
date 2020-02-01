@@ -59,6 +59,7 @@ impl VirtioBackend {
     pub fn import_event_device(&mut self, event_device: EventDevice, scanout: u32) {
         // TODO(zachr): support more than one scanout.
         if scanout != 0 {
+            error!("got nonzero scanout: {:}, but only support zero.", scanout);
             return;
         }
 
@@ -105,6 +106,9 @@ impl VirtioBackend {
                 match display.create_surface(None, self.display_width, self.display_height) {
                     Ok(surface_id) => {
                         self.scanout_surface_id = Some(surface_id);
+                        for (event_device_id, _) in &self.event_devices {
+                            display.attach_event_device(surface_id, *event_device_id);
+                        }
                     }
                     Err(e) => error!("failed to create display surface: {}", e),
                 }

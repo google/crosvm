@@ -57,8 +57,8 @@ pub struct GidMap {
     pub count: u32,
 }
 
-pub const DEFAULT_TOUCH_DEVICE_WIDTH: u32 = 800;
-pub const DEFAULT_TOUCH_DEVICE_HEIGHT: u32 = 1280;
+pub const DEFAULT_TOUCH_DEVICE_HEIGHT: u32 = 1024;
+pub const DEFAULT_TOUCH_DEVICE_WIDTH: u32 = 1280;
 
 pub struct TouchDeviceOption {
     path: PathBuf,
