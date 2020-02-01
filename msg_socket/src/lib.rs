@@ -145,33 +145,33 @@ pub trait MsgReceiver: AsRef<UnixSeqpacket> {
     fn recv(&self) -> MsgResult<Self::M> {
         let msg_size = Self::M::msg_size();
         let fd_size = Self::M::max_fd_count();
-        let mut msg_buffer: Vec<u8> = vec![0; msg_size];
-        let mut fd_buffer: Vec<RawFd> = vec![0; fd_size];
 
         let sock: &UnixSeqpacket = self.as_ref();
 
-        let (recv_msg_size, recv_fd_size) = {
+        let (msg_buffer, fd_buffer) = {
             if fd_size == 0 {
-                let size = sock
-                    .recv(&mut msg_buffer)
-                    .map_err(|e| MsgError::Recv(SysError::new(e.raw_os_error().unwrap_or(0))))?;
-                (size, 0)
+                (
+                    sock.recv_as_vec().map_err(|e| {
+                        MsgError::Recv(SysError::new(e.raw_os_error().unwrap_or(0)))
+                    })?,
+                    vec![],
+                )
             } else {
-                sock.recv_with_fds(&mut msg_buffer, &mut fd_buffer)
-                    .map_err(MsgError::Recv)?
+                sock.recv_as_vec_with_fds()
+                    .map_err(|e| MsgError::Recv(SysError::new(e.raw_os_error().unwrap_or(0))))?
             }
         };
-        if msg_size != recv_msg_size {
+
+        if msg_size != msg_buffer.len() {
             return Err(MsgError::BadRecvSize {
                 expected: msg_size,
-                actual: recv_msg_size,
+                actual: msg_buffer.len(),
             });
         }
         // Safe because fd buffer is read from socket.
-        let (v, read_fd_size) = unsafe {
-            Self::M::read_from_buffer(&msg_buffer[0..recv_msg_size], &fd_buffer[0..recv_fd_size])?
-        };
-        if recv_fd_size != read_fd_size {
+        let (v, read_fd_size) =
+            unsafe { Self::M::read_from_buffer(&msg_buffer[..], &fd_buffer[..])? };
+        if fd_buffer.len() != read_fd_size {
             return Err(MsgError::NotExpectFd);
         }
         Ok(v)

@@ -213,6 +213,9 @@ fn raw_recvmsg(fd: RawFd, in_data: &mut [u8], in_fds: &mut [RawFd]) -> Result<(u
     Ok((total_read as usize, in_fds_count))
 }
 
+/// The maximum number of FDs that can be sent in a single send.
+pub const SCM_SOCKET_MAX_FD_COUNT: usize = 253;
+
 /// Trait for file descriptors can send and receive socket control messages via `sendmsg` and
 /// `recvmsg`.
 pub trait ScmSocket {
@@ -292,6 +295,7 @@ impl ScmSocket for UnixStream {
         self.as_raw_fd()
     }
 }
+
 impl ScmSocket for UnixSeqpacket {
     fn socket_fd(&self) -> RawFd {
         self.as_raw_fd()
