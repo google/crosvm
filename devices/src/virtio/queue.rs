@@ -317,6 +317,8 @@ impl Queue {
         let queue_size = self.actual_size();
         let avail_index_addr = mem.checked_offset(self.avail_ring, 2).unwrap();
         let avail_index: u16 = mem.read_obj_from_addr(avail_index_addr).unwrap();
+        // make sure desc_index read doesn't bypass avail_index read
+        fence(Ordering::Acquire);
         let avail_len = Wrapping(avail_index) - self.next_avail;
 
         if avail_len.0 > queue_size || self.next_avail == Wrapping(avail_index) {
