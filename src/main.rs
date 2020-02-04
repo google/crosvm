@@ -6,6 +6,7 @@
 
 pub mod panic_hook;
 
+use std::default::Default;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader};
@@ -17,13 +18,14 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use arch::Pstore;
+use audio_streams::StreamEffect;
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
     linux, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{GpuMode, GpuParameters};
-use devices::{SerialParameters, SerialType};
+use devices::{Ac97Backend, Ac97Parameters, SerialParameters, SerialType};
 use disk::QcowFile;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use sys_util::{
@@ -247,6 +249,53 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
     }
 
     Ok(gpu_params)
+}
+
+fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
+    let mut ac97_params: Ac97Parameters = Default::default();
+
+    let opts = s
+        .split(",")
+        .map(|frag| frag.split("="))
+        .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
+
+    for (k, v) in opts {
+        match k {
+            "backend" => {
+                ac97_params.backend =
+                    v.parse::<Ac97Backend>()
+                        .map_err(|e| argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: e.to_string(),
+                        })?;
+            }
+            "capture" => {
+                ac97_params.capture = v.parse::<bool>().map_err(|e| {
+                    argument::Error::Syntax(format!("invalid capture option: {}", e))
+                })?;
+            }
+            "capture_effects" => {
+                ac97_params.capture_effects = v
+                    .split("|")
+                    .map(|val| {
+                        val.parse::<StreamEffect>()
+                            .map_err(|e| argument::Error::InvalidValue {
+                                value: val.to_string(),
+                                expected: e.to_string(),
+                            })
+                    })
+                    .collect::<argument::Result<Vec<_>>>()?;
+            }
+            _ => {
+                return Err(argument::Error::UnknownArgument(format!(
+                    "unknown ac97 parameter {}",
+                    k
+                )));
+            }
+        }
+    }
+
+    Ok(ac97_params)
 }
 
 fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
@@ -479,14 +528,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         })?,
                 )
         }
-        "cras-audio" => {
-            cfg.cras_audio = true;
-        }
-        "cras-capture" => {
-            cfg.cras_capture = true;
-        }
-        "null-audio" => {
-            cfg.null_audio = true;
+        "ac97" => {
+            let ac97_params = parse_ac97_options(value.unwrap())?;
+            cfg.ac97_parameters.push(ac97_params);
         }
         "serial" => {
             let serial_params = parse_serial_options(value.unwrap())?;
@@ -1193,9 +1237,14 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           "IP address to assign to host tap interface."),
           Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
           Argument::value("mac", "MAC", "MAC address for VM."),
-          Argument::flag("cras-audio", "Add an audio device to the VM that plays samples through CRAS server"),
-          Argument::flag("cras-capture", "Enable capturing audio from CRAS server to the cras-audio device"),
-          Argument::flag("null-audio", "Add an audio device to the VM that plays samples to /dev/null"),
+          Argument::value("ac97",
+                          "[backend=BACKEND,capture=true,capture_effect=EFFECT]",
+                          "Comma separated key=value pairs for setting up Ac97 devices. Can be given more than once .
+                          Possible key values:
+                          backend=(null, cras) - Where to route the audio device. If not provided, backend will default to null.
+                          `null` for /dev/null, and  cras for CRAS server.
+                          capture - Enable audio capture
+                          capture_effects - | separated effects to be enabled for recording. The only supported effect value now is EchoCancellation or aec."),
           Argument::value("serial",
                           "type=TYPE,[num=NUM,path=PATH,console,stdin]",
                           "Comma separated key=value pairs for setting up serial devices. Can be given more than once.
@@ -1842,6 +1891,34 @@ mod tests {
     #[test]
     fn parse_cpu_set_extra_comma() {
         parse_cpu_set("0,1,2,").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_ac97_vaild() {
+        parse_ac97_options("backend=cras").expect("parse should have succeded");
+    }
+
+    #[test]
+    fn parse_ac97_null_vaild() {
+        parse_ac97_options("backend=null").expect("parse should have succeded");
+    }
+
+    #[test]
+    fn parse_ac97_dup_effect_vaild() {
+        parse_ac97_options("backend=cras,capture=true,capture_effects=aec|aec")
+            .expect("parse should have succeded");
+    }
+
+    #[test]
+    fn parse_ac97_effect_invaild() {
+        parse_ac97_options("backend=cras,capture=true,capture_effects=abc")
+            .expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_ac97_effect_vaild() {
+        parse_ac97_options("backend=cras,capture=true,capture_effects=aec")
+            .expect("parse should have succeded");
     }
 
     #[test]

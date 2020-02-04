@@ -25,6 +25,7 @@ io_jail = { path = "../io_jail" }
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
+libcras = "*"
 linux_input_sys = { path = "../linux_input_sys" }
 msg_on_socket_derive = { path = "../msg_socket/msg_on_socket_derive" }
 msg_socket = { path = "../msg_socket" }

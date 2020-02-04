@@ -2,9 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::default::Default;
+use std::error;
+use std::fmt::{self, Display};
 use std::os::unix::io::RawFd;
+use std::str::FromStr;
 
-use audio_streams::shm_streams::ShmStreamSource;
+use audio_streams::{
+    shm_streams::{NullShmStreamSource, ShmStreamSource},
+    StreamEffect,
+};
+use libcras::CrasClient;
 use resources::{Alloc, MmioType, SystemAllocator};
 use sys_util::{error, EventFd, GuestMemory};
 
@@ -25,6 +33,53 @@ const PCI_DEVICE_ID_INTEL_82801AA_5: u16 = 0x2415;
 /// Internally the `Ac97BusMaster` and `Ac97Mixer` structs are used to emulated the bus master and
 /// mixer registers respectively. `Ac97BusMaster` handles moving smaples between guest memory and
 /// the audio backend.
+#[derive(Debug, Clone)]
+pub enum Ac97Backend {
+    NULL,
+    CRAS,
+}
+
+impl Default for Ac97Backend {
+    fn default() -> Self {
+        Ac97Backend::NULL
+    }
+}
+
+/// Errors that are possible from a `Ac97`.
+#[derive(Debug)]
+pub enum Ac97Error {
+    InvalidBackend,
+}
+
+impl error::Error for Ac97Error {}
+
+impl Display for Ac97Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Ac97Error::InvalidBackend => write!(f, "Must be cras or null"),
+        }
+    }
+}
+
+impl FromStr for Ac97Backend {
+    type Err = Ac97Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "cras" => Ok(Ac97Backend::CRAS),
+            "null" => Ok(Ac97Backend::NULL),
+            _ => Err(Ac97Error::InvalidBackend),
+        }
+    }
+}
+
+/// Holds the parameters for a AC97 device
+#[derive(Default, Debug, Clone)]
+pub struct Ac97Parameters {
+    pub backend: Ac97Backend,
+    pub capture: bool,
+    pub capture_effects: Vec<StreamEffect>,
+}
+
 pub struct Ac97Dev {
     config_regs: PciConfiguration,
     pci_bus_dev: Option<(u8, u8)>,
@@ -59,6 +114,37 @@ impl Ac97Dev {
             bus_master: Ac97BusMaster::new(mem, audio_server),
             mixer: Ac97Mixer::new(),
         }
+    }
+
+    fn create_cras_audio_device(params: Ac97Parameters, mem: GuestMemory) -> Result<Ac97Dev> {
+        let mut server =
+            Box::new(CrasClient::new().map_err(|e| pci_device::Error::CreateCrasClientFailed(e))?);
+        if params.capture {
+            server.enable_cras_capture();
+        }
+
+        let mut cras_audio = Ac97Dev::new(mem, server);
+        cras_audio.set_capture_effects(params.capture_effects);
+        Ok(cras_audio)
+    }
+
+    fn create_null_audio_device(mem: GuestMemory) -> Result<Ac97Dev> {
+        let server = Box::new(NullShmStreamSource::new());
+        let null_audio = Ac97Dev::new(mem, server);
+        Ok(null_audio)
+    }
+
+    /// Creates an 'Ac97Dev' with suitable audio server inside based on Ac97Parameters
+    pub fn try_new(mem: GuestMemory, param: Ac97Parameters) -> Result<Ac97Dev> {
+        match param.backend {
+            Ac97Backend::CRAS => Ac97Dev::create_cras_audio_device(param, mem),
+            Ac97Backend::NULL => Ac97Dev::create_null_audio_device(mem),
+        }
+    }
+
+    /// Provides the effect needed in capture stream creation
+    pub fn set_capture_effects(&mut self, effect: Vec<StreamEffect>) {
+        self.bus_master.set_capture_effects(effect);
     }
 
     fn read_mixer(&mut self, offset: u64, data: &mut [u8]) {

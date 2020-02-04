@@ -27,17 +27,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use libc::{self, c_int, gid_t, uid_t};
 
-use audio_streams::shm_streams::NullShmStreamSource;
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
 use devices::virtio::{self, VirtioDevice};
 use devices::{
-    self, HostBackendDeviceProvider, PciDevice, VfioContainer, VfioDevice, VfioPciDevice,
-    VirtioPciDevice, XhciController,
+    self, Ac97Backend, Ac97Dev, HostBackendDeviceProvider, PciDevice, VfioContainer, VfioDevice,
+    VfioPciDevice, VirtioPciDevice, XhciController,
 };
 use io_jail::{self, Minijail};
 use kvm::*;
-use libcras::CrasClient;
 use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 use net_util::{Error as NetError, MacAddress, Tap};
 use rand_ish::SimpleRng;
@@ -83,7 +81,7 @@ pub enum Error {
     BuildVm(<Arch as LinuxArch>::Error),
     ChownTpmStorage(sys_util::Error),
     CloneEventFd(sys_util::Error),
-    CreateCrasClient(libcras::Error),
+    CreateAc97(devices::PciDeviceError),
     CreateDiskError(disk::Error),
     CreateEventFd(sys_util::Error),
     CreatePollContext(sys_util::Error),
@@ -168,7 +166,7 @@ impl Display for Error {
             BuildVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
             ChownTpmStorage(e) => write!(f, "failed to chown tpm storage: {}", e),
             CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
-            CreateCrasClient(e) => write!(f, "failed to create cras client: {}", e),
+            CreateAc97(e) => write!(f, "failed to create ac97 device: {}", e),
             CreateDiskError(e) => write!(f, "failed to create virtual disk: {}", e),
             CreateEventFd(e) => write!(f, "failed to create eventfd: {}", e),
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
@@ -1150,27 +1148,14 @@ fn create_devices(
         pci_devices.push((dev, stub.jail));
     }
 
-    if cfg.cras_audio {
-        let mut server = Box::new(CrasClient::new().map_err(Error::CreateCrasClient)?);
-        if cfg.cras_capture {
-            server.enable_cras_capture();
-        }
-        let cras_audio = devices::Ac97Dev::new(mem.clone(), server);
+    for ac97_param in &cfg.ac97_parameters {
+        let dev = Ac97Dev::try_new(mem.clone(), ac97_param.clone()).map_err(Error::CreateAc97)?;
+        let policy = match ac97_param.backend {
+            Ac97Backend::CRAS => "cras_audio_device",
+            Ac97Backend::NULL => "null_audio_device",
+        };
 
-        pci_devices.push((
-            Box::new(cras_audio),
-            simple_jail(&cfg, "cras_audio_device")?,
-        ));
-    }
-
-    if cfg.null_audio {
-        let server = Box::new(NullShmStreamSource::new());
-        let null_audio = devices::Ac97Dev::new(mem.clone(), server);
-
-        pci_devices.push((
-            Box::new(null_audio),
-            simple_jail(&cfg, "null_audio_device")?,
-        ));
+        pci_devices.push((Box::new(dev), simple_jail(&cfg, &policy)?));
     }
     // Create xhci controller.
     let usb_controller = Box::new(XhciController::new(mem.clone(), usb_provider));

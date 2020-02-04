@@ -20,7 +20,7 @@ use arch::Pstore;
 use devices::virtio::fs::passthrough;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
-use devices::SerialParameters;
+use devices::{Ac97Parameters, SerialParameters};
 use libc::{getegid, geteuid};
 
 static SECCOMP_POLICY_DIR: &str = "/usr/share/policy/crosvm";
@@ -189,11 +189,9 @@ pub struct Config {
     #[cfg(feature = "gpu")]
     pub gpu_parameters: Option<GpuParameters>,
     pub software_tpm: bool,
-    pub cras_audio: bool,
-    pub cras_capture: bool,
-    pub null_audio: bool,
     pub display_window_keyboard: bool,
     pub display_window_mouse: bool,
+    pub ac97_parameters: Vec<Ac97Parameters>,
     pub serial_parameters: BTreeMap<u8, SerialParameters>,
     pub syslog_tag: Option<String>,
     pub virtio_single_touch: Option<TouchDeviceOption>,
@@ -240,9 +238,7 @@ impl Default for Config {
             sandbox: !cfg!(feature = "default-no-sandbox"),
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             seccomp_log_failures: false,
-            cras_audio: false,
-            cras_capture: false,
-            null_audio: false,
+            ac97_parameters: Vec::new(),
             serial_parameters: BTreeMap::new(),
             syslog_tag: None,
             virtio_single_touch: None,

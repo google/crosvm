@@ -165,6 +165,9 @@ pub struct Ac97BusMaster {
     po_info: AudioThreadInfo,
     pi_info: AudioThreadInfo,
 
+    // Audio effect
+    capture_effects: Vec<StreamEffect>,
+
     // Audio server used to create playback or capture streams.
     audio_server: Box<dyn ShmStreamSource>,
 
@@ -184,10 +187,16 @@ impl Ac97BusMaster {
             po_info: AudioThreadInfo::new(),
             pi_info: AudioThreadInfo::new(),
 
+            capture_effects: Vec::new(),
             audio_server,
 
             irq_resample_thread: None,
         }
+    }
+
+    /// Provides the effect needed in capture stream creation.
+    pub fn set_capture_effects(&mut self, effects: Vec<StreamEffect>) {
+        self.capture_effects = effects;
     }
 
     /// Returns any file descriptors that need to be kept open when entering a jail.
@@ -518,7 +527,7 @@ impl Ac97BusMaster {
                 SampleFormat::S16LE,
                 DEVICE_SAMPLE_RATE,
                 buffer_frames,
-                StreamEffect::NoEffect,
+                self.capture_effects.as_slice(),
                 self.mem.as_ref(),
                 starting_offsets,
             )
