@@ -11,7 +11,7 @@ dup3: 1
 dup: 1
 epoll_create1: 1
 epoll_ctl: 1
-epoll_wait: 1
+epoll_pwait: 1
 eventfd2: 1
 exit: 1
 exit_group: 1
@@ -28,7 +28,6 @@ ppoll: 1
 prctl: arg0 == PR_SET_NAME
 read: 1
 readv: 1
-recv: 1
 recvfrom: 1
 recvmsg: 1
 restart_syscall: 1
@@ -51,6 +50,7 @@ lseek: 1
 ftruncate: 1
 statx: 1
 fstat: 1
+newfstatat: 1
 getdents64: 1
 
 # 0x6400 == DRM_IOCTL_BASE, 0x8000 = KBASE_IOCTL_TYPE (mali)
@@ -59,7 +59,6 @@ ioctl: arg1 & 0x6400 || arg1 & 0x8000
 ## mmap/mprotect differ from the common_device.policy
 mmap: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ|PROT_EXEC || arg2 == PROT_WRITE || arg2 == PROT_READ
 mprotect: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ
-open: return ENOENT
 openat: 1
 
 ## Rules specific to pvr

@@ -6,11 +6,11 @@
 brk: 1
 clone: arg0 & CLONE_THREAD
 close: 1
-dup2: 1
+dup3: 1
 dup: 1
 epoll_create1: 1
 epoll_ctl: 1
-epoll_wait: 1
+epoll_pwait: 1
 eventfd2: 1
 exit: 1
 exit_group: 1
@@ -19,17 +19,15 @@ getpid: 1
 gettimeofday: 1
 kill: 1
 madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE
-mmap2: arg2 in ~PROT_EXEC
+mmap: arg2 in ~PROT_EXEC
 mprotect: arg2 in ~PROT_EXEC
 mremap: 1
 munmap: 1
 nanosleep: 1
 pipe2: 1
-poll: 1
 ppoll: 1
 prctl: arg0 == PR_SET_NAME
 read: 1
-recv: 1
 recvfrom: 1
 recvmsg: 1
 restart_syscall: 1
@@ -49,8 +47,7 @@ fsync: 1
 ftruncate: 1
 getuid: 1
 lseek: 1
-mkdir: 1
-open: 1
+mkdirat: 1
 openat: 1
 socket: return EACCES
-stat: 1
+statx: 1
