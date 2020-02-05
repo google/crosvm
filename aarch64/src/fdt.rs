@@ -4,6 +4,7 @@
 
 use std::ffi::CStr;
 use std::fs::File;
+use std::io::Read;
 
 use arch::fdt::{
     begin_node, end_node, finish_fdt, generate_prop32, generate_prop64, property, property_cstring,
@@ -187,7 +188,15 @@ fn create_chosen_node(
     begin_node(fdt, "chosen")?;
     property_u32(fdt, "linux,pci-probe-only", 1)?;
     property_cstring(fdt, "bootargs", cmdline)?;
-    property_u64(fdt, "kaslr", 0)?;
+
+    let mut random_file = File::open("/dev/urandom").map_err(Error::FdtIoError)?;
+    let mut kaslr_seed_bytes = [0u8; 8];
+    random_file
+        .read_exact(&mut kaslr_seed_bytes)
+        .map_err(Error::FdtIoError)?;
+    let kaslr_seed = u64::from_le_bytes(kaslr_seed_bytes);
+    property_u64(fdt, "kaslr-seed", kaslr_seed)?;
+
     if let Some((initrd_addr, initrd_size)) = initrd {
         let initrd_start = initrd_addr.offset() as u32;
         let initrd_end = initrd_start + initrd_size as u32;
