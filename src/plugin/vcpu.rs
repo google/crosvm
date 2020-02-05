@@ -595,6 +595,17 @@ impl PluginVcpu {
                 response.mut_set_state();
                 let set_state = request.get_set_state();
                 set_vcpu_state(vcpu, set_state.set, set_state.get_state())
+            } else if request.has_get_hyperv_cpuid() {
+                let cpuid_response = &mut response.mut_get_hyperv_cpuid().entries;
+                match vcpu.get_hyperv_cpuid() {
+                    Ok(mut cpuid) => {
+                        for entry in cpuid.mut_entries_slice() {
+                            cpuid_response.push(cpuid_kvm_to_proto(entry));
+                        }
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                }
             } else if request.has_get_msrs() {
                 let entry_data = &mut response.mut_get_msrs().entry_data;
                 let entry_indices = &request.get_get_msrs().entry_indices;

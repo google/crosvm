@@ -1502,6 +1502,24 @@ impl Vcpu {
         Ok(())
     }
 
+    /// X86 specific call to get the system emulated hyper-v CPUID values
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_hyperv_cpuid(&self) -> Result<CpuId> {
+        const MAX_KVM_CPUID_ENTRIES: usize = 256;
+        let mut cpuid = CpuId::new(MAX_KVM_CPUID_ENTRIES);
+
+        let ret = unsafe {
+            // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the memory
+            // allocated for the struct. The limit is read from nent, which is set to the allocated
+            // size(MAX_KVM_CPUID_ENTRIES) above.
+            ioctl_with_mut_ptr(self, KVM_GET_SUPPORTED_HV_CPUID(), cpuid.as_mut_ptr())
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(cpuid)
+    }
+
     /// X86 specific call to get the state of the "Local Advanced Programmable Interrupt Controller".
     ///
     /// See the documentation for KVM_GET_LAPIC.
@@ -2329,6 +2347,23 @@ mod tests {
         ];
         vcpu.get_msrs(&mut msrs).unwrap();
         assert_eq!(msrs.len(), 1);
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn get_hyperv_cpuid() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        let vcpu = Vcpu::new(0, &kvm, &vm).unwrap();
+        let cpuid = vcpu.get_hyperv_cpuid();
+        // Older kernels don't support so tolerate this kind of failure.
+        match cpuid {
+            Ok(_) => {}
+            Err(e) => {
+                assert_eq!(e.errno(), EINVAL);
+            }
+        }
     }
 
     #[test]

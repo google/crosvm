@@ -334,6 +334,9 @@ message VcpuRequest {
         bytes state = 2;
     }
 
+    message CpuidRequest {
+    }
+
     message GetMsrs {
         // The entry data will be returned in the same order as this in the
         // VcpuResponse::GetMsrs::entry_data array.
@@ -367,6 +370,7 @@ message VcpuRequest {
         SetMsrs set_msrs = 6;
         SetCpuid set_cpuid = 7;
         Shutdown shutdown = 8;
+        CpuidRequest get_hyperv_cpuid = 9;
     }
 }
 
@@ -417,6 +421,10 @@ message VcpuResponse  {
     message SetState {
     }
 
+    message CpuidResponse {
+        repeated CpuidEntry entries = 1;
+    }
+
     message GetMsrs {
         // The order of the entry_data values is the same order as the array of indices given in the
         // corresponding request.
@@ -439,5 +447,6 @@ message VcpuResponse  {
         GetMsrs get_msrs = 6;
         SetMsrs set_msrs = 7;
         SetCpuid set_cpuid = 8;
+        CpuidResponse get_hyperv_cpuid = 9;
     }
 }

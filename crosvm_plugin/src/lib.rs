@@ -168,6 +168,7 @@ pub enum Stat {
     CheckExtentsion,
     GetSupportedCpuid,
     GetEmulatedCpuid,
+    GetHypervCpuid,
     GetMsrIndexList,
     NetGetConfig,
     ReserveRange,
@@ -1202,6 +1203,39 @@ impl crosvm_vcpu {
         Ok(())
     }
 
+    fn get_hyperv_cpuid(
+        &mut self,
+        cpuid_entries: &mut [kvm_cpuid_entry2],
+        cpuid_count: &mut usize,
+    ) -> result::Result<(), c_int> {
+        *cpuid_count = 0;
+
+        let mut r = VcpuRequest::new();
+        r.mut_get_hyperv_cpuid();
+
+        let response = self.vcpu_transaction(&r)?;
+        if !response.has_get_hyperv_cpuid() {
+            return Err(EPROTO);
+        }
+
+        let hyperv_cpuids: &VcpuResponse_CpuidResponse = response.get_get_hyperv_cpuid();
+
+        *cpuid_count = hyperv_cpuids.get_entries().len();
+        if *cpuid_count > cpuid_entries.len() {
+            return Err(E2BIG);
+        }
+
+        for (proto_entry, kvm_entry) in hyperv_cpuids
+            .get_entries()
+            .iter()
+            .zip(cpuid_entries.iter_mut())
+        {
+            *kvm_entry = cpuid_proto_to_kvm(proto_entry);
+        }
+
+        Ok(())
+    }
+
     fn get_msrs(
         &mut self,
         msr_entries: &mut [kvm_msr_entry],
@@ -1800,6 +1834,22 @@ pub unsafe extern "C" fn crosvm_vcpu_set_xcrs(
     let this = &mut *this;
     let xcrs = from_raw_parts(xcrs as *mut u8, size_of::<kvm_xcrs>());
     let ret = this.set_state(VcpuRequest_StateSet::XCREGS, xcrs);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_get_hyperv_cpuid(
+    this: *mut crosvm_vcpu,
+    entry_count: u32,
+    cpuid_entries: *mut kvm_cpuid_entry2,
+    out_count: *mut u32,
+) -> c_int {
+    let _u = record(Stat::GetHypervCpuid);
+    let this = &mut *this;
+    let cpuid_entries = from_raw_parts_mut(cpuid_entries, entry_count as usize);
+    let mut cpuid_count: usize = 0;
+    let ret = this.get_hyperv_cpuid(cpuid_entries, &mut cpuid_count);
+    *out_count = cpuid_count as u32;
     to_crosvm_rc(ret)
 }
 
