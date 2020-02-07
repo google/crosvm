@@ -408,6 +408,50 @@ pub enum VmIrqResponse {
     Err(SysError),
 }
 
+#[derive(MsgOnSocket, Debug)]
+pub enum VmMsyncRequest {
+    /// Flush the content of a memory mapping to its backing file.
+    /// `slot` selects the arena (as returned by `Vm::add_mmap_arena`).
+    /// `offset` is the offset of the mapping to sync within the arena.
+    MsyncArena { slot: u32, offset: usize },
+}
+
+#[derive(MsgOnSocket, Debug)]
+pub enum VmMsyncResponse {
+    Ok,
+    Err(SysError),
+}
+
+impl VmMsyncRequest {
+    /// Executes this request on the given Vm.
+    ///
+    /// # Arguments
+    /// * `vm` - The `Vm` to perform the request on.
+    ///
+    /// This does not return a result, instead encapsulating the success or failure in a
+    /// `VmMsyncResponse` with the intended purpose of sending the response back over the socket
+    /// that received this `VmMsyncResponse`.
+    pub fn execute(&self, vm: &mut Vm) -> VmMsyncResponse {
+        use self::VmMsyncRequest::*;
+        match *self {
+            MsyncArena { slot, offset } => {
+                if let Some(arena) = vm.get_mmap_arena(slot) {
+                    match arena.msync(offset) {
+                        Ok(true) => VmMsyncResponse::Ok,
+                        Ok(false) => VmMsyncResponse::Err(SysError::new(EINVAL)),
+                        Err(e) => match e {
+                            MmapError::SystemCallFailed(errno) => VmMsyncResponse::Err(errno),
+                            _ => VmMsyncResponse::Err(SysError::new(EINVAL)),
+                        },
+                    }
+                } else {
+                    VmMsyncResponse::Err(SysError::new(EINVAL))
+                }
+            }
+        }
+    }
+}
+
 pub type BalloonControlRequestSocket = MsgSocket<BalloonControlCommand, BalloonControlResult>;
 pub type BalloonControlResponseSocket = MsgSocket<BalloonControlResult, BalloonControlCommand>;
 
@@ -421,6 +465,9 @@ pub type VmMemoryControlResponseSocket = MsgSocket<VmMemoryResponse, VmMemoryReq
 
 pub type VmIrqRequestSocket = MsgSocket<VmIrqRequest, VmIrqResponse>;
 pub type VmIrqResponseSocket = MsgSocket<VmIrqResponse, VmIrqRequest>;
+
+pub type VmMsyncRequestSocket = MsgSocket<VmMsyncRequest, VmMsyncResponse>;
+pub type VmMsyncResponseSocket = MsgSocket<VmMsyncResponse, VmMsyncRequest>;
 
 pub type VmControlRequestSocket = MsgSocket<VmRequest, VmResponse>;
 pub type VmControlResponseSocket = MsgSocket<VmResponse, VmRequest>;

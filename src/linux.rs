@@ -56,7 +56,8 @@ use vm_control::{
     BalloonControlResult, DiskControlCommand, DiskControlRequestSocket, DiskControlResponseSocket,
     DiskControlResult, UsbControlSocket, VmControlResponseSocket, VmIrqRequest, VmIrqResponse,
     VmIrqResponseSocket, VmMemoryControlRequestSocket, VmMemoryControlResponseSocket,
-    VmMemoryRequest, VmMemoryResponse, VmRunMode,
+    VmMemoryRequest, VmMemoryResponse, VmMsyncRequest, VmMsyncRequestSocket, VmMsyncResponse,
+    VmMsyncResponseSocket, VmRunMode,
 };
 
 use crate::{Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption};
@@ -254,6 +255,7 @@ enum TaggedControlSocket {
     Vm(VmControlResponseSocket),
     VmMemory(VmMemoryControlResponseSocket),
     VmIrq(VmIrqResponseSocket),
+    VmMsync(VmMsyncResponseSocket),
 }
 
 impl AsRef<UnixSeqpacket> for TaggedControlSocket {
@@ -263,6 +265,7 @@ impl AsRef<UnixSeqpacket> for TaggedControlSocket {
             Vm(ref socket) => socket.as_ref(),
             VmMemory(ref socket) => socket.as_ref(),
             VmIrq(ref socket) => socket.as_ref(),
+            VmMsync(ref socket) => socket.as_ref(),
         }
     }
 }
@@ -874,6 +877,7 @@ fn create_pmem_device(
     resources: &mut SystemAllocator,
     disk: &DiskOption,
     index: usize,
+    pmem_device_socket: VmMsyncRequestSocket,
 ) -> DeviceResult {
     let fd = OpenOptions::new()
         .read(true)
@@ -935,16 +939,23 @@ fn create_pmem_device(
         )
         .map_err(Error::AllocatePmemDeviceAddress)?;
 
-    vm.add_mmap_arena(
-        GuestAddress(mapping_address),
-        arena,
-        /* read_only = */ disk.read_only,
-        /* log_dirty_pages = */ false,
-    )
-    .map_err(Error::AddPmemDeviceMemory)?;
+    let slot = vm
+        .add_mmap_arena(
+            GuestAddress(mapping_address),
+            arena,
+            /* read_only = */ disk.read_only,
+            /* log_dirty_pages = */ false,
+        )
+        .map_err(Error::AddPmemDeviceMemory)?;
 
-    let dev = virtio::Pmem::new(fd, GuestAddress(mapping_address), arena_size)
-        .map_err(Error::PmemDeviceNew)?;
+    let dev = virtio::Pmem::new(
+        fd,
+        GuestAddress(mapping_address),
+        slot,
+        arena_size,
+        Some(pmem_device_socket),
+    )
+    .map_err(Error::PmemDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev) as Box<dyn VirtioDevice>,
@@ -964,6 +975,7 @@ fn create_virtio_devices(
     gpu_device_socket: VmMemoryControlRequestSocket,
     balloon_device_socket: BalloonControlResponseSocket,
     disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
+    pmem_device_sockets: &mut Vec<VmMsyncRequestSocket>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -973,7 +985,15 @@ fn create_virtio_devices(
     }
 
     for (index, pmem_disk) in cfg.pmem_devices.iter().enumerate() {
-        devs.push(create_pmem_device(cfg, vm, resources, pmem_disk, index)?);
+        let pmem_device_socket = pmem_device_sockets.remove(0);
+        devs.push(create_pmem_device(
+            cfg,
+            vm,
+            resources,
+            pmem_disk,
+            index,
+            pmem_device_socket,
+        )?);
     }
 
     devs.push(create_rng_device(cfg)?);
@@ -1124,6 +1144,7 @@ fn create_devices(
     gpu_device_socket: VmMemoryControlRequestSocket,
     balloon_device_socket: BalloonControlResponseSocket,
     disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
+    pmem_device_sockets: &mut Vec<VmMsyncRequestSocket>,
     usb_provider: HostBackendDeviceProvider,
 ) -> DeviceResult<Vec<(Box<dyn PciDevice>, Option<Minijail>)>> {
     let stubs = create_virtio_devices(
@@ -1136,6 +1157,7 @@ fn create_devices(
         gpu_device_socket,
         balloon_device_socket,
         disk_device_sockets,
+        pmem_device_sockets,
     )?;
 
     let mut pci_devices = Vec::new();
@@ -1606,6 +1628,15 @@ pub fn run_config(cfg: Config) -> Result<()> {
         disk_device_sockets.push(disk_device_socket);
     }
 
+    let mut pmem_device_sockets = Vec::new();
+    let pmem_count = cfg.pmem_devices.len();
+    for _ in 0..pmem_count {
+        let (pmem_host_socket, pmem_device_socket) =
+            msg_socket::pair::<VmMsyncResponse, VmMsyncRequest>().map_err(Error::CreateSocket)?;
+        pmem_device_sockets.push(pmem_device_socket);
+        control_sockets.push(TaggedControlSocket::VmMsync(pmem_host_socket));
+    }
+
     let (gpu_host_socket, gpu_device_socket) =
         msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>().map_err(Error::CreateSocket)?;
     control_sockets.push(TaggedControlSocket::VmMemory(gpu_host_socket));
@@ -1633,6 +1664,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 gpu_device_socket,
                 balloon_device_socket,
                 &mut disk_device_sockets,
+                &mut pmem_device_sockets,
                 usb_provider,
             )
         },
@@ -2028,6 +2060,21 @@ fn run_control(
                                         vm_control_indices_to_remove.push(index);
                                     } else {
                                         error!("failed to recv VmIrqRequest: {}", e);
+                                    }
+                                }
+                            },
+                            TaggedControlSocket::VmMsync(socket) => match socket.recv() {
+                                Ok(request) => {
+                                    let response = request.execute(&mut linux.vm);
+                                    if let Err(e) = socket.send(&response) {
+                                        error!("failed to send VmMsyncResponse: {}", e);
+                                    }
+                                }
+                                Err(e) => {
+                                    if let MsgError::BadRecvSize { actual: 0, .. } = e {
+                                        vm_control_indices_to_remove.push(index);
+                                    } else {
+                                        error!("failed to recv VmMsyncRequest: {}", e);
                                     }
                                 }
                             },
