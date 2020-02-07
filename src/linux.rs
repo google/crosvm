@@ -62,7 +62,10 @@ use vm_control::{
     VmRunMode,
 };
 
-use crate::{Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption};
+use crate::{
+    Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption,
+    DEFAULT_TOUCH_DEVICE_HEIGHT, DEFAULT_TOUCH_DEVICE_WIDTH,
+};
 
 use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents, VmImage};
 
@@ -473,13 +476,16 @@ fn create_tpm_device(cfg: &Config) -> DeviceResult {
 }
 
 fn create_single_touch_device(cfg: &Config, single_touch_spec: &TouchDeviceOption) -> DeviceResult {
-    let socket = single_touch_spec.path.into_unix_stream().map_err(|e| {
-        error!("failed configuring virtio single touch: {:?}", e);
-        e
-    })?;
+    let socket = single_touch_spec
+        .get_path()
+        .into_unix_stream()
+        .map_err(|e| {
+            error!("failed configuring virtio single touch: {:?}", e);
+            e
+        })?;
 
-    let dev = virtio::new_single_touch(socket, single_touch_spec.width, single_touch_spec.height)
-        .map_err(Error::InputDeviceNew)?;
+    let (width, height) = single_touch_spec.get_size();
+    let dev = virtio::new_single_touch(socket, width, height).map_err(Error::InputDeviceNew)?;
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
         jail: simple_jail(&cfg, "input_device")?,
@@ -487,13 +493,13 @@ fn create_single_touch_device(cfg: &Config, single_touch_spec: &TouchDeviceOptio
 }
 
 fn create_trackpad_device(cfg: &Config, trackpad_spec: &TouchDeviceOption) -> DeviceResult {
-    let socket = trackpad_spec.path.into_unix_stream().map_err(|e| {
+    let socket = trackpad_spec.get_path().into_unix_stream().map_err(|e| {
         error!("failed configuring virtio trackpad: {}", e);
         e
     })?;
 
-    let dev = virtio::new_trackpad(socket, trackpad_spec.width, trackpad_spec.height)
-        .map_err(Error::InputDeviceNew)?;
+    let (width, height) = trackpad_spec.get_size();
+    let dev = virtio::new_trackpad(socket, width, height).map_err(Error::InputDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1030,8 +1036,17 @@ fn create_virtio_devices(
                 // TODO(nkgold): the width/height here should match the display's height/width. When
                 // those settings are available as CLI options, we should use the CLI options here
                 // as well.
-                let dev = virtio::new_single_touch(virtio_dev_socket, 1280, 1024)
-                    .map_err(Error::InputDeviceNew)?;
+                let (single_touch_width, single_touch_height) = cfg
+                    .virtio_single_touch
+                    .as_ref()
+                    .map(|single_touch_spec| single_touch_spec.get_size())
+                    .unwrap_or((DEFAULT_TOUCH_DEVICE_WIDTH, DEFAULT_TOUCH_DEVICE_HEIGHT));
+                let dev = virtio::new_single_touch(
+                    virtio_dev_socket,
+                    single_touch_width,
+                    single_touch_height,
+                )
+                .map_err(Error::InputDeviceNew)?;
                 devs.push(VirtioDeviceStub {
                     dev: Box::new(dev),
                     jail: simple_jail(&cfg, "input_device")?,

@@ -13,7 +13,7 @@ pub mod plugin;
 use std::collections::BTreeMap;
 use std::net;
 use std::os::unix::io::RawFd;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use arch::Pstore;
@@ -57,22 +57,57 @@ pub struct GidMap {
     pub count: u32,
 }
 
-const DEFAULT_TOUCH_DEVICE_WIDTH: u32 = 800;
-const DEFAULT_TOUCH_DEVICE_HEIGHT: u32 = 1280;
+pub const DEFAULT_TOUCH_DEVICE_WIDTH: u32 = 800;
+pub const DEFAULT_TOUCH_DEVICE_HEIGHT: u32 = 1280;
 
 pub struct TouchDeviceOption {
-    pub path: PathBuf,
-    pub width: u32,
-    pub height: u32,
+    path: PathBuf,
+    width: Option<u32>,
+    height: Option<u32>,
+    default_width: u32,
+    default_height: u32,
 }
 
 impl TouchDeviceOption {
     pub fn new(path: PathBuf) -> TouchDeviceOption {
         TouchDeviceOption {
             path,
-            width: DEFAULT_TOUCH_DEVICE_WIDTH,
-            height: DEFAULT_TOUCH_DEVICE_HEIGHT,
+            width: None,
+            height: None,
+            default_width: DEFAULT_TOUCH_DEVICE_WIDTH,
+            default_height: DEFAULT_TOUCH_DEVICE_HEIGHT,
         }
+    }
+
+    /// Getter for the path to the input event streams.
+    pub fn get_path(&self) -> &Path {
+        self.path.as_path()
+    }
+
+    /// When a user specifies the parameters for a touch device, width and height are optional.
+    /// If the width and height are missing, default values are used. Default values can be set
+    /// dynamically, for example from the display sizes specified by the gpu argument.
+    pub fn set_default_size(&mut self, width: u32, height: u32) {
+        self.default_width = width;
+        self.default_height = height;
+    }
+
+    /// Setter for the width specified by the user.
+    pub fn set_width(&mut self, width: u32) {
+        self.width.replace(width);
+    }
+
+    /// Setter for the height specified by the user.
+    pub fn set_height(&mut self, height: u32) {
+        self.height.replace(height);
+    }
+
+    /// If the user specifies the size, use it. Otherwise, use the default values.
+    pub fn get_size(&self) -> (u32, u32) {
+        (
+            self.width.unwrap_or(self.default_width),
+            self.height.unwrap_or(self.default_height),
+        )
     }
 }
 

@@ -64,16 +64,6 @@ pub struct GpuParameters {
     pub mode: GpuMode,
 }
 
-pub const DEFAULT_GPU_PARAMS: GpuParameters = GpuParameters {
-    display_width: DEFAULT_DISPLAY_WIDTH,
-    display_height: DEFAULT_DISPLAY_HEIGHT,
-    renderer_use_egl: true,
-    renderer_use_gles: true,
-    renderer_use_glx: false,
-    renderer_use_surfaceless: true,
-    mode: GpuMode::Mode3D,
-};
-
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.
 const QUEUE_SIZES: &[u16] = &[256, 16];
@@ -82,6 +72,20 @@ const FENCE_POLL_MS: u64 = 1;
 const GPU_BAR_NUM: u8 = 4;
 const GPU_BAR_OFFSET: u64 = 0;
 const GPU_BAR_SIZE: u64 = 1 << 33;
+
+impl Default for GpuParameters {
+    fn default() -> Self {
+        GpuParameters {
+            display_width: DEFAULT_DISPLAY_WIDTH,
+            display_height: DEFAULT_DISPLAY_HEIGHT,
+            renderer_use_egl: true,
+            renderer_use_gles: true,
+            renderer_use_glx: false,
+            renderer_use_surfaceless: true,
+            mode: GpuMode::Mode3D,
+        }
+    }
+}
 
 /// A virtio-gpu backend state tracker which supports display and potentially accelerated rendering.
 ///
