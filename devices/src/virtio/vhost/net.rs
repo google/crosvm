@@ -204,6 +204,11 @@ where
                 if let Some(vhost_interrupt) = self.vhost_interrupt.take() {
                     if let Some(kill_evt) = self.workers_kill_evt.take() {
                         let acked_features = self.acked_features;
+                        let socket = if self.response_socket.is_some() {
+                            self.response_socket.take()
+                        } else {
+                            None
+                        };
                         let worker_result = thread::Builder::new()
                             .name("vhost_net".to_string())
                             .spawn(move || {
@@ -214,6 +219,7 @@ where
                                     interrupt,
                                     acked_features,
                                     kill_evt,
+                                    socket,
                                 );
                                 let activate_vqs = |handle: &U| -> Result<()> {
                                     for idx in 0..NUM_QUEUES {
@@ -284,6 +290,7 @@ where
                     self.tap = Some(tap);
                     self.vhost_interrupt = Some(worker.vhost_interrupt);
                     self.workers_kill_evt = Some(worker.kill_evt);
+                    self.response_socket = worker.response_socket;
                     return true;
                 }
             }

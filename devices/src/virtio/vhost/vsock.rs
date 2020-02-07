@@ -169,6 +169,7 @@ impl VirtioDevice for Vsock {
                                 interrupt,
                                 acked_features,
                                 kill_evt,
+                                None,
                             );
                             let activate_vqs = |handle: &VhostVsockHandle| -> Result<()> {
                                 handle.set_cid(cid).map_err(Error::VhostVsockSetCid)?;

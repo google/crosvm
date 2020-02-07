@@ -7,6 +7,7 @@ use std::os::raw::c_ulonglong;
 use sys_util::{EventFd, PollContext, PollToken};
 use vhost::Vhost;
 
+use super::control_socket::VhostDevResponseSocket;
 use super::{Error, Result};
 use crate::virtio::{Interrupt, Queue};
 
@@ -21,6 +22,7 @@ pub struct Worker<T: Vhost> {
     pub vhost_interrupt: Vec<EventFd>,
     acked_features: u64,
     pub kill_evt: EventFd,
+    pub response_socket: Option<VhostDevResponseSocket>,
 }
 
 impl<T: Vhost> Worker<T> {
@@ -31,6 +33,7 @@ impl<T: Vhost> Worker<T> {
         interrupt: Interrupt,
         acked_features: u64,
         kill_evt: EventFd,
+        response_socket: Option<VhostDevResponseSocket>,
     ) -> Worker<T> {
         Worker {
             interrupt,
@@ -39,6 +42,7 @@ impl<T: Vhost> Worker<T> {
             vhost_interrupt,
             acked_features,
             kill_evt,
+            response_socket,
         }
     }
 
