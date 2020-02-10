@@ -8,7 +8,6 @@
 use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
-use std::fs::File;
 use std::os::unix::io::AsRawFd;
 use std::rc::Rc;
 use std::usize;
@@ -35,6 +34,7 @@ use crate::virtio::gpu::{
     Backend, DisplayBackend, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_HOST_COHERENT, VIRTIO_GPU_F_MEMORY,
     VIRTIO_GPU_F_VIRGL,
 };
+use crate::virtio::resource_bridge::{PlaneInfo, ResourceInfo, ResourceResponse};
 
 use vm_control::{MaybeOwnedFd, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse};
 
@@ -319,13 +319,19 @@ impl Backend for Virtio3DBackend {
     }
 
     /// If supported, export the resource with the given id to a file.
-    fn export_resource(&mut self, id: u32) -> Option<File> {
-        let test: Option<File> = self
-            .resources
+    fn export_resource(&mut self, id: u32) -> ResourceResponse {
+        self
+             .resources
             .get(&id) // Option<resource>
             .and_then(|resource| resource.gpu_resource.export().ok()) // Option<(Query, File)>
-            .and_then(|t| Some(t.1)); // Option<File>
-        return test;
+            .map(|(q, file)| {
+                ResourceResponse::Resource(ResourceInfo{file, planes: [
+                    PlaneInfo{offset: q.out_offsets[0], stride: q.out_strides[0]},
+                    PlaneInfo{offset: q.out_offsets[1], stride: q.out_strides[1]},
+                    PlaneInfo{offset: q.out_offsets[2], stride: q.out_strides[2]},
+                    PlaneInfo{offset: q.out_offsets[3], stride: q.out_strides[3]},
+                ]})
+            }).unwrap_or(ResourceResponse::Invalid)
     }
 
     /// Creates a fence with the given id that can be used to determine when the previous command

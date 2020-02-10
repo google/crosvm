@@ -9,7 +9,6 @@ use std::cmp::{max, min};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
 use std::fmt::{self, Display};
-use std::fs::File;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::usize;
@@ -24,6 +23,7 @@ use vm_control::VmMemoryControlRequestSocket;
 use super::protocol::GpuResponse;
 pub use super::virtio_backend::{VirtioBackend, VirtioResource};
 use crate::virtio::gpu::{Backend, DisplayBackend, VIRTIO_F_VERSION_1};
+use crate::virtio::resource_bridge::ResourceResponse;
 
 #[derive(Debug)]
 pub enum Error {
@@ -481,8 +481,8 @@ impl Backend for Virtio2DBackend {
     }
 
     /// If supported, export the resource with the given id to a file.
-    fn export_resource(&mut self, _id: u32) -> Option<File> {
-        None
+    fn export_resource(&mut self, _id: u32) -> ResourceResponse {
+        ResourceResponse::Invalid
     }
 
     /// Creates a fence with the given id that can be used to determine when the previous command

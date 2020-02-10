@@ -1093,10 +1093,10 @@ impl WlState {
                 #[cfg(feature = "gpu")]
                 VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU if self.resource_bridge.is_some() => {
                     let sock = self.resource_bridge.as_ref().unwrap();
-                    match get_resource_fd(sock, id) {
-                        Ok(bridged_file) => {
-                            *fd = bridged_file.as_raw_fd();
-                            bridged_files.push(bridged_file);
+                    match get_resource_info(sock, id) {
+                        Ok(info) => {
+                            *fd = info.file.as_raw_fd();
+                            bridged_files.push(info.file);
                         }
                         Err(ResourceBridgeError::InvalidResource(id)) => {
                             warn!("attempt to send non-existent gpu resource {}", id);

@@ -16,9 +16,22 @@ pub enum ResourceRequest {
     GetResource { id: u32 },
 }
 
+#[derive(MsgOnSocket, Clone)]
+pub struct PlaneInfo {
+    pub offset: u32,
+    pub stride: u32,
+}
+
+const RESOURE_PLANE_NUM: usize = 4;
+#[derive(MsgOnSocket)]
+pub struct ResourceInfo {
+    pub file: File,
+    pub planes: [PlaneInfo; RESOURE_PLANE_NUM],
+}
+
 #[derive(MsgOnSocket)]
 pub enum ResourceResponse {
-    Resource(File),
+    Resource(ResourceInfo),
     Invalid,
 }
 
@@ -58,16 +71,16 @@ impl fmt::Display for ResourceBridgeError {
 
 impl std::error::Error for ResourceBridgeError {}
 
-pub fn get_resource_fd(
+pub fn get_resource_info(
     sock: &ResourceRequestSocket,
     id: u32,
-) -> std::result::Result<File, ResourceBridgeError> {
+) -> std::result::Result<ResourceInfo, ResourceBridgeError> {
     if let Err(e) = sock.send(&ResourceRequest::GetResource { id }) {
         return Err(ResourceBridgeError::SendFailure(id, e));
     }
 
     match sock.recv() {
-        Ok(ResourceResponse::Resource(bridged_file)) => Ok(bridged_file),
+        Ok(ResourceResponse::Resource(info)) => Ok(info),
         Ok(ResourceResponse::Invalid) => Err(ResourceBridgeError::InvalidResource(id)),
         Err(e) => Err(ResourceBridgeError::RecieveFailure(id, e)),
     }

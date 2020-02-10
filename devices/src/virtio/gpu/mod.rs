@@ -10,7 +10,6 @@ mod virtio_gfxstream_backend;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::fs::File;
 use std::i64;
 use std::io::Read;
 use std::mem::{self, size_of};
@@ -141,7 +140,7 @@ trait Backend {
     fn import_event_device(&mut self, event_device: EventDevice, scanout: u32);
 
     /// If supported, export the resource with the given id to a file.
-    fn export_resource(&mut self, id: u32) -> Option<File>;
+    fn export_resource(&mut self, id: u32) -> ResourceResponse;
 
     /// Gets the list of supported display resolutions as a slice of `(width, height)` tuples.
     fn display_info(&self) -> [(u32, u32); 1];
@@ -416,7 +415,7 @@ impl Frontend {
     }
 
     fn process_resource_bridge(&mut self, resource_bridge: &ResourceResponseSocket) {
-        let request = match resource_bridge.recv() {
+        let ResourceRequest::GetResource { id } = match resource_bridge.recv() {
             Ok(msg) => msg,
             Err(e) => {
                 error!("error receiving resource bridge request: {}", e);
@@ -424,13 +423,7 @@ impl Frontend {
             }
         };
 
-        let response = match request {
-            ResourceRequest::GetResource { id } => self
-                .backend
-                .export_resource(id)
-                .map(ResourceResponse::Resource)
-                .unwrap_or(ResourceResponse::Invalid),
-        };
+        let response = self.backend.export_resource(id);
 
         if let Err(e) = resource_bridge.send(&response) {
             error!("error sending resource bridge request: {}", e);
