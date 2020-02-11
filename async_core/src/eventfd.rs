@@ -5,7 +5,7 @@
 use futures::Stream;
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
-use std::os::unix::io::{AsRawFd};
+use std::os::unix::io::AsRawFd;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
