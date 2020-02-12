@@ -6,6 +6,11 @@ makes crosvm unique is a focus on safety within the programming language and a
 sandbox around the virtual devices to protect the kernel from attack in case of
 an exploit in the devices.
 
+## IRC
+
+The channel #crosvm on [freenode](https://webchat.freenode.net/#crosvm) is used
+for technical discussion related to crosvm development and integration.
+
 ## Building with Docker
 
 See the [README](docker/README.md) from the `docker` subdirectory to learn how
