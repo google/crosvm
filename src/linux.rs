@@ -1638,6 +1638,7 @@ fn run_control(
     #[derive(PollToken)]
     enum Token {
         Exit,
+        Suspend,
         ChildSignal,
         CheckAvailableMemory,
         LowMemory,
@@ -1652,6 +1653,7 @@ fn run_control(
 
     let poll_ctx = PollContext::build_with(&[
         (&linux.exit_evt, Token::Exit),
+        (&linux.suspend_evt, Token::Suspend),
         (&sigchld_fd, Token::ChildSignal),
     ])
     .map_err(Error::PollContextAdd)?;
@@ -1743,6 +1745,14 @@ fn run_control(
                 Token::Exit => {
                     info!("vcpu requested shutdown");
                     break 'poll;
+                }
+                Token::Suspend => {
+                    info!("VM requested suspend");
+                    linux.suspend_evt.read().unwrap();
+                    run_mode_arc.set_and_notify(VmRunMode::Suspending);
+                    for handle in &vcpu_handles {
+                        let _ = handle.kill(SIGRTMIN() + 0);
+                    }
                 }
                 Token::ChildSignal => {
                     // Print all available siginfo structs, then exit the loop.
@@ -1879,6 +1889,17 @@ fn run_control(
                                             VmRunMode::Exiting => {
                                                 break 'poll;
                                             }
+                                            VmRunMode::Running => {
+                                                if let VmRunMode::Suspending =
+                                                    *run_mode_arc.mtx.lock()
+                                                {
+                                                    linux.io_bus.notify_resume();
+                                                }
+                                                run_mode_arc.set_and_notify(VmRunMode::Running);
+                                                for handle in &vcpu_handles {
+                                                    let _ = handle.kill(SIGRTMIN() + 0);
+                                                }
+                                            }
                                             other => {
                                                 run_mode_arc.set_and_notify(other);
                                                 for handle in &vcpu_handles {
@@ -1937,6 +1958,7 @@ fn run_control(
         for event in events.iter_hungup() {
             match event.token() {
                 Token::Exit => {}
+                Token::Suspend => {}
                 Token::ChildSignal => {}
                 Token::CheckAvailableMemory => {}
                 Token::LowMemory => {}

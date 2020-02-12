@@ -734,12 +734,13 @@ impl X8664arch {
         let pm = Arc::new(Mutex::new(devices::ACPIPMResource::new(suspend_evt)));
         io_bus
             .insert(
-                pm,
+                pm.clone(),
                 devices::acpi::ACPIPM_RESOURCE_BASE,
                 devices::acpi::ACPIPM_RESOURCE_LEN,
                 false,
             )
             .unwrap();
+        io_bus.notify_on_resume(pm);
 
         Ok(io_bus)
     }

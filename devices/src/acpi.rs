@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::BusDevice;
+use crate::{BusDevice, BusResumeDevice};
 use sys_util::{error, warn, EventFd};
 
 /// ACPI PM resource for handling OS suspend/resume request
@@ -41,6 +41,8 @@ const SLEEP_CONTROL: u16 = 6;
 const SLEEP_STATUS: u16 = 7;
 const BITMASK_PM1CNT_SLEEP_ENABLE: u16 = 0x2000;
 const BITMASK_SLEEPCNT_SLEEP_ENABLE: u8 = 0x20;
+const BITMASK_PM1CNT_WAKE_STATUS: u16 = 0x8000;
+const BITMASK_SLEEPCNT_WAKE_STATUS: u8 = 0x80;
 
 impl BusDevice for ACPIPMResource {
     fn debug_label(&self) -> String {
@@ -111,5 +113,15 @@ impl BusDevice for ACPIPMResource {
                 warn!("ACPIPM: Bad write to offset {}", offset);
             }
         };
+    }
+}
+
+impl BusResumeDevice for ACPIPMResource {
+    fn resume_imminent(&mut self) {
+        let val = self.pm1_status;
+        self.pm1_status = val | BITMASK_PM1CNT_WAKE_STATUS;
+
+        let val = self.sleep_status;
+        self.sleep_status = val | BITMASK_SLEEPCNT_WAKE_STATUS;
     }
 }
