@@ -593,7 +593,7 @@ fn create_tap_net_device(cfg: &Config, tap_fd: RawFd) -> DeviceResult {
             .map_err(Error::CreateTapDevice)?
     };
 
-    let dev = virtio::Net::from(tap).map_err(Error::NetDeviceNew)?;
+    let dev = virtio::Net::from(tap, 1).map_err(Error::NetDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),

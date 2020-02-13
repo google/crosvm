@@ -53,7 +53,7 @@ where
     ) -> Result<Net<T, U>> {
         let kill_evt = EventFd::new().map_err(Error::CreateKillEventFd)?;
 
-        let tap: T = T::new(true).map_err(Error::TapOpen)?;
+        let tap: T = T::new(true, false).map_err(Error::TapOpen)?;
         tap.set_ip_addr(ip_addr).map_err(Error::TapSetIp)?;
         tap.set_netmask(netmask).map_err(Error::TapSetNetmask)?;
         tap.set_mac_address(mac_addr)
