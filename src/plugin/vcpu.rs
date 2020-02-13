@@ -20,8 +20,8 @@ use assertions::const_assert;
 use data_model::DataInit;
 use kvm::{CpuId, Vcpu};
 use kvm_sys::{
-    kvm_debugregs, kvm_fpu, kvm_lapic_state, kvm_mp_state, kvm_msr_entry, kvm_msrs, kvm_regs,
-    kvm_sregs, kvm_vcpu_events, kvm_xcrs, KVM_CPUID_FLAG_SIGNIFCANT_INDEX,
+    kvm_debugregs, kvm_enable_cap, kvm_fpu, kvm_lapic_state, kvm_mp_state, kvm_msr_entry, kvm_msrs,
+    kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs, KVM_CPUID_FLAG_SIGNIFCANT_INDEX,
 };
 use protobuf::stream::CodedOutputStream;
 use protos::plugin::*;
@@ -675,6 +675,18 @@ impl PluginVcpu {
                     cpuid_entry.edx = request_entry.edx;
                 }
                 vcpu.set_cpuid2(&cpuid)
+            } else if request.has_enable_capability() {
+                response.mut_enable_capability();
+                let capability = request.get_enable_capability().capability;
+                if capability != kvm_sys::KVM_CAP_HYPERV_SYNIC
+                    && capability != kvm_sys::KVM_CAP_HYPERV_SYNIC2
+                {
+                    Err(SysError::new(EINVAL))
+                } else {
+                    let mut cap: kvm_enable_cap = Default::default();
+                    cap.cap = capability;
+                    vcpu.kvm_enable_cap(&cap)
+                }
             } else if request.has_shutdown() {
                 return Err(SysError::new(EPIPE));
             } else {

@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 20
+#define CROSVM_API_MINOR 21
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -113,6 +113,14 @@ int crosvm_get_shutdown_eventfd(struct crosvm*);
  */
 int crosvm_check_extension(struct crosvm*, uint32_t __extension,
                            bool *has_extension);
+
+/*
+ * Enable an extended capability for the VM.  Currently |__flags| and
+ * |__args| must be zero.  No values for |__capability| are supported,
+ * so all calls will fail.
+ */
+int crosvm_enable_capability(struct crosvm*, uint32_t __capability,
+                             uint32_t __flags, uint64_t __args[4]);
 
 /*
  * Queries x86 cpuid features which are supported by the hardware and
@@ -632,6 +640,15 @@ int crosvm_vcpu_set_msrs(struct crosvm_vcpu*, uint32_t __msr_count,
 /* Sets the responses to the cpuid instructions executed on this vcpu, */
 int crosvm_vcpu_set_cpuid(struct crosvm_vcpu*, uint32_t __cpuid_count,
                           const struct kvm_cpuid_entry2 *__cpuid_entries);
+
+/*
+ * Enable an extended capability for a vcpu.  Currently |__flags| and
+ * |__args| must be zero.  The only permitted values for |__capability|
+ * are KVM_CAP_HYPERV_SYNIC or KVM_CAP_HYPERV_SYNIC2, though the latter
+ * also depends on kernel support.
+ */
+int crosvm_vcpu_enable_capability(struct crosvm_vcpu*, uint32_t __capability,
+                                  uint32_t __flags, uint64_t __args[4]);
 
 /* Gets state of LAPIC of the VCPU. */
 int crosvm_vcpu_get_lapic_state(struct crosvm_vcpu *,

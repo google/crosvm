@@ -359,6 +359,10 @@ message VcpuRequest {
     message Shutdown {
     }
 
+    message EnableCapability {
+        uint32 capability = 1;
+    }
+
     // The type of the message is determined by which of these oneof fields is present in the
     // protobuf.
     oneof message {
@@ -371,6 +375,7 @@ message VcpuRequest {
         SetCpuid set_cpuid = 7;
         Shutdown shutdown = 8;
         CpuidRequest get_hyperv_cpuid = 9;
+        EnableCapability enable_capability = 10;
     }
 }
 
@@ -435,6 +440,8 @@ message VcpuResponse  {
 
     message SetCpuid {}
 
+    message EnableCapability {}
+
     // This is zero on success, and a negative integer on failure.
     sint32 errno = 1;
     // The field present here is always the same as the one present in the corresponding
@@ -448,5 +455,6 @@ message VcpuResponse  {
         SetMsrs set_msrs = 7;
         SetCpuid set_cpuid = 8;
         CpuidResponse get_hyperv_cpuid = 9;
+        EnableCapability enable_capability = 10;
     }
 }

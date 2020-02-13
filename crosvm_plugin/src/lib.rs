@@ -166,6 +166,8 @@ pub enum Stat {
     DestroyConnection,
     GetShutdownEventFd,
     CheckExtentsion,
+    EnableVmCapability,
+    EnableVcpuCapability,
     GetSupportedCpuid,
     GetEmulatedCpuid,
     GetHypervCpuid,
@@ -1289,6 +1291,13 @@ impl crosvm_vcpu {
         self.vcpu_transaction(&r)?;
         Ok(())
     }
+
+    fn enable_capability(&mut self, capability: u32) -> result::Result<(), c_int> {
+        let mut r = VcpuRequest::new();
+        r.mut_enable_capability().capability = capability;
+        self.vcpu_transaction(&r)?;
+        Ok(())
+    }
 }
 
 // crosvm API signals success as 0 and errors as negative values
@@ -1368,6 +1377,17 @@ pub unsafe extern "C" fn crosvm_check_extension(
         *has_extension = supported;
     }
     to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_enable_capability(
+    _self_: *mut crosvm,
+    _capability: u32,
+    _flags: u32,
+    _args: *const u64,
+) -> c_int {
+    let _u = record(Stat::EnableVmCapability);
+    -EINVAL
 }
 
 #[no_mangle]
@@ -1892,6 +1912,25 @@ pub unsafe extern "C" fn crosvm_vcpu_set_cpuid(
     let this = &mut *this;
     let cpuid_entries = from_raw_parts(cpuid_entries, cpuid_count as usize);
     let ret = this.set_cpuid(cpuid_entries);
+    to_crosvm_rc(ret)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_vcpu_enable_capability(
+    this: *mut crosvm_vcpu,
+    capability: u32,
+    flags: u32,
+    args: *const u64,
+) -> c_int {
+    let _u = record(Stat::EnableVcpuCapability);
+    let this = &mut *this;
+    let args = slice::from_raw_parts(args, 4);
+
+    if flags != 0 || args.iter().any(|v| *v != 0) {
+        return -EINVAL;
+    }
+
+    let ret = this.enable_capability(capability);
     to_crosvm_rc(ret)
 }
 

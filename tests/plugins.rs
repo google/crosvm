@@ -261,6 +261,11 @@ fn test_supported_cpuid() {
 }
 
 #[test]
+fn test_enable_cap() {
+    test_plugin(include_str!("plugin_enable_cap.c"));
+}
+
+#[test]
 fn test_msr_index_list() {
     test_plugin(include_str!("plugin_msr_index_list.c"));
 }

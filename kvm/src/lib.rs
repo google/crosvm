@@ -1625,6 +1625,18 @@ impl Vcpu {
         Ok(())
     }
 
+    /// Enable the specified capability.
+    /// See documentation for KVM_ENABLE_CAP.
+    pub fn kvm_enable_cap(&self, cap: &kvm_enable_cap) -> Result<()> {
+        // safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct
+        let ret = unsafe { ioctl_with_ref(self, KVM_ENABLE_CAP(), cap) };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+
     /// Signals to the host kernel that this VCPU is about to be paused.
     ///
     /// See the documentation for KVM_KVMCLOCK_CTRL.
@@ -2364,6 +2376,19 @@ mod tests {
                 assert_eq!(e.errno(), EINVAL);
             }
         }
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn enable_feature() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = Vm::new(&kvm, gm).unwrap();
+        vm.create_irq_chip().unwrap();
+        let vcpu = Vcpu::new(0, &kvm, &vm).unwrap();
+        let mut cap: kvm_enable_cap = Default::default();
+        cap.cap = kvm_sys::KVM_CAP_HYPERV_SYNIC;
+        vcpu.kvm_enable_cap(&cap).unwrap();
     }
 
     #[test]
