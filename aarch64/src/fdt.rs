@@ -197,6 +197,12 @@ fn create_chosen_node(
     let kaslr_seed = u64::from_le_bytes(kaslr_seed_bytes);
     property_u64(fdt, "kaslr-seed", kaslr_seed)?;
 
+    let mut rng_seed_bytes = [0u8; 256];
+    random_file
+        .read_exact(&mut rng_seed_bytes)
+        .map_err(Error::FdtIoError)?;
+    property(fdt, "rng-seed", &rng_seed_bytes)?;
+
     if let Some((initrd_addr, initrd_size)) = initrd {
         let initrd_start = initrd_addr.offset() as u32;
         let initrd_end = initrd_start + initrd_size as u32;
