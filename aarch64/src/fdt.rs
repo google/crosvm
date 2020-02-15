@@ -10,7 +10,8 @@ use arch::fdt::{
     begin_node, end_node, finish_fdt, generate_prop32, generate_prop64, property, property_cstring,
     property_null, property_string, property_u32, property_u64, start_fdt, Error, Result,
 };
-use devices::{PciInterruptPin, SERIAL_ADDR};
+use arch::SERIAL_ADDR;
+use devices::PciInterruptPin;
 use sys_util::{GuestAddress, GuestMemory};
 
 // This is the start of DRAM in the physical address space.

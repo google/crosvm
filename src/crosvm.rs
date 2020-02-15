@@ -16,11 +16,11 @@ use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use arch::Pstore;
+use arch::{Pstore, SerialParameters};
 use devices::virtio::fs::passthrough;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
-use devices::{Ac97Parameters, SerialParameters};
+use devices::Ac97Parameters;
 use libc::{getegid, geteuid};
 
 static SECCOMP_POLICY_DIR: &str = "/usr/share/policy/crosvm";

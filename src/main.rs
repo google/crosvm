@@ -17,7 +17,7 @@ use std::string::String;
 use std::thread::sleep;
 use std::time::Duration;
 
-use arch::Pstore;
+use arch::{Pstore, SerialParameters, SerialType};
 use audio_streams::StreamEffect;
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
@@ -25,7 +25,7 @@ use crosvm::{
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{GpuMode, GpuParameters};
-use devices::{Ac97Backend, Ac97Parameters, SerialParameters, SerialType};
+use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use sys_util::{

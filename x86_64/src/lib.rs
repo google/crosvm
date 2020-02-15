@@ -54,11 +54,11 @@ use std::mem;
 use std::sync::Arc;
 
 use crate::bootparam::boot_params;
-use arch::{RunnableLinuxVm, VmComponents, VmImage};
+use arch::{get_serial_tty_string, RunnableLinuxVm, SerialParameters, VmComponents, VmImage};
 use devices::split_irqchip_common::GsiRelay;
 use devices::{
-    get_serial_tty_string, Ioapic, PciConfigIo, PciDevice, PciInterruptPin, Pic, SerialParameters,
-    IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES,
+    Ioapic, PciConfigIo, PciDevice, PciInterruptPin, Pic, IOAPIC_BASE_ADDRESS,
+    IOAPIC_MEM_LENGTH_BYTES,
 };
 use io_jail::Minijail;
 use kvm::*;

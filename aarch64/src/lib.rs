@@ -11,11 +11,8 @@ use std::io;
 use std::os::unix::io::FromRawFd;
 use std::sync::Arc;
 
-use arch::{RunnableLinuxVm, VmComponents, VmImage};
-use devices::{
-    get_serial_tty_string, Bus, BusError, PciConfigMmio, PciDevice, PciInterruptPin,
-    SerialParameters,
-};
+use arch::{get_serial_tty_string, RunnableLinuxVm, SerialParameters, VmComponents, VmImage};
+use devices::{Bus, BusError, PciConfigMmio, PciDevice, PciInterruptPin};
 use io_jail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;

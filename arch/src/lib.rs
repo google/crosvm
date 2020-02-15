@@ -5,6 +5,7 @@
 pub mod android;
 pub mod fdt;
 pub mod pstore;
+pub mod serial;
 
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
@@ -19,7 +20,6 @@ use devices::split_irqchip_common::GsiRelay;
 use devices::virtio::VirtioDevice;
 use devices::{
     Bus, BusDevice, BusError, PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProxyDevice,
-    SerialParameters, DEFAULT_SERIAL_PARAMS, SERIAL_ADDR,
 };
 use io_jail::Minijail;
 use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
@@ -27,6 +27,10 @@ use resources::SystemAllocator;
 use sync::Mutex;
 use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 use vm_control::VmIrqRequestSocket;
+
+pub use serial::{
+    add_serial_devices, get_serial_tty_string, SerialParameters, SerialType, SERIAL_ADDR,
+};
 
 pub enum VmImage {
     Kernel(File),
@@ -119,7 +123,7 @@ pub enum DeviceRegistrationError {
     // Unable to create a pipe.
     CreatePipe(sys_util::Error),
     // Unable to create serial device from serial parameters
-    CreateSerialDevice(devices::SerialError),
+    CreateSerialDevice(serial::Error),
     /// Could not clone an event fd.
     EventFdClone(sys_util::Error),
     /// Could not create an event fd.
@@ -256,70 +260,6 @@ pub fn generate_pci_root(
         }
     }
     Ok((root, pci_irqs, pid_labels))
-}
-
-/// Adds serial devices to the provided bus based on the serial parameters given. Returns the serial
-///  port number and serial device to be used for stdout if defined.
-///
-/// # Arguments
-///
-/// * `io_bus` - Bus to add the devices to
-/// * `com_evt_1_3` - eventfd for com1 and com3
-/// * `com_evt_1_4` - eventfd for com2 and com4
-/// * `io_bus` - Bus to add the devices to
-/// * `serial_parameters` - definitions of serial parameter configuationis. If a setting is not
-///     provided for a port, then it will use the default configuation.
-pub fn add_serial_devices(
-    io_bus: &mut Bus,
-    com_evt_1_3: &EventFd,
-    com_evt_2_4: &EventFd,
-    serial_parameters: &BTreeMap<u8, SerialParameters>,
-    serial_jail: Option<Minijail>,
-) -> Result<Option<u8>, DeviceRegistrationError> {
-    let mut stdio_serial_num = None;
-
-    for x in 0..=3 {
-        let com_evt = match x {
-            0 => com_evt_1_3,
-            1 => com_evt_2_4,
-            2 => com_evt_1_3,
-            3 => com_evt_2_4,
-            _ => com_evt_1_3,
-        };
-
-        let param = serial_parameters
-            .get(&(x + 1))
-            .unwrap_or(&DEFAULT_SERIAL_PARAMS[x as usize]);
-
-        if param.console {
-            stdio_serial_num = Some(x + 1);
-        }
-
-        let mut preserved_fds = Vec::new();
-        let com = param
-            .create_serial_device(&com_evt, &mut preserved_fds)
-            .map_err(DeviceRegistrationError::CreateSerialDevice)?;
-
-        match serial_jail.as_ref() {
-            Some(jail) => {
-                let com = Arc::new(Mutex::new(
-                    ProxyDevice::new(com, &jail, preserved_fds)
-                        .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
-                ));
-                io_bus
-                    .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8, false)
-                    .unwrap();
-            }
-            None => {
-                let com = Arc::new(Mutex::new(com));
-                io_bus
-                    .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8, false)
-                    .unwrap();
-            }
-        }
-    }
-
-    Ok(stdio_serial_num)
 }
 
 /// Errors for image loading.

@@ -3,18 +3,13 @@
 // found in the LICENSE file.
 
 use std::collections::VecDeque;
-use std::fmt::{self, Display};
-use std::fs::File;
-use std::io::{self, stdin, stdout, Read, Write};
-use std::os::unix::io::{AsRawFd, RawFd};
-use std::path::PathBuf;
-use std::str::FromStr;
+use std::io::{self, Write};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
 use std::thread::{self};
 
-use sys_util::{error, read_raw_stdin, syslog, EventFd, Result};
+use sys_util::{error, EventFd, Result};
 
 use crate::BusDevice;
 
@@ -62,196 +57,6 @@ const DEFAULT_MODEM_CONTROL: u8 = MCR_OUT2_BIT;
 const DEFAULT_MODEM_STATUS: u8 = MSR_DSR_BIT | MSR_CTS_BIT | MSR_DCD_BIT;
 const DEFAULT_BAUD_DIVISOR: u16 = 12; // 9600 bps
 
-#[derive(Debug)]
-pub enum Error {
-    CloneEventFd(sys_util::Error),
-    InvalidSerialType(String),
-    PathRequired,
-    FileError(std::io::Error),
-    Unimplemented(SerialType),
-}
-
-impl Display for Error {
-    #[remain::check]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        #[sorted]
-        match self {
-            CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
-            FileError(e) => write!(f, "Unable to open/create file: {}", e),
-            InvalidSerialType(e) => write!(f, "invalid serial type: {}", e),
-            PathRequired => write!(f, "serial device type file requires a path"),
-            Unimplemented(e) => write!(f, "serial device type {} not implemented", e.to_string()),
-        }
-    }
-}
-
-/// Enum for possible type of serial devices
-#[derive(Debug)]
-pub enum SerialType {
-    File,
-    Stdout,
-    Sink,
-    Syslog,
-    UnixSocket, // NOT IMPLEMENTED
-}
-
-impl Display for SerialType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = match &self {
-            SerialType::File => "File".to_string(),
-            SerialType::Stdout => "Stdout".to_string(),
-            SerialType::Sink => "Sink".to_string(),
-            SerialType::Syslog => "Syslog".to_string(),
-            SerialType::UnixSocket => "UnixSocket".to_string(),
-        };
-
-        write!(f, "{}", s)
-    }
-}
-
-impl FromStr for SerialType {
-    type Err = Error;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s {
-            "file" | "File" => Ok(SerialType::File),
-            "stdout" | "Stdout" => Ok(SerialType::Stdout),
-            "sink" | "Sink" => Ok(SerialType::Sink),
-            "syslog" | "Syslog" => Ok(SerialType::Syslog),
-            "unix" | "UnixSocket" => Ok(SerialType::UnixSocket),
-            _ => Err(Error::InvalidSerialType(s.to_string())),
-        }
-    }
-}
-
-/// Holds the parameters for a serial device
-#[derive(Debug)]
-pub struct SerialParameters {
-    pub type_: SerialType,
-    pub path: Option<PathBuf>,
-    pub input: Option<PathBuf>,
-    pub num: u8,
-    pub console: bool,
-    pub stdin: bool,
-}
-
-impl SerialParameters {
-    /// Helper function to create a serial device from the defined parameters.
-    ///
-    /// # Arguments
-    /// * `evt_fd` - eventfd used for interrupt events
-    /// * `keep_fds` - Vector of FDs required by this device if it were sandboxed in a child
-    ///                process. `evt_fd` will always be added to this vector by this function.
-    pub fn create_serial_device(
-        &self,
-        evt_fd: &EventFd,
-        keep_fds: &mut Vec<RawFd>,
-    ) -> std::result::Result<Serial, Error> {
-        let evt_fd = evt_fd.try_clone().map_err(Error::CloneEventFd)?;
-        keep_fds.push(evt_fd.as_raw_fd());
-        let input: Option<Box<dyn io::Read + Send>> = if let Some(input_path) = &self.input {
-            let input_file = File::open(input_path.as_path()).map_err(Error::FileError)?;
-            keep_fds.push(input_file.as_raw_fd());
-            Some(Box::new(input_file))
-        } else if self.stdin {
-            keep_fds.push(stdin().as_raw_fd());
-            // This wrapper is used in place of the libstd native version because we don't want
-            // buffering for stdin.
-            struct StdinWrapper;
-            impl io::Read for StdinWrapper {
-                fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
-                    read_raw_stdin(out).map_err(|e| e.into())
-                }
-            }
-            Some(Box::new(StdinWrapper))
-        } else {
-            None
-        };
-        match self.type_ {
-            SerialType::Stdout => {
-                keep_fds.push(stdout().as_raw_fd());
-                Ok(Serial::new(evt_fd, input, Some(Box::new(stdout()))))
-            }
-            SerialType::Sink => Ok(Serial::new(evt_fd, input, None)),
-            SerialType::Syslog => {
-                syslog::push_fds(keep_fds);
-                Ok(Serial::new(
-                    evt_fd,
-                    input,
-                    Some(Box::new(syslog::Syslogger::new(
-                        syslog::Priority::Info,
-                        syslog::Facility::Daemon,
-                    ))),
-                ))
-            }
-            SerialType::File => match &self.path {
-                Some(path) => {
-                    let file = File::create(path.as_path()).map_err(Error::FileError)?;
-                    keep_fds.push(file.as_raw_fd());
-                    Ok(Serial::new(evt_fd, input, Some(Box::new(file))))
-                }
-                _ => Err(Error::PathRequired),
-            },
-            SerialType::UnixSocket => Err(Error::Unimplemented(SerialType::UnixSocket)),
-        }
-    }
-}
-
-// Structure for holding the default configuration of the serial devices.
-pub const DEFAULT_SERIAL_PARAMS: [SerialParameters; 4] = [
-    SerialParameters {
-        type_: SerialType::Stdout,
-        path: None,
-        input: None,
-        num: 1,
-        console: true,
-        stdin: true,
-    },
-    SerialParameters {
-        type_: SerialType::Sink,
-        path: None,
-        input: None,
-        num: 2,
-        console: false,
-        stdin: false,
-    },
-    SerialParameters {
-        type_: SerialType::Sink,
-        path: None,
-        input: None,
-        num: 3,
-        console: false,
-        stdin: false,
-    },
-    SerialParameters {
-        type_: SerialType::Sink,
-        path: None,
-        input: None,
-        num: 4,
-        console: false,
-        stdin: false,
-    },
-];
-
-/// Address for Serial ports in x86
-pub const SERIAL_ADDR: [u64; 4] = [0x3f8, 0x2f8, 0x3e8, 0x2e8];
-
-/// String representations of serial devices
-pub const SERIAL_TTY_STRINGS: [&str; 4] = ["ttyS0", "ttyS1", "ttyS2", "ttyS3"];
-
-/// Helper function to get the tty string of a serial device based on the port number. Will default
-///  to ttyS0 if an invalid number is given.
-pub fn get_serial_tty_string(stdio_serial_num: u8) -> String {
-    match stdio_serial_num {
-        1 => SERIAL_TTY_STRINGS[0].to_string(),
-        2 => SERIAL_TTY_STRINGS[1].to_string(),
-        3 => SERIAL_TTY_STRINGS[2].to_string(),
-        4 => SERIAL_TTY_STRINGS[3].to_string(),
-        _ => SERIAL_TTY_STRINGS[0].to_string(),
-    }
-}
-
 /// Emulates serial COM ports commonly seen on x86 I/O ports 0x3f8/0x2f8/0x3e8/0x2e8.
 ///
 /// This can optionally write the guest's output to a Write trait object. To send input to the
@@ -277,7 +82,7 @@ pub struct Serial {
 }
 
 impl Serial {
-    fn new(
+    pub fn new(
         interrupt_evt: EventFd,
         input: Option<Box<dyn io::Read + Send>>,
         out: Option<Box<dyn io::Write + Send>>,

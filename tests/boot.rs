@@ -13,8 +13,8 @@ use std::sync::Once;
 
 use libc::{cpu_set_t, sched_getaffinity};
 
+use arch::{SerialParameters, SerialType};
 use crosvm::{linux, Config, Executable};
-use devices::{SerialParameters, SerialType};
 use sys_util::syslog;
 
 const CHROOT_KERNEL_PATH: &str = "/mnt/host/source/src/third_party/kernel/v4.19/";
