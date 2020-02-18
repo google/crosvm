@@ -59,12 +59,6 @@ RUN cargo install thisiznotarealpackage -q || true
 # Used /scratch for building dependencies which are too new or don't exist on Debian stretch.
 WORKDIR /scratch
 
-# minijail does not exist in upstream linux distros.
-RUN git clone https://android.googlesource.com/platform/external/minijail \
-    && cd minijail \
-    && make -j$(nproc) \
-    && cp libminijail.so /usr/lib/x86_64-linux-gnu/
-
 # New libepoxy and libdrm-dev requires newer meson than is in Debian stretch.
 ARG MESON_COMMIT=master
 RUN git clone https://github.com/mesonbuild/meson \
@@ -147,6 +141,14 @@ ENV THIRD_PARTY_ROOT=$CROS_ROOT/third_party
 RUN mkdir -p $THIRD_PARTY_ROOT
 ENV PLATFORM_ROOT=$CROS_ROOT/platform
 RUN mkdir -p $PLATFORM_ROOT
+ENV AOSP_EXTERNAL_ROOT=$CROS_ROOT/aosp/external
+RUN mkdir -p $AOSP_EXTERNAL_ROOT
+
+# minijail does not exist in upstream linux distros.
+RUN git clone https://android.googlesource.com/platform/external/minijail $AOSP_EXTERNAL_ROOT/minijail \
+    && cd $AOSP_EXTERNAL_ROOT/minijail \
+    && make -j$(nproc) \
+    && cp libminijail.so /usr/lib/x86_64-linux-gnu/
 
 # Pull the cras library for audio access.
 ARG ADHD_COMMIT=master

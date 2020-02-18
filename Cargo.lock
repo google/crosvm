@@ -106,6 +106,7 @@ dependencies = [
  "kvm_sys 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "libcras 0.1.0",
+ "minijail-sys 0.0.11",
  "msg_socket 0.1.0",
  "net_util 0.1.0",
  "p9 0.1.0",
@@ -240,7 +241,7 @@ name = "io_jail"
 version = "0.1.0"
 dependencies = [
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
- "net_sys 0.1.0",
+ "minijail-sys 0.0.11",
 ]
 
 [[package]]
@@ -308,6 +309,14 @@ version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cfg-if 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "minijail-sys"
+version = "0.0.11"
+dependencies = [
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pkg-config 0.3.11 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
