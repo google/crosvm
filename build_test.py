@@ -160,10 +160,20 @@ def check_build(sysroot, triple, kind, test_it, clean):
 
   is_release = kind == 'release'
 
+  # The pkgconfig dir could be in either lib or lib64 depending on the target.
+  # Rather than checking to see which one is valid, just add both and let
+  # pkg-config search.
+  libdir = os.path.join(sysroot, 'usr', 'lib', 'pkgconfig')
+  lib64dir = os.path.join(sysroot, 'usr', 'lib64', 'pkgconfig')
+
   env = os.environ.copy()
   env['TARGET_CC'] = '%s-clang'%triple
   env['SYSROOT'] = sysroot
   env['CARGO_TARGET_DIR'] = target_path
+  env['PKG_CONFIG_ALLOW_CROSS'] = '1'
+  env['PKG_CONFIG_LIBDIR'] = libdir + ':' + lib64dir
+  env['PKG_CONFIG_SYSROOT_DIR'] = sysroot
+  env['RUSTFLAGS'] = '-C linker=' + env['TARGET_CC']
 
   if test_it:
     if not test_target(triple, is_release, env):
