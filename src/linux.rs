@@ -825,25 +825,36 @@ fn create_fs_device(
     })
 }
 
-fn create_9p_device(cfg: &Config, src: &Path, tag: &str) -> DeviceResult {
-    let (jail, root) = match simple_jail(&cfg, "9p_device")? {
-        Some(mut jail) => {
-            //  The shared directory becomes the root of the device's file system.
-            let root = Path::new("/");
-            jail.mount_bind(src, root, true)?;
+fn create_9p_device(
+    cfg: &Config,
+    uid_map: &str,
+    gid_map: &str,
+    src: &Path,
+    tag: &str,
+) -> DeviceResult {
+    let max_open_files = get_max_open_files()?;
+    let (jail, root) = if cfg.sandbox {
+        let seccomp_policy = cfg.seccomp_policy_dir.join("9p_device");
+        let config = SandboxConfig {
+            limit_caps: false,
+            uid_map: Some(uid_map),
+            gid_map: Some(gid_map),
+            log_failures: cfg.seccomp_log_failures,
+            seccomp_policy: &seccomp_policy,
+        };
 
-            // We want bind mounts from the parent namespaces to propagate into the 9p server's
-            // namespace.
-            jail.set_remount_mode(libc::MS_SLAVE);
+        let mut jail = create_base_minijail(src, Some(max_open_files), Some(&config))?;
+        // We want bind mounts from the parent namespaces to propagate into the 9p server's
+        // namespace.
+        jail.set_remount_mode(libc::MS_SLAVE);
 
-            add_crosvm_user_to_jail(&mut jail, "p9")?;
-            (Some(jail), root)
-        }
-        None => {
-            // There's no bind mount so we tell the server to treat the source directory as the
-            // root.
-            (None, src)
-        }
+        //  The shared directory becomes the root of the device's file system.
+        let root = Path::new("/");
+        (Some(jail), root)
+    } else {
+        // There's no mount namespace so we tell the server to treat the source directory as the
+        // root.
+        (None, src)
     };
 
     let dev = virtio::P9::new(root, tag).map_err(Error::P9DeviceNew)?;
@@ -1093,7 +1104,7 @@ fn create_virtio_devices(
 
         let dev = match kind {
             SharedDirKind::FS => create_fs_device(cfg, uid_map, gid_map, src, tag, fs_cfg.clone())?,
-            SharedDirKind::P9 => create_9p_device(cfg, src, tag)?,
+            SharedDirKind::P9 => create_9p_device(cfg, uid_map, gid_map, src, tag)?,
         };
         devs.push(dev);
     }
