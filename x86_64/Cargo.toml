@@ -3,7 +3,6 @@ name = "x86_64"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
-build = "build.rs"
 
 [dependencies]
 arch = { path = "../arch" }
@@ -20,6 +19,3 @@ remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
-
-[build-dependencies]
-cc = "=1.0.25"

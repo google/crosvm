@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::arch::x86_64::{__cpuid, __cpuid_count};
 use std::fmt::{self, Display};
 use std::result;
 
@@ -26,19 +27,6 @@ impl Display for Error {
             SetSupportedCpusFailed(e) => write!(f, "SetSupportedCpus ioctl failed: {}", e),
         }
     }
-}
-
-// This function is implemented in C because stable rustc does not
-// support inline assembly.
-extern "C" {
-    fn host_cpuid(
-        func: u32,
-        func2: u32,
-        rEax: *mut u32,
-        rEbx: *mut u32,
-        rEcx: *mut u32,
-        rEdx: *mut u32,
-    ) -> ();
 }
 
 // CPUID bits in ebx, ecx, and edx.
@@ -77,25 +65,19 @@ fn filter_cpuid(
                 }
             }
             2 | 0x80000005 | 0x80000006 => unsafe {
-                host_cpuid(
-                    entry.function,
-                    0,
-                    &mut entry.eax as *mut u32,
-                    &mut entry.ebx as *mut u32,
-                    &mut entry.ecx as *mut u32,
-                    &mut entry.edx as *mut u32,
-                );
+                let result = __cpuid(entry.function);
+                entry.eax = result.eax;
+                entry.ebx = result.ebx;
+                entry.ecx = result.ecx;
+                entry.edx = result.edx;
             },
             4 => {
                 unsafe {
-                    host_cpuid(
-                        entry.function,
-                        entry.index,
-                        &mut entry.eax as *mut u32,
-                        &mut entry.ebx as *mut u32,
-                        &mut entry.ecx as *mut u32,
-                        &mut entry.edx as *mut u32,
-                    );
+                    let result = __cpuid_count(entry.function, entry.index);
+                    entry.eax = result.eax;
+                    entry.ebx = result.ebx;
+                    entry.ecx = result.ecx;
+                    entry.edx = result.edx;
                 }
                 entry.eax &= !0xFC000000;
             }
@@ -132,34 +114,12 @@ pub fn setup_cpuid(kvm: &kvm::Kvm, vcpu: &kvm::Vcpu, cpu_id: u64, nrcpus: u64) -
 
 /// get host cpu max physical address bits
 pub fn phy_max_address_bits() -> u32 {
-    let mut eax: u32 = 0;
-    let mut ebx: u32 = 0;
-    let mut ecx: u32 = 0;
-    let mut edx: u32 = 0;
     let mut phys_bits: u32 = 36;
 
-    unsafe {
-        host_cpuid(
-            0x80000000,
-            0,
-            &mut eax as *mut u32,
-            &mut ebx as *mut u32,
-            &mut ecx as *mut u32,
-            &mut edx as *mut u32,
-        );
-    }
-    if eax >= 0x80000008 {
-        unsafe {
-            host_cpuid(
-                0x80000008,
-                0,
-                &mut eax as *mut u32,
-                &mut ebx as *mut u32,
-                &mut ecx as *mut u32,
-                &mut edx as *mut u32,
-            );
-        }
-        phys_bits = eax & 0xff;
+    let highest_ext_function = unsafe { __cpuid(0x80000000) };
+    if highest_ext_function.eax >= 0x80000008 {
+        let addr_size = unsafe { __cpuid(0x80000008) };
+        phys_bits = addr_size.eax & 0xff;
     }
 
     phys_bits
