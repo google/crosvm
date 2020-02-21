@@ -335,9 +335,13 @@ fn create_base_minijail(
         if let Some(gid_map) = config.gid_map {
             j.gidmap(gid_map).map_err(Error::SettingGidMap)?;
         }
+        // Run in a new mount namespace.
+        j.namespace_vfs();
+
         // Run in an empty network namespace.
         j.namespace_net();
-        // Apply the block device seccomp policy.
+
+        // Don't allow the device to gain new privileges.
         j.no_new_privs();
 
         // By default we'll prioritize using the pre-compiled .bpf over the .policy
@@ -367,9 +371,12 @@ fn create_base_minijail(
         j.run_as_init();
     }
 
-    // Create a new mount namespace with an empty root FS.
-    j.namespace_vfs();
-    j.enter_pivot_root(root).map_err(Error::DevicePivotRoot)?;
+    // Only pivot_root if we are not re-using the current root directory.
+    if root != Path::new("/") {
+        // It's safe to call `namespace_vfs` multiple times.
+        j.namespace_vfs();
+        j.enter_pivot_root(root).map_err(Error::DevicePivotRoot)?;
+    }
 
     // Most devices don't need to open many fds.
     let limit = if let Some(r) = r_limit { r } else { 1024u64 };
