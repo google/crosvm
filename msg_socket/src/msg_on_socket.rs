@@ -28,6 +28,8 @@ pub enum MsgError {
     /// There was not the expected amount of data when receiving a message. The inner
     /// value is how much data is expected and how much data was actually received.
     BadRecvSize { expected: usize, actual: usize },
+    /// There was no data received when the socket `recv`-ed.
+    RecvZero,
     /// There was no associated file descriptor received for a request that expected it.
     ExpectFd,
     /// There was some associated file descriptor received but not used when deserialize.
@@ -58,6 +60,7 @@ impl Display for MsgError {
                 "wrong amount of data received; expected {} bytes; got {} bytes",
                 expected, actual
             ),
+            RecvZero => write!(f, "received zero data"),
             ExpectFd => write!(f, "missing associated file descriptor for request"),
             NotExpectFd => write!(f, "unexpected file descriptor is unused"),
             SettingFdFlags(e) => write!(f, "failed setting flags on the message FD: {}", e),

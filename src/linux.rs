@@ -2024,7 +2024,7 @@ fn run_control(
                                     }
                                 }
                                 Err(e) => {
-                                    if let MsgError::BadRecvSize { actual: 0, .. } = e {
+                                    if let MsgError::RecvZero = e {
                                         vm_control_indices_to_remove.push(index);
                                     } else {
                                         error!("failed to recv VmRequest: {}", e);
@@ -2040,7 +2040,7 @@ fn run_control(
                                     }
                                 }
                                 Err(e) => {
-                                    if let MsgError::BadRecvSize { actual: 0, .. } = e {
+                                    if let MsgError::RecvZero = e {
                                         vm_control_indices_to_remove.push(index);
                                     } else {
                                         error!("failed to recv VmMemoryControlRequest: {}", e);
@@ -2056,7 +2056,7 @@ fn run_control(
                                     }
                                 }
                                 Err(e) => {
-                                    if let MsgError::BadRecvSize { actual: 0, .. } = e {
+                                    if let MsgError::RecvZero = e {
                                         vm_control_indices_to_remove.push(index);
                                     } else {
                                         error!("failed to recv VmIrqRequest: {}", e);

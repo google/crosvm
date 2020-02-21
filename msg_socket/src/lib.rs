@@ -164,6 +164,20 @@ pub trait MsgReceiver: AsRef<UnixSeqpacket> {
                 )
             }
         };
+
+        if msg_buffer.len() == 0 && Self::M::fixed_size() != Some(0) {
+            return Err(MsgError::RecvZero);
+        }
+
+        if let Some(fixed_size) = Self::M::fixed_size() {
+            if fixed_size != msg_buffer.len() {
+                return Err(MsgError::BadRecvSize {
+                    expected: fixed_size,
+                    actual: msg_buffer.len(),
+                });
+            }
+        }
+
         // Safe because fd buffer is read from socket.
         let (v, read_fd_size) = unsafe { Self::M::read_from_buffer(&msg_buffer, &fd_buffer)? };
         if fd_buffer.len() != read_fd_size {
