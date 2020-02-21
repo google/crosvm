@@ -15,6 +15,7 @@ use libc::{cpu_set_t, sched_getaffinity};
 
 use crosvm::{linux, Config, Executable};
 use devices::{SerialParameters, SerialType};
+use sys_util::syslog;
 
 const CHROOT_KERNEL_PATH: &str = "/mnt/host/source/src/third_party/kernel/v4.19/";
 const CONTAINER_VM_DEFCONFIG: &str = "arch/x86/configs/chromiumos-container-vm-x86_64_defconfig";
@@ -220,6 +221,8 @@ fn prepare_kernel() -> PathBuf {
 
 #[test]
 fn boot() {
+    syslog::init().unwrap();
+
     let kernel_path = prepare_kernel();
 
     let mut c = Config::default();
