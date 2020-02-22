@@ -65,6 +65,34 @@ const MADT_ENABLED: u32 = 1;
 // XSDT
 const XSDT_REVISION: u8 = 1;
 
+fn create_dsdt_table() -> SDT {
+    // The hex tables in this file are generated from the ASL below with:
+    // "iasl -tc <dsdt.asl>"
+    // Below is the tables represents by the pm_dsdt_data
+    // Name (_S1, Package (0x04)  // _S1_: S1 System State
+    // {
+    //     One,
+    //     One,
+    //     Zero,
+    //     Zero
+    // })
+    let pm_dsdt_data = [
+        0x08u8, 0x5F, 0x53, 0x31, 0x5f, 0x12, 0x06, 0x04, 0x01, 0x01, 0x00, 0x00,
+    ];
+
+    let mut dsdt = SDT::new(
+        *b"DSDT",
+        acpi_tables::HEADER_LEN,
+        DSDT_REVISION,
+        *b"CROSVM",
+        *b"CROSVMDT",
+        OEM_REVISION,
+    );
+    dsdt.append(pm_dsdt_data);
+
+    dsdt
+}
+
 /// Create ACPI tables and return the RSDP.
 /// The basic tables DSDT/FACP/MADT/XSDT are constructed in this function.
 /// # Arguments
@@ -80,14 +108,7 @@ pub fn create_acpi_tables(guest_mem: &GuestMemory, num_cpus: u8, sci_irq: u32) -
     let mut tables: Vec<u64> = Vec::new();
 
     // DSDT
-    let dsdt = SDT::new(
-        *b"DSDT",
-        acpi_tables::HEADER_LEN,
-        DSDT_REVISION,
-        *b"CROSVM",
-        *b"CROSVMDT",
-        OEM_REVISION,
-    );
+    let dsdt = create_dsdt_table();
     let dsdt_offset = rsdp_offset.checked_add(RSDP::len() as u64).unwrap();
     guest_mem
         .write_at_addr(dsdt.as_slice(), dsdt_offset)
