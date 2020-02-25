@@ -24,7 +24,7 @@ pub enum Error {
     InvalidMagicHeader,
     InvalidProto(protobuf::ProtobufError),
     InvalidSpecification(String),
-    OpenFile(io::Error),
+    OpenFile(io::Error, String),
     ReadSpecificationError(io::Error),
     UnknownVersion(u64),
     UnsupportedComponent(ImageType),
@@ -41,7 +41,7 @@ impl Display for Error {
             InvalidMagicHeader => write!(f, "invalid magic header for composite disk format"),
             InvalidProto(e) => write!(f, "failed to parse specification proto: \"{}\"", e),
             InvalidSpecification(s) => write!(f, "invalid specification: \"{}\"", s),
-            OpenFile(e) => write!(f, "failed to open component file: \"{}\"", e),
+            OpenFile(e, p) => write!(f, "failed to open component file \"{}\": \"{}\"", p, e),
             ReadSpecificationError(e) => write!(f, "failed to read specification: \"{}\"", e),
             UnknownVersion(v) => write!(f, "unknown version {} in specification", v),
             UnsupportedComponent(c) => write!(f, "unsupported component disk type \"{:?}\"", c),
@@ -142,7 +142,7 @@ impl CompositeDiskFile {
                 );
                 let file = open_options
                     .open(disk.get_file_path())
-                    .map_err(Error::OpenFile)?;
+                    .map_err(|e| Error::OpenFile(e, disk.get_file_path().to_string()))?;
                 Ok(ComponentDiskPart {
                     file: create_disk_file(file).map_err(|e| Error::DiskError(Box::new(e)))?,
                     offset: disk.get_offset(),
