@@ -343,13 +343,13 @@ impl Worker {
             return DiskControlResult::Err(SysError::new(libc::EIO));
         }
 
-        if !self.sparse {
-            // Allocate new space if the disk image is not sparse.
-            if let Err(e) = self.disk_image.allocate(0, new_size) {
-                error!("Allocating disk space after resize failed! {}", e);
-                return DiskControlResult::Err(SysError::new(libc::EIO));
-            }
+        // Allocate new space if the disk image is not sparse.
+        if let Err(e) = self.disk_image.allocate(0, new_size) {
+            error!("Allocating disk space after resize failed! {}", e);
+            return DiskControlResult::Err(SysError::new(libc::EIO));
         }
+
+        self.sparse = false;
 
         if let Ok(new_disk_size) = self.disk_image.get_len() {
             let mut disk_size = self.disk_size.lock();
@@ -624,7 +624,8 @@ impl Block {
             }
             VIRTIO_BLK_T_DISCARD | VIRTIO_BLK_T_WRITE_ZEROES => {
                 if req_type == VIRTIO_BLK_T_DISCARD && !sparse {
-                    return Err(ExecuteError::Unsupported(req_type));
+                    // Discard is a hint; if this is a non-sparse disk, just ignore it.
+                    return Ok(());
                 }
 
                 while reader.available_bytes() >= size_of::<virtio_blk_discard_write_zeroes>() {
