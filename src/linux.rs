@@ -100,7 +100,7 @@ pub enum Error {
     CreateVfioDevice(devices::vfio::VfioError),
     DeviceJail(io_jail::Error),
     DevicePivotRoot(io_jail::Error),
-    Disk(io::Error),
+    Disk(PathBuf, io::Error),
     DiskImageLock(sys_util::Error),
     DropCapabilities(sys_util::Error),
     FsDeviceNew(virtio::fs::Error),
@@ -187,7 +187,7 @@ impl Display for Error {
             CreateVfioDevice(e) => write!(f, "Failed to create vfio device {}", e),
             DeviceJail(e) => write!(f, "failed to jail device: {}", e),
             DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
-            Disk(e) => write!(f, "failed to load disk image: {}", e),
+            Disk(p, e) => write!(f, "failed to load disk image {}: {}", p.display(), e),
             DiskImageLock(e) => write!(f, "failed to lock disk image: {}", e),
             DropCapabilities(e) => write!(f, "failed to drop process capabilities: {}", e),
             FsDeviceNew(e) => write!(f, "failed to create fs device: {}", e),
@@ -424,7 +424,7 @@ fn create_block_device(
             .read(true)
             .write(!disk.read_only)
             .open(&disk.path)
-            .map_err(Error::Disk)?
+            .map_err(|e| Error::Disk(disk.path.to_path_buf(), e))?
     };
     // Lock the disk image to prevent other crosvm instances from using it.
     let lock_op = if disk.read_only {
@@ -883,10 +883,11 @@ fn create_pmem_device(
         .read(true)
         .write(!disk.read_only)
         .open(&disk.path)
-        .map_err(Error::Disk)?;
+        .map_err(|e| Error::Disk(disk.path.to_path_buf(), e))?;
 
     let (disk_size, arena_size) = {
-        let metadata = std::fs::metadata(&disk.path).map_err(Error::Disk)?;
+        let metadata =
+            std::fs::metadata(&disk.path).map_err(|e| Error::Disk(disk.path.to_path_buf(), e))?;
         let disk_len = metadata.len();
         // Linux requires pmem region sizes to be 2 MiB aligned. Linux will fill any partial page
         // at the end of an mmap'd file and won't write back beyond the actual file length, but if
