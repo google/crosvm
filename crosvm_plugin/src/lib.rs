@@ -59,6 +59,8 @@ const CROSVM_IRQ_ROUTE_MSI: u32 = 1;
 const CROSVM_VCPU_EVENT_KIND_INIT: u32 = 0;
 const CROSVM_VCPU_EVENT_KIND_IO_ACCESS: u32 = 1;
 const CROSVM_VCPU_EVENT_KIND_PAUSED: u32 = 2;
+const CROSVM_VCPU_EVENT_KIND_HYPERV_HCALL: u32 = 3;
+const CROSVM_VCPU_EVENT_KIND_HYPERV_SYNIC: u32 = 4;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -925,10 +927,30 @@ struct anon_io_access {
     __reserved1: [u8; 2],
 }
 
+#[derive(Copy, Clone)]
+#[repr(C)]
+struct anon_hyperv_call {
+    input: u64,
+    result: *mut u8,
+    params: [u64; 2],
+}
+
+#[derive(Copy, Clone)]
+#[repr(C)]
+struct anon_hyperv_synic {
+    msr: u32,
+    reserved: u32,
+    control: u64,
+    evt_page: u64,
+    msg_page: u64,
+}
+
 #[repr(C)]
 union anon_vcpu_event {
     io_access: anon_io_access,
     user: *mut c_void,
+    hyperv_call: anon_hyperv_call,
+    hyperv_synic: anon_hyperv_synic,
     #[allow(dead_code)]
     __reserved: [u8; 64],
 }
@@ -1114,6 +1136,33 @@ impl crosvm_vcpu {
             let user: &VcpuResponse_Wait_User = wait.get_user();
             event.kind = CROSVM_VCPU_EVENT_KIND_PAUSED;
             event.event.user = user.user as *mut c_void;
+            self.regs.get = false;
+            self.sregs.get = false;
+            self.debugregs.get = false;
+            Ok(())
+        } else if wait.has_hyperv_call() {
+            let hv: &VcpuResponse_Wait_HypervCall = wait.get_hyperv_call();
+            event.kind = CROSVM_VCPU_EVENT_KIND_HYPERV_HCALL;
+            self.resume_data = vec![0; 8];
+            event.event.hyperv_call = anon_hyperv_call {
+                input: hv.input,
+                result: self.resume_data.as_mut_ptr(),
+                params: [hv.params0, hv.params1],
+            };
+            self.regs.get = false;
+            self.sregs.get = false;
+            self.debugregs.get = false;
+            Ok(())
+        } else if wait.has_hyperv_synic() {
+            let hv: &VcpuResponse_Wait_HypervSynic = wait.get_hyperv_synic();
+            event.kind = CROSVM_VCPU_EVENT_KIND_HYPERV_SYNIC;
+            event.event.hyperv_synic = anon_hyperv_synic {
+                msr: hv.msr,
+                reserved: 0,
+                control: hv.control,
+                evt_page: hv.evt_page,
+                msg_page: hv.msg_page,
+            };
             self.regs.get = false;
             self.sregs.get = false;
             self.debugregs.get = false;

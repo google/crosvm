@@ -47,7 +47,7 @@ extern "C" {
  * do not indicate anything about what version of crosvm is running.
  */
 #define CROSVM_API_MAJOR 0
-#define CROSVM_API_MINOR 21
+#define CROSVM_API_MINOR 22
 #define CROSVM_API_PATCH 0
 
 enum crosvm_address_space {
@@ -495,6 +495,16 @@ enum crosvm_vcpu_event_kind {
    * a `crosvm_pause_vcpus` call.
    */
   CROSVM_VCPU_EVENT_KIND_PAUSED,
+
+  /*
+   * Hyper-V hypercall.
+   */
+  CROSVM_VCPU_EVENT_KIND_HYPERV_HCALL,
+
+  /*
+   * Hyper-V synic change.
+   */
+  CROSVM_VCPU_EVENT_KIND_HYPERV_SYNIC,
 };
 
 struct crosvm_vcpu_event {
@@ -552,6 +562,31 @@ struct crosvm_vcpu_event {
 
     /* CROSVM_VCPU_EVENT_KIND_PAUSED */
     void *user;
+
+    /* CROSVM_VCPU_EVENT_KIND_HYPERV_HCALL */
+    struct {
+      /*
+       * The |input| and |params| members are populated for the plugin to use.
+       * The |result| member is populated by the API to point to a uint64_t
+       * that the plugin should update before resuming.
+       */
+      uint64_t input;
+      uint64_t *result;
+      uint64_t params[2];
+    } hyperv_call;
+
+    /* CROSVM_VCPU_EVENT_KIND_HYPERV_SYNIC */
+    struct {
+      /*
+       * The |msr|, |control|, |evt_page|, and |msg_page| fields are populated
+       * for the plugin to use.
+       */
+      uint32_t msr;
+      uint32_t _reserved;
+      uint64_t control;
+      uint64_t evt_page;
+      uint64_t msg_page;
+    } hyperv_synic;
 
     uint8_t _reserved[64];
   };

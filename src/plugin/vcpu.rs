@@ -513,6 +513,54 @@ impl PluginVcpu {
         self.process(IoSpace::Mmio, addr, VcpuRunData::Write(data), vcpu)
     }
 
+    /// Has the plugin process handle a hyper-v call.
+    pub fn hyperv_call(&self, input: u64, params: [u64; 2], data: &mut [u8], vcpu: &Vcpu) -> bool {
+        let mut wait_reason = VcpuResponse_Wait::new();
+        let hv = wait_reason.mut_hyperv_call();
+        hv.input = input;
+        hv.params0 = params[0];
+        hv.params1 = params[1];
+
+        self.wait_reason.set(Some(wait_reason));
+        match self.handle_until_resume(vcpu) {
+            Ok(resume_data) => {
+                data.copy_from_slice(&resume_data);
+                true
+            }
+            Err(e) if e.errno() == EPIPE => false,
+            Err(e) => {
+                error!("failed to process hyperv call request: {}", e);
+                false
+            }
+        }
+    }
+
+    /// Has the plugin process handle a synic config change.
+    pub fn hyperv_synic(
+        &self,
+        msr: u32,
+        control: u64,
+        evt_page: u64,
+        msg_page: u64,
+        vcpu: &Vcpu,
+    ) -> bool {
+        let mut wait_reason = VcpuResponse_Wait::new();
+        let hv = wait_reason.mut_hyperv_synic();
+        hv.msr = msr;
+        hv.control = control;
+        hv.evt_page = evt_page;
+        hv.msg_page = msg_page;
+        self.wait_reason.set(Some(wait_reason));
+        match self.handle_until_resume(vcpu) {
+            Ok(_resume_data) => true,
+            Err(e) if e.errno() == EPIPE => false,
+            Err(e) => {
+                error!("failed to process hyperv synic request: {}", e);
+                false
+            }
+        }
+    }
+
     fn handle_request(&self, vcpu: &Vcpu) -> SysResult<Option<Vec<u8>>> {
         let mut wait_reason = self.wait_reason.take();
         let mut do_recv = true;

@@ -274,11 +274,14 @@ pub const KVM_EXIT_EPR: ::std::os::raw::c_uint = 23;
 pub const KVM_EXIT_SYSTEM_EVENT: ::std::os::raw::c_uint = 24;
 pub const KVM_EXIT_S390_STSI: ::std::os::raw::c_uint = 25;
 pub const KVM_EXIT_IOAPIC_EOI: ::std::os::raw::c_uint = 26;
+pub const KVM_EXIT_HYPERV: ::std::os::raw::c_uint = 27;
 pub const KVM_INTERNAL_ERROR_EMULATION: ::std::os::raw::c_uint = 1;
 pub const KVM_INTERNAL_ERROR_SIMUL_EX: ::std::os::raw::c_uint = 2;
 pub const KVM_INTERNAL_ERROR_DELIVERY_EV: ::std::os::raw::c_uint = 3;
 pub const KVM_EXIT_IO_IN: ::std::os::raw::c_uint = 0;
 pub const KVM_EXIT_IO_OUT: ::std::os::raw::c_uint = 1;
+pub const KVM_EXIT_HYPERV_SYNIC: ::std::os::raw::c_uint = 1;
+pub const KVM_EXIT_HYPERV_HCALL: ::std::os::raw::c_uint = 2;
 pub const KVM_S390_RESET_POR: ::std::os::raw::c_uint = 1;
 pub const KVM_S390_RESET_CLEAR: ::std::os::raw::c_uint = 2;
 pub const KVM_S390_RESET_SUBSYSTEM: ::std::os::raw::c_uint = 4;
@@ -1694,6 +1697,7 @@ pub union kvm_run__bindgen_ty_1 {
     pub system_event: kvm_run__bindgen_ty_1__bindgen_ty_17,
     pub s390_stsi: kvm_run__bindgen_ty_1__bindgen_ty_18,
     pub eoi: kvm_run__bindgen_ty_1__bindgen_ty_19,
+    pub hyperv: kvm_hyperv_exit,
     pub padding: [::std::os::raw::c_char; 256usize],
     _bindgen_union_align: [u64; 32usize],
 }
@@ -2830,6 +2834,174 @@ fn bindgen_test_layout_kvm_run__bindgen_ty_1__bindgen_ty_19() {
             stringify!(kvm_run__bindgen_ty_1__bindgen_ty_19),
             "::",
             stringify!(vector)
+        )
+    );
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct kvm_hyperv_exit {
+    pub type_: __u32,
+    pub pad: __u32,
+    pub u: kvm_hyperv_exit__bindgen_ty_1,
+}
+#[test]
+fn bindgen_test_layout_kvm_hyperv_exit() {
+    assert_eq!(
+        ::std::mem::size_of::<kvm_hyperv_exit>(),
+        40usize,
+        concat!("Size of: ", stringify!(kvm_hyperv_exit))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<kvm_hyperv_exit>(),
+        8usize,
+        concat!("Alignment of ", stringify!(kvm_hyperv_exit))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<kvm_hyperv_exit>())).u as *const _ as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_hyperv_exit),
+            "::",
+            stringify!(u)
+        )
+    );
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union kvm_hyperv_exit__bindgen_ty_1 {
+    pub synic: kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1,
+    pub hcall: kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_2,
+}
+#[test]
+fn bindgen_test_layout_kvm_hyperv_exit__bindgen_ty_1() {
+    assert_eq!(
+        ::std::mem::size_of::<kvm_hyperv_exit__bindgen_ty_1>(),
+        32usize,
+        concat!("Size of: ", stringify!(kvm_hyperv_exit__bindgen_ty_1))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<kvm_hyperv_exit__bindgen_ty_1>(),
+        8usize,
+        concat!("Alignment of ", stringify!(kvm_hyperv_exit__bindgen_ty_1))
+    );
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1 {
+    pub msr: __u32,
+    pub pad: __u32,
+    pub control: __u64,
+    pub evt_page: __u64,
+    pub msg_page: __u64,
+}
+#[test]
+fn bindgen_test_layout_kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1() {
+    assert_eq!(
+        ::std::mem::size_of::<kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1>(),
+        32usize,
+        concat!(
+            "Size of: ",
+            stringify!(kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1)
+        )
+    );
+    assert_eq!(
+        ::std::mem::align_of::<kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1>(),
+        8usize,
+        concat!(
+            "Alignment of ",
+            stringify!(kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::std::ptr::null::<kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1>())).control
+                as *const _ as usize
+        },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1),
+            "::",
+            stringify!(control)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::std::ptr::null::<kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1>())).evt_page
+                as *const _ as usize
+        },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1),
+            "::",
+            stringify!(evt_page)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::std::ptr::null::<kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1>())).msg_page
+                as *const _ as usize
+        },
+        24usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_1),
+            "::",
+            stringify!(msg_page)
+        )
+    );
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_2 {
+    pub input: __u64,
+    pub result: __u64,
+    pub params: [__u64; 2],
+}
+#[test]
+fn bindgen_test_layout_kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_2() {
+    assert_eq!(
+        ::std::mem::size_of::<kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_2>(),
+        32usize,
+        concat!(
+            "Size of: ",
+            stringify!(kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_2)
+        )
+    );
+    assert_eq!(
+        ::std::mem::align_of::<kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_2>(),
+        8usize,
+        concat!(
+            "Alignment of ",
+            stringify!(kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_2)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::std::ptr::null::<kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_2>())).result
+                as *const _ as usize
+        },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_2),
+            "::",
+            stringify!(result)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::std::ptr::null::<kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_2>())).params
+                as *const _ as usize
+        },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(kvm_hyperv_exit__bindgen_ty_1__bindgen_ty_2),
+            "::",
+            stringify!(params)
         )
     );
 }

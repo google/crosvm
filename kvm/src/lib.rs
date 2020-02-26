@@ -1124,6 +1124,16 @@ pub enum VcpuExit {
     IoapicEoi {
         vector: u8,
     },
+    HypervSynic {
+        msr: u32,
+        control: u64,
+        evt_page: u64,
+        msg_page: u64,
+    },
+    HypervHcall {
+        input: u64,
+        params: [u64; 2],
+    },
     Unknown,
     Exception,
     Hypercall,
@@ -1243,10 +1253,10 @@ impl Vcpu {
         &self.guest_mem
     }
 
-    /// Sets the data received by an mmio or ioport read/in instruction.
+    /// Sets the data received by a mmio read, ioport in, or hypercall instruction.
     ///
-    /// This function should be called after `Vcpu::run` returns an `VcpuExit::IoIn` or
-    /// `Vcpu::MmioRead`.
+    /// This function should be called after `Vcpu::run` returns an `VcpuExit::IoIn`,
+    /// `VcpuExit::MmioRead`, or 'VcpuExit::HypervHcall`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn set_data(&self, data: &[u8]) -> Result<()> {
         // Safe because we know we mapped enough memory to hold the kvm_run struct because the
@@ -1286,6 +1296,20 @@ impl Vcpu {
                     return Err(Error::new(EINVAL));
                 }
                 mmio.data[..len].copy_from_slice(data);
+                Ok(())
+            }
+            KVM_EXIT_HYPERV => {
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let hyperv = unsafe { &mut run.__bindgen_anon_1.hyperv };
+                if hyperv.type_ != KVM_EXIT_HYPERV_HCALL {
+                    return Err(Error::new(EINVAL));
+                }
+                let hcall = unsafe { &mut hyperv.u.hcall };
+                if data.len() != std::mem::size_of::<u64>() {
+                    return Err(Error::new(EINVAL));
+                }
+                hcall.result.to_ne_bytes().copy_from_slice(data);
                 Ok(())
             }
             _ => Err(Error::new(EINVAL)),
@@ -1839,6 +1863,30 @@ impl RunnableVcpu {
                     // union field to use.
                     let vector = unsafe { run.__bindgen_anon_1.eoi.vector };
                     Ok(VcpuExit::IoapicEoi { vector })
+                }
+                KVM_EXIT_HYPERV => {
+                    // Safe because the exit_reason (which comes from the kernel) told us which
+                    // union field to use.
+                    let hyperv = unsafe { &run.__bindgen_anon_1.hyperv };
+                    match hyperv.type_ as u32 {
+                        KVM_EXIT_HYPERV_SYNIC => {
+                            let synic = unsafe { &hyperv.u.synic };
+                            Ok(VcpuExit::HypervSynic {
+                                msr: synic.msr,
+                                control: synic.control,
+                                evt_page: synic.evt_page,
+                                msg_page: synic.msg_page,
+                            })
+                        }
+                        KVM_EXIT_HYPERV_HCALL => {
+                            let hcall = unsafe { &hyperv.u.hcall };
+                            Ok(VcpuExit::HypervHcall {
+                                input: hcall.input,
+                                params: hcall.params,
+                            })
+                        }
+                        _ => Err(Error::new(EINVAL)),
+                    }
                 }
                 KVM_EXIT_UNKNOWN => Ok(VcpuExit::Unknown),
                 KVM_EXIT_EXCEPTION => Ok(VcpuExit::Exception),

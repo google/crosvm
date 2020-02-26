@@ -517,6 +517,21 @@ pub fn run_vcpus(
                                             &vcpu,
                                         );
                                     }
+                                    VcpuExit::HypervHcall { input, params } => {
+                                        let mut data = [0; 8];
+                                        vcpu_plugin.hyperv_call(input, params, &mut data, &vcpu);
+                                        // Setting data for hyperv call can not fail.
+                                        let _ = vcpu.set_data(&data);
+                                    }
+                                    VcpuExit::HypervSynic {
+                                        msr,
+                                        control,
+                                        evt_page,
+                                        msg_page,
+                                    } => {
+                                        vcpu_plugin
+                                            .hyperv_synic(msr, control, evt_page, msg_page, &vcpu);
+                                    }
                                     VcpuExit::Hlt => break,
                                     VcpuExit::Shutdown => break,
                                     VcpuExit::InternalError => {

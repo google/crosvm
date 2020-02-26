@@ -403,15 +403,30 @@ message VcpuResponse  {
             bytes debugregs = 8;
         }
 
-        // This type of wait reason is only generated after a PuaseVcpus request on this VCPU.
+        // This type of wait reason is only generated after a PauseVcpus request on this VCPU.
         message User {
             uint64 user = 1;
+        }
+
+        message HypervCall {
+            uint64 input = 1;
+            uint64 params0 = 2;
+            uint64 params1 = 3;
+        }
+
+        message HypervSynic {
+            uint32 msr = 1;
+            uint64 control = 2;
+            uint64 evt_page = 3;
+            uint64 msg_page = 4;
         }
 
         oneof exit {
             Init init = 1;
             Io io = 2;
             User user = 3;
+            HypervCall hyperv_call = 4;
+            HypervSynic hyperv_synic = 5;
         }
     }
 
