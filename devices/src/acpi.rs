@@ -31,7 +31,9 @@ impl ACPIPMResource {
 
 /// the ACPI PM register's base and length.
 pub const ACPIPM_RESOURCE_BASE: u64 = 0x600;
-pub const ACPIPM_RESOURCE_LEN: u64 = 8;
+pub const ACPIPM_RESOURCE_LEN: u8 = 8;
+pub const ACPIPM_RESOURCE_EVENTBLK_LEN: u8 = 4;
+pub const ACPIPM_RESOURCE_CONTROLBLK_LEN: u8 = 2;
 
 /// ACPI PM register value definations
 const PM1_STATUS: u16 = 0;

@@ -19,3 +19,4 @@ remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
+acpi_tables = {path = "../acpi_tables" }

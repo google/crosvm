@@ -761,6 +761,7 @@ dependencies = [
 name = "x86_64"
 version = "0.1.0"
 dependencies = [
+ "acpi_tables 0.1.0",
  "arch 0.1.0",
  "assertions 0.1.0",
  "data_model 0.1.0",

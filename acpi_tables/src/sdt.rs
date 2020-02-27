@@ -10,7 +10,7 @@ pub struct SDT {
     data: Vec<u8>,
 }
 
-const HEADER_LEN: u32 = 36;
+pub const HEADER_LEN: u32 = 36;
 const LENGTH_OFFSET: usize = 4;
 const CHECKSUM_OFFSET: usize = 9;
 

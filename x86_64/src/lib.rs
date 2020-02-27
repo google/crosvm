@@ -35,6 +35,7 @@ unsafe impl data_model::DataInit for mpspec::mpc_table {}
 unsafe impl data_model::DataInit for mpspec::mpc_lintsrc {}
 unsafe impl data_model::DataInit for mpspec::mpf_intel {}
 
+mod acpi;
 mod bzimage;
 mod cpuid;
 mod gdt;
@@ -178,6 +179,7 @@ const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
 const X86_64_SERIAL_2_4_IRQ: u32 = 3;
 const X86_64_IRQ_BASE: u32 = 5;
+const ACPI_HI_RSDP_WINDOW_BASE: u64 = 0x000E0000;
 
 fn configure_system(
     guest_mem: &GuestMemory,
@@ -252,6 +254,10 @@ fn configure_system(
     guest_mem
         .write_obj_at_addr(params, zero_page_addr)
         .map_err(|_| Error::ZeroPageSetup)?;
+
+    let rsdp_addr = acpi::create_acpi_tables(guest_mem, num_cpus, 9);
+    params.acpi_rsdp_addr = rsdp_addr.0;
+
     Ok(())
 }
 
@@ -750,7 +756,7 @@ impl X8664arch {
             .insert(
                 pm.clone(),
                 devices::acpi::ACPIPM_RESOURCE_BASE,
-                devices::acpi::ACPIPM_RESOURCE_LEN,
+                devices::acpi::ACPIPM_RESOURCE_LEN as u64,
                 false,
             )
             .unwrap();
