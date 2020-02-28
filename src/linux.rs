@@ -62,10 +62,10 @@ use vm_control::{
     VmRunMode,
 };
 
-use crate::{
-    Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption,
-    DEFAULT_TOUCH_DEVICE_HEIGHT, DEFAULT_TOUCH_DEVICE_WIDTH,
-};
+use crate::{Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption};
+
+#[cfg(feature = "gpu")]
+use crate::{DEFAULT_TOUCH_DEVICE_HEIGHT, DEFAULT_TOUCH_DEVICE_WIDTH};
 
 use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents, VmImage};
 
