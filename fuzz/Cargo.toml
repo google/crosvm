@@ -42,3 +42,6 @@ path = "virtqueue_fuzzer.rs"
 [[bin]]
 name = "crosvm_zimage_fuzzer"
 path = "zimage_fuzzer.rs"
+
+[patch.crates-io]
+sys_util = { path = "../sys_util" }
