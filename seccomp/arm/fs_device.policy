@@ -4,12 +4,15 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 
+fallocate: 1
 fchmodat: 1
 fchownat: 1
+fdatasync: 1
 fgetxattr: 1
 fsetxattr: 1
 fstatat64: 1
 fstatfs64: 1
+fsync: 1
 ftruncate64: 1
 getdents64: 1
 getegid32: 1
