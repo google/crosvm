@@ -6,8 +6,10 @@
 
 mod command_buffer;
 mod generated;
+mod vsnprintf;
 
 use std::cell::RefCell;
+use std::ffi::CString;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::marker::PhantomData;
@@ -22,7 +24,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use libc::close;
 
 use data_model::{VolatileMemory, VolatileSlice};
-use sys_util::{GuestAddress, GuestMemory};
+use sys_util::{debug, GuestAddress, GuestMemory};
 
 use crate::generated::p_defines::{
     PIPE_BIND_RENDER_TARGET, PIPE_BIND_SAMPLER_VIEW, PIPE_TEXTURE_1D, PIPE_TEXTURE_2D,
@@ -31,6 +33,7 @@ use crate::generated::p_format::PIPE_FORMAT_B8G8R8X8_UNORM;
 use crate::generated::virglrenderer::*;
 
 pub use crate::command_buffer::CommandBufferBuilder;
+pub use crate::vsnprintf::vsnprintf;
 
 /// Arguments used in `Renderer::create_resource`..
 pub type ResourceCreateArgs = virgl_renderer_resource_create_args;
@@ -244,6 +247,8 @@ impl Renderer {
         let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
             fence_state: Rc::clone(&fence_state),
         }));
+
+        unsafe { virgl_set_debug_callback(Some(Renderer::debug_callback)) };
 
         // Safe because a valid cookie and set of callbacks is used and the result is checked for
         // error.
@@ -467,6 +472,27 @@ impl Renderer {
         }
         #[cfg(not(feature = "virtio-gpu-next"))]
         Err(Error::Unsupported)
+    }
+
+    extern "C" fn debug_callback(
+        fmt: *const ::std::os::raw::c_char,
+        ap: *mut generated::virglrenderer::__va_list_tag,
+    ) {
+        let len: u32 = 256;
+        let mut c_str = CString::new(vec![' ' as u8; len as usize]).unwrap();
+        unsafe {
+            let mut varargs = vsnprintf::__va_list_tag {
+                gp_offset: (*ap).gp_offset,
+                fp_offset: (*ap).fp_offset,
+                overflow_arg_area: (*ap).overflow_arg_area,
+                reg_save_area: (*ap).reg_save_area,
+            };
+
+            let raw = c_str.into_raw();
+            vsnprintf(raw, len.into(), fmt, &mut varargs);
+            c_str = CString::from_raw(raw);
+        }
+        debug!("{}", c_str.to_string_lossy());
     }
 }
 
