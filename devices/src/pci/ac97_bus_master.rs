@@ -946,6 +946,7 @@ mod test {
     }
 
     #[test]
+    #[ignore] // flaky - see crbug.com/1058881
     fn start_playback() {
         const TIMEOUT: Duration = Duration::from_millis(500);
         const LVI_MASK: u8 = 0x1f; // Five bits for 32 total entries.
