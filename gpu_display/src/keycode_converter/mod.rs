@@ -23,7 +23,7 @@ impl KeycodeTranslator {
     /// Create a new KeycodeTranslator that translates from the `from_type` type to Linux keycodes.
     pub fn new(from_type: KeycodeTypes) -> KeycodeTranslator {
         let mut kcm: HashMap<u32, MapEntry> = HashMap::new();
-        for entry in KEYCODE_MAP.into_iter() {
+        for entry in KEYCODE_MAP.iter() {
             kcm.insert(
                 match from_type {
                     KeycodeTypes::XkbScancode => entry.xkb,

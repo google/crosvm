@@ -1751,7 +1751,7 @@ fn run_control(
         .map_err(Error::PollContextAdd)?;
 
     if let Some(gsi_relay) = &linux.gsi_relay {
-        for (gsi, evt) in gsi_relay.irqfd.into_iter().enumerate() {
+        for (gsi, evt) in gsi_relay.irqfd.iter().enumerate() {
             if let Some(evt) = evt {
                 poll_ctx
                     .add(evt, Token::IrqFd { gsi })
