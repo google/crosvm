@@ -149,37 +149,35 @@ impl SerialParameters {
     ) -> std::result::Result<Serial, Error> {
         let evt_fd = evt_fd.try_clone().map_err(Error::CloneEventFd)?;
         keep_fds.push(evt_fd.as_raw_fd());
+        let input: Option<Box<dyn io::Read + Send>> = if self.stdin {
+            keep_fds.push(stdin().as_raw_fd());
+            // This wrapper is used in place of the libstd native version because we don't want
+            // buffering for stdin.
+            struct StdinWrapper;
+            impl io::Read for StdinWrapper {
+                fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+                    read_raw_stdin(out).map_err(|e| e.into())
+                }
+            }
+            Some(Box::new(StdinWrapper))
+        } else {
+            None
+        };
         match self.type_ {
             SerialType::Stdout => {
                 keep_fds.push(stdout().as_raw_fd());
-                if self.stdin {
-                    keep_fds.push(stdin().as_raw_fd());
-                    // This wrapper is used in place of the libstd native version because we don't
-                    // want buffering for stdin.
-                    struct StdinWrapper;
-                    impl io::Read for StdinWrapper {
-                        fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
-                            read_raw_stdin(out).map_err(|e| e.into())
-                        }
-                    }
-                    Ok(Serial::new_in_out(
-                        evt_fd,
-                        Box::new(StdinWrapper),
-                        Box::new(stdout()),
-                    ))
-                } else {
-                    Ok(Serial::new_out(evt_fd, Box::new(stdout())))
-                }
+                Ok(Serial::new(evt_fd, input, Some(Box::new(stdout()))))
             }
-            SerialType::Sink => Ok(Serial::new_sink(evt_fd)),
+            SerialType::Sink => Ok(Serial::new(evt_fd, input, None)),
             SerialType::Syslog => {
                 syslog::push_fds(keep_fds);
-                Ok(Serial::new_out(
+                Ok(Serial::new(
                     evt_fd,
-                    Box::new(syslog::Syslogger::new(
+                    input,
+                    Some(Box::new(syslog::Syslogger::new(
                         syslog::Priority::Info,
                         syslog::Facility::Daemon,
-                    )),
+                    ))),
                 ))
             }
             SerialType::File => match &self.path {
@@ -187,7 +185,7 @@ impl SerialParameters {
                 Some(path) => {
                     let file = File::create(path.as_path()).map_err(Error::FileError)?;
                     keep_fds.push(file.as_raw_fd());
-                    Ok(Serial::new_out(evt_fd, Box::new(file)))
+                    Ok(Serial::new(evt_fd, input, Some(Box::new(file))))
                 }
             },
             SerialType::UnixSocket => Err(Error::Unimplemented(SerialType::UnixSocket)),
