@@ -395,7 +395,7 @@ impl PassthroughFs {
             libc::openat(
                 self.proc.as_raw_fd(),
                 pathname.as_ptr(),
-                (flags | libc::O_CLOEXEC) & (!libc::O_NOFOLLOW),
+                (flags | libc::O_CLOEXEC) & !(libc::O_NOFOLLOW | libc::O_DIRECT),
             )
         };
         if fd < 0 {
@@ -965,7 +965,8 @@ impl FileSystem for PassthroughFs {
             libc::openat(
                 data.file.as_raw_fd(),
                 name.as_ptr(),
-                flags as i32 | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+                (flags as i32 | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW)
+                    & !libc::O_DIRECT,
                 mode & !(umask & 0o777),
             )
         };
