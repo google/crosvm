@@ -29,7 +29,8 @@ use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
 use vm_control::VmIrqRequestSocket;
 
 pub use serial::{
-    add_serial_devices, get_serial_tty_string, SerialParameters, SerialType, SERIAL_ADDR,
+    add_serial_devices, get_serial_cmdline, set_default_serial_parameters, GetSerialCmdlineError,
+    SerialHardware, SerialParameters, SerialType, SERIAL_ADDR,
 };
 
 pub enum VmImage {
@@ -97,7 +98,7 @@ pub trait LinuxArch {
         components: VmComponents,
         split_irqchip: bool,
         ioapic_device_socket: VmIrqRequestSocket,
-        serial_parameters: &BTreeMap<u8, SerialParameters>,
+        serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         create_devices: F,
     ) -> Result<RunnableLinuxVm, Self::Error>
@@ -128,6 +129,8 @@ pub enum DeviceRegistrationError {
     EventFdClone(sys_util::Error),
     /// Could not create an event fd.
     EventFdCreate(sys_util::Error),
+    /// Missing a required serial device.
+    MissingRequiredSerialDevice(u8),
     /// Could not add a device to the mmio bus.
     MmioInsert(BusError),
     /// Failed to register ioevent with VM.
@@ -159,6 +162,7 @@ impl Display for DeviceRegistrationError {
             Cmdline(e) => write!(f, "unable to add device to kernel command line: {}", e),
             EventFdClone(e) => write!(f, "failed to clone eventfd: {}", e),
             EventFdCreate(e) => write!(f, "failed to create eventfd: {}", e),
+            MissingRequiredSerialDevice(n) => write!(f, "missing required serial device {}", n),
             MmioInsert(e) => write!(f, "failed to add to mmio bus: {}", e),
             RegisterIoevent(e) => write!(f, "failed to register ioevent to VM: {}", e),
             RegisterIrqfd(e) => write!(f, "failed to register irq eventfd to VM: {}", e),

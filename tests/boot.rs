@@ -13,7 +13,7 @@ use std::sync::Once;
 
 use libc::{cpu_set_t, sched_getaffinity};
 
-use arch::{SerialParameters, SerialType};
+use arch::{set_default_serial_parameters, SerialHardware, SerialParameters, SerialType};
 use crosvm::{linux, Config, Executable};
 use sys_util::syslog;
 
@@ -228,16 +228,19 @@ fn boot() {
     let mut c = Config::default();
     c.sandbox = false;
     c.serial_parameters.insert(
-        1,
+        (SerialHardware::Serial, 1),
         SerialParameters {
             type_: SerialType::Sink,
+            hardware: SerialHardware::Serial,
             path: None,
             input: None,
             num: 1,
             console: false,
+            earlycon: false,
             stdin: false,
         },
     );
+    set_default_serial_parameters(&mut c.serial_parameters);
     c.executable_path = Some(Executable::Kernel(kernel_path));
 
     let r = linux::run_config(c);

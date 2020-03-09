@@ -17,7 +17,7 @@ use std::string::String;
 use std::thread::sleep;
 use std::time::Duration;
 
-use arch::{Pstore, SerialParameters, SerialType};
+use arch::{set_default_serial_parameters, Pstore, SerialHardware, SerialParameters, SerialType};
 use audio_streams::StreamEffect;
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
@@ -301,10 +301,12 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
 fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
     let mut serial_setting = SerialParameters {
         type_: SerialType::Sink,
+        hardware: SerialHardware::Serial,
         path: None,
         input: None,
         num: 1,
         console: false,
+        earlycon: false,
         stdin: false,
     };
 
@@ -315,6 +317,11 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
 
     for (k, v) in opts {
         match k {
+            "hardware" => {
+                serial_setting.hardware = v
+                    .parse::<SerialHardware>()
+                    .map_err(|e| argument::Error::UnknownArgument(format!("{}", e)))?
+            }
             "type" => {
                 serial_setting.type_ = v
                     .parse::<SerialType>()
@@ -337,6 +344,14 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
                     argument::Error::Syntax(format!(
                         "serial device console is not parseable: {}",
                         e
+                    ))
+                })?
+            }
+            "earlycon" => {
+                serial_setting.earlycon = v.parse::<bool>().map_err(|e| {
+                    argument::Error::Syntax(format!(
+                        "serial device earlycon is not parseable: {}",
+                        e,
                     ))
                 })?
             }
@@ -549,10 +564,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "serial" => {
             let serial_params = parse_serial_options(value.unwrap())?;
             let num = serial_params.num;
-            if cfg.serial_parameters.contains_key(&num) {
+            let key = (serial_params.hardware, num);
+            if cfg.serial_parameters.contains_key(&key) {
                 return Err(argument::Error::TooManyArguments(format!(
-                    "serial num {}",
-                    num
+                    "serial hardware {} num {}",
+                    serial_params.hardware, num,
                 )));
             }
 
@@ -560,8 +576,29 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 for params in cfg.serial_parameters.values() {
                     if params.console {
                         return Err(argument::Error::TooManyArguments(format!(
-                            "serial device {} already set as console",
-                            params.num
+                            "{} device {} already set as console",
+                            params.hardware, params.num,
+                        )));
+                    }
+                }
+            }
+
+            if serial_params.earlycon {
+                // Only SerialHardware::Serial supports earlycon= currently.
+                match serial_params.hardware {
+                    SerialHardware::Serial => {}
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: serial_params.hardware.to_string().to_owned(),
+                            expected: String::from("earlycon not supported for hardware"),
+                        });
+                    }
+                }
+                for params in cfg.serial_parameters.values() {
+                    if params.earlycon {
+                        return Err(argument::Error::TooManyArguments(format!(
+                            "{} device {} already set as earlycon",
+                            params.hardware, params.num,
                         )));
                     }
                 }
@@ -570,13 +607,13 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             if serial_params.stdin {
                 if let Some(previous_stdin) = cfg.serial_parameters.values().find(|sp| sp.stdin) {
                     return Err(argument::Error::TooManyArguments(format!(
-                        "serial device {} already connected to standard input",
-                        previous_stdin.num
+                        "{} device {} already connected to standard input",
+                        previous_stdin.hardware, previous_stdin.num,
                     )));
                 }
             }
 
-            cfg.serial_parameters.insert(num, serial_params);
+            cfg.serial_parameters.insert(key, serial_params);
         }
         "syslog-tag" => {
             if cfg.syslog_tag.is_some() {
@@ -1231,6 +1268,7 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
             }
         }
     }
+    set_default_serial_parameters(&mut cfg.serial_parameters);
     Ok(())
 }
 
@@ -1281,14 +1319,16 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           capture - Enable audio capture
                           capture_effects - | separated effects to be enabled for recording. The only supported effect value now is EchoCancellation or aec."),
           Argument::value("serial",
-                          "type=TYPE,[num=NUM,path=PATH,input=PATH,console,stdin]",
+                          "type=TYPE,[hardware=HW,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
                           "Comma separated key=value pairs for setting up serial devices. Can be given more than once.
                           Possible key values:
                           type=(stdout,syslog,sink,file) - Where to route the serial device
+                          hardware=(serial,virtio-console) - Which type of serial hardware to emulate. Defaults to 8250 UART (serial).
                           num=(1,2,3,4) - Serial Device Number. If not provided, num will default to 1.
                           path=PATH - The path to the file to write to when type=file
                           input=PATH - The path to the file to read from when not stdin
                           console - Use this serial device as the guest console. Can only be given once. Will default to first serial port if not provided.
+                          earlycon - Use this serial device as the early console. Can only be given once.
                           stdin - Direct standard input to this serial device. Can only be given once. Will default to first serial port if not provided.
                           "),
           Argument::value("syslog-tag", "TAG", "When logging to syslog, use the provided tag."),

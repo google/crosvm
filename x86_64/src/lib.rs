@@ -54,7 +54,10 @@ use std::mem;
 use std::sync::Arc;
 
 use crate::bootparam::boot_params;
-use arch::{get_serial_tty_string, RunnableLinuxVm, SerialParameters, VmComponents, VmImage};
+use arch::{
+    get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, SerialHardware, SerialParameters,
+    VmComponents, VmImage,
+};
 use devices::split_irqchip_common::GsiRelay;
 use devices::{
     Ioapic, PciConfigIo, PciDevice, PciInterruptPin, Pic, IOAPIC_BASE_ADDRESS,
@@ -90,6 +93,7 @@ pub enum Error {
     CreateVm(sys_util::Error),
     E820Configuration,
     EnableSplitIrqchip(sys_util::Error),
+    GetSerialCmdline(GetSerialCmdlineError),
     KernelOffsetPastEnd,
     LoadBios(io::Error),
     LoadBzImage(bzimage::Error),
@@ -139,6 +143,7 @@ impl Display for Error {
             CreateVm(e) => write!(f, "failed to create VM: {}", e),
             E820Configuration => write!(f, "invalid e820 setup params"),
             EnableSplitIrqchip(e) => write!(f, "failed to enable split irqchip: {}", e),
+            GetSerialCmdline(e) => write!(f, "failed to get serial cmdline: {}", e),
             KernelOffsetPastEnd => write!(f, "the kernel extends past the end of RAM"),
             LoadBios(e) => write!(f, "error loading bios: {}", e),
             LoadBzImage(e) => write!(f, "error loading kernel bzImage: {}", e),
@@ -331,7 +336,7 @@ impl arch::LinuxArch for X8664arch {
         mut components: VmComponents,
         split_irqchip: bool,
         ioapic_device_socket: VmIrqRequestSocket,
-        serial_parameters: &BTreeMap<u8, SerialParameters>,
+        serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         create_devices: F,
     ) -> Result<RunnableLinuxVm>
@@ -421,7 +426,7 @@ impl arch::LinuxArch for X8664arch {
             suspend_evt.try_clone().map_err(Error::CloneEventFd)?,
         )?;
 
-        let stdio_serial_num = Self::setup_serial_devices(
+        Self::setup_serial_devices(
             &mut vm,
             &mut io_bus,
             &mut gsi_relay,
@@ -459,7 +464,11 @@ impl arch::LinuxArch for X8664arch {
         match components.vm_image {
             VmImage::Bios(ref mut bios) => Self::load_bios(&mem, bios)?,
             VmImage::Kernel(ref mut kernel_image) => {
-                let mut cmdline = Self::get_base_linux_cmdline(stdio_serial_num);
+                let mut cmdline = Self::get_base_linux_cmdline();
+
+                get_serial_cmdline(&mut cmdline, serial_parameters, "io")
+                    .map_err(Error::GetSerialCmdline)?;
+
                 for param in components.extra_kernel_params {
                     cmdline.insert_str(&param).map_err(Error::Cmdline)?;
                 }
@@ -719,12 +728,8 @@ impl X8664arch {
     }
 
     /// This returns a minimal kernel command for this architecture
-    fn get_base_linux_cmdline(stdio_serial_num: Option<u8>) -> kernel_cmdline::Cmdline {
+    fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
-        if let Some(stdio_serial_num) = stdio_serial_num {
-            let tty_string = get_serial_tty_string(stdio_serial_num);
-            cmdline.insert("console", &tty_string).unwrap();
-        }
         cmdline.insert_str("pci=noacpi reboot=k panic=-1").unwrap();
 
         cmdline
@@ -848,13 +853,13 @@ impl X8664arch {
         vm: &mut Vm,
         io_bus: &mut devices::Bus,
         gsi_relay: &mut Option<GsiRelay>,
-        serial_parameters: &BTreeMap<u8, SerialParameters>,
+        serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
-    ) -> Result<Option<u8>> {
+    ) -> Result<()> {
         let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
         let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
 
-        let stdio_serial_num = arch::add_serial_devices(
+        arch::add_serial_devices(
             io_bus,
             &com_evt_1_3,
             &com_evt_2_4,
@@ -873,7 +878,7 @@ impl X8664arch {
                 .map_err(Error::RegisterIrqfd)?;
         }
 
-        Ok(stdio_serial_num)
+        Ok(())
     }
 
     /// Configures the vcpu and should be called once per vcpu from the vcpu's thread.

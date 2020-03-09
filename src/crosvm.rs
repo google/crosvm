@@ -16,7 +16,7 @@ use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use arch::{Pstore, SerialParameters};
+use arch::{Pstore, SerialHardware, SerialParameters};
 use devices::virtio::fs::passthrough;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
@@ -193,7 +193,7 @@ pub struct Config {
     pub display_window_keyboard: bool,
     pub display_window_mouse: bool,
     pub ac97_parameters: Vec<Ac97Parameters>,
-    pub serial_parameters: BTreeMap<u8, SerialParameters>,
+    pub serial_parameters: BTreeMap<(SerialHardware, u8), SerialParameters>,
     pub syslog_tag: Option<String>,
     pub virtio_single_touch: Option<TouchDeviceOption>,
     pub virtio_trackpad: Option<TouchDeviceOption>,

@@ -29,7 +29,7 @@ use libc::{self, c_int, gid_t, uid_t};
 
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
-use devices::virtio::{self, VirtioDevice};
+use devices::virtio::{self, Console, VirtioDevice};
 use devices::{
     self, Ac97Backend, Ac97Dev, HostBackendDeviceProvider, PciDevice, VfioContainer, VfioDevice,
     VfioPciDevice, VirtioPciDevice, XhciController,
@@ -61,7 +61,10 @@ use vm_control::{
 };
 
 use crate::{Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption};
-use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents, VmImage};
+use arch::{
+    self, LinuxArch, RunnableLinuxVm, SerialHardware, SerialParameters, VirtioDeviceStub,
+    VmComponents, VmImage,
+};
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use aarch64::AArch64 as Arch;
@@ -82,6 +85,7 @@ pub enum Error {
     ChownTpmStorage(sys_util::Error),
     CloneEventFd(sys_util::Error),
     CreateAc97(devices::PciDeviceError),
+    CreateConsole(arch::serial::Error),
     CreateDiskError(disk::Error),
     CreateEventFd(sys_util::Error),
     CreatePollContext(sys_util::Error),
@@ -166,6 +170,7 @@ impl Display for Error {
             ChownTpmStorage(e) => write!(f, "failed to chown tpm storage: {}", e),
             CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
             CreateAc97(e) => write!(f, "failed to create ac97 device: {}", e),
+            CreateConsole(e) => write!(f, "failed to create console device: {}", e),
             CreateDiskError(e) => write!(f, "failed to create virtual disk: {}", e),
             CreateEventFd(e) => write!(f, "failed to create eventfd: {}", e),
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
@@ -963,6 +968,19 @@ fn create_pmem_device(
     })
 }
 
+fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult {
+    let mut keep_fds = Vec::new();
+    let evt = EventFd::new().map_err(Error::CreateEventFd)?;
+    let dev = param
+        .create_serial_device::<Console>(&evt, &mut keep_fds)
+        .map_err(Error::CreateConsole)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: simple_jail(&cfg, "serial")?, // TODO(dverkamp): use a separate policy for console?
+    })
+}
+
 // gpu_device_socket is not used when GPU support is disabled.
 #[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
 fn create_virtio_devices(
@@ -978,6 +996,15 @@ fn create_virtio_devices(
     pmem_device_sockets: &mut Vec<VmMsyncRequestSocket>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
+
+    for (_, param) in cfg
+        .serial_parameters
+        .iter()
+        .filter(|(_k, v)| v.hardware == SerialHardware::VirtioConsole)
+    {
+        let dev = create_console_device(cfg, param)?;
+        devs.push(dev);
+    }
 
     for disk in &cfg.disks {
         let disk_device_socket = disk_device_sockets.remove(0);

@@ -22,6 +22,7 @@ use crate::DeviceRegistrationError;
 pub enum Error {
     CloneEventFd(sys_util::Error),
     FileError(std::io::Error),
+    InvalidSerialHardware(String),
     InvalidSerialType(String),
     PathRequired,
     Unimplemented(SerialType),
@@ -34,6 +35,7 @@ impl Display for Error {
         match self {
             CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
             FileError(e) => write!(f, "unable to open/create file: {}", e),
+            InvalidSerialHardware(e) => write!(f, "invalid serial hardware: {}", e),
             InvalidSerialType(e) => write!(f, "invalid serial type: {}", e),
             PathRequired => write!(f, "serial device type file requires a path"),
             Unimplemented(e) => write!(f, "serial device type {} not implemented", e.to_string()),
@@ -42,7 +44,7 @@ impl Display for Error {
 }
 
 /// Enum for possible type of serial devices
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum SerialType {
     File,
     Stdout,
@@ -79,14 +81,45 @@ impl FromStr for SerialType {
     }
 }
 
+/// Serial device hardware types
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SerialHardware {
+    Serial,        // Standard PC-style (8250/16550 compatible) UART
+    VirtioConsole, // virtio-console device
+}
+
+impl Display for SerialHardware {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match &self {
+            SerialHardware::Serial => "serial".to_string(),
+            SerialHardware::VirtioConsole => "virtio-console".to_string(),
+        };
+
+        write!(f, "{}", s)
+    }
+}
+
+impl FromStr for SerialHardware {
+    type Err = Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "serial" => Ok(SerialHardware::Serial),
+            "virtio-console" => Ok(SerialHardware::VirtioConsole),
+            _ => Err(Error::InvalidSerialHardware(s.to_string())),
+        }
+    }
+}
+
 /// Holds the parameters for a serial device
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SerialParameters {
     pub type_: SerialType,
+    pub hardware: SerialHardware,
     pub path: Option<PathBuf>,
     pub input: Option<PathBuf>,
     pub num: u8,
     pub console: bool,
+    pub earlycon: bool,
     pub stdin: bool,
 }
 
@@ -149,60 +182,59 @@ impl SerialParameters {
     }
 }
 
-// Structure for holding the default configuration of the serial devices.
-const DEFAULT_SERIAL_PARAMS: [SerialParameters; 4] = [
-    SerialParameters {
-        type_: SerialType::Stdout,
-        path: None,
-        input: None,
-        num: 1,
-        console: true,
-        stdin: true,
-    },
-    SerialParameters {
-        type_: SerialType::Sink,
-        path: None,
-        input: None,
-        num: 2,
-        console: false,
-        stdin: false,
-    },
-    SerialParameters {
-        type_: SerialType::Sink,
-        path: None,
-        input: None,
-        num: 3,
-        console: false,
-        stdin: false,
-    },
-    SerialParameters {
-        type_: SerialType::Sink,
-        path: None,
-        input: None,
-        num: 4,
-        console: false,
-        stdin: false,
-    },
-];
+/// Add the default serial parameters for serial ports that have not already been specified.
+///
+/// This ensures that `serial_parameters` will contain parameters for each of the four PC-style
+/// serial ports (COM1-COM4).
+///
+/// It also sets the first `SerialHardware::Serial` to be the default console device if no other
+/// serial parameters exist with console=true and the first serial device has not already been
+/// configured explicitly.
+pub fn set_default_serial_parameters(
+    serial_parameters: &mut BTreeMap<(SerialHardware, u8), SerialParameters>,
+) {
+    // If no console device exists and the first serial port has not been specified,
+    // set the first serial port as a stdout+stdin console.
+    let default_console = (SerialHardware::Serial, 1);
+    if !serial_parameters.iter().any(|(_, p)| p.console) {
+        serial_parameters
+            .entry(default_console)
+            .or_insert(SerialParameters {
+                type_: SerialType::Stdout,
+                hardware: SerialHardware::Serial,
+                path: None,
+                input: None,
+                num: 1,
+                console: true,
+                earlycon: false,
+                stdin: true,
+            });
+    }
+
+    // Ensure all four of the COM ports exist.
+    // If one of these four SerialHardware::Serial port was not configured by the user,
+    // set it up as a sink.
+    for num in 1..=4 {
+        let key = (SerialHardware::Serial, num);
+        serial_parameters.entry(key).or_insert(SerialParameters {
+            type_: SerialType::Sink,
+            hardware: SerialHardware::Serial,
+            path: None,
+            input: None,
+            num,
+            console: false,
+            earlycon: false,
+            stdin: false,
+        });
+    }
+}
 
 /// Address for Serial ports in x86
 pub const SERIAL_ADDR: [u64; 4] = [0x3f8, 0x2f8, 0x3e8, 0x2e8];
 
-/// String representations of serial devices
-const SERIAL_TTY_STRINGS: [&str; 4] = ["ttyS0", "ttyS1", "ttyS2", "ttyS3"];
-
-/// Helper function to get the tty string of a serial device based on the port number. Will default
-///  to ttyS0 if an invalid number is given.
-pub fn get_serial_tty_string(stdio_serial_num: u8) -> String {
-    stdio_serial_num
-        .checked_sub(1)
-        .and_then(|i| SERIAL_TTY_STRINGS.get(i as usize))
-        .unwrap_or(&SERIAL_TTY_STRINGS[0])
-        .to_string()
-}
-
-/// Adds serial devices to the provided bus based on the serial parameters given. Returns the serial
-///  port number and serial device to be used for stdout if defined.
+/// Adds serial devices to the provided bus based on the serial parameters given.
+///
+/// Only devices with hardware type `SerialHardware::Serial` are added by this function.
 ///
 /// # Arguments
 ///
@@ -210,17 +242,15 @@ pub fn get_serial_tty_string(stdio_serial_num: u8) -> String {
 /// * `com_evt_1_3` - eventfd for com1 and com3
 /// * `com_evt_1_4` - eventfd for com2 and com4
 /// * `io_bus` - Bus to add the devices to
-/// * `serial_parameters` - definitions of serial parameter configuationis. If a setting is not
-///     provided for a port, then it will use the default configuation.
+/// * `serial_parameters` - definitions of serial parameter configurations.
+///   All four of the traditional PC-style serial ports (COM1-COM4) must be specified.
 pub fn add_serial_devices(
     io_bus: &mut Bus,
     com_evt_1_3: &EventFd,
     com_evt_2_4: &EventFd,
-    serial_parameters: &BTreeMap<u8, SerialParameters>,
+    serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
     serial_jail: Option<Minijail>,
-) -> Result<Option<u8>, DeviceRegistrationError> {
-    let mut stdio_serial_num = None;
-
+) -> Result<(), DeviceRegistrationError> {
     for x in 0..=3 {
         let com_evt = match x {
             0 => com_evt_1_3,
@@ -231,12 +261,8 @@ pub fn add_serial_devices(
         };
 
         let param = serial_parameters
-            .get(&(x + 1))
-            .unwrap_or(&DEFAULT_SERIAL_PARAMS[x as usize]);
-
-        if param.console {
-            stdio_serial_num = Some(x + 1);
-        }
+            .get(&(SerialHardware::Serial, x + 1))
+            .ok_or(DeviceRegistrationError::MissingRequiredSerialDevice(x + 1))?;
 
         let mut preserved_fds = Vec::new();
         let com = param
@@ -262,5 +288,194 @@ pub fn add_serial_devices(
         }
     }
 
-    Ok(stdio_serial_num)
+    Ok(())
+}
+
+#[derive(Debug)]
+pub enum GetSerialCmdlineError {
+    KernelCmdline(kernel_cmdline::Error),
+    UnsupportedEarlyconHardware(SerialHardware),
+}
+
+impl Display for GetSerialCmdlineError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::GetSerialCmdlineError::*;
+
+        match self {
+            KernelCmdline(e) => write!(f, "error appending to cmdline: {}", e),
+            UnsupportedEarlyconHardware(hw) => {
+                write!(f, "hardware {} not supported as earlycon", hw)
+            }
+        }
+    }
+}
+
+pub type GetSerialCmdlineResult<T> = std::result::Result<T, GetSerialCmdlineError>;
+
+/// Add serial options to the provided `cmdline` based on `serial_parameters`.
+/// `serial_io_type` should be "io" if the platform uses x86-style I/O ports for serial devices
+/// or "mmio" if the serial ports are memory mapped.
+pub fn get_serial_cmdline(
+    cmdline: &mut kernel_cmdline::Cmdline,
+    serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
+    serial_io_type: &str,
+) -> GetSerialCmdlineResult<()> {
+    match serial_parameters
+        .iter()
+        .filter(|(_, p)| p.console)
+        .map(|(k, _)| k)
+        .next()
+    {
+        Some((SerialHardware::Serial, num)) => {
+            cmdline
+                .insert("console", &format!("ttyS{}", num - 1))
+                .map_err(GetSerialCmdlineError::KernelCmdline)?;
+        }
+        Some((SerialHardware::VirtioConsole, num)) => {
+            cmdline
+                .insert("console", &format!("hvc{}", num - 1))
+                .map_err(GetSerialCmdlineError::KernelCmdline)?;
+        }
+        None => {}
+    }
+
+    match serial_parameters
+        .iter()
+        .filter(|(_, p)| p.earlycon)
+        .map(|(k, _)| k)
+        .next()
+    {
+        Some((SerialHardware::Serial, num)) => {
+            if let Some(addr) = SERIAL_ADDR.get(*num as usize - 1) {
+                cmdline
+                    .insert(
+                        "earlycon",
+                        &format!("uart8250,{},0x{:x}", serial_io_type, addr),
+                    )
+                    .map_err(GetSerialCmdlineError::KernelCmdline)?;
+            }
+        }
+        Some((hw, _num)) => {
+            return Err(GetSerialCmdlineError::UnsupportedEarlyconHardware(*hw));
+        }
+        None => {}
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kernel_cmdline::Cmdline;
+
+    #[test]
+    fn get_serial_cmdline_default() {
+        let mut cmdline = Cmdline::new(4096);
+        let mut serial_parameters = BTreeMap::new();
+
+        set_default_serial_parameters(&mut serial_parameters);
+        get_serial_cmdline(&mut cmdline, &serial_parameters, "io")
+            .expect("get_serial_cmdline failed");
+
+        let cmdline_str = cmdline.as_str();
+        assert!(cmdline_str.contains("console=ttyS0"));
+    }
+
+    #[test]
+    fn get_serial_cmdline_virtio_console() {
+        let mut cmdline = Cmdline::new(4096);
+        let mut serial_parameters = BTreeMap::new();
+
+        // Add a virtio-console device with console=true.
+        serial_parameters.insert(
+            (SerialHardware::VirtioConsole, 1),
+            SerialParameters {
+                type_: SerialType::Stdout,
+                hardware: SerialHardware::VirtioConsole,
+                path: None,
+                input: None,
+                num: 1,
+                console: true,
+                earlycon: false,
+                stdin: true,
+            },
+        );
+
+        set_default_serial_parameters(&mut serial_parameters);
+        get_serial_cmdline(&mut cmdline, &serial_parameters, "io")
+            .expect("get_serial_cmdline failed");
+
+        let cmdline_str = cmdline.as_str();
+        assert!(cmdline_str.contains("console=hvc0"));
+    }
+
+    #[test]
+    fn get_serial_cmdline_virtio_console_serial_earlycon() {
+        let mut cmdline = Cmdline::new(4096);
+        let mut serial_parameters = BTreeMap::new();
+
+        // Add a virtio-console device with console=true.
+        serial_parameters.insert(
+            (SerialHardware::VirtioConsole, 1),
+            SerialParameters {
+                type_: SerialType::Stdout,
+                hardware: SerialHardware::VirtioConsole,
+                path: None,
+                input: None,
+                num: 1,
+                console: true,
+                earlycon: false,
+                stdin: true,
+            },
+        );
+
+        // Override the default COM1 with an earlycon device.
+        serial_parameters.insert(
+            (SerialHardware::Serial, 1),
+            SerialParameters {
+                type_: SerialType::Stdout,
+                hardware: SerialHardware::Serial,
+                path: None,
+                input: None,
+                num: 1,
+                console: false,
+                earlycon: true,
+                stdin: false,
+            },
+        );
+
+        set_default_serial_parameters(&mut serial_parameters);
+        get_serial_cmdline(&mut cmdline, &serial_parameters, "io")
+            .expect("get_serial_cmdline failed");
+
+        let cmdline_str = cmdline.as_str();
+        assert!(cmdline_str.contains("console=hvc0"));
+        assert!(cmdline_str.contains("earlycon=uart8250,io,0x3f8"));
+    }
+
+    #[test]
+    fn get_serial_cmdline_virtio_console_invalid_earlycon() {
+        let mut cmdline = Cmdline::new(4096);
+        let mut serial_parameters = BTreeMap::new();
+
+        // Try to add a virtio-console device with earlycon=true (unsupported).
+        serial_parameters.insert(
+            (SerialHardware::VirtioConsole, 1),
+            SerialParameters {
+                type_: SerialType::Stdout,
+                hardware: SerialHardware::VirtioConsole,
+                path: None,
+                input: None,
+                num: 1,
+                console: false,
+                earlycon: true,
+                stdin: true,
+            },
+        );
+
+        set_default_serial_parameters(&mut serial_parameters);
+        get_serial_cmdline(&mut cmdline, &serial_parameters, "io")
+            .expect_err("get_serial_cmdline succeeded");
+    }
 }
