@@ -216,8 +216,8 @@ pub struct Reader<'a> {
     buffer: DescriptorChainConsumer<'a>,
 }
 
-// An iterator over `DataInit` objects on readable descriptors in the descriptor chain.
-struct ReaderIterator<'a, T: DataInit> {
+/// An iterator over `DataInit` objects on readable descriptors in the descriptor chain.
+pub struct ReaderIterator<'a, T: DataInit> {
     reader: &'a mut Reader<'a>,
     phantom: PhantomData<T>,
 }
@@ -283,10 +283,17 @@ impl<'a> Reader<'a> {
     /// them as a collection. Returns an error if the size of the remaining data is indivisible by
     /// the size of an object of type `T`.
     pub fn collect<C: FromIterator<io::Result<T>>, T: DataInit>(&'a mut self) -> C {
-        C::from_iter(ReaderIterator {
+        C::from_iter(self.iter())
+    }
+
+    /// Creates an iterator for sequentially reading `DataInit` objects from the `Reader`. Unlike
+    /// `collect`, this doesn't consume all the remaining data in the `Reader` and doesn't require
+    /// the objects to be stored in a separate collection.
+    pub fn iter<T: DataInit>(&'a mut self) -> ReaderIterator<'a, T> {
+        ReaderIterator {
             reader: self,
             phantom: PhantomData,
-        })
+        }
     }
 
     /// Reads data from the descriptor chain buffer into a file descriptor.
