@@ -189,7 +189,15 @@ const CMDLINE_OFFSET: u64 = 0x20000;
 const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
 const X86_64_SERIAL_2_4_IRQ: u32 = 3;
-const X86_64_IRQ_BASE: u32 = 5;
+// X86_64_SCI_IRQ is used to fill the ACPI FACP table.
+// The sci_irq number is better to be a legacy
+// IRQ number which is less than 16(actually most of the
+// platforms have fixed IRQ number 9). So we can
+// reserve the IRQ number 5 for SCI and let the
+// the other devices starts from next.
+pub const X86_64_SCI_IRQ: u32 = 5;
+// So the IRQ_BASE start from SCI_IRQ + 1
+pub const X86_64_IRQ_BASE: u32 = X86_64_SCI_IRQ + 1;
 const ACPI_HI_RSDP_WINDOW_BASE: u64 = 0x000E0000;
 
 fn configure_system(
@@ -203,7 +211,6 @@ fn configure_system(
     setup_data: Option<GuestAddress>,
     initrd: Option<(GuestAddress, usize)>,
     mut params: boot_params,
-    sci_irq: u32,
 ) -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
@@ -267,7 +274,7 @@ fn configure_system(
         .write_obj_at_addr(params, zero_page_addr)
         .map_err(|_| Error::ZeroPageSetup)?;
 
-    let rsdp_addr = acpi::create_acpi_tables(guest_mem, num_cpus, sci_irq);
+    let rsdp_addr = acpi::create_acpi_tables(guest_mem, num_cpus, X86_64_SCI_IRQ);
     params.acpi_rsdp_addr = rsdp_addr.0;
 
     Ok(())
@@ -404,8 +411,6 @@ impl arch::LinuxArch for X8664arch {
 
         // Event used to notify crosvm that guest OS is trying to suspend.
         let suspend_evt = EventFd::new().map_err(Error::CreateEventFd)?;
-        // allocate sci_irq to fill the ACPI FACP table
-        let sci_irq = resources.allocate_irq().ok_or(Error::AllocateIrq)?;
 
         let mut io_bus = Self::setup_io_bus(
             &mut vm,
@@ -492,7 +497,6 @@ impl arch::LinuxArch for X8664arch {
                     components.android_fstab,
                     kernel_end,
                     params,
-                    sci_irq,
                 )?;
             }
         }
@@ -579,7 +583,6 @@ impl X8664arch {
         android_fstab: Option<File>,
         kernel_end: u64,
         params: boot_params,
-        sci_irq: u32,
     ) -> Result<()> {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)
             .map_err(Error::LoadCmdline)?;
@@ -641,7 +644,6 @@ impl X8664arch {
             setup_data,
             initrd,
             params,
-            sci_irq,
         )?;
         Ok(())
     }
@@ -723,7 +725,7 @@ impl X8664arch {
             let tty_string = get_serial_tty_string(stdio_serial_num);
             cmdline.insert("console", &tty_string).unwrap();
         }
-        cmdline.insert_str("acpi=off reboot=k panic=-1").unwrap();
+        cmdline.insert_str("pci=noacpi reboot=k panic=-1").unwrap();
 
         cmdline
     }

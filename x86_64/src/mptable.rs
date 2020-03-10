@@ -231,8 +231,9 @@ pub fn setup_mptable(
         base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
     }
+    let sci_irq = super::X86_64_SCI_IRQ as u8;
     // Per kvm_setup_default_irq_routing() in kernel
-    for i in 0..5 {
+    for i in 0..sci_irq {
         let size = mem::size_of::<mpc_intsrc>();
         let mut mpc_intsrc = mpc_intsrc::default();
         mpc_intsrc.type_ = MP_INTSRC as u8;
@@ -247,6 +248,25 @@ pub fn setup_mptable(
         base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
     }
+    // Insert SCI interrupt before PCI interrupts. Set the SCI interrupt
+    // to be the default trigger/polarity of PCI bus, which is level/low.
+    // This setting can be changed in future if necessary.
+    {
+        let size = mem::size_of::<mpc_intsrc>();
+        let mut mpc_intsrc = mpc_intsrc::default();
+        mpc_intsrc.type_ = MP_INTSRC as u8;
+        mpc_intsrc.irqtype = mp_irq_source_types_mp_INT as u8;
+        mpc_intsrc.irqflag = (MP_IRQDIR_HIGH | MP_LEVEL_TRIGGER) as u16;
+        mpc_intsrc.srcbus = ISA_BUS_ID;
+        mpc_intsrc.srcbusirq = sci_irq;
+        mpc_intsrc.dstapic = ioapicid;
+        mpc_intsrc.dstirq = sci_irq;
+        mem.write_obj_at_addr(mpc_intsrc, base_mp)
+            .map_err(|_| Error::WriteMpcIntsrc)?;
+        base_mp = base_mp.unchecked_add(size as u64);
+        checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
+    }
+    let pci_irq_base = super::X86_64_IRQ_BASE as u8;
     // Insert PCI interrupts after platform IRQs.
     for (i, pci_irq) in pci_irqs.iter().enumerate() {
         let size = mem::size_of::<mpc_intsrc>();
@@ -257,14 +277,14 @@ pub fn setup_mptable(
         mpc_intsrc.srcbus = PCI_BUS_ID;
         mpc_intsrc.srcbusirq = (pci_irq.0 as u8 + 1) << 2 | pci_irq.1.to_mask() as u8;
         mpc_intsrc.dstapic = ioapicid;
-        mpc_intsrc.dstirq = 5 + i as u8;
+        mpc_intsrc.dstirq = pci_irq_base + i as u8;
         mem.write_obj_at_addr(mpc_intsrc, base_mp)
             .map_err(|_| Error::WriteMpcIntsrc)?;
         base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
     }
     // Finally insert ISA interrupts.
-    for i in 5 + pci_irqs.len()..16 {
+    for i in pci_irq_base + pci_irqs.len() as u8..16 {
         let size = mem::size_of::<mpc_intsrc>();
         let mut mpc_intsrc = mpc_intsrc::default();
         mpc_intsrc.type_ = MP_INTSRC as u8;

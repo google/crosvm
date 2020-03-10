@@ -38,6 +38,7 @@ pub const MPC_APIC_USABLE: ::std::os::raw::c_uint = 1;
 pub const MP_IRQDIR_DEFAULT: ::std::os::raw::c_uint = 0;
 pub const MP_IRQDIR_HIGH: ::std::os::raw::c_uint = 1;
 pub const MP_IRQDIR_LOW: ::std::os::raw::c_uint = 3;
+pub const MP_LEVEL_TRIGGER: ::std::os::raw::c_uint = 0xc;
 pub const MP_APIC_ALL: ::std::os::raw::c_uint = 255;
 pub const MPC_OEM_SIGNATURE: &'static [u8; 5usize] = b"_OEM\x00";
 #[repr(C)]
