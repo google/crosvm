@@ -168,6 +168,48 @@ impl MemoryMapping {
         MemoryMapping::from_fd_offset_protection(fd, size, offset, Protection::read_write())
     }
 
+    /// Maps `size` bytes starting at `offset` from the given `fd` as read/write, and requests
+    /// that the pages are pre-populated.
+    /// # Arguments
+    /// * `fd` - File descriptor to mmap from.
+    /// * `size` - Size of memory region in bytes.
+    /// * `offset` - Offset in bytes from the beginning of `fd` to start the mmap.
+    pub fn from_fd_offset_populate(
+        fd: &dyn AsRawFd,
+        size: usize,
+        offset: usize,
+    ) -> Result<MemoryMapping> {
+        MemoryMapping::from_fd_offset_flags(
+            fd,
+            size,
+            offset,
+            libc::MAP_SHARED | libc::MAP_POPULATE,
+            Protection::read_write(),
+        )
+    }
+
+    /// Maps the `size` bytes starting at `offset` bytes of the given `fd` as read/write.
+    ///
+    /// # Arguments
+    /// * `fd` - File descriptor to mmap from.
+    /// * `size` - Size of memory region in bytes.
+    /// * `offset` - Offset in bytes from the beginning of `fd` to start the mmap.
+    /// * `flags` - flags passed directly to mmap.
+    /// * `prot` - Protection (e.g. readable/writable) of the memory region.
+    fn from_fd_offset_flags(
+        fd: &dyn AsRawFd,
+        size: usize,
+        offset: usize,
+        flags: c_int,
+        prot: Protection,
+    ) -> Result<MemoryMapping> {
+        unsafe {
+            // This is safe because we are creating an anonymous mapping in a place not already used
+            // by any other area in this process.
+            MemoryMapping::try_mmap(None, size, prot.into(), flags, Some((fd, offset)))
+        }
+    }
+
     /// Maps the `size` bytes starting at `offset` bytes of the given `fd` as read/write.
     ///
     /// # Arguments
@@ -181,17 +223,7 @@ impl MemoryMapping {
         offset: usize,
         prot: Protection,
     ) -> Result<MemoryMapping> {
-        // This is safe because we are creating an anonymous mapping in a place not already used by
-        // any other area in this process.
-        unsafe {
-            MemoryMapping::try_mmap(
-                None,
-                size,
-                prot.into(),
-                libc::MAP_SHARED,
-                Some((fd, offset)),
-            )
-        }
+        MemoryMapping::from_fd_offset_flags(fd, size, offset, libc::MAP_SHARED, prot)
     }
 
     /// Creates an anonymous shared mapping of `size` bytes with `prot` protection.
