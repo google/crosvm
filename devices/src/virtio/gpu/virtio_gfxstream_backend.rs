@@ -10,7 +10,6 @@
 use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
-use std::fs::File;
 use std::mem::transmute;
 use std::os::raw::{c_char, c_int, c_uchar, c_uint, c_void};
 use std::panic;
@@ -27,6 +26,7 @@ use vm_control::VmMemoryControlRequestSocket;
 use super::protocol::GpuResponse;
 pub use super::virtio_backend::{VirtioBackend, VirtioResource};
 use crate::virtio::gpu::{Backend, DisplayBackend, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_VIRGL};
+use crate::virtio::resource_bridge::ResourceResponse;
 
 // C definitions related to gfxstream
 // In gfxstream, only write_fence is used
@@ -340,8 +340,8 @@ impl Backend for VirtioGfxStreamBackend {
     }
 
     /// If supported, export the resource with the given id to a file.
-    fn export_resource(&mut self, _id: u32) -> Option<File> {
-        None
+    fn export_resource(&mut self, _id: u32) -> ResourceResponse {
+        ResourceResponse::Invalid
     }
 
     /// Creates a fence with the given id that can be used to determine when the previous command
