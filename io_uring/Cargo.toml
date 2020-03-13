@@ -1,0 +1,15 @@
+[package]
+name = "io_uring"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2018"
+
+[dependencies]
+libc = "*"
+syscall_defines = { path = "../syscall_defines" }
+sys_util = { path = "../sys_util" }
+
+[dev-dependencies]
+tempfile = { path = "../tempfile" }
+
+[workspace]
