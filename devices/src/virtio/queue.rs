@@ -24,24 +24,24 @@ const VIRTQ_AVAIL_F_NO_INTERRUPT: u16 = 0x1;
 
 /// An iterator over a single descriptor chain.  Not to be confused with AvailIter,
 /// which iterates over the descriptor chain heads in a queue.
-pub struct DescIter<'a> {
-    next: Option<DescriptorChain<'a>>,
+pub struct DescIter {
+    next: Option<DescriptorChain>,
 }
 
-impl<'a> DescIter<'a> {
+impl DescIter {
     /// Returns an iterator that only yields the readable descriptors in the chain.
-    pub fn readable(self) -> impl Iterator<Item = DescriptorChain<'a>> {
+    pub fn readable(self) -> impl Iterator<Item = DescriptorChain> {
         self.take_while(DescriptorChain::is_read_only)
     }
 
     /// Returns an iterator that only yields the writable descriptors in the chain.
-    pub fn writable(self) -> impl Iterator<Item = DescriptorChain<'a>> {
+    pub fn writable(self) -> impl Iterator<Item = DescriptorChain> {
         self.skip_while(DescriptorChain::is_read_only)
     }
 }
 
-impl<'a> Iterator for DescIter<'a> {
-    type Item = DescriptorChain<'a>;
+impl Iterator for DescIter {
+    type Item = DescriptorChain;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(current) = self.next.take() {
@@ -55,8 +55,8 @@ impl<'a> Iterator for DescIter<'a> {
 
 /// A virtio descriptor chain.
 #[derive(Clone)]
-pub struct DescriptorChain<'a> {
-    mem: &'a GuestMemory,
+pub struct DescriptorChain {
+    mem: GuestMemory,
     desc_table: GuestAddress,
     queue_size: u16,
     ttl: u16, // used to prevent infinite chain cycles
@@ -78,7 +78,7 @@ pub struct DescriptorChain<'a> {
     pub next: u16,
 }
 
-impl<'a> DescriptorChain<'a> {
+impl DescriptorChain {
     pub(crate) fn checked_new(
         mem: &GuestMemory,
         desc_table: GuestAddress,
@@ -103,7 +103,7 @@ impl<'a> DescriptorChain<'a> {
         let flags: u16 = mem.read_obj_from_addr(desc_head.unchecked_add(12)).unwrap();
         let next: u16 = mem.read_obj_from_addr(desc_head.unchecked_add(14)).unwrap();
         let chain = DescriptorChain {
-            mem,
+            mem: mem.clone(),
             desc_table,
             queue_size,
             ttl: queue_size,
@@ -162,12 +162,12 @@ impl<'a> DescriptorChain<'a> {
     ///
     /// Note that this is distinct from the next descriptor chain returned by `AvailIter`, which is
     /// the head of the next _available_ descriptor chain.
-    pub fn next_descriptor(&self) -> Option<DescriptorChain<'a>> {
+    pub fn next_descriptor(&self) -> Option<DescriptorChain> {
         if self.has_next() {
             // Once we see a write-only descriptor, all subsequent descriptors must be write-only.
             let required_flags = self.flags & VIRTQ_DESC_F_WRITE;
             DescriptorChain::checked_new(
-                self.mem,
+                &self.mem,
                 self.desc_table,
                 self.queue_size,
                 self.next,
@@ -183,7 +183,7 @@ impl<'a> DescriptorChain<'a> {
     }
 
     /// Produces an iterator over all the descriptors in this chain.
-    pub fn into_iter(self) -> DescIter<'a> {
+    pub fn into_iter(self) -> DescIter {
         DescIter { next: Some(self) }
     }
 }
@@ -195,7 +195,7 @@ pub struct AvailIter<'a, 'b> {
 }
 
 impl<'a, 'b> Iterator for AvailIter<'a, 'b> {
-    type Item = DescriptorChain<'a>;
+    type Item = DescriptorChain;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.queue.pop(self.mem)
@@ -324,7 +324,7 @@ impl Queue {
 
     /// Get the first available descriptor chain without removing it from the queue.
     /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
-    pub fn peek<'a>(&mut self, mem: &'a GuestMemory) -> Option<DescriptorChain<'a>> {
+    pub fn peek(&mut self, mem: &GuestMemory) -> Option<DescriptorChain> {
         if !self.is_valid(mem) {
             return None;
         }
@@ -363,7 +363,7 @@ impl Queue {
     }
 
     /// If a new DescriptorHead is available, returns one and removes it from the queue.
-    pub fn pop<'a>(&mut self, mem: &'a GuestMemory) -> Option<DescriptorChain<'a>> {
+    pub fn pop(&mut self, mem: &GuestMemory) -> Option<DescriptorChain> {
         let descriptor_chain = self.peek(mem);
         if descriptor_chain.is_some() {
             self.pop_peeked(mem);
@@ -378,11 +378,11 @@ impl Queue {
 
     /// Asynchronously read the next descriptor chain from the queue.
     /// Returns a `DescriptorChain` when it is `await`ed.
-    pub async fn next_async<'mem, F: AsRawFd + Unpin>(
+    pub async fn next_async<F: AsRawFd + Unpin>(
         &mut self,
-        mem: &'mem GuestMemory,
+        mem: &GuestMemory,
         eventfd: &mut U64Source<F>,
-    ) -> std::result::Result<DescriptorChain<'mem>, AsyncError> {
+    ) -> std::result::Result<DescriptorChain, AsyncError> {
         loop {
             // Check if there are more descriptors available.
             if let Some(chain) = self.pop(mem) {

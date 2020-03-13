@@ -199,7 +199,7 @@ impl<'a, T: DataInit> Iterator for ReaderIterator<'a, T> {
 
 impl<'a> Reader<'a> {
     /// Construct a new Reader wrapper over `desc_chain`.
-    pub fn new(mem: &'a GuestMemory, desc_chain: DescriptorChain<'a>) -> Result<Reader<'a>> {
+    pub fn new(mem: &'a GuestMemory, desc_chain: DescriptorChain) -> Result<Reader<'a>> {
         // TODO(jstaron): Update this code to take the indirect descriptors into account.
         let mut total_len: usize = 0;
         let buffers = desc_chain
@@ -415,7 +415,7 @@ pub struct Writer<'a> {
 
 impl<'a> Writer<'a> {
     /// Construct a new Writer wrapper over `desc_chain`.
-    pub fn new(mem: &'a GuestMemory, desc_chain: DescriptorChain<'a>) -> Result<Writer<'a>> {
+    pub fn new(mem: &'a GuestMemory, desc_chain: DescriptorChain) -> Result<Writer<'a>> {
         let mut total_len: usize = 0;
         let buffers = desc_chain
             .into_iter()

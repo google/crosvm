@@ -32,16 +32,13 @@ pub struct Worker {
 }
 
 /// BTreeMap which stores descriptor chains in which asynchronous responses will be written.
-type DescPool<'a> = BTreeMap<AsyncCmdTag, DescriptorChain<'a>>;
+type DescPool = BTreeMap<AsyncCmdTag, DescriptorChain>;
 /// Pair of a descriptor chain and a response to be written.
-type WritableResp<'a> = (DescriptorChain<'a>, response::CmdResponse);
+type WritableResp = (DescriptorChain, response::CmdResponse);
 
 /// Invalidates and removes all pending asynchronous commands in a given `DescPool` value
 /// and returns a list of `WritableResp` to be sent to the guest.
-fn cancel_pending_requests<'a>(
-    target_stream_id: u32,
-    desc_pool: &mut DescPool<'a>,
-) -> Vec<WritableResp<'a>> {
+fn cancel_pending_requests(target_stream_id: u32, desc_pool: &mut DescPool) -> Vec<WritableResp> {
     let old_desc_pool = std::mem::take(desc_pool);
     let mut resps = vec![];
     for (key, value) in old_desc_pool.into_iter() {
@@ -73,7 +70,7 @@ fn cancel_pending_requests<'a>(
 
 impl Worker {
     /// Writes responses into the command queue.
-    fn write_responses<'a>(
+    fn write_responses(
         &self,
         cmd_queue: &mut Queue,
         responses: &mut VecDeque<WritableResp>,
@@ -121,9 +118,9 @@ impl Worker {
         &'a self,
         device: &mut T,
         poll_ctx: &PollContext<Token>,
-        desc_pool: &mut DescPool<'a>,
-        desc: DescriptorChain<'a>,
-    ) -> Result<VecDeque<WritableResp<'a>>> {
+        desc_pool: &mut DescPool,
+        desc: DescriptorChain,
+    ) -> Result<VecDeque<WritableResp>> {
         let mut resps: VecDeque<WritableResp> = Default::default();
         let mut reader =
             Reader::new(&self.mem, desc.clone()).map_err(Error::InvalidDescriptorChain)?;
@@ -167,7 +164,7 @@ impl Worker {
         cmd_queue: &mut Queue,
         device: &mut T,
         poll_ctx: &PollContext<Token>,
-        desc_pool: &mut DescPool<'a>,
+        desc_pool: &mut DescPool,
     ) -> Result<()> {
         let _ = self.cmd_evt.read();
 
@@ -184,7 +181,7 @@ impl Worker {
         &'a self,
         event_queue: &mut Queue,
         device: &mut T,
-        desc_pool: &mut DescPool<'a>,
+        desc_pool: &mut DescPool,
         resp: VideoEvtResponseType,
     ) -> Result<VecDeque<WritableResp>> {
         let mut responses: VecDeque<WritableResp> = Default::default();
@@ -264,7 +261,7 @@ impl Worker {
         cmd_queue: &mut Queue,
         event_queue: &mut Queue,
         device: &mut T,
-        desc_pool: &mut DescPool<'a>,
+        desc_pool: &mut DescPool,
         stream_id: u32,
     ) -> Result<()> {
         if let Some(event_responses) = device.process_event_fd(stream_id) {
@@ -305,7 +302,7 @@ impl Worker {
         .map_err(Error::PollContextCreationFailed)?;
 
         // Stores descriptors in which responses for asynchronous commands will be written.
-        let mut desc_pool: DescPool<'_> = Default::default();
+        let mut desc_pool: DescPool = Default::default();
 
         loop {
             let poll_events = poll_ctx.wait().map_err(Error::PollError)?;
