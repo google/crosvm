@@ -78,21 +78,21 @@ fn parse_cpu_set(s: &str) -> argument::Result<Vec<usize>> {
         if range.len() == 0 || range.len() > 2 {
             return Err(argument::Error::InvalidValue {
                 value: part.to_owned(),
-                expected: "invalid list syntax",
+                expected: String::from("invalid list syntax"),
             });
         }
         let first_cpu: usize = range[0]
             .parse()
             .map_err(|_| argument::Error::InvalidValue {
                 value: part.to_owned(),
-                expected: "CPU index must be a non-negative integer",
+                expected: String::from("CPU index must be a non-negative integer"),
             })?;
         let last_cpu: usize = if range.len() == 2 {
             range[1]
                 .parse()
                 .map_err(|_| argument::Error::InvalidValue {
                     value: part.to_owned(),
-                    expected: "CPU index must be a non-negative integer",
+                    expected: String::from("CPU index must be a non-negative integer"),
                 })?
         } else {
             first_cpu
@@ -101,7 +101,7 @@ fn parse_cpu_set(s: &str) -> argument::Result<Vec<usize>> {
         if last_cpu < first_cpu {
             return Err(argument::Error::InvalidValue {
                 value: part.to_owned(),
-                expected: "CPU ranges must be from low to high",
+                expected: String::from("CPU ranges must be from low to high"),
             });
         }
 
@@ -151,7 +151,9 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: v.to_string(),
-                            expected: "gpu parameter 'backend' should be one of (2d|3d|gfxstream)",
+                            expected: String::from(
+                                "gpu parameter 'backend' should be one of (2d|3d|gfxstream)",
+                            ),
                         });
                     }
                 },
@@ -165,7 +167,7 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: v.to_string(),
-                            expected: "gpu parameter 'egl' should be a boolean",
+                            expected: String::from("gpu parameter 'egl' should be a boolean"),
                         });
                     }
                 },
@@ -179,7 +181,7 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: v.to_string(),
-                            expected: "gpu parameter 'gles' should be a boolean",
+                            expected: String::from("gpu parameter 'gles' should be a boolean"),
                         });
                     }
                 },
@@ -193,7 +195,7 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: v.to_string(),
-                            expected: "gpu parameter 'glx' should be a boolean",
+                            expected: String::from("gpu parameter 'glx' should be a boolean"),
                         });
                     }
                 },
@@ -207,7 +209,9 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: v.to_string(),
-                            expected: "gpu parameter 'surfaceless' should be a boolean",
+                            expected: String::from(
+                                "gpu parameter 'surfaceless' should be a boolean",
+                            ),
                         });
                     }
                 },
@@ -216,7 +220,9 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                         v.parse::<u32>()
                             .map_err(|_| argument::Error::InvalidValue {
                                 value: v.to_string(),
-                                expected: "gpu parameter 'width' must be a valid integer",
+                                expected: String::from(
+                                    "gpu parameter 'width' must be a valid integer",
+                                ),
                             })?;
                 }
                 "height" => {
@@ -224,7 +230,9 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                         v.parse::<u32>()
                             .map_err(|_| argument::Error::InvalidValue {
                                 value: v.to_string(),
-                                expected: "gpu parameter 'height' must be a valid integer",
+                                expected: String::from(
+                                    "gpu parameter 'height' must be a valid integer",
+                                ),
                             })?;
                 }
                 "" => {}
@@ -269,7 +277,7 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
                 if num < 1 || num > 4 {
                     return Err(argument::Error::InvalidValue {
                         value: num.to_string(),
-                        expected: "Serial port num must be between 1 - 4",
+                        expected: String::from("Serial port num must be between 1 - 4"),
                     });
                 }
                 serial_setting.num = num;
@@ -305,7 +313,9 @@ fn parse_plugin_mount_option(value: &str) -> argument::Result<BindMount> {
     if components.is_empty() || components.len() > 3 || components[0].is_empty() {
         return Err(argument::Error::InvalidValue {
             value: value.to_owned(),
-            expected: "`plugin-mount` should be in a form of: <src>[:[<dst>][:<writable>]]",
+            expected: String::from(
+                "`plugin-mount` should be in a form of: <src>[:[<dst>][:<writable>]]",
+            ),
         });
     }
 
@@ -313,13 +323,13 @@ fn parse_plugin_mount_option(value: &str) -> argument::Result<BindMount> {
     if src.is_relative() {
         return Err(argument::Error::InvalidValue {
             value: components[0].to_owned(),
-            expected: "the source path for `plugin-mount` must be absolute",
+            expected: String::from("the source path for `plugin-mount` must be absolute"),
         });
     }
     if !src.exists() {
         return Err(argument::Error::InvalidValue {
             value: components[0].to_owned(),
-            expected: "the source path for `plugin-mount` does not exist",
+            expected: String::from("the source path for `plugin-mount` does not exist"),
         });
     }
 
@@ -330,7 +340,7 @@ fn parse_plugin_mount_option(value: &str) -> argument::Result<BindMount> {
     if dst.is_relative() {
         return Err(argument::Error::InvalidValue {
             value: components[1].to_owned(),
-            expected: "the destination path for `plugin-mount` must be absolute",
+            expected: String::from("the destination path for `plugin-mount` must be absolute"),
         });
     }
 
@@ -338,7 +348,7 @@ fn parse_plugin_mount_option(value: &str) -> argument::Result<BindMount> {
         None => false,
         Some(s) => s.parse().map_err(|_| argument::Error::InvalidValue {
             value: components[2].to_owned(),
-            expected: "the <writable> component for `plugin-mount` is not valid bool",
+            expected: String::from("the <writable> component for `plugin-mount` is not valid bool"),
         })?,
     };
 
@@ -350,8 +360,9 @@ fn parse_plugin_gid_map_option(value: &str) -> argument::Result<GidMap> {
     if components.is_empty() || components.len() > 3 || components[0].is_empty() {
         return Err(argument::Error::InvalidValue {
             value: value.to_owned(),
-            expected:
+            expected: String::from(
                 "`plugin-gid-map` must have exactly 3 components: <inner>[:[<outer>][:<count>]]",
+            ),
         });
     }
 
@@ -359,14 +370,14 @@ fn parse_plugin_gid_map_option(value: &str) -> argument::Result<GidMap> {
         .parse()
         .map_err(|_| argument::Error::InvalidValue {
             value: components[0].to_owned(),
-            expected: "the <inner> component for `plugin-gid-map` is not valid gid",
+            expected: String::from("the <inner> component for `plugin-gid-map` is not valid gid"),
         })?;
 
     let outer: libc::gid_t = match components.get(1) {
         None | Some(&"") => inner,
         Some(s) => s.parse().map_err(|_| argument::Error::InvalidValue {
             value: components[1].to_owned(),
-            expected: "the <outer> component for `plugin-gid-map` is not valid gid",
+            expected: String::from("the <outer> component for `plugin-gid-map` is not valid gid"),
         })?,
     };
 
@@ -374,7 +385,9 @@ fn parse_plugin_gid_map_option(value: &str) -> argument::Result<GidMap> {
         None => 1,
         Some(s) => s.parse().map_err(|_| argument::Error::InvalidValue {
             value: components[2].to_owned(),
-            expected: "the <count> component for `plugin-gid-map` is not valid number",
+            expected: String::from(
+                "the <count> component for `plugin-gid-map` is not valid number",
+            ),
         })?,
     };
 
@@ -398,7 +411,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             if !kernel_path.exists() {
                 return Err(argument::Error::InvalidValue {
                     value: value.unwrap().to_owned(),
-                    expected: "this kernel path does not exist",
+                    expected: String::from("this kernel path does not exist"),
                 });
             }
             cfg.executable_path = Some(Executable::Kernel(kernel_path));
@@ -415,7 +428,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 if !android_fstab.exists() {
                     return Err(argument::Error::InvalidValue {
                         value: value.unwrap().to_owned(),
-                        expected: "this android fstab path does not exist",
+                        expected: String::from("this android fstab path does not exist"),
                     });
                 }
                 cfg.android_fstab = Some(android_fstab);
@@ -437,7 +450,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         .parse()
                         .map_err(|_| argument::Error::InvalidValue {
                             value: value.unwrap().to_owned(),
-                            expected: "this value for `cpus` needs to be integer",
+                            expected: String::from("this value for `cpus` needs to be integer"),
                         })?,
                 )
         }
@@ -462,7 +475,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         .parse()
                         .map_err(|_| argument::Error::InvalidValue {
                             value: value.unwrap().to_owned(),
-                            expected: "this value for `mem` needs to be integer",
+                            expected: String::from("this value for `mem` needs to be integer"),
                         })?,
                 )
         }
@@ -526,13 +539,13 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         .next()
                         .ok_or_else(|| argument::Error::InvalidValue {
                             value: param.to_owned(),
-                            expected: "missing disk path",
+                            expected: String::from("missing disk path"),
                         })?,
                 );
             if !disk_path.exists() {
                 return Err(argument::Error::InvalidValue {
                     value: param.to_owned(),
-                    expected: "this disk path does not exist",
+                    expected: String::from("this disk path does not exist"),
                 });
             }
             if name.ends_with("root") {
@@ -559,18 +572,18 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 let mut o = opt.splitn(2, '=');
                 let kind = o.next().ok_or_else(|| argument::Error::InvalidValue {
                     value: opt.to_owned(),
-                    expected: "disk options must not be empty",
+                    expected: String::from("disk options must not be empty"),
                 })?;
                 let value = o.next().ok_or_else(|| argument::Error::InvalidValue {
                     value: opt.to_owned(),
-                    expected: "disk options must be of the form `kind=value`",
+                    expected: String::from("disk options must be of the form `kind=value`"),
                 })?;
 
                 match kind {
                     "sparse" => {
                         let sparse = value.parse().map_err(|_| argument::Error::InvalidValue {
                             value: value.to_owned(),
-                            expected: "`sparse` must be a boolean",
+                            expected: String::from("`sparse` must be a boolean"),
                         })?;
                         disk.sparse = sparse;
                     }
@@ -578,14 +591,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         let block_size =
                             value.parse().map_err(|_| argument::Error::InvalidValue {
                                 value: value.to_owned(),
-                                expected: "`block_size` must be an integer",
+                                expected: String::from("`block_size` must be an integer"),
                             })?;
                         disk.block_size = block_size;
                     }
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: kind.to_owned(),
-                            expected: "unrecognized disk option",
+                            expected: String::from("unrecognized disk option"),
                         });
                     }
                 }
@@ -598,7 +611,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             if !disk_path.exists() {
                 return Err(argument::Error::InvalidValue {
                     value: value.unwrap().to_owned(),
-                    expected: "this disk path does not exist",
+                    expected: String::from("this disk path does not exist"),
                 });
             }
 
@@ -621,7 +634,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             if components.len() != 2 {
                 return Err(argument::Error::InvalidValue {
                     value: value.to_owned(),
-                    expected: "pstore must have exactly 2 components: path=<path>,size=<size>",
+                    expected: String::from(
+                        "pstore must have exactly 2 components: path=<path>,size=<size>",
+                    ),
                 });
             }
             cfg.pstore = Some(Pstore {
@@ -629,7 +644,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     if components[0].len() <= 5 || !components[0].starts_with("path=") {
                         return Err(argument::Error::InvalidValue {
                             value: components[0].to_owned(),
-                            expected: "pstore path must follow with `path=`",
+                            expected: String::from("pstore path must follow with `path=`"),
                         });
                     };
                     PathBuf::from(&components[0][5..])
@@ -638,14 +653,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     if components[1].len() <= 5 || !components[1].starts_with("size=") {
                         return Err(argument::Error::InvalidValue {
                             value: components[1].to_owned(),
-                            expected: "pstore size must follow with `size=`",
+                            expected: String::from("pstore size must follow with `size=`"),
                         });
                     };
                     components[1][5..]
                         .parse()
                         .map_err(|_| argument::Error::InvalidValue {
                             value: value.to_owned(),
-                            expected: "pstore size must be an integer",
+                            expected: String::from("pstore size must be an integer"),
                         })?
                 },
             });
@@ -663,7 +678,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         .parse()
                         .map_err(|_| argument::Error::InvalidValue {
                             value: value.unwrap().to_owned(),
-                            expected: "`host_ip` needs to be in the form \"x.x.x.x\"",
+                            expected: String::from("`host_ip` needs to be in the form \"x.x.x.x\""),
                         })?,
                 )
         }
@@ -680,7 +695,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         .parse()
                         .map_err(|_| argument::Error::InvalidValue {
                             value: value.unwrap().to_owned(),
-                            expected: "`netmask` needs to be in the form \"x.x.x.x\"",
+                            expected: String::from("`netmask` needs to be in the form \"x.x.x.x\""),
                         })?,
                 )
         }
@@ -697,7 +712,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         .parse()
                         .map_err(|_| argument::Error::InvalidValue {
                             value: value.unwrap().to_owned(),
-                            expected: "`mac` needs to be in the form \"XX:XX:XX:XX:XX:XX\"",
+                            expected: String::from(
+                                "`mac` needs to be in the form \"XX:XX:XX:XX:XX:XX\"",
+                            ),
                         })?,
                 )
         }
@@ -709,7 +726,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         .next()
                         .ok_or_else(|| argument::Error::InvalidValue {
                             value: value.unwrap().to_owned(),
-                            expected: "missing socket path",
+                            expected: String::from("missing socket path"),
                         })?,
                 );
             let mut name = "";
@@ -720,7 +737,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: c.to_owned(),
-                            expected: "option must be of the form `kind=value`",
+                            expected: String::from("option must be of the form `kind=value`"),
                         })
                     }
                 };
@@ -729,7 +746,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: kind.to_owned(),
-                            expected: "unrecognized option",
+                            expected: String::from("unrecognized option"),
                         })
                     }
                 }
@@ -771,7 +788,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             if socket_path.exists() {
                 return Err(argument::Error::InvalidValue {
                     value: socket_path.to_string_lossy().into_owned(),
-                    expected: "this socket path already exists",
+                    expected: String::from("this socket path already exists"),
                 });
             }
             cfg.socket_path = Some(socket_path);
@@ -791,7 +808,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     .parse()
                     .map_err(|_| argument::Error::InvalidValue {
                         value: value.unwrap().to_owned(),
-                        expected: "this value for `cid` must be an unsigned integer",
+                        expected: String::from("this value for `cid` must be an unsigned integer"),
                     })?,
             );
         }
@@ -816,21 +833,21 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         .next()
                         .ok_or_else(|| argument::Error::InvalidValue {
                             value: param.to_owned(),
-                            expected: "missing source path for `shared-dir`",
+                            expected: String::from("missing source path for `shared-dir`"),
                         })?,
                 );
             let tag = components
                 .next()
                 .ok_or_else(|| argument::Error::InvalidValue {
                     value: param.to_owned(),
-                    expected: "missing tag for `shared-dir`",
+                    expected: String::from("missing tag for `shared-dir`"),
                 })?
                 .to_owned();
 
             if !src.is_dir() {
                 return Err(argument::Error::InvalidValue {
                     value: param.to_owned(),
-                    expected: "source path for `shared-dir` must be a directory",
+                    expected: String::from("source path for `shared-dir` must be a directory"),
                 });
             }
 
@@ -843,11 +860,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 let mut o = opt.splitn(2, '=');
                 let kind = o.next().ok_or_else(|| argument::Error::InvalidValue {
                     value: opt.to_owned(),
-                    expected: "`shared-dir` options must not be empty",
+                    expected: String::from("`shared-dir` options must not be empty"),
                 })?;
                 let value = o.next().ok_or_else(|| argument::Error::InvalidValue {
                     value: opt.to_owned(),
-                    expected: "`shared-dir` options must be of the form `kind=value`",
+                    expected: String::from("`shared-dir` options must be of the form `kind=value`"),
                 })?;
 
                 match kind {
@@ -855,7 +872,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         shared_dir.kind =
                             value.parse().map_err(|_| argument::Error::InvalidValue {
                                 value: value.to_owned(),
-                                expected: "`type` must be one of `fs` or `9p`",
+                                expected: String::from("`type` must be one of `fs` or `9p`"),
                             })?
                     }
                     "uidmap" => shared_dir.uid_map = value.into(),
@@ -863,7 +880,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     "timeout" => {
                         let seconds = value.parse().map_err(|_| argument::Error::InvalidValue {
                             value: value.to_owned(),
-                            expected: "`timeout` must be an integer",
+                            expected: String::from("`timeout` must be an integer"),
                         })?;
 
                         let dur = Duration::from_secs(seconds);
@@ -873,7 +890,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     "cache" => {
                         let policy = value.parse().map_err(|_| argument::Error::InvalidValue {
                             value: value.to_owned(),
-                            expected: "`cache` must be one of `never`, `always`, or `auto`",
+                            expected: String::from(
+                                "`cache` must be one of `never`, `always`, or `auto`",
+                            ),
                         })?;
                         shared_dir.cfg.cache_policy = policy;
                     }
@@ -881,14 +900,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         let writeback =
                             value.parse().map_err(|_| argument::Error::InvalidValue {
                                 value: value.to_owned(),
-                                expected: "`writeback` must be a boolean",
+                                expected: String::from("`writeback` must be a boolean"),
                             })?;
                         shared_dir.cfg.writeback = writeback;
                     }
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: kind.to_owned(),
-                            expected: "unrecognized option for `shared-dir`",
+                            expected: String::from("unrecognized option for `shared-dir`"),
                         })
                     }
                 }
@@ -930,7 +949,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             if plugin.is_relative() {
                 return Err(argument::Error::InvalidValue {
                     value: plugin.to_string_lossy().into_owned(),
-                    expected: "the plugin path must be an absolute path",
+                    expected: String::from("the plugin path must be an absolute path"),
                 });
             }
             cfg.executable_path = Some(Executable::Plugin(plugin));
@@ -945,7 +964,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "plugin-mount-file" => {
             let file = File::open(value.unwrap()).map_err(|_| argument::Error::InvalidValue {
                 value: value.unwrap().to_owned(),
-                expected: "unable to open `plugin-mount-file` file",
+                expected: String::from("unable to open `plugin-mount-file` file"),
             })?;
             let reader = BufReader::new(file);
             for l in reader.lines() {
@@ -964,7 +983,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "plugin-gid-map-file" => {
             let file = File::open(value.unwrap()).map_err(|_| argument::Error::InvalidValue {
                 value: value.unwrap().to_owned(),
-                expected: "unable to open `plugin-gid-map-file` file",
+                expected: String::from("unable to open `plugin-gid-map-file` file"),
             })?;
             let reader = BufReader::new(file);
             for l in reader.lines() {
@@ -984,7 +1003,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     .parse()
                     .map_err(|_| argument::Error::InvalidValue {
                         value: value.unwrap().to_owned(),
-                        expected: "this value for `tap-fd` must be an unsigned integer",
+                        expected: String::from(
+                            "this value for `tap-fd` must be an unsigned integer",
+                        ),
                     })?,
             );
         }
@@ -1053,7 +1074,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             if !dev_path.exists() {
                 return Err(argument::Error::InvalidValue {
                     value: value.unwrap().to_owned(),
-                    expected: "this input device path does not exist",
+                    expected: String::from("this input device path does not exist"),
                 });
             }
             cfg.virtio_input_evdevs.push(dev_path);
@@ -1078,13 +1099,13 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             if !vfio_path.exists() {
                 return Err(argument::Error::InvalidValue {
                     value: value.unwrap().to_owned(),
-                    expected: "the vfio path does not exist",
+                    expected: String::from("the vfio path does not exist"),
                 });
             }
             if !vfio_path.is_dir() {
                 return Err(argument::Error::InvalidValue {
                     value: value.unwrap().to_owned(),
-                    expected: "the vfio path should be directory",
+                    expected: String::from("the vfio path should be directory"),
                 });
             }
 
@@ -1410,7 +1431,7 @@ fn create_qcow2(args: std::env::Args) -> std::result::Result<(), ()> {
                 size = Some(value.unwrap().parse::<u64>().map_err(|_| {
                     argument::Error::InvalidValue {
                         value: value.unwrap().to_owned(),
-                        expected: "SIZE should be a nonnegative integer",
+                        expected: String::from("SIZE should be a nonnegative integer"),
                     }
                 })?);
             }

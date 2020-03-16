@@ -25,7 +25,7 @@
 //!             let v: u32 = value.unwrap().parse().map_err(|_| {
 //!                 Error::InvalidValue {
 //!                     value: value.unwrap().to_owned(),
-//!                     expected: "this value for `cpus` needs to be integer",
+//!                     expected: String::from("this value for `cpus` needs to be integer"),
 //!                 }
 //!             })?;
 //!         }
@@ -56,10 +56,7 @@ pub enum Error {
     /// The argument was required.
     ExpectedArgument(String),
     /// The argument's given value is invalid.
-    InvalidValue {
-        value: String,
-        expected: &'static str,
-    },
+    InvalidValue { value: String, expected: String },
     /// The argument was already given and none more are expected.
     TooManyArguments(String),
     /// The argument expects a value.
@@ -447,7 +444,7 @@ mod tests {
                     "cpus" => {
                         let c: u32 = value.unwrap().parse().map_err(|_| Error::InvalidValue {
                             value: value.unwrap().to_owned(),
-                            expected: "this value for `cpus` needs to be integer",
+                            expected: String::from("this value for `cpus` needs to be integer"),
                         })?;
                         assert_eq!(c, 3);
                     }
@@ -521,7 +518,7 @@ mod tests {
                                     _ => {
                                         return Err(Error::InvalidValue {
                                             value: v.to_string(),
-                                            expected: "2D or 3D",
+                                            expected: String::from("2D or 3D"),
                                         })
                                     }
                                 }
