@@ -691,7 +691,7 @@ impl PitCounter {
             Some(t) => {
                 let dur = self.clock.lock().now().duration_since(t);
                 let dur_ns: u64 = dur.as_secs() * NANOS_PER_SEC + u64::from(dur.subsec_nanos());
-                (dur_ns * FREQUENCY_HZ / NANOS_PER_SEC)
+                dur_ns * FREQUENCY_HZ / NANOS_PER_SEC
             }
         }
     }
