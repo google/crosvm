@@ -182,6 +182,15 @@ impl Device {
 
     /// Perform a USB port reset to reinitialize a device.
     pub fn reset(&self) -> Result<()> {
+        // TODO(dverkamp): re-enable reset once crbug.com/1058059 is resolved.
+        // Skip reset for all non-Edge TPU devices.
+        let vid = self.device_descriptor_tree.idVendor;
+        let pid = self.device_descriptor_tree.idProduct;
+        match (vid, pid) {
+            (0x1a6e, 0x089a) => (),
+            _ => return Ok(()),
+        }
+
         // Safe because self.fd is a valid usbdevfs file descriptor.
         let result = unsafe { self.ioctl(usb_sys::USBDEVFS_RESET()) };
 
