@@ -592,7 +592,13 @@ impl PassthroughFs {
                 OpenOptions::DIRECT_IO,
                 flags & (libc::O_DIRECTORY as u32) == 0,
             ),
-            CachePolicy::Always => opts |= OpenOptions::KEEP_CACHE,
+            CachePolicy::Always => {
+                opts |= if flags & (libc::O_DIRECTORY as u32) == 0 {
+                    OpenOptions::KEEP_CACHE
+                } else {
+                    OpenOptions::CACHE_DIR
+                }
+            }
             _ => {}
         };
 
