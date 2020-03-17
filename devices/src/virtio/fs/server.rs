@@ -118,6 +118,7 @@ impl<F: FileSystem + Sync> Server<F> {
             Some(Opcode::Readdirplus) => self.readdirplus(in_header, r, w),
             Some(Opcode::Rename2) => self.rename2(in_header, r, w),
             Some(Opcode::Lseek) => self.lseek(in_header, r, w),
+            Some(Opcode::CopyFileRange) => self.copy_file_range(in_header, r, w),
             None => reply_error(
                 io::Error::from_raw_os_error(libc::ENOSYS),
                 in_header.unique,
@@ -809,7 +810,7 @@ impl<F: FileSystem + Sync> Server<F> {
             return reply_ok(Some(out), None, in_header.unique, w);
         }
 
-        if minor < KERNEL_MINOR_VERSION {
+        if minor < OLDEST_SUPPORTED_KERNEL_MINOR_VERSION {
             error!(
                 "Unsupported fuse protocol minor version: {}.{}",
                 major, minor
@@ -1206,6 +1207,40 @@ impl<F: FileSystem + Sync> Server<F> {
             reply_error(e, in_header.unique, w)
         } else {
             Ok(0)
+        }
+    }
+
+    fn copy_file_range(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
+        let CopyFileRangeIn {
+            fh_src,
+            off_src,
+            nodeid_dst,
+            fh_dst,
+            off_dst,
+            len,
+            flags,
+        } = r.read_obj().map_err(Error::DecodeMessage)?;
+
+        match self.fs.copy_file_range(
+            Context::from(in_header),
+            in_header.nodeid.into(),
+            fh_src.into(),
+            off_src,
+            nodeid_dst.into(),
+            fh_dst.into(),
+            off_dst,
+            len,
+            flags,
+        ) {
+            Ok(count) => {
+                let out = WriteOut {
+                    size: count as u32,
+                    ..Default::default()
+                };
+
+                reply_ok(Some(out), None, in_header.unique, w)
+            }
+            Err(e) => reply_error(e, in_header.unique, w),
         }
     }
 }

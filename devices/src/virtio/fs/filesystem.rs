@@ -1139,4 +1139,34 @@ pub trait FileSystem {
     fn lseek(&self) -> io::Result<()> {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
+
+    /// Copy a range of data from one file to another
+    ///
+    /// Performs an optimized copy between two file descriptors without the additional cost of
+    /// transferring data through the kernel module to user space (glibc) and then back into
+    /// the file system again.
+    ///
+    /// In case this method is not implemented, glibc falls back to reading data from the source and
+    /// writing to the destination.
+    ///
+    /// If this method fails with an `ENOSYS` error, then the kernel will treat that as a permanent
+    /// failure. The kernel will return `EOPNOTSUPP` for all future calls to `copy_file_range`
+    /// without forwarding them to the file system.
+    ///
+    /// All values accepted by the `copy_file_range(2)` system call are valid values for `flags` and
+    /// must be handled by the file system.
+    fn copy_file_range(
+        &self,
+        ctx: Context,
+        inode_src: Self::Inode,
+        handle_src: Self::Handle,
+        offset_src: u64,
+        inode_dst: Self::Inode,
+        handle_dst: Self::Handle,
+        offset_dst: u64,
+        length: u64,
+        flags: u64,
+    ) -> io::Result<usize> {
+        Err(io::Error::from_raw_os_error(libc::ENOSYS))
+    }
 }
