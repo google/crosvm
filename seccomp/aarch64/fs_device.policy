@@ -4,6 +4,7 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 
+copy_file_range: 1
 fallocate: 1
 fchmodat: 1
 fchownat: 1

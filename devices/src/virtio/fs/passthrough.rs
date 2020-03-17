@@ -1696,4 +1696,58 @@ impl FileSystem for PassthroughFs {
             Err(io::Error::from_raw_os_error(libc::ENOTTY))
         }
     }
+
+    fn copy_file_range(
+        &self,
+        ctx: Context,
+        inode_src: Inode,
+        handle_src: Handle,
+        offset_src: u64,
+        inode_dst: Inode,
+        handle_dst: Handle,
+        offset_dst: u64,
+        length: u64,
+        flags: u64,
+    ) -> io::Result<usize> {
+        // We need to change credentials during a write so that the kernel will remove setuid or
+        // setgid bits from the file if it was written to by someone other than the owner.
+        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+        let src_data = self
+            .handles
+            .read()
+            .unwrap()
+            .get(&handle_src)
+            .filter(|hd| hd.inode == inode_src)
+            .map(Arc::clone)
+            .ok_or_else(ebadf)?;
+        let dst_data = self
+            .handles
+            .read()
+            .unwrap()
+            .get(&handle_dst)
+            .filter(|hd| hd.inode == inode_dst)
+            .map(Arc::clone)
+            .ok_or_else(ebadf)?;
+
+        let src = src_data.file.lock().as_raw_fd();
+        let dst = dst_data.file.lock().as_raw_fd();
+
+        let res = unsafe {
+            libc::syscall(
+                libc::SYS_copy_file_range,
+                src,
+                &offset_src,
+                dst,
+                offset_dst,
+                length,
+                flags,
+            )
+        };
+
+        if res >= 0 {
+            Ok(res as usize)
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
 }
