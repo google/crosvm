@@ -119,7 +119,7 @@ impl<F: FileSystem + Sync> Server<F> {
             Some(Opcode::Rename2) => self.rename2(in_header, r, w),
             Some(Opcode::Lseek) => self.lseek(in_header, r, w),
             Some(Opcode::CopyFileRange) => self.copy_file_range(in_header, r, w),
-            None => reply_error(
+            Some(Opcode::SetUpMapping) | Some(Opcode::RemoveMapping) | None => reply_error(
                 io::Error::from_raw_os_error(libc::ENOSYS),
                 in_header.unique,
                 w,

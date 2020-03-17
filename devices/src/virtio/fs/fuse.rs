@@ -16,7 +16,7 @@ pub const KERNEL_VERSION: u32 = 7;
 pub const OLDEST_SUPPORTED_KERNEL_MINOR_VERSION: u32 = 27;
 
 /// Minor version number of this interface.
-pub const KERNEL_MINOR_VERSION: u32 = 28;
+pub const KERNEL_MINOR_VERSION: u32 = 31;
 
 /// The ID of the inode corresponding to the root directory of the file system.
 pub const ROOT_ID: u64 = 1;
@@ -150,6 +150,15 @@ const MAX_PAGES: u32 = 4194304;
 
 /// Cache `readlink` responses.
 const CACHE_SYMLINKS: u32 = 8388608;
+
+/// Kernel supports zero-message opens for directories.
+const NO_OPENDIR_SUPPORT: u32 = 16777216;
+
+/// Kernel supports explicit cache invalidation.
+const EXPLICIT_INVAL_DATA: u32 = 33554432;
+
+/// The `map_alignment` field of the `InitOut` struct is valid.
+const MAP_ALIGNMENT: u32 = 67108864;
 
 bitflags! {
     /// A bitfield passed in as a parameter to and returned from the `init` method of the
@@ -320,6 +329,34 @@ bitflags! {
 
         /// Indicates that the kernel may cache responses to `readlink` calls.
         const CACHE_SYMLINKS = CACHE_SYMLINKS;
+
+        /// Indicates support for zero-message opens for directories. If this flag is set in the
+        /// `capable` parameter of the `init` trait method, then the file system may return `ENOSYS`
+        /// from the opendir() handler to indicate success. Further attempts to open directories
+        /// will be handled in the kernel. (If this flag is not set, returning ENOSYS will be
+        /// treated as an error and signaled to the caller).
+        ///
+        /// Setting (or not setting) the field in the `FsOptions` returned from the `init` method
+        /// has no effect.
+        const ZERO_MESSAGE_OPENDIR = NO_OPENDIR_SUPPORT;
+
+        /// Indicates support for invalidating cached pages only on explicit request.
+        ///
+        /// If this flag is set in the `capable` parameter of the `init` trait method, then the FUSE
+        /// kernel module supports invalidating cached pages only on explicit request by the
+        /// filesystem.
+        ///
+        /// By setting this flag in the return value of the `init` trait method, the filesystem is
+        /// responsible for invalidating cached pages through explicit requests to the kernel.
+        ///
+        /// Note that setting this flag does not prevent the cached pages from being flushed by OS
+        /// itself and/or through user actions.
+        ///
+        /// Note that if both EXPLICIT_INVAL_DATA and AUTO_INVAL_DATA are set in the `capable`
+        /// parameter of the `init` trait method then AUTO_INVAL_DATA takes precedence.
+        ///
+        /// This feature is disabled by default.
+        const EXPLICIT_INVAL_DATA = EXPLICIT_INVAL_DATA;
     }
 }
 
@@ -341,6 +378,9 @@ pub const WRITE_CACHE: u32 = 1;
 /// `lock_owner` field is valid.
 pub const WRITE_LOCKOWNER: u32 = 2;
 
+/// Kill the suid and sgid bits.
+pub const WRITE_KILL_PRIV: u32 = 3;
+
 // Read flags.
 pub const READ_LOCKOWNER: u32 = 2;
 
@@ -361,6 +401,9 @@ const IOCTL_32BIT: u32 = 8;
 /// Is a directory
 const IOCTL_DIR: u32 = 16;
 
+/// 32-bit compat ioctl on 64-bit machine with 64-bit time_t.
+const IOCTL_COMPAT_X32: u32 = 32;
+
 /// Maximum of in_iovecs + out_iovecs
 pub const IOCTL_MAX_IOV: usize = 256;
 
@@ -380,6 +423,9 @@ bitflags! {
 
         /// Is a directory
         const DIR = IOCTL_DIR;
+
+        /// 32-bit compat ioctl on 64-bit machine with 64-bit time_t.
+        const COMPAT_X32 = IOCTL_COMPAT_X32;
     }
 }
 
@@ -535,6 +581,8 @@ pub enum Opcode {
     Rename2 = 45,
     Lseek = 46,
     CopyFileRange = 47,
+    SetUpMapping = 48,
+    RemoveMapping = 49,
 }
 
 #[repr(u32)]
@@ -855,7 +903,7 @@ pub struct InitOut {
     pub max_write: u32,
     pub time_gran: u32,
     pub max_pages: u16,
-    pub padding: u16,
+    pub map_alignment: u16,
     pub unused: [u32; 8],
 }
 unsafe impl DataInit for InitOut {}
