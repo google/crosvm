@@ -30,7 +30,9 @@ exclude = [
 ]
 
 [features]
+default = ["audio"]
 default-no-sandbox = []
+audio = ["devices/audio"]
 gpu = ["devices/gpu"]
 plugin = ["protos/plugin", "crosvm_plugin", "protobuf"]
 tpm = ["devices/tpm"]

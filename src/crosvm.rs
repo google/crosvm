@@ -20,6 +20,7 @@ use arch::{Pstore, SerialHardware, SerialParameters};
 use devices::virtio::fs::passthrough;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
+#[cfg(feature = "audio")]
 use devices::Ac97Parameters;
 use libc::{getegid, geteuid};
 
@@ -192,6 +193,7 @@ pub struct Config {
     pub software_tpm: bool,
     pub display_window_keyboard: bool,
     pub display_window_mouse: bool,
+    #[cfg(feature = "audio")]
     pub ac97_parameters: Vec<Ac97Parameters>,
     pub serial_parameters: BTreeMap<(SerialHardware, u8), SerialParameters>,
     pub syslog_tag: Option<String>,
@@ -243,6 +245,7 @@ impl Default for Config {
             sandbox: !cfg!(feature = "default-no-sandbox"),
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             seccomp_log_failures: false,
+            #[cfg(feature = "audio")]
             ac97_parameters: Vec::new(),
             serial_parameters: BTreeMap::new(),
             syslog_tag: None,

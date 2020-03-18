@@ -4,9 +4,13 @@
 
 //! Implements pci devices and busses.
 
+#[cfg(feature = "audio")]
 mod ac97;
+#[cfg(feature = "audio")]
 mod ac97_bus_master;
+#[cfg(feature = "audio")]
 mod ac97_mixer;
+#[cfg(feature = "audio")]
 mod ac97_regs;
 mod msix;
 mod pci_configuration;
@@ -14,6 +18,7 @@ mod pci_device;
 mod pci_root;
 mod vfio_pci;
 
+#[cfg(feature = "audio")]
 pub use self::ac97::{Ac97Backend, Ac97Dev, Ac97Parameters};
 pub use self::msix::{MsixCap, MsixConfig, MsixStatus};
 pub use self::pci_configuration::{

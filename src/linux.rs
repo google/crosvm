@@ -32,9 +32,11 @@ use acpi_tables::sdt::SDT;
 use devices::virtio::EventDevice;
 use devices::virtio::{self, Console, VirtioDevice};
 use devices::{
-    self, Ac97Backend, Ac97Dev, HostBackendDeviceProvider, PciDevice, VfioContainer, VfioDevice,
-    VfioPciDevice, VirtioPciDevice, XhciController,
+    self, HostBackendDeviceProvider, PciDevice, VfioContainer, VfioDevice, VfioPciDevice,
+    VirtioPciDevice, XhciController,
 };
+#[cfg(feature = "audio")]
+use devices::{Ac97Backend, Ac97Dev};
 use kvm::*;
 use minijail::{self, Minijail};
 use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
@@ -84,6 +86,7 @@ pub enum Error {
     BuildVm(<Arch as LinuxArch>::Error),
     ChownTpmStorage(sys_util::Error),
     CloneEventFd(sys_util::Error),
+    #[cfg(feature = "audio")]
     CreateAc97(devices::PciDeviceError),
     CreateConsole(arch::serial::Error),
     CreateDiskError(disk::Error),
@@ -170,6 +173,7 @@ impl Display for Error {
             BuildVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
             ChownTpmStorage(e) => write!(f, "failed to chown tpm storage: {}", e),
             CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
+            #[cfg(feature = "audio")]
             CreateAc97(e) => write!(f, "failed to create ac97 device: {}", e),
             CreateConsole(e) => write!(f, "failed to create console device: {}", e),
             CreateDiskError(e) => write!(f, "failed to create virtual disk: {}", e),
@@ -1312,6 +1316,7 @@ fn create_devices(
         pci_devices.push((dev, stub.jail));
     }
 
+    #[cfg(feature = "audio")]
     for ac97_param in &cfg.ac97_parameters {
         let dev = Ac97Dev::try_new(mem.clone(), ac97_param.clone()).map_err(Error::CreateAc97)?;
         let policy = match ac97_param.backend {
@@ -1321,6 +1326,7 @@ fn create_devices(
 
         pci_devices.push((Box::new(dev), simple_jail(&cfg, &policy)?));
     }
+
     // Create xhci controller.
     let usb_controller = Box::new(XhciController::new(mem.clone(), usb_provider));
     pci_devices.push((usb_controller, simple_jail(&cfg, "xhci")?));

@@ -18,6 +18,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use arch::{set_default_serial_parameters, Pstore, SerialHardware, SerialParameters, SerialType};
+#[cfg(feature = "audio")]
 use audio_streams::StreamEffect;
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
@@ -25,6 +26,7 @@ use crosvm::{
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{GpuMode, GpuParameters};
+#[cfg(feature = "audio")]
 use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
@@ -281,6 +283,7 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
     Ok(gpu_params)
 }
 
+#[cfg(feature = "audio")]
 fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
     let mut ac97_params: Ac97Parameters = Default::default();
 
@@ -587,6 +590,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         })?,
                 )
         }
+        #[cfg(feature = "audio")]
         "ac97" => {
             let ac97_params = parse_ac97_options(value.unwrap())?;
             cfg.ac97_parameters.push(ac97_params);
@@ -1373,6 +1377,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
           Argument::value("mac", "MAC", "MAC address for VM."),
           Argument::value("net-vq-pairs", "N", "virtio net virtual queue paris. (default: 1)"),
+          #[cfg(feature = "audio")]
           Argument::value("ac97",
                           "[backend=BACKEND,capture=true,capture_effect=EFFECT]",
                           "Comma separated key=value pairs for setting up Ac97 devices. Can be given more than once .
@@ -2053,28 +2058,33 @@ mod tests {
         parse_cpu_set("0,1,2,").expect_err("parse should have failed");
     }
 
+    #[cfg(feature = "audio")]
     #[test]
     fn parse_ac97_vaild() {
         parse_ac97_options("backend=cras").expect("parse should have succeded");
     }
 
+    #[cfg(feature = "audio")]
     #[test]
     fn parse_ac97_null_vaild() {
         parse_ac97_options("backend=null").expect("parse should have succeded");
     }
 
+    #[cfg(feature = "audio")]
     #[test]
     fn parse_ac97_dup_effect_vaild() {
         parse_ac97_options("backend=cras,capture=true,capture_effects=aec|aec")
             .expect("parse should have succeded");
     }
 
+    #[cfg(feature = "audio")]
     #[test]
     fn parse_ac97_effect_invaild() {
         parse_ac97_options("backend=cras,capture=true,capture_effects=abc")
             .expect_err("parse should have failed");
     }
 
+    #[cfg(feature = "audio")]
     #[test]
     fn parse_ac97_effect_vaild() {
         parse_ac97_options("backend=cras,capture=true,capture_effects=aec")

@@ -5,6 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [features]
+audio = []
 gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
 tpm = ["protos/trunks", "tpm2"]
 video-decoder = ["libvda"]
