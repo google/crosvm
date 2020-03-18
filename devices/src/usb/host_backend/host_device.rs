@@ -305,22 +305,31 @@ impl HostDevice {
             config
         );
         self.release_interfaces();
-        let cur_config = self
-            .device
-            .lock()
-            .get_active_configuration()
-            .map_err(Error::GetActiveConfig)?;
-        usb_debug!("current config is: {}", cur_config);
-        if config != cur_config {
-            self.device
-                .lock()
-                .set_active_configuration(config)
-                .map_err(Error::SetActiveConfig)?;
+        if self.device.lock().get_num_configurations() > 1 {
+            let cur_config = match self.device.lock().get_active_configuration() {
+                Ok(c) => Some(c),
+                Err(e) => {
+                    // The device may be in the default state, in which case
+                    // GET_CONFIGURATION may fail.  Assume the device needs to be
+                    // reconfigured.
+                    usb_debug!("Failed to get active configuration: {}", e);
+                    error!("Failed to get active configuration: {}", e);
+                    None
+                }
+            };
+            if Some(config) != cur_config {
+                self.device
+                    .lock()
+                    .set_active_configuration(config)
+                    .map_err(Error::SetActiveConfig)?;
+            }
+        } else {
+            usb_debug!("Only one configuration - not calling set_active_configuration");
         }
         let config_descriptor = self
             .device
             .lock()
-            .get_active_config_descriptor()
+            .get_config_descriptor(config)
             .map_err(Error::GetActiveConfig)?;
         self.claim_interfaces(&config_descriptor);
         self.create_endpoints(&config_descriptor)?;
@@ -337,10 +346,15 @@ impl HostDevice {
             .set_interface_alt_setting(interface, alt_setting)
             .map_err(Error::SetInterfaceAltSetting)?;
         self.alt_settings.insert(interface, alt_setting);
+        let config = self
+            .device
+            .lock()
+            .get_active_configuration()
+            .map_err(Error::GetActiveConfig)?;
         let config_descriptor = self
             .device
             .lock()
-            .get_active_config_descriptor()
+            .get_config_descriptor(config)
             .map_err(Error::GetActiveConfig)?;
         self.create_endpoints(&config_descriptor)?;
         Ok(TransferStatus::Completed)
