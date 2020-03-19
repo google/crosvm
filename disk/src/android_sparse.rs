@@ -307,11 +307,12 @@ impl FileReadWriteAtVolatile for AndroidSparse {
                 .file
                 .read_at_volatile(subslice, *file_offset + chunk_offset),
             Chunk::Fill(fill_bytes) => {
+                let chunk_offset_mod = chunk_offset % fill_bytes.len() as u64;
                 let filled_memory: Vec<u8> = fill_bytes
                     .iter()
                     .cloned()
                     .cycle()
-                    .skip(chunk_offset as usize)
+                    .skip(chunk_offset_mod as usize)
                     .take(subslice.size() as usize)
                     .collect();
                 subslice.copy_from(&filled_memory);
@@ -472,6 +473,28 @@ mod tests {
             .expect("Could not read");
         let input_vec: Vec<u8> = input_memory.into_iter().cloned().collect();
         assert_eq!(input_vec, vec![20, 30, 10, 20, 30, 10]);
+    }
+
+    #[test]
+    fn read_fill_offset_edges() {
+        let chunks = vec![
+            ChunkWithSize {
+                chunk: Chunk::DontCare,
+                expanded_size: 20,
+            },
+            ChunkWithSize {
+                chunk: Chunk::Fill(vec![10, 20, 30]),
+                expanded_size: 100,
+            },
+        ];
+        let mut image = test_image(chunks);
+        let mut input_memory = [55u8; 7];
+        let input_volatile_memory = &mut input_memory[..];
+        image
+            .read_exact_at_volatile(input_volatile_memory.get_slice(0, 7).unwrap(), 39)
+            .expect("Could not read");
+        let input_vec: Vec<u8> = input_memory.into_iter().cloned().collect();
+        assert_eq!(input_vec, vec![20, 30, 10, 20, 30, 10, 20]);
     }
 
     #[test]
