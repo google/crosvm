@@ -593,7 +593,13 @@ fn create_tap_net_device(cfg: &Config, tap_fd: RawFd) -> DeviceResult {
             .map_err(Error::CreateTapDevice)?
     };
 
-    let dev = virtio::Net::from(tap, 1).map_err(Error::NetDeviceNew)?;
+    let mut vq_pairs = cfg.net_vq_pairs.unwrap_or(1);
+    let vcpu_count = cfg.vcpu_count.unwrap_or(1);
+    if vcpu_count < vq_pairs as u32 {
+        error!("net vq pairs must be smaller than vcpu count, fall back to single queue mode");
+        vq_pairs = 1;
+    }
+    let dev = virtio::Net::from(tap, vq_pairs).map_err(Error::NetDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -608,14 +614,21 @@ fn create_net_device(
     mac_address: MacAddress,
     mem: &GuestMemory,
 ) -> DeviceResult {
+    let mut vq_pairs = cfg.net_vq_pairs.unwrap_or(1);
+    let vcpu_count = cfg.vcpu_count.unwrap_or(1);
+    if vcpu_count < vq_pairs as u32 {
+        error!("net vq pairs must be smaller than vcpu count, fall back to single queue mode");
+        vq_pairs = 1;
+    }
+
     let dev = if cfg.vhost_net {
         let dev =
             virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(host_ip, netmask, mac_address, mem)
                 .map_err(Error::VhostNetDeviceNew)?;
         Box::new(dev) as Box<dyn VirtioDevice>
     } else {
-        let dev =
-            virtio::Net::<Tap>::new(host_ip, netmask, mac_address).map_err(Error::NetDeviceNew)?;
+        let dev = virtio::Net::<Tap>::new(host_ip, netmask, mac_address, vq_pairs)
+            .map_err(Error::NetDeviceNew)?;
         Box::new(dev) as Box<dyn VirtioDevice>
     };
 

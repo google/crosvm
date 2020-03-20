@@ -762,6 +762,26 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         })?,
                 )
         }
+        "net-vq-pairs" => {
+            if cfg.net_vq_pairs.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`net-vq-pairs` already given".to_owned(),
+                ));
+            }
+            cfg.net_vq_pairs =
+                Some(
+                    value
+                        .unwrap()
+                        .parse()
+                        .map_err(|_| argument::Error::InvalidValue {
+                            value: value.unwrap().to_owned(),
+                            expected: String::from(
+                                "this value for `net-vq-pairs` needs to be integer",
+                            ),
+                        })?,
+                )
+        }
+
         "wayland-sock" => {
             let mut components = value.unwrap().split(',');
             let path =
@@ -1237,6 +1257,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           "IP address to assign to host tap interface."),
           Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
           Argument::value("mac", "MAC", "MAC address for VM."),
+          Argument::value("net-vq-pairs", "N", "virtio net virtual queue paris. (default: 1)"),
           Argument::value("ac97",
                           "[backend=BACKEND,capture=true,capture_effect=EFFECT]",
                           "Comma separated key=value pairs for setting up Ac97 devices. Can be given more than once .
