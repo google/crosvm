@@ -14,6 +14,7 @@ use sys_util::{error, warn, EventFd, GuestMemory};
 use vhost::NetT as VhostNetT;
 use virtio_sys::virtio_net;
 
+use super::control_socket::*;
 use super::worker::Worker;
 use super::{Error, Result};
 use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_NET};
@@ -31,6 +32,8 @@ pub struct Net<T: TapT, U: VhostNetT<T>> {
     vhost_interrupt: Option<Vec<EventFd>>,
     avail_features: u64,
     acked_features: u64,
+    request_socket: Option<VhostDevRequestSocket>,
+    response_socket: Option<VhostDevResponseSocket>,
 }
 
 impl<T, U> Net<T, U>
@@ -85,6 +88,8 @@ where
             vhost_interrupt.push(EventFd::new().map_err(Error::VhostIrqCreate)?);
         }
 
+        let (request_socket, response_socket) = create_control_sockets();
+
         Ok(Net {
             workers_kill_evt: Some(kill_evt.try_clone().map_err(Error::CloneKillEventFd)?),
             kill_evt,
@@ -94,6 +99,8 @@ where
             vhost_interrupt: Some(vhost_interrupt),
             avail_features,
             acked_features: 0u64,
+            request_socket,
+            response_socket,
         })
     }
 }
@@ -142,6 +149,14 @@ where
             keep_fds.push(workers_kill_evt.as_raw_fd());
         }
         keep_fds.push(self.kill_evt.as_raw_fd());
+
+        if let Some(request_socket) = &self.request_socket {
+            keep_fds.push(request_socket.as_raw_fd());
+        }
+
+        if let Some(response_socket) = &self.response_socket {
+            keep_fds.push(response_socket.as_raw_fd());
+        }
 
         keep_fds
     }

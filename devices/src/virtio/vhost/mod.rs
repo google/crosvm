@@ -12,10 +12,12 @@ use remain::sorted;
 use sys_util::Error as SysError;
 use vhost::Error as VhostError;
 
+mod control_socket;
 mod net;
 mod vsock;
 mod worker;
 
+pub use self::control_socket::*;
 pub use self::net::Net;
 pub use self::vsock::Vsock;
 
