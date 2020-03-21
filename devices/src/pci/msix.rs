@@ -89,6 +89,12 @@ impl Display for MsixError {
 
 type MsixResult<T> = std::result::Result<T, MsixError>;
 
+pub enum MsixStatus {
+    Changed,
+    EntryChanged(usize),
+    NothingToDo,
+}
+
 impl MsixConfig {
     pub fn new(msix_vectors: u16, vm_socket: Arc<VmIrqRequestSocket>) -> Self {
         assert!(msix_vectors <= MAX_MSIX_VECTORS_PER_DEVICE);
@@ -123,6 +129,18 @@ impl MsixConfig {
         self.masked
     }
 
+    /// Check whether the Function Mask bit in MSIX table Message Control
+    /// word in set or not.
+    /// If true, the vector is masked.
+    /// If false, the vector is unmasked.
+    pub fn table_masked(&self, index: usize) -> bool {
+        if index >= self.table_entries.len() {
+            true
+        } else {
+            self.table_entries[index].masked()
+        }
+    }
+
     /// Check whether the MSI-X Enable bit in Message Control word in set or not.
     /// if 1, the function is permitted to use MSI-X to request service.
     pub fn enabled(&self) -> bool {
@@ -147,7 +165,7 @@ impl MsixConfig {
 
     /// Write to the MSI-X Capability Structure.
     /// Only the top 2 bits in Message Control Word are writable.
-    pub fn write_msix_capability(&mut self, offset: u64, data: &[u8]) {
+    pub fn write_msix_capability(&mut self, offset: u64, data: &[u8]) -> MsixStatus {
         if offset == 2 && data.len() == 2 {
             let reg = u16::from_le_bytes([data[0], data[1]]);
             let old_masked = self.masked;
@@ -173,6 +191,9 @@ impl MsixConfig {
                         self.inject_msix_and_clear_pba(index);
                     }
                 }
+                return MsixStatus::Changed;
+            } else if !old_masked && self.masked {
+                return MsixStatus::Changed;
             }
         } else {
             error!(
@@ -180,6 +201,7 @@ impl MsixConfig {
                 offset
             );
         }
+        MsixStatus::NothingToDo
     }
 
     fn add_msi_route(&self, index: u16, gsi: u32) -> MsixResult<()> {
@@ -304,7 +326,7 @@ impl MsixConfig {
     /// Vector Control: only bit 0 (Mask Bit) is not reserved: when this bit
     ///     is set, the function is prohibited from sending a message using
     ///     this MSI-X Table entry.
-    pub fn write_msix_table(&mut self, offset: u64, data: &[u8]) {
+    pub fn write_msix_table(&mut self, offset: u64, data: &[u8]) -> MsixStatus {
         let index: usize = (offset / MSIX_TABLE_ENTRIES_MODULO) as usize;
         let modulo_offset = offset % MSIX_TABLE_ENTRIES_MODULO;
 
@@ -360,13 +382,17 @@ impl MsixConfig {
         // device.
 
         // Check if bit has been flipped
-        if !self.masked()
-            && old_entry.masked()
-            && !self.table_entries[index].masked()
-            && self.get_pba_bit(index as u16) == 1
-        {
-            self.inject_msix_and_clear_pba(index);
+        if !self.masked() {
+            if old_entry.masked() && !self.table_entries[index].masked() {
+                if self.get_pba_bit(index as u16) == 1 {
+                    self.inject_msix_and_clear_pba(index);
+                }
+                return MsixStatus::EntryChanged(index);
+            } else if !old_entry.masked() && self.table_entries[index].masked() {
+                return MsixStatus::EntryChanged(index);
+            }
         }
+        MsixStatus::NothingToDo
     }
 
     /// Read PBA Entries

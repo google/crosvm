@@ -13,7 +13,7 @@ pub struct Interrupt {
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: EventFd,
     interrupt_resample_evt: EventFd,
-    msix_config: Option<Arc<Mutex<MsixConfig>>>,
+    pub msix_config: Option<Arc<Mutex<MsixConfig>>>,
     config_msix_vector: u16,
 }
 

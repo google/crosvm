@@ -535,7 +535,8 @@ impl PciDevice for VirtioPciDevice {
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
         if let Some(msix_cap_reg_idx) = self.msix_cap_reg_idx {
             if msix_cap_reg_idx == reg_idx {
-                self.msix_config.lock().write_msix_capability(offset, data);
+                let behavior = self.msix_config.lock().write_msix_capability(offset, data);
+                self.device.control_notify(behavior);
             }
         }
 
@@ -626,9 +627,11 @@ impl PciDevice for VirtioPciDevice {
                 // Handled with ioeventfds.
             }
             o if MSIX_TABLE_BAR_OFFSET <= o && o < MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE => {
-                self.msix_config
+                let behavior = self
+                    .msix_config
                     .lock()
                     .write_msix_table(o - MSIX_TABLE_BAR_OFFSET, data);
+                self.device.control_notify(behavior);
             }
             o if MSIX_PBA_BAR_OFFSET <= o && o < MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE => {
                 self.msix_config

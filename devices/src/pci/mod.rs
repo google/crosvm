@@ -15,7 +15,7 @@ mod pci_root;
 mod vfio_pci;
 
 pub use self::ac97::{Ac97Backend, Ac97Dev, Ac97Parameters};
-pub use self::msix::{MsixCap, MsixConfig};
+pub use self::msix::{MsixCap, MsixConfig, MsixStatus};
 pub use self::pci_configuration::{
     PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability, PciCapabilityID,
     PciClassCode, PciConfiguration, PciHeaderType, PciProgrammingInterface, PciSerialBusSubClass,

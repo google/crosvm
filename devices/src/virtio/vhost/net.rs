@@ -17,7 +17,9 @@ use virtio_sys::virtio_net;
 use super::control_socket::*;
 use super::worker::Worker;
 use super::{Error, Result};
+use crate::pci::MsixStatus;
 use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_NET};
+use msg_socket::{MsgReceiver, MsgSender};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -268,6 +270,48 @@ where
             match vhost_net_handle.set_owner() {
                 Ok(_) => {}
                 Err(e) => error!("{}: failed to set owner: {:?}", self.debug_label(), e),
+            }
+        }
+    }
+
+    fn control_notify(&self, behavior: MsixStatus) {
+        if self.worker_thread.is_none() || self.request_socket.is_none() {
+            return;
+        }
+        if let Some(socket) = &self.request_socket {
+            match behavior {
+                MsixStatus::EntryChanged(index) => {
+                    if let Err(e) = socket.send(&VhostDevRequest::MsixEntryChanged(index)) {
+                        error!(
+                            "{} failed to send VhostMsixEntryChanged request for entry {}: {:?}",
+                            self.debug_label(),
+                            index,
+                            e
+                        );
+                        return;
+                    }
+                    if let Err(e) = socket.recv() {
+                        error!("{} failed to receive VhostMsixEntryChanged response for entry {}: {:?}", self.debug_label(), index, e);
+                    }
+                }
+                MsixStatus::Changed => {
+                    if let Err(e) = socket.send(&VhostDevRequest::MsixChanged) {
+                        error!(
+                            "{} failed to send VhostMsixChanged request: {:?}",
+                            self.debug_label(),
+                            e
+                        );
+                        return;
+                    }
+                    if let Err(e) = socket.recv() {
+                        error!(
+                            "{} failed to receive VhostMsixChanged response {:?}",
+                            self.debug_label(),
+                            e
+                        );
+                    }
+                }
+                _ => {}
             }
         }
     }

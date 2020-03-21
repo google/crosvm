@@ -7,7 +7,7 @@ use std::os::unix::io::RawFd;
 use sys_util::{EventFd, GuestMemory};
 
 use super::*;
-use crate::pci::{PciBarConfiguration, PciCapability};
+use crate::pci::{MsixStatus, PciBarConfiguration, PciCapability};
 
 /// Trait for virtio devices to be driven by a virtio transport.
 ///
@@ -86,4 +86,6 @@ pub trait VirtioDevice: Send {
 
     /// Invoked when the device is sandboxed.
     fn on_device_sandboxed(&mut self) {}
+
+    fn control_notify(&self, _behavior: MsixStatus) {}
 }
