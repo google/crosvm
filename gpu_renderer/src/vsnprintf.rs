@@ -12,6 +12,7 @@
  *       -o vsnprintf.rs
  */
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 extern "C" {
     pub fn vsnprintf(
         __s: *mut ::std::os::raw::c_char,
@@ -20,6 +21,8 @@ extern "C" {
         __arg: *mut __va_list_tag,
     ) -> ::std::os::raw::c_int;
 }
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __va_list_tag {

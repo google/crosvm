@@ -9,6 +9,7 @@ mod generated;
 mod vsnprintf;
 
 use std::cell::RefCell;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use std::ffi::CString;
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -33,6 +34,7 @@ use crate::generated::p_format::PIPE_FORMAT_B8G8R8X8_UNORM;
 use crate::generated::virglrenderer::*;
 
 pub use crate::command_buffer::CommandBufferBuilder;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use crate::vsnprintf::vsnprintf;
 
 /// Arguments used in `Renderer::create_resource`..
@@ -248,7 +250,10 @@ impl Renderer {
             fence_state: Rc::clone(&fence_state),
         }));
 
-        unsafe { virgl_set_debug_callback(Some(Renderer::debug_callback)) };
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        unsafe {
+            virgl_set_debug_callback(Some(Renderer::debug_callback))
+        };
 
         // Safe because a valid cookie and set of callbacks is used and the result is checked for
         // error.
@@ -474,6 +479,7 @@ impl Renderer {
         Err(Error::Unsupported)
     }
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     extern "C" fn debug_callback(
         fmt: *const ::std::os::raw::c_char,
         ap: *mut generated::virglrenderer::__va_list_tag,
