@@ -11,3 +11,4 @@ futures = "*"
 libc = "*"
 msg_on_socket_derive = { path = "msg_on_socket_derive" }
 sys_util = { path = "../sys_util"  }
+sync = { path = "../sync"  }

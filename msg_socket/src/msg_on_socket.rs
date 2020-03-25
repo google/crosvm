@@ -10,8 +10,10 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
 use std::ptr::drop_in_place;
 use std::result;
+use std::sync::Arc;
 
 use data_model::*;
+use sync::Mutex;
 use sys_util::{Error as SysError, EventFd};
 
 #[derive(Debug, PartialEq)]
@@ -206,6 +208,50 @@ impl<T: MsgOnSocket> MsgOnSocket for Option<T> {
                 inner.write_to_buffer(&mut buffer[1..], fds)
             }
         }
+    }
+}
+
+impl<T: MsgOnSocket> MsgOnSocket for Mutex<T> {
+    fn uses_fd() -> bool {
+        T::uses_fd()
+    }
+
+    fn msg_size(&self) -> usize {
+        self.lock().msg_size()
+    }
+
+    fn fd_count(&self) -> usize {
+        self.lock().fd_count()
+    }
+
+    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+        T::read_from_buffer(buffer, fds).map(|(v, count)| (Mutex::new(v), count))
+    }
+
+    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
+        self.lock().write_to_buffer(buffer, fds)
+    }
+}
+
+impl<T: MsgOnSocket> MsgOnSocket for Arc<T> {
+    fn uses_fd() -> bool {
+        T::uses_fd()
+    }
+
+    fn msg_size(&self) -> usize {
+        (**self).msg_size()
+    }
+
+    fn fd_count(&self) -> usize {
+        (**self).fd_count()
+    }
+
+    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+        T::read_from_buffer(buffer, fds).map(|(v, count)| (Arc::new(v), count))
+    }
+
+    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
+        (**self).write_to_buffer(buffer, fds)
     }
 }
 
