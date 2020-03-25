@@ -13,6 +13,7 @@ use sys_util::{error, EventFd, GuestMemory, PollContext, PollToken};
 use super::{
     copy_config, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_CONSOLE, VIRTIO_F_VERSION_1,
 };
+use crate::SerialDevice;
 
 const QUEUE_SIZE: u16 = 256;
 
@@ -303,8 +304,9 @@ pub struct Console {
     keep_fds: Vec<RawFd>,
 }
 
-impl Console {
+impl SerialDevice for Console {
     fn new(
+        _evt_fd: EventFd,
         input: Option<Box<dyn io::Read + Send>>,
         output: Option<Box<dyn io::Write + Send>>,
         keep_fds: Vec<RawFd>,
@@ -316,25 +318,6 @@ impl Console {
             output,
             keep_fds,
         }
-    }
-
-    /// Constructs a console with input and output streams.
-    pub fn new_in_out(
-        input: Box<dyn io::Read + Send>,
-        out: Box<dyn io::Write + Send>,
-        keep_fds: Vec<RawFd>,
-    ) -> Console {
-        Self::new(Some(input), Some(out), keep_fds)
-    }
-
-    /// Constructs a console with an output stream but no input.
-    pub fn new_out(out: Box<dyn io::Write + Send>, keep_fds: Vec<RawFd>) -> Console {
-        Self::new(None, Some(out), keep_fds)
-    }
-
-    /// Constructs a console with no connected input or output.
-    pub fn new_sink() -> Console {
-        Self::new(None, None, Vec::new())
     }
 }
 

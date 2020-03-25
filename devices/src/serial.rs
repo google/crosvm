@@ -4,6 +4,7 @@
 
 use std::collections::VecDeque;
 use std::io::{self, Write};
+use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
@@ -11,7 +12,7 @@ use std::thread::{self};
 
 use sys_util::{error, EventFd, Result};
 
-use crate::BusDevice;
+use crate::{BusDevice, SerialDevice};
 
 const LOOP_SIZE: usize = 0x40;
 
@@ -81,11 +82,12 @@ pub struct Serial {
     out: Option<Box<dyn io::Write + Send>>,
 }
 
-impl Serial {
-    pub fn new(
+impl SerialDevice for Serial {
+    fn new(
         interrupt_evt: EventFd,
         input: Option<Box<dyn io::Read + Send>>,
         out: Option<Box<dyn io::Write + Send>>,
+        _keep_fds: Vec<RawFd>,
     ) -> Serial {
         Serial {
             interrupt_enable: Default::default(),
@@ -103,28 +105,9 @@ impl Serial {
             out,
         }
     }
+}
 
-    /// Constructs a Serial port ready for input and output.
-    ///
-    /// The stream `input` should not block, instead returning 0 bytes if are no bytes available.
-    pub fn new_in_out(
-        interrupt_evt: EventFd,
-        input: Box<dyn io::Read + Send>,
-        out: Box<dyn io::Write + Send>,
-    ) -> Serial {
-        Self::new(interrupt_evt, Some(input), Some(out))
-    }
-
-    /// Constructs a Serial port ready for output but not input.
-    pub fn new_out(interrupt_evt: EventFd, out: Box<dyn io::Write + Send>) -> Serial {
-        Self::new(interrupt_evt, None, Some(out))
-    }
-
-    /// Constructs a Serial port with no connected input or output.
-    pub fn new_sink(interrupt_evt: EventFd) -> Serial {
-        Self::new(interrupt_evt, None, None)
-    }
-
+impl Serial {
     /// Queues raw bytes for the guest to read and signals the interrupt if the line status would
     /// change. These bytes will be read by the guest before any bytes from the input stream that
     /// have not already been queued.
@@ -425,7 +408,12 @@ mod tests {
         let intr_evt = EventFd::new().unwrap();
         let serial_out = SharedBuffer::new();
 
-        let mut serial = Serial::new_out(intr_evt, Box::new(serial_out.clone()));
+        let mut serial = Serial::new(
+            intr_evt,
+            None,
+            Some(Box::new(serial_out.clone())),
+            Vec::new(),
+        );
 
         serial.write(DATA as u64, &['a' as u8]);
         serial.write(DATA as u64, &['b' as u8]);
@@ -441,8 +429,12 @@ mod tests {
         let intr_evt = EventFd::new().unwrap();
         let serial_out = SharedBuffer::new();
 
-        let mut serial =
-            Serial::new_out(intr_evt.try_clone().unwrap(), Box::new(serial_out.clone()));
+        let mut serial = Serial::new(
+            intr_evt.try_clone().unwrap(),
+            None,
+            Some(Box::new(serial_out.clone())),
+            Vec::new(),
+        );
 
         serial.write(IER as u64, &[IER_RECV_BIT]);
         serial

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use devices::{Bus, ProxyDevice, Serial};
+use devices::{Bus, ProxyDevice, Serial, SerialDevice};
 use io_jail::Minijail;
 use sync::Mutex;
 use sys_util::{read_raw_stdin, syslog, EventFd};
@@ -97,11 +97,11 @@ impl SerialParameters {
     /// * `evt_fd` - eventfd used for interrupt events
     /// * `keep_fds` - Vector of FDs required by this device if it were sandboxed in a child
     ///                process. `evt_fd` will always be added to this vector by this function.
-    pub fn create_serial_device(
+    pub fn create_serial_device<T: SerialDevice>(
         &self,
         evt_fd: &EventFd,
         keep_fds: &mut Vec<RawFd>,
-    ) -> std::result::Result<Serial, Error> {
+    ) -> std::result::Result<T, Error> {
         let evt_fd = evt_fd.try_clone().map_err(Error::CloneEventFd)?;
         keep_fds.push(evt_fd.as_raw_fd());
         let input: Option<Box<dyn io::Read + Send>> = if let Some(input_path) = &self.input {
@@ -145,7 +145,7 @@ impl SerialParameters {
             },
             SerialType::UnixSocket => return Err(Error::Unimplemented(SerialType::UnixSocket)),
         };
-        Ok(Serial::new(evt_fd, input, output))
+        Ok(T::new(evt_fd, input, output, keep_fds.to_vec()))
     }
 }
 
@@ -240,7 +240,7 @@ pub fn add_serial_devices(
 
         let mut preserved_fds = Vec::new();
         let com = param
-            .create_serial_device(&com_evt, &mut preserved_fds)
+            .create_serial_device::<Serial>(&com_evt, &mut preserved_fds)
             .map_err(DeviceRegistrationError::CreateSerialDevice)?;
 
         match serial_jail.as_ref() {
