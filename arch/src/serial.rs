@@ -122,33 +122,30 @@ impl SerialParameters {
         } else {
             None
         };
-        match self.type_ {
+        let output: Option<Box<dyn io::Write + Send>> = match self.type_ {
             SerialType::Stdout => {
                 keep_fds.push(stdout().as_raw_fd());
-                Ok(Serial::new(evt_fd, input, Some(Box::new(stdout()))))
+                Some(Box::new(stdout()))
             }
-            SerialType::Sink => Ok(Serial::new(evt_fd, input, None)),
+            SerialType::Sink => None,
             SerialType::Syslog => {
                 syslog::push_fds(keep_fds);
-                Ok(Serial::new(
-                    evt_fd,
-                    input,
-                    Some(Box::new(syslog::Syslogger::new(
-                        syslog::Priority::Info,
-                        syslog::Facility::Daemon,
-                    ))),
-                ))
+                Some(Box::new(syslog::Syslogger::new(
+                    syslog::Priority::Info,
+                    syslog::Facility::Daemon,
+                )))
             }
             SerialType::File => match &self.path {
                 Some(path) => {
                     let file = File::create(path.as_path()).map_err(Error::FileError)?;
                     keep_fds.push(file.as_raw_fd());
-                    Ok(Serial::new(evt_fd, input, Some(Box::new(file))))
+                    Some(Box::new(file))
                 }
-                _ => Err(Error::PathRequired),
+                None => return Err(Error::PathRequired),
             },
-            SerialType::UnixSocket => Err(Error::Unimplemented(SerialType::UnixSocket)),
-        }
+            SerialType::UnixSocket => return Err(Error::Unimplemented(SerialType::UnixSocket)),
+        };
+        Ok(Serial::new(evt_fd, input, output))
     }
 }
 
