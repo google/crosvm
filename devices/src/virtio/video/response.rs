@@ -21,16 +21,17 @@ pub trait Response {
     fn write(&self, w: &mut Writer) -> Result<(), io::Error>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CmdError {
     InvalidResourceId,
     InvalidStreamId,
     InvalidParameter,
     InvalidOperation,
+    UnsupportedControl,
 }
 
 /// A response to a `VideoCmd`. These correspond to `VIRTIO_VIDEO_RESP_*`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CmdResponse {
     NoData,
     QueryCapability(Vec<FormatDesc>),
@@ -57,6 +58,7 @@ impl From<VideoError> for CmdResponse {
             VideoError::InvalidResourceId { .. } => CmdError::InvalidResourceId,
             VideoError::InvalidStreamId(_) => CmdError::InvalidStreamId,
             VideoError::InvalidParameter => CmdError::InvalidParameter,
+            VideoError::UnsupportedControl(_) => CmdError::UnsupportedControl,
             _ => CmdError::InvalidOperation,
         };
         CmdResponse::Error(cmd_error)
@@ -84,6 +86,7 @@ impl Response for CmdResponse {
                     CmdError::InvalidStreamId => VIRTIO_VIDEO_RESP_ERR_INVALID_STREAM_ID,
                     CmdError::InvalidParameter => VIRTIO_VIDEO_RESP_ERR_INVALID_PARAMETER,
                     CmdError::InvalidOperation => VIRTIO_VIDEO_RESP_ERR_INVALID_OPERATION,
+                    CmdError::UnsupportedControl => VIRTIO_VIDEO_RESP_ERR_UNSUPPORTED_CONTROL,
                 }
             }
         });

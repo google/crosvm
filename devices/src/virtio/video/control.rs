@@ -20,7 +20,7 @@ pub enum QueryCtrlType {
     Level(Format),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum QueryCtrlResponse {
     Profile(Vec<Profile>),
     #[allow(dead_code)]
@@ -55,7 +55,7 @@ pub enum CtrlType {
     Level,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CtrlVal {
     Bitrate(u32),
     Profile(Profile),

@@ -7,11 +7,15 @@
 use std::fmt;
 
 use crate::virtio::resource_bridge::ResourceBridgeError;
+use crate::virtio::video::control::CtrlType;
+use crate::virtio::video::encoder::EncoderError;
 
 /// An error indicating something went wrong while encoding or decoding.
 /// Unlike `virtio::video::Error`, `VideoError` is not fatal for `Worker`.
 #[derive(Debug)]
 pub enum VideoError {
+    /// The encoder implementation returned an error.
+    EncoderImpl(EncoderError),
     /// Invalid argument.
     InvalidArgument,
     /// Invalid operation
@@ -24,6 +28,8 @@ pub enum VideoError {
     InvalidParameter,
     /// Failed to get a resource FD via resource_bridge.
     ResourceBridgeFailure(ResourceBridgeError),
+    /// Unsupported control type is specified.
+    UnsupportedControl(CtrlType),
     /// `libvda` returned an error.
     VdaError(libvda::Error),
     /// `libvda` returned a failure response.
@@ -47,8 +53,10 @@ impl fmt::Display for VideoError {
             ),
             InvalidParameter => write!(f, "invalid parameter"),
             ResourceBridgeFailure(id) => write!(f, "failed to get resource FD for id {}", id),
+            UnsupportedControl(ctrl_type) => write!(f, "unsupported control: {:?}", ctrl_type),
             VdaError(e) => write!(f, "error occurred in libvda: {}", e),
             VdaFailure(r) => write!(f, "failed while processing a requst in VDA: {}", r),
+            EncoderImpl(e) => write!(f, "error occurred in the encoder implementation: {}", e),
         }
     }
 }

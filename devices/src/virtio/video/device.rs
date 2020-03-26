@@ -38,6 +38,11 @@ pub enum AsyncCmdTag {
         stream_id: u32,
         queue_type: QueueType,
     },
+    // Used exclusively by the encoder.
+    GetParams {
+        stream_id: u32,
+        queue_type: QueueType,
+    },
 }
 
 /// A return value when a command from the guest is processed.

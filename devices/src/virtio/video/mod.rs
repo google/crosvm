@@ -235,7 +235,20 @@ impl VirtioDevice for VideoDevice {
             VideoDeviceType::Encoder => thread::Builder::new()
                 .name("virtio video encoder".to_owned())
                 .spawn(move || {
-                    let device = encoder::Encoder::new();
+                    let encoder = match encoder::LibvdaEncoder::new() {
+                        Ok(vea) => vea,
+                        Err(e) => {
+                            error!("Failed to initialize vea: {}", e);
+                            return;
+                        }
+                    };
+                    let device = match encoder::EncoderDevice::new(&encoder) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            error!("Failed to create encoder device: {}", e);
+                            return;
+                        }
+                    };
                     if let Err(e) = worker.run(cmd_queue, event_queue, device) {
                         error!("Failed to start encoder worker: {}", e);
                     }
