@@ -1738,7 +1738,7 @@ impl FileSystem for PassthroughFs {
                 src,
                 &offset_src,
                 dst,
-                offset_dst,
+                &offset_dst,
                 length,
                 flags,
             )
