@@ -356,6 +356,38 @@ impl PassthroughFs {
         vec![self.proc.as_raw_fd()]
     }
 
+    fn get_path(&self, inode: Inode) -> io::Result<CString> {
+        let data = self
+            .inodes
+            .read()
+            .unwrap()
+            .get(&inode)
+            .map(Arc::clone)
+            .ok_or_else(ebadf)?;
+
+        let mut buf = Vec::with_capacity(libc::PATH_MAX as usize);
+        buf.resize(libc::PATH_MAX as usize, 0);
+
+        let path = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        // Safe because this will only modify the contents of `buf` and we check the return value.
+        let res = unsafe {
+            libc::readlinkat(
+                self.proc.as_raw_fd(),
+                path.as_ptr(),
+                buf.as_mut_ptr() as *mut libc::c_char,
+                buf.len(),
+            )
+        };
+        if res < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        buf.resize(res as usize, 0);
+        CString::new(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    }
+
     fn open_inode(&self, inode: Inode, mut flags: i32) -> io::Result<File> {
         let data = self
             .inodes
@@ -1521,14 +1553,12 @@ impl FileSystem for PassthroughFs {
         value: &[u8],
         flags: u32,
     ) -> io::Result<()> {
-        // The f{set,get,remove,list}xattr functions don't work on an fd opened with `O_PATH` so we
-        // need to get a new fd.
-        let file = self.open_inode(inode, libc::O_RDONLY | libc::O_NONBLOCK)?;
+        let path = self.get_path(inode)?;
 
         // Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe {
-            libc::fsetxattr(
-                file.as_raw_fd(),
+            libc::lsetxattr(
+                path.as_ptr(),
                 name.as_ptr(),
                 value.as_ptr() as *const libc::c_void,
                 value.len(),
@@ -1549,17 +1579,15 @@ impl FileSystem for PassthroughFs {
         name: &CStr,
         size: u32,
     ) -> io::Result<GetxattrReply> {
-        // The f{set,get,remove,list}xattr functions don't work on an fd opened with `O_PATH` so we
-        // need to get a new fd.
-        let file = self.open_inode(inode, libc::O_RDONLY | libc::O_NONBLOCK)?;
+        let path = self.get_path(inode)?;
 
         let mut buf = Vec::with_capacity(size as usize);
         buf.resize(size as usize, 0);
 
         // Safe because this will only modify the contents of `buf`.
         let res = unsafe {
-            libc::fgetxattr(
-                file.as_raw_fd(),
+            libc::lgetxattr(
+                path.as_ptr(),
                 name.as_ptr(),
                 buf.as_mut_ptr() as *mut libc::c_void,
                 size as libc::size_t,
@@ -1578,17 +1606,15 @@ impl FileSystem for PassthroughFs {
     }
 
     fn listxattr(&self, _ctx: Context, inode: Inode, size: u32) -> io::Result<ListxattrReply> {
-        // The f{set,get,remove,list}xattr functions don't work on an fd opened with `O_PATH` so we
-        // need to get a new fd.
-        let file = self.open_inode(inode, libc::O_RDONLY | libc::O_NONBLOCK)?;
+        let path = self.get_path(inode)?;
 
         let mut buf = Vec::with_capacity(size as usize);
         buf.resize(size as usize, 0);
 
         // Safe because this will only modify the contents of `buf`.
         let res = unsafe {
-            libc::flistxattr(
-                file.as_raw_fd(),
+            libc::llistxattr(
+                path.as_ptr(),
                 buf.as_mut_ptr() as *mut libc::c_char,
                 size as libc::size_t,
             )
@@ -1606,12 +1632,10 @@ impl FileSystem for PassthroughFs {
     }
 
     fn removexattr(&self, _ctx: Context, inode: Inode, name: &CStr) -> io::Result<()> {
-        // The f{set,get,remove,list}xattr functions don't work on an fd opened with `O_PATH` so we
-        // need to get a new fd.
-        let file = self.open_inode(inode, libc::O_RDONLY | libc::O_NONBLOCK)?;
+        let path = self.get_path(inode)?;
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let res = unsafe { libc::fremovexattr(file.as_raw_fd(), name.as_ptr()) };
+        let res = unsafe { libc::lremovexattr(path.as_ptr(), name.as_ptr()) };
 
         if res == 0 {
             Ok(())
