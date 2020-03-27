@@ -361,7 +361,7 @@ impl Process {
             None => return Err(SysError::new(EOVERFLOW)),
             _ => {}
         }
-        let mem = MemoryMapping::from_fd_offset(&shm, length as usize, offset as usize)
+        let mem = MemoryMapping::from_fd_offset(&shm, length as usize, offset)
             .map_err(mmap_to_sys_err)?;
         let slot = vm.add_mmio_memory(GuestAddress(start), mem, read_only, dirty_log)?;
         entry.insert(PluginObject::Memory {

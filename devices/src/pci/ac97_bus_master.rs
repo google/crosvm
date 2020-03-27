@@ -5,6 +5,7 @@
 use std;
 use std::collections::VecDeque;
 use std::convert::AsRef;
+use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -106,6 +107,8 @@ type GuestMemoryResult<T> = std::result::Result<T, GuestMemoryError>;
 enum AudioError {
     // Failed to create a new stream.
     CreateStream(Box<dyn Error>),
+    // Invalid buffer offset received from the audio server.
+    InvalidBufferOffset,
     // Guest did not provide a buffer when needed.
     NoBufferAvailable,
     // Failure to read guest memory.
@@ -124,6 +127,7 @@ impl Display for AudioError {
 
         match self {
             CreateStream(e) => write!(f, "Failed to create audio stream: {}.", e),
+            InvalidBufferOffset => write!(f, "Offset > max usize"),
             NoBufferAvailable => write!(f, "No buffer was available from the Guest"),
             ReadingGuestError(e) => write!(f, "Failed to read guest memory: {}.", e),
             RespondRequest(e) => write!(f, "Failed to respond to the ServerRequest: {}", e),
@@ -610,7 +614,7 @@ fn get_buffer_offset(
     func_regs: &Ac97FunctionRegs,
     mem: &GuestMemory,
     index: u8,
-) -> GuestMemoryResult<usize> {
+) -> GuestMemoryResult<u64> {
     let descriptor_addr = func_regs.bdbar + u32::from(index) * DESCRIPTOR_LENGTH as u32;
     let buffer_addr_reg: u32 = mem
         .read_obj_from_addr(GuestAddress(u64::from(descriptor_addr)))
@@ -673,7 +677,9 @@ fn next_guest_buffer<'a>(
         return Ok(None);
     }
 
-    let offset = get_buffer_offset(func_regs, mem, index)?;
+    let offset = get_buffer_offset(func_regs, mem, index)?
+        .try_into()
+        .map_err(|_| AudioError::InvalidBufferOffset)?;
     let frames = get_buffer_samples(func_regs, mem, index)? / DEVICE_CHANNEL_COUNT;
 
     Ok(Some(GuestBuffer {

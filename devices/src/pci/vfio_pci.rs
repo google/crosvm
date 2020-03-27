@@ -709,7 +709,7 @@ impl VfioPciDevice {
                 let mmap_size = mmap.size;
                 let guest_map_start = bar_addr + mmap_offset;
                 let region_offset = self.device.get_region_offset(index);
-                let offset: usize = (region_offset + mmap_offset) as usize;
+                let offset = region_offset + mmap_offset;
                 if self
                     .vm_socket_mem
                     .send(&VmMemoryRequest::RegisterMmapMemory {

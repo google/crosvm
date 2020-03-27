@@ -235,7 +235,7 @@ pub enum VmMemoryRequest {
     RegisterMmapMemory {
         fd: MaybeOwnedFd,
         size: usize,
-        offset: usize,
+        offset: u64,
         gpa: u64,
     },
 }
@@ -303,7 +303,7 @@ impl VmMemoryRequest {
                 offset,
                 gpa,
             } => {
-                let mmap = match MemoryMapping::from_fd_offset(fd, size, offset) {
+                let mmap = match MemoryMapping::from_fd_offset(fd, size, offset as u64) {
                     Ok(v) => v,
                     Err(_e) => return VmMemoryResponse::Err(SysError::new(EINVAL)),
                 };
