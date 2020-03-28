@@ -295,7 +295,11 @@ impl VirtioPciDevice {
 
     fn are_queues_valid(&self) -> bool {
         if let Some(mem) = self.mem.as_ref() {
-            self.queues.iter().all(|q| q.is_valid(mem))
+            // All queues marked as ready must be valid.
+            self.queues
+                .iter()
+                .filter(|q| q.ready)
+                .all(|q| q.is_valid(mem))
         } else {
             false
         }
