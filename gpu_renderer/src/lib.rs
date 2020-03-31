@@ -596,6 +596,21 @@ impl Resource {
         Ok((query, dmabuf))
     }
 
+    #[allow(unused_variables)]
+    pub fn map_info(&self) -> Result<u32> {
+        #[cfg(feature = "virtio-gpu-next")]
+        {
+            let mut map_info = 0;
+            let ret =
+                unsafe { virgl_renderer_resource_get_map_info(self.id as u32, &mut map_info) };
+            ret_to_res(ret)?;
+
+            Ok(map_info)
+        }
+        #[cfg(not(feature = "virtio-gpu-next"))]
+        Err(Error::Unsupported)
+    }
+
     /// Attaches a scatter-gather mapping of guest memory to this resource which used for transfers.
     pub fn attach_backing(
         &mut self,

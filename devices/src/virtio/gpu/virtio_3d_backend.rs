@@ -822,6 +822,14 @@ impl Backend for Virtio3DBackend {
             return GpuResponse::ErrUnspec;
         }
 
+        let map_info = match resource.gpu_resource.map_info() {
+            Ok(map_info) => map_info,
+            Err(e) => {
+                error!("failed to get map info: {}", e);
+                return GpuResponse::ErrUnspec;
+            }
+        };
+
         let dma_buf_fd = match resource.gpu_resource.export() {
             Ok(export) => export.1,
             Err(e) => {
@@ -856,7 +864,7 @@ impl Backend for Virtio3DBackend {
         match response {
             VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
                 resource.kvm_slot = Some(slot);
-                GpuResponse::OkNoData
+                GpuResponse::OkMapInfo { map_info }
             }
             VmMemoryResponse::Err(e) => {
                 error!("received an error: {}", e);

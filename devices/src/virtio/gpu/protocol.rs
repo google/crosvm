@@ -65,6 +65,7 @@ pub const VIRTIO_GPU_RESP_OK_CAPSET: u32 = 0x1103;
 pub const VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO: u32 = 0x1104;
 pub const VIRTIO_GPU_RESP_OK_EDID: u32 = 0x1105;
 pub const VIRTIO_GPU_RESP_OK_RESOURCE_UUID: u32 = 0x1105;
+pub const VIRTIO_GPU_RESP_OK_MAP_INFO: u32 = 0x1106;
 
 /* error responses */
 pub const VIRTIO_GPU_RESP_ERR_UNSPEC: u32 = 0x1200;
@@ -124,6 +125,7 @@ pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
         VIRTIO_GPU_RESP_OK_CAPSET => "VIRTIO_GPU_RESP_OK_CAPSET",
         VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO => "VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO",
         VIRTIO_GPU_RESP_OK_RESOURCE_UUID => "VIRTIO_GPU_RESP_OK_RESOURCE_UUID",
+        VIRTIO_GPU_RESP_OK_MAP_INFO => "VIRTIO_GPU_RESP_OK_MAP_INFO",
         VIRTIO_GPU_RESP_ERR_UNSPEC => "VIRTIO_GPU_RESP_ERR_UNSPEC",
         VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY => "VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY",
         VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID => "VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID",
@@ -517,7 +519,7 @@ unsafe impl DataInit for virtio_gpu_resource_create_blob {}
 pub struct virtio_gpu_resource_map_blob {
     pub hdr: virtio_gpu_ctrl_hdr,
     pub resource_id: Le32,
-    pub map_flags: Le32,
+    pub padding: Le32,
     pub offset: Le64,
 }
 
@@ -532,6 +534,15 @@ pub struct virtio_gpu_resource_unmap_blob {
 }
 
 unsafe impl DataInit for virtio_gpu_resource_unmap_blob {}
+
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
+pub struct virtio_gpu_resp_map_info {
+    pub hdr: virtio_gpu_ctrl_hdr,
+    pub map_info: Le32,
+}
+
+unsafe impl DataInit for virtio_gpu_resp_map_info {}
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
@@ -753,6 +764,9 @@ pub enum GpuResponse {
     OkResourceUuid {
         uuid: [u8; 16],
     },
+    OkMapInfo {
+        map_info: u32,
+    },
     ErrUnspec,
     ErrOutOfMemory,
     ErrInvalidScanoutId,
@@ -892,6 +906,15 @@ impl GpuResponse {
                 resp.write_obj(resp_info)?;
                 size_of_val(&resp_info)
             }
+            GpuResponse::OkMapInfo { map_info } => {
+                let resp_info = virtio_gpu_resp_map_info {
+                    hdr,
+                    map_info: Le32::from(map_info),
+                };
+
+                resp.write_obj(resp_info)?;
+                size_of_val(&resp_info)
+            }
             _ => {
                 resp.write_obj(hdr)?;
                 size_of_val(&hdr)
@@ -909,6 +932,7 @@ impl GpuResponse {
             GpuResponse::OkCapset(_) => VIRTIO_GPU_RESP_OK_CAPSET,
             GpuResponse::OkResourcePlaneInfo { .. } => VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO,
             GpuResponse::OkResourceUuid { .. } => VIRTIO_GPU_RESP_OK_RESOURCE_UUID,
+            GpuResponse::OkMapInfo { .. } => VIRTIO_GPU_RESP_OK_MAP_INFO,
             GpuResponse::ErrUnspec => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrOutOfMemory => VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY,
             GpuResponse::ErrInvalidScanoutId => VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID,
@@ -927,6 +951,7 @@ impl GpuResponse {
             GpuResponse::OkCapset(_) => true,
             GpuResponse::OkResourcePlaneInfo { .. } => true,
             GpuResponse::OkResourceUuid { .. } => true,
+            GpuResponse::OkMapInfo { .. } => true,
             _ => false,
         }
     }
