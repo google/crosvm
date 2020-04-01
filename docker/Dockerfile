@@ -110,20 +110,27 @@ RUN git clone https://chromium.googlesource.com/chromiumos/third_party/tpm2 \
     && make -j$(nproc) \
     && cp build/libtpm2.a /lib
 
-# Install librendernodehost
+# PUll down platform2 repositroy and install librendernodehost.
+# Note that we clone the repository outside of /scratch not to be removed
+# because crosvm depends on libvda.
+ENV PLATFORM2_ROOT=/platform2
 ARG PLATFORM2_COMMIT=master
-RUN git clone https://chromium.googlesource.com/chromiumos/platform2 \
-    && cd platform2 \
+RUN git clone https://chromium.googlesource.com/chromiumos/platform2 $PLATFORM2_ROOT \
+    && cd $PLATFORM2_ROOT \
     && git checkout $PLATFORM2_COMMIT \
     && cd rendernodehost \
     && gcc -c src.c -o src.o \
     && ar rcs librendernodehost.a src.o \
-    && cp librendernodehost.a /lib
+    && cp librendernodehost.a /lib \
+    && git clean -f
+
+# Create a dummy pc file for libvda to run 'cargo check' with video features.
+RUN echo "Name: libvda_pc\nDescription:\nVersion:0.1\nLibs: -lvda" > /usr/lib/pkgconfig/libvda.pc
 
 # Set up sysroot from which system_api proto files are built.
 ENV SYSROOT=/sysroot
 RUN mkdir -p $SYSROOT/usr/include/chromeos/dbus/trunks \
-    && cp platform2/trunks/interface.proto \
+    && cp $PLATFORM2_ROOT/trunks/interface.proto \
         $SYSROOT/usr/include/chromeos/dbus/trunks
 
 # Inform pkg-config where libraries we install are placed.
