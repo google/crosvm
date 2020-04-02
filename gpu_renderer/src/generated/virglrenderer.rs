@@ -309,19 +309,25 @@ extern "C" {
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct virgl_renderer_resource_create_v2_args {
-    pub version: u32,
+pub struct virgl_renderer_resource_create_blob_args {
     pub res_handle: u32,
     pub ctx_id: u32,
-    pub flags: u32,
+    pub blob_mem: u32,
+    pub blob_flags: u32,
+    pub blob_id: u64,
     pub size: u64,
-    pub memory_id: u64,
-    pub iovecs: *mut iovec,
+    pub iovecs: *const iovec,
     pub num_iovs: u32,
 }
 extern "C" {
-    pub fn virgl_renderer_resource_create_v2(
-        args: *mut virgl_renderer_resource_create_v2_args,
+    pub fn virgl_renderer_resource_create_blob(
+        args: *const virgl_renderer_resource_create_blob_args,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn virgl_renderer_resource_get_map_info(
+        res_handle: u32,
+        map_info: *mut u32,
     ) -> ::std::os::raw::c_int;
 }
 pub type __builtin_va_list = [__va_list_tag; 1usize];

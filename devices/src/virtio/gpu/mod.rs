@@ -291,24 +291,25 @@ trait Backend {
         GpuResponse::ErrUnspec
     }
 
-    fn resource_create_v2(
+    fn resource_create_blob(
         &mut self,
         _resource_id: u32,
         _ctx_id: u32,
-        _flags: u32,
+        _blob_mem: u32,
+        _blob_flags: u32,
+        _blob_id: u64,
         _size: u64,
-        _memory_id: u64,
         _vecs: Vec<(GuestAddress, usize)>,
         _mem: &GuestMemory,
     ) -> GpuResponse {
         GpuResponse::ErrUnspec
     }
 
-    fn resource_map(&mut self, _resource_id: u32, _pci_addr: u64) -> GpuResponse {
+    fn resource_map_blob(&mut self, _resource_id: u32, _offset: u64) -> GpuResponse {
         GpuResponse::ErrUnspec
     }
 
-    fn resource_unmap(&mut self, _resource_id: u32) -> GpuResponse {
+    fn resource_unmap_blob(&mut self, _resource_id: u32) -> GpuResponse {
         GpuResponse::ErrUnspec
     }
 }
@@ -641,12 +642,13 @@ impl Frontend {
                     GpuResponse::OkNoData
                 }
             }
-            GpuCommand::ResourceCreateV2(info) => {
+            GpuCommand::ResourceCreateBlob(info) => {
                 let resource_id = info.resource_id.to_native();
                 let ctx_id = info.hdr.ctx_id.to_native();
-                let flags = info.flags.to_native();
+                let blob_mem = info.blob_mem.to_native();
+                let blob_flags = info.blob_flags.to_native();
+                let blob_id = info.blob_id.to_native();
                 let size = info.size.to_native();
-                let memory_id = info.memory_id.to_native();
                 let entry_count = info.nr_entries.to_native();
                 if entry_count > VIRTIO_GPU_MAX_IOVEC_ENTRIES
                     || (reader.available_bytes() == 0 && entry_count > 0)
@@ -666,24 +668,25 @@ impl Frontend {
                     }
                 }
 
-                self.backend.resource_create_v2(
+                self.backend.resource_create_blob(
                     resource_id,
                     ctx_id,
-                    flags,
+                    blob_mem,
+                    blob_flags,
+                    blob_id,
                     size,
-                    memory_id,
                     vecs,
                     mem,
                 )
             }
-            GpuCommand::ResourceMap(info) => {
+            GpuCommand::ResourceMapBlob(info) => {
                 let resource_id = info.resource_id.to_native();
                 let offset = info.offset.to_native();
-                self.backend.resource_map(resource_id, offset)
+                self.backend.resource_map_blob(resource_id, offset)
             }
-            GpuCommand::ResourceUnmap(info) => {
+            GpuCommand::ResourceUnmapBlob(info) => {
                 let resource_id = info.resource_id.to_native();
-                self.backend.resource_unmap(resource_id)
+                self.backend.resource_unmap_blob(resource_id)
             }
         }
     }

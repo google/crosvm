@@ -409,13 +409,14 @@ impl Renderer {
     }
 
     #[allow(unused_variables)]
-    pub fn resource_create_v2(
+    pub fn resource_create_blob(
         &self,
         resource_id: u32,
         ctx_id: u32,
-        flags: u32,
+        blob_mem: u32,
+        blob_flags: u32,
+        blob_id: u64,
         size: u64,
-        memory_id: u64,
         vecs: &[(GuestAddress, usize)],
         mem: &GuestMemory,
     ) -> Result<Resource> {
@@ -438,18 +439,18 @@ impl Renderer {
                 });
             }
 
-            let mut resource_create_args = virgl_renderer_resource_create_v2_args {
-                version: 1,
+            let resource_create_args = virgl_renderer_resource_create_blob_args {
                 res_handle: resource_id,
                 ctx_id,
-                flags,
+                blob_mem,
+                blob_flags,
+                blob_id,
                 size,
-                memory_id,
-                iovecs: iovecs.as_mut_ptr() as *mut iovec,
+                iovecs: iovecs.as_mut_ptr() as *const iovec,
                 num_iovs: iovecs.len() as u32,
             };
 
-            let ret = unsafe { virgl_renderer_resource_create_v2(&mut resource_create_args) };
+            let ret = unsafe { virgl_renderer_resource_create_blob(&resource_create_args) };
             ret_to_res(ret)?;
 
             Ok(Resource {
