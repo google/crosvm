@@ -6,7 +6,7 @@
 // Then modified manually
 
 /* Added below line manually */
-#![allow(dead_code)]
+#![allow(dead_code, non_camel_case_types)]
 
 /* Added below line manually */
 use std::os::raw::{c_char, c_int, c_uint, c_void};

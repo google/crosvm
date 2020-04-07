@@ -20,7 +20,7 @@ use std::num::NonZeroU32;
 use std::os::raw::c_ulong;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::ptr::{null, null_mut, NonNull};
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::time::Duration;
 
 use libc::{shmat, shmctl, shmdt, shmget, IPC_CREAT, IPC_PRIVATE, IPC_RMID};

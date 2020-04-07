@@ -8,6 +8,7 @@ use data::{MapEntry, KEYCODE_MAP};
 use std::collections::HashMap;
 
 /// Specifies which type of scancode to convert *from* in the KeycodeTranslator.
+#[allow(dead_code)]
 pub enum KeycodeTypes {
     XkbScancode,
     WindowsScancode,
