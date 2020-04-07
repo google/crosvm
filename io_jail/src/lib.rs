@@ -68,6 +68,8 @@ pub enum Error {
     PreservingFd(i32),
     /// Program size is too large
     ProgramTooLarge,
+    /// Alignment of file should be divisible by the alignment of sock_filter.
+    WrongProgramAlignment,
     /// File size should be non-zero and a multiple of sock_filter
     WrongProgramSize,
 }
@@ -148,6 +150,10 @@ impl Display for Error {
             ProcFd(s) => write!(f, "an entry in /proc/self/fd is not an integer: {}", s),
             PreservingFd(e) => write!(f, "fork failed in minijail_preserve_fd with error {}", e),
             ProgramTooLarge => write!(f, "bpf program is too large (max 64K instructions)"),
+            WrongProgramAlignment => write!(
+                f,
+                "the alignment of bpf file was not a multiple of that of sock_filter"
+            ),
             WrongProgramSize => write!(f, "bpf file was empty or not a multiple of sock_filter"),
         }
     }
@@ -287,6 +293,13 @@ impl Minijail {
         if count > (!0 as u16) as usize {
             return Err(Error::ProgramTooLarge);
         }
+        if buffer.as_ptr() as usize % std::mem::align_of::<sock_filter>() != 0 {
+            return Err(Error::WrongProgramAlignment);
+        }
+
+        // Safe cast because we checked that the buffer address is divisible by the alignment of
+        // sock_filter.
+        #[allow(clippy::cast_ptr_alignment)]
         let header = sock_fprog {
             len: count as c_ushort,
             filter: buffer.as_ptr() as *mut sock_filter,
