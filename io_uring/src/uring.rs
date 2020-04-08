@@ -374,7 +374,7 @@ impl URingContext {
     /// returns as soon an one or more is ready.
     pub fn wait<'a>(
         &'a mut self,
-    ) -> Result<impl Iterator<Item = (UserData, std::io::Result<i32>)> + 'a> {
+    ) -> Result<impl Iterator<Item = (UserData, std::io::Result<u32>)> + 'a> {
         let completed = self.complete_ring.num_completed();
         self.stats.total_complete = self.stats.total_complete.wrapping_add(completed as u64);
         self.in_flight -= completed;
@@ -508,7 +508,7 @@ impl CompleteQueueState {
 
 // Return the completed ops with their result.
 impl Iterator for CompleteQueueState {
-    type Item = (UserData, std::io::Result<i32>);
+    type Item = (UserData, std::io::Result<u32>);
 
     fn next(&mut self) -> Option<Self::Item> {
         // Safe because the pointers to the atomics are valid and the cqe must be in range
@@ -532,8 +532,8 @@ impl Iterator for CompleteQueueState {
         self.pointers.set_head(new_head);
 
         let io_res = match res {
-            r if r < 0 => Err(std::io::Error::from_raw_os_error(r)),
-            r => Ok(r),
+            r if r < 0 => Err(std::io::Error::from_raw_os_error(-r)),
+            r => Ok(r as u32),
         };
         Some((user_data, io_res))
     }
@@ -628,7 +628,7 @@ mod tests {
                     .unwrap();
                 let (user_data, res) = uring.wait().unwrap().next().unwrap();
                 assert_eq!(user_data, i as UserData);
-                assert_eq!(res.unwrap(), buf.len() as i32);
+                assert_eq!(res.unwrap(), buf.len() as u32);
             }
         }
     }
@@ -657,7 +657,7 @@ mod tests {
                 .unwrap();
             let (user_data, res) = uring.wait().unwrap().next().unwrap();
             assert_eq!(user_data, 55 as UserData);
-            assert_eq!(res.unwrap(), buf.len() as i32);
+            assert_eq!(res.unwrap(), buf.len() as u32);
         }
     }
 
@@ -697,7 +697,7 @@ mod tests {
             assert_eq!(event.token(), 1);
             let (user_data, res) = uring.wait().unwrap().next().unwrap();
             assert_eq!(user_data, 55 as UserData);
-            assert_eq!(res.unwrap(), buf.len() as i32);
+            assert_eq!(res.unwrap(), buf.len() as u32);
         }
     }
     #[test]
@@ -732,12 +732,12 @@ mod tests {
             .unwrap();
         let (user_data, res) = uring.wait().unwrap().next().unwrap();
         assert_eq!(user_data, 66 as UserData);
-        assert_eq!(res.unwrap(), 0 as i32);
+        assert_eq!(res.unwrap(), 0 as u32);
 
         uring.add_fsync(f.as_raw_fd(), 67).unwrap();
         let (user_data, res) = uring.wait().unwrap().next().unwrap();
         assert_eq!(user_data, 67 as UserData);
-        assert_eq!(res.unwrap(), 0 as i32);
+        assert_eq!(res.unwrap(), 0 as u32);
 
         uring
             .add_fallocate(
@@ -750,7 +750,7 @@ mod tests {
             .unwrap();
         let (user_data, res) = uring.wait().unwrap().next().unwrap();
         assert_eq!(user_data, 68 as UserData);
-        assert_eq!(res.unwrap(), 0 as i32);
+        assert_eq!(res.unwrap(), 0 as u32);
 
         drop(f); // Close to ensure directory entires for metadata are updated.
 
@@ -767,6 +767,6 @@ mod tests {
             .unwrap();
         let (user_data, res) = uring.wait().unwrap().next().unwrap();
         assert_eq!(user_data, 454 as UserData);
-        assert_eq!(res.unwrap(), 1 as i32);
+        assert_eq!(res.unwrap(), 1 as u32);
     }
 }
