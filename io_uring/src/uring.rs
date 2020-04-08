@@ -125,6 +125,7 @@ impl URingContext {
                 &ring_params,
             );
 
+            let num_sqe = ring_params.sq_entries as usize;
             let submit_queue_entries = SubmitQueueEntries {
                 mmap: MemoryMapping::from_fd_offset_populate(
                     &ring_file,
@@ -132,7 +133,7 @@ impl URingContext {
                     u64::from(IORING_OFF_SQES),
                 )
                 .map_err(Error::MappingSubmitEntries)?,
-                len: ring_params.sq_entries as usize,
+                len: num_sqe,
             };
 
             let complete_ring = CompleteQueueState::new(
@@ -156,7 +157,7 @@ impl URingContext {
                         iov_base: null_mut(),
                         iov_len: 0
                     };
-                    num_entries
+                    num_sqe
                 ],
                 added: 0,
                 in_flight: 0,
@@ -700,6 +701,40 @@ mod tests {
     }
 
     #[test]
+    // Queue as many reads as possible and then collect the completions.
+    fn read_parallel() {
+        let temp_dir = TempDir::new().unwrap();
+        const QUEUE_SIZE: usize = 10;
+        const BUF_SIZE: usize = 0x1000;
+
+        let mut uring = URingContext::new(QUEUE_SIZE).unwrap();
+        let mut buf = [0u8; BUF_SIZE * QUEUE_SIZE];
+        let f = create_test_file(&temp_dir, (BUF_SIZE * QUEUE_SIZE) as u64);
+
+        // check that the whole file can be read and that the queues wrapping is handled by reading
+        // double the quue depth of buffers.
+        for i in 0..QUEUE_SIZE * 64 {
+            let index = i as u64;
+            unsafe {
+                let offset = (i % QUEUE_SIZE) * BUF_SIZE;
+                match uring.add_read(
+                    buf[offset..].as_mut_ptr(),
+                    BUF_SIZE,
+                    f.as_raw_fd(),
+                    offset as u64,
+                    index,
+                ) {
+                    Ok(_) => (),
+                    Err(Error::NoSpace) => {
+                        let _ = uring.wait().unwrap().next().unwrap();
+                    }
+                    Err(_) => panic!("unexpected error from uring wait"),
+                }
+            }
+        }
+    }
+
+    #[test]
     fn read_readv() {
         let temp_dir = TempDir::new().unwrap();
         let queue_size = 128;
@@ -708,7 +743,7 @@ mod tests {
         let mut buf = [0u8; 0x1000];
         let f = create_test_file(&temp_dir, 0x1000 * 2);
 
-        // check that the whoe file can be read and that the queues wrapping is handled by reading
+        // check that the whole file can be read and that the queues wrapping is handled by reading
         // double the quue depth of buffers.
         for i in 0..queue_size * 2 {
             let index = i as u64;
