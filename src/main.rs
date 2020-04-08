@@ -1474,6 +1474,19 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::BalloonCommand(command), args)
 }
 
+fn balloon_stats(args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() != 1 {
+        print_help("crosvm balloon_stats", "VM_SOCKET", &[]);
+        println!("Prints virtio balloon statistics for a `VM_SOCKET`.");
+        return Err(());
+    }
+    let command = BalloonControlCommand::Stats {};
+    let request = &VmRequest::BalloonCommand(command);
+    let response = handle_request(request, args)?;
+    println!("{}", response);
+    Ok(())
+}
+
 fn create_qcow2(args: std::env::Args) -> std::result::Result<(), ()> {
     let arguments = [
         Argument::positional("PATH", "where to create the qcow2 image"),
@@ -1820,6 +1833,7 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         Some("resume") => resume_vms(args),
         Some("run") => run_vm(args),
         Some("balloon") => balloon_vms(args),
+        Some("balloon_stats") => balloon_stats(args),
         Some("create_qcow2") => create_qcow2(args),
         Some("disk") => disk_cmd(args),
         Some("usb") => modify_usb(args),

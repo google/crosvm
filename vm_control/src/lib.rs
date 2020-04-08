@@ -123,6 +123,43 @@ pub struct BalloonStats {
     pub hugetlb_failures: Option<u64>,
 }
 
+impl Display for BalloonStats {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{{")?;
+        if let Some(swap_in) = self.swap_in {
+            write!(f, "\n    swap_in: {}", swap_in)?;
+        }
+        if let Some(swap_out) = self.swap_out {
+            write!(f, "\n    swap_out: {}", swap_out)?;
+        }
+        if let Some(major_faults) = self.major_faults {
+            write!(f, "\n    major_faults: {}", major_faults)?;
+        }
+        if let Some(minor_faults) = self.minor_faults {
+            write!(f, "\n    minor_faults: {}", minor_faults)?;
+        }
+        if let Some(free_memory) = self.free_memory {
+            write!(f, "\n    free_memory: {}", free_memory)?;
+        }
+        if let Some(total_memory) = self.total_memory {
+            write!(f, "\n    total_memory: {}", total_memory)?;
+        }
+        if let Some(available_memory) = self.available_memory {
+            write!(f, "\n    available_memory: {}", available_memory)?;
+        }
+        if let Some(disk_caches) = self.disk_caches {
+            write!(f, "\n    disk_caches: {}", disk_caches)?;
+        }
+        if let Some(hugetlb_allocations) = self.hugetlb_allocations {
+            write!(f, "\n    hugetlb_allocations: {}", hugetlb_allocations)?;
+        }
+        if let Some(hugetlb_failures) = self.hugetlb_failures {
+            write!(f, "\n    hugetlb_failures: {}", hugetlb_failures)?;
+        }
+        write!(f, "\n}}")
+    }
+}
+
 #[derive(MsgOnSocket, Debug)]
 pub enum BalloonControlResult {
     Stats {
@@ -574,10 +611,30 @@ impl VmRequest {
                 *run_mode = Some(VmRunMode::Running);
                 VmResponse::Ok
             }
-            VmRequest::BalloonCommand(ref command) => match balloon_host_socket.send(command) {
-                Ok(_) => VmResponse::Ok,
-                Err(_) => VmResponse::Err(SysError::last()),
-            },
+            VmRequest::BalloonCommand(BalloonControlCommand::Adjust { num_bytes }) => {
+                match balloon_host_socket.send(&BalloonControlCommand::Adjust { num_bytes }) {
+                    Ok(_) => VmResponse::Ok,
+                    Err(_) => VmResponse::Err(SysError::last()),
+                }
+            }
+            VmRequest::BalloonCommand(BalloonControlCommand::Stats) => {
+                match balloon_host_socket.send(&BalloonControlCommand::Stats {}) {
+                    Ok(_) => match balloon_host_socket.recv() {
+                        Ok(BalloonControlResult::Stats {
+                            stats,
+                            balloon_actual,
+                        }) => VmResponse::BalloonStats {
+                            stats,
+                            balloon_actual,
+                        },
+                        Err(e) => {
+                            error!("balloon socket recv failed: {}", e);
+                            VmResponse::Err(SysError::last())
+                        }
+                    },
+                    Err(_) => VmResponse::Err(SysError::last()),
+                }
+            }
             VmRequest::DiskCommand {
                 disk_index,
                 ref command,
@@ -639,6 +696,11 @@ pub enum VmResponse {
         slot: u32,
         desc: GpuMemoryDesc,
     },
+    /// Results of balloon control commands.
+    BalloonStats {
+        stats: BalloonStats,
+        balloon_actual: u64,
+    },
     /// Results of usb control commands.
     UsbResponse(UsbControlResult),
 }
@@ -659,6 +721,14 @@ impl Display for VmResponse {
                 f,
                 "gpu memory allocated and registered to page frame number {:#x} and memory slot {}",
                 pfn, slot
+            ),
+            BalloonStats {
+                stats,
+                balloon_actual,
+            } => write!(
+                f,
+                "balloon size: {}\nballoon stats: {}",
+                balloon_actual, stats
             ),
             UsbResponse(result) => write!(f, "usb control request get result {:?}", result),
         }
