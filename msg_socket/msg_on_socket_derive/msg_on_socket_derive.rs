@@ -190,6 +190,11 @@ fn define_uses_fd_for_enum(de: &DataEnum) -> TokenStream {
             variant_field_types.push(variant_field_ty);
         }
     }
+
+    if variant_field_types.len() == 0 {
+        return quote!();
+    }
+
     quote! {
         fn uses_fd() -> bool {
             #(<#variant_field_types>::uses_fd())||*
