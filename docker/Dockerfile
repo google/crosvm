@@ -124,9 +124,6 @@ RUN git clone https://chromium.googlesource.com/chromiumos/platform2 $PLATFORM2_
     && cp librendernodehost.a /lib \
     && git clean -f
 
-# Create a dummy pc file for libvda to run 'cargo check' with video features.
-RUN echo "Name: libvda_pc\nDescription:\nVersion:0.1\nLibs: -lvda" > /usr/lib/pkgconfig/libvda.pc
-
 # Set up sysroot from which system_api proto files are built.
 ENV SYSROOT=/sysroot
 RUN mkdir -p $SYSROOT/usr/include/chromeos/dbus/trunks \
@@ -134,7 +131,8 @@ RUN mkdir -p $SYSROOT/usr/include/chromeos/dbus/trunks \
         $SYSROOT/usr/include/chromeos/dbus/trunks
 
 # Inform pkg-config where libraries we install are placed.
-COPY pkgconfig/* /usr/lib/pkgconfig
+# Also, copy a dummy libvda.pc to compile crosvm with video features.
+COPY pkgconfig/* /usr/lib/pkgconfig/
 
 # Reduces image size and prevents accidentally using /scratch files
 RUN rm -r /scratch /usr/bin/meson
