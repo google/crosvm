@@ -2,10 +2,6 @@ FROM crosvm-base
 
 COPY . /platform/crosvm
 
-# Compile crosvm with all features, including experimental and/or platform specific ones that
-# are disabled at 'cargo install' below.
-RUN cargo check --all-features
-
 RUN cargo install --features 'default-no-sandbox wl-dmabuf gpu x' --path . --root /usr
 
 ARG UID=1000

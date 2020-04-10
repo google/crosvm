@@ -17,3 +17,5 @@ cargo test --no-fail-fast --features plugin,default-no-sandbox,wl-dmabuf,gpu,tpm
     --test-threads=1 $TEST_RUNNER_FLAGS
 echo "Running cargo fmt"
 bin/fmt --check
+echo "Running cargo clippy"
+bin/clippy

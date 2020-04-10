@@ -16,10 +16,33 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 cd ..
 
 SUPPRESS=(
-    # To be resolved.
+    # TODO(crbug/908640): To be resolved.
+    borrowed_box
+    char_lit_as_u8
+    clone_on_copy
+    collapsible_if
+    comparison_chain
+    extra_unused_lifetimes
+    for_kv_map
+    inefficient_to_string
+    into_iter_on_ref
     let_unit_value
+    missing_safety_doc
+    needless_doctest_main
+    needless_range_loop
+    needless_return
+    option_map_unit_fn
     question_mark
     range_plus_one
+    redundant_clone
+    redundant_closure
+    single_match
+    slow_vector_initialization
+    unnecessary_filter_map
+    unnecessary_mut_passed
+    unneeded_field_pattern
+    useless_format
+    wrong_self_convention
 
     # We don't care about these lints. Okay to remain suppressed globally.
     blacklisted_name
@@ -49,4 +72,5 @@ SUPPRESS=(
 # Needed or else clippy won't re-run on code that has already compiled.
 cargo clean
 
-cargo clippy --all-features -- ${SUPPRESS[@]/#/-Aclippy::} "$@"
+cargo clippy --all-features --all-targets -- ${SUPPRESS[@]/#/-Aclippy::} "$@" \
+      -D warnings
