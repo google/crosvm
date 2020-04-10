@@ -1398,7 +1398,7 @@ fn run_vcpu(
             // implementation accomplishes that.
             let _scoped_exit_evt = ScopedEvent::from(exit_evt);
 
-            if vcpu_affinity.len() != 0 {
+            if !vcpu_affinity.is_empty() {
                 if let Err(e) = set_cpu_affinity(vcpu_affinity) {
                     error!("Failed to set CPU affinity: {}", e);
                 }

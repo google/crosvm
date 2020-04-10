@@ -75,7 +75,7 @@ fn build_plugin(src: &str) -> RemovePath {
     let status = child.wait().expect("failed to wait for compiler");
     assert!(status.success(), "failed to build plugin");
 
-    RemovePath(PathBuf::from(out_bin))
+    RemovePath(out_bin)
 }
 
 fn run_plugin(bin_path: &Path, with_sandbox: bool) {

@@ -77,7 +77,7 @@ fn parse_cpu_set(s: &str) -> argument::Result<Vec<usize>> {
     let mut cpuset = Vec::new();
     for part in s.split(',') {
         let range: Vec<&str> = part.split('-').collect();
-        if range.len() == 0 || range.len() > 2 {
+        if range.is_empty() || range.len() > 2 {
             return Err(argument::Error::InvalidValue {
                 value: part.to_owned(),
                 expected: String::from("invalid list syntax"),
@@ -120,8 +120,8 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
 
     if let Some(s) = s {
         let opts = s
-            .split(",")
-            .map(|frag| frag.split("="))
+            .split(',')
+            .map(|frag| frag.split('='))
             .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
 
         for (k, v) in opts {
@@ -255,8 +255,8 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
     let mut ac97_params: Ac97Parameters = Default::default();
 
     let opts = s
-        .split(",")
-        .map(|frag| frag.split("="))
+        .split(',')
+        .map(|frag| frag.split('='))
         .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
 
     for (k, v) in opts {
@@ -276,7 +276,7 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
             }
             "capture_effects" => {
                 ac97_params.capture_effects = v
-                    .split("|")
+                    .split('|')
                     .map(|val| {
                         val.parse::<StreamEffect>()
                             .map_err(|e| argument::Error::InvalidValue {
@@ -308,8 +308,8 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
     };
 
     let opts = s
-        .split(",")
-        .map(|frag| frag.split("="))
+        .split(',')
+        .map(|frag| frag.split('='))
         .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
 
     for (k, v) in opts {
@@ -358,7 +358,7 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
 }
 
 fn parse_plugin_mount_option(value: &str) -> argument::Result<BindMount> {
-    let components: Vec<&str> = value.split(":").collect();
+    let components: Vec<&str> = value.split(':').collect();
     if components.is_empty() || components.len() > 3 || components[0].is_empty() {
         return Err(argument::Error::InvalidValue {
             value: value.to_owned(),
@@ -405,7 +405,7 @@ fn parse_plugin_mount_option(value: &str) -> argument::Result<BindMount> {
 }
 
 fn parse_plugin_gid_map_option(value: &str) -> argument::Result<GidMap> {
-    let components: Vec<&str> = value.split(":").collect();
+    let components: Vec<&str> = value.split(':').collect();
     if components.is_empty() || components.len() > 3 || components[0].is_empty() {
         return Err(argument::Error::InvalidValue {
             value: value.to_owned(),
@@ -504,7 +504,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 )
         }
         "cpu-affinity" => {
-            if cfg.vcpu_affinity.len() != 0 {
+            if !cfg.vcpu_affinity.is_empty() {
                 return Err(argument::Error::TooManyArguments(
                     "`cpu-affinity` already given".to_owned(),
                 ));
@@ -1033,7 +1033,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             let reader = BufReader::new(file);
             for l in reader.lines() {
                 let line = l.unwrap();
-                let trimmed_line = line.splitn(2, '#').nth(0).unwrap().trim();
+                let trimmed_line = line.splitn(2, '#').next().unwrap().trim();
                 if !trimmed_line.is_empty() {
                     let mount = parse_plugin_mount_option(trimmed_line)?;
                     cfg.plugin_mounts.push(mount);
@@ -1052,7 +1052,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             let reader = BufReader::new(file);
             for l in reader.lines() {
                 let line = l.unwrap();
-                let trimmed_line = line.splitn(2, '#').nth(0).unwrap().trim();
+                let trimmed_line = line.splitn(2, '#').next().unwrap().trim();
                 if !trimmed_line.is_empty() {
                     let map = parse_plugin_gid_map_option(trimmed_line)?;
                     cfg.plugin_gid_maps.push(map);
@@ -1087,7 +1087,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     "`single-touch` already given".to_owned(),
                 ));
             }
-            let mut it = value.unwrap().split(":");
+            let mut it = value.unwrap().split(':');
 
             let mut single_touch_spec =
                 TouchDeviceOption::new(PathBuf::from(it.next().unwrap().to_owned()));
@@ -1105,7 +1105,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     "`trackpad` already given".to_owned(),
                 ));
             }
-            let mut it = value.unwrap().split(":");
+            let mut it = value.unwrap().split(':');
 
             let mut trackpad_spec =
                 TouchDeviceOption::new(PathBuf::from(it.next().unwrap().to_owned()));
@@ -1462,7 +1462,7 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
         println!("Set the ballon size of the crosvm instance to `SIZE` bytes.");
         return Err(());
     }
-    let num_bytes = match args.nth(0).unwrap().parse::<u64>() {
+    let num_bytes = match args.next().unwrap().parse::<u64>() {
         Ok(n) => n,
         Err(_) => {
             error!("Failed to parse number of bytes");
@@ -1533,7 +1533,7 @@ fn create_qcow2(args: std::env::Args) -> std::result::Result<(), ()> {
     .map_err(|e| {
         error!("Unable to parse command line arguments: {}", e);
     })?;
-    if file_path.len() == 0 || !(size.is_some() ^ backing_file.is_some()) {
+    if file_path.is_empty() || !(size.is_some() ^ backing_file.is_some()) {
         print_help("crosvm create_qcow2", "PATH [SIZE]", &arguments);
         println!(
             "Create a new QCOW2 image at `PATH` of either the specified `SIZE` in bytes or
@@ -1574,11 +1574,11 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
         println!("  resize DISK_INDEX NEW_SIZE VM_SOCKET");
         return Err(());
     }
-    let subcommand: &str = &args.nth(0).unwrap();
+    let subcommand: &str = &args.next().unwrap();
 
     let request = match subcommand {
         "resize" => {
-            let disk_index = match args.nth(0).unwrap().parse::<usize>() {
+            let disk_index = match args.next().unwrap().parse::<usize>() {
                 Ok(n) => n,
                 Err(_) => {
                     error!("Failed to parse disk index");
@@ -1586,7 +1586,7 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
                 }
             };
 
-            let new_size = match args.nth(0).unwrap().parse::<u64>() {
+            let new_size = match args.next().unwrap().parse::<u64>() {
                 Ok(n) => n,
                 Err(_) => {
                     error!("Failed to parse disk size");
@@ -1648,7 +1648,7 @@ type ModifyUsbResult<T> = std::result::Result<T, ModifyUsbError>;
 
 fn parse_bus_id_addr(v: &str) -> ModifyUsbResult<(u8, u8, u16, u16)> {
     debug!("parse_bus_id_addr: {}", v);
-    let mut ids = v.split(":");
+    let mut ids = v.split(':');
     match (ids.next(), ids.next(), ids.next(), ids.next()) {
         (Some(bus_id), Some(addr), Some(vid), Some(pid)) => {
             let bus_id = bus_id
@@ -1803,7 +1803,7 @@ fn pkg_version() -> std::result::Result<(), ()> {
     print!("crosvm {}", VERSION.unwrap_or("UNKNOWN"));
     match PKG_VERSION {
         Some(v) => println!("-{}", v),
-        None => println!(""),
+        None => println!(),
     }
     Ok(())
 }
