@@ -26,8 +26,6 @@ use crate::virtio::fs::filesystem::{
 use crate::virtio::fs::fuse;
 use crate::virtio::fs::multikey::MultikeyBTreeMap;
 
-const CURRENT_DIR_CSTR: &[u8] = b".\0";
-const PARENT_DIR_CSTR: &[u8] = b"..\0";
 const EMPTY_CSTR: &[u8] = b"\0";
 const ROOT_CSTR: &[u8] = b"/\0";
 const PROC_CSTR: &[u8] = b"/proc\0";
@@ -577,18 +575,12 @@ impl PassthroughFs {
             debug_assert!(namelen <= back.len(), "back is smaller than `namelen`");
 
             let name = &back[..namelen];
-            let res = if name.starts_with(CURRENT_DIR_CSTR) || name.starts_with(PARENT_DIR_CSTR) {
-                // We don't want to report the "." and ".." entries. However, returning `Ok(0)` will
-                // break the loop so return `Ok` with a non-zero value instead.
-                Ok(1)
-            } else {
-                add_entry(DirEntry {
-                    ino: dirent64.d_ino,
-                    offset: dirent64.d_off as u64,
-                    type_: dirent64.d_ty as u32,
-                    name,
-                })
-            };
+            let res = add_entry(DirEntry {
+                ino: dirent64.d_ino,
+                offset: dirent64.d_off as u64,
+                type_: dirent64.d_ty as u32,
+                name,
+            });
 
             debug_assert!(
                 rem.len() >= dirent64.d_reclen as usize,
@@ -806,7 +798,8 @@ impl FileSystem for PassthroughFs {
             }),
         );
 
-        let mut opts = FsOptions::DO_READDIRPLUS | FsOptions::READDIRPLUS_AUTO;
+        let mut opts =
+            FsOptions::DO_READDIRPLUS | FsOptions::READDIRPLUS_AUTO | FsOptions::EXPORT_SUPPORT;
         if self.cfg.writeback && capable.contains(FsOptions::WRITEBACK_CACHE) {
             opts |= FsOptions::WRITEBACK_CACHE;
             self.writeback.store(true, Ordering::Relaxed);
@@ -940,7 +933,24 @@ impl FileSystem for PassthroughFs {
             // interior '\0' bytes. We trust the kernel to provide us with properly formatted data
             // so we'll just skip the checks here.
             let name = unsafe { CStr::from_bytes_with_nul_unchecked(dir_entry.name) };
-            let entry = self.do_lookup(inode, name)?;
+            let entry = if name.to_bytes() == b"." || name.to_bytes() == b".." {
+                // Don't do lookups on the current directory or the parent directory. Safe because
+                // this only contains integer fields and any value is valid.
+                let mut attr = unsafe { MaybeUninit::<libc::stat64>::zeroed().assume_init() };
+                attr.st_ino = dir_entry.ino;
+                attr.st_mode = dir_entry.type_;
+
+                // We use 0 for the inode value to indicate a negative entry.
+                Entry {
+                    inode: 0,
+                    generation: 0,
+                    attr,
+                    attr_timeout: Duration::from_secs(0),
+                    entry_timeout: Duration::from_secs(0),
+                }
+            } else {
+                self.do_lookup(inode, name)?
+            };
 
             add_entry(dir_entry, entry)
         })
