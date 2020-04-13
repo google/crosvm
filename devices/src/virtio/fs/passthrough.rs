@@ -962,7 +962,18 @@ impl FileSystem for PassthroughFs {
                 self.do_lookup(inode, dir_entry.name)?
             };
 
-            add_entry(dir_entry, entry)
+            let entry_inode = entry.inode;
+            add_entry(dir_entry, entry).map_err(|e| {
+                if entry_inode != 0 {
+                    // Undo the `do_lookup` for this inode since we aren't going to report it to
+                    // the kernel. If `entry_inode` was 0 then that means this was the "." or
+                    // ".." entry and there wasn't a lookup in the first place.
+                    let mut inodes = self.inodes.lock();
+                    forget_one(&mut inodes, entry_inode, 1);
+                }
+
+                e
+            })
         })
     }
 
