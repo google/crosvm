@@ -77,7 +77,7 @@ pub struct DirEntry<'a> {
 
     /// The name of this directory entry. There are no requirements for the contents of this field
     /// and any sequence of bytes is considered valid.
-    pub name: &'a [u8],
+    pub name: &'a CStr,
 }
 
 /// A reply to a `getxattr` method call.

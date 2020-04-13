@@ -1369,12 +1369,14 @@ fn add_dirent(
     d: DirEntry,
     entry: Option<Entry>,
 ) -> io::Result<usize> {
-    if d.name.len() > ::std::u32::MAX as usize {
+    // Strip the trailing '\0'.
+    let name = d.name.to_bytes();
+    if name.len() > ::std::u32::MAX as usize {
         return Err(io::Error::from_raw_os_error(libc::EOVERFLOW));
     }
 
     let dirent_len = size_of::<Dirent>()
-        .checked_add(d.name.len())
+        .checked_add(name.len())
         .ok_or_else(|| io::Error::from_raw_os_error(libc::EOVERFLOW))?;
 
     // Directory entries must be padded to 8-byte alignment.  If adding 7 causes
@@ -1402,12 +1404,12 @@ fn add_dirent(
         let dirent = Dirent {
             ino: d.ino,
             off: d.offset,
-            namelen: d.name.len() as u32,
+            namelen: name.len() as u32,
             type_: d.type_,
         };
 
         cursor.write_all(dirent.as_slice())?;
-        cursor.write_all(d.name)?;
+        cursor.write_all(name)?;
 
         // We know that `dirent_len` <= `padded_dirent_len` due to the check above
         // so there's no need for checked arithmetic.

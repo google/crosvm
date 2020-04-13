@@ -197,6 +197,20 @@ fn stat(f: &File) -> io::Result<libc::stat64> {
     }
 }
 
+// Like `CStr::from_bytes_with_nul` but strips any bytes after the first '\0'-byte. Panics if `b`
+// doesn't contain any '\0' bytes.
+fn strip_padding(b: &[u8]) -> &CStr {
+    // It would be nice if we could use memchr here but that's locked behind an unstable gate.
+    let pos = b
+        .iter()
+        .position(|&c| c == 0)
+        .expect("`b` doesn't contain any nul bytes");
+
+    // Safe because we are creating this string with the first nul-byte we found so we can
+    // guarantee that it is nul-terminated and doesn't contain any interior nuls.
+    unsafe { CStr::from_bytes_with_nul_unchecked(&b[..pos + 1]) }
+}
+
 /// The caching policy that the file system should report to the FUSE client. By default the FUSE
 /// protocol uses close-to-open consistency. This means that any cached contents of the file are
 /// invalidated the next time that file is opened.
@@ -574,7 +588,9 @@ impl PassthroughFs {
             let namelen = dirent64.d_reclen as usize - size_of::<LinuxDirent64>();
             debug_assert!(namelen <= back.len(), "back is smaller than `namelen`");
 
-            let name = &back[..namelen];
+            // The kernel will pad the name with additional nul bytes until it is 8-byte aligned so
+            // we need to strip those off here.
+            let name = strip_padding(&back[..namelen]);
             let res = add_entry(DirEntry {
                 ino: dirent64.d_ino,
                 offset: dirent64.d_off as u64,
@@ -926,14 +942,8 @@ impl FileSystem for PassthroughFs {
         F: FnMut(DirEntry, Entry) -> io::Result<usize>,
     {
         self.do_readdir(inode, handle, size, offset, |dir_entry| {
-            // Safe because the kernel guarantees that the buffer is nul-terminated. Additionally,
-            // the kernel will pad the name with '\0' bytes up to 8-byte alignment and there's no
-            // way for us to know exactly how many padding bytes there are. This would cause
-            // `CStr::from_bytes_with_nul` to return an error because it would think there are
-            // interior '\0' bytes. We trust the kernel to provide us with properly formatted data
-            // so we'll just skip the checks here.
-            let name = unsafe { CStr::from_bytes_with_nul_unchecked(dir_entry.name) };
-            let entry = if name.to_bytes() == b"." || name.to_bytes() == b".." {
+            let name = dir_entry.name.to_bytes();
+            let entry = if name == b"." || name == b".." {
                 // Don't do lookups on the current directory or the parent directory. Safe because
                 // this only contains integer fields and any value is valid.
                 let mut attr = unsafe { MaybeUninit::<libc::stat64>::zeroed().assume_init() };
@@ -949,7 +959,7 @@ impl FileSystem for PassthroughFs {
                     entry_timeout: Duration::from_secs(0),
                 }
             } else {
-                self.do_lookup(inode, name)?
+                self.do_lookup(inode, dir_entry.name)?
             };
 
             add_entry(dir_entry, entry)
@@ -1755,5 +1765,31 @@ impl FileSystem for PassthroughFs {
         } else {
             Err(io::Error::last_os_error())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn padded_cstrings() {
+        assert_eq!(strip_padding(b".\0\0\0\0\0\0\0").to_bytes(), b".");
+        assert_eq!(strip_padding(b"..\0\0\0\0\0\0").to_bytes(), b"..");
+        assert_eq!(
+            strip_padding(b"normal cstring\0").to_bytes(),
+            b"normal cstring"
+        );
+        assert_eq!(strip_padding(b"\0\0\0\0").to_bytes(), b"");
+        assert_eq!(
+            strip_padding(b"interior\0nul bytes\0\0\0").to_bytes(),
+            b"interior"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "`b` doesn't contain any nul bytes")]
+    fn no_nul_byte() {
+        strip_padding(b"no nul bytes in string");
     }
 }
