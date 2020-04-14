@@ -232,6 +232,7 @@ fn boot() {
         SerialParameters {
             type_: SerialType::Sink,
             path: None,
+            input: None,
             num: 1,
             console: false,
             stdin: false,

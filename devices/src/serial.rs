@@ -130,6 +130,7 @@ impl FromStr for SerialType {
 pub struct SerialParameters {
     pub type_: SerialType,
     pub path: Option<PathBuf>,
+    pub input: Option<PathBuf>,
     pub num: u8,
     pub console: bool,
     pub stdin: bool,
@@ -149,7 +150,11 @@ impl SerialParameters {
     ) -> std::result::Result<Serial, Error> {
         let evt_fd = evt_fd.try_clone().map_err(Error::CloneEventFd)?;
         keep_fds.push(evt_fd.as_raw_fd());
-        let input: Option<Box<dyn io::Read + Send>> = if self.stdin {
+        let input: Option<Box<dyn io::Read + Send>> = if let Some(input_path) = &self.input {
+            let input_file = File::open(input_path.as_path()).map_err(Error::FileError)?;
+            keep_fds.push(input_file.as_raw_fd());
+            Some(Box::new(input_file))
+        } else if self.stdin {
             keep_fds.push(stdin().as_raw_fd());
             // This wrapper is used in place of the libstd native version because we don't want
             // buffering for stdin.
@@ -181,12 +186,12 @@ impl SerialParameters {
                 ))
             }
             SerialType::File => match &self.path {
-                None => Err(Error::PathRequired),
                 Some(path) => {
                     let file = File::create(path.as_path()).map_err(Error::FileError)?;
                     keep_fds.push(file.as_raw_fd());
                     Ok(Serial::new(evt_fd, input, Some(Box::new(file))))
                 }
+                _ => Err(Error::PathRequired),
             },
             SerialType::UnixSocket => Err(Error::Unimplemented(SerialType::UnixSocket)),
         }
@@ -198,6 +203,7 @@ pub const DEFAULT_SERIAL_PARAMS: [SerialParameters; 4] = [
     SerialParameters {
         type_: SerialType::Stdout,
         path: None,
+        input: None,
         num: 1,
         console: true,
         stdin: true,
@@ -205,6 +211,7 @@ pub const DEFAULT_SERIAL_PARAMS: [SerialParameters; 4] = [
     SerialParameters {
         type_: SerialType::Sink,
         path: None,
+        input: None,
         num: 2,
         console: false,
         stdin: false,
@@ -212,6 +219,7 @@ pub const DEFAULT_SERIAL_PARAMS: [SerialParameters; 4] = [
     SerialParameters {
         type_: SerialType::Sink,
         path: None,
+        input: None,
         num: 3,
         console: false,
         stdin: false,
@@ -219,6 +227,7 @@ pub const DEFAULT_SERIAL_PARAMS: [SerialParameters; 4] = [
     SerialParameters {
         type_: SerialType::Sink,
         path: None,
+        input: None,
         num: 4,
         console: false,
         stdin: false,

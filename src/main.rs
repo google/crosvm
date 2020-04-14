@@ -302,6 +302,7 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
     let mut serial_setting = SerialParameters {
         type_: SerialType::Sink,
         path: None,
+        input: None,
         num: 1,
         console: false,
         stdin: false,
@@ -342,9 +343,22 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
             "stdin" => {
                 serial_setting.stdin = v.parse::<bool>().map_err(|e| {
                     argument::Error::Syntax(format!("serial device stdin is not parseable: {}", e))
-                })?
+                })?;
+                if serial_setting.stdin && serial_setting.input.is_some() {
+                    return Err(argument::Error::TooManyArguments(
+                        "Cannot specify both stdin and input options".to_string(),
+                    ));
+                }
             }
             "path" => serial_setting.path = Some(PathBuf::from(v)),
+            "input" => {
+                if serial_setting.stdin {
+                    return Err(argument::Error::TooManyArguments(
+                        "Cannot specify both stdin and input options".to_string(),
+                    ));
+                }
+                serial_setting.input = Some(PathBuf::from(v));
+            }
             _ => {
                 return Err(argument::Error::UnknownArgument(format!(
                     "serial parameter {}",
@@ -1267,12 +1281,13 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           capture - Enable audio capture
                           capture_effects - | separated effects to be enabled for recording. The only supported effect value now is EchoCancellation or aec."),
           Argument::value("serial",
-                          "type=TYPE,[num=NUM,path=PATH,console,stdin]",
+                          "type=TYPE,[num=NUM,path=PATH,input=PATH,console,stdin]",
                           "Comma separated key=value pairs for setting up serial devices. Can be given more than once.
                           Possible key values:
                           type=(stdout,syslog,sink,file) - Where to route the serial device
                           num=(1,2,3,4) - Serial Device Number. If not provided, num will default to 1.
                           path=PATH - The path to the file to write to when type=file
+                          input=PATH - The path to the file to read from when not stdin
                           console - Use this serial device as the guest console. Can only be given once. Will default to first serial port if not provided.
                           stdin - Direct standard input to this serial device. Can only be given once. Will default to first serial port if not provided.
                           "),
