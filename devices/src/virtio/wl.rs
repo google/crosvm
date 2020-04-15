@@ -546,9 +546,6 @@ impl fmt::Debug for WlVfd {
 impl WlVfd {
     fn connect<P: AsRef<Path>>(path: P) -> WlResult<WlVfd> {
         let socket = UnixStream::connect(path).map_err(WlError::SocketConnect)?;
-        socket
-            .set_nonblocking(true)
-            .map_err(WlError::SocketNonBlock)?;
         let mut vfd = WlVfd::default();
         vfd.socket = Some(socket);
         Ok(vfd)
