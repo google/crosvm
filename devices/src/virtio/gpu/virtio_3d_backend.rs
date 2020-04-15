@@ -31,8 +31,8 @@ use super::protocol::{
 };
 pub use crate::virtio::gpu::virtio_backend::{VirtioBackend, VirtioResource};
 use crate::virtio::gpu::{
-    Backend, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_HOST_VISIBLE, VIRTIO_GPU_F_RESOURCE_UUID,
-    VIRTIO_GPU_F_RESOURCE_V2, VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_F_VULKAN,
+    Backend, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_RESOURCE_UUID, VIRTIO_GPU_F_RESOURCE_V2,
+    VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_F_VULKAN,
 };
 use crate::virtio::resource_bridge::{PlaneInfo, ResourceInfo, ResourceResponse};
 
@@ -240,7 +240,6 @@ impl Backend for Virtio3DBackend {
             | 1 << VIRTIO_F_VERSION_1
             | 1 << VIRTIO_GPU_F_RESOURCE_UUID
             | 1 << VIRTIO_GPU_F_RESOURCE_V2
-            | 1 << VIRTIO_GPU_F_HOST_VISIBLE
             | 1 << VIRTIO_GPU_F_VULKAN
     }
 

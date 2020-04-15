@@ -21,8 +21,7 @@ pub const VIRTIO_GPU_F_EDID: u32 = 1;
 /* The following capabilities are not upstreamed. */
 pub const VIRTIO_GPU_F_RESOURCE_UUID: u32 = 2;
 pub const VIRTIO_GPU_F_RESOURCE_V2: u32 = 3;
-pub const VIRTIO_GPU_F_HOST_VISIBLE: u32 = 4;
-pub const VIRTIO_GPU_F_VULKAN: u32 = 5;
+pub const VIRTIO_GPU_F_VULKAN: u32 = 4;
 
 pub const VIRTIO_GPU_UNDEFINED: u32 = 0x0;
 
@@ -90,6 +89,10 @@ pub const VIRTIO_GPU_RESOURCE_USE_MASK: u32 = 0x0f00;
 pub const VIRTIO_GPU_RESOURCE_USE_MAPPABLE: u32 = 0x0100;
 pub const VIRTIO_GPU_RESOURCE_USE_SHAREABLE: u32 = 0x0200;
 pub const VIRTIO_GPU_RESOURCE_USE_CROSS_DEVICE: u32 = 0x0400;
+
+/* Shared memory region IDs (not upstreamed) */
+pub const VIRTIO_GPU_SHM_ID_NONE: u8 = 0x0000;
+pub const VIRTIO_GPU_SHM_ID_HOST_VISIBLE: u8 = 0x0001;
 
 /* This matches the limit in udmabuf.c */
 pub const VIRTIO_GPU_MAX_IOVEC_ENTRIES: u32 = 1024;

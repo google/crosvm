@@ -35,7 +35,7 @@ use super::{
     Writer, TYPE_GPU, VIRTIO_F_VERSION_1,
 };
 
-use super::{PciCapabilityType, VirtioPciShmCap, VirtioPciShmCapID};
+use super::{PciCapabilityType, VirtioPciShmCap};
 
 use self::protocol::*;
 use self::virtio_2d_backend::Virtio2DBackend;
@@ -1241,7 +1241,7 @@ impl VirtioDevice for Gpu {
             GPU_BAR_NUM,
             GPU_BAR_OFFSET,
             GPU_BAR_SIZE,
-            VirtioPciShmCapID::Cache,
+            VIRTIO_GPU_SHM_ID_HOST_VISIBLE,
         ))]
     }
 }

@@ -42,7 +42,8 @@ struct VirtioPciCap {
     cap_len: u8,      // Generic PCI field: capability length
     cfg_type: u8,     // Identifies the structure.
     bar: u8,          // Where to find it.
-    padding: [u8; 3], // Pad to full dword.
+    id: u8,           // Multiple capabilities of the same type
+    padding: [u8; 2], // Pad to full dword.
     offset: Le32,     // Offset within bar.
     length: Le32,     // Length of the structure, in bytes.
 }
@@ -67,7 +68,8 @@ impl VirtioPciCap {
             cap_len: std::mem::size_of::<VirtioPciCap>() as u8,
             cfg_type: cfg_type as u8,
             bar,
-            padding: [0; 3],
+            id: 0,
+            padding: [0; 2],
             offset: Le32::from(offset),
             length: Le32::from(length),
         }
@@ -109,7 +111,8 @@ impl VirtioPciNotifyCap {
                 cap_len: std::mem::size_of::<VirtioPciNotifyCap>() as u8,
                 cfg_type: cfg_type as u8,
                 bar,
-                padding: [0; 3],
+                id: 0,
+                padding: [0; 2],
                 offset: Le32::from(offset),
                 length: Le32::from(length),
             },
@@ -122,20 +125,11 @@ impl VirtioPciNotifyCap {
 #[derive(Clone, Copy)]
 pub struct VirtioPciShmCap {
     cap: VirtioPciCap,
-    offset_hi: Le32,       // Most sig 32 bits of offset
-    length_hi: Le32,       // Most sig 32 bits of length
-    id: VirtioPciShmCapID, // To distinguish shm chunks
+    offset_hi: Le32, // Most sig 32 bits of offset
+    length_hi: Le32, // Most sig 32 bits of length
 }
 // It is safe to implement DataInit; all members are simple numbers and any value is valid.
 unsafe impl DataInit for VirtioPciShmCap {}
-
-#[repr(u8)]
-#[derive(Clone, Copy)]
-pub enum VirtioPciShmCapID {
-    Cache = 0,
-    Vertab = 1,
-    Journal = 2,
-}
 
 impl PciCapability for VirtioPciShmCap {
     fn bytes(&self) -> &[u8] {
@@ -148,13 +142,7 @@ impl PciCapability for VirtioPciShmCap {
 }
 
 impl VirtioPciShmCap {
-    pub fn new(
-        cfg_type: PciCapabilityType,
-        bar: u8,
-        offset: u64,
-        length: u64,
-        id: VirtioPciShmCapID,
-    ) -> Self {
+    pub fn new(cfg_type: PciCapabilityType, bar: u8, offset: u64, length: u64, shmid: u8) -> Self {
         VirtioPciShmCap {
             cap: VirtioPciCap {
                 _cap_vndr: 0,
@@ -162,13 +150,13 @@ impl VirtioPciShmCap {
                 cap_len: std::mem::size_of::<VirtioPciShmCap>() as u8,
                 cfg_type: cfg_type as u8,
                 bar,
-                padding: [0; 3],
+                id: shmid,
+                padding: [0; 2],
                 offset: Le32::from(offset as u32),
                 length: Le32::from(length as u32),
             },
             offset_hi: Le32::from((offset >> 32) as u32),
             length_hi: Le32::from((length >> 32) as u32),
-            id,
         }
     }
 }
