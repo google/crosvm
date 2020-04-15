@@ -72,5 +72,11 @@ SUPPRESS=(
 # Needed or else clippy won't re-run on code that has already compiled.
 cargo clean
 
+# Need to set pass --sysroot for cargo-clippy manually.
+# cf. https://github.com/rust-lang/rust-clippy/issues/3523
+RUST_SYSROOT=$(rustc --print sysroot)
+RUSTFLAGS="${RUSTFLAGS:-}"
+export RUSTFLAGS="$RUSTFLAGS --sysroot=$RUST_SYSROOT"
+
 cargo clippy --all-features --all-targets -- ${SUPPRESS[@]/#/-Aclippy::} "$@" \
       -D warnings
