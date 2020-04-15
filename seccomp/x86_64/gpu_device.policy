@@ -75,3 +75,4 @@ sysinfo: 1
 uname: 1
 sched_setscheduler: 1
 sched_setaffinity: 1
+kcmp: 1
