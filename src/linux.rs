@@ -819,7 +819,12 @@ fn create_fs_device(
             log_failures: cfg.seccomp_log_failures,
             seccomp_policy: &seccomp_policy,
         };
-        create_base_minijail(src, Some(max_open_files), Some(&config))?
+        let mut jail = create_base_minijail(src, Some(max_open_files), Some(&config))?;
+        // We want bind mounts from the parent namespaces to propagate into the fs device's
+        // namespace.
+        jail.set_remount_mode(libc::MS_SLAVE);
+
+        jail
     } else {
         create_base_minijail(src, Some(max_open_files), None)?
     };
