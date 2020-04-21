@@ -52,6 +52,7 @@ statx: 1
 fstat: 1
 newfstatat: 1
 getdents64: 1
+sysinfo: 1
 
 # 0x6400 == DRM_IOCTL_BASE, 0x8000 = KBASE_IOCTL_TYPE (mali)
 ioctl: arg1 & 0x6400 || arg1 & 0x8000
