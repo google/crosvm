@@ -109,6 +109,9 @@ const AARCH64_MMIO_SIZE: u64 = 0x100000;
 // Virtio devices start at SPI interrupt number 3
 const AARCH64_IRQ_BASE: u32 = 3;
 
+// PMU PPI interrupt, same as qemu
+const AARCH64_PMU_IRQ: u32 = 7;
+
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
@@ -237,6 +240,11 @@ impl arch::LinuxArch for AArch64 {
 
         let (irq_chip, is_gicv3) = Self::create_irq_chip(&vm, vcpu_count as u64)?;
 
+        let mut use_pmu = true;
+        for vcpu in &vcpus {
+            use_pmu &= vcpu.arm_pmu_init(AARCH64_PMU_IRQ as u64 + 16).is_ok();
+        }
+
         let mut mmio_bus = devices::Bus::new();
 
         let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
@@ -315,6 +323,7 @@ impl arch::LinuxArch for AArch64 {
             components.android_fstab,
             kernel_end,
             is_gicv3,
+            use_pmu,
         )?;
 
         Ok(RunnableLinuxVm {
@@ -346,6 +355,7 @@ impl AArch64 {
         android_fstab: Option<File>,
         kernel_end: u64,
         is_gicv3: bool,
+        use_pmu: bool,
     ) -> Result<()> {
         let initrd = match initrd_file {
             Some(initrd_file) => {
@@ -374,6 +384,7 @@ impl AArch64 {
             initrd,
             android_fstab,
             is_gicv3,
+            use_pmu,
         )
         .map_err(Error::CreateFdt)?;
         Ok(())
@@ -540,7 +551,7 @@ impl AArch64 {
 
     fn configure_vcpu(
         guest_mem: &GuestMemory,
-        _kvm: &Kvm,
+        kvm: &Kvm,
         vm: &Vm,
         vcpu: &Vcpu,
         cpu_id: u64,
@@ -555,8 +566,10 @@ impl AArch64 {
         vm.arm_preferred_target(&mut kvi)
             .map_err(Error::ReadPreferredTarget)?;
 
-        // TODO(sonnyrao): need to verify this feature is supported by host kernel
         kvi.features[0] |= 1 << kvm_sys::KVM_ARM_VCPU_PSCI_0_2;
+        if kvm.check_extension(Cap::ArmPmuV3) {
+            kvi.features[0] |= 1 << kvm_sys::KVM_ARM_VCPU_PMU_V3;
+        }
 
         // Non-boot cpus are powered off initially
         if cpu_id > 0 {

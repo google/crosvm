@@ -1763,6 +1763,50 @@ impl Vcpu {
         if ret < 0 {
             return errno_result();
         }
+
+        Ok(())
+    }
+
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    pub fn arm_pmu_init(&self, irq: u64) -> Result<()> {
+        let irq_addr = &irq as *const u64;
+
+        // The in-kernel PMU virtualization is initialized by setting the irq
+        // with KVM_ARM_VCPU_PMU_V3_IRQ and then by KVM_ARM_VCPU_PMU_V3_INIT.
+
+        let irq_attr = kvm_device_attr {
+            group: kvm_sys::KVM_ARM_VCPU_PMU_V3_CTRL,
+            attr: kvm_sys::KVM_ARM_VCPU_PMU_V3_IRQ as u64,
+            addr: irq_addr as u64,
+            flags: 0,
+        };
+        // safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_HAS_DEVICE_ATTR(), &irq_attr) };
+        if ret < 0 {
+            return errno_result();
+        }
+
+        // safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &irq_attr) };
+        if ret < 0 {
+            return errno_result();
+        }
+
+        let init_attr = kvm_device_attr {
+            group: kvm_sys::KVM_ARM_VCPU_PMU_V3_CTRL,
+            attr: kvm_sys::KVM_ARM_VCPU_PMU_V3_INIT as u64,
+            addr: 0,
+            flags: 0,
+        };
+        // safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &init_attr) };
+        if ret < 0 {
+            return errno_result();
+        }
+
         Ok(())
     }
 

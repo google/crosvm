@@ -426,6 +426,7 @@ pub const KVM_CAP_GUEST_DEBUG_HW_WPS: ::std::os::raw::c_uint = 120;
 pub const KVM_CAP_SPLIT_IRQCHIP: ::std::os::raw::c_uint = 121;
 pub const KVM_CAP_IOEVENTFD_ANY_LENGTH: ::std::os::raw::c_uint = 122;
 pub const KVM_CAP_HYPERV_SYNIC: ::std::os::raw::c_uint = 123;
+pub const KVM_CAP_ARM_PMU_V3: ::std::os::raw::c_uint = 126;
 pub const KVM_CAP_IMMEDIATE_EXIT: ::std::os::raw::c_uint = 136;
 pub const KVM_CAP_HYPERV_SYNIC2: ::std::os::raw::c_uint = 148;
 pub const KVM_IRQ_ROUTING_IRQCHIP: ::std::os::raw::c_uint = 1;
