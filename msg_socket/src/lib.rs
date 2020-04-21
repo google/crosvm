@@ -203,12 +203,12 @@ impl<O: MsgOnSocket> MsgReceiver for Receiver<O> {
 
 /// Asynchronous adaptor for `MsgSocket`.
 pub struct AsyncReceiver<'a, I: MsgOnSocket, O: MsgOnSocket> {
-    inner: &'a mut MsgSocket<I, O>,
+    inner: &'a MsgSocket<I, O>,
     done: bool, // Have hit an error and the Stream should return null when polled.
 }
 
 impl<'a, I: MsgOnSocket, O: MsgOnSocket> AsyncReceiver<'a, I, O> {
-    fn new(msg_socket: &mut MsgSocket<I, O>) -> MsgResult<AsyncReceiver<I, O>> {
+    fn new(msg_socket: &MsgSocket<I, O>) -> MsgResult<AsyncReceiver<I, O>> {
         add_fd_flags(msg_socket.as_raw_fd(), O_NONBLOCK).map_err(MsgError::SettingFdFlags)?;
         Ok(AsyncReceiver {
             inner: msg_socket,
