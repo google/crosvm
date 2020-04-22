@@ -1767,7 +1767,7 @@ fn run_control(
     }
 
     // Balance available memory between guest and host every second.
-    let mut balancemem_timer = TimerFd::new().map_err(Error::CreateTimerFd)?;
+    let balancemem_timer = TimerFd::new().map_err(Error::CreateTimerFd)?;
     if Path::new(LOWMEM_AVAILABLE).exists() {
         // Create timer request balloon stats every 1s.
         poll_ctx

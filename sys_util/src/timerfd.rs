@@ -34,7 +34,7 @@ impl TimerFd {
     /// Sets the timer to expire after `dur`.  If `interval` is not `None` it represents
     /// the period for repeated expirations after the initial expiration.  Otherwise
     /// the timer will expire just once.  Cancels any existing duration and repeating interval.
-    pub fn reset(&mut self, dur: Duration, interval: Option<Duration>) -> Result<()> {
+    pub fn reset(&self, dur: Duration, interval: Option<Duration>) -> Result<()> {
         // Safe because we are zero-initializing a struct with only primitive member fields.
         let mut spec: libc::itimerspec = unsafe { mem::zeroed() };
         spec.it_value.tv_sec = dur.as_secs() as libc::time_t;
@@ -61,7 +61,7 @@ impl TimerFd {
     /// Waits until the timer expires.  The return value represents the number of times the timer
     /// has expired since the last time `wait` was called.  If the timer has not yet expired once
     /// this call will block until it does.
-    pub fn wait(&mut self) -> Result<u64> {
+    pub fn wait(&self) -> Result<u64> {
         let mut count = 0u64;
 
         // Safe because this will only modify |buf| and we check the return value.
@@ -96,7 +96,7 @@ impl TimerFd {
     }
 
     /// Disarms the timer.
-    pub fn clear(&mut self) -> Result<()> {
+    pub fn clear(&self) -> Result<()> {
         // Safe because we are zero-initializing a struct with only primitive member fields.
         let spec: libc::itimerspec = unsafe { mem::zeroed() };
 
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn one_shot() {
-        let mut tfd = TimerFd::new().expect("failed to create timerfd");
+        let tfd = TimerFd::new().expect("failed to create timerfd");
         assert_eq!(tfd.is_armed().unwrap(), false);
 
         let dur = Duration::from_millis(200);
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn repeating() {
-        let mut tfd = TimerFd::new().expect("failed to create timerfd");
+        let tfd = TimerFd::new().expect("failed to create timerfd");
 
         let dur = Duration::from_millis(200);
         let interval = Duration::from_millis(100);
