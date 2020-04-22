@@ -34,7 +34,7 @@ use crate::virtio::gpu::{
     Backend, VirtioScanoutBlobData, VIRTIO_GPU_F_RESOURCE_BLOB, VIRTIO_GPU_F_RESOURCE_UUID,
     VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_F_VULKAN,
 };
-use crate::virtio::resource_bridge::{PlaneInfo, ResourceInfo, ResourceResponse};
+use crate::virtio::resource_bridge::{BufferInfo, PlaneInfo, ResourceInfo, ResourceResponse};
 
 use vm_control::{
     MaybeOwnedDescriptor, MemSlot, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse,
@@ -379,7 +379,7 @@ impl Backend for Virtio3DBackend {
             Err(_) => return ResourceResponse::Invalid,
         };
 
-        ResourceResponse::Resource(ResourceInfo {
+        ResourceResponse::Resource(ResourceInfo::Buffer(BufferInfo {
             file,
             planes: [
                 PlaneInfo {
@@ -399,7 +399,7 @@ impl Backend for Virtio3DBackend {
                     stride: q.out_strides[3],
                 },
             ],
-        })
+        }))
     }
 
     /// Creates a fence with the given id that can be used to determine when the previous command
@@ -410,6 +410,13 @@ impl Backend for Virtio3DBackend {
         // the renderer matches the virgl interface.
         self.renderer.create_fence(fence_id, ctx_id)?;
         Ok(OkNoData)
+    }
+
+    fn export_fence(&mut self, fence_id: u32) -> ResourceResponse {
+        match self.renderer.export_fence(fence_id) {
+            Ok(file) => ResourceResponse::Resource(ResourceInfo::Fence { file }),
+            Err(_) => ResourceResponse::Invalid,
+        }
     }
 
     /// Returns the id of the latest fence to complete.

@@ -10,6 +10,7 @@ mod virtio_gfxstream_backend;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::convert::TryFrom;
 use std::i64;
 use std::io::Read;
 use std::mem::{self, size_of};
@@ -164,6 +165,10 @@ trait Backend {
     /// Creates a fence with the given id that can be used to determine when the previous command
     /// completed.
     fn create_fence(&mut self, ctx_id: u32, fence_id: u32) -> VirtioGpuResult;
+
+    fn export_fence(&mut self, _fence_id: u32) -> ResourceResponse {
+        ResourceResponse::Invalid
+    }
 
     /// Returns the id of the latest fence to complete.
     fn fence_poll(&mut self) -> u32;
@@ -496,15 +501,21 @@ impl Frontend {
     }
 
     fn process_resource_bridge(&mut self, resource_bridge: &ResourceResponseSocket) {
-        let ResourceRequest::GetResource { id } = match resource_bridge.recv() {
-            Ok(msg) => msg,
+        let response = match resource_bridge.recv() {
+            Ok(ResourceRequest::GetBuffer { id }) => self.backend.export_resource(id),
+            Ok(ResourceRequest::GetFence { seqno }) => {
+                // The seqno originated from self.backend, so
+                // it should fit in a u32.
+                match u32::try_from(seqno) {
+                    Ok(fence_id) => self.backend.export_fence(fence_id),
+                    Err(_) => ResourceResponse::Invalid,
+                }
+            }
             Err(e) => {
                 error!("error receiving resource bridge request: {}", e);
                 return;
             }
         };
-
-        let response = self.backend.export_resource(id);
 
         if let Err(e) = resource_bridge.send(&response) {
             error!("error sending resource bridge request: {}", e);

@@ -350,6 +350,10 @@ extern "C" {
         fd: *mut ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_int;
 }
+extern "C" {
+    pub fn virgl_renderer_export_fence(clinet_fence_id: u32, fd: *mut i32)
+        -> ::std::os::raw::c_int;
+}
 pub type __builtin_va_list = [__va_list_tag; 1usize];
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

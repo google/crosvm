@@ -14,7 +14,9 @@ pub use libvda_encoder::LibvdaEncoder;
 use base::{error, warn, WaitContext};
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::virtio::resource_bridge::{self, ResourceRequestSocket};
+use crate::virtio::resource_bridge::{
+    self, BufferInfo, ResourceInfo, ResourceRequest, ResourceRequestSocket,
+};
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
 use crate::virtio::video::control::*;
@@ -487,6 +489,17 @@ pub struct EncoderDevice<T: Encoder> {
     streams: BTreeMap<u32, Stream<T::Session>>,
 }
 
+fn get_resource_info(res_bridge: &ResourceRequestSocket, uuid: u128) -> VideoResult<BufferInfo> {
+    match resource_bridge::get_resource_info(
+        res_bridge,
+        ResourceRequest::GetBuffer { id: uuid as u32 },
+    ) {
+        Ok(ResourceInfo::Buffer(buffer_info)) => Ok(buffer_info),
+        Ok(_) => Err(VideoError::InvalidArgument),
+        Err(e) => Err(VideoError::ResourceBridgeFailure(e)),
+    }
+}
+
 impl<T: Encoder> EncoderDevice<T> {
     pub fn new(encoder: T) -> encoder::Result<Self> {
         Ok(Self {
@@ -604,9 +617,7 @@ impl<T: Encoder> EncoderDevice<T> {
                     warn!("Replacing source resource with id {}", resource_id);
                 }
 
-                let resource_info =
-                    resource_bridge::get_resource_info(resource_bridge, uuid as u32)
-                        .map_err(VideoError::ResourceBridgeFailure)?;
+                let resource_info = get_resource_info(resource_bridge, uuid)?;
 
                 let planes: Vec<VideoFramePlane> = resource_info.planes[0..num_planes]
                     .into_iter()
@@ -686,11 +697,8 @@ impl<T: Encoder> EncoderDevice<T> {
                     },
                 )?;
 
-                let resource_info = resource_bridge::get_resource_info(
-                    resource_bridge,
-                    src_resource.resource_handle as u32,
-                )
-                .map_err(VideoError::ResourceBridgeFailure)?;
+                let resource_info =
+                    get_resource_info(resource_bridge, src_resource.resource_handle)?;
 
                 // TODO(alexlau): Figure out what to do with force_keyframe.
                 // Perhaps by something in the protocol that allows the user
@@ -753,11 +761,8 @@ impl<T: Encoder> EncoderDevice<T> {
                     },
                 )?;
 
-                let resource_info = resource_bridge::get_resource_info(
-                    resource_bridge,
-                    dst_resource.resource_handle as u32,
-                )
-                .map_err(VideoError::ResourceBridgeFailure)?;
+                let resource_info =
+                    get_resource_info(resource_bridge, dst_resource.resource_handle)?;
 
                 let mut buffer_size = data_sizes[0];
 

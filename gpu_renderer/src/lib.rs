@@ -418,6 +418,24 @@ impl Renderer {
         ret_to_res(ret)
     }
 
+    /// Exports the given fence for import into other processes.
+    pub fn export_fence(&self, fence_id: u32) -> Result<File> {
+        #[cfg(feature = "virtio-gpu-next")]
+        {
+            // Safe because the parameters are stack variables of the correct type.
+            let mut fd: i32 = 0;
+            let ret = unsafe { virgl_renderer_export_fence(fence_id, &mut fd) };
+            ret_to_res(ret)?;
+
+            // Safe because the FD was just returned by a successful virglrenderer call so it must
+            // be valid and owned by us.
+            let fence_file = unsafe { File::from_raw_descriptor(fd) };
+            Ok(fence_file)
+        }
+        #[cfg(not(feature = "virtio-gpu-next"))]
+        Err(Error::Unsupported)
+    }
+
     pub fn force_ctx_0(&self) {
         unsafe { virgl_renderer_force_ctx_0() };
     }
