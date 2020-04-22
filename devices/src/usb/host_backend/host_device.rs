@@ -140,30 +140,21 @@ impl HostDevice {
             return Ok(());
         }
 
-        // Default buffer size for control data transfer.
-        const CONTROL_DATA_BUFFER_SIZE: usize = 1024;
+        // Allocate a buffer for the control transfer.
+        // This buffer will hold a UsbRequestSetup struct followed by the data.
+        let control_buffer_len =
+            mem::size_of::<UsbRequestSetup>() + self.control_request_setup.length as usize;
+        let mut control_buffer = vec![0u8; control_buffer_len];
 
-        // Buffer type for control transfer. The first 8 bytes is a UsbRequestSetup struct.
-        #[derive(Copy, Clone)]
-        #[repr(C, packed)]
-        struct ControlTransferBuffer {
-            pub setup: UsbRequestSetup,
-            pub data: [u8; CONTROL_DATA_BUFFER_SIZE],
-        }
-
-        // Safe because it only has data and has no implicit padding.
-        unsafe impl DataInit for ControlTransferBuffer {}
-
-        let mut control_request = ControlTransferBuffer {
-            setup: self.control_request_setup,
-            data: [0; CONTROL_DATA_BUFFER_SIZE],
-        };
+        // Copy the control request header.
+        control_buffer[..mem::size_of::<UsbRequestSetup>()]
+            .copy_from_slice(self.control_request_setup.as_slice());
 
         let direction = self.control_request_setup.get_direction();
         let buffer = if direction == ControlRequestDataPhaseTransferDirection::HostToDevice {
             if let Some(buffer) = buffer {
                 buffer
-                    .read(&mut control_request.data)
+                    .read(&mut control_buffer[mem::size_of::<UsbRequestSetup>()..])
                     .map_err(Error::ReadBuffer)?;
             }
             // buffer is consumed here for HostToDevice transfers.
@@ -172,8 +163,6 @@ impl HostDevice {
             // buffer will be used later in the callback for DeviceToHost transfers.
             buffer
         };
-
-        let control_buffer = control_request.as_slice().to_vec();
 
         let mut control_transfer =
             Transfer::new_control(control_buffer).map_err(Error::CreateTransfer)?;
