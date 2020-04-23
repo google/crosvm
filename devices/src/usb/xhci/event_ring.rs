@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use data_model::DataInit;
-use std;
 use std::fmt::{self, Display};
 use std::mem::size_of;
 use std::sync::atomic::{fence, Ordering};

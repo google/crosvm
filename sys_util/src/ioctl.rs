@@ -7,8 +7,6 @@
 use std::os::raw::*;
 use std::os::unix::io::AsRawFd;
 
-use libc;
-
 /// Raw macro to declare the expression that calculates an ioctl number
 #[macro_export]
 macro_rules! ioctl_expr {

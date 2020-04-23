@@ -9,8 +9,6 @@ use std::io;
 use std::mem;
 use std::time::Duration;
 
-use libc;
-
 use crate::virtio::fs::fuse;
 
 pub use fuse::{FsOptions, IoctlFlags, IoctlIovec, OpenOptions, SetattrValid, ROOT_ID};

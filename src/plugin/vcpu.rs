@@ -13,7 +13,6 @@ use std::sync::{Arc, RwLock};
 
 use libc::{EINVAL, ENOENT, ENOTTY, EPERM, EPIPE, EPROTO};
 
-use protobuf;
 use protobuf::Message;
 
 use assertions::const_assert;

@@ -8,10 +8,7 @@ use std::fs::File;
 #[cfg(feature = "wl-dmabuf")]
 use libc::EINVAL;
 
-#[cfg(feature = "wl-dmabuf")]
-use gpu_buffer;
 use msg_socket::MsgOnSocket;
-use sys_util;
 
 #[allow(dead_code)]
 #[derive(Debug, Eq, PartialEq)]

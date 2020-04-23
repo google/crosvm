@@ -6,9 +6,6 @@ use std::arch::x86_64::{__cpuid, __cpuid_count};
 use std::fmt::{self, Display};
 use std::result;
 
-use kvm;
-use sys_util;
-
 #[derive(Debug, PartialEq)]
 pub enum Error {
     GetSupportedCpusFailed(sys_util::Error),

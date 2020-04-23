@@ -7,7 +7,6 @@ use std::mem;
 use bitflags::bitflags;
 use data_model::DataInit;
 use enumn::N;
-use libc;
 
 /// Version number of this interface.
 pub const KERNEL_VERSION: u32 = 7;

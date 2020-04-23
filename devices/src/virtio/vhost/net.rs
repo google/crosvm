@@ -7,7 +7,6 @@ use std::net::Ipv4Addr;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::thread;
 
-use net_sys;
 use net_util::{MacAddress, TapT};
 
 use sys_util::{error, warn, EventFd, GuestMemory};

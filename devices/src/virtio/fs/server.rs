@@ -8,7 +8,6 @@ use std::io::{self, Read, Write};
 use std::mem::size_of;
 
 use data_model::DataInit;
-use libc;
 use sys_util::error;
 
 use crate::virtio::fs::filesystem::{

@@ -4,7 +4,6 @@
 
 use libc::c_ulong;
 use remain::sorted;
-use std;
 use std::fmt::{self, Display};
 use std::io;
 use std::num;

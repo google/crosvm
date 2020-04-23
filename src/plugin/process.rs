@@ -14,12 +14,10 @@ use std::process::Command;
 use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
 
-use net_util;
 use net_util::Error as NetError;
 
 use libc::{pid_t, waitpid, EINVAL, ENODATA, ENOTTY, WEXITSTATUS, WIFEXITED, WNOHANG, WTERMSIG};
 
-use protobuf;
 use protobuf::Message;
 
 use io_jail::Minijail;

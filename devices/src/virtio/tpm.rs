@@ -12,7 +12,6 @@ use std::path::PathBuf;
 use std::thread;
 
 use sys_util::{error, EventFd, GuestMemory, PollContext, PollToken};
-use tpm2;
 
 use super::{
     DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_TPM,

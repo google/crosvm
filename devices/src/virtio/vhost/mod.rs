@@ -4,7 +4,6 @@
 
 //! Implements vhost-based virtio devices.
 
-use std;
 use std::fmt::{self, Display};
 
 use net_util::Error as TapError;

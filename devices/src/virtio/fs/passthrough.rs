@@ -15,7 +15,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use data_model::DataInit;
-use libc;
 use sync::Mutex;
 use sys_util::{error, ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ptr, ioctl_with_ptr};
 

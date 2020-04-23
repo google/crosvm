@@ -2,13 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc;
 use net_util::TapT;
 use std::fs::{File, OpenOptions};
 use std::marker::PhantomData;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::{AsRawFd, RawFd};
-use virtio_sys;
 
 use sys_util::{ioctl_with_ref, GuestMemory};
 

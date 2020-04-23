@@ -13,7 +13,6 @@ use std::sync::Arc;
 use std::thread;
 
 use data_model::{DataInit, Le16, Le64};
-use net_sys;
 use net_util::{Error as TapError, MacAddress, TapT};
 use sys_util::Error as SysError;
 use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken, WatchingEvents};

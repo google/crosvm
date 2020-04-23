@@ -7,7 +7,6 @@ use std::fmt::{self, Display};
 use std::{mem, result};
 
 use assertions::const_assert;
-use kvm;
 use kvm_sys::kvm_fpu;
 use kvm_sys::kvm_msr_entry;
 use kvm_sys::kvm_msrs;

@@ -7,9 +7,7 @@ use std::fmt::{self, Display};
 use std::mem;
 use std::result;
 
-use kvm;
 use kvm_sys::kvm_lapic_state;
-use sys_util;
 
 #[derive(Debug)]
 pub enum Error {

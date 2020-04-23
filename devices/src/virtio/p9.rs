@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use std::result;
 use std::thread;
 
-use p9;
 use sys_util::{error, warn, Error as SysError, EventFd, GuestMemory, PollContext, PollToken};
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
 

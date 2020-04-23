@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std;
 use std::cmp::max;
 use std::convert::TryFrom;
 use std::error::Error as StdError;
@@ -50,7 +49,6 @@ use sys_util::{
     Killable, MemoryMappingArena, PollContext, PollToken, Protection, ScopedEvent, SignalFd,
     Terminal, TimerFd, WatchingEvents, SIGRTMIN,
 };
-use vhost;
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
     BalloonControlResult, DiskControlCommand, DiskControlRequestSocket, DiskControlResponseSocket,

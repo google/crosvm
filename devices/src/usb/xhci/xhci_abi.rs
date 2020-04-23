@@ -8,8 +8,6 @@ use data_model::DataInit;
 use std::fmt::{self, Display};
 use sys_util::GuestAddress;
 
-use std;
-
 #[derive(Debug)]
 pub enum Error {
     UnknownTrbType(BitFieldError),
