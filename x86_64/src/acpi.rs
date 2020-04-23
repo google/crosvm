@@ -40,8 +40,8 @@ const FADT_LEN: u32 = 276;
 const FADT_REVISION: u8 = 6;
 const FADT_MINOR_REVISION: u8 = 3;
 // FADT flags
-const FADT_POWER_BUTTON: u32 = (1 << 4);
-const FADT_SLEEP_BUTTON: u32 = (1 << 5);
+const FADT_POWER_BUTTON: u32 = 1 << 4;
+const FADT_SLEEP_BUTTON: u32 = 1 << 5;
 // FADT fields offset
 const FADT_FIELD_SCI_INTERRUPT: usize = 46;
 const FADT_FIELD_PM1A_EVENT_BLK_ADDR: usize = 56;

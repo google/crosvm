@@ -12,7 +12,7 @@ pub const INPUT_PROP_POINTING_STICK: u16 = 0x05;
 pub const INPUT_PROP_ACCELEROMETER: u16 = 0x06;
 
 pub const INPUT_PROP_MAX: u16 = 0x1f;
-pub const INPUT_PROP_CNT: u16 = (INPUT_PROP_MAX + 1);
+pub const INPUT_PROP_CNT: u16 = INPUT_PROP_MAX + 1;
 
 pub const EV_SYN: u16 = 0x00;
 pub const EV_KEY: u16 = 0x01;
@@ -638,7 +638,7 @@ pub const BTN_TRIGGER_HAPPY40: u16 = 0x2e7;
 
 pub const KEY_MIN_INTERESTING: u16 = KEY_MUTE;
 pub const KEY_MAX: u16 = 0x2ff;
-pub const KEY_CNT: u16 = (KEY_MAX + 1);
+pub const KEY_CNT: u16 = KEY_MAX + 1;
 
 pub const REL_X: u16 = 0x00;
 pub const REL_Y: u16 = 0x01;
@@ -651,7 +651,7 @@ pub const REL_DIAL: u16 = 0x07;
 pub const REL_WHEEL: u16 = 0x08;
 pub const REL_MISC: u16 = 0x09;
 pub const REL_MAX: u16 = 0x0f;
-pub const REL_CNT: u16 = (REL_MAX + 1);
+pub const REL_CNT: u16 = REL_MAX + 1;
 
 pub const ABS_X: u16 = 0x00;
 pub const ABS_Y: u16 = 0x01;
@@ -699,7 +699,7 @@ pub const ABS_MT_TOOL_X: u16 = 0x3c;
 pub const ABS_MT_TOOL_Y: u16 = 0x3d;
 
 pub const ABS_MAX: u16 = 0x3f;
-pub const ABS_CNT: u16 = (ABS_MAX + 1);
+pub const ABS_CNT: u16 = ABS_MAX + 1;
 
 pub const MSC_SERIAL: u16 = 0x00;
 pub const MSC_PULSELED: u16 = 0x01;
@@ -708,7 +708,7 @@ pub const MSC_RAW: u16 = 0x03;
 pub const MSC_SCAN: u16 = 0x04;
 pub const MSC_TIMESTAMP: u16 = 0x05;
 pub const MSC_MAX: u16 = 0x07;
-pub const MSC_CNT: u16 = (MSC_MAX + 1);
+pub const MSC_CNT: u16 = MSC_MAX + 1;
 
 pub const LED_NUML: u16 = 0x00;
 pub const LED_CAPSL: u16 = 0x01;
@@ -722,12 +722,12 @@ pub const LED_MISC: u16 = 0x08;
 pub const LED_MAIL: u16 = 0x09;
 pub const LED_CHARGING: u16 = 0x0a;
 pub const LED_MAX: u16 = 0x0f;
-pub const LED_CNT: u16 = (LED_MAX + 1);
+pub const LED_CNT: u16 = LED_MAX + 1;
 
 pub const REP_DELAY: u16 = 0x00;
 pub const REP_PERIOD: u16 = 0x01;
 pub const REP_MAX: u16 = 0x01;
-pub const REP_CNT: u16 = (REP_MAX + 1);
+pub const REP_CNT: u16 = REP_MAX + 1;
 
 // Should match linux/virtio_input.h
 pub const VIRTIO_INPUT_CFG_UNSET: u8 = 0x00;

@@ -18,7 +18,7 @@ use crate::virtio::fs::fuse::*;
 use crate::virtio::fs::{Error, Result};
 use crate::virtio::{Reader, Writer};
 
-const MAX_BUFFER_SIZE: u32 = (1 << 20);
+const MAX_BUFFER_SIZE: u32 = 1 << 20;
 const DIRENT_PADDING: [u8; 8] = [0; 8];
 
 struct ZCReader<'a>(Reader<'a>);

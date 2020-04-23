@@ -137,7 +137,7 @@ pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
     }
 }
 
-pub const VIRTIO_GPU_FLAG_FENCE: u32 = (1 << 0);
+pub const VIRTIO_GPU_FLAG_FENCE: u32 = 1 << 0;
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
@@ -336,7 +336,7 @@ pub struct virtio_gpu_transfer_host_3d {
 unsafe impl DataInit for virtio_gpu_transfer_host_3d {}
 
 /* VIRTIO_GPU_CMD_RESOURCE_CREATE_3D */
-pub const VIRTIO_GPU_RESOURCE_FLAG_Y_0_TOP: u32 = (1 << 0);
+pub const VIRTIO_GPU_RESOURCE_FLAG_Y_0_TOP: u32 = 1 << 0;
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
 pub struct virtio_gpu_resource_create_3d {
