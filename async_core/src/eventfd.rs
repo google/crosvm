@@ -2,18 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use futures::Stream;
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
+use std::future::Future;
 use std::os::unix::io::AsRawFd;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use libc::{EWOULDBLOCK, O_NONBLOCK};
 
+use cros_async::fd_executor::{self, add_read_waker, cancel_waker, WakerToken};
 use sys_util::{self, add_fd_flags};
-
-use cros_async::fd_executor::{self, add_read_waker};
 
 /// Errors generated while polling for events.
 #[derive(Debug)]
@@ -50,21 +49,20 @@ impl Display for Error {
     }
 }
 
-/// Asynchronous version of `sys_util::EventFd`. Provides an implementation of `futures::Stream` so
-/// that events can be consumed in an async context.
+/// Asynchronous version of `sys_util::EventFd`. Provides asynchronous values that complete when the
+/// next event can be read from the eventfd.
 ///
 /// # Example
 ///
 /// ```
 /// use std::convert::TryInto;
 ///
-/// use async_core::{EventFd };
-/// use futures::StreamExt;
+/// use async_core::{EventFd};
 /// use sys_util::{self};
 ///
 /// async fn process_events() -> std::result::Result<(), Box<dyn std::error::Error>> {
 ///     let mut async_events: EventFd = sys_util::EventFd::new()?.try_into()?;
-///     while let Some(e) = async_events.next().await {
+///     while let Ok(e) = async_events.read_next().await {
 ///         // Handle event here.
 ///     }
 ///     Ok(())
@@ -72,12 +70,31 @@ impl Display for Error {
 /// ```
 pub struct EventFd {
     inner: sys_util::EventFd,
-    done: bool,
 }
 
 impl EventFd {
     pub fn new() -> Result<EventFd> {
         Self::try_from(sys_util::EventFd::new().map_err(Error::EventFdCreate)?)
+    }
+
+    /// Asynchronously read the next value from the eventfd.
+    /// Returns a Future that can be `awaited` for the next value.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use async_core::EventFd;
+    /// async fn print_events(mut event_fd: EventFd) {
+    ///     loop {
+    ///         match event_fd.read_next().await {
+    ///             Ok(e) => println!("Got event: {}", e),
+    ///             Err(e) => break,
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    pub fn read_next(&mut self) -> NextValFuture {
+        NextValFuture::new(self)
     }
 }
 
@@ -87,41 +104,56 @@ impl TryFrom<sys_util::EventFd> for EventFd {
     fn try_from(eventfd: sys_util::EventFd) -> Result<EventFd> {
         let fd = eventfd.as_raw_fd();
         add_fd_flags(fd, O_NONBLOCK).map_err(Error::SettingNonBlocking)?;
-        Ok(EventFd {
-            inner: eventfd,
-            done: false,
-        })
+        Ok(EventFd { inner: eventfd })
     }
 }
 
-impl Stream for EventFd {
-    type Item = Result<u64>;
+/// A Future that yields the next value from the eventfd when it is ready.
+pub struct NextValFuture<'a> {
+    eventfd: &'a mut EventFd,
+    waker_token: Option<WakerToken>,
+}
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        if self.done {
-            return Poll::Ready(None);
+impl<'a> NextValFuture<'a> {
+    fn new(eventfd: &'a mut EventFd) -> NextValFuture<'a> {
+        NextValFuture {
+            eventfd,
+            waker_token: None,
+        }
+    }
+}
+
+impl<'a> Future for NextValFuture<'a> {
+    type Output = Result<u64>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        if let Some(token) = self.waker_token.take() {
+            let _ = cancel_waker(token);
         }
 
-        let res = self
-            .inner
-            .read()
-            .map(|v| Poll::Ready(Some(Ok(v))))
-            .or_else(|e| {
-                if e.errno() == EWOULDBLOCK {
-                    add_read_waker(self.inner.as_raw_fd(), cx.waker().clone())
-                        .map(|_token| Poll::Pending)
-                        .map_err(Error::AddingWaker)
-                } else {
-                    Err(Error::EventFdRead(e))
-                }
-            });
-
-        match res {
-            Ok(v) => v,
+        match self.eventfd.inner.read() {
+            Ok(v) => Poll::Ready(Ok(v)),
             Err(e) => {
-                self.done = true;
-                Poll::Ready(Some(Err(e)))
+                if e.errno() == EWOULDBLOCK {
+                    match add_read_waker(self.eventfd.inner.as_raw_fd(), cx.waker().clone()) {
+                        Ok(token) => {
+                            self.waker_token = Some(token);
+                            Poll::Pending
+                        }
+                        Err(e) => Poll::Ready(Err(Error::AddingWaker(e))),
+                    }
+                } else {
+                    Poll::Ready(Err(Error::EventFdRead(e)))
+                }
             }
+        }
+    }
+}
+
+impl<'a> Drop for NextValFuture<'a> {
+    fn drop(&mut self) {
+        if let Some(token) = self.waker_token.take() {
+            let _ = cancel_waker(token);
         }
     }
 }
@@ -132,13 +164,12 @@ mod tests {
     use cros_async::{select2, SelectResult};
     use futures::future::pending;
     use futures::pin_mut;
-    use futures::stream::StreamExt;
 
     #[test]
     fn eventfd_write_read() {
         let evt = EventFd::new().unwrap();
         async fn read_one(mut evt: EventFd) -> u64 {
-            if let Some(Ok(e)) = evt.next().await {
+            if let Ok(e) = evt.read_next().await {
                 e
             } else {
                 66
