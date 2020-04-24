@@ -8,8 +8,8 @@ use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::thread;
 
-use sys_util::Result as SysResult;
 use sys_util::{error, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
+use sys_util::{Error as SysError, Result as SysResult};
 
 use data_model::{DataInit, Le32, Le64};
 
@@ -89,6 +89,7 @@ struct Worker {
     memory: GuestMemory,
     pmem_device_socket: VmMsyncRequestSocket,
     mapping_arena_slot: u32,
+    mapping_size: usize,
 }
 
 impl Worker {
@@ -98,6 +99,7 @@ impl Worker {
                 let request = VmMsyncRequest::MsyncArena {
                     slot: self.mapping_arena_slot,
                     offset: 0, // The pmem backing file is always at offset 0 in the arena.
+                    size: self.mapping_size,
                 };
 
                 if let Err(e) = self.pmem_device_socket.send(&request) {
@@ -235,6 +237,10 @@ impl Pmem {
         mapping_size: u64,
         pmem_device_socket: Option<VmMsyncRequestSocket>,
     ) -> SysResult<Pmem> {
+        if mapping_size > usize::max_value() as u64 {
+            return Err(SysError::new(libc::EOVERFLOW));
+        }
+
         Ok(Pmem {
             kill_event: None,
             worker_thread: None,
@@ -308,6 +314,8 @@ impl VirtioDevice for Pmem {
         let queue_event = queue_events.remove(0);
 
         let mapping_arena_slot = self.mapping_arena_slot;
+        // We checked that this fits in a usize in `Pmem::new`.
+        let mapping_size = self.mapping_size as usize;
 
         if let Some(pmem_device_socket) = self.pmem_device_socket.take() {
             let (self_kill_event, kill_event) =
@@ -329,6 +337,7 @@ impl VirtioDevice for Pmem {
                         queue,
                         pmem_device_socket,
                         mapping_arena_slot,
+                        mapping_size,
                     };
                     worker.run(queue_event, kill_event);
                 });

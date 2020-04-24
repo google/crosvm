@@ -450,7 +450,12 @@ pub enum VmMsyncRequest {
     /// Flush the content of a memory mapping to its backing file.
     /// `slot` selects the arena (as returned by `Vm::add_mmap_arena`).
     /// `offset` is the offset of the mapping to sync within the arena.
-    MsyncArena { slot: u32, offset: usize },
+    /// `size` is the size of the mapping to sync within the arena.
+    MsyncArena {
+        slot: u32,
+        offset: usize,
+        size: usize,
+    },
 }
 
 #[derive(MsgOnSocket, Debug)]
@@ -471,11 +476,10 @@ impl VmMsyncRequest {
     pub fn execute(&self, vm: &mut Vm) -> VmMsyncResponse {
         use self::VmMsyncRequest::*;
         match *self {
-            MsyncArena { slot, offset } => {
+            MsyncArena { slot, offset, size } => {
                 if let Some(arena) = vm.get_mmap_arena(slot) {
-                    match arena.msync(offset) {
-                        Ok(true) => VmMsyncResponse::Ok,
-                        Ok(false) => VmMsyncResponse::Err(SysError::new(EINVAL)),
+                    match arena.msync(offset, size) {
+                        Ok(()) => VmMsyncResponse::Ok,
                         Err(e) => match e {
                             MmapError::SystemCallFailed(errno) => VmMsyncResponse::Err(errno),
                             _ => VmMsyncResponse::Err(SysError::new(EINVAL)),
