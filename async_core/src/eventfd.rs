@@ -109,7 +109,7 @@ impl Stream for EventFd {
             .or_else(|e| {
                 if e.errno() == EWOULDBLOCK {
                     add_read_waker(self.inner.as_raw_fd(), cx.waker().clone())
-                        .map(|()| Poll::Pending)
+                        .map(|_token| Poll::Pending)
                         .map_err(Error::AddingWaker)
                 } else {
                     Err(Error::EventFdRead(e))
