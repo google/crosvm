@@ -106,4 +106,7 @@ generate! {
 
     /// _Future for the [`select5`] function.
     (Select5, <_Fut1, _Fut2, _Fut3, _Fut4, _Fut5>),
+
+    /// _Future for the [`select6`] function.
+    (Select6, <_Fut1, _Fut2, _Fut3, _Fut4, _Fut5, _Fut6>),
 }
