@@ -50,7 +50,7 @@ impl<I: MsgOnSocket, O: MsgOnSocket> MsgSocket<I, O> {
     }
 
     // Creates an async receiver that implements `futures::Stream`.
-    pub fn async_receiver(&mut self) -> MsgResult<AsyncReceiver<I, O>> {
+    pub fn async_receiver(&self) -> MsgResult<AsyncReceiver<I, O>> {
         AsyncReceiver::new(self)
     }
 }
