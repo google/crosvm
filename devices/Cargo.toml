@@ -18,6 +18,7 @@ acpi_tables = {path = "../acpi_tables" }
 audio_streams = "*"
 bit_field = { path = "../bit_field" }
 bitflags = "1"
+cros_async = { path = "../cros_async" }
 data_model = { path = "../data_model" }
 disk = { path = "../disk" }
 enumn = { path = "../enumn" }
