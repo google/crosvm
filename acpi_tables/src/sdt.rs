@@ -69,6 +69,11 @@ impl SDT {
         self.write(LENGTH_OFFSET, self.data.len() as u32);
     }
 
+    pub fn append_slice(&mut self, value: &[u8]) {
+        self.data.extend_from_slice(value);
+        self.write(LENGTH_OFFSET, self.data.len() as u32);
+    }
+
     /// Write a value at the given offset
     pub fn write<T: DataInit>(&mut self, offset: usize, value: T) {
         let value_len = std::mem::size_of::<T>();

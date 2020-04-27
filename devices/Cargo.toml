@@ -12,6 +12,7 @@ x = ["gpu_display/x"]
 gfxstream = ["gpu"]
 
 [dependencies]
+acpi_tables = {path = "../acpi_tables" }
 audio_streams = "*"
 bit_field = { path = "../bit_field" }
 bitflags = "1"

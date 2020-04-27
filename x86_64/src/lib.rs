@@ -54,6 +54,7 @@ use std::mem;
 use std::sync::Arc;
 
 use crate::bootparam::boot_params;
+use acpi_tables::aml::Aml;
 use arch::{
     get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, SerialHardware, SerialParameters,
     VmComponents, VmImage,
@@ -74,6 +75,7 @@ use vm_control::VmIrqRequestSocket;
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
+    AllocateIOResouce(resources::Error),
     AllocateIrq,
     CloneEventFd(sys_util::Error),
     Cmdline(kernel_cmdline::Error),
@@ -124,6 +126,7 @@ impl Display for Error {
 
         #[sorted]
         match self {
+            AllocateIOResouce(e) => write!(f, "error allocating IO resource: {}", e),
             AllocateIrq => write!(f, "error allocating a single irq"),
             CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
             Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
@@ -216,6 +219,7 @@ fn configure_system(
     setup_data: Option<GuestAddress>,
     initrd: Option<(GuestAddress, usize)>,
     mut params: boot_params,
+    acpi_dev_resource: acpi::ACPIDevResource,
 ) -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
@@ -279,7 +283,8 @@ fn configure_system(
         .write_obj_at_addr(params, zero_page_addr)
         .map_err(|_| Error::ZeroPageSetup)?;
 
-    let rsdp_addr = acpi::create_acpi_tables(guest_mem, num_cpus, X86_64_SCI_IRQ);
+    let rsdp_addr =
+        acpi::create_acpi_tables(guest_mem, num_cpus, X86_64_SCI_IRQ, acpi_dev_resource);
     params.acpi_rsdp_addr = rsdp_addr.0;
 
     Ok(())
@@ -423,7 +428,6 @@ impl arch::LinuxArch for X8664arch {
             exit_evt.try_clone().map_err(Error::CloneEventFd)?,
             Some(pci_bus.clone()),
             components.memory_size,
-            suspend_evt.try_clone().map_err(Error::CloneEventFd)?,
         )?;
 
         Self::setup_serial_devices(
@@ -432,6 +436,12 @@ impl arch::LinuxArch for X8664arch {
             &mut gsi_relay,
             serial_parameters,
             serial_jail,
+        )?;
+
+        let acpi_dev_resource = Self::setup_acpi_devices(
+            &mut io_bus,
+            &mut resources,
+            suspend_evt.try_clone().map_err(Error::CloneEventFd)?,
         )?;
 
         let ramoops_region = match components.pstore {
@@ -506,6 +516,7 @@ impl arch::LinuxArch for X8664arch {
                     components.android_fstab,
                     kernel_end,
                     params,
+                    acpi_dev_resource,
                 )?;
             }
         }
@@ -592,6 +603,7 @@ impl X8664arch {
         android_fstab: Option<File>,
         kernel_end: u64,
         params: boot_params,
+        acpi_dev_resource: acpi::ACPIDevResource,
     ) -> Result<()> {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)
             .map_err(Error::LoadCmdline)?;
@@ -653,6 +665,7 @@ impl X8664arch {
             setup_data,
             initrd,
             params,
+            acpi_dev_resource,
         )?;
         Ok(())
     }
@@ -754,14 +767,12 @@ impl X8664arch {
     /// * - `gsi_relay`: only valid for split IRQ chip (i.e. userspace PIT/PIC/IOAPIC)
     /// * - `exit_evt` - the event fd object which should receive exit events
     /// * - `mem_size` - the size in bytes of physical ram for the guest
-    /// * - `suspend_evt` - the event fd object which used to suspend the vm
     fn setup_io_bus(
         _vm: &mut Vm,
         gsi_relay: &mut Option<GsiRelay>,
         exit_evt: EventFd,
         pci: Option<Arc<Mutex<devices::PciConfigIo>>>,
         mem_size: u64,
-        suspend_evt: EventFd,
     ) -> Result<devices::Bus> {
         struct NoDevice;
         impl devices::BusDevice for NoDevice {
@@ -826,18 +837,53 @@ impl X8664arch {
                 .unwrap();
         }
 
-        let pm = Arc::new(Mutex::new(devices::ACPIPMResource::new(suspend_evt)));
+        Ok(io_bus)
+    }
+
+    /// Sets up the acpi devices for this platform and
+    /// return the resources which is used to set the ACPI tables.
+    ///
+    /// # Arguments
+    ///
+    /// * - `io_bus` the I/O bus to add the devices to
+    /// * - `resources` the SystemAllocator to allocate IO and MMIO for acpi
+    ///                devices.
+    /// * - `suspend_evt` - the event fd object which used to suspend the vm
+    fn setup_acpi_devices(
+        io_bus: &mut devices::Bus,
+        resources: &mut SystemAllocator,
+        suspend_evt: EventFd,
+    ) -> Result<acpi::ACPIDevResource> {
+        // The AML data for the acpi devices
+        let mut amls = Vec::new();
+
+        let pm_alloc = resources.get_anon_alloc();
+        let pm_iobase = match resources.io_allocator() {
+            Some(io) => io
+                .allocate_with_align(
+                    devices::acpi::ACPIPM_RESOURCE_LEN as u64,
+                    pm_alloc,
+                    "ACPIPM".to_string(),
+                    devices::acpi::ACPIPM_RESOURCE_LEN as u64,
+                )
+                .map_err(Error::AllocateIOResouce)?,
+            None => 0x600,
+        };
+
+        let pmresource = devices::ACPIPMResource::new(suspend_evt);
+        Aml::to_aml_bytes(&pmresource, &mut amls);
+        let pm = Arc::new(Mutex::new(pmresource));
         io_bus
             .insert(
                 pm.clone(),
-                devices::acpi::ACPIPM_RESOURCE_BASE,
+                pm_iobase as u64,
                 devices::acpi::ACPIPM_RESOURCE_LEN as u64,
                 false,
             )
             .unwrap();
         io_bus.notify_on_resume(pm);
 
-        Ok(io_bus)
+        Ok(acpi::ACPIDevResource { amls, pm_iobase })
     }
 
     /// Sets up the serial devices for this platform. Returns the serial port number and serial

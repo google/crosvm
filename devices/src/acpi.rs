@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use crate::{BusDevice, BusResumeDevice};
+use acpi_tables::{aml, aml::Aml};
 use sys_util::{error, warn, EventFd};
 
 /// ACPI PM resource for handling OS suspend/resume request
@@ -29,8 +30,7 @@ impl ACPIPMResource {
     }
 }
 
-/// the ACPI PM register's base and length.
-pub const ACPIPM_RESOURCE_BASE: u64 = 0x600;
+/// the ACPI PM register length.
 pub const ACPIPM_RESOURCE_LEN: u8 = 8;
 pub const ACPIPM_RESOURCE_EVENTBLK_LEN: u8 = 4;
 pub const ACPIPM_RESOURCE_CONTROLBLK_LEN: u8 = 2;
@@ -125,5 +125,16 @@ impl BusResumeDevice for ACPIPMResource {
 
         let val = self.sleep_status;
         self.sleep_status = val | BITMASK_SLEEPCNT_WAKE_STATUS;
+    }
+}
+
+impl Aml for ACPIPMResource {
+    fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
+        // S1
+        aml::Name::new(
+            "_S1_".into(),
+            &aml::Package::new(vec![&aml::ONE, &aml::ONE, &aml::ZERO, &aml::ZERO]),
+        )
+        .to_aml_bytes(bytes);
     }
 }
