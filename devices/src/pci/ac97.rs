@@ -12,7 +12,7 @@ use audio_streams::{
     shm_streams::{NullShmStreamSource, ShmStreamSource},
     StreamEffect,
 };
-use libcras::{CrasClient, CrasClientType};
+use libcras::{CrasClient, CrasClientType, CrasSocketType};
 use resources::{Alloc, MmioType, SystemAllocator};
 use sys_util::{error, EventFd, GuestMemory};
 
@@ -117,8 +117,10 @@ impl Ac97Dev {
     }
 
     fn create_cras_audio_device(params: Ac97Parameters, mem: GuestMemory) -> Result<Ac97Dev> {
-        let mut server =
-            Box::new(CrasClient::new().map_err(|e| pci_device::Error::CreateCrasClientFailed(e))?);
+        let mut server = Box::new(
+            CrasClient::with_type(CrasSocketType::Unified)
+                .map_err(|e| pci_device::Error::CreateCrasClientFailed(e))?,
+        );
         server.set_client_type(CrasClientType::CRAS_CLIENT_TYPE_CROSVM);
         if params.capture {
             server.enable_cras_capture();
