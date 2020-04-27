@@ -23,6 +23,7 @@ use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
+use vm_control::BatteryType;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 mod fdt;
@@ -197,6 +198,7 @@ impl arch::LinuxArch for AArch64 {
         mut components: VmComponents,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
+        _battery: &Option<BatteryType>,
         create_devices: FD,
         create_vm: FV,
         create_irq_chip: FI,

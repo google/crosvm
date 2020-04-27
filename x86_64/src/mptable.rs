@@ -268,7 +268,7 @@ pub fn setup_mptable(
         base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
     }
-    let pci_irq_base = super::X86_64_IRQ_BASE as u8;
+
     // Insert PCI interrupts after platform IRQs.
     for (address, irq_num, irq_pin) in pci_irqs.iter() {
         let size = mem::size_of::<mpc_intsrc>();
@@ -285,8 +285,14 @@ pub fn setup_mptable(
         base_mp = base_mp.unchecked_add(size as u64);
         checksum = checksum.wrapping_add(compute_checksum(&mpc_intsrc));
     }
+
+    let starting_isa_irq_num = pci_irqs
+        .into_iter()
+        .map(|(_, irq_num, _)| irq_num + 1)
+        .fold(super::X86_64_IRQ_BASE, u32::max) as u8;
+
     // Finally insert ISA interrupts.
-    for i in pci_irq_base + pci_irqs.len() as u8..16 {
+    for i in starting_isa_irq_num..16 {
         let size = mem::size_of::<mpc_intsrc>();
         let mut mpc_intsrc = mpc_intsrc::default();
         mpc_intsrc.type_ = MP_INTSRC as u8;

@@ -37,8 +37,9 @@ use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use vm_control::{
-    BalloonControlCommand, DiskControlCommand, MaybeOwnedDescriptor, UsbControlCommand,
-    UsbControlResult, VmControlRequestSocket, VmRequest, VmResponse, USB_CONTROL_MAX_PORTS,
+    BalloonControlCommand, BatteryType, DiskControlCommand, MaybeOwnedDescriptor,
+    UsbControlCommand, UsbControlResult, VmControlRequestSocket, VmRequest, VmResponse,
+    USB_CONTROL_MAX_PORTS,
 };
 
 fn executable_is_plugin(executable: &Option<Executable>) -> bool {
@@ -589,6 +590,40 @@ fn parse_plugin_gid_map_option(value: &str) -> argument::Result<GidMap> {
         outer,
         count,
     })
+}
+
+fn parse_battery_options(s: Option<&str>) -> argument::Result<BatteryType> {
+    let mut battery_type: BatteryType = Default::default();
+
+    if let Some(s) = s {
+        let opts = s
+            .split(",")
+            .map(|frag| frag.split("="))
+            .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
+
+        for (k, v) in opts {
+            match k {
+                "type" => match v.parse::<BatteryType>() {
+                    Ok(type_) => battery_type = type_,
+                    Err(e) => {
+                        return Err(argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: e.to_string(),
+                        });
+                    }
+                },
+                "" => {}
+                _ => {
+                    return Err(argument::Error::UnknownArgument(format!(
+                        "battery parameter {}",
+                        k
+                    )));
+                }
+            }
+        }
+    }
+
+    Ok(battery_type)
 }
 
 fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::Result<()> {
@@ -1399,6 +1434,10 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.protected_vm = true;
             cfg.params.push("swiotlb=force".to_string());
         }
+        "battery" => {
+            let params = parse_battery_options(value)?;
+            cfg.battery_type = Some(params);
+        }
 
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
@@ -1582,6 +1621,12 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           Argument::flag("video-encoder", "(EXPERIMENTAL) enable virtio-video encoder device"),
           Argument::value("acpi-table", "PATH", "Path to user provided ACPI table"),
           Argument::flag("protected-vm", "(EXPERIMENTAL) prevent host access to guest memory"),
+          Argument::flag_or_value("battery",
+                                  "[type=TYPE]",
+                                  "Comma separated key=value pairs for setting up battery device
+                                  Possible key values:
+                                  type=goldfish - type of battery emulation, defaults to goldfish
+                                  "),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
@@ -2549,5 +2594,25 @@ mod tests {
     fn parse_gpu_options_not_gfxstream_with_syncfd_specified() {
         assert!(parse_gpu_options(Some("backend=3d,syncfd=true")).is_err());
         assert!(parse_gpu_options(Some("syncfd=true,backend=3d")).is_err());
+    }
+
+    #[test]
+    fn parse_battery_vaild() {
+        parse_battery_options(Some("type=goldfish")).expect("parse should have succeded");
+    }
+
+    #[test]
+    fn parse_battery_vaild_no_type() {
+        parse_battery_options(None).expect("parse should have succeded");
+    }
+
+    #[test]
+    fn parse_battery_invaild_parameter() {
+        parse_battery_options(Some("tyep=goldfish")).expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_battery_invaild_type_value() {
+        parse_battery_options(Some("type=xxx")).expect_err("parse should have failed");
     }
 }

@@ -67,6 +67,7 @@ use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
+use vm_control::BatteryType;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 #[sorted]
@@ -77,6 +78,7 @@ pub enum Error {
     CloneEvent(base::Error),
     Cmdline(kernel_cmdline::Error),
     ConfigureSystem,
+    CreateBatDevices(arch::DeviceRegistrationError),
     CreateDevices(Box<dyn StdError>),
     CreateEvent(base::Error),
     CreateFdt(arch::fdt::Error),
@@ -127,6 +129,7 @@ impl Display for Error {
             CloneEvent(e) => write!(f, "unable to clone an Event: {}", e),
             Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
             ConfigureSystem => write!(f, "error configuring the system"),
+            CreateBatDevices(e) => write!(f, "unable to create battery devices: {}", e),
             CreateDevices(e) => write!(f, "error creating devices: {}", e),
             CreateEvent(e) => write!(f, "unable to make an Event: {}", e),
             CreateFdt(e) => write!(f, "failed to create fdt: {}", e),
@@ -325,6 +328,7 @@ impl arch::LinuxArch for X8664arch {
         mut components: VmComponents,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
+        battery: &Option<BatteryType>,
         create_devices: FD,
         create_vm: FV,
         create_irq_chip: FI,
@@ -397,6 +401,9 @@ impl arch::LinuxArch for X8664arch {
             &mut resources,
             suspend_evt.try_clone().map_err(Error::CloneEvent)?,
             components.acpi_sdts,
+            &mut irq_chip,
+            battery,
+            &mut mmio_bus,
         )?;
 
         let ramoops_region = match components.pstore {
@@ -775,12 +782,19 @@ impl X8664arch {
     /// * - `io_bus` the I/O bus to add the devices to
     /// * - `resources` the SystemAllocator to allocate IO and MMIO for acpi
     ///                devices.
-    /// * - `suspend_evt` - the event object which used to suspend the vm
+    /// * - `suspend_evt` the event object which used to suspend the vm
+    /// * - `sdts` ACPI system description tables
+    /// * - `irq_chip` the IrqChip object for registering irq events
+    /// * - `battery` indicate whether to create the battery
+    /// * - `mmio_bus` the MMIO bus to add the devices to
     fn setup_acpi_devices(
         io_bus: &mut devices::Bus,
         resources: &mut SystemAllocator,
         suspend_evt: Event,
         sdts: Vec<SDT>,
+        irq_chip: &mut impl IrqChip,
+        battery: &Option<BatteryType>,
+        mmio_bus: &mut devices::Bus,
     ) -> Result<acpi::ACPIDevResource> {
         // The AML data for the acpi devices
         let mut amls = Vec::new();
@@ -810,6 +824,21 @@ impl X8664arch {
             )
             .unwrap();
         io_bus.notify_on_resume(pm);
+
+        if let Some(battery_type) = battery {
+            match battery_type {
+                BatteryType::Goldfish => {
+                    arch::add_goldfish_battery(
+                        &mut amls,
+                        mmio_bus,
+                        irq_chip,
+                        X86_64_SCI_IRQ,
+                        resources,
+                    )
+                    .map_err(Error::CreateBatDevices)?;
+                }
+            }
+        }
 
         Ok(acpi::ACPIDevResource {
             amls,

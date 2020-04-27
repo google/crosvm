@@ -14,6 +14,8 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::mem::ManuallyDrop;
+use std::result::Result as StdResult;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use libc::{EINVAL, EIO, ENODEV};
@@ -548,6 +550,42 @@ impl VmMsyncRequest {
                 Ok(()) => VmMsyncResponse::Ok,
                 Err(e) => VmMsyncResponse::Err(e),
             },
+        }
+    }
+}
+
+pub enum BatControlResult {
+    NoSuchBatType,
+}
+
+impl Display for BatControlResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::BatControlResult::*;
+
+        match self {
+            NoSuchBatType => write!(f, "Invalid Battery type setting. Only support: goldfish"),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum BatteryType {
+    Goldfish,
+}
+
+impl Default for BatteryType {
+    fn default() -> Self {
+        BatteryType::Goldfish
+    }
+}
+
+impl FromStr for BatteryType {
+    type Err = BatControlResult;
+
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
+        match s {
+            "goldfish" => Ok(BatteryType::Goldfish),
+            _ => Err(BatControlResult::NoSuchBatType),
         }
     }
 }

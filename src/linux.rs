@@ -2089,6 +2089,7 @@ where
         components,
         &cfg.serial_parameters,
         simple_jail(&cfg, "serial")?,
+        &cfg.battery_type,
         |mem, vm, sys_allocator, exit_evt| {
             create_devices(
                 &cfg,

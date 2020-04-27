@@ -24,6 +24,7 @@ use devices::virtio::gpu::GpuParameters;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
 use libc::{getegid, geteuid};
+use vm_control::BatteryType;
 
 static SECCOMP_POLICY_DIR: &str = "/usr/share/policy/crosvm";
 
@@ -213,6 +214,7 @@ pub struct Config {
     pub video_enc: bool,
     pub acpi_tables: Vec<PathBuf>,
     pub protected_vm: bool,
+    pub battery_type: Option<BatteryType>,
 }
 
 impl Default for Config {
@@ -268,6 +270,7 @@ impl Default for Config {
             video_enc: false,
             acpi_tables: Vec::new(),
             protected_vm: false,
+            battery_type: None,
         }
     }
 }

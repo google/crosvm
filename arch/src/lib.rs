@@ -15,6 +15,7 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use acpi_tables::aml::Aml;
 use acpi_tables::sdt::SDT;
 use base::{syslog, AsRawDescriptor, Event};
 use devices::virtio::VirtioDevice;
@@ -24,10 +25,11 @@ use devices::{
 };
 use hypervisor::{IoEventAddress, Vm};
 use minijail::Minijail;
-use resources::SystemAllocator;
+use resources::{MmioType, SystemAllocator};
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
+use vm_control::BatteryType;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use {
     devices::IrqChipAArch64 as IrqChipArch,
@@ -122,6 +124,7 @@ pub trait LinuxArch {
     ///
     /// * `components` - Parts to use to build the VM.
     /// * `serial_parameters` - definitions for how the serial devices should be configured.
+    /// * `battery` - defines what battery device will be created.
     /// * `create_devices` - Function to generate a list of devices.
     /// * `create_vm` - Function to generate a VM.
     /// * `create_irq_chip` - Function to generate an IRQ chip.
@@ -129,6 +132,7 @@ pub trait LinuxArch {
         components: VmComponents,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
+        battery: &Option<BatteryType>,
         create_devices: FD,
         create_vm: FV,
         create_irq_chip: FI,
@@ -177,6 +181,8 @@ pub trait LinuxArch {
 pub enum DeviceRegistrationError {
     /// Could not allocate IO space for the device.
     AllocateIoAddrs(PciDeviceError),
+    /// Could not allocate MMIO or IO resource for the device.
+    AllocateIoResource(resources::Error),
     /// Could not allocate device address space for the device.
     AllocateDeviceAddrs(PciDeviceError),
     /// Could not allocate an IRQ number.
@@ -207,6 +213,8 @@ pub enum DeviceRegistrationError {
     AddrsExhausted,
     /// Could not register PCI device capabilities.
     RegisterDeviceCapabilities(PciDeviceError),
+    // Failed to register battery device.
+    RegisterBattery(devices::BatteryError),
 }
 
 impl Display for DeviceRegistrationError {
@@ -215,6 +223,7 @@ impl Display for DeviceRegistrationError {
 
         match self {
             AllocateIoAddrs(e) => write!(f, "Allocating IO addresses: {}", e),
+            AllocateIoResource(e) => write!(f, "Allocating IO resource: {}", e),
             AllocateDeviceAddrs(e) => write!(f, "Allocating device addresses: {}", e),
             AllocateIrq => write!(f, "Allocating IRQ number"),
             CreatePipe(e) => write!(f, "failed to create pipe: {}", e),
@@ -232,6 +241,7 @@ impl Display for DeviceRegistrationError {
             RegisterDeviceCapabilities(e) => {
                 write!(f, "could not register PCI device capabilities: {}", e)
             }
+            RegisterBattery(e) => write!(f, "failed to register battery device to VM: {}", e),
         }
     }
 }
@@ -357,6 +367,57 @@ pub fn generate_pci_root(
         }
     }
     Ok((root, pci_irqs, pid_labels))
+}
+
+/// Adds goldfish battery
+/// return the platform needed resouces include its AML data, irq number
+///
+/// # Arguments
+///
+/// * `amls` - the vector to put the goldfish battery AML
+/// * `mmio_bus` - bus to add the devices to
+/// * `irq_chip` - the IrqChip object for registering irq events
+/// * `irq_num` - assigned interrupt to use
+/// * `resources` - the SystemAllocator to allocate IO and MMIO for acpi
+pub fn add_goldfish_battery(
+    amls: &mut Vec<u8>,
+    mmio_bus: &mut Bus,
+    irq_chip: &mut impl IrqChip,
+    irq_num: u32,
+    resources: &mut SystemAllocator,
+) -> Result<(), DeviceRegistrationError> {
+    let alloc = resources.get_anon_alloc();
+    let mmio_base = resources
+        .mmio_allocator(MmioType::Low)
+        .allocate_with_align(
+            devices::bat::GOLDFISHBAT_MMIO_LEN,
+            alloc,
+            "GoldfishBattery".to_string(),
+            devices::bat::GOLDFISHBAT_MMIO_LEN,
+        )
+        .map_err(DeviceRegistrationError::AllocateIoResource)?;
+
+    let irq_evt = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+    let irq_resample_evt = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+
+    irq_chip
+        .register_irq_event(irq_num, &irq_evt, Some(&irq_resample_evt))
+        .map_err(DeviceRegistrationError::RegisterIrqfd)?;
+
+    let goldfish_bat = devices::GoldfishBattery::new(mmio_base, irq_num, irq_evt, irq_resample_evt)
+        .map_err(DeviceRegistrationError::RegisterBattery)?;
+    Aml::to_aml_bytes(&goldfish_bat, amls);
+
+    mmio_bus
+        .insert(
+            Arc::new(Mutex::new(goldfish_bat)),
+            mmio_base,
+            devices::bat::GOLDFISHBAT_MMIO_LEN,
+            false,
+        )
+        .map_err(DeviceRegistrationError::MmioInsert)?;
+
+    Ok(())
 }
 
 /// Errors for image loading.
