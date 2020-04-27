@@ -2,9 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::os::unix::io::RawFd;
+use std::thread;
+
 use crate::BusDevice;
 use acpi_tables::{aml, aml::Aml};
-use base::{warn, Event};
+use base::{error, warn, AsRawDescriptor, Descriptor, Event, PollContext, PollToken};
 use std::fmt::{self, Display};
 
 /// Errors for battery devices.
@@ -46,8 +49,11 @@ pub struct GoldfishBattery {
     state: GoldfishBatteryState,
     mmio_base: u32,
     irq_num: u32,
-    _irq_evt: Event,
-    _irq_resample_evt: Event,
+    irq_evt: Event,
+    irq_resample_evt: Event,
+    activated: bool,
+    monitor_thread: Option<thread::JoinHandle<()>>,
+    kill_evt: Option<Event>,
 }
 
 /// Goldfish Battery MMIO offset
@@ -68,6 +74,45 @@ const BATTERY_CURRENT_AVG: u32 = 0x34;
 const BATTERY_CHARGE_FULL_UAH: u32 = 0x38;
 const BATTERY_CYCLE_COUNT: u32 = 0x40;
 
+/// Goldfish Battery interrupt bits
+const BATTERY_STATUS_CHANGED: u32 = 1 << 0;
+const AC_STATUS_CHANGED: u32 = 1 << 1;
+const BATTERY_INT_MASK: u32 = BATTERY_STATUS_CHANGED | AC_STATUS_CHANGED;
+
+fn command_monitor(_irqfd: Event, kill_evt: Event) {
+    #[derive(PollToken)]
+    enum Token {
+        Kill,
+    }
+
+    let poll_ctx: PollContext<Token> = match PollContext::build_with(&[(
+        &Descriptor(kill_evt.as_raw_descriptor()),
+        Token::Kill,
+    )]) {
+        Ok(pc) => pc,
+        Err(e) => {
+            error!("failed to build PollContext: {}", e);
+            return;
+        }
+    };
+
+    loop {
+        let events = match poll_ctx.wait() {
+            Ok(v) => v,
+            Err(e) => {
+                error!("error while polling for events: {}", e);
+                break;
+            }
+        };
+
+        if events.iter_readable().next().is_some() {
+            // Looping over the events with only 1 possible token match causes
+            // a clippy warning. If an event is available, it will always be kill_evt.
+            break;
+        }
+    }
+}
+
 impl GoldfishBattery {
     /// Create GoldfishBattery device model
     ///
@@ -80,13 +125,12 @@ impl GoldfishBattery {
     pub fn new(
         mmio_base: u64,
         irq_num: u32,
-        _irq_evt: Event,
-        _irq_resample_evt: Event,
+        irq_evt: Event,
+        irq_resample_evt: Event,
     ) -> Result<Self> {
         if mmio_base + GOLDFISHBAT_MMIO_LEN - 1 > u32::MAX as u64 {
             return Err(BatteryError::Non32BitMmioAddress);
         }
-
         let state = GoldfishBatteryState {
             capacity: 50,
             health: 1,
@@ -101,9 +145,72 @@ impl GoldfishBattery {
             state,
             mmio_base: mmio_base as u32,
             irq_num,
-            _irq_evt,
-            _irq_resample_evt,
+            irq_evt,
+            irq_resample_evt,
+            activated: false,
+            monitor_thread: None,
+            kill_evt: None,
         })
+    }
+
+    /// return the fds used by this device
+    pub fn keep_fds(&self) -> Vec<RawFd> {
+        vec![
+            self.irq_evt.as_raw_descriptor(),
+            self.irq_resample_evt.as_raw_descriptor(),
+        ]
+    }
+
+    /// start a monitor thread to monitor the events from host
+    fn start_monitor(&mut self) {
+        if self.activated {
+            return;
+        }
+
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
+            Ok(v) => v,
+            Err(e) => {
+                error!(
+                    "{}: failed to create kill EventFd pair: {}",
+                    self.debug_label(),
+                    e
+                );
+                return;
+            }
+        };
+
+        let irqfd = self.irq_evt.try_clone().unwrap();
+        let monitor_result = thread::Builder::new()
+            .name(self.debug_label())
+            .spawn(move || {
+                command_monitor(irqfd, kill_evt);
+            });
+
+        self.monitor_thread = match monitor_result {
+            Err(e) => {
+                error!(
+                    "{}: failed to spawn PowerIO monitor: {}",
+                    self.debug_label(),
+                    e
+                );
+                return;
+            }
+            Ok(join_handle) => Some(join_handle),
+        };
+        self.kill_evt = Some(self_kill_evt);
+        self.activated = true;
+    }
+}
+
+impl Drop for GoldfishBattery {
+    fn drop(&mut self) {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            // Ignore the result because there is nothing we can do with a failure.
+            let _ = kill_evt.write(1);
+        }
+        if let Some(thread) = self.monitor_thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 
@@ -167,7 +274,12 @@ impl BusDevice for GoldfishBattery {
         let val = u32::from_ne_bytes(val_arr);
 
         match offset as u32 {
-            BATTERY_INT_ENABLE => self.state.int_enable = val,
+            BATTERY_INT_ENABLE => {
+                self.state.int_enable = val;
+                if (val & BATTERY_INT_MASK) != 0 && !self.activated {
+                    self.start_monitor();
+                }
+            }
             _ => {
                 warn!("{}: Bad write to offset {}", self.debug_label(), offset);
             }

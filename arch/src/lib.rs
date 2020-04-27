@@ -142,7 +142,7 @@ pub trait LinuxArch {
         components: VmComponents,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
-        battery: &Option<BatteryType>,
+        battery: (&Option<BatteryType>, Option<Minijail>),
         create_devices: FD,
         create_vm: FV,
         create_irq_chip: FI,
@@ -422,12 +422,14 @@ pub fn generate_pci_root(
 /// # Arguments
 ///
 /// * `amls` - the vector to put the goldfish battery AML
+/// * `battery_jail` - used when sandbox is enabled
 /// * `mmio_bus` - bus to add the devices to
 /// * `irq_chip` - the IrqChip object for registering irq events
 /// * `irq_num` - assigned interrupt to use
 /// * `resources` - the SystemAllocator to allocate IO and MMIO for acpi
 pub fn add_goldfish_battery(
     amls: &mut Vec<u8>,
+    battery_jail: Option<Minijail>,
     mmio_bus: &mut Bus,
     irq_chip: &mut impl IrqChip,
     irq_num: u32,
@@ -455,14 +457,33 @@ pub fn add_goldfish_battery(
         .map_err(DeviceRegistrationError::RegisterBattery)?;
     Aml::to_aml_bytes(&goldfish_bat, amls);
 
-    mmio_bus
-        .insert(
-            Arc::new(Mutex::new(goldfish_bat)),
-            mmio_base,
-            devices::bat::GOLDFISHBAT_MMIO_LEN,
-            false,
-        )
-        .map_err(DeviceRegistrationError::MmioInsert)?;
+    match battery_jail.as_ref() {
+        Some(jail) => {
+            let mut keep_fds = goldfish_bat.keep_fds();
+            syslog::push_fds(&mut keep_fds);
+            mmio_bus
+                .insert(
+                    Arc::new(Mutex::new(
+                        ProxyDevice::new(goldfish_bat, &jail, keep_fds)
+                            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
+                    )),
+                    mmio_base,
+                    devices::bat::GOLDFISHBAT_MMIO_LEN,
+                    false,
+                )
+                .map_err(DeviceRegistrationError::MmioInsert)?;
+        }
+        None => {
+            mmio_bus
+                .insert(
+                    Arc::new(Mutex::new(goldfish_bat)),
+                    mmio_base,
+                    devices::bat::GOLDFISHBAT_MMIO_LEN,
+                    false,
+                )
+                .map_err(DeviceRegistrationError::MmioInsert)?;
+        }
+    }
 
     Ok(())
 }

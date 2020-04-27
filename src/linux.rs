@@ -2232,13 +2232,19 @@ where
         msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
     control_sockets.push(TaggedControlSocket::VmIrq(ioapic_host_socket));
 
+    let battery = if cfg.battery_type.is_some() {
+        (&cfg.battery_type, simple_jail(&cfg, "battery")?)
+    } else {
+        (&cfg.battery_type, None)
+    };
+
     let map_request: Arc<Mutex<Option<ExternalMapping>>> = Arc::new(Mutex::new(None));
 
     let linux: RunnableLinuxVm<_, Vcpu, _> = Arch::build_vm(
         components,
         &cfg.serial_parameters,
         simple_jail(&cfg, "serial")?,
-        &cfg.battery_type,
+        battery,
         |mem, vm, sys_allocator, exit_evt| {
             create_devices(
                 &cfg,

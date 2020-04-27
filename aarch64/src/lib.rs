@@ -198,7 +198,7 @@ impl arch::LinuxArch for AArch64 {
         mut components: VmComponents,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
-        _battery: &Option<BatteryType>,
+        _battery: (&Option<BatteryType>, Option<Minijail>),
         create_devices: FD,
         create_vm: FV,
         create_irq_chip: FI,

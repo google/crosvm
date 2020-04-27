@@ -349,7 +349,7 @@ impl arch::LinuxArch for X8664arch {
         mut components: VmComponents,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
-        battery: &Option<BatteryType>,
+        battery: (&Option<BatteryType>, Option<Minijail>),
         create_devices: FD,
         create_vm: FV,
         create_irq_chip: FI,
@@ -1044,7 +1044,7 @@ impl X8664arch {
         suspend_evt: Event,
         sdts: Vec<SDT>,
         irq_chip: &mut impl IrqChip,
-        battery: &Option<BatteryType>,
+        battery: (&Option<BatteryType>, Option<Minijail>),
         mmio_bus: &mut devices::Bus,
     ) -> Result<acpi::ACPIDevResource> {
         // The AML data for the acpi devices
@@ -1076,11 +1076,12 @@ impl X8664arch {
             .unwrap();
         io_bus.notify_on_resume(pm);
 
-        if let Some(battery_type) = battery {
+        if let Some(battery_type) = battery.0 {
             match battery_type {
                 BatteryType::Goldfish => {
                     arch::add_goldfish_battery(
                         &mut amls,
+                        battery.1,
                         mmio_bus,
                         irq_chip,
                         X86_64_SCI_IRQ,
