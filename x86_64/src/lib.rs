@@ -67,7 +67,7 @@ use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
-use vm_control::BatteryType;
+use vm_control::{BatControl, BatteryType};
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use {
@@ -417,7 +417,7 @@ impl arch::LinuxArch for X8664arch {
             serial_jail,
         )?;
 
-        let acpi_dev_resource = Self::setup_acpi_devices(
+        let (acpi_dev_resource, bat_control) = Self::setup_acpi_devices(
             &mut io_bus,
             &mut resources,
             suspend_evt.try_clone().map_err(Error::CloneEvent)?,
@@ -514,6 +514,7 @@ impl arch::LinuxArch for X8664arch {
             pid_debug_label_map,
             suspend_evt,
             rt_cpus: components.rt_cpus,
+            bat_control,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: components.gdb,
         })
@@ -1046,7 +1047,7 @@ impl X8664arch {
         irq_chip: &mut impl IrqChip,
         battery: (&Option<BatteryType>, Option<Minijail>),
         mmio_bus: &mut devices::Bus,
-    ) -> Result<acpi::ACPIDevResource> {
+    ) -> Result<(acpi::ACPIDevResource, Option<BatControl>)> {
         // The AML data for the acpi devices
         let mut amls = Vec::new();
 
@@ -1076,10 +1077,10 @@ impl X8664arch {
             .unwrap();
         io_bus.notify_on_resume(pm);
 
-        if let Some(battery_type) = battery.0 {
+        let bat_control = if let Some(battery_type) = battery.0 {
             match battery_type {
                 BatteryType::Goldfish => {
-                    arch::add_goldfish_battery(
+                    let control_socket = arch::add_goldfish_battery(
                         &mut amls,
                         battery.1,
                         mmio_bus,
@@ -1088,15 +1089,24 @@ impl X8664arch {
                         resources,
                     )
                     .map_err(Error::CreateBatDevices)?;
+                    Some(BatControl {
+                        type_: BatteryType::Goldfish,
+                        control_socket,
+                    })
                 }
             }
-        }
+        } else {
+            None
+        };
 
-        Ok(acpi::ACPIDevResource {
-            amls,
-            pm_iobase,
-            sdts,
-        })
+        Ok((
+            acpi::ACPIDevResource {
+                amls,
+                pm_iobase,
+                sdts,
+            },
+            bat_control,
+        ))
     }
 
     /// Sets up the serial devices for this platform. Returns the serial port number and serial

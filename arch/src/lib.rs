@@ -29,9 +29,10 @@ use resources::{MmioType, SystemAllocator};
 use sync::Mutex;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use vm_control::VmControlRequestSocket;
+use vm_control::{
+    BatControl, BatControlCommand, BatControlRequestSocket, BatControlResult, BatteryType,
+};
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
-
-use vm_control::BatteryType;
 
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use gdbstub::arch::x86::reg::X86_64CoreRegs as GdbStubRegs;
@@ -113,6 +114,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch, I: IrqChipArch> {
     pub pid_debug_label_map: BTreeMap<u32, String>,
     pub suspend_evt: Event,
     pub rt_cpus: Vec<usize>,
+    pub bat_control: Option<BatControl>,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<(u32, VmControlRequestSocket)>,
 }
@@ -238,6 +240,8 @@ pub enum DeviceRegistrationError {
     CreatePipe(base::Error),
     // Unable to create serial device from serial parameters
     CreateSerialDevice(serial::Error),
+    // Unable to create socket
+    CreateSocket(io::Error),
     /// Could not clone an event.
     EventClone(base::Error),
     /// Could not create an event.
@@ -275,6 +279,7 @@ impl Display for DeviceRegistrationError {
             AllocateIrq => write!(f, "Allocating IRQ number"),
             CreatePipe(e) => write!(f, "failed to create pipe: {}", e),
             CreateSerialDevice(e) => write!(f, "failed to create serial device: {}", e),
+            CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             Cmdline(e) => write!(f, "unable to add device to kernel command line: {}", e),
             EventClone(e) => write!(f, "failed to clone event: {}", e),
             EventCreate(e) => write!(f, "failed to create event: {}", e),
@@ -434,7 +439,7 @@ pub fn add_goldfish_battery(
     irq_chip: &mut impl IrqChip,
     irq_num: u32,
     resources: &mut SystemAllocator,
-) -> Result<(), DeviceRegistrationError> {
+) -> Result<BatControlRequestSocket, DeviceRegistrationError> {
     let alloc = resources.get_anon_alloc();
     let mmio_base = resources
         .mmio_allocator(MmioType::Low)
@@ -453,8 +458,18 @@ pub fn add_goldfish_battery(
         .register_irq_event(irq_num, &irq_evt, Some(&irq_resample_evt))
         .map_err(DeviceRegistrationError::RegisterIrqfd)?;
 
-    let goldfish_bat = devices::GoldfishBattery::new(mmio_base, irq_num, irq_evt, irq_resample_evt)
-        .map_err(DeviceRegistrationError::RegisterBattery)?;
+    let (control_socket, response_socket) =
+        msg_socket::pair::<BatControlCommand, BatControlResult>()
+            .map_err(DeviceRegistrationError::CreateSocket)?;
+
+    let goldfish_bat = devices::GoldfishBattery::new(
+        mmio_base,
+        irq_num,
+        irq_evt,
+        irq_resample_evt,
+        response_socket,
+    )
+    .map_err(DeviceRegistrationError::RegisterBattery)?;
     Aml::to_aml_bytes(&goldfish_bat, amls);
 
     match battery_jail.as_ref() {
@@ -485,7 +500,7 @@ pub fn add_goldfish_battery(
         }
     }
 
-    Ok(())
+    Ok(control_socket)
 }
 
 /// Errors for image loading.

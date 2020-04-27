@@ -570,8 +570,15 @@ impl VmMsyncRequest {
     }
 }
 
+#[derive(MsgOnSocket, Debug)]
 pub enum BatControlResult {
+    Ok,
+    NoBatDevice,
+    NoSuchHealth,
+    NoSuchProperty,
+    NoSuchStatus,
     NoSuchBatType,
+    StringParseIntErr,
 }
 
 impl Display for BatControlResult {
@@ -579,12 +586,18 @@ impl Display for BatControlResult {
         use self::BatControlResult::*;
 
         match self {
+            Ok => write!(f, "Setting battery property successfully"),
+            NoBatDevice => write!(f, "No battery device created"),
+            NoSuchHealth => write!(f, "Invalid Battery health setting. Only support: unknown/good/overheat/dead/overvoltage/unexpectedfailure/cold/watchdogtimerexpire/safetytimerexpire/overcurrent"),
+            NoSuchProperty => write!(f, "Battery doesn't have such property. Only support: status/health/present/capacity/aconline"),
+            NoSuchStatus => write!(f, "Invalid Battery status setting. Only support: unknown/charging/discharging/notcharging/full"),
             NoSuchBatType => write!(f, "Invalid Battery type setting. Only support: goldfish"),
+            StringParseIntErr => write!(f, "Battery property target ParseInt error"),
         }
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(MsgOnSocket, Copy, Clone, Debug, PartialEq)]
 pub enum BatteryType {
     Goldfish,
 }
@@ -606,8 +619,158 @@ impl FromStr for BatteryType {
     }
 }
 
+#[derive(MsgOnSocket, Debug)]
+pub enum BatProperty {
+    Status,
+    Health,
+    Present,
+    Capacity,
+    ACOnline,
+}
+
+impl FromStr for BatProperty {
+    type Err = BatControlResult;
+
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
+        match s {
+            "status" => Ok(BatProperty::Status),
+            "health" => Ok(BatProperty::Health),
+            "present" => Ok(BatProperty::Present),
+            "capacity" => Ok(BatProperty::Capacity),
+            "aconline" => Ok(BatProperty::ACOnline),
+            _ => Err(BatControlResult::NoSuchProperty),
+        }
+    }
+}
+
+#[derive(MsgOnSocket, Debug)]
+pub enum BatStatus {
+    Unknown,
+    Charging,
+    DisCharging,
+    NotCharging,
+    Full,
+}
+
+impl BatStatus {
+    pub fn new(status: String) -> std::result::Result<Self, BatControlResult> {
+        match status.as_str() {
+            "unknown" => Ok(BatStatus::Unknown),
+            "charging" => Ok(BatStatus::Charging),
+            "discharging" => Ok(BatStatus::DisCharging),
+            "notcharging" => Ok(BatStatus::NotCharging),
+            "full" => Ok(BatStatus::Full),
+            _ => Err(BatControlResult::NoSuchStatus),
+        }
+    }
+}
+
+impl FromStr for BatStatus {
+    type Err = BatControlResult;
+
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
+        match s {
+            "unknown" => Ok(BatStatus::Unknown),
+            "charging" => Ok(BatStatus::Charging),
+            "discharging" => Ok(BatStatus::DisCharging),
+            "notcharging" => Ok(BatStatus::NotCharging),
+            "full" => Ok(BatStatus::Full),
+            _ => Err(BatControlResult::NoSuchStatus),
+        }
+    }
+}
+
+impl From<BatStatus> for u32 {
+    fn from(status: BatStatus) -> Self {
+        status as u32
+    }
+}
+
+#[derive(MsgOnSocket, Debug)]
+pub enum BatHealth {
+    Unknown,
+    Good,
+    Overheat,
+    Dead,
+    OverVoltage,
+    UnexpectedFailure,
+    Cold,
+    WatchdogTimerExpire,
+    SafetyTimerExpire,
+    OverCurrent,
+}
+
+impl FromStr for BatHealth {
+    type Err = BatControlResult;
+
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
+        match s {
+            "unknown" => Ok(BatHealth::Unknown),
+            "good" => Ok(BatHealth::Good),
+            "overheat" => Ok(BatHealth::Overheat),
+            "dead" => Ok(BatHealth::Dead),
+            "overvoltage" => Ok(BatHealth::OverVoltage),
+            "unexpectedfailure" => Ok(BatHealth::UnexpectedFailure),
+            "cold" => Ok(BatHealth::Cold),
+            "watchdogtimerexpire" => Ok(BatHealth::WatchdogTimerExpire),
+            "safetytimerexpire" => Ok(BatHealth::SafetyTimerExpire),
+            "overcurrent" => Ok(BatHealth::OverCurrent),
+            _ => Err(BatControlResult::NoSuchHealth),
+        }
+    }
+}
+
+impl From<BatHealth> for u32 {
+    fn from(status: BatHealth) -> Self {
+        status as u32
+    }
+}
+
+#[derive(MsgOnSocket, Debug)]
+pub enum BatControlCommand {
+    SetStatus(BatStatus),
+    SetHealth(BatHealth),
+    SetPresent(u32),
+    SetCapacity(u32),
+    SetACOnline(u32),
+}
+
+impl BatControlCommand {
+    pub fn new(property: String, target: String) -> std::result::Result<Self, BatControlResult> {
+        let cmd = property.parse::<BatProperty>()?;
+        match cmd {
+            BatProperty::Status => Ok(BatControlCommand::SetStatus(target.parse::<BatStatus>()?)),
+            BatProperty::Health => Ok(BatControlCommand::SetHealth(target.parse::<BatHealth>()?)),
+            BatProperty::Present => Ok(BatControlCommand::SetPresent(
+                target
+                    .parse::<u32>()
+                    .map_err(|_| BatControlResult::StringParseIntErr)?,
+            )),
+            BatProperty::Capacity => Ok(BatControlCommand::SetCapacity(
+                target
+                    .parse::<u32>()
+                    .map_err(|_| BatControlResult::StringParseIntErr)?,
+            )),
+            BatProperty::ACOnline => Ok(BatControlCommand::SetACOnline(
+                target
+                    .parse::<u32>()
+                    .map_err(|_| BatControlResult::StringParseIntErr)?,
+            )),
+        }
+    }
+}
+
+/// Used for VM to control battery properties.
+pub struct BatControl {
+    pub type_: BatteryType,
+    pub control_socket: BatControlRequestSocket,
+}
+
 pub type BalloonControlRequestSocket = MsgSocket<BalloonControlCommand, BalloonControlResult>;
 pub type BalloonControlResponseSocket = MsgSocket<BalloonControlResult, BalloonControlCommand>;
+
+pub type BatControlRequestSocket = MsgSocket<BatControlCommand, BatControlResult>;
+pub type BatControlResponseSocket = MsgSocket<BatControlResult, BatControlCommand>;
 
 pub type DiskControlRequestSocket = MsgSocket<DiskControlCommand, DiskControlResult>;
 pub type DiskControlResponseSocket = MsgSocket<DiskControlResult, DiskControlCommand>;
@@ -647,6 +810,8 @@ pub enum VmRequest {
     },
     /// Command to use controller.
     UsbCommand(UsbControlCommand),
+    /// Command to set battery.
+    BatCommand(BatteryType, BatControlCommand),
 }
 
 fn register_memory(
@@ -711,6 +876,7 @@ impl VmRequest {
         balloon_host_socket: &BalloonControlRequestSocket,
         disk_host_sockets: &[DiskControlRequestSocket],
         usb_control_socket: &UsbControlSocket,
+        bat_control: &mut Option<BatControl>,
     ) -> VmResponse {
         match *self {
             VmRequest::Exit => {
@@ -786,6 +952,31 @@ impl VmRequest {
                     }
                 }
             }
+            VmRequest::BatCommand(type_, ref cmd) => {
+                match bat_control {
+                    Some(battery) => {
+                        if battery.type_ != type_ {
+                            error!("ignored battery command due to battery type: expected {:?}, got {:?}", battery.type_, type_);
+                            return VmResponse::Err(SysError::new(EINVAL));
+                        }
+
+                        let res = battery.control_socket.send(cmd);
+                        if let Err(e) = res {
+                            error!("fail to send command to bat control socket: {}", e);
+                            return VmResponse::Err(SysError::new(EIO));
+                        }
+
+                        match battery.control_socket.recv() {
+                            Ok(response) => VmResponse::BatResponse(response),
+                            Err(e) => {
+                                error!("fail to recv command from bat control socket: {}", e);
+                                VmResponse::Err(SysError::new(EIO))
+                            }
+                        }
+                    }
+                    None => VmResponse::BatResponse(BatControlResult::NoBatDevice),
+                }
+            }
         }
     }
 }
@@ -817,6 +1008,8 @@ pub enum VmResponse {
     },
     /// Results of usb control commands.
     UsbResponse(UsbControlResult),
+    /// Results of battery control commands.
+    BatResponse(BatControlResult),
 }
 
 impl Display for VmResponse {
@@ -845,6 +1038,7 @@ impl Display for VmResponse {
                 balloon_actual, stats
             ),
             UsbResponse(result) => write!(f, "usb control request get result {:?}", result),
+            BatResponse(result) => write!(f, "{}", result),
         }
     }
 }

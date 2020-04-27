@@ -37,9 +37,9 @@ use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use vm_control::{
-    BalloonControlCommand, BatteryType, DiskControlCommand, MaybeOwnedDescriptor,
-    UsbControlCommand, UsbControlResult, VmControlRequestSocket, VmRequest, VmResponse,
-    USB_CONTROL_MAX_PORTS,
+    BalloonControlCommand, BatControlCommand, BatControlResult, BatteryType, DiskControlCommand,
+    MaybeOwnedDescriptor, UsbControlCommand, UsbControlResult, VmControlRequestSocket, VmRequest,
+    VmResponse, USB_CONTROL_MAX_PORTS,
 };
 
 fn executable_is_plugin(executable: &Option<Executable>) -> bool {
@@ -2118,6 +2118,55 @@ fn pkg_version() -> std::result::Result<(), ()> {
     Ok(())
 }
 
+enum ModifyBatError {
+    BatControlErr(BatControlResult),
+}
+
+impl fmt::Display for ModifyBatError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::ModifyBatError::*;
+
+        match self {
+            BatControlErr(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+fn modify_battery(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() < 4 {
+        print_help("crosvm battery BATTERY_TYPE ",
+                   "[status STATUS | present PRESENT | health HEALTH | capacity CAPACITY | aconline ACONLINE ] VM_SOCKET...", &[]);
+        return Err(());
+    }
+
+    // This unwrap will not panic because of the above length check.
+    let battery_type = args.next().unwrap();
+    let property = args.next().unwrap();
+    let target = args.next().unwrap();
+
+    let response = match battery_type.parse::<BatteryType>() {
+        Ok(type_) => match BatControlCommand::new(property, target) {
+            Ok(cmd) => {
+                let request = VmRequest::BatCommand(type_, cmd);
+                Ok(handle_request(&request, args)?)
+            }
+            Err(e) => Err(ModifyBatError::BatControlErr(e)),
+        },
+        Err(e) => Err(ModifyBatError::BatControlErr(e)),
+    };
+
+    match response {
+        Ok(response) => {
+            println!("{}", response);
+            Ok(())
+        }
+        Err(e) => {
+            println!("error {}", e);
+            Err(())
+        }
+    }
+}
+
 fn crosvm_main() -> std::result::Result<(), ()> {
     if let Err(e) = syslog::init() {
         println!("failed to initialize syslog: {}", e);
@@ -2148,6 +2197,7 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         Some("disk") => disk_cmd(args),
         Some("usb") => modify_usb(args),
         Some("version") => pkg_version(),
+        Some("battery") => modify_battery(args),
         Some(c) => {
             println!("invalid subcommand: {:?}", c);
             print_usage();

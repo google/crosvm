@@ -2600,6 +2600,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                         &balloon_host_socket,
                                         disk_host_sockets,
                                         &usb_control_socket,
+                                        &mut linux.bat_control,
                                     );
                                     if let Err(e) = socket.send(&response) {
                                         error!("failed to send VmResponse: {}", e);

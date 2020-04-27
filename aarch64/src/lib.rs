@@ -346,6 +346,7 @@ impl arch::LinuxArch for AArch64 {
             pid_debug_label_map,
             suspend_evt,
             rt_cpus: components.rt_cpus,
+            bat_control: None,
         })
     }
 
