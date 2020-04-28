@@ -19,7 +19,8 @@ use std::sync::Arc;
 use devices::split_irqchip_common::GsiRelay;
 use devices::virtio::VirtioDevice;
 use devices::{
-    Bus, BusDevice, BusError, PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProxyDevice,
+    Bus, BusDevice, BusError, PciAddress, PciDevice, PciDeviceError, PciInterruptPin, PciRoot,
+    ProxyDevice,
 };
 use io_jail::Minijail;
 use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
@@ -189,8 +190,10 @@ pub fn generate_pci_root(
     let mut pci_irqs = Vec::new();
     let mut pid_labels = BTreeMap::new();
     for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
+        // Auto assign PCI device numbers starting from 1.
+        let dev = 1 + dev_idx as u8;
         // Only support one bus.
-        device.assign_bus_dev(0, dev_idx as u8);
+        device.assign_bus_dev(0, dev);
 
         let mut keep_fds = device.keep_fds();
         syslog::push_fds(&mut keep_fds);
@@ -250,7 +253,14 @@ pub fn generate_pci_root(
             device.on_sandboxed();
             Arc::new(Mutex::new(device))
         };
-        root.add_device(arced_dev.clone());
+        root.add_device(
+            PciAddress {
+                bus: 0,
+                dev,
+                func: 0,
+            },
+            arced_dev.clone(),
+        );
         for range in &ranges {
             mmio_bus
                 .insert(arced_dev.clone(), range.0, range.1, true)

@@ -23,7 +23,7 @@ pub use self::pci_configuration::{
 };
 pub use self::pci_device::Error as PciDeviceError;
 pub use self::pci_device::PciDevice;
-pub use self::pci_root::{PciConfigIo, PciConfigMmio, PciRoot};
+pub use self::pci_root::{PciAddress, PciConfigIo, PciConfigMmio, PciRoot};
 pub use self::vfio_pci::VfioPciDevice;
 
 /// PCI has four interrupt pins A->D.
