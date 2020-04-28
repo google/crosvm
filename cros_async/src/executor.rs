@@ -26,9 +26,6 @@ pub trait Executor {
     fn run(&mut self) -> Self::Output;
 }
 
-/// A token returned from `add_waker` that can be used to cancel the waker before it completes.
-pub struct WakerToken(pub(crate) u64);
-
 // Tracks if a future needs to be polled and the waker to use.
 pub(crate) struct FutureState {
     pub needs_poll: Rc<Cell<bool>>,

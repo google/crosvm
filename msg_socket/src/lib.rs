@@ -7,17 +7,9 @@ mod msg_on_socket;
 use std::io::{IoSlice, Result};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
-use futures::Stream;
-use libc::{EWOULDBLOCK, O_NONBLOCK};
-
-use cros_async::add_read_waker;
-use sys_util::{
-    add_fd_flags, clear_fd_flags, error, handle_eintr, net::UnixSeqpacket, Error as SysError,
-    ScmSocket,
-};
+use cros_async::PollOrRing;
+use sys_util::{handle_eintr, net::UnixSeqpacket, Error as SysError, ScmSocket};
 
 pub use crate::msg_on_socket::*;
 pub use msg_on_socket_derive::*;
@@ -94,6 +86,12 @@ impl<I: MsgOnSocket, O: MsgOnSocket> AsRef<UnixSeqpacket> for MsgSocket<I, O> {
 }
 
 impl<I: MsgOnSocket, O: MsgOnSocket> AsRawFd for MsgSocket<I, O> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.sock.as_raw_fd()
+    }
+}
+
+impl<I: MsgOnSocket, O: MsgOnSocket> AsRawFd for &MsgSocket<I, O> {
     fn as_raw_fd(&self) -> RawFd {
         self.sock.as_raw_fd()
     }
@@ -205,59 +203,16 @@ impl<O: MsgOnSocket> MsgReceiver for Receiver<O> {
 /// Asynchronous adaptor for `MsgSocket`.
 pub struct AsyncReceiver<'a, I: MsgOnSocket, O: MsgOnSocket> {
     inner: &'a MsgSocket<I, O>,
-    done: bool, // Have hit an error and the Stream should return null when polled.
 }
 
 impl<'a, I: MsgOnSocket, O: MsgOnSocket> AsyncReceiver<'a, I, O> {
     fn new(msg_socket: &MsgSocket<I, O>) -> MsgResult<AsyncReceiver<I, O>> {
-        add_fd_flags(msg_socket.as_raw_fd(), O_NONBLOCK).map_err(MsgError::SettingFdFlags)?;
-        Ok(AsyncReceiver {
-            inner: msg_socket,
-            done: false,
-        })
+        Ok(AsyncReceiver { inner: msg_socket })
     }
-}
 
-impl<'a, I: MsgOnSocket, O: MsgOnSocket> Drop for AsyncReceiver<'a, I, O> {
-    fn drop(&mut self) {
-        if let Err(e) = clear_fd_flags(self.inner.as_raw_fd(), O_NONBLOCK) {
-            error!(
-                "Failed to restore non-blocking behavior to message socket: {}",
-                e
-            );
-        }
-    }
-}
-
-impl<'a, I: MsgOnSocket, O: MsgOnSocket> Stream for AsyncReceiver<'a, I, O> {
-    type Item = MsgResult<O>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        if self.done {
-            return Poll::Ready(None);
-        }
-
-        let ret = match self.inner.recv() {
-            Ok(msg) => Ok(Poll::Ready(Some(Ok(msg)))),
-            Err(MsgError::Recv(e)) => {
-                if e.errno() == EWOULDBLOCK {
-                    add_read_waker(self.inner.as_raw_fd(), cx.waker().clone())
-                        .map(|_| Poll::Pending)
-                        .map_err(MsgError::AddingWaker)
-                } else {
-                    Err(MsgError::Recv(e))
-                }
-            }
-            Err(e) => Err(e),
-        };
-
-        match ret {
-            Ok(p) => p,
-            Err(e) => {
-                // Indicate something went wrong and no more events will be provided.
-                self.done = true;
-                Poll::Ready(Some(Err(e)))
-            }
-        }
+    pub async fn next(&mut self) -> MsgResult<O> {
+        let p = PollOrRing::new(self.inner).unwrap();
+        p.wait_readable().await.unwrap();
+        self.inner.recv()
     }
 }
