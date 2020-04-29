@@ -186,9 +186,8 @@ impl FdWakerState {
 
     // Remove the waker for the given token if it hasn't fired yet.
     fn cancel_waker(&mut self, token: WakerToken) -> Result<()> {
-        if let Some((fd, waker)) = self.token_map.remove(&token.0) {
+        if let Some((fd, _waker)) = self.token_map.remove(&token.0) {
             self.poll_ctx.delete(&fd).map_err(Error::PollContextError)?;
-            waker.wake_by_ref();
         }
         Ok(())
     }
