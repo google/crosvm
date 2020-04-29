@@ -25,13 +25,14 @@ use crate::{Alloc, Error, Result};
 ///           a.mmio_allocator(MmioType::High)
 ///              .allocate(
 ///                  0x100,
-///                  Alloc::PciBar { bus: 0, dev: 0, bar: 0 },
+///                  Alloc::PciBar { bus: 0, dev: 0, func: 0, bar: 0 },
 ///                  "bar0".to_string()
 ///              ),
 ///           Ok(0x10000000)
 ///       );
 ///       assert_eq!(
-///           a.mmio_allocator(MmioType::High).get(&Alloc::PciBar { bus: 0, dev: 0, bar: 0 }),
+///           a.mmio_allocator(MmioType::High)
+///              .get(&Alloc::PciBar { bus: 0, dev: 0, func: 0, bar: 0 }),
 ///           Some(&(0x10000000, 0x100, "bar0".to_string()))
 ///       );
 ///   }

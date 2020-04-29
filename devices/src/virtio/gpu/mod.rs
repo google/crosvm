@@ -42,7 +42,9 @@ use self::virtio_2d_backend::Virtio2DBackend;
 use self::virtio_3d_backend::Virtio3DBackend;
 #[cfg(feature = "gfxstream")]
 use self::virtio_gfxstream_backend::VirtioGfxStreamBackend;
-use crate::pci::{PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability};
+use crate::pci::{
+    PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability,
+};
 
 use vm_control::VmMemoryControlRequestSocket;
 
@@ -1206,10 +1208,11 @@ impl VirtioDevice for Gpu {
     }
 
     // Require 1 BAR for mapping 3D buffers
-    fn get_device_bars(&mut self, bus: u8, dev: u8) -> Vec<PciBarConfiguration> {
+    fn get_device_bars(&mut self, address: PciAddress) -> Vec<PciBarConfiguration> {
         self.pci_bar = Some(Alloc::PciBar {
-            bus,
-            dev,
+            bus: address.bus,
+            dev: address.dev,
+            func: address.func,
             bar: GPU_BAR_NUM,
         });
         vec![PciBarConfiguration::new(

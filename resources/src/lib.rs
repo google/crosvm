@@ -30,8 +30,8 @@ pub enum Alloc {
     /// Should only be instantiated through `SystemAllocator::get_anon_alloc()`.
     /// Avoid using these. Instead, use / create a more descriptive Alloc variant.
     Anon(usize),
-    /// A PCI BAR region with associated bus, device, and bar numbers.
-    PciBar { bus: u8, dev: u8, bar: u8 },
+    /// A PCI BAR region with associated bus, device, function and bar numbers.
+    PciBar { bus: u8, dev: u8, func: u8, bar: u8 },
     /// GPU render node region.
     GpuRenderNode,
     /// Pmem device region with associated device index.

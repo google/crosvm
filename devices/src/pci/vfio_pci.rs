@@ -22,7 +22,7 @@ use crate::pci::msix::{
 };
 
 use crate::pci::pci_device::{Error as PciDeviceError, PciDevice};
-use crate::pci::{PciClassCode, PciInterruptPin};
+use crate::pci::{PciAddress, PciClassCode, PciInterruptPin};
 
 use crate::vfio::{VfioDevice, VfioIrqType};
 
@@ -457,7 +457,7 @@ enum DeviceData {
 pub struct VfioPciDevice {
     device: Arc<VfioDevice>,
     config: VfioPciConfig,
-    pci_bus_dev: Option<(u8, u8)>,
+    pci_address: Option<PciAddress>,
     interrupt_evt: Option<EventFd>,
     interrupt_resample_evt: Option<EventFd>,
     mmio_regions: Vec<MmioInfo>,
@@ -522,7 +522,7 @@ impl VfioPciDevice {
         VfioPciDevice {
             device: dev,
             config,
-            pci_bus_dev: None,
+            pci_address: None,
             interrupt_evt: None,
             interrupt_resample_evt: None,
             mmio_regions: Vec::new(),
@@ -776,8 +776,8 @@ impl PciDevice for VfioPciDevice {
         "vfio pci device".to_string()
     }
 
-    fn assign_bus_dev(&mut self, bus: u8, device: u8) {
-        self.pci_bus_dev = Some((bus, device));
+    fn assign_address(&mut self, address: PciAddress) {
+        self.pci_address = Some(address);
     }
 
     fn keep_fds(&self) -> Vec<RawFd> {
@@ -816,9 +816,9 @@ impl PciDevice for VfioPciDevice {
     ) -> Result<Vec<(u64, u64)>, PciDeviceError> {
         let mut ranges = Vec::new();
         let mut i = VFIO_PCI_BAR0_REGION_INDEX;
-        let (bus, dev) = self
-            .pci_bus_dev
-            .expect("assign_bus_dev must be called prior to allocate_io_bars");
+        let address = self
+            .pci_address
+            .expect("assign_address must be called prior to allocate_io_bars");
 
         while i <= VFIO_PCI_ROM_REGION_INDEX {
             let mut low: u32 = 0xffffffff;
@@ -857,8 +857,9 @@ impl PciDevice for VfioPciDevice {
                     .allocate_with_align(
                         size,
                         Alloc::PciBar {
-                            bus,
-                            dev,
+                            bus: address.bus,
+                            dev: address.dev,
+                            func: address.func,
                             bar: i as u8,
                         },
                         "vfio_bar".to_string(),
@@ -917,16 +918,17 @@ impl PciDevice for VfioPciDevice {
             VFIO_REGION_TYPE_PCI_VENDOR_TYPE | (INTEL_VENDOR_ID as u32),
             VFIO_REGION_SUBTYPE_INTEL_IGD_OPREGION,
         ) {
-            let (bus, dev) = self
-                .pci_bus_dev
-                .expect("assign_bus_dev must be called prior to allocate_device_bars");
+            let address = self
+                .pci_address
+                .expect("assign_address must be called prior to allocate_device_bars");
             let bar_addr = resources
                 .mmio_allocator(MmioType::Low)
                 .allocate(
                     size,
                     Alloc::PciBar {
-                        bus,
-                        dev,
+                        bus: address.bus,
+                        dev: address.dev,
+                        func: address.func,
                         bar: (index * 4) as u8,
                     },
                     "vfio_bar".to_string(),

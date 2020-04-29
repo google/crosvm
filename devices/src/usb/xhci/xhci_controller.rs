@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use crate::pci::{
-    PciBarConfiguration, PciClassCode, PciConfiguration, PciDevice, PciDeviceError, PciHeaderType,
-    PciInterruptPin, PciProgrammingInterface, PciSerialBusSubClass,
+    PciAddress, PciBarConfiguration, PciClassCode, PciConfiguration, PciDevice, PciDeviceError,
+    PciHeaderType, PciInterruptPin, PciProgrammingInterface, PciSerialBusSubClass,
 };
 use crate::register_space::{Register, RegisterSpace};
 use crate::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
@@ -94,7 +94,7 @@ enum XhciControllerState {
 /// xHCI PCI interface implementation.
 pub struct XhciController {
     config_regs: PciConfiguration,
-    pci_bus_dev: Option<(u8, u8)>,
+    pci_address: Option<PciAddress>,
     mem: GuestMemory,
     state: XhciControllerState,
 }
@@ -114,7 +114,7 @@ impl XhciController {
         );
         XhciController {
             config_regs,
-            pci_bus_dev: None,
+            pci_address: None,
             mem,
             state: XhciControllerState::Created {
                 device_provider: usb_provider,
@@ -166,8 +166,8 @@ impl PciDevice for XhciController {
         "xhci controller".to_owned()
     }
 
-    fn assign_bus_dev(&mut self, bus: u8, device: u8) {
-        self.pci_bus_dev = Some((bus, device));
+    fn assign_address(&mut self, address: PciAddress) {
+        self.pci_address = Some(address);
     }
 
     fn keep_fds(&self) -> Vec<RawFd> {
@@ -206,15 +206,20 @@ impl PciDevice for XhciController {
         &mut self,
         resources: &mut SystemAllocator,
     ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
-        let (bus, dev) = self
-            .pci_bus_dev
-            .expect("assign_bus_dev must be called prior to allocate_io_bars");
+        let address = self
+            .pci_address
+            .expect("assign_address must be called prior to allocate_io_bars");
         // xHCI spec 5.2.1.
         let bar0_addr = resources
             .mmio_allocator(MmioType::Low)
             .allocate_with_align(
                 XHCI_BAR0_SIZE,
-                Alloc::PciBar { bus, dev, bar: 0 },
+                Alloc::PciBar {
+                    bus: address.bus,
+                    dev: address.dev,
+                    func: address.func,
+                    bar: 0,
+                },
                 "xhci_bar0".to_string(),
                 XHCI_BAR0_SIZE,
             )

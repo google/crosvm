@@ -550,11 +550,23 @@ fn register_memory(
     };
 
     let addr = match allocation {
-        Some((Alloc::PciBar { bus, dev, bar }, offset)) => {
+        Some((
+            Alloc::PciBar {
+                bus,
+                dev,
+                func,
+                bar,
+            },
+            offset,
+        )) => {
             match allocator
                 .mmio_allocator(MmioType::High)
-                .get(&Alloc::PciBar { bus, dev, bar })
-            {
+                .get(&Alloc::PciBar {
+                    bus,
+                    dev,
+                    func,
+                    bar,
+                }) {
                 Some((start_addr, length, _)) => {
                     let address = *start_addr + offset;
                     let range = *start_addr..*start_addr + *length;

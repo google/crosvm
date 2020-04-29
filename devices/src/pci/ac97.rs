@@ -23,7 +23,7 @@ use crate::pci::pci_configuration::{
     PciBarConfiguration, PciClassCode, PciConfiguration, PciHeaderType, PciMultimediaSubclass,
 };
 use crate::pci::pci_device::{self, PciDevice, Result};
-use crate::pci::PciInterruptPin;
+use crate::pci::{PciAddress, PciInterruptPin};
 
 // Use 82801AA because it's what qemu does.
 const PCI_DEVICE_ID_INTEL_82801AA_5: u16 = 0x2415;
@@ -82,7 +82,7 @@ pub struct Ac97Parameters {
 
 pub struct Ac97Dev {
     config_regs: PciConfiguration,
-    pci_bus_dev: Option<(u8, u8)>,
+    pci_address: Option<PciAddress>,
     // The irq events are temporarily saved here. They need to be passed to the device after the
     // jail forks. This happens when the bus is first written.
     irq_evt: Option<EventFd>,
@@ -108,7 +108,7 @@ impl Ac97Dev {
 
         Ac97Dev {
             config_regs,
-            pci_bus_dev: None,
+            pci_address: None,
             irq_evt: None,
             irq_resample_evt: None,
             bus_master: Ac97BusMaster::new(mem, audio_server),
@@ -216,8 +216,8 @@ impl PciDevice for Ac97Dev {
         "AC97".to_owned()
     }
 
-    fn assign_bus_dev(&mut self, bus: u8, device: u8) {
-        self.pci_bus_dev = Some((bus, device));
+    fn assign_address(&mut self, address: PciAddress) {
+        self.pci_address = Some(address);
     }
 
     fn assign_irq(
@@ -233,15 +233,20 @@ impl PciDevice for Ac97Dev {
     }
 
     fn allocate_io_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
-        let (bus, dev) = self
-            .pci_bus_dev
-            .expect("assign_bus_dev must be called prior to allocate_io_bars");
+        let address = self
+            .pci_address
+            .expect("assign_address must be called prior to allocate_io_bars");
         let mut ranges = Vec::new();
         let mixer_regs_addr = resources
             .mmio_allocator(MmioType::Low)
             .allocate_with_align(
                 MIXER_REGS_SIZE,
-                Alloc::PciBar { bus, dev, bar: 0 },
+                Alloc::PciBar {
+                    bus: address.bus,
+                    dev: address.dev,
+                    func: address.func,
+                    bar: 0,
+                },
                 "ac97-mixer_regs".to_string(),
                 MIXER_REGS_SIZE,
             )
@@ -259,7 +264,12 @@ impl PciDevice for Ac97Dev {
             .mmio_allocator(MmioType::Low)
             .allocate_with_align(
                 MASTER_REGS_SIZE,
-                Alloc::PciBar { bus, dev, bar: 1 },
+                Alloc::PciBar {
+                    bus: address.bus,
+                    dev: address.dev,
+                    func: address.func,
+                    bar: 1,
+                },
                 "ac97-master_regs".to_string(),
                 MASTER_REGS_SIZE,
             )
@@ -338,7 +348,11 @@ mod tests {
             .add_high_mmio_addresses(0x3000_0000, 0x1000_0000)
             .create_allocator(5, false)
             .unwrap();
-        ac97_dev.assign_bus_dev(0, 0);
+        ac97_dev.assign_address(PciAddress {
+            bus: 0,
+            dev: 0,
+            func: 0,
+        });
         assert!(ac97_dev.allocate_io_bars(&mut allocator).is_ok());
     }
 }
