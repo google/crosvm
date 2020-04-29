@@ -10,6 +10,8 @@ use std::rc::Rc;
 use std::task::Waker;
 use std::task::{Context, Poll};
 
+use futures::future::FutureExt;
+
 use crate::waker::create_waker;
 
 /// Represents a future executor that can be run. Implementers of the trait will take a list of
@@ -146,6 +148,49 @@ impl FutureList for UnitFutures {
 
     fn any_ready(&self) -> bool {
         self.futures.iter().any(|fut| fut.state.needs_poll.get())
+    }
+}
+
+// Execute one future until it completes.
+pub(crate) struct RunOne<F: Future + Unpin> {
+    fut: F,
+    fut_state: FutureState,
+    added_futures: UnitFutures,
+}
+
+impl<F: Future + Unpin> RunOne<F> {
+    pub fn new(f: F) -> RunOne<F> {
+        RunOne {
+            fut: f,
+            fut_state: FutureState::new(),
+            added_futures: UnitFutures::new(),
+        }
+    }
+}
+
+impl<F: Future + Unpin> FutureList for RunOne<F> {
+    type Output = F::Output;
+
+    fn futures_mut(&mut self) -> &mut UnitFutures {
+        &mut self.added_futures
+    }
+
+    fn poll_results(&mut self) -> Option<Self::Output> {
+        let _ = self.added_futures.poll_results();
+
+        if self.fut_state.needs_poll.replace(false) {
+            let mut ctx = Context::from_waker(&self.fut_state.waker);
+            // The future impls `Unpin`, use `poll_unpin` to avoid wrapping it in
+            // `Pin` to call `poll`.
+            if let Poll::Ready(o) = self.fut.poll_unpin(&mut ctx) {
+                return Some(o);
+            }
+        };
+        None
+    }
+
+    fn any_ready(&self) -> bool {
+        self.added_futures.any_ready() || self.fut_state.needs_poll.get()
     }
 }
 

@@ -64,7 +64,7 @@ mod waker;
 pub use executor::Executor;
 pub use select::SelectResult;
 
-use executor::UnitFutures;
+use executor::{RunOne, UnitFutures};
 use fd_executor::{FdExecutor, Result};
 use std::future::Future;
 
@@ -86,6 +86,20 @@ use std::future::Future;
 ///    ```
 pub fn empty_executor() -> Result<impl Executor> {
     FdExecutor::new(UnitFutures::new())
+}
+
+/// Creates a FdExecutor that runs one future to completion.
+///
+///  # Example
+///
+///    ```
+///    use cros_async::run_one;
+///
+///    let fut = async { 55 };
+///    assert_eq!(Ok(55),run_one(Box::pin(fut)));
+///    ```
+pub fn run_one<F: Future + Unpin>(fut: F) -> Result<F::Output> {
+    FdExecutor::new(RunOne::new(fut)).and_then(|mut ex| ex.run())
 }
 
 // Select helpers to run until any future completes.
