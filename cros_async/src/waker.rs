@@ -16,7 +16,9 @@ unsafe fn waker_drop(data_ptr: *const ()) {
     let _rc_bool = Rc::<AtomicBool>::from_raw(data_ptr as *const _);
 }
 
-unsafe fn waker_wake(_: *const ()) {}
+unsafe fn waker_wake(data_ptr: *const ()) {
+    waker_wake_by_ref(data_ptr)
+}
 
 // Called when the bool should be set to true to wake the waker.
 unsafe fn waker_wake_by_ref(data_ptr: *const ()) {
