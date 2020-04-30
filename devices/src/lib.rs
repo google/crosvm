@@ -8,6 +8,7 @@ mod bus;
 mod cmos;
 mod i8042;
 mod ioapic;
+mod irqchip;
 mod pci;
 mod pic;
 mod pit;
@@ -30,6 +31,7 @@ pub use self::bus::{Bus, BusDevice, BusRange, BusResumeDevice};
 pub use self::cmos::Cmos;
 pub use self::i8042::I8042Device;
 pub use self::ioapic::{Ioapic, IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES};
+pub use self::irqchip::*;
 pub use self::pci::{
     Ac97Backend, Ac97Dev, Ac97Parameters, PciAddress, PciConfigIo, PciConfigMmio, PciDevice,
     PciDeviceError, PciInterruptPin, PciRoot, VfioPciDevice,

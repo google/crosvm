@@ -5,7 +5,7 @@
 use sys_util::Result;
 
 use super::{KvmVcpu, KvmVm};
-use crate::{Regs, VcpuAArch64, VmAarch64};
+use crate::{VcpuAArch64, VmAArch64};
 
 impl VmAArch64 for KvmVm {
     type Vcpu = KvmVcpu;

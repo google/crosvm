@@ -63,3 +63,5 @@ pub trait RunnableVcpu: Deref<Target = <Self as RunnableVcpu>::Vcpu> + DerefMut 
 pub enum VcpuExit {
     Unknown,
 }
+
+pub struct IrqRoute {}

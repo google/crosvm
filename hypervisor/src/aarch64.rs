@@ -7,7 +7,7 @@ use sys_util::Result;
 
 /// A wrapper for using a VM on aarch64 and getting/setting its state.
 pub trait VmAArch64: Vm {
-    type Vcpu: VcpuArm;
+    type Vcpu: VcpuAArch64;
 
     /// Create a Vcpu with the specified Vcpu ID.
     fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu>;
