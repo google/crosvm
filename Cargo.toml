@@ -27,6 +27,7 @@ exclude = [
     "sys_util",
     "syscall_defines",
     "tempfile",
+    "hypervisor"
 ]
 
 [features]
