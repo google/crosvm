@@ -467,9 +467,17 @@ impl<'a> Writer<'a> {
         self.write_all(val.as_slice())
     }
 
+    /// Writes all objects produced by `iter` into the descriptor chain buffer. Unlike `consume`,
+    /// this doesn't require the values to be stored in an intermediate collection first. It also
+    /// allows callers to choose which elements in a collection to write, for example by using the
+    /// `filter` or `take` methods of the `Iterator` trait.
+    pub fn write_iter<T: DataInit, I: Iterator<Item = T>>(&mut self, iter: I) -> io::Result<()> {
+        iter.map(|v| self.write_obj(v)).collect()
+    }
+
     /// Writes a collection of objects into the descriptor chain buffer.
     pub fn consume<T: DataInit, C: IntoIterator<Item = T>>(&mut self, vals: C) -> io::Result<()> {
-        vals.into_iter().map(|v| self.write_obj(v)).collect()
+        self.write_iter(vals.into_iter())
     }
 
     /// Returns number of bytes available for writing.  May return an error if the combined
