@@ -11,7 +11,7 @@ use arch::fdt::{
     property_null, property_string, property_u32, property_u64, start_fdt, Error, Result,
 };
 use arch::SERIAL_ADDR;
-use devices::PciInterruptPin;
+use devices::{PciAddress, PciInterruptPin};
 use sys_util::{GuestAddress, GuestMemory};
 
 // This is the start of DRAM in the physical address space.
@@ -37,7 +37,6 @@ use crate::AARCH64_SERIAL_SIZE;
 use crate::AARCH64_SERIAL_SPEED;
 
 // These are related to guest virtio devices.
-use crate::AARCH64_IRQ_BASE;
 use crate::AARCH64_MMIO_BASE;
 use crate::AARCH64_MMIO_SIZE;
 use crate::AARCH64_PCI_CFG_BASE;
@@ -217,7 +216,7 @@ fn create_chosen_node(
 
 fn create_pci_nodes(
     fdt: &mut Vec<u8>,
-    pci_irqs: Vec<(u32, PciInterruptPin)>,
+    pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
     pci_device_base: u64,
     pci_device_size: u64,
 ) -> Result<()> {
@@ -248,14 +247,14 @@ fn create_pci_nodes(
     let mut interrupts: Vec<u32> = Vec::new();
     let mut masks: Vec<u32> = Vec::new();
 
-    for (i, pci_irq) in pci_irqs.iter().enumerate() {
+    for (address, irq_num, irq_pin) in pci_irqs.iter() {
         // PCI_DEVICE(3)
-        interrupts.push((pci_irq.0 + 1) << 11);
+        interrupts.push(address.to_config_address(0));
         interrupts.push(0);
         interrupts.push(0);
 
         // INT#(1)
-        interrupts.push(pci_irq.1.to_mask() + 1);
+        interrupts.push(irq_pin.to_mask() + 1);
 
         // CONTROLLER(PHANDLE)
         interrupts.push(PHANDLE_GIC);
@@ -264,7 +263,7 @@ fn create_pci_nodes(
 
         // CONTROLLER_DATA(3)
         interrupts.push(GIC_FDT_IRQ_TYPE_SPI);
-        interrupts.push(AARCH64_IRQ_BASE + i as u32);
+        interrupts.push(*irq_num);
         interrupts.push(IRQ_TYPE_LEVEL_HIGH);
 
         // PCI_DEVICE(3)
@@ -331,7 +330,7 @@ fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<()> {
 ///
 /// * `fdt_max_size` - The amount of space reserved for the device tree
 /// * `guest_mem` - The guest memory object
-/// * `pci_irqs` - List of PCI device number to PCI interrupt pin mappings
+/// * `pci_irqs` - List of PCI device address to PCI interrupt number and pin mappings
 /// * `num_cpus` - Number of virtual CPUs the guest will have
 /// * `fdt_load_offset` - The offset into physical memory for the device tree
 /// * `pci_device_base` - The offset into physical memory for PCI device memory
@@ -343,7 +342,7 @@ fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<()> {
 pub fn create_fdt(
     fdt_max_size: usize,
     guest_mem: &GuestMemory,
-    pci_irqs: Vec<(u32, PciInterruptPin)>,
+    pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
     num_cpus: u32,
     fdt_load_offset: u64,
     pci_device_base: u64,

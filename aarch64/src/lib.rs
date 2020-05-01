@@ -15,7 +15,7 @@ use arch::{
     get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, SerialHardware, SerialParameters,
     VmComponents, VmImage,
 };
-use devices::{Bus, BusError, PciConfigMmio, PciDevice, PciInterruptPin};
+use devices::{Bus, BusError, PciAddress, PciConfigMmio, PciDevice, PciInterruptPin};
 use io_jail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
@@ -342,7 +342,7 @@ impl AArch64 {
         vcpu_count: u32,
         cmdline: &CStr,
         initrd_file: Option<File>,
-        pci_irqs: Vec<(u32, PciInterruptPin)>,
+        pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
         android_fstab: Option<File>,
         kernel_end: u64,
         is_gicv3: bool,

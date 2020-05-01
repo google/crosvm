@@ -60,7 +60,7 @@ use arch::{
 };
 use devices::split_irqchip_common::GsiRelay;
 use devices::{
-    Ioapic, PciConfigIo, PciDevice, PciInterruptPin, Pic, IOAPIC_BASE_ADDRESS,
+    Ioapic, PciAddress, PciConfigIo, PciDevice, PciInterruptPin, Pic, IOAPIC_BASE_ADDRESS,
     IOAPIC_MEM_LENGTH_BYTES,
 };
 use io_jail::Minijail;
@@ -212,7 +212,7 @@ fn configure_system(
     cmdline_addr: GuestAddress,
     cmdline_size: usize,
     num_cpus: u8,
-    pci_irqs: Vec<(u32, PciInterruptPin)>,
+    pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
     setup_data: Option<GuestAddress>,
     initrd: Option<(GuestAddress, usize)>,
     mut params: boot_params,
@@ -588,7 +588,7 @@ impl X8664arch {
         vcpu_count: u32,
         cmdline: &CStr,
         initrd_file: Option<File>,
-        pci_irqs: Vec<(u32, PciInterruptPin)>,
+        pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
         android_fstab: Option<File>,
         kernel_end: u64,
         params: boot_params,

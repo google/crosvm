@@ -56,6 +56,33 @@ impl Display for PciAddress {
 }
 
 impl PciAddress {
+    const BUS_OFFSET: usize = 16;
+    const BUS_MASK: u32 = 0x00ff;
+    const DEVICE_OFFSET: usize = 11;
+    const DEVICE_MASK: u32 = 0x1f;
+    const FUNCTION_OFFSET: usize = 8;
+    const FUNCTION_MASK: u32 = 0x07;
+    const REGISTER_OFFSET: usize = 2;
+    const REGISTER_MASK: u32 = 0x3f;
+
+    /// Construct PciAddress and register tuple from CONFIG_ADDRESS value.
+    pub fn from_config_address(config_address: u32) -> (Self, usize) {
+        let bus = ((config_address >> Self::BUS_OFFSET) & Self::BUS_MASK) as u8;
+        let dev = ((config_address >> Self::DEVICE_OFFSET) & Self::DEVICE_MASK) as u8;
+        let func = ((config_address >> Self::FUNCTION_OFFSET) & Self::FUNCTION_MASK) as u8;
+        let register = ((config_address >> Self::REGISTER_OFFSET) & Self::REGISTER_MASK) as usize;
+
+        (PciAddress { bus, dev, func }, register)
+    }
+
+    /// Encode PciAddress into CONFIG_ADDRESS value.
+    pub fn to_config_address(&self, register: usize) -> u32 {
+        ((Self::BUS_MASK & self.bus as u32) << Self::BUS_OFFSET)
+            | ((Self::DEVICE_MASK & self.dev as u32) << Self::DEVICE_OFFSET)
+            | ((Self::FUNCTION_MASK & self.func as u32) << Self::FUNCTION_OFFSET)
+            | ((Self::REGISTER_MASK & register as u32) << Self::REGISTER_OFFSET)
+    }
+
     /// Returns true if the address points to PCI root host-bridge.
     fn is_root(&self) -> bool {
         matches!(
@@ -159,7 +186,7 @@ impl PciConfigIo {
             return 0xffff_ffff;
         }
 
-        let (address, register) = parse_config_address(self.config_address & !0x8000_0000);
+        let (address, register) = PciAddress::from_config_address(self.config_address);
         self.pci_root.config_space_read(address, register)
     }
 
@@ -169,7 +196,7 @@ impl PciConfigIo {
             return;
         }
 
-        let (address, register) = parse_config_address(self.config_address & !0x8000_0000);
+        let (address, register) = PciAddress::from_config_address(self.config_address);
         self.pci_root
             .config_space_write(address, register, offset, data)
     }
@@ -243,12 +270,12 @@ impl PciConfigMmio {
     }
 
     fn config_space_read(&self, config_address: u32) -> u32 {
-        let (address, register) = parse_config_address(config_address);
+        let (address, register) = PciAddress::from_config_address(config_address);
         self.pci_root.config_space_read(address, register)
     }
 
     fn config_space_write(&mut self, config_address: u32, offset: u64, data: &[u8]) {
-        let (address, register) = parse_config_address(config_address);
+        let (address, register) = PciAddress::from_config_address(config_address);
         self.pci_root
             .config_space_write(address, register, offset, data)
     }
@@ -282,24 +309,4 @@ impl BusDevice for PciConfigMmio {
         }
         self.config_space_write(offset as u32, offset % 4, data)
     }
-}
-
-// Parse the CONFIG_ADDRESS register to a (bus, device, function, register) tuple.
-fn parse_config_address(config_address: u32) -> (PciAddress, usize) {
-    const BUS_NUMBER_OFFSET: usize = 16;
-    const BUS_NUMBER_MASK: u32 = 0x00ff;
-    const DEVICE_NUMBER_OFFSET: usize = 11;
-    const DEVICE_NUMBER_MASK: u32 = 0x1f;
-    const FUNCTION_NUMBER_OFFSET: usize = 8;
-    const FUNCTION_NUMBER_MASK: u32 = 0x07;
-    const REGISTER_NUMBER_OFFSET: usize = 2;
-    const REGISTER_NUMBER_MASK: u32 = 0x3f;
-
-    let bus = ((config_address >> BUS_NUMBER_OFFSET) & BUS_NUMBER_MASK) as u8;
-    let dev = ((config_address >> DEVICE_NUMBER_OFFSET) & DEVICE_NUMBER_MASK) as u8;
-    let func = ((config_address >> FUNCTION_NUMBER_OFFSET) & FUNCTION_NUMBER_MASK) as u8;
-    let register_number =
-        ((config_address >> REGISTER_NUMBER_OFFSET) & REGISTER_NUMBER_MASK) as usize;
-
-    (PciAddress { bus, dev, func }, register_number)
 }

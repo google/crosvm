@@ -184,8 +184,14 @@ pub fn generate_pci_root(
     mmio_bus: &mut Bus,
     resources: &mut SystemAllocator,
     vm: &mut Vm,
-) -> Result<(PciRoot, Vec<(u32, PciInterruptPin)>, BTreeMap<u32, String>), DeviceRegistrationError>
-{
+) -> Result<
+    (
+        PciRoot,
+        Vec<(PciAddress, u32, PciInterruptPin)>,
+        BTreeMap<u32, String>,
+    ),
+    DeviceRegistrationError,
+> {
     let mut root = PciRoot::new();
     let mut pci_irqs = Vec::new();
     let mut pid_labels = BTreeMap::new();
@@ -230,7 +236,7 @@ pub fn generate_pci_root(
         keep_fds.push(irqfd.as_raw_fd());
         keep_fds.push(irq_resample_fd.as_raw_fd());
         device.assign_irq(irqfd, irq_resample_fd, irq_num, pci_irq_pin);
-        pci_irqs.push((dev_idx as u32, pci_irq_pin));
+        pci_irqs.push((address, irq_num, pci_irq_pin));
 
         let ranges = device
             .allocate_io_bars(resources)
