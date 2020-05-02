@@ -2,12 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use kvm_sys::kvm_cpuid_entry2;
 use sys_util::Result;
 
 use crate::{Hypervisor, Vcpu, Vm};
-
-pub type CpuIdEntry = kvm_cpuid_entry2;
 
 /// A trait for managing cpuids for an x86_64 hypervisor and for checking its capabilities.
 pub trait HypervisorX86_64: Hypervisor {
@@ -32,8 +29,23 @@ pub trait VcpuX86_64: Vcpu {
     fn get_regs(&self) -> Result<Regs>;
 }
 
+/// A CpuId Entry contains supported feature information for the given processor.
+/// This can be modified by the hypervisor to pass additional information to the guest kernel
+/// about the hypervisor or vm. Information is returned in the eax, ebx, ecx and edx registers
+/// by the cpu for a given function and index/subfunction (passed into the cpu via the eax and ecx
+/// register respectively).
+pub struct CpuIdEntry {
+    pub function: u32,
+    pub index: u32,
+    pub eax: u32,
+    pub ebx: u32,
+    pub ecx: u32,
+    pub edx: u32,
+}
+
+/// A container for the list of cpu id entries for the hypervisor and underlying cpu.
 pub struct CpuId {
-    _cpu_id_entries: Vec<CpuIdEntry>,
+    pub cpu_id_entries: Vec<CpuIdEntry>,
 }
 
 /// The state of a vcpu's general-purpose registers.

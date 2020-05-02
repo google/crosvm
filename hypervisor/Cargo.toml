@@ -6,5 +6,6 @@ edition = "2018"
 
 [dependencies]
 libc = "*"
+kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 sys_util = { path = "../sys_util" }

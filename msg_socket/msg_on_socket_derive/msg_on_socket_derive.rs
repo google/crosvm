@@ -100,7 +100,7 @@ fn get_struct_fields(ds: DataStruct) -> Vec<StructField> {
                 Meta::List(meta) => {
                     for nested in meta.nested {
                         match nested {
-                            NestedMeta::Meta(Meta::Path(meta_path))
+                            NestedMeta::Meta(Meta::Path(ref meta_path))
                                 if meta_path.is_ident("skip") =>
                             {
                                 skipped = true;

@@ -2045,6 +2045,18 @@ impl CpuId {
         unsafe { self.kvm_cpuid[0].entries.as_mut_slice(nent) }
     }
 
+    /// Get the entries slice, for inspecting. To modify, use mut_entries_slice instead.
+    pub fn entries_slice(&self) -> &[kvm_cpuid_entry2] {
+        // Mapping the unsized array to a slice is unsafe because the length isn't known.  Using
+        // the length we originally allocated with eliminates the possibility of overflow.
+        let slice_size = if self.kvm_cpuid[0].nent as usize > self.allocated_len {
+            self.allocated_len
+        } else {
+            self.kvm_cpuid[0].nent as usize
+        };
+        unsafe { self.kvm_cpuid[0].entries.as_slice(slice_size) }
+    }
+
     /// Get a  pointer so it can be passed to the kernel.  Using this pointer is unsafe.
     pub fn as_ptr(&self) -> *const kvm_cpuid2 {
         &self.kvm_cpuid[0]

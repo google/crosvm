@@ -7,14 +7,15 @@ mod aarch64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86_64;
 
-use std::ops::{Deref, DerefMut};
-use std::os::raw::c_char;
-
+use kvm_sys::*;
 use libc::{open, O_CLOEXEC, O_RDWR};
-
+use std::convert::TryFrom;
+use std::ops::{Deref, DerefMut};
+use std::os::raw::{c_char, c_ulong};
+use std::os::unix::io::{AsRawFd, RawFd};
 use sys_util::{
-    errno_result, AsRawDescriptor, FromRawDescriptor, GuestMemory, RawDescriptor, Result,
-    SafeDescriptor,
+    errno_result, ioctl_with_val, AsRawDescriptor, Error, FromRawDescriptor, GuestMemory,
+    RawDescriptor, Result, SafeDescriptor,
 };
 
 use crate::{Hypervisor, HypervisorCap, RunnableVcpu, Vcpu, VcpuExit, Vm};
@@ -22,6 +23,8 @@ use crate::{Hypervisor, HypervisorCap, RunnableVcpu, Vcpu, VcpuExit, Vm};
 pub struct Kvm {
     kvm: SafeDescriptor,
 }
+
+type KvmCap = kvm::Cap;
 
 impl Kvm {
     /// Opens `/dev/kvm/` and returns a Kvm object on success.
@@ -45,9 +48,22 @@ impl AsRawDescriptor for Kvm {
     }
 }
 
+impl AsRawFd for Kvm {
+    fn as_raw_fd(&self) -> RawFd {
+        self.kvm.as_raw_descriptor()
+    }
+}
+
 impl Hypervisor for Kvm {
-    fn check_capability(&self, _cap: &HypervisorCap) -> bool {
-        unimplemented!("check_capability for Kvm is not yet implemented");
+    fn check_capability(&self, cap: &HypervisorCap) -> bool {
+        if let Ok(kvm_cap) = KvmCap::try_from(cap) {
+            // this ioctl is safe because we know this kvm descriptor is valid,
+            // and we are copying over the kvm capability (u32) as a c_ulong value.
+            unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), kvm_cap as c_ulong) == 1 }
+        } else {
+            // this capability cannot be converted on this platform, so return false
+            false
+        }
     }
 }
 
@@ -122,12 +138,33 @@ impl DerefMut for RunnableKvmVcpu {
     }
 }
 
+impl<'a> TryFrom<&'a HypervisorCap> for KvmCap {
+    type Error = Error;
+
+    fn try_from(cap: &'a HypervisorCap) -> Result<KvmCap> {
+        match cap {
+            HypervisorCap::ArmPmuV3 => Ok(KvmCap::ArmPmuV3),
+            HypervisorCap::ImmediateExit => Ok(KvmCap::ImmediateExit),
+            HypervisorCap::S390UserSigp => Ok(KvmCap::S390UserSigp),
+            HypervisorCap::TscDeadlineTimer => Ok(KvmCap::TscDeadlineTimer),
+            HypervisorCap::UserMemory => Ok(KvmCap::UserMemory),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::Kvm;
+    use super::{Hypervisor, HypervisorCap, Kvm};
 
     #[test]
     fn new() {
         Kvm::new().unwrap();
+    }
+
+    #[test]
+    fn check_capability() {
+        let kvm = Kvm::new().unwrap();
+        assert!(kvm.check_capability(&HypervisorCap::UserMemory));
+        assert!(!kvm.check_capability(&HypervisorCap::S390UserSigp));
     }
 }

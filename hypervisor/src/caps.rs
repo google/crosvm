@@ -3,4 +3,10 @@
 // found in the LICENSE file.
 
 /// An enumeration of different hypervisor capabilities.
-pub enum HypervisorCap {}
+pub enum HypervisorCap {
+    ArmPmuV3,
+    ImmediateExit,
+    S390UserSigp,
+    TscDeadlineTimer,
+    UserMemory,
+}
