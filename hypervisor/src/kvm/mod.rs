@@ -2,12 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::{CpuId, Hypervisor, HypervisorCap};
-use libc::{open, O_CLOEXEC, O_RDWR};
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+mod aarch64;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod x86_64;
+
+use std::ops::{Deref, DerefMut};
 use std::os::raw::c_char;
+
+use libc::{open, O_CLOEXEC, O_RDWR};
+
 use sys_util::{
-    errno_result, AsRawDescriptor, FromRawDescriptor, RawDescriptor, Result, SafeDescriptor,
+    errno_result, AsRawDescriptor, FromRawDescriptor, GuestMemory, RawDescriptor, Result,
+    SafeDescriptor,
 };
+
+use crate::{Hypervisor, HypervisorCap, RunnableVcpu, Vcpu, VcpuExit, Vm};
 
 pub struct Kvm {
     kvm: SafeDescriptor,
@@ -39,15 +49,76 @@ impl Hypervisor for Kvm {
     fn check_capability(&self, _cap: &HypervisorCap) -> bool {
         unimplemented!("check_capability for Kvm is not yet implemented");
     }
+}
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fn get_supported_cpuid(&self) -> Result<CpuId> {
-        unimplemented!("get_supported_cpuid for Kvm is not yet implemented");
+/// A wrapper around creating and using a KVM VM.
+pub struct KvmVm {
+    guest_mem: GuestMemory,
+}
+
+impl KvmVm {
+    /// Constructs a new `KvmVm` using the given `Kvm` instance.
+    pub fn new(_kvm: &Kvm, guest_mem: GuestMemory) -> Result<KvmVm> {
+        Ok(KvmVm { guest_mem })
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fn get_emulated_cpuid(&self) -> Result<CpuId> {
-        unimplemented!("get_emulated_cpuid for Kvm is not yet implemented");
+    fn create_kvm_vcpu(&self, _id: usize) -> Result<KvmVcpu> {
+        Ok(KvmVcpu {})
+    }
+}
+
+impl Vm for KvmVm {
+    fn get_guest_mem(&self) -> &GuestMemory {
+        &self.guest_mem
+    }
+}
+
+/// A wrapper around creating and using a KVM Vcpu.
+pub struct KvmVcpu {}
+
+impl Vcpu for KvmVcpu {
+    type Runnable = RunnableKvmVcpu;
+
+    fn to_runnable(self) -> Result<Self::Runnable> {
+        Ok(RunnableKvmVcpu {
+            vcpu: self,
+            phantom: Default::default(),
+        })
+    }
+
+    fn request_interrupt_window(&self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// A KvmVcpu that has a thread and can be run.
+pub struct RunnableKvmVcpu {
+    vcpu: KvmVcpu,
+
+    // vcpus must stay on the same thread once they start.
+    // Add the PhantomData pointer to ensure RunnableKvmVcpu is not `Send`.
+    phantom: std::marker::PhantomData<*mut u8>,
+}
+
+impl RunnableVcpu for RunnableKvmVcpu {
+    type Vcpu = KvmVcpu;
+
+    fn run(&self) -> Result<VcpuExit> {
+        Ok(VcpuExit::Unknown)
+    }
+}
+
+impl Deref for RunnableKvmVcpu {
+    type Target = <Self as RunnableVcpu>::Vcpu;
+
+    fn deref(&self) -> &Self::Target {
+        &self.vcpu
+    }
+}
+
+impl DerefMut for RunnableKvmVcpu {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.vcpu
     }
 }
 
