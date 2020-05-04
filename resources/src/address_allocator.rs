@@ -215,6 +215,27 @@ impl AddressAllocator {
 
         Ok(())
     }
+
+    /// Returns an address from associated PCI `alloc` given an allocation offset and size.
+    pub fn address_from_pci_offset(&self, alloc: Alloc, offset: u64, size: u64) -> Result<u64> {
+        match alloc {
+            Alloc::PciBar { .. } => (),
+            _ => return Err(Error::InvalidAlloc(alloc)),
+        };
+
+        match self.allocs.get(&alloc) {
+            Some((start_addr, length, _)) => {
+                let address = start_addr.checked_add(offset).ok_or(Error::OutOfBounds)?;
+                let range = *start_addr..*start_addr + *length;
+                let end = address.checked_add(size).ok_or(Error::OutOfBounds)?;
+                match (range.contains(&address), range.contains(&end)) {
+                    (true, true) => Ok(address),
+                    _ => return Err(Error::OutOfBounds),
+                }
+            }
+            None => return Err(Error::InvalidAlloc(alloc)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -420,6 +441,67 @@ mod tests {
         assert_eq!(
             pool.allocate(0x1004, Alloc::Anon(0), String::from("bar0")),
             Ok(0x1000)
+        );
+    }
+
+    #[test]
+    fn allocate_and_verify_pci_offset() {
+        let mut pool = AddressAllocator::new(0x1000, 0x10000, None).unwrap();
+        let pci_bar0 = Alloc::PciBar {
+            bus: 1,
+            dev: 2,
+            func: 0,
+            bar: 0,
+        };
+        let pci_bar1 = Alloc::PciBar {
+            bus: 1,
+            dev: 2,
+            func: 0,
+            bar: 1,
+        };
+        let pci_bar2 = Alloc::PciBar {
+            bus: 1,
+            dev: 2,
+            func: 0,
+            bar: 2,
+        };
+        let anon = Alloc::Anon(1);
+
+        assert_eq!(
+            pool.allocate(0x800, pci_bar0, String::from("bar0")),
+            Ok(0x1000)
+        );
+        assert_eq!(
+            pool.allocate(0x800, pci_bar1, String::from("bar1")),
+            Ok(0x1800)
+        );
+        assert_eq!(pool.allocate(0x800, anon, String::from("anon")), Ok(0x2000));
+
+        assert_eq!(
+            pool.address_from_pci_offset(pci_bar0, 0x600, 0x100),
+            Ok(0x1600)
+        );
+        assert_eq!(
+            pool.address_from_pci_offset(pci_bar1, 0x600, 0x100),
+            Ok(0x1E00)
+        );
+        assert_eq!(
+            pool.address_from_pci_offset(pci_bar0, 0x7FE, 0x001),
+            Ok(0x17FE)
+        );
+        assert_eq!(
+            pool.address_from_pci_offset(pci_bar0, 0x7FF, 0x001),
+            Err(Error::OutOfBounds)
+        );
+
+        assert_eq!(
+            pool.address_from_pci_offset(pci_bar2, 0x7FF, 0x001),
+            Err(Error::InvalidAlloc(pci_bar2))
+        );
+
+        assert_eq!(
+            pool.address_from_pci_offset(anon, 0x600, 0x100),
+            Err(Error::InvalidAlloc(anon))
         );
     }
 }

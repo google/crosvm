@@ -535,7 +535,7 @@ fn register_memory(
     allocator: &mut SystemAllocator,
     fd: &dyn AsRawFd,
     size: usize,
-    allocation: Option<(Alloc, u64)>,
+    pci_allocation: Option<(Alloc, u64)>,
 ) -> Result<(u64, u32)> {
     let mmap = match MemoryMapping::from_fd(fd, size) {
         Ok(v) => v,
@@ -543,48 +543,18 @@ fn register_memory(
         _ => return Err(SysError::new(EINVAL)),
     };
 
-    let addr = match allocation {
-        Some((
-            Alloc::PciBar {
-                bus,
-                dev,
-                func,
-                bar,
-            },
-            offset,
-        )) => {
-            match allocator
-                .mmio_allocator(MmioType::High)
-                .get(&Alloc::PciBar {
-                    bus,
-                    dev,
-                    func,
-                    bar,
-                }) {
-                Some((start_addr, length, _)) => {
-                    let address = *start_addr + offset;
-                    let range = *start_addr..*start_addr + *length;
-                    let end = address + (size as u64);
-                    match (range.contains(&address), range.contains(&end)) {
-                        (true, true) => address,
-                        _ => return Err(SysError::new(EINVAL)),
-                    }
-                }
-                None => return Err(SysError::new(EINVAL)),
-            }
-        }
+    let addr = match pci_allocation {
+        Some(pci_allocation) => allocator
+            .mmio_allocator(MmioType::High)
+            .address_from_pci_offset(pci_allocation.0, pci_allocation.1, size as u64)
+            .map_err(|_e| SysError::new(EINVAL))?,
         None => {
             let alloc = allocator.get_anon_alloc();
-            match allocator.mmio_allocator(MmioType::High).allocate(
-                size as u64,
-                alloc,
-                "vmcontrol_register_memory".to_string(),
-            ) {
-                Ok(a) => a,
-                _ => return Err(SysError::new(EINVAL)),
-            }
+            allocator
+                .mmio_allocator(MmioType::High)
+                .allocate(size as u64, alloc, "vmcontrol_register_memory".to_string())
+                .map_err(|_e| SysError::new(EINVAL))?
         }
-        _ => return Err(SysError::new(EINVAL)),
     };
 
     let slot = vm.add_memory_region(GuestAddress(addr), Box::new(mmap), false, false)?;
