@@ -5,6 +5,8 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
+bit_field = { path = "../bit_field" }
+enumn = { path = "../enumn" }
 libc = "*"
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
