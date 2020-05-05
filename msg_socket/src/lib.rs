@@ -13,7 +13,7 @@ use std::task::{Context, Poll};
 use futures::Stream;
 use libc::{EWOULDBLOCK, O_NONBLOCK};
 
-use cros_async::fd_executor::add_read_waker;
+use cros_async::add_read_waker;
 use sys_util::{
     add_fd_flags, clear_fd_flags, error, handle_eintr, net::UnixSeqpacket, Error as SysError,
     ScmSocket,

@@ -11,14 +11,14 @@ use std::task::{Context, Poll};
 
 use libc::{EWOULDBLOCK, O_NONBLOCK};
 
-use cros_async::fd_executor::{self, add_read_waker, cancel_waker, WakerToken};
+use cros_async::{self, add_read_waker, cancel_waker, WakerToken};
 use sys_util::{self, add_fd_flags};
 
 /// Errors generated while polling for events.
 #[derive(Debug)]
 pub enum Error {
     /// An error occurred attempting to register a waker with the executor.
-    AddingWaker(fd_executor::Error),
+    AddingWaker(cros_async::Error),
     /// Failure creating the event FD.
     EventFdCreate(sys_util::Error),
     /// An error occurred when reading the event FD.

@@ -20,7 +20,7 @@ use sys_util::{Error as SysError, EventFd};
 /// An error during transaction or serialization/deserialization.
 pub enum MsgError {
     /// Error adding a waker for async read.
-    AddingWaker(cros_async::fd_executor::Error),
+    AddingWaker(cros_async::Error),
     /// Error while sending a request or response.
     Send(SysError),
     /// Error while receiving a request or response.

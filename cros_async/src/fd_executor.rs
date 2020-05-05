@@ -8,23 +8,6 @@
 //!
 //! `FdExecutor` is meant to be used with the `futures-rs` crate that provides combinators and
 //! utility functions to combine futures.
-//!
-//! # Example of starting the framework and running a future:
-//!
-//! ```
-//! # use std::rc::Rc;
-//! # use std::cell::RefCell;
-//! use cros_async::Executor;
-//! async fn my_async(mut x: Rc<RefCell<u64>>) {
-//!     x.replace(4);
-//! }
-//!
-//! let mut ex = cros_async::empty_executor().expect("Failed creating executor");
-//! let x = Rc::new(RefCell::new(0));
-//! cros_async::fd_executor::add_future(Box::pin(my_async(x.clone())));
-//! ex.run();
-//! assert_eq!(*x.borrow(), 4);
-//! ```
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
@@ -38,7 +21,7 @@ use std::task::Waker;
 
 use sys_util::{PollContext, WatchingEvents};
 
-use crate::executor::{ExecutableFuture, Executor, FutureList};
+use crate::executor::{ExecutableFuture, Executor, FutureList, WakerToken};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -79,9 +62,6 @@ impl Display for Error {
 
 // Tracks active wakers and the futures they are associated with.
 thread_local!(static STATE: RefCell<Option<FdWakerState>> = RefCell::new(None));
-
-/// A token returned from `add_waker` that can be used to cancel the waker before it completes.
-pub struct WakerToken(u64);
 
 fn add_waker(fd: RawFd, waker: Waker, events: WatchingEvents) -> Result<WakerToken> {
     STATE.with(|state| {
@@ -276,8 +256,10 @@ unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
 
 #[cfg(test)]
 mod test {
+    use std::cell::RefCell;
     use std::future::Future;
     use std::os::unix::io::AsRawFd;
+    use std::rc::Rc;
     use std::task::{Context, Poll};
 
     use futures::future::Either;
@@ -337,5 +319,19 @@ mod test {
             let state = state.borrow_mut();
             assert!(state.as_ref().unwrap().token_map.is_empty());
         });
+    }
+
+    #[test]
+    fn run() {
+        // Example of starting the framework and running a future:
+        async fn my_async(x: Rc<RefCell<u64>>) {
+            x.replace(4);
+        }
+
+        let mut ex = FdExecutor::new(crate::UnitFutures::new()).expect("Failed creating executor");
+        let x = Rc::new(RefCell::new(0));
+        crate::fd_executor::add_future(Box::pin(my_async(x.clone()))).unwrap();
+        ex.run().unwrap();
+        assert_eq!(*x.borrow(), 4);
     }
 }
