@@ -25,7 +25,7 @@ use vm_control::VmMemoryControlRequestSocket;
 
 use super::protocol::GpuResponse;
 pub use super::virtio_backend::{VirtioBackend, VirtioResource};
-use crate::virtio::gpu::{Backend, DisplayBackend, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_VIRGL};
+use crate::virtio::gpu::{Backend, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_VIRGL};
 use crate::virtio::resource_bridge::ResourceResponse;
 
 // C definitions related to gfxstream
@@ -282,7 +282,7 @@ impl Backend for VirtioGfxStreamBackend {
 
     /// Returns the underlying Backend.
     fn build(
-        possible_displays: &[DisplayBackend],
+        display: GpuDisplay,
         display_width: u32,
         display_height: u32,
         _renderer_flags: RendererFlags,
@@ -290,25 +290,6 @@ impl Backend for VirtioGfxStreamBackend {
         gpu_device_socket: VmMemoryControlRequestSocket,
         pci_bar: Alloc,
     ) -> Option<Box<dyn Backend>> {
-        let mut display_opt = None;
-        for display in possible_displays {
-            match display.build() {
-                Ok(c) => {
-                    display_opt = Some(c);
-                    break;
-                }
-                Err(e) => error!("failed to open display: {}", e),
-            };
-        }
-
-        let display = match display_opt {
-            Some(d) => d,
-            None => {
-                error!("failed to open any displays");
-                return None;
-            }
-        };
-
         Some(Box::new(VirtioGfxStreamBackend::new(
             display,
             display_width,

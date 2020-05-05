@@ -111,7 +111,7 @@ trait Backend {
 
     /// Constructs a backend.
     fn build(
-        possible_displays: &[DisplayBackend],
+        display: GpuDisplay,
         display_width: u32,
         display_height: u32,
         renderer_flags: RendererFlags,
@@ -345,9 +345,28 @@ impl BackendKind {
         gpu_device_socket: VmMemoryControlRequestSocket,
         pci_bar: Alloc,
     ) -> Option<Box<dyn Backend>> {
+        let mut display_opt = None;
+        for display in possible_displays {
+            match display.build() {
+                Ok(c) => {
+                    display_opt = Some(c);
+                    break;
+                }
+                Err(e) => error!("failed to open display: {}", e),
+            };
+        }
+
+        let display = match display_opt {
+            Some(d) => d,
+            None => {
+                error!("failed to open any displays");
+                return None;
+            }
+        };
+
         match self {
             BackendKind::Virtio2D => Virtio2DBackend::build(
-                possible_displays,
+                display,
                 display_width,
                 display_height,
                 renderer_flags,
@@ -356,7 +375,7 @@ impl BackendKind {
                 pci_bar,
             ),
             BackendKind::Virtio3D => Virtio3DBackend::build(
-                possible_displays,
+                display,
                 display_width,
                 display_height,
                 renderer_flags,
@@ -366,7 +385,7 @@ impl BackendKind {
             ),
             #[cfg(feature = "gfxstream")]
             BackendKind::VirtioGfxStream => VirtioGfxStreamBackend::build(
-                possible_displays,
+                display,
                 display_width,
                 display_height,
                 renderer_flags,
@@ -975,13 +994,6 @@ impl DisplayBackend {
             DisplayBackend::Wayland(path) => GpuDisplay::open_wayland(path.as_ref()),
             DisplayBackend::X(display) => GpuDisplay::open_x(display.as_ref()),
             DisplayBackend::Stub => GpuDisplay::open_stub(),
-        }
-    }
-
-    fn is_x(&self) -> bool {
-        match self {
-            DisplayBackend::X(_) => true,
-            _ => false,
         }
     }
 }
