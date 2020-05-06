@@ -8,7 +8,7 @@ mod vcpu;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
 use std::result;
@@ -180,10 +180,6 @@ impl Display for Error {
 }
 
 type Result<T> = result::Result<T, Error>;
-
-fn downcast_file<F: IntoRawFd>(f: F) -> File {
-    unsafe { File::from_raw_fd(f.into_raw_fd()) }
-}
 
 fn new_seqpacket_pair() -> SysResult<(UnixDatagram, UnixDatagram)> {
     let mut fds = [0, 0];

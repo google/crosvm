@@ -5,7 +5,7 @@
 use std::ffi::{CStr, CString};
 use std::fs::{read_link, File};
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
 use libc::{
     self, c_char, c_int, c_long, c_uint, close, fcntl, ftruncate64, off64_t, syscall, EINVAL,
@@ -136,13 +136,11 @@ impl SharedMemory {
         Ok(SharedMemory { fd: file, size: 0 })
     }
 
-    /// Constructs a `SharedMemory` instance from a file descriptor that represents shared memory.
+    /// Constructs a `SharedMemory` instance from a `File` that represents shared memory.
     ///
     /// The size of the resulting shared memory will be determined using `File::seek`. If the given
     /// file's size can not be determined this way, this will return an error.
-    pub fn from_raw_fd<T: IntoRawFd>(fd: T) -> Result<SharedMemory> {
-        // Safe because the IntoRawFd trait indicates fd has unique ownership.
-        let mut file = unsafe { File::from_raw_fd(fd.into_raw_fd()) };
+    pub fn from_file(mut file: File) -> Result<SharedMemory> {
         let file_size = file.seek(SeekFrom::End(0))?;
         Ok(SharedMemory {
             fd: file,
