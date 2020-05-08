@@ -496,10 +496,7 @@ impl<F: FileSystem + Sync> Server<F> {
         };
 
         // Split the writer into 2 pieces: one for the `OutHeader` and the rest for the data.
-        let data_writer = ZCWriter(
-            w.split_at(size_of::<OutHeader>())
-                .map_err(Error::InvalidDescriptorChain)?,
-        );
+        let data_writer = ZCWriter(w.split_at(size_of::<OutHeader>()));
 
         match self.fs.read(
             Context::from(in_header),
@@ -910,9 +907,7 @@ impl<F: FileSystem + Sync> Server<F> {
         }
 
         // Skip over enough bytes for the header.
-        let mut cursor = w
-            .split_at(size_of::<OutHeader>())
-            .map_err(Error::InvalidDescriptorChain)?;
+        let mut cursor = w.split_at(size_of::<OutHeader>());
 
         let res = if plus {
             self.fs.readdirplus(

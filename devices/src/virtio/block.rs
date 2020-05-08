@@ -267,9 +267,7 @@ impl Worker {
         let status_offset = available_bytes
             .checked_sub(1)
             .ok_or(ExecuteError::MissingStatus)?;
-        let mut status_writer = writer
-            .split_at(status_offset)
-            .map_err(ExecuteError::Descriptor)?;
+        let mut status_writer = writer.split_at(status_offset);
 
         let status = match Block::execute_request(
             &mut reader,
