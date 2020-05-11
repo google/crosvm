@@ -16,7 +16,7 @@ impl VmAArch64 for KvmVm {
 }
 
 impl VcpuAArch64 for KvmVcpu {
-    fn set_one_reg(&self, reg_id: u64, data: u64) -> Result<()> {
+    fn set_one_reg(&self, _reg_id: u64, _data: u64) -> Result<()> {
         Ok(())
     }
 }

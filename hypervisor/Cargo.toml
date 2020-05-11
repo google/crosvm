@@ -8,4 +8,5 @@ edition = "2018"
 libc = "*"
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
+sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }

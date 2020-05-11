@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::unix::io::RawFd;
-
-use crate::{errno_result, Result};
 use std::mem;
 use std::ops::Drop;
+use std::os::unix::io::{AsRawFd, RawFd};
+
+use crate::{errno_result, Result};
 
 pub type RawDescriptor = RawFd;
 
@@ -57,6 +57,12 @@ impl IntoRawDescriptor for SafeDescriptor {
 impl FromRawDescriptor for SafeDescriptor {
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
         SafeDescriptor { descriptor }
+    }
+}
+
+impl AsRawFd for SafeDescriptor {
+    fn as_raw_fd(&self) -> RawFd {
+        self.as_raw_descriptor()
     }
 }
 

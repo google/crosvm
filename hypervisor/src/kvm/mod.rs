@@ -7,18 +7,57 @@ mod aarch64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86_64;
 
-use kvm_sys::*;
-use libc::{open, O_CLOEXEC, O_RDWR};
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap};
 use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::{c_char, c_ulong};
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::sync::Arc;
+
+use libc::{open, O_CLOEXEC, O_RDWR};
+
+use kvm_sys::*;
+use sync::Mutex;
 use sys_util::{
-    errno_result, ioctl_with_val, AsRawDescriptor, Error, FromRawDescriptor, GuestMemory,
-    RawDescriptor, Result, SafeDescriptor,
+    errno_result, ioctl, ioctl_with_ref, ioctl_with_val, AsRawDescriptor, Error, FromRawDescriptor,
+    GuestMemory, RawDescriptor, Result, SafeDescriptor,
 };
 
-use crate::{Hypervisor, HypervisorCap, RunnableVcpu, Vcpu, VcpuExit, Vm};
+use crate::{Hypervisor, HypervisorCap, MappedRegion, RunnableVcpu, Vcpu, VcpuExit, Vm};
+
+// Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
+// from guest physical to host user pages.
+//
+// Safe when the guest regions are guaranteed not to overlap.
+unsafe fn set_user_memory_region(
+    descriptor: &SafeDescriptor,
+    slot: u32,
+    read_only: bool,
+    log_dirty_pages: bool,
+    guest_addr: u64,
+    memory_size: u64,
+    userspace_addr: *mut u8,
+) -> Result<()> {
+    let mut flags = if read_only { KVM_MEM_READONLY } else { 0 };
+    if log_dirty_pages {
+        flags |= KVM_MEM_LOG_DIRTY_PAGES;
+    }
+    let region = kvm_userspace_memory_region {
+        slot,
+        flags,
+        guest_phys_addr: guest_addr,
+        memory_size,
+        userspace_addr: userspace_addr as u64,
+    };
+
+    let ret = ioctl_with_ref(descriptor, KVM_SET_USER_MEMORY_REGION(), &region);
+    if ret == 0 {
+        Ok(())
+    } else {
+        errno_result()
+    }
+}
 
 pub struct Kvm {
     kvm: SafeDescriptor,
@@ -67,15 +106,64 @@ impl Hypervisor for Kvm {
     }
 }
 
+// Used to invert the order when stored in a max-heap.
+#[derive(Copy, Clone, Eq, PartialEq)]
+struct MemSlot(u32);
+
+impl Ord for MemSlot {
+    fn cmp(&self, other: &MemSlot) -> Ordering {
+        // Notice the order is inverted so the lowest magnitude slot has the highest priority in a
+        // max-heap.
+        other.0.cmp(&self.0)
+    }
+}
+
+impl PartialOrd for MemSlot {
+    fn partial_cmp(&self, other: &MemSlot) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// A wrapper around creating and using a KVM VM.
 pub struct KvmVm {
+    vm: SafeDescriptor,
     guest_mem: GuestMemory,
+    mem_regions: Arc<Mutex<HashMap<u32, Box<dyn MappedRegion>>>>,
+    mem_slot_gaps: Arc<Mutex<BinaryHeap<MemSlot>>>,
 }
 
 impl KvmVm {
     /// Constructs a new `KvmVm` using the given `Kvm` instance.
-    pub fn new(_kvm: &Kvm, guest_mem: GuestMemory) -> Result<KvmVm> {
-        Ok(KvmVm { guest_mem })
+    pub fn new(kvm: &Kvm, guest_mem: GuestMemory) -> Result<KvmVm> {
+        // Safe because we know kvm is a real kvm fd as this module is the only one that can make
+        // Kvm objects.
+        let ret = unsafe { ioctl(kvm, KVM_CREATE_VM()) };
+        if ret < 0 {
+            return errno_result();
+        }
+        // Safe because we verify that ret is valid and we own the fd.
+        let vm_descriptor = unsafe { SafeDescriptor::from_raw_descriptor(ret) };
+        guest_mem.with_regions(|index, guest_addr, size, host_addr, _| {
+            unsafe {
+                // Safe because the guest regions are guaranteed not to overlap.
+                set_user_memory_region(
+                    &vm_descriptor,
+                    index as u32,
+                    false,
+                    false,
+                    guest_addr.offset() as u64,
+                    size as u64,
+                    host_addr as *mut u8,
+                )
+            }
+        })?;
+        // TODO(colindr/srichman): add default IRQ routes in IrqChip constructor or configure_vm
+        Ok(KvmVm {
+            vm: vm_descriptor,
+            guest_mem,
+            mem_regions: Arc::new(Mutex::new(HashMap::new())),
+            mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
+        })
     }
 
     fn create_kvm_vcpu(&self, _id: usize) -> Result<KvmVcpu> {
@@ -84,8 +172,29 @@ impl KvmVm {
 }
 
 impl Vm for KvmVm {
-    fn get_guest_mem(&self) -> &GuestMemory {
+    fn try_clone(&self) -> Result<Self> {
+        Ok(KvmVm {
+            vm: self.vm.try_clone()?,
+            guest_mem: self.guest_mem.clone(),
+            mem_regions: self.mem_regions.clone(),
+            mem_slot_gaps: self.mem_slot_gaps.clone(),
+        })
+    }
+
+    fn get_memory(&self) -> &GuestMemory {
         &self.guest_mem
+    }
+}
+
+impl AsRawDescriptor for KvmVm {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.vm.as_raw_descriptor()
+    }
+}
+
+impl AsRawFd for KvmVm {
+    fn as_raw_fd(&self) -> RawFd {
+        self.vm.as_raw_descriptor()
     }
 }
 
@@ -154,7 +263,9 @@ impl<'a> TryFrom<&'a HypervisorCap> for KvmCap {
 
 #[cfg(test)]
 mod tests {
-    use super::{Hypervisor, HypervisorCap, Kvm};
+    use super::*;
+    use std::thread;
+    use sys_util::GuestAddress;
 
     #[test]
     fn new() {
@@ -166,5 +277,43 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         assert!(kvm.check_capability(&HypervisorCap::UserMemory));
         assert!(!kvm.check_capability(&HypervisorCap::S390UserSigp));
+    }
+
+    #[test]
+    fn create_vm() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        KvmVm::new(&kvm, gm).unwrap();
+    }
+
+    #[test]
+    fn clone_vm() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        vm.try_clone().unwrap();
+    }
+
+    #[test]
+    fn send_vm() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        thread::spawn(move || {
+            let _vm = vm;
+        })
+        .join()
+        .unwrap();
+    }
+
+    #[test]
+    fn get_memory() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let obj_addr = GuestAddress(0xf0);
+        vm.get_memory().write_obj_at_addr(67u8, obj_addr).unwrap();
+        let read_val: u8 = vm.get_memory().read_obj_from_addr(obj_addr).unwrap();
+        assert_eq!(read_val, 67u8);
     }
 }
