@@ -8,6 +8,11 @@ use std::sync::Arc;
 use sync::Mutex;
 use sys_util::{EventFd, Result};
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod x86_64;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub use x86_64::*;
+
 use crate::IrqChip;
 
 /// IrqChip implementation where the entire IrqChip is emulated by KVM.

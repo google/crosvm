@@ -10,6 +10,11 @@ use std::marker::{Send, Sized};
 use hypervisor::{IrqRoute, Vcpu};
 use sys_util::{EventFd, Result};
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod x86_64;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub use x86_64::*;
+
 /// Trait that abstracts interactions with interrupt controllers.
 ///
 /// Each VM will have one IrqChip instance which is responsible for routing IRQ lines and
