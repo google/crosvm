@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use bit_field::*;
-use sys_util::{error, Result};
+use sys_util::{error, GuestAddress, Result};
 
 use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
 
@@ -22,6 +22,12 @@ pub trait VmX86_64: Vm {
 
     /// Create a Vcpu with the specified Vcpu ID.
     fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu>;
+
+    /// Sets the address of the three-page region in the VM's address space.
+    fn set_tss_addr(&self, addr: GuestAddress) -> Result<()>;
+
+    /// Sets the address of a one-page region in the VM's address space.
+    fn set_identity_map_addr(&self, addr: GuestAddress) -> Result<()>;
 }
 
 /// A wrapper around creating and using a VCPU on x86_64.

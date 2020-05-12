@@ -8,8 +8,9 @@ edition = "2018"
 bit_field = { path = "../bit_field" }
 data_model = { path = "../data_model" }
 enumn = { path = "../enumn" }
-libc = "*"
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
+libc = "*"
+msg_socket = { path = "../msg_socket" }
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }

@@ -12,7 +12,8 @@ pub mod x86_64;
 
 use std::ops::{Deref, DerefMut};
 
-use sys_util::{GuestAddress, GuestMemory, MappedRegion, Result, SafeDescriptor};
+use msg_socket::MsgOnSocket;
+use sys_util::{EventFd, GuestAddress, GuestMemory, MappedRegion, Result, SafeDescriptor};
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use crate::aarch64::*;
@@ -83,6 +84,40 @@ pub trait Vm: Send + Sized {
     /// Creates an emulated device.
     fn create_device(&self, kind: DeviceKind) -> Result<SafeDescriptor>;
 
+    /// Gets the bitmap of dirty pages since the last call to `get_dirty_log` for the memory at
+    /// `slot`.  Only works on VMs that support `VmCap::DirtyLog`.
+    ///
+    /// The size of `dirty_log` must be at least as many bits as there are pages in the memory
+    /// region `slot` represents. For example, if the size of `slot` is 16 pages, `dirty_log` must
+    /// be 2 bytes or greater.
+    fn get_dirty_log(&self, slot: u32, dirty_log: &mut [u8]) -> Result<()>;
+
+    /// Registers an event to be signaled whenever a certain address is written to.
+    ///
+    /// The `datamatch` parameter can be used to limit signaling `evt` to only the cases where the
+    /// value being written is equal to `datamatch`. Note that the size of `datamatch` is important
+    /// and must match the expected size of the guest's write.
+    ///
+    /// In all cases where `evt` is signaled, the ordinary vmexit to userspace that would be
+    /// triggered is prevented.
+    fn register_ioevent(
+        &self,
+        evt: &EventFd,
+        addr: IoEventAddress,
+        datamatch: Datamatch,
+    ) -> Result<()>;
+
+    /// Unregisters an event previously registered with `register_ioevent`.
+    ///
+    /// The `evt`, `addr`, and `datamatch` set must be the same as the ones passed into
+    /// `register_ioevent`.
+    fn unregister_ioevent(
+        &self,
+        evt: &EventFd,
+        addr: IoEventAddress,
+        datamatch: Datamatch,
+    ) -> Result<()>;
+
     /// Retrieves the current timestamp of the paravirtual clock as seen by the current guest.
     /// Only works on VMs that support `VmCap::PvClock`.
     fn get_pvclock(&self) -> Result<ClockState>;
@@ -116,6 +151,22 @@ pub trait RunnableVcpu: Deref<Target = <Self as RunnableVcpu>::Vcpu> + DerefMut 
     /// Note that the state of the VCPU and associated VM must be setup first for this to do
     /// anything useful.
     fn run(&self) -> Result<VcpuExit>;
+}
+
+/// An address either in programmable I/O space or in memory mapped I/O space.
+#[derive(Copy, Clone, Debug, MsgOnSocket)]
+pub enum IoEventAddress {
+    Pio(u64),
+    Mmio(u64),
+}
+
+/// Used in `Vm::register_ioevent` to indicate a size and optionally value to match.
+pub enum Datamatch {
+    AnyLength,
+    U8(Option<u8>),
+    U16(Option<u16>),
+    U32(Option<u32>),
+    U64(Option<u64>),
 }
 
 /// A reason why a VCPU exited. One of these returns every time `Vcpu::run` is called.

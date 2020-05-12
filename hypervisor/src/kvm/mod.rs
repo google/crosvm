@@ -16,7 +16,7 @@ use std::cmp::{min, Ordering};
 use std::collections::{BTreeMap, BinaryHeap};
 use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
-use std::os::raw::{c_char, c_ulong};
+use std::os::raw::{c_char, c_ulong, c_void};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
@@ -27,14 +27,14 @@ use data_model::vec_with_array_field;
 use kvm_sys::*;
 use sync::Mutex;
 use sys_util::{
-    errno_result, ioctl, ioctl_with_ref, ioctl_with_val, AsRawDescriptor, Error, EventFd,
+    errno_result, ioctl, ioctl_with_ref, ioctl_with_val, pagesize, AsRawDescriptor, Error, EventFd,
     FromRawDescriptor, GuestAddress, GuestMemory, MappedRegion, MemoryMapping, MmapError,
     RawDescriptor, Result, SafeDescriptor,
 };
 
 use crate::{
-    ClockState, DeviceKind, Hypervisor, HypervisorCap, IrqRoute, IrqSource, MemSlot, RunnableVcpu,
-    Vcpu, VcpuExit, Vm, VmCap,
+    ClockState, Datamatch, DeviceKind, Hypervisor, HypervisorCap, IoEventAddress, IrqRoute,
+    IrqSource, MemSlot, RunnableVcpu, Vcpu, VcpuExit, Vm, VmCap,
 };
 
 // Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
@@ -68,6 +68,17 @@ unsafe fn set_user_memory_region(
     } else {
         errno_result()
     }
+}
+
+/// Helper function to determine the size in bytes of a dirty log bitmap for the given memory region
+/// size.
+///
+/// # Arguments
+///
+/// * `size` - Number of bytes in the memory region being queried.
+pub fn dirty_log_bitmap_size(size: usize) -> usize {
+    let page_size = pagesize();
+    (((size + page_size - 1) / page_size) + 7) / 8
 }
 
 pub struct Kvm {
@@ -318,6 +329,63 @@ impl KvmVm {
             errno_result()
         }
     }
+
+    fn ioeventfd(
+        &self,
+        evt: &EventFd,
+        addr: IoEventAddress,
+        datamatch: Datamatch,
+        deassign: bool,
+    ) -> Result<()> {
+        let (do_datamatch, datamatch_value, datamatch_len) = match datamatch {
+            Datamatch::AnyLength => (false, 0, 0),
+            Datamatch::U8(v) => match v {
+                Some(u) => (true, u as u64, 1),
+                None => (false, 0, 1),
+            },
+            Datamatch::U16(v) => match v {
+                Some(u) => (true, u as u64, 2),
+                None => (false, 0, 2),
+            },
+            Datamatch::U32(v) => match v {
+                Some(u) => (true, u as u64, 4),
+                None => (false, 0, 4),
+            },
+            Datamatch::U64(v) => match v {
+                Some(u) => (true, u as u64, 8),
+                None => (false, 0, 8),
+            },
+        };
+        let mut flags = 0;
+        if deassign {
+            flags |= 1 << kvm_ioeventfd_flag_nr_deassign;
+        }
+        if do_datamatch {
+            flags |= 1 << kvm_ioeventfd_flag_nr_datamatch
+        }
+        if let IoEventAddress::Pio(_) = addr {
+            flags |= 1 << kvm_ioeventfd_flag_nr_pio;
+        }
+        let ioeventfd = kvm_ioeventfd {
+            datamatch: datamatch_value,
+            len: datamatch_len,
+            addr: match addr {
+                IoEventAddress::Pio(p) => p as u64,
+                IoEventAddress::Mmio(m) => m,
+            },
+            fd: evt.as_raw_fd(),
+            flags,
+            ..Default::default()
+        };
+        // Safe because we know that our file is a VM fd, we know the kernel will only read the
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_IOEVENTFD(), &ioeventfd) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
 }
 
 impl Vm for KvmVm {
@@ -447,6 +515,47 @@ impl Vm for KvmVm {
         } else {
             errno_result()
         }
+    }
+
+    fn get_dirty_log(&self, slot: u32, dirty_log: &mut [u8]) -> Result<()> {
+        let regions = self.mem_regions.lock();
+        let mmap = regions.get(&slot).ok_or(Error::new(ENOENT))?;
+        // Ensures that there are as many bytes in dirty_log as there are pages in the mmap.
+        if dirty_log_bitmap_size(mmap.size()) > dirty_log.len() {
+            return Err(Error::new(EINVAL));
+        }
+
+        let mut dirty_log_kvm = kvm_dirty_log {
+            slot,
+            ..Default::default()
+        };
+        dirty_log_kvm.__bindgen_anon_1.dirty_bitmap = dirty_log.as_ptr() as *mut c_void;
+        // Safe because the `dirty_bitmap` pointer assigned above is guaranteed to be valid (because
+        // it's from a slice) and we checked that it will be large enough to hold the entire log.
+        let ret = unsafe { ioctl_with_ref(self, KVM_GET_DIRTY_LOG(), &dirty_log_kvm) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    fn register_ioevent(
+        &self,
+        evt: &EventFd,
+        addr: IoEventAddress,
+        datamatch: Datamatch,
+    ) -> Result<()> {
+        self.ioeventfd(evt, addr, datamatch, false)
+    }
+
+    fn unregister_ioevent(
+        &self,
+        evt: &EventFd,
+        addr: IoEventAddress,
+        datamatch: Datamatch,
+    ) -> Result<()> {
+        self.ioeventfd(evt, addr, datamatch, true)
     }
 
     fn get_pvclock(&self) -> Result<ClockState> {
@@ -709,6 +818,16 @@ mod tests {
     use sys_util::{pagesize, GuestAddress, MemoryMapping, MemoryMappingArena};
 
     #[test]
+    fn dirty_log_size() {
+        let page_size = pagesize();
+        assert_eq!(dirty_log_bitmap_size(0), 0);
+        assert_eq!(dirty_log_bitmap_size(page_size), 1);
+        assert_eq!(dirty_log_bitmap_size(page_size * 8), 1);
+        assert_eq!(dirty_log_bitmap_size(page_size * 8 + 1), 2);
+        assert_eq!(dirty_log_bitmap_size(page_size * 100), 13);
+    }
+
+    #[test]
     fn new() {
         Kvm::new().unwrap();
     }
@@ -905,5 +1024,69 @@ mod tests {
         let page_size = pagesize();
         assert!(mmap_size >= page_size);
         assert!(mmap_size % page_size == 0);
+    }
+
+    #[test]
+    fn register_ioevent() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let evtfd = EventFd::new().unwrap();
+        vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
+            .unwrap();
+        vm.register_ioevent(&evtfd, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)
+            .unwrap();
+        vm.register_ioevent(
+            &evtfd,
+            IoEventAddress::Pio(0xc1),
+            Datamatch::U8(Some(0x7fu8)),
+        )
+        .unwrap();
+        vm.register_ioevent(
+            &evtfd,
+            IoEventAddress::Pio(0xc2),
+            Datamatch::U16(Some(0x1337u16)),
+        )
+        .unwrap();
+        vm.register_ioevent(
+            &evtfd,
+            IoEventAddress::Pio(0xc4),
+            Datamatch::U32(Some(0xdeadbeefu32)),
+        )
+        .unwrap();
+        vm.register_ioevent(
+            &evtfd,
+            IoEventAddress::Pio(0xc8),
+            Datamatch::U64(Some(0xdeadbeefdeadbeefu64)),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn unregister_ioevent() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let evtfd = EventFd::new().unwrap();
+        vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
+            .unwrap();
+        vm.register_ioevent(&evtfd, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)
+            .unwrap();
+        vm.register_ioevent(
+            &evtfd,
+            IoEventAddress::Mmio(0x1004),
+            Datamatch::U8(Some(0x7fu8)),
+        )
+        .unwrap();
+        vm.unregister_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
+            .unwrap();
+        vm.unregister_ioevent(&evtfd, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)
+            .unwrap();
+        vm.unregister_ioevent(
+            &evtfd,
+            IoEventAddress::Mmio(0x1004),
+            Datamatch::U8(Some(0x7fu8)),
+        )
+        .unwrap();
     }
 }

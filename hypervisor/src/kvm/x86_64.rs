@@ -8,7 +8,8 @@ use libc::E2BIG;
 
 use kvm_sys::*;
 use sys_util::{
-    errno_result, error, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ref, Error, Result,
+    errno_result, error, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
+    Error, GuestAddress, Result,
 };
 
 use super::{Kvm, KvmVcpu, KvmVm};
@@ -240,6 +241,33 @@ impl VmX86_64 for KvmVm {
         // create_vcpu is declared separately in VmAArch64 and VmX86, so it can return VcpuAArch64
         // or VcpuX86.  But both use the same implementation in KvmVm::create_vcpu.
         KvmVm::create_vcpu(self, id)
+    }
+
+    /// Sets the address of the three-page region in the VM's address space.
+    ///
+    /// See the documentation on the KVM_SET_TSS_ADDR ioctl.
+    fn set_tss_addr(&self, addr: GuestAddress) -> Result<()> {
+        // Safe because we know that our file is a VM fd and we verify the return result.
+        let ret = unsafe { ioctl_with_val(self, KVM_SET_TSS_ADDR(), addr.offset() as u64) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Sets the address of a one-page region in the VM's address space.
+    ///
+    /// See the documentation on the KVM_SET_IDENTITY_MAP_ADDR ioctl.
+    fn set_identity_map_addr(&self, addr: GuestAddress) -> Result<()> {
+        // Safe because we know that our file is a VM fd and we verify the return result.
+        let ret =
+            unsafe { ioctl_with_ref(self, KVM_SET_IDENTITY_MAP_ADDR(), &(addr.offset() as u64)) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
     }
 }
 
@@ -763,5 +791,13 @@ mod tests {
             },
         ])
         .unwrap();
+    }
+
+    #[test]
+    fn set_identity_map_addr() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        vm.set_identity_map_addr(GuestAddress(0x20000)).unwrap();
     }
 }
