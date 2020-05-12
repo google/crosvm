@@ -31,8 +31,8 @@ use super::protocol::{
 };
 pub use crate::virtio::gpu::virtio_backend::{VirtioBackend, VirtioResource};
 use crate::virtio::gpu::{
-    Backend, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_RESOURCE_BLOB, VIRTIO_GPU_F_RESOURCE_UUID,
-    VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_F_VULKAN,
+    Backend, VirtioScanoutBlobData, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_RESOURCE_BLOB,
+    VIRTIO_GPU_F_RESOURCE_UUID, VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_F_VULKAN,
 };
 use crate::virtio::resource_bridge::{PlaneInfo, ResourceInfo, ResourceResponse};
 
@@ -46,6 +46,7 @@ struct Virtio3DResource {
     kvm_slot: Option<u32>,
     size: u64,
     blob_flags: u32,
+    scanout_data: Option<VirtioScanoutBlobData>,
 }
 
 impl Virtio3DResource {
@@ -60,6 +61,7 @@ impl Virtio3DResource {
             // The size of the host resource isn't really zero, but it's undefined by
             // virtio_gpu_resource_create_3d
             size: 0,
+            scanout_data: None,
         }
     }
 
@@ -78,6 +80,7 @@ impl Virtio3DResource {
             kvm_slot: None,
             blob_flags,
             size,
+            scanout_data: None,
         }
     }
 
@@ -111,14 +114,31 @@ impl VirtioResource for Virtio3DResource {
             }
         };
 
+        let (width, height, format, stride, offset) = match self.scanout_data {
+            Some(data) => (
+                data.width,
+                data.height,
+                data.drm_format.into(),
+                data.strides[0],
+                data.offsets[0],
+            ),
+            None => (
+                self.width,
+                self.height,
+                query.out_fourcc,
+                query.out_strides[0],
+                query.out_offsets[0],
+            ),
+        };
+
         match display.borrow_mut().import_dmabuf(
             dmabuf.as_raw_fd(),
-            query.out_offsets[0],
-            query.out_strides[0],
+            offset,
+            stride,
             query.out_modifier,
-            self.width,
-            self.height,
-            query.out_fourcc,
+            width,
+            height,
+            format,
         ) {
             Ok(import_id) => {
                 self.display_import = Some((display.clone(), import_id));
@@ -385,8 +405,17 @@ impl Backend for Virtio3DBackend {
     }
 
     /// Sets the given resource id as the source of scanout to the display.
-    fn set_scanout(&mut self, _scanout_id: u32, resource_id: u32) -> GpuResponse {
+    fn set_scanout(
+        &mut self,
+        _scanout_id: u32,
+        resource_id: u32,
+        scanout_data: Option<VirtioScanoutBlobData>,
+    ) -> GpuResponse {
         if resource_id == 0 || self.resources.get_mut(&resource_id).is_some() {
+            match self.resources.get_mut(&resource_id) {
+                Some(resource) => resource.scanout_data = scanout_data,
+                None => (),
+            }
             self.base.set_scanout(resource_id)
         } else {
             GpuResponse::ErrInvalidResourceId

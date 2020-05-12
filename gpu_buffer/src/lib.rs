@@ -30,7 +30,7 @@
 //! # }
 //! ```
 
-mod drm_formats;
+pub mod drm_formats;
 mod raw;
 pub mod rendernode;
 

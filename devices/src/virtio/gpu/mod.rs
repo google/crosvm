@@ -24,6 +24,7 @@ use data_model::*;
 
 use sys_util::{debug, error, warn, EventFd, GuestAddress, GuestMemory, PollContext, PollToken};
 
+use gpu_buffer::Format;
 pub use gpu_display::EventDevice;
 use gpu_display::*;
 use gpu_renderer::RendererFlags;
@@ -101,6 +102,15 @@ impl Default for GpuParameters {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct VirtioScanoutBlobData {
+    pub width: u32,
+    pub height: u32,
+    pub drm_format: Format,
+    pub strides: [u32; 4],
+    pub offsets: [u32; 4],
+}
+
 /// A virtio-gpu backend state tracker which supports display and potentially accelerated rendering.
 ///
 /// Commands from the virtio-gpu protocol can be submitted here using the methods, and they will be
@@ -161,8 +171,13 @@ trait Backend {
     /// Removes the guest's reference count for the given resource id.
     fn unref_resource(&mut self, id: u32) -> GpuResponse;
 
-    /// Sets the given resource id as the source of scanout to the display.
-    fn set_scanout(&mut self, _scanout_id: u32, resource_id: u32) -> GpuResponse;
+    /// Sets the given resource id as the source of scanout to the display, with optional blob data.
+    fn set_scanout(
+        &mut self,
+        _scanout_id: u32,
+        resource_id: u32,
+        scanout_data: Option<VirtioScanoutBlobData>,
+    ) -> GpuResponse;
 
     /// Flushes the given rectangle of pixels of the given resource to the display.
     fn flush_resource(&mut self, id: u32, x: u32, y: u32, width: u32, height: u32) -> GpuResponse;
@@ -479,9 +494,11 @@ impl Frontend {
             GpuCommand::ResourceUnref(info) => {
                 self.backend.unref_resource(info.resource_id.to_native())
             }
-            GpuCommand::SetScanout(info) => self
-                .backend
-                .set_scanout(info.scanout_id.to_native(), info.resource_id.to_native()),
+            GpuCommand::SetScanout(info) => self.backend.set_scanout(
+                info.scanout_id.to_native(),
+                info.resource_id.to_native(),
+                None,
+            ),
             GpuCommand::ResourceFlush(info) => self.backend.flush_resource(
                 info.resource_id.to_native(),
                 info.r.x.to_native(),
@@ -678,6 +695,42 @@ impl Frontend {
                     vecs,
                     mem,
                 )
+            }
+            GpuCommand::SetScanoutBlob(info) => {
+                let scanout_id = info.scanout_id.to_native();
+                let resource_id = info.resource_id.to_native();
+                let virtio_gpu_format = info.format.to_native();
+                let width = info.width.to_native();
+                let height = info.width.to_native();
+                let mut strides: [u32; 4] = [0; 4];
+                let mut offsets: [u32; 4] = [0; 4];
+
+                // As of v4.19, virtio-gpu kms only really uses these formats.  If that changes,
+                // the following may have to change too.
+                let drm_format = match virtio_gpu_format {
+                    VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM => Format::new(b'X', b'R', b'2', b'4'),
+                    VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM => Format::new(b'A', b'R', b'2', b'4'),
+                    _ => {
+                        error!("unrecognized virtio-gpu format {}", virtio_gpu_format);
+                        return GpuResponse::ErrUnspec;
+                    }
+                };
+
+                for plane_index in 0..PLANE_INFO_MAX_COUNT {
+                    offsets[plane_index] = info.offsets[plane_index].to_native();
+                    strides[plane_index] = info.strides[plane_index].to_native();
+                }
+
+                let scanout = VirtioScanoutBlobData {
+                    width,
+                    height,
+                    drm_format,
+                    strides,
+                    offsets,
+                };
+
+                self.backend
+                    .set_scanout(scanout_id, resource_id, Some(scanout))
             }
             GpuCommand::ResourceMapBlob(info) => {
                 let resource_id = info.resource_id.to_native();

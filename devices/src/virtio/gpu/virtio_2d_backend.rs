@@ -22,7 +22,7 @@ use vm_control::VmMemoryControlRequestSocket;
 
 use super::protocol::GpuResponse;
 pub use super::virtio_backend::{VirtioBackend, VirtioResource};
-use crate::virtio::gpu::{Backend, VIRTIO_F_VERSION_1};
+use crate::virtio::gpu::{Backend, VirtioScanoutBlobData, VIRTIO_F_VERSION_1};
 use crate::virtio::resource_bridge::ResourceResponse;
 
 #[derive(Debug)]
@@ -511,7 +511,12 @@ impl Backend for Virtio2DBackend {
     }
 
     /// Sets the given resource id as the source of scanout to the display.
-    fn set_scanout(&mut self, _scanout_id: u32, resource_id: u32) -> GpuResponse {
+    fn set_scanout(
+        &mut self,
+        _scanout_id: u32,
+        resource_id: u32,
+        _scanout_data: Option<VirtioScanoutBlobData>,
+    ) -> GpuResponse {
         if resource_id == 0 || self.resources.get_mut(&resource_id).is_some() {
             self.base.set_scanout(resource_id)
         } else {

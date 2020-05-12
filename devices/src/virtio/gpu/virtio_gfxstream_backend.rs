@@ -24,7 +24,7 @@ use vm_control::VmMemoryControlRequestSocket;
 
 use super::protocol::GpuResponse;
 pub use super::virtio_backend::{VirtioBackend, VirtioResource};
-use crate::virtio::gpu::{Backend, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_VIRGL};
+use crate::virtio::gpu::{Backend, VirtioScanoutBlobData, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_VIRGL};
 use crate::virtio::resource_bridge::ResourceResponse;
 
 // C definitions related to gfxstream
@@ -369,7 +369,12 @@ impl Backend for VirtioGfxStreamBackend {
     }
 
     /// Sets the given resource id as the source of scanout to the display.
-    fn set_scanout(&mut self, _scanout_id: u32, _resource_id: u32) -> GpuResponse {
+    fn set_scanout(
+        &mut self,
+        _scanout_id: u32,
+        _resource_id: u32,
+        _scanout_data: Option<VirtioScanoutBlobData>,
+    ) -> GpuResponse {
         GpuResponse::OkNoData
     }
 
