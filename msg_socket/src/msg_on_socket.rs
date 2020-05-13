@@ -175,7 +175,7 @@ impl<T: MsgOnSocket> MsgOnSocket for Option<T> {
     fn msg_size(&self) -> usize {
         match self {
             Some(v) => v.msg_size() + 1,
-            None => 0,
+            None => 1,
         }
     }
 
