@@ -143,30 +143,6 @@ impl MsgOnSocket for SysError {
     }
 }
 
-impl MsgOnSocket for RawFd {
-    fn fixed_size() -> Option<usize> {
-        Some(0)
-    }
-
-    fn fd_count(&self) -> usize {
-        1
-    }
-
-    unsafe fn read_from_buffer(_buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
-        if fds.is_empty() {
-            return Err(MsgError::ExpectFd);
-        }
-        Ok((fds[0], 1))
-    }
-    fn write_to_buffer(&self, _buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
-        if fds.is_empty() {
-            return Err(MsgError::WrongFdBufferSize);
-        }
-        fds[0] = *self;
-        Ok(1)
-    }
-}
-
 impl<T: MsgOnSocket> MsgOnSocket for Option<T> {
     fn uses_fd() -> bool {
         T::uses_fd()
@@ -288,7 +264,7 @@ macro_rules! rawfd_impl {
                 Ok(($type::from_raw_fd(fds[0]), 1))
             }
             fn write_to_buffer(&self, _buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
-                if fds.len() < 1 {
+                if fds.is_empty() {
                     return Err(MsgError::WrongFdBufferSize);
                 }
                 fds[0] = self.as_raw_fd();

@@ -19,7 +19,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use libc::{EINVAL, EIO, ENODEV};
 
 use kvm::{IrqRoute, IrqSource, Vm};
-use msg_socket::{MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
+use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{Alloc, GpuMemoryDesc, MmioType, SystemAllocator};
 use sys_util::{error, Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError, Result};
 
@@ -53,13 +53,16 @@ impl MsgOnSocket for MaybeOwnedFd {
         1usize
     }
     unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
-        let (fd, size) = RawFd::read_from_buffer(buffer, fds)?;
-        let file = File::from_raw_fd(fd);
+        let (file, size) = File::read_from_buffer(buffer, fds)?;
         Ok((MaybeOwnedFd::Owned(file), size))
     }
-    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
-        let fd = self.as_raw_fd();
-        fd.write_to_buffer(buffer, fds)
+    fn write_to_buffer(&self, _buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
+        if fds.is_empty() {
+            return Err(MsgError::WrongFdBufferSize);
+        }
+
+        fds[0] = self.as_raw_fd();
+        Ok(1)
     }
 }
 
