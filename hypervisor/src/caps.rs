@@ -10,3 +10,14 @@ pub enum HypervisorCap {
     TscDeadlineTimer,
     UserMemory,
 }
+
+/// A capability the `Vm` can possibly expose.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VmCap {
+    /// Track dirty pages
+    DirtyLog,
+    /// Paravirtualized clock device
+    PvClock,
+    /// PV clock can be notified when guest is being paused
+    PvClockSuspend,
+}

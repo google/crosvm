@@ -33,7 +33,7 @@ use sys_util::{
 
 use crate::{
     ClockState, DeviceKind, Hypervisor, HypervisorCap, IrqRoute, IrqSource, RunnableVcpu, Vcpu,
-    VcpuExit, Vm,
+    VcpuExit, Vm, VmCap,
 };
 
 // Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
@@ -290,6 +290,23 @@ impl Vm for KvmVm {
             mem_regions: self.mem_regions.clone(),
             mem_slot_gaps: self.mem_slot_gaps.clone(),
         })
+    }
+
+    fn check_capability(&self, c: VmCap) -> bool {
+        if let Some(val) = self.check_capability_arch(c) {
+            return val;
+        }
+        match c {
+            VmCap::DirtyLog => true,
+            VmCap::PvClock => false,
+            VmCap::PvClockSuspend => self.check_raw_capability(KVM_CAP_KVMCLOCK_CTRL),
+        }
+    }
+
+    fn check_raw_capability(&self, cap: u32) -> bool {
+        // Safe because we know that our file is a KVM fd, and if the cap is invalid KVM assumes
+        // it's an unavailable extension and returns 0.
+        unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), cap as c_ulong) == 1 }
     }
 
     fn get_memory(&self) -> &GuestMemory {
@@ -552,6 +569,16 @@ mod tests {
         })
         .join()
         .unwrap();
+    }
+
+    #[test]
+    fn check_vm_capability() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        assert!(vm.check_raw_capability(KVM_CAP_USER_MEMORY));
+        // I assume nobody is testing this on s390
+        assert!(!vm.check_raw_capability(KVM_CAP_S390_USER_SIGP));
     }
 
     #[test]

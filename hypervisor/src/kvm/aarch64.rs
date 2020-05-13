@@ -8,9 +8,15 @@ use kvm_sys::*;
 use sys_util::{error, Error, Result};
 
 use super::{KvmVcpu, KvmVm};
-use crate::{ClockState, DeviceKind, IrqSourceChip, VcpuAArch64, VmAArch64};
+use crate::{ClockState, DeviceKind, IrqSourceChip, VcpuAArch64, VmAArch64, VmCap};
 
 impl KvmVm {
+    /// Checks if a particular `VmCap` is available, or returns None if arch-independent
+    /// Vm.check_capability() should handle the check.
+    pub fn check_capability_arch(&self, c: VmCap) -> Option<bool> {
+        None
+    }
+
     /// Returns the params to pass to KVM_CREATE_DEVICE for a `kind` device on this arch, or None to
     /// let the arch-independent `KvmVm::create_device` handle it.
     pub fn get_device_params_arch(&self, kind: DeviceKind) -> Option<kvm_create_device> {

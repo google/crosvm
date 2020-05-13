@@ -31,6 +31,20 @@ pub trait Vm: Send + Sized {
     /// Makes a shallow clone this `Vm`.
     fn try_clone(&self) -> Result<Self>;
 
+    /// Checks if a particular `VmCap` is available.
+    ///
+    /// This is distinct from the `Hypervisor` version of this method because some extensions depend
+    /// on the particular `Vm` existence.  This method is encouraged because it more accurately
+    /// reflects the usable capabilities.
+    fn check_capability(&self, c: VmCap) -> bool;
+
+    /// Checks if a particular hypervisor-specific capability is available.
+    ///
+    /// # Arguments
+    ///
+    /// * `cap` - hypervisor-specific constant defined by the hypervisor API (e.g., kvm.h)
+    fn check_raw_capability(&self, cap: u32) -> bool;
+
     /// Gets the guest-mapped memory for the Vm.
     fn get_memory(&self) -> &GuestMemory;
 

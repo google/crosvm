@@ -15,7 +15,7 @@ use super::{Kvm, KvmVcpu, KvmVm};
 use crate::{
     ClockState, CpuId, CpuIdEntry, DeviceKind, HypervisorX86_64, IoapicRedirectionTableEntry,
     IoapicState, IrqSourceChip, LapicState, PicSelect, PicState, PitChannelState, PitState, Regs,
-    VcpuX86_64, VmX86_64,
+    VcpuX86_64, VmCap, VmX86_64,
 };
 
 type KvmCpuId = kvm::CpuId;
@@ -69,6 +69,15 @@ impl HypervisorX86_64 for Kvm {
 }
 
 impl KvmVm {
+    /// Checks if a particular `VmCap` is available, or returns None if arch-independent
+    /// Vm.check_capability() should handle the check.
+    pub fn check_capability_arch(&self, c: VmCap) -> Option<bool> {
+        match c {
+            VmCap::PvClock => Some(true),
+            _ => None,
+        }
+    }
+
     /// Returns the params to pass to KVM_CREATE_DEVICE for a `kind` device on this arch, or None to
     /// let the arch-independent `KvmVm::create_device` handle it.
     pub fn get_device_params_arch(&self, _kind: DeviceKind) -> Option<kvm_create_device> {
@@ -528,6 +537,14 @@ mod tests {
             .get_cpuid_with_initial_capacity(KVM_GET_SUPPORTED_CPUID(), 4)
             .unwrap();
         assert!(cpuid.cpu_id_entries.len() > 4);
+    }
+
+    #[test]
+    fn check_vm_arch_capability() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        assert!(vm.check_capability(VmCap::PvClock));
     }
 
     #[test]
