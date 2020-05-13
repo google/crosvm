@@ -264,4 +264,89 @@ mod test {
         let descriptor = transfer_ring.dequeue_transfer_descriptor().unwrap();
         assert_eq!(descriptor.is_none(), true);
     }
+
+    #[test]
+    fn ring_test_toggle_cycle() {
+        let trb_size = size_of::<Trb>() as u64;
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let mut transfer_ring = RingBuffer::new(String::new(), gm.clone());
+
+        let mut trb = NormalTrb::new();
+        trb.set_trb_type(TrbType::Normal);
+        trb.set_data_buffer(1);
+        trb.set_chain(false);
+        trb.set_cycle(false);
+        gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
+            .unwrap();
+
+        let mut ltrb = LinkTrb::new();
+        ltrb.set_trb_type(TrbType::Link);
+        ltrb.set_ring_segment_pointer(0x100);
+        ltrb.set_toggle_cycle(true);
+        ltrb.set_cycle(false);
+        gm.write_obj_at_addr(ltrb, GuestAddress(0x100 + trb_size))
+            .unwrap();
+
+        // Initial state: consumer cycle = false
+        transfer_ring.set_dequeue_pointer(GuestAddress(0x100));
+        transfer_ring.set_consumer_cycle_state(false);
+
+        // Read first transfer descriptor.
+        let descriptor = transfer_ring
+            .dequeue_transfer_descriptor()
+            .unwrap()
+            .unwrap();
+        assert_eq!(descriptor.len(), 1);
+        assert_eq!(descriptor[0].trb.get_parameter(), 1);
+
+        // Cycle bit should be unchanged since we haven't advanced past the Link TRB yet.
+        assert_eq!(transfer_ring.consumer_cycle_state, false);
+
+        // Overwrite the first TRB with a new one (data = 2)
+        // with the new producer cycle bit state (true).
+        let mut trb = NormalTrb::new();
+        trb.set_trb_type(TrbType::Normal);
+        trb.set_data_buffer(2);
+        trb.set_cycle(true); // Link TRB toggled the cycle.
+        gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
+            .unwrap();
+
+        // Read new transfer descriptor.
+        let descriptor = transfer_ring
+            .dequeue_transfer_descriptor()
+            .unwrap()
+            .unwrap();
+        assert_eq!(descriptor.len(), 1);
+        assert_eq!(descriptor[0].trb.get_parameter(), 2);
+
+        assert_eq!(transfer_ring.consumer_cycle_state, true);
+
+        // Update the Link TRB with the new cycle bit.
+        let mut ltrb = LinkTrb::new();
+        ltrb.set_trb_type(TrbType::Link);
+        ltrb.set_ring_segment_pointer(0x100);
+        ltrb.set_toggle_cycle(true);
+        ltrb.set_cycle(true); // Producer cycle state is now 1.
+        gm.write_obj_at_addr(ltrb, GuestAddress(0x100 + trb_size))
+            .unwrap();
+
+        // Overwrite the first TRB again with a new one (data = 3)
+        // with the new producer cycle bit state (false).
+        let mut trb = NormalTrb::new();
+        trb.set_trb_type(TrbType::Normal);
+        trb.set_data_buffer(3);
+        trb.set_cycle(false); // Link TRB toggled the cycle.
+        gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
+            .unwrap();
+
+        // Read new transfer descriptor.
+        let descriptor = transfer_ring
+            .dequeue_transfer_descriptor()
+            .unwrap()
+            .unwrap();
+        assert_eq!(descriptor.len(), 1);
+        assert_eq!(descriptor[0].trb.get_parameter(), 3);
+
+        assert_eq!(transfer_ring.consumer_cycle_state, false);
+    }
 }
