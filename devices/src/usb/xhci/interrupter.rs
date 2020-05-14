@@ -187,7 +187,8 @@ impl Interrupter {
     }
 
     fn interrupt_if_needed(&mut self) -> Result<()> {
-        if self.enabled && !self.event_ring.is_empty() && !self.event_handler_busy {
+        // TODO(dverkamp): re-add !self.event_handler_busy after solving https://crbug.com/1082930
+        if self.enabled && !self.event_ring.is_empty() {
             self.interrupt()?;
         }
         Ok(())
