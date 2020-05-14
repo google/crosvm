@@ -24,7 +24,7 @@ use sys_util::{
     GuestAddress, GuestMemory, MappedRegion, MmapError, RawDescriptor, Result, SafeDescriptor,
 };
 
-use crate::{ClockState, Hypervisor, HypervisorCap, RunnableVcpu, Vcpu, VcpuExit, Vm};
+use crate::{ClockState, DeviceKind, Hypervisor, HypervisorCap, RunnableVcpu, Vcpu, VcpuExit, Vm};
 
 // Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
 // from guest physical to host user pages.
@@ -280,6 +280,34 @@ impl Vm for KvmVm {
         self.mem_slot_gaps.lock().push(MemSlot(slot));
         regions.remove(&slot);
         Ok(())
+    }
+
+    fn create_device(&self, kind: DeviceKind) -> Result<SafeDescriptor> {
+        let device = if let Some(dev) = self.get_device_params_arch(kind) {
+            dev
+        } else {
+            match kind {
+                DeviceKind::Vfio => kvm_create_device {
+                    type_: kvm_device_type_KVM_DEV_TYPE_VFIO,
+                    fd: 0,
+                    flags: 0,
+                },
+
+                // ARM has additional DeviceKinds, so it needs the catch-all pattern
+                #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+                _ => return Err(Error::new(libc::ENXIO)),
+            }
+        };
+
+        // Safe because we know that our file is a VM fd, we know the kernel will only write correct
+        // amount of memory to our pointer, and we verify the return result.
+        let ret = unsafe { sys_util::ioctl_with_ref(self, KVM_CREATE_DEVICE(), &device) };
+        if ret == 0 {
+            // Safe because we verify that ret is valid and we own the fd.
+            Ok(unsafe { SafeDescriptor::from_raw_descriptor(device.fd as i32) })
+        } else {
+            errno_result()
+        }
     }
 
     fn get_pvclock(&self) -> Result<ClockState> {

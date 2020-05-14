@@ -13,8 +13,9 @@ use sys_util::{
 
 use super::{Kvm, KvmVcpu, KvmVm};
 use crate::{
-    ClockState, CpuId, CpuIdEntry, HypervisorX86_64, IoapicRedirectionTableEntry, IoapicState,
-    LapicState, PicSelect, PicState, PitChannelState, PitState, Regs, VcpuX86_64, VmX86_64,
+    ClockState, CpuId, CpuIdEntry, DeviceKind, HypervisorX86_64, IoapicRedirectionTableEntry,
+    IoapicState, LapicState, PicSelect, PicState, PitChannelState, PitState, Regs, VcpuX86_64,
+    VmX86_64,
 };
 
 type KvmCpuId = kvm::CpuId;
@@ -68,6 +69,12 @@ impl HypervisorX86_64 for Kvm {
 }
 
 impl KvmVm {
+    /// Returns the params to pass to KVM_CREATE_DEVICE for a `kind` device on this arch, or None to
+    /// let the arch-independent `KvmVm::create_device` handle it.
+    pub fn get_device_params_arch(&self, _kind: DeviceKind) -> Option<kvm_create_device> {
+        None
+    }
+
     /// Arch-specific implementation of `Vm::get_pvclock`.
     pub fn get_pvclock_arch(&self) -> Result<ClockState> {
         // Safe because we know that our file is a VM fd, we know the kernel will only write correct

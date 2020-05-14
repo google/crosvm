@@ -12,7 +12,7 @@ pub mod x86_64;
 
 use std::ops::{Deref, DerefMut};
 
-use sys_util::{GuestAddress, GuestMemory, MappedRegion, Result};
+use sys_util::{GuestAddress, GuestMemory, MappedRegion, Result, SafeDescriptor};
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use crate::aarch64::*;
@@ -63,6 +63,9 @@ pub trait Vm: Send + Sized {
     /// Removes and drops the `UserMemoryRegion` that was previously added at the given slot.
     fn remove_memory_region(&mut self, slot: u32) -> Result<()>;
 
+    /// Creates an emulated device.
+    fn create_device(&self, kind: DeviceKind) -> Result<SafeDescriptor>;
+
     /// Retrieves the current timestamp of the paravirtual clock as seen by the current guest.
     /// Only works on VMs that support `VmCap::PvClock`.
     fn get_pvclock(&self) -> Result<ClockState>;
@@ -102,6 +105,19 @@ pub trait RunnableVcpu: Deref<Target = <Self as RunnableVcpu>::Vcpu> + DerefMut 
 #[derive(Debug)]
 pub enum VcpuExit {
     Unknown,
+}
+
+/// A device type to create with `Vm.create_device`
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DeviceKind {
+    /// VFIO device for direct access to devices from userspace
+    Vfio,
+    /// ARM virtual general interrupt controller v2
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    ArmVgicV2,
+    /// ARM virtual general interrupt controller v3
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    ArmVgicV3,
 }
 
 /// A single route for an IRQ.
