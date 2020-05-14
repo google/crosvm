@@ -15,6 +15,11 @@ mod x86_64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use x86_64::*;
 
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+mod aarch64;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+pub use aarch64::*;
+
 /// Trait that abstracts interactions with interrupt controllers.
 ///
 /// Each VM will have one IrqChip instance which is responsible for routing IRQ lines and
@@ -64,6 +69,6 @@ pub trait IrqChip<V: Vcpu>: Send + Sized {
     /// otherwise Some(u32) should be the injected interrupt vector.
     fn get_external_interrupt(&mut self, vcpu_id: usize) -> Result<Option<u32>>;
 
-    /// Attempt to clone this IrqChip instance.
+    /// Attempt to create a shallow clone of this IrqChip instance.
     fn try_clone(&self) -> Result<Self>;
 }

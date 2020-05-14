@@ -2,12 +2,42 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use hypervisor::kvm::KvmVcpu;
-use hypervisor::{IoapicState, LapicState, PicSelect, PicState, PitState};
+use std::sync::Arc;
+use sync::Mutex;
+
+use hypervisor::kvm::{KvmVcpu, KvmVm};
+use hypervisor::{IoapicState, LapicState, PicSelect, PicState, PitState, Vm};
 use kvm_sys::*;
 use sys_util::Result;
 
-use crate::{Bus, IrqChipX86_64, KvmKernelIrqChip};
+use crate::{Bus, IrqChipX86_64};
+
+/// IrqChip implementation where the entire IrqChip is emulated by KVM.
+///
+/// This implementation will use the KVM API to create and configure the in-kernel irqchip.
+pub struct KvmKernelIrqChip {
+    pub(super) vm: KvmVm,
+    pub(super) vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
+}
+
+impl KvmKernelIrqChip {
+    /// Construct a new KvmKernelIrqchip.
+    pub fn new(vm: KvmVm, num_vcpus: usize) -> Result<KvmKernelIrqChip> {
+        vm.create_irq_chip()?;
+
+        Ok(KvmKernelIrqChip {
+            vm,
+            vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
+        })
+    }
+    /// Attempt to create a shallow clone of this x86_64 KvmKernelIrqChip instance.
+    pub(super) fn arch_try_clone(&self) -> Result<Self> {
+        Ok(KvmKernelIrqChip {
+            vm: self.vm.try_clone()?,
+            vcpus: self.vcpus.clone(),
+        })
+    }
+}
 
 impl IrqChipX86_64<KvmVcpu> for KvmKernelIrqChip {
     /// Get the current state of the PIC

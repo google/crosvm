@@ -2,10 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use hypervisor::kvm::{KvmVcpu, KvmVm};
+use hypervisor::kvm::KvmVcpu;
 use hypervisor::IrqRoute;
-use std::sync::Arc;
-use sync::Mutex;
 use sys_util::{EventFd, Result};
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -13,28 +11,12 @@ mod x86_64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use x86_64::*;
 
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+mod aarch64;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+pub use aarch64::*;
+
 use crate::IrqChip;
-
-/// IrqChip implementation where the entire IrqChip is emulated by KVM.
-///
-/// This implementation will use the KVM API to create and configure the in-kernel irqchip.
-pub struct KvmKernelIrqChip {
-    vm: KvmVm,
-    vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
-}
-
-impl KvmKernelIrqChip {
-    /// Construct a new KvmKernelIrqchip.
-    pub fn new(vm: KvmVm, num_vcpus: usize) -> Result<KvmKernelIrqChip> {
-        // TODO (colindr): this constructor needs aarch64 vs x86_64 implementations because we
-        //  want to use vm.create_device instead of create_irq_chip on aarch64
-        vm.create_irq_chip()?;
-        Ok(KvmKernelIrqChip {
-            vm,
-            vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
-        })
-    }
-}
 
 /// This IrqChip only works with Kvm so we only implement it for KvmVcpu.
 impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
@@ -99,7 +81,9 @@ impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
 
     /// Attempt to clone this IrqChip instance.
     fn try_clone(&self) -> Result<Self> {
-        unimplemented!("try_clone for KvmKernelIrqChip is not yet implemented");
+        // Because the KvmKernelIrqchip struct contains arch-specific fields we leave the
+        // cloning to arch-specific implementations
+        self.arch_try_clone()
     }
 }
 
