@@ -21,7 +21,9 @@ use libc::{EINVAL, EIO, ENODEV};
 use kvm::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{Alloc, GpuMemoryDesc, MmioType, SystemAllocator};
-use sys_util::{error, Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError, Result};
+use sys_util::{
+    error, Error as SysError, EventFd, GuestAddress, MappedRegion, MemoryMapping, MmapError, Result,
+};
 
 /// A file descriptor either borrowed or owned by this.
 #[derive(Debug)]
@@ -481,7 +483,7 @@ impl VmMsyncRequest {
         match *self {
             MsyncArena { slot, offset, size } => {
                 if let Some(arena) = vm.get_mmap_arena(slot) {
-                    match arena.msync(offset, size) {
+                    match MappedRegion::msync(arena, offset, size) {
                         Ok(()) => VmMsyncResponse::Ok,
                         Err(e) => match e {
                             MmapError::SystemCallFailed(errno) => VmMsyncResponse::Err(errno),

@@ -12,7 +12,7 @@ pub mod x86_64;
 
 use std::ops::{Deref, DerefMut};
 
-use sys_util::{GuestMemory, Result};
+use sys_util::{GuestAddress, GuestMemory, MappedRegion, Result};
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use crate::aarch64::*;
@@ -33,6 +33,35 @@ pub trait Vm: Send + Sized {
 
     /// Gets the guest-mapped memory for the Vm.
     fn get_memory(&self) -> &GuestMemory;
+
+    /// Inserts the given `MappedRegion` into the VM's address space at `guest_addr`.
+    ///
+    /// The slot that was assigned the memory mapping is returned on success.  The slot can be given
+    /// to `Vm::remove_memory_region` to remove the memory from the VM's address space and take back
+    /// ownership of `mem_region`.
+    ///
+    /// Note that memory inserted into the VM's address space must not overlap with any other memory
+    /// slot's region.
+    ///
+    /// If `read_only` is true, the guest will be able to read the memory as normal, but attempts to
+    /// write will trigger a mmio VM exit, leaving the memory untouched.
+    ///
+    /// If `log_dirty_pages` is true, the slot number can be used to retrieve the pages written to
+    /// by the guest with `get_dirty_log`.
+    fn add_memory_region(
+        &mut self,
+        guest_addr: GuestAddress,
+        mem_region: Box<dyn MappedRegion>,
+        read_only: bool,
+        log_dirty_pages: bool,
+    ) -> Result<u32>;
+
+    /// Does a synchronous msync of the memory mapped at `slot`, syncing `size` bytes starting at
+    /// `offset` from the start of the region.  `offset` must be page aligned.
+    fn msync_memory_region(&mut self, slot: u32, offset: usize, size: usize) -> Result<()>;
+
+    /// Removes and drops the `UserMemoryRegion` that was previously added at the given slot.
+    fn remove_memory_region(&mut self, slot: u32) -> Result<()>;
 
     /// Retrieves the current timestamp of the paravirtual clock as seen by the current guest.
     /// Only works on VMs that support `VmCap::PvClock`.
@@ -67,22 +96,6 @@ pub trait RunnableVcpu: Deref<Target = <Self as RunnableVcpu>::Vcpu> + DerefMut 
     /// Note that the state of the VCPU and associated VM must be setup first for this to do
     /// anything useful.
     fn run(&self) -> Result<VcpuExit>;
-}
-
-/// A memory region in the current process that can be mapped into the guest's memory.
-///
-/// Safe when implementers guarantee `ptr`..`ptr+size` is an mmaped region owned by this object that
-/// can't be unmapped during the `MappedRegion`'s lifetime.
-pub unsafe trait MappedRegion: Send + Sync {
-    /// Returns a pointer to the beginning of the memory region. Should only be
-    /// used for passing this region to ioctls for setting guest memory.
-    fn as_ptr(&self) -> *mut u8;
-
-    /// Returns the size of the memory region in bytes.
-    fn size(&self) -> usize;
-
-    /// Flushes changes to this memory region to the backing file.
-    fn msync(&self) -> Result<()>;
 }
 
 /// A reason why a VCPU exited. One of these returns every time `Vcpu::run` is called.

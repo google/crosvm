@@ -28,7 +28,7 @@ use msg_socket::MsgOnSocket;
 use sys_util::{
     block_signal, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
     ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, EventFd, GuestAddress,
-    GuestMemory, MemoryMapping, MemoryMappingArena, Result, SIGRTMIN,
+    GuestMemory, MappedRegion, MemoryMapping, MemoryMappingArena, Result, SIGRTMIN,
 };
 
 pub use crate::cap::*;

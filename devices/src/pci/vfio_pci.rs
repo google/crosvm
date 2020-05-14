@@ -9,7 +9,7 @@ use std::u32;
 use kvm::Datamatch;
 use msg_socket::{MsgReceiver, MsgSender};
 use resources::{Alloc, MmioType, SystemAllocator};
-use sys_util::{error, EventFd, MemoryMapping};
+use sys_util::{error, EventFd, MappedRegion, MemoryMapping};
 
 use vfio_sys::*;
 use vm_control::{

@@ -13,7 +13,7 @@ use std::result;
 use std::sync::Arc;
 
 use crate::guest_address::GuestAddress;
-use crate::mmap::{self, MemoryMapping};
+use crate::mmap::{self, MappedRegion, MemoryMapping};
 use crate::shm::{MemfdSeals, SharedMemory};
 use crate::{errno, pagesize};
 use data_model::volatile_memory::*;

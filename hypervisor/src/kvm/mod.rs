@@ -15,18 +15,16 @@ use std::os::raw::{c_char, c_ulong};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
 
-use libc::{open, O_CLOEXEC, O_RDWR};
+use libc::{open, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
 
 use kvm_sys::*;
 use sync::Mutex;
 use sys_util::{
     errno_result, ioctl, ioctl_with_ref, ioctl_with_val, AsRawDescriptor, Error, FromRawDescriptor,
-    GuestMemory, RawDescriptor, Result, SafeDescriptor,
+    GuestAddress, GuestMemory, MappedRegion, MmapError, RawDescriptor, Result, SafeDescriptor,
 };
 
-use crate::{
-    ClockState, Hypervisor, HypervisorCap, MappedRegion, RunnableVcpu, Vcpu, VcpuExit, Vm,
-};
+use crate::{ClockState, Hypervisor, HypervisorCap, RunnableVcpu, Vcpu, VcpuExit, Vm};
 
 // Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
 // from guest physical to host user pages.
@@ -153,7 +151,7 @@ impl KvmVm {
                     index as u32,
                     false,
                     false,
-                    guest_addr.offset() as u64,
+                    guest_addr.offset(),
                     size as u64,
                     host_addr as *mut u8,
                 )
@@ -213,6 +211,75 @@ impl Vm for KvmVm {
 
     fn get_memory(&self) -> &GuestMemory {
         &self.guest_mem
+    }
+
+    fn add_memory_region(
+        &mut self,
+        guest_addr: GuestAddress,
+        mem: Box<dyn MappedRegion>,
+        read_only: bool,
+        log_dirty_pages: bool,
+    ) -> Result<u32> {
+        let size = mem.size() as u64;
+        let end_addr = guest_addr.checked_add(size).ok_or(Error::new(EOVERFLOW))?;
+        if self.guest_mem.range_overlap(guest_addr, end_addr) {
+            return Err(Error::new(ENOSPC));
+        }
+        let mut regions = self.mem_regions.lock();
+        let mut gaps = self.mem_slot_gaps.lock();
+        let slot = match gaps.pop() {
+            Some(gap) => gap.0,
+            None => (regions.len() + self.guest_mem.num_regions() as usize) as u32,
+        };
+
+        // Safe because we check that the given guest address is valid and has no overlaps. We also
+        // know that the pointer and size are correct because the MemoryMapping interface ensures
+        // this. We take ownership of the memory mapping so that it won't be unmapped until the slot
+        // is removed.
+        let res = unsafe {
+            set_user_memory_region(
+                &self.vm,
+                slot,
+                read_only,
+                log_dirty_pages,
+                guest_addr.offset() as u64,
+                size,
+                mem.as_ptr(),
+            )
+        };
+
+        if let Err(e) = res {
+            gaps.push(MemSlot(slot));
+            return Err(e);
+        }
+        regions.insert(slot, mem);
+        Ok(slot)
+    }
+
+    fn msync_memory_region(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
+        let mut regions = self.mem_regions.lock();
+        let mem = regions.get_mut(&slot).ok_or(Error::new(ENOENT))?;
+
+        mem.msync(offset, size).map_err(|err| match err {
+            MmapError::InvalidAddress => Error::new(EFAULT),
+            MmapError::NotPageAligned => Error::new(EINVAL),
+            MmapError::SystemCallFailed(e) => e,
+            _ => Error::new(EIO),
+        })
+    }
+
+    fn remove_memory_region(&mut self, slot: u32) -> Result<()> {
+        let mut regions = self.mem_regions.lock();
+        if !regions.contains_key(&slot) {
+            return Err(Error::new(ENOENT));
+        }
+        // Safe because the slot is checked against the list of memory slots.
+        unsafe {
+            set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut())?;
+        }
+        self.mem_slot_gaps.lock().push(MemSlot(slot));
+        regions.remove(&slot);
+        Ok(())
     }
 
     fn get_pvclock(&self) -> Result<ClockState> {
@@ -303,7 +370,7 @@ impl<'a> TryFrom<&'a HypervisorCap> for KvmCap {
 mod tests {
     use super::*;
     use std::thread;
-    use sys_util::GuestAddress;
+    use sys_util::{GuestAddress, MemoryMapping, MemoryMappingArena};
 
     #[test]
     fn new() {
@@ -353,5 +420,80 @@ mod tests {
         vm.get_memory().write_obj_at_addr(67u8, obj_addr).unwrap();
         let read_val: u8 = vm.get_memory().read_obj_from_addr(obj_addr).unwrap();
         assert_eq!(read_val, 67u8);
+    }
+
+    #[test]
+    fn add_memory() {
+        let kvm = Kvm::new().unwrap();
+        let gm =
+            GuestMemory::new(&[(GuestAddress(0), 0x1000), (GuestAddress(0x5000), 0x5000)]).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mem_size = 0x1000;
+        let mem = MemoryMapping::new(mem_size).unwrap();
+        vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
+            .unwrap();
+        let mem = MemoryMapping::new(mem_size).unwrap();
+        vm.add_memory_region(GuestAddress(0x10000), Box::new(mem), false, false)
+            .unwrap();
+    }
+
+    #[test]
+    fn add_memory_ro() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mem_size = 0x1000;
+        let mem = MemoryMapping::new(mem_size).unwrap();
+        vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), true, false)
+            .unwrap();
+    }
+
+    #[test]
+    fn remove_memory() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mem_size = 0x1000;
+        let mem = MemoryMapping::new(mem_size).unwrap();
+        let slot = vm
+            .add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
+            .unwrap();
+        vm.remove_memory_region(slot).unwrap();
+    }
+
+    #[test]
+    fn remove_invalid_memory() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        assert!(vm.remove_memory_region(0).is_err());
+    }
+
+    #[test]
+    fn overlap_memory() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mem_size = 0x2000;
+        let mem = MemoryMapping::new(mem_size).unwrap();
+        assert!(vm
+            .add_memory_region(GuestAddress(0x2000), Box::new(mem), false, false)
+            .is_err());
+    }
+
+    #[test]
+    fn sync_memory() {
+        let kvm = Kvm::new().unwrap();
+        let gm =
+            GuestMemory::new(&[(GuestAddress(0), 0x1000), (GuestAddress(0x5000), 0x5000)]).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mem_size = 0x1000;
+        let mem = MemoryMappingArena::new(mem_size).unwrap();
+        let slot = vm
+            .add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
+            .unwrap();
+        vm.msync_memory_region(slot, mem_size, 0).unwrap();
+        assert!(vm.msync_memory_region(slot, mem_size + 1, 0).is_err());
+        assert!(vm.msync_memory_region(slot + 1, mem_size, 0).is_err());
     }
 }
