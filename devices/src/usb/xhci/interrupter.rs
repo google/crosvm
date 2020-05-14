@@ -45,7 +45,6 @@ pub struct Interrupter {
     erdp: Register<u64>,
     event_handler_busy: bool,
     enabled: bool,
-    pending: bool,
     moderation_interval: u16,
     moderation_counter: u16,
     event_ring: EventRing,
@@ -61,7 +60,6 @@ impl Interrupter {
             erdp: regs.erdp.clone(),
             event_handler_busy: false,
             enabled: false,
-            pending: false,
             moderation_interval: 0,
             moderation_counter: 0,
             event_ring: EventRing::new(mem),
@@ -76,7 +74,6 @@ impl Interrupter {
     /// Add event to event ring.
     fn add_event(&mut self, trb: Trb) -> Result<()> {
         self.event_ring.add_event(trb).map_err(Error::AddEvent)?;
-        self.pending = true;
         self.interrupt_if_needed()
     }
 
@@ -169,9 +166,6 @@ impl Interrupter {
     pub fn set_event_ring_dequeue_pointer(&mut self, addr: GuestAddress) -> Result<()> {
         usb_debug!("interrupter set dequeue ptr addr {:#x}", addr.0);
         self.event_ring.set_dequeue_pointer(addr);
-        if addr == self.event_ring.get_enqueue_pointer() {
-            self.pending = false;
-        }
         self.interrupt_if_needed()
     }
 
@@ -186,7 +180,6 @@ impl Interrupter {
     pub fn interrupt(&mut self) -> Result<()> {
         usb_debug!("sending interrupt");
         self.event_handler_busy = true;
-        self.pending = false;
         self.usbsts.set_bits(USB_STS_EVENT_INTERRUPT);
         self.iman.set_bits(IMAN_INTERRUPT_PENDING);
         self.erdp.set_bits(ERDP_EVENT_HANDLER_BUSY);
@@ -194,7 +187,7 @@ impl Interrupter {
     }
 
     fn interrupt_if_needed(&mut self) -> Result<()> {
-        if self.enabled && self.pending && !self.event_handler_busy {
+        if self.enabled && !self.event_ring.is_empty() && !self.event_handler_busy {
             self.interrupt()?;
         }
         Ok(())
