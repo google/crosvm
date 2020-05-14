@@ -24,7 +24,9 @@ use sys_util::{
     GuestMemory, RawDescriptor, Result, SafeDescriptor,
 };
 
-use crate::{Hypervisor, HypervisorCap, MappedRegion, RunnableVcpu, Vcpu, VcpuExit, Vm};
+use crate::{
+    ClockState, Hypervisor, HypervisorCap, MappedRegion, RunnableVcpu, Vcpu, VcpuExit, Vm,
+};
 
 // Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
 // from guest physical to host user pages.
@@ -183,6 +185,14 @@ impl Vm for KvmVm {
 
     fn get_memory(&self) -> &GuestMemory {
         &self.guest_mem
+    }
+
+    fn get_pvclock(&self) -> Result<ClockState> {
+        self.get_pvclock_arch()
+    }
+
+    fn set_pvclock(&self, state: &ClockState) -> Result<()> {
+        self.set_pvclock_arch(state)
     }
 }
 

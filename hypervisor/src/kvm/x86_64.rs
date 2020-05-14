@@ -4,14 +4,17 @@
 
 use std::convert::TryInto;
 
-use kvm_sys::*;
 use libc::E2BIG;
-use sys_util::{ioctl_with_mut_ptr, Error, Result};
+
+use kvm_sys::*;
+use sys_util::{
+    errno_result, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ref, Error, Result,
+};
 
 use super::{Kvm, KvmVcpu, KvmVm};
 use crate::{
-    CpuId, CpuIdEntry, HypervisorX86_64, IoapicRedirectionTableEntry, IoapicState, LapicState,
-    PicState, PitChannelState, PitState, Regs, VcpuX86_64, VmX86_64,
+    ClockState, CpuId, CpuIdEntry, HypervisorX86_64, IoapicRedirectionTableEntry, IoapicState,
+    LapicState, PicState, PitChannelState, PitState, Regs, VcpuX86_64, VmX86_64,
 };
 
 type KvmCpuId = kvm::CpuId;
@@ -54,6 +57,58 @@ impl Kvm {
     }
 }
 
+impl HypervisorX86_64 for Kvm {
+    fn get_supported_cpuid(&self) -> Result<CpuId> {
+        self.get_cpuid(KVM_GET_SUPPORTED_CPUID())
+    }
+
+    fn get_emulated_cpuid(&self) -> Result<CpuId> {
+        self.get_cpuid(KVM_GET_EMULATED_CPUID())
+    }
+}
+
+impl KvmVm {
+    /// Arch-specific implementation of `Vm::get_pvclock`.
+    pub fn get_pvclock_arch(&self) -> Result<ClockState> {
+        // Safe because we know that our file is a VM fd, we know the kernel will only write correct
+        // amount of memory to our pointer, and we verify the return result.
+        let mut clock_data: kvm_clock_data = unsafe { std::mem::zeroed() };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_CLOCK(), &mut clock_data) };
+        if ret == 0 {
+            Ok(ClockState::from(clock_data))
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Arch-specific implementation of `Vm::set_pvclock`.
+    pub fn set_pvclock_arch(&self, state: &ClockState) -> Result<()> {
+        let clock_data = kvm_clock_data::from(*state);
+        // Safe because we know that our file is a VM fd, we know the kernel will only read correct
+        // amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_CLOCK(), &clock_data) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+}
+
+impl VmX86_64 for KvmVm {
+    type Vcpu = KvmVcpu;
+
+    fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu> {
+        self.create_kvm_vcpu(id)
+    }
+}
+
+impl VcpuX86_64 for KvmVcpu {
+    fn get_regs(&self) -> Result<Regs> {
+        Ok(Regs {})
+    }
+}
+
 impl<'a> From<&'a KvmCpuId> for CpuId {
     fn from(kvm_cpuid: &'a KvmCpuId) -> CpuId {
         let kvm_entries = kvm_cpuid.entries_slice();
@@ -74,27 +129,22 @@ impl<'a> From<&'a KvmCpuId> for CpuId {
     }
 }
 
-impl HypervisorX86_64 for Kvm {
-    fn get_supported_cpuid(&self) -> Result<CpuId> {
-        self.get_cpuid(KVM_GET_SUPPORTED_CPUID())
-    }
-
-    fn get_emulated_cpuid(&self) -> Result<CpuId> {
-        self.get_cpuid(KVM_GET_EMULATED_CPUID())
-    }
-}
-
-impl VmX86_64 for KvmVm {
-    type Vcpu = KvmVcpu;
-
-    fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu> {
-        self.create_kvm_vcpu(id)
+impl From<ClockState> for kvm_clock_data {
+    fn from(state: ClockState) -> Self {
+        kvm_clock_data {
+            clock: state.clock,
+            flags: state.flags,
+            ..Default::default()
+        }
     }
 }
 
-impl VcpuX86_64 for KvmVcpu {
-    fn get_regs(&self) -> Result<Regs> {
-        Ok(Regs {})
+impl From<kvm_clock_data> for ClockState {
+    fn from(clock_data: kvm_clock_data) -> Self {
+        ClockState {
+            clock: clock_data.clock,
+            flags: clock_data.flags,
+        }
     }
 }
 
@@ -305,15 +355,13 @@ impl From<&kvm_pit_channel_state> for PitChannelState {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{
-        DeliveryMode, DeliveryStatus, DestinationMode, IoapicRedirectionTableEntry, IoapicState,
-        LapicState, PicInitState, PicState, PitChannelState, PitRWMode, PitRWState, PitState,
-        TriggerMode,
+        DeliveryMode, DeliveryStatus, DestinationMode, HypervisorX86_64,
+        IoapicRedirectionTableEntry, IoapicState, LapicState, PicInitState, PicState,
+        PitChannelState, PitRWMode, PitRWState, PitState, TriggerMode, Vm,
     };
-    use kvm_sys::*;
-
-    use super::Kvm;
-    use crate::HypervisorX86_64;
+    use sys_util::{GuestAddress, GuestMemory};
 
     #[test]
     fn get_supported_cpuid() {
@@ -500,5 +548,15 @@ mod tests {
         assert_eq!(channel, PitChannelState::from(&kvm_state.channels[0]));
         // convert back and compare
         assert_eq!(state, PitState::from(&kvm_state));
+    }
+
+    #[test]
+    fn clock_handling() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let mut clock_data = vm.get_pvclock().unwrap();
+        clock_data.clock += 1000;
+        vm.set_pvclock(&clock_data).unwrap();
     }
 }

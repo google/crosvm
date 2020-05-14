@@ -33,6 +33,14 @@ pub trait Vm: Send + Sized {
 
     /// Gets the guest-mapped memory for the Vm.
     fn get_memory(&self) -> &GuestMemory;
+
+    /// Retrieves the current timestamp of the paravirtual clock as seen by the current guest.
+    /// Only works on VMs that support `VmCap::PvClock`.
+    fn get_pvclock(&self) -> Result<ClockState>;
+
+    /// Sets the current timestamp of the paravirtual clock as seen by the current guest.
+    /// Only works on VMs that support `VmCap::PvClock`.
+    fn set_pvclock(&self, state: &ClockState) -> Result<()>;
 }
 
 /// A wrapper around using a VCPU.
@@ -83,4 +91,14 @@ pub enum VcpuExit {
     Unknown,
 }
 
+/// A single route for an IRQ.
 pub struct IrqRoute {}
+
+/// The state of the paravirtual clock
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ClockState {
+    /// Current pv clock timestamp, as seen by the guest
+    pub clock: u64,
+    /// Hypervisor-specific feature flags for the pv clock
+    pub flags: u32,
+}
