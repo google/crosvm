@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::cmp;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::{Alloc, Error, Result};
 
@@ -26,11 +26,9 @@ use crate::{Alloc, Error, Result};
 /// ```
 #[derive(Debug, Eq, PartialEq)]
 pub struct AddressAllocator {
-    pool_base: u64,
-    pool_end: u64,
     alignment: u64,
-    next_addr: u64,
     allocs: HashMap<Alloc, (u64, u64, String)>,
+    regions: BTreeSet<(u64, u64)>,
 }
 
 impl AddressAllocator {
@@ -55,12 +53,12 @@ impl AddressAllocator {
         if !alignment.is_power_of_two() || alignment == 0 {
             return Err(Error::BadAlignment);
         }
+        let mut regions = BTreeSet::new();
+        regions.insert((pool_base, pool_end));
         Ok(AddressAllocator {
-            pool_base,
-            pool_end,
             alignment,
-            next_addr: pool_base,
             allocs: HashMap::new(),
+            regions,
         })
     }
 
@@ -85,30 +83,78 @@ impl AddressAllocator {
         if !alignment.is_power_of_two() {
             return Err(Error::BadAlignment);
         }
-        let align_adjust = if self.next_addr % alignment != 0 {
-            alignment - (self.next_addr % alignment)
-        } else {
-            0
-        };
-        let addr = self
-            .next_addr
-            .checked_add(align_adjust)
-            .ok_or(Error::OutOfSpace)?;
-        let end_addr = addr.checked_add(size - 1).ok_or(Error::OutOfSpace)?;
-        if end_addr > self.pool_end {
-            return Err(Error::OutOfSpace);
+
+        // finds first region matching alignment and size.
+        match self
+            .regions
+            .iter()
+            .find(|range| {
+                match range.0 % alignment {
+                    0 => range.0.checked_add(size - 1),
+                    r => range.0.checked_add(size - 1 + alignment - r),
+                }
+                .map_or(false, |end| end <= range.1)
+            })
+            .cloned()
+        {
+            Some(slot) => {
+                self.regions.remove(&slot);
+                let start = match slot.0 % alignment {
+                    0 => slot.0,
+                    r => slot.0 + alignment - r,
+                };
+                let end = start + size - 1;
+                if slot.0 < start {
+                    self.regions.insert((slot.0, start - 1));
+                }
+                if slot.1 > end {
+                    self.regions.insert((end + 1, slot.1));
+                }
+                self.allocs.insert(alloc, (start, size, tag));
+
+                Ok(start)
+            }
+            None => Err(Error::OutOfSpace),
         }
-
-        // TODO(dgreid): Use a smarter allocation strategy. The current strategy is just
-        // bumping this pointer, meaning it will eventually exhaust available addresses.
-        self.next_addr = end_addr.saturating_add(1);
-
-        self.allocs.insert(alloc, (addr, size, tag));
-        Ok(addr)
     }
 
     pub fn allocate(&mut self, size: u64, alloc: Alloc, tag: String) -> Result<u64> {
         self.allocate_with_align(size, alloc, tag, self.alignment)
+    }
+
+    /// Allocates a range of addresses from the managed region with an optional tag
+    /// and required location. Allocation alignment is not enforced.
+    /// Returns OutOfSpace if requested range is not available (e.g. already allocated
+    /// with a different alloc tag).
+    pub fn allocate_at(&mut self, start: u64, size: u64, alloc: Alloc, tag: String) -> Result<()> {
+        if self.allocs.contains_key(&alloc) {
+            return Err(Error::ExistingAlloc(alloc));
+        }
+        if size == 0 {
+            return Err(Error::AllocSizeZero);
+        }
+
+        let end = start.checked_add(size - 1).ok_or(Error::OutOfSpace)?;
+        match self
+            .regions
+            .iter()
+            .find(|range| range.0 <= start && range.1 >= end)
+            .cloned()
+        {
+            Some(slot) => {
+                self.regions.remove(&slot);
+                if slot.0 < start {
+                    self.regions.insert((slot.0, start - 1));
+                }
+                if slot.1 > end {
+                    self.regions.insert((end + 1, slot.1));
+                }
+                self.allocs.insert(alloc, (start, size, tag));
+
+                Ok(())
+            }
+            None => Err(Error::OutOfSpace),
+        }
     }
 
     /// Returns allocation associated with `alloc`, or None if no such allocation exists.
@@ -168,6 +214,44 @@ mod tests {
         assert_eq!(
             pool.allocate(0x800, Alloc::Anon(2), String::from("bar2")),
             Ok(0x1800)
+        );
+    }
+
+    #[test]
+    fn allocate_with_special_alignment() {
+        let mut pool = AddressAllocator::new(0x1000, 0x1000, Some(0x100)).unwrap();
+        assert_eq!(
+            pool.allocate(0x10, Alloc::Anon(0), String::from("bar0")),
+            Ok(0x1000)
+        );
+        assert_eq!(
+            pool.allocate_at(0x1200, 0x100, Alloc::Anon(1), String::from("bar1")),
+            Ok(())
+        );
+        assert_eq!(
+            pool.allocate_with_align(0x800, Alloc::Anon(2), String::from("bar2"), 0x800),
+            Ok(0x1800)
+        );
+    }
+
+    #[test]
+    fn allocate_and_split_allocate_at() {
+        let mut pool = AddressAllocator::new(0x1000, 0x1000, Some(0x100)).unwrap();
+        assert_eq!(
+            pool.allocate_at(0x1200, 0x800, Alloc::Anon(0), String::from("bar0")),
+            Ok(())
+        );
+        assert_eq!(
+            pool.allocate(0x800, Alloc::Anon(1), String::from("bar1")),
+            Err(Error::OutOfSpace)
+        );
+        assert_eq!(
+            pool.allocate(0x600, Alloc::Anon(2), String::from("bar2")),
+            Ok(0x1a00)
+        );
+        assert_eq!(
+            pool.allocate(0x200, Alloc::Anon(3), String::from("bar3")),
+            Ok(0x1000)
         );
     }
 
