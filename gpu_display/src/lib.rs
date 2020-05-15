@@ -107,7 +107,7 @@ impl<'a> GpuDisplayFramebuffer<'a> {
             .checked_add(width_bytes)?;
         let slice = self
             .framebuffer
-            .sub_slice(byte_offset as u64, count as u64)
+            .sub_slice(byte_offset as usize, count as usize)
             .unwrap();
 
         Some(GpuDisplayFramebuffer { slice, ..*self })

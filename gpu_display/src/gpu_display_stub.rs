@@ -18,7 +18,6 @@ struct Buffer {
     width: u32,
     height: u32,
     bytes_per_pixel: u32,
-    bytes_total: u64,
     bytes: Vec<u8>,
 }
 
@@ -28,7 +27,7 @@ impl Drop for Buffer {
 
 impl Buffer {
     fn as_volatile_slice(&mut self) -> VolatileSlice {
-        unsafe { VolatileSlice::new(self.bytes.as_mut_ptr(), self.bytes_total) }
+        VolatileSlice::new(self.bytes.as_mut_slice())
     }
 
     fn stride(&self) -> usize {
@@ -66,7 +65,6 @@ impl Surface {
                 width: self.width,
                 height: self.height,
                 bytes_per_pixel,
-                bytes_total,
                 bytes: vec![0; bytes_total as usize],
             });
         }

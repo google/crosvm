@@ -461,7 +461,6 @@ impl AsRawFd for Buffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use data_model::VolatileMemory;
     use std::fmt::Write;
 
     #[test]

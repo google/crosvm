@@ -255,10 +255,7 @@ impl DisplayT for DisplayWl {
         let buffer_index = (surface.buffer_index.get() + 1) % BUFFER_COUNT;
         let framebuffer = surface
             .buffer_mem
-            .get_slice(
-                (buffer_index * surface.buffer_size) as u64,
-                surface.buffer_size as u64,
-            )
+            .get_slice(buffer_index * surface.buffer_size, surface.buffer_size)
             .ok()?;
         Some(GpuDisplayFramebuffer::new(
             framebuffer,

@@ -98,7 +98,7 @@ pub trait FileReadWriteVolatile {
             }
             // Will panic if read_volatile read more bytes than we gave it, which would be worthy of
             // a panic.
-            slice = slice.offset(bytes_read as u64).unwrap();
+            slice = slice.offset(bytes_read).unwrap();
         }
         Ok(())
     }
@@ -129,7 +129,7 @@ pub trait FileReadWriteVolatile {
             }
             // Will panic if read_volatile read more bytes than we gave it, which would be worthy of
             // a panic.
-            slice = slice.offset(bytes_written as u64).unwrap();
+            slice = slice.offset(bytes_written).unwrap();
         }
         Ok(())
     }
@@ -187,7 +187,7 @@ pub trait FileReadWriteAtVolatile {
             match self.read_at_volatile(slice, offset) {
                 Ok(0) => return Err(Error::from(ErrorKind::UnexpectedEof)),
                 Ok(n) => {
-                    slice = slice.offset(n as u64).unwrap();
+                    slice = slice.offset(n).unwrap();
                     offset = offset.checked_add(n as u64).unwrap();
                 }
                 Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
@@ -221,7 +221,7 @@ pub trait FileReadWriteAtVolatile {
             match self.write_at_volatile(slice, offset) {
                 Ok(0) => return Err(Error::from(ErrorKind::WriteZero)),
                 Ok(n) => {
-                    slice = slice.offset(n as u64).unwrap();
+                    slice = slice.offset(n).unwrap();
                     offset = offset.checked_add(n as u64).unwrap();
                 }
                 Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
@@ -282,7 +282,7 @@ macro_rules! volatile_impl {
                 let ret = unsafe {
                     $crate::file_traits::lib::read(
                         self.as_raw_fd(),
-                        slice.as_ptr() as *mut std::ffi::c_void,
+                        slice.as_mut_ptr() as *mut std::ffi::c_void,
                         slice.size() as usize,
                     )
                 };
@@ -297,13 +297,7 @@ macro_rules! volatile_impl {
                 &mut self,
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
             ) -> std::io::Result<usize> {
-                let iovecs: Vec<$crate::file_traits::lib::iovec> = bufs
-                    .iter()
-                    .map(|s| $crate::file_traits::lib::iovec {
-                        iov_base: s.as_ptr() as *mut std::ffi::c_void,
-                        iov_len: s.size() as $crate::file_traits::lib::size_t,
-                    })
-                    .collect();
+                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iovecs(bufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -314,7 +308,7 @@ macro_rules! volatile_impl {
                 let ret = unsafe {
                     $crate::file_traits::lib::readv(
                         self.as_raw_fd(),
-                        &iovecs[0],
+                        iovecs.as_ptr(),
                         iovecs.len() as std::os::raw::c_int,
                     )
                 };
@@ -349,13 +343,7 @@ macro_rules! volatile_impl {
                 &mut self,
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
             ) -> std::io::Result<usize> {
-                let iovecs: Vec<$crate::file_traits::lib::iovec> = bufs
-                    .iter()
-                    .map(|s| $crate::file_traits::lib::iovec {
-                        iov_base: s.as_ptr() as *mut std::ffi::c_void,
-                        iov_len: s.size() as $crate::file_traits::lib::size_t,
-                    })
-                    .collect();
+                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iovecs(bufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -366,7 +354,7 @@ macro_rules! volatile_impl {
                 let ret = unsafe {
                     $crate::file_traits::lib::writev(
                         self.as_raw_fd(),
-                        &iovecs[0],
+                        iovecs.as_ptr(),
                         iovecs.len() as std::os::raw::c_int,
                     )
                 };
@@ -394,7 +382,7 @@ macro_rules! volatile_at_impl {
                 let ret = unsafe {
                     $crate::file_traits::lib::pread64(
                         self.as_raw_fd(),
-                        slice.as_ptr() as *mut std::ffi::c_void,
+                        slice.as_mut_ptr() as *mut std::ffi::c_void,
                         slice.size() as usize,
                         offset as $crate::file_traits::lib::off64_t,
                     )
@@ -412,13 +400,7 @@ macro_rules! volatile_at_impl {
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
                 offset: u64,
             ) -> std::io::Result<usize> {
-                let iovecs: Vec<$crate::file_traits::lib::iovec> = bufs
-                    .iter()
-                    .map(|s| $crate::file_traits::lib::iovec {
-                        iov_base: s.as_ptr() as *mut std::ffi::c_void,
-                        iov_len: s.size() as $crate::file_traits::lib::size_t,
-                    })
-                    .collect();
+                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iovecs(bufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -429,7 +411,7 @@ macro_rules! volatile_at_impl {
                 let ret = unsafe {
                     $crate::file_traits::lib::preadv64(
                         self.as_raw_fd(),
-                        &iovecs[0],
+                        iovecs.as_ptr(),
                         iovecs.len() as std::os::raw::c_int,
                         offset as $crate::file_traits::lib::off64_t,
                     )
@@ -469,13 +451,7 @@ macro_rules! volatile_at_impl {
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
                 offset: u64,
             ) -> std::io::Result<usize> {
-                let iovecs: Vec<$crate::file_traits::lib::iovec> = bufs
-                    .iter()
-                    .map(|s| $crate::file_traits::lib::iovec {
-                        iov_base: s.as_ptr() as *mut std::ffi::c_void,
-                        iov_len: s.size() as $crate::file_traits::lib::size_t,
-                    })
-                    .collect();
+                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iovecs(bufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -486,7 +462,7 @@ macro_rules! volatile_at_impl {
                 let ret = unsafe {
                     $crate::file_traits::lib::pwritev64(
                         self.as_raw_fd(),
-                        &iovecs[0],
+                        iovecs.as_ptr(),
                         iovecs.len() as std::os::raw::c_int,
                         offset as $crate::file_traits::lib::off64_t,
                     )

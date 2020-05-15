@@ -291,9 +291,9 @@ impl FileReadWriteAtVolatile for AndroidSparse {
         ))?;
         let chunk_offset = offset - chunk_start;
         let chunk_size = *expanded_size;
-        let subslice = if chunk_offset + slice.size() > chunk_size {
+        let subslice = if chunk_offset + (slice.size() as u64) > chunk_size {
             slice
-                .sub_slice(0, chunk_size - chunk_offset)
+                .sub_slice(0, (chunk_size - chunk_offset) as usize)
                 .map_err(|e| io::Error::new(ErrorKind::InvalidData, format!("{:?}", e)))?
         } else {
             slice
@@ -331,7 +331,6 @@ impl FileReadWriteAtVolatile for AndroidSparse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use data_model::VolatileMemory;
     use std::io::{Cursor, Write};
     use sys_util::SharedMemory;
 
@@ -435,12 +434,11 @@ mod tests {
         }];
         let mut image = test_image(chunks);
         let mut input_memory = [55u8; 100];
-        let input_volatile_memory = &mut input_memory[..];
         image
-            .read_exact_at_volatile(input_volatile_memory.get_slice(0, 100).unwrap(), 0)
+            .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 0)
             .expect("Could not read");
-        let input_vec: Vec<u8> = input_memory.into_iter().cloned().collect();
-        assert_eq!(input_vec, vec![0u8; 100]);
+        let expected = [0u8; 100];
+        assert_eq!(&expected[..], &input_memory[..]);
     }
 
     #[test]
@@ -451,12 +449,11 @@ mod tests {
         }];
         let mut image = test_image(chunks);
         let mut input_memory = [55u8; 8];
-        let input_volatile_memory = &mut input_memory[..];
         image
-            .read_exact_at_volatile(input_volatile_memory.get_slice(0, 8).unwrap(), 0)
+            .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 0)
             .expect("Could not read");
-        let input_vec: Vec<u8> = input_memory.into_iter().cloned().collect();
-        assert_eq!(input_vec, vec![10, 20, 10, 20, 10, 20, 10, 20]);
+        let expected = [10, 20, 10, 20, 10, 20, 10, 20];
+        assert_eq!(&expected[..], &input_memory[..]);
     }
 
     #[test]
@@ -467,12 +464,11 @@ mod tests {
         }];
         let mut image = test_image(chunks);
         let mut input_memory = [55u8; 6];
-        let input_volatile_memory = &mut input_memory[..];
         image
-            .read_exact_at_volatile(input_volatile_memory.get_slice(0, 6).unwrap(), 1)
+            .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 1)
             .expect("Could not read");
-        let input_vec: Vec<u8> = input_memory.into_iter().cloned().collect();
-        assert_eq!(input_vec, vec![20, 30, 10, 20, 30, 10]);
+        let expected = [20, 30, 10, 20, 30, 10];
+        assert_eq!(&expected[..], &input_memory[..]);
     }
 
     #[test]
@@ -489,12 +485,11 @@ mod tests {
         ];
         let mut image = test_image(chunks);
         let mut input_memory = [55u8; 7];
-        let input_volatile_memory = &mut input_memory[..];
         image
-            .read_exact_at_volatile(input_volatile_memory.get_slice(0, 7).unwrap(), 39)
+            .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 39)
             .expect("Could not read");
-        let input_vec: Vec<u8> = input_memory.into_iter().cloned().collect();
-        assert_eq!(input_vec, vec![20, 30, 10, 20, 30, 10, 20]);
+        let expected = [20, 30, 10, 20, 30, 10, 20];
+        assert_eq!(&expected[..], &input_memory[..]);
     }
 
     #[test]
@@ -506,12 +501,11 @@ mod tests {
         let mut image = test_image(chunks);
         write!(image.file, "hello").expect("Failed to write into internal file");
         let mut input_memory = [55u8; 5];
-        let input_volatile_memory = &mut input_memory[..];
         image
-            .read_exact_at_volatile(input_volatile_memory.get_slice(0, 5).unwrap(), 0)
+            .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 0)
             .expect("Could not read");
-        let input_vec: Vec<u8> = input_memory.into_iter().cloned().collect();
-        assert_eq!(input_vec, vec![104, 101, 108, 108, 111]);
+        let expected = [104, 101, 108, 108, 111];
+        assert_eq!(&expected[..], &input_memory[..]);
     }
 
     #[test]
@@ -528,11 +522,10 @@ mod tests {
         ];
         let mut image = test_image(chunks);
         let mut input_memory = [55u8; 8];
-        let input_volatile_memory = &mut input_memory[..];
         image
-            .read_exact_at_volatile(input_volatile_memory.get_slice(0, 8).unwrap(), 0)
+            .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 0)
             .expect("Could not read");
-        let input_vec: Vec<u8> = input_memory.into_iter().cloned().collect();
-        assert_eq!(input_vec, vec![10, 20, 10, 20, 30, 40, 30, 40]);
+        let expected = [10, 20, 10, 20, 30, 40, 30, 40];
+        assert_eq!(&expected[..], &input_memory[..]);
     }
 }

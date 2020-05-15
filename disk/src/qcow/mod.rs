@@ -1090,8 +1090,7 @@ impl QcowFile {
                     let cluster_size = self.raw_file.cluster_size();
                     let cluster_begin = address - (address % cluster_size);
                     let mut cluster_data = vec![0u8; cluster_size as usize];
-                    let raw_slice = cluster_data.as_mut_slice();
-                    let volatile_slice = raw_slice.get_slice(0, cluster_size).unwrap();
+                    let volatile_slice = VolatileSlice::new(&mut cluster_data);
                     backing.read_exact_at_volatile(volatile_slice, cluster_begin)?;
                     Some(cluster_data)
                 } else {
@@ -1537,12 +1536,13 @@ impl AsRawFds for QcowFile {
 
 impl Read for QcowFile {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let slice = buf.get_slice(0, buf.len() as u64).unwrap();
+        let len = buf.len();
+        let slice = VolatileSlice::new(buf);
         let read_count = self.read_cb(
             self.current_offset,
-            buf.len(),
+            len,
             |file, already_read, offset, count| {
-                let sub_slice = slice.get_slice(already_read as u64, count as u64).unwrap();
+                let sub_slice = slice.get_slice(already_read, count).unwrap();
                 match file {
                     Some(f) => f.read_exact_at_volatile(sub_slice, offset),
                     None => {
@@ -1610,9 +1610,9 @@ impl FileReadWriteVolatile for QcowFile {
     fn read_volatile(&mut self, slice: VolatileSlice) -> io::Result<usize> {
         let read_count = self.read_cb(
             self.current_offset,
-            slice.size() as usize,
+            slice.size(),
             |file, read, offset, count| {
-                let sub_slice = slice.get_slice(read as u64, count as u64).unwrap();
+                let sub_slice = slice.get_slice(read, count).unwrap();
                 match file {
                     Some(f) => f.read_exact_at_volatile(sub_slice, offset),
                     None => {
@@ -1627,14 +1627,11 @@ impl FileReadWriteVolatile for QcowFile {
     }
 
     fn write_volatile(&mut self, slice: VolatileSlice) -> io::Result<usize> {
-        let write_count = self.write_cb(
-            self.current_offset,
-            slice.size() as usize,
-            |file, offset, count| {
-                let sub_slice = slice.get_slice(offset as u64, count as u64).unwrap();
+        let write_count =
+            self.write_cb(self.current_offset, slice.size(), |file, offset, count| {
+                let sub_slice = slice.get_slice(offset, count).unwrap();
                 file.write_all_volatile(sub_slice)
-            },
-        )?;
+            })?;
         self.current_offset += write_count as u64;
         Ok(write_count)
     }
@@ -1642,25 +1639,21 @@ impl FileReadWriteVolatile for QcowFile {
 
 impl FileReadWriteAtVolatile for QcowFile {
     fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
-        self.read_cb(
-            offset,
-            slice.size() as usize,
-            |file, read, offset, count| {
-                let sub_slice = slice.get_slice(read as u64, count as u64).unwrap();
-                match file {
-                    Some(f) => f.read_exact_at_volatile(sub_slice, offset),
-                    None => {
-                        sub_slice.write_bytes(0);
-                        Ok(())
-                    }
+        self.read_cb(offset, slice.size(), |file, read, offset, count| {
+            let sub_slice = slice.get_slice(read, count).unwrap();
+            match file {
+                Some(f) => f.read_exact_at_volatile(sub_slice, offset),
+                None => {
+                    sub_slice.write_bytes(0);
+                    Ok(())
                 }
-            },
-        )
+            }
+        })
     }
 
     fn write_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
-        self.write_cb(offset, slice.size() as usize, |file, offset, count| {
-            let sub_slice = slice.get_slice(offset as u64, count as u64).unwrap();
+        self.write_cb(offset, slice.size(), |file, offset, count| {
+            let sub_slice = slice.get_slice(offset, count).unwrap();
             file.write_all_volatile(sub_slice)
         })
     }

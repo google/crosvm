@@ -13,7 +13,7 @@ fn main() {
             row[x] = b | (g << 8);
         }
         mem.as_volatile_slice()
-            .offset((1280 * 4 * y) as u64)
+            .offset(1280 * 4 * y)
             .unwrap()
             .copy_from(&row);
     }

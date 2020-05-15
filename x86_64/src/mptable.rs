@@ -10,7 +10,6 @@ use std::slice;
 
 use libc::c_char;
 
-use data_model::VolatileMemory;
 use devices::{PciAddress, PciInterruptPin};
 use sys_util::{GuestAddress, GuestMemory};
 
@@ -140,7 +139,7 @@ pub fn setup_mptable(
         return Err(Error::AddressOverflow);
     }
 
-    mem.get_slice(base_mp.0, mp_size as u64)
+    mem.get_slice_at_addr(base_mp, mp_size)
         .map_err(|_| Error::Clear)?
         .write_bytes(0);
 

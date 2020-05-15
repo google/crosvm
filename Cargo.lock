@@ -161,6 +161,7 @@ name = "data_model"
 version = "0.1.0"
 dependencies = [
  "assertions 0.1.0",
+ "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

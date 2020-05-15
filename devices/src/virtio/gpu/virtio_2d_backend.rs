@@ -199,7 +199,7 @@ pub fn transfer<'a, S: Iterator<Item = VolatileSlice<'a>>>(
             }
 
             let src_subslice = src
-                .get_slice(offset_within_src, copyable_size)
+                .get_slice(offset_within_src as usize, copyable_size as usize)
                 .map_err(|e| Error::MemCopy(e))?;
 
             let dst_line_vertical_offset = checked_arithmetic!(current_height * dst_stride)?;
@@ -210,7 +210,7 @@ pub fn transfer<'a, S: Iterator<Item = VolatileSlice<'a>>>(
             let dst_start_offset = checked_arithmetic!(dst_resource_offset + dst_line_offset)?;
 
             let dst_subslice = dst
-                .get_slice(dst_start_offset, copyable_size)
+                .get_slice(dst_start_offset as usize, copyable_size as usize)
                 .map_err(|e| Error::MemCopy(e))?;
 
             src_subslice.copy_to_volatile_slice(dst_subslice);
@@ -246,7 +246,7 @@ impl Virtio2DResource {
     ) -> bool {
         if iovecs
             .iter()
-            .any(|&(addr, len)| mem.get_slice(addr.offset(), len as u64).is_err())
+            .any(|&(addr, len)| mem.get_slice_at_addr(addr, len).is_err())
         {
             return false;
         }
@@ -303,19 +303,17 @@ impl VirtioResource for Virtio2DResource {
         if self
             .guest_iovecs
             .iter()
-            .any(|&(addr, len)| guest_mem.get_slice(addr.offset(), len as u64).is_err())
+            .any(|&(addr, len)| guest_mem.get_slice_at_addr(addr, len).is_err())
         {
             error!("failed to write to resource: invalid iovec attached");
             return;
         }
 
-        let mut src_slices = Vec::new();
-        for (addr, len) in &self.guest_iovecs {
+        let mut src_slices = Vec::with_capacity(self.guest_iovecs.len());
+        for &(addr, len) in &self.guest_iovecs {
             // Unwrap will not panic because we already checked the slices.
-            src_slices.push(guest_mem.get_slice(addr.offset(), *len as u64).unwrap());
+            src_slices.push(guest_mem.get_slice_at_addr(addr, len).unwrap());
         }
-
-        let host_mem_len = self.host_mem.len() as u64;
 
         let src_stride = self.host_mem_stride;
         let src_offset = src_offset;
@@ -332,10 +330,7 @@ impl VirtioResource for Virtio2DResource {
             height,
             dst_stride,
             dst_offset,
-            self.host_mem
-                .as_mut_slice()
-                .get_slice(0, host_mem_len)
-                .unwrap(),
+            VolatileSlice::new(self.host_mem.as_mut_slice()),
             src_stride,
             src_offset,
             src_slices.iter().cloned(),
@@ -359,8 +354,6 @@ impl VirtioResource for Virtio2DResource {
 
         let dst_offset = 0;
 
-        let host_mem_len = self.host_mem.len() as u64;
-
         if let Err(e) = transfer(
             self.width(),
             self.height(),
@@ -373,13 +366,9 @@ impl VirtioResource for Virtio2DResource {
             dst,
             src_stride,
             src_offset,
-            [self
-                .host_mem
-                .as_mut_slice()
-                .get_slice(0, host_mem_len)
-                .unwrap()]
-            .iter()
-            .cloned(),
+            [VolatileSlice::new(self.host_mem.as_mut_slice())]
+                .iter()
+                .cloned(),
         ) {
             error!("failed to read from resource: {}", e);
         }

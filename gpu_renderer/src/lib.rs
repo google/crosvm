@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use libc::close;
 
-use data_model::{VolatileMemory, VolatileSlice};
+use data_model::VolatileSlice;
 use sys_util::{debug, GuestAddress, GuestMemory};
 
 use crate::generated::p_defines::{
@@ -411,7 +411,7 @@ impl Renderer {
         {
             if vecs
                 .iter()
-                .any(|&(addr, len)| mem.get_slice(addr.offset(), len as u64).is_err())
+                .any(|&(addr, len)| mem.get_slice_at_addr(addr, len).is_err())
             {
                 return Err(Error::InvalidIovec);
             }
@@ -419,9 +419,9 @@ impl Renderer {
             let mut iovecs = Vec::new();
             for &(addr, len) in vecs {
                 // Unwrap will not panic because we already checked the slices.
-                let slice = mem.get_slice(addr.offset(), len as u64).unwrap();
+                let slice = mem.get_slice_at_addr(addr, len).unwrap();
                 iovecs.push(VirglVec {
-                    base: slice.as_ptr() as *mut c_void,
+                    base: slice.as_mut_ptr() as *mut c_void,
                     len,
                 });
             }
@@ -591,7 +591,7 @@ impl Resource {
     ) -> Result<()> {
         if iovecs
             .iter()
-            .any(|&(addr, len)| mem.get_slice(addr.offset(), len as u64).is_err())
+            .any(|&(addr, len)| mem.get_slice_at_addr(addr, len).is_err())
         {
             return Err(Error::InvalidIovec);
         }
@@ -599,9 +599,9 @@ impl Resource {
         self.backing_mem = Some(mem.clone());
         for &(addr, len) in iovecs {
             // Unwrap will not panic because we already checked the slices.
-            let slice = mem.get_slice(addr.offset(), len as u64).unwrap();
+            let slice = mem.get_slice_at_addr(addr, len).unwrap();
             self.backing_iovecs.push(VirglVec {
-                base: slice.as_ptr() as *mut c_void,
+                base: slice.as_mut_ptr() as *mut c_void,
                 len,
             });
         }

@@ -327,10 +327,7 @@ unsafe impl<'a> IntoIovec for &'a [u8] {
 // pointer and size are guaranteed to be accurate.
 unsafe impl<'a> IntoIovec for VolatileSlice<'a> {
     fn into_iovec(&self) -> Vec<libc::iovec> {
-        vec![libc::iovec {
-            iov_base: self.as_ptr() as *const c_void as *mut c_void,
-            iov_len: self.size() as usize,
-        }]
+        vec![self.as_iovec()]
     }
 }
 
