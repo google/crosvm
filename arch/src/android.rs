@@ -31,9 +31,17 @@ pub fn create_android_fdt(fdt: &mut Vec<u8>, fstab: File) -> Result<()> {
     begin_node(fdt, "firmware")?;
     begin_node(fdt, "android")?;
     property_string(fdt, "compatible", "android,firmware")?;
+
+    let (dtprop, fstab): (_, Vec<_>) = vecs.into_iter().partition(|x| x[0] == "#dt-vendor");
+    begin_node(fdt, "vendor")?;
+    for vec in dtprop {
+        let content = std::fs::read_to_string(&vec[2]).map_err(Error::FdtIoError)?;
+        property_string(fdt, &vec[1], &content);
+    }
+    end_node(fdt)?; // vendor
     begin_node(fdt, "fstab")?;
     property_string(fdt, "compatible", "android,fstab")?;
-    for vec in vecs {
+    for vec in fstab {
         let partition = &vec[1][1..];
         begin_node(fdt, partition)?;
         property_string(fdt, "compatible", &("android,".to_owned() + partition))?;
