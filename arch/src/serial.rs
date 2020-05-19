@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, stdout};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::PathBuf;
@@ -170,7 +170,11 @@ impl SerialParameters {
             }
             SerialType::File => match &self.path {
                 Some(path) => {
-                    let file = File::create(path.as_path()).map_err(Error::FileError)?;
+                    let file = OpenOptions::new()
+                        .append(true)
+                        .create(true)
+                        .open(path.as_path())
+                        .map_err(Error::FileError)?;
                     keep_fds.push(file.as_raw_fd());
                     Some(Box::new(file))
                 }
