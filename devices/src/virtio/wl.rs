@@ -730,12 +730,10 @@ impl WlVfd {
     fn send(&mut self, fds: &[RawFd], data: &mut Reader) -> WlResult<WlResp> {
         if let Some(socket) = &self.socket {
             socket
-                .send_with_fds(
-                    data.get_iovec(usize::max_value())
-                        .map_err(WlError::ParseDesc)?,
-                    fds,
-                )
+                .send_with_fds(data.get_remaining(), fds)
                 .map_err(WlError::SendVfd)?;
+            // All remaining data in `data` is now considered consumed.
+            data.consume(::std::usize::MAX);
             Ok(WlResp::Ok)
         } else if let Some((_, local_pipe)) = &mut self.local_pipe {
             // Impossible to send fds over a simple pipe.

@@ -6,10 +6,12 @@
 //! (e.g. Unix domain sockets).
 
 use std::fs::File;
+use std::io::{IoSlice, IoSliceMut};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixDatagram, UnixStream};
 use std::ptr::{copy_nonoverlapping, null_mut, write_unaligned};
+use std::slice;
 
 use libc::{
     c_long, c_void, cmsghdr, iovec, msghdr, recvmsg, sendmsg, MSG_NOSIGNAL, SCM_RIGHTS, SOL_SOCKET,
@@ -103,17 +105,17 @@ impl CmsgBuffer {
     }
 }
 
-fn raw_sendmsg<D: IntoIovec>(fd: RawFd, out_data: D, out_fds: &[RawFd]) -> Result<usize> {
+fn raw_sendmsg<D: IntoIovec>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Result<usize> {
     let cmsg_capacity = CMSG_SPACE!(size_of::<RawFd>() * out_fds.len());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
-    let mut iovec = out_data.into_iovec();
+    let iovec = IntoIovec::as_iovecs(out_data);
 
     let mut msg = msghdr {
         msg_name: null_mut(),
         msg_namelen: 0,
-        msg_iov: iovec.as_mut_ptr(),
-        msg_iovlen: 1,
+        msg_iov: iovec.as_ptr() as *mut iovec,
+        msg_iovlen: iovec.len(),
         msg_control: null_mut(),
         msg_controllen: 0,
         msg_flags: 0,
@@ -230,7 +232,7 @@ pub trait ScmSocket {
     ///
     /// * `buf` - A buffer of data to send on the `socket`.
     /// * `fd` - A file descriptors to be sent.
-    fn send_with_fd<D: IntoIovec>(&self, buf: D, fd: RawFd) -> Result<usize> {
+    fn send_with_fd<D: IntoIovec>(&self, buf: &[D], fd: RawFd) -> Result<usize> {
         self.send_with_fds(buf, &[fd])
     }
 
@@ -242,7 +244,7 @@ pub trait ScmSocket {
     ///
     /// * `buf` - A buffer of data to send on the `socket`.
     /// * `fds` - A list of file descriptors to be sent.
-    fn send_with_fds<D: IntoIovec>(&self, buf: D, fd: &[RawFd]) -> Result<usize> {
+    fn send_with_fds<D: IntoIovec>(&self, buf: &[D], fd: &[RawFd]) -> Result<usize> {
         raw_sendmsg(self.socket_fd(), buf, fd)
     }
 
@@ -307,27 +309,55 @@ impl ScmSocket for UnixSeqpacket {
 ///
 /// This trait is unsafe because interfaces that use this trait depend on the base pointer and size
 /// being accurate.
-pub unsafe trait IntoIovec {
-    /// Gets a vector of structures describing each contiguous region of a memory buffer.
-    fn into_iovec(&self) -> Vec<libc::iovec>;
+pub unsafe trait IntoIovec: Sized {
+    /// Returns a `iovec` that describes a contiguous region of memory.
+    fn into_iovec(&self) -> iovec;
+
+    /// Returns a slice of `iovec`s that each describe a contiguous region of memory.
+    fn as_iovecs(bufs: &[Self]) -> &[iovec];
 }
 
-// Safe because this slice can not have another mutable reference and it's pointer and size are
-// guaranteed to be valid.
-unsafe impl<'a> IntoIovec for &'a [u8] {
-    fn into_iovec(&self) -> Vec<libc::iovec> {
-        vec![libc::iovec {
-            iov_base: self.as_ref().as_ptr() as *const c_void as *mut c_void,
+// Safe because there are no other mutable references to the memory described by `IoSlice` and it is
+// guaranteed to be ABI-compatible with `iovec`.
+unsafe impl<'a> IntoIovec for IoSlice<'a> {
+    fn into_iovec(&self) -> iovec {
+        iovec {
+            iov_base: self.as_ptr() as *mut c_void,
             iov_len: self.len(),
-        }]
+        }
+    }
+
+    fn as_iovecs(bufs: &[Self]) -> &[iovec] {
+        // Safe because `IoSlice` is guaranteed to be ABI-compatible with `iovec`.
+        unsafe { slice::from_raw_parts(bufs.as_ptr() as *const iovec, bufs.len()) }
+    }
+}
+
+// Safe because there are no other references to the memory described by `IoSliceMut` and it is
+// guaranteed to be ABI-compatible with `iovec`.
+unsafe impl<'a> IntoIovec for IoSliceMut<'a> {
+    fn into_iovec(&self) -> iovec {
+        iovec {
+            iov_base: self.as_ptr() as *mut c_void,
+            iov_len: self.len(),
+        }
+    }
+
+    fn as_iovecs(bufs: &[Self]) -> &[iovec] {
+        // Safe because `IoSliceMut` is guaranteed to be ABI-compatible with `iovec`.
+        unsafe { slice::from_raw_parts(bufs.as_ptr() as *const iovec, bufs.len()) }
     }
 }
 
 // Safe because volatile slices are only ever accessed with other volatile interfaces and the
 // pointer and size are guaranteed to be accurate.
 unsafe impl<'a> IntoIovec for VolatileSlice<'a> {
-    fn into_iovec(&self) -> Vec<libc::iovec> {
-        vec![self.as_iovec()]
+    fn into_iovec(&self) -> iovec {
+        self.as_iovec()
+    }
+
+    fn as_iovecs(bufs: &[Self]) -> &[iovec] {
+        VolatileSlice::as_iovecs(bufs)
     }
 }
 
@@ -385,8 +415,9 @@ mod tests {
     fn send_recv_no_fd() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
 
+        let ioslice = IoSlice::new([1u8, 1, 2, 21, 34, 55].as_ref());
         let write_count = s1
-            .send_with_fds([1u8, 1, 2, 21, 34, 55].as_ref(), &[])
+            .send_with_fds(&[ioslice], &[])
             .expect("failed to send data");
 
         assert_eq!(write_count, 6);
@@ -407,8 +438,9 @@ mod tests {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
 
         let evt = EventFd::new().expect("failed to create eventfd");
+        let ioslice = IoSlice::new([].as_ref());
         let write_count = s1
-            .send_with_fd([].as_ref(), evt.as_raw_fd())
+            .send_with_fd(&[ioslice], evt.as_raw_fd())
             .expect("failed to send fd");
 
         assert_eq!(write_count, 0);
@@ -434,8 +466,9 @@ mod tests {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
 
         let evt = EventFd::new().expect("failed to create eventfd");
+        let ioslice = IoSlice::new([237].as_ref());
         let write_count = s1
-            .send_with_fds([237].as_ref(), &[evt.as_raw_fd()])
+            .send_with_fds(&[ioslice], &[evt.as_raw_fd()])
             .expect("failed to send fd");
 
         assert_eq!(write_count, 1);

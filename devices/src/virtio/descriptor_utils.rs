@@ -14,9 +14,7 @@ use std::ptr::copy_nonoverlapping;
 use std::result;
 
 use data_model::{DataInit, Le16, Le32, Le64, VolatileMemoryError, VolatileSlice};
-use sys_util::{
-    FileReadWriteAtVolatile, FileReadWriteVolatile, GuestAddress, GuestMemory, IntoIovec,
-};
+use sys_util::{FileReadWriteAtVolatile, FileReadWriteVolatile, GuestAddress, GuestMemory};
 
 use super::DescriptorChain;
 
@@ -165,33 +163,6 @@ impl<'a> DescriptorChainConsumer<'a> {
         self.buffers.truncate(end + 1);
 
         other
-    }
-
-    fn get_iovec(&mut self, len: usize) -> io::Result<DescriptorIovec<'a>> {
-        let mut iovec = Vec::with_capacity(self.get_remaining().len());
-
-        let mut rem = len;
-        for buf in self.get_remaining() {
-            let iov = if rem < buf.size() {
-                // Safe because we know that `rem` is in-bounds.
-                buf.sub_slice(0, rem).unwrap().as_iovec()
-            } else {
-                buf.as_iovec()
-            };
-
-            rem -= iov.iov_len;
-            iovec.push(iov);
-
-            if rem == 0 {
-                break;
-            }
-        }
-        self.consume(len);
-
-        Ok(DescriptorIovec {
-            iovec,
-            mem: PhantomData,
-        })
     }
 }
 
@@ -381,6 +352,19 @@ impl<'a> Reader<'a> {
         self.buffer.bytes_consumed()
     }
 
+    /// Returns a `&[VolatileSlice]` that represents all the remaining data in this `Reader`.
+    /// Calling this method does not actually consume any data from the `Reader` and callers should
+    /// call `consume` to advance the `Reader`.
+    pub fn get_remaining(&self) -> &[VolatileSlice] {
+        self.buffer.get_remaining()
+    }
+
+    /// Consumes `amt` bytes from the underlying descriptor chain. If `amt` is larger than the
+    /// remaining data left in this `Reader`, then all remaining data will be consumed.
+    pub fn consume(&mut self, amt: usize) {
+        self.buffer.consume(amt)
+    }
+
     /// Splits this `Reader` into two at the given offset in the `DescriptorChain` buffer. After the
     /// split, `self` will be able to read up to `offset` bytes while the returned `Reader` can read
     /// up to `available_bytes() - offset` bytes. If `offset > self.available_bytes()`, then the
@@ -389,12 +373,6 @@ impl<'a> Reader<'a> {
         Reader {
             buffer: self.buffer.split_at(offset),
         }
-    }
-
-    /// Returns a DescriptorIovec for the next `len` bytes of the descriptor chain
-    /// buffer, which can be used as an IntoIovec.
-    pub fn get_iovec(&mut self, len: usize) -> io::Result<DescriptorIovec<'a>> {
-        self.buffer.get_iovec(len)
     }
 }
 
@@ -581,12 +559,6 @@ impl<'a> Writer<'a> {
             buffer: self.buffer.split_at(offset),
         }
     }
-
-    /// Returns a DescriptorIovec for the next `len` bytes of the descriptor chain
-    /// buffer, which can be used as an IntoIovec.
-    pub fn get_iovec(&mut self, len: usize) -> io::Result<DescriptorIovec<'a>> {
-        self.buffer.get_iovec(len)
-    }
 }
 
 impl<'a> io::Write for Writer<'a> {
@@ -614,18 +586,6 @@ impl<'a> io::Write for Writer<'a> {
     fn flush(&mut self) -> io::Result<()> {
         // Nothing to flush since the writes go straight into the buffer.
         Ok(())
-    }
-}
-
-pub struct DescriptorIovec<'a> {
-    iovec: Vec<libc::iovec>,
-    mem: PhantomData<&'a GuestMemory>,
-}
-
-// Safe because the lifetime of DescriptorIovec is tied to the underlying GuestMemory.
-unsafe impl<'a> IntoIovec for DescriptorIovec<'a> {
-    fn into_iovec(&self) -> Vec<libc::iovec> {
-        self.iovec.clone()
     }
 }
 

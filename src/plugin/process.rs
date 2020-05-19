@@ -5,7 +5,7 @@
 use std::collections::hash_map::{Entry, HashMap, VacantEntry};
 use std::env::set_var;
 use std::fs::File;
-use std::io::Write;
+use std::io::{IoSlice, Write};
 use std::mem::transmute;
 use std::os::unix::io::{IntoRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
@@ -730,7 +730,7 @@ impl Process {
             .map_err(Error::EncodeResponse)?;
         assert_ne!(self.response_buffer.len(), 0);
         self.request_sockets[index]
-            .send_with_fds(&self.response_buffer[..], &response_fds)
+            .send_with_fds(&[IoSlice::new(&self.response_buffer[..])], &response_fds)
             .map_err(Error::PluginSocketSend)?;
 
         Ok(())

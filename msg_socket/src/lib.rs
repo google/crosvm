@@ -4,7 +4,7 @@
 
 mod msg_on_socket;
 
-use std::io::Result;
+use std::io::{IoSlice, Result};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::pin::Pin;
@@ -138,7 +138,8 @@ pub trait MsgSender: AsRef<UnixSeqpacket> {
             handle_eintr!(sock.send(&msg_buffer))
                 .map_err(|e| MsgError::Send(SysError::new(e.raw_os_error().unwrap_or(0))))?;
         } else {
-            sock.send_with_fds(&msg_buffer[..], &fd_buffer[0..fd_size])
+            let ioslice = IoSlice::new(&msg_buffer[..]);
+            sock.send_with_fds(&[ioslice], &fd_buffer[0..fd_size])
                 .map_err(MsgError::Send)?;
         }
         Ok(())
