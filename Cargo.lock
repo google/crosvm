@@ -347,6 +347,7 @@ dependencies = [
 name = "hypervisor"
 version = "0.1.0"
 dependencies = [
+ "kvm 0.1.0",
  "kvm_sys 0.1.0",
  "libc 0.2.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
