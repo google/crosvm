@@ -52,6 +52,8 @@ pub enum Error {
     OutOfSpace,
     PoolOverflow { base: u64, size: u64 },
     PoolSizeZero,
+    RegionOverlap { base: u64, size: u64 },
+    BadAlloc(Alloc),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -70,6 +72,10 @@ impl Display for Error {
             OutOfSpace => write!(f, "Out of space"),
             PoolOverflow { base, size } => write!(f, "base={} + size={} overflows", base, size),
             PoolSizeZero => write!(f, "Pool cannot have size of 0"),
+            RegionOverlap { base, size } => {
+                write!(f, "Overlapping region base={} size={}", base, size)
+            }
+            BadAlloc(tag) => write!(f, "Alloc does not exists: {:?}", tag),
         }
     }
 }

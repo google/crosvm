@@ -157,9 +157,63 @@ impl AddressAllocator {
         }
     }
 
+    /// Releases exising allocation back to free pool.
+    pub fn release(&mut self, alloc: Alloc) -> Result<()> {
+        self.allocs
+            .remove(&alloc)
+            .map_or_else(|| Err(Error::BadAlloc(alloc)), |v| self.insert_at(v.0, v.1))
+    }
+
     /// Returns allocation associated with `alloc`, or None if no such allocation exists.
     pub fn get(&self, alloc: &Alloc) -> Option<&(u64, u64, String)> {
         self.allocs.get(alloc)
+    }
+
+    /// Insert range of addresses into the pool, coalescing neighboring regions.
+    fn insert_at(&mut self, start: u64, size: u64) -> Result<()> {
+        if size == 0 {
+            return Err(Error::AllocSizeZero);
+        }
+
+        let mut slot = (start, start.checked_add(size - 1).ok_or(Error::OutOfSpace)?);
+        let mut left = None;
+        let mut right = None;
+        // simple coalescing with linear search over free regions.
+        //
+        // Calculating the distance between start and end of two regions we can
+        // detect if they are disjoint (>1), adjacent (=1) or possibly
+        // overlapping (<1). Saturating arithmetic is used to avoid overflow.
+        // Overlapping regions are detected if both oposite ends are overlapping.
+        // Algorithm assumes all existing regions are disjoined and represented
+        // as pair of inclusive location point (start, end), where end >= start.
+        for range in self.regions.iter() {
+            match (
+                slot.0.saturating_sub(range.1),
+                range.0.saturating_sub(slot.1),
+            ) {
+                (1, 0) => {
+                    left = Some(*range);
+                }
+                (0, 1) => {
+                    right = Some(*range);
+                }
+                (0, 0) => {
+                    return Err(Error::RegionOverlap { base: start, size });
+                }
+                (_, _) => (),
+            }
+        }
+        if let Some(left) = left {
+            self.regions.remove(&left);
+            slot.0 = left.0;
+        }
+        if let Some(right) = right {
+            self.regions.remove(&right);
+            slot.1 = right.1;
+        }
+        self.regions.insert(slot);
+
+        Ok(())
     }
 }
 
@@ -326,5 +380,46 @@ mod tests {
         assert!(pool
             .allocate_with_align(0x110, Alloc::Anon(0), String::from("bar0"), 200)
             .is_err());
+    }
+
+    #[test]
+    fn allocate_with_release() {
+        let mut pool = AddressAllocator::new(0x1000, 0x1000, None).unwrap();
+        assert_eq!(
+            pool.allocate_with_align(0x100, Alloc::Anon(0), String::from("bar0"), 0x100),
+            Ok(0x1000)
+        );
+        assert!(pool.release(Alloc::Anon(0)).is_ok());
+        assert_eq!(
+            pool.allocate_with_align(0x1000, Alloc::Anon(0), String::from("bar0"), 0x100),
+            Ok(0x1000)
+        );
+    }
+
+    #[test]
+    fn coalescing_and_overlap() {
+        let mut pool = AddressAllocator::new(0x1000, 0x1000, None).unwrap();
+        assert!(pool.insert_at(0x3000, 0x1000).is_ok());
+        assert!(pool.insert_at(0x1fff, 0x20).is_err());
+        assert!(pool.insert_at(0x2ff1, 0x10).is_err());
+        assert!(pool.insert_at(0x1800, 0x1000).is_err());
+        assert!(pool.insert_at(0x2000, 0x1000).is_ok());
+        assert_eq!(
+            pool.allocate(0x3000, Alloc::Anon(0), String::from("bar0")),
+            Ok(0x1000)
+        );
+    }
+
+    #[test]
+    fn coalescing_single_addresses() {
+        let mut pool = AddressAllocator::new(0x1000, 0x1000, None).unwrap();
+        assert!(pool.insert_at(0x2001, 1).is_ok());
+        assert!(pool.insert_at(0x2003, 1).is_ok());
+        assert!(pool.insert_at(0x2000, 1).is_ok());
+        assert!(pool.insert_at(0x2002, 1).is_ok());
+        assert_eq!(
+            pool.allocate(0x1004, Alloc::Anon(0), String::from("bar0")),
+            Ok(0x1000)
+        );
     }
 }
