@@ -13,7 +13,6 @@ use std::cell::RefCell;
 use std::ffi::CString;
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::marker::PhantomData;
 use std::mem::{size_of, transmute};
 use std::os::raw::{c_char, c_void};
 use std::os::unix::io::FromRawFd;
@@ -222,7 +221,6 @@ impl From<RendererFlags> for i32 {
 
 /// The global renderer handle used to query capability sets, and create resources and contexts.
 pub struct Renderer {
-    no_sync_send: PhantomData<*mut ()>,
     fence_state: Rc<RefCell<FenceState>>,
 }
 
@@ -266,10 +264,7 @@ impl Renderer {
         };
         ret_to_res(ret)?;
 
-        Ok(Renderer {
-            no_sync_send: PhantomData,
-            fence_state,
-        })
+        Ok(Renderer { fence_state })
     }
 
     /// Gets the version and size for the given capability set ID.
@@ -309,10 +304,7 @@ impl Renderer {
             )
         };
         ret_to_res(ret)?;
-        Ok(Context {
-            id,
-            no_sync_send: PhantomData,
-        })
+        Ok(Context { id })
     }
 
     /// Creates a resource with the given arguments.
@@ -328,7 +320,6 @@ impl Renderer {
             id: args.handle,
             backing_iovecs: Vec::new(),
             backing_mem: None,
-            no_sync_send: PhantomData,
         })
     }
 
@@ -453,7 +444,6 @@ impl Renderer {
                 id: resource_id,
                 backing_iovecs: iovecs,
                 backing_mem: None,
-                no_sync_send: PhantomData,
             })
         }
         #[cfg(not(feature = "virtio-gpu-next"))]
@@ -486,7 +476,6 @@ impl Renderer {
 /// A context in which resources can be attached/detached and commands can be submitted.
 pub struct Context {
     id: u32,
-    no_sync_send: PhantomData<*mut ()>,
 }
 
 impl Context {
@@ -543,7 +532,6 @@ pub struct Resource {
     id: u32,
     backing_iovecs: Vec<VirglVec>,
     backing_mem: Option<GuestMemory>,
-    no_sync_send: PhantomData<*mut ()>,
 }
 
 impl Resource {
