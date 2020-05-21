@@ -204,6 +204,7 @@ pub struct Config {
     pub vfio: Vec<PathBuf>,
     pub video_dec: bool,
     pub video_enc: bool,
+    pub acpi_tables: Vec<PathBuf>,
 }
 
 impl Default for Config {
@@ -254,6 +255,7 @@ impl Default for Config {
             vfio: Vec::new(),
             video_dec: false,
             video_enc: false,
+            acpi_tables: Vec::new(),
         }
     }
 }

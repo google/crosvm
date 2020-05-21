@@ -16,6 +16,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use acpi_tables::sdt::SDT;
 use devices::split_irqchip_common::GsiRelay;
 use devices::virtio::VirtioDevice;
 use devices::{
@@ -57,6 +58,7 @@ pub struct VmComponents {
     pub initrd_image: Option<File>,
     pub extra_kernel_params: Vec<String>,
     pub wayland_dmabuf: bool,
+    pub acpi_sdts: Vec<SDT>,
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.

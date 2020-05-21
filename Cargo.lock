@@ -30,6 +30,7 @@ dependencies = [
 name = "arch"
 version = "0.1.0"
 dependencies = [
+ "acpi_tables 0.1.0",
  "devices 0.1.0",
  "io_jail 0.1.0",
  "kernel_cmdline 0.1.0",

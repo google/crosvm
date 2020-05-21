@@ -26,6 +26,8 @@ use std::time::Duration;
 
 use libc::{self, c_int, gid_t, uid_t};
 
+use acpi_tables::sdt::SDT;
+
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
 use devices::virtio::{self, Console, VirtioDevice};
@@ -109,6 +111,7 @@ pub enum Error {
     LoadKernel(Box<dyn StdError>),
     MemoryTooLarge,
     NetDeviceNew(virtio::NetError),
+    OpenAcpiTable(PathBuf, io::Error),
     OpenAndroidFstab(PathBuf, io::Error),
     OpenBios(PathBuf, io::Error),
     OpenInitrd(PathBuf, io::Error),
@@ -196,6 +199,7 @@ impl Display for Error {
             LoadKernel(e) => write!(f, "failed to load kernel: {}", e),
             MemoryTooLarge => write!(f, "requested memory size too large"),
             NetDeviceNew(e) => write!(f, "failed to set up virtio networking: {}", e),
+            OpenAcpiTable(p, e) => write!(f, "failed to open ACPI file {}: {}", p.display(), e),
             OpenAndroidFstab(p, e) => write!(
                 f,
                 "failed to open android fstab file {}: {}",
@@ -1712,6 +1716,11 @@ pub fn run_config(cfg: Config) -> Result<()> {
         initrd_image,
         extra_kernel_params: cfg.params.clone(),
         wayland_dmabuf: cfg.wayland_dmabuf,
+        acpi_sdts: cfg
+            .acpi_tables
+            .iter()
+            .map(|path| SDT::from_file(path).map_err(|e| Error::OpenAcpiTable(path.clone(), e)))
+            .collect::<Result<Vec<SDT>>>()?,
     };
 
     let control_server_socket = match &cfg.socket_path {

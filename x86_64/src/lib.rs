@@ -55,6 +55,7 @@ use std::sync::Arc;
 
 use crate::bootparam::boot_params;
 use acpi_tables::aml::Aml;
+use acpi_tables::sdt::SDT;
 use arch::{
     get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, SerialHardware, SerialParameters,
     VmComponents, VmImage,
@@ -283,9 +284,11 @@ fn configure_system(
         .write_obj_at_addr(params, zero_page_addr)
         .map_err(|_| Error::ZeroPageSetup)?;
 
-    let rsdp_addr =
-        acpi::create_acpi_tables(guest_mem, num_cpus, X86_64_SCI_IRQ, acpi_dev_resource);
-    params.acpi_rsdp_addr = rsdp_addr.0;
+    if let Some(rsdp_addr) =
+        acpi::create_acpi_tables(guest_mem, num_cpus, X86_64_SCI_IRQ, acpi_dev_resource)
+    {
+        params.acpi_rsdp_addr = rsdp_addr.0;
+    }
 
     Ok(())
 }
@@ -442,6 +445,7 @@ impl arch::LinuxArch for X8664arch {
             &mut io_bus,
             &mut resources,
             suspend_evt.try_clone().map_err(Error::CloneEventFd)?,
+            components.acpi_sdts,
         )?;
 
         let ramoops_region = match components.pstore {
@@ -853,6 +857,7 @@ impl X8664arch {
         io_bus: &mut devices::Bus,
         resources: &mut SystemAllocator,
         suspend_evt: EventFd,
+        sdts: Vec<SDT>,
     ) -> Result<acpi::ACPIDevResource> {
         // The AML data for the acpi devices
         let mut amls = Vec::new();
@@ -883,7 +888,11 @@ impl X8664arch {
             .unwrap();
         io_bus.notify_on_resume(pm);
 
-        Ok(acpi::ACPIDevResource { amls, pm_iobase })
+        Ok(acpi::ACPIDevResource {
+            amls,
+            pm_iobase,
+            sdts,
+        })
     }
 
     /// Sets up the serial devices for this platform. Returns the serial port number and serial

@@ -1232,6 +1232,23 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "video-encoder" => {
             cfg.video_enc = true;
         }
+        "acpi-table" => {
+            let acpi_table = PathBuf::from(value.unwrap());
+            if !acpi_table.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("the acpi-table path does not exist"),
+                });
+            }
+            if !acpi_table.is_file() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("the acpi-table path should be a file"),
+                });
+            }
+
+            cfg.acpi_tables.push(acpi_table);
+        }
 
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
@@ -1406,6 +1423,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           Argument::flag("video-decoder", "(EXPERIMENTAL) enable virtio-video decoder device"),
           #[cfg(feature = "video-encoder")]
           Argument::flag("video-encoder", "(EXPERIMENTAL) enable virtio-video encoder device"),
+          Argument::value("acpi-table", "PATH", "Path to user provided ACPI table"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
