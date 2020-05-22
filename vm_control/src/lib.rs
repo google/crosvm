@@ -21,9 +21,7 @@ use libc::{EINVAL, EIO, ENODEV};
 use kvm::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{Alloc, GpuMemoryDesc, MmioType, SystemAllocator};
-use sys_util::{
-    error, Error as SysError, EventFd, GuestAddress, MappedRegion, MemoryMapping, MmapError, Result,
-};
+use sys_util::{error, Error as SysError, EventFd, GuestAddress, MemoryMapping, MmapError, Result};
 
 /// A file descriptor either borrowed or owned by this.
 #[derive(Debug)]
@@ -307,7 +305,7 @@ impl VmMemoryRequest {
                     Err(e) => VmMemoryResponse::Err(e),
                 }
             }
-            UnregisterMemory(slot) => match vm.remove_mmio_memory(slot) {
+            UnregisterMemory(slot) => match vm.remove_memory_region(slot) {
                 Ok(_) => VmMemoryResponse::Ok,
                 Err(e) => VmMemoryResponse::Err(e),
             },
@@ -349,7 +347,7 @@ impl VmMemoryRequest {
                     Ok(v) => v,
                     Err(_e) => return VmMemoryResponse::Err(SysError::new(EINVAL)),
                 };
-                match vm.add_mmio_memory(GuestAddress(gpa), mmap, false, false) {
+                match vm.add_memory_region(GuestAddress(gpa), Box::new(mmap), false, false) {
                     Ok(_) => VmMemoryResponse::Ok,
                     Err(e) => VmMemoryResponse::Err(e),
                 }
@@ -481,19 +479,10 @@ impl VmMsyncRequest {
     pub fn execute(&self, vm: &mut Vm) -> VmMsyncResponse {
         use self::VmMsyncRequest::*;
         match *self {
-            MsyncArena { slot, offset, size } => {
-                if let Some(arena) = vm.get_mmap_arena(slot) {
-                    match MappedRegion::msync(arena, offset, size) {
-                        Ok(()) => VmMsyncResponse::Ok,
-                        Err(e) => match e {
-                            MmapError::SystemCallFailed(errno) => VmMsyncResponse::Err(errno),
-                            _ => VmMsyncResponse::Err(SysError::new(EINVAL)),
-                        },
-                    }
-                } else {
-                    VmMsyncResponse::Err(SysError::new(EINVAL))
-                }
-            }
+            MsyncArena { slot, offset, size } => match vm.mysnc_memory_region(slot, offset, size) {
+                Ok(()) => VmMsyncResponse::Ok,
+                Err(e) => VmMsyncResponse::Err(e),
+            },
         }
     }
 }
@@ -598,10 +587,7 @@ fn register_memory(
         _ => return Err(SysError::new(EINVAL)),
     };
 
-    let slot = match vm.add_mmio_memory(GuestAddress(addr), mmap, false, false) {
-        Ok(v) => v,
-        Err(e) => return Err(e),
-    };
+    let slot = vm.add_memory_region(GuestAddress(addr), Box::new(mmap), false, false)?;
 
     Ok((addr >> 12, slot))
 }

@@ -8,7 +8,7 @@ mod aarch64;
 mod x86_64;
 
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BTreeMap, BinaryHeap};
 use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::{c_char, c_ulong};
@@ -128,7 +128,7 @@ impl PartialOrd for MemSlot {
 pub struct KvmVm {
     vm: SafeDescriptor,
     guest_mem: GuestMemory,
-    mem_regions: Arc<Mutex<HashMap<u32, Box<dyn MappedRegion>>>>,
+    mem_regions: Arc<Mutex<BTreeMap<u32, Box<dyn MappedRegion>>>>,
     mem_slot_gaps: Arc<Mutex<BinaryHeap<MemSlot>>>,
 }
 
@@ -161,7 +161,7 @@ impl KvmVm {
         Ok(KvmVm {
             vm: vm_descriptor,
             guest_mem,
-            mem_regions: Arc::new(Mutex::new(HashMap::new())),
+            mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
             mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
         })
     }

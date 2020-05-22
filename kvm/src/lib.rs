@@ -8,18 +8,20 @@ mod cap;
 
 use std::cell::RefCell;
 use std::cmp::{min, Ordering};
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BTreeMap, BinaryHeap};
 use std::fs::File;
 use std::mem::size_of;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::*;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr::copy_nonoverlapping;
+use std::sync::Arc;
+use sync::Mutex;
 
 use data_model::vec_with_array_field;
 
 use libc::sigset_t;
-use libc::{open, EBUSY, EINVAL, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
+use libc::{open, EBUSY, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
 
 use kvm_sys::*;
 
@@ -28,7 +30,7 @@ use msg_socket::MsgOnSocket;
 use sys_util::{
     block_signal, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
     ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, EventFd, GuestAddress,
-    GuestMemory, MappedRegion, MemoryMapping, MemoryMappingArena, Result, SIGRTMIN,
+    GuestMemory, MappedRegion, MemoryMapping, MmapError, Result, SIGRTMIN,
 };
 
 pub use crate::cap::*;
@@ -307,9 +309,8 @@ impl PartialOrd for MemSlot {
 pub struct Vm {
     vm: File,
     guest_mem: GuestMemory,
-    mmio_memory: HashMap<u32, MemoryMapping>,
-    mmap_arenas: HashMap<u32, MemoryMappingArena>,
-    mem_slot_gaps: BinaryHeap<MemSlot>,
+    mem_regions: Arc<Mutex<BTreeMap<u32, Box<dyn MappedRegion>>>>,
+    mem_slot_gaps: Arc<Mutex<BinaryHeap<MemSlot>>>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     routes: Vec<IrqRoute>,
 }
@@ -341,58 +342,14 @@ impl Vm {
             Ok(Vm {
                 vm: vm_file,
                 guest_mem,
-                mmio_memory: HashMap::new(),
-                mmap_arenas: HashMap::new(),
-                mem_slot_gaps: BinaryHeap::new(),
+                mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
+                mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                 routes: kvm_default_irq_routing_table(),
             })
         } else {
             errno_result()
         }
-    }
-
-    // Helper method for `set_user_memory_region` that tracks available slots.
-    unsafe fn set_user_memory_region(
-        &mut self,
-        read_only: bool,
-        log_dirty_pages: bool,
-        guest_addr: u64,
-        memory_size: u64,
-        userspace_addr: *mut u8,
-    ) -> Result<u32> {
-        let slot = match self.mem_slot_gaps.pop() {
-            Some(gap) => gap.0,
-            None => {
-                (self.mmio_memory.len()
-                    + self.guest_mem.num_regions() as usize
-                    + self.mmap_arenas.len()) as u32
-            }
-        };
-
-        let res = set_user_memory_region(
-            &self.vm,
-            slot,
-            read_only,
-            log_dirty_pages,
-            guest_addr,
-            memory_size,
-            userspace_addr,
-        );
-        match res {
-            Ok(_) => Ok(slot),
-            Err(e) => {
-                self.mem_slot_gaps.push(MemSlot(slot));
-                Err(e)
-            }
-        }
-    }
-
-    // Helper method for `set_user_memory_region` that tracks available slots.
-    unsafe fn remove_user_memory_region(&mut self, slot: u32) -> Result<()> {
-        set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut())?;
-        self.mem_slot_gaps.push(MemSlot(slot));
-        Ok(())
     }
 
     /// Checks if a particular `Cap` is available.
@@ -406,10 +363,10 @@ impl Vm {
         unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), c as c_ulong) == 1 }
     }
 
-    /// Inserts the given `MemoryMapping` into the VM's address space at `guest_addr`.
+    /// Inserts the given `mem` into the VM's address space at `guest_addr`.
     ///
-    /// The slot that was assigned the mmio memory mapping is returned on success. The slot can be
-    /// given to `Vm::remove_mmio_memory` to remove the memory from the VM's address space and
+    /// The slot that was assigned the kvm memory mapping is returned on success. The slot can be
+    /// given to `Vm::remove_memory_region` to remove the memory from the VM's address space and
     /// take back ownership of `mem`.
     ///
     /// Note that memory inserted into the VM's address space must not overlap with any other memory
@@ -420,10 +377,10 @@ impl Vm {
     ///
     /// If `log_dirty_pages` is true, the slot number can be used to retrieve the pages written to
     /// by the guest with `get_dirty_log`.
-    pub fn add_mmio_memory(
+    pub fn add_memory_region(
         &mut self,
         guest_addr: GuestAddress,
-        mem: MemoryMapping,
+        mem: Box<dyn MappedRegion>,
         read_only: bool,
         log_dirty_pages: bool,
     ) -> Result<u32> {
@@ -432,105 +389,64 @@ impl Vm {
         if self.guest_mem.range_overlap(guest_addr, end_addr) {
             return Err(Error::new(ENOSPC));
         }
+        let mut regions = self.mem_regions.lock();
+        let mut gaps = self.mem_slot_gaps.lock();
+        let slot = match gaps.pop() {
+            Some(gap) => gap.0,
+            None => (regions.len() + self.guest_mem.num_regions() as usize) as u32,
+        };
 
         // Safe because we check that the given guest address is valid and has no overlaps. We also
         // know that the pointer and size are correct because the MemoryMapping interface ensures
         // this. We take ownership of the memory mapping so that it won't be unmapped until the slot
         // is removed.
-        let slot = unsafe {
-            self.set_user_memory_region(
+        let res = unsafe {
+            set_user_memory_region(
+                &self.vm,
+                slot,
                 read_only,
                 log_dirty_pages,
                 guest_addr.offset() as u64,
                 size,
                 mem.as_ptr(),
-            )?
+            )
         };
-        self.mmio_memory.insert(slot, mem);
 
+        if let Err(e) = res {
+            gaps.push(MemSlot(slot));
+            return Err(e);
+        }
+        regions.insert(slot, mem);
         Ok(slot)
     }
 
-    /// Removes mmio memory that was previously added at the given slot.
+    /// Removes memory that was previously added at the given slot.
     ///
     /// Ownership of the host memory mapping associated with the given slot is returned on success.
-    pub fn remove_mmio_memory(&mut self, slot: u32) -> Result<MemoryMapping> {
-        if self.mmio_memory.contains_key(&slot) {
-            // Safe because the slot is checked against the list of mmio memory slots.
-            unsafe {
-                self.remove_user_memory_region(slot)?;
-            }
-            // Safe to unwrap since map is checked to contain key
-            Ok(self.mmio_memory.remove(&slot).unwrap())
-        } else {
-            Err(Error::new(ENOENT))
+    pub fn remove_memory_region(&mut self, slot: u32) -> Result<()> {
+        let mut regions = self.mem_regions.lock();
+        if !regions.contains_key(&slot) {
+            return Err(Error::new(ENOENT));
         }
+        // Safe because the slot is checked against the list of memory slots.
+        unsafe {
+            set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut())?;
+        }
+        self.mem_slot_gaps.lock().push(MemSlot(slot));
+        regions.remove(&slot);
+        Ok(())
     }
 
-    /// Inserts the given `MemoryMappingArena` into the VM's address space at `guest_addr`.
-    ///
-    /// The slot that was assigned the mmio memory mapping is returned on success. The slot can be
-    /// given to `Vm::remove_mmap_arena` to remove the memory from the VM's address space and
-    /// take back ownership of `mmap_arena`.
-    ///
-    /// Note that memory inserted into the VM's address space must not overlap with any other memory
-    /// slot's region.
-    ///
-    /// If `read_only` is true, the guest will be able to read the memory as normal, but attempts to
-    /// write will trigger a mmio VM exit, leaving the memory untouched.
-    ///
-    /// If `log_dirty_pages` is true, the slot number can be used to retrieve the pages written to
-    /// by the guest with `get_dirty_log`.
-    pub fn add_mmap_arena(
-        &mut self,
-        guest_addr: GuestAddress,
-        mmap_arena: MemoryMappingArena,
-        read_only: bool,
-        log_dirty_pages: bool,
-    ) -> Result<u32> {
-        let size = mmap_arena.size() as u64;
-        let end_addr = guest_addr.checked_add(size).ok_or(Error::new(EOVERFLOW))?;
-        if self.guest_mem.range_overlap(guest_addr, end_addr) {
-            return Err(Error::new(ENOSPC));
-        }
+    pub fn mysnc_memory_region(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
+        let mut regions = self.mem_regions.lock();
+        let mem = regions.get_mut(&slot).ok_or(Error::new(ENOENT))?;
 
-        // Safe because we check that the given guest address is valid and has no overlaps. We also
-        // know that the pointer and size are correct because the MemoryMapping interface ensures
-        // this. We take ownership of the memory mapping so that it won't be unmapped until the slot
-        // is removed.
-        let slot = unsafe {
-            self.set_user_memory_region(
-                read_only,
-                log_dirty_pages,
-                guest_addr.offset() as u64,
-                size,
-                mmap_arena.as_ptr(),
-            )?
-        };
-        self.mmap_arenas.insert(slot, mmap_arena);
-
-        Ok(slot)
-    }
-
-    /// Removes memory map arena that was previously added at the given slot.
-    ///
-    /// Ownership of the host memory mapping associated with the given slot is returned on success.
-    pub fn remove_mmap_arena(&mut self, slot: u32) -> Result<MemoryMappingArena> {
-        if self.mmap_arenas.contains_key(&slot) {
-            // Safe because the slot is checked against the list of mmio memory slots.
-            unsafe {
-                self.remove_user_memory_region(slot)?;
-            }
-            // Safe to unwrap since map is checked to contain key
-            Ok(self.mmap_arenas.remove(&slot).unwrap())
-        } else {
-            Err(Error::new(ENOENT))
-        }
-    }
-
-    /// Get a mutable reference to the memory map arena added at the given slot.
-    pub fn get_mmap_arena(&mut self, slot: u32) -> Option<&mut MemoryMappingArena> {
-        self.mmap_arenas.get_mut(&slot)
+        mem.msync(offset, size).map_err(|err| match err {
+            MmapError::InvalidAddress => Error::new(EFAULT),
+            MmapError::NotPageAligned => Error::new(EINVAL),
+            MmapError::SystemCallFailed(e) => e,
+            _ => Error::new(EIO),
+        })
     }
 
     /// Gets the bitmap of dirty pages since the last call to `get_dirty_log` for the memory at
@@ -540,10 +456,10 @@ impl Vm {
     /// region `slot` represents. For example, if the size of `slot` is 16 pages, `dirty_log` must
     /// be 2 bytes or greater.
     pub fn get_dirty_log(&self, slot: u32, dirty_log: &mut [u8]) -> Result<()> {
-        match self.mmio_memory.get(&slot) {
-            Some(mmap) => {
+        match self.mem_regions.lock().get(&slot) {
+            Some(mem) => {
                 // Ensures that there are as many bytes in dirty_log as there are pages in the mmap.
-                if dirty_log_bitmap_size(mmap.size()) > dirty_log.len() {
+                if dirty_log_bitmap_size(mem.size()) > dirty_log.len() {
                     return Err(Error::new(EINVAL));
                 }
                 let mut dirty_log_kvm = kvm_dirty_log {
@@ -2167,10 +2083,10 @@ mod tests {
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMapping::new(mem_size).unwrap();
-        vm.add_mmio_memory(GuestAddress(0x1000), mem, false, false)
+        vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
             .unwrap();
         let mem = MemoryMapping::new(mem_size).unwrap();
-        vm.add_mmio_memory(GuestAddress(0x10000), mem, false, false)
+        vm.add_memory_region(GuestAddress(0x10000), Box::new(mem), false, false)
             .unwrap();
     }
 
@@ -2181,24 +2097,21 @@ mod tests {
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMapping::new(mem_size).unwrap();
-        vm.add_mmio_memory(GuestAddress(0x1000), mem, true, false)
+        vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), true, false)
             .unwrap();
     }
 
     #[test]
-    fn remove_memory() {
+    fn remove_memory_region() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMapping::new(mem_size).unwrap();
-        let mem_ptr = mem.as_ptr();
         let slot = vm
-            .add_mmio_memory(GuestAddress(0x1000), mem, false, false)
+            .add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
             .unwrap();
-        let mem = vm.remove_mmio_memory(slot).unwrap();
-        assert_eq!(mem.size(), mem_size);
-        assert_eq!(mem.as_ptr(), mem_ptr);
+        vm.remove_memory_region(slot).unwrap();
     }
 
     #[test]
@@ -2206,7 +2119,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
         let mut vm = Vm::new(&kvm, gm).unwrap();
-        assert!(vm.remove_mmio_memory(0).is_err());
+        assert!(vm.remove_memory_region(0).is_err());
     }
 
     #[test]
@@ -2217,7 +2130,7 @@ mod tests {
         let mem_size = 0x2000;
         let mem = MemoryMapping::new(mem_size).unwrap();
         assert!(vm
-            .add_mmio_memory(GuestAddress(0x2000), mem, false, false)
+            .add_memory_region(GuestAddress(0x2000), Box::new(mem), false, false)
             .is_err());
     }
 

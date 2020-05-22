@@ -361,7 +361,8 @@ impl Process {
         }
         let mem = MemoryMapping::from_fd_offset(&shm, length as usize, offset)
             .map_err(mmap_to_sys_err)?;
-        let slot = vm.add_mmio_memory(GuestAddress(start), mem, read_only, dirty_log)?;
+        let slot =
+            vm.add_memory_region(GuestAddress(start), Box::new(mem), read_only, dirty_log)?;
         entry.insert(PluginObject::Memory {
             slot,
             length: length as usize,

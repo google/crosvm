@@ -1012,9 +1012,9 @@ fn create_pmem_device(
         .map_err(Error::AllocatePmemDeviceAddress)?;
 
     let slot = vm
-        .add_mmap_arena(
+        .add_memory_region(
             GuestAddress(mapping_address),
-            arena,
+            Box::new(arena),
             /* read_only = */ disk.read_only,
             /* log_dirty_pages = */ false,
         )

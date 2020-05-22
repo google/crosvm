@@ -64,8 +64,13 @@ pub fn create_memory_region(
     let memory_mapping =
         MemoryMapping::from_fd(&file, pstore.size as usize).map_err(Error::MmapError)?;
 
-    vm.add_mmio_memory(GuestAddress(address), memory_mapping, false, false)
-        .map_err(Error::SysUtilError)?;
+    vm.add_memory_region(
+        GuestAddress(address),
+        Box::new(memory_mapping),
+        false,
+        false,
+    )
+    .map_err(Error::SysUtilError)?;
 
     Ok(RamoopsRegion {
         address,

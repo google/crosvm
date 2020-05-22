@@ -384,7 +384,7 @@ impl PluginObject {
                 8 => vm.unregister_ioevent(&evt, addr, Datamatch::U64(Some(datamatch as u64))),
                 _ => Err(SysError::new(EINVAL)),
             },
-            PluginObject::Memory { slot, .. } => vm.remove_mmio_memory(slot).and(Ok(())),
+            PluginObject::Memory { slot, .. } => vm.remove_memory_region(slot).and(Ok(())),
             PluginObject::IrqEvent { irq_id, evt } => vm.unregister_irqfd(&evt, irq_id),
         }
     }
