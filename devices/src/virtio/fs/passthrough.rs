@@ -46,6 +46,20 @@ unsafe impl DataInit for fscrypt_policy_v1 {}
 ioctl_ior_nr!(FS_IOC_SET_ENCRYPTION_POLICY, 0x66, 19, fscrypt_policy_v1);
 ioctl_iow_nr!(FS_IOC_GET_ENCRYPTION_POLICY, 0x66, 21, fscrypt_policy_v1);
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct fsxattr {
+    _fsx_xflags: u32,     /* xflags field value (get/set) */
+    _fsx_extsize: u32,    /* extsize field value (get/set)*/
+    _fsx_nextents: u32,   /* nextents field value (get)	*/
+    _fsx_projid: u32,     /* project identifier (get/set) */
+    _fsx_cowextsize: u32, /* CoW extsize field value (get/set)*/
+    _fsx_pad: [u8; 8],
+}
+unsafe impl DataInit for fsxattr {}
+
+ioctl_ior_nr!(FS_IOC_FSGETXATTR, 'X' as u32, 31, fsxattr);
+
 type Inode = u64;
 type Handle = u64;
 
@@ -725,6 +739,28 @@ impl PassthroughFs {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
             Ok(IoctlReply::Done(Ok(Vec::new())))
+        }
+    }
+
+    fn get_fsxattr(&self, handle: Handle) -> io::Result<IoctlReply> {
+        let data = self
+            .handles
+            .lock()
+            .get(&handle)
+            .map(Arc::clone)
+            .ok_or_else(ebadf)?;
+
+        let mut buf = MaybeUninit::<fsxattr>::zeroed();
+        let file = data.file.lock();
+
+        // Safe because the kernel will only write to `buf` and we check the return value.
+        let res = unsafe { ioctl_with_mut_ptr(&*file, FS_IOC_FSGETXATTR(), buf.as_mut_ptr()) };
+        if res < 0 {
+            Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
+        } else {
+            // Safe because the kernel guarantees that the policy is now initialized.
+            let xattr = unsafe { buf.assume_init() };
+            Ok(IoctlReply::Done(Ok(xattr.as_slice().to_vec())))
         }
     }
 }
@@ -1870,6 +1906,7 @@ impl FileSystem for PassthroughFs {
     ) -> io::Result<IoctlReply> {
         const GET_ENCRYPTION_POLICY: u32 = FS_IOC_GET_ENCRYPTION_POLICY() as u32;
         const SET_ENCRYPTION_POLICY: u32 = FS_IOC_SET_ENCRYPTION_POLICY() as u32;
+        const GET_FSXATTR: u32 = FS_IOC_FSGETXATTR() as u32;
 
         // Normally, we wouldn't need to retry the FS_IOC_GET_ENCRYPTION_POLICY and
         // FS_IOC_SET_ENCRYPTION_POLICY ioctls. Unfortunately, the I/O directions for both of them
@@ -1897,6 +1934,13 @@ impl FileSystem for PassthroughFs {
                     Ok(IoctlReply::Retry { input, output })
                 } else {
                     self.set_encryption_policy(handle, r)
+                }
+            }
+            GET_FSXATTR => {
+                if out_size < size_of::<fsxattr>() as u32 {
+                    Err(io::Error::from_raw_os_error(libc::ENOMEM))
+                } else {
+                    self.get_fsxattr(handle)
                 }
             }
             _ => Err(io::Error::from_raw_os_error(libc::ENOTTY)),
