@@ -23,13 +23,13 @@ macro_rules! ioctl_expr {
 macro_rules! ioctl_ioc_nr {
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr) => {
         #[allow(non_snake_case)]
-        pub fn $name() -> ::std::os::raw::c_ulong {
+        pub const fn $name() -> ::std::os::raw::c_ulong {
             $crate::ioctl_expr!($dir, $ty, $nr, $size)
         }
     };
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr, $($v:ident),+) => {
         #[allow(non_snake_case)]
-        pub fn $name($($v: ::std::os::raw::c_uint),+) -> ::std::os::raw::c_ulong {
+        pub const fn $name($($v: ::std::os::raw::c_uint),+) -> ::std::os::raw::c_ulong {
             $crate::ioctl_expr!($dir, $ty, $nr, $size)
         }
     };
