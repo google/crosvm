@@ -1694,34 +1694,38 @@ impl FileSystem for PassthroughFs {
         out_size: u32,
         r: R,
     ) -> io::Result<IoctlReply> {
+        const GET_ENCRYPTION_POLICY: u32 = FS_IOC_GET_ENCRYPTION_POLICY() as u32;
+        const SET_ENCRYPTION_POLICY: u32 = FS_IOC_SET_ENCRYPTION_POLICY() as u32;
+
         // Normally, we wouldn't need to retry the FS_IOC_GET_ENCRYPTION_POLICY and
         // FS_IOC_SET_ENCRYPTION_POLICY ioctls. Unfortunately, the I/O directions for both of them
         // are encoded backwards so they can only be handled as unrestricted fuse ioctls.
-        if cmd == FS_IOC_GET_ENCRYPTION_POLICY() as u32 {
-            if out_size < size_of::<fscrypt_policy_v1>() as u32 {
-                let input = Vec::new();
-                let output = vec![IoctlIovec {
-                    base: arg,
-                    len: size_of::<fscrypt_policy_v1>() as u64,
-                }];
-                Ok(IoctlReply::Retry { input, output })
-            } else {
-                self.get_encryption_policy(handle)
+        match cmd {
+            GET_ENCRYPTION_POLICY => {
+                if out_size < size_of::<fscrypt_policy_v1>() as u32 {
+                    let input = Vec::new();
+                    let output = vec![IoctlIovec {
+                        base: arg,
+                        len: size_of::<fscrypt_policy_v1>() as u64,
+                    }];
+                    Ok(IoctlReply::Retry { input, output })
+                } else {
+                    self.get_encryption_policy(handle)
+                }
             }
-        } else if cmd == FS_IOC_SET_ENCRYPTION_POLICY() as u32 {
-            if in_size < size_of::<fscrypt_policy_v1>() as u32 {
-                let input = vec![IoctlIovec {
-                    base: arg,
-                    len: size_of::<fscrypt_policy_v1>() as u64,
-                }];
-                let output = Vec::new();
-                Ok(IoctlReply::Retry { input, output })
-            } else {
-                self.set_encryption_policy(handle, r)
+            SET_ENCRYPTION_POLICY => {
+                if in_size < size_of::<fscrypt_policy_v1>() as u32 {
+                    let input = vec![IoctlIovec {
+                        base: arg,
+                        len: size_of::<fscrypt_policy_v1>() as u64,
+                    }];
+                    let output = Vec::new();
+                    Ok(IoctlReply::Retry { input, output })
+                } else {
+                    self.set_encryption_policy(handle, r)
+                }
             }
-        } else {
-            // Did you know that a file/directory is not a TTY?
-            Err(io::Error::from_raw_os_error(libc::ENOTTY))
+            _ => Err(io::Error::from_raw_os_error(libc::ENOTTY)),
         }
     }
 
