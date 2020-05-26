@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use audio_streams::{
     shm_streams::{ShmStream, ShmStreamSource},
-    DummyStreamControl, SampleFormat, StreamControl, StreamDirection, StreamEffect,
+    BoxError, DummyStreamControl, SampleFormat, StreamControl, StreamDirection, StreamEffect,
 };
 use sync::{Condvar, Mutex};
 use sys_util::{
@@ -105,7 +105,7 @@ type GuestMemoryResult<T> = std::result::Result<T, GuestMemoryError>;
 #[derive(Debug)]
 enum AudioError {
     // Failed to create a new stream.
-    CreateStream(Box<dyn Error>),
+    CreateStream(BoxError),
     // Invalid buffer offset received from the audio server.
     InvalidBufferOffset,
     // Guest did not provide a buffer when needed.
@@ -113,9 +113,9 @@ enum AudioError {
     // Failure to read guest memory.
     ReadingGuestError(GuestMemoryError),
     // Failure to respond to the ServerRequest.
-    RespondRequest(Box<dyn Error>),
+    RespondRequest(BoxError),
     // Failure to wait for a request from the stream.
-    WaitForAction(Box<dyn Error>),
+    WaitForAction(BoxError),
 }
 
 impl std::error::Error for AudioError {}
