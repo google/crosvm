@@ -339,6 +339,6 @@ pub struct PitChannelState {
     pub bcd: bool,
     /// Value of the gate input pin. This only applies to channel 2.
     pub gate: bool,
-    /// Guest boot nanosecond timestamp of when the count value was loaded.
+    /// Nanosecond timestamp of when the count value was loaded.
     pub count_load_time: u64,
 }

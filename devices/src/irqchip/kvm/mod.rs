@@ -19,15 +19,18 @@ use crate::IrqChip;
 ///
 /// This implementation will use the KVM API to create and configure the in-kernel irqchip.
 pub struct KvmKernelIrqChip {
-    _vm: KvmVm,
+    vm: KvmVm,
     vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
 }
 
 impl KvmKernelIrqChip {
     /// Construct a new KvmKernelIrqchip.
     pub fn new(vm: KvmVm, num_vcpus: usize) -> Result<KvmKernelIrqChip> {
+        // TODO (colindr): this constructor needs aarch64 vs x86_64 implementations because we
+        //  want to use vm.create_device instead of create_irq_chip on aarch64
+        vm.create_irq_chip()?;
         Ok(KvmKernelIrqChip {
-            _vm: vm,
+            vm,
             vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
         })
     }

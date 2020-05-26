@@ -171,6 +171,34 @@ impl KvmVm {
     fn create_kvm_vcpu(&self, _id: usize) -> Result<KvmVcpu> {
         Ok(KvmVcpu {})
     }
+
+    /// Crates an in kernel interrupt controller.
+    ///
+    /// See the documentation on the KVM_CREATE_IRQCHIP ioctl.
+    pub fn create_irq_chip(&self) -> Result<()> {
+        // Safe because we know that our file is a VM fd and we verify the return result.
+        let ret = unsafe { ioctl(self, KVM_CREATE_IRQCHIP()) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+    /// Sets the level on the given irq to 1 if `active` is true, and 0 otherwise.
+    pub fn set_irq_line(&self, irq: u32, active: bool) -> Result<()> {
+        let mut irq_level = kvm_irq_level::default();
+        irq_level.__bindgen_anon_1.irq = irq;
+        irq_level.level = if active { 1 } else { 0 };
+
+        // Safe because we know that our file is a VM fd, we know the kernel will only read the
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_IRQ_LINE(), &irq_level) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
 }
 
 impl Vm for KvmVm {

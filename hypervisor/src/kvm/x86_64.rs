@@ -14,7 +14,7 @@ use sys_util::{
 use super::{Kvm, KvmVcpu, KvmVm};
 use crate::{
     ClockState, CpuId, CpuIdEntry, HypervisorX86_64, IoapicRedirectionTableEntry, IoapicState,
-    LapicState, PicState, PitChannelState, PitState, Regs, VcpuX86_64, VmX86_64,
+    LapicState, PicSelect, PicState, PitChannelState, PitState, Regs, VcpuX86_64, VmX86_64,
 };
 
 type KvmCpuId = kvm::CpuId;
@@ -87,6 +87,128 @@ impl KvmVm {
         // Safe because we know that our file is a VM fd, we know the kernel will only read correct
         // amount of memory from our pointer, and we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_CLOCK(), &clock_data) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Retrieves the state of given interrupt controller by issuing KVM_GET_IRQCHIP ioctl.
+    ///
+    /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
+    pub fn get_pic_state(&self, id: PicSelect) -> Result<kvm_pic_state> {
+        let mut irqchip_state = kvm_irqchip::default();
+        irqchip_state.chip_id = id as u32;
+        let ret = unsafe {
+            // Safe because we know our file is a VM fd, we know the kernel will only write
+            // correct amount of memory to our pointer, and we verify the return result.
+            ioctl_with_mut_ref(self, KVM_GET_IRQCHIP(), &mut irqchip_state)
+        };
+        if ret == 0 {
+            Ok(unsafe {
+                // Safe as we know that we are retrieving data related to the
+                // PIC (primary or secondary) and not IOAPIC.
+                irqchip_state.chip.pic
+            })
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Sets the state of given interrupt controller by issuing KVM_SET_IRQCHIP ioctl.
+    ///
+    /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
+    pub fn set_pic_state(&self, id: PicSelect, state: &kvm_pic_state) -> Result<()> {
+        let mut irqchip_state = kvm_irqchip::default();
+        irqchip_state.chip_id = id as u32;
+        irqchip_state.chip.pic = *state;
+        // Safe because we know that our file is a VM fd, we know the kernel will only read
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_IRQCHIP(), &irqchip_state) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Retrieves the state of IOAPIC by issuing KVM_GET_IRQCHIP ioctl.
+    ///
+    /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
+    pub fn get_ioapic_state(&self) -> Result<kvm_ioapic_state> {
+        let mut irqchip_state = kvm_irqchip::default();
+        irqchip_state.chip_id = 2;
+        let ret = unsafe {
+            // Safe because we know our file is a VM fd, we know the kernel will only write
+            // correct amount of memory to our pointer, and we verify the return result.
+            ioctl_with_mut_ref(self, KVM_GET_IRQCHIP(), &mut irqchip_state)
+        };
+        if ret == 0 {
+            Ok(unsafe {
+                // Safe as we know that we are retrieving data related to the
+                // IOAPIC and not PIC.
+                irqchip_state.chip.ioapic
+            })
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Sets the state of IOAPIC by issuing KVM_SET_IRQCHIP ioctl.
+    ///
+    /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
+    pub fn set_ioapic_state(&self, state: &kvm_ioapic_state) -> Result<()> {
+        let mut irqchip_state = kvm_irqchip::default();
+        irqchip_state.chip_id = 2;
+        irqchip_state.chip.ioapic = *state;
+        // Safe because we know that our file is a VM fd, we know the kernel will only read
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_IRQCHIP(), &irqchip_state) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Creates a PIT as per the KVM_CREATE_PIT2 ioctl.
+    ///
+    /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
+    pub fn create_pit(&self) -> Result<()> {
+        let pit_config = kvm_pit_config::default();
+        // Safe because we know that our file is a VM fd, we know the kernel will only read the
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_CREATE_PIT2(), &pit_config) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Retrieves the state of PIT by issuing KVM_GET_PIT2 ioctl.
+    ///
+    /// Note that this call can only succeed after a call to `Vm::create_pit`.
+    pub fn get_pit_state(&self) -> Result<kvm_pit_state2> {
+        // Safe because we know that our file is a VM fd, we know the kernel will only write
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut pit_state = unsafe { std::mem::zeroed() };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_PIT2(), &mut pit_state) };
+        if ret == 0 {
+            Ok(pit_state)
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Sets the state of PIT by issuing KVM_SET_PIT2 ioctl.
+    ///
+    /// Note that this call can only succeed after a call to `Vm::create_pit`.
+    pub fn set_pit_state(&self, pit_state: &kvm_pit_state2) -> Result<()> {
+        // Safe because we know that our file is a VM fd, we know the kernel will only read
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_PIT2(), pit_state) };
         if ret == 0 {
             Ok(())
         } else {
