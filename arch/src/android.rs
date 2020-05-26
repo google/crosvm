@@ -36,7 +36,7 @@ pub fn create_android_fdt(fdt: &mut Vec<u8>, fstab: File) -> Result<()> {
     begin_node(fdt, "vendor")?;
     for vec in dtprop {
         let content = std::fs::read_to_string(&vec[2]).map_err(Error::FdtIoError)?;
-        property_string(fdt, &vec[1], &content);
+        property_string(fdt, &vec[1], &content)?;
     }
     end_node(fdt)?; // vendor
     begin_node(fdt, "fstab")?;
