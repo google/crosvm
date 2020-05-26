@@ -202,7 +202,7 @@ impl Drop for Buffer {
 
 impl Buffer {
     fn as_volatile_slice(&self) -> VolatileSlice {
-        unsafe { VolatileSlice::new(self.segment_info.shmaddr as *mut _, self.size as u64) }
+        unsafe { VolatileSlice::from_raw_parts(self.segment_info.shmaddr as *mut _, self.size) }
     }
 
     fn stride(&self) -> usize {

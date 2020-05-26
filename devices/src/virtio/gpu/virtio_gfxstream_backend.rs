@@ -16,7 +16,6 @@ use std::panic;
 use std::rc::Rc;
 use std::usize;
 
-use data_model::*;
 use gpu_display::*;
 use gpu_renderer::RendererFlags;
 use resources::Alloc;
@@ -467,7 +466,7 @@ impl Backend for VirtioGfxStreamBackend {
         let mut backing_iovecs: Vec<iovec> = Vec::new();
 
         for (addr, len) in vecs {
-            let slice = mem.get_slice(addr.offset(), len as u64).unwrap();
+            let slice = mem.get_slice_at_addr(addr, len).unwrap();
             backing_iovecs.push(iovec {
                 iov_base: slice.as_ptr() as *mut c_void,
                 iov_len: len as usize,

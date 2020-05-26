@@ -246,10 +246,10 @@ impl FileReadWriteAtVolatile for CompositeDiskFile {
     fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
         let cursor_location = offset;
         let disk = self.disk_at_offset(cursor_location)?;
-        let subslice = if cursor_location + slice.size() > disk.offset + disk.length {
+        let subslice = if cursor_location + slice.size() as u64 > disk.offset + disk.length {
             let new_size = disk.offset + disk.length - cursor_location;
             slice
-                .sub_slice(0, new_size)
+                .sub_slice(0, new_size as usize)
                 .map_err(|e| io::Error::new(ErrorKind::InvalidData, format!("{:?}", e)))?
         } else {
             slice
@@ -260,10 +260,10 @@ impl FileReadWriteAtVolatile for CompositeDiskFile {
     fn write_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
         let cursor_location = offset;
         let disk = self.disk_at_offset(cursor_location)?;
-        let subslice = if cursor_location + slice.size() > disk.offset + disk.length {
+        let subslice = if cursor_location + slice.size() as u64 > disk.offset + disk.length {
             let new_size = disk.offset + disk.length - cursor_location;
             slice
-                .sub_slice(0, new_size)
+                .sub_slice(0, new_size as usize)
                 .map_err(|e| io::Error::new(ErrorKind::InvalidData, format!("{:?}", e)))?
         } else {
             slice
@@ -392,12 +392,12 @@ mod tests {
         };
         let mut composite = CompositeDiskFile::new(vec![disk_part]).unwrap();
         let mut input_memory = [55u8; 5];
-        let input_volatile_memory = &mut input_memory[..];
+        let input_volatile_memory = VolatileSlice::new(&mut input_memory[..]);
         composite
             .write_all_at_volatile(input_volatile_memory.get_slice(0, 5).unwrap(), 0)
             .unwrap();
         let mut output_memory = [0u8; 5];
-        let output_volatile_memory = &mut output_memory[..];
+        let output_volatile_memory = VolatileSlice::new(&mut output_memory[..]);
         composite
             .read_exact_at_volatile(output_volatile_memory.get_slice(0, 5).unwrap(), 0)
             .unwrap();
@@ -455,12 +455,12 @@ mod tests {
         let mut composite =
             CompositeDiskFile::new(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let mut input_memory = [55u8; 200];
-        let input_volatile_memory = &mut input_memory[..];
+        let input_volatile_memory = VolatileSlice::new(&mut input_memory[..]);
         composite
             .write_all_at_volatile(input_volatile_memory.get_slice(0, 200).unwrap(), 50)
             .unwrap();
         let mut output_memory = [0u8; 200];
-        let output_volatile_memory = &mut output_memory[..];
+        let output_volatile_memory = VolatileSlice::new(&mut output_memory[..]);
         composite
             .read_exact_at_volatile(output_volatile_memory.get_slice(0, 200).unwrap(), 50)
             .unwrap();
@@ -490,13 +490,13 @@ mod tests {
         let mut composite =
             CompositeDiskFile::new(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let mut input_memory = [55u8; 300];
-        let input_volatile_memory = &mut input_memory[..];
+        let input_volatile_memory = VolatileSlice::new(&mut input_memory[..]);
         composite
             .write_all_at_volatile(input_volatile_memory.get_slice(0, 300).unwrap(), 0)
             .unwrap();
         composite.punch_hole(50, 200).unwrap();
         let mut output_memory = [0u8; 300];
-        let output_volatile_memory = &mut output_memory[..];
+        let output_volatile_memory = VolatileSlice::new(&mut output_memory[..]);
         composite
             .read_exact_at_volatile(output_volatile_memory.get_slice(0, 300).unwrap(), 0)
             .unwrap();
@@ -530,7 +530,7 @@ mod tests {
         let mut composite =
             CompositeDiskFile::new(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let mut input_memory = [55u8; 300];
-        let input_volatile_memory = &mut input_memory[..];
+        let input_volatile_memory = VolatileSlice::new(&mut input_memory[..]);
         composite
             .write_all_at_volatile(input_volatile_memory.get_slice(0, 300).unwrap(), 0)
             .unwrap();
@@ -541,7 +541,7 @@ mod tests {
                 .unwrap();
         }
         let mut output_memory = [0u8; 300];
-        let output_volatile_memory = &mut output_memory[..];
+        let output_volatile_memory = VolatileSlice::new(&mut output_memory[..]);
         composite
             .read_exact_at_volatile(output_volatile_memory.get_slice(0, 300).unwrap(), 0)
             .unwrap();
