@@ -10,7 +10,8 @@
 use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
-use std::mem::transmute;
+use std::fmt::{self, Display};
+use std::mem::{size_of, transmute};
 use std::os::raw::{c_char, c_int, c_uchar, c_uint, c_void};
 use std::panic;
 use std::rc::Rc;
@@ -26,6 +27,33 @@ use super::protocol::GpuResponse;
 pub use super::virtio_backend::{VirtioBackend, VirtioResource};
 use crate::virtio::gpu::{Backend, VirtioScanoutBlobData, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_VIRGL};
 use crate::virtio::resource_bridge::ResourceResponse;
+
+/// Errors for gfxstream-specific usage
+#[derive(Debug)]
+pub enum GfxStreamError {
+    /// Invalid size used for a command.
+    InvalidCommandSize(usize),
+    /// Unsupported behavior
+    Unsupported,
+}
+
+impl Display for GfxStreamError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::GfxStreamError::*;
+
+        match self {
+            InvalidCommandSize(size) => write!(
+                f,
+                "gfxstream: invalid command size: {} (expected u32 multiple)",
+                size
+            ),
+            Unsupported => write!(f, "gfxstream: unsupported operation"),
+        }
+    }
+}
+
+/// The result of an operation for gfxstream-specific ops.
+pub type GfxStreamResult<T> = std::result::Result<T, GfxStreamError>;
 
 // C definitions related to gfxstream
 // In gfxstream, only write_fence is used
@@ -139,6 +167,11 @@ extern "C" {
         offset: u64,
         iovec: *mut iovec,
         iovec_cnt: c_uint,
+    ) -> c_int;
+    fn pipe_virgl_renderer_submit_cmd(
+        commands: *mut c_void,
+        ctx_id: i32,
+        dword_count: i32,
     ) -> c_int;
     fn pipe_virgl_renderer_resource_attach_iov(
         res_handle: c_int,
@@ -264,6 +297,24 @@ impl VirtioGfxStreamBackend {
             resources: Default::default(),
             fence_state,
         }
+    }
+
+    fn submit_command_impl(&mut self, ctx_id: u32, commands: &mut [u8]) -> GfxStreamResult<()> {
+        if commands.len() % size_of::<u32>() != 0 {
+            return Err(GfxStreamError::InvalidCommandSize(commands.len()));
+        }
+
+        let dword_count = commands.len() / size_of::<u32>();
+
+        unsafe {
+            pipe_virgl_renderer_submit_cmd(
+                commands.as_mut_ptr() as *mut c_void,
+                ctx_id as i32,
+                dword_count as i32,
+            );
+        }
+
+        Ok(())
     }
 }
 
@@ -697,9 +748,14 @@ impl Backend for VirtioGfxStreamBackend {
         GpuResponse::OkNoData
     }
 
-    // Not considered for gfxstream
-    fn submit_command(&mut self, _ctx_id: u32, _commands: &mut [u8]) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    fn submit_command(&mut self, ctx_id: u32, commands: &mut [u8]) -> GpuResponse {
+        match self.submit_command_impl(ctx_id, commands) {
+            Ok(_) => GpuResponse::OkNoData,
+            Err(e) => {
+                error!("submit_command error: {}", e);
+                GpuResponse::ErrUnspec
+            }
+        }
     }
 
     // Not considered for gfxstream
