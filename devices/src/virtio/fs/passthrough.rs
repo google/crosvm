@@ -9,6 +9,7 @@ use std::fs::File;
 use std::io;
 use std::mem::{self, size_of, MaybeUninit};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::ptr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -765,6 +766,99 @@ fn forget_one(
     }
 }
 
+// A temporary directory that is automatically deleted when dropped unless `into_inner()` is called.
+// This isn't a general-purpose temporary directory and is only intended to be used to ensure that
+// there are no leaks when initializing a newly created directory with the correct metadata (see the
+// implementation of `mkdir()` below). The directory is removed via a call to `unlinkat` so callers
+// are not allowed to actually populate this temporary directory with any entries (or else deleting
+// the directory will fail).
+struct TempDir {
+    path: CString,
+    file: File,
+}
+
+impl TempDir {
+    // Creates a new temporary directory in `path` with a randomly generated name. `path` must be a
+    // directory.
+    fn new(path: CString) -> io::Result<TempDir> {
+        let mut template = path.into_bytes();
+
+        // mkdtemp requires that the last 6 bytes are XXXXXX. We're not using PathBuf here because
+        // the round-trip from Vec<u8> to PathBuf and back is really tedious due to Windows/Unix
+        // differences.
+        template.extend(b"/.XXXXXX");
+
+        // The only way this can cause an error is if the caller passed in a malformed CString.
+        let ptr = CString::new(template)
+            .map(CString::into_raw)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+        // Safe because this will only modify `ptr`.
+        let ret = unsafe { libc::mkdtemp(ptr) };
+
+        // Safe because this pointer was originally created by a call to `CString::into_raw`.
+        let tmpdir = unsafe { CString::from_raw(ptr) };
+
+        if ret.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+
+        // Safe because this doesn't modify any memory and we check the return value.
+        let fd = unsafe {
+            libc::openat(
+                libc::AT_FDCWD,
+                tmpdir.as_ptr(),
+                libc::O_DIRECTORY | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(TempDir {
+            path: tmpdir,
+            // Safe because we just opened this fd.
+            file: unsafe { File::from_raw_fd(fd) },
+        })
+    }
+
+    fn path(&self) -> &CStr {
+        &self.path
+    }
+
+    // Consumes the `TempDir`, returning the inner `File` without deleting the temporary
+    // directory.
+    fn into_inner(self) -> (CString, File) {
+        // Safe because this is a valid pointer and we are going to call `mem::forget` on `self` so
+        // we will not be aliasing memory.
+        let path = unsafe { ptr::read(&self.path) };
+        let file = unsafe { ptr::read(&self.file) };
+        mem::forget(self);
+
+        (path, file)
+    }
+}
+
+impl AsRawFd for TempDir {
+    fn as_raw_fd(&self) -> RawFd {
+        self.file.as_raw_fd()
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        // There is no `AT_EMPTY_PATH` equivalent for `unlinkat` and using "." as the path returns
+        // EINVAL. So we have no choice but to use the real path. Safe because this doesn't modify
+        // any memory and we check the return value.
+        let ret =
+            unsafe { libc::unlinkat(libc::AT_FDCWD, self.path().as_ptr(), libc::AT_REMOVEDIR) };
+        if ret < 0 {
+            println!("Failed to remove tempdir: {}", io::Error::last_os_error());
+            error!("Failed to remove tempdir: {}", io::Error::last_os_error());
+        }
+    }
+}
+
 impl FileSystem for PassthroughFs {
     type Inode = Inode;
     type Handle = Handle;
@@ -892,7 +986,14 @@ impl FileSystem for PassthroughFs {
         mode: u32,
         umask: u32,
     ) -> io::Result<Entry> {
-        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+        // This method has the same issues as `create()`: namely that the kernel may have allowed a
+        // process to make a directory due to one of its supplementary groups but that information
+        // is not forwarded to us. However, there is no `O_TMPDIR` equivalent for directories so
+        // instead we create a "hidden" directory with a randomly generated name in the parent
+        // directory, modify the uid/gid and mode to the proper values, and then rename it to the
+        // requested name. This ensures that even in the case of a power loss the directory is not
+        // visible in the filesystem with the requested name but incorrect metadata. The only thing
+        // left would be a empty hidden directory with a random name.
         let data = self
             .inodes
             .lock()
@@ -900,13 +1001,43 @@ impl FileSystem for PassthroughFs {
             .map(Arc::clone)
             .ok_or_else(ebadf)?;
 
-        // Safe because this doesn't modify any memory and we check the return value.
-        let res = unsafe { libc::mkdirat(data.file.as_raw_fd(), name.as_ptr(), mode & !umask) };
-        if res == 0 {
-            self.do_lookup(parent, name)
-        } else {
-            Err(io::Error::last_os_error())
+        let tmpdir = self.get_path(parent).and_then(TempDir::new)?;
+
+        // Set the uid and gid for the directory. Safe because this doesn't modify any memory and we
+        // check the return value.
+        let ret = unsafe { libc::fchown(tmpdir.as_raw_fd(), ctx.uid, ctx.gid) };
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
         }
+
+        // Set the mode.  Safe because this doesn't modify any memory and we check the return value.
+        let ret = unsafe { libc::fchmod(tmpdir.as_raw_fd(), mode & !umask) };
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        // Now rename it into place. Safe because this doesn't modify any memory and we check the
+        // return value. TODO: Switch to libc::renameat2 once
+        // https://github.com/rust-lang/libc/pull/1508 lands and we have glibc 2.28.
+        let ret = unsafe {
+            libc::syscall(
+                libc::SYS_renameat2,
+                libc::AT_FDCWD,
+                tmpdir.path().as_ptr(),
+                data.file.as_raw_fd(),
+                name.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        };
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        // Now that we've moved the directory make sure we don't try to delete the now non-existent
+        // `tmpdir`.
+        tmpdir.into_inner();
+
+        self.do_lookup(parent, name)
     }
 
     fn rmdir(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<()> {
@@ -1007,7 +1138,16 @@ impl FileSystem for PassthroughFs {
         flags: u32,
         umask: u32,
     ) -> io::Result<(Entry, Option<Handle>, OpenOptions)> {
-        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+        // The `Context` may not contain all the information we need to create the file here. For
+        // example, a process may be part of several groups, one of which gives it permission to
+        // create a file in `parent`, but is not the gid of the process. This information is not
+        // forwarded to the server so we don't know when this is happening. Instead, we just rely on
+        // the access checks in the kernel driver: if we received this request then the kernel has
+        // determined that the process is allowed to create the file and we shouldn't reject it now
+        // based on acls.
+        //
+        // To ensure that the file is created atomically with the proper uid/gid we use `O_TMPFILE`
+        // + `linkat` as described in the `open(2)` manpage.
         let data = self
             .inodes
             .lock()
@@ -1015,15 +1155,26 @@ impl FileSystem for PassthroughFs {
             .map(Arc::clone)
             .ok_or_else(ebadf)?;
 
-        // Safe because this doesn't modify any memory and we check the return value. We don't
-        // really check `flags` because if the kernel can't handle poorly specified flags then we
-        // have much bigger problems.
+        // We don't want to use `O_EXCL` with `O_TMPFILE` as it has a different meaning when used in
+        // that combination.
+        let mut tmpflags = (flags as i32 | libc::O_TMPFILE | libc::O_CLOEXEC | libc::O_NOFOLLOW)
+            & !(libc::O_EXCL | libc::O_CREAT);
+
+        // O_TMPFILE requires that we use O_RDWR or O_WRONLY.
+        if flags as i32 & libc::O_ACCMODE == libc::O_RDONLY {
+            tmpflags &= !libc::O_ACCMODE;
+            tmpflags |= libc::O_RDWR;
+        }
+
+        // Safe because this is a valid c string.
+        let current_dir = unsafe { CStr::from_bytes_with_nul_unchecked(b".\0") };
+
+        // Safe because this doesn't modify any memory and we check the return value.
         let fd = unsafe {
             libc::openat(
                 data.file.as_raw_fd(),
-                name.as_ptr(),
-                (flags as i32 | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW)
-                    & !libc::O_DIRECT,
+                current_dir.as_ptr(),
+                tmpflags,
                 mode & !(umask & 0o777),
             )
         };
@@ -1032,26 +1183,49 @@ impl FileSystem for PassthroughFs {
         }
 
         // Safe because we just opened this fd.
-        let file = Mutex::new(unsafe { File::from_raw_fd(fd) });
+        let tmpfile = unsafe { File::from_raw_fd(fd) };
+
+        // Now set the uid and gid for the file. Safe because this doesn't modify any memory and we
+        // check the return value.
+        let ret = unsafe { libc::fchown(tmpfile.as_raw_fd(), ctx.uid, ctx.gid) };
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let proc_path = CString::new(format!("self/fd/{}", tmpfile.as_raw_fd()))
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        // Finally link it into the file system tree so that it's visible to other processes. Safe
+        // because this doesn't modify any memory and we check the return value.
+        let ret = unsafe {
+            libc::linkat(
+                self.proc.as_raw_fd(),
+                proc_path.as_ptr(),
+                data.file.as_raw_fd(),
+                name.as_ptr(),
+                libc::AT_SYMLINK_FOLLOW,
+            )
+        };
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        // We no longer need the tmpfile.
+        mem::drop(tmpfile);
 
         let entry = self.do_lookup(parent, name)?;
+        let (handle, opts) = self
+            .do_open(
+                entry.inode,
+                flags & !((libc::O_CREAT | libc::O_EXCL | libc::O_NOCTTY) as u32),
+            )
+            .map_err(|e| {
+                // Don't leak the entry.
+                self.forget(ctx, entry.inode, 1);
+                e
+            })?;
 
-        let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
-        let data = HandleData {
-            inode: entry.inode,
-            file,
-        };
-
-        self.handles.lock().insert(handle, Arc::new(data));
-
-        let mut opts = OpenOptions::empty();
-        match self.cfg.cache_policy {
-            CachePolicy::Never => opts |= OpenOptions::DIRECT_IO,
-            CachePolicy::Always => opts |= OpenOptions::KEEP_CACHE,
-            _ => {}
-        };
-
-        Ok((entry, Some(handle), opts))
+        Ok((entry, handle, opts))
     }
 
     fn unlink(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<()> {
@@ -1786,6 +1960,10 @@ impl FileSystem for PassthroughFs {
 mod tests {
     use super::*;
 
+    use std::env;
+    use std::os::unix::ffi::OsStringExt;
+    use std::path::{Path, PathBuf};
+
     #[test]
     fn padded_cstrings() {
         assert_eq!(strip_padding(b".\0\0\0\0\0\0\0").to_bytes(), b".");
@@ -1805,5 +1983,45 @@ mod tests {
     #[should_panic(expected = "`b` doesn't contain any nul bytes")]
     fn no_nul_byte() {
         strip_padding(b"no nul bytes in string");
+    }
+
+    #[test]
+    fn create_temp_dir() {
+        let t = TempDir::new(
+            CString::new(env::temp_dir().into_os_string().into_vec())
+                .expect("env::temp_dir() is not a valid c-string"),
+        )
+        .expect("Failed to create temporary directory");
+
+        let cstr = t.path().to_string_lossy();
+        let path = Path::new(&*cstr);
+        assert!(path.exists());
+        assert!(path.is_dir());
+    }
+
+    #[test]
+    fn remove_temp_dir() {
+        let t = TempDir::new(
+            CString::new(env::temp_dir().into_os_string().into_vec())
+                .expect("env::temp_dir() is not a valid c-string"),
+        )
+        .expect("Failed to create temporary directory");
+        let cstr = t.path().to_string_lossy();
+        let path = PathBuf::from(&*cstr);
+        mem::drop(t);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn temp_dir_into_inner() {
+        let t = TempDir::new(
+            CString::new(env::temp_dir().into_os_string().into_vec())
+                .expect("env::temp_dir() is not a valid c-string"),
+        )
+        .expect("Failed to create temporary directory");
+        let (cstr, _) = t.into_inner();
+        let cow_str = cstr.to_string_lossy();
+        let path = Path::new(&*cow_str);
+        assert!(path.exists());
     }
 }
