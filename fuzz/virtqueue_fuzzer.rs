@@ -8,7 +8,6 @@ use std::mem::size_of;
 
 use cros_fuzz::fuzz_target;
 use cros_fuzz::rand::FuzzRng;
-use data_model::VolatileMemory;
 use devices::virtio::{DescriptorChain, Queue};
 use rand::{Rng, RngCore};
 use sys_util::{GuestAddress, GuestMemory};
@@ -71,7 +70,9 @@ fuzz_target!(|data: &[u8]| {
         }
 
         // First zero out all of the memory.
-        let vs = mem.get_slice(0, MEM_SIZE).unwrap();
+        let vs = mem
+            .get_slice_at_addr(GuestAddress(0), MEM_SIZE as usize)
+            .unwrap();
         vs.write_bytes(0);
 
         // Fill in the descriptor table.
