@@ -24,7 +24,7 @@ use std::ptr::{null, null_mut};
 use data_model::VolatileMemory;
 use sys_util::{round_up_to_page_size, MemoryMapping, SharedMemory};
 
-const BUFFER_COUNT: usize = 2;
+const BUFFER_COUNT: usize = 3;
 const BYTES_PER_PIXEL: u32 = 4;
 
 struct DwlContext(*mut dwl_context);
