@@ -41,11 +41,17 @@ pub enum Executable {
     Plugin(PathBuf),
 }
 
+/// Maximum length of a `DiskOption` identifier.
+///
+/// This is based on the virtio-block ID length limit.
+pub const DISK_ID_LEN: usize = 20;
+
 pub struct DiskOption {
     pub path: PathBuf,
     pub read_only: bool,
     pub sparse: bool,
     pub block_size: u32,
+    pub id: Option<[u8; DISK_ID_LEN]>,
 }
 
 /// A bind mount for directories in the plugin process.
