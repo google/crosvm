@@ -5,7 +5,6 @@
 use std::collections::VecDeque;
 use std::convert::AsRef;
 use std::convert::TryInto;
-use std::error::Error;
 use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
