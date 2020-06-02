@@ -62,13 +62,18 @@
 mod complete;
 mod executor;
 mod fd_executor;
+mod io_ext;
+mod io_source;
 mod select;
 mod uring_executor;
+mod uring_futures;
 mod uring_mem;
 mod waker;
 
 pub use executor::{Executor, WakerToken};
+pub use io_ext::*;
 pub use select::SelectResult;
+pub use uring_futures::UringSource;
 
 use std::fmt::{self, Display};
 use std::future::Future;

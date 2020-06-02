@@ -51,8 +51,6 @@
 //! ensures that only the kernel is allowed to access the `Vec` and wraps the the `Vec` in an Rc to
 //! ensure it lives long enough.
 
-#![allow(dead_code)] // TODO(dverkamp): remove once this module is used
-
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::{self, Display};
