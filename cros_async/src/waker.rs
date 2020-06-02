@@ -6,6 +6,10 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{RawWaker, RawWakerVTable};
 
+/// Wrapper around a u64 used as a token to uniquely identify a pending waker.
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
+pub(crate) struct WakerToken(pub(crate) u64);
+
 // Boiler-plate for creating a waker with function pointers.
 // This waker sets the atomic bool it is passed to true.
 // The bool will be used by the executor to know which futures to poll

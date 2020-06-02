@@ -59,6 +59,8 @@ mod complete;
 mod executor;
 mod fd_executor;
 mod select;
+mod uring_executor;
+mod uring_mem;
 mod waker;
 
 pub use executor::{Executor, WakerToken};

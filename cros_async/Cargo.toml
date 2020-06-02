@@ -5,6 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
+io_uring = { path = "../io_uring" }
 libc = "*"
 paste = "*"
 pin-utils = "0.1.0-alpha.4"
