@@ -265,6 +265,8 @@ mod test {
     use futures::future::Either;
     use futures::pin_mut;
 
+    use crate::executor::UnitFutures;
+
     use super::*;
 
     struct TestFut {
@@ -312,7 +314,7 @@ mod test {
 
         let fut = do_test();
 
-        let mut ex = FdExecutor::new(crate::UnitFutures::new()).expect("Failed creating executor");
+        let mut ex = FdExecutor::new(UnitFutures::new()).expect("Failed creating executor");
         add_future(Box::pin(fut)).unwrap();
         ex.run().unwrap();
         STATE.with(|state| {
@@ -328,7 +330,7 @@ mod test {
             x.replace(4);
         }
 
-        let mut ex = FdExecutor::new(crate::UnitFutures::new()).expect("Failed creating executor");
+        let mut ex = FdExecutor::new(UnitFutures::new()).expect("Failed creating executor");
         let x = Rc::new(RefCell::new(0));
         crate::fd_executor::add_future(Box::pin(my_async(x.clone()))).unwrap();
         ex.run().unwrap();
