@@ -13,6 +13,10 @@
 //!
 //! Use helper functions based the desired behavior of your application.
 //!
+//! ## Running one future.
+//!
+//! If there is only one top-level future to run, use the [`run_one`](fn.run_one.html) function.
+//!
 //! ## Completing one of several futures.
 //!
 //! If there are several top level tasks that should run until any one completes, use the "select"
@@ -66,19 +70,22 @@ mod waker;
 pub use executor::{Executor, WakerToken};
 pub use select::SelectResult;
 
-use executor::{RunOne, UnitFutures};
-use fd_executor::FdExecutor;
-
 use std::fmt::{self, Display};
 use std::future::Future;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::task::Waker;
 
-#[derive(Debug, PartialEq)]
+use executor::{FutureList, RunOne};
+use fd_executor::FdExecutor;
+use uring_executor::URingExecutor;
+
+#[derive(Debug)]
 pub enum Error {
     /// Error from the FD executor.
     FdExecutor(fd_executor::Error),
+    /// Error from the uring executor.
+    URingExecutor(uring_executor::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -88,31 +95,37 @@ impl Display for Error {
 
         match self {
             FdExecutor(e) => write!(f, "Failure in the FD executor: {}", e),
+            URingExecutor(e) => write!(f, "Failure in the uring executor: {}", e),
         }
     }
 }
+impl std::error::Error for Error {}
 
-/// Creates an empty FdExecutor that can have futures returning `()` added via
-/// [`add_future`](fn.add_future.html).
-///
-///  # Example
-///
-///    ```
-///    use cros_async::{empty_executor, Executor};
-///    use cros_async::fd_executor::add_future;
-///    use futures::future::pending;
-///
-///    let fut = async { () };
-///    let mut ex = empty_executor().expect("Failed to create executor");
-///
-///    add_future(Box::pin(fut));
-///    ex.run();
-///    ```
-pub fn empty_executor() -> Result<impl Executor> {
-    FdExecutor::new(UnitFutures::new()).map_err(Error::FdExecutor)
+// Runs an executor with the given future list.
+// Chooses the uring executor if available, otherwise falls back to the FD executor.
+fn run_executor<T: FutureList>(future_list: T) -> Result<T::Output> {
+    if uring_executor::use_uring() {
+        URingExecutor::new(future_list)
+            .and_then(|mut ex| ex.run())
+            .map_err(Error::URingExecutor)
+    } else {
+        FdExecutor::new(future_list)
+            .and_then(|mut ex| ex.run())
+            .map_err(Error::FdExecutor)
+    }
 }
 
-/// Creates a FdExecutor that runs one future to completion.
+/// Adds a new top level future to the Executor.
+/// These futures must return `()`, indicating they are intended to create side-effects only.
+pub fn add_future(future: Pin<Box<dyn Future<Output = ()>>>) -> Result<()> {
+    if uring_executor::use_uring() {
+        Ok(uring_executor::add_future(future))
+    } else {
+        fd_executor::add_future(future).map_err(Error::FdExecutor)
+    }
+}
+
+/// Creates an Executor that runs one future to completion.
 ///
 ///  # Example
 ///
@@ -120,9 +133,39 @@ pub fn empty_executor() -> Result<impl Executor> {
 ///    use cros_async::run_one;
 ///
 ///    let fut = async { 55 };
-///    assert_eq!(Ok(55),run_one(Box::pin(fut)));
+///    assert_eq!(55, run_one(Box::pin(fut)).unwrap());
 ///    ```
 pub fn run_one<F: Future + Unpin>(fut: F) -> Result<F::Output> {
+    run_executor(RunOne::new(fut))
+}
+
+/// Creates a URingExecutor that runs one future to completion.
+///
+///  # Example
+///
+///    ```
+///    use cros_async::run_one_uring;
+///
+///    let fut = async { 55 };
+///    assert_eq!(55, run_one_uring(Box::pin(fut)).unwrap());
+///    ```
+pub fn run_one_uring<F: Future + Unpin>(fut: F) -> Result<F::Output> {
+    URingExecutor::new(RunOne::new(fut))
+        .and_then(|mut ex| ex.run())
+        .map_err(Error::URingExecutor)
+}
+
+/// Creates a FdExecutor that runs one future to completion.
+///
+///  # Example
+///
+///    ```
+///    use cros_async::run_one_poll;
+///
+///    let fut = async { 55 };
+///    assert_eq!(55, run_one_poll(Box::pin(fut)).unwrap());
+///    ```
+pub fn run_one_poll<F: Future + Unpin>(fut: F) -> Result<F::Output> {
     FdExecutor::new(RunOne::new(fut))
         .and_then(|mut ex| ex.run())
         .map_err(Error::FdExecutor)
@@ -489,10 +532,4 @@ pub fn add_write_waker(fd: RawFd, waker: Waker) -> Result<WakerToken> {
 /// Cancels the waker that returned the given token if the waker hasn't yet fired.
 pub fn cancel_waker(token: WakerToken) -> Result<()> {
     fd_executor::cancel_waker(token).map_err(Error::FdExecutor)
-}
-
-/// Adds a new top level future to the Executor.
-/// These futures must return `()`, indicating they are intended to create side-effects only.
-pub fn add_future(future: Pin<Box<dyn Future<Output = ()>>>) -> Result<()> {
-    fd_executor::add_future(future).map_err(Error::FdExecutor)
 }
