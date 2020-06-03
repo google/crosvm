@@ -13,6 +13,10 @@ use std::result;
 use std::sync::Arc;
 
 use crate::guest_address::GuestAddress;
+use cros_async::{
+    uring_mem::{self, BorrowedIoVec},
+    BackingMemory,
+};
 use data_model::volatile_memory::*;
 use data_model::DataInit;
 use sys_util::{pagesize, Error as SysError};
@@ -662,6 +666,25 @@ impl GuestMemory {
             .find(|region| region.contains(guest_addr))
             .ok_or(Error::InvalidGuestAddress(guest_addr))
             .map(|region| region.memfd_offset + guest_addr.offset_from(region.start()))
+    }
+}
+
+// It is safe to implement BackingMemory because GuestMemory can be mutated any time already.
+unsafe impl BackingMemory for GuestMemory {
+    fn get_iovec<'s>(
+        &'s self,
+        mem_range: cros_async::MemRegion,
+    ) -> uring_mem::Result<uring_mem::BorrowedIoVec<'s>> {
+        let vs = self
+            .get_slice_at_addr(GuestAddress(mem_range.offset as u64), mem_range.len)
+            .map_err(|_| uring_mem::Error::InvalidOffset(mem_range.offset, mem_range.len))?;
+        // Safe because 'vs' is valid in the backing memory as checked above.
+        unsafe {
+            Ok(BorrowedIoVec::from_raw_parts(
+                vs.as_mut_ptr(),
+                vs.size() as usize,
+            ))
+        }
     }
 }
 

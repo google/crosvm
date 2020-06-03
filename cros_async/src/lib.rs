@@ -68,7 +68,7 @@ mod poll_source;
 mod select;
 mod uring_executor;
 mod uring_futures;
-mod uring_mem;
+pub mod uring_mem;
 mod waker;
 
 pub use executor::Executor;
@@ -77,7 +77,7 @@ pub use poll_or_ring::Error as AsyncError;
 pub use poll_or_ring::{PollOrRing, U64Source};
 pub use select::SelectResult;
 pub use uring_futures::UringSource;
-pub use uring_mem::MemRegion;
+pub use uring_mem::{BackingMemory, MemRegion};
 
 use std::fmt::{self, Display};
 use std::future::Future;

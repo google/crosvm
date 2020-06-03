@@ -6,6 +6,7 @@ edition = "2018"
 include = ["src/**/*", "Cargo.toml"]
 
 [dependencies]
+cros_async = { path = "../cros_async" } # provided by ebuild
 data_model = { path = "../data_model" } # provided by ebuild
 libc = "*"
 sys_util = { path = "../sys_util" } # provided by ebuild
