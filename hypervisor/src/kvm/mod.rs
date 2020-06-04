@@ -28,14 +28,14 @@ use data_model::vec_with_array_field;
 use kvm_sys::*;
 use sync::Mutex;
 use sys_util::{
-    block_signal, errno_result, ioctl, ioctl_with_ref, ioctl_with_val, pagesize, unblock_signal,
-    AsRawDescriptor, Error, EventFd, FromRawDescriptor, GuestAddress, GuestMemory, MappedRegion,
-    MemoryMapping, MmapError, RawDescriptor, Result, SafeDescriptor,
+    block_signal, errno_result, error, ioctl, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
+    pagesize, unblock_signal, AsRawDescriptor, Error, EventFd, FromRawDescriptor, GuestAddress,
+    GuestMemory, MappedRegion, MemoryMapping, MmapError, RawDescriptor, Result, SafeDescriptor,
 };
 
 use crate::{
     ClockState, Datamatch, DeviceKind, Hypervisor, HypervisorCap, IoEventAddress, IrqRoute,
-    IrqSource, MemSlot, RunnableVcpu, Vcpu, VcpuExit, Vm, VmCap,
+    IrqSource, MPState, MemSlot, RunnableVcpu, Vcpu, VcpuExit, Vm, VmCap,
 };
 
 // Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
@@ -707,6 +707,44 @@ impl Vcpu for KvmVcpu {
     }
 }
 
+impl KvmVcpu {
+    /// Gets the vcpu's current "multiprocessing state".
+    ///
+    /// See the documentation for KVM_GET_MP_STATE. This call can only succeed after
+    /// a call to `Vm::create_irq_chip`.
+    ///
+    /// Note that KVM defines the call for both x86 and s390 but we do not expect anyone
+    /// to run crosvm on s390.
+    pub fn get_mp_state(&self) -> Result<kvm_mp_state> {
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only
+        // write correct amount of memory to our pointer, and we verify the return result.
+        let mut state: kvm_mp_state = unsafe { std::mem::zeroed() };
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_MP_STATE(), &mut state) };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(state)
+    }
+
+    /// Sets the vcpu's current "multiprocessing state".
+    ///
+    /// See the documentation for KVM_SET_MP_STATE. This call can only succeed after
+    /// a call to `Vm::create_irq_chip`.
+    ///
+    /// Note that KVM defines the call for both x86 and s390 but we do not expect anyone
+    /// to run crosvm on s390.
+    pub fn set_mp_state(&self, state: &kvm_mp_state) -> Result<()> {
+        let ret = unsafe {
+            // The ioctl is safe because the kernel will only read from the kvm_mp_state struct.
+            ioctl_with_ref(self, KVM_SET_MP_STATE(), state)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+}
+
 impl AsRawFd for KvmVcpu {
     fn as_raw_fd(&self) -> RawFd {
         self.vcpu.as_raw_descriptor()
@@ -951,6 +989,41 @@ impl BlockedSignal {
 impl Drop for BlockedSignal {
     fn drop(&mut self) {
         let _ = unblock_signal(self.signal_num).expect("failed to restore signal mask");
+    }
+}
+
+impl From<&kvm_mp_state> for MPState {
+    fn from(item: &kvm_mp_state) -> Self {
+        match item.mp_state {
+            KVM_MP_STATE_RUNNABLE => MPState::Runnable,
+            KVM_MP_STATE_UNINITIALIZED => MPState::Uninitialized,
+            KVM_MP_STATE_INIT_RECEIVED => MPState::InitReceived,
+            KVM_MP_STATE_HALTED => MPState::Halted,
+            KVM_MP_STATE_SIPI_RECEIVED => MPState::SipiReceived,
+            KVM_MP_STATE_STOPPED => MPState::Stopped,
+            state => {
+                error!(
+                    "unrecognized kvm_mp_state {}, setting to KVM_MP_STATE_RUNNABLE",
+                    state
+                );
+                MPState::Runnable
+            }
+        }
+    }
+}
+
+impl From<&MPState> for kvm_mp_state {
+    fn from(item: &MPState) -> Self {
+        kvm_mp_state {
+            mp_state: match item {
+                MPState::Runnable => KVM_MP_STATE_RUNNABLE,
+                MPState::Uninitialized => KVM_MP_STATE_UNINITIALIZED,
+                MPState::InitReceived => KVM_MP_STATE_INIT_RECEIVED,
+                MPState::Halted => KVM_MP_STATE_HALTED,
+                MPState::SipiReceived => KVM_MP_STATE_SIPI_RECEIVED,
+                MPState::Stopped => KVM_MP_STATE_STOPPED,
+            },
+        }
     }
 }
 

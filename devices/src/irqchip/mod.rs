@@ -7,7 +7,7 @@ pub use self::kvm::KvmKernelIrqChip;
 
 use std::marker::{Send, Sized};
 
-use hypervisor::{IrqRoute, Vcpu};
+use hypervisor::{IrqRoute, MPState, Vcpu};
 use sys_util::{EventFd, Result};
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -78,6 +78,12 @@ pub trait IrqChip<V: Vcpu>: Send + Sized {
     /// Check if the specified vcpu has any pending interrupts. Returns None for no interrupts,
     /// otherwise Some(u32) should be the injected interrupt vector.
     fn get_external_interrupt(&mut self, vcpu_id: usize) -> Result<Option<u32>>;
+
+    /// Get the current MP state of the specified VCPU.
+    fn get_mp_state(&self, vcpu_id: usize) -> Result<MPState>;
+
+    /// Set the current MP state of the specified VCPU.
+    fn set_mp_state(&mut self, vcpu_id: usize, state: &MPState) -> Result<()>;
 
     /// Attempt to create a shallow clone of this IrqChip instance.
     fn try_clone(&self) -> Result<Self>;

@@ -318,3 +318,22 @@ pub struct Register {
     pub id: u64,
     pub value: u64,
 }
+
+/// The MPState represents the state of a processor.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MPState {
+    /// the vcpu is currently running (x86/x86_64,arm/arm64)
+    Runnable,
+    /// the vcpu is an application processor (AP) which has not yet received an INIT signal
+    /// (x86/x86_64)
+    Uninitialized,
+    /// the vcpu has received an INIT signal, and is now ready for a SIPI (x86/x86_64)
+    InitReceived,
+    /// the vcpu has executed a HLT instruction and is waiting for an interrupt (x86/x86_64)
+    Halted,
+    /// the vcpu has just received a SIPI (vector accessible via KVM_GET_VCPU_EVENTS) (x86/x86_64)
+    SipiReceived,
+    /// the vcpu is stopped (arm/arm64)
+    Stopped,
+}

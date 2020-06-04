@@ -834,4 +834,15 @@ mod tests {
         let vm = KvmVm::new(&kvm, gm).unwrap();
         vm.set_identity_map_addr(GuestAddress(0x20000)).unwrap();
     }
+
+    #[test]
+    fn mp_state() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        vm.create_irq_chip().unwrap();
+        let vcpu = vm.create_vcpu(0).unwrap();
+        let state = vcpu.get_mp_state().unwrap();
+        vcpu.set_mp_state(&state).unwrap();
+    }
 }

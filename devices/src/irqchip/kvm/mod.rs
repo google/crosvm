@@ -3,8 +3,9 @@
 // found in the LICENSE file.
 
 use hypervisor::kvm::KvmVcpu;
-use hypervisor::IrqRoute;
-use sys_util::{error, EventFd, Result};
+use hypervisor::{IrqRoute, MPState};
+use kvm_sys::kvm_mp_state;
+use sys_util::{error, Error, EventFd, Result};
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86_64;
@@ -97,6 +98,22 @@ impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
         Ok(None)
     }
 
+    /// Get the current MP state of the specified VCPU.
+    fn get_mp_state(&self, vcpu_id: usize) -> Result<MPState> {
+        match self.vcpus.lock().get(vcpu_id) {
+            Some(Some(vcpu)) => Ok(MPState::from(&vcpu.get_mp_state()?)),
+            _ => Err(Error::new(libc::ENOENT)),
+        }
+    }
+
+    /// Set the current MP state of the specified VCPU.
+    fn set_mp_state(&mut self, vcpu_id: usize, state: &MPState) -> Result<()> {
+        match self.vcpus.lock().get(vcpu_id) {
+            Some(Some(vcpu)) => vcpu.set_mp_state(&kvm_mp_state::from(state)),
+            _ => Err(Error::new(libc::ENOENT)),
+        }
+    }
+
     /// Attempt to clone this IrqChip instance.
     fn try_clone(&self) -> Result<Self> {
         // Because the KvmKernelIrqchip struct contains arch-specific fields we leave the
@@ -109,10 +126,11 @@ impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
 mod tests {
 
     use hypervisor::kvm::{Kvm, KvmVm};
+    use hypervisor::{MPState, Vm};
     use sys_util::GuestMemory;
 
     use crate::irqchip::{IrqChip, KvmKernelIrqChip};
-    use hypervisor::Vm;
+
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     use hypervisor::VmAarch64;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -129,5 +147,27 @@ mod tests {
 
         let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
         chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
+    }
+
+    #[test]
+    fn mp_state() {
+        let kvm = Kvm::new().expect("failed to instantiate Kvm");
+        let mem = GuestMemory::new(&[]).unwrap();
+        let vm = KvmVm::new(&kvm, mem).expect("failed to instantiate vm");
+
+        let mut chip = KvmKernelIrqChip::new(vm.try_clone().expect("failed to clone vm"), 1)
+            .expect("failed to instantiate KvmKernelIrqChip");
+
+        let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
+        chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
+
+        let state = chip.get_mp_state(0).expect("failed to get mp state");
+        assert_eq!(state, MPState::Runnable);
+
+        chip.set_mp_state(0, &MPState::Stopped)
+            .expect("failed to set mp state");
+
+        let state = chip.get_mp_state(0).expect("failed to get mp state");
+        assert_eq!(state, MPState::Stopped);
     }
 }
