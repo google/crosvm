@@ -41,15 +41,13 @@ pub trait IrqChip<V: Vcpu>: Send + Sized {
     ) -> Result<()>;
 
     /// Unregister an event for a particular GSI.
-    fn unregister_irq_event(
-        &mut self,
-        irq: u32,
-        irq_event: &EventFd,
-        resample_event: Option<&EventFd>,
-    ) -> Result<()>;
+    fn unregister_irq_event(&mut self, irq: u32, irq_event: &EventFd) -> Result<()>;
 
     /// Route an IRQ line to an interrupt controller, or to a particular MSI vector.
     fn route_irq(&mut self, route: IrqRoute) -> Result<()>;
+
+    /// Replace all irq routes with the supplied routes
+    fn set_irq_routes(&mut self, routes: &[IrqRoute]) -> Result<()>;
 
     /// Return a vector of all registered irq numbers and their associated events.  To be used by
     /// the main thread to wait for irq events to be triggered.

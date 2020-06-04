@@ -6,11 +6,34 @@ use std::sync::Arc;
 use sync::Mutex;
 
 use hypervisor::kvm::{KvmVcpu, KvmVm};
-use hypervisor::{IoapicState, LapicState, PicSelect, PicState, PitState, Vm};
+use hypervisor::{
+    IoapicState, IrqRoute, IrqSourceChip, LapicState, PicSelect, PicState, PitState, Vm,
+    NUM_IOAPIC_PINS,
+};
 use kvm_sys::*;
 use sys_util::Result;
 
 use crate::{Bus, IrqChipX86_64};
+
+/// Default x86 routing table.  Pins 0-7 go to primary pic and ioapic, pins 8-15 go to secondary
+/// pic and ioapic, and pins 16-23 go only to the ioapic.
+fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {
+    let mut routes: Vec<IrqRoute> = Vec::new();
+
+    for i in 0..8 {
+        routes.push(IrqRoute::pic_irq_route(IrqSourceChip::PicPrimary, i));
+        routes.push(IrqRoute::ioapic_irq_route(i));
+    }
+    for i in 8..16 {
+        routes.push(IrqRoute::pic_irq_route(IrqSourceChip::PicSecondary, i));
+        routes.push(IrqRoute::ioapic_irq_route(i));
+    }
+    for i in 16..NUM_IOAPIC_PINS as u32 {
+        routes.push(IrqRoute::ioapic_irq_route(i));
+    }
+
+    routes
+}
 
 /// IrqChip implementation where the entire IrqChip is emulated by KVM.
 ///
@@ -18,6 +41,7 @@ use crate::{Bus, IrqChipX86_64};
 pub struct KvmKernelIrqChip {
     pub(super) vm: KvmVm,
     pub(super) vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
+    pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
 }
 
 impl KvmKernelIrqChip {
@@ -28,6 +52,7 @@ impl KvmKernelIrqChip {
         Ok(KvmKernelIrqChip {
             vm,
             vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
+            routes: Arc::new(Mutex::new(kvm_default_irq_routing_table())),
         })
     }
     /// Attempt to create a shallow clone of this x86_64 KvmKernelIrqChip instance.
@@ -35,6 +60,7 @@ impl KvmKernelIrqChip {
         Ok(KvmKernelIrqChip {
             vm: self.vm.try_clone()?,
             vcpus: self.vcpus.clone(),
+            routes: self.routes.clone(),
         })
     }
 }
@@ -98,7 +124,7 @@ mod tests {
     use crate::irqchip::{IrqChip, IrqChipX86_64, KvmKernelIrqChip};
     use crate::Bus;
 
-    use hypervisor::{PicSelect, Vm, VmX86_64};
+    use hypervisor::{IrqRoute, IrqSource, IrqSourceChip, PicSelect, Vm, VmX86_64};
 
     fn get_chip() -> (KvmKernelIrqChip, KvmVm) {
         let kvm = Kvm::new().expect("failed to instantiate Kvm");
@@ -242,5 +268,81 @@ mod tests {
         // check the values we set
         assert_eq!(state.channels[0].count, 500);
         assert_eq!(state.channels[0].mode, 1);
+    }
+
+    fn check_pic_interrupts(chip: &KvmKernelIrqChip, select: PicSelect, value: u8) {
+        let state = chip
+            .get_pic_state(select)
+            .expect("could not get ioapic state");
+
+        assert_eq!(state.irr, value);
+    }
+
+    fn check_ioapic_interrupts(chip: &KvmKernelIrqChip, value: u32) {
+        let state = chip.get_ioapic_state().expect("could not get ioapic state");
+
+        // since the irq route goes nowhere the bitmap should still be 0
+        assert_eq!(state.current_interrupt_level_bitmap, value);
+    }
+
+    #[test]
+    fn route_irq() {
+        let (mut chip, _) = get_chip();
+
+        // clear out irq routes
+        chip.set_irq_routes(&[]).unwrap();
+        // assert Irq Line 1
+        chip.service_irq(1, true).expect("could not set irq line");
+
+        // no pic or ioapic interrupts should be asserted
+        check_pic_interrupts(&chip, PicSelect::Primary, 0);
+        check_ioapic_interrupts(&chip, 0);
+
+        // now we route gsi 1 to pin 3 of the ioapic and pin 6 of the primary pic
+        chip.route_irq(IrqRoute {
+            gsi: 1,
+            source: IrqSource::Irqchip {
+                chip: IrqSourceChip::Ioapic,
+                pin: 3,
+            },
+        })
+        .expect("failed to assert irq route");
+        // re-assert Irq Line 1
+        chip.service_irq(1, true).expect("could not set irq line");
+
+        // no pic line should be asserted, ioapic pin 3 should be asserted
+        check_pic_interrupts(&chip, PicSelect::Primary, 0);
+        check_ioapic_interrupts(&chip, 1 << 3);
+
+        // de-assert Irq Line 1
+        chip.service_irq(1, false).expect("could not set irq line");
+
+        // no pic or ioapic interrupts should be asserted
+        check_pic_interrupts(&chip, PicSelect::Primary, 0);
+        check_ioapic_interrupts(&chip, 0);
+
+        // add pic route
+        chip.route_irq(IrqRoute {
+            gsi: 2,
+            source: IrqSource::Irqchip {
+                chip: IrqSourceChip::PicPrimary,
+                pin: 6,
+            },
+        })
+        .expect("failed to route irq");
+
+        // re-assert Irq Line 1, it should still affect only the ioapic
+        chip.service_irq(1, true).expect("could not set irq line");
+
+        // no pic line should be asserted, ioapic pin 3 should be asserted
+        check_pic_interrupts(&chip, PicSelect::Primary, 0);
+        check_ioapic_interrupts(&chip, 1 << 3);
+
+        // assert Irq Line 2
+        chip.service_irq(2, true).expect("could not set irq line");
+
+        // pic pin 6 should be asserted, ioapic pin 3 should be asserted
+        check_pic_interrupts(&chip, PicSelect::Primary, 1 << 6);
+        check_ioapic_interrupts(&chip, 1 << 3);
     }
 }

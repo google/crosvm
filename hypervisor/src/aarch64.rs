@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{Vcpu, Vm};
+use crate::{IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
 use sys_util::Result;
 
 /// A wrapper for using a VM on aarch64 and getting/setting its state.
@@ -21,4 +21,17 @@ pub trait VcpuAArch64: Vcpu {
     ///
     /// * `reg_id` - Register ID, specified in the KVM API documentation for KVM_SET_ONE_REG
     fn set_one_reg(&self, reg_id: u64, data: u64) -> Result<()>;
+}
+
+// Convenience constructors for IrqRoutes
+impl IrqRoute {
+    pub fn gic_irq_route(irq_num: u32) -> IrqRoute {
+        IrqRoute {
+            gsi: irq_num,
+            source: IrqSource::Irqchip {
+                chip: IrqSourceChip::Gic,
+                pin: irq_num,
+            },
+        }
+    }
 }

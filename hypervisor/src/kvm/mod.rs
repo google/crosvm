@@ -4,8 +4,13 @@
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 mod aarch64;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use aarch64::*;
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86_64;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::*;
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BinaryHeap};
@@ -17,14 +22,19 @@ use std::sync::Arc;
 
 use libc::{open, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
 
+use data_model::vec_with_array_field;
 use kvm_sys::*;
 use sync::Mutex;
 use sys_util::{
-    errno_result, ioctl, ioctl_with_ref, ioctl_with_val, AsRawDescriptor, Error, FromRawDescriptor,
-    GuestAddress, GuestMemory, MappedRegion, MmapError, RawDescriptor, Result, SafeDescriptor,
+    errno_result, ioctl, ioctl_with_ref, ioctl_with_val, AsRawDescriptor, Error, EventFd,
+    FromRawDescriptor, GuestAddress, GuestMemory, MappedRegion, MmapError, RawDescriptor, Result,
+    SafeDescriptor,
 };
 
-use crate::{ClockState, DeviceKind, Hypervisor, HypervisorCap, RunnableVcpu, Vcpu, VcpuExit, Vm};
+use crate::{
+    ClockState, DeviceKind, Hypervisor, HypervisorCap, IrqRoute, IrqSource, RunnableVcpu, Vcpu,
+    VcpuExit, Vm,
+};
 
 // Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
 // from guest physical to host user pages.
@@ -191,6 +201,79 @@ impl KvmVm {
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, KVM_IRQ_LINE(), &irq_level) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Registers an event that will, when signalled, trigger the `gsi` irq, and `resample_evt`
+    /// ( when not None ) will be triggered when the irqchip is resampled.
+    pub fn register_irqfd(
+        &self,
+        gsi: u32,
+        evt: &EventFd,
+        resample_evt: Option<&EventFd>,
+    ) -> Result<()> {
+        let mut irqfd = kvm_irqfd {
+            fd: evt.as_raw_fd() as u32,
+            gsi,
+            ..Default::default()
+        };
+
+        if let Some(r_evt) = resample_evt {
+            irqfd.flags = KVM_IRQFD_FLAG_RESAMPLE;
+            irqfd.resamplefd = r_evt.as_raw_fd() as u32;
+        }
+
+        // Safe because we know that our file is a VM fd, we know the kernel will only read the
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_IRQFD(), &irqfd) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Unregisters an event that was previously registered with
+    /// `register_irqfd`.
+    ///
+    /// The `evt` and `gsi` pair must be the same as the ones passed into
+    /// `register_irqfd`.
+    pub fn unregister_irqfd(&self, gsi: u32, evt: &EventFd) -> Result<()> {
+        let irqfd = kvm_irqfd {
+            fd: evt.as_raw_fd() as u32,
+            gsi,
+            flags: KVM_IRQFD_FLAG_DEASSIGN,
+            ..Default::default()
+        };
+        // Safe because we know that our file is a VM fd, we know the kernel will only read the
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_IRQFD(), &irqfd) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Sets the GSI routing table, replacing any table set with previous calls to
+    /// `set_gsi_routing`.
+    pub fn set_gsi_routing(&self, routes: &[IrqRoute]) -> Result<()> {
+        let mut irq_routing =
+            vec_with_array_field::<kvm_irq_routing, kvm_irq_routing_entry>(routes.len());
+        irq_routing[0].nr = routes.len() as u32;
+
+        // Safe because we ensured there is enough space in irq_routing to hold the number of
+        // route entries.
+        let irq_routes = unsafe { irq_routing[0].entries.as_mut_slice(routes.len()) };
+        for (route, irq_route) in routes.iter().zip(irq_routes.iter_mut()) {
+            *irq_route = kvm_irq_routing_entry::from(route);
+        }
+
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_GSI_ROUTING(), &irq_routing[0]) };
         if ret == 0 {
             Ok(())
         } else {
@@ -394,9 +477,41 @@ impl<'a> TryFrom<&'a HypervisorCap> for KvmCap {
     }
 }
 
+impl From<&IrqRoute> for kvm_irq_routing_entry {
+    fn from(item: &IrqRoute) -> Self {
+        match &item.source {
+            IrqSource::Irqchip { chip, pin } => kvm_irq_routing_entry {
+                gsi: item.gsi,
+                type_: KVM_IRQ_ROUTING_IRQCHIP,
+                u: kvm_irq_routing_entry__bindgen_ty_1 {
+                    irqchip: kvm_irq_routing_irqchip {
+                        irqchip: chip_to_kvm_chip(*chip),
+                        pin: *pin,
+                    },
+                },
+                ..Default::default()
+            },
+            IrqSource::Msi { address, data } => kvm_irq_routing_entry {
+                gsi: item.gsi,
+                type_: KVM_IRQ_ROUTING_MSI,
+                u: kvm_irq_routing_entry__bindgen_ty_1 {
+                    msi: kvm_irq_routing_msi {
+                        address_lo: *address as u32,
+                        address_hi: (*address >> 32) as u32,
+                        data: *data,
+                        pad: 0,
+                    },
+                },
+                ..Default::default()
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::io::FromRawFd;
     use std::thread;
     use sys_util::{GuestAddress, MemoryMapping, MemoryMappingArena};
 
@@ -523,5 +638,52 @@ mod tests {
         vm.msync_memory_region(slot, mem_size, 0).unwrap();
         assert!(vm.msync_memory_region(slot, mem_size + 1, 0).is_err());
         assert!(vm.msync_memory_region(slot + 1, mem_size, 0).is_err());
+    }
+
+    #[test]
+    fn register_irqfd() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let evtfd1 = EventFd::new().unwrap();
+        let evtfd2 = EventFd::new().unwrap();
+        let evtfd3 = EventFd::new().unwrap();
+        vm.create_irq_chip().unwrap();
+        vm.register_irqfd(4, &evtfd1, None).unwrap();
+        vm.register_irqfd(8, &evtfd2, None).unwrap();
+        vm.register_irqfd(4, &evtfd3, None).unwrap();
+        vm.register_irqfd(4, &evtfd3, None).unwrap_err();
+    }
+
+    #[test]
+    fn unregister_irqfd() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let evtfd1 = EventFd::new().unwrap();
+        let evtfd2 = EventFd::new().unwrap();
+        let evtfd3 = EventFd::new().unwrap();
+        vm.create_irq_chip().unwrap();
+        vm.register_irqfd(4, &evtfd1, None).unwrap();
+        vm.register_irqfd(8, &evtfd2, None).unwrap();
+        vm.register_irqfd(4, &evtfd3, None).unwrap();
+        vm.unregister_irqfd(4, &evtfd1).unwrap();
+        vm.unregister_irqfd(8, &evtfd2).unwrap();
+        vm.unregister_irqfd(4, &evtfd3).unwrap();
+    }
+
+    #[test]
+    fn irqfd_resample() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let evtfd1 = EventFd::new().unwrap();
+        let evtfd2 = EventFd::new().unwrap();
+        vm.create_irq_chip().unwrap();
+        vm.register_irqfd(4, &evtfd1, Some(&evtfd2)).unwrap();
+        vm.unregister_irqfd(4, &evtfd1).unwrap();
+        // Ensures the ioctl is actually reading the resamplefd.
+        vm.register_irqfd(4, &evtfd1, Some(unsafe { &EventFd::from_raw_fd(-1) }))
+            .unwrap_err();
     }
 }

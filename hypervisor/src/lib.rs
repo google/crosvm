@@ -120,8 +120,31 @@ pub enum DeviceKind {
     ArmVgicV3,
 }
 
+/// The source chip of an `IrqSource`
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IrqSourceChip {
+    PicPrimary,
+    PicSecondary,
+    Ioapic,
+    Gic,
+}
+
+/// A source of IRQs in an `IrqRoute`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IrqSource {
+    Irqchip { chip: IrqSourceChip, pin: u32 },
+    Msi { address: u64, data: u32 },
+}
+
 /// A single route for an IRQ.
-pub struct IrqRoute {}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IrqRoute {
+    pub gsi: u32,
+    pub source: IrqSource,
+}
 
 /// The state of the paravirtual clock
 #[derive(Debug, Default, Copy, Clone)]

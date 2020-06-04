@@ -6,11 +6,22 @@ use std::sync::Arc;
 use sync::Mutex;
 
 use hypervisor::kvm::{KvmVcpu, KvmVm};
-use hypervisor::{DeviceKind, Vm};
+use hypervisor::{DeviceKind, IrqRoute, Vm};
 use kvm_sys::*;
 use sys_util::{errno_result, ioctl_with_ref, Result, SafeDescriptor};
 
 use crate::IrqChipAArch64;
+
+/// Default ARM routing table.  AARCH64_GIC_NR_SPIS pins go to VGIC.
+fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {
+    let mut routes: Vec<IrqRoute> = Vec::new();
+
+    for i in 0..AARCH64_GIC_NR_SPIS {
+        routes.push(IrqRoute::gic_irq_route(i));
+    }
+
+    routes
+}
 
 /// IrqChip implementation where the entire IrqChip is emulated by KVM.
 ///
@@ -20,6 +31,7 @@ pub struct KvmKernelIrqChip {
     pub(super) vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
     vgic: SafeDescriptor,
     device_kind: DeviceKind,
+    pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
 }
 
 // These constants indicate the address space used by the ARM vGIC.
@@ -35,6 +47,8 @@ const AARCH64_GIC_REDIST_SIZE: u64 = 0x20000;
 // This is the minimum number of SPI interrupts aligned to 32 + 32 for the
 // PPI (16) and GSI (16).
 const AARCH64_GIC_NR_IRQS: u32 = 64;
+// Number of SPIs (32), which is the NR_IRQS (64) minus the number of PPIs (16) and GSIs (16)
+const AARCH64_GIC_NR_SPIS: u32 = 32;
 
 const AARCH64_AXI_BASE: u64 = 0x40000000;
 
@@ -130,6 +144,7 @@ impl KvmKernelIrqChip {
             vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
             vgic,
             device_kind,
+            routes: Arc::new(Mutex::new(kvm_default_irq_routing_table())),
         })
     }
 
@@ -140,6 +155,7 @@ impl KvmKernelIrqChip {
             vcpus: self.vcpus.clone(),
             vgic: self.vgic.try_clone()?,
             device_kind: self.device_kind,
+            routes: self.routes.clone(),
         })
     }
 }

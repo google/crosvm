@@ -5,7 +5,7 @@
 use bit_field::*;
 use sys_util::{error, Result};
 
-use crate::{Hypervisor, Vcpu, Vm};
+use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
 
 /// A trait for managing cpuids for an x86_64 hypervisor and for checking its capabilities.
 pub trait HypervisorX86_64: Hypervisor {
@@ -341,4 +341,27 @@ pub struct PitChannelState {
     pub gate: bool,
     /// Nanosecond timestamp of when the count value was loaded.
     pub count_load_time: u64,
+}
+
+// Convenience constructors for IrqRoutes
+impl IrqRoute {
+    pub fn ioapic_irq_route(irq_num: u32) -> IrqRoute {
+        IrqRoute {
+            gsi: irq_num,
+            source: IrqSource::Irqchip {
+                chip: IrqSourceChip::Ioapic,
+                pin: irq_num,
+            },
+        }
+    }
+
+    pub fn pic_irq_route(id: IrqSourceChip, irq_num: u32) -> IrqRoute {
+        IrqRoute {
+            gsi: irq_num,
+            source: IrqSource::Irqchip {
+                chip: id,
+                pin: irq_num % 8,
+            },
+        }
+    }
 }

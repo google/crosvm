@@ -4,7 +4,7 @@
 
 use hypervisor::kvm::KvmVcpu;
 use hypervisor::IrqRoute;
-use sys_util::{EventFd, Result};
+use sys_util::{error, EventFd, Result};
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86_64;
@@ -29,54 +29,72 @@ impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
     /// Register an event that can trigger an interrupt for a particular GSI.
     fn register_irq_event(
         &mut self,
-        _irq: u32,
-        _irq_event: &EventFd,
-        _resample_event: Option<&EventFd>,
+        irq: u32,
+        irq_event: &EventFd,
+        resample_event: Option<&EventFd>,
     ) -> Result<()> {
-        unimplemented!("register_irq_event for KvmKernelIrqChip is not yet implemented");
+        self.vm.register_irqfd(irq, irq_event, resample_event)
     }
 
     /// Unregister an event for a particular GSI.
-    fn unregister_irq_event(
-        &mut self,
-        _irq: u32,
-        _irq_event: &EventFd,
-        _resample_event: Option<&EventFd>,
-    ) -> Result<()> {
-        unimplemented!("unregister_irq_event for KvmKernelIrqChip is not yet implemented");
+    fn unregister_irq_event(&mut self, irq: u32, irq_event: &EventFd) -> Result<()> {
+        self.vm.unregister_irqfd(irq, irq_event)
     }
 
     /// Route an IRQ line to an interrupt controller, or to a particular MSI vector.
-    fn route_irq(&mut self, _route: IrqRoute) -> Result<()> {
-        unimplemented!("route_irq for KvmKernelIrqChip is not yet implemented");
+    fn route_irq(&mut self, route: IrqRoute) -> Result<()> {
+        let mut routes = self.routes.lock();
+        routes.retain(|r| r.gsi != route.gsi);
+
+        routes.push(route);
+
+        self.vm.set_gsi_routing(&*routes)
+    }
+
+    /// Replace all irq routes with the supplied routes
+    fn set_irq_routes(&mut self, routes: &[IrqRoute]) -> Result<()> {
+        let mut current_routes = self.routes.lock();
+        *current_routes = routes.to_vec();
+
+        self.vm.set_gsi_routing(&*current_routes)
     }
 
     /// Return a vector of all registered irq numbers and their associated events.  To be used by
     /// the main thread to wait for irq events to be triggered.
+    /// For the KvmKernelIrqChip, the kernel handles listening to irq events being triggered by
+    /// devices, so this function always returns an empty Vec.
     fn irq_event_tokens(&self) -> Result<Vec<(u32, EventFd)>> {
-        unimplemented!("irq_event_tokens for KvmKernelIrqChip is not yet implemented");
+        Ok(Vec::new())
     }
 
     /// Either assert or deassert an IRQ line.  Sends to either an interrupt controller, or does
     /// a send_msi if the irq is associated with an MSI.
-    fn service_irq(&mut self, _irq: u32, _level: bool) -> Result<()> {
-        unimplemented!("service_irq for KvmKernelIrqChip is not yet implemented");
+    /// For the KvmKernelIrqChip this simply calls the KVM_SET_IRQ_LINE ioctl.
+    fn service_irq(&mut self, irq: u32, level: bool) -> Result<()> {
+        self.vm.set_irq_line(irq, level)
     }
 
     /// Broadcast an end of interrupt.
+    /// This should never be called on a KvmKernelIrqChip because a KVM vcpu should never exit
+    /// with the KVM_EXIT_EOI_BROADCAST reason when an in-kernel irqchip exists.
     fn broadcast_eoi(&mut self, _vector: u8) -> Result<()> {
-        unimplemented!("broadcast_eoi for KvmKernelIrqChip is not yet implemented");
+        error!("broadcast_eoi should never be called for KvmKernelIrqChip");
+        Ok(())
     }
 
     /// Return true if there is a pending interrupt for the specified vcpu.
+    /// For the KvmKernelIrqChip this should always return false because KVM is responsible for
+    /// injecting all interrupts.
     fn interrupt_requested(&self, _vcpu_id: usize) -> bool {
-        unimplemented!("interrupt_requested for KvmKernelIrqChip is not yet implemented");
+        false
     }
 
     /// Check if the specified vcpu has any pending interrupts. Returns None for no interrupts,
     /// otherwise Some(u32) should be the injected interrupt vector.
+    /// For the KvmKernelIrqChip this should always return None because KVM is responsible for
+    /// injecting all interrupts.
     fn get_external_interrupt(&mut self, _vcpu_id: usize) -> Result<Option<u32>> {
-        unimplemented!("get_external_interrupt for KvmKernelIrqChip is not yet implemented");
+        Ok(None)
     }
 
     /// Attempt to clone this IrqChip instance.

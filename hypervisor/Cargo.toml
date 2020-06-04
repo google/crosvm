@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 bit_field = { path = "../bit_field" }
+data_model = { path = "../data_model" }
 enumn = { path = "../enumn" }
 libc = "*"
 kvm = { path = "../kvm" }

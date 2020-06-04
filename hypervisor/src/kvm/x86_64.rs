@@ -8,14 +8,14 @@ use libc::E2BIG;
 
 use kvm_sys::*;
 use sys_util::{
-    errno_result, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ref, Error, Result,
+    errno_result, error, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ref, Error, Result,
 };
 
 use super::{Kvm, KvmVcpu, KvmVm};
 use crate::{
     ClockState, CpuId, CpuIdEntry, DeviceKind, HypervisorX86_64, IoapicRedirectionTableEntry,
-    IoapicState, LapicState, PicSelect, PicState, PitChannelState, PitState, Regs, VcpuX86_64,
-    VmX86_64,
+    IoapicState, IrqSourceChip, LapicState, PicSelect, PicState, PitChannelState, PitState, Regs,
+    VcpuX86_64, VmX86_64,
 };
 
 type KvmCpuId = kvm::CpuId;
@@ -482,13 +482,28 @@ impl From<&kvm_pit_channel_state> for PitChannelState {
     }
 }
 
+// This function translates an IrqSrouceChip to the kvm u32 equivalent. It has a different
+// implementation between x86_64 and aarch64 because the irqchip KVM constants are not defined on
+// all architectures.
+pub(super) fn chip_to_kvm_chip(chip: IrqSourceChip) -> u32 {
+    match chip {
+        IrqSourceChip::PicPrimary => KVM_IRQCHIP_PIC_MASTER,
+        IrqSourceChip::PicSecondary => KVM_IRQCHIP_PIC_SLAVE,
+        IrqSourceChip::Ioapic => KVM_IRQCHIP_IOAPIC,
+        _ => {
+            error!("Invalid IrqChipSource for X86 {:?}", chip);
+            0
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         DeliveryMode, DeliveryStatus, DestinationMode, HypervisorX86_64,
-        IoapicRedirectionTableEntry, IoapicState, LapicState, PicInitState, PicState,
-        PitChannelState, PitRWMode, PitRWState, PitState, TriggerMode, Vm,
+        IoapicRedirectionTableEntry, IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState,
+        PicInitState, PicState, PitChannelState, PitRWMode, PitRWState, PitState, TriggerMode, Vm,
     };
     use sys_util::{GuestAddress, GuestMemory};
 
@@ -687,5 +702,47 @@ mod tests {
         let mut clock_data = vm.get_pvclock().unwrap();
         clock_data.clock += 1000;
         vm.set_pvclock(&clock_data).unwrap();
+    }
+
+    #[test]
+    fn set_gsi_routing() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        vm.create_irq_chip().unwrap();
+        vm.set_gsi_routing(&[]).unwrap();
+        vm.set_gsi_routing(&[IrqRoute {
+            gsi: 1,
+            source: IrqSource::Irqchip {
+                chip: IrqSourceChip::Ioapic,
+                pin: 3,
+            },
+        }])
+        .unwrap();
+        vm.set_gsi_routing(&[IrqRoute {
+            gsi: 1,
+            source: IrqSource::Msi {
+                address: 0xf000000,
+                data: 0xa0,
+            },
+        }])
+        .unwrap();
+        vm.set_gsi_routing(&[
+            IrqRoute {
+                gsi: 1,
+                source: IrqSource::Irqchip {
+                    chip: IrqSourceChip::Ioapic,
+                    pin: 3,
+                },
+            },
+            IrqRoute {
+                gsi: 2,
+                source: IrqSource::Msi {
+                    address: 0xf000000,
+                    data: 0xa0,
+                },
+            },
+        ])
+        .unwrap();
     }
 }
