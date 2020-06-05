@@ -61,6 +61,11 @@ Known issues:
     policies [into the crosvm binary](http://crbug.com/1052126).
 *   Devices can't be jailed if `/var/empty` doesn't exist. `sudo mkdir -p
     /var/empty` to work around this for now.
+*   You need read/write permissions for `/dev/kvm` to run tests or other crosvm
+    instances. Usually it's owned by the `kvm` group, so `sudo usermod -a -G kvm
+    $USER` and then log out and back in again to fix this.
+*   Some other features (networking) require `CAP_NET_ADMIN` so those usually
+    need to be run as root.
 
 And that's it! You should be able to `cargo build/run/test`.
 
