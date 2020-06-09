@@ -20,6 +20,12 @@ mod aarch64;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use aarch64::*;
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod pic;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub use pic::Pic;
+
 /// Trait that abstracts interactions with interrupt controllers.
 ///
 /// Each VM will have one IrqChip instance which is responsible for routing IRQ lines and

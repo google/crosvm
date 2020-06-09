@@ -8,7 +8,7 @@ mod bus;
 mod cmos;
 mod i8042;
 mod ioapic;
-mod irqchip;
+pub mod irqchip;
 mod pci;
 mod pic;
 mod pit;

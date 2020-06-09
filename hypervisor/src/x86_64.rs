@@ -179,9 +179,15 @@ impl From<u8> for PicInitState {
     }
 }
 
+impl Default for PicInitState {
+    fn default() -> Self {
+        PicInitState::Icw1
+    }
+}
+
 /// Represents the state of the PIC.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub struct PicState {
     /// Edge detection.
     pub last_irr: u8,
