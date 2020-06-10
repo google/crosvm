@@ -248,20 +248,23 @@ impl<F: FileSystem + Sync> Server<F> {
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 
-        // We want to include the '\0' byte in the first slice.
-        let split_pos = buf
-            .iter()
-            .position(|c| *c == b'\0')
-            .map(|p| p + 1)
-            .ok_or(Error::MissingParameter)?;
-
-        let (name, linkname) = buf.split_at(split_pos);
+        let mut iter = split_inclusive(&buf, |&c| c == b'\0');
+        let name = iter
+            .next()
+            .ok_or(Error::MissingParameter)
+            .and_then(bytes_to_cstr)?;
+        let linkname = iter
+            .next()
+            .ok_or(Error::MissingParameter)
+            .and_then(bytes_to_cstr)?;
+        let security_ctx = iter.next().map(bytes_to_cstr).transpose()?;
 
         match self.fs.symlink(
             Context::from(in_header),
-            bytes_to_cstr(linkname)?,
+            linkname,
             in_header.nodeid.into(),
-            bytes_to_cstr(name)?,
+            name,
+            security_ctx,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -277,22 +280,30 @@ impl<F: FileSystem + Sync> Server<F> {
             mode, rdev, umask, ..
         } = r.read_obj().map_err(Error::DecodeMessage)?;
 
-        let namelen = (in_header.len as usize)
+        let buflen = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
             .and_then(|l| l.checked_sub(size_of::<MknodIn>()))
             .ok_or(Error::InvalidHeaderLength)?;
-        let mut name = Vec::with_capacity(namelen);
-        name.resize(namelen, 0);
+        let mut buf = Vec::with_capacity(buflen);
+        buf.resize(buflen, 0);
 
-        r.read_exact(&mut name).map_err(Error::DecodeMessage)?;
+        r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
+
+        let mut iter = split_inclusive(&buf, |&c| c == b'\0');
+        let name = iter
+            .next()
+            .ok_or(Error::MissingParameter)
+            .and_then(bytes_to_cstr)?;
+        let security_ctx = iter.next().map(bytes_to_cstr).transpose()?;
 
         match self.fs.mknod(
             Context::from(in_header),
             in_header.nodeid.into(),
-            bytes_to_cstr(&name)?,
+            name,
             mode,
             rdev,
             umask,
+            security_ctx,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -306,21 +317,29 @@ impl<F: FileSystem + Sync> Server<F> {
     fn mkdir(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
         let MkdirIn { mode, umask } = r.read_obj().map_err(Error::DecodeMessage)?;
 
-        let namelen = (in_header.len as usize)
+        let buflen = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
             .and_then(|l| l.checked_sub(size_of::<MkdirIn>()))
             .ok_or(Error::InvalidHeaderLength)?;
-        let mut name = Vec::with_capacity(namelen);
-        name.resize(namelen, 0);
+        let mut buf = Vec::with_capacity(buflen);
+        buf.resize(buflen, 0);
 
-        r.read_exact(&mut name).map_err(Error::DecodeMessage)?;
+        r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
+
+        let mut iter = split_inclusive(&buf, |&c| c == b'\0');
+        let name = iter
+            .next()
+            .ok_or(Error::MissingParameter)
+            .and_then(bytes_to_cstr)?;
+        let security_ctx = iter.next().map(bytes_to_cstr).transpose()?;
 
         match self.fs.mkdir(
             Context::from(in_header),
             in_header.nodeid.into(),
-            bytes_to_cstr(&name)?,
+            name,
             mode,
             umask,
+            security_ctx,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -1025,17 +1044,22 @@ impl<F: FileSystem + Sync> Server<F> {
             flags, mode, umask, ..
         } = r.read_obj().map_err(Error::DecodeMessage)?;
 
-        let namelen = (in_header.len as usize)
+        let buflen = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
             .and_then(|l| l.checked_sub(size_of::<CreateIn>()))
             .ok_or(Error::InvalidHeaderLength)?;
 
-        let mut buf = Vec::with_capacity(namelen);
-        buf.resize(namelen, 0);
+        let mut buf = Vec::with_capacity(buflen);
+        buf.resize(buflen, 0);
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 
-        let name = bytes_to_cstr(&buf)?;
+        let mut iter = split_inclusive(&buf, |&c| c == b'\0');
+        let name = iter
+            .next()
+            .ok_or(Error::MissingParameter)
+            .and_then(bytes_to_cstr)?;
+        let security_ctx = iter.next().map(bytes_to_cstr).transpose()?;
 
         match self.fs.create(
             Context::from(in_header),
@@ -1044,6 +1068,7 @@ impl<F: FileSystem + Sync> Server<F> {
             mode,
             flags,
             umask,
+            security_ctx,
         ) {
             Ok((entry, handle, opts)) => {
                 let entry_out = EntryOut {
@@ -1413,5 +1438,85 @@ fn add_dirent(
         }
 
         Ok(total_len)
+    }
+}
+
+// TODO: Remove this once std::slice::SplitInclusive is stabilized.
+struct SplitInclusive<'a, T, F> {
+    buf: &'a [T],
+    pred: F,
+}
+
+impl<'a, T, F> Iterator for SplitInclusive<'a, T, F>
+where
+    F: FnMut(&T) -> bool,
+{
+    type Item = &'a [T];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buf.is_empty() {
+            return None;
+        }
+
+        let split_pos = self
+            .buf
+            .iter()
+            .position(&mut self.pred)
+            .map(|p| p + 1)
+            .unwrap_or(self.buf.len());
+
+        let (next, rem) = self.buf.split_at(split_pos);
+        self.buf = rem;
+
+        Some(next)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        if self.buf.is_empty() {
+            (0, Some(0))
+        } else {
+            (1, Some(self.buf.len()))
+        }
+    }
+}
+
+fn split_inclusive<T, F>(buf: &[T], pred: F) -> SplitInclusive<T, F>
+where
+    F: FnMut(&T) -> bool,
+{
+    SplitInclusive { buf, pred }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_inclusive_basic() {
+        let slice = [10, 40, 33, 20];
+        let mut iter = split_inclusive(&slice, |num| num % 3 == 0);
+
+        assert_eq!(iter.next().unwrap(), &[10, 40, 33]);
+        assert_eq!(iter.next().unwrap(), &[20]);
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn split_inclusive_last() {
+        let slice = [3, 10, 40, 33];
+        let mut iter = split_inclusive(&slice, |num| num % 3 == 0);
+
+        assert_eq!(iter.next().unwrap(), &[3]);
+        assert_eq!(iter.next().unwrap(), &[10, 40, 33]);
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn split_inclusive_no_match() {
+        let slice = [3, 10, 40, 33];
+        let mut iter = split_inclusive(&slice, |num| num % 7 == 0);
+
+        assert_eq!(iter.next().unwrap(), &slice);
+        assert!(iter.next().is_none());
     }
 }
