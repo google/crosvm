@@ -338,7 +338,7 @@ impl From<&kvm_ioapic_state> for IoapicState {
     fn from(item: &kvm_ioapic_state) -> Self {
         let mut state = IoapicState {
             base_address: item.base_address,
-            ioregsel: item.ioregsel,
+            ioregsel: item.ioregsel as u8,
             ioapicid: item.id,
             current_interrupt_level_bitmap: item.irr,
             redirect_table: [IoapicRedirectionTableEntry::default(); 24],
@@ -374,7 +374,7 @@ impl From<&IoapicState> for kvm_ioapic_state {
     fn from(item: &IoapicState) -> Self {
         let mut state = kvm_ioapic_state {
             base_address: item.base_address,
-            ioregsel: item.ioregsel,
+            ioregsel: item.ioregsel as u32,
             id: item.ioapicid,
             irr: item.current_interrupt_level_bitmap,
             ..Default::default()

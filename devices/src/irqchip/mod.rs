@@ -26,6 +26,12 @@ mod pic;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use pic::Pic;
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod ioapic;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub use ioapic::*;
+
 /// Trait that abstracts interactions with interrupt controllers.
 ///
 /// Each VM will have one IrqChip instance which is responsible for routing IRQ lines and

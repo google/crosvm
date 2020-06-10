@@ -144,7 +144,7 @@ pub struct IoapicState {
     /// base_address is the memory base address for this IOAPIC. It cannot be changed.
     pub base_address: u64,
     /// ioregsel register. Used for selecting which entry of the redirect table to read/write.
-    pub ioregsel: u32,
+    pub ioregsel: u8,
     /// ioapicid register. Bits 24 - 27 contain the APIC ID for this device.
     pub ioapicid: u32,
     /// current_interrupt_level_bitmap represents a bitmap of the state of all of the irq lines
