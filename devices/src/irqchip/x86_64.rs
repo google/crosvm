@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::Bus;
 use hypervisor::{IoapicState, LapicState, PicSelect, PicState, PitState, VcpuX86_64};
 use sys_util::Result;
 
@@ -26,9 +25,6 @@ pub trait IrqChipX86_64<V: VcpuX86_64>: IrqChip<V> {
 
     /// Set the current state of the specified VCPU's local APIC
     fn set_lapic_state(&mut self, vcpu_id: usize, state: &LapicState) -> Result<()>;
-
-    /// Create a PIT (Programmable Interval Timer) for this VM.
-    fn create_pit(&mut self, io_bus: &mut Bus) -> Result<()>;
 
     /// Retrieves the state of the PIT.
     fn get_pit(&self) -> Result<PitState>;

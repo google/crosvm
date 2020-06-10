@@ -20,6 +20,7 @@ use crate::{
     ClockState, CpuId, CpuIdEntry, DebugRegs, DescriptorTable, DeviceKind, Fpu, HypervisorX86_64,
     IoapicRedirectionTableEntry, IoapicState, IrqSourceChip, LapicState, PicSelect, PicState,
     PitChannelState, PitState, Register, Regs, Segment, Sregs, VcpuX86_64, VmCap, VmX86_64,
+    NUM_IOAPIC_PINS,
 };
 
 type KvmCpuId = kvm::CpuId;
@@ -267,6 +268,21 @@ impl KvmVm {
             Ok(())
         } else {
             errno_result()
+        }
+    }
+
+    /// Enable support for split-irqchip.
+    pub fn enable_split_irqchip(&self) -> Result<()> {
+        let mut cap: kvm_enable_cap = Default::default();
+        cap.cap = KVM_CAP_SPLIT_IRQCHIP;
+        cap.args[0] = NUM_IOAPIC_PINS as u64;
+        // safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct
+        let ret = unsafe { ioctl_with_ref(self, KVM_ENABLE_CAP(), &cap) };
+        if ret < 0 {
+            errno_result()
+        } else {
+            Ok(())
         }
     }
 }

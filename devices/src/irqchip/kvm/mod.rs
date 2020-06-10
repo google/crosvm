@@ -2,9 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::Bus;
 use hypervisor::kvm::KvmVcpu;
 use hypervisor::{IrqRoute, MPState};
 use kvm_sys::kvm_mp_state;
+use resources::SystemAllocator;
 use sys_util::{error, Error, EventFd, Result};
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -75,6 +77,14 @@ impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
         self.vm.set_irq_line(irq, level)
     }
 
+    /// Respond to an irq event being written to. Sends to either an interrupt controller, or does
+    /// a send_msi if the irq is associated with an MSI.
+    /// For the KvmKernelIrqChip this simply calls the KVM_SET_IRQ_LINE ioctl.
+    fn service_irq_event(&mut self, irq: u32) -> Result<()> {
+        self.vm.set_irq_line(irq, true)?;
+        self.vm.set_irq_line(irq, false)
+    }
+
     /// Broadcast an end of interrupt.
     /// This should never be called on a KvmKernelIrqChip because a KVM vcpu should never exit
     /// with the KVM_EXIT_EOI_BROADCAST reason when an in-kernel irqchip exists.
@@ -119,6 +129,23 @@ impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
         // Because the KvmKernelIrqchip struct contains arch-specific fields we leave the
         // cloning to arch-specific implementations
         self.arch_try_clone()
+    }
+
+    /// Finalize irqchip setup. Should be called once all devices have registered irq events and
+    /// been added to the io_bus and mmio_bus.
+    /// KvmKernelIrqChip does not need to do anything here.
+    fn finalize_devices(
+        &mut self,
+        _resources: &mut SystemAllocator,
+        _io_bus: &mut Bus,
+        _mmio_bus: &mut Bus,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    /// The KvmKernelIrqChip doesn't process irq events itself so this function does nothing.
+    fn process_delayed_irq_events(&mut self) -> Result<()> {
+        Ok(())
     }
 }
 
