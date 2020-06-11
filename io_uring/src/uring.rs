@@ -9,7 +9,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use sys_util::{MemoryMapping, WatchingEvents};
+use sys_util::{MappedRegion, MemoryMapping, WatchingEvents};
 
 use crate::bindings::*;
 use crate::syscalls::*;
