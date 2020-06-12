@@ -1019,6 +1019,16 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                             })?;
                         shared_dir.cfg.writeback = writeback;
                     }
+                    "rewrite-security-xattrs" => {
+                        let rewrite_security_xattrs =
+                            value.parse().map_err(|_| argument::Error::InvalidValue {
+                                value: value.to_owned(),
+                                expected: String::from(
+                                    "`rewrite-security-xattrs` must be a boolean",
+                                ),
+                            })?;
+                        shared_dir.cfg.rewrite_security_xattrs = rewrite_security_xattrs;
+                    }
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: kind.to_owned(),

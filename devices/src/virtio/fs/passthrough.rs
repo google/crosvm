@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::borrow::Cow;
 use std::collections::btree_map;
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
@@ -29,6 +30,10 @@ use crate::virtio::fs::multikey::MultikeyBTreeMap;
 const EMPTY_CSTR: &[u8] = b"\0";
 const ROOT_CSTR: &[u8] = b"/\0";
 const PROC_CSTR: &[u8] = b"/proc\0";
+
+const USER_VIRTIOFS_XATTR: &[u8] = b"user.virtiofs.";
+const SECURITY_XATTR: &[u8] = b"security.";
+const SELINUX_XATTR: &[u8] = b"security.selinux";
 
 const FSCRYPT_KEY_DESCRIPTOR_SIZE: usize = 8;
 
@@ -300,6 +305,15 @@ pub struct Config {
     ///
     /// The default value for this option is `false`.
     pub writeback: bool,
+
+    /// Controls whether security.* xattrs (except for security.selinux) are re-written. When this
+    /// is set to true, the server will add a "user.virtiofs" prefix to xattrs in the security
+    /// namespace. Setting these xattrs requires CAP_SYS_ADMIN in the namespace where the file
+    /// system was mounted and since the server usually runs in an unprivileged user namespace, it's
+    /// unlikely to have that capability.
+    ///
+    /// The default value for this option is `false`.
+    pub rewrite_security_xattrs: bool,
 }
 
 impl Default for Config {
@@ -309,6 +323,7 @@ impl Default for Config {
             attr_timeout: Duration::from_secs(5),
             cache_policy: Default::default(),
             writeback: false,
+            rewrite_security_xattrs: false,
         }
     }
 }
@@ -380,6 +395,25 @@ impl PassthroughFs {
 
     pub fn keep_fds(&self) -> Vec<RawFd> {
         vec![self.proc.as_raw_fd()]
+    }
+
+    fn rewrite_xattr_name<'xattr>(&self, name: &'xattr CStr) -> Cow<'xattr, CStr> {
+        if !self.cfg.rewrite_security_xattrs {
+            return Cow::Borrowed(name);
+        }
+
+        // Does not include nul-terminator.
+        let buf = name.to_bytes();
+        if !buf.starts_with(SECURITY_XATTR) || buf == SELINUX_XATTR {
+            return Cow::Borrowed(name);
+        }
+
+        let mut newname = USER_VIRTIOFS_XATTR.to_vec();
+        newname.extend_from_slice(buf);
+
+        // The unwrap is safe here because the prefix doesn't contain any interior nul-bytes and the
+        // to_bytes() call above will not return a byte slice with any interior nul-bytes either.
+        Cow::Owned(CString::new(newname).expect("Failed to re-write xattr name"))
     }
 
     fn get_path(&self, inode: Inode) -> io::Result<CString> {
@@ -799,6 +833,36 @@ fn forget_one(
                 break;
             }
         }
+    }
+}
+
+// Strips any `user.virtiofs.` prefix from `buf`. If buf contains one or more nul-bytes, each
+// nul-byte-separated slice is treated as a C string and the prefix is stripped from each one.
+fn strip_xattr_prefix(buf: &mut Vec<u8>) {
+    fn next_cstr(b: &[u8], start: usize) -> Option<&[u8]> {
+        if start >= b.len() {
+            return None;
+        }
+
+        let end = b[start..]
+            .iter()
+            .position(|&c| c == b'\0')
+            .map(|p| start + p + 1)
+            .unwrap_or(b.len());
+
+        Some(&b[start..end])
+    }
+
+    let mut pos = 0;
+    while let Some(name) = next_cstr(&buf, pos) {
+        if !name.starts_with(USER_VIRTIOFS_XATTR) {
+            pos += name.len();
+            continue;
+        }
+
+        let newlen = name.len() - USER_VIRTIOFS_XATTR.len();
+        buf.drain(pos..pos + USER_VIRTIOFS_XATTR.len());
+        pos += newlen;
     }
 }
 
@@ -1768,7 +1832,15 @@ impl FileSystem for PassthroughFs {
         value: &[u8],
         flags: u32,
     ) -> io::Result<()> {
+        // We can't allow the VM to set this xattr because an unprivileged process may use it to set
+        // a privileged xattr.
+        if self.cfg.rewrite_security_xattrs && name.to_bytes().starts_with(USER_VIRTIOFS_XATTR) {
+            return Err(io::Error::from_raw_os_error(libc::EPERM));
+        }
+
         let path = self.get_path(inode)?;
+
+        let name = self.rewrite_xattr_name(name);
 
         // Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe {
@@ -1794,10 +1866,18 @@ impl FileSystem for PassthroughFs {
         name: &CStr,
         size: u32,
     ) -> io::Result<GetxattrReply> {
+        // We don't allow the VM to set this xattr so we also pretend there is no value associated
+        // with it.
+        if self.cfg.rewrite_security_xattrs && name.to_bytes().starts_with(USER_VIRTIOFS_XATTR) {
+            return Err(io::Error::from_raw_os_error(libc::ENODATA));
+        }
+
         let path = self.get_path(inode)?;
 
         let mut buf = Vec::with_capacity(size as usize);
         buf.resize(size as usize, 0);
+
+        let name = self.rewrite_xattr_name(name);
 
         // Safe because this will only modify the contents of `buf`.
         let res = unsafe {
@@ -1842,12 +1922,24 @@ impl FileSystem for PassthroughFs {
             Ok(ListxattrReply::Count(res as u32))
         } else {
             buf.resize(res as usize, 0);
+
+            if self.cfg.rewrite_security_xattrs {
+                strip_xattr_prefix(&mut buf);
+            }
             Ok(ListxattrReply::Names(buf))
         }
     }
 
     fn removexattr(&self, _ctx: Context, inode: Inode, name: &CStr) -> io::Result<()> {
+        // We don't allow the VM to set this xattr so we also pretend there is no value associated
+        // with it.
+        if self.cfg.rewrite_security_xattrs && name.to_bytes().starts_with(USER_VIRTIOFS_XATTR) {
+            return Err(io::Error::from_raw_os_error(libc::ENODATA));
+        }
+
         let path = self.get_path(inode)?;
+
+        let name = self.rewrite_xattr_name(name);
 
         // Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe { libc::lremovexattr(path.as_ptr(), name.as_ptr()) };
@@ -2067,5 +2159,71 @@ mod tests {
         let cow_str = cstr.to_string_lossy();
         let path = Path::new(&*cow_str);
         assert!(path.exists());
+    }
+
+    #[test]
+    fn rewrite_xattr_names() {
+        let mut cfg = Config::default();
+        cfg.rewrite_security_xattrs = true;
+
+        let p = PassthroughFs::new(cfg).expect("Failed to create PassthroughFs");
+
+        // Selinux shouldn't get overwritten.
+        let selinux = unsafe { CStr::from_bytes_with_nul_unchecked(b"security.selinux\0") };
+        assert_eq!(p.rewrite_xattr_name(selinux).to_bytes(), selinux.to_bytes());
+
+        // user, trusted, and system should not be changed either.
+        let user = unsafe { CStr::from_bytes_with_nul_unchecked(b"user.foobar\0") };
+        assert_eq!(p.rewrite_xattr_name(user).to_bytes(), user.to_bytes());
+        let trusted = unsafe { CStr::from_bytes_with_nul_unchecked(b"trusted.foobar\0") };
+        assert_eq!(p.rewrite_xattr_name(trusted).to_bytes(), trusted.to_bytes());
+        let system = unsafe { CStr::from_bytes_with_nul_unchecked(b"system.foobar\0") };
+        assert_eq!(p.rewrite_xattr_name(system).to_bytes(), system.to_bytes());
+
+        // sehash should be re-written.
+        let sehash = unsafe { CStr::from_bytes_with_nul_unchecked(b"security.sehash\0") };
+        assert_eq!(
+            p.rewrite_xattr_name(sehash).to_bytes(),
+            b"user.virtiofs.security.sehash"
+        );
+    }
+
+    #[test]
+    fn strip_xattr_names() {
+        let only_nuls = b"\0\0\0\0\0";
+        let mut actual = only_nuls.to_vec();
+        strip_xattr_prefix(&mut actual);
+        assert_eq!(&actual[..], &only_nuls[..]);
+
+        let no_nuls = b"security.sehashuser.virtiofs";
+        let mut actual = no_nuls.to_vec();
+        strip_xattr_prefix(&mut actual);
+        assert_eq!(&actual[..], &no_nuls[..]);
+
+        let empty = b"";
+        let mut actual = empty.to_vec();
+        strip_xattr_prefix(&mut actual);
+        assert_eq!(&actual[..], &empty[..]);
+
+        let no_strippable_names = b"security.selinux\0user.foobar\0system.test\0";
+        let mut actual = no_strippable_names.to_vec();
+        strip_xattr_prefix(&mut actual);
+        assert_eq!(&actual[..], &no_strippable_names[..]);
+
+        let only_strippable_names = b"user.virtiofs.security.sehash\0user.virtiofs.security.wtf\0";
+        let mut actual = only_strippable_names.to_vec();
+        strip_xattr_prefix(&mut actual);
+        assert_eq!(&actual[..], b"security.sehash\0security.wtf\0");
+
+        let mixed_names = b"user.virtiofs.security.sehash\0security.selinux\0user.virtiofs.security.wtf\0user.foobar\0";
+        let mut actual = mixed_names.to_vec();
+        strip_xattr_prefix(&mut actual);
+        let expected = b"security.sehash\0security.selinux\0security.wtf\0user.foobar\0";
+        assert_eq!(&actual[..], &expected[..]);
+
+        let no_nul_with_prefix = b"user.virtiofs.security.sehash";
+        let mut actual = no_nul_with_prefix.to_vec();
+        strip_xattr_prefix(&mut actual);
+        assert_eq!(&actual[..], b"security.sehash");
     }
 }
