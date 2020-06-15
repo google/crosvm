@@ -10,8 +10,8 @@ use libc::E2BIG;
 use data_model::vec_with_array_field;
 use kvm_sys::*;
 use sys_util::{
-    errno_result, error, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
-    ioctl_with_val, Error, GuestAddress, MappedRegion, Result,
+    errno_result, error, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr,
+    ioctl_with_ref, ioctl_with_val, Error, GuestAddress, MappedRegion, Result,
 };
 
 use super::{Kvm, KvmVcpu, KvmVm};
@@ -299,6 +299,21 @@ impl VmX86_64 for KvmVm {
         // Safe because we know that our file is a VM fd and we verify the return result.
         let ret =
             unsafe { ioctl_with_ref(self, KVM_SET_IDENTITY_MAP_ADDR(), &(addr.offset() as u64)) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+}
+
+impl KvmVcpu {
+    /// Arch-specific implementation of `Vcpu::pvclock_ctrl`.
+    pub fn pvclock_ctrl_arch(&self) -> Result<()> {
+        let ret = unsafe {
+            // The ioctl is safe because it does not read or write memory in this process.
+            ioctl(self, KVM_KVMCLOCK_CTRL())
+        };
         if ret == 0 {
             Ok(())
         } else {

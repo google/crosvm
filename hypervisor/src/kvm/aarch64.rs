@@ -56,6 +56,13 @@ impl VmAArch64 for KvmVm {
     }
 }
 
+impl KvmVcpu {
+    /// Arch-specific implementation of `Vcpu::pvclock_ctrl`.  Always returns an error on AArch64.
+    pub fn pvclock_ctrl_arch(&self) -> Result<()> {
+        Err(Error::new(ENXIO))
+    }
+}
+
 impl VcpuAArch64 for KvmVcpu {
     fn set_one_reg(&self, _reg_id: u64, _data: u64) -> Result<()> {
         Ok(())

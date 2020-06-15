@@ -158,6 +158,19 @@ pub trait Vcpu: Send + Sized {
     /// This function should be called after `Vcpu::run` returns an `VcpuExit::IoIn`,
     /// `VcpuExit::MmioRead`, or 'VcpuExit::HypervHcall`.
     fn set_data(&self, data: &[u8]) -> Result<()>;
+
+    /// Signals to the hypervisor that this guest is being paused by userspace.  Only works on Vms
+    /// that support `VmCapability::PvClockSuspend`.
+    fn pvclock_ctrl(&self) -> Result<()>;
+
+    /// Specifies set of signals that are blocked during execution of `RunnableVcpu::run`.  Signals
+    /// that are not blocked will will cause run to return with `VcpuExit::Intr`. Only works on Vms
+    /// that support `VmCapability::SignalMask`.
+    fn set_signal_mask(&self, signals: &[c_int]) -> Result<()>;
+
+    /// Enables a hypervisor-specific extension on this Vcpu.  `cap` is a constant defined by the
+    /// hypervisor API (e.g., kvm.h).  `args` are the arguments for enabling the feature, if any.
+    fn enable_raw_capability(&self, cap: u32, args: &[u64; 4]) -> Result<()>;
 }
 
 /// A Vcpu that has a thread and can be run. Created by calling `to_runnable` on a `Vcpu`.

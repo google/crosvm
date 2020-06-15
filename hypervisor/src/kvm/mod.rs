@@ -16,21 +16,25 @@ use std::cell::RefCell;
 use std::cmp::{min, Ordering};
 use std::collections::{BTreeMap, BinaryHeap};
 use std::convert::TryFrom;
+use std::mem::size_of;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::{c_char, c_int, c_ulong, c_void};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 
-use libc::{open, EBUSY, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
+use libc::{
+    open, sigset_t, EBUSY, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR,
+};
 
 use data_model::vec_with_array_field;
 use kvm_sys::*;
 use sync::Mutex;
 use sys_util::{
     block_signal, errno_result, error, ioctl, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
-    pagesize, unblock_signal, AsRawDescriptor, Error, EventFd, FromRawDescriptor, GuestAddress,
-    GuestMemory, MappedRegion, MemoryMapping, MmapError, RawDescriptor, Result, SafeDescriptor,
+    pagesize, signal, unblock_signal, AsRawDescriptor, Error, EventFd, FromRawDescriptor,
+    GuestAddress, GuestMemory, MappedRegion, MemoryMapping, MmapError, RawDescriptor, Result,
+    SafeDescriptor,
 };
 
 use crate::{
@@ -705,6 +709,58 @@ impl Vcpu for KvmVcpu {
             _ => Err(Error::new(EINVAL)),
         }
     }
+
+    fn pvclock_ctrl(&self) -> Result<()> {
+        self.pvclock_ctrl_arch()
+    }
+
+    fn set_signal_mask(&self, signals: &[c_int]) -> Result<()> {
+        let sigset = signal::create_sigset(&signals)?;
+
+        let mut kvm_sigmask = vec_with_array_field::<kvm_signal_mask, sigset_t>(1);
+        // Rust definition of sigset_t takes 128 bytes, but the kernel only
+        // expects 8-bytes structure, so we can't write
+        // kvm_sigmask.len  = size_of::<sigset_t>() as u32;
+        kvm_sigmask[0].len = 8;
+        // Ensure the length is not too big.
+        const _ASSERT: usize = size_of::<sigset_t>() - 8 as usize;
+
+        // Safe as we allocated exactly the needed space
+        unsafe {
+            copy_nonoverlapping(
+                &sigset as *const sigset_t as *const u8,
+                kvm_sigmask[0].sigset.as_mut_ptr(),
+                8,
+            );
+        }
+
+        let ret = unsafe {
+            // The ioctl is safe because the kernel will only read from the
+            // kvm_signal_mask structure.
+            ioctl_with_ref(self, KVM_SET_SIGNAL_MASK(), &kvm_sigmask[0])
+        };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    fn enable_raw_capability(&self, cap: u32, args: &[u64; 4]) -> Result<()> {
+        let kvm_cap = kvm_enable_cap {
+            cap,
+            args: *args,
+            ..Default::default()
+        };
+        // Safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct.
+        let ret = unsafe { ioctl_with_ref(self, KVM_ENABLE_CAP(), &kvm_cap) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
 }
 
 impl KvmVcpu {
@@ -1234,6 +1290,26 @@ mod tests {
         // Ensures the ioctl is actually reading the resamplefd.
         vm.register_irqfd(4, &evtfd1, Some(unsafe { &EventFd::from_raw_fd(-1) }))
             .unwrap_err();
+    }
+
+    #[test]
+    fn enable_feature() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        vm.create_irq_chip().unwrap();
+        let vcpu = vm.create_vcpu(0).unwrap();
+        vcpu.enable_raw_capability(kvm_sys::KVM_CAP_HYPERV_SYNIC, &[0; 4])
+            .unwrap();
+    }
+
+    #[test]
+    fn set_signal_mask() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vcpu = vm.create_vcpu(0).unwrap();
+        vcpu.set_signal_mask(&[sys_util::SIGRTMIN() + 0]).unwrap();
     }
 
     #[test]
