@@ -130,11 +130,11 @@ mod tests {
         let kvm = Kvm::new().expect("failed to instantiate Kvm");
         let mem = GuestMemory::new(&[]).unwrap();
         let vm = KvmVm::new(&kvm, mem).expect("failed tso instantiate vm");
-        let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
 
         let mut chip = KvmKernelIrqChip::new(vm.try_clone().expect("failed to clone vm"), 1)
             .expect("failed to instantiate KvmKernelIrqChip");
 
+        let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
         chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
 
         (chip, vm)

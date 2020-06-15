@@ -28,7 +28,7 @@ pub trait Hypervisor {
 
 /// A wrapper for using a VM and getting/setting its state.
 pub trait Vm: Send + Sized {
-    /// Makes a shallow clone this `Vm`.
+    /// Makes a shallow clone of this `Vm`.
     fn try_clone(&self) -> Result<Self>;
 
     /// Checks if a particular `VmCap` is available.
@@ -118,7 +118,76 @@ pub trait RunnableVcpu: Deref<Target = <Self as RunnableVcpu>::Vcpu> + DerefMut 
 /// A reason why a VCPU exited. One of these returns every time `Vcpu::run` is called.
 #[derive(Debug)]
 pub enum VcpuExit {
+    /// An out port instruction was run on the given port with the given data.
+    IoOut {
+        port: u16,
+        size: usize,
+        data: [u8; 8],
+    },
+    /// An in port instruction was run on the given port.
+    ///
+    /// The date that the instruction receives should be set with `set_data` before `Vcpu::run` is
+    /// called again.
+    IoIn {
+        port: u16,
+        size: usize,
+    },
+    /// A read instruction was run against the given MMIO address.
+    ///
+    /// The date that the instruction receives should be set with `set_data` before `Vcpu::run` is
+    /// called again.
+    MmioRead {
+        address: u64,
+        size: usize,
+    },
+    /// A write instruction was run against the given MMIO address with the given data.
+    MmioWrite {
+        address: u64,
+        size: usize,
+        data: [u8; 8],
+    },
+    IoapicEoi {
+        vector: u8,
+    },
+    HypervSynic {
+        msr: u32,
+        control: u64,
+        evt_page: u64,
+        msg_page: u64,
+    },
+    HypervHcall {
+        input: u64,
+        params: [u64; 2],
+    },
     Unknown,
+    Exception,
+    Hypercall,
+    Debug,
+    Hlt,
+    IrqWindowOpen,
+    Shutdown,
+    FailEntry {
+        hardware_entry_failure_reason: u64,
+    },
+    Intr,
+    SetTpr,
+    TprAccess,
+    S390Sieic,
+    S390Reset,
+    Dcr,
+    Nmi,
+    InternalError,
+    Osi,
+    PaprHcall,
+    S390Ucontrol,
+    Watchdog,
+    S390Tsch,
+    Epr,
+    /// The cpu triggered a system level event which is specified by the type field.
+    /// The first field is the event type and the second field is flags.
+    /// The possible event types are shutdown, reset, or crash.  So far there
+    /// are not any flags defined.
+    SystemEvent(u32 /* event_type */, u64 /* flags */),
 }
 
 /// A device type to create with `Vm.create_device`
@@ -167,4 +236,11 @@ pub struct ClockState {
     pub clock: u64,
     /// Hypervisor-specific feature flags for the pv clock
     pub flags: u32,
+}
+
+/// The state of one VCPU register.
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Register {
+    pub id: u64,
+    pub value: u64,
 }

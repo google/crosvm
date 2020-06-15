@@ -24,7 +24,8 @@ where
     V: Vcpu,
 {
     let vcpu = vcpu.to_runnable().unwrap();
-    vcpu.run().unwrap();
+    // Tests that run() is callable, but vcpu isn't set up, so run will return an Error.
+    assert!(vcpu.run().is_err());
     vcpu.request_interrupt_window().unwrap();
 }
 

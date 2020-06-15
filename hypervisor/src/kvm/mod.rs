@@ -12,12 +12,13 @@ mod x86_64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::*;
 
-use std::cmp::Ordering;
+use std::cmp::{min, Ordering};
 use std::collections::{BTreeMap, BinaryHeap};
 use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::{c_char, c_ulong};
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 
 use libc::{open, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
@@ -27,8 +28,8 @@ use kvm_sys::*;
 use sync::Mutex;
 use sys_util::{
     errno_result, ioctl, ioctl_with_ref, ioctl_with_val, AsRawDescriptor, Error, EventFd,
-    FromRawDescriptor, GuestAddress, GuestMemory, MappedRegion, MmapError, RawDescriptor, Result,
-    SafeDescriptor,
+    FromRawDescriptor, GuestAddress, GuestMemory, MappedRegion, MemoryMapping, MmapError,
+    RawDescriptor, Result, SafeDescriptor,
 };
 
 use crate::{
@@ -89,6 +90,24 @@ impl Kvm {
             kvm: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
         })
     }
+
+    /// Makes a clone of this `Kvm` by duping its descriptor.
+    pub fn try_clone(&self) -> Result<Self> {
+        Ok(Kvm {
+            kvm: self.kvm.try_clone()?,
+        })
+    }
+
+    /// Gets the size of the mmap required to use vcpu's `kvm_run` structure.
+    pub fn get_vcpu_mmap_size(&self) -> Result<usize> {
+        // Safe because we know that our file is a KVM fd and we verify the return result.
+        let res = unsafe { ioctl(self, KVM_GET_VCPU_MMAP_SIZE() as c_ulong) };
+        if res > 0 {
+            Ok(res as usize)
+        } else {
+            errno_result()
+        }
+    }
 }
 
 impl AsRawDescriptor for Kvm {
@@ -136,6 +155,7 @@ impl PartialOrd for MemSlot {
 
 /// A wrapper around creating and using a KVM VM.
 pub struct KvmVm {
+    kvm: Kvm,
     vm: SafeDescriptor,
     guest_mem: GuestMemory,
     mem_regions: Arc<Mutex<BTreeMap<u32, Box<dyn MappedRegion>>>>,
@@ -169,6 +189,7 @@ impl KvmVm {
         })?;
         // TODO(colindr/srichman): add default IRQ routes in IrqChip constructor or configure_vm
         Ok(KvmVm {
+            kvm: kvm.try_clone()?,
             vm: vm_descriptor,
             guest_mem,
             mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
@@ -176,11 +197,27 @@ impl KvmVm {
         })
     }
 
-    fn create_kvm_vcpu(&self, _id: usize) -> Result<KvmVcpu> {
-        Ok(KvmVcpu {})
+    fn create_vcpu(&self, id: usize) -> Result<KvmVcpu> {
+        let id = c_ulong::try_from(id).unwrap();
+        let run_mmap_size = self.kvm.get_vcpu_mmap_size()?;
+
+        // Safe because we know that our file is a VM fd and we verify the return result.
+        let fd = unsafe { ioctl_with_val(self, KVM_CREATE_VCPU(), id) };
+        if fd < 0 {
+            return errno_result();
+        }
+
+        // Wrap the vcpu now in case the following ? returns early. This is safe because we verified
+        // the value of the fd and we own the fd.
+        let vcpu = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
+
+        let run_mmap =
+            MemoryMapping::from_fd(&vcpu, run_mmap_size).map_err(|_| Error::new(ENOSPC))?;
+
+        Ok(KvmVcpu { vcpu, run_mmap })
     }
 
-    /// Crates an in kernel interrupt controller.
+    /// Creates an in kernel interrupt controller.
     ///
     /// See the documentation on the KVM_CREATE_IRQCHIP ioctl.
     pub fn create_irq_chip(&self) -> Result<()> {
@@ -192,6 +229,7 @@ impl KvmVm {
             errno_result()
         }
     }
+
     /// Sets the level on the given irq to 1 if `active` is true, and 0 otherwise.
     pub fn set_irq_line(&self, irq: u32, active: bool) -> Result<()> {
         let mut irq_level = kvm_irq_level::default();
@@ -285,6 +323,7 @@ impl KvmVm {
 impl Vm for KvmVm {
     fn try_clone(&self) -> Result<Self> {
         Ok(KvmVm {
+            kvm: self.kvm.try_clone()?,
             vm: self.vm.try_clone()?,
             guest_mem: self.guest_mem.clone(),
             mem_regions: self.mem_regions.clone(),
@@ -431,8 +470,11 @@ impl AsRawFd for KvmVm {
     }
 }
 
-/// A wrapper around creating and using a KVM Vcpu.
-pub struct KvmVcpu {}
+/// A wrapper around using a KVM Vcpu.
+pub struct KvmVcpu {
+    vcpu: SafeDescriptor,
+    run_mmap: MemoryMapping,
+}
 
 impl Vcpu for KvmVcpu {
     type Runnable = RunnableKvmVcpu;
@@ -449,6 +491,12 @@ impl Vcpu for KvmVcpu {
     }
 }
 
+impl AsRawFd for KvmVcpu {
+    fn as_raw_fd(&self) -> RawFd {
+        self.vcpu.as_raw_descriptor()
+    }
+}
+
 /// A KvmVcpu that has a thread and can be run.
 pub struct RunnableKvmVcpu {
     vcpu: KvmVcpu,
@@ -461,8 +509,136 @@ pub struct RunnableKvmVcpu {
 impl RunnableVcpu for RunnableKvmVcpu {
     type Vcpu = KvmVcpu;
 
+    #[allow(clippy::cast_ptr_alignment)]
+    // The pointer is page aligned so casting to a different type is well defined, hence the clippy
+    // allow attribute.
     fn run(&self) -> Result<VcpuExit> {
-        Ok(VcpuExit::Unknown)
+        // Safe because we know that our file is a VCPU fd and we verify the return result.
+        let ret = unsafe { ioctl(self, KVM_RUN()) };
+        if ret != 0 {
+            return errno_result();
+        }
+
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was.
+        let run = unsafe { &*(self.run_mmap.as_ptr() as *const kvm_run) };
+        match run.exit_reason {
+            KVM_EXIT_IO => {
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let io = unsafe { run.__bindgen_anon_1.io };
+                let port = io.port;
+                let size = (io.count as usize) * (io.size as usize);
+                match io.direction as u32 {
+                    KVM_EXIT_IO_IN => Ok(VcpuExit::IoIn { port, size }),
+                    KVM_EXIT_IO_OUT => {
+                        let mut data = [0; 8];
+                        let run_start = run as *const kvm_run as *const u8;
+                        // The data_offset is defined by the kernel to be some number of bytes
+                        // into the kvm_run structure, which we have fully mmap'd.
+                        unsafe {
+                            let data_ptr = run_start.offset(io.data_offset as isize);
+                            copy_nonoverlapping(data_ptr, data.as_mut_ptr(), min(size, data.len()));
+                        }
+                        Ok(VcpuExit::IoOut { port, size, data })
+                    }
+                    _ => Err(Error::new(EINVAL)),
+                }
+            }
+            KVM_EXIT_MMIO => {
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let mmio = unsafe { &run.__bindgen_anon_1.mmio };
+                let address = mmio.phys_addr;
+                let size = min(mmio.len as usize, mmio.data.len());
+                if mmio.is_write != 0 {
+                    Ok(VcpuExit::MmioWrite {
+                        address,
+                        size,
+                        data: mmio.data,
+                    })
+                } else {
+                    Ok(VcpuExit::MmioRead { address, size })
+                }
+            }
+            KVM_EXIT_IOAPIC_EOI => {
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let vector = unsafe { run.__bindgen_anon_1.eoi.vector };
+                Ok(VcpuExit::IoapicEoi { vector })
+            }
+            KVM_EXIT_HYPERV => {
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let hyperv = unsafe { &run.__bindgen_anon_1.hyperv };
+                match hyperv.type_ as u32 {
+                    KVM_EXIT_HYPERV_SYNIC => {
+                        let synic = unsafe { &hyperv.u.synic };
+                        Ok(VcpuExit::HypervSynic {
+                            msr: synic.msr,
+                            control: synic.control,
+                            evt_page: synic.evt_page,
+                            msg_page: synic.msg_page,
+                        })
+                    }
+                    KVM_EXIT_HYPERV_HCALL => {
+                        let hcall = unsafe { &hyperv.u.hcall };
+                        Ok(VcpuExit::HypervHcall {
+                            input: hcall.input,
+                            params: hcall.params,
+                        })
+                    }
+                    _ => Err(Error::new(EINVAL)),
+                }
+            }
+            KVM_EXIT_UNKNOWN => Ok(VcpuExit::Unknown),
+            KVM_EXIT_EXCEPTION => Ok(VcpuExit::Exception),
+            KVM_EXIT_HYPERCALL => Ok(VcpuExit::Hypercall),
+            KVM_EXIT_DEBUG => Ok(VcpuExit::Debug),
+            KVM_EXIT_HLT => Ok(VcpuExit::Hlt),
+            KVM_EXIT_IRQ_WINDOW_OPEN => Ok(VcpuExit::IrqWindowOpen),
+            KVM_EXIT_SHUTDOWN => Ok(VcpuExit::Shutdown),
+            KVM_EXIT_FAIL_ENTRY => {
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let hardware_entry_failure_reason = unsafe {
+                    run.__bindgen_anon_1
+                        .fail_entry
+                        .hardware_entry_failure_reason
+                };
+                Ok(VcpuExit::FailEntry {
+                    hardware_entry_failure_reason,
+                })
+            }
+            KVM_EXIT_INTR => Ok(VcpuExit::Intr),
+            KVM_EXIT_SET_TPR => Ok(VcpuExit::SetTpr),
+            KVM_EXIT_TPR_ACCESS => Ok(VcpuExit::TprAccess),
+            KVM_EXIT_S390_SIEIC => Ok(VcpuExit::S390Sieic),
+            KVM_EXIT_S390_RESET => Ok(VcpuExit::S390Reset),
+            KVM_EXIT_DCR => Ok(VcpuExit::Dcr),
+            KVM_EXIT_NMI => Ok(VcpuExit::Nmi),
+            KVM_EXIT_INTERNAL_ERROR => Ok(VcpuExit::InternalError),
+            KVM_EXIT_OSI => Ok(VcpuExit::Osi),
+            KVM_EXIT_PAPR_HCALL => Ok(VcpuExit::PaprHcall),
+            KVM_EXIT_S390_UCONTROL => Ok(VcpuExit::S390Ucontrol),
+            KVM_EXIT_WATCHDOG => Ok(VcpuExit::Watchdog),
+            KVM_EXIT_S390_TSCH => Ok(VcpuExit::S390Tsch),
+            KVM_EXIT_EPR => Ok(VcpuExit::Epr),
+            KVM_EXIT_SYSTEM_EVENT => {
+                // Safe because we know the exit reason told us this union
+                // field is valid
+                let event_type = unsafe { run.__bindgen_anon_1.system_event.type_ };
+                let event_flags = unsafe { run.__bindgen_anon_1.system_event.flags };
+                Ok(VcpuExit::SystemEvent(event_type, event_flags))
+            }
+            r => panic!("unknown kvm exit reason: {}", r),
+        }
+    }
+}
+
+impl AsRawFd for RunnableKvmVcpu {
+    fn as_raw_fd(&self) -> RawFd {
+        self.vcpu.vcpu.as_raw_descriptor()
     }
 }
 
@@ -530,7 +706,7 @@ mod tests {
     use super::*;
     use std::os::unix::io::FromRawFd;
     use std::thread;
-    use sys_util::{GuestAddress, MemoryMapping, MemoryMappingArena};
+    use sys_util::{pagesize, GuestAddress, MemoryMapping, MemoryMappingArena};
 
     #[test]
     fn new() {
@@ -579,6 +755,14 @@ mod tests {
         assert!(vm.check_raw_capability(KVM_CAP_USER_MEMORY));
         // I assume nobody is testing this on s390
         assert!(!vm.check_raw_capability(KVM_CAP_S390_USER_SIGP));
+    }
+
+    #[test]
+    fn create_vcpu() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        vm.create_vcpu(0).unwrap();
     }
 
     #[test]
@@ -712,5 +896,14 @@ mod tests {
         // Ensures the ioctl is actually reading the resamplefd.
         vm.register_irqfd(4, &evtfd1, Some(unsafe { &EventFd::from_raw_fd(-1) }))
             .unwrap_err();
+    }
+
+    #[test]
+    fn vcpu_mmap_size() {
+        let kvm = Kvm::new().unwrap();
+        let mmap_size = kvm.get_vcpu_mmap_size().unwrap();
+        let page_size = pagesize();
+        assert!(mmap_size >= page_size);
+        assert!(mmap_size % page_size == 0);
     }
 }

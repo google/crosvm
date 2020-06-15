@@ -112,6 +112,7 @@ mod tests {
     use sys_util::GuestMemory;
 
     use crate::irqchip::{IrqChip, KvmKernelIrqChip};
+    use hypervisor::Vm;
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     use hypervisor::VmAarch64;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -122,11 +123,11 @@ mod tests {
         let kvm = Kvm::new().expect("failed to instantiate Kvm");
         let mem = GuestMemory::new(&[]).unwrap();
         let vm = KvmVm::new(&kvm, mem).expect("failed to instantiate vm");
+
+        let mut chip = KvmKernelIrqChip::new(vm.try_clone().expect("failed to clone vm"), 1)
+            .expect("failed to instantiate KvmKernelIrqChip");
+
         let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
-
-        let mut chip =
-            KvmKernelIrqChip::new(vm, 1).expect("failed to instantiate KvmKernelIrqChip");
-
         chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
     }
 }

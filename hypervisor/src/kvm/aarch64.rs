@@ -50,7 +50,9 @@ impl VmAArch64 for KvmVm {
     type Vcpu = KvmVcpu;
 
     fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu> {
-        self.create_kvm_vcpu(id)
+        // create_vcpu is declared separately in VmAArch64 and VmX86, so it can return VcpuAArch64
+        // or VcpuX86.  But both use the same implementation in KvmVm::create_vcpu.
+        KvmVm::create_vcpu(self, id)
     }
 }
 
