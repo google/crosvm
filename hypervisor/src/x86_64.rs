@@ -32,6 +32,15 @@ pub trait VmX86_64: Vm {
 
 /// A wrapper around creating and using a VCPU on x86_64.
 pub trait VcpuX86_64: Vcpu {
+    /// Request the VCPU to exit when it becomes possible to inject interrupts into the guest.
+    fn request_interrupt_window(&self);
+
+    /// Checks if we can inject an interrupt into the VCPU.
+    fn ready_for_interrupt(&self) -> bool;
+
+    /// Injects interrupt vector `irq` into the VCPU.
+    fn interrupt(&self, irq: u32) -> Result<()>;
+
     /// Gets the VCPU registers.
     fn get_regs(&self) -> Result<Regs>;
 }

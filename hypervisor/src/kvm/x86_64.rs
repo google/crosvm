@@ -9,7 +9,7 @@ use libc::E2BIG;
 use kvm_sys::*;
 use sys_util::{
     errno_result, error, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
-    Error, GuestAddress, Result,
+    Error, GuestAddress, MappedRegion, Result,
 };
 
 use super::{Kvm, KvmVcpu, KvmVm};
@@ -272,6 +272,40 @@ impl VmX86_64 for KvmVm {
 }
 
 impl VcpuX86_64 for KvmVcpu {
+    #[allow(clippy::cast_ptr_alignment)]
+    fn request_interrupt_window(&self) {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was. The pointer is page aligned so casting to a different
+        // type is well defined, hence the clippy allow attribute.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        run.request_interrupt_window = 1;
+    }
+
+    #[allow(clippy::cast_ptr_alignment)]
+    fn ready_for_interrupt(&self) -> bool {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was. The pointer is page aligned so casting to a different
+        // type is well defined, hence the clippy allow attribute.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        run.ready_for_interrupt_injection != 0 && run.if_flag != 0
+    }
+
+    /// Use the KVM_INTERRUPT ioctl to inject the specified interrupt vector.
+    ///
+    /// While this ioctl exists on PPC and MIPS as well as x86, the semantics are different and
+    /// ChromeOS doesn't support PPC or MIPS.
+    fn interrupt(&self, irq: u32) -> Result<()> {
+        let interrupt = kvm_interrupt { irq };
+        // safe becuase we allocated the struct and we know the kernel will read
+        // exactly the size of the struct
+        let ret = unsafe { ioctl_with_ref(self, KVM_INTERRUPT(), &interrupt) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
     fn get_regs(&self) -> Result<Regs> {
         Ok(Regs {})
     }
@@ -754,7 +788,7 @@ mod tests {
     #[test]
     fn set_gsi_routing() {
         let kvm = Kvm::new().unwrap();
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let vm = KvmVm::new(&kvm, gm).unwrap();
         vm.create_irq_chip().unwrap();
         vm.set_gsi_routing(&[]).unwrap();

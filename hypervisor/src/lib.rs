@@ -11,6 +11,7 @@ pub mod kvm;
 pub mod x86_64;
 
 use std::ops::{Deref, DerefMut};
+use std::os::raw::c_int;
 
 use msg_socket::MsgOnSocket;
 use sys_util::{EventFd, GuestAddress, GuestMemory, MappedRegion, Result, SafeDescriptor};
@@ -128,16 +129,35 @@ pub trait Vm: Send + Sized {
 }
 
 /// A wrapper around using a VCPU.
-/// `Vcpu` provides all functionality except for running. To run, `to_runnable` must be called to
-/// lock the vcpu to a thread. Then the returned `RunnableVcpu` can be used for running.
+/// `Vcpu` provides all functionality except for running.  To run, `to_runnable` must be called to
+/// lock the vcpu to a thread.  Then the returned `RunnableVcpu` can be used for running.
 pub trait Vcpu: Send + Sized {
     type Runnable: RunnableVcpu;
 
-    /// Consumes `self` and returns a `RunnableVcpu`. A `RunnableVcpu` is required to run the guest.
-    fn to_runnable(self) -> Result<Self::Runnable>;
+    /// Consumes `self` and returns a `RunnableVcpu`.  A `RunnableVcpu` is required to run the
+    /// guest.  Assigns a vcpu to the current thread and stores it in a hash map that can be used
+    /// by signal handlers to call set_local_immediate_exit().  An optional signal number will be
+    /// temporarily blocked while assigning the vcpu to the thread and later blocked when
+    /// `RunnableVcpu` is destroyed.
+    ///
+    /// Returns an error, `EBUSY`, if the current thread already contains a Vcpu.
+    fn to_runnable(self, signal_num: Option<c_int>) -> Result<Self::Runnable>;
 
-    /// Request the Vcpu to exit the next time it can accept an interrupt.
-    fn request_interrupt_window(&self) -> Result<()>;
+    /// Sets the bit that requests an immediate exit.
+    fn set_immediate_exit(&self, exit: bool);
+
+    /// Sets/clears the bit for immediate exit for the vcpu on the current thread.
+    fn set_local_immediate_exit(exit: bool);
+
+    /// Trigger any io events based on the memory mapped IO at `addr`.  If the hypervisor does
+    /// in-kernel IO event delivery, this is a no-op.
+    fn handle_io_events(&self, addr: IoEventAddress) -> Result<()>;
+
+    /// Sets the data received by a mmio read, ioport in, or hypercall instruction.
+    ///
+    /// This function should be called after `Vcpu::run` returns an `VcpuExit::IoIn`,
+    /// `VcpuExit::MmioRead`, or 'VcpuExit::HypervHcall`.
+    fn set_data(&self, data: &[u8]) -> Result<()>;
 }
 
 /// A Vcpu that has a thread and can be run. Created by calling `to_runnable` on a `Vcpu`.
@@ -180,7 +200,7 @@ pub enum VcpuExit {
     },
     /// An in port instruction was run on the given port.
     ///
-    /// The date that the instruction receives should be set with `set_data` before `Vcpu::run` is
+    /// The data that the instruction receives should be set with `set_data` before `Vcpu::run` is
     /// called again.
     IoIn {
         port: u16,
@@ -188,7 +208,7 @@ pub enum VcpuExit {
     },
     /// A read instruction was run against the given MMIO address.
     ///
-    /// The date that the instruction receives should be set with `set_data` before `Vcpu::run` is
+    /// The data that the instruction receives should be set with `set_data` before `Vcpu::run` is
     /// called again.
     MmioRead {
         address: u64,

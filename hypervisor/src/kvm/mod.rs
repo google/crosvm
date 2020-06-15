@@ -12,24 +12,25 @@ mod x86_64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::*;
 
+use std::cell::RefCell;
 use std::cmp::{min, Ordering};
 use std::collections::{BTreeMap, BinaryHeap};
 use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
-use std::os::raw::{c_char, c_ulong, c_void};
+use std::os::raw::{c_char, c_int, c_ulong, c_void};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 
-use libc::{open, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
+use libc::{open, EBUSY, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
 
 use data_model::vec_with_array_field;
 use kvm_sys::*;
 use sync::Mutex;
 use sys_util::{
-    errno_result, ioctl, ioctl_with_ref, ioctl_with_val, pagesize, AsRawDescriptor, Error, EventFd,
-    FromRawDescriptor, GuestAddress, GuestMemory, MappedRegion, MemoryMapping, MmapError,
-    RawDescriptor, Result, SafeDescriptor,
+    block_signal, errno_result, ioctl, ioctl_with_ref, ioctl_with_val, pagesize, unblock_signal,
+    AsRawDescriptor, Error, EventFd, FromRawDescriptor, GuestAddress, GuestMemory, MappedRegion,
+    MemoryMapping, MmapError, RawDescriptor, Result, SafeDescriptor,
 };
 
 use crate::{
@@ -585,18 +586,124 @@ pub struct KvmVcpu {
     run_mmap: MemoryMapping,
 }
 
+pub(super) struct VcpuThread {
+    run: *mut kvm_run,
+    signal_num: Option<c_int>,
+}
+
+thread_local!(static VCPU_THREAD: RefCell<Option<VcpuThread>> = RefCell::new(None));
+
 impl Vcpu for KvmVcpu {
     type Runnable = RunnableKvmVcpu;
 
-    fn to_runnable(self) -> Result<Self::Runnable> {
+    #[allow(clippy::cast_ptr_alignment)]
+    fn to_runnable(self, signal_num: Option<c_int>) -> Result<Self::Runnable> {
+        // Block signal while we add -- if a signal fires (very unlikely,
+        // as this means something is trying to pause the vcpu before it has
+        // even started) it'll try to grab the read lock while this write
+        // lock is grabbed and cause a deadlock.
+        // Assuming that a failure to block means it's already blocked.
+        let _blocked_signal = signal_num.map(BlockedSignal::new);
+
+        VCPU_THREAD.with(|v| {
+            if v.borrow().is_none() {
+                *v.borrow_mut() = Some(VcpuThread {
+                    run: self.run_mmap.as_ptr() as *mut kvm_run,
+                    signal_num,
+                });
+                Ok(())
+            } else {
+                Err(Error::new(EBUSY))
+            }
+        })?;
+
         Ok(RunnableKvmVcpu {
             vcpu: self,
             phantom: Default::default(),
         })
     }
 
-    fn request_interrupt_window(&self) -> Result<()> {
+    #[allow(clippy::cast_ptr_alignment)]
+    fn set_immediate_exit(&self, exit: bool) {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was. The pointer is page aligned so casting to a different
+        // type is well defined, hence the clippy allow attribute.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        run.immediate_exit = if exit { 1 } else { 0 };
+    }
+
+    fn set_local_immediate_exit(exit: bool) {
+        VCPU_THREAD.with(|v| {
+            if let Some(state) = &(*v.borrow()) {
+                unsafe {
+                    (*state.run).immediate_exit = if exit { 1 } else { 0 };
+                };
+            }
+        });
+    }
+
+    fn handle_io_events(&self, _addr: IoEventAddress) -> Result<()> {
+        // KVM delivers IO events in-kernel with ioeventfds, so this is a no-op
         Ok(())
+    }
+
+    #[allow(clippy::cast_ptr_alignment)]
+    fn set_data(&self, data: &[u8]) -> Result<()> {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was. The pointer is page aligned so casting to a different
+        // type is well defined, hence the clippy allow attribute.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        match run.exit_reason {
+            KVM_EXIT_IO => {
+                let run_start = run as *mut kvm_run as *mut u8;
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let io = unsafe { run.__bindgen_anon_1.io };
+                if io.direction as u32 != KVM_EXIT_IO_IN {
+                    return Err(Error::new(EINVAL));
+                }
+                let data_size = (io.count as usize) * (io.size as usize);
+                if data_size != data.len() {
+                    return Err(Error::new(EINVAL));
+                }
+                // The data_offset is defined by the kernel to be some number of bytes into the
+                // kvm_run structure, which we have fully mmap'd.
+                unsafe {
+                    let data_ptr = run_start.offset(io.data_offset as isize);
+                    copy_nonoverlapping(data.as_ptr(), data_ptr, data_size);
+                }
+                Ok(())
+            }
+            KVM_EXIT_MMIO => {
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let mmio = unsafe { &mut run.__bindgen_anon_1.mmio };
+                if mmio.is_write != 0 {
+                    return Err(Error::new(EINVAL));
+                }
+                let len = mmio.len as usize;
+                if len != data.len() {
+                    return Err(Error::new(EINVAL));
+                }
+                mmio.data[..len].copy_from_slice(data);
+                Ok(())
+            }
+            KVM_EXIT_HYPERV => {
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let hyperv = unsafe { &mut run.__bindgen_anon_1.hyperv };
+                if hyperv.type_ != KVM_EXIT_HYPERV_HCALL {
+                    return Err(Error::new(EINVAL));
+                }
+                let hcall = unsafe { &mut hyperv.u.hcall };
+                if data.len() != std::mem::size_of::<u64>() {
+                    return Err(Error::new(EINVAL));
+                }
+                hcall.result.to_ne_bytes().copy_from_slice(data);
+                Ok(())
+            }
+            _ => Err(Error::new(EINVAL)),
+        }
     }
 }
 
@@ -765,6 +872,21 @@ impl DerefMut for RunnableKvmVcpu {
     }
 }
 
+impl Drop for RunnableKvmVcpu {
+    fn drop(&mut self) {
+        VCPU_THREAD.with(|v| {
+            // This assumes that a failure in `BlockedSignal::new` means the signal is already
+            // blocked and there it should not be unblocked on exit.
+            let _blocked_signal = &(*v.borrow())
+                .as_ref()
+                .and_then(|state| state.signal_num)
+                .map(BlockedSignal::new);
+
+            *v.borrow_mut() = None;
+        });
+    }
+}
+
 impl<'a> TryFrom<&'a HypervisorCap> for KvmCap {
     type Error = Error;
 
@@ -807,6 +929,28 @@ impl From<&IrqRoute> for kvm_irq_routing_entry {
                 ..Default::default()
             },
         }
+    }
+}
+
+// Represents a temporarily blocked signal. It will unblock the signal when dropped.
+struct BlockedSignal {
+    signal_num: c_int,
+}
+
+impl BlockedSignal {
+    // Returns a `BlockedSignal` if the specified signal can be blocked, otherwise None.
+    fn new(signal_num: c_int) -> Option<BlockedSignal> {
+        if block_signal(signal_num).is_ok() {
+            Some(BlockedSignal { signal_num })
+        } else {
+            None
+        }
+    }
+}
+
+impl Drop for BlockedSignal {
+    fn drop(&mut self) {
+        let _ = unblock_signal(self.signal_num).expect("failed to restore signal mask");
     }
 }
 
@@ -973,7 +1117,7 @@ mod tests {
     #[test]
     fn register_irqfd() {
         let kvm = Kvm::new().unwrap();
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let vm = KvmVm::new(&kvm, gm).unwrap();
         let evtfd1 = EventFd::new().unwrap();
         let evtfd2 = EventFd::new().unwrap();
@@ -988,7 +1132,7 @@ mod tests {
     #[test]
     fn unregister_irqfd() {
         let kvm = Kvm::new().unwrap();
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let vm = KvmVm::new(&kvm, gm).unwrap();
         let evtfd1 = EventFd::new().unwrap();
         let evtfd2 = EventFd::new().unwrap();
@@ -1005,7 +1149,7 @@ mod tests {
     #[test]
     fn irqfd_resample() {
         let kvm = Kvm::new().unwrap();
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let vm = KvmVm::new(&kvm, gm).unwrap();
         let evtfd1 = EventFd::new().unwrap();
         let evtfd2 = EventFd::new().unwrap();

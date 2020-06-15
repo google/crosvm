@@ -90,7 +90,7 @@ mod tests {
     #[test]
     fn set_gsi_routing() {
         let kvm = Kvm::new().unwrap();
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let vm = KvmVm::new(&kvm, gm).unwrap();
         vm.create_irq_chip().unwrap();
         vm.set_gsi_routing(&[]).unwrap();
