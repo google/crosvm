@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
 use std::mem;
 use std::ops::Deref;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -10,15 +9,18 @@ use std::ptr;
 
 use libc::{c_void, dup, eventfd, read, write};
 
-use crate::{errno_result, Result};
+use crate::{
+    errno_result, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, Result,
+    SafeDescriptor,
+};
 
 /// A safe wrapper around a Linux eventfd (man 2 eventfd).
 ///
 /// An eventfd is useful because it is sendable across processes and can be used for signaling in
 /// and out of the KVM API. They can also be polled like any other file descriptor.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct EventFd {
-    eventfd: File,
+    eventfd: SafeDescriptor,
 }
 
 impl EventFd {
@@ -33,7 +35,7 @@ impl EventFd {
         // This is safe because we checked ret for success and know the kernel gave us an fd that we
         // own.
         Ok(EventFd {
-            eventfd: unsafe { File::from_raw_fd(ret) },
+            eventfd: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
         })
     }
 
@@ -76,14 +78,14 @@ impl EventFd {
     /// the same underlying count within the kernel.
     pub fn try_clone(&self) -> Result<EventFd> {
         // This is safe because we made this fd and properly check that it returns without error.
-        let ret = unsafe { dup(self.as_raw_fd()) };
+        let ret = unsafe { dup(self.as_raw_descriptor()) };
         if ret < 0 {
             return errno_result();
         }
         // This is safe because we checked ret for success and know the kernel gave us an fd that we
         // own.
         Ok(EventFd {
-            eventfd: unsafe { File::from_raw_fd(ret) },
+            eventfd: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
         })
     }
 }
@@ -94,17 +96,23 @@ impl AsRawFd for EventFd {
     }
 }
 
+impl AsRawDescriptor for EventFd {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.eventfd.as_raw_descriptor()
+    }
+}
+
 impl FromRawFd for EventFd {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         EventFd {
-            eventfd: File::from_raw_fd(fd),
+            eventfd: SafeDescriptor::from_raw_descriptor(fd),
         }
     }
 }
 
 impl IntoRawFd for EventFd {
     fn into_raw_fd(self) -> RawFd {
-        self.eventfd.into_raw_fd()
+        self.eventfd.into_raw_descriptor()
     }
 }
 

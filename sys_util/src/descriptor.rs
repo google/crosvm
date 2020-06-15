@@ -29,9 +29,36 @@ pub trait FromRawDescriptor {
 }
 
 /// Wraps a RawDescriptor and safely closes it when self falls out of scope.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq)]
 pub struct SafeDescriptor {
     descriptor: RawDescriptor,
+}
+
+const KCMP_FILE: u32 = 0;
+
+impl PartialEq for SafeDescriptor {
+    fn eq(&self, other: &Self) -> bool {
+        // If RawFd numbers match then we can return early without calling kcmp
+        if self.descriptor == other.descriptor {
+            return true;
+        }
+
+        // safe because we only use the return value and libc says it's always successful
+        let pid = unsafe { libc::getpid() };
+        // safe because we are passing everything by value and checking the return value
+        let ret = unsafe {
+            libc::syscall(
+                libc::SYS_kcmp,
+                pid,
+                pid,
+                KCMP_FILE,
+                self.descriptor,
+                other.descriptor,
+            )
+        };
+
+        ret == 0
+    }
 }
 
 impl Drop for SafeDescriptor {
@@ -91,4 +118,28 @@ impl AsRawDescriptor for Descriptor {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.0
     }
+}
+
+#[test]
+fn clone_equality() {
+    let ret = unsafe { libc::eventfd(0, 0) };
+    if ret < 0 {
+        panic!("failed to create eventfd");
+    }
+    let descriptor = unsafe { SafeDescriptor::from_raw_descriptor(ret) };
+
+    assert_eq!(descriptor, descriptor);
+
+    assert_eq!(
+        descriptor,
+        descriptor.try_clone().expect("failed to clone eventfd")
+    );
+
+    let ret = unsafe { libc::eventfd(0, 0) };
+    if ret < 0 {
+        panic!("failed to create eventfd");
+    }
+    let another = unsafe { SafeDescriptor::from_raw_descriptor(ret) };
+
+    assert_ne!(descriptor, another);
 }
