@@ -264,7 +264,7 @@ pub enum VcpuExit {
     SystemEvent(u32 /* event_type */, u64 /* flags */),
 }
 
-/// A device type to create with `Vm.create_device`
+/// A device type to create with `Vm.create_device`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DeviceKind {
     /// VFIO device for direct access to devices from userspace
@@ -303,7 +303,7 @@ pub struct IrqRoute {
     pub source: IrqSource,
 }
 
-/// The state of the paravirtual clock
+/// The state of the paravirtual clock.
 #[derive(Debug, Default, Copy, Clone)]
 pub struct ClockState {
     /// Current pv clock timestamp, as seen by the guest

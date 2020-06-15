@@ -14,9 +14,9 @@ use sys_util::{
 
 use super::{Kvm, KvmVcpu, KvmVm};
 use crate::{
-    ClockState, CpuId, CpuIdEntry, DeviceKind, HypervisorX86_64, IoapicRedirectionTableEntry,
-    IoapicState, IrqSourceChip, LapicState, PicSelect, PicState, PitChannelState, PitState, Regs,
-    VcpuX86_64, VmCap, VmX86_64,
+    ClockState, CpuId, CpuIdEntry, DebugRegs, DescriptorTable, DeviceKind, Fpu, HypervisorX86_64,
+    IoapicRedirectionTableEntry, IoapicState, IrqSourceChip, LapicState, PicSelect, PicState,
+    PitChannelState, PitState, Regs, Segment, Sregs, VcpuX86_64, VmCap, VmX86_64,
 };
 
 type KvmCpuId = kvm::CpuId;
@@ -89,7 +89,7 @@ impl KvmVm {
     pub fn get_pvclock_arch(&self) -> Result<ClockState> {
         // Safe because we know that our file is a VM fd, we know the kernel will only write correct
         // amount of memory to our pointer, and we verify the return result.
-        let mut clock_data: kvm_clock_data = unsafe { std::mem::zeroed() };
+        let mut clock_data: kvm_clock_data = Default::default();
         let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_CLOCK(), &mut clock_data) };
         if ret == 0 {
             Ok(ClockState::from(clock_data))
@@ -210,7 +210,7 @@ impl KvmVm {
     pub fn get_pit_state(&self) -> Result<kvm_pit_state2> {
         // Safe because we know that our file is a VM fd, we know the kernel will only write
         // correct amount of memory to our pointer, and we verify the return result.
-        let mut pit_state = unsafe { std::mem::zeroed() };
+        let mut pit_state = Default::default();
         let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_PIT2(), &mut pit_state) };
         if ret == 0 {
             Ok(pit_state)
@@ -307,7 +307,101 @@ impl VcpuX86_64 for KvmVcpu {
     }
 
     fn get_regs(&self) -> Result<Regs> {
-        Ok(Regs {})
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
+        // correct amount of memory from our pointer, and we verify the return result.
+        let mut regs: kvm_regs = Default::default();
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_REGS(), &mut regs) };
+        if ret == 0 {
+            Ok(Regs::from(&regs))
+        } else {
+            errno_result()
+        }
+    }
+
+    fn set_regs(&self, regs: &Regs) -> Result<()> {
+        let regs = kvm_regs::from(regs);
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_REGS(), &regs) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    fn get_sregs(&self) -> Result<Sregs> {
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut regs: kvm_sregs = Default::default();
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_SREGS(), &mut regs) };
+        if ret == 0 {
+            Ok(Sregs::from(&regs))
+        } else {
+            errno_result()
+        }
+    }
+
+    fn set_sregs(&self, sregs: &Sregs) -> Result<()> {
+        let sregs = kvm_sregs::from(sregs);
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
+        // correct amount of memory from our pointer, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_SREGS(), &sregs) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    fn get_fpu(&self) -> Result<Fpu> {
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut fpu: kvm_fpu = Default::default();
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_FPU(), &mut fpu) };
+        if ret == 0 {
+            Ok(Fpu::from(&fpu))
+        } else {
+            errno_result()
+        }
+    }
+
+    fn set_fpu(&self, fpu: &Fpu) -> Result<()> {
+        let fpu = kvm_fpu::from(fpu);
+        let ret = unsafe {
+            // Here we trust the kernel not to read past the end of the kvm_fpu struct.
+            ioctl_with_ref(self, KVM_SET_FPU(), &fpu)
+        };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    fn get_debugregs(&self) -> Result<DebugRegs> {
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut regs: kvm_debugregs = Default::default();
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_DEBUGREGS(), &mut regs) };
+        if ret == 0 {
+            Ok(DebugRegs::from(&regs))
+        } else {
+            errno_result()
+        }
+    }
+
+    fn set_debugregs(&self, dregs: &DebugRegs) -> Result<()> {
+        let dregs = kvm_debugregs::from(dregs);
+        let ret = unsafe {
+            // Here we trust the kernel not to read past the end of the kvm_debugregs struct.
+            ioctl_with_ref(self, KVM_SET_DEBUGREGS(), &dregs)
+        };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
     }
 }
 
@@ -361,6 +455,25 @@ impl<'a> From<&'a KvmCpuId> for CpuId {
             cpu_id_entries.push(cpu_id_entry)
         }
         CpuId { cpu_id_entries }
+    }
+}
+
+impl From<&CpuId> for KvmCpuId {
+    fn from(cpuid: &CpuId) -> KvmCpuId {
+        let mut kvm = KvmCpuId::new(cpuid.cpu_id_entries.len());
+        let entries = kvm.mut_entries_slice();
+        for (i, &e) in cpuid.cpu_id_entries.iter().enumerate() {
+            entries[i] = kvm_cpuid_entry2 {
+                function: e.function,
+                index: e.index,
+                eax: e.eax,
+                ebx: e.ebx,
+                ecx: e.ecx,
+                edx: e.edx,
+                ..Default::default()
+            };
+        }
+        kvm
     }
 }
 
@@ -599,6 +712,220 @@ pub(super) fn chip_to_kvm_chip(chip: IrqSourceChip) -> u32 {
         _ => {
             error!("Invalid IrqChipSource for X86 {:?}", chip);
             0
+        }
+    }
+}
+
+impl From<&kvm_regs> for Regs {
+    fn from(r: &kvm_regs) -> Self {
+        Regs {
+            rax: r.rax,
+            rbx: r.rbx,
+            rcx: r.rcx,
+            rdx: r.rdx,
+            rsi: r.rsi,
+            rdi: r.rdi,
+            rsp: r.rsp,
+            rbp: r.rbp,
+            r8: r.r8,
+            r9: r.r9,
+            r10: r.r10,
+            r11: r.r11,
+            r12: r.r12,
+            r13: r.r13,
+            r14: r.r14,
+            r15: r.r15,
+            rip: r.rip,
+            rflags: r.rflags,
+        }
+    }
+}
+
+impl From<&Regs> for kvm_regs {
+    fn from(r: &Regs) -> Self {
+        kvm_regs {
+            rax: r.rax,
+            rbx: r.rbx,
+            rcx: r.rcx,
+            rdx: r.rdx,
+            rsi: r.rsi,
+            rdi: r.rdi,
+            rsp: r.rsp,
+            rbp: r.rbp,
+            r8: r.r8,
+            r9: r.r9,
+            r10: r.r10,
+            r11: r.r11,
+            r12: r.r12,
+            r13: r.r13,
+            r14: r.r14,
+            r15: r.r15,
+            rip: r.rip,
+            rflags: r.rflags,
+        }
+    }
+}
+
+impl From<&kvm_segment> for Segment {
+    fn from(s: &kvm_segment) -> Self {
+        Segment {
+            base: s.base,
+            limit: s.limit,
+            selector: s.selector,
+            type_: s.type_,
+            present: s.present,
+            dpl: s.dpl,
+            db: s.db,
+            s: s.s,
+            l: s.l,
+            g: s.g,
+            avl: s.avl,
+        }
+    }
+}
+
+impl From<&Segment> for kvm_segment {
+    fn from(s: &Segment) -> Self {
+        kvm_segment {
+            base: s.base,
+            limit: s.limit,
+            selector: s.selector,
+            type_: s.type_,
+            present: s.present,
+            dpl: s.dpl,
+            db: s.db,
+            s: s.s,
+            l: s.l,
+            g: s.g,
+            avl: s.avl,
+            unusable: match s.present {
+                0 => 1,
+                _ => 0,
+            },
+            ..Default::default()
+        }
+    }
+}
+
+impl From<&kvm_dtable> for DescriptorTable {
+    fn from(dt: &kvm_dtable) -> Self {
+        DescriptorTable {
+            base: dt.base,
+            limit: dt.limit,
+        }
+    }
+}
+
+impl From<&DescriptorTable> for kvm_dtable {
+    fn from(dt: &DescriptorTable) -> Self {
+        kvm_dtable {
+            base: dt.base,
+            limit: dt.limit,
+            ..Default::default()
+        }
+    }
+}
+
+impl From<&kvm_sregs> for Sregs {
+    fn from(r: &kvm_sregs) -> Self {
+        Sregs {
+            cs: Segment::from(&r.cs),
+            ds: Segment::from(&r.ds),
+            es: Segment::from(&r.es),
+            fs: Segment::from(&r.fs),
+            gs: Segment::from(&r.gs),
+            ss: Segment::from(&r.ss),
+            tr: Segment::from(&r.tr),
+            ldt: Segment::from(&r.ldt),
+            gdt: DescriptorTable::from(&r.gdt),
+            idt: DescriptorTable::from(&r.idt),
+            cr0: r.cr0,
+            cr2: r.cr2,
+            cr3: r.cr3,
+            cr4: r.cr4,
+            cr8: r.cr8,
+            efer: r.efer,
+            apic_base: r.apic_base,
+            interrupt_bitmap: r.interrupt_bitmap,
+        }
+    }
+}
+
+impl From<&Sregs> for kvm_sregs {
+    fn from(r: &Sregs) -> Self {
+        kvm_sregs {
+            cs: kvm_segment::from(&r.cs),
+            ds: kvm_segment::from(&r.ds),
+            es: kvm_segment::from(&r.es),
+            fs: kvm_segment::from(&r.fs),
+            gs: kvm_segment::from(&r.gs),
+            ss: kvm_segment::from(&r.ss),
+            tr: kvm_segment::from(&r.tr),
+            ldt: kvm_segment::from(&r.ldt),
+            gdt: kvm_dtable::from(&r.gdt),
+            idt: kvm_dtable::from(&r.idt),
+            cr0: r.cr0,
+            cr2: r.cr2,
+            cr3: r.cr3,
+            cr4: r.cr4,
+            cr8: r.cr8,
+            efer: r.efer,
+            apic_base: r.apic_base,
+            interrupt_bitmap: r.interrupt_bitmap,
+        }
+    }
+}
+
+impl From<&kvm_fpu> for Fpu {
+    fn from(r: &kvm_fpu) -> Self {
+        Fpu {
+            fpr: r.fpr,
+            fcw: r.fcw,
+            fsw: r.fsw,
+            ftwx: r.ftwx,
+            last_opcode: r.last_opcode,
+            last_ip: r.last_ip,
+            last_dp: r.last_dp,
+            xmm: r.xmm,
+            mxcsr: r.mxcsr,
+        }
+    }
+}
+
+impl From<&Fpu> for kvm_fpu {
+    fn from(r: &Fpu) -> Self {
+        kvm_fpu {
+            fpr: r.fpr,
+            fcw: r.fcw,
+            fsw: r.fsw,
+            ftwx: r.ftwx,
+            last_opcode: r.last_opcode,
+            last_ip: r.last_ip,
+            last_dp: r.last_dp,
+            xmm: r.xmm,
+            mxcsr: r.mxcsr,
+            ..Default::default()
+        }
+    }
+}
+
+impl From<&kvm_debugregs> for DebugRegs {
+    fn from(r: &kvm_debugregs) -> Self {
+        DebugRegs {
+            db: r.db,
+            dr6: r.dr6,
+            dr7: r.dr7,
+        }
+    }
+}
+
+impl From<&DebugRegs> for kvm_debugregs {
+    fn from(r: &DebugRegs) -> Self {
+        kvm_debugregs {
+            db: r.db,
+            dr6: r.dr6,
+            dr7: r.dr7,
+            ..Default::default()
         }
     }
 }
@@ -877,5 +1204,33 @@ mod tests {
         let vcpu = vm.create_vcpu(0).unwrap();
         let state = vcpu.get_mp_state().unwrap();
         vcpu.set_mp_state(&state).unwrap();
+    }
+
+    #[test]
+    fn from_fpu() {
+        // Fpu has the largest arrays in our struct adapters.  Test that they're small enough for
+        // Rust to copy.
+        let mut fpu: Fpu = Default::default();
+        let m = fpu.xmm.len();
+        let n = fpu.xmm[0].len();
+        fpu.xmm[m - 1][n - 1] = 42;
+
+        let fpu = kvm_fpu::from(&fpu);
+        assert_eq!(fpu.xmm.len(), m);
+        assert_eq!(fpu.xmm[0].len(), n);
+        assert_eq!(fpu.xmm[m - 1][n - 1], 42);
+    }
+
+    #[test]
+    fn debugregs() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vcpu = vm.create_vcpu(0).unwrap();
+        let mut dregs = vcpu.get_debugregs().unwrap();
+        dregs.dr7 = 13;
+        vcpu.set_debugregs(&dregs).unwrap();
+        let dregs2 = vcpu.get_debugregs().unwrap();
+        assert_eq!(dregs.dr7, dregs2.dr7);
     }
 }

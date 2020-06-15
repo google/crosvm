@@ -41,8 +41,29 @@ pub trait VcpuX86_64: Vcpu {
     /// Injects interrupt vector `irq` into the VCPU.
     fn interrupt(&self, irq: u32) -> Result<()>;
 
-    /// Gets the VCPU registers.
+    /// Gets the VCPU general purpose registers.
     fn get_regs(&self) -> Result<Regs>;
+
+    /// Sets the VCPU general purpose registers.
+    fn set_regs(&self, regs: &Regs) -> Result<()>;
+
+    /// Gets the VCPU special registers.
+    fn get_sregs(&self) -> Result<Sregs>;
+
+    /// Sets the VCPU special registers.
+    fn set_sregs(&self, sregs: &Sregs) -> Result<()>;
+
+    /// Gets the VCPU FPU registers.
+    fn get_fpu(&self) -> Result<Fpu>;
+
+    /// Sets the VCPU FPU registers.
+    fn set_fpu(&self, fpu: &Fpu) -> Result<()>;
+
+    /// Gets the VCPU debug registers.
+    fn get_debugregs(&self) -> Result<DebugRegs>;
+
+    /// Sets the VCPU debug registers.
+    fn set_debugregs(&self, debugregs: &DebugRegs) -> Result<()>;
 }
 
 /// A CpuId Entry contains supported feature information for the given processor.
@@ -65,9 +86,6 @@ pub struct CpuIdEntry {
 pub struct CpuId {
     pub cpu_id_entries: Vec<CpuIdEntry>,
 }
-
-/// The state of a vcpu's general-purpose registers.
-pub struct Regs {}
 
 #[bitfield]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -385,4 +403,104 @@ impl IrqRoute {
             },
         }
     }
+}
+
+/// State of a VCPU's general purpose registers.
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Regs {
+    pub rax: u64,
+    pub rbx: u64,
+    pub rcx: u64,
+    pub rdx: u64,
+    pub rsi: u64,
+    pub rdi: u64,
+    pub rsp: u64,
+    pub rbp: u64,
+    pub r8: u64,
+    pub r9: u64,
+    pub r10: u64,
+    pub r11: u64,
+    pub r12: u64,
+    pub r13: u64,
+    pub r14: u64,
+    pub r15: u64,
+    pub rip: u64,
+    pub rflags: u64,
+}
+
+/// State of a memory segment.
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Segment {
+    pub base: u64,
+    pub limit: u32,
+    pub selector: u16,
+    pub type_: u8,
+    pub present: u8,
+    pub dpl: u8,
+    pub db: u8,
+    pub s: u8,
+    pub l: u8,
+    pub g: u8,
+    pub avl: u8,
+}
+
+/// State of a global descriptor table or interrupt descriptor table.
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct DescriptorTable {
+    pub base: u64,
+    pub limit: u16,
+}
+
+/// State of a VCPU's special registers.
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Sregs {
+    pub cs: Segment,
+    pub ds: Segment,
+    pub es: Segment,
+    pub fs: Segment,
+    pub gs: Segment,
+    pub ss: Segment,
+    pub tr: Segment,
+    pub ldt: Segment,
+    pub gdt: DescriptorTable,
+    pub idt: DescriptorTable,
+    pub cr0: u64,
+    pub cr2: u64,
+    pub cr3: u64,
+    pub cr4: u64,
+    pub cr8: u64,
+    pub efer: u64,
+    pub apic_base: u64,
+
+    /// A bitmap of pending external interrupts.  At most one bit may be set.  This interrupt has
+    /// been acknowledged by the APIC but not yet injected into the cpu core.
+    pub interrupt_bitmap: [u64; 4usize],
+}
+
+/// State of a VCPU's floating point unit.
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Fpu {
+    pub fpr: [[u8; 16usize]; 8usize],
+    pub fcw: u16,
+    pub fsw: u16,
+    pub ftwx: u8,
+    pub last_opcode: u16,
+    pub last_ip: u64,
+    pub last_dp: u64,
+    pub xmm: [[u8; 16usize]; 16usize],
+    pub mxcsr: u32,
+}
+
+/// State of a VCPU's debug registers.
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct DebugRegs {
+    pub db: [u64; 4usize],
+    pub dr6: u64,
+    pub dr7: u64,
 }
