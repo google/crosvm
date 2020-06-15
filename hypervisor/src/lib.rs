@@ -312,13 +312,6 @@ pub struct ClockState {
     pub flags: u32,
 }
 
-/// The state of one VCPU register.
-#[derive(Debug, Default, Copy, Clone)]
-pub struct Register {
-    pub id: u64,
-    pub value: u64,
-}
-
 /// The MPState represents the state of a processor.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

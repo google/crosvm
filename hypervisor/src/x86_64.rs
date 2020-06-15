@@ -14,6 +14,9 @@ pub trait HypervisorX86_64: Hypervisor {
 
     /// Get the system emulated CPUID values.
     fn get_emulated_cpuid(&self) -> Result<CpuId>;
+
+    /// Gets the list of supported MSRs.
+    fn get_msr_index_list(&self) -> Result<Vec<u32>>;
 }
 
 /// A wrapper for using a VM on x86_64 and getting/setting its state.
@@ -64,6 +67,25 @@ pub trait VcpuX86_64: Vcpu {
 
     /// Sets the VCPU debug registers.
     fn set_debugregs(&self, debugregs: &DebugRegs) -> Result<()>;
+
+    /// Gets the VCPU extended control registers.
+    fn get_xcrs(&self) -> Result<Vec<Register>>;
+
+    /// Sets the VCPU extended control registers.
+    fn set_xcrs(&self, xcrs: &[Register]) -> Result<()>;
+
+    /// Gets the model-specific registers.  `msrs` specifies the MSR indexes to be queried, and
+    /// on success contains their indexes and values.
+    fn get_msrs(&self, msrs: &mut Vec<Register>) -> Result<()>;
+
+    /// Sets the model-specific registers.
+    fn set_msrs(&self, msrs: &[Register]) -> Result<()>;
+
+    /// Sets up the data returned by the CPUID instruction.
+    fn set_cpuid(&self, cpuid: &CpuId) -> Result<()>;
+
+    /// Gets the system emulated hyper-v CPUID values.
+    fn get_hyperv_cpuid(&self) -> Result<CpuId>;
 }
 
 /// A CpuId Entry contains supported feature information for the given processor.
@@ -503,4 +525,11 @@ pub struct DebugRegs {
     pub db: [u64; 4usize],
     pub dr6: u64,
     pub dr7: u64,
+}
+
+/// State of one VCPU register.  Currently used for MSRs and XCRs.
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Register {
+    pub id: u32,
+    pub value: u64,
 }

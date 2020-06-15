@@ -9,6 +9,8 @@ pub enum HypervisorCap {
     S390UserSigp,
     TscDeadlineTimer,
     UserMemory,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    Xcrs,
 }
 
 /// A capability the `Vm` can possibly expose.

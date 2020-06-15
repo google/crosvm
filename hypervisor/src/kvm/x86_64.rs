@@ -3,59 +3,65 @@
 // found in the LICENSE file.
 
 use std::convert::TryInto;
+use std::os::unix::io::AsRawFd;
 
 use libc::E2BIG;
 
+use data_model::vec_with_array_field;
 use kvm_sys::*;
 use sys_util::{
-    errno_result, error, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
-    Error, GuestAddress, MappedRegion, Result,
+    errno_result, error, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
+    ioctl_with_val, Error, GuestAddress, MappedRegion, Result,
 };
 
 use super::{Kvm, KvmVcpu, KvmVm};
 use crate::{
     ClockState, CpuId, CpuIdEntry, DebugRegs, DescriptorTable, DeviceKind, Fpu, HypervisorX86_64,
     IoapicRedirectionTableEntry, IoapicState, IrqSourceChip, LapicState, PicSelect, PicState,
-    PitChannelState, PitState, Regs, Segment, Sregs, VcpuX86_64, VmCap, VmX86_64,
+    PitChannelState, PitState, Register, Regs, Segment, Sregs, VcpuX86_64, VmCap, VmX86_64,
 };
 
 type KvmCpuId = kvm::CpuId;
 
+fn get_cpuid_with_initial_capacity<T: AsRawFd>(
+    fd: &T,
+    kind: u64,
+    initial_capacity: usize,
+) -> Result<CpuId> {
+    let mut entries: usize = initial_capacity;
+
+    loop {
+        let mut kvm_cpuid = KvmCpuId::new(entries);
+
+        let ret = unsafe {
+            // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the
+            // memory allocated for the struct. The limit is read from nent within KvmCpuId,
+            // which is set to the allocated size above.
+            ioctl_with_mut_ptr(fd, kind, kvm_cpuid.as_mut_ptr())
+        };
+        if ret < 0 {
+            let err = Error::last();
+            match err.errno() {
+                E2BIG => {
+                    // double the available memory for cpuid entries for kvm.
+                    if let Some(val) = entries.checked_mul(2) {
+                        entries = val;
+                    } else {
+                        return Err(err);
+                    }
+                }
+                _ => return Err(err),
+            }
+        } else {
+            return Ok(CpuId::from(&kvm_cpuid));
+        }
+    }
+}
+
 impl Kvm {
     pub fn get_cpuid(&self, kind: u64) -> Result<CpuId> {
         const KVM_MAX_ENTRIES: usize = 256;
-        self.get_cpuid_with_initial_capacity(kind, KVM_MAX_ENTRIES)
-    }
-
-    fn get_cpuid_with_initial_capacity(&self, kind: u64, initial_capacity: usize) -> Result<CpuId> {
-        let mut entries: usize = initial_capacity;
-
-        loop {
-            let mut kvm_cpuid = KvmCpuId::new(entries);
-
-            let ret = unsafe {
-                // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the
-                // memory allocated for the struct. The limit is read from nent within KvmCpuId,
-                // which is set to the allocated size above.
-                ioctl_with_mut_ptr(self, kind, kvm_cpuid.as_mut_ptr())
-            };
-            if ret < 0 {
-                let err = Error::last();
-                match err.errno() {
-                    E2BIG => {
-                        // double the available memory for cpuid entries for kvm.
-                        if let Some(val) = entries.checked_mul(2) {
-                            entries = val;
-                        } else {
-                            return Err(err);
-                        }
-                    }
-                    _ => return Err(err),
-                }
-            } else {
-                return Ok(CpuId::from(&kvm_cpuid));
-            }
-        }
+        get_cpuid_with_initial_capacity(self, kind, KVM_MAX_ENTRIES)
     }
 }
 
@@ -66,6 +72,36 @@ impl HypervisorX86_64 for Kvm {
 
     fn get_emulated_cpuid(&self) -> Result<CpuId> {
         self.get_cpuid(KVM_GET_EMULATED_CPUID())
+    }
+
+    fn get_msr_index_list(&self) -> Result<Vec<u32>> {
+        const MAX_KVM_MSR_ENTRIES: usize = 256;
+
+        let mut msr_list = vec_with_array_field::<kvm_msr_list, u32>(MAX_KVM_MSR_ENTRIES);
+        msr_list[0].nmsrs = MAX_KVM_MSR_ENTRIES as u32;
+
+        let ret = unsafe {
+            // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the memory
+            // allocated for the struct. The limit is read from nmsrs, which is set to the allocated
+            // size (MAX_KVM_MSR_ENTRIES) above.
+            ioctl_with_mut_ref(self, KVM_GET_MSR_INDEX_LIST(), &mut msr_list[0])
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+
+        let mut nmsrs = msr_list[0].nmsrs;
+
+        // Mapping the unsized array to a slice is unsafe because the length isn't known.  Using
+        // the length we originally allocated with eliminates the possibility of overflow.
+        let indices: &[u32] = unsafe {
+            if nmsrs > MAX_KVM_MSR_ENTRIES as u32 {
+                nmsrs = MAX_KVM_MSR_ENTRIES as u32;
+            }
+            msr_list[0].indices.as_slice(nmsrs as usize)
+        };
+
+        Ok(indices.to_vec())
     }
 }
 
@@ -402,6 +438,87 @@ impl VcpuX86_64 for KvmVcpu {
         } else {
             errno_result()
         }
+    }
+
+    fn get_xcrs(&self) -> Result<Vec<Register>> {
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut regs: kvm_xcrs = Default::default();
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_XCRS(), &mut regs) };
+        if ret == 0 {
+            Ok(from_kvm_xcrs(&regs))
+        } else {
+            errno_result()
+        }
+    }
+
+    fn set_xcrs(&self, xcrs: &[Register]) -> Result<()> {
+        let xcrs = to_kvm_xcrs(xcrs);
+        let ret = unsafe {
+            // Here we trust the kernel not to read past the end of the kvm_xcrs struct.
+            ioctl_with_ref(self, KVM_SET_XCRS(), &xcrs)
+        };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    fn get_msrs(&self, vec: &mut Vec<Register>) -> Result<()> {
+        let msrs = to_kvm_msrs(vec);
+        let ret = unsafe {
+            // Here we trust the kernel not to read or write past the end of the kvm_msrs struct.
+            ioctl_with_ref(self, KVM_GET_MSRS(), &msrs[0])
+        };
+        // KVM_GET_MSRS actually returns the number of msr entries written.
+        if ret < 0 {
+            return errno_result();
+        }
+        // Safe because we trust the kernel to return the correct array length on success.
+        let entries = unsafe {
+            let count = ret as usize;
+            assert!(count <= vec.len());
+            msrs[0].entries.as_slice(count)
+        };
+        vec.truncate(0);
+        vec.extend(entries.iter().map(|e| Register {
+            id: e.index,
+            value: e.data,
+        }));
+        Ok(())
+    }
+
+    fn set_msrs(&self, vec: &[Register]) -> Result<()> {
+        let msrs = to_kvm_msrs(vec);
+        let ret = unsafe {
+            // Here we trust the kernel not to read past the end of the kvm_msrs struct.
+            ioctl_with_ref(self, KVM_SET_MSRS(), &msrs[0])
+        };
+        // KVM_SET_MSRS actually returns the number of msr entries written.
+        if ret >= 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    fn set_cpuid(&self, cpuid: &CpuId) -> Result<()> {
+        let cpuid = KvmCpuId::from(cpuid);
+        let ret = unsafe {
+            // Here we trust the kernel not to read past the end of the kvm_msrs struct.
+            ioctl_with_ptr(self, KVM_SET_CPUID2(), cpuid.as_ptr())
+        };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    fn get_hyperv_cpuid(&self) -> Result<CpuId> {
+        const KVM_MAX_ENTRIES: usize = 256;
+        get_cpuid_with_initial_capacity(self, KVM_GET_SUPPORTED_HV_CPUID(), KVM_MAX_ENTRIES)
     }
 }
 
@@ -930,14 +1047,61 @@ impl From<&DebugRegs> for kvm_debugregs {
     }
 }
 
+fn from_kvm_xcrs(r: &kvm_xcrs) -> Vec<Register> {
+    r.xcrs
+        .iter()
+        .take(r.nr_xcrs as usize)
+        .map(|x| Register {
+            id: x.xcr,
+            value: x.value,
+        })
+        .collect()
+}
+
+fn to_kvm_xcrs(r: &[Register]) -> kvm_xcrs {
+    let mut kvm = kvm_xcrs {
+        nr_xcrs: r.len() as u32,
+        ..Default::default()
+    };
+    for (i, &xcr) in r.iter().enumerate() {
+        kvm.xcrs[i].xcr = xcr.id as u32;
+        kvm.xcrs[i].value = xcr.value;
+    }
+    kvm
+}
+
+fn to_kvm_msrs(vec: &[Register]) -> Vec<kvm_msrs> {
+    let vec: Vec<kvm_msr_entry> = vec
+        .iter()
+        .map(|e| kvm_msr_entry {
+            index: e.id as u32,
+            data: e.value,
+            ..Default::default()
+        })
+        .collect();
+
+    let mut msrs = vec_with_array_field::<kvm_msrs, kvm_msr_entry>(vec.len());
+    unsafe {
+        // Mapping the unsized array to a slice is unsafe because the length isn't known.
+        // Providing the length used to create the struct guarantees the entire slice is valid.
+        msrs[0]
+            .entries
+            .as_mut_slice(vec.len())
+            .copy_from_slice(&vec);
+    }
+    msrs[0].nmsrs = vec.len() as u32;
+    msrs
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        DeliveryMode, DeliveryStatus, DestinationMode, HypervisorX86_64,
+        DeliveryMode, DeliveryStatus, DestinationMode, Hypervisor, HypervisorCap, HypervisorX86_64,
         IoapicRedirectionTableEntry, IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState,
         PicInitState, PicState, PitChannelState, PitRWMode, PitRWState, PitState, TriggerMode, Vm,
     };
+    use libc::EINVAL;
     use sys_util::{GuestAddress, GuestMemory};
 
     #[test]
@@ -955,11 +1119,17 @@ mod tests {
     }
 
     #[test]
+    fn get_msr_index_list() {
+        let kvm = Kvm::new().unwrap();
+        let msr_list = kvm.get_msr_index_list().unwrap();
+        assert!(msr_list.len() >= 2);
+    }
+
+    #[test]
     fn entries_double_on_error() {
         let hypervisor = Kvm::new().unwrap();
-        let cpuid = hypervisor
-            .get_cpuid_with_initial_capacity(KVM_GET_SUPPORTED_CPUID(), 4)
-            .unwrap();
+        let cpuid =
+            get_cpuid_with_initial_capacity(&hypervisor, KVM_GET_SUPPORTED_CPUID(), 4).unwrap();
         assert!(cpuid.cpu_id_entries.len() > 4);
     }
 
@@ -1232,5 +1402,81 @@ mod tests {
         vcpu.set_debugregs(&dregs).unwrap();
         let dregs2 = vcpu.get_debugregs().unwrap();
         assert_eq!(dregs.dr7, dregs2.dr7);
+    }
+
+    #[test]
+    fn xcrs() {
+        let kvm = Kvm::new().unwrap();
+        if !kvm.check_capability(&HypervisorCap::Xcrs) {
+            return;
+        }
+
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vcpu = vm.create_vcpu(0).unwrap();
+        let mut xcrs = vcpu.get_xcrs().unwrap();
+        xcrs[0].value = 1;
+        vcpu.set_xcrs(&xcrs).unwrap();
+        let xcrs2 = vcpu.get_xcrs().unwrap();
+        assert_eq!(xcrs[0].value, xcrs2[0].value);
+    }
+
+    #[test]
+    fn get_msrs() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vcpu = vm.create_vcpu(0).unwrap();
+        let mut msrs = vec![
+            // This one should succeed
+            Register {
+                id: 0x0000011e,
+                ..Default::default()
+            },
+            // This one will fail to fetch
+            Register {
+                id: 0x000003f1,
+                ..Default::default()
+            },
+        ];
+        vcpu.get_msrs(&mut msrs).unwrap();
+        assert_eq!(msrs.len(), 1);
+    }
+
+    #[test]
+    fn set_msrs() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vcpu = vm.create_vcpu(0).unwrap();
+
+        const MSR_FS_BASE: u32 = 0xc0000100;
+        let mut msrs = vec![Register {
+            id: MSR_FS_BASE,
+            value: 42,
+        }];
+        vcpu.set_msrs(&msrs).unwrap();
+
+        msrs[0].value = 0;
+        vcpu.get_msrs(&mut msrs).unwrap();
+        assert_eq!(msrs.len(), 1);
+        assert_eq!(msrs[0].id, MSR_FS_BASE);
+        assert_eq!(msrs[0].value, 42);
+    }
+
+    #[test]
+    fn get_hyperv_cpuid() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vcpu = vm.create_vcpu(0).unwrap();
+        let cpuid = vcpu.get_hyperv_cpuid();
+        // Older kernels don't support so tolerate this kind of failure.
+        match cpuid {
+            Ok(_) => {}
+            Err(e) => {
+                assert_eq!(e.errno(), EINVAL);
+            }
+        }
     }
 }

@@ -935,6 +935,8 @@ impl<'a> TryFrom<&'a HypervisorCap> for KvmCap {
             HypervisorCap::S390UserSigp => Ok(KvmCap::S390UserSigp),
             HypervisorCap::TscDeadlineTimer => Ok(KvmCap::TscDeadlineTimer),
             HypervisorCap::UserMemory => Ok(KvmCap::UserMemory),
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            HypervisorCap::Xcrs => Ok(KvmCap::Xcrs),
         }
     }
 }
