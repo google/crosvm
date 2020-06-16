@@ -5,15 +5,15 @@
 use libc::ENXIO;
 
 use kvm_sys::*;
-use sys_util::{error, Error, Result};
+use sys_util::{errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, Error, Result};
 
 use super::{KvmVcpu, KvmVm};
-use crate::{ClockState, DeviceKind, IrqSourceChip, VcpuAArch64, VmAArch64, VmCap};
+use crate::{ClockState, DeviceKind, IrqSourceChip, VcpuAArch64, VcpuFeature, VmAArch64, VmCap};
 
 impl KvmVm {
     /// Checks if a particular `VmCap` is available, or returns None if arch-independent
     /// Vm.check_capability() should handle the check.
-    pub fn check_capability_arch(&self, c: VmCap) -> Option<bool> {
+    pub fn check_capability_arch(&self, _c: VmCap) -> Option<bool> {
         None
     }
 
@@ -64,8 +64,93 @@ impl KvmVcpu {
 }
 
 impl VcpuAArch64 for KvmVcpu {
-    fn set_one_reg(&self, _reg_id: u64, _data: u64) -> Result<()> {
+    fn init(&self, features: &[VcpuFeature]) -> Result<()> {
+        let mut kvi = kvm_vcpu_init {
+            target: KVM_ARM_TARGET_GENERIC_V8,
+            features: [0; 7],
+        };
+        // Safe because we allocated the struct and we know the kernel will write exactly the size
+        // of the struct.
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_ARM_PREFERRED_TARGET(), &mut kvi) };
+        if ret != 0 {
+            return errno_result();
+        }
+
+        for f in features {
+            let shift = match f {
+                VcpuFeature::PsciV0_2 => KVM_ARM_VCPU_PSCI_0_2,
+                VcpuFeature::PmuV3 => KVM_ARM_VCPU_PMU_V3,
+                VcpuFeature::PowerOff => KVM_ARM_VCPU_POWER_OFF,
+            };
+            kvi.features[0] |= 1 << shift;
+        }
+
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct.
+        let ret = unsafe { ioctl_with_ref(self, KVM_ARM_VCPU_INIT(), &kvi) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    fn init_pmu(&self, irq: u64) -> Result<()> {
+        let irq_addr = &irq as *const u64;
+
+        // The in-kernel PMU virtualization is initialized by setting the irq
+        // with KVM_ARM_VCPU_PMU_V3_IRQ and then by KVM_ARM_VCPU_PMU_V3_INIT.
+
+        let irq_attr = kvm_device_attr {
+            group: KVM_ARM_VCPU_PMU_V3_CTRL,
+            attr: KVM_ARM_VCPU_PMU_V3_IRQ as u64,
+            addr: irq_addr as u64,
+            flags: 0,
+        };
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct.
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_HAS_DEVICE_ATTR(), &irq_attr) };
+        if ret < 0 {
+            return errno_result();
+        }
+
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct.
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &irq_attr) };
+        if ret < 0 {
+            return errno_result();
+        }
+
+        let init_attr = kvm_device_attr {
+            group: KVM_ARM_VCPU_PMU_V3_CTRL,
+            attr: KVM_ARM_VCPU_PMU_V3_INIT as u64,
+            addr: 0,
+            flags: 0,
+        };
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct.
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &init_attr) };
+        if ret < 0 {
+            return errno_result();
+        }
+
         Ok(())
+    }
+
+    fn set_one_reg(&self, reg_id: u64, data: u64) -> Result<()> {
+        let data_ref = &data as *const u64;
+        let onereg = kvm_one_reg {
+            id: reg_id,
+            addr: data_ref as u64,
+        };
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_ONE_REG(), &onereg) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
     }
 }
 

@@ -15,11 +15,17 @@ pub trait VmAArch64: Vm {
 
 /// A wrapper around creating and using a VCPU on aarch64.
 pub trait VcpuAArch64: Vcpu {
-    /// Sets the value of register on this VCPU.
-    ///
-    /// # Arguments
-    ///
-    /// * `reg_id` - Register ID, specified in the KVM API documentation for KVM_SET_ONE_REG
+    /// Does ARM-specific initialization of this VCPU.  Inits the VCPU with the preferred target
+    /// VCPU type and the specified `features`, and resets the value of all registers to defaults.
+    /// All VCPUs should be created before calling this function.
+    fn init(&self, features: &[VcpuFeature]) -> Result<()>;
+
+    /// Initializes the ARM Performance Monitor Unit v3 on this VCPU, with overflow interrupt number
+    /// `irq`.
+    fn init_pmu(&self, irq: u64) -> Result<()>;
+
+    /// Sets the value of a register on this VCPU.  `reg_id` is the register ID, as specified in the
+    /// KVM API documentation for KVM_SET_ONE_REG.
     fn set_one_reg(&self, reg_id: u64, data: u64) -> Result<()>;
 }
 
@@ -34,4 +40,15 @@ impl IrqRoute {
             },
         }
     }
+}
+
+/// A feature that can be enabled on a VCPU with `VcpuAArch64::init`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VcpuFeature {
+    /// Emulate PSCI v0.2 (or a future revision backward compatible with v0.2) for the VCPU.
+    PsciV0_2,
+    /// Emulate Performance Monitor Unit v3 for the VCPU.
+    PmuV3,
+    /// Starts the VCPU in a power-off state.
+    PowerOff,
 }
