@@ -24,6 +24,14 @@ impl Clock {
     pub fn duration_since(&self, earlier: &Self) -> Duration {
         self.0.duration_since(earlier.0)
     }
+
+    pub fn elapsed(&self) -> Duration {
+        self.0.elapsed()
+    }
+
+    pub fn checked_sub(&self, duration: Duration) -> Option<Self> {
+        Some(Clock(self.0.checked_sub(duration)?))
+    }
 }
 
 impl Default for Clock {
@@ -66,6 +74,20 @@ impl FakeClock {
     pub fn duration_since(&self, earlier: &Self) -> Duration {
         let ns_diff = self.ns_since_epoch - earlier.ns_since_epoch;
         Duration::new(ns_diff / NS_PER_SEC, (ns_diff % NS_PER_SEC) as u32)
+    }
+
+    /// Get the time that has elapsed since this clock was made. Always returns 0 on a FakeClock.
+    pub fn elapsed(&self) -> Duration {
+        self.now().duration_since(self)
+    }
+
+    pub fn checked_sub(&self, duration: Duration) -> Option<Self> {
+        Some(FakeClock {
+            ns_since_epoch: self
+                .ns_since_epoch
+                .checked_sub(duration.as_nanos() as u64)?,
+            deadlines: Vec::new(),
+        })
     }
 
     /// Register the event fd for a notification when self's time is |deadline_ns|.

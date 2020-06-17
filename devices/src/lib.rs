@@ -11,6 +11,7 @@ mod ioapic;
 pub mod irqchip;
 mod pci;
 mod pic;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod pit;
 pub mod pl030;
 mod proxy;
@@ -37,6 +38,7 @@ pub use self::pci::{
     PciDeviceError, PciInterruptPin, PciRoot, VfioPciDevice,
 };
 pub use self::pic::Pic;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use self::pit::{Pit, PitError};
 pub use self::pl030::Pl030;
 pub use self::proxy::Error as ProxyError;
