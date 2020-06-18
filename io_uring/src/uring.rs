@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// This file makes several casts from u8 pointers into more-aligned pointer types.
+// We assume that the kernel will give us suitably aligned memory.
+#![allow(clippy::cast_ptr_alignment)]
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::File;
