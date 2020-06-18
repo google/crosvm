@@ -119,7 +119,8 @@ fn run_executor<T: FutureList>(future_list: T) -> Result<T::Output> {
 /// These futures must return `()`, indicating they are intended to create side-effects only.
 pub fn add_future(future: Pin<Box<dyn Future<Output = ()>>>) -> Result<()> {
     if uring_executor::use_uring() {
-        Ok(uring_executor::add_future(future))
+        uring_executor::add_future(future);
+        Ok(())
     } else {
         fd_executor::add_future(future).map_err(Error::FdExecutor)
     }
