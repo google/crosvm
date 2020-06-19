@@ -1084,7 +1084,7 @@ impl FileSystem for PassthroughFs {
         parent: Inode,
         name: &CStr,
         mode: u32,
-        umask: u32,
+        _umask: u32,
     ) -> io::Result<Entry> {
         // This method has the same issues as `create()`: namely that the kernel may have allowed a
         // process to make a directory due to one of its supplementary groups but that information
@@ -1111,7 +1111,7 @@ impl FileSystem for PassthroughFs {
         }
 
         // Set the mode.  Safe because this doesn't modify any memory and we check the return value.
-        let ret = unsafe { libc::fchmod(tmpdir.as_raw_fd(), mode & !umask) };
+        let ret = unsafe { libc::fchmod(tmpdir.as_raw_fd(), mode) };
         if ret < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -1236,7 +1236,7 @@ impl FileSystem for PassthroughFs {
         name: &CStr,
         mode: u32,
         flags: u32,
-        umask: u32,
+        _umask: u32,
     ) -> io::Result<(Entry, Option<Handle>, OpenOptions)> {
         // The `Context` may not contain all the information we need to create the file here. For
         // example, a process may be part of several groups, one of which gives it permission to
@@ -1270,14 +1270,8 @@ impl FileSystem for PassthroughFs {
         let current_dir = unsafe { CStr::from_bytes_with_nul_unchecked(b".\0") };
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let fd = unsafe {
-            libc::openat(
-                data.file.as_raw_fd(),
-                current_dir.as_ptr(),
-                tmpflags,
-                mode & !(umask & 0o777),
-            )
-        };
+        let fd =
+            unsafe { libc::openat(data.file.as_raw_fd(), current_dir.as_ptr(), tmpflags, mode) };
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -1581,7 +1575,7 @@ impl FileSystem for PassthroughFs {
         name: &CStr,
         mode: u32,
         rdev: u32,
-        umask: u32,
+        _umask: u32,
     ) -> io::Result<Entry> {
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
         let data = self
@@ -1596,7 +1590,7 @@ impl FileSystem for PassthroughFs {
             libc::mknodat(
                 data.file.as_raw_fd(),
                 name.as_ptr(),
-                (mode & !umask) as libc::mode_t,
+                mode as libc::mode_t,
                 rdev as libc::dev_t,
             )
         };
