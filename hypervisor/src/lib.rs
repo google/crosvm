@@ -20,6 +20,9 @@ pub use crate::caps::*;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use crate::x86_64::*;
 
+/// An index in the list of guest-mapped memory regions.
+pub type MemSlot = u32;
+
 /// A trait for checking hypervisor capabilities.
 pub trait Hypervisor {
     /// Checks if a particular `HypervisorCap` is available.
@@ -68,14 +71,14 @@ pub trait Vm: Send + Sized {
         mem_region: Box<dyn MappedRegion>,
         read_only: bool,
         log_dirty_pages: bool,
-    ) -> Result<u32>;
+    ) -> Result<MemSlot>;
 
     /// Does a synchronous msync of the memory mapped at `slot`, syncing `size` bytes starting at
     /// `offset` from the start of the region.  `offset` must be page aligned.
-    fn msync_memory_region(&mut self, slot: u32, offset: usize, size: usize) -> Result<()>;
+    fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()>;
 
     /// Removes and drops the `UserMemoryRegion` that was previously added at the given slot.
-    fn remove_memory_region(&mut self, slot: u32) -> Result<()>;
+    fn remove_memory_region(&mut self, slot: MemSlot) -> Result<()>;
 
     /// Creates an emulated device.
     fn create_device(&self, kind: DeviceKind) -> Result<SafeDescriptor>;

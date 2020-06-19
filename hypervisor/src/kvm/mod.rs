@@ -33,8 +33,8 @@ use sys_util::{
 };
 
 use crate::{
-    ClockState, DeviceKind, Hypervisor, HypervisorCap, IrqRoute, IrqSource, RunnableVcpu, Vcpu,
-    VcpuExit, Vm, VmCap,
+    ClockState, DeviceKind, Hypervisor, HypervisorCap, IrqRoute, IrqSource, MemSlot, RunnableVcpu,
+    Vcpu, VcpuExit, Vm, VmCap,
 };
 
 // Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
@@ -43,7 +43,7 @@ use crate::{
 // Safe when the guest regions are guaranteed not to overlap.
 unsafe fn set_user_memory_region(
     descriptor: &SafeDescriptor,
-    slot: u32,
+    slot: MemSlot,
     read_only: bool,
     log_dirty_pages: bool,
     guest_addr: u64,
@@ -137,18 +137,18 @@ impl Hypervisor for Kvm {
 
 // Used to invert the order when stored in a max-heap.
 #[derive(Copy, Clone, Eq, PartialEq)]
-struct MemSlot(u32);
+struct MemSlotOrd(MemSlot);
 
-impl Ord for MemSlot {
-    fn cmp(&self, other: &MemSlot) -> Ordering {
+impl Ord for MemSlotOrd {
+    fn cmp(&self, other: &MemSlotOrd) -> Ordering {
         // Notice the order is inverted so the lowest magnitude slot has the highest priority in a
         // max-heap.
         other.0.cmp(&self.0)
     }
 }
 
-impl PartialOrd for MemSlot {
-    fn partial_cmp(&self, other: &MemSlot) -> Option<Ordering> {
+impl PartialOrd for MemSlotOrd {
+    fn partial_cmp(&self, other: &MemSlotOrd) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
@@ -158,8 +158,8 @@ pub struct KvmVm {
     kvm: Kvm,
     vm: SafeDescriptor,
     guest_mem: GuestMemory,
-    mem_regions: Arc<Mutex<BTreeMap<u32, Box<dyn MappedRegion>>>>,
-    mem_slot_gaps: Arc<Mutex<BinaryHeap<MemSlot>>>,
+    mem_regions: Arc<Mutex<BTreeMap<MemSlot, Box<dyn MappedRegion>>>>,
+    mem_slot_gaps: Arc<Mutex<BinaryHeap<MemSlotOrd>>>,
 }
 
 impl KvmVm {
@@ -178,7 +178,7 @@ impl KvmVm {
                 // Safe because the guest regions are guaranteed not to overlap.
                 set_user_memory_region(
                     &vm_descriptor,
-                    index as u32,
+                    index as MemSlot,
                     false,
                     false,
                     guest_addr.offset(),
@@ -358,7 +358,7 @@ impl Vm for KvmVm {
         mem: Box<dyn MappedRegion>,
         read_only: bool,
         log_dirty_pages: bool,
-    ) -> Result<u32> {
+    ) -> Result<MemSlot> {
         let size = mem.size() as u64;
         let end_addr = guest_addr.checked_add(size).ok_or(Error::new(EOVERFLOW))?;
         if self.guest_mem.range_overlap(guest_addr, end_addr) {
@@ -368,7 +368,7 @@ impl Vm for KvmVm {
         let mut gaps = self.mem_slot_gaps.lock();
         let slot = match gaps.pop() {
             Some(gap) => gap.0,
-            None => (regions.len() + self.guest_mem.num_regions() as usize) as u32,
+            None => (regions.len() + self.guest_mem.num_regions() as usize) as MemSlot,
         };
 
         // Safe because we check that the given guest address is valid and has no overlaps. We also
@@ -388,14 +388,14 @@ impl Vm for KvmVm {
         };
 
         if let Err(e) = res {
-            gaps.push(MemSlot(slot));
+            gaps.push(MemSlotOrd(slot));
             return Err(e);
         }
         regions.insert(slot, mem);
         Ok(slot)
     }
 
-    fn msync_memory_region(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
+    fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
         let mut regions = self.mem_regions.lock();
         let mem = regions.get_mut(&slot).ok_or(Error::new(ENOENT))?;
 
@@ -407,7 +407,7 @@ impl Vm for KvmVm {
         })
     }
 
-    fn remove_memory_region(&mut self, slot: u32) -> Result<()> {
+    fn remove_memory_region(&mut self, slot: MemSlot) -> Result<()> {
         let mut regions = self.mem_regions.lock();
         if !regions.contains_key(&slot) {
             return Err(Error::new(ENOENT));
@@ -416,7 +416,7 @@ impl Vm for KvmVm {
         unsafe {
             set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut())?;
         }
-        self.mem_slot_gaps.lock().push(MemSlot(slot));
+        self.mem_slot_gaps.lock().push(MemSlotOrd(slot));
         regions.remove(&slot);
         Ok(())
     }
