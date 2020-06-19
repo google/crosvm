@@ -9,8 +9,8 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
 use std::{self, io};
 
-use io_jail::{self, Minijail};
 use libc::{self, pid_t};
+use minijail::{self, Minijail};
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgSender, MsgSocket};
 use sys_util::{error, net::UnixSeqpacket};
 
@@ -19,7 +19,7 @@ use crate::BusDevice;
 /// Errors for proxy devices.
 #[derive(Debug)]
 pub enum Error {
-    ForkingJail(io_jail::Error),
+    ForkingJail(minijail::Error),
     Io(io::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;

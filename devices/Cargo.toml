@@ -25,13 +25,13 @@ gpu_buffer = { path = "../gpu_buffer", optional = true }
 gpu_display = { path = "../gpu_display", optional = true }
 gpu_renderer = { path = "../gpu_renderer", optional = true }
 hypervisor = { path = "../hypervisor" }
-io_jail = { path = "../io_jail" }
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 libcras = "*"
 libvda = { version = "*", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
+minijail = "*"
 msg_on_socket_derive = { path = "../msg_socket/msg_on_socket_derive" }
 msg_socket = { path = "../msg_socket" }
 net_sys = { path = "../net_sys" }

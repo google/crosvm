@@ -12,7 +12,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use devices::{Bus, ProxyDevice, Serial, SerialDevice};
-use io_jail::Minijail;
+use minijail::Minijail;
 use sync::Mutex;
 use sys_util::{read_raw_stdin, syslog, EventFd};
 

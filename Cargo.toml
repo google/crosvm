@@ -55,14 +55,13 @@ disk = { path = "disk" }
 enumn = { path = "enumn" }
 gpu_buffer = { path = "gpu_buffer", optional = true }
 gpu_renderer = { path = "gpu_renderer", optional = true }
-io_jail = { path = "io_jail" }
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
 kvm = { path = "kvm" }
 kvm_sys = { path = "kvm_sys" }
 libc = "0.2.65"
 libcras = "*"
-minijail-sys = "*" # provided by ebuild
+minijail = "*" # provided by ebuild
 msg_socket = { path = "msg_socket" }
 net_util = { path = "net_util" }
 p9 = { path = "p9" }
@@ -92,7 +91,7 @@ audio_streams = { path = "../../third_party/adhd/audio_streams" } # ignored by e
 data_model = { path = "data_model" }
 libcras = { path = "../../third_party/adhd/cras/client/libcras" } # ignored by ebuild
 libvda = { path = "../../platform2/arc/vm/libvda/rust" } # ignored by ebuild
-minijail-sys = { path = "../../aosp/external/minijail/rust/minijail-sys" } # ignored by ebuild
+minijail = { path = "../../aosp/external/minijail/rust/minijail" } # ignored by ebuild
 poll_token_derive = { path = "sys_util/poll_token_derive" }
 sync = { path = "sync" }
 sys_util = { path = "sys_util" }

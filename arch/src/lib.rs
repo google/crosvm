@@ -23,8 +23,8 @@ use devices::{
     Bus, BusDevice, BusError, PciAddress, PciDevice, PciDeviceError, PciInterruptPin, PciRoot,
     ProxyDevice,
 };
-use io_jail::Minijail;
 use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
+use minijail::Minijail;
 use resources::SystemAllocator;
 use sync::Mutex;
 use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};

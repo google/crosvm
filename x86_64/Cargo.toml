@@ -9,12 +9,12 @@ arch = { path = "../arch" }
 assertions = { path = "../assertions" }
 data_model = { path = "../data_model" }
 devices = { path = "../devices" }
-io_jail = { path = "../io_jail" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 kernel_loader = { path = "../kernel_loader" }
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
+minijail = "*"
 remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }

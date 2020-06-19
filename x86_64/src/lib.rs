@@ -65,8 +65,8 @@ use devices::{
     Ioapic, PciAddress, PciConfigIo, PciDevice, PciInterruptPin, Pic, IOAPIC_BASE_ADDRESS,
     IOAPIC_MEM_LENGTH_BYTES,
 };
-use io_jail::Minijail;
 use kvm::*;
+use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;

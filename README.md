@@ -229,7 +229,6 @@ crates are:
 
 * `crosvm` - The top-level binary front-end for using crosvm.
 * `devices` - Virtual devices exposed to the guest OS.
-* `io_jail` - Creates jailed process using `libminijail`.
 * `kernel_loader` - Loads elf64 kernel files to a slice of memory.
 * `kvm_sys` - Low-level (mostly) auto-generated structures and constants for using KVM.
 * `kvm` - Unsafe, low-level wrapper code for using `kvm_sys`.

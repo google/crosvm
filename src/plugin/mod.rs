@@ -26,8 +26,8 @@ use libc::{
 use protobuf::ProtobufError;
 use remain::sorted;
 
-use io_jail::{self, Minijail};
 use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
+use minijail::{self, Minijail};
 use net_util::{Error as TapError, Tap, TapT};
 use sys_util::{
     block_signal, clear_signal, drop_capabilities, error, getegid, geteuid, info, pipe,
@@ -50,7 +50,7 @@ pub enum Error {
     CloneVcpuPipe(io::Error),
     CreateEventFd(SysError),
     CreateIrqChip(SysError),
-    CreateJail(io_jail::Error),
+    CreateJail(minijail::Error),
     CreateKvm(SysError),
     CreateMainSocket(SysError),
     CreatePIT(SysError),
@@ -64,21 +64,21 @@ pub enum Error {
     DecodeRequest(ProtobufError),
     DropCapabilities(SysError),
     EncodeResponse(ProtobufError),
-    Mount(io_jail::Error),
-    MountDev(io_jail::Error),
-    MountLib(io_jail::Error),
-    MountLib64(io_jail::Error),
-    MountPlugin(io_jail::Error),
-    MountPluginLib(io_jail::Error),
-    MountProc(io_jail::Error),
-    MountRoot(io_jail::Error),
+    Mount(minijail::Error),
+    MountDev(minijail::Error),
+    MountLib(minijail::Error),
+    MountLib64(minijail::Error),
+    MountPlugin(minijail::Error),
+    MountPluginLib(minijail::Error),
+    MountProc(minijail::Error),
+    MountRoot(minijail::Error),
     NoRootDir,
-    ParsePivotRoot(io_jail::Error),
-    ParseSeccomp(io_jail::Error),
+    ParsePivotRoot(minijail::Error),
+    ParseSeccomp(minijail::Error),
     PluginFailed(i32),
     PluginKill(SysError),
     PluginKilled(i32),
-    PluginRunJail(io_jail::Error),
+    PluginRunJail(minijail::Error),
     PluginSocketHup,
     PluginSocketPoll(SysError),
     PluginSocketRecv(SysError),
@@ -90,8 +90,8 @@ pub enum Error {
     PollContextAdd(SysError),
     RootNotAbsolute,
     RootNotDir,
-    SetGidMap(io_jail::Error),
-    SetUidMap(io_jail::Error),
+    SetGidMap(minijail::Error),
+    SetUidMap(minijail::Error),
     SigChild {
         pid: u32,
         signo: u32,

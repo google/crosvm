@@ -16,7 +16,7 @@ use arch::{
     VmComponents, VmImage,
 };
 use devices::{Bus, BusError, PciAddress, PciConfigMmio, PciDevice, PciInterruptPin};
-use io_jail::Minijail;
+use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;

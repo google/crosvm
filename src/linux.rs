@@ -35,8 +35,8 @@ use devices::{
     self, Ac97Backend, Ac97Dev, HostBackendDeviceProvider, PciDevice, VfioContainer, VfioDevice,
     VfioPciDevice, VirtioPciDevice, XhciController,
 };
-use io_jail::{self, Minijail};
 use kvm::*;
+use minijail::{self, Minijail};
 use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 use net_util::{Error as NetError, MacAddress, Tap};
 use remain::sorted;
@@ -96,8 +96,8 @@ pub enum Error {
     CreateTpmStorage(PathBuf, io::Error),
     CreateUsbProvider(devices::usb::host_backend::error::Error),
     CreateVfioDevice(devices::vfio::VfioError),
-    DeviceJail(io_jail::Error),
-    DevicePivotRoot(io_jail::Error),
+    DeviceJail(minijail::Error),
+    DevicePivotRoot(minijail::Error),
     Disk(PathBuf, io::Error),
     DiskImageLock(sys_util::Error),
     DropCapabilities(sys_util::Error),
@@ -107,7 +107,7 @@ pub enum Error {
     InputEventsOpen(std::io::Error),
     InvalidFdPath,
     InvalidWaylandPath,
-    IoJail(io_jail::Error),
+    IoJail(minijail::Error),
     LoadKernel(Box<dyn StdError>),
     MemoryTooLarge,
     NetDeviceNew(virtio::NetError),
@@ -138,9 +138,9 @@ pub enum Error {
     ReservePmemMemory(sys_util::MmapError),
     ResetTimerFd(sys_util::Error),
     RngDeviceNew(virtio::RngError),
-    SettingGidMap(io_jail::Error),
-    SettingMaxOpenFiles(io_jail::Error),
-    SettingUidMap(io_jail::Error),
+    SettingGidMap(minijail::Error),
+    SettingMaxOpenFiles(minijail::Error),
+    SettingUidMap(minijail::Error),
     SignalFd(sys_util::SignalFdError),
     SpawnVcpu(io::Error),
     TimerFd(sys_util::Error),
@@ -248,8 +248,8 @@ impl Display for Error {
     }
 }
 
-impl From<io_jail::Error> for Error {
-    fn from(err: io_jail::Error) -> Self {
+impl From<minijail::Error> for Error {
+    fn from(err: minijail::Error) -> Self {
         Error::IoJail(err)
     }
 }
