@@ -1103,9 +1103,17 @@ impl FileSystem for PassthroughFs {
 
         let tmpdir = self.get_path(parent).and_then(TempDir::new)?;
 
+        // We need to respect the setgid bit in the parent directory if it is set.
+        let st = stat(&data.file)?;
+        let gid = if st.st_mode & libc::S_ISGID != 0 {
+            st.st_gid
+        } else {
+            ctx.gid
+        };
+
         // Set the uid and gid for the directory. Safe because this doesn't modify any memory and we
         // check the return value.
-        let ret = unsafe { libc::fchown(tmpdir.as_raw_fd(), ctx.uid, ctx.gid) };
+        let ret = unsafe { libc::fchown(tmpdir.as_raw_fd(), ctx.uid, gid) };
         if ret < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -1279,9 +1287,17 @@ impl FileSystem for PassthroughFs {
         // Safe because we just opened this fd.
         let tmpfile = unsafe { File::from_raw_fd(fd) };
 
+        // We need to respect the setgid bit in the parent directory if it is set.
+        let st = stat(&data.file)?;
+        let gid = if st.st_mode & libc::S_ISGID != 0 {
+            st.st_gid
+        } else {
+            ctx.gid
+        };
+
         // Now set the uid and gid for the file. Safe because this doesn't modify any memory and we
         // check the return value.
-        let ret = unsafe { libc::fchown(tmpfile.as_raw_fd(), ctx.uid, ctx.gid) };
+        let ret = unsafe { libc::fchown(tmpfile.as_raw_fd(), ctx.uid, gid) };
         if ret < 0 {
             return Err(io::Error::last_os_error());
         }
