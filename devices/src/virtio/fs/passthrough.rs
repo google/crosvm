@@ -1007,8 +1007,10 @@ impl FileSystem for PassthroughFs {
             }),
         );
 
-        let mut opts =
-            FsOptions::DO_READDIRPLUS | FsOptions::READDIRPLUS_AUTO | FsOptions::EXPORT_SUPPORT;
+        let mut opts = FsOptions::DO_READDIRPLUS
+            | FsOptions::READDIRPLUS_AUTO
+            | FsOptions::EXPORT_SUPPORT
+            | FsOptions::POSIX_ACL;
         if self.cfg.writeback && capable.contains(FsOptions::WRITEBACK_CACHE) {
             opts |= FsOptions::WRITEBACK_CACHE;
             self.writeback.store(true, Ordering::Relaxed);
