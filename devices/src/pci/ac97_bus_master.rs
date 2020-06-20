@@ -25,7 +25,7 @@ use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;
 
 const DEVICE_SAMPLE_RATE: usize = 48000;
-const DEVICE_CHANNEL_COUNT: usize = 2;
+const DEVICE_INPUT_CHANNEL_COUNT: usize = 2;
 
 // Bus Master registers. Keeps the state of the bus master register values. Used to share the state
 // between the main and audio threads.
@@ -67,6 +67,26 @@ impl Ac97BusMasterRegs {
             Ac97Function::Input => &mut self.pi_regs,
             Ac97Function::Output => &mut self.po_regs,
             Ac97Function::Microphone => &mut self.mc_regs,
+        }
+    }
+
+    fn channel_count(&self, func: Ac97Function) -> usize {
+        fn output_channel_count(glob_cnt: u32) -> usize {
+            let val = (glob_cnt & GLOB_CNT_PCM_246_MASK) >> 20;
+            match val {
+                0 => 2,
+                1 => 4,
+                2 => 6,
+                _ => {
+                    warn!("unknown channel_count: 0x{:x}", val);
+                    return 2;
+                }
+            }
+        }
+
+        match func {
+            Ac97Function::Output => output_channel_count(self.glob_cnt),
+            _ => DEVICE_INPUT_CHANNEL_COUNT,
         }
     }
 }
@@ -295,7 +315,7 @@ impl Ac97BusMaster {
                     regs.po_regs.picb
                 } else {
                     // Estimate how many samples have been played since the last audio callback.
-                    let num_channels = 2;
+                    let num_channels = regs.channel_count(Ac97Function::Output) as u64;
                     let micros = regs.po_pointer_update_time.elapsed().subsec_micros();
                     // Round down to the next 10 millisecond boundary. The linux driver often
                     // assumes that two rapid reads from picb will return the same value.
@@ -499,7 +519,8 @@ impl Ac97BusMaster {
         };
 
         let buffer_samples = current_buffer_size(self.regs.lock().func_regs(func), &self.mem)?;
-        let buffer_frames = buffer_samples / DEVICE_CHANNEL_COUNT;
+        let num_channels = self.regs.lock().channel_count(func);
+        let buffer_frames = buffer_samples / num_channels;
         thread_info.thread_run.store(true, Ordering::Relaxed);
         let thread_run = thread_info.thread_run.clone();
         let thread_semaphore = thread_info.thread_semaphore.clone();
@@ -525,7 +546,7 @@ impl Ac97BusMaster {
             .audio_server
             .new_stream(
                 direction,
-                DEVICE_CHANNEL_COUNT,
+                num_channels,
                 SampleFormat::S16LE,
                 DEVICE_SAMPLE_RATE,
                 buffer_frames,
@@ -678,7 +699,7 @@ fn next_guest_buffer<'a>(
     let offset = get_buffer_offset(func_regs, mem, index)?
         .try_into()
         .map_err(|_| AudioError::InvalidBufferOffset)?;
-    let frames = get_buffer_samples(func_regs, mem, index)? / DEVICE_CHANNEL_COUNT;
+    let frames = get_buffer_samples(func_regs, mem, index)? / regs.channel_count(func);
 
     Ok(Some(GuestBuffer {
         index,
@@ -959,8 +980,13 @@ mod test {
     }
 
     #[test]
-    #[ignore] // flaky - see crbug.com/1058881
-    fn start_playback() {
+    fn run_playback() {
+        start_playback(2);
+        start_playback(4);
+        start_playback(6);
+    }
+
+    fn start_playback(num_channels: usize) {
         const TIMEOUT: Duration = Duration::from_millis(500);
         const LVI_MASK: u8 = 0x1f; // Five bits for 32 total entries.
         const IOC_MASK: u32 = 0x8000_0000; // Interrupt on completion.
@@ -997,14 +1023,27 @@ mod test {
         bm.writeb(PO_LVI_15, LVI_MASK, &mixer);
         assert_eq!(bm.readb(PO_CIV_14), 0);
 
+        // Set channel count.
+        let mut cnt = bm.readl(GLOB_CNT_2C);
+        cnt &= !GLOB_CNT_PCM_246_MASK;
+        if num_channels == 4 {
+            cnt |= GLOB_CNT_PCM_4;
+        } else if num_channels == 6 {
+            cnt |= GLOB_CNT_PCM_6;
+        }
+        bm.writel(GLOB_CNT_2C, cnt);
+
         // Start.
         bm.writeb(PO_CR_1B, CR_IOCE | CR_RPBM, &mixer);
-        assert_eq!(bm.readw(PO_PICB_18), 0);
+        // TODO(crbug.com/1058881): The test is flaky in builder.
+        // assert_eq!(bm.readw(PO_PICB_18), 0);
 
         let mut stream = stream_source.get_last_stream();
         // Trigger callback and see that CIV has not changed, since only 1
         // buffer has been sent.
         assert!(stream.trigger_callback_with_timeout(TIMEOUT));
+
+        assert_eq!(stream.num_channels(), num_channels);
 
         let mut civ = bm.readb(PO_CIV_14);
         assert_eq!(civ, 0);

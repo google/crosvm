@@ -37,8 +37,14 @@ pub const MIXER_MIC_VOL_MUTE_0E: u64 = 0x0e;
 pub const MIXER_PCM_OUT_VOL_MUTE_18: u64 = 0x18;
 pub const MIXER_REC_VOL_MUTE_1C: u64 = 0x1c;
 pub const MIXER_POWER_DOWN_CONTROL_26: u64 = 0x26;
+pub const MIXER_EXTENDED_AUDIO_ID_28: u64 = 0x28;
 pub const MIXER_VENDOR_ID1_7C: u64 = 0x7c;
 pub const MIXER_VENDOR_ID2_7E: u64 = 0x7e;
+
+// Extended Audio ID Bits.
+pub const MIXER_EI_CDAC: u16 = 0x0040; // PCM Center DAC is available.
+pub const MIXER_EI_SDAC: u16 = 0x0080; // PCM Surround DAC is available.
+pub const MIXER_EI_LDAC: u16 = 0x0100; // PCM LFE DAC is available.
 
 // Bus Master regs from ICH spec:
 // 00h PI_BDBAR PCM In Buffer Descriptor list Base Address Register
@@ -72,10 +78,18 @@ pub const GLOB_CNT_COLD_RESET: u32 = 0x0000_0002;
 pub const GLOB_CNT_WARM_RESET: u32 = 0x0000_0004;
 pub const GLOB_CNT_STABLE_BITS: u32 = 0x0000_007f; // Bits not affected by reset.
 
+// PCM 4/6 Enable bits
+pub const GLOB_CNT_PCM_2: u32 = 0x0000_0000; // 2 channels
+pub const GLOB_CNT_PCM_4: u32 = 0x0010_0000; // 4 channels
+pub const GLOB_CNT_PCM_6: u32 = 0x0020_0000; // 6 channels
+pub const GLOB_CNT_PCM_246_MASK: u32 = GLOB_CNT_PCM_4 | GLOB_CNT_PCM_6; // channel mask
+
 // Global status
 pub const GLOB_STA_30: u64 = 0x30;
-pub const GLOB_STA_RESET_VAL: u32 = 0x0000_0100; // primary codec ready set.
-                                                 // glob_sta bits
+// Primary codec ready set and turn on D20:21 to support 4 and 6 channels on PCM out.
+pub const GLOB_STA_RESET_VAL: u32 = 0x0030_0100;
+
+// glob_sta bits
 pub const GS_MD3: u32 = 1 << 17;
 pub const GS_AD3: u32 = 1 << 16;
 pub const GS_RCS: u32 = 1 << 15;

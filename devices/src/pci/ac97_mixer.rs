@@ -7,6 +7,8 @@ use crate::pci::ac97_regs::*;
 // AC97 Vendor ID
 const AC97_VENDOR_ID1: u16 = 0x8086;
 const AC97_VENDOR_ID2: u16 = 0x8086;
+// Extented Audio ID
+const AC97_EXTENDED_ID: u16 = MIXER_EI_CDAC | MIXER_EI_SDAC | MIXER_EI_LDAC;
 
 // Master volume register is specified in 1.5dB steps.
 const MASTER_VOLUME_STEP_DB: f64 = 1.5;
@@ -59,6 +61,7 @@ impl Ac97Mixer {
             MIXER_PCM_OUT_VOL_MUTE_18 => self.get_pcm_out_volume(),
             MIXER_REC_VOL_MUTE_1C => self.get_record_gain_reg(),
             MIXER_POWER_DOWN_CONTROL_26 => self.power_down_control,
+            MIXER_EXTENDED_AUDIO_ID_28 => AC97_EXTENDED_ID,
             MIXER_VENDOR_ID1_7C => AC97_VENDOR_ID1,
             MIXER_VENDOR_ID2_7E => AC97_VENDOR_ID2,
             _ => 0,
