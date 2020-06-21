@@ -16,7 +16,7 @@ use data_model::{DataInit, Le32, Le64};
 
 use msg_socket::{MsgReceiver, MsgSender};
 
-use vm_control::{VmMsyncRequest, VmMsyncRequestSocket, VmMsyncResponse};
+use vm_control::{MemSlot, VmMsyncRequest, VmMsyncRequestSocket, VmMsyncResponse};
 
 use super::{
     copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
@@ -89,7 +89,7 @@ struct Worker {
     queue: Queue,
     memory: GuestMemory,
     pmem_device_socket: VmMsyncRequestSocket,
-    mapping_arena_slot: u32,
+    mapping_arena_slot: MemSlot,
     mapping_size: usize,
 }
 
@@ -225,7 +225,7 @@ pub struct Pmem {
     worker_thread: Option<thread::JoinHandle<()>>,
     disk_image: Option<File>,
     mapping_address: GuestAddress,
-    mapping_arena_slot: u32,
+    mapping_arena_slot: MemSlot,
     mapping_size: u64,
     pmem_device_socket: Option<VmMsyncRequestSocket>,
 }
@@ -234,7 +234,7 @@ impl Pmem {
     pub fn new(
         disk_image: File,
         mapping_address: GuestAddress,
-        mapping_arena_slot: u32,
+        mapping_arena_slot: MemSlot,
         mapping_size: u64,
         pmem_device_socket: Option<VmMsyncRequestSocket>,
     ) -> SysResult<Pmem> {

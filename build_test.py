@@ -34,6 +34,7 @@ TEST_MODULES_PARALLEL = [
     'devices',
     'disk',
     'enumn',
+    'hypervisor',
     'kernel_cmdline',
     'kernel_loader',
     'kvm',

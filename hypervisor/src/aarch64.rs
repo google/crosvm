@@ -2,12 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
+use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
 use base::Result;
 
 /// A wrapper for using a VM on aarch64 and getting/setting its state.
 pub trait VmAArch64: Vm {
+    type Hypervisor: Hypervisor;
     type Vcpu: VcpuAArch64;
+
+    /// Gets the `Hypervisor` that created this VM.
+    fn get_hypervisor(&self) -> &Self::Hypervisor;
 
     /// Create a Vcpu with the specified Vcpu ID.
     fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu>;

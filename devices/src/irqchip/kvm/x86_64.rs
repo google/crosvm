@@ -124,6 +124,12 @@ impl IrqChipX86_64<KvmVcpu> for KvmKernelIrqChip {
     fn set_pit(&mut self, state: &PitState) -> Result<()> {
         self.vm.set_pit_state(&kvm_pit_state2::from(state))
     }
+
+    /// Returns true if the PIT uses port 0x61 for the PC speaker, false if 0x61 is unused.
+    /// KVM's kernel PIT doesn't use 0x61.
+    fn pit_uses_speaker_port(&self) -> bool {
+        false
+    }
 }
 
 /// The KvmSplitIrqsChip supports KVM's SPLIT_IRQCHIP feature, where the PIC and IOAPIC
@@ -633,6 +639,12 @@ impl IrqChipX86_64<KvmVcpu> for KvmSplitIrqChip {
     fn set_pit(&mut self, state: &PitState) -> Result<()> {
         self.pit.lock().set_pit_state(state);
         Ok(())
+    }
+
+    /// Returns true if the PIT uses port 0x61 for the PC speaker, false if 0x61 is unused.
+    /// devices::Pit uses 0x61.
+    fn pit_uses_speaker_port(&self) -> bool {
+        true
     }
 }
 

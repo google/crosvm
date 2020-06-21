@@ -9,7 +9,7 @@ use sync::Mutex;
 
 use base::{warn, EventFd, Result};
 use data_model::{DataInit, Le32};
-use kvm::Datamatch;
+use hypervisor::Datamatch;
 use libc::ERANGE;
 use resources::{Alloc, MmioType, SystemAllocator};
 use vm_memory::GuestMemory;

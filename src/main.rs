@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! Runs a virtual machine under KVM
+//! Runs a virtual machine
 
 pub mod panic_hook;
 

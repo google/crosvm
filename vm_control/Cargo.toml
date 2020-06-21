@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 data_model = { path = "../data_model" }
-kvm = { path = "../kvm" }
+hypervisor = { path = "../hypervisor" }
 libc = "*"
 msg_socket = { path = "../msg_socket" }
 resources = { path = "../resources" }

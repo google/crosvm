@@ -289,7 +289,12 @@ impl KvmVm {
 }
 
 impl VmX86_64 for KvmVm {
+    type Hypervisor = Kvm;
     type Vcpu = KvmVcpu;
+
+    fn get_hypervisor(&self) -> &Self::Hypervisor {
+        &self.kvm
+    }
 
     fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu> {
         // create_vcpu is declared separately in VmAArch64 and VmX86, so it can return VcpuAArch64
@@ -1497,9 +1502,9 @@ mod tests {
         let vm = KvmVm::new(&kvm, gm).unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
 
-        const MSR_FS_BASE: u32 = 0xc0000100;
+        const MSR_TSC_AUX: u32 = 0xc0000103;
         let mut msrs = vec![Register {
-            id: MSR_FS_BASE,
+            id: MSR_TSC_AUX,
             value: 42,
         }];
         vcpu.set_msrs(&msrs).unwrap();
@@ -1507,7 +1512,7 @@ mod tests {
         msrs[0].value = 0;
         vcpu.get_msrs(&mut msrs).unwrap();
         assert_eq!(msrs.len(), 1);
-        assert_eq!(msrs[0].id, MSR_FS_BASE);
+        assert_eq!(msrs[0].id, MSR_TSC_AUX);
         assert_eq!(msrs[0].value, 42);
     }
 

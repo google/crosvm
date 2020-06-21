@@ -27,7 +27,6 @@ gpu_buffer = { path = "../gpu_buffer", optional = true }
 gpu_display = { path = "../gpu_display", optional = true }
 gpu_renderer = { path = "../gpu_renderer", optional = true }
 hypervisor = { path = "../hypervisor" }
-kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 libcras = "*"

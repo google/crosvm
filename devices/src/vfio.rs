@@ -17,9 +17,10 @@ use std::u32;
 use sync::Mutex;
 
 use base::{
-    ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn, Error, EventFd,
+    ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn, Error,
+    EventFd, SafeDescriptor,
 };
-use kvm::Vm;
+use hypervisor::{DeviceKind, Vm};
 use vm_memory::GuestMemory;
 
 use vfio_sys::*;
@@ -82,7 +83,7 @@ fn get_error() -> Error {
 /// VfioContainer contain multi VfioGroup, and delegate an IOMMU domain table
 pub struct VfioContainer {
     container: File,
-    kvm_vfio_dev: Option<File>,
+    kvm_vfio_dev: Option<SafeDescriptor>,
     groups: HashMap<u32, Arc<VfioGroup>>,
 }
 
@@ -163,7 +164,7 @@ impl VfioContainer {
         Ok(())
     }
 
-    fn init(&mut self, vm: &Vm, guest_mem: &GuestMemory) -> Result<(), VfioError> {
+    fn init(&mut self, vm: &impl Vm, guest_mem: &GuestMemory) -> Result<(), VfioError> {
         if !self.check_extension(VFIO_TYPE1v2_IOMMU) {
             return Err(VfioError::VfioType1V2);
         }
@@ -179,16 +180,10 @@ impl VfioContainer {
             unsafe { self.vfio_dma_map(guest_addr.0, size as u64, host_addr as u64) }
         })?;
 
-        let mut vfio_dev = kvm_sys::kvm_create_device {
-            type_: kvm_sys::kvm_device_type_KVM_DEV_TYPE_VFIO,
-            fd: 0,
-            flags: 0,
-        };
-        vm.create_device(&mut vfio_dev)
+        let vfio_descriptor = vm
+            .create_device(DeviceKind::Vfio)
             .map_err(VfioError::CreateVfioKvmDevice)?;
-        // Safe as we are the owner of vfio_dev.fd which is valid value.
-        let kvm_vfio_file = unsafe { File::from_raw_fd(vfio_dev.fd as i32) };
-        self.kvm_vfio_dev = Some(kvm_vfio_file);
+        self.kvm_vfio_dev = Some(vfio_descriptor);
 
         Ok(())
     }
@@ -196,7 +191,7 @@ impl VfioContainer {
     fn get_group(
         &mut self,
         id: u32,
-        vm: &Vm,
+        vm: &impl Vm,
         guest_mem: &GuestMemory,
     ) -> Result<Arc<VfioGroup>, VfioError> {
         match self.groups.get(&id) {
@@ -272,7 +267,7 @@ impl VfioGroup {
         Ok(VfioGroup { group: group_file })
     }
 
-    fn kvm_device_add_group(&self, kvm_vfio_file: &File) -> Result<(), VfioError> {
+    fn kvm_device_add_group(&self, kvm_vfio_file: &SafeDescriptor) -> Result<(), VfioError> {
         let group_fd = self.as_raw_fd();
         let group_fd_ptr = &group_fd as *const i32;
         let vfio_dev_attr = kvm_sys::kvm_device_attr {
@@ -354,7 +349,7 @@ impl VfioDevice {
     /// sysfspath specify the vfio device path in sys file system.
     pub fn new(
         sysfspath: &Path,
-        vm: &Vm,
+        vm: &impl Vm,
         guest_mem: &GuestMemory,
         container: Arc<Mutex<VfioContainer>>,
     ) -> Result<Self, VfioError> {

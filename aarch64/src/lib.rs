@@ -8,7 +8,6 @@ use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
-use std::os::unix::io::FromRawFd;
 use std::sync::Arc;
 
 use arch::{
@@ -16,16 +15,15 @@ use arch::{
     VmComponents, VmImage,
 };
 use base::EventFd;
-use devices::{Bus, BusError, PciAddress, PciConfigMmio, PciDevice, PciInterruptPin};
+use devices::{
+    Bus, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice, PciInterruptPin,
+};
+use hypervisor::{DeviceKind, Hypervisor, HypervisorCap, VcpuAArch64, VcpuFeature, VmAArch64};
 use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
-use vm_control::VmIrqRequestSocket;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
-
-use kvm::*;
-use kvm_sys::kvm_device_attr;
 
 mod fdt;
 
@@ -47,10 +45,6 @@ const AARCH64_AXI_BASE: u64 = 0x40000000;
 const AARCH64_GIC_DIST_BASE: u64 = AARCH64_AXI_BASE - AARCH64_GIC_DIST_SIZE;
 const AARCH64_GIC_CPUI_BASE: u64 = AARCH64_GIC_DIST_BASE - AARCH64_GIC_CPUI_SIZE;
 const AARCH64_GIC_REDIST_SIZE: u64 = 0x20000;
-
-// This is the minimum number of SPI interrupts aligned to 32 + 32 for the
-// PPI (16) and GSI (16).
-const AARCH64_GIC_NR_IRQS: u32 = 64;
 
 // PSR (Processor State Register) bits
 const PSR_MODE_EL1H: u64 = 0x00000005;
@@ -122,17 +116,16 @@ pub enum Error {
     CreateEventFd(base::Error),
     CreateFdt(arch::fdt::Error),
     CreateGICFailure(base::Error),
-    CreateKvm(base::Error),
+    CreateIrqChip(Box<dyn StdError>),
     CreatePciRoot(arch::DeviceRegistrationError),
     CreateSerialDevices(arch::DeviceRegistrationError),
     CreateSocket(io::Error),
     CreateVcpu(base::Error),
-    CreateVm(base::Error),
+    CreateVm(Box<dyn StdError>),
     GetSerialCmdline(GetSerialCmdlineError),
     InitrdLoadFailure(arch::LoadImageError),
     KernelLoadFailure(arch::LoadImageError),
     KernelMissing,
-    ReadPreferredTarget(base::Error),
     RegisterIrqfd(base::Error),
     RegisterPci(BusError),
     RegisterVsock(arch::DeviceRegistrationError),
@@ -155,7 +148,7 @@ impl Display for Error {
             CreateEventFd(e) => write!(f, "unable to make an EventFd: {}", e),
             CreateFdt(e) => write!(f, "FDT could not be created: {}", e),
             CreateGICFailure(e) => write!(f, "failed to create GIC: {}", e),
-            CreateKvm(e) => write!(f, "failed to open /dev/kvm: {}", e),
+            CreateIrqChip(e) => write!(f, "failed to create IRQ chip: {}", e),
             CreatePciRoot(e) => write!(f, "failed to create a PCI root hub: {}", e),
             CreateSerialDevices(e) => write!(f, "unable to create serial devices: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
@@ -165,7 +158,6 @@ impl Display for Error {
             InitrdLoadFailure(e) => write!(f, "initrd cound not be loaded: {}", e),
             KernelLoadFailure(e) => write!(f, "kernel cound not be loaded: {}", e),
             KernelMissing => write!(f, "aarch64 requires a kernel"),
-            ReadPreferredTarget(e) => write!(f, "failed to read preferred target: {}", e),
             RegisterIrqfd(e) => write!(f, "failed to register irq fd: {}", e),
             RegisterPci(e) => write!(f, "error registering PCI bus: {}", e),
             RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
@@ -199,51 +191,50 @@ pub struct AArch64;
 impl arch::LinuxArch for AArch64 {
     type Error = Error;
 
-    fn build_vm<F, E>(
+    fn build_vm<V, I, FD, FV, FI, E1, E2, E3>(
         mut components: VmComponents,
-        _split_irqchip: bool,
-        _ioapic_device_socket: VmIrqRequestSocket,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
-        create_devices: F,
-    ) -> Result<RunnableLinuxVm>
+        create_devices: FD,
+        create_vm: FV,
+        create_irq_chip: FI,
+    ) -> std::result::Result<RunnableLinuxVm<V, I>, Self::Error>
     where
-        F: FnOnce(
+        V: VmAArch64,
+        I: IrqChipAArch64<V::Vcpu>,
+        FD: FnOnce(
             &GuestMemory,
-            &mut Vm,
+            &mut V,
             &mut SystemAllocator,
             &EventFd,
-        ) -> std::result::Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E>,
-        E: StdError + 'static,
+        ) -> std::result::Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E1>,
+        FV: FnOnce(GuestMemory) -> std::result::Result<V, E2>,
+        FI: FnOnce(&V, /* vcpu_count: */ usize) -> std::result::Result<I, E3>,
+        E1: StdError + 'static,
+        E2: StdError + 'static,
+        E3: StdError + 'static,
     {
         let mut resources =
             Self::get_resource_allocator(components.memory_size, components.wayland_dmabuf);
         let mem = Self::setup_memory(components.memory_size)?;
-        let kvm = Kvm::new().map_err(Error::CreateKvm)?;
-        let mut vm = Vm::new(&kvm, mem.clone()).map_err(Error::CreateVm)?;
+        let mut vm = create_vm(mem.clone()).map_err(|e| Error::CreateVm(Box::new(e)))?;
 
+        let mut use_pmu = vm
+            .get_hypervisor()
+            .check_capability(&HypervisorCap::ArmPmuV3);
         let vcpu_count = components.vcpu_count;
-        let mut vcpus = Vec::with_capacity(vcpu_count as usize);
-        for cpu_id in 0..vcpu_count {
-            let vcpu = Vcpu::new(cpu_id as libc::c_ulong, &kvm, &vm).map_err(Error::CreateVcpu)?;
-            Self::configure_vcpu(
-                vm.get_memory(),
-                &kvm,
-                &vm,
-                &vcpu,
-                cpu_id as u64,
-                vcpu_count as u64,
-            )?;
+        let mut vcpus = Vec::with_capacity(vcpu_count);
+        for vcpu_id in 0..vcpu_count {
+            let vcpu = vm.create_vcpu(vcpu_id).map_err(Error::CreateVcpu)?;
+            Self::configure_vcpu_early(vm.get_memory(), &vcpu, vcpu_id, use_pmu)?;
             vcpus.push(vcpu);
         }
 
-        let vcpu_affinity = components.vcpu_affinity;
+        let mut irq_chip =
+            create_irq_chip(&vm, vcpu_count).map_err(|e| Error::CreateIrqChip(Box::new(e)))?;
 
-        let (irq_chip, is_gicv3) = Self::create_irq_chip(&vm, vcpu_count as u64)?;
-
-        let mut use_pmu = true;
         for vcpu in &vcpus {
-            use_pmu &= vcpu.arm_pmu_init(AARCH64_PMU_IRQ as u64 + 16).is_ok();
+            use_pmu &= vcpu.init_pmu(AARCH64_PMU_IRQ as u64 + 16).is_ok();
         }
 
         let mut mmio_bus = devices::Bus::new();
@@ -258,11 +249,11 @@ impl arch::LinuxArch for AArch64 {
             .map_err(|e| Error::CreateDevices(Box::new(e)))?;
         let (pci, pci_irqs, pid_debug_label_map) = arch::generate_pci_root(
             pci_devices,
-            &mut None,
+            &mut irq_chip,
             &mut mmio_bus,
             &mut resources,
             &mut vm,
-            (AARCH64_GIC_NR_IRQS - AARCH64_IRQ_BASE) as usize,
+            (devices::AARCH64_GIC_NR_IRQS - AARCH64_IRQ_BASE) as usize,
         )
         .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci)));
@@ -270,7 +261,7 @@ impl arch::LinuxArch for AArch64 {
         // ARM doesn't really use the io bus like x86, so just create an empty bus.
         let io_bus = devices::Bus::new();
 
-        Self::add_arch_devs(&mut vm, &mut mmio_bus)?;
+        Self::add_arch_devs(&mut irq_chip, &mut mmio_bus)?;
 
         let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
         let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
@@ -283,9 +274,11 @@ impl arch::LinuxArch for AArch64 {
         )
         .map_err(Error::CreateSerialDevices)?;
 
-        vm.register_irqfd(&com_evt_1_3, AARCH64_SERIAL_1_3_IRQ)
+        irq_chip
+            .register_irq_event(AARCH64_SERIAL_1_3_IRQ, &com_evt_1_3, None)
             .map_err(Error::RegisterIrqfd)?;
-        vm.register_irqfd(&com_evt_2_4, AARCH64_SERIAL_2_4_IRQ)
+        irq_chip
+            .register_irq_event(AARCH64_SERIAL_2_4_IRQ, &com_evt_2_4, None)
             .map_err(Error::RegisterIrqfd)?;
 
         mmio_bus
@@ -324,25 +317,37 @@ impl arch::LinuxArch for AArch64 {
             pci_irqs,
             components.android_fstab,
             kernel_end,
-            is_gicv3,
+            irq_chip.get_vgic_version() == DeviceKind::ArmVgicV3,
             use_pmu,
         )?;
 
         Ok(RunnableLinuxVm {
             vm,
-            kvm,
             resources,
             exit_evt,
-            vcpus,
-            vcpu_affinity,
+            vcpu_count,
+            vcpus: Some(vcpus),
+            vcpu_affinity: components.vcpu_affinity,
             irq_chip,
-            split_irqchip: None,
-            gsi_relay: None,
+            has_bios: false,
             io_bus,
             mmio_bus,
             pid_debug_label_map,
             suspend_evt,
         })
+    }
+
+    fn configure_vcpu<T: VcpuAArch64>(
+        _guest_mem: &GuestMemory,
+        _hypervisor: &impl Hypervisor,
+        _irq_chip: &mut impl IrqChipAArch64<T>,
+        _vcpu: &mut impl VcpuAArch64,
+        _vcpu_id: usize,
+        _num_cpus: usize,
+        _has_bios: bool,
+    ) -> std::result::Result<(), Self::Error> {
+        // AArch64 doesn't configure vcpus on the vcpu thread, so nothing to do here.
+        Ok(())
     }
 }
 
@@ -350,7 +355,7 @@ impl AArch64 {
     fn setup_system_memory(
         mem: &GuestMemory,
         mem_size: u64,
-        vcpu_count: u32,
+        vcpu_count: usize,
         cmdline: &CStr,
         initrd_file: Option<File>,
         pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
@@ -378,7 +383,7 @@ impl AArch64 {
             AARCH64_FDT_MAX_SIZE as usize,
             mem,
             pci_irqs,
-            vcpu_count,
+            vcpu_count as u32,
             fdt_offset(mem_size),
             pci_device_base,
             pci_device_size,
@@ -425,11 +430,12 @@ impl AArch64 {
     ///
     /// # Arguments
     ///
-    /// * `vm` - The vm to add irqs to.
+    /// * `irq_chip` - The IRQ chip to add irqs to.
     /// * `bus` - The bus to add devices to.
-    fn add_arch_devs(vm: &mut Vm, bus: &mut Bus) -> Result<()> {
+    fn add_arch_devs<T: VcpuAArch64>(irq_chip: &mut impl IrqChip<T>, bus: &mut Bus) -> Result<()> {
         let rtc_evt = EventFd::new().map_err(Error::CreateEventFd)?;
-        vm.register_irqfd(&rtc_evt, AARCH64_RTC_IRQ)
+        irq_chip
+            .register_irq_event(AARCH64_RTC_IRQ, &rtc_evt, None)
             .map_err(Error::RegisterIrqfd)?;
 
         let rtc = Arc::new(Mutex::new(devices::pl030::Pl030::new(rtc_evt)));
@@ -439,144 +445,34 @@ impl AArch64 {
         Ok(())
     }
 
-    /// The creates the interrupt controller device and optionally returns the fd for it.
-    /// Some architectures may not have a separate descriptor for the interrupt
-    /// controller, so they would return None even on success.
+    /// Sets up `vcpu`.
+    ///
+    /// AArch64 needs vcpus set up before its kernel IRQ chip is created, so `configure_vcpu_early`
+    /// is called from `build_vm` on the main thread.  `LinuxArch::configure_vcpu`, which is used
+    /// by X86_64 to do setup later from the vcpu thread, is a no-op on AArch64 since vcpus were
+    /// already configured here.
     ///
     /// # Arguments
     ///
-    /// * `vm` - the vm object
-    /// * `vcpu_count` - the number of vCPUs
-    fn create_irq_chip(vm: &Vm, vcpu_count: u64) -> Result<(Option<File>, bool)> {
-        let cpu_if_addr: u64 = AARCH64_GIC_CPUI_BASE;
-        let dist_if_addr: u64 = AARCH64_GIC_DIST_BASE;
-        let redist_addr: u64 = dist_if_addr - (AARCH64_GIC_REDIST_SIZE * vcpu_count);
-        let raw_cpu_if_addr = &cpu_if_addr as *const u64;
-        let raw_dist_if_addr = &dist_if_addr as *const u64;
-        let raw_redist_addr = &redist_addr as *const u64;
-
-        let cpu_if_attr = kvm_device_attr {
-            group: kvm_sys::KVM_DEV_ARM_VGIC_GRP_ADDR,
-            attr: kvm_sys::KVM_VGIC_V2_ADDR_TYPE_CPU as u64,
-            addr: raw_cpu_if_addr as u64,
-            flags: 0,
-        };
-        let redist_attr = kvm_device_attr {
-            group: kvm_sys::KVM_DEV_ARM_VGIC_GRP_ADDR,
-            attr: kvm_sys::KVM_VGIC_V3_ADDR_TYPE_REDIST as u64,
-            addr: raw_redist_addr as u64,
-            flags: 0,
-        };
-        let mut dist_attr = kvm_device_attr {
-            group: kvm_sys::KVM_DEV_ARM_VGIC_GRP_ADDR,
-            addr: raw_dist_if_addr as u64,
-            attr: 0,
-            flags: 0,
-        };
-
-        let mut kcd = kvm_sys::kvm_create_device {
-            type_: kvm_sys::kvm_device_type_KVM_DEV_TYPE_ARM_VGIC_V3,
-            fd: 0,
-            flags: 0,
-        };
-
-        let mut cpu_redist_attr = redist_attr;
-        let mut is_gicv3 = true;
-        dist_attr.attr = kvm_sys::KVM_VGIC_V3_ADDR_TYPE_DIST as u64;
-        if vm.create_device(&mut kcd).is_err() {
-            is_gicv3 = false;
-            cpu_redist_attr = cpu_if_attr;
-            kcd.type_ = kvm_sys::kvm_device_type_KVM_DEV_TYPE_ARM_VGIC_V2;
-            dist_attr.attr = kvm_sys::KVM_VGIC_V2_ADDR_TYPE_DIST as u64;
-            vm.create_device(&mut kcd)
-                .map_err(|e| Error::CreateGICFailure(e))?;
-        }
-
-        let is_gicv3 = is_gicv3;
-        let cpu_redist_attr = cpu_redist_attr;
-        let dist_attr = dist_attr;
-
-        // Safe because the kernel is passing us an FD back inside
-        // the struct after we successfully did the create_device ioctl
-        let vgic_fd = unsafe { File::from_raw_fd(kcd.fd as i32) };
-
-        // Safe because we allocated the struct that's being passed in
-        let ret = unsafe {
-            base::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &cpu_redist_attr)
-        };
-        if ret != 0 {
-            return Err(Error::CreateGICFailure(base::Error::new(ret)));
-        }
-
-        // Safe because we allocated the struct that's being passed in
-        let ret =
-            unsafe { base::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &dist_attr) };
-        if ret != 0 {
-            return Err(Error::CreateGICFailure(base::Error::new(ret)));
-        }
-
-        // We need to tell the kernel how many irqs to support with this vgic
-        let nr_irqs: u32 = AARCH64_GIC_NR_IRQS;
-        let nr_irqs_ptr = &nr_irqs as *const u32;
-        let nr_irqs_attr = kvm_device_attr {
-            group: kvm_sys::KVM_DEV_ARM_VGIC_GRP_NR_IRQS,
-            attr: 0,
-            addr: nr_irqs_ptr as u64,
-            flags: 0,
-        };
-        // Safe because we allocated the struct that's being passed in
-        let ret = unsafe {
-            base::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &nr_irqs_attr)
-        };
-        if ret != 0 {
-            return Err(Error::CreateGICFailure(base::Error::new(ret)));
-        }
-
-        // Finalize the GIC
-        let init_gic_attr = kvm_device_attr {
-            group: kvm_sys::KVM_DEV_ARM_VGIC_GRP_CTRL,
-            attr: kvm_sys::KVM_DEV_ARM_VGIC_CTRL_INIT as u64,
-            addr: 0,
-            flags: 0,
-        };
-
-        // Safe because we allocated the struct that's being passed in
-        let ret = unsafe {
-            base::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &init_gic_attr)
-        };
-        if ret != 0 {
-            return Err(Error::SetDeviceAttr(base::Error::new(ret)));
-        }
-        Ok((Some(vgic_fd), is_gicv3))
-    }
-
-    fn configure_vcpu(
+    /// * `guest_mem` - The guest memory object.
+    /// * `vcpu` - The vcpu to configure.
+    /// * `vcpu_id` - The VM's index for `vcpu`.
+    /// * `use_pmu` - Should `vcpu` be configured to use the Performance Monitor Unit.
+    fn configure_vcpu_early(
         guest_mem: &GuestMemory,
-        kvm: &Kvm,
-        vm: &Vm,
-        vcpu: &Vcpu,
-        cpu_id: u64,
-        _num_cpus: u64,
+        vcpu: &impl VcpuAArch64,
+        vcpu_id: usize,
+        use_pmu: bool,
     ) -> Result<()> {
-        let mut kvi = kvm_sys::kvm_vcpu_init {
-            target: kvm_sys::KVM_ARM_TARGET_GENERIC_V8,
-            features: [0; 7],
-        };
-
-        // This reads back the kernel's preferred target type.
-        vm.arm_preferred_target(&mut kvi)
-            .map_err(Error::ReadPreferredTarget)?;
-
-        kvi.features[0] |= 1 << kvm_sys::KVM_ARM_VCPU_PSCI_0_2;
-        if kvm.check_extension(Cap::ArmPmuV3) {
-            kvi.features[0] |= 1 << kvm_sys::KVM_ARM_VCPU_PMU_V3;
+        let mut features = vec![VcpuFeature::PsciV0_2];
+        if use_pmu {
+            features.push(VcpuFeature::PmuV3);
         }
-
         // Non-boot cpus are powered off initially
-        if cpu_id > 0 {
-            kvi.features[0] |= 1 << kvm_sys::KVM_ARM_VCPU_POWER_OFF;
+        if vcpu_id != 0 {
+            features.push(VcpuFeature::PowerOff)
         }
-        vcpu.arm_vcpu_init(&kvi).map_err(Error::VcpuInit)?;
+        vcpu.init(&features).map_err(Error::VcpuInit)?;
 
         // set up registers
         let mut data: u64;
@@ -588,7 +484,7 @@ impl AArch64 {
         vcpu.set_one_reg(reg_id, data).map_err(Error::SetReg)?;
 
         // Other cpus are powered off initially
-        if cpu_id == 0 {
+        if vcpu_id == 0 {
             data = AARCH64_PHYS_MEM_START + AARCH64_KERNEL_OFFSET;
             reg_id = arm64_core_reg!(pc);
             vcpu.set_one_reg(reg_id, data).map_err(Error::SetReg)?;
@@ -600,6 +496,7 @@ impl AArch64 {
             reg_id = arm64_core_reg!(regs);
             vcpu.set_one_reg(reg_id, data).map_err(Error::SetReg)?;
         }
+
         Ok(())
     }
 }

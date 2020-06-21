@@ -18,18 +18,27 @@ use std::sync::Arc;
 
 use acpi_tables::sdt::SDT;
 use base::{syslog, EventFd};
-use devices::split_irqchip_common::GsiRelay;
 use devices::virtio::VirtioDevice;
 use devices::{
-    Bus, BusDevice, BusError, PciAddress, PciDevice, PciDeviceError, PciInterruptPin, PciRoot,
-    ProxyDevice,
+    Bus, BusDevice, BusError, IrqChip, PciAddress, PciDevice, PciDeviceError, PciInterruptPin,
+    PciRoot, ProxyDevice,
 };
-use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
+use hypervisor::{IoEventAddress, Vcpu, Vm};
 use minijail::Minijail;
 use resources::SystemAllocator;
 use sync::Mutex;
-use vm_control::VmIrqRequestSocket;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
+
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use {
+    devices::IrqChipAArch64 as IrqChipArch,
+    hypervisor::{Hypervisor as HypervisorArch, VcpuAArch64 as VcpuArch, VmAArch64 as VmArch},
+};
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use {
+    devices::IrqChipX86_64 as IrqChipArch,
+    hypervisor::{HypervisorX86_64 as HypervisorArch, VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
+};
 
 pub use serial::{
     add_serial_devices, get_serial_cmdline, set_default_serial_parameters, GetSerialCmdlineError,
@@ -51,7 +60,7 @@ pub struct Pstore {
 /// create a `RunnableLinuxVm`.
 pub struct VmComponents {
     pub memory_size: u64,
-    pub vcpu_count: u32,
+    pub vcpu_count: usize,
     pub vcpu_affinity: Vec<usize>,
     pub vm_image: VmImage,
     pub android_fstab: Option<File>,
@@ -63,16 +72,17 @@ pub struct VmComponents {
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.
-pub struct RunnableLinuxVm {
-    pub vm: Vm,
-    pub kvm: Kvm,
+pub struct RunnableLinuxVm<V: VmArch, I: IrqChipArch<V::Vcpu>> {
+    pub vm: V,
     pub resources: SystemAllocator,
     pub exit_evt: EventFd,
-    pub vcpus: Vec<Vcpu>,
+    pub vcpu_count: usize,
+    /// If vcpus is None, then it's the responsibility of the vcpu thread to create vcpus.
+    /// If it's Some, then `build_vm` already created the vcpus.
+    pub vcpus: Option<Vec<V::Vcpu>>,
     pub vcpu_affinity: Vec<usize>,
-    pub irq_chip: Option<File>,
-    pub split_irqchip: Option<(Arc<Mutex<devices::Pic>>, Arc<Mutex<devices::Ioapic>>)>,
-    pub gsi_relay: Option<Arc<GsiRelay>>,
+    pub irq_chip: I,
+    pub has_bios: bool,
     pub io_bus: Bus,
     pub mmio_bus: Bus,
     pub pid_debug_label_map: BTreeMap<u32, String>,
@@ -95,25 +105,53 @@ pub trait LinuxArch {
     /// # Arguments
     ///
     /// * `components` - Parts to use to build the VM.
-    /// * `split_irqchip` - whether to use a split IRQ chip (i.e. userspace PIT/PIC/IOAPIC)
     /// * `serial_parameters` - definitions for how the serial devices should be configured.
     /// * `create_devices` - Function to generate a list of devices.
-    fn build_vm<F, E>(
+    /// * `create_vm` - Function to generate a VM.
+    /// * `create_irq_chip` - Function to generate an IRQ chip.
+    fn build_vm<V, I, FD, FV, FI, E1, E2, E3>(
         components: VmComponents,
-        split_irqchip: bool,
-        ioapic_device_socket: VmIrqRequestSocket,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
-        create_devices: F,
-    ) -> Result<RunnableLinuxVm, Self::Error>
+        create_devices: FD,
+        create_vm: FV,
+        create_irq_chip: FI,
+    ) -> std::result::Result<RunnableLinuxVm<V, I>, Self::Error>
     where
-        F: FnOnce(
+        V: VmArch,
+        I: IrqChipArch<V::Vcpu>,
+        FD: FnOnce(
             &GuestMemory,
-            &mut Vm,
+            &mut V,
             &mut SystemAllocator,
             &EventFd,
-        ) -> Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E>,
-        E: StdError + 'static;
+        ) -> std::result::Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E1>,
+        FV: FnOnce(GuestMemory) -> std::result::Result<V, E2>,
+        FI: FnOnce(&V, /* vcpu_count: */ usize) -> std::result::Result<I, E3>,
+        E1: StdError + 'static,
+        E2: StdError + 'static,
+        E3: StdError + 'static;
+
+    /// Configures the vcpu and should be called once per vcpu from the vcpu's thread.
+    ///
+    /// # Arguments
+    ///
+    /// * `guest_mem` - The memory to be used by the guest.
+    /// * `hypervisor` - The `Hypervisor` that created the vcpu.
+    /// * `irq_chip` - The `IrqChip` associated with this vm.
+    /// * `vcpu` - The VCPU object to configure.
+    /// * `vcpu_id` - The id of the given `vcpu`.
+    /// * `num_cpus` - Number of virtual CPUs the guest will have.
+    /// * `has_bios` - Whether the `VmImage` is a `Bios` image
+    fn configure_vcpu<T: VcpuArch>(
+        guest_mem: &GuestMemory,
+        hypervisor: &impl HypervisorArch,
+        irq_chip: &mut impl IrqChipArch<T>,
+        vcpu: &mut impl VcpuArch,
+        vcpu_id: usize,
+        num_cpus: usize,
+        has_bios: bool,
+    ) -> Result<(), Self::Error>;
 }
 
 /// Errors for device manager.
@@ -181,12 +219,12 @@ impl Display for DeviceRegistrationError {
 }
 
 /// Creates a root PCI device for use by this Vm.
-pub fn generate_pci_root(
+pub fn generate_pci_root<T: Vcpu>(
     devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
-    gsi_relay: &mut Option<GsiRelay>,
+    irq_chip: &mut impl IrqChip<T>,
     mmio_bus: &mut Bus,
     resources: &mut SystemAllocator,
-    vm: &mut Vm,
+    vm: &mut impl Vm,
     max_irqs: usize,
 ) -> Result<
     (
@@ -232,20 +270,11 @@ pub fn generate_pci_root(
             3 => PciInterruptPin::IntD,
             _ => unreachable!(), // Obviously not possible, but the compiler is not smart enough.
         };
-        if let Some(relay) = gsi_relay {
-            relay.register_irqfd_resample(
-                irqfd
-                    .try_clone()
-                    .map_err(DeviceRegistrationError::EventFdClone)?,
-                irq_resample_fd
-                    .try_clone()
-                    .map_err(DeviceRegistrationError::EventFdClone)?,
-                irq_num as usize,
-            );
-        } else {
-            vm.register_irqfd_resample(&irqfd, &irq_resample_fd, irq_num)
-                .map_err(DeviceRegistrationError::RegisterIrqfd)?;
-        }
+
+        irq_chip
+            .register_irq_event(irq_num, &irqfd, Some(&irq_resample_fd))
+            .map_err(DeviceRegistrationError::RegisterIrqfd)?;
+
         keep_fds.push(irqfd.as_raw_fd());
         keep_fds.push(irq_resample_fd.as_raw_fd());
         device.assign_irq(irqfd, irq_resample_fd, irq_num, pci_irq_pin);
@@ -261,7 +290,7 @@ pub fn generate_pci_root(
             .register_device_capabilities()
             .map_err(DeviceRegistrationError::RegisterDeviceCapabilities)?;
         for (event, addr, datamatch) in device.ioeventfds() {
-            let io_addr = IoeventAddress::Mmio(addr);
+            let io_addr = IoEventAddress::Mmio(addr);
             vm.register_ioevent(&event, io_addr, datamatch)
                 .map_err(DeviceRegistrationError::RegisterIoevent)?;
             keep_fds.push(event.as_raw_fd());

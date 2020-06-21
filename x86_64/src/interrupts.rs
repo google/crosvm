@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::convert::TryInto;
 use std::fmt::{self, Display};
-use std::mem;
 use std::result;
 
-use kvm_sys::kvm_lapic_state;
+use devices::IrqChipX86_64;
+use hypervisor::VcpuX86_64;
 
 #[derive(Debug)]
 pub enum Error {
@@ -30,28 +29,22 @@ impl Display for Error {
 }
 
 // Defines poached from apicdef.h kernel header.
-const APIC_LVT0: usize = 0x350;
-const APIC_LVT1: usize = 0x360;
+
+// Offset, in bytes, of LAPIC local vector table LINT0/LINT1 registers.
+const APIC_LVT0_OFFSET: usize = 0x350;
+const APIC_LVT1_OFFSET: usize = 0x360;
+
+// Register num of LINT0/LINT1 register.
+const APIC_LVT0_REGISTER: usize = lapic_byte_offset_to_register(APIC_LVT0_OFFSET);
+const APIC_LVT1_REGISTER: usize = lapic_byte_offset_to_register(APIC_LVT1_OFFSET);
+
 const APIC_MODE_NMI: u32 = 0x4;
 const APIC_MODE_EXTINT: u32 = 0x7;
 
-fn get_klapic_reg(klapic: &kvm_lapic_state, reg_offset: usize) -> u32 {
-    let sliceu8 = unsafe {
-        // This array is only accessed as parts of a u32 word, so interpret it as a u8 array.
-        // from_le_bytes() only works on arrays of u8, not i8(c_char).
-        mem::transmute::<&[i8], &[u8]>(&klapic.regs[reg_offset..reg_offset + 4])
-    };
-    // Slice conversion to array can't fail if the offsets defined above are correct.
-    u32::from_le_bytes(sliceu8.try_into().unwrap())
-}
-
-fn set_klapic_reg(klapic: &mut kvm_lapic_state, reg_offset: usize, value: u32) {
-    let sliceu8 = unsafe {
-        // This array is only accessed as parts of a u32 word, so interpret it as a u8 array.
-        // to_le_bytes() produces an array of u8, not i8(c_char).
-        mem::transmute::<&mut [i8], &mut [u8]>(&mut klapic.regs[reg_offset..reg_offset + 4])
-    };
-    sliceu8.copy_from_slice(&value.to_le_bytes());
+// Converts a LAPIC register byte offset to a register number.
+const fn lapic_byte_offset_to_register(offset_bytes: usize) -> usize {
+    // Registers are 16 byte aligned
+    offset_bytes / 16
 }
 
 fn set_apic_delivery_mode(reg: u32, mode: u32) -> u32 {
@@ -61,22 +54,19 @@ fn set_apic_delivery_mode(reg: u32, mode: u32) -> u32 {
 /// Configures LAPICs.  LAPIC0 is set for external interrupts, LAPIC1 is set for NMI.
 ///
 /// # Arguments
-/// * `vcpu` - The VCPU object to configure.
-pub fn set_lint(vcpu: &kvm::Vcpu) -> Result<()> {
-    let mut klapic = vcpu.get_lapic().map_err(Error::GetLapic)?;
+/// * `vcpu_id` - The number of the VCPU to configure.
+/// * `irqchip` - The IrqChip for getting/setting LAPIC state.
+pub fn set_lint<T: VcpuX86_64>(vcpu_id: usize, irqchip: &mut impl IrqChipX86_64<T>) -> Result<()> {
+    let mut lapic = irqchip.get_lapic_state(vcpu_id).map_err(Error::GetLapic)?;
 
-    let lvt_lint0 = get_klapic_reg(&klapic, APIC_LVT0);
-    set_klapic_reg(
-        &mut klapic,
-        APIC_LVT0,
-        set_apic_delivery_mode(lvt_lint0, APIC_MODE_EXTINT),
-    );
-    let lvt_lint1 = get_klapic_reg(&klapic, APIC_LVT1);
-    set_klapic_reg(
-        &mut klapic,
-        APIC_LVT1,
-        set_apic_delivery_mode(lvt_lint1, APIC_MODE_NMI),
-    );
+    for (reg, mode) in &[
+        (APIC_LVT0_REGISTER, APIC_MODE_EXTINT),
+        (APIC_LVT1_REGISTER, APIC_MODE_NMI),
+    ] {
+        lapic.regs[*reg] = set_apic_delivery_mode(lapic.regs[*reg], *mode);
+    }
 
-    vcpu.set_lapic(&klapic).map_err(Error::SetLapic)
+    irqchip
+        .set_lapic_state(vcpu_id, &lapic)
+        .map_err(Error::SetLapic)
 }

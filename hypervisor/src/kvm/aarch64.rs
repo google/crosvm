@@ -7,7 +7,7 @@ use libc::ENXIO;
 use base::{errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, Error, Result};
 use kvm_sys::*;
 
-use super::{KvmVcpu, KvmVm};
+use super::{Kvm, KvmVcpu, KvmVm};
 use crate::{ClockState, DeviceKind, IrqSourceChip, VcpuAArch64, VcpuFeature, VmAArch64, VmCap};
 
 impl KvmVm {
@@ -47,7 +47,12 @@ impl KvmVm {
 }
 
 impl VmAArch64 for KvmVm {
+    type Hypervisor = Kvm;
     type Vcpu = KvmVcpu;
+
+    fn get_hypervisor(&self) -> &Self::Hypervisor {
+        &self.kvm
+    }
 
     fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu> {
         // create_vcpu is declared separately in VmAArch64 and VmX86, so it can return VcpuAArch64
@@ -71,7 +76,7 @@ impl VcpuAArch64 for KvmVcpu {
         };
         // Safe because we allocated the struct and we know the kernel will write exactly the size
         // of the struct.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_ARM_PREFERRED_TARGET(), &mut kvi) };
+        let ret = unsafe { ioctl_with_mut_ref(&self.vm, KVM_ARM_PREFERRED_TARGET(), &mut kvi) };
         if ret != 0 {
             return errno_result();
         }

@@ -39,14 +39,16 @@ use crate::virtio::gpu::{
 };
 use crate::virtio::resource_bridge::{PlaneInfo, ResourceInfo, ResourceResponse};
 
-use vm_control::{MaybeOwnedFd, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse};
+use vm_control::{
+    MaybeOwnedFd, MemSlot, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse,
+};
 
 struct Virtio3DResource {
     width: u32,
     height: u32,
     gpu_resource: GpuRendererResource,
     display_import: Option<(Rc<RefCell<GpuDisplay>>, u32)>,
-    kvm_slot: Option<u32>,
+    slot: Option<MemSlot>,
     size: u64,
     blob_flags: u32,
     scanout_data: Option<VirtioScanoutBlobData>,
@@ -59,7 +61,7 @@ impl Virtio3DResource {
             height,
             gpu_resource,
             display_import: None,
-            kvm_slot: None,
+            slot: None,
             blob_flags: 0,
             // The size of the host resource isn't really zero, but it's undefined by
             // virtio_gpu_resource_create_3d
@@ -80,7 +82,7 @@ impl Virtio3DResource {
             height,
             gpu_resource,
             display_import: None,
-            kvm_slot: None,
+            slot: None,
             blob_flags,
             size,
             scanout_data: None,
@@ -922,7 +924,7 @@ impl Backend for Virtio3DBackend {
 
         match response {
             VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
-                resource.kvm_slot = Some(slot);
+                resource.slot = Some(slot);
                 GpuResponse::OkMapInfo { map_info }
             }
             VmMemoryResponse::Err(e) => {
@@ -942,12 +944,12 @@ impl Backend for Virtio3DBackend {
             None => return GpuResponse::ErrInvalidResourceId,
         };
 
-        let kvm_slot = match resource.kvm_slot {
-            Some(kvm_slot) => kvm_slot,
+        let slot = match resource.slot {
+            Some(slot) => slot,
             None => return GpuResponse::ErrUnspec,
         };
 
-        let request = VmMemoryRequest::UnregisterMemory(kvm_slot);
+        let request = VmMemoryRequest::UnregisterMemory(slot);
         match self.gpu_device_socket.send(&request) {
             Ok(_) => (),
             Err(e) => {
@@ -966,7 +968,7 @@ impl Backend for Virtio3DBackend {
 
         match response {
             VmMemoryResponse::Ok => {
-                resource.kvm_slot = None;
+                resource.slot = None;
                 GpuResponse::OkNoData
             }
             VmMemoryResponse::Err(e) => {

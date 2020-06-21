@@ -8,7 +8,7 @@ use std::io;
 
 use crate::Pstore;
 use base::MemoryMapping;
-use kvm::Vm;
+use hypervisor::Vm;
 use resources::SystemAllocator;
 use resources::{Alloc, MmioType};
 use vm_memory::GuestAddress;
@@ -45,7 +45,7 @@ pub struct RamoopsRegion {
 
 /// Creates a mmio memory region for pstore.
 pub fn create_memory_region(
-    vm: &mut Vm,
+    vm: &mut impl Vm,
     resources: &mut SystemAllocator,
     pstore: &Pstore,
 ) -> Result<RamoopsRegion> {

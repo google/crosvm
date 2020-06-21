@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::u32;
 
 use base::{error, EventFd, MappedRegion, MemoryMapping};
-use kvm::Datamatch;
+use hypervisor::Datamatch;
 use msg_socket::{MsgReceiver, MsgSender};
 use resources::{Alloc, MmioType, SystemAllocator};
 

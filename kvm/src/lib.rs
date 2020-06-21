@@ -21,7 +21,7 @@ use sync::Mutex;
 use data_model::vec_with_array_field;
 
 use libc::sigset_t;
-use libc::{open, EBUSY, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
+use libc::{open, EBUSY, EINVAL, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
 
 use kvm_sys::*;
 
@@ -122,18 +122,6 @@ impl Kvm {
             Ok(res as usize)
         } else {
             errno_result()
-        }
-    }
-
-    /// Gets the recommended maximum number of VCPUs per VM.
-    pub fn get_nr_vcpus(&self) -> u32 {
-        match self.check_extension_int(Cap::NrVcpus) {
-            0 => 4, // according to api.txt
-            x if x > 0 => x as u32,
-            _ => {
-                warn!("kernel returned invalid number of VCPUs");
-                4
-            }
         }
     }
 
@@ -245,49 +233,6 @@ pub enum PicId {
 /// Number of pins on the IOAPIC.
 pub const NUM_IOAPIC_PINS: usize = 24;
 
-impl IrqRoute {
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fn ioapic_irq_route(irq_num: u32) -> IrqRoute {
-        IrqRoute {
-            gsi: irq_num,
-            source: IrqSource::Irqchip {
-                chip: KVM_IRQCHIP_IOAPIC,
-                pin: irq_num,
-            },
-        }
-    }
-
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fn pic_irq_route(id: PicId, irq_num: u32) -> IrqRoute {
-        IrqRoute {
-            gsi: irq_num,
-            source: IrqSource::Irqchip {
-                chip: id as u32,
-                pin: irq_num % 8,
-            },
-        }
-    }
-}
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {
-    let mut routes: Vec<IrqRoute> = Vec::new();
-
-    for i in 0..8 {
-        routes.push(IrqRoute::pic_irq_route(PicId::Primary, i));
-        routes.push(IrqRoute::ioapic_irq_route(i));
-    }
-    for i in 8..16 {
-        routes.push(IrqRoute::pic_irq_route(PicId::Secondary, i));
-        routes.push(IrqRoute::ioapic_irq_route(i));
-    }
-    for i in 16..NUM_IOAPIC_PINS as u32 {
-        routes.push(IrqRoute::ioapic_irq_route(i));
-    }
-
-    routes
-}
-
 // Used to invert the order when stored in a max-heap.
 #[derive(Copy, Clone, Eq, PartialEq)]
 struct MemSlot(u32);
@@ -312,8 +257,6 @@ pub struct Vm {
     guest_mem: GuestMemory,
     mem_regions: Arc<Mutex<BTreeMap<u32, Box<dyn MappedRegion>>>>,
     mem_slot_gaps: Arc<Mutex<BinaryHeap<MemSlot>>>,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    routes: Vec<IrqRoute>,
 }
 
 impl Vm {
@@ -345,8 +288,6 @@ impl Vm {
                 guest_mem,
                 mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
                 mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
-                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-                routes: kvm_default_irq_routing_table(),
             })
         } else {
             errno_result()
@@ -438,18 +379,6 @@ impl Vm {
         Ok(regions.remove(&slot).unwrap())
     }
 
-    pub fn mysnc_memory_region(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
-        let mut regions = self.mem_regions.lock();
-        let mem = regions.get_mut(&slot).ok_or(Error::new(ENOENT))?;
-
-        mem.msync(offset, size).map_err(|err| match err {
-            MmapError::InvalidAddress => Error::new(EFAULT),
-            MmapError::NotPageAligned => Error::new(EINVAL),
-            MmapError::SystemCallFailed(e) => e,
-            _ => Error::new(EIO),
-        })
-    }
-
     /// Gets the bitmap of dirty pages since the last call to `get_dirty_log` for the memory at
     /// `slot`.
     ///
@@ -488,20 +417,6 @@ impl Vm {
     /// this VM was constructed.
     pub fn get_memory(&self) -> &GuestMemory {
         &self.guest_mem
-    }
-
-    /// Sets the address of the three-page region in the VM's address space.
-    ///
-    /// See the documentation on the KVM_SET_TSS_ADDR ioctl.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn set_tss_addr(&self, addr: GuestAddress) -> Result<()> {
-        // Safe because we know that our file is a VM fd and we verify the return result.
-        let ret = unsafe { ioctl_with_val(self, KVM_SET_TSS_ADDR(), addr.offset() as u64) };
-        if ret == 0 {
-            Ok(())
-        } else {
-            errno_result()
-        }
     }
 
     /// Sets the address of a one-page region in the VM's address space.
@@ -807,29 +722,6 @@ impl Vm {
         }
     }
 
-    /// Registers an event that will, when signalled, trigger the `gsi` irq.
-    #[cfg(any(
-        target_arch = "x86",
-        target_arch = "x86_64",
-        target_arch = "arm",
-        target_arch = "aarch64"
-    ))]
-    pub fn register_irqfd(&self, evt: &EventFd, gsi: u32) -> Result<()> {
-        let irqfd = kvm_irqfd {
-            fd: evt.as_raw_fd() as u32,
-            gsi,
-            ..Default::default()
-        };
-        // Safe because we know that our file is a VM fd, we know the kernel will only read the
-        // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_IRQFD(), &irqfd) };
-        if ret == 0 {
-            Ok(())
-        } else {
-            errno_result()
-        }
-    }
-
     /// Registers an event that will, when signalled, trigger the `gsi` irq, and `resample_evt` will
     /// get triggered when the irqchip is resampled.
     #[cfg(any(
@@ -889,21 +781,6 @@ impl Vm {
         }
     }
 
-    /// Add one IrqRoute into vm's irq routing table
-    /// Note that any routes added using set_gsi_routing instead of this function will be dropped.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn add_irq_route_entry(&mut self, route: IrqRoute) -> Result<()> {
-        self.routes.retain(|r| r.gsi != route.gsi);
-
-        self.routes.push(route);
-
-        self.set_gsi_routing(&self.routes)
-    }
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    pub fn add_irq_route_entry(&mut self, _route: IrqRoute) -> Result<()> {
-        Err(Error::new(EINVAL))
-    }
-
     /// Sets the GSI routing table, replacing any table set with previous calls to
     /// `set_gsi_routing`.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -942,28 +819,6 @@ impl Vm {
         }
     }
 
-    /// Does KVM_CREATE_DEVICE for a generic device.
-    pub fn create_device(&self, device: &mut kvm_create_device) -> Result<()> {
-        let ret = unsafe { base::ioctl_with_ref(self, KVM_CREATE_DEVICE(), device) };
-        if ret == 0 {
-            Ok(())
-        } else {
-            errno_result()
-        }
-    }
-
-    /// This queries the kernel for the preferred target CPU type.
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    pub fn arm_preferred_target(&self, kvi: &mut kvm_vcpu_init) -> Result<()> {
-        // The ioctl is safe because we allocated the struct and we know the
-        // kernel will write exactly the size of the struct.
-        let ret = unsafe { ioctl_with_mut_ref(self, KVM_ARM_PREFERRED_TARGET(), kvi) };
-        if ret < 0 {
-            return errno_result();
-        }
-        Ok(())
-    }
-
     /// Enable the specified capability.
     /// See documentation for KVM_ENABLE_CAP.
     pub fn kvm_enable_cap(&self, cap: &kvm_enable_cap) -> Result<()> {
@@ -974,29 +829,6 @@ impl Vm {
             errno_result()
         } else {
             Ok(())
-        }
-    }
-
-    /// (x86-only): Enable support for split-irqchip.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn enable_split_irqchip(&self) -> Result<()> {
-        let mut cap: kvm_enable_cap = Default::default();
-        cap.cap = KVM_CAP_SPLIT_IRQCHIP;
-        cap.args[0] = NUM_IOAPIC_PINS as u64;
-        self.kvm_enable_cap(&cap)
-    }
-
-    /// Request that the kernel inject the specified MSI message.
-    /// Returns Ok(true) on delivery, Ok(false) if the guest blocked delivery, or an error.
-    /// See kernel documentation for KVM_SIGNAL_MSI.
-    pub fn signal_msi(&self, msi: &kvm_msi) -> Result<bool> {
-        // safe becuase we allocated the struct and we know the kernel will read
-        // exactly the size of the struct
-        let ret = unsafe { ioctl_with_ref(self, KVM_SIGNAL_MSI(), msi) };
-        if ret < 0 {
-            errno_result()
-        } else {
-            Ok(ret > 0)
         }
     }
 }
@@ -1088,7 +920,6 @@ pub enum VcpuExit {
 pub struct Vcpu {
     vcpu: File,
     run_mmap: MemoryMapping,
-    guest_mem: GuestMemory,
 }
 
 pub struct VcpuThread {
@@ -1118,13 +949,7 @@ impl Vcpu {
         let run_mmap =
             MemoryMapping::from_fd(&vcpu, run_mmap_size).map_err(|_| Error::new(ENOSPC))?;
 
-        let guest_mem = vm.guest_mem.clone();
-
-        Ok(Vcpu {
-            vcpu,
-            run_mmap,
-            guest_mem,
-        })
+        Ok(Vcpu { vcpu, run_mmap })
     }
 
     /// Consumes `self` and returns a `RunnableVcpu`. A `RunnableVcpu` is required to run the
@@ -1160,14 +985,6 @@ impl Vcpu {
             vcpu: self,
             phantom: Default::default(),
         })
-    }
-
-    /// Gets a reference to the guest memory owned by this VM of this VCPU.
-    ///
-    /// Note that `GuestMemory` does not include any device memory that may have been added after
-    /// this VM was constructed.
-    pub fn get_memory(&self) -> &GuestMemory {
-        &self.guest_mem
     }
 
     /// Sets the data received by a mmio read, ioport in, or hypercall instruction.
@@ -1252,26 +1069,6 @@ impl Vcpu {
                 };
             }
         });
-    }
-
-    /// Request the VCPU to exit when it becomes possible to inject interrupts into the guest.
-    #[allow(clippy::cast_ptr_alignment)]
-    pub fn request_interrupt_window(&self) {
-        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
-        // kernel told us how large it was. The pointer is page aligned so casting to a different
-        // type is well defined, hence the clippy allow attribute.
-        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
-        run.request_interrupt_window = 1;
-    }
-
-    /// Checks if we can inject an interrupt into the VCPU.
-    #[allow(clippy::cast_ptr_alignment)]
-    pub fn ready_for_interrupt(&self) -> bool {
-        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
-        // kernel told us how large it was. The pointer is page aligned so casting to a different
-        // type is well defined, hence the clippy allow attribute.
-        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
-        run.ready_for_interrupt_injection != 0 && run.if_flag != 0
     }
 
     /// Gets the VCPU registers.
@@ -1601,21 +1398,6 @@ impl Vcpu {
         Ok(())
     }
 
-    /// Signals to the host kernel that this VCPU is about to be paused.
-    ///
-    /// See the documentation for KVM_KVMCLOCK_CTRL.
-    pub fn kvmclock_ctrl(&self) -> Result<()> {
-        let ret = unsafe {
-            // The ioctl is safe because it does not read or write memory in this process.
-            ioctl(self, KVM_KVMCLOCK_CTRL())
-        };
-
-        if ret < 0 {
-            return errno_result();
-        }
-        Ok(())
-    }
-
     /// Specifies set of signals that are blocked during execution of KVM_RUN.
     /// Signals that are not blocked will cause KVM_RUN to return with -EINTR.
     ///
@@ -1667,80 +1449,6 @@ impl Vcpu {
             return errno_result();
         }
         Ok(())
-    }
-
-    /// This initializes an ARM VCPU to the specified type with the specified features
-    /// and resets the values of all of its registers to defaults.
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    pub fn arm_vcpu_init(&self, kvi: &kvm_vcpu_init) -> Result<()> {
-        // safe becuase we allocated the struct and we know the kernel will read
-        // exactly the size of the struct
-        let ret = unsafe { ioctl_with_ref(self, KVM_ARM_VCPU_INIT(), kvi) };
-        if ret < 0 {
-            return errno_result();
-        }
-
-        Ok(())
-    }
-
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    pub fn arm_pmu_init(&self, irq: u64) -> Result<()> {
-        let irq_addr = &irq as *const u64;
-
-        // The in-kernel PMU virtualization is initialized by setting the irq
-        // with KVM_ARM_VCPU_PMU_V3_IRQ and then by KVM_ARM_VCPU_PMU_V3_INIT.
-
-        let irq_attr = kvm_device_attr {
-            group: kvm_sys::KVM_ARM_VCPU_PMU_V3_CTRL,
-            attr: kvm_sys::KVM_ARM_VCPU_PMU_V3_IRQ as u64,
-            addr: irq_addr as u64,
-            flags: 0,
-        };
-        // safe becuase we allocated the struct and we know the kernel will read
-        // exactly the size of the struct
-        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_HAS_DEVICE_ATTR(), &irq_attr) };
-        if ret < 0 {
-            return errno_result();
-        }
-
-        // safe becuase we allocated the struct and we know the kernel will read
-        // exactly the size of the struct
-        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &irq_attr) };
-        if ret < 0 {
-            return errno_result();
-        }
-
-        let init_attr = kvm_device_attr {
-            group: kvm_sys::KVM_ARM_VCPU_PMU_V3_CTRL,
-            attr: kvm_sys::KVM_ARM_VCPU_PMU_V3_INIT as u64,
-            addr: 0,
-            flags: 0,
-        };
-        // safe becuase we allocated the struct and we know the kernel will read
-        // exactly the size of the struct
-        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &init_attr) };
-        if ret < 0 {
-            return errno_result();
-        }
-
-        Ok(())
-    }
-
-    /// Use the KVM_INTERRUPT ioctl to inject the specified interrupt vector.
-    ///
-    /// While this ioctl exits on PPC and MIPS as well as x86, the semantics are different and
-    /// ChromeOS doesn't support PPC or MIPS.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn interrupt(&self, irq: u32) -> Result<()> {
-        let interrupt = kvm_interrupt { irq };
-        // safe becuase we allocated the struct and we know the kernel will read
-        // exactly the size of the struct
-        let ret = unsafe { ioctl_with_ref(self, KVM_INTERRUPT(), &interrupt) };
-        if ret < 0 {
-            errno_result()
-        } else {
-            Ok(())
-        }
     }
 }
 
@@ -2257,38 +1965,6 @@ mod tests {
             Datamatch::U8(Some(0x7fu8)),
         )
         .unwrap();
-    }
-
-    #[test]
-    fn register_irqfd() {
-        let kvm = Kvm::new().unwrap();
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = Vm::new(&kvm, gm).unwrap();
-        let evtfd1 = EventFd::new().unwrap();
-        let evtfd2 = EventFd::new().unwrap();
-        let evtfd3 = EventFd::new().unwrap();
-        vm.create_irq_chip().unwrap();
-        vm.register_irqfd(&evtfd1, 4).unwrap();
-        vm.register_irqfd(&evtfd2, 8).unwrap();
-        vm.register_irqfd(&evtfd3, 4).unwrap();
-        vm.register_irqfd(&evtfd3, 4).unwrap_err();
-    }
-
-    #[test]
-    fn unregister_irqfd() {
-        let kvm = Kvm::new().unwrap();
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = Vm::new(&kvm, gm).unwrap();
-        let evtfd1 = EventFd::new().unwrap();
-        let evtfd2 = EventFd::new().unwrap();
-        let evtfd3 = EventFd::new().unwrap();
-        vm.create_irq_chip().unwrap();
-        vm.register_irqfd(&evtfd1, 4).unwrap();
-        vm.register_irqfd(&evtfd2, 8).unwrap();
-        vm.register_irqfd(&evtfd3, 4).unwrap();
-        vm.unregister_irqfd(&evtfd1, 4).unwrap();
-        vm.unregister_irqfd(&evtfd2, 8).unwrap();
-        vm.unregister_irqfd(&evtfd3, 4).unwrap();
     }
 
     #[test]

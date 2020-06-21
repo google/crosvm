@@ -19,6 +19,7 @@ overflow-checks = true
 members = ["qcow_utils"]
 exclude = [
     "assertions",
+    "base",
     "cros_async",
     "data_model",
     "rand_ish",
@@ -27,8 +28,6 @@ exclude = [
     "syscall_defines",
     "tempfile",
     "vm_memory",
-    "base",
-    "hypervisor"
 ]
 
 [features]
@@ -37,7 +36,7 @@ chromeos = ["base/chromeos"]
 default-no-sandbox = []
 audio = ["devices/audio"]
 gpu = ["devices/gpu"]
-plugin = ["protos/plugin", "crosvm_plugin", "protobuf"]
+plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
 tpm = ["devices/tpm"]
 video-decoder = ["devices/video-decoder"]
 video-encoder = ["devices/video-encoder"]
@@ -60,10 +59,11 @@ disk = { path = "disk" }
 enumn = { path = "enumn" }
 gpu_buffer = { path = "gpu_buffer", optional = true }
 gpu_renderer = { path = "gpu_renderer", optional = true }
+hypervisor = { path = "hypervisor" }
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
-kvm = { path = "kvm" }
-kvm_sys = { path = "kvm_sys" }
+kvm = { path = "kvm", optional = true }
+kvm_sys = { path = "kvm_sys", optional = true }
 libc = "0.2.65"
 libcras = "*"
 minijail = "*" # provided by ebuild

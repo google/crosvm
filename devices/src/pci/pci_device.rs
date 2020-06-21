@@ -6,7 +6,7 @@ use std::fmt::{self, Display};
 use std::os::unix::io::RawFd;
 
 use base::EventFd;
-use kvm::Datamatch;
+use hypervisor::Datamatch;
 use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
 
 use crate::pci::pci_configuration;

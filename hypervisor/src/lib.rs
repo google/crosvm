@@ -95,7 +95,7 @@ pub trait Vm: Send + Sized {
     /// The size of `dirty_log` must be at least as many bits as there are pages in the memory
     /// region `slot` represents. For example, if the size of `slot` is 16 pages, `dirty_log` must
     /// be 2 bytes or greater.
-    fn get_dirty_log(&self, slot: u32, dirty_log: &mut [u8]) -> Result<()>;
+    fn get_dirty_log(&self, slot: MemSlot, dirty_log: &mut [u8]) -> Result<()>;
 
     /// Registers an event to be signaled whenever a certain address is written to.
     ///
@@ -171,8 +171,8 @@ pub trait Vcpu: Send + Sized {
     fn pvclock_ctrl(&self) -> Result<()>;
 
     /// Specifies set of signals that are blocked during execution of `RunnableVcpu::run`.  Signals
-    /// that are not blocked will will cause run to return with `VcpuExit::Intr`. Only works on Vms
-    /// that support `VmCapability::SignalMask`.
+    /// that are not blocked will cause run to return with `VcpuExit::Intr`.  Only works on Vms that
+    /// support `VmCapability::SignalMask`.
     fn set_signal_mask(&self, signals: &[c_int]) -> Result<()>;
 
     /// Enables a hypervisor-specific extension on this Vcpu.  `cap` is a constant defined by the

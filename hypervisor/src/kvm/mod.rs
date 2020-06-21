@@ -202,7 +202,7 @@ impl KvmVm {
                 )
             }
         })?;
-        // TODO(colindr/srichman): add default IRQ routes in IrqChip constructor or configure_vm
+
         Ok(KvmVm {
             kvm: kvm.try_clone()?,
             vm: vm_descriptor,
@@ -229,7 +229,11 @@ impl KvmVm {
         let run_mmap =
             MemoryMapping::from_fd(&vcpu, run_mmap_size).map_err(|_| Error::new(ENOSPC))?;
 
-        Ok(KvmVcpu { vcpu, run_mmap })
+        Ok(KvmVcpu {
+            vm: self.vm.try_clone()?,
+            vcpu,
+            run_mmap,
+        })
     }
 
     /// Creates an in kernel interrupt controller.
@@ -521,7 +525,7 @@ impl Vm for KvmVm {
         }
     }
 
-    fn get_dirty_log(&self, slot: u32, dirty_log: &mut [u8]) -> Result<()> {
+    fn get_dirty_log(&self, slot: MemSlot, dirty_log: &mut [u8]) -> Result<()> {
         let regions = self.mem_regions.lock();
         let mmap = regions.get(&slot).ok_or(Error::new(ENOENT))?;
         // Ensures that there are as many bytes in dirty_log as there are pages in the mmap.
@@ -585,6 +589,7 @@ impl AsRawFd for KvmVm {
 
 /// A wrapper around using a KVM Vcpu.
 pub struct KvmVcpu {
+    vm: SafeDescriptor,
     vcpu: SafeDescriptor,
     run_mmap: MemoryMapping,
 }
@@ -600,11 +605,12 @@ impl Vcpu for KvmVcpu {
     type Runnable = RunnableKvmVcpu;
 
     fn try_clone(&self) -> Result<Self> {
+        let vm = self.vm.try_clone()?;
         let vcpu = self.vcpu.try_clone()?;
         let run_mmap =
             MemoryMapping::from_fd(&vcpu, self.run_mmap.size()).map_err(|_| Error::new(ENOSPC))?;
 
-        Ok(KvmVcpu { vcpu, run_mmap })
+        Ok(KvmVcpu { vm, vcpu, run_mmap })
     }
 
     #[allow(clippy::cast_ptr_alignment)]

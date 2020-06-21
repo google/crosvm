@@ -689,7 +689,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         Some(Executable::Plugin(ref plugin_path)) => plugin_path.as_path(),
         _ => panic!("Executable was not a plugin"),
     };
-    let vcpu_count = cfg.vcpu_count.unwrap_or(1);
+    let vcpu_count = cfg.vcpu_count.unwrap_or(1) as u32;
     let mem = GuestMemory::new(&[]).unwrap();
     let kvm = Kvm::new().map_err(Error::CreateKvm)?;
     let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;

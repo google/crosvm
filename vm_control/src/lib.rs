@@ -23,11 +23,13 @@ use base::{
     error, Error as SysError, EventFd, ExternalMapping, MappedRegion, MemoryMapping, MmapError,
     Result,
 };
-use kvm::{IrqRoute, IrqSource, Vm};
+use hypervisor::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{Alloc, GpuMemoryDesc, MmioType, SystemAllocator};
 use sync::Mutex;
 use vm_memory::GuestAddress;
+
+pub use hypervisor::MemSlot;
 
 /// A file descriptor either borrowed or owned by this.
 #[derive(Debug)]
@@ -271,7 +273,7 @@ pub enum VmMemoryRequest {
     /// Similar to RegisterFdAtPciBarOffset, but is for buffers in the current address space.
     RegisterHostPointerAtPciBarOffset(Alloc, u64),
     /// Unregister the given memory slot that was previously registered with `RegisterMemory*`.
-    UnregisterMemory(u32),
+    UnregisterMemory(MemSlot),
     /// Allocate GPU buffer of a given size/format and register the memory into guest address space.
     /// The response variant is `VmResponse::AllocateAndRegisterGpuMemory`
     AllocateAndRegisterGpuMemory {
@@ -279,7 +281,7 @@ pub enum VmMemoryRequest {
         height: u32,
         format: u32,
     },
-    /// Register mmaped memory into kvm's EPT.
+    /// Register mmaped memory into the hypervisor's EPT.
     RegisterMmapMemory {
         fd: MaybeOwnedFd,
         size: usize,
@@ -300,7 +302,7 @@ impl VmMemoryRequest {
     /// that received this `VmMemoryResponse`.
     pub fn execute(
         &self,
-        vm: &mut Vm,
+        vm: &mut impl Vm,
         sys_allocator: &mut SystemAllocator,
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
     ) -> VmMemoryResponse {
@@ -387,14 +389,14 @@ pub enum VmMemoryResponse {
     /// number `pfn` and memory slot number `slot`.
     RegisterMemory {
         pfn: u64,
-        slot: u32,
+        slot: MemSlot,
     },
     /// The request to allocate and register GPU memory into guest address space was successfully
     /// done at page frame number `pfn` and memory slot number `slot` for buffer with `desc`.
     AllocateAndRegisterGpuMemory {
         fd: MaybeOwnedFd,
         pfn: u64,
-        slot: u32,
+        slot: MemSlot,
         desc: GpuMemoryDesc,
     },
     Ok,
@@ -405,7 +407,7 @@ pub enum VmMemoryResponse {
 pub enum VmIrqRequest {
     /// Allocate one gsi, and associate gsi to irqfd with register_irqfd()
     AllocateOneMsi { irqfd: MaybeOwnedFd },
-    /// Add one msi route entry into kvm
+    /// Add one msi route entry into the IRQ chip.
     AddMsiRoute {
         gsi: u32,
         msi_address: u64,
@@ -413,16 +415,27 @@ pub enum VmIrqRequest {
     },
 }
 
+/// Data to set up an IRQ event or IRQ route on the IRQ chip.
+/// VmIrqRequest::execute can't take an `IrqChip` argument, because of a dependency cycle between
+/// devices and vm_control, so it takes a Fn that processes an `IrqSetup`.
+pub enum IrqSetup<'a> {
+    Event(u32, &'a EventFd),
+    Route(IrqRoute),
+}
+
 impl VmIrqRequest {
     /// Executes this request on the given Vm.
     ///
     /// # Arguments
-    /// * `vm` - The `Vm` to perform the request on.
+    /// * `set_up_irq` - A function that applies an `IrqSetup` to an IRQ chip.
     ///
     /// This does not return a result, instead encapsulating the success or failure in a
     /// `VmIrqResponse` with the intended purpose of sending the response back over the socket
     /// that received this `VmIrqResponse`.
-    pub fn execute(&self, vm: &mut Vm, sys_allocator: &mut SystemAllocator) -> VmIrqResponse {
+    pub fn execute<F>(&self, set_up_irq: F, sys_allocator: &mut SystemAllocator) -> VmIrqResponse
+    where
+        F: FnOnce(IrqSetup) -> Result<()>,
+    {
         use self::VmIrqRequest::*;
         match *self {
             AllocateOneMsi { ref irqfd } => {
@@ -436,7 +449,8 @@ impl VmIrqRequest {
                     // kernel which doesn't care about ownership and deals with incorrect FDs, in
                     // the case of bugs on our part.
                     let evt = unsafe { ManuallyDrop::new(EventFd::from_raw_fd(irqfd.as_raw_fd())) };
-                    match vm.register_irqfd(&evt, irq_num) {
+
+                    match set_up_irq(IrqSetup::Event(irq_num, &evt)) {
                         Ok(_) => VmIrqResponse::AllocateOneMsi { gsi: irq_num },
                         Err(e) => VmIrqResponse::Err(e),
                     }
@@ -456,8 +470,7 @@ impl VmIrqRequest {
                         data: msi_data,
                     },
                 };
-
-                match vm.add_irq_route_entry(route) {
+                match set_up_irq(IrqSetup::Route(route)) {
                     Ok(_) => VmIrqResponse::Ok,
                     Err(e) => VmIrqResponse::Err(e),
                 }
@@ -480,7 +493,7 @@ pub enum VmMsyncRequest {
     /// `offset` is the offset of the mapping to sync within the arena.
     /// `size` is the size of the mapping to sync within the arena.
     MsyncArena {
-        slot: u32,
+        slot: MemSlot,
         offset: usize,
         size: usize,
     },
@@ -501,10 +514,10 @@ impl VmMsyncRequest {
     /// This does not return a result, instead encapsulating the success or failure in a
     /// `VmMsyncResponse` with the intended purpose of sending the response back over the socket
     /// that received this `VmMsyncResponse`.
-    pub fn execute(&self, vm: &mut Vm) -> VmMsyncResponse {
+    pub fn execute(&self, vm: &mut impl Vm) -> VmMsyncResponse {
         use self::VmMsyncRequest::*;
         match *self {
-            MsyncArena { slot, offset, size } => match vm.mysnc_memory_region(slot, offset, size) {
+            MsyncArena { slot, offset, size } => match vm.msync_memory_region(slot, offset, size) {
                 Ok(()) => VmMsyncResponse::Ok,
                 Err(e) => VmMsyncResponse::Err(e),
             },
@@ -556,12 +569,12 @@ pub enum VmRequest {
 }
 
 fn register_memory(
-    vm: &mut Vm,
+    vm: &mut impl Vm,
     allocator: &mut SystemAllocator,
     fd: &dyn AsRawFd,
     size: usize,
     pci_allocation: Option<(Alloc, u64)>,
-) -> Result<(u64, u32)> {
+) -> Result<(u64, MemSlot)> {
     let mmap = match MemoryMapping::from_fd(fd, size) {
         Ok(v) => v,
         Err(MmapError::SystemCallFailed(e)) => return Err(e),
@@ -588,11 +601,11 @@ fn register_memory(
 }
 
 fn register_memory_hva(
-    vm: &mut Vm,
+    vm: &mut impl Vm,
     allocator: &mut SystemAllocator,
     mem: Box<dyn MappedRegion>,
     pci_allocation: (Alloc, u64),
-) -> Result<(u64, u32)> {
+) -> Result<(u64, MemSlot)> {
     let addr = allocator
         .mmio_allocator(MmioType::High)
         .address_from_pci_offset(pci_allocation.0, pci_allocation.1, mem.size() as u64)

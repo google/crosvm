@@ -6,6 +6,8 @@ use std::arch::x86_64::{__cpuid, __cpuid_count};
 use std::fmt::{self, Display};
 use std::result;
 
+use hypervisor::{Hypervisor, HypervisorCap, HypervisorX86_64, VcpuX86_64};
+
 #[derive(Debug, PartialEq)]
 pub enum Error {
     GetSupportedCpusFailed(base::Error),
@@ -37,12 +39,12 @@ const ECX_HYPERVISOR_SHIFT: u32 = 31; // Flag to be set when the cpu is running 
 const EDX_HTT_SHIFT: u32 = 28; // Hyper Threading Enabled.
 
 fn filter_cpuid(
-    cpu_id: u64,
-    cpu_count: u64,
-    kvm_cpuid: &mut kvm::CpuId,
-    kvm: &kvm::Kvm,
+    vcpu_id: usize,
+    cpu_count: usize,
+    cpuid: &mut hypervisor::CpuId,
+    hypervisor: &impl Hypervisor,
 ) -> Result<()> {
-    let entries = kvm_cpuid.mut_entries_slice();
+    let entries = &mut cpuid.cpu_id_entries;
 
     for entry in entries {
         match entry.function {
@@ -51,10 +53,10 @@ fn filter_cpuid(
                 if entry.index == 0 {
                     entry.ecx |= 1 << ECX_HYPERVISOR_SHIFT;
                 }
-                if kvm.check_extension(kvm::Cap::TscDeadlineTimer) {
+                if hypervisor.check_capability(&HypervisorCap::TscDeadlineTimer) {
                     entry.ecx |= 1 << ECX_TSC_DEADLINE_TIMER_SHIFT;
                 }
-                entry.ebx = (cpu_id << EBX_CPUID_SHIFT) as u32
+                entry.ebx = (vcpu_id << EBX_CPUID_SHIFT) as u32
                     | (EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT);
                 if cpu_count > 1 {
                     entry.ebx |= (cpu_count as u32) << EBX_CPU_COUNT_SHIFT;
@@ -94,18 +96,23 @@ fn filter_cpuid(
 ///
 /// # Arguments
 ///
-/// * `kvm` - `Kvm` structure created with KVM_CREATE_VM ioctl.
-/// * `vcpu` - `Vcpu` for setting CPU ID.
-/// * `cpu_id` - The index of the CPU `vcpu` is for.
+/// * `hypervisor` - `HypervisorX86_64` impl for getting supported CPU IDs.
+/// * `vcpu` - `VcpuX86_64` for setting CPU ID.
+/// * `vcpu_id` - The vcpu index of `vcpu`.
 /// * `nrcpus` - The number of vcpus being used by this VM.
-pub fn setup_cpuid(kvm: &kvm::Kvm, vcpu: &kvm::Vcpu, cpu_id: u64, nrcpus: u64) -> Result<()> {
-    let mut kvm_cpuid = kvm
+pub fn setup_cpuid(
+    hypervisor: &impl HypervisorX86_64,
+    vcpu: &impl VcpuX86_64,
+    vcpu_id: usize,
+    nrcpus: usize,
+) -> Result<()> {
+    let mut cpuid = hypervisor
         .get_supported_cpuid()
         .map_err(Error::GetSupportedCpusFailed)?;
 
-    filter_cpuid(cpu_id, nrcpus, &mut kvm_cpuid, kvm)?;
+    filter_cpuid(vcpu_id, nrcpus, &mut cpuid, hypervisor)?;
 
-    vcpu.set_cpuid2(&kvm_cpuid)
+    vcpu.set_cpuid(&cpuid)
         .map_err(Error::SetSupportedCpusFailed)
 }
 
@@ -125,20 +132,27 @@ pub fn phy_max_address_bits() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hypervisor::CpuIdEntry;
 
     #[test]
     fn feature_and_vendor_name() {
-        let mut cpuid = kvm::CpuId::new(2);
-        let kvm = kvm::Kvm::new().unwrap();
+        let mut cpuid = hypervisor::CpuId::new(2);
+        let hypervisor = hypervisor::kvm::Kvm::new().unwrap();
 
-        let entries = cpuid.mut_entries_slice();
-        entries[0].function = 0;
-        entries[1].function = 1;
-        entries[1].ecx = 0x10;
-        entries[1].edx = 0;
-        assert_eq!(Ok(()), filter_cpuid(1, 2, &mut cpuid, &kvm));
+        let entries = &mut cpuid.cpu_id_entries;
+        entries.push(CpuIdEntry {
+            function: 0,
+            ..Default::default()
+        });
+        entries.push(CpuIdEntry {
+            function: 1,
+            ecx: 0x10,
+            edx: 0,
+            ..Default::default()
+        });
+        assert_eq!(Ok(()), filter_cpuid(1, 2, &mut cpuid, &hypervisor));
 
-        let entries = cpuid.mut_entries_slice();
+        let entries = &mut cpuid.cpu_id_entries;
         assert_eq!(entries[0].function, 0);
         assert_eq!(1, (entries[1].ebx >> EBX_CPUID_SHIFT) & 0x000000ff);
         assert_eq!(2, (entries[1].ebx >> EBX_CPU_COUNT_SHIFT) & 0x000000ff);
