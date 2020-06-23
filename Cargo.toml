@@ -92,7 +92,7 @@ audio_streams = { path = "../../third_party/adhd/audio_streams" } # ignored by e
 data_model = { path = "data_model" }
 libcras = { path = "../../third_party/adhd/cras/client/libcras" } # ignored by ebuild
 libvda = { path = "../../platform2/arc/vm/libvda/rust" } # ignored by ebuild
-minijail-sys = { path = "../../aosp/external/minijail" } # ignored by ebuild
+minijail-sys = { path = "../../aosp/external/minijail/rust/minijail-sys" } # ignored by ebuild
 poll_token_derive = { path = "sys_util/poll_token_derive" }
 sync = { path = "sync" }
 sys_util = { path = "sys_util" }
