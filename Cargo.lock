@@ -194,6 +194,7 @@ dependencies = [
  "net_util 0.1.0",
  "p9 0.1.0",
  "protos 0.1.0",
+ "rand_ish 0.1.0",
  "remain 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
  "sync 0.1.0",

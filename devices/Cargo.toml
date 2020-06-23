@@ -39,6 +39,7 @@ net_sys = { path = "../net_sys" }
 net_util = { path = "../net_util" }
 p9 = { path = "../p9" }
 protos = { path = "../protos", optional = true }
+rand_ish = { path = "../rand_ish" }
 remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
