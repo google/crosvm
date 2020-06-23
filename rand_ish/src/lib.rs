@@ -25,27 +25,37 @@ impl SimpleRng {
         self.seed = a.wrapping_mul(self.seed).wrapping_add(c);
         self.seed
     }
+
+    /// Generate a random alphanumeric string.
+    pub fn str(&mut self, len: usize) -> String {
+        self.filter_map(|v| uniform_sample_ascii_alphanumeric(v as u8))
+            .take(len)
+            .collect()
+    }
+}
+
+impl Iterator for SimpleRng {
+    type Item = u64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(self.rng())
+    }
 }
 
 // Uniformly samples the ASCII alphanumeric characters given a random variable. If an `Err` is
 // passed in, the error is returned as `Some(Err(...))`. If the the random variable can not be used
 // to uniformly sample, `None` is returned.
-fn uniform_sample_ascii_alphanumeric(
-    b: Result<u8, std::io::Error>,
-) -> Option<Result<char, std::io::Error>> {
+fn uniform_sample_ascii_alphanumeric(b: u8) -> Option<char> {
     const ASCII_CHARS: &[u8] = b"\
           ABCDEFGHIJKLMNOPQRSTUVWXYZ\
           abcdefghijklmnopqrstuvwxyz\
           0123456789";
-    let char_index = match b {
-        Ok(c) => c as usize,
-        Err(e) => return Some(Err(e)),
-    };
+    let char_index = b as usize;
     // Throw away numbers that would cause sampling bias.
     if char_index >= ASCII_CHARS.len() * 4 {
         None
     } else {
-        Some(Ok(ASCII_CHARS[char_index % ASCII_CHARS.len()] as char))
+        Some(ASCII_CHARS[char_index % ASCII_CHARS.len()] as char)
     }
 }
 
@@ -53,7 +63,7 @@ fn uniform_sample_ascii_alphanumeric(
 pub fn urandom_str(len: usize) -> io::Result<String> {
     File::open("/dev/urandom")?
         .bytes()
-        .filter_map(uniform_sample_ascii_alphanumeric)
+        .filter_map(|b| b.map(uniform_sample_ascii_alphanumeric).transpose())
         .take(len)
         .collect::<io::Result<String>>()
 }
