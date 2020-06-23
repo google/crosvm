@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 // Generated with: cat arch/x86/entry/syscalls/syscall_64.tbl |
-//    awk ' { print "SYS_" $3 " = " $1"," } '
+//    awk ' { if ($1 != "#" && $1 != "") print "    " ($2 == "x32" ? "compat_" : "") "SYS_" $3 " = " $1"," } '
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
 pub enum LinuxSyscall {
@@ -390,4 +390,6 @@ pub enum LinuxSyscall {
     compat_SYS_io_setup = 543,
     compat_SYS_io_submit = 544,
     compat_SYS_execveat = 545,
+    compat_SYS_preadv2 = 546,
+    compat_SYS_pwritev2 = 547,
 }
