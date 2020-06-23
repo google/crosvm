@@ -311,6 +311,39 @@ impl VcpuX86_64 for KvmVcpu {
     }
 }
 
+impl KvmVcpu {
+    /// X86 specific call to get the state of the "Local Advanced Programmable Interrupt Controller".
+    ///
+    /// See the documentation for KVM_GET_LAPIC.
+    pub fn get_lapic(&self) -> Result<kvm_lapic_state> {
+        let mut klapic: kvm_lapic_state = Default::default();
+
+        let ret = unsafe {
+            // The ioctl is unsafe unless you trust the kernel not to write past the end of the
+            // local_apic struct.
+            ioctl_with_mut_ref(self, KVM_GET_LAPIC(), &mut klapic)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(klapic)
+    }
+
+    /// X86 specific call to set the state of the "Local Advanced Programmable Interrupt Controller".
+    ///
+    /// See the documentation for KVM_SET_LAPIC.
+    pub fn set_lapic(&self, klapic: &kvm_lapic_state) -> Result<()> {
+        let ret = unsafe {
+            // The ioctl is safe because the kernel will only read from the klapic struct.
+            ioctl_with_ref(self, KVM_SET_LAPIC(), klapic)
+        };
+        if ret < 0 {
+            return errno_result();
+        }
+        Ok(())
+    }
+}
+
 impl<'a> From<&'a KvmCpuId> for CpuId {
     fn from(kvm_cpuid: &'a KvmCpuId) -> CpuId {
         let kvm_entries = kvm_cpuid.entries_slice();

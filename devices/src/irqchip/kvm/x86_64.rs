@@ -11,7 +11,7 @@ use hypervisor::{
     NUM_IOAPIC_PINS,
 };
 use kvm_sys::*;
-use sys_util::Result;
+use sys_util::{Error, Result};
 
 use crate::{Bus, IrqChipX86_64};
 
@@ -87,13 +87,19 @@ impl IrqChipX86_64<KvmVcpu> for KvmKernelIrqChip {
     }
 
     /// Get the current state of the specified VCPU's local APIC
-    fn get_lapic_state(&self, _vcpu_id: usize) -> Result<LapicState> {
-        unimplemented!("get_lapic_state for KvmKernelIrqChip is not yet implemented");
+    fn get_lapic_state(&self, vcpu_id: usize) -> Result<LapicState> {
+        match self.vcpus.lock().get(vcpu_id) {
+            Some(Some(vcpu)) => Ok(LapicState::from(&vcpu.get_lapic()?)),
+            _ => Err(Error::new(libc::ENOENT)),
+        }
     }
 
     /// Set the current state of the specified VCPU's local APIC
-    fn set_lapic_state(&mut self, _vcpu_id: usize, _state: &LapicState) -> Result<()> {
-        unimplemented!("set_lapic_state for KvmKernelIrqChip is not yet implemented");
+    fn set_lapic_state(&mut self, vcpu_id: usize, state: &LapicState) -> Result<()> {
+        match self.vcpus.lock().get(vcpu_id) {
+            Some(Some(vcpu)) => vcpu.set_lapic(&kvm_lapic_state::from(state)),
+            _ => Err(Error::new(libc::ENOENT)),
+        }
     }
 
     /// Create a PIT (Programmable Interval Timer) for this VM.
@@ -173,6 +179,16 @@ mod tests {
     #[test]
     fn kernel_irqchip_set_pit() {
         test_set_pit(get_kernel_chip());
+    }
+
+    #[test]
+    fn kernel_irqchip_get_lapic() {
+        test_get_lapic(get_kernel_chip())
+    }
+
+    #[test]
+    fn kernel_irqchip_set_lapic() {
+        test_set_lapic(get_kernel_chip())
     }
 
     #[test]

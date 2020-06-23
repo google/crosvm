@@ -149,6 +149,32 @@ pub(super) mod tests {
         assert_eq!(state.channels[0].mode, 1);
     }
 
+    pub fn test_get_lapic<V: VcpuX86_64>(chip: impl IrqChipX86_64<V>) {
+        let state = chip.get_lapic_state(0).expect("failed to get lapic state");
+
+        // Checking some APIC reg defaults for KVM:
+        // DFR default is 0xffffffff
+        assert_eq!(state.regs[0xe], 0xffffffff);
+        // SPIV default is 0xff
+        assert_eq!(state.regs[0xf], 0xff);
+    }
+
+    pub fn test_set_lapic<V: VcpuX86_64>(mut chip: impl IrqChipX86_64<V>) {
+        // Get default state
+        let mut state = chip.get_lapic_state(0).expect("failed to get lapic state");
+
+        // ESR should start out as 0
+        assert_eq!(state.regs[8], 0);
+        // Set a value in the ESR
+        state.regs[8] = 1 << 8;
+        chip.set_lapic_state(0, &state)
+            .expect("failed to set lapic state");
+
+        // check that new ESR value stuck
+        let state = chip.get_lapic_state(0).expect("failed to get lapic state");
+        assert_eq!(state.regs[8], 1 << 8);
+    }
+
     /// Helper function for checking the pic interrupt status
     fn check_pic_interrupts<V: VcpuX86_64>(
         chip: &impl IrqChipX86_64<V>,
