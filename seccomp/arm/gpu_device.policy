@@ -26,7 +26,7 @@ nanosleep: 1
 pipe2: 1
 poll: 1
 ppoll: 1
-prctl: arg0 == PR_SET_NAME
+prctl: arg0 == PR_SET_NAME || arg0 == PR_GET_NAME
 read: 1
 readv: 1
 recv: 1
