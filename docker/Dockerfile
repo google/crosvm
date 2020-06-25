@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-FROM debian:stretch
+FROM debian:buster
 LABEL description="Test crosvm using a command like the following: \
 docker run --privileged -v /dev/log:/dev/log -v <path to crosvm>:/platform/crosvm:ro <crosvm base image>"
 
@@ -19,10 +19,9 @@ RUN apt-get update && apt-get install -y \
     libegl1-mesa-dev \
     libfdt-dev \
     libgl1-mesa-dev \
-    libgles1-mesa-dev \
     libgles2-mesa-dev \
     libpciaccess-dev \
-    libssl1.0-dev \
+    libssl-dev \
     libtool \
     libusb-1.0-0-dev \
     libwayland-dev \
