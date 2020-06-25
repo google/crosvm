@@ -512,11 +512,14 @@ impl SubmitQueueEntries {
         if index >= self.len {
             return None;
         }
-        unsafe {
+        let mut_ref = unsafe {
             // Safe because the mut borrow of self resticts to one mutable reference at a time and
             // we trust that the kernel has returned enough memory in io_uring_setup and mmap.
-            Some(&mut *(self.mmap.as_ptr() as *mut io_uring_sqe).add(index))
-        }
+            &mut *(self.mmap.as_ptr() as *mut io_uring_sqe).add(index)
+        };
+        // Clear any state.
+        *mut_ref = io_uring_sqe::default();
+        Some(mut_ref)
     }
 }
 
