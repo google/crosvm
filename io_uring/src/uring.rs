@@ -455,7 +455,7 @@ impl URingContext {
             self.stats.total_enter_calls = self.stats.total_enter_calls.wrapping_add(1);
             unsafe {
                 // Safe because the only memory modified is in the completion queue.
-                io_uring_enter(self.ring_file.as_raw_fd(), self.added as u64, 1, 0)
+                io_uring_enter(self.ring_file.as_raw_fd(), self.added as u64, 0, 0)
                     .map_err(Error::RingEnter)?;
             }
         }
