@@ -124,6 +124,25 @@ impl<F: AsRawFd> PollSource<F> {
         }
     }
 
+    /// Runs fallocate _synchronously_. There isn't an async equivalent for starting an fallocate.
+    pub fn fallocate(&self, file_offset: u64, len: u64, mode: u32) {
+        unsafe {
+            libc::fallocate64(
+                self.source.as_raw_fd(),
+                mode as libc::c_int,
+                file_offset as libc::off64_t,
+                len as libc::off64_t,
+            );
+        }
+    }
+
+    /// Runs fsync _synchronously_. There isn't an async equivalent for starting an fsync.
+    pub fn fsync(&self) {
+        unsafe {
+            libc::fsync(self.source.as_raw_fd());
+        }
+    }
+
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
     pub fn write_from_mem<'a>(
         &'a self,
@@ -522,6 +541,7 @@ impl<'a, F: AsRawFd> Future for PollWriteMem<'a, F> {
 #[cfg(test)]
 mod tests {
     use std::fs::{File, OpenOptions};
+    use std::path::PathBuf;
 
     use futures::pin_mut;
 
@@ -570,5 +590,23 @@ mod tests {
             .unwrap()
             .run()
             .unwrap();
+    }
+
+    #[test]
+    fn fallocate() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut file_path = PathBuf::from(dir.path());
+        file_path.push("test");
+
+        let f = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&file_path)
+            .unwrap();
+        let source = PollSource::new(f).unwrap();
+        source.fallocate(0, 4096, 0);
+
+        let meta_data = std::fs::metadata(&file_path).unwrap();
+        assert_eq!(meta_data.len(), 4096);
     }
 }

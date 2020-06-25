@@ -16,3 +16,6 @@ syscall_defines = { path = "../syscall_defines" }
 version = "*"
 default-features = false
 features = ["alloc"]
+
+[dev-dependencies]
+tempfile = { path = "../tempfile" }

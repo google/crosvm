@@ -78,6 +78,20 @@ impl<F: AsRawFd> IoSource for UringSource<F> {
             .start_write_from_mem(file_offset, mem, mem_offsets)
     }
 
+    fn fallocate(
+        self: Pin<&Self>,
+        file_offset: u64,
+        len: u64,
+        mode: u32,
+    ) -> Result<PendingOperation> {
+        self.registered_source
+            .start_fallocate(file_offset, len, mode)
+    }
+
+    fn fsync(self: Pin<&Self>) -> Result<PendingOperation> {
+        self.registered_source.start_fsync()
+    }
+
     // wait for the inner source to be readable and return a refernce to it.
     fn wait_readable(self: Pin<&Self>) -> Result<PendingOperation> {
         self.registered_source.poll_fd_readable()

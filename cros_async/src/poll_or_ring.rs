@@ -176,6 +176,26 @@ impl<F: AsRawFd + Unpin> PollOrRing<F> {
         }
     }
 
+    /// See `fallocate(2)`. Note this op is synchronous when using the Polled backend.
+    pub async fn fallocate(&self, file_offset: u64, len: u64, mode: u32) -> Result<()> {
+        match &self {
+            PollOrRing::Poll(s) => Ok(s.fallocate(file_offset, len, mode)),
+            PollOrRing::Uring(s) => s
+                .fallocate(file_offset, len, mode)
+                .await
+                .map_err(Error::Uring),
+        }
+    }
+
+    /// Sync all completed operations to the disk. Note this op is synchronous when using the Polled
+    /// backend.
+    pub async fn fsync(&self) -> Result<()> {
+        match &self {
+            PollOrRing::Poll(s) => Ok(s.fsync()),
+            PollOrRing::Uring(s) => s.fsync().await.map_err(Error::Uring),
+        }
+    }
+
     /// Wait for the soruce to be readable.
     pub async fn wait_readable(&self) -> Result<()> {
         match &self {
@@ -224,6 +244,7 @@ impl<F: AsRawFd + Unpin> U64Source<F> {
 #[cfg(test)]
 mod tests {
     use std::fs::{File, OpenOptions};
+    use std::path::PathBuf;
 
     use futures::pin_mut;
 
@@ -411,5 +432,33 @@ mod tests {
             .run()
             .unwrap();
         assert_eq!(val, 0xaa);
+    }
+
+    #[test]
+    fn fsync() {
+        async fn go<F: AsRawFd + Unpin>(source: PollOrRing<F>) {
+            let v = vec![0x55u8; 32];
+            let v_ptr = v.as_ptr();
+            let ret = source.write_from_vec(0, v).await.unwrap();
+            assert_eq!(ret.0, 32);
+            let ret_v = ret.1;
+            assert_eq!(v_ptr, ret_v.as_ptr());
+            source.fsync().await.unwrap();
+        }
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut file_path = PathBuf::from(dir.path());
+        file_path.push("test");
+
+        let f = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&file_path)
+            .unwrap();
+        let source = PollOrRing::new(f).unwrap();
+
+        let fut = go(source);
+        pin_mut!(fut);
+        crate::run_one(fut).unwrap();
     }
 }

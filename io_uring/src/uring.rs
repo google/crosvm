@@ -377,8 +377,8 @@ impl URingContext {
         &mut self,
         fd: RawFd,
         offset: u64,
-        len: usize,
-        mode: u64,
+        len: u64,
+        mode: u32,
         user_data: UserData,
     ) -> Result<()> {
         // Note that len for fallocate in passed in the addr field of the sqe and the mode uses the
@@ -387,8 +387,8 @@ impl URingContext {
             sqe.opcode = IORING_OP_FALLOCATE as u8;
 
             sqe.fd = fd;
-            sqe.addr = len as u64;
-            sqe.len = mode as u32;
+            sqe.addr = len;
+            sqe.len = mode;
             sqe.__bindgen_anon_1.off = offset;
             sqe.user_data = user_data;
 
@@ -997,23 +997,60 @@ mod tests {
 
         let mut uring = URingContext::new(16).unwrap();
         uring
-            .add_fallocate(f.as_raw_fd(), 0, set_size, 0, 66)
+            .add_fallocate(f.as_raw_fd(), 0, set_size as u64, 0, 66)
             .unwrap();
         let (user_data, res) = uring.wait().unwrap().next().unwrap();
         assert_eq!(user_data, 66 as UserData);
-        assert_eq!(res.unwrap(), 0 as u32);
+        match res {
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::InvalidInput {
+                    // skip on kernels that don't support fallocate.
+                    return;
+                }
+                panic!("Unexpected fallocate error: {}", e);
+            }
+            Ok(val) => assert_eq!(val, 0 as u32),
+        }
 
-        uring.add_fsync(f.as_raw_fd(), 67).unwrap();
-        let (user_data, res) = uring.wait().unwrap().next().unwrap();
-        assert_eq!(user_data, 67 as UserData);
-        assert_eq!(res.unwrap(), 0 as u32);
+        // Add a few writes and then fsync
+        let buf = [0u8; 4096];
+        let mut pending = std::collections::BTreeSet::new();
+        unsafe {
+            uring
+                .add_write(buf.as_ptr(), buf.len(), f.as_raw_fd(), 0, 67)
+                .unwrap();
+            pending.insert(67u64);
+            uring
+                .add_write(buf.as_ptr(), buf.len(), f.as_raw_fd(), 4096, 68)
+                .unwrap();
+            pending.insert(68);
+            uring
+                .add_write(buf.as_ptr(), buf.len(), f.as_raw_fd(), 8192, 69)
+                .unwrap();
+            pending.insert(69);
+        }
+        uring.add_fsync(f.as_raw_fd(), 70).unwrap();
+        pending.insert(70);
+
+        let mut wait_calls = 0;
+
+        while !pending.is_empty() && wait_calls < 5 {
+            let events = uring.wait().unwrap();
+            for (user_data, res) in events {
+                assert!(res.is_ok());
+                assert!(pending.contains(&user_data));
+                pending.remove(&user_data);
+            }
+            wait_calls += 1;
+        }
+        assert!(pending.is_empty());
 
         uring
             .add_fallocate(
                 f.as_raw_fd(),
                 init_size as u64,
-                set_size - init_size,
-                (libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE) as u64,
+                (set_size - init_size) as u64,
+                (libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE) as u32,
                 68,
             )
             .unwrap();

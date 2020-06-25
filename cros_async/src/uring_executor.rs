@@ -200,6 +200,16 @@ impl RegisteredSource {
         op.submit(&self.0)
     }
 
+    pub fn start_fallocate(&self, offset: u64, len: u64, mode: u32) -> Result<PendingOperation> {
+        let op = IoOperation::Fallocate { offset, len, mode };
+        op.submit(&self.0)
+    }
+
+    pub fn start_fsync(&self) -> Result<PendingOperation> {
+        let op = IoOperation::Fsync;
+        op.submit(&self.0)
+    }
+
     pub fn poll_fd_readable(&self) -> Result<PendingOperation> {
         let op = IoOperation::PollFd {
             events: WatchingEvents::empty().set_read(),
@@ -283,6 +293,52 @@ impl RingWakerState {
             .ok_or(Error::InvalidSource)?;
         self.ctx
             .add_poll_fd(source.as_raw_fd(), events, self.next_op_token)
+            .map_err(Error::SubmittingOp)?;
+        let next_op_token = WakerToken(self.next_op_token);
+        self.pending_ops.insert(
+            next_op_token.clone(),
+            OpData {
+                _file: Rc::clone(&source),
+                waker: None,
+            },
+        );
+        self.next_op_token += 1;
+        Ok(next_op_token)
+    }
+
+    fn submit_fallocate(
+        &mut self,
+        source_tag: &RegisteredSourceTag,
+        offset: u64,
+        len: u64,
+        mode: u32,
+    ) -> Result<WakerToken> {
+        let source = self
+            .registered_sources
+            .get(source_tag)
+            .ok_or(Error::InvalidSource)?;
+        self.ctx
+            .add_fallocate(source.as_raw_fd(), offset, len, mode, self.next_op_token)
+            .map_err(Error::SubmittingOp)?;
+        let next_op_token = WakerToken(self.next_op_token);
+        self.pending_ops.insert(
+            next_op_token.clone(),
+            OpData {
+                _file: Rc::clone(&source),
+                waker: None,
+            },
+        );
+        self.next_op_token += 1;
+        Ok(next_op_token)
+    }
+
+    fn submit_fsync(&mut self, source_tag: &RegisteredSourceTag) -> Result<WakerToken> {
+        let source = self
+            .registered_sources
+            .get(source_tag)
+            .ok_or(Error::InvalidSource)?;
+        self.ctx
+            .add_fsync(source.as_raw_fd(), self.next_op_token)
             .map_err(Error::SubmittingOp)?;
         let next_op_token = WakerToken(self.next_op_token);
         self.pending_ops.insert(
@@ -521,6 +577,12 @@ enum IoOperation<'a> {
     PollFd {
         events: WatchingEvents,
     },
+    Fallocate {
+        offset: u64,
+        len: u64,
+        mode: u32,
+    },
+    Fsync,
 }
 
 impl<'a> IoOperation<'a> {
@@ -558,7 +620,24 @@ impl<'a> IoOperation<'a> {
                     Err(Error::InvalidContext)
                 }
             })?,
+            IoOperation::Fallocate { offset, len, mode } => STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                if let Some(state) = state.as_mut() {
+                    state.submit_fallocate(tag, offset, len, mode)
+                } else {
+                    Err(Error::InvalidContext)
+                }
+            })?,
+            IoOperation::Fsync => STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                if let Some(state) = state.as_mut() {
+                    state.submit_fsync(tag)
+                } else {
+                    Err(Error::InvalidContext)
+                }
+            })?,
         };
+
         Ok(PendingOperation {
             waker_token: Some(waker_token),
         })

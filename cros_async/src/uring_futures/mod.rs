@@ -4,6 +4,8 @@
 
 //! Futures that implement `IoSource` using the UringExecutor.
 
+mod fallocate;
+mod fsync;
 mod poll_fd;
 mod read_mem;
 mod read_vec;
@@ -12,6 +14,8 @@ mod uring_source;
 mod write_mem;
 mod write_vec;
 
+pub use fallocate::Fallocate;
+pub use fsync::Fsync;
 pub use poll_fd::PollFd;
 pub use read_mem::ReadMem;
 pub use read_vec::ReadVec;

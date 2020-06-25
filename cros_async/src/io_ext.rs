@@ -70,6 +70,22 @@ pub trait IoSourceExt: IoSource {
         uring_futures::WriteMem::new(self, file_offset, mem, mem_offsets)
     }
 
+    /// See `fallocate(2)` for details.
+    fn fallocate(&self, file_offset: u64, len: u64, mode: u32) -> uring_futures::Fallocate<Self>
+    where
+        Self: Unpin,
+    {
+        uring_futures::Fallocate::new(self, file_offset, len, mode)
+    }
+
+    /// Sync all completed write operations to the backing storage.
+    fn fsync(&self) -> uring_futures::Fsync<Self>
+    where
+        Self: Unpin,
+    {
+        uring_futures::Fsync::new(self)
+    }
+
     /// Wait for the FD of `self` to be readable.
     fn wait_readable(&self) -> uring_futures::PollFd<'_, Self>
     where

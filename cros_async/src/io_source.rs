@@ -31,6 +31,17 @@ pub trait IoSource {
         mem_offsets: &[MemRegion],
     ) -> Result<PendingOperation>;
 
+    /// Asynchronously `fallocate(2)`
+    fn fallocate(
+        self: Pin<&Self>,
+        file_offset: u64,
+        len: u64,
+        mode: u32,
+    ) -> Result<PendingOperation>;
+
+    /// Starts the fsync operation that will sync all completed writes to the backing storage.
+    fn fsync(self: Pin<&Self>) -> Result<PendingOperation>;
+
     /// Waits for the inner source to be readable. This is similar to calling `poll` with the FD of
     /// `self`. However, this returns a `PendingOperation` which can be polled asynchronously for
     /// completion.
@@ -68,6 +79,19 @@ macro_rules! deref_io_source {
             mem_offsets: &[MemRegion],
         ) -> Result<PendingOperation> {
             Pin::new(&**self).write_from_mem(file_offset, mem, mem_offsets)
+        }
+
+        fn fallocate(
+            self: Pin<&Self>,
+            file_offset: u64,
+            len: u64,
+            mode: u32,
+        ) -> Result<PendingOperation> {
+            Pin::new(&**self).fallocate(file_offset, len, mode)
+        }
+
+        fn fsync(self: Pin<&Self>) -> Result<PendingOperation> {
+            Pin::new(&**self).fsync()
         }
 
         fn wait_readable(self: Pin<&Self>) -> Result<PendingOperation> {
@@ -121,6 +145,19 @@ where
         self.get_ref()
             .as_ref()
             .write_from_mem(file_offset, mem, mem_offsets)
+    }
+
+    fn fallocate(
+        self: Pin<&Self>,
+        file_offset: u64,
+        len: u64,
+        mode: u32,
+    ) -> Result<PendingOperation> {
+        self.get_ref().as_ref().fallocate(file_offset, len, mode)
+    }
+
+    fn fsync(self: Pin<&Self>) -> Result<PendingOperation> {
+        self.get_ref().as_ref().fsync()
     }
 
     fn wait_readable(self: Pin<&Self>) -> Result<PendingOperation> {
