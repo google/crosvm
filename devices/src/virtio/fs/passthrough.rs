@@ -64,6 +64,7 @@ struct fsxattr {
 unsafe impl DataInit for fsxattr {}
 
 ioctl_ior_nr!(FS_IOC_FSGETXATTR, 'X' as u32, 31, fsxattr);
+ioctl_iow_nr!(FS_IOC_FSSETXATTR, 'X' as u32, 32, fsxattr);
 
 type Inode = u64;
 type Handle = u64;
@@ -795,6 +796,26 @@ impl PassthroughFs {
             // Safe because the kernel guarantees that the policy is now initialized.
             let xattr = unsafe { buf.assume_init() };
             Ok(IoctlReply::Done(Ok(xattr.as_slice().to_vec())))
+        }
+    }
+
+    fn set_fsxattr<R: io::Read>(&self, handle: Handle, r: R) -> io::Result<IoctlReply> {
+        let data = self
+            .handles
+            .lock()
+            .get(&handle)
+            .map(Arc::clone)
+            .ok_or_else(ebadf)?;
+
+        let attr = fsxattr::from_reader(r)?;
+        let file = data.file.lock();
+
+        //  Safe because this doesn't modify any memory and we check the return value.
+        let res = unsafe { ioctl_with_ptr(&*file, FS_IOC_FSSETXATTR(), &attr) };
+        if res < 0 {
+            Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
+        } else {
+            Ok(IoctlReply::Done(Ok(Vec::new())))
         }
     }
 }
@@ -2011,6 +2032,7 @@ impl FileSystem for PassthroughFs {
         const GET_ENCRYPTION_POLICY: u32 = FS_IOC_GET_ENCRYPTION_POLICY() as u32;
         const SET_ENCRYPTION_POLICY: u32 = FS_IOC_SET_ENCRYPTION_POLICY() as u32;
         const GET_FSXATTR: u32 = FS_IOC_FSGETXATTR() as u32;
+        const SET_FSXATTR: u32 = FS_IOC_FSSETXATTR() as u32;
 
         // Normally, we wouldn't need to retry the FS_IOC_GET_ENCRYPTION_POLICY and
         // FS_IOC_SET_ENCRYPTION_POLICY ioctls. Unfortunately, the I/O directions for both of them
@@ -2045,6 +2067,13 @@ impl FileSystem for PassthroughFs {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
                     self.get_fsxattr(handle)
+                }
+            }
+            SET_FSXATTR => {
+                if in_size < size_of::<fsxattr>() as u32 {
+                    Err(io::Error::from_raw_os_error(libc::EINVAL))
+                } else {
+                    self.set_fsxattr(handle, r)
                 }
             }
             _ => Err(io::Error::from_raw_os_error(libc::ENOTTY)),
