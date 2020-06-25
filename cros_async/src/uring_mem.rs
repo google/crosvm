@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 #[derive(Debug)]
 pub enum Error {
     /// Invalid offset or length given for an iovec in backing memory.
-    InvalidOffset(usize, usize),
+    InvalidOffset(u64, usize),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -30,9 +30,11 @@ impl std::error::Error for Error {}
 
 /// Used to index subslices of backing memory. Like an iovec, but relative to the start of the
 /// memory region instead of an absolute pointer.
+/// The backing memory referenced by the region can be an array, an mmapped file, or guest memory.
+/// The offset is a u64 to allow having file or guest offsets >4GB when run on a 32bit host.
 #[derive(Copy, Clone, Debug)]
 pub struct MemRegion {
-    pub offset: usize,
+    pub offset: u64,
     pub len: usize,
 }
 
@@ -120,9 +122,9 @@ impl VecIoWrapper {
     fn check_addrs(&self, mem_range: &MemRegion) -> Result<()> {
         let end = mem_range
             .offset
-            .checked_add(mem_range.len)
+            .checked_add(mem_range.len as u64)
             .ok_or(Error::InvalidOffset(mem_range.offset, mem_range.len))?;
-        if end > self.inner.len() {
+        if end > self.inner.len() as u64 {
             return Err(Error::InvalidOffset(mem_range.offset, mem_range.len));
         }
         Ok(())
