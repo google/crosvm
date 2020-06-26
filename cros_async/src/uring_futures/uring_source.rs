@@ -52,7 +52,7 @@ impl<F: AsRawFd> UringSource<F> {
     }
 
     /// Consume `self` and return the object used to create it.
-    pub fn to_source(self) -> F {
+    pub fn into_source(self) -> F {
         self.source
     }
 }

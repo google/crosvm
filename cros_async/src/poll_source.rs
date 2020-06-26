@@ -194,6 +194,11 @@ impl<F: AsRawFd> PollSource<F> {
             pending_waker: None,
         }
     }
+
+    /// Return the inner source.
+    pub fn into_source(self) -> F {
+        self.source
+    }
 }
 
 impl<F: AsRawFd> Deref for PollSource<F> {
