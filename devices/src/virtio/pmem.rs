@@ -131,8 +131,8 @@ impl Worker {
 
     fn handle_request(&self, avail_desc: DescriptorChain) -> Result<usize> {
         let mut reader =
-            Reader::new(&self.memory, avail_desc.clone()).map_err(Error::Descriptor)?;
-        let mut writer = Writer::new(&self.memory, avail_desc).map_err(Error::Descriptor)?;
+            Reader::new(self.memory.clone(), avail_desc.clone()).map_err(Error::Descriptor)?;
+        let mut writer = Writer::new(self.memory.clone(), avail_desc).map_err(Error::Descriptor)?;
 
         let status_code = reader
             .read_obj()

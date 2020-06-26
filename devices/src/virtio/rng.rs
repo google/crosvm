@@ -48,7 +48,7 @@ impl Worker {
         while let Some(avail_desc) = queue.pop(&self.mem) {
             let index = avail_desc.index;
             let random_file = &mut self.random_file;
-            let written = match Writer::new(&self.mem, avail_desc)
+            let written = match Writer::new(self.mem.clone(), avail_desc)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))
                 .and_then(|mut writer| writer.write_from(random_file, std::usize::MAX))
             {

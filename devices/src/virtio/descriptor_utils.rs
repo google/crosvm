@@ -11,10 +11,13 @@ use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::mem::{size_of, MaybeUninit};
 use std::ptr::copy_nonoverlapping;
+use std::rc::Rc;
 use std::result;
 
 use base::{FileReadWriteAtVolatile, FileReadWriteVolatile};
+use cros_async::MemRegion;
 use data_model::{DataInit, Le16, Le32, Le64, VolatileMemoryError, VolatileSlice};
+use disk::AsyncDisk;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::DescriptorChain;
@@ -52,20 +55,20 @@ pub type Result<T> = result::Result<T, Error>;
 impl std::error::Error for Error {}
 
 #[derive(Clone)]
-struct DescriptorChainConsumer<'a> {
-    buffers: Vec<VolatileSlice<'a>>,
+struct DescriptorChainRegions {
+    regions: Vec<MemRegion>,
     current: usize,
     bytes_consumed: usize,
 }
 
-impl<'a> DescriptorChainConsumer<'a> {
+impl DescriptorChainRegions {
     fn available_bytes(&self) -> usize {
         // This is guaranteed not to overflow because the total length of the chain
-        // is checked during all creations of `DescriptorChainConsumer` (see
+        // is checked during all creations of `DescriptorChainRegions` (see
         // `Reader::new()` and `Writer::new()`).
-        self.get_remaining()
+        self.get_remaining_regions()
             .iter()
-            .fold(0usize, |count, buf| count + buf.size())
+            .fold(0usize, |count, region| count + region.len)
     }
 
     fn bytes_consumed(&self) -> usize {
@@ -76,63 +79,94 @@ impl<'a> DescriptorChainConsumer<'a> {
     /// consume any bytes from the `DescriptorChain`. Instead callers should use the `consume`
     /// method to advance the `DescriptorChain`. Multiple calls to `get` with no intervening calls
     /// to `consume` will return the same data.
-    fn get_remaining(&self) -> &[VolatileSlice] {
-        &self.buffers[self.current..]
+    fn get_remaining_regions(&self) -> &[MemRegion] {
+        &self.regions[self.current..]
+    }
+
+    /// Returns all the remaining buffers in the `DescriptorChain` as `VolatileSlice`s of the given
+    /// `GuestMemory`. Calling this function does not consume any bytes from the `DescriptorChain`.
+    /// Instead callers should use the `consume` method to advance the `DescriptorChain`. Multiple
+    /// calls to `get` with no intervening calls to `consume` will return the same data.
+    fn get_remaining<'mem>(&self, mem: &'mem GuestMemory) -> Vec<VolatileSlice<'mem>> {
+        self.get_remaining_regions()
+            .iter()
+            .filter_map(|region| {
+                mem.get_slice_at_addr(GuestAddress(region.offset), region.len)
+                    .ok()
+            })
+            .collect()
     }
 
     /// Like `get_remaining` but guarantees that the combined length of all the returned iovecs is
     /// not greater than `count`. The combined length of the returned iovecs may be less than
     /// `count` but will always be greater than 0 as long as there is still space left in the
     /// `DescriptorChain`.
-    fn get_remaining_with_count(&self, count: usize) -> Cow<[VolatileSlice]> {
-        let iovs = self.get_remaining();
-        let mut iov_count = 0;
+    fn get_remaining_regions_with_count(&self, count: usize) -> Cow<[MemRegion]> {
+        let regions = self.get_remaining_regions();
+        let mut region_count = 0;
         let mut rem = count;
-        for iov in iovs {
-            if rem < iov.size() {
+        for region in regions {
+            if rem < region.len {
                 break;
             }
 
-            iov_count += 1;
-            rem -= iov.size();
+            region_count += 1;
+            rem -= region.len;
         }
 
         // Special case where the number of bytes to be copied is smaller than the `size()` of the
-        // first iovec.
-        if iov_count == 0 && iovs.len() > 0 && count > 0 {
-            debug_assert!(count < iovs[0].size());
+        // first regions.
+        if region_count == 0 && regions.len() > 0 && count > 0 {
+            debug_assert!(count < regions[0].len);
             // Safe because we know that count is smaller than the length of the first slice.
-            Cow::Owned(vec![iovs[0].sub_slice(0, count).unwrap()])
+            Cow::Owned(vec![MemRegion {
+                offset: regions[0].offset,
+                len: count,
+            }])
         } else {
-            Cow::Borrowed(&iovs[..iov_count])
+            Cow::Borrowed(&regions[..region_count])
         }
+    }
+
+    /// Like 'get_remaining_with_count' except convert the offsets to volatile slices in the
+    /// 'GuestMemory' given by 'mem'.
+    fn get_remaining_with_count<'mem>(
+        &self,
+        mem: &'mem GuestMemory,
+        count: usize,
+    ) -> Vec<VolatileSlice<'mem>> {
+        self.get_remaining_regions_with_count(count)
+            .iter()
+            .filter_map(|region| {
+                mem.get_slice_at_addr(GuestAddress(region.offset), region.len)
+                    .ok()
+            })
+            .collect()
     }
 
     /// Consumes `count` bytes from the `DescriptorChain`. If `count` is larger than
     /// `self.available_bytes()` then all remaining bytes in the `DescriptorChain` will be consumed.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the total bytes consumed by this `DescriptorChainConsumer` overflows a
-    /// usize.
     fn consume(&mut self, mut count: usize) {
         // The implementation is adapted from `IoSlice::advance` in libstd. We can't use
         // `get_remaining` here because then the compiler complains that `self.current` is already
         // borrowed and doesn't allow us to modify it.  We also need to borrow the iovecs mutably.
         let current = self.current;
-        for buf in &mut self.buffers[current..] {
+        for region in &mut self.regions[current..] {
             if count == 0 {
                 break;
             }
 
-            let consumed = if count < buf.size() {
+            let consumed = if count < region.len {
                 // Safe because we know that the iovec pointed to valid memory and we are adding a
                 // value that is smaller than the length of the memory.
-                *buf = buf.offset(count).unwrap();
+                *region = MemRegion {
+                    offset: region.offset + count as u64,
+                    len: region.len - count,
+                };
                 count
             } else {
                 self.current += 1;
-                buf.size()
+                region.len
             };
 
             // This shouldn't overflow because `consumed <= buf.size()` and we already verified
@@ -143,25 +177,24 @@ impl<'a> DescriptorChainConsumer<'a> {
         }
     }
 
-    fn split_at(&mut self, offset: usize) -> DescriptorChainConsumer<'a> {
+    fn split_at(&mut self, offset: usize) -> DescriptorChainRegions {
         let mut other = self.clone();
         other.consume(offset);
         other.bytes_consumed = 0;
 
         let mut rem = offset;
         let mut end = self.current;
-        for buf in &mut self.buffers[self.current..] {
-            if rem < buf.size() {
-                // Safe because we are creating a smaller sub-slice.
-                *buf = buf.sub_slice(0, rem).unwrap();
+        for region in &mut self.regions[self.current..] {
+            if rem <= region.len {
+                region.len = rem;
                 break;
             }
 
             end += 1;
-            rem -= buf.size();
+            rem -= region.len;
         }
 
-        self.buffers.truncate(end + 1);
+        self.regions.truncate(end + 1);
 
         other
     }
@@ -175,13 +208,14 @@ impl<'a> DescriptorChainConsumer<'a> {
 /// Reader will skip iterating over descriptor chain when first writable
 /// descriptor is encountered.
 #[derive(Clone)]
-pub struct Reader<'a> {
-    buffer: DescriptorChainConsumer<'a>,
+pub struct Reader {
+    mem: GuestMemory,
+    regions: DescriptorChainRegions,
 }
 
 /// An iterator over `DataInit` objects on readable descriptors in the descriptor chain.
 pub struct ReaderIterator<'a, T: DataInit> {
-    reader: &'a mut Reader<'a>,
+    reader: &'a mut Reader,
     phantom: PhantomData<T>,
 }
 
@@ -197,12 +231,12 @@ impl<'a, T: DataInit> Iterator for ReaderIterator<'a, T> {
     }
 }
 
-impl<'a> Reader<'a> {
+impl Reader {
     /// Construct a new Reader wrapper over `desc_chain`.
-    pub fn new(mem: &'a GuestMemory, desc_chain: DescriptorChain) -> Result<Reader<'a>> {
+    pub fn new(mem: GuestMemory, desc_chain: DescriptorChain) -> Result<Reader> {
         // TODO(jstaron): Update this code to take the indirect descriptors into account.
         let mut total_len: usize = 0;
-        let buffers = desc_chain
+        let regions = desc_chain
             .into_iter()
             .readable()
             .map(|desc| {
@@ -213,16 +247,23 @@ impl<'a> Reader<'a> {
                     .checked_add(desc.len as usize)
                     .ok_or(Error::DescriptorChainOverflow)?;
 
+                // Check that all the regions are totally contained in GuestMemory.
                 mem.get_slice_at_addr(
                     desc.addr,
                     desc.len.try_into().expect("u32 doesn't fit in usize"),
                 )
-                .map_err(Error::GuestMemoryError)
+                .map_err(Error::GuestMemoryError)?;
+
+                Ok(MemRegion {
+                    offset: desc.addr.0,
+                    len: desc.len.try_into().expect("u32 doesn't fit in usize"),
+                })
             })
-            .collect::<Result<Vec<VolatileSlice>>>()?;
+            .collect::<Result<Vec<MemRegion>>>()?;
         Ok(Reader {
-            buffer: DescriptorChainConsumer {
-                buffers,
+            mem,
+            regions: DescriptorChainRegions {
+                regions,
                 current: 0,
                 bytes_consumed: 0,
             },
@@ -249,14 +290,14 @@ impl<'a> Reader<'a> {
     /// Reads objects by consuming all the remaining data in the descriptor chain buffer and returns
     /// them as a collection. Returns an error if the size of the remaining data is indivisible by
     /// the size of an object of type `T`.
-    pub fn collect<C: FromIterator<io::Result<T>>, T: DataInit>(&'a mut self) -> C {
+    pub fn collect<C: FromIterator<io::Result<T>>, T: DataInit>(&mut self) -> C {
         C::from_iter(self.iter())
     }
 
-    /// Creates an iterator for sequentially reading `DataInit` objects from the `Reader`. Unlike
-    /// `collect`, this doesn't consume all the remaining data in the `Reader` and doesn't require
-    /// the objects to be stored in a separate collection.
-    pub fn iter<T: DataInit>(&'a mut self) -> ReaderIterator<'a, T> {
+    /// Creates an iterator for sequentially reading `DataInit` objects from the `Reader`.
+    /// Unlike `collect`, this doesn't consume all the remaining data in the `Reader` and
+    /// doesn't require the objects to be stored in a separate collection.
+    pub fn iter<T: DataInit>(&mut self) -> ReaderIterator<T> {
         ReaderIterator {
             reader: self,
             phantom: PhantomData,
@@ -272,9 +313,9 @@ impl<'a> Reader<'a> {
         mut dst: F,
         count: usize,
     ) -> io::Result<usize> {
-        let iovs = self.buffer.get_remaining_with_count(count);
+        let iovs = self.regions.get_remaining_with_count(&self.mem, count);
         let written = dst.write_vectored_volatile(&iovs[..])?;
-        self.buffer.consume(written);
+        self.regions.consume(written);
         Ok(written)
     }
 
@@ -288,12 +329,14 @@ impl<'a> Reader<'a> {
         count: usize,
         off: u64,
     ) -> io::Result<usize> {
-        let iovs = self.buffer.get_remaining_with_count(count);
+        let iovs = self.regions.get_remaining_with_count(&self.mem, count);
         let written = dst.write_vectored_at_volatile(&iovs[..], off)?;
-        self.buffer.consume(written);
+        self.regions.consume(written);
         Ok(written)
     }
 
+    /// Reads data from the descriptor chain similar to 'read_to' except reading 'count' or
+    /// returning an error if 'count' bytes can't be read.
     pub fn read_exact_to<F: FileReadWriteVolatile>(
         &mut self,
         mut dst: F,
@@ -316,6 +359,8 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
+    /// Reads data from the descriptor chain similar to 'read_to_at' except reading 'count' or
+    /// returning an error if 'count' bytes can't be read.
     pub fn read_exact_to_at<F: FileReadWriteAtVolatile>(
         &mut self,
         mut dst: F,
@@ -342,46 +387,88 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
+    /// Reads data from the descriptor chain buffer into an `AsyncDisk` at offset `off`.
+    /// Returns the number of bytes read from the descriptor chain buffer.
+    /// The number of bytes read can be less than `count` if there isn't
+    /// enough data in the descriptor chain buffer.
+    pub async fn read_to_at_fut<F: AsyncDisk + ?Sized>(
+        &mut self,
+        dst: &F,
+        count: usize,
+        off: u64,
+    ) -> disk::Result<usize> {
+        let mem_regions = self.regions.get_remaining_regions_with_count(count);
+        let written = dst
+            .write_from_mem(off, Rc::new(self.mem.clone()), &mem_regions)
+            .await?;
+        self.regions.consume(written);
+        Ok(written)
+    }
+
+    /// Reads exactly `count` bytes from the chain to the disk asynchronously or returns an error if
+    /// not enough data can be read.
+    pub async fn read_exact_to_at_fut<F: AsyncDisk + ?Sized>(
+        &mut self,
+        dst: &F,
+        mut count: usize,
+        mut off: u64,
+    ) -> disk::Result<()> {
+        while count > 0 {
+            let nread = self.read_to_at_fut(dst, count, off).await?;
+            if nread == 0 {
+                return Err(disk::Error::ReadingData(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "failed to write whole buffer",
+                )));
+            }
+            count -= nread;
+            off += nread as u64;
+        }
+
+        Ok(())
+    }
+
     /// Returns number of bytes available for reading.  May return an error if the combined
     /// lengths of all the buffers in the DescriptorChain would cause an integer overflow.
     pub fn available_bytes(&self) -> usize {
-        self.buffer.available_bytes()
+        self.regions.available_bytes()
     }
 
     /// Returns number of bytes already read from the descriptor chain buffer.
     pub fn bytes_read(&self) -> usize {
-        self.buffer.bytes_consumed()
+        self.regions.bytes_consumed()
     }
 
     /// Returns a `&[VolatileSlice]` that represents all the remaining data in this `Reader`.
     /// Calling this method does not actually consume any data from the `Reader` and callers should
     /// call `consume` to advance the `Reader`.
-    pub fn get_remaining(&self) -> &[VolatileSlice] {
-        self.buffer.get_remaining()
+    pub fn get_remaining(&self) -> Vec<VolatileSlice> {
+        self.regions.get_remaining(&self.mem)
     }
 
     /// Consumes `amt` bytes from the underlying descriptor chain. If `amt` is larger than the
     /// remaining data left in this `Reader`, then all remaining data will be consumed.
     pub fn consume(&mut self, amt: usize) {
-        self.buffer.consume(amt)
+        self.regions.consume(amt)
     }
 
     /// Splits this `Reader` into two at the given offset in the `DescriptorChain` buffer. After the
     /// split, `self` will be able to read up to `offset` bytes while the returned `Reader` can read
     /// up to `available_bytes() - offset` bytes. If `offset > self.available_bytes()`, then the
     /// returned `Reader` will not be able to read any bytes.
-    pub fn split_at(&mut self, offset: usize) -> Reader<'a> {
+    pub fn split_at(&mut self, offset: usize) -> Reader {
         Reader {
-            buffer: self.buffer.split_at(offset),
+            mem: self.mem.clone(),
+            regions: self.regions.split_at(offset),
         }
     }
 }
 
-impl<'a> io::Read for Reader<'a> {
+impl io::Read for Reader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let mut rem = buf;
         let mut total = 0;
-        for b in self.buffer.get_remaining() {
+        for b in self.regions.get_remaining(&self.mem) {
             if rem.len() == 0 {
                 break;
             }
@@ -396,7 +483,7 @@ impl<'a> io::Read for Reader<'a> {
             total += count;
         }
 
-        self.buffer.consume(total);
+        self.regions.consume(total);
         Ok(total)
     }
 }
@@ -409,15 +496,16 @@ impl<'a> io::Read for Reader<'a> {
 /// Writer will start iterating the descriptors from the first writable one and will
 /// assume that all following descriptors are writable.
 #[derive(Clone)]
-pub struct Writer<'a> {
-    buffer: DescriptorChainConsumer<'a>,
+pub struct Writer {
+    mem: GuestMemory,
+    regions: DescriptorChainRegions,
 }
 
-impl<'a> Writer<'a> {
+impl Writer {
     /// Construct a new Writer wrapper over `desc_chain`.
-    pub fn new(mem: &'a GuestMemory, desc_chain: DescriptorChain) -> Result<Writer<'a>> {
+    pub fn new(mem: GuestMemory, desc_chain: DescriptorChain) -> Result<Writer> {
         let mut total_len: usize = 0;
-        let buffers = desc_chain
+        let regions = desc_chain
             .into_iter()
             .writable()
             .map(|desc| {
@@ -432,12 +520,18 @@ impl<'a> Writer<'a> {
                     desc.addr,
                     desc.len.try_into().expect("u32 doesn't fit in usize"),
                 )
-                .map_err(Error::GuestMemoryError)
+                .map_err(Error::GuestMemoryError)?;
+
+                Ok(MemRegion {
+                    offset: desc.addr.0,
+                    len: desc.len.try_into().expect("u32 doesn't fit in usize"),
+                })
             })
-            .collect::<Result<Vec<VolatileSlice>>>()?;
+            .collect::<Result<Vec<MemRegion>>>()?;
         Ok(Writer {
-            buffer: DescriptorChainConsumer {
-                buffers,
+            mem,
+            regions: DescriptorChainRegions {
+                regions,
                 current: 0,
                 bytes_consumed: 0,
             },
@@ -465,7 +559,7 @@ impl<'a> Writer<'a> {
     /// Returns number of bytes available for writing.  May return an error if the combined
     /// lengths of all the buffers in the DescriptorChain would cause an overflow.
     pub fn available_bytes(&self) -> usize {
-        self.buffer.available_bytes()
+        self.regions.available_bytes()
     }
 
     /// Writes data to the descriptor chain buffer from a file descriptor.
@@ -477,9 +571,9 @@ impl<'a> Writer<'a> {
         mut src: F,
         count: usize,
     ) -> io::Result<usize> {
-        let iovs = self.buffer.get_remaining_with_count(count);
+        let iovs = self.regions.get_remaining_with_count(&self.mem, count);
         let read = src.read_vectored_volatile(&iovs[..])?;
-        self.buffer.consume(read);
+        self.regions.consume(read);
         Ok(read)
     }
 
@@ -493,9 +587,9 @@ impl<'a> Writer<'a> {
         count: usize,
         off: u64,
     ) -> io::Result<usize> {
-        let iovs = self.buffer.get_remaining_with_count(count);
+        let iovs = self.regions.get_remaining_with_count(&self.mem, count);
         let read = src.read_vectored_at_volatile(&iovs[..], off)?;
-        self.buffer.consume(read);
+        self.regions.consume(read);
         Ok(read)
     }
 
@@ -545,28 +639,66 @@ impl<'a> Writer<'a> {
         }
         Ok(())
     }
+    /// Writes data to the descriptor chain buffer from an `AsyncDisk` at offset `off`.
+    /// Returns the number of bytes written to the descriptor chain buffer.
+    /// The number of bytes written can be less than `count` if
+    /// there isn't enough data in the descriptor chain buffer.
+    pub async fn write_from_at_fut<F: AsyncDisk + ?Sized>(
+        &mut self,
+        src: &F,
+        count: usize,
+        off: u64,
+    ) -> disk::Result<usize> {
+        let regions = self.regions.get_remaining_regions_with_count(count);
+        let read = src
+            .read_to_mem(off, Rc::new(self.mem.clone()), &regions)
+            .await?;
+        self.regions.consume(read);
+        Ok(read)
+    }
+
+    pub async fn write_all_from_at_fut<F: AsyncDisk + ?Sized>(
+        &mut self,
+        src: &F,
+        mut count: usize,
+        mut off: u64,
+    ) -> disk::Result<()> {
+        while count > 0 {
+            let nwritten = self.write_from_at_fut(src, count, off).await?;
+            if nwritten == 0 {
+                return Err(disk::Error::WritingData(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "failed to write whole buffer",
+                )));
+            }
+            count -= nwritten;
+            off += nwritten as u64;
+        }
+        Ok(())
+    }
 
     /// Returns number of bytes already written to the descriptor chain buffer.
     pub fn bytes_written(&self) -> usize {
-        self.buffer.bytes_consumed()
+        self.regions.bytes_consumed()
     }
 
     /// Splits this `Writer` into two at the given offset in the `DescriptorChain` buffer. After the
     /// split, `self` will be able to write up to `offset` bytes while the returned `Writer` can
     /// write up to `available_bytes() - offset` bytes. If `offset > self.available_bytes()`, then
     /// the returned `Writer` will not be able to write any bytes.
-    pub fn split_at(&mut self, offset: usize) -> Writer<'a> {
+    pub fn split_at(&mut self, offset: usize) -> Writer {
         Writer {
-            buffer: self.buffer.split_at(offset),
+            mem: self.mem.clone(),
+            regions: self.regions.split_at(offset),
         }
     }
 }
 
-impl<'a> io::Write for Writer<'a> {
+impl io::Write for Writer {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut rem = buf;
         let mut total = 0;
-        for b in self.buffer.get_remaining() {
+        for b in self.regions.get_remaining(&self.mem) {
             if rem.len() == 0 {
                 break;
             }
@@ -580,7 +712,7 @@ impl<'a> io::Write for Writer<'a> {
             total += count;
         }
 
-        self.buffer.consume(total);
+        self.regions.consume(total);
         Ok(total)
     }
 
@@ -657,6 +789,7 @@ pub fn create_descriptor_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::convert::TryFrom;
     use std::fs::File;
     use tempfile::tempfile;
 
@@ -680,7 +813,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
+        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
         assert_eq!(reader.available_bytes(), 106);
         assert_eq!(reader.bytes_read(), 0);
 
@@ -721,7 +854,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut writer = Writer::new(&memory, chain).expect("failed to create Writer");
+        let mut writer = Writer::new(memory.clone(), chain).expect("failed to create Writer");
         assert_eq!(writer.available_bytes(), 106);
         assert_eq!(writer.bytes_written(), 0);
 
@@ -757,7 +890,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
+        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
         assert_eq!(reader.available_bytes(), 0);
         assert_eq!(reader.bytes_read(), 0);
 
@@ -782,7 +915,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut writer = Writer::new(&memory, chain).expect("failed to create Writer");
+        let mut writer = Writer::new(memory.clone(), chain).expect("failed to create Writer");
         assert_eq!(writer.available_bytes(), 0);
         assert_eq!(writer.bytes_written(), 0);
 
@@ -808,7 +941,7 @@ mod tests {
         )
         .expect("create_descriptor_chain failed");
 
-        let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
+        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
 
         // Open a file in read-only mode so writes to it to trigger an I/O error.
         let mut ro_file = File::open("/dev/zero").expect("failed to open /dev/zero");
@@ -838,7 +971,7 @@ mod tests {
         )
         .expect("create_descriptor_chain failed");
 
-        let mut writer = Writer::new(&memory, chain).expect("failed to create Writer");
+        let mut writer = Writer::new(memory.clone(), chain).expect("failed to create Writer");
 
         let mut file = tempfile().unwrap();
 
@@ -874,8 +1007,9 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut reader = Reader::new(&memory, chain.clone()).expect("failed to create Reader");
-        let mut writer = Writer::new(&memory, chain).expect("failed to create Writer");
+        let mut reader =
+            Reader::new(memory.clone(), chain.clone()).expect("failed to create Reader");
+        let mut writer = Writer::new(memory.clone(), chain).expect("failed to create Writer");
 
         assert_eq!(reader.bytes_read(), 0);
         assert_eq!(writer.bytes_written(), 0);
@@ -918,7 +1052,8 @@ mod tests {
             123,
         )
         .expect("create_descriptor_chain failed");
-        let mut writer = Writer::new(&memory, chain_writer).expect("failed to create Writer");
+        let mut writer =
+            Writer::new(memory.clone(), chain_writer).expect("failed to create Writer");
         if let Err(_) = writer.write_obj(secret) {
             panic!("write_obj should not fail here");
         }
@@ -932,7 +1067,8 @@ mod tests {
             123,
         )
         .expect("create_descriptor_chain failed");
-        let mut reader = Reader::new(&memory, chain_reader).expect("failed to create Reader");
+        let mut reader =
+            Reader::new(memory.clone(), chain_reader).expect("failed to create Reader");
         match reader.read_obj::<Le32>() {
             Err(_) => panic!("read_obj should not fail here"),
             Ok(read_secret) => assert_eq!(read_secret, secret),
@@ -955,7 +1091,7 @@ mod tests {
         )
         .expect("create_descriptor_chain failed");
 
-        let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
+        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
 
         let mut buf = Vec::with_capacity(1024);
         buf.resize(1024, 0);
@@ -991,7 +1127,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
+        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
 
         let other = reader.split_at(32);
         assert_eq!(reader.available_bytes(), 32);
@@ -1020,7 +1156,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
+        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
 
         let other = reader.split_at(24);
         assert_eq!(reader.available_bytes(), 24);
@@ -1049,7 +1185,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
+        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
 
         let other = reader.split_at(128);
         assert_eq!(reader.available_bytes(), 128);
@@ -1078,7 +1214,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
+        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
 
         let other = reader.split_at(0);
         assert_eq!(reader.available_bytes(), 0);
@@ -1107,7 +1243,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
+        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
 
         let other = reader.split_at(256);
         assert_eq!(
@@ -1132,7 +1268,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut reader = Reader::new(&memory, chain).expect("failed to create Reader");
+        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
 
         let mut buf = vec![0u8; 64];
         assert_eq!(
@@ -1156,7 +1292,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut writer = Writer::new(&memory, chain).expect("failed to create Writer");
+        let mut writer = Writer::new(memory.clone(), chain).expect("failed to create Writer");
 
         let buf = vec![0xdeu8; 64];
         assert_eq!(
@@ -1185,7 +1321,7 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut writer = Writer::new(&memory, write_chain).expect("failed to create Writer");
+        let mut writer = Writer::new(memory.clone(), write_chain).expect("failed to create Writer");
         writer
             .consume(vs.clone())
             .expect("failed to consume() a vector");
@@ -1198,11 +1334,69 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
-        let mut reader = Reader::new(&memory, read_chain).expect("failed to create Reader");
+        let mut reader = Reader::new(memory.clone(), read_chain).expect("failed to create Reader");
         let vs_read = reader
             .collect::<io::Result<Vec<Le64>>, _>()
             .expect("failed to collect() values");
         assert_eq!(vs, vs_read);
+    }
+
+    #[test]
+    fn get_remaining_region_with_count() {
+        use DescriptorType::*;
+
+        let memory_start_addr = GuestAddress(0x0);
+        let memory = GuestMemory::new(&vec![(memory_start_addr, 0x10000)]).unwrap();
+
+        let chain = create_descriptor_chain(
+            &memory,
+            GuestAddress(0x0),
+            GuestAddress(0x100),
+            vec![
+                (Readable, 16),
+                (Readable, 16),
+                (Readable, 96),
+                (Writable, 64),
+                (Writable, 1),
+                (Writable, 3),
+            ],
+            0,
+        )
+        .expect("create_descriptor_chain failed");
+
+        let Reader {
+            mem: _,
+            mut regions,
+        } = Reader::new(memory.clone(), chain).expect("failed to create Reader");
+
+        let drain = regions
+            .get_remaining_regions_with_count(::std::usize::MAX)
+            .iter()
+            .fold(0usize, |total, region| total + region.len);
+        assert_eq!(drain, 128);
+
+        let exact = regions
+            .get_remaining_regions_with_count(32)
+            .iter()
+            .fold(0usize, |total, region| total + region.len);
+        assert!(exact > 0);
+        assert!(exact <= 32);
+
+        let split = regions
+            .get_remaining_regions_with_count(24)
+            .iter()
+            .fold(0usize, |total, region| total + region.len);
+        assert!(split > 0);
+        assert!(split <= 24);
+
+        regions.consume(64);
+
+        let first = regions
+            .get_remaining_regions_with_count(8)
+            .iter()
+            .fold(0usize, |total, region| total + region.len);
+        assert!(first > 0);
+        assert!(first <= 8);
     }
 
     #[test]
@@ -1227,36 +1421,108 @@ mod tests {
             0,
         )
         .expect("create_descriptor_chain failed");
+        let Reader {
+            mem: _,
+            mut regions,
+        } = Reader::new(memory.clone(), chain).expect("failed to create Reader");
 
-        let Reader { mut buffer } = Reader::new(&memory, chain).expect("failed to create Reader");
-
-        let drain = buffer
-            .get_remaining_with_count(::std::usize::MAX)
+        let drain = regions
+            .get_remaining_with_count(&memory, ::std::usize::MAX)
             .iter()
             .fold(0usize, |total, iov| total + iov.size());
         assert_eq!(drain, 128);
 
-        let exact = buffer
-            .get_remaining_with_count(32)
+        let exact = regions
+            .get_remaining_with_count(&memory, 32)
             .iter()
             .fold(0usize, |total, iov| total + iov.size());
         assert!(exact > 0);
         assert!(exact <= 32);
 
-        let split = buffer
-            .get_remaining_with_count(24)
+        let split = regions
+            .get_remaining_with_count(&memory, 24)
             .iter()
             .fold(0usize, |total, iov| total + iov.size());
         assert!(split > 0);
         assert!(split <= 24);
 
-        buffer.consume(64);
+        regions.consume(64);
 
-        let first = buffer
-            .get_remaining_with_count(8)
+        let first = regions
+            .get_remaining_with_count(&memory, 8)
             .iter()
             .fold(0usize, |total, iov| total + iov.size());
         assert!(first > 0);
         assert!(first <= 8);
+    }
+
+    #[test]
+    fn region_reader_failing_io() {
+        cros_async::run_one(Box::pin(region_reader_failing_io_async())).unwrap();
+    }
+    async fn region_reader_failing_io_async() {
+        use DescriptorType::*;
+
+        let memory_start_addr = GuestAddress(0x0);
+        let memory = GuestMemory::new(&vec![(memory_start_addr, 0x10000)]).unwrap();
+
+        let chain = create_descriptor_chain(
+            &memory,
+            GuestAddress(0x0),
+            GuestAddress(0x100),
+            vec![(Readable, 256), (Readable, 256)],
+            0,
+        )
+        .expect("create_descriptor_chain failed");
+
+        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
+
+        // Open a file in read-only mode so writes to it to trigger an I/O error.
+        let ro_file = File::open("/dev/zero").expect("failed to open /dev/zero");
+        let async_ro_file = disk::SingleFileDisk::try_from(ro_file).expect("Failed to crate SFD");
+
+        reader
+            .read_exact_to_at_fut(&async_ro_file, 512, 0)
+            .await
+            .expect_err("successfully read more bytes than SharedMemory size");
+
+        // The write above should have failed entirely, so we end up not writing any bytes at all.
+        assert_eq!(reader.available_bytes(), 512);
+        assert_eq!(reader.bytes_read(), 0);
+    }
+
+    #[test]
+    fn region_writer_failing_io() {
+        cros_async::run_one(Box::pin(region_writer_failing_io_async())).unwrap()
+    }
+    async fn region_writer_failing_io_async() {
+        use DescriptorType::*;
+
+        let memory_start_addr = GuestAddress(0x0);
+        let memory = GuestMemory::new(&vec![(memory_start_addr, 0x10000)]).unwrap();
+
+        let chain = create_descriptor_chain(
+            &memory,
+            GuestAddress(0x0),
+            GuestAddress(0x100),
+            vec![(Writable, 256), (Writable, 256)],
+            0,
+        )
+        .expect("create_descriptor_chain failed");
+
+        let mut writer = Writer::new(memory.clone(), chain).expect("failed to create Writer");
+
+        let file = tempfile().expect("failed to create temp file");
+
+        file.set_len(384).unwrap();
+        let async_file = disk::SingleFileDisk::try_from(file).expect("Failed to crate SFD");
+
+        writer
+            .write_all_from_at_fut(&async_file, 512, 0)
+            .await
+            .expect_err("successfully wrote more bytes than in SharedMemory");
+
+        assert_eq!(writer.available_bytes(), 128);
+        assert_eq!(writer.bytes_written(), 384);
     }
 }

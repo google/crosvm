@@ -176,7 +176,7 @@ where
             };
 
             let index = desc_chain.index;
-            let bytes_written = match Writer::new(&self.mem, desc_chain) {
+            let bytes_written = match Writer::new(self.mem.clone(), desc_chain) {
                 Ok(mut writer) => {
                     match writer.write_from(&mut self.tap, writer.available_bytes()) {
                         Ok(_) => {}
@@ -224,7 +224,7 @@ where
         while let Some(desc_chain) = self.tx_queue.pop(&self.mem) {
             let index = desc_chain.index;
 
-            match Reader::new(&self.mem, desc_chain) {
+            match Reader::new(self.mem.clone(), desc_chain) {
                 Ok(mut reader) => {
                     let expected_count = reader.available_bytes();
                     match reader.read_to(&mut self.tap, expected_count) {
@@ -259,10 +259,10 @@ where
         while let Some(desc_chain) = ctrl_queue.pop(&self.mem) {
             let index = desc_chain.index;
 
-            let mut reader =
-                Reader::new(&self.mem, desc_chain.clone()).map_err(NetError::DescriptorChain)?;
+            let mut reader = Reader::new(self.mem.clone(), desc_chain.clone())
+                .map_err(NetError::DescriptorChain)?;
             let mut writer =
-                Writer::new(&self.mem, desc_chain).map_err(NetError::DescriptorChain)?;
+                Writer::new(self.mem.clone(), desc_chain).map_err(NetError::DescriptorChain)?;
             let ctrl_hdr: virtio_net_ctrl_hdr =
                 reader.read_obj().map_err(NetError::ReadCtrlHeader)?;
 

@@ -733,7 +733,7 @@ impl WlVfd {
     fn send(&mut self, fds: &[RawFd], data: &mut Reader) -> WlResult<WlResp> {
         if let Some(socket) = &self.socket {
             socket
-                .send_with_fds(data.get_remaining(), fds)
+                .send_with_fds(&data.get_remaining(), fds)
                 .map_err(WlError::SendVfd)?;
             // All remaining data in `data` is now considered consumed.
             data.consume(::std::usize::MAX);
@@ -1446,8 +1446,8 @@ impl Worker {
                         while let Some(desc) = self.out_queue.pop(&self.mem) {
                             let desc_index = desc.index;
                             match (
-                                Reader::new(&self.mem, desc.clone()),
-                                Writer::new(&self.mem, desc),
+                                Reader::new(self.mem.clone(), desc.clone()),
+                                Writer::new(self.mem.clone(), desc),
                             ) {
                                 (Ok(mut reader), Ok(mut writer)) => {
                                     let resp = match self.state.execute(&mut reader) {
@@ -1496,7 +1496,7 @@ impl Worker {
                     // in_desc_chains is not empty (checked by loop condition) so unwrap is safe.
                     let desc = in_desc_chains.pop_front().unwrap();
                     let index = desc.index;
-                    match Writer::new(&self.mem, desc) {
+                    match Writer::new(self.mem.clone(), desc) {
                         Ok(mut writer) => {
                             match encode_resp(&mut writer, in_resp) {
                                 Ok(()) => {

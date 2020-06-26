@@ -44,8 +44,8 @@ struct Device {
 
 impl Device {
     fn perform_work(&mut self, mem: &GuestMemory, desc: DescriptorChain) -> Result<u32> {
-        let mut reader = Reader::new(mem, desc.clone()).map_err(Error::Descriptor)?;
-        let mut writer = Writer::new(mem, desc).map_err(Error::Descriptor)?;
+        let mut reader = Reader::new(mem.clone(), desc.clone()).map_err(Error::Descriptor)?;
+        let mut writer = Writer::new(mem.clone(), desc).map_err(Error::Descriptor)?;
 
         let available_bytes = reader.available_bytes();
         if available_bytes > TPM_BUFSIZE {

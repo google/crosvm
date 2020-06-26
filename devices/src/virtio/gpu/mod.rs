@@ -766,8 +766,8 @@ impl Frontend {
         while let Some(desc) = queue.pop(mem) {
             if Frontend::validate_desc(&desc) {
                 match (
-                    Reader::new(mem, desc.clone()),
-                    Writer::new(mem, desc.clone()),
+                    Reader::new(mem.clone(), desc.clone()),
+                    Writer::new(mem.clone(), desc.clone()),
                 ) {
                     (Ok(mut reader), Ok(mut writer)) => {
                         if let Some(ret_desc) =

@@ -258,8 +258,9 @@ impl Worker {
         flush_timer_armed: &mut bool,
         mem: &GuestMemory,
     ) -> result::Result<usize, ExecuteError> {
-        let mut reader = Reader::new(mem, avail_desc.clone()).map_err(ExecuteError::Descriptor)?;
-        let mut writer = Writer::new(mem, avail_desc).map_err(ExecuteError::Descriptor)?;
+        let mut reader =
+            Reader::new(mem.clone(), avail_desc.clone()).map_err(ExecuteError::Descriptor)?;
+        let mut writer = Writer::new(mem.clone(), avail_desc).map_err(ExecuteError::Descriptor)?;
 
         // The last byte of the buffer is virtio_blk_req::status.
         // Split it into a separate Writer so that status_writer is the final byte and

@@ -21,29 +21,29 @@ use crate::virtio::{Reader, Writer};
 const MAX_BUFFER_SIZE: u32 = 1 << 20;
 const DIRENT_PADDING: [u8; 8] = [0; 8];
 
-struct ZCReader<'a>(Reader<'a>);
+struct ZCReader(Reader);
 
-impl<'a> ZeroCopyReader for ZCReader<'a> {
+impl ZeroCopyReader for ZCReader {
     fn read_to(&mut self, f: &mut File, count: usize, off: u64) -> io::Result<usize> {
         self.0.read_to_at(f, count, off)
     }
 }
 
-impl<'a> io::Read for ZCReader<'a> {
+impl io::Read for ZCReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.0.read(buf)
     }
 }
 
-struct ZCWriter<'a>(Writer<'a>);
+struct ZCWriter(Writer);
 
-impl<'a> ZeroCopyWriter for ZCWriter<'a> {
+impl ZeroCopyWriter for ZCWriter {
     fn write_from(&mut self, f: &mut File, count: usize, off: u64) -> io::Result<usize> {
         self.0.write_from_at(f, count, off)
     }
 }
 
-impl<'a> io::Write for ZCWriter<'a> {
+impl io::Write for ZCWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.0.write(buf)
     }

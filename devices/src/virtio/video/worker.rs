@@ -79,7 +79,8 @@ impl Worker {
         // Write responses into command virtqueue.
         while let Some((desc, resp)) = responses.pop_front() {
             let desc_index = desc.index;
-            let mut writer = Writer::new(&self.mem, desc).map_err(Error::InvalidDescriptorChain)?;
+            let mut writer =
+                Writer::new(self.mem.clone(), desc).map_err(Error::InvalidDescriptorChain)?;
             if let Err(e) = resp.write(&mut writer) {
                 error!("failed to write a command response for {:?}: {}", resp, e);
             }
@@ -100,7 +101,8 @@ impl Worker {
         event_queue.pop_peeked(&self.mem);
 
         let desc_index = desc.index;
-        let mut writer = Writer::new(&self.mem, desc).map_err(Error::InvalidDescriptorChain)?;
+        let mut writer =
+            Writer::new(self.mem.clone(), desc).map_err(Error::InvalidDescriptorChain)?;
         event
             .write(&mut writer)
             .map_err(|error| Error::WriteEventFailure {
@@ -123,7 +125,7 @@ impl Worker {
     ) -> Result<VecDeque<WritableResp>> {
         let mut resps: VecDeque<WritableResp> = Default::default();
         let mut reader =
-            Reader::new(&self.mem, desc.clone()).map_err(Error::InvalidDescriptorChain)?;
+            Reader::new(self.mem.clone(), desc.clone()).map_err(Error::InvalidDescriptorChain)?;
 
         let cmd = VideoCmd::from_reader(&mut reader).map_err(Error::ReadFailure)?;
 

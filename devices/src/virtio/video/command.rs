@@ -118,7 +118,7 @@ pub enum VideoCmd {
 
 impl<'a> VideoCmd {
     /// Reads a request on virtqueue and construct a VideoCmd value.
-    pub fn from_reader(r: &'a mut Reader<'a>) -> Result<Self, ReadCmdError> {
+    pub fn from_reader(r: &'a mut Reader) -> Result<Self, ReadCmdError> {
         use self::ReadCmdError::*;
         use self::VideoCmd::*;
 

@@ -93,9 +93,9 @@ struct Worker {
 impl Worker {
     fn process_queue(&mut self) -> P9Result<()> {
         while let Some(avail_desc) = self.queue.pop(&self.mem) {
-            let mut reader = Reader::new(&self.mem, avail_desc.clone())
+            let mut reader = Reader::new(self.mem.clone(), avail_desc.clone())
                 .map_err(P9Error::InvalidDescriptorChain)?;
-            let mut writer = Writer::new(&self.mem, avail_desc.clone())
+            let mut writer = Writer::new(self.mem.clone(), avail_desc.clone())
                 .map_err(P9Error::InvalidDescriptorChain)?;
 
             self.server

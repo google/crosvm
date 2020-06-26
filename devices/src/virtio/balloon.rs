@@ -134,7 +134,7 @@ impl Worker {
             let index = avail_desc.index;
 
             if inflate {
-                let mut reader = match Reader::new(&self.mem, avail_desc) {
+                let mut reader = match Reader::new(self.mem.clone(), avail_desc) {
                     Ok(r) => r,
                     Err(e) => {
                         error!("balloon: failed to create reader: {}", e);
@@ -180,7 +180,7 @@ impl Worker {
                 queue.add_used(&self.mem, prev_desc, 0);
             }
             self.stats_desc_index = Some(stats_desc.index);
-            let mut reader = match Reader::new(&self.mem, stats_desc) {
+            let mut reader = match Reader::new(self.mem.clone(), stats_desc) {
                 Ok(r) => r,
                 Err(e) => {
                     error!("balloon: failed to create reader: {}", e);

@@ -67,7 +67,7 @@ impl Worker {
         while let Some(avail_desc) = transmit_queue.pop(&self.mem) {
             let desc_index = avail_desc.index;
 
-            let reader = match Reader::new(&self.mem, avail_desc) {
+            let reader = match Reader::new(self.mem.clone(), avail_desc) {
                 Ok(r) => r,
                 Err(e) => {
                     error!("console: failed to create reader: {}", e);
@@ -162,7 +162,7 @@ impl Worker {
 
         while let Some(desc) = receive_queue.peek(&self.mem) {
             let desc_index = desc.index;
-            let mut writer = match Writer::new(&self.mem, desc) {
+            let mut writer = match Writer::new(self.mem.clone(), desc) {
                 Ok(w) => w,
                 Err(e) => {
                     error!("console: failed to create Writer: {}", e);
