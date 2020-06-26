@@ -77,6 +77,7 @@ pub use poll_or_ring::Error as AsyncError;
 pub use poll_or_ring::{PollOrRing, U64Source};
 pub use select::SelectResult;
 pub use uring_futures::UringSource;
+pub use uring_mem::MemRegion;
 
 use std::fmt::{self, Display};
 use std::future::Future;
