@@ -38,6 +38,13 @@ impl<R: IoSource + ?Sized + Unpin> Future for WriteMem<'_, '_, R> {
     type Output = Result<u32>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Special case writing zero bytes, no need to bother the kernel with an empty operation.
+        if let UringFutState::Init((_, _, regions)) = &self.state {
+            if regions.iter().all(|region| region.len == 0) {
+                return Poll::Ready(Ok(0));
+            }
+        }
+
         let state = std::mem::replace(&mut self.state, UringFutState::Processing);
         let (new_state, ret) = match state.advance(
             |(file_offset, mem, mem_offsets)| {
