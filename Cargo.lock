@@ -49,6 +49,16 @@ name = "assertions"
 version = "0.1.0"
 
 [[package]]
+name = "async-trait"
+version = "0.1.36"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "proc-macro2 1.0.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 1.0.14 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "audio_streams"
 version = "0.1.0"
 dependencies = [
@@ -217,12 +227,16 @@ dependencies = [
 name = "disk"
 version = "0.1.0"
 dependencies = [
+ "async-trait 0.1.36 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cros_async 0.1.0",
  "data_model 0.1.0",
+ "futures 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf 2.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "protos 0.1.0",
  "remain 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
+ "vm_memory 0.1.0",
 ]
 
 [[package]]
@@ -848,6 +862,7 @@ dependencies = [
 ]
 
 [metadata]
+"checksum async-trait 0.1.36 (registry+https://github.com/rust-lang/crates.io-index)" = "a265e3abeffdce30b2e26b7a11b222fe37c6067404001b434101457d0385eb92"
 "checksum bitflags 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "3d155346769a6855b86399e9bc3814ab343cd3d62c7e985113d46a0ec3c281fd"
 "checksum cc 1.0.25 (registry+https://github.com/rust-lang/crates.io-index)" = "f159dfd43363c4d08055a07703eb7a3406b0dac4d0584d96965a3262db3c9d16"
 "checksum cfg-if 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "0c4e7bb64a8ebb0d856483e1e682ea3422f883c5f5615a90d51a2c82fe87fdd3"

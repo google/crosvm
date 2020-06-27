@@ -3,16 +3,20 @@
 // found in the LICENSE file.
 
 use std::cmp::min;
+use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display};
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::rc::Rc;
 
+use async_trait::async_trait;
 use libc::EINVAL;
 use remain::sorted;
 use sys_util::{
     AsRawFds, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole,
     WriteZeroesAt,
 };
+use vm_memory::GuestMemory;
 
 mod qcow;
 pub use qcow::{QcowFile, QCOW_MAGIC};
@@ -33,12 +37,18 @@ pub enum Error {
     CreateAndroidSparseDisk(android_sparse::Error),
     #[cfg(feature = "composite-disk")]
     CreateCompositeDisk(composite::Error),
+    CreateSingleFileDisk(cros_async::AsyncError),
+    Fallocate(cros_async::AsyncError),
+    Fsync(cros_async::AsyncError),
     QcowError(qcow::Error),
     ReadingData(io::Error),
     ReadingHeader(io::Error),
+    ReadToMem(cros_async::AsyncError),
     SeekingFile(io::Error),
     SettingFileSize(io::Error),
     UnknownType,
+    WriteFromMem(cros_async::AsyncError),
+    WriteFromVec(cros_async::AsyncError),
     WritingData(io::Error),
 }
 
@@ -90,6 +100,22 @@ impl<
 {
 }
 
+/// A `DiskFile` that can be converted for asychronous access.
+pub trait ToAsyncDisk: DiskFile {
+    /// Convert a boxed self in to a box-wrapped implementaiton of AsyncDisk.
+    /// Used to convert a standard disk image to an async disk image. This conversion and the
+    /// inverse are needed so that the `Send` DiskImage can be given to the block thread where it is
+    /// converted to a non-`Send` AsyncDisk. The AsyncDisk can then be converted back and returned
+    /// to the main device thread if the block device is destroyed or reset.
+    fn to_async_disk(self: Box<Self>) -> Result<Box<dyn AsyncDisk>>;
+}
+
+impl ToAsyncDisk for File {
+    fn to_async_disk(self: Box<Self>) -> Result<Box<dyn AsyncDisk>> {
+        Ok(Box::new(SingleFileDisk::try_from(*self)?))
+    }
+}
+
 impl Display for Error {
     #[remain::check]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -102,12 +128,18 @@ impl Display for Error {
             CreateAndroidSparseDisk(e) => write!(f, "failure in android sparse disk: {}", e),
             #[cfg(feature = "composite-disk")]
             CreateCompositeDisk(e) => write!(f, "failure in composite disk: {}", e),
+            CreateSingleFileDisk(e) => write!(f, "failure creating single file disk: {}", e),
+            Fallocate(e) => write!(f, "failure with fallocate: {}", e),
+            Fsync(e) => write!(f, "failure with fsync: {}", e),
             QcowError(e) => write!(f, "failure in qcow: {}", e),
             ReadingData(e) => write!(f, "failed to read data: {}", e),
             ReadingHeader(e) => write!(f, "failed to read header: {}", e),
+            ReadToMem(e) => write!(f, "failed to read to memory: {}", e),
             SeekingFile(e) => write!(f, "failed to seek file: {}", e),
             SettingFileSize(e) => write!(f, "failed to set file size: {}", e),
             UnknownType => write!(f, "unknown disk type"),
+            WriteFromMem(e) => write!(f, "failed to write from memory: {}", e),
+            WriteFromVec(e) => write!(f, "failed to write from vec: {}", e),
             WritingData(e) => write!(f, "failed to write data: {}", e),
         }
     }
@@ -264,6 +296,26 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
     Ok(image_type)
 }
 
+/// Check if the image file type can be used for async disk access.
+pub fn async_ok(raw_image: &File) -> Result<bool> {
+    let image_type = detect_image_type(raw_image)?;
+    Ok(match image_type {
+        ImageType::Raw => true,
+        ImageType::Qcow2 | ImageType::AndroidSparse | ImageType::CompositeDisk => false,
+    })
+}
+
+/// Inspect the image file type and create an appropriate disk file to match it.
+pub fn create_async_disk_file(raw_image: File) -> Result<Box<dyn ToAsyncDisk>> {
+    let image_type = detect_image_type(&raw_image)?;
+    Ok(match image_type {
+        ImageType::Raw => Box::new(raw_image) as Box<dyn ToAsyncDisk>,
+        ImageType::Qcow2 | ImageType::AndroidSparse | ImageType::CompositeDisk => {
+            return Err(Error::UnknownType)
+        }
+    })
+}
+
 /// Inspect the image file type and create an appropriate disk file to match it.
 pub fn create_disk_file(raw_image: File) -> Result<Box<dyn DiskFile>> {
     let image_type = detect_image_type(&raw_image)?;
@@ -285,4 +337,204 @@ pub fn create_disk_file(raw_image: File) -> Result<Box<dyn DiskFile>> {
                 as Box<dyn DiskFile>
         }
     })
+}
+
+/// An asynchronously accessible disk.
+#[async_trait(?Send)]
+pub trait AsyncDisk {
+    /// Returns the length of the disk image.
+    fn get_len(&self) -> io::Result<u64>;
+
+    /// Sets the length of the disk image. Similar to ftruncate.
+    fn set_len(&self, len: u64) -> io::Result<()>;
+
+    /// Allocates storage for the region of the file starting at `offset` and extending `len` bytes.
+    fn allocate(&mut self, offset: u64, len: u64) -> io::Result<()>;
+
+    /// Returns the inner file consuming self.
+    fn into_inner(self: Box<Self>) -> Box<dyn ToAsyncDisk>;
+
+    /// Asynchronously fsyncs any completed operations to the disk.
+    async fn fsync(&self) -> Result<()>;
+
+    /// Reads from the file at 'file_offset' in to memory `mem` at `mem_offsets`.
+    /// `mem_offsets` is similar to an iovec except relative to the start of `mem`.
+    async fn read_to_mem<'a>(
+        &self,
+        file_offset: u64,
+        mem: Rc<GuestMemory>,
+        mem_offsets: &'a [cros_async::MemRegion],
+    ) -> Result<usize>;
+
+    /// Writes to the file at 'file_offset' from memory `mem` at `mem_offsets`.
+    async fn write_from_mem<'a>(
+        &self,
+        file_offset: u64,
+        mem: Rc<GuestMemory>,
+        mem_offsets: &'a [cros_async::MemRegion],
+    ) -> Result<usize>;
+
+    /// Replaces a range of bytes with a hole.
+    async fn punch_hole(&self, file_offset: u64, length: u64) -> Result<()>;
+
+    /// Writes up to `length` bytes of zeroes to the stream, returning how many bytes were written.
+    async fn write_zeroes(&self, file_offset: u64, length: u64) -> Result<()>;
+}
+
+use cros_async::PollOrRing;
+
+/// A disk backed by a single file that implements `AsyncDisk` for access.
+pub struct SingleFileDisk {
+    inner: PollOrRing<File>,
+}
+
+impl TryFrom<File> for SingleFileDisk {
+    type Error = Error;
+    fn try_from(inner: File) -> Result<Self> {
+        PollOrRing::new(inner)
+            .map_err(Error::CreateSingleFileDisk)
+            .map(|inner| SingleFileDisk { inner })
+    }
+}
+
+#[async_trait(?Send)]
+impl AsyncDisk for SingleFileDisk {
+    fn get_len(&self) -> io::Result<u64> {
+        self.inner.get_len()
+    }
+
+    fn set_len(&self, len: u64) -> io::Result<()> {
+        self.inner.set_len(len)
+    }
+
+    fn allocate(&mut self, offset: u64, len: u64) -> io::Result<()> {
+        self.inner.allocate(offset, len)
+    }
+
+    fn into_inner(self: Box<Self>) -> Box<dyn ToAsyncDisk> {
+        Box::new(self.inner.into_source())
+    }
+
+    async fn fsync(&self) -> Result<()> {
+        self.inner.fsync().await.map_err(Error::Fsync)
+    }
+
+    async fn read_to_mem<'a>(
+        &self,
+        file_offset: u64,
+        mem: Rc<GuestMemory>,
+        mem_offsets: &'a [cros_async::MemRegion],
+    ) -> Result<usize> {
+        self.inner
+            .read_to_mem(file_offset, mem, mem_offsets)
+            .await
+            .map_err(Error::ReadToMem)
+    }
+
+    async fn write_from_mem<'a>(
+        &self,
+        file_offset: u64,
+        mem: Rc<GuestMemory>,
+        mem_offsets: &'a [cros_async::MemRegion],
+    ) -> Result<usize> {
+        self.inner
+            .write_from_mem(file_offset, mem, mem_offsets)
+            .await
+            .map_err(Error::WriteFromMem)
+    }
+
+    async fn punch_hole(&self, file_offset: u64, length: u64) -> Result<()> {
+        self.inner
+            .fallocate(
+                file_offset,
+                length,
+                (libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE) as u32,
+            )
+            .await
+            .map_err(Error::Fallocate)
+    }
+
+    async fn write_zeroes(&self, file_offset: u64, length: u64) -> Result<()> {
+        if self
+            .inner
+            .fallocate(
+                file_offset,
+                length,
+                (libc::FALLOC_FL_ZERO_RANGE | libc::FALLOC_FL_KEEP_SIZE) as u32,
+            )
+            .await
+            .is_ok()
+        {
+            return Ok(());
+        }
+
+        // Fall back to writing zeros if fallocate doesn't work.
+        let buf_size = min(length, 0x10000);
+        let mut nwritten = 0;
+        while nwritten < length {
+            let remaining = length - nwritten;
+            let write_size = min(remaining, buf_size) as usize;
+            let buf = vec![0u8; write_size];
+            nwritten += self
+                .inner
+                .write_from_vec(file_offset + nwritten as u64, buf)
+                .await
+                .map(|(n, _)| n as u64)
+                .map_err(Error::WriteFromVec)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::fs::{File, OpenOptions};
+
+    use cros_async::MemRegion;
+    use futures::pin_mut;
+    use vm_memory::{GuestAddress, GuestMemory};
+
+    #[test]
+    fn read_async() {
+        async fn read_zeros_async() {
+            let guest_mem = Rc::new(GuestMemory::new(&[(GuestAddress(0), 4096)]).unwrap());
+            let f = File::open("/dev/zero").unwrap();
+            let async_file = SingleFileDisk::try_from(f).unwrap();
+            let result = async_file
+                .read_to_mem(
+                    0,
+                    Rc::clone(&guest_mem),
+                    &[MemRegion { offset: 0, len: 48 }],
+                )
+                .await;
+            assert_eq!(48, result.unwrap());
+        }
+
+        let fut = read_zeros_async();
+        pin_mut!(fut);
+        cros_async::run_one(fut).unwrap();
+    }
+
+    #[test]
+    fn write_async() {
+        async fn write_zeros_async() {
+            let guest_mem = Rc::new(GuestMemory::new(&[(GuestAddress(0), 4096)]).unwrap());
+            let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
+            let async_file = SingleFileDisk::try_from(f).unwrap();
+            let result = async_file
+                .write_from_mem(
+                    0,
+                    Rc::clone(&guest_mem),
+                    &[MemRegion { offset: 0, len: 48 }],
+                )
+                .await;
+            assert_eq!(48, result.unwrap());
+        }
+
+        let fut = write_zeros_async();
+        pin_mut!(fut);
+        cros_async::run_one(fut).unwrap();
+    }
 }
