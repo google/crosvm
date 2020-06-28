@@ -267,6 +267,19 @@ impl<F: AsRawFd + Unpin> U64Source<F> {
     }
 }
 
+impl<F: AsRawFd + Unpin> std::ops::Deref for U64Source<F> {
+    type Target = F;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<F: AsRawFd + Unpin> std::ops::DerefMut for U64Source<F> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::{File, OpenOptions};
