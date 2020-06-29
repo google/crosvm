@@ -479,7 +479,7 @@ impl Vm for KvmVm {
         })
     }
 
-    fn remove_memory_region(&mut self, slot: MemSlot) -> Result<()> {
+    fn remove_memory_region(&mut self, slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
         let mut regions = self.mem_regions.lock();
         if !regions.contains_key(&slot) {
             return Err(Error::new(ENOENT));
@@ -489,8 +489,8 @@ impl Vm for KvmVm {
             set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut())?;
         }
         self.mem_slot_gaps.lock().push(MemSlotOrd(slot));
-        regions.remove(&slot);
-        Ok(())
+        // This remove will always succeed because of the contains_key check above.
+        Ok(regions.remove(&slot).unwrap())
     }
 
     fn create_device(&self, kind: DeviceKind) -> Result<SafeDescriptor> {
@@ -1210,10 +1210,13 @@ mod tests {
         let mut vm = KvmVm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem_ptr = mem.as_ptr();
         let slot = vm
             .add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
             .unwrap();
-        vm.remove_memory_region(slot).unwrap();
+        let removed_mem = vm.remove_memory_region(slot).unwrap();
+        assert_eq!(removed_mem.size(), mem_size);
+        assert_eq!(removed_mem.as_ptr(), mem_ptr);
     }
 
     #[test]

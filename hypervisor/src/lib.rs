@@ -83,7 +83,7 @@ pub trait Vm: Send + Sized {
     fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()>;
 
     /// Removes and drops the `UserMemoryRegion` that was previously added at the given slot.
-    fn remove_memory_region(&mut self, slot: MemSlot) -> Result<()>;
+    fn remove_memory_region(&mut self, slot: MemSlot) -> Result<Box<dyn MappedRegion>>;
 
     /// Creates an emulated device.
     fn create_device(&self, kind: DeviceKind) -> Result<SafeDescriptor>;

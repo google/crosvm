@@ -423,7 +423,7 @@ impl Vm {
     /// Removes memory that was previously added at the given slot.
     ///
     /// Ownership of the host memory mapping associated with the given slot is returned on success.
-    pub fn remove_memory_region(&mut self, slot: u32) -> Result<()> {
+    pub fn remove_memory_region(&mut self, slot: u32) -> Result<Box<dyn MappedRegion>> {
         let mut regions = self.mem_regions.lock();
         if !regions.contains_key(&slot) {
             return Err(Error::new(ENOENT));
@@ -433,8 +433,8 @@ impl Vm {
             set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut())?;
         }
         self.mem_slot_gaps.lock().push(MemSlot(slot));
-        regions.remove(&slot);
-        Ok(())
+        // This remove will always succeed because of the contains_key check above.
+        Ok(regions.remove(&slot).unwrap())
     }
 
     pub fn mysnc_memory_region(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
@@ -2107,10 +2107,13 @@ mod tests {
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem_ptr = mem.as_ptr();
         let slot = vm
             .add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
             .unwrap();
-        vm.remove_memory_region(slot).unwrap();
+        let removed_mem = vm.remove_memory_region(slot).unwrap();
+        assert_eq!(removed_mem.size(), mem_size);
+        assert_eq!(removed_mem.as_ptr(), mem_ptr);
     }
 
     #[test]
