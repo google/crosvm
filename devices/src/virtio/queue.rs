@@ -2,9 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cell::RefCell;
 use std::cmp::min;
 use std::num::Wrapping;
 use std::os::unix::io::AsRawFd;
+use std::rc::Rc;
 use std::sync::atomic::{fence, Ordering};
 
 use base::error;
@@ -232,6 +234,11 @@ pub struct Queue {
     // Device feature bits accepted by the driver
     features: u64,
     last_used: Wrapping<u16>,
+
+    // Count of notification disables. Users of the queue can disable guest notification while
+    // processing requests. This is the count of how many are in flight(could be several contexts
+    // handling requests in parallel). When this count is zero, notifications are re-enabled.
+    notification_disable_count: usize,
 }
 
 impl Queue {
@@ -249,6 +256,7 @@ impl Queue {
             next_used: Wrapping(0),
             features: 0,
             last_used: Wrapping(0),
+            notification_disable_count: 0,
         }
     }
 
@@ -423,6 +431,12 @@ impl Queue {
     /// Enable / Disable guest notify device that requests are available on
     /// the descriptor chain.
     pub fn set_notify(&mut self, mem: &GuestMemory, enable: bool) {
+        if enable {
+            self.notification_disable_count -= 1;
+        } else {
+            self.notification_disable_count += 1;
+        }
+
         if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
             let avail_index_addr = mem.checked_offset(self.avail_ring, 2).unwrap();
             let avail_index: u16 = mem.read_obj_from_addr(avail_index_addr).unwrap();
@@ -432,7 +446,7 @@ impl Queue {
             mem.write_obj_at_addr(avail_index, avail_event_off).unwrap();
         } else {
             let mut used_flags: u16 = mem.read_obj_from_addr(self.used_ring).unwrap();
-            if enable {
+            if self.notification_disable_count == 0 {
                 used_flags &= !VIRTQ_USED_F_NO_NOTIFY;
             } else {
                 used_flags |= VIRTQ_USED_F_NO_NOTIFY;
@@ -484,6 +498,29 @@ impl Queue {
     /// Acknowledges that this set of features should be enabled on this queue.
     pub fn ack_features(&mut self, features: u64) {
         self.features |= features;
+    }
+}
+
+/// Used to temporarily disable notifications while processing a request. Notification will be
+/// re-enabled on drop.
+pub struct NotifyGuard {
+    queue: Rc<RefCell<Queue>>,
+    mem: Rc<GuestMemory>,
+}
+
+impl NotifyGuard {
+    /// Disable notifications for the lifetime of the returned guard. Useful when the caller is
+    /// processing a descriptor and doesn't need notifications of further messages from the guest.
+    pub fn new(queue: Rc<RefCell<Queue>>, mem: Rc<GuestMemory>) -> Self {
+        // Disable notification until we're done processing the next request.
+        queue.borrow_mut().set_notify(&mem, false);
+        NotifyGuard { queue, mem }
+    }
+}
+
+impl Drop for NotifyGuard {
+    fn drop(&mut self) {
+        self.queue.borrow_mut().set_notify(&self.mem, true);
     }
 }
 
