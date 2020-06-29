@@ -107,13 +107,6 @@ impl Kvm {
         })
     }
 
-    /// Makes a clone of this `Kvm` by duping its descriptor.
-    pub fn try_clone(&self) -> Result<Self> {
-        Ok(Kvm {
-            kvm: self.kvm.try_clone()?,
-        })
-    }
-
     /// Gets the size of the mmap required to use vcpu's `kvm_run` structure.
     pub fn get_vcpu_mmap_size(&self) -> Result<usize> {
         // Safe because we know that our file is a KVM fd and we verify the return result.
@@ -139,6 +132,12 @@ impl AsRawFd for Kvm {
 }
 
 impl Hypervisor for Kvm {
+    fn try_clone(&self) -> Result<Self> {
+        Ok(Kvm {
+            kvm: self.kvm.try_clone()?,
+        })
+    }
+
     fn check_capability(&self, cap: &HypervisorCap) -> bool {
         if let Ok(kvm_cap) = KvmCap::try_from(cap) {
             // this ioctl is safe because we know this kvm descriptor is valid,
@@ -599,6 +598,14 @@ thread_local!(static VCPU_THREAD: RefCell<Option<VcpuThread>> = RefCell::new(Non
 
 impl Vcpu for KvmVcpu {
     type Runnable = RunnableKvmVcpu;
+
+    fn try_clone(&self) -> Result<Self> {
+        let vcpu = self.vcpu.try_clone()?;
+        let run_mmap =
+            MemoryMapping::from_fd(&vcpu, self.run_mmap.size()).map_err(|_| Error::new(ENOSPC))?;
+
+        Ok(KvmVcpu { vcpu, run_mmap })
+    }
 
     #[allow(clippy::cast_ptr_alignment)]
     fn to_runnable(self, signal_num: Option<c_int>) -> Result<Self::Runnable> {

@@ -26,7 +26,10 @@ pub use crate::x86_64::*;
 pub type MemSlot = u32;
 
 /// A trait for checking hypervisor capabilities.
-pub trait Hypervisor {
+pub trait Hypervisor: Send + Sized {
+    /// Makes a shallow clone of this `Hypervisor`.
+    fn try_clone(&self) -> Result<Self>;
+
     /// Checks if a particular `HypervisorCap` is available.
     fn check_capability(&self, cap: &HypervisorCap) -> bool;
 }
@@ -132,7 +135,10 @@ pub trait Vm: Send + Sized {
 /// `Vcpu` provides all functionality except for running.  To run, `to_runnable` must be called to
 /// lock the vcpu to a thread.  Then the returned `RunnableVcpu` can be used for running.
 pub trait Vcpu: Send + Sized {
-    type Runnable: RunnableVcpu;
+    type Runnable: RunnableVcpu<Vcpu = Self>;
+
+    /// Makes a shallow clone of this `Vcpu`.
+    fn try_clone(&self) -> Result<Self>;
 
     /// Consumes `self` and returns a `RunnableVcpu`.  A `RunnableVcpu` is required to run the
     /// guest.  Assigns a vcpu to the current thread and stores it in a hash map that can be used

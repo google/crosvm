@@ -579,6 +579,7 @@ impl<'a> From<&'a KvmCpuId> for CpuId {
             let cpu_id_entry = CpuIdEntry {
                 function: entry.function,
                 index: entry.index,
+                flags: entry.flags,
                 eax: entry.eax,
                 ebx: entry.ebx,
                 ecx: entry.ecx,
@@ -598,6 +599,7 @@ impl From<&CpuId> for KvmCpuId {
             entries[i] = kvm_cpuid_entry2 {
                 function: e.function,
                 index: e.index,
+                flags: e.flags,
                 eax: e.eax,
                 ebx: e.ebx,
                 ecx: e.ecx,

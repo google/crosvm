@@ -98,6 +98,9 @@ pub trait VcpuX86_64: Vcpu {
 pub struct CpuIdEntry {
     pub function: u32,
     pub index: u32,
+    // flags is needed for KVM.  We store it on CpuIdEntry to preserve the flags across
+    // get_supported_cpuids() -> kvm_cpuid2 -> CpuId -> kvm_cpuid2 -> set_cpuid().
+    pub(super) flags: u32,
     pub eax: u32,
     pub ebx: u32,
     pub ecx: u32,
@@ -107,6 +110,15 @@ pub struct CpuIdEntry {
 /// A container for the list of cpu id entries for the hypervisor and underlying cpu.
 pub struct CpuId {
     pub cpu_id_entries: Vec<CpuIdEntry>,
+}
+
+impl CpuId {
+    /// Constructs a new CpuId, with space allocated for `initial_capacity` CpuIdEntries.
+    pub fn new(initial_capacity: usize) -> Self {
+        CpuId {
+            cpu_id_entries: Vec::with_capacity(initial_capacity),
+        }
+    }
 }
 
 #[bitfield]
