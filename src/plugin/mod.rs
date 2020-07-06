@@ -456,6 +456,11 @@ pub fn run_vcpus(
                             .expect("failed to set up KVM VCPU signal mask");
                     }
 
+                    #[cfg(feature = "chromeos")]
+                    if let Err(e) = sys_util::sched::enable_core_scheduling() {
+                        error!("Failed to enable core scheduling: {}", e);
+                    }
+
                     let vcpu = vcpu
                         .to_runnable(Some(SIGRTMIN() + 0))
                         .expect("Failed to set thread id");

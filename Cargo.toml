@@ -31,6 +31,7 @@ exclude = [
 
 [features]
 default = ["audio"]
+chromeos = ["sys_util/chromeos"]
 default-no-sandbox = []
 audio = ["devices/audio"]
 gpu = ["devices/gpu"]

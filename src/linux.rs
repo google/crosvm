@@ -1550,6 +1550,11 @@ fn run_vcpu(
                 }
             }
 
+            #[cfg(feature = "chromeos")]
+            if let Err(e) = sys_util::sched::enable_core_scheduling() {
+                error!("Failed to enable core scheduling: {}", e);
+            }
+
             let vcpu = runnable_vcpu(vcpu, use_kvm_signals, cpu_id);
 
             start_barrier.wait();

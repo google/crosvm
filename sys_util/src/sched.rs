@@ -62,3 +62,19 @@ pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(cpus: I) -> Result<()> {
         Ok(())
     }
 }
+
+/// Enable experimental core scheduling for the current thread.
+///
+/// If succesful, the kernel should not schedule this thread with any other thread within the same
+/// SMT core.
+#[cfg(feature = "chromeos")]
+pub fn enable_core_scheduling() -> Result<()> {
+    use libc::prctl;
+    const PR_SET_CORE_SCHED: i32 = 0x200;
+    let ret = unsafe { prctl(PR_SET_CORE_SCHED, 1) };
+    if ret == -1 {
+        errno_result()
+    } else {
+        Ok(())
+    }
+}

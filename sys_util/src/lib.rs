@@ -4,7 +4,6 @@
 
 //! Small system utility modules for usage by other modules.
 
-pub mod affinity;
 mod alloc;
 #[macro_use]
 pub mod handle_eintr;
@@ -28,6 +27,7 @@ mod passwd;
 mod poll;
 mod priority;
 mod raw_fd;
+pub mod sched;
 mod seek_hole;
 mod shm;
 pub mod signal;
@@ -38,7 +38,6 @@ mod terminal;
 mod timerfd;
 mod write_zeroes;
 
-pub use crate::affinity::*;
 pub use crate::alloc::LayoutAllocation;
 pub use crate::capabilities::drop_capabilities;
 pub use crate::clock::{Clock, FakeClock};
@@ -55,6 +54,7 @@ pub use crate::passwd::*;
 pub use crate::poll::*;
 pub use crate::priority::*;
 pub use crate::raw_fd::*;
+pub use crate::sched::*;
 pub use crate::shm::*;
 pub use crate::signal::*;
 pub use crate::signalfd::*;
