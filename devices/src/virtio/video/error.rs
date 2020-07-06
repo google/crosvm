@@ -33,7 +33,7 @@ pub enum VideoError {
     /// `libvda` returned an error.
     VdaError(libvda::Error),
     /// `libvda` returned a failure response.
-    VdaFailure(libvda::Response),
+    VdaFailure(libvda::decode::Response),
 }
 
 impl fmt::Display for VideoError {

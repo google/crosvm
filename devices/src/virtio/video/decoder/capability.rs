@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use crate::virtio::video::control::*;
 use crate::virtio::video::format::*;
 
-fn from_input_format(fmt: &libvda::InputFormat, mask: u64) -> FormatDesc {
+fn from_input_format(fmt: &libvda::decode::InputFormat, mask: u64) -> FormatDesc {
     let format = match fmt.profile {
         libvda::Profile::VP8 => Format::VP8,
         libvda::Profile::VP9Profile0 => Format::VP9,
@@ -56,7 +56,7 @@ pub struct Capability {
 }
 
 impl Capability {
-    pub fn new(caps: &libvda::Capabilities) -> Self {
+    pub fn new(caps: &libvda::decode::Capabilities) -> Self {
         // Raise the first |# of supported raw formats|-th bits because we can assume that any
         // combination of (a coded format, a raw format) is valid in Chrome.
         let mask = !(u64::max_value() << caps.output_formats.len());

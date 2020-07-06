@@ -232,7 +232,7 @@ impl VirtioDevice for VideoDevice {
             VideoDeviceType::Decoder => thread::Builder::new()
                 .name("virtio video decoder".to_owned())
                 .spawn(move || {
-                    let vda = libvda::VdaInstance::new(libvda::VdaImplType::Gavda)
+                    let vda = libvda::decode::VdaInstance::new(libvda::decode::VdaImplType::Gavda)
                         .map_err(Error::LibvdaCreationFailed)?;
                     let device = decoder::Decoder::new(&vda);
                     worker.run(cmd_queue, event_queue, device)

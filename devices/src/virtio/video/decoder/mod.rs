@@ -318,7 +318,7 @@ impl ContextMap {
 /// A thin wrapper of a map of libvda sesssions with error handlings.
 #[derive(Default)]
 struct SessionMap<'a> {
-    map: BTreeMap<u32, libvda::Session<'a>>,
+    map: BTreeMap<u32, libvda::decode::Session<'a>>,
 }
 
 impl<'a> SessionMap<'a> {
@@ -326,14 +326,14 @@ impl<'a> SessionMap<'a> {
         self.map.contains_key(&stream_id)
     }
 
-    fn get(&self, stream_id: &StreamId) -> VideoResult<&libvda::Session<'a>> {
+    fn get(&self, stream_id: &StreamId) -> VideoResult<&libvda::decode::Session<'a>> {
         self.map.get(&stream_id).ok_or_else(|| {
             error!("failed to get libvda session {}", *stream_id);
             VideoError::InvalidStreamId(*stream_id)
         })
     }
 
-    fn get_mut(&mut self, stream_id: &StreamId) -> VideoResult<&mut libvda::Session<'a>> {
+    fn get_mut(&mut self, stream_id: &StreamId) -> VideoResult<&mut libvda::decode::Session<'a>> {
         self.map.get_mut(&stream_id).ok_or_else(|| {
             error!("failed to get libvda session {}", *stream_id);
             VideoError::InvalidStreamId(*stream_id)
@@ -343,22 +343,22 @@ impl<'a> SessionMap<'a> {
     fn insert(
         &mut self,
         stream_id: StreamId,
-        session: libvda::Session<'a>,
-    ) -> Option<libvda::Session<'a>> {
+        session: libvda::decode::Session<'a>,
+    ) -> Option<libvda::decode::Session<'a>> {
         self.map.insert(stream_id, session)
     }
 }
 
 /// Represents information of a decoder backed with `libvda`.
 pub struct Decoder<'a> {
-    vda: &'a libvda::VdaInstance,
+    vda: &'a libvda::decode::VdaInstance,
     capability: Capability,
     contexts: ContextMap,
     sessions: SessionMap<'a>,
 }
 
 impl<'a> Decoder<'a> {
-    pub fn new(vda: &'a libvda::VdaInstance) -> Self {
+    pub fn new(vda: &'a libvda::decode::VdaInstance) -> Self {
         let capability = Capability::new(vda.get_capabilities());
         Decoder {
             vda,
@@ -860,7 +860,7 @@ impl<'a> Device for Decoder<'a> {
 
     fn process_event_fd(&mut self, stream_id: u32) -> Option<VideoEvtResponseType> {
         use crate::virtio::video::device::VideoEvtResponseType::*;
-        use libvda::Event::*;
+        use libvda::decode::Event::*;
 
         let session = match self.sessions.get_mut(&stream_id) {
             Ok(s) => s,
@@ -956,12 +956,12 @@ impl<'a> Device for Decoder<'a> {
             FlushResponse(resp) => {
                 let tag = AsyncCmdTag::Drain { stream_id };
                 match resp {
-                    libvda::Response::Success => Some(AsyncCmd {
+                    libvda::decode::Response::Success => Some(AsyncCmd {
                         tag,
                         resp: Ok(CmdResponse::NoData),
                     }),
                     _ => {
-                        // TODO(b/151810591): If `resp` is `libvda::Response::Canceled`,
+                        // TODO(b/151810591): If `resp` is `libvda::decode::Response::Canceled`,
                         // we should notify it to the driver in some way.
                         error!("failed to 'Flush' in VDA: {:?}", resp);
                         Some(AsyncCmd {
@@ -977,7 +977,7 @@ impl<'a> Device for Decoder<'a> {
                     queue_type: ctx.handle_reset_response()?,
                 };
                 match resp {
-                    libvda::Response::Success => Some(AsyncCmd {
+                    libvda::decode::Response::Success => Some(AsyncCmd {
                         tag,
                         resp: Ok(CmdResponse::NoData),
                     }),
