@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use libc::close;
 
 use data_model::VolatileSlice;
-use sys_util::{debug, GuestAddress, GuestMemory};
+use sys_util::{GuestAddress, GuestMemory};
 
 use crate::generated::p_defines::{
     PIPE_BIND_RENDER_TARGET, PIPE_BIND_SAMPLER_VIEW, PIPE_TEXTURE_1D, PIPE_TEXTURE_2D,
@@ -482,7 +482,7 @@ impl Renderer {
             vsnprintf(raw, len.into(), fmt, &mut varargs);
             c_str = CString::from_raw(raw);
         }
-        debug!("{}", c_str.to_string_lossy());
+        sys_util::debug!("{}", c_str.to_string_lossy());
     }
 }
 
