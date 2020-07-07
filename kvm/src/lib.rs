@@ -1616,8 +1616,7 @@ impl Vcpu {
     }
 
     /// Specifies set of signals that are blocked during execution of KVM_RUN.
-    /// Signals that are not blocked will will cause KVM_RUN to return
-    /// with -EINTR.
+    /// Signals that are not blocked will cause KVM_RUN to return with -EINTR.
     ///
     /// See the documentation for KVM_SET_SIGNAL_MASK
     pub fn set_signal_mask(&self, signals: &[c_int]) -> Result<()> {
@@ -1660,7 +1659,7 @@ impl Vcpu {
             id: reg_id,
             addr: data_ref as u64,
         };
-        // safe becuase we allocated the struct and we know the kernel will read
+        // safe because we allocated the struct and we know the kernel will read
         // exactly the size of the struct
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_ONE_REG(), &onereg) };
         if ret < 0 {
