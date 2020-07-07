@@ -30,7 +30,7 @@ use msg_socket::MsgOnSocket;
 use sys_util::{
     block_signal, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
     ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, EventFd, GuestAddress,
-    GuestMemory, MappedRegion, MemoryMapping, MmapError, Result, SIGRTMIN,
+    GuestMemory, IoctlNr, MappedRegion, MemoryMapping, MmapError, Result, SIGRTMIN,
 };
 
 pub use crate::cap::*;
@@ -116,7 +116,7 @@ impl Kvm {
     /// Gets the size of the mmap required to use vcpu's `kvm_run` structure.
     pub fn get_vcpu_mmap_size(&self) -> Result<usize> {
         // Safe because we know that our file is a KVM fd and we verify the return result.
-        let res = unsafe { ioctl(self, KVM_GET_VCPU_MMAP_SIZE() as c_ulong) };
+        let res = unsafe { ioctl(self, KVM_GET_VCPU_MMAP_SIZE()) };
         if res > 0 {
             Ok(res as usize)
         } else {
@@ -137,7 +137,7 @@ impl Kvm {
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fn get_cpuid(&self, kind: u64) -> Result<CpuId> {
+    fn get_cpuid(&self, kind: IoctlNr) -> Result<CpuId> {
         const MAX_KVM_CPUID_ENTRIES: usize = 256;
         let mut cpuid = CpuId::new(MAX_KVM_CPUID_ENTRIES);
 

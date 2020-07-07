@@ -14,7 +14,7 @@ macro_rules! ioctl_expr {
         (($dir << $crate::ioctl::_IOC_DIRSHIFT)
             | ($ty << $crate::ioctl::_IOC_TYPESHIFT)
             | ($nr << $crate::ioctl::_IOC_NRSHIFT)
-            | ($size << $crate::ioctl::_IOC_SIZESHIFT)) as ::std::os::raw::c_ulong
+            | ($size << $crate::ioctl::_IOC_SIZESHIFT)) as $crate::IoctlNr
     };
 }
 
@@ -23,13 +23,13 @@ macro_rules! ioctl_expr {
 macro_rules! ioctl_ioc_nr {
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr) => {
         #[allow(non_snake_case)]
-        pub const fn $name() -> ::std::os::raw::c_ulong {
+        pub const fn $name() -> $crate::IoctlNr {
             $crate::ioctl_expr!($dir, $ty, $nr, $size)
         }
     };
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr, $($v:ident),+) => {
         #[allow(non_snake_case)]
-        pub const fn $name($($v: ::std::os::raw::c_uint),+) -> ::std::os::raw::c_ulong {
+        pub const fn $name($($v: ::std::os::raw::c_uint),+) -> $crate::IoctlNr {
             $crate::ioctl_expr!($dir, $ty, $nr, $size)
         }
     };
@@ -139,33 +139,38 @@ pub const IOC_INOUT: c_uint = 3_221_225_472;
 pub const IOCSIZE_MASK: c_uint = 1_073_676_288;
 pub const IOCSIZE_SHIFT: c_uint = 16;
 
+#[cfg(target_os = "android")]
+pub type IoctlNr = c_int;
+#[cfg(not(target_os = "android"))]
+pub type IoctlNr = c_ulong;
+
 /// Run an ioctl with no arguments.
-pub unsafe fn ioctl<F: AsRawFd>(fd: &F, nr: c_ulong) -> c_int {
+pub unsafe fn ioctl<F: AsRawFd>(fd: &F, nr: IoctlNr) -> c_int {
     libc::ioctl(fd.as_raw_fd(), nr, 0)
 }
 
 /// Run an ioctl with a single value argument.
-pub unsafe fn ioctl_with_val<F: AsRawFd>(fd: &F, nr: c_ulong, arg: c_ulong) -> c_int {
+pub unsafe fn ioctl_with_val<F: AsRawFd>(fd: &F, nr: IoctlNr, arg: c_ulong) -> c_int {
     libc::ioctl(fd.as_raw_fd(), nr, arg)
 }
 
 /// Run an ioctl with an immutable reference.
-pub unsafe fn ioctl_with_ref<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: &T) -> c_int {
+pub unsafe fn ioctl_with_ref<F: AsRawFd, T>(fd: &F, nr: IoctlNr, arg: &T) -> c_int {
     libc::ioctl(fd.as_raw_fd(), nr, arg as *const T as *const c_void)
 }
 
 /// Run an ioctl with a mutable reference.
-pub unsafe fn ioctl_with_mut_ref<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: &mut T) -> c_int {
+pub unsafe fn ioctl_with_mut_ref<F: AsRawFd, T>(fd: &F, nr: IoctlNr, arg: &mut T) -> c_int {
     libc::ioctl(fd.as_raw_fd(), nr, arg as *mut T as *mut c_void)
 }
 
 /// Run an ioctl with a raw pointer.
-pub unsafe fn ioctl_with_ptr<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: *const T) -> c_int {
+pub unsafe fn ioctl_with_ptr<F: AsRawFd, T>(fd: &F, nr: IoctlNr, arg: *const T) -> c_int {
     libc::ioctl(fd.as_raw_fd(), nr, arg as *const c_void)
 }
 
 /// Run an ioctl with a mutable raw pointer.
-pub unsafe fn ioctl_with_mut_ptr<F: AsRawFd, T>(fd: &F, nr: c_ulong, arg: *mut T) -> c_int {
+pub unsafe fn ioctl_with_mut_ptr<F: AsRawFd, T>(fd: &F, nr: IoctlNr, arg: *mut T) -> c_int {
     libc::ioctl(fd.as_raw_fd(), nr, arg as *mut c_void)
 }
 

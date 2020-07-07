@@ -4,6 +4,7 @@
 
 use std::convert::TryInto;
 use std::os::unix::io::AsRawFd;
+use sys_util::IoctlNr;
 
 use libc::E2BIG;
 
@@ -25,7 +26,7 @@ type KvmCpuId = kvm::CpuId;
 
 fn get_cpuid_with_initial_capacity<T: AsRawFd>(
     fd: &T,
-    kind: u64,
+    kind: IoctlNr,
     initial_capacity: usize,
 ) -> Result<CpuId> {
     let mut entries: usize = initial_capacity;
@@ -59,7 +60,7 @@ fn get_cpuid_with_initial_capacity<T: AsRawFd>(
 }
 
 impl Kvm {
-    pub fn get_cpuid(&self, kind: u64) -> Result<CpuId> {
+    pub fn get_cpuid(&self, kind: IoctlNr) -> Result<CpuId> {
         const KVM_MAX_ENTRIES: usize = 256;
         get_cpuid_with_initial_capacity(self, kind, KVM_MAX_ENTRIES)
     }

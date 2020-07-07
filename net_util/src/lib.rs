@@ -16,7 +16,7 @@ use libc::EPERM;
 
 use sys_util::Error as SysError;
 use sys_util::FileReadWriteVolatile;
-use sys_util::{ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, volatile_impl};
+use sys_util::{ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, volatile_impl, IoctlNr};
 
 #[derive(Debug)]
 pub enum Error {
@@ -324,7 +324,7 @@ impl TapT for Tap {
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret = unsafe {
-            ioctl_with_mut_ref(&sock, net_sys::sockios::SIOCGIFADDR as c_ulong, &mut ifreq)
+            ioctl_with_mut_ref(&sock, net_sys::sockios::SIOCGIFADDR as IoctlNr, &mut ifreq)
         };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
@@ -345,7 +345,7 @@ impl TapT for Tap {
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret =
-            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFADDR as c_ulong, &ifreq) };
+            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFADDR as IoctlNr, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
         }
@@ -361,7 +361,7 @@ impl TapT for Tap {
         let ret = unsafe {
             ioctl_with_mut_ref(
                 &sock,
-                net_sys::sockios::SIOCGIFNETMASK as c_ulong,
+                net_sys::sockios::SIOCGIFNETMASK as IoctlNr,
                 &mut ifreq,
             )
         };
@@ -384,7 +384,7 @@ impl TapT for Tap {
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret =
-            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFNETMASK as c_ulong, &ifreq) };
+            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFNETMASK as IoctlNr, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
         }
@@ -400,7 +400,7 @@ impl TapT for Tap {
         let ret = unsafe {
             ioctl_with_mut_ref(
                 &sock,
-                net_sys::sockios::SIOCGIFHWADDR as c_ulong,
+                net_sys::sockios::SIOCGIFHWADDR as IoctlNr,
                 &mut ifreq,
             )
         };
@@ -428,7 +428,7 @@ impl TapT for Tap {
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret =
-            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFHWADDR as c_ulong, &ifreq) };
+            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFHWADDR as IoctlNr, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
         }
@@ -456,7 +456,7 @@ impl TapT for Tap {
 
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret =
-            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFFLAGS as c_ulong, &ifreq) };
+            unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFFLAGS as IoctlNr, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
         }

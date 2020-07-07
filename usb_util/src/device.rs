@@ -13,9 +13,9 @@ use std::convert::TryInto;
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::mem::size_of_val;
-use std::os::raw::{c_int, c_uint, c_ulong, c_void};
+use std::os::raw::{c_int, c_uint, c_void};
 use std::sync::Arc;
-use sys_util::handle_eintr_errno;
+use sys_util::{handle_eintr_errno, IoctlNr};
 
 /// Device represents a USB device.
 pub struct Device {
@@ -68,7 +68,7 @@ impl Device {
         self.fd.clone()
     }
 
-    unsafe fn ioctl(&self, nr: c_ulong) -> Result<i32> {
+    unsafe fn ioctl(&self, nr: IoctlNr) -> Result<i32> {
         let ret = handle_eintr_errno!(sys_util::ioctl(&*self.fd, nr));
         if ret < 0 {
             return Err(Error::IoctlFailed(nr, sys_util::Error::last()));
@@ -76,7 +76,7 @@ impl Device {
         Ok(ret)
     }
 
-    unsafe fn ioctl_with_ref<T>(&self, nr: c_ulong, arg: &T) -> Result<i32> {
+    unsafe fn ioctl_with_ref<T>(&self, nr: IoctlNr, arg: &T) -> Result<i32> {
         let ret = handle_eintr_errno!(sys_util::ioctl_with_ref(&*self.fd, nr, arg));
         if ret < 0 {
             return Err(Error::IoctlFailed(nr, sys_util::Error::last()));
@@ -84,7 +84,7 @@ impl Device {
         Ok(ret)
     }
 
-    unsafe fn ioctl_with_mut_ref<T>(&self, nr: c_ulong, arg: &mut T) -> Result<i32> {
+    unsafe fn ioctl_with_mut_ref<T>(&self, nr: IoctlNr, arg: &mut T) -> Result<i32> {
         let ret = handle_eintr_errno!(sys_util::ioctl_with_mut_ref(&*self.fd, nr, arg));
         if ret < 0 {
             return Err(Error::IoctlFailed(nr, sys_util::Error::last()));
@@ -92,7 +92,7 @@ impl Device {
         Ok(ret)
     }
 
-    unsafe fn ioctl_with_mut_ptr<T>(&self, nr: c_ulong, arg: *mut T) -> Result<i32> {
+    unsafe fn ioctl_with_mut_ptr<T>(&self, nr: IoctlNr, arg: *mut T) -> Result<i32> {
         let ret = handle_eintr_errno!(sys_util::ioctl_with_mut_ptr(&*self.fd, nr, arg));
         if ret < 0 {
             return Err(Error::IoctlFailed(nr, sys_util::Error::last()));
