@@ -115,12 +115,7 @@ ENV PLATFORM2_ROOT=/platform2
 ARG PLATFORM2_COMMIT=master
 RUN git clone https://chromium.googlesource.com/chromiumos/platform2 $PLATFORM2_ROOT \
     && cd $PLATFORM2_ROOT \
-    && git checkout $PLATFORM2_COMMIT \
-    && cd rendernodehost \
-    && gcc -c src.c -o src.o \
-    && ar rcs librendernodehost.a src.o \
-    && cp librendernodehost.a /lib \
-    && git clean -f
+    && git checkout $PLATFORM2_COMMIT
 
 # Set up sysroot from which system_api proto files are built.
 ENV SYSROOT=/sysroot
