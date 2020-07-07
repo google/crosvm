@@ -283,7 +283,7 @@ impl AsRawFd for TaggedControlSocket {
     }
 }
 
-fn get_max_open_files() -> Result<libc::rlim64_t> {
+fn get_max_open_files() -> Result<u64> {
     let mut buf = mem::MaybeUninit::<libc::rlimit64>::zeroed();
 
     // Safe because this will only modify `buf` and we check the return value.
