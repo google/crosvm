@@ -1042,9 +1042,31 @@ fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult
         .create_serial_device::<Console>(&evt, &mut keep_fds)
         .map_err(Error::CreateConsole)?;
 
+    let jail = match simple_jail(&cfg, "serial")? {
+        Some(mut jail) => {
+            // Create a tmpfs in the device's root directory so that we can bind mount the
+            // log socket directory into it.
+            // The size=67108864 is size=64*1024*1024 or size=64MB.
+            jail.mount_with_data(
+                Path::new("none"),
+                Path::new("/"),
+                "tmpfs",
+                (libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_NOSUID) as usize,
+                "size=67108864",
+            )?;
+            add_crosvm_user_to_jail(&mut jail, "serial")?;
+            let res = param.add_bind_mounts(&mut jail);
+            if res.is_err() {
+                error!("failed to add bind mounts for console device");
+            }
+            Some(jail)
+        }
+        None => None,
+    };
+
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "serial")?, // TODO(dverkamp): use a separate policy for console?
+        jail, // TODO(dverkamp): use a separate policy for console?
     })
 }
 

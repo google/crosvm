@@ -4,4 +4,6 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 
+connect: 1
+bind: 1
 openat: return ENOENT

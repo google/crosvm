@@ -5,8 +5,9 @@
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
-use std::io::{self, stdin, stdout};
+use std::io::{self, stdin, stdout, ErrorKind};
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -14,7 +15,7 @@ use std::sync::Arc;
 use devices::{Bus, ProxyDevice, Serial, SerialDevice};
 use minijail::Minijail;
 use sync::Mutex;
-use sys_util::{read_raw_stdin, syslog, EventFd};
+use sys_util::{error, info, read_raw_stdin, syslog, EventFd};
 
 use crate::DeviceRegistrationError;
 
@@ -25,6 +26,7 @@ pub enum Error {
     InvalidSerialHardware(String),
     InvalidSerialType(String),
     PathRequired,
+    SocketCreateFailed,
     Unimplemented(SerialType),
 }
 
@@ -38,6 +40,7 @@ impl Display for Error {
             InvalidSerialHardware(e) => write!(f, "invalid serial hardware: {}", e),
             InvalidSerialType(e) => write!(f, "invalid serial type: {}", e),
             PathRequired => write!(f, "serial device type file requires a path"),
+            SocketCreateFailed => write!(f, "failed to create unbound socket"),
             Unimplemented(e) => write!(f, "serial device type {} not implemented", e.to_string()),
         }
     }
@@ -50,7 +53,7 @@ pub enum SerialType {
     Stdout,
     Sink,
     Syslog,
-    UnixSocket, // NOT IMPLEMENTED
+    UnixSocket,
 }
 
 impl Display for SerialType {
@@ -107,6 +110,95 @@ impl FromStr for SerialHardware {
             "virtio-console" => Ok(SerialHardware::VirtioConsole),
             _ => Err(Error::InvalidSerialHardware(s.to_string())),
         }
+    }
+}
+
+struct WriteSocket {
+    sock: UnixDatagram,
+    path: PathBuf,
+    buf: String,
+}
+
+const BUF_CAPACITY: usize = 1024;
+
+impl WriteSocket {
+    pub fn new(s: UnixDatagram, p: PathBuf) -> WriteSocket {
+        WriteSocket {
+            sock: s,
+            path: p,
+            buf: String::with_capacity(BUF_CAPACITY),
+        }
+    }
+
+    // |send_buf| uses an immutable |self|, even though its |sock| is possibly
+    // going be modified. This is needed to allow the mutating of |buf| between
+    // calls to |send_buf| in the io::Write impl.
+    pub fn send_buf(&self, buf: &[u8]) -> io::Result<usize> {
+        // It's possible we aren't yet connected to the socket. Always try once
+        // to reconnect if sending fails.
+        const SEND_RETRY: usize = 2;
+        let mut sent = 0;
+        for _ in 0..SEND_RETRY {
+            match self.sock.send(&buf[..]) {
+                Ok(bytes_sent) => {
+                    sent = bytes_sent;
+                    break;
+                }
+                Err(e) => match e.kind() {
+                    ErrorKind::ConnectionRefused
+                    | ErrorKind::ConnectionReset
+                    | ErrorKind::ConnectionAborted
+                    | ErrorKind::NotConnected
+                    | ErrorKind::Other => match self.sock.connect(self.path.as_path()) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            info!("Couldn't connect {:?}", e);
+                            break;
+                        }
+                    },
+                    _ => {
+                        info!("Send error: {:?}", e);
+                    }
+                },
+            }
+        }
+        Ok(sent)
+    }
+}
+
+impl io::Write for WriteSocket {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let parsed_str = String::from_utf8_lossy(buf);
+
+        let last_newline_idx = match parsed_str.rfind('\n') {
+            Some(newline_idx) => Some(self.buf.len() + newline_idx),
+            None => None,
+        };
+        self.buf.push_str(&parsed_str);
+
+        match last_newline_idx {
+            Some(last_newline_idx) => {
+                for line in (self.buf[..last_newline_idx]).lines() {
+                    if self.send_buf(line.as_bytes()).is_err() {
+                        break;
+                    }
+                }
+                self.buf.drain(..=last_newline_idx);
+            }
+            None => {
+                if self.buf.len() >= BUF_CAPACITY {
+                    if let Err(e) = self.send_buf(self.buf.as_bytes()) {
+                        info!("Couldn't send full buffer. {:?}", e);
+                    }
+                    self.buf.clear();
+                }
+            }
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -180,9 +272,39 @@ impl SerialParameters {
                 }
                 None => return Err(Error::PathRequired),
             },
-            SerialType::UnixSocket => return Err(Error::Unimplemented(SerialType::UnixSocket)),
+            SerialType::UnixSocket => match &self.path {
+                Some(path) => {
+                    let sock = match UnixDatagram::bind(path).map_err(Error::FileError) {
+                        Ok(sock) => sock,
+                        Err(e) => {
+                            error!("Couldn't bind: {:?}", e);
+                            UnixDatagram::unbound().map_err(Error::FileError)?
+                        }
+                    };
+                    keep_fds.push(sock.as_raw_fd());
+                    Some(Box::new(WriteSocket::new(sock, path.to_path_buf())))
+                }
+                None => return Err(Error::PathRequired),
+            },
         };
         Ok(T::new(evt_fd, input, output, keep_fds.to_vec()))
+    }
+
+    pub fn add_bind_mounts(&self, jail: &mut Minijail) -> Result<(), minijail::Error> {
+        if let Some(path) = &self.path {
+            match self.type_ {
+                SerialType::UnixSocket => {
+                    if let Some(parent) = path.as_path().parent() {
+                        if parent.exists() {
+                            info!("Bind mounting dir {}", parent.display());
+                            jail.mount_bind(parent, parent, true)?;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 }
 
