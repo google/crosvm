@@ -217,6 +217,12 @@ impl RendererFlags {
         const GFXSTREAM_RENDERER_FLAGS_NO_SYNCFD_BIT: u32 = 1 << 20;
         self.set_flag(GFXSTREAM_RENDERER_FLAGS_NO_SYNCFD_BIT, !v)
     }
+
+    #[cfg(feature = "gfxstream")]
+    pub fn support_vulkan(self, v: bool) -> RendererFlags {
+        const GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT: u32 = 1 << 5;
+        self.set_flag(GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT, !v)
+    }
 }
 
 impl From<RendererFlags> for i32 {
