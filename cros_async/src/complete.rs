@@ -10,6 +10,7 @@ use std::pin::Pin;
 use std::task::Context;
 
 use futures::future::{maybe_done, FutureExt, MaybeDone};
+use futures::task::waker_ref;
 
 use crate::executor::{FutureList, FutureState, UnitFutures};
 
@@ -55,8 +56,9 @@ macro_rules! generate {
 
                     let mut complete = true;
                     $(
-                        if self.[<$Fut _state>].needs_poll.replace(false) {
-                            let mut ctx = Context::from_waker(&self.[<$Fut _state>].waker);
+                        if self.[<$Fut _state>].needs_poll.swap(false) {
+                            let waker = waker_ref(&self.[<$Fut _state>].needs_poll);
+                            let mut ctx = Context::from_waker(&waker);
                             // The future impls `Unpin`, use `poll_unpin` to avoid wrapping it in
                             // `Pin` to call `poll`.
                             complete &= self.$Fut.poll_unpin(&mut ctx).is_ready();

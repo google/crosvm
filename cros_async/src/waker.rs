@@ -2,47 +2,38 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::task::{RawWaker, RawWakerVTable};
+use std::sync::Arc;
+
+use futures::task::ArcWake;
 
 /// Wrapper around a u64 used as a token to uniquely identify a pending waker.
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub(crate) struct WakerToken(pub(crate) u64);
 
-// Boiler-plate for creating a waker with function pointers.
-// This waker sets the atomic bool it is passed to true.
-// The bool will be used by the executor to know which futures to poll
+/// Raw waker used by executors. Associated with a single future and used to indicate whether that
+/// future needs to be polled.
+pub(crate) struct NeedsPoll(AtomicBool);
 
-// Convert the pointer back to the Rc it was created from and drop it.
-unsafe fn waker_drop(data_ptr: *const ()) {
-    // from_raw, then drop
-    let _rc_bool = Rc::<AtomicBool>::from_raw(data_ptr as *const _);
+impl NeedsPoll {
+    /// Creates a new `NeedsPoll` initialized to `true`.
+    pub fn new() -> Arc<NeedsPoll> {
+        Arc::new(NeedsPoll(AtomicBool::new(true)))
+    }
+
+    /// Returns the current value of this `NeedsPoll`.
+    pub fn get(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+
+    /// Changes the internal value to `val` and returns the old value.
+    pub fn swap(&self, val: bool) -> bool {
+        self.0.swap(val, Ordering::AcqRel)
+    }
 }
 
-unsafe fn waker_wake(data_ptr: *const ()) {
-    waker_wake_by_ref(data_ptr)
-}
-
-// Called when the bool should be set to true to wake the waker.
-unsafe fn waker_wake_by_ref(data_ptr: *const ()) {
-    let bool_atomic_ptr = data_ptr as *const AtomicBool;
-    let bool_atomic_ref = bool_atomic_ptr.as_ref().unwrap();
-    bool_atomic_ref.store(true, Ordering::Relaxed);
-}
-
-// The data_ptr will be a pointer to an Rc<AtomicBool>.
-unsafe fn waker_clone(data_ptr: *const ()) -> RawWaker {
-    let rc_bool = Rc::<AtomicBool>::from_raw(data_ptr as *const _);
-    let new_ptr = rc_bool.clone();
-    Rc::into_raw(rc_bool); // Don't decrement the ref count of the original, so back to raw.
-    create_waker(Rc::into_raw(new_ptr) as *const _)
-}
-
-static WAKER_VTABLE: RawWakerVTable =
-    RawWakerVTable::new(waker_clone, waker_wake, waker_wake_by_ref, waker_drop);
-
-/// To use safely, data_ptr must be from Rc<AtomicBool>::from_raw().
-pub unsafe fn create_waker(data_ptr: *const ()) -> RawWaker {
-    RawWaker::new(data_ptr, &WAKER_VTABLE)
+impl ArcWake for NeedsPoll {
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        arc_self.0.store(true, Ordering::Release);
+    }
 }
