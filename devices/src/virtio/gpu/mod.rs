@@ -67,6 +67,8 @@ pub struct GpuParameters {
     pub renderer_use_gles: bool,
     pub renderer_use_glx: bool,
     pub renderer_use_surfaceless: bool,
+    #[cfg(feature = "gfxstream")]
+    pub gfxstream_use_syncfd: bool,
     pub mode: GpuMode,
 }
 
@@ -88,6 +90,8 @@ impl Default for GpuParameters {
             renderer_use_gles: true,
             renderer_use_glx: false,
             renderer_use_surfaceless: true,
+            #[cfg(feature = "gfxstream")]
+            gfxstream_use_syncfd: true,
             mode: GpuMode::Mode3D,
         }
     }
@@ -1030,6 +1034,8 @@ impl Gpu {
             .use_gles(gpu_parameters.renderer_use_gles)
             .use_glx(gpu_parameters.renderer_use_glx)
             .use_surfaceless(gpu_parameters.renderer_use_surfaceless);
+        #[cfg(feature = "gfxstream")]
+        let renderer_flags = renderer_flags.use_syncfd(gpu_parameters.gfxstream_use_syncfd);
 
         let backend_kind = match gpu_parameters.mode {
             GpuMode::Mode2D => BackendKind::Virtio2D,

@@ -217,6 +217,21 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                         });
                     }
                 },
+                #[cfg(feature = "gfxstream")]
+                "syncfd" => match v {
+                    "true" | "" => {
+                        gpu_params.gfxstream_use_syncfd = true;
+                    }
+                    "false" => {
+                        gpu_params.gfxstream_use_syncfd = false;
+                    }
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: String::from("gpu parameter 'syncfd' should be a boolean"),
+                        });
+                    }
+                },
                 "width" => {
                     gpu_params.display_width =
                         v.parse::<u32>()
@@ -1417,6 +1432,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                                   egl[=true|=false] - If the virtio-gpu backend should use a EGL context for rendering.
                                   glx[=true|=false] - If the virtio-gpu backend should use a GLX context for rendering.
                                   surfaceless[=true|=false] - If the virtio-gpu backend should use a surfaceless context for rendering.
+                                  syncfd[=true|=false] - If the gfxstream backend should support EGL_ANDROID_native_fence_sync
                                   "),
           #[cfg(feature = "tpm")]
           Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),

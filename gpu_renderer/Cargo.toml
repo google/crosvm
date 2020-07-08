@@ -6,6 +6,7 @@ edition = "2018"
 
 [features]
 virtio-gpu-next = []
+gfxstream = []
 
 [dependencies]
 data_model = { path = "../data_model" }

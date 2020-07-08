@@ -11,7 +11,7 @@ video-decoder = ["libvda"]
 video-encoder = ["libvda"]
 wl-dmabuf = []
 x = ["gpu_display/x"]
-gfxstream = ["gpu"]
+gfxstream = ["gpu", "gpu_renderer/gfxstream"]
 
 [dependencies]
 acpi_tables = {path = "../acpi_tables" }

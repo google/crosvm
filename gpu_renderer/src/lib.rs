@@ -211,6 +211,12 @@ impl RendererFlags {
     pub fn use_gles(self, v: bool) -> RendererFlags {
         self.set_flag(VIRGL_RENDERER_USE_GLES, v)
     }
+
+    #[cfg(feature = "gfxstream")]
+    pub fn use_syncfd(self, v: bool) -> RendererFlags {
+        const GFXSTREAM_RENDERER_FLAGS_NO_SYNCFD_BIT: u32 = 1 << 20;
+        self.set_flag(GFXSTREAM_RENDERER_FLAGS_NO_SYNCFD_BIT, !v)
+    }
 }
 
 impl From<RendererFlags> for i32 {
