@@ -97,6 +97,7 @@ pub struct URingContext {
     io_vecs: Vec<libc::iovec>,
     in_flight: usize, // The number of pending operations.
     added: usize,     // The number of ops added since the last call to `io_uring_enter`.
+    num_sqes: usize,  // The total number of sqes allocated in shared memory.
     stats: URingStats,
 }
 
@@ -164,6 +165,7 @@ impl URingContext {
                     num_sqe
                 ],
                 added: 0,
+                num_sqes: ring_params.sq_entries as usize,
                 in_flight: 0,
                 stats: Default::default(),
             })
@@ -176,6 +178,10 @@ impl URingContext {
     where
         F: FnMut(&mut io_uring_sqe, &mut libc::iovec),
     {
+        if self.added == self.num_sqes {
+            return Err(Error::NoSpace);
+        }
+
         // Find the next free submission entry in the submit ring and fill it with an iovec.
         // The below raw pointer derefs are safe because the memory the pointers use lives as long
         // as the mmap in self.
@@ -474,22 +480,35 @@ impl URingContext {
         let completed = self.complete_ring.num_completed();
         self.stats.total_complete = self.stats.total_complete.wrapping_add(completed as u64);
         self.in_flight -= completed;
-        self.in_flight += self.added;
         self.stats.total_ops = self.stats.total_ops.wrapping_add(self.added as u64);
-        if self.in_flight > 0 {
+        if self.in_flight > 0 || self.added > 0 {
             unsafe {
                 self.stats.total_enter_calls = self.stats.total_enter_calls.wrapping_add(1);
                 // Safe because the only memory modified is in the completion queue.
-                io_uring_enter(
+                let ret = io_uring_enter(
                     self.ring_file.as_raw_fd(),
                     self.added as u64,
                     1,
                     IORING_ENTER_GETEVENTS,
-                )
-                .map_err(Error::RingEnter)?;
+                );
+                match ret {
+                    Ok(_) => {
+                        self.in_flight += self.added;
+                        self.added = 0;
+                    }
+                    Err(e) => {
+                        if e != libc::EBUSY {
+                            return Err(Error::RingEnter(e));
+                        }
+                        // An ebusy return means that some completed events must be processed before
+                        // submitting more, wait for some to finish without pushing the new sqes in
+                        // that case.
+                        io_uring_enter(self.ring_file.as_raw_fd(), 0, 1, IORING_ENTER_GETEVENTS)
+                            .map_err(Error::RingEnter)?;
+                    }
+                }
             }
         }
-        self.added = 0;
 
         // The CompletionQueue will iterate all completed ops.
         Ok(&mut self.complete_ring)
@@ -1074,5 +1093,48 @@ mod tests {
         let (user_data, res) = uring.wait().unwrap().next().unwrap();
         assert_eq!(user_data, 454 as UserData);
         assert_eq!(res.unwrap(), 1 as u32);
+    }
+
+    #[test]
+    fn queue_many_ebusy_retry() {
+        let num_entries = 16;
+        let f = File::open(Path::new("/dev/zero")).unwrap();
+        let mut uring = URingContext::new(num_entries).unwrap();
+        // Fill the sumbit ring.
+        for sqe_batch in 0..3 {
+            for i in 0..num_entries {
+                uring
+                    .add_poll_fd(
+                        f.as_raw_fd(),
+                        &WatchingEvents::empty().set_read(),
+                        (sqe_batch * num_entries + i) as u64,
+                    )
+                    .unwrap();
+            }
+            uring.submit().unwrap();
+        }
+        // Adding more than the number of cqes will cause the uring to return ebusy, make sure that
+        // is handled cleanly and wait still returns the completed entries.
+        uring
+            .add_poll_fd(
+                f.as_raw_fd(),
+                &WatchingEvents::empty().set_read(),
+                (num_entries * 3) as u64,
+            )
+            .unwrap();
+        // The first wait call should return the cques that are already filled.
+        {
+            let mut results = uring.wait().unwrap();
+            for _i in 0..num_entries * 2 {
+                assert_eq!(results.next().unwrap().1.unwrap(), 1 as u32);
+            }
+            assert!(results.next().is_none());
+        }
+        // The second will finish submitting any more sqes and return the rest.
+        let mut results = uring.wait().unwrap();
+        for _i in 0..num_entries + 1 {
+            assert_eq!(results.next().unwrap().1.unwrap(), 1 as u32);
+        }
+        assert!(results.next().is_none());
     }
 }
