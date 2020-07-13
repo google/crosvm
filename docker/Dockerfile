@@ -150,6 +150,7 @@ RUN mkdir -p $AOSP_EXTERNAL_ROOT
 # minijail does not exist in upstream linux distros.
 RUN git clone https://android.googlesource.com/platform/external/minijail $AOSP_EXTERNAL_ROOT/minijail \
     && cd $AOSP_EXTERNAL_ROOT/minijail \
+    && git checkout $MINIJAIL_COMMIT \
     && make -j$(nproc) \
     && cp libminijail.so /usr/lib/x86_64-linux-gnu/
 
