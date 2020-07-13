@@ -6,7 +6,14 @@ use std::fmt::{self, Display};
 use std::io;
 use std::result;
 
-use libc::__errno_location;
+#[cfg(all(target_os = "android", test))]
+unsafe fn errno_location() -> *mut libc::c_int {
+    libc::__errno()
+}
+#[cfg(all(target_os = "linux", test))]
+unsafe fn errno_location() -> *mut libc::c_int {
+    libc::__errno_location()
+}
 
 /// An error number, retrieved from errno (man 3 errno), set by a libc
 /// function that returned an error.
@@ -25,7 +32,7 @@ impl Error {
     /// The result of this only has any meaning just after a libc call that returned a value
     /// indicating errno was set.
     pub fn last() -> Error {
-        Error(unsafe { *__errno_location() })
+        Error(io::Error::last_os_error().raw_os_error().unwrap())
     }
 
     /// Gets the errno for this error
@@ -65,6 +72,6 @@ pub fn errno_result<T>() -> Result<T> {
 #[cfg(test)]
 pub fn set_errno(e: i32) {
     unsafe {
-        *__errno_location() = e;
+        *errno_location() = e;
     }
 }

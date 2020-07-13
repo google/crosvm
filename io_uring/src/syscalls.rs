@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::io::Error;
 use std::os::unix::io::RawFd;
 use std::ptr::null_mut;
 
@@ -20,7 +21,7 @@ pub unsafe fn io_uring_setup(num_entries: usize, params: &io_uring_params) -> Re
         params as *const _,
     );
     if ret < 0 {
-        return Err(*libc::__errno_location());
+        return Err(Error::last_os_error().raw_os_error().unwrap());
     }
     Ok(ret as RawFd)
 }
@@ -35,7 +36,7 @@ pub unsafe fn io_uring_enter(fd: RawFd, to_submit: u64, to_wait: u64, flags: u32
         null_mut::<*mut c_void>(),
     );
     if ret < 0 {
-        return Err(*libc::__errno_location());
+        return Err(Error::last_os_error().raw_os_error().unwrap());
     }
     Ok(())
 }
