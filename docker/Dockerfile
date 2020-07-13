@@ -35,13 +35,13 @@ RUN apt-get update && apt-get install -y \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.42.0 \
+    RUST_VERSION=1.44.1 \
     RUSTFLAGS='--cfg hermetic'
 
 # Debian usually has an old rust version in the repository. Instead of using that, we use rustup to
 # pull in a toolchain versions of our choosing.
-RUN curl -LO "https://static.rust-lang.org/rustup/archive/1.21.1/x86_64-unknown-linux-gnu/rustup-init" \
-    && echo "ad1f8b5199b3b9e231472ed7aa08d2e5d1d539198a15c5b1e53c746aad81d27b *rustup-init" | sha256sum -c - \
+RUN curl -LO "https://static.rust-lang.org/rustup/archive/1.22.1/x86_64-unknown-linux-gnu/rustup-init" \
+    && echo "49c96f3f74be82f4752b8bffcf81961dea5e6e94ce1ccba94435f12e871c3bdb *rustup-init" | sha256sum -c - \
     && chmod +x rustup-init \
     && ./rustup-init -y --no-modify-path --default-toolchain $RUST_VERSION \
     && rm rustup-init \
@@ -57,6 +57,9 @@ RUN cargo install thisiznotarealpackage -q || true
 # Used /scratch for building dependencies which are too new or don't exist on Debian stretch.
 WORKDIR /scratch
 
+# Suppress warnings about detached HEAD, which will happen a lot and is meaningless in this context.
+RUN git config --global advice.detachedHead false
+
 # New libepoxy and libdrm-dev requires newer meson than is in Debian stretch.
 ARG MESON_COMMIT=master
 RUN git clone https://github.com/mesonbuild/meson \
@@ -67,7 +70,7 @@ RUN git clone https://github.com/mesonbuild/meson \
 # The libdrm-dev in distro can be too old to build minigbm,
 # so we build it from upstream.
 ARG DRM_COMMIT=master
-RUN git clone https://gitlab.freedesktop.org/mesa/drm \
+RUN git clone https://gitlab.freedesktop.org/mesa/drm.git/ \
     && cd drm \
     && git checkout $DRM_COMMIT \
     && meson build \
