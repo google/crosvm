@@ -8,7 +8,7 @@ use std::ffi::CString;
 use std::fs;
 use std::io::{self, Cursor, Read, Write};
 use std::mem;
-use std::os::linux::fs::MetadataExt;
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::{DirBuilderExt, FileExt, OpenOptionsExt};
 use std::os::unix::io::AsRawFd;
 use std::path::{Component, Path, PathBuf};
@@ -121,8 +121,8 @@ fn metadata_to_qid(metadata: &fs::Metadata) -> Qid {
     Qid {
         ty,
         // TODO: deal with the 2038 problem before 2038
-        version: metadata.st_mtime() as u32,
-        path: metadata.st_ino(),
+        version: metadata.mtime() as u32,
+        path: metadata.ino(),
     }
 }
 
@@ -609,20 +609,20 @@ impl Server {
         Ok(Rmessage::GetAttr(Rgetattr {
             valid: P9_GETATTR_BASIC,
             qid: metadata_to_qid(&fid.metadata),
-            mode: fid.metadata.st_mode(),
-            uid: fid.metadata.st_uid(),
-            gid: fid.metadata.st_gid(),
-            nlink: fid.metadata.st_nlink(),
-            rdev: fid.metadata.st_rdev(),
-            size: fid.metadata.st_size(),
-            blksize: fid.metadata.st_blksize(),
-            blocks: fid.metadata.st_blocks(),
-            atime_sec: fid.metadata.st_atime() as u64,
-            atime_nsec: fid.metadata.st_atime_nsec() as u64,
-            mtime_sec: fid.metadata.st_mtime() as u64,
-            mtime_nsec: fid.metadata.st_mtime_nsec() as u64,
-            ctime_sec: fid.metadata.st_ctime() as u64,
-            ctime_nsec: fid.metadata.st_ctime_nsec() as u64,
+            mode: fid.metadata.mode(),
+            uid: fid.metadata.uid(),
+            gid: fid.metadata.gid(),
+            nlink: fid.metadata.nlink(),
+            rdev: fid.metadata.rdev(),
+            size: fid.metadata.size(),
+            blksize: fid.metadata.blksize(),
+            blocks: fid.metadata.blocks(),
+            atime_sec: fid.metadata.atime() as u64,
+            atime_nsec: fid.metadata.atime_nsec() as u64,
+            mtime_sec: fid.metadata.mtime() as u64,
+            mtime_nsec: fid.metadata.mtime_nsec() as u64,
+            ctime_sec: fid.metadata.ctime() as u64,
+            ctime_nsec: fid.metadata.ctime_nsec() as u64,
             btime_sec: 0,
             btime_nsec: 0,
             gen: 0,
