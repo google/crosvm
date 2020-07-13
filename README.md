@@ -208,6 +208,12 @@ checking in a change. This is different from `cargo fmt --all` which formats
 multiple crates but a single workspace only; crosvm consists of multiple
 workspaces.
 
+#### `clippy`
+
+The `clippy` linter is used to check for common Rust problems.  The crosvm
+project uses a specific set of `clippy` checks; please run `bin/clippy` before
+checking in a change.
+
 #### Dependencies
 
 With a few exceptions, external dependencies inside of the `Cargo.toml` files
