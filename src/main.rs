@@ -119,6 +119,10 @@ fn parse_cpu_set(s: &str) -> argument::Result<Vec<usize>> {
 #[cfg(feature = "gpu")]
 fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
     let mut gpu_params: GpuParameters = Default::default();
+    #[cfg(feature = "gfxstream")]
+    let mut vulkan_specified = false;
+    #[cfg(feature = "gfxstream")]
+    let mut syncfd_specified = false;
 
     if let Some(s) = s {
         let opts = s
@@ -220,35 +224,45 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                     }
                 },
                 #[cfg(feature = "gfxstream")]
-                "syncfd" => match v {
-                    "true" | "" => {
-                        gpu_params.gfxstream_use_syncfd = true;
+                "syncfd" => {
+                    syncfd_specified = true;
+                    match v {
+                        "true" | "" => {
+                            gpu_params.gfxstream_use_syncfd = true;
+                        }
+                        "false" => {
+                            gpu_params.gfxstream_use_syncfd = false;
+                        }
+                        _ => {
+                            return Err(argument::Error::InvalidValue {
+                                value: v.to_string(),
+                                expected: String::from(
+                                    "gpu parameter 'syncfd' should be a boolean",
+                                ),
+                            });
+                        }
                     }
-                    "false" => {
-                        gpu_params.gfxstream_use_syncfd = false;
-                    }
-                    _ => {
-                        return Err(argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from("gpu parameter 'syncfd' should be a boolean"),
-                        });
-                    }
-                },
+                }
                 #[cfg(feature = "gfxstream")]
-                "vulkan" => match v {
-                    "true" | "" => {
-                        gpu_params.gfxstream_support_vulkan = true;
+                "vulkan" => {
+                    vulkan_specified = true;
+                    match v {
+                        "true" | "" => {
+                            gpu_params.gfxstream_support_vulkan = true;
+                        }
+                        "false" => {
+                            gpu_params.gfxstream_support_vulkan = false;
+                        }
+                        _ => {
+                            return Err(argument::Error::InvalidValue {
+                                value: v.to_string(),
+                                expected: String::from(
+                                    "gpu parameter 'vulkan' should be a boolean",
+                                ),
+                            });
+                        }
                     }
-                    "false" => {
-                        gpu_params.gfxstream_support_vulkan = false;
-                    }
-                    _ => {
-                        return Err(argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from("gpu parameter 'vulkan' should be a boolean"),
-                        });
-                    }
-                },
+                }
                 "width" => {
                     gpu_params.display_width =
                         v.parse::<u32>()
@@ -275,6 +289,21 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                         "gpu parameter {}",
                         k
                     )));
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "gfxstream")]
+    {
+        if vulkan_specified || syncfd_specified {
+            match gpu_params.mode {
+                GpuMode::ModeGfxStream => {}
+                _ => {
+                    return Err(argument::Error::UnknownArgument(
+                        "gpu parameter vulkan and syncfd are only supported for gfxstream backend"
+                            .to_string(),
+                    ));
                 }
             }
         }
@@ -2328,5 +2357,73 @@ mod tests {
             config.virtio_single_touch.unwrap().get_size(),
             (touch_width, touch_height)
         );
+    }
+
+    #[cfg(all(feature = "gpu", feature = "gfxstream"))]
+    #[test]
+    fn parse_gpu_options_gfxstream_with_vulkan_specified() {
+        assert!(
+            parse_gpu_options(Some("backend=gfxstream,vulkan=true"))
+                .unwrap()
+                .gfxstream_support_vulkan
+        );
+        assert!(
+            parse_gpu_options(Some("vulkan=true,backend=gfxstream"))
+                .unwrap()
+                .gfxstream_support_vulkan
+        );
+        assert!(
+            !parse_gpu_options(Some("backend=gfxstream,vulkan=false"))
+                .unwrap()
+                .gfxstream_support_vulkan
+        );
+        assert!(
+            !parse_gpu_options(Some("vulkan=false,backend=gfxstream"))
+                .unwrap()
+                .gfxstream_support_vulkan
+        );
+        assert!(parse_gpu_options(Some("backend=gfxstream,vulkan=invalid_value")).is_err());
+        assert!(parse_gpu_options(Some("vulkan=invalid_value,backend=gfxstream")).is_err());
+    }
+
+    #[cfg(all(feature = "gpu", feature = "gfxstream"))]
+    #[test]
+    fn parse_gpu_options_not_gfxstream_with_vulkan_specified() {
+        assert!(parse_gpu_options(Some("backend=3d,vulkan=true")).is_err());
+        assert!(parse_gpu_options(Some("vulkan=true,backend=3d")).is_err());
+    }
+
+    #[cfg(all(feature = "gpu", feature = "gfxstream"))]
+    #[test]
+    fn parse_gpu_options_gfxstream_with_syncfd_specified() {
+        assert!(
+            parse_gpu_options(Some("backend=gfxstream,syncfd=true"))
+                .unwrap()
+                .gfxstream_use_syncfd
+        );
+        assert!(
+            parse_gpu_options(Some("syncfd=true,backend=gfxstream"))
+                .unwrap()
+                .gfxstream_use_syncfd
+        );
+        assert!(
+            !parse_gpu_options(Some("backend=gfxstream,syncfd=false"))
+                .unwrap()
+                .gfxstream_use_syncfd
+        );
+        assert!(
+            !parse_gpu_options(Some("syncfd=false,backend=gfxstream"))
+                .unwrap()
+                .gfxstream_use_syncfd
+        );
+        assert!(parse_gpu_options(Some("backend=gfxstream,syncfd=invalid_value")).is_err());
+        assert!(parse_gpu_options(Some("syncfd=invalid_value,backend=gfxstream")).is_err());
+    }
+
+    #[cfg(all(feature = "gpu", feature = "gfxstream"))]
+    #[test]
+    fn parse_gpu_options_not_gfxstream_with_syncfd_specified() {
+        assert!(parse_gpu_options(Some("backend=3d,syncfd=true")).is_err());
+        assert!(parse_gpu_options(Some("syncfd=true,backend=3d")).is_err());
     }
 }
