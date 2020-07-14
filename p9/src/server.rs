@@ -540,8 +540,8 @@ impl Server {
         }
 
         let file = fs::OpenOptions::new()
-            .read(false)
-            .write(true)
+            .read((lcreate.flags & P9_NOACCESS) == 0 || (lcreate.flags & P9_RDWR) != 0)
+            .write((lcreate.flags & P9_WRONLY) != 0 || (lcreate.flags & P9_RDWR) != 0)
             .truncate(true)
             .create(true)
             .append((lcreate.flags & P9_APPEND) != 0)
