@@ -6,15 +6,6 @@ use std::fmt::{self, Display};
 use std::io;
 use std::result;
 
-#[cfg(all(target_os = "android", test))]
-unsafe fn errno_location() -> *mut libc::c_int {
-    libc::__errno()
-}
-#[cfg(all(target_os = "linux", test))]
-unsafe fn errno_location() -> *mut libc::c_int {
-    libc::__errno_location()
-}
-
 /// An error number, retrieved from errno (man 3 errno), set by a libc
 /// function that returned an error.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -64,14 +55,4 @@ impl Display for Error {
 /// Returns the last errno as a Result that is always an error.
 pub fn errno_result<T>() -> Result<T> {
     Err(Error::last())
-}
-
-/// Sets errno to given error code.
-/// Only defined when we compile tests as normal code does not
-/// normally need set errno.
-#[cfg(test)]
-pub fn set_errno(e: i32) {
-    unsafe {
-        *errno_location() = e;
-    }
 }
