@@ -371,16 +371,15 @@ impl arch::LinuxArch for X8664arch {
         let mut vcpus = Vec::with_capacity(vcpu_count as usize);
         for cpu_id in 0..vcpu_count {
             let vcpu = Vcpu::new(cpu_id as libc::c_ulong, &kvm, &vm).map_err(Error::CreateVcpu)?;
-            if let VmImage::Kernel(_) = components.vm_image {
-                Self::configure_vcpu(
-                    vm.get_memory(),
-                    &kvm,
-                    &vm,
-                    &vcpu,
-                    cpu_id as u64,
-                    vcpu_count as u64,
-                )?;
-            }
+            Self::configure_vcpu(
+                vm.get_memory(),
+                &kvm,
+                &vm,
+                &vcpu,
+                cpu_id as u64,
+                vcpu_count as u64,
+                &components.vm_image,
+            )?;
             vcpus.push(vcpu);
         }
 
@@ -941,13 +940,12 @@ impl X8664arch {
     /// # Arguments
     ///
     /// * `guest_mem` - The memory to be used by the guest.
-    /// * `kernel_load_offset` - Offset in bytes from `guest_mem` at which the
-    ///                          kernel starts.
     /// * `kvm` - The /dev/kvm object that created vcpu.
     /// * `vm` - The VM object associated with this VCPU.
     /// * `vcpu` - The VCPU object to configure.
     /// * `cpu_id` - The id of the given `vcpu`.
     /// * `num_cpus` - Number of virtual CPUs the guest will have.
+    /// * `image_type` - Type of image being run on vcpu
     fn configure_vcpu(
         guest_mem: &GuestMemory,
         kvm: &Kvm,
@@ -955,23 +953,26 @@ impl X8664arch {
         vcpu: &Vcpu,
         cpu_id: u64,
         num_cpus: u64,
+        image_type: &VmImage,
     ) -> Result<()> {
-        let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
         cpuid::setup_cpuid(kvm, vcpu, cpu_id, num_cpus).map_err(Error::SetupCpuid)?;
-        regs::setup_msrs(vcpu, END_ADDR_BEFORE_32BITS).map_err(Error::SetupMsrs)?;
-        let kernel_end = guest_mem
-            .checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
-            .ok_or(Error::KernelOffsetPastEnd)?;
-        regs::setup_regs(
-            vcpu,
-            (kernel_end).offset() as u64,
-            BOOT_STACK_POINTER as u64,
-            ZERO_PAGE_OFFSET as u64,
-        )
-        .map_err(Error::SetupRegs)?;
-        regs::setup_fpu(vcpu).map_err(Error::SetupFpu)?;
-        regs::setup_sregs(guest_mem, vcpu).map_err(Error::SetupSregs)?;
-        interrupts::set_lint(vcpu).map_err(Error::SetLint)?;
+        if let VmImage::Kernel(_) = image_type {
+            let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
+            regs::setup_msrs(vcpu, END_ADDR_BEFORE_32BITS).map_err(Error::SetupMsrs)?;
+            let kernel_end = guest_mem
+                .checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
+                .ok_or(Error::KernelOffsetPastEnd)?;
+            regs::setup_regs(
+                vcpu,
+                (kernel_end).offset() as u64,
+                BOOT_STACK_POINTER as u64,
+                ZERO_PAGE_OFFSET as u64,
+            )
+            .map_err(Error::SetupRegs)?;
+            regs::setup_fpu(vcpu).map_err(Error::SetupFpu)?;
+            regs::setup_sregs(guest_mem, vcpu).map_err(Error::SetupSregs)?;
+            interrupts::set_lint(vcpu).map_err(Error::SetLint)?;
+        }
         Ok(())
     }
 }
