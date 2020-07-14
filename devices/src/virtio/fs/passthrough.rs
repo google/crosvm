@@ -9,6 +9,7 @@ use std::ffi::{c_void, CStr, CString};
 use std::fs::File;
 use std::io;
 use std::mem::{self, size_of, MaybeUninit};
+use std::os::raw::{c_int, c_long};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr;
 use std::str::FromStr;
@@ -66,6 +67,9 @@ unsafe impl DataInit for fsxattr {}
 
 ioctl_ior_nr!(FS_IOC_FSGETXATTR, 'X' as u32, 31, fsxattr);
 ioctl_iow_nr!(FS_IOC_FSSETXATTR, 'X' as u32, 32, fsxattr);
+
+ioctl_ior_nr!(FS_IOC_GETFLAGS, 'f' as u32, 1, c_long);
+ioctl_iow_nr!(FS_IOC_SETFLAGS, 'f' as u32, 2, c_long);
 
 type Inode = u64;
 type Handle = u64;
@@ -813,6 +817,48 @@ impl PassthroughFs {
 
         //  Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe { ioctl_with_ptr(&*file, FS_IOC_FSSETXATTR(), &attr) };
+        if res < 0 {
+            Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
+        } else {
+            Ok(IoctlReply::Done(Ok(Vec::new())))
+        }
+    }
+
+    fn get_flags(&self, handle: Handle) -> io::Result<IoctlReply> {
+        let data = self
+            .handles
+            .lock()
+            .get(&handle)
+            .map(Arc::clone)
+            .ok_or_else(ebadf)?;
+
+        // The ioctl encoding is a long but the parameter is actually an int.
+        let mut flags: c_int = 0;
+        let file = data.file.lock();
+
+        // Safe because the kernel will only write to `flags` and we check the return value.
+        let res = unsafe { ioctl_with_mut_ptr(&*file, FS_IOC_GETFLAGS(), &mut flags) };
+        if res < 0 {
+            Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
+        } else {
+            Ok(IoctlReply::Done(Ok(flags.to_ne_bytes().to_vec())))
+        }
+    }
+
+    fn set_flags<R: io::Read>(&self, handle: Handle, r: R) -> io::Result<IoctlReply> {
+        let data = self
+            .handles
+            .lock()
+            .get(&handle)
+            .map(Arc::clone)
+            .ok_or_else(ebadf)?;
+
+        // The ioctl encoding is a long but the parameter is actually an int.
+        let flags = c_int::from_reader(r)?;
+        let file = data.file.lock();
+
+        // Safe because this doesn't modify any memory and we check the return value.
+        let res = unsafe { ioctl_with_ptr(&*file, FS_IOC_SETFLAGS(), &flags) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -2105,6 +2151,8 @@ impl FileSystem for PassthroughFs {
         const SET_ENCRYPTION_POLICY: u32 = FS_IOC_SET_ENCRYPTION_POLICY() as u32;
         const GET_FSXATTR: u32 = FS_IOC_FSGETXATTR() as u32;
         const SET_FSXATTR: u32 = FS_IOC_FSSETXATTR() as u32;
+        const GET_FLAGS: u32 = FS_IOC_GETFLAGS() as u32;
+        const SET_FLAGS: u32 = FS_IOC_SETFLAGS() as u32;
 
         // Normally, we wouldn't need to retry the FS_IOC_GET_ENCRYPTION_POLICY and
         // FS_IOC_SET_ENCRYPTION_POLICY ioctls. Unfortunately, the I/O directions for both of them
@@ -2146,6 +2194,20 @@ impl FileSystem for PassthroughFs {
                     Err(io::Error::from_raw_os_error(libc::EINVAL))
                 } else {
                     self.set_fsxattr(handle, r)
+                }
+            }
+            GET_FLAGS => {
+                if out_size < size_of::<c_int>() as u32 {
+                    Err(io::Error::from_raw_os_error(libc::ENOMEM))
+                } else {
+                    self.get_flags(handle)
+                }
+            }
+            SET_FLAGS => {
+                if in_size < size_of::<c_int>() as u32 {
+                    Err(io::Error::from_raw_os_error(libc::ENOMEM))
+                } else {
+                    self.set_flags(handle, r)
                 }
             }
             _ => Err(io::Error::from_raw_os_error(libc::ENOTTY)),
