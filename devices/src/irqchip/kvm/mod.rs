@@ -25,7 +25,7 @@ use crate::IrqChip;
 impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
     /// Add a vcpu to the irq chip.
     fn add_vcpu(&mut self, vcpu_id: usize, vcpu: KvmVcpu) -> Result<()> {
-        self.vcpus.lock().insert(vcpu_id, Some(vcpu));
+        self.vcpus.lock()[vcpu_id] = Some(vcpu);
         Ok(())
     }
 
@@ -77,12 +77,14 @@ impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
         self.vm.set_irq_line(irq, level)
     }
 
-    /// Respond to an irq event being written to. Sends to either an interrupt controller, or does
-    /// a send_msi if the irq is associated with an MSI.
-    /// For the KvmKernelIrqChip this simply calls the KVM_SET_IRQ_LINE ioctl.
-    fn service_irq_event(&mut self, irq: u32) -> Result<()> {
-        self.vm.set_irq_line(irq, true)?;
-        self.vm.set_irq_line(irq, false)
+    /// Service an IRQ event by asserting then deasserting an IRQ line. The associated EventFd
+    /// that triggered the irq event will be read from. If the irq is associated with a resample
+    /// EventFd, then the deassert will only happen after an EOI is broadcast for a vector
+    /// associated with the irq line.
+    /// This function should never be called on KvmKernelIrqChip.
+    fn service_irq_event(&mut self, _irq: u32) -> Result<()> {
+        error!("service_irq_event should never be called for KvmKernelIrqChip");
+        Ok(())
     }
 
     /// Broadcast an end of interrupt.

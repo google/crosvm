@@ -74,9 +74,10 @@ pub trait IrqChip<V: Vcpu>: Send + Sized {
     /// a send_msi if the irq is associated with an MSI.
     fn service_irq(&mut self, irq: u32, level: bool) -> Result<()>;
 
-    /// Service an IRQ event by asserting then deasserting an IRQ line. If the irq is associated
-    /// with an EventFds then the deassert will only happen after an EOI is broadcast for a
-    /// vector associated with the irq line.
+    /// Service an IRQ event by asserting then deasserting an IRQ line. The associated EventFd
+    /// that triggered the irq event will be read from. If the irq is associated with a resample
+    /// EventFd, then the deassert will only happen after an EOI is broadcast for a vector
+    /// associated with the irq line.
     fn service_irq_event(&mut self, irq: u32) -> Result<()>;
 
     /// Broadcast an end of interrupt.

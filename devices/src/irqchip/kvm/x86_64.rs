@@ -196,14 +196,10 @@ impl KvmSplitIrqChip {
             irqfds.push(evt);
         }
 
-        // As far as KVM is concerned, the first 24 irq lines route to dummy MSIs. Internally,
-        // the split irqchip keeps track of which of those lines route to which chip.
-        vm.set_gsi_routing(&*kvm_dummy_msi_routes())?;
-
         let mut chip = KvmSplitIrqChip {
             vm,
             vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
-            routes: Arc::new(Mutex::new(kvm_default_irq_routing_table())),
+            routes: Arc::new(Mutex::new(Vec::new())),
             pit,
             pic: Arc::new(Mutex::new(Pic::new())),
             ioapic: Arc::new(Mutex::new(Ioapic::new(irqfds_for_ioapic, irq_socket)?)),
@@ -212,6 +208,14 @@ impl KvmSplitIrqChip {
             irq_events: Arc::new(Mutex::new(Default::default())),
             resample_events: Arc::new(Mutex::new(Default::default())),
         };
+
+        // Setup standard x86 irq routes
+        let mut routes = kvm_default_irq_routing_table();
+        // Add dummy MSI routes for the first 24 GSIs
+        routes.append(&mut kvm_dummy_msi_routes());
+
+        // Set the routes so they get sent to KVM
+        chip.set_irq_routes(&routes)?;
 
         chip.register_irq_event(PIT_CHANNEL0_IRQ, &pit_evt, None)?;
         Ok(chip)
@@ -243,11 +247,41 @@ impl KvmSplitIrqChip {
     }
 }
 
+/// Convenience function for determining whether or not two irq routes conflict.
+/// Returns true if they conflict.
+fn routes_conflict(route: &IrqRoute, other: &IrqRoute) -> bool {
+    // They don't conflict if they have different GSIs.
+    if route.gsi != other.gsi {
+        return false;
+    }
+
+    // If they're both MSI with the same GSI then they conflict.
+    if let (IrqSource::Msi { .. }, IrqSource::Msi { .. }) = (route.source, other.source) {
+        return true;
+    }
+
+    // If the route chips match and they have the same GSI then they conflict.
+    if let (
+        IrqSource::Irqchip {
+            chip: route_chip, ..
+        },
+        IrqSource::Irqchip {
+            chip: other_chip, ..
+        },
+    ) = (route.source, other.source)
+    {
+        return route_chip == other_chip;
+    }
+
+    // Otherwise they do not conflict.
+    false
+}
+
 /// This IrqChip only works with Kvm so we only implement it for KvmVcpu.
 impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
     /// Add a vcpu to the irq chip.
     fn add_vcpu(&mut self, vcpu_id: usize, vcpu: KvmVcpu) -> Result<()> {
-        self.vcpus.lock().insert(vcpu_id, Some(vcpu));
+        self.vcpus.lock()[vcpu_id] = Some(vcpu);
         Ok(())
     }
 
@@ -292,14 +326,16 @@ impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
     /// Route an IRQ line to an interrupt controller, or to a particular MSI vector.
     fn route_irq(&mut self, route: IrqRoute) -> Result<()> {
         let mut routes = self.routes.lock();
-        routes.retain(|r| r.gsi != route.gsi);
+        routes.retain(|r| !routes_conflict(r, &route));
 
         routes.push(route);
 
         // We only call set_gsi_routing with the msi routes
         let mut msi_routes = routes.clone();
-        msi_routes.retain(|r| r.gsi > NUM_IOAPIC_PINS as u32);
-        msi_routes.append(&mut kvm_dummy_msi_routes());
+        msi_routes.retain(|r| match r.source {
+            IrqSource::Msi { .. } => true,
+            _ => false,
+        });
 
         self.vm.set_gsi_routing(&*msi_routes)
     }
@@ -311,8 +347,10 @@ impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
 
         // We only call set_gsi_routing with the msi routes
         let mut msi_routes = routes.to_vec().clone();
-        msi_routes.retain(|r| r.gsi > NUM_IOAPIC_PINS as u32);
-        msi_routes.append(&mut kvm_dummy_msi_routes());
+        msi_routes.retain(|r| match r.source {
+            IrqSource::Msi { .. } => true,
+            _ => false,
+        });
 
         self.vm.set_gsi_routing(&*msi_routes)
     }
@@ -347,11 +385,20 @@ impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
         Ok(())
     }
 
-    /// Service an IRQ event by asserting then deasserting an IRQ line. If the irq is associated
-    /// with an EventFds then the deassert will only happen after an EOI is broadcast for a
-    /// vector associated with the irq line.
+    /// Service an IRQ event by asserting then deasserting an IRQ line. The associated EventFd
+    /// that triggered the irq event will be read from. If the irq is associated with a resample
+    /// EventFd, then the deassert will only happen after an EOI is broadcast for a vector
+    /// associated with the irq line.
+    /// For the KvmSplitIrqChip, this function identifies which chips the irq routes to, then
+    /// attempts to call service_irq on those chips. If the ioapic is unable to be immediately
+    /// locked, we add the irq to the delayed_ioapic_irq_events Vec (though we still read
+    /// from the EventFd that triggered the irq event).
     fn service_irq_event(&mut self, irq: u32) -> Result<()> {
+        if let Some(evt) = &self.irq_events.lock()[irq as usize] {
+            evt.read()?;
+        }
         let chips = self.routes_to_chips(irq);
+
         for (chip, pin) in chips {
             match chip {
                 IrqSourceChip::PicPrimary | IrqSourceChip::PicSecondary => {
@@ -719,6 +766,28 @@ mod tests {
     }
 
     #[test]
+    fn split_irqchip_routes_conflict() {
+        let mut chip = get_split_chip();
+        chip.route_irq(IrqRoute {
+            gsi: 5,
+            source: IrqSource::Msi {
+                address: 4276092928,
+                data: 0,
+            },
+        })
+        .expect("failed to set msi rout");
+        // this second route should replace the first
+        chip.route_irq(IrqRoute {
+            gsi: 5,
+            source: IrqSource::Msi {
+                address: 4276092928,
+                data: 32801,
+            },
+        })
+        .expect("failed to set msi rout");
+    }
+
+    #[test]
     fn irq_event_tokens() {
         let mut chip = get_split_chip();
         let tokens = chip
@@ -795,6 +864,9 @@ mod tests {
         // auto eoi and special fully nested mode should be turned on
         assert!(state.auto_eoi);
         assert!(state.special_fully_nested_mode);
+
+        // Need to write to the irq event before servicing it
+        evt.write(1).expect("failed to write to eventfd");
 
         // if we assert irq line one, and then get the resulting interrupt, an auto-eoi should
         // occur and cause the resample_event to be written to
