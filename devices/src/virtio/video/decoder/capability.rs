@@ -4,23 +4,12 @@
 
 //! Capablities of the virtio video decoder device.
 
+use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
+use sys_util::warn;
 
 use crate::virtio::video::control::*;
 use crate::virtio::video::format::*;
-
-fn from_input_format(fmt: &libvda::decode::InputFormat, mask: u64) -> FormatDesc {
-    let format = match fmt.profile {
-        libvda::Profile::VP8 => Format::VP8,
-        libvda::Profile::VP9Profile0 => Format::VP9,
-        libvda::Profile::H264 => Format::H264,
-    };
-    FormatDesc {
-        mask,
-        format,
-        frame_formats: vec![Default::default()],
-    }
-}
 
 fn from_pixel_format(
     fmt: &libvda::PixelFormat,
@@ -60,11 +49,42 @@ impl Capability {
         // Raise the first |# of supported raw formats|-th bits because we can assume that any
         // combination of (a coded format, a raw format) is valid in Chrome.
         let mask = !(u64::max_value() << caps.output_formats.len());
-        let in_fmts = caps
-            .input_formats
-            .iter()
-            .map(|fmt| from_input_format(fmt, mask))
-            .collect();
+
+        let mut in_fmts = vec![];
+        let mut profiles: BTreeMap<Format, Vec<Profile>> = Default::default();
+        for fmt in caps.input_formats.iter() {
+            match Profile::from_libvda_profile(fmt.profile) {
+                Some(profile) => {
+                    let format = profile.to_format();
+                    in_fmts.push(FormatDesc {
+                        mask,
+                        format,
+                        frame_formats: vec![Default::default()],
+                    });
+                    match profiles.entry(format) {
+                        Entry::Occupied(mut e) => e.get_mut().push(profile),
+                        Entry::Vacant(e) => {
+                            e.insert(vec![profile]);
+                        }
+                    }
+                }
+                None => {
+                    warn!(
+                        "No virtio-video equivalent for libvda profile, skipping: {:?}",
+                        fmt.profile
+                    );
+                }
+            }
+        }
+
+        let levels: BTreeMap<Format, Vec<Level>> = if profiles.contains_key(&Format::H264) {
+            // We only support Level 1.0 for H.264.
+            vec![(Format::H264, vec![Level::H264_1_0])]
+                .into_iter()
+                .collect()
+        } else {
+            Default::default()
+        };
 
         // Prepare {min, max} of {width, height}.
         // While these values are associated with each input format in libvda,
@@ -93,23 +113,6 @@ impl Capability {
             .iter()
             .map(|fmt| from_pixel_format(fmt, mask, width_range, height_range))
             .collect();
-
-        let mut profiles: BTreeMap<Format, Vec<Profile>> = Default::default();
-        let mut levels: BTreeMap<Format, Vec<Level>> = Default::default();
-        for fmt in caps.input_formats.iter() {
-            match fmt.profile {
-                libvda::Profile::VP8 => {
-                    profiles.insert(Format::VP8, vec![Profile::VP8Profile0]);
-                }
-                libvda::Profile::VP9Profile0 => {
-                    profiles.insert(Format::VP9, vec![Profile::VP9Profile0]);
-                }
-                libvda::Profile::H264 => {
-                    profiles.insert(Format::H264, vec![Profile::H264Baseline]);
-                    levels.insert(Format::H264, vec![Level::H264_1_0]);
-                }
-            };
-        }
 
         Capability {
             in_fmts,
