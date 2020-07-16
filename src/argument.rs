@@ -505,23 +505,17 @@ mod tests {
                         "foo" => assert!(value.is_none()),
                         "bar" => assert_eq!(value.unwrap(), "stuff"),
                         "gpu" => match value {
-                            Some(v) => {
-                                match v {
-                                    "2D" => {
-                                        gpu_value = Some("2D".to_string());
-                                    }
-                                    "3D" => {
-                                        gpu_value = Some("3D".to_string());
-                                    }
-                                    _ => {
-                                        return Err(Error::InvalidValue {
-                                            value: v.to_string(),
-                                            expected: String::from("2D or 3D"),
-                                        })
-                                    }
+                            Some(v) => match v {
+                                "2D" | "3D" => {
+                                    gpu_value = Some(v.to_string());
                                 }
-                                gpu_value = Some(v.to_string());
-                            }
+                                _ => {
+                                    return Err(Error::InvalidValue {
+                                        value: v.to_string(),
+                                        expected: String::from("2D or 3D"),
+                                    })
+                                }
+                            },
                             None => {
                                 gpu_value = None;
                             }

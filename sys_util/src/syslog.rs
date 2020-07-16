@@ -439,7 +439,7 @@ pub fn log(pri: Priority, fac: Facility, file_line: Option<(&str, u32)>, args: f
                 }
             })
             .and_then(|()| write!(&mut buf_cursor, "{}", args))
-            .and_then(|()| Ok(buf_cursor.position() as usize))
+            .map(|()| buf_cursor.position() as usize)
         };
 
         if let Ok(len) = &res {
@@ -455,7 +455,7 @@ pub fn log(pri: Priority, fac: Facility, file_line: Option<(&str, u32)>, args: f
             Ok(())
         }
         .and_then(|()| writeln!(&mut buf_cursor, "{}", args))
-        .and_then(|()| Ok(buf_cursor.position() as usize))
+        .map(|()| buf_cursor.position() as usize)
     };
     if let Ok(len) = &res {
         if let Some(file) = &mut state.file {
