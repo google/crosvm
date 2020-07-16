@@ -415,7 +415,7 @@ impl<'a> Decoder<'a> {
             let profile = match ctx.in_params.format {
                 Some(Format::VP8) => Ok(libvda::Profile::VP8),
                 Some(Format::VP9) => Ok(libvda::Profile::VP9Profile0),
-                Some(Format::H264) => Ok(libvda::Profile::H264),
+                Some(Format::H264) => Ok(libvda::Profile::H264ProfileBaseline),
                 Some(f) => {
                     error!("specified format is invalid for bitstream: {:?}", f);
                     Err(VideoError::InvalidParameter)
