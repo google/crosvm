@@ -29,6 +29,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "android_log-sys"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "arch"
 version = "0.1.0"
 dependencies = [
@@ -723,6 +728,7 @@ version = "0.1.0"
 name = "sys_util"
 version = "0.1.0"
 dependencies = [
+ "android_log-sys 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "data_model 0.1.0",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
  "poll_token_derive 0.1.0",
@@ -869,6 +875,7 @@ dependencies = [
 ]
 
 [metadata]
+"checksum android_log-sys 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "85965b6739a430150bdd138e2374a98af0c3ee0d030b3bb7fc3bddff58d0102e"
 "checksum async-trait 0.1.36 (registry+https://github.com/rust-lang/crates.io-index)" = "a265e3abeffdce30b2e26b7a11b222fe37c6067404001b434101457d0385eb92"
 "checksum bitflags 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "3d155346769a6855b86399e9bc3814ab343cd3d62c7e985113d46a0ec3c281fd"
 "checksum cc 1.0.25 (registry+https://github.com/rust-lang/crates.io-index)" = "f159dfd43363c4d08055a07703eb7a3406b0dac4d0584d96965a3262db3c9d16"
