@@ -23,3 +23,4 @@ sched_yield: 1
 setpriority: 1
 socket: arg0 == AF_UNIX
 stat: 1
+fstat: 1
