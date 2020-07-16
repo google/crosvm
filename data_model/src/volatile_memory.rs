@@ -20,18 +20,17 @@
 //! not reordered or elided the access.
 
 use std::cmp::min;
-use std::ffi::c_void;
 use std::fmt::{self, Debug, Display};
 use std::marker::PhantomData;
 use std::mem::size_of;
-use std::ptr::{copy, null_mut, read_volatile, write_bytes, write_volatile};
+use std::ptr::{copy, read_volatile, write_bytes, write_volatile};
 use std::result;
 use std::slice;
 use std::usize;
 
 use libc::iovec;
 
-use crate::DataInit;
+use crate::{sys::IoSliceMut, DataInit};
 
 #[derive(Eq, PartialEq, Debug)]
 pub enum VolatileMemoryError {
@@ -103,54 +102,14 @@ pub trait VolatileMemory {
 /// A slice of raw memory that supports volatile access. Like `std::io::IoSliceMut`, this type is
 /// guaranteed to be ABI-compatible with `libc::iovec` but unlike `IoSliceMut`, it doesn't
 /// automatically deref to `&mut [u8]`.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
-pub struct VolatileSlice<'a> {
-    iov: iovec,
-    phantom: PhantomData<&'a mut [u8]>,
-}
-
-impl<'a> Default for VolatileSlice<'a> {
-    fn default() -> VolatileSlice<'a> {
-        VolatileSlice {
-            iov: iovec {
-                iov_base: null_mut(),
-                iov_len: 0,
-            },
-            phantom: PhantomData,
-        }
-    }
-}
-
-struct DebugIovec(iovec);
-impl Debug for DebugIovec {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("iovec")
-            .field("iov_base", &self.0.iov_base)
-            .field("iov_len", &self.0.iov_len)
-            .finish()
-    }
-}
-
-impl<'a> Debug for VolatileSlice<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("VolatileSlice")
-            .field("iov", &DebugIovec(self.iov))
-            .field("phantom", &self.phantom)
-            .finish()
-    }
-}
+pub struct VolatileSlice<'a>(IoSliceMut<'a>);
 
 impl<'a> VolatileSlice<'a> {
     /// Creates a slice of raw memory that must support volatile access.
     pub fn new(buf: &mut [u8]) -> VolatileSlice {
-        VolatileSlice {
-            iov: iovec {
-                iov_base: buf.as_mut_ptr() as *mut c_void,
-                iov_len: buf.len(),
-            },
-            phantom: PhantomData,
-        }
+        VolatileSlice(IoSliceMut::new(buf))
     }
 
     /// Creates a `VolatileSlice` from a pointer and a length.
@@ -160,39 +119,35 @@ impl<'a> VolatileSlice<'a> {
     /// In order to use this method safely, `addr` must be valid for reads and writes of `len` bytes
     /// and should live for the entire duration of lifetime `'a`.
     pub unsafe fn from_raw_parts(addr: *mut u8, len: usize) -> VolatileSlice<'a> {
-        VolatileSlice {
-            iov: iovec {
-                iov_base: addr as *mut c_void,
-                iov_len: len,
-            },
-            phantom: PhantomData,
-        }
+        VolatileSlice(IoSliceMut::from_raw_parts(addr, len))
     }
 
     /// Gets a const pointer to this slice's memory.
     pub fn as_ptr(&self) -> *const u8 {
-        self.iov.iov_base as *const u8
+        self.0.as_ptr()
     }
 
     /// Gets a mutable pointer to this slice's memory.
     pub fn as_mut_ptr(&self) -> *mut u8 {
-        self.iov.iov_base as *mut u8
+        self.0.as_mut_ptr()
     }
 
     /// Gets the size of this slice.
     pub fn size(&self) -> usize {
-        self.iov.iov_len
+        self.0.len()
     }
 
-    /// Returns this `VolatileSlice` as an iovec.
-    pub fn as_iovec(&self) -> iovec {
-        self.iov
+    /// Returns this `VolatileSlice` as an `iovec`.
+    pub fn as_iobuf(&self) -> iovec {
+        self.0.as_iobuf()
     }
 
-    /// Converts a slice of `VolatileSlice`s into a slice of `iovec`s.
-    pub fn as_iovecs<'slice>(iovs: &'slice [VolatileSlice<'_>]) -> &'slice [iovec] {
-        // Safe because `VolatileSlice` is ABI-compatible with `iovec`.
-        unsafe { slice::from_raw_parts(iovs.as_ptr() as *const iovec, iovs.len()) }
+    /// Converts a slice of `VolatileSlice`s into a slice of `iovec`s
+    pub fn as_iobufs<'slice>(iovs: &'slice [VolatileSlice<'_>]) -> &'slice [iovec] {
+        // Safe because `VolatileSlice` is ABI-compatible with `IoSliceMut`.
+        IoSliceMut::as_iobufs(unsafe {
+            slice::from_raw_parts(iovs.as_ptr() as *const IoSliceMut, iovs.len())
+        })
     }
 
     /// Creates a copy of this slice with the address increased by `count` bytes, and the size

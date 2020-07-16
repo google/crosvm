@@ -297,7 +297,7 @@ macro_rules! volatile_impl {
                 &mut self,
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
             ) -> std::io::Result<usize> {
-                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iovecs(bufs);
+                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -343,7 +343,7 @@ macro_rules! volatile_impl {
                 &mut self,
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
             ) -> std::io::Result<usize> {
-                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iovecs(bufs);
+                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -400,7 +400,7 @@ macro_rules! volatile_at_impl {
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
                 offset: u64,
             ) -> std::io::Result<usize> {
-                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iovecs(bufs);
+                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -451,7 +451,7 @@ macro_rules! volatile_at_impl {
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
                 offset: u64,
             ) -> std::io::Result<usize> {
-                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iovecs(bufs);
+                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);

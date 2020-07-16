@@ -105,11 +105,11 @@ impl CmsgBuffer {
     }
 }
 
-fn raw_sendmsg<D: IntoIovec>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Result<usize> {
+fn raw_sendmsg<D: IntoIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Result<usize> {
     let cmsg_capacity = CMSG_SPACE!(size_of::<RawFd>() * out_fds.len());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
-    let iovec = IntoIovec::as_iovecs(out_data);
+    let iovec = IntoIobuf::as_iobufs(out_data);
 
     let mut msg = msghdr {
         msg_name: null_mut(),
@@ -232,7 +232,7 @@ pub trait ScmSocket {
     ///
     /// * `buf` - A buffer of data to send on the `socket`.
     /// * `fd` - A file descriptors to be sent.
-    fn send_with_fd<D: IntoIovec>(&self, buf: &[D], fd: RawFd) -> Result<usize> {
+    fn send_with_fd<D: IntoIobuf>(&self, buf: &[D], fd: RawFd) -> Result<usize> {
         self.send_with_fds(buf, &[fd])
     }
 
@@ -244,7 +244,7 @@ pub trait ScmSocket {
     ///
     /// * `buf` - A buffer of data to send on the `socket`.
     /// * `fds` - A list of file descriptors to be sent.
-    fn send_with_fds<D: IntoIovec>(&self, buf: &[D], fd: &[RawFd]) -> Result<usize> {
+    fn send_with_fds<D: IntoIobuf>(&self, buf: &[D], fd: &[RawFd]) -> Result<usize> {
         raw_sendmsg(self.socket_fd(), buf, fd)
     }
 
@@ -309,25 +309,25 @@ impl ScmSocket for UnixSeqpacket {
 ///
 /// This trait is unsafe because interfaces that use this trait depend on the base pointer and size
 /// being accurate.
-pub unsafe trait IntoIovec: Sized {
+pub unsafe trait IntoIobuf: Sized {
     /// Returns a `iovec` that describes a contiguous region of memory.
-    fn into_iovec(&self) -> iovec;
+    fn into_iobuf(&self) -> iovec;
 
     /// Returns a slice of `iovec`s that each describe a contiguous region of memory.
-    fn as_iovecs(bufs: &[Self]) -> &[iovec];
+    fn as_iobufs(bufs: &[Self]) -> &[iovec];
 }
 
 // Safe because there are no other mutable references to the memory described by `IoSlice` and it is
 // guaranteed to be ABI-compatible with `iovec`.
-unsafe impl<'a> IntoIovec for IoSlice<'a> {
-    fn into_iovec(&self) -> iovec {
+unsafe impl<'a> IntoIobuf for IoSlice<'a> {
+    fn into_iobuf(&self) -> iovec {
         iovec {
             iov_base: self.as_ptr() as *mut c_void,
             iov_len: self.len(),
         }
     }
 
-    fn as_iovecs(bufs: &[Self]) -> &[iovec] {
+    fn as_iobufs(bufs: &[Self]) -> &[iovec] {
         // Safe because `IoSlice` is guaranteed to be ABI-compatible with `iovec`.
         unsafe { slice::from_raw_parts(bufs.as_ptr() as *const iovec, bufs.len()) }
     }
@@ -335,15 +335,15 @@ unsafe impl<'a> IntoIovec for IoSlice<'a> {
 
 // Safe because there are no other references to the memory described by `IoSliceMut` and it is
 // guaranteed to be ABI-compatible with `iovec`.
-unsafe impl<'a> IntoIovec for IoSliceMut<'a> {
-    fn into_iovec(&self) -> iovec {
+unsafe impl<'a> IntoIobuf for IoSliceMut<'a> {
+    fn into_iobuf(&self) -> iovec {
         iovec {
             iov_base: self.as_ptr() as *mut c_void,
             iov_len: self.len(),
         }
     }
 
-    fn as_iovecs(bufs: &[Self]) -> &[iovec] {
+    fn as_iobufs(bufs: &[Self]) -> &[iovec] {
         // Safe because `IoSliceMut` is guaranteed to be ABI-compatible with `iovec`.
         unsafe { slice::from_raw_parts(bufs.as_ptr() as *const iovec, bufs.len()) }
     }
@@ -351,13 +351,13 @@ unsafe impl<'a> IntoIovec for IoSliceMut<'a> {
 
 // Safe because volatile slices are only ever accessed with other volatile interfaces and the
 // pointer and size are guaranteed to be accurate.
-unsafe impl<'a> IntoIovec for VolatileSlice<'a> {
-    fn into_iovec(&self) -> iovec {
-        self.as_iovec()
+unsafe impl<'a> IntoIobuf for VolatileSlice<'a> {
+    fn into_iobuf(&self) -> iovec {
+        self.as_iobuf()
     }
 
-    fn as_iovecs(bufs: &[Self]) -> &[iovec] {
-        VolatileSlice::as_iovecs(bufs)
+    fn as_iobufs(bufs: &[Self]) -> &[iovec] {
+        VolatileSlice::as_iobufs(bufs)
     }
 }
 
