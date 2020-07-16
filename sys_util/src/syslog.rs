@@ -12,14 +12,12 @@
 //! ```
 //! use sys_util::{error, syslog, warn};
 //!
-//! fn main() {
-//!     if let Err(e) = syslog::init() {
-//!         println!("failed to initiailize syslog: {}", e);
-//!         return;
-//!     }
-//!     warn!("this is your {} warning", "final");
-//!     error!("something went horribly wrong: {}", "out of RAMs");
+//! if let Err(e) = syslog::init() {
+//!     println!("failed to initiailize syslog: {}", e);
+//!     return;
 //! }
+//! warn!("this is your {} warning", "final");
+//! error!("something went horribly wrong: {}", "out of RAMs");
 //! ```
 
 use std::env;
@@ -396,16 +394,14 @@ fn get_localtime() -> tm {
 ///
 /// ```
 /// # use sys_util::syslog;
-/// # fn main() {
-/// #   if let Err(e) = syslog::init() {
-/// #       println!("failed to initiailize syslog: {}", e);
-/// #       return;
-/// #   }
+/// # if let Err(e) = syslog::init() {
+/// #     println!("failed to initiailize syslog: {}", e);
+/// #     return;
+/// # }
 /// syslog::log(syslog::Priority::Error,
 ///             syslog::Facility::User,
 ///             Some((file!(), line!())),
 ///             format_args!("hello syslog"));
-/// # }
 /// ```
 pub fn log(pri: Priority, fac: Facility, file_line: Option<(&str, u32)>, args: fmt::Arguments) {
     const MONTHS: [&str; 12] = [

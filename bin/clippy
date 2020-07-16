@@ -28,7 +28,6 @@ SUPPRESS=(
     into_iter_on_ref
     let_unit_value
     missing_safety_doc
-    needless_doctest_main
     needless_range_loop
     needless_return
     option_map_unit_fn
