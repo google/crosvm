@@ -216,6 +216,8 @@ impl BusDevice for Pit {
     }
 
     fn write(&mut self, offset: u64, data: &[u8]) {
+        self.ensure_started();
+
         if data.len() != 1 {
             warn!("Bad write size for Pit: {}", data.len());
             return;
@@ -231,6 +233,8 @@ impl BusDevice for Pit {
     }
 
     fn read(&mut self, offset: u64, data: &mut [u8]) {
+        self.ensure_started();
+
         if data.len() != 1 {
             warn!("Bad read size for Pit: {}", data.len());
             return;
@@ -271,23 +275,40 @@ impl Pit {
         // (c) if we have the wrong number of counters, something is very wrong with the PIT and it
         // may not make sense to continue operation.
         assert_eq!(counters.len(), NUM_OF_COUNTERS);
-        let (self_kill_evt, kill_evt) = EventFd::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .map_err(PitError::CreateEventFd)?;
-        let mut worker = Worker {
-            pit_counter: counters[0].clone(),
-            fd: Fd(counters[0].lock().timer.as_raw_fd()),
-        };
-        let evt = kill_evt.try_clone().map_err(PitError::CloneEventFd)?;
-        let worker_thread = thread::Builder::new()
-            .name("pit counter worker".to_string())
-            .spawn(move || worker.run(evt))
-            .map_err(PitError::SpawnThread)?;
+
+        let kill_evt = EventFd::new().map_err(PitError::CreateEventFd)?;
+
         Ok(Pit {
             counters,
-            worker_thread: Some(worker_thread),
-            kill_evt: self_kill_evt,
+            worker_thread: None,
+            kill_evt,
         })
+    }
+
+    fn ensure_started(&mut self) {
+        if self.worker_thread.is_some() {
+            return;
+        }
+        if let Err(e) = self.start() {
+            error!("failed to start PIT: {}", e);
+        }
+    }
+
+    fn start(&mut self) -> PitResult<()> {
+        let mut worker = Worker {
+            pit_counter: self.counters[0].clone(),
+            fd: Fd(self.counters[0].lock().timer.as_raw_fd()),
+        };
+        let evt = self.kill_evt.try_clone().map_err(PitError::CloneEventFd)?;
+
+        self.worker_thread = Some(
+            thread::Builder::new()
+                .name("pit counter worker".to_string())
+                .spawn(move || worker.run(evt))
+                .map_err(PitError::SpawnThread)?,
+        );
+
+        Ok(())
     }
 
     fn command_write(&mut self, control_word: u8) {
