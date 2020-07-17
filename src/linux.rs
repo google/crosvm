@@ -501,20 +501,37 @@ fn create_block_device(
     };
     flock(&raw_image, lock_op, true).map_err(Error::DiskImageLock)?;
 
-    let disk_file = disk::create_disk_file(raw_image).map_err(Error::CreateDiskError)?;
-    let dev = virtio::Block::new(
-        virtio::base_features(cfg.protected_vm),
-        disk_file,
-        disk.read_only,
-        disk.sparse,
-        disk.block_size,
-        disk.id,
-        Some(disk_device_socket),
-    )
-    .map_err(Error::BlockDeviceNew)?;
+    let dev = if disk::async_ok(&raw_image).map_err(Error::CreateDiskError)? {
+        let async_file = disk::create_async_disk_file(raw_image).map_err(Error::CreateDiskError)?;
+        Box::new(
+            virtio::BlockAsync::new(
+                virtio::base_features(cfg.protected_vm),
+                async_file,
+                disk.read_only,
+                disk.sparse,
+                disk.block_size,
+                Some(disk_device_socket),
+            )
+            .map_err(Error::BlockDeviceNew)?,
+        ) as Box<dyn VirtioDevice>
+    } else {
+        let disk_file = disk::create_disk_file(raw_image).map_err(Error::CreateDiskError)?;
+        Box::new(
+            virtio::Block::new(
+                virtio::base_features(cfg.protected_vm),
+                disk_file,
+                disk.read_only,
+                disk.sparse,
+                disk.block_size,
+                disk.id,
+                Some(disk_device_socket),
+            )
+            .map_err(Error::BlockDeviceNew)?,
+        ) as Box<dyn VirtioDevice>
+    };
 
     Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
+        dev,
         jail: simple_jail(&cfg, "block_device")?,
     })
 }

@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use sys_util::TimerFd;
+use std::time::Duration;
+
+use sys_util::{Result as SysResult, TimerFd};
 
 use crate::{AsyncResult, Executor, IntoAsync, IoSourceExt};
 #[cfg(test)]
@@ -32,6 +34,13 @@ impl TimerAsync {
     /// Gets the next value from the timer.
     pub async fn next_val(&self) -> AsyncResult<u64> {
         self.io_source.read_u64().await
+    }
+
+    /// Sets the timer to expire after `dur`.  If `interval` is not `None` it represents
+    /// the period for repeated expirations after the initial expiration.  Otherwise
+    /// the timer will expire just once.  Cancels any existing duration and repeating interval.
+    pub fn reset(&mut self, dur: Duration, interval: Option<Duration>) -> SysResult<()> {
+        self.io_source.as_source_mut().reset(dur, interval)
     }
 }
 

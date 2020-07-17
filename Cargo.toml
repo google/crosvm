@@ -104,6 +104,7 @@ audio_streams = { path = "../../third_party/adhd/audio_streams" } # ignored by e
 base = { path = "base" }
 data_model = { path = "data_model" }
 libcras = { path = "../../third_party/adhd/cras/client/libcras" } # ignored by ebuild
+libchromeos = { path = "../../platform2/libchromeos-rs" } # ignored by ebuild
 libvda = { path = "../../platform2/arc/vm/libvda/rust" } # ignored by ebuild
 minijail = { path = "../../aosp/external/minijail/rust/minijail" } # ignored by ebuild
 p9 = { path = "../../platform2/vm_tools/p9" } # ignored by ebuild

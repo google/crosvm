@@ -6,6 +6,7 @@
 
 mod balloon;
 mod block;
+mod block_async;
 mod console;
 mod descriptor_utils;
 mod input;
@@ -34,6 +35,7 @@ pub mod vhost;
 
 pub use self::balloon::*;
 pub use self::block::*;
+pub use self::block_async::*;
 pub use self::console::*;
 pub use self::descriptor_utils::Error as DescriptorError;
 pub use self::descriptor_utils::*;
