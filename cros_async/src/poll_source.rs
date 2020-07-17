@@ -24,6 +24,10 @@ use sys_util::{self, add_fd_flags};
 pub enum Error {
     /// An error occurred attempting to register a waker with the executor.
     AddingWaker(fd_executor::Error),
+    /// An error occurred when executing fallocate synchronously.
+    Fallocate(sys_util::Error),
+    /// An error occurred when executing fsync synchronously.
+    Fsync(sys_util::Error),
     /// An error occurred when reading the FD.
     Read(sys_util::Error),
     /// Can't seek file.
@@ -45,6 +49,16 @@ impl Display for Error {
             AddingWaker(e) => write!(
                 f,
                 "An error occurred attempting to register a waker with the executor: {}.",
+                e
+            ),
+            Fallocate(e) => write!(
+                f,
+                "An error occurred when executing fallocate synchronously: {}",
+                e
+            ),
+            Fsync(e) => write!(
+                f,
+                "An error occurred when executing fsync synchronously: {}",
                 e
             ),
             Read(e) => write!(f, "An error occurred when reading the FD: {}.", e),
@@ -125,21 +139,29 @@ impl<F: AsRawFd> PollSource<F> {
     }
 
     /// Runs fallocate _synchronously_. There isn't an async equivalent for starting an fallocate.
-    pub fn fallocate(&self, file_offset: u64, len: u64, mode: u32) {
-        unsafe {
+    pub fn fallocate(&self, file_offset: u64, len: u64, mode: u32) -> Result<()> {
+        let ret = unsafe {
             libc::fallocate64(
                 self.source.as_raw_fd(),
                 mode as libc::c_int,
                 file_offset as libc::off64_t,
                 len as libc::off64_t,
-            );
+            )
+        };
+        if ret == 0 {
+            Ok(())
+        } else {
+            Err(Error::Fallocate(sys_util::Error::last()))
         }
     }
 
     /// Runs fsync _synchronously_. There isn't an async equivalent for starting an fsync.
-    pub fn fsync(&self) {
-        unsafe {
-            libc::fsync(self.source.as_raw_fd());
+    pub fn fsync(&self) -> Result<()> {
+        let ret = unsafe { libc::fsync(self.source.as_raw_fd()) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            Err(Error::Fsync(sys_util::Error::last()))
         }
     }
 
@@ -604,7 +626,7 @@ mod tests {
             .open(&file_path)
             .unwrap();
         let source = PollSource::new(f).unwrap();
-        source.fallocate(0, 4096, 0);
+        source.fallocate(0, 4096, 0).unwrap();
 
         let meta_data = std::fs::metadata(&file_path).unwrap();
         assert_eq!(meta_data.len(), 4096);

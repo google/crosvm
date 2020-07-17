@@ -179,7 +179,7 @@ impl<F: AsRawFd + Unpin> PollOrRing<F> {
     /// See `fallocate(2)`. Note this op is synchronous when using the Polled backend.
     pub async fn fallocate(&self, file_offset: u64, len: u64, mode: u32) -> Result<()> {
         match &self {
-            PollOrRing::Poll(s) => Ok(s.fallocate(file_offset, len, mode)),
+            PollOrRing::Poll(s) => s.fallocate(file_offset, len, mode).map_err(Error::Poll),
             PollOrRing::Uring(s) => s
                 .fallocate(file_offset, len, mode)
                 .await
@@ -191,7 +191,7 @@ impl<F: AsRawFd + Unpin> PollOrRing<F> {
     /// backend.
     pub async fn fsync(&self) -> Result<()> {
         match &self {
-            PollOrRing::Poll(s) => Ok(s.fsync()),
+            PollOrRing::Poll(s) => s.fsync().map_err(Error::Poll),
             PollOrRing::Uring(s) => s.fsync().await.map_err(Error::Uring),
         }
     }
