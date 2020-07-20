@@ -256,7 +256,7 @@ impl PciDevice for Ac97Dev {
             .set_address(mixer_regs_addr)
             .set_size(MIXER_REGS_SIZE);
         self.config_regs
-            .add_pci_bar(&mixer_config)
+            .add_pci_bar(mixer_config)
             .map_err(|e| pci_device::Error::IoRegistrationFailed(mixer_regs_addr, e))?;
         ranges.push((mixer_regs_addr, MIXER_REGS_SIZE));
 
@@ -279,7 +279,7 @@ impl PciDevice for Ac97Dev {
             .set_address(master_regs_addr)
             .set_size(MASTER_REGS_SIZE);
         self.config_regs
-            .add_pci_bar(&master_config)
+            .add_pci_bar(master_config)
             .map_err(|e| pci_device::Error::IoRegistrationFailed(master_regs_addr, e))?;
         ranges.push((master_regs_addr, MASTER_REGS_SIZE));
         Ok(ranges)

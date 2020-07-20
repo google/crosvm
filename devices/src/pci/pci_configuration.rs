@@ -174,6 +174,7 @@ pub struct PciConfiguration {
     registers: [u32; NUM_CONFIGURATION_REGISTERS],
     writable_bits: [u32; NUM_CONFIGURATION_REGISTERS], // writable bits for each register.
     bar_used: [bool; NUM_BAR_REGS],
+    bar_configs: [Option<PciBarConfiguration>; NUM_BAR_REGS],
     // Contains the byte offset and size of the last capability.
     last_capability: Option<(usize, usize)>,
 }
@@ -283,6 +284,7 @@ impl PciConfiguration {
             registers,
             writable_bits,
             bar_used: [false; NUM_BAR_REGS],
+            bar_configs: [None; NUM_BAR_REGS],
             last_capability: None,
         }
     }
@@ -371,7 +373,7 @@ impl PciConfiguration {
     /// report this region and size to the guest kernel.  Enforces a few constraints
     /// (i.e, region size must be power of two, register not already used). Returns 'None' on
     /// failure all, `Some(BarIndex)` on success.
-    pub fn add_pci_bar(&mut self, config: &PciBarConfiguration) -> Result<usize> {
+    pub fn add_pci_bar(&mut self, config: PciBarConfiguration) -> Result<usize> {
         if config.reg_idx >= NUM_BAR_REGS {
             return Err(Error::BarInvalid(config.reg_idx));
         }
@@ -439,20 +441,13 @@ impl PciConfiguration {
         self.registers[bar_idx] = ((config.addr as u32) & mask) | lower_bits;
         self.writable_bits[bar_idx] = !(config.size - 1) as u32;
         self.bar_used[config.reg_idx] = true;
+        self.bar_configs[config.reg_idx] = Some(config);
         Ok(config.reg_idx)
     }
 
     /// Returns the type of the given BAR region.
     pub fn get_bar_type(&self, bar_num: usize) -> Option<PciBarRegionType> {
-        let reg_idx = BAR0_REG + bar_num;
-        let reg_value = self.registers.get(reg_idx)?;
-
-        match (reg_value & 1, (reg_value >> 1u32) & 3) {
-            (1, _) => Some(PciBarRegionType::IORegion),
-            (0, 0b00) => Some(PciBarRegionType::Memory32BitRegion),
-            (0, 0b10) => Some(PciBarRegionType::Memory64BitRegion),
-            _ => None,
-        }
+        self.bar_configs.get(bar_num)?.map(|c| c.region_type)
     }
 
     /// Returns the address of the given BAR region.
@@ -721,7 +716,7 @@ mod tests {
         );
 
         cfg.add_pci_bar(
-            &PciBarConfiguration::new(
+            PciBarConfiguration::new(
                 0,
                 0x10,
                 PciBarRegionType::Memory64BitRegion,
@@ -754,7 +749,7 @@ mod tests {
         );
 
         cfg.add_pci_bar(
-            &PciBarConfiguration::new(
+            PciBarConfiguration::new(
                 0,
                 0x10,
                 PciBarRegionType::Memory32BitRegion,
@@ -786,7 +781,7 @@ mod tests {
         );
 
         cfg.add_pci_bar(
-            &PciBarConfiguration::new(
+            PciBarConfiguration::new(
                 0,
                 0x4,
                 PciBarRegionType::IORegion,
@@ -817,7 +812,7 @@ mod tests {
         // I/O BAR with size 2 (too small)
         assert_eq!(
             cfg.add_pci_bar(
-                &PciBarConfiguration::new(
+                PciBarConfiguration::new(
                     0,
                     0x2,
                     PciBarRegionType::IORegion,
@@ -831,7 +826,7 @@ mod tests {
         // I/O BAR with size 3 (not a power of 2)
         assert_eq!(
             cfg.add_pci_bar(
-                &PciBarConfiguration::new(
+                PciBarConfiguration::new(
                     0,
                     0x3,
                     PciBarRegionType::IORegion,
@@ -845,7 +840,7 @@ mod tests {
         // Memory BAR with size 8 (too small)
         assert_eq!(
             cfg.add_pci_bar(
-                &PciBarConfiguration::new(
+                PciBarConfiguration::new(
                     0,
                     0x8,
                     PciBarRegionType::Memory32BitRegion,

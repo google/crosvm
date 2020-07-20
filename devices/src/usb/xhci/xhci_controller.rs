@@ -229,7 +229,7 @@ impl PciDevice for XhciController {
             .set_address(bar0_addr)
             .set_size(XHCI_BAR0_SIZE);
         self.config_regs
-            .add_pci_bar(&bar0_config)
+            .add_pci_bar(bar0_config)
             .map_err(|e| PciDeviceError::IoRegistrationFailed(bar0_addr, e))?;
         Ok(vec![(bar0_addr, XHCI_BAR0_SIZE)])
     }

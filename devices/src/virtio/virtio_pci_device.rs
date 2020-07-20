@@ -441,7 +441,7 @@ impl PciDevice for VirtioPciDevice {
             .set_size(CAPABILITY_BAR_SIZE);
         let settings_bar = self
             .config_regs
-            .add_pci_bar(&config)
+            .add_pci_bar(config)
             .map_err(|e| PciDeviceError::IoRegistrationFailed(settings_config_addr, e))?
             as u8;
         ranges.push((settings_config_addr, CAPABILITY_BAR_SIZE));
@@ -481,7 +481,7 @@ impl PciDevice for VirtioPciDevice {
             let config = config.set_address(device_addr);
             let _device_bar = self
                 .config_regs
-                .add_pci_bar(&config)
+                .add_pci_bar(config)
                 .map_err(|e| PciDeviceError::IoRegistrationFailed(device_addr, e))?;
             ranges.push((device_addr, config.get_size()));
         }
