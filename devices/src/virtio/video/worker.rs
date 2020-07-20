@@ -36,18 +36,17 @@ type DescPool<'a> = BTreeMap<AsyncCmdTag, DescriptorChain<'a>>;
 /// Pair of a descriptor chain and a response to be written.
 type WritableResp<'a> = (DescriptorChain<'a>, VideoResult<response::CmdResponse>);
 
-/// Invalidates all pending asynchronous commands in a given `DescPool` value and returns an updated
-/// `DescPool` value and a list of `WritableResp` to be sent to the guest.
+/// Invalidates and removes all pending asynchronous commands in a given `DescPool` value
+/// and returns a list of `WritableResp` to be sent to the guest.
 fn cancel_pending_requests<'a>(
-    s_id: u32,
-    desc_pool: DescPool<'a>,
-) -> (DescPool<'a>, Vec<WritableResp<'a>>) {
-    let mut new_desc_pool: DescPool<'a> = Default::default();
+    target_stream_id: u32,
+    desc_pool: &mut DescPool<'a>,
+) -> Vec<WritableResp<'a>> {
+    let old_desc_pool = std::mem::take(desc_pool);
     let mut resps = vec![];
-
-    for (key, value) in desc_pool.into_iter() {
+    for (key, value) in old_desc_pool.into_iter() {
         match key {
-            AsyncCmdTag::Queue { stream_id, .. } if stream_id == s_id => {
+            AsyncCmdTag::Queue { stream_id, .. } if stream_id == target_stream_id => {
                 resps.push((
                     value,
                     Ok(CmdResponse::ResourceQueue {
@@ -58,19 +57,18 @@ fn cancel_pending_requests<'a>(
                 ));
             }
             AsyncCmdTag::Drain { stream_id } | AsyncCmdTag::Clear { stream_id, .. }
-                if stream_id == s_id =>
+                if stream_id == target_stream_id =>
             {
                 // TODO(b/1518105): Use more appropriate error code if a new protocol supports one.
                 resps.push((value, Err(VideoError::InvalidOperation)));
             }
             AsyncCmdTag::Queue { .. } | AsyncCmdTag::Drain { .. } | AsyncCmdTag::Clear { .. } => {
                 // Keep commands for other streams.
-                new_desc_pool.insert(key, value);
+                desc_pool.insert(key, value);
             }
         }
     }
-
-    (new_desc_pool, resps)
+    resps
 }
 
 impl Worker {
@@ -127,15 +125,15 @@ impl Worker {
         Ok(())
     }
 
-    /// Handles a `DescriptorChain` value sent via the command queue and returns an updated
-    /// `DescPool` and `VecDeque` of `WritableResp` to be sent to the guest.
+    /// Handles a `DescriptorChain` value sent via the command queue and returns a `VecDeque`
+    /// of `WritableResp` to be sent to the guest.
     fn handle_command_desc<'a, T: Device>(
         &'a self,
         device: &mut T,
         poll_ctx: &PollContext<Token>,
-        mut desc_pool: DescPool<'a>,
+        desc_pool: &mut DescPool<'a>,
         desc: DescriptorChain<'a>,
-    ) -> Result<(DescPool<'a>, VecDeque<WritableResp<'a>>)> {
+    ) -> Result<VecDeque<WritableResp<'a>>> {
         let mut resps: VecDeque<WritableResp> = Default::default();
         let mut reader =
             Reader::new(&self.mem, desc.clone()).map_err(Error::InvalidDescriptorChain)?;
@@ -145,8 +143,7 @@ impl Worker {
         // If a destruction command comes, cancel pending requests.
         match cmd {
             VideoCmd::ResourceDestroyAll { stream_id } | VideoCmd::StreamDestroy { stream_id } => {
-                let (next_desc_pool, rs) = cancel_pending_requests(stream_id, desc_pool);
-                desc_pool = next_desc_pool;
+                let rs = cancel_pending_requests(stream_id, desc_pool);
                 resps.append(&mut Into::<VecDeque<_>>::into(rs));
             }
             _ => (),
@@ -170,37 +167,35 @@ impl Worker {
             }
         }
 
-        Ok((desc_pool, resps))
+        Ok(resps)
     }
 
-    /// Handles the command queue returns an updated `DescPool`.
+    /// Handles each command in the command queue.
     fn handle_command_queue<'a, T: Device>(
         &'a self,
         cmd_queue: &mut Queue,
         device: &mut T,
         poll_ctx: &PollContext<Token>,
-        mut desc_pool: DescPool<'a>,
-    ) -> Result<DescPool<'a>> {
+        desc_pool: &mut DescPool<'a>,
+    ) -> Result<()> {
         let _ = self.cmd_evt.read();
 
         while let Some(desc) = cmd_queue.pop(&self.mem) {
-            let (next_desc_pool, mut resps) =
-                self.handle_command_desc(device, poll_ctx, desc_pool, desc)?;
-            desc_pool = next_desc_pool;
+            let mut resps = self.handle_command_desc(device, poll_ctx, desc_pool, desc)?;
             self.write_responses(cmd_queue, &mut resps)?;
         }
-        Ok(desc_pool)
+        Ok(())
     }
 
-    /// Handles a `VideoEvtResponseType` value and returns an updated `DescPool` and `VecDeque` of
-    /// `WritableResp` to be sent to the guest.
+    /// Handles a `VideoEvtResponseType` value and returns a `VecDeque` of `WritableResp`
+    /// to be sent to the guest.
     fn handle_event_resp<'a, T: Device>(
         &'a self,
         event_queue: &mut Queue,
         device: &mut T,
-        mut desc_pool: DescPool<'a>,
+        desc_pool: &mut DescPool<'a>,
         resp: VideoEvtResponseType,
-    ) -> Result<(DescPool<'a>, VecDeque<WritableResp>)> {
+    ) -> Result<VecDeque<WritableResp>> {
         let mut responses: VecDeque<WritableResp> = Default::default();
         match resp {
             VideoEvtResponseType::AsyncCmd {
@@ -258,8 +253,7 @@ impl Worker {
                     .ok_or_else(|| Error::UnexpectedResponse(tag))?;
 
                 // When `Clear` request is completed, invalidate all pending requests.
-                let (next_desc_pool, resps) = cancel_pending_requests(stream_id, desc_pool);
-                desc_pool = next_desc_pool;
+                let resps = cancel_pending_requests(stream_id, desc_pool);
                 responses.append(&mut Into::<VecDeque<_>>::into(resps));
 
                 // Then, responds the `Clear` request.
@@ -275,24 +269,24 @@ impl Worker {
                 self.write_event(event_queue, &mut evt)?;
             }
         };
-        Ok((desc_pool, responses))
+        Ok(responses)
     }
 
-    /// Handles an event notified via an event FD and returns an updated `DescPool`.
+    /// Handles an event notified via an event FD.
     fn handle_event_fd<'a, T: Device>(
         &'a self,
         cmd_queue: &mut Queue,
         event_queue: &mut Queue,
         device: &mut T,
-        desc_pool: DescPool<'a>,
+        desc_pool: &mut DescPool<'a>,
         stream_id: u32,
-    ) -> Result<DescPool<'a>> {
+    ) -> Result<()> {
         let resp = device.process_event_fd(stream_id);
         match resp {
             Some(r) => match self.handle_event_resp(event_queue, device, desc_pool, r) {
-                Ok((updated_desc_pool, mut resps)) => {
+                Ok(mut resps) => {
                     self.write_responses(cmd_queue, &mut resps)?;
-                    Ok(updated_desc_pool)
+                    Ok(())
                 }
                 Err(e) => {
                     // Ignore result of write_event for a fatal error.
@@ -306,7 +300,7 @@ impl Worker {
                     Err(e)
                 }
             },
-            None => Ok(desc_pool),
+            None => Ok(()),
         }
     }
 
@@ -333,22 +327,22 @@ impl Worker {
             for poll_event in poll_events.iter_readable() {
                 match poll_event.token() {
                     Token::CmdQueue => {
-                        desc_pool = self.handle_command_queue(
+                        self.handle_command_queue(
                             &mut cmd_queue,
                             &mut device,
                             &poll_ctx,
-                            desc_pool,
+                            &mut desc_pool,
                         )?;
                     }
                     Token::EventQueue => {
                         let _ = self.event_evt.read();
                     }
                     Token::EventFd { id } => {
-                        desc_pool = self.handle_event_fd(
+                        self.handle_event_fd(
                             &mut cmd_queue,
                             &mut event_queue,
                             &mut device,
-                            desc_pool,
+                            &mut desc_pool,
                             id,
                         )?;
                     }
