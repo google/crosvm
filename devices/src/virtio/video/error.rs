@@ -5,14 +5,8 @@
 //! Errors that can happen while encoding or decoding.
 
 use std::fmt;
-use std::io;
-
-use data_model::Le32;
 
 use crate::virtio::resource_bridge::ResourceBridgeError;
-use crate::virtio::video::protocol::*;
-use crate::virtio::video::response::Response;
-use crate::virtio::Writer;
 
 /// An error indicating something went wrong while encoding or decoding.
 /// Unlike `virtio::video::Error`, `VideoError` is not fatal for `Worker`.
@@ -62,22 +56,3 @@ impl fmt::Display for VideoError {
 impl std::error::Error for VideoError {}
 
 pub type VideoResult<T> = Result<T, VideoError>;
-
-impl Response for VideoError {
-    fn write(&self, w: &mut Writer) -> Result<(), io::Error> {
-        use VideoError::*;
-
-        let type_ = Le32::from(match *self {
-            InvalidResourceId { .. } => VIRTIO_VIDEO_RESP_ERR_INVALID_RESOURCE_ID,
-            InvalidStreamId(_) => VIRTIO_VIDEO_RESP_ERR_INVALID_STREAM_ID,
-            InvalidParameter => VIRTIO_VIDEO_RESP_ERR_INVALID_PARAMETER,
-            // TODO(b/1518105): Add more detailed error code if a new protocol supports ones.
-            _ => VIRTIO_VIDEO_RESP_ERR_INVALID_OPERATION,
-        });
-
-        w.write_obj(virtio_video_cmd_hdr {
-            type_,
-            ..Default::default()
-        })
-    }
-}

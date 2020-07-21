@@ -10,6 +10,7 @@ use data_model::{Le32, Le64};
 
 use crate::virtio::video::command::QueueType;
 use crate::virtio::video::control::*;
+use crate::virtio::video::error::VideoError;
 use crate::virtio::video::format::*;
 use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol::*;
@@ -18,6 +19,14 @@ use crate::virtio::Writer;
 pub trait Response {
     /// Writes an object to virtqueue.
     fn write(&self, w: &mut Writer) -> Result<(), io::Error>;
+}
+
+#[derive(Debug)]
+pub enum CmdError {
+    InvalidResourceId,
+    InvalidStreamId,
+    InvalidParameter,
+    InvalidOperation,
 }
 
 /// A response to a `VideoCmd`. These correspond to `VIRTIO_VIDEO_RESP_*`.
@@ -36,6 +45,19 @@ pub enum CmdResponse {
     },
     QueryControl(QueryCtrlResponse),
     GetControl(CtrlVal),
+    Error(CmdError),
+}
+
+impl From<VideoError> for CmdResponse {
+    fn from(error: VideoError) -> Self {
+        let cmd_error = match error {
+            VideoError::InvalidResourceId { .. } => CmdError::InvalidResourceId,
+            VideoError::InvalidStreamId(_) => CmdError::InvalidStreamId,
+            VideoError::InvalidParameter => CmdError::InvalidParameter,
+            _ => CmdError::InvalidOperation,
+        };
+        CmdResponse::Error(cmd_error)
+    }
 }
 
 impl Response for CmdResponse {
@@ -50,6 +72,16 @@ impl Response for CmdResponse {
             GetParams { .. } => VIRTIO_VIDEO_RESP_OK_GET_PARAMS,
             QueryControl(_) => VIRTIO_VIDEO_RESP_OK_QUERY_CONTROL,
             GetControl(_) => VIRTIO_VIDEO_RESP_OK_GET_CONTROL,
+            Error(e) => {
+                match e {
+                    // TODO(b/1518105): Add more detailed error code when a new protocol supports
+                    // them.
+                    CmdError::InvalidResourceId => VIRTIO_VIDEO_RESP_ERR_INVALID_RESOURCE_ID,
+                    CmdError::InvalidStreamId => VIRTIO_VIDEO_RESP_ERR_INVALID_STREAM_ID,
+                    CmdError::InvalidParameter => VIRTIO_VIDEO_RESP_ERR_INVALID_PARAMETER,
+                    CmdError::InvalidOperation => VIRTIO_VIDEO_RESP_ERR_INVALID_OPERATION,
+                }
+            }
         });
 
         let hdr = virtio_video_cmd_hdr {
@@ -58,7 +90,7 @@ impl Response for CmdResponse {
         };
 
         match self {
-            NoData => w.write_obj(hdr),
+            NoData | Error(_) => w.write_obj(hdr),
             QueryCapability(descs) => {
                 w.write_obj(virtio_video_query_capability_resp {
                     hdr,

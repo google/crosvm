@@ -15,7 +15,7 @@ use crate::virtio::video::command::{QueueType, VideoCmd};
 use crate::virtio::video::device::{
     AsyncCmdResponse, AsyncCmdTag, Device, Token, VideoCmdResponseType, VideoEvtResponseType,
 };
-use crate::virtio::video::error::{VideoError, VideoResult};
+use crate::virtio::video::error::VideoError;
 use crate::virtio::video::event::{self, EvtType, VideoEvt};
 use crate::virtio::video::protocol;
 use crate::virtio::video::response::{self, CmdResponse, Response};
@@ -34,7 +34,7 @@ pub struct Worker {
 /// BTreeMap which stores descriptor chains in which asynchronous responses will be written.
 type DescPool<'a> = BTreeMap<AsyncCmdTag, DescriptorChain<'a>>;
 /// Pair of a descriptor chain and a response to be written.
-type WritableResp<'a> = (DescriptorChain<'a>, VideoResult<response::CmdResponse>);
+type WritableResp<'a> = (DescriptorChain<'a>, response::CmdResponse);
 
 /// Invalidates and removes all pending asynchronous commands in a given `DescPool` value
 /// and returns a list of `WritableResp` to be sent to the guest.
@@ -49,18 +49,18 @@ fn cancel_pending_requests<'a>(
             AsyncCmdTag::Queue { stream_id, .. } if stream_id == target_stream_id => {
                 resps.push((
                     value,
-                    Ok(CmdResponse::ResourceQueue {
+                    CmdResponse::ResourceQueue {
                         timestamp: 0,
                         flags: protocol::VIRTIO_VIDEO_BUFFER_FLAG_ERR,
                         size: 0,
-                    }),
+                    },
                 ));
             }
             AsyncCmdTag::Drain { stream_id } | AsyncCmdTag::Clear { stream_id, .. }
                 if stream_id == target_stream_id =>
             {
                 // TODO(b/1518105): Use more appropriate error code if a new protocol supports one.
-                resps.push((value, Err(VideoError::InvalidOperation)));
+                resps.push((value, VideoError::InvalidOperation.into()));
             }
             AsyncCmdTag::Queue { .. } | AsyncCmdTag::Drain { .. } | AsyncCmdTag::Clear { .. } => {
                 // Keep commands for other streams.
@@ -83,19 +83,9 @@ impl Worker {
         while let Some((desc, resp)) = responses.pop_front() {
             let desc_index = desc.index;
             let mut writer = Writer::new(&self.mem, desc).map_err(Error::InvalidDescriptorChain)?;
-            match resp {
-                Ok(r) => {
-                    if let Err(e) = r.write(&mut writer) {
-                        error!("failed to write an OK response for {:?}: {}", r, e);
-                    }
-                }
-                Err(err) => {
-                    if let Err(e) = err.write(&mut writer) {
-                        error!("failed to write an Error response for {:?}: {}", err, e);
-                    }
-                }
+            if let Err(e) = resp.write(&mut writer) {
+                error!("failed to write a command response for {:?}: {}", resp, e);
             }
-
             cmd_queue.add_used(&self.mem, desc_index, writer.bytes_written() as u32);
             needs_interrupt_commandq = true;
         }
@@ -154,7 +144,7 @@ impl Worker {
 
         match resp {
             Ok(VideoCmdResponseType::Sync(r)) => {
-                resps.push_back((desc.clone(), Ok(r)));
+                resps.push_back((desc.clone(), r));
             }
             Ok(VideoCmdResponseType::Async(tag)) => {
                 // If the command expects an asynchronous response,
@@ -163,7 +153,8 @@ impl Worker {
                 desc_pool.insert(tag, desc);
             }
             Err(e) => {
-                resps.push_back((desc.clone(), Err(e)));
+                error!("returning error response: {}", &e);
+                resps.push_back((desc.clone(), e.into()));
             }
         }
 
@@ -201,7 +192,7 @@ impl Worker {
             VideoEvtResponseType::AsyncCmd(async_response) => {
                 let AsyncCmdResponse {
                     tag,
-                    response: cmd_response,
+                    response: cmd_result,
                 } = async_response;
                 let desc = desc_pool
                     .remove(&tag)
@@ -219,7 +210,7 @@ impl Worker {
                             .take_resource_id_to_notify_eos(stream_id)
                             .ok_or_else(|| Error::NoEOSBuffer { stream_id })?;
 
-                        let q_desc = desc_pool
+                        let queue_desc = desc_pool
                             .remove(&AsyncCmdTag::Queue {
                                 stream_id,
                                 queue_type: QueueType::Output,
@@ -231,12 +222,12 @@ impl Worker {
                             })?;
 
                         responses.push_back((
-                            q_desc,
-                            Ok(CmdResponse::ResourceQueue {
+                            queue_desc,
+                            CmdResponse::ResourceQueue {
                                 timestamp: 0,
                                 flags: protocol::VIRTIO_VIDEO_BUFFER_FLAG_EOS,
                                 size: 0,
-                            }),
+                            },
                         ));
                     }
 
@@ -250,6 +241,14 @@ impl Worker {
                         // No extra responses necessary.
                     }
                 }
+
+                let cmd_response = match cmd_result {
+                    Ok(r) => r,
+                    Err(e) => {
+                        error!("returning async error response: {}", &e);
+                        e.into()
+                    }
+                };
                 responses.push_back((desc, cmd_response));
             }
             VideoEvtResponseType::Event(mut evt) => {
