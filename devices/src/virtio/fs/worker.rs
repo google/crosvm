@@ -4,7 +4,8 @@
 
 use std::sync::Arc;
 
-use sys_util::{error, EventFd, GuestMemory, PollContext, PollToken};
+use sys_util::{error, EventFd, PollContext, PollToken};
+use vm_memory::GuestMemory;
 
 use crate::virtio::fs::filesystem::FileSystem;
 use crate::virtio::fs::server::Server;

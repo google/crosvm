@@ -6,7 +6,7 @@ use bit_field::Error as BitFieldError;
 use bit_field::*;
 use data_model::DataInit;
 use std::fmt::{self, Display};
-use sys_util::GuestAddress;
+use vm_memory::GuestAddress;
 
 #[derive(Debug)]
 pub enum Error {

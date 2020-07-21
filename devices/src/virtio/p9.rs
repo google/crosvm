@@ -10,8 +10,9 @@ use std::path::{Path, PathBuf};
 use std::result;
 use std::thread;
 
-use sys_util::{error, warn, Error as SysError, EventFd, GuestMemory, PollContext, PollToken};
+use sys_util::{error, warn, Error as SysError, EventFd, PollContext, PollToken};
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
+use vm_memory::GuestMemory;
 
 use super::{
     copy_config, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_9P,

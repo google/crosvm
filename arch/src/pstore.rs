@@ -10,7 +10,8 @@ use crate::Pstore;
 use kvm::Vm;
 use resources::SystemAllocator;
 use resources::{Alloc, MmioType};
-use sys_util::{GuestAddress, MemoryMapping};
+use sys_util::MemoryMapping;
+use vm_memory::GuestAddress;
 
 /// Error for pstore.
 #[derive(Debug)]

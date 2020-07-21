@@ -29,9 +29,10 @@ use msg_socket::MsgOnSocket;
 #[allow(unused_imports)]
 use sys_util::{
     block_signal, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
-    ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, EventFd, GuestAddress,
-    GuestMemory, IoctlNr, MappedRegion, MemoryMapping, MmapError, Result, SIGRTMIN,
+    ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, EventFd, IoctlNr, MappedRegion,
+    MemoryMapping, MmapError, Result, SIGRTMIN,
 };
+use vm_memory::{GuestAddress, GuestMemory};
 
 pub use crate::cap::*;
 

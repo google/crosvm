@@ -15,12 +15,13 @@ use std::thread;
 use data_model::{DataInit, Le16, Le64};
 use net_util::{Error as TapError, MacAddress, TapT};
 use sys_util::Error as SysError;
-use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken, WatchingEvents};
+use sys_util::{error, warn, EventFd, PollContext, PollToken, WatchingEvents};
 use virtio_sys::virtio_net::{
     virtio_net_hdr_v1, VIRTIO_NET_CTRL_GUEST_OFFLOADS, VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET,
     VIRTIO_NET_CTRL_MQ, VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET, VIRTIO_NET_ERR, VIRTIO_NET_OK,
 };
 use virtio_sys::{vhost, virtio_net};
+use vm_memory::GuestMemory;
 
 use super::{
     copy_config, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_NET,

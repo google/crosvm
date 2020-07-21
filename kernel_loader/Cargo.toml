@@ -6,3 +6,4 @@ edition = "2018"
 [dependencies]
 libc = "*"
 sys_util = { path = "../sys_util" }
+vm_memory = { path = "../vm_memory" }

@@ -8,8 +8,9 @@ use std::os::unix::io::AsRawFd;
 use std::sync::atomic::{fence, Ordering};
 
 use cros_async::{AsyncError, U64Source};
-use sys_util::{error, GuestAddress, GuestMemory};
+use sys_util::error;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
+use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{Interrupt, VIRTIO_MSI_NO_VECTOR};
 

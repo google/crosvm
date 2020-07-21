@@ -4,7 +4,8 @@
 
 use std::os::unix::io::RawFd;
 
-use sys_util::{EventFd, GuestMemory};
+use sys_util::EventFd;
+use vm_memory::GuestMemory;
 
 use super::*;
 use crate::pci::{MsixStatus, PciAddress, PciBarConfiguration, PciCapability};

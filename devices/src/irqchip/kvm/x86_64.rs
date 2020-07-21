@@ -641,7 +641,8 @@ mod tests {
 
     use super::*;
     use hypervisor::kvm::Kvm;
-    use sys_util::{EventReadResult, GuestMemory};
+    use sys_util::EventReadResult;
+    use vm_memory::GuestMemory;
 
     use hypervisor::{IoapicRedirectionTableEntry, PitRWMode, TriggerMode, Vm, VmX86_64};
     use vm_control::{VmIrqRequest, VmIrqResponse};

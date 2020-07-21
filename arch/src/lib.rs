@@ -27,8 +27,9 @@ use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
 use minijail::Minijail;
 use resources::SystemAllocator;
 use sync::Mutex;
-use sys_util::{syslog, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
+use sys_util::{syslog, EventFd};
 use vm_control::VmIrqRequestSocket;
+use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 pub use serial::{
     add_serial_devices, get_serial_cmdline, set_default_serial_parameters, GetSerialCmdlineError,

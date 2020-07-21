@@ -24,9 +24,10 @@ use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSo
 use resources::{Alloc, GpuMemoryDesc, MmioType, SystemAllocator};
 use sync::Mutex;
 use sys_util::{
-    error, Error as SysError, EventFd, ExternalMapping, GuestAddress, MappedRegion, MemoryMapping,
-    MmapError, Result,
+    error, Error as SysError, EventFd, ExternalMapping, MappedRegion, MemoryMapping, MmapError,
+    Result,
 };
+use vm_memory::GuestAddress;
 
 /// A file descriptor either borrowed or owned by this.
 #[derive(Debug)]

@@ -12,3 +12,4 @@ gfxstream = []
 data_model = { path = "../data_model" }
 libc = "*"
 sys_util = { path = "../sys_util" }
+vm_memory = { path = "../vm_memory" }

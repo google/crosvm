@@ -13,7 +13,8 @@ use self::constants::*;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use data_model::{DataInit, Le16, Le32};
-use sys_util::{error, warn, EventFd, GuestMemory, PollContext, PollToken};
+use sys_util::{error, warn, EventFd, PollContext, PollToken};
+use vm_memory::GuestMemory;
 
 use self::event_source::{EvdevEventSource, EventSource, SocketEventSource};
 use super::{

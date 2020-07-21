@@ -10,3 +10,4 @@ libc = "*"
 net_util = { path = "../net_util" }
 sys_util = { path = "../sys_util" }
 virtio_sys = { path = "../virtio_sys" }
+vm_memory = { path = "../vm_memory" }

@@ -17,7 +17,8 @@ use libc::EINVAL;
 use data_model::*;
 use msg_socket::{MsgReceiver, MsgSender};
 use resources::Alloc;
-use sys_util::{error, warn, Error, GuestAddress, GuestMemory};
+use sys_util::{error, warn, Error};
+use vm_memory::{GuestAddress, GuestMemory};
 
 use gpu_display::*;
 use gpu_renderer::{

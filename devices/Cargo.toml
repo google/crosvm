@@ -52,6 +52,7 @@ vfio_sys = { path = "../vfio_sys" }
 vhost = { path = "../vhost" }
 virtio_sys = { path = "../virtio_sys" }
 vm_control = { path = "../vm_control" }
+vm_memory = { path = "../vm_memory" }
 
 [dev-dependencies]
 tempfile = { path = "../tempfile" }

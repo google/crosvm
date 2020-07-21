@@ -17,7 +17,8 @@ use std::mem;
 use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use sys_util::{error, EventFd, GuestMemory};
+use sys_util::{error, EventFd};
+use vm_memory::GuestMemory;
 
 const XHCI_BAR0_SIZE: u64 = 0x10000;
 

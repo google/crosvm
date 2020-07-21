@@ -16,8 +16,9 @@ use std::fmt::{self, Display};
 use std::mem;
 use std::sync::{Arc, Weak};
 use sync::Mutex;
-use sys_util::{error, Error as SysError, EventFd, GuestMemory};
+use sys_util::{error, Error as SysError, EventFd};
 use usb_util::{TransferStatus, UsbRequestSetup};
+use vm_memory::GuestMemory;
 
 #[derive(Debug)]
 pub enum Error {

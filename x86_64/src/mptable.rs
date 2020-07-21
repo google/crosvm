@@ -11,7 +11,7 @@ use std::slice;
 use libc::c_char;
 
 use devices::{PciAddress, PciInterruptPin};
-use sys_util::{GuestAddress, GuestMemory};
+use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::mpspec::*;
 

@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn read_to_mem() {
-        use sys_util::{GuestAddress, GuestMemory};
+        use vm_memory::{GuestAddress, GuestMemory};
 
         use crate::uring_mem::VecIoWrapper;
 

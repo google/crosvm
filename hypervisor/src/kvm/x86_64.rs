@@ -12,8 +12,9 @@ use data_model::vec_with_array_field;
 use kvm_sys::*;
 use sys_util::{
     errno_result, error, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr,
-    ioctl_with_ref, ioctl_with_val, Error, GuestAddress, MappedRegion, Result,
+    ioctl_with_ref, ioctl_with_val, Error, MappedRegion, Result,
 };
+use vm_memory::GuestAddress;
 
 use super::{Kvm, KvmVcpu, KvmVm};
 use crate::{
@@ -1136,7 +1137,7 @@ mod tests {
         PicInitState, PicState, PitChannelState, PitRWMode, PitRWState, PitState, TriggerMode, Vm,
     };
     use libc::EINVAL;
-    use sys_util::{GuestAddress, GuestMemory};
+    use vm_memory::{GuestAddress, GuestMemory};
 
     #[test]
     fn get_supported_cpuid() {

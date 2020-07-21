@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 use acpi_tables::{rsdp::RSDP, sdt::SDT};
 use data_model::DataInit;
-use sys_util::{GuestAddress, GuestMemory};
+use vm_memory::{GuestAddress, GuestMemory};
 
 pub struct ACPIDevResource {
     pub amls: Vec<u8>,

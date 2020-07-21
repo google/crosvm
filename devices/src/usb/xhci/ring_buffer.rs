@@ -7,7 +7,7 @@ use super::xhci_abi::{
 };
 use std::fmt::{self, Display};
 use std::mem::size_of;
-use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
+use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 #[derive(Debug)]
 pub enum Error {

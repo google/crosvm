@@ -26,9 +26,10 @@ use minijail::Minijail;
 use protos::plugin::*;
 use sync::Mutex;
 use sys_util::{
-    error, Error as SysError, EventFd, GuestAddress, Killable, MemoryMapping, Result as SysResult,
-    ScmSocket, SharedMemory, SIGRTMIN,
+    error, Error as SysError, EventFd, Killable, MemoryMapping, Result as SysResult, ScmSocket,
+    SharedMemory, SIGRTMIN,
 };
+use vm_memory::GuestAddress;
 
 use super::*;
 

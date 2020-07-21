@@ -177,7 +177,7 @@ mod tests {
         IoapicRedirectionTableEntry, IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState,
         PicInitState, PicState, PitChannelState, PitRWMode, PitRWState, PitState, TriggerMode, Vm,
     };
-    use sys_util::{GuestAddress, GuestMemory};
+    use vm_memory::{GuestAddress, GuestMemory};
 
     #[test]
     fn set_gsi_routing() {

@@ -16,7 +16,8 @@ use std::fmt::{self, Display};
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
-use sys_util::{error, EventFd, GuestAddress, GuestMemory};
+use sys_util::{error, EventFd};
+use vm_memory::{GuestAddress, GuestMemory};
 
 #[derive(Debug)]
 pub enum Error {

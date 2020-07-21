@@ -10,7 +10,8 @@ use std::rc::Rc;
 use super::protocol::GpuResponse;
 use data_model::*;
 use gpu_display::*;
-use sys_util::{error, GuestMemory};
+use sys_util::error;
+use vm_memory::GuestMemory;
 
 pub trait VirtioResource {
     fn width(&self) -> u32;

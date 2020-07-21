@@ -20,8 +20,9 @@ use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
-use sys_util::{EventFd, GuestAddress, GuestMemory, GuestMemoryError};
+use sys_util::EventFd;
 use vm_control::VmIrqRequestSocket;
+use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 use kvm::*;
 use kvm_sys::kvm_device_attr;

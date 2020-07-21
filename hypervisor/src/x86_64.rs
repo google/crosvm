@@ -3,7 +3,8 @@
 // found in the LICENSE file.
 
 use bit_field::*;
-use sys_util::{error, GuestAddress, Result};
+use sys_util::{error, Result};
+use vm_memory::GuestAddress;
 
 use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
 

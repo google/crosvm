@@ -1,0 +1,14 @@
+[package]
+name = "vm_memory"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2018"
+include = ["src/**/*", "Cargo.toml"]
+
+[dependencies]
+data_model = { path = "../data_model" } # provided by ebuild
+libc = "*"
+sys_util = { path = "../sys_util" } # provided by ebuild
+syscall_defines = { path = "../syscall_defines" } # provided by ebuild
+
+[workspace]

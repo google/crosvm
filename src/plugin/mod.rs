@@ -31,10 +31,10 @@ use minijail::{self, Minijail};
 use net_util::{Error as TapError, Tap, TapT};
 use sys_util::{
     block_signal, clear_signal, drop_capabilities, error, getegid, geteuid, info, pipe,
-    register_rt_signal_handler, validate_raw_fd, warn, Error as SysError, EventFd, GuestMemory,
-    Killable, MmapError, PollContext, PollToken, Result as SysResult, SignalFd, SignalFdError,
-    SIGRTMIN,
+    register_rt_signal_handler, validate_raw_fd, warn, Error as SysError, EventFd, Killable,
+    MmapError, PollContext, PollToken, Result as SysResult, SignalFd, SignalFdError, SIGRTMIN,
 };
+use vm_memory::GuestMemory;
 
 use self::process::*;
 use self::vcpu::*;

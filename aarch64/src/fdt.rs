@@ -12,7 +12,7 @@ use arch::fdt::{
 };
 use arch::SERIAL_ADDR;
 use devices::{PciAddress, PciInterruptPin};
-use sys_util::{GuestAddress, GuestMemory};
+use vm_memory::{GuestAddress, GuestMemory};
 
 // This is the start of DRAM in the physical address space.
 use crate::AARCH64_PHYS_MEM_START;

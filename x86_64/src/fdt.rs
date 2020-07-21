@@ -7,7 +7,7 @@ use arch::fdt::{begin_node, end_node, finish_fdt, start_fdt, Error};
 use data_model::DataInit;
 use std::fs::File;
 use std::mem;
-use sys_util::{GuestAddress, GuestMemory};
+use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::bootparam::setup_data;
 use crate::{SETUP_DTB, X86_64_FDT_MAX_SIZE};

@@ -14,7 +14,8 @@ use audio_streams::{
 };
 use libcras::{CrasClient, CrasClientType, CrasSocketType};
 use resources::{Alloc, MmioType, SystemAllocator};
-use sys_util::{error, EventFd, GuestMemory};
+use sys_util::{error, EventFd};
+use vm_memory::GuestMemory;
 
 use crate::pci::ac97_bus_master::Ac97BusMaster;
 use crate::pci::ac97_mixer::Ac97Mixer;
@@ -336,7 +337,7 @@ impl PciDevice for Ac97Dev {
 mod tests {
     use super::*;
     use audio_streams::shm_streams::MockShmStreamSource;
-    use sys_util::GuestAddress;
+    use vm_memory::GuestAddress;
 
     #[test]
     fn create() {

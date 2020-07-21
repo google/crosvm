@@ -49,9 +49,9 @@ use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketLis
 use sys_util::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_rt_signal_handler,
-    set_cpu_affinity, validate_raw_fd, warn, EventFd, ExternalMapping, FlockOperation,
-    GuestAddress, GuestMemory, Killable, MemoryMappingArena, PollContext, PollToken, Protection,
-    ScopedEvent, SignalFd, Terminal, TimerFd, WatchingEvents, SIGRTMIN,
+    set_cpu_affinity, validate_raw_fd, warn, EventFd, ExternalMapping, FlockOperation, Killable,
+    MemoryMappingArena, PollContext, PollToken, Protection, ScopedEvent, SignalFd, Terminal,
+    TimerFd, WatchingEvents, SIGRTMIN,
 };
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
@@ -61,6 +61,7 @@ use vm_control::{
     VmMemoryRequest, VmMemoryResponse, VmMsyncRequest, VmMsyncRequestSocket, VmMsyncResponse,
     VmMsyncResponseSocket, VmRunMode,
 };
+use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::{Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption};
 use arch::{

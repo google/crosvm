@@ -13,7 +13,8 @@ use std::sync::Arc;
 
 use cros_fuzz::fuzz_target;
 use devices::virtio::{Block, Interrupt, Queue, VirtioDevice};
-use sys_util::{EventFd, GuestAddress, GuestMemory, SharedMemory};
+use sys_util::{EventFd, SharedMemory};
+use vm_memory::{GuestAddress, GuestMemory};
 
 const MEM_SIZE: u64 = 256 * 1024 * 1024;
 const DESC_SIZE: u64 = 16; // Bytes in one virtio descriptor.

@@ -12,7 +12,8 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::thread;
 
 use data_model::{DataInit, Le32};
-use sys_util::{error, Error as SysError, EventFd, GuestMemory};
+use sys_util::{error, Error as SysError, EventFd};
+use vm_memory::GuestMemory;
 
 use crate::virtio::resource_bridge::ResourceRequestSocket;
 use crate::virtio::virtio_device::VirtioDevice;

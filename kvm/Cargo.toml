@@ -11,3 +11,4 @@ libc = "*"
 msg_socket = { path = "../msg_socket" }
 sys_util = { path = "../sys_util" }
 sync = { path = "../sync" }
+vm_memory = { path = "../vm_memory" }

@@ -9,7 +9,7 @@ use std::fmt::{self, Display};
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::io::AsRawFd;
 
-use sys_util::{GuestAddress, GuestMemory};
+use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::bootparam::boot_params;
 

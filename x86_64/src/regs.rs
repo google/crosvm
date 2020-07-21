@@ -12,7 +12,8 @@ use kvm_sys::kvm_msr_entry;
 use kvm_sys::kvm_msrs;
 use kvm_sys::kvm_regs;
 use kvm_sys::kvm_sregs;
-use sys_util::{self, warn, GuestAddress, GuestMemory, LayoutAllocation};
+use sys_util::{self, warn, LayoutAllocation};
+use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::gdt;
 
@@ -413,7 +414,7 @@ pub fn setup_sregs(mem: &GuestMemory, vcpu: &kvm::Vcpu) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sys_util::{GuestAddress, GuestMemory};
+    use vm_memory::{GuestAddress, GuestMemory};
 
     fn create_guest_mem() -> GuestMemory {
         GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap()

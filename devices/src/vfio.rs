@@ -18,9 +18,9 @@ use sync::Mutex;
 
 use kvm::Vm;
 use sys_util::{
-    ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn, Error,
-    EventFd, GuestMemory,
+    ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn, Error, EventFd,
 };
+use vm_memory::GuestMemory;
 
 use vfio_sys::*;
 

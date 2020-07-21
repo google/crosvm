@@ -6,7 +6,7 @@
 
 use kvm::*;
 use kvm_sys::kvm_regs;
-use sys_util::{GuestAddress, GuestMemory};
+use vm_memory::{GuestAddress, GuestMemory};
 
 #[test]
 fn test_run() {

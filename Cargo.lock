@@ -17,6 +17,7 @@ dependencies = [
  "sync 0.1.0",
  "sys_util 0.1.0",
  "vm_control 0.1.0",
+ "vm_memory 0.1.0",
 ]
 
 [[package]]
@@ -40,6 +41,7 @@ dependencies = [
  "sync 0.1.0",
  "sys_util 0.1.0",
  "vm_control 0.1.0",
+ "vm_memory 0.1.0",
 ]
 
 [[package]]
@@ -104,6 +106,7 @@ dependencies = [
  "pin-utils 0.1.0-alpha.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
  "syscall_defines 0.1.0",
+ "vm_memory 0.1.0",
 ]
 
 [[package]]
@@ -142,6 +145,7 @@ dependencies = [
  "sys_util 0.1.0",
  "vhost 0.1.0",
  "vm_control 0.1.0",
+ "vm_memory 0.1.0",
  "x86_64 0.1.0",
 ]
 
@@ -207,6 +211,7 @@ dependencies = [
  "vhost 0.1.0",
  "virtio_sys 0.1.0",
  "vm_control 0.1.0",
+ "vm_memory 0.1.0",
 ]
 
 [[package]]
@@ -346,6 +351,7 @@ dependencies = [
  "data_model 0.1.0",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
+ "vm_memory 0.1.0",
 ]
 
 [[package]]
@@ -361,6 +367,7 @@ dependencies = [
  "msg_socket 0.1.0",
  "sync 0.1.0",
  "sys_util 0.1.0",
+ "vm_memory 0.1.0",
 ]
 
 [[package]]
@@ -385,6 +392,7 @@ version = "0.1.0"
 dependencies = [
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
  "sys_util 0.1.0",
+ "vm_memory 0.1.0",
 ]
 
 [[package]]
@@ -397,6 +405,7 @@ dependencies = [
  "msg_socket 0.1.0",
  "sync 0.1.0",
  "sys_util 0.1.0",
+ "vm_memory 0.1.0",
 ]
 
 [[package]]
@@ -772,6 +781,7 @@ dependencies = [
  "net_util 0.1.0",
  "sys_util 0.1.0",
  "virtio_sys 0.1.0",
+ "vm_memory 0.1.0",
 ]
 
 [[package]]
@@ -792,6 +802,17 @@ dependencies = [
  "resources 0.1.0",
  "sync 0.1.0",
  "sys_util 0.1.0",
+ "vm_memory 0.1.0",
+]
+
+[[package]]
+name = "vm_memory"
+version = "0.1.0"
+dependencies = [
+ "data_model 0.1.0",
+ "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sys_util 0.1.0",
+ "syscall_defines 0.1.0",
 ]
 
 [[package]]
@@ -823,6 +844,7 @@ dependencies = [
  "sync 0.1.0",
  "sys_util 0.1.0",
  "vm_control 0.1.0",
+ "vm_memory 0.1.0",
 ]
 
 [metadata]

@@ -6,7 +6,8 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use sys_util::{error, EventFd, GuestMemory, PollContext};
+use sys_util::{error, EventFd, PollContext};
+use vm_memory::GuestMemory;
 
 use crate::virtio::queue::{DescriptorChain, Queue};
 use crate::virtio::resource_bridge::ResourceRequestSocket;

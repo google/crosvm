@@ -59,9 +59,10 @@ use resources::GpuMemoryDesc;
 #[cfg(feature = "wl-dmabuf")]
 use sys_util::ioctl_iow_nr;
 use sys_util::{
-    error, pipe, round_up_to_page_size, warn, Error, EventFd, FileFlags, GuestMemory,
-    GuestMemoryError, PollContext, PollToken, Result, ScmSocket, SharedMemory,
+    error, pipe, round_up_to_page_size, warn, Error, EventFd, FileFlags, PollContext, PollToken,
+    Result, ScmSocket, SharedMemory,
 };
+use vm_memory::{GuestMemory, GuestMemoryError};
 
 #[cfg(feature = "wl-dmabuf")]
 use sys_util::ioctl_with_ref;

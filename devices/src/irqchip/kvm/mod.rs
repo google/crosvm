@@ -156,7 +156,7 @@ mod tests {
 
     use hypervisor::kvm::{Kvm, KvmVm};
     use hypervisor::{MPState, Vm};
-    use sys_util::GuestMemory;
+    use vm_memory::GuestMemory;
 
     use crate::irqchip::{IrqChip, KvmKernelIrqChip};
 

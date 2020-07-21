@@ -20,8 +20,6 @@ mod external_mapping;
 mod file_flags;
 pub mod file_traits;
 mod fork;
-mod guest_address;
-pub mod guest_memory;
 mod mmap;
 pub mod net;
 mod passwd;
@@ -48,8 +46,6 @@ pub use crate::eventfd::*;
 pub use crate::external_mapping::*;
 pub use crate::file_flags::*;
 pub use crate::fork::*;
-pub use crate::guest_address::*;
-pub use crate::guest_memory::*;
 pub use crate::ioctl::*;
 pub use crate::mmap::*;
 pub use crate::passwd::*;
@@ -72,7 +68,6 @@ pub use crate::file_traits::{
     AsRawFds, FileAllocate, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen,
     FileSync,
 };
-pub use crate::guest_memory::Error as GuestMemoryError;
 pub use crate::mmap::Error as MmapError;
 pub use crate::seek_hole::SeekHole;
 pub use crate::signalfd::Error as SignalFdError;

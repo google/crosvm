@@ -4,7 +4,8 @@
 
 use std::convert::TryInto;
 
-use sys_util::{warn, GuestAddress};
+use sys_util::warn;
+use vm_memory::GuestAddress;
 
 use super::*;
 
@@ -243,7 +244,8 @@ mod tests {
     use super::*;
 
     use std::os::unix::io::RawFd;
-    use sys_util::{EventFd, GuestMemory};
+    use sys_util::EventFd;
+    use vm_memory::GuestMemory;
 
     struct DummyDevice(u32);
     const QUEUE_SIZE: u16 = 256;

@@ -19,9 +19,10 @@ use msg_socket::{MsgReceiver, MsgSender};
 use sync::Mutex;
 use sys_util::Error as SysError;
 use sys_util::Result as SysResult;
-use sys_util::{error, info, iov_max, warn, EventFd, GuestMemory, PollContext, PollToken, TimerFd};
+use sys_util::{error, info, iov_max, warn, EventFd, PollContext, PollToken, TimerFd};
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_control::{DiskControlCommand, DiskControlResponseSocket, DiskControlResult};
+use vm_memory::GuestMemory;
 
 use super::{
     copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
@@ -818,8 +819,8 @@ impl VirtioDevice for Block {
 mod tests {
     use std::fs::{File, OpenOptions};
     use std::mem::size_of_val;
-    use sys_util::GuestAddress;
     use tempfile::TempDir;
+    use vm_memory::GuestAddress;
 
     use crate::virtio::descriptor_utils::{create_descriptor_chain, DescriptorType};
 

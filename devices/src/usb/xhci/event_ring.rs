@@ -6,7 +6,7 @@ use data_model::DataInit;
 use std::fmt::{self, Display};
 use std::mem::size_of;
 use std::sync::atomic::{fence, Ordering};
-use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
+use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 use super::xhci_abi::*;
 

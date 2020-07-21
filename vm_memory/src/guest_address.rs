@@ -18,7 +18,7 @@ impl GuestAddress {
     /// # Examples
     ///
     /// ```
-    /// # use sys_util::GuestAddress;
+    /// # use vm_memory::GuestAddress;
     ///   let base = GuestAddress(0x100);
     ///   let addr = GuestAddress(0x150);
     ///   assert_eq!(addr.offset_from(base), 0x50u64);

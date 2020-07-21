@@ -9,7 +9,7 @@ use std::convert::TryInto;
 use cros_fuzz::fuzz_target;
 use devices::virtio::fs::fuzzing::fuzz_server;
 use devices::virtio::{create_descriptor_chain, DescriptorType, Reader, Writer};
-use sys_util::{GuestAddress, GuestMemory};
+use vm_memory::{GuestAddress, GuestMemory};
 
 const MEM_SIZE: u64 = 256 * 1024 * 1024;
 const BUFFER_ADDR: GuestAddress = GuestAddress(0x100);

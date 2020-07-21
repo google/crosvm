@@ -9,9 +9,10 @@ use std::thread;
 
 use net_util::{MacAddress, TapT};
 
-use sys_util::{error, warn, EventFd, GuestMemory};
+use sys_util::{error, warn, EventFd};
 use vhost::NetT as VhostNetT;
 use virtio_sys::virtio_net;
+use vm_memory::GuestMemory;
 
 use super::control_socket::*;
 use super::worker::Worker;
@@ -350,8 +351,8 @@ pub mod tests {
     use std::result;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
-    use sys_util::{GuestAddress, GuestMemory, GuestMemoryError};
     use vhost::net::fakes::FakeNet;
+    use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);

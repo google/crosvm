@@ -360,7 +360,7 @@ mod tests {
 
     fn new() -> Ioapic {
         let kvm = kvm::Kvm::new().unwrap();
-        let gm = sys_util::GuestMemory::new(&vec![(sys_util::GuestAddress(0), 0x1000)]).unwrap();
+        let gm = vm_memory::GuestMemory::new(&vec![(vm_memory::GuestAddress(0), 0x1000)]).unwrap();
         let mut vm = Vm::new(&kvm, gm).unwrap();
         vm.enable_split_irqchip().unwrap();
         let (_, device_socket) = msg_socket::pair::<VmIrqResponse, VmIrqRequest>().unwrap();

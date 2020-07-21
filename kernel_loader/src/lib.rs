@@ -8,7 +8,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::mem;
 use std::os::unix::io::AsRawFd;
 
-use sys_util::{GuestAddress, GuestMemory};
+use vm_memory::{GuestAddress, GuestMemory};
 
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
@@ -179,7 +179,8 @@ mod test {
     use super::*;
     use std::fs::File;
     use std::io::Write;
-    use sys_util::{GuestAddress, GuestMemory, SharedMemory};
+    use sys_util::SharedMemory;
+    use vm_memory::{GuestAddress, GuestMemory};
 
     const MEM_SIZE: u64 = 0x8000;
 

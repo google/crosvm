@@ -11,7 +11,8 @@ use data_model::{DataInit, Le32};
 use kvm::Datamatch;
 use libc::ERANGE;
 use resources::{Alloc, MmioType, SystemAllocator};
-use sys_util::{warn, EventFd, GuestMemory, Result};
+use sys_util::{warn, EventFd, Result};
+use vm_memory::GuestMemory;
 
 use super::*;
 use crate::pci::{

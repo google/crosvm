@@ -10,7 +10,7 @@ use cros_fuzz::fuzz_target;
 use cros_fuzz::rand::FuzzRng;
 use devices::virtio::{DescriptorChain, Queue};
 use rand::{Rng, RngCore};
-use sys_util::{GuestAddress, GuestMemory};
+use vm_memory::{GuestAddress, GuestMemory};
 
 const MAX_QUEUE_SIZE: u16 = 256;
 const MEM_SIZE: u64 = 1024 * 1024;

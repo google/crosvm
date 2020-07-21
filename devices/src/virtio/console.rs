@@ -8,7 +8,8 @@ use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::thread;
 
 use data_model::{DataInit, Le16, Le32};
-use sys_util::{error, EventFd, GuestMemory, PollContext, PollToken};
+use sys_util::{error, EventFd, PollContext, PollToken};
+use vm_memory::GuestMemory;
 
 use super::{
     copy_config, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_CONSOLE, VIRTIO_F_VERSION_1,

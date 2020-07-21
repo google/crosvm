@@ -26,6 +26,7 @@ exclude = [
     "sys_util",
     "syscall_defines",
     "tempfile",
+    "vm_memory",
     "hypervisor"
 ]
 
@@ -77,6 +78,7 @@ sys_util = "*"
 vhost = { path = "vhost" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }
+vm_memory = { path = "vm_memory" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { path = "x86_64" }

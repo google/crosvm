@@ -33,9 +33,9 @@ use sync::Mutex;
 use sys_util::{
     block_signal, errno_result, error, ioctl, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
     pagesize, signal, unblock_signal, AsRawDescriptor, Error, EventFd, FromRawDescriptor,
-    GuestAddress, GuestMemory, MappedRegion, MemoryMapping, MmapError, RawDescriptor, Result,
-    SafeDescriptor,
+    MappedRegion, MemoryMapping, MmapError, RawDescriptor, Result, SafeDescriptor,
 };
+use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::{
     ClockState, Datamatch, DeviceKind, Hypervisor, HypervisorCap, IoEventAddress, IrqRoute,
@@ -1097,7 +1097,8 @@ mod tests {
     use super::*;
     use std::os::unix::io::FromRawFd;
     use std::thread;
-    use sys_util::{pagesize, GuestAddress, MemoryMapping, MemoryMappingArena};
+    use sys_util::{pagesize, MemoryMapping, MemoryMappingArena};
+    use vm_memory::GuestAddress;
 
     #[test]
     fn dirty_log_size() {

@@ -10,12 +10,11 @@ use std::thread;
 
 use data_model::{DataInit, Le16, Le32, Le64};
 use msg_socket::{MsgReceiver, MsgSender};
-use sys_util::{
-    self, error, info, warn, EventFd, GuestAddress, GuestMemory, PollContext, PollToken,
-};
+use sys_util::{self, error, info, warn, EventFd, PollContext, PollToken};
 use vm_control::{
     BalloonControlCommand, BalloonControlResponseSocket, BalloonControlResult, BalloonStats,
 };
+use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
     copy_config, Interrupt, Queue, Reader, VirtioDevice, TYPE_BALLOON, VIRTIO_F_VERSION_1,

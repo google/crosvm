@@ -14,14 +14,15 @@ use std::ptr::copy_nonoverlapping;
 use std::result;
 
 use data_model::{DataInit, Le16, Le32, Le64, VolatileMemoryError, VolatileSlice};
-use sys_util::{FileReadWriteAtVolatile, FileReadWriteVolatile, GuestAddress, GuestMemory};
+use sys_util::{FileReadWriteAtVolatile, FileReadWriteVolatile};
+use vm_memory::{GuestAddress, GuestMemory};
 
 use super::DescriptorChain;
 
 #[derive(Debug)]
 pub enum Error {
     DescriptorChainOverflow,
-    GuestMemoryError(sys_util::GuestMemoryError),
+    GuestMemoryError(vm_memory::GuestMemoryError),
     InvalidChain,
     IoError(io::Error),
     SplitOutOfBounds(usize),

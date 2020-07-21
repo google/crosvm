@@ -70,8 +70,9 @@ use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
-use sys_util::{Clock, EventFd, GuestAddress, GuestMemory, GuestMemoryError};
+use sys_util::{Clock, EventFd};
 use vm_control::VmIrqRequestSocket;
+use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 #[sorted]
 #[derive(Debug)]

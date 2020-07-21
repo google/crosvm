@@ -17,9 +17,8 @@ use audio_streams::{
     BoxError, DummyStreamControl, SampleFormat, StreamControl, StreamDirection, StreamEffect,
 };
 use sync::{Condvar, Mutex};
-use sys_util::{
-    self, error, set_rt_prio_limit, set_rt_round_robin, warn, EventFd, GuestAddress, GuestMemory,
-};
+use sys_util::{self, error, set_rt_prio_limit, set_rt_round_robin, warn, EventFd};
+use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;
@@ -95,7 +94,7 @@ impl Ac97BusMasterRegs {
 #[derive(Debug)]
 enum GuestMemoryError {
     // Failure getting the address of the audio buffer.
-    ReadingGuestBufferAddress(sys_util::GuestMemoryError),
+    ReadingGuestBufferAddress(vm_memory::GuestMemoryError),
 }
 
 impl std::error::Error for GuestMemoryError {}

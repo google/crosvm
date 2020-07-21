@@ -14,7 +14,8 @@ use std::ops::{Deref, DerefMut};
 use std::os::raw::c_int;
 
 use msg_socket::MsgOnSocket;
-use sys_util::{EventFd, GuestAddress, GuestMemory, MappedRegion, Result, SafeDescriptor};
+use sys_util::{EventFd, MappedRegion, Result, SafeDescriptor};
+use vm_memory::{GuestAddress, GuestMemory};
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use crate::aarch64::*;

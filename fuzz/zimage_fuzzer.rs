@@ -5,7 +5,8 @@
 #![no_main]
 
 use cros_fuzz::fuzz_target;
-use sys_util::{GuestAddress, GuestMemory, SharedMemory};
+use sys_util::SharedMemory;
+use vm_memory::{GuestAddress, GuestMemory};
 
 use std::fs::File;
 use std::io::Write;

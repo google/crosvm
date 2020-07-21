@@ -8,7 +8,8 @@ use crate::usb::xhci::ring_buffer_controller::{
 use crate::utils::EventLoop;
 use std::sync::Arc;
 use sync::Mutex;
-use sys_util::{error, EventFd, GuestMemory};
+use sys_util::{error, EventFd};
+use vm_memory::GuestMemory;
 
 use super::interrupter::Interrupter;
 use super::usb_hub::UsbPort;
