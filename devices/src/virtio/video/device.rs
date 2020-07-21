@@ -51,15 +51,35 @@ pub enum VideoCmdResponseType {
     Async(AsyncCmdTag),
 }
 
+/// A response for an asynchronous command that was enqueued through `process_cmd` before.
+/// The `tag` must be same as the one returned when the command was enqueued.
+#[derive(Debug)]
+pub struct AsyncCmdResponse {
+    pub tag: AsyncCmdTag,
+    pub response: VideoResult<response::CmdResponse>,
+}
+
+impl AsyncCmdResponse {
+    pub fn from_response(tag: AsyncCmdTag, response: response::CmdResponse) -> Self {
+        Self {
+            tag,
+            response: Ok(response),
+        }
+    }
+
+    pub fn from_error(tag: AsyncCmdTag, error: VideoError) -> Self {
+        Self {
+            tag,
+            response: Err(error),
+        }
+    }
+}
+
 /// A return value when processing a event the back-end device sent.
 #[derive(Debug)]
 pub enum VideoEvtResponseType {
-    /// The response for an asynchronous command that was enqueued through `process_cmd` before.
-    /// The `tag` must be same as the one returned when the command is enqueued.
-    AsyncCmd {
-        tag: AsyncCmdTag,
-        resp: VideoResult<response::CmdResponse>,
-    },
+    /// The responses for an asynchronous command.
+    AsyncCmd(AsyncCmdResponse),
     /// The event that happened in the back-end device.
     Event(VideoEvt),
 }
@@ -83,7 +103,7 @@ pub trait Device {
     /// If the message is sent via commandq, the return value is `VideoEvtResponseType::AsyncCmd`.
     /// Otherwise (i.e. case of eventq), it's `VideoEvtResponseType::Event`.
     /// TODO(b/149720783): Make this an async function.
-    fn process_event_fd(&mut self, stream_id: u32) -> Option<VideoEvtResponseType>;
+    fn process_event_fd(&mut self, stream_id: u32) -> Option<Vec<VideoEvtResponseType>>;
 
     /// Returns an ID for an available output resource that can be used to notify EOS.
     /// Note that this resource must be enqueued by `ResourceQueue` and not be returned yet.

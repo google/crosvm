@@ -13,7 +13,7 @@ use crate::virtio::queue::{DescriptorChain, Queue};
 use crate::virtio::resource_bridge::ResourceRequestSocket;
 use crate::virtio::video::command::{QueueType, VideoCmd};
 use crate::virtio::video::device::{
-    AsyncCmdTag, Device, Token, VideoCmdResponseType, VideoEvtResponseType,
+    AsyncCmdResponse, AsyncCmdTag, Device, Token, VideoCmdResponseType, VideoEvtResponseType,
 };
 use crate::virtio::video::error::{VideoError, VideoResult};
 use crate::virtio::video::event::{self, EvtType, VideoEvt};
@@ -198,72 +198,59 @@ impl Worker {
     ) -> Result<VecDeque<WritableResp>> {
         let mut responses: VecDeque<WritableResp> = Default::default();
         match resp {
-            VideoEvtResponseType::AsyncCmd {
-                tag: AsyncCmdTag::Drain { stream_id },
-                resp,
-            } => {
-                let tag = AsyncCmdTag::Drain { stream_id };
-                let drain_desc = desc_pool
-                    .remove(&tag)
-                    .ok_or_else(|| Error::UnexpectedResponse(tag))?;
-
-                // When `Drain` request is completed, returns an empty output resource
-                // with EOS flag first.
-                let resource_id = device
-                    .take_resource_id_to_notify_eos(stream_id)
-                    .ok_or_else(|| Error::NoEOSBuffer { stream_id })?;
-
-                let q_desc = desc_pool
-                    .remove(&AsyncCmdTag::Queue {
-                        stream_id,
-                        queue_type: QueueType::Output,
-                        resource_id,
-                    })
-                    .ok_or_else(|| Error::InvalidEOSResource {
-                        stream_id,
-                        resource_id,
-                    })?;
-
-                responses.push_back((
-                    q_desc,
-                    Ok(CmdResponse::ResourceQueue {
-                        timestamp: 0,
-                        flags: protocol::VIRTIO_VIDEO_BUFFER_FLAG_EOS,
-                        size: 0,
-                    }),
-                ));
-
-                // Then, responds the Drain request.
-                responses.push_back((drain_desc, resp));
-            }
-            VideoEvtResponseType::AsyncCmd {
-                tag:
-                    AsyncCmdTag::Clear {
-                        queue_type,
-                        stream_id,
-                    },
-                resp,
-            } => {
-                let tag = AsyncCmdTag::Clear {
-                    queue_type,
-                    stream_id,
-                };
+            VideoEvtResponseType::AsyncCmd(async_response) => {
+                let AsyncCmdResponse {
+                    tag,
+                    response: cmd_response,
+                } = async_response;
                 let desc = desc_pool
                     .remove(&tag)
                     .ok_or_else(|| Error::UnexpectedResponse(tag))?;
 
-                // When `Clear` request is completed, invalidate all pending requests.
-                let resps = cancel_pending_requests(stream_id, desc_pool);
-                responses.append(&mut Into::<VecDeque<_>>::into(resps));
+                // TODO(b/161774071): handle_event_fd() can provide these responses
+                // so that we don't have to do an additional stage of processing here.
+                // TODO(b/161782360): Check that `response` is not an error before
+                // sending EOS in Drain, and cancelling pending requests in Clear.
+                match tag {
+                    AsyncCmdTag::Drain { stream_id } => {
+                        // When `Drain` request is completed, returns an empty output resource
+                        // with EOS flag first.
+                        let resource_id = device
+                            .take_resource_id_to_notify_eos(stream_id)
+                            .ok_or_else(|| Error::NoEOSBuffer { stream_id })?;
 
-                // Then, responds the `Clear` request.
-                responses.push_back((desc, resp));
-            }
-            VideoEvtResponseType::AsyncCmd { tag, resp } => {
-                let desc = desc_pool
-                    .remove(&tag)
-                    .ok_or_else(|| Error::UnexpectedResponse(tag))?;
-                responses.push_back((desc, resp));
+                        let q_desc = desc_pool
+                            .remove(&AsyncCmdTag::Queue {
+                                stream_id,
+                                queue_type: QueueType::Output,
+                                resource_id,
+                            })
+                            .ok_or_else(|| Error::InvalidEOSResource {
+                                stream_id,
+                                resource_id,
+                            })?;
+
+                        responses.push_back((
+                            q_desc,
+                            Ok(CmdResponse::ResourceQueue {
+                                timestamp: 0,
+                                flags: protocol::VIRTIO_VIDEO_BUFFER_FLAG_EOS,
+                                size: 0,
+                            }),
+                        ));
+                    }
+
+                    AsyncCmdTag::Clear { stream_id, .. } => {
+                        // When `Clear` request is completed, invalidate all pending requests.
+                        let resps = cancel_pending_requests(stream_id, desc_pool);
+                        responses.append(&mut Into::<VecDeque<_>>::into(resps));
+                    }
+
+                    _ => {
+                        // No extra responses necessary.
+                    }
+                }
+                responses.push_back((desc, cmd_response));
             }
             VideoEvtResponseType::Event(mut evt) => {
                 self.write_event(event_queue, &mut evt)?;
@@ -281,27 +268,27 @@ impl Worker {
         desc_pool: &mut DescPool<'a>,
         stream_id: u32,
     ) -> Result<()> {
-        let resp = device.process_event_fd(stream_id);
-        match resp {
-            Some(r) => match self.handle_event_resp(event_queue, device, desc_pool, r) {
-                Ok(mut resps) => {
-                    self.write_responses(cmd_queue, &mut resps)?;
-                    Ok(())
+        if let Some(event_responses) = device.process_event_fd(stream_id) {
+            for r in event_responses {
+                match self.handle_event_resp(event_queue, device, desc_pool, r) {
+                    Ok(mut resps) => {
+                        self.write_responses(cmd_queue, &mut resps)?;
+                    }
+                    Err(e) => {
+                        // Ignore result of write_event for a fatal error.
+                        let _ = self.write_event(
+                            event_queue,
+                            &mut VideoEvt {
+                                typ: EvtType::Error,
+                                stream_id,
+                            },
+                        );
+                        return Err(e);
+                    }
                 }
-                Err(e) => {
-                    // Ignore result of write_event for a fatal error.
-                    let _ = self.write_event(
-                        event_queue,
-                        &mut VideoEvt {
-                            typ: EvtType::Error,
-                            stream_id,
-                        },
-                    );
-                    Err(e)
-                }
-            },
-            None => Ok(()),
+            }
         }
+        Ok(())
     }
 
     pub fn run<T: Device>(

@@ -30,7 +30,7 @@ impl Device for Encoder {
         Err(VideoError::InvalidOperation)
     }
 
-    fn process_event_fd(&mut self, _stream_id: u32) -> Option<VideoEvtResponseType> {
+    fn process_event_fd(&mut self, _stream_id: u32) -> Option<Vec<VideoEvtResponseType>> {
         None
     }
 

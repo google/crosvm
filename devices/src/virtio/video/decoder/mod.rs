@@ -846,14 +846,20 @@ impl<'a> Device for Decoder<'a> {
         }
     }
 
-    fn process_event_fd(&mut self, stream_id: u32) -> Option<VideoEvtResponseType> {
+    fn process_event_fd(&mut self, stream_id: u32) -> Option<Vec<VideoEvtResponseType>> {
+        // TODO(b/161774071): Switch the return value from Option to VideoResult or another
+        // result that would allow us to return an error to the caller.
+
         use crate::virtio::video::device::VideoEvtResponseType::*;
         use libvda::decode::Event::*;
 
         let session = match self.sessions.get_mut(&stream_id) {
             Ok(s) => s,
-            Err(_) => {
-                error!("an event notified for an unknown session {}", stream_id);
+            Err(e) => {
+                error!(
+                    "an event notified for an unknown session {}: {}",
+                    stream_id, e
+                );
                 return None;
             }
         };
@@ -877,7 +883,7 @@ impl<'a> Device for Decoder<'a> {
             }
         };
 
-        match event {
+        let event_response = match event {
             ProvidePictureBuffers {
                 min_num_buffers,
                 width,
@@ -896,10 +902,10 @@ impl<'a> Device for Decoder<'a> {
                     visible_rect_right,
                     visible_rect_bottom,
                 );
-                Some(Event(VideoEvt {
+                Event(VideoEvt {
                     typ: EvtType::DecResChanged,
                     stream_id,
-                }))
+                })
             }
             PictureReady {
                 buffer_id, // FrameBufferId
@@ -910,82 +916,80 @@ impl<'a> Device for Decoder<'a> {
                 bottom,
             } => {
                 let resource_id = ctx.handle_picture_ready(buffer_id, left, top, right, bottom)?;
-                Some(AsyncCmd {
-                    tag: AsyncCmdTag::Queue {
+                let async_response = AsyncCmdResponse::from_response(
+                    AsyncCmdTag::Queue {
                         stream_id,
                         queue_type: QueueType::Output,
                         resource_id,
                     },
-                    resp: Ok(CmdResponse::ResourceQueue {
+                    CmdResponse::ResourceQueue {
                         // Conversion from sec to nsec.
                         timestamp: (ts_sec as u64) * 1_000_000_000,
                         // TODO(b/149725148): Set buffer flags once libvda exposes them.
                         flags: 0,
                         // `size` is only used for the encoder.
                         size: 0,
-                    }),
-                })
+                    },
+                );
+                AsyncCmd(async_response)
             }
             NotifyEndOfBitstreamBuffer { bitstream_id } => {
                 let resource_id = ctx.handle_notify_end_of_bitstream_buffer(bitstream_id)?;
-                Some(AsyncCmd {
-                    tag: AsyncCmdTag::Queue {
+                let async_response = AsyncCmdResponse::from_response(
+                    AsyncCmdTag::Queue {
                         stream_id,
                         queue_type: QueueType::Input,
                         resource_id,
                     },
-                    resp: Ok(CmdResponse::ResourceQueue {
+                    CmdResponse::ResourceQueue {
                         timestamp: 0, // ignored for bitstream buffers.
                         flags: 0,     // no flag is raised, as it's returned successfully.
                         size: 0,      // this field is only for encoder
-                    }),
-                })
+                    },
+                );
+                AsyncCmd(async_response)
             }
             FlushResponse(resp) => {
                 let tag = AsyncCmdTag::Drain { stream_id };
-                match resp {
-                    libvda::decode::Response::Success => Some(AsyncCmd {
-                        tag,
-                        resp: Ok(CmdResponse::NoData),
-                    }),
+                let async_response = match resp {
+                    libvda::decode::Response::Success => {
+                        AsyncCmdResponse::from_response(tag, CmdResponse::NoData)
+                    }
                     _ => {
                         // TODO(b/151810591): If `resp` is `libvda::decode::Response::Canceled`,
                         // we should notify it to the driver in some way.
                         error!("failed to 'Flush' in VDA: {:?}", resp);
-                        Some(AsyncCmd {
-                            tag,
-                            resp: Err(VideoError::VdaFailure(resp)),
-                        })
+                        AsyncCmdResponse::from_error(tag, VideoError::VdaFailure(resp))
                     }
-                }
+                };
+                AsyncCmd(async_response)
             }
             ResetResponse(resp) => {
                 let tag = AsyncCmdTag::Clear {
                     stream_id,
                     queue_type: ctx.handle_reset_response()?,
                 };
-                match resp {
-                    libvda::decode::Response::Success => Some(AsyncCmd {
-                        tag,
-                        resp: Ok(CmdResponse::NoData),
-                    }),
+                let async_response = match resp {
+                    libvda::decode::Response::Success => {
+                        AsyncCmdResponse::from_response(tag, CmdResponse::NoData)
+                    }
                     _ => {
                         error!("failed to 'Reset' in VDA: {:?}", resp);
-                        Some(AsyncCmd {
-                            tag,
-                            resp: Err(VideoError::VdaFailure(resp)),
-                        })
+                        AsyncCmdResponse::from_error(tag, VideoError::VdaFailure(resp))
                     }
-                }
+                };
+                AsyncCmd(async_response)
             }
             NotifyError(resp) => {
                 error!("an error is notified by VDA: {}", resp);
-                Some(Event(VideoEvt {
+                Event(VideoEvt {
                     typ: EvtType::Error,
                     stream_id,
-                }))
+                })
             }
-        }
+        };
+
+        Some(vec![event_response])
     }
 
     fn take_resource_id_to_notify_eos(&mut self, stream_id: u32) -> Option<u32> {
