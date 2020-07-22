@@ -408,10 +408,11 @@ impl<'a> Decoder<'a> {
         resource_id: ResourceId,
         uuid: u128,
     ) -> VideoResult<()> {
+        let mut ctx = self.contexts.get_mut(&stream_id)?;
+
         // Create a instance of `libvda::Session` at the first time `ResourceCreate` is
         // called here.
         if !self.sessions.contains_key(stream_id) {
-            let ctx = self.contexts.get(&stream_id)?;
             let profile = match ctx.in_params.format {
                 Some(Format::VP8) => Ok(libvda::Profile::VP8),
                 Some(Format::VP9) => Ok(libvda::Profile::VP9Profile0),
@@ -447,9 +448,7 @@ impl<'a> Decoder<'a> {
             self.sessions.insert(stream_id, session);
         }
 
-        self.contexts
-            .get_mut(&stream_id)?
-            .register_buffer(resource_id, &uuid);
+        ctx.register_buffer(resource_id, &uuid);
 
         if queue_type == QueueType::Input {
             return Ok(());
@@ -457,7 +456,6 @@ impl<'a> Decoder<'a> {
 
         // Set output_buffer_count when ResourceCreate is called for frame buffers for the
         // first time.
-        let mut ctx = self.contexts.get_mut(&stream_id)?;
         if !ctx.set_output_buffer_count {
             // Set the buffer count to the maximum value.
             // TODO(b/1518105): This is a hack due to the lack of way of telling a number of
@@ -499,6 +497,7 @@ impl<'a> Decoder<'a> {
         data_sizes: Vec<u32>,
     ) -> VideoResult<()> {
         let session = self.sessions.get(&stream_id)?;
+        let ctx = self.contexts.get_mut(&stream_id)?;
 
         if data_sizes.len() != 1 {
             error!("num_data_sizes must be 1 but {}", data_sizes.len());
@@ -506,18 +505,13 @@ impl<'a> Decoder<'a> {
         }
 
         // Take an ownership of this file by `into_raw_fd()` as this file will be closed by libvda.
-        let fd = self
-            .contexts
-            .get_mut(&stream_id)?
+        let fd = ctx
             .get_resource_info(resource_bridge, resource_id)?
             .file
             .into_raw_fd();
 
         // Register  a mapping of timestamp to resource_id
-        self.contexts
-            .get_mut(&stream_id)?
-            .timestamp_to_input_res_id
-            .insert(timestamp, resource_id);
+        ctx.timestamp_to_input_res_id.insert(timestamp, resource_id);
 
         // While the virtio-video driver handles timestamps as nanoseconds,
         // Chrome assumes per-second timestamps coming. So, we need a conversion from nsec
@@ -593,10 +587,7 @@ impl<'a> Decoder<'a> {
 
         // Take an ownership of `resource_info.file`.
         // This file will be kept until the stream is destroyed.
-        self.contexts
-            .get_mut(&stream_id)?
-            .keep_resources
-            .push(resource_info.file);
+        ctx.keep_resources.push(resource_info.file);
 
         let planes = vec![
             libvda::FramePlane {
@@ -609,10 +600,7 @@ impl<'a> Decoder<'a> {
             },
         ];
 
-        let buffer_id = self
-            .contexts
-            .get_mut(&stream_id)?
-            .register_queued_frame_buffer(resource_id)?;
+        let buffer_id = ctx.register_queued_frame_buffer(resource_id)?;
 
         session
             .use_output_buffer(buffer_id as i32, libvda::PixelFormat::NV12, fd, &planes)
