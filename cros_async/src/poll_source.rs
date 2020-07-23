@@ -453,11 +453,11 @@ impl<'a, F: AsRawFd> Future for PollReadMem<'a, F> {
             // Safe because we trust the kernel not to write path the length given and the length is
             // guaranteed to be valid from the pointer by io_slice_mut.
             let ret = unsafe {
-                libc::preadv(
+                libc::preadv64(
                     fd,
                     iovecs.as_mut_ptr() as *mut _,
                     iovecs.len() as i32,
-                    file_offset as libc::c_long,
+                    file_offset as libc::off64_t,
                 )
             };
             match ret {
@@ -522,11 +522,11 @@ impl<'a, F: AsRawFd> Future for PollWriteMem<'a, F> {
             // Safe because we trust the kernel not to write path the length given and the length is
             // guaranteed to be valid from the pointer by io_slice_mut.
             let ret = unsafe {
-                libc::pwritev(
+                libc::pwritev64(
                     fd,
                     iovecs.as_ptr() as *mut _,
                     iovecs.len() as i32,
-                    file_offset as libc::c_long,
+                    file_offset as libc::off64_t,
                 )
             };
             match ret {
