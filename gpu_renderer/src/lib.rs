@@ -338,6 +338,7 @@ impl Renderer {
         ret_to_res(ret)?;
         Ok(Resource {
             id: args.handle,
+            blob: false,
             backing_iovecs: Vec::new(),
             backing_mem: None,
         })
@@ -463,6 +464,7 @@ impl Renderer {
 
             Ok(Resource {
                 id: resource_id,
+                blob: true,
                 backing_iovecs: iovecs,
                 backing_mem: None,
             })
@@ -585,6 +587,7 @@ fn unmap_func(resource_id: u32) {
 /// A resource handle used by the renderer.
 pub struct Resource {
     id: u32,
+    blob: bool,
     backing_iovecs: Vec<VirglVec>,
     backing_mem: Option<GuestMemory>,
 }
@@ -618,8 +621,39 @@ impl Resource {
         self.export_query(false)
     }
 
-    /// Returns resource metadata and exports the associated dma-buf.
-    pub fn export(&self) -> Result<(Query, File)> {
+    /// Exports the associated dma-buf for a blob resource.
+    fn export_blob(&self) -> Result<File> {
+        #[cfg(feature = "virtio-gpu-next")]
+        {
+            let mut fd_type = 0;
+            let mut fd = 0;
+            let ret = unsafe {
+                virgl_renderer_resource_export_blob(self.id as u32, &mut fd_type, &mut fd)
+            };
+            ret_to_res(ret)?;
+
+            /* Only support dma-bufs until someone wants opaque fds too. */
+            if fd_type != VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF {
+                // Safe because the FD was just returned by a successful virglrenderer
+                // call so it must be valid and owned by us.
+                unsafe { close(fd) };
+                return Err(Error::Unsupported);
+            }
+
+            let dmabuf = unsafe { File::from_raw_fd(fd) };
+            Ok(dmabuf)
+        }
+        #[cfg(not(feature = "virtio-gpu-next"))]
+        Err(Error::Unsupported)
+    }
+
+    /// Exports the associated dma-buf for a blob resource and traditional virtio-gpu resource
+    /// backed by a dma-buf.
+    pub fn export(&self) -> Result<File> {
+        if self.blob {
+            return self.export_blob();
+        }
+
         let query = self.export_query(true)?;
         if query.out_num_fds != 1 || query.out_fds[0] < 0 {
             for fd in &query.out_fds {
@@ -635,7 +669,7 @@ impl Resource {
         // Safe because the FD was just returned by a successful virglrenderer call so it must
         // be valid and owned by us.
         let dmabuf = unsafe { File::from_raw_fd(query.out_fds[0]) };
-        Ok((query, dmabuf))
+        Ok(dmabuf)
     }
 
     #[allow(unused_variables)]

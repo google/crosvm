@@ -21,6 +21,8 @@ pub const VIRGL_RES_BIND_CURSOR: u32 = 65536;
 pub const VIRGL_RES_BIND_CUSTOM: u32 = 131072;
 pub const VIRGL_RES_BIND_SCANOUT: u32 = 262144;
 pub const VIRGL_RES_BIND_SHARED: u32 = 1048576;
+pub const VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF: u32 = 1;
+pub const VIRGL_RENDERER_BLOB_FD_TYPE_OPAQUE: u32 = 2;
 pub type __int32_t = ::std::os::raw::c_int;
 pub type __uint32_t = ::std::os::raw::c_uint;
 pub type __uint64_t = ::std::os::raw::c_ulong;
@@ -339,6 +341,13 @@ extern "C" {
     pub fn virgl_renderer_resource_get_map_info(
         res_handle: u32,
         map_info: *mut u32,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn virgl_renderer_resource_export_blob(
+        res_id: u32,
+        fd_type: *mut u32,
+        fd: *mut ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_int;
 }
 pub type __builtin_va_list = [__va_list_tag; 1usize];

@@ -13,8 +13,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::usize;
 
-use libc::EINVAL;
-
 use base::{error, warn, Error, ExternalMapping};
 use data_model::*;
 use msg_socket::{MsgReceiver, MsgSender};
@@ -24,8 +22,8 @@ use vm_memory::{GuestAddress, GuestMemory};
 
 use gpu_display::*;
 use gpu_renderer::{
-    Box3, Context as RendererContext, Error as GpuRendererError, Renderer, RendererFlags,
-    Resource as GpuRendererResource, ResourceCreateArgs,
+    Box3, Context as RendererContext, Renderer, RendererFlags, Resource as GpuRendererResource,
+    ResourceCreateArgs,
 };
 
 use super::protocol::{
@@ -110,14 +108,8 @@ impl VirtioResource for Virtio3DResource {
             }
         }
 
-        let (query, dmabuf) = match self.gpu_resource.export() {
-            Ok(export) => (export.0, export.1),
-            Err(GpuRendererError::Virglrenderer(e)) if e == -EINVAL => return None,
-            Err(e) => {
-                error!("failed to query resource: {}", e);
-                return None;
-            }
-        };
+        let dmabuf = self.gpu_resource.export().ok()?;
+        let query = self.gpu_resource.query().ok()?;
 
         let (width, height, format, stride, offset) = match self.scanout_data {
             Some(data) => (
@@ -349,18 +341,42 @@ impl Backend for Virtio3DBackend {
 
     /// If supported, export the resource with the given id to a file.
     fn export_resource(&mut self, id: u32) -> ResourceResponse {
-        self
-             .resources
-            .get(&id) // Option<resource>
-            .and_then(|resource| resource.gpu_resource.export().ok()) // Option<(Query, File)>
-            .map(|(q, file)| {
-                ResourceResponse::Resource(ResourceInfo{file, planes: [
-                    PlaneInfo{offset: q.out_offsets[0], stride: q.out_strides[0]},
-                    PlaneInfo{offset: q.out_offsets[1], stride: q.out_strides[1]},
-                    PlaneInfo{offset: q.out_offsets[2], stride: q.out_strides[2]},
-                    PlaneInfo{offset: q.out_offsets[3], stride: q.out_strides[3]},
-                ]})
-            }).unwrap_or(ResourceResponse::Invalid)
+        let resource = match self.resources.get_mut(&id) {
+            Some(r) => r,
+            None => return ResourceResponse::Invalid,
+        };
+
+        let q = match resource.gpu_resource.query() {
+            Ok(query) => query,
+            Err(_) => return ResourceResponse::Invalid,
+        };
+
+        let file = match resource.gpu_resource.export() {
+            Ok(file) => file,
+            Err(_) => return ResourceResponse::Invalid,
+        };
+
+        ResourceResponse::Resource(ResourceInfo {
+            file,
+            planes: [
+                PlaneInfo {
+                    offset: q.out_offsets[0],
+                    stride: q.out_strides[0],
+                },
+                PlaneInfo {
+                    offset: q.out_offsets[1],
+                    stride: q.out_strides[1],
+                },
+                PlaneInfo {
+                    offset: q.out_offsets[2],
+                    stride: q.out_strides[2],
+                },
+                PlaneInfo {
+                    offset: q.out_offsets[3],
+                    stride: q.out_strides[3],
+                },
+            ],
+        })
     }
 
     /// Creates a fence with the given id that can be used to determine when the previous command
@@ -879,7 +895,7 @@ impl Backend for Virtio3DBackend {
         let request = match export {
             Ok(ref export) => VmMemoryRequest::RegisterFdAtPciBarOffset(
                 self.pci_bar,
-                MaybeOwnedFd::Borrowed(export.1.as_raw_fd()),
+                MaybeOwnedFd::Borrowed(export.as_raw_fd()),
                 resource.size as usize,
                 offset,
             ),
