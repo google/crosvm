@@ -11,7 +11,7 @@ dependencies = [
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
- "minijail 0.2.0",
+ "minijail 0.2.1",
  "remain 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
  "sync 0.1.0",
@@ -36,7 +36,7 @@ dependencies = [
  "kernel_cmdline 0.1.0",
  "kvm 0.1.0",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
- "minijail 0.2.0",
+ "minijail 0.2.1",
  "resources 0.1.0",
  "sync 0.1.0",
  "sys_util 0.1.0",
@@ -132,7 +132,7 @@ dependencies = [
  "kvm_sys 0.1.0",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
  "libcras 0.1.0",
- "minijail 0.2.0",
+ "minijail 0.2.1",
  "msg_socket 0.1.0",
  "net_util 0.1.0",
  "p9 0.1.0",
@@ -191,7 +191,7 @@ dependencies = [
  "libcras 0.1.0",
  "libvda 0.1.0",
  "linux_input_sys 0.1.0",
- "minijail 0.2.0",
+ "minijail 0.2.1",
  "msg_on_socket_derive 0.1.0",
  "msg_socket 0.1.0",
  "net_sys 0.1.0",
@@ -465,7 +465,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "minijail"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
  "minijail-sys 0.0.11",
@@ -838,7 +838,7 @@ dependencies = [
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
- "minijail 0.2.0",
+ "minijail 0.2.1",
  "remain 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
  "sync 0.1.0",

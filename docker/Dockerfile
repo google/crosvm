@@ -151,6 +151,7 @@ ENV AOSP_EXTERNAL_ROOT=$CROS_ROOT/aosp/external
 RUN mkdir -p $AOSP_EXTERNAL_ROOT
 
 # minijail does not exist in upstream linux distros.
+ARG MINIJAIL_COMMIT=master
 RUN git clone https://android.googlesource.com/platform/external/minijail $AOSP_EXTERNAL_ROOT/minijail \
     && cd $AOSP_EXTERNAL_ROOT/minijail \
     && git checkout $MINIJAIL_COMMIT \
