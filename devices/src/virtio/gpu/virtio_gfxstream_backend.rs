@@ -33,8 +33,6 @@ use crate::virtio::resource_bridge::ResourceResponse;
 pub enum GfxStreamError {
     /// Invalid size used for a command.
     InvalidCommandSize(usize),
-    /// Unsupported behavior
-    Unsupported,
 }
 
 impl Display for GfxStreamError {
@@ -47,7 +45,6 @@ impl Display for GfxStreamError {
                 "gfxstream: invalid command size: {} (expected u32 multiple)",
                 size
             ),
-            Unsupported => write!(f, "gfxstream: unsupported operation"),
         }
     }
 }
