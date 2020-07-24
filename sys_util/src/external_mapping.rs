@@ -59,7 +59,7 @@ impl ExternalMapping {
     pub unsafe fn new(resource_id: u32, map: Map, unmap: Unmap) -> Result<ExternalMapping> {
         let (ptr, size) = map(resource_id)?;
 
-        if ptr as *mut u8 == std::ptr::null_mut() {
+        if (ptr as *mut u8).is_null() {
             return Err(Error::NullAddress);
         }
         if size == 0 {
