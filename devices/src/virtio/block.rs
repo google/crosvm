@@ -244,7 +244,7 @@ struct Worker {
     disk_size: Arc<Mutex<u64>>,
     read_only: bool,
     sparse: bool,
-    control_socket: DiskControlResponseSocket,
+    control_socket: Option<DiskControlResponseSocket>,
 }
 
 impl Worker {
@@ -380,10 +380,15 @@ impl Worker {
         let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
             (&flush_timer, Token::FlushTimer),
             (&queue_evt, Token::QueueAvailable),
-            (&self.control_socket, Token::ControlRequest),
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
-        ]) {
+        ])
+        .and_then(|pc| {
+            if let Some(control_socket) = self.control_socket.as_ref() {
+                pc.add(control_socket, Token::ControlRequest)?
+            }
+            Ok(pc)
+        }) {
             Ok(pc) => pc,
             Err(e) => {
                 error!("failed creating PollContext: {}", e);
@@ -421,7 +426,14 @@ impl Worker {
                         self.process_queue(0, &mut flush_timer, &mut flush_timer_armed);
                     }
                     Token::ControlRequest => {
-                        let req = match self.control_socket.recv() {
+                        let control_socket = match self.control_socket.as_ref() {
+                            Some(cs) => cs,
+                            None => {
+                                error!("received control socket request with no control socket");
+                                break 'poll;
+                            }
+                        };
+                        let req = match control_socket.recv() {
                             Ok(req) => req,
                             Err(e) => {
                                 error!("control socket failed recv: {}", e);
@@ -429,6 +441,7 @@ impl Worker {
                             }
                         };
 
+                        drop(control_socket);
                         let resp = match req {
                             DiskControlCommand::Resize { new_size } => {
                                 needs_config_interrupt = true;
@@ -436,7 +449,8 @@ impl Worker {
                             }
                         };
 
-                        if let Err(e) = self.control_socket.send(&resp) {
+                        // We already know there is Some control_socket used to recv a request.
+                        if let Err(e) = self.control_socket.as_ref().unwrap().send(&resp) {
                             error!("control socket failed send: {}", e);
                             break 'poll;
                         }
@@ -758,33 +772,32 @@ impl VirtioDevice for Block {
         let sparse = self.sparse;
         let disk_size = self.disk_size.clone();
         if let Some(disk_image) = self.disk_image.take() {
-            if let Some(control_socket) = self.control_socket.take() {
-                let worker_result =
-                    thread::Builder::new()
-                        .name("virtio_blk".to_string())
-                        .spawn(move || {
-                            let mut worker = Worker {
-                                interrupt,
-                                queues,
-                                mem,
-                                disk_image,
-                                disk_size,
-                                read_only,
-                                sparse,
-                                control_socket,
-                            };
-                            worker.run(queue_evts.remove(0), kill_evt);
-                            worker
-                        });
+            let control_socket = self.control_socket.take();
+            let worker_result =
+                thread::Builder::new()
+                    .name("virtio_blk".to_string())
+                    .spawn(move || {
+                        let mut worker = Worker {
+                            interrupt,
+                            queues,
+                            mem,
+                            disk_image,
+                            disk_size,
+                            read_only,
+                            sparse,
+                            control_socket,
+                        };
+                        worker.run(queue_evts.remove(0), kill_evt);
+                        worker
+                    });
 
-                match worker_result {
-                    Err(e) => {
-                        error!("failed to spawn virtio_blk worker: {}", e);
-                        return;
-                    }
-                    Ok(join_handle) => {
-                        self.worker_thread = Some(join_handle);
-                    }
+            match worker_result {
+                Err(e) => {
+                    error!("failed to spawn virtio_blk worker: {}", e);
+                    return;
+                }
+                Ok(join_handle) => {
+                    self.worker_thread = Some(join_handle);
                 }
             }
         }
@@ -806,7 +819,7 @@ impl VirtioDevice for Block {
                 }
                 Ok(worker) => {
                     self.disk_image = Some(worker.disk_image);
-                    self.control_socket = Some(worker.control_socket);
+                    self.control_socket = worker.control_socket;
                     return true;
                 }
             }
