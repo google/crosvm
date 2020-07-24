@@ -187,6 +187,7 @@ pub fn generate_pci_root(
     mmio_bus: &mut Bus,
     resources: &mut SystemAllocator,
     vm: &mut Vm,
+    max_irqs: usize,
 ) -> Result<
     (
         PciRoot,
@@ -198,6 +199,9 @@ pub fn generate_pci_root(
     let mut root = PciRoot::new();
     let mut pci_irqs = Vec::new();
     let mut pid_labels = BTreeMap::new();
+
+    let mut irqs: Vec<Option<u32>> = vec![None; max_irqs];
+
     for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
         // Auto assign PCI device numbers starting from 1
         let address = PciAddress {
@@ -212,9 +216,15 @@ pub fn generate_pci_root(
 
         let irqfd = EventFd::new().map_err(DeviceRegistrationError::EventFdCreate)?;
         let irq_resample_fd = EventFd::new().map_err(DeviceRegistrationError::EventFdCreate)?;
-        let irq_num = resources
-            .allocate_irq()
-            .ok_or(DeviceRegistrationError::AllocateIrq)? as u32;
+        let irq_num = if let Some(irq) = irqs[dev_idx % max_irqs] {
+            irq
+        } else {
+            let irq = resources
+                .allocate_irq()
+                .ok_or(DeviceRegistrationError::AllocateIrq)?;
+            irqs[dev_idx % max_irqs] = Some(irq);
+            irq
+        };
         let pci_irq_pin = match dev_idx % 4 {
             0 => PciInterruptPin::IntA,
             1 => PciInterruptPin::IntB,

@@ -418,6 +418,7 @@ impl arch::LinuxArch for X8664arch {
             &mut mmio_bus,
             &mut resources,
             &mut vm,
+            4, // Share the four pin interrupts (INTx#)
         )
         .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));

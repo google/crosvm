@@ -262,6 +262,7 @@ impl arch::LinuxArch for AArch64 {
             &mut mmio_bus,
             &mut resources,
             &mut vm,
+            (AARCH64_GIC_NR_IRQS - AARCH64_IRQ_BASE) as usize,
         )
         .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci)));
