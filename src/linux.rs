@@ -2117,6 +2117,13 @@ fn run_control(
                                 / max(balloon_actual, 1);
 
                             if balloon_change_percent >= RESIZE_PERCENT {
+                                info!("resizing balloon: host avail {}, guest avail {} (target {}), balloon actual {} (target {})",
+                                    host_available,
+                                    guest_available,
+                                    guest_available_target,
+                                    balloon_actual,
+                                    balloon_target,
+                                );
                                 let command = BalloonControlCommand::Adjust {
                                     num_bytes: balloon_target as u64,
                                 };
