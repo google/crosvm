@@ -443,8 +443,11 @@ impl Worker {
 
                         let resp = match req {
                             DiskControlCommand::Resize { new_size } => {
-                                needs_config_interrupt = true;
-                                self.resize(new_size)
+                                let resize_resp = self.resize(new_size);
+                                if let DiskControlResult::Ok = resize_resp {
+                                    needs_config_interrupt = true;
+                                }
+                                resize_resp
                             }
                         };
 
