@@ -61,10 +61,7 @@ use arch::{
     VmComponents, VmImage,
 };
 use devices::split_irqchip_common::GsiRelay;
-use devices::{
-    Ioapic, PciAddress, PciConfigIo, PciDevice, PciInterruptPin, Pic, IOAPIC_BASE_ADDRESS,
-    IOAPIC_MEM_LENGTH_BYTES,
-};
+use devices::{Ioapic, PciConfigIo, PciDevice, Pic, IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES};
 use kvm::*;
 use minijail::Minijail;
 use remain::sorted;
@@ -216,12 +213,9 @@ fn configure_system(
     kernel_addr: GuestAddress,
     cmdline_addr: GuestAddress,
     cmdline_size: usize,
-    num_cpus: u8,
-    pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
     setup_data: Option<GuestAddress>,
     initrd: Option<(GuestAddress, usize)>,
     mut params: boot_params,
-    acpi_dev_resource: acpi::ACPIDevResource,
 ) -> Result<()> {
     const EBDA_START: u64 = 0x0009fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
@@ -230,11 +224,6 @@ fn configure_system(
     const KERNEL_MIN_ALIGNMENT_BYTES: u32 = 0x1000000; // Must be non-zero.
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
     let end_32bit_gap_start = GuestAddress(END_ADDR_BEFORE_32BITS);
-
-    // Note that this puts the mptable at 0x0 in guest physical memory.
-    mptable::setup_mptable(guest_mem, num_cpus, pci_irqs).map_err(Error::SetupMptable)?;
-
-    smbios::setup_smbios(guest_mem).map_err(Error::SetupSmbios)?;
 
     params.hdr.type_of_loader = KERNEL_LOADER_OTHER;
     params.hdr.boot_flag = KERNEL_BOOT_FLAG_MAGIC;
@@ -284,12 +273,6 @@ fn configure_system(
     guest_mem
         .write_obj_at_addr(params, zero_page_addr)
         .map_err(|_| Error::ZeroPageSetup)?;
-
-    if let Some(rsdp_addr) =
-        acpi::create_acpi_tables(guest_mem, num_cpus, X86_64_SCI_IRQ, acpi_dev_resource)
-    {
-        params.acpi_rsdp_addr = rsdp_addr.0;
-    }
 
     Ok(())
 }
@@ -476,6 +459,20 @@ impl arch::LinuxArch for X8664arch {
             None
         };
 
+        // All of these bios generated tables are set manually for the benefit of the kernel boot
+        // flow (since there's no BIOS to set it) and for the BIOS boot flow since crosvm doesn't
+        // have a way to pass the BIOS these configs.
+        // This works right now because the only guest BIOS used with crosvm (u-boot) ignores these
+        // tables and the guest OS picks them up.
+        // If another guest does need a way to pass these tables down to it's BIOS, this approach
+        // should be rethought.
+
+        // Note that this puts the mptable at 0x9FC00 in guest physical memory.
+        mptable::setup_mptable(&mem, vcpu_count as u8, pci_irqs).map_err(Error::SetupMptable)?;
+        smbios::setup_smbios(&mem).map_err(Error::SetupSmbios)?;
+        // TODO (tjeznach) Write RSDP to bootconfig before writing to memory
+        acpi::create_acpi_tables(&mem, vcpu_count as u8, X86_64_SCI_IRQ, acpi_dev_resource);
+
         match components.vm_image {
             VmImage::Bios(ref mut bios) => Self::load_bios(&mem, bios)?,
             VmImage::Kernel(ref mut kernel_image) => {
@@ -514,17 +511,15 @@ impl arch::LinuxArch for X8664arch {
                 Self::setup_system_memory(
                     &mem,
                     components.memory_size,
-                    vcpu_count,
                     &CString::new(cmdline).unwrap(),
                     components.initrd_image,
-                    pci_irqs,
                     components.android_fstab,
                     kernel_end,
                     params,
-                    acpi_dev_resource,
                 )?;
             }
         }
+
         Ok(RunnableLinuxVm {
             vm,
             kvm,
@@ -595,20 +590,16 @@ impl X8664arch {
     /// # Arguments
     ///
     /// * `mem` - The memory to be used by the guest.
-    /// * `vcpu_count` - Number of virtual CPUs the guest will have.
     /// * `cmdline` - the kernel commandline
     /// * `initrd_file` - an initial ramdisk image
     fn setup_system_memory(
         mem: &GuestMemory,
         mem_size: u64,
-        vcpu_count: u32,
         cmdline: &CStr,
         initrd_file: Option<File>,
-        pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
         android_fstab: Option<File>,
         kernel_end: u64,
         params: boot_params,
-        acpi_dev_resource: acpi::ACPIDevResource,
     ) -> Result<()> {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)
             .map_err(Error::LoadCmdline)?;
@@ -665,12 +656,9 @@ impl X8664arch {
             GuestAddress(KERNEL_START_OFFSET),
             GuestAddress(CMDLINE_OFFSET),
             cmdline.to_bytes().len() + 1,
-            vcpu_count as u8,
-            pci_irqs,
             setup_data,
             initrd,
             params,
-            acpi_dev_resource,
         )?;
         Ok(())
     }
