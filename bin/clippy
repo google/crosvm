@@ -7,7 +7,7 @@
 # Run `cargo clippy` on all Rust code in crosvm with a mindful set of lints
 # suppressed.
 
-set -euo pipefail
+set -eo pipefail
 
 USE_CACHE=false
 CLIPPY_ARGS=( "$@" )
