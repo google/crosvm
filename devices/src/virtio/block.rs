@@ -441,7 +441,6 @@ impl Worker {
                             }
                         };
 
-                        drop(control_socket);
                         let resp = match req {
                             DiskControlCommand::Resize { new_size } => {
                                 needs_config_interrupt = true;
