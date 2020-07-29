@@ -14,6 +14,7 @@ libc = "*"
 rand = "0.6"
 sys_util = { path = "../sys_util" }
 usb_util = { path = "../usb_util" }
+vm_memory = { path = "../vm_memory" }
 
 # Prevent this from interfering with workspaces
 [workspace]
