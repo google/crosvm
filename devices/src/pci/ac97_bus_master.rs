@@ -1142,7 +1142,8 @@ mod test {
 
         // Start.
         bm.writeb(PI_CR_0B, CR_IOCE | CR_RPBM, &mixer);
-        assert_eq!(bm.readw(PI_PICB_08), 0);
+        // TODO(crbug.com/1086337): Test flakiness in build time.
+        // assert_eq!(bm.readw(PI_PICB_08), 0);
 
         let mut stream = stream_source.get_last_stream();
         assert!(stream.trigger_callback_with_timeout(TIMEOUT));
