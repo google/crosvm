@@ -5,7 +5,7 @@
 //! Implementation of a virtio video decoder device backed by LibVDA.
 
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::fs::File;
 use std::os::unix::io::{AsRawFd, IntoRawFd};
@@ -42,8 +42,6 @@ type FrameBufferId = i32;
 type ResourceHandle = u32;
 type Timestamp = u64;
 
-const OUTPUT_BUFFER_COUNT: usize = 32;
-
 // Represents queue types of pending Clear commands if exist.
 #[derive(Default)]
 struct PendingClearCmds {
@@ -66,13 +64,8 @@ struct Context {
     res_id_to_res_handle: BTreeMap<u32, ResourceHandle>,
 
     // OutputResourceId <-> FrameBufferId
-    // TODO: Encapsulate the following two maps as a type of a bijective map.
     res_id_to_frame_buf_id: BTreeMap<OutputResourceId, FrameBufferId>,
     frame_buf_id_to_res_id: BTreeMap<FrameBufferId, OutputResourceId>,
-
-    // Stores free FrameBufferIds which `use_output_buffer()` or `reuse_output_buffer()` can be
-    // called with.
-    available_frame_buf_ids: BTreeSet<FrameBufferId>,
 
     keep_resources: Vec<File>,
 
@@ -134,31 +127,12 @@ impl Context {
         self.res_id_to_res_handle.insert(resource_id, handle);
     }
 
-    fn register_queued_frame_buffer(
-        &mut self,
-        resource_id: OutputResourceId,
-    ) -> VideoResult<FrameBufferId> {
-        // Use the first free frame buffer id.
-        let id = *self.available_frame_buf_ids.iter().next().ok_or_else(|| {
-            error!(
-                "no frame buffer ID is available for resource_id {}",
-                resource_id
-            );
-            VideoError::InvalidOperation
-        })?;
-        self.available_frame_buf_ids.remove(&id);
-
-        // Invalidate old entries for `resource_id` and `id` from two maps to keep them bijective.
-        if let Some(old_frame_buf_id) = self.res_id_to_frame_buf_id.remove(&resource_id) {
-            self.frame_buf_id_to_res_id.remove(&old_frame_buf_id);
-        }
-        if let Some(old_res_id) = self.frame_buf_id_to_res_id.remove(&id) {
-            self.res_id_to_frame_buf_id.remove(&old_res_id);
-        }
-
+    fn register_queued_frame_buffer(&mut self, resource_id: OutputResourceId) -> FrameBufferId {
+        // Generate a new FrameBufferId
+        let id = self.res_id_to_frame_buf_id.len() as FrameBufferId;
         self.res_id_to_frame_buf_id.insert(resource_id, id);
         self.frame_buf_id_to_res_id.insert(id, resource_id);
-        Ok(id)
+        id
     }
 
     fn reset(&mut self) {
@@ -226,9 +200,6 @@ impl Context {
         right: i32,
         bottom: i32,
     ) -> Option<ResourceId> {
-        // `buffer_id` becomes available for another frame.
-        self.available_frame_buf_ids.insert(buffer_id);
-
         let plane_size = ((right - left) * (bottom - top)) as u32;
         for fmt in self.out_params.plane_formats.iter_mut() {
             fmt.plane_size = plane_size;
@@ -267,10 +238,6 @@ impl Context {
             Some(QueueType::Input)
         } else if self.pending_clear_cmds.output {
             self.pending_clear_cmds.output = false;
-
-            // Reinitialize `available_frame_buf_ids`.
-            self.available_frame_buf_ids.clear();
-            self.available_frame_buf_ids = (0..OUTPUT_BUFFER_COUNT as i32).collect();
 
             Some(QueueType::Output)
         } else {
@@ -457,6 +424,8 @@ impl<'a> Decoder<'a> {
         // Set output_buffer_count when ResourceCreate is called for frame buffers for the
         // first time.
         if !ctx.set_output_buffer_count {
+            const OUTPUT_BUFFER_COUNT: usize = 32;
+
             // Set the buffer count to the maximum value.
             // TODO(b/1518105): This is a hack due to the lack of way of telling a number of
             // frame buffers explictly in virtio-video v3 RFC. Once we have the way,
@@ -465,18 +434,20 @@ impl<'a> Decoder<'a> {
                 .get(&stream_id)?
                 .set_output_buffer_count(OUTPUT_BUFFER_COUNT)
                 .map_err(VideoError::VdaError)?;
-
-            // FrameBufferId must be in the range of 0.. ((# of buffers) - 1).
-            ctx.available_frame_buf_ids = (0..OUTPUT_BUFFER_COUNT as i32).collect();
-
             ctx.set_output_buffer_count = true;
         }
 
-        // If the given resource_id was associated with an old frame_buf_id,
-        // dissociate them.
+        // We assume ResourceCreate is not called to an output resource that is already
+        // imported to Chrome for now.
+        // TODO(keiichiw): We need to support this case for a guest client who may use
+        // arbitrary numbers of buffers. (e.g. C2V4L2Component in ARCVM)
+        // Such a client is valid as long as it uses at most 32 buffers at the same time.
         if let Some(frame_buf_id) = ctx.res_id_to_frame_buf_id.get(&resource_id) {
-            ctx.frame_buf_id_to_res_id.remove(&frame_buf_id);
-            ctx.res_id_to_frame_buf_id.remove(&resource_id);
+            error!(
+                "resource {} has already been imported to Chrome as a frame buffer {}",
+                resource_id, frame_buf_id
+            );
+            return Err(VideoError::InvalidOperation);
         }
 
         Ok(())
@@ -569,13 +540,6 @@ impl<'a> Decoder<'a> {
         // `session.reuse_output_buffer()` and return a response.
         // Otherwise, `session.use_output_buffer()` will be called below.
         if let Some(buffer_id) = ctx.res_id_to_frame_buf_id.get(&resource_id) {
-            if !ctx.available_frame_buf_ids.remove(&buffer_id) {
-                error!(
-                    "resource_id {} is associated with VDA's frame_buffer id {}, which is in use or out of range.",
-                    resource_id, buffer_id
-                );
-                return Err(VideoError::InvalidOperation);
-            }
             session
                 .reuse_output_buffer(*buffer_id)
                 .map_err(VideoError::VdaError)?;
@@ -600,7 +564,7 @@ impl<'a> Decoder<'a> {
             },
         ];
 
-        let buffer_id = ctx.register_queued_frame_buffer(resource_id)?;
+        let buffer_id = ctx.register_queued_frame_buffer(resource_id);
 
         session
             .use_output_buffer(buffer_id as i32, libvda::PixelFormat::NV12, fd, &planes)
