@@ -271,12 +271,17 @@ impl MemoryMapping {
     }
 
     /// Creates an anonymous shared mapping of `size` bytes with `prot` protection.
-    /// Unsafe: unmaps any mmap'd regions already present at (addr..addr+size).
     ///
     /// # Arguments
+    ///
     /// * `addr` - Memory address to mmap at.
     /// * `size` - Size of memory region in bytes.
     /// * `prot` - Protection (e.g. readable/writable) of the memory region.
+    ///
+    /// # Safety
+    ///
+    /// This function should not be called before the caller unmaps any mmap'd regions already
+    /// present at `(addr..addr+size)`.
     pub unsafe fn new_protection_fixed(
         addr: *mut u8,
         size: usize,
@@ -293,14 +298,19 @@ impl MemoryMapping {
 
     /// Maps the `size` bytes starting at `offset` bytes of the given `fd` with
     /// `prot` protections.
-    /// Unsafe: unmaps any mmap'd regions already present at (addr..addr+size).
     ///
     /// # Arguments
+    ///
     /// * `addr` - Memory address to mmap at.
     /// * `fd` - File descriptor to mmap from.
     /// * `size` - Size of memory region in bytes.
     /// * `offset` - Offset in bytes from the beginning of `fd` to start the mmap.
     /// * `prot` - Protection (e.g. readable/writable) of the memory region.
+    ///
+    /// # Safety
+    ///
+    /// This function should not be called before the caller unmaps any mmap'd regions already
+    /// present at `(addr..addr+size)`.
     pub unsafe fn from_fd_offset_protection_fixed(
         addr: *mut u8,
         fd: &dyn AsRawFd,

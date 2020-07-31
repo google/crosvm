@@ -12,13 +12,16 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Reads a struct from an input buffer.
-/// This is unsafe because the struct is initialized to unverified data read from the input.
-/// `read_struct` should only be called to fill plain old data structs.  It is not endian safe.
 ///
 /// # Arguments
 ///
 /// * `f` - The input to read from.  Often this is a file.
 /// * `out` - The struct to fill with data read from `f`.
+///
+/// # Safety
+///
+/// This is unsafe because the struct is initialized to unverified data read from the input.
+/// `read_struct` should only be called to fill plain old data structs.  It is not endian safe.
 pub unsafe fn read_struct<T: Copy, F: Read>(f: &mut F, out: &mut T) -> Result<()> {
     let out_slice = std::slice::from_raw_parts_mut(out as *mut T as *mut u8, size_of::<T>());
     f.read_exact(out_slice).map_err(|_| Error::ReadStruct)?;
@@ -27,13 +30,16 @@ pub unsafe fn read_struct<T: Copy, F: Read>(f: &mut F, out: &mut T) -> Result<()
 
 /// Reads an array of structs from an input buffer.  Returns a Vec of structs initialized with data
 /// from the specified input.
-/// This is unsafe because the structs are initialized to unverified data read from the input.
-/// `read_struct_slice` should only be called for plain old data structs.  It is not endian safe.
 ///
 /// # Arguments
 ///
 /// * `f` - The input to read from.  Often this is a file.
 /// * `len` - The number of structs to fill with data read from `f`.
+///
+/// # Safety
+///
+/// This is unsafe because the structs are initialized to unverified data read from the input.
+/// `read_struct_slice` should only be called for plain old data structs.  It is not endian safe.
 pub unsafe fn read_struct_slice<T: Copy, F: Read>(f: &mut F, len: usize) -> Result<Vec<T>> {
     let mut out: Vec<T> = Vec::with_capacity(len);
     out.set_len(len);

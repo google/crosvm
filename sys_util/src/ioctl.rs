@@ -4,6 +4,10 @@
 
 //! Macros and wrapper functions for dealing with ioctls.
 
+// Allow missing safety comments because this file provides just thin helper functions for
+// `libc::ioctl`. Their safety follows `libc::ioctl`'s safety.
+#![allow(clippy::missing_safety_doc)]
+
 use std::os::raw::*;
 use std::os::unix::io::AsRawFd;
 

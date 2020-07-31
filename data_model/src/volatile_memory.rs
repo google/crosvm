@@ -337,6 +337,7 @@ where
 impl<'a, T: DataInit> VolatileRef<'a, T> {
     /// Creates a reference to raw memory that must support volatile access of `T` sized chunks.
     ///
+    /// # Safety
     /// To use this safely, the caller must guarantee that the memory at `addr` is big enough for a
     /// `T` and is available for the duration of the lifetime of the new `VolatileRef`. The caller
     /// must also guarantee that all other users of the given chunk of memory are using volatile

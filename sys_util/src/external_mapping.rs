@@ -52,6 +52,9 @@ unsafe impl Send for ExternalMapping {}
 unsafe impl Sync for ExternalMapping {}
 impl ExternalMapping {
     /// Creates an ExternalMapping given a library-specific resource id and map/unmap functions.
+    ///
+    /// # Safety
+    ///
     /// The map function must return a valid host memory region.  In addition, callers of the
     /// function must guarantee that the map and unmap functions are thread-safe, never return a
     /// region overlapping already Rust referenced-data, and the backing store of the resource
