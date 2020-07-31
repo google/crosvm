@@ -62,6 +62,7 @@ impl<'a> IoSliceMut<'a> {
     }
 
     /// Converts a slice of `IoSliceMut`s into a slice of `iovec`s.
+    #[allow(clippy::wrong_self_convention)]
     #[inline]
     pub fn as_iobufs<'slice>(iovs: &'slice [IoSliceMut<'_>]) -> &'slice [iovec] {
         // Safe because `IoSliceMut` is ABI-compatible with `iovec`.

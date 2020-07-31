@@ -143,6 +143,7 @@ impl<'a> VolatileSlice<'a> {
     }
 
     /// Converts a slice of `VolatileSlice`s into a slice of `iovec`s
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_iobufs<'slice>(iovs: &'slice [VolatileSlice<'_>]) -> &'slice [iovec] {
         // Safe because `VolatileSlice` is ABI-compatible with `IoSliceMut`.
         IoSliceMut::as_iobufs(unsafe {

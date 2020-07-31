@@ -207,7 +207,7 @@ impl SharedMemory {
                     .trim_end_matches(" (deleted)")
                     .to_owned()
             })
-            .ok_or(errno::Error::new(EINVAL))
+            .ok_or_else(|| errno::Error::new(EINVAL))
     }
 }
 

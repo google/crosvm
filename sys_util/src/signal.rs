@@ -8,6 +8,7 @@ use libc::{
     SIG_BLOCK, SIG_UNBLOCK,
 };
 
+use std::cmp::Ordering;
 use std::fmt::{self, Display};
 use std::io;
 use std::mem;
@@ -193,11 +194,15 @@ pub fn block_signal(num: c_int) -> SignalResult<()> {
             return Err(Error::BlockSignal(errno::Error::last()));
         }
         let ret = sigismember(&old_sigset, num);
-        if ret < 0 {
-            return Err(Error::CompareBlockedSignals(errno::Error::last()));
-        } else if ret > 0 {
-            return Err(Error::SignalAlreadyBlocked(num));
-        }
+        match ret.cmp(&0) {
+            Ordering::Less => {
+                return Err(Error::CompareBlockedSignals(errno::Error::last()));
+            }
+            Ordering::Greater => {
+                return Err(Error::SignalAlreadyBlocked(num));
+            }
+            _ => (),
+        };
     }
     Ok(())
 }

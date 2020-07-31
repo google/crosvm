@@ -39,7 +39,7 @@ pub trait WriteZeroes {
                 Ok(bytes_written) => {
                     length = length
                         .checked_sub(bytes_written)
-                        .ok_or(Error::from(ErrorKind::Other))?
+                        .ok_or_else(|| Error::from(ErrorKind::Other))?
                 }
                 Err(e) => {
                     if e.kind() != ErrorKind::Interrupted {
@@ -69,10 +69,10 @@ pub trait WriteZeroesAt {
                 Ok(bytes_written) => {
                     length = length
                         .checked_sub(bytes_written)
-                        .ok_or(Error::from(ErrorKind::Other))?;
+                        .ok_or_else(|| Error::from(ErrorKind::Other))?;
                     offset = offset
                         .checked_add(bytes_written as u64)
-                        .ok_or(Error::from(ErrorKind::Other))?;
+                        .ok_or_else(|| Error::from(ErrorKind::Other))?;
                 }
                 Err(e) => {
                     if e.kind() != ErrorKind::Interrupted {

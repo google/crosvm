@@ -85,6 +85,12 @@ impl Builder {
     }
 }
 
+impl Default for Builder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Temporary directory. The directory will be removed when this object is
 /// dropped.
 pub struct TempDir {
