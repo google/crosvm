@@ -227,7 +227,7 @@ mod tests {
 
         let dur = Duration::from_millis(200);
         let now = Instant::now();
-        tfd.reset(dur.clone(), None).expect("failed to arm timer");
+        tfd.reset(dur, None).expect("failed to arm timer");
 
         assert_eq!(tfd.is_armed().unwrap(), true);
 
@@ -243,8 +243,7 @@ mod tests {
 
         let dur = Duration::from_millis(200);
         let interval = Duration::from_millis(100);
-        tfd.reset(dur.clone(), Some(interval))
-            .expect("failed to arm timer");
+        tfd.reset(dur, Some(interval)).expect("failed to arm timer");
 
         sleep(dur * 3);
 
@@ -259,7 +258,7 @@ mod tests {
         assert_eq!(tfd.is_armed().unwrap(), false);
 
         let dur = Duration::from_nanos(200);
-        tfd.reset(dur.clone(), None).expect("failed to arm timer");
+        tfd.reset(dur, None).expect("failed to arm timer");
 
         assert_eq!(tfd.is_armed().unwrap(), true);
         clock.lock().add_ns(200);
@@ -276,8 +275,7 @@ mod tests {
 
         let dur = Duration::from_nanos(200);
         let interval = Duration::from_nanos(100);
-        tfd.reset(dur.clone(), Some(interval))
-            .expect("failed to arm timer");
+        tfd.reset(dur, Some(interval)).expect("failed to arm timer");
 
         clock.lock().add_ns(300);
 

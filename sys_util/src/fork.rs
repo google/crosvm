@@ -97,7 +97,6 @@ where
 mod tests {
     use super::*;
     use crate::{getpid, EventFd};
-    use libc;
 
     fn wait_process(pid: libc::pid_t) -> crate::Result<libc::c_int> {
         let mut status: libc::c_int = 0;

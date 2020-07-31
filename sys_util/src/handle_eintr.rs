@@ -17,19 +17,13 @@ pub trait InterruptibleResult {
 
 impl<T> InterruptibleResult for crate::Result<T> {
     fn is_interrupted(&self) -> bool {
-        match self {
-            Err(e) if e.errno() == EINTR => true,
-            _ => false,
-        }
+        matches!(self, Err(e) if e.errno() == EINTR)
     }
 }
 
 impl<T> InterruptibleResult for io::Result<T> {
     fn is_interrupted(&self) -> bool {
-        match self {
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => true,
-            _ => false,
-        }
+        matches!(self, Err(e) if e.kind() == io::ErrorKind::Interrupted)
     }
 }
 

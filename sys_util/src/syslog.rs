@@ -563,7 +563,7 @@ mod tests {
         init().unwrap();
         let mut fds = Vec::new();
         push_fds(&mut fds);
-        assert!(fds.len() >= 1);
+        assert!(!fds.is_empty());
         for fd in fds {
             assert!(fd >= 0);
         }
@@ -613,7 +613,7 @@ mod tests {
         let syslog_file = file.try_clone().expect("error cloning shared memory file");
         echo_file(Some(syslog_file));
 
-        const TEST_STR: &'static str = "hello shared memory file";
+        const TEST_STR: &str = "hello shared memory file";
         log(
             Priority::Error,
             Facility::User,
@@ -649,7 +649,7 @@ mod tests {
         }
 
         syslogger
-            .write(&['\n' as u8])
+            .write(&[b'\n'])
             .expect("error writing newline char");
     }
 
