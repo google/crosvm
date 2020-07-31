@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.44.1 \
+    RUST_VERSION=1.45.2 \
     RUSTFLAGS='--cfg hermetic'
 
 # Debian usually has an old rust version in the repository. Instead of using that, we use rustup to
@@ -49,6 +49,11 @@ RUN curl -LO "https://static.rust-lang.org/rustup/archive/1.22.1/x86_64-unknown-
     && rustup --version \
     && cargo --version \
     && rustc --version
+
+# Set the default toolchain to 'stable' to match the one that bin/smoke_test
+# uses. This allows kokoro runs to avoid re-downloading the toolchain as long
+# as the version matches RUST_VERSION.
+RUN rustup default stable
 
 # Warms up the cargo registry cache for future cargo runs. Cargo will still update the cache using a
 # git pull, but it only needs to download files that were changed since this image was built.
