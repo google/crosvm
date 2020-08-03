@@ -20,6 +20,10 @@ use std::time::Duration;
 use arch::{set_default_serial_parameters, Pstore, SerialHardware, SerialParameters, SerialType};
 #[cfg(feature = "audio")]
 use audio_streams::StreamEffect;
+use base::{
+    debug, error, getpid, info, kill_process_group, net::UnixSeqpacket, reap_child, syslog,
+    validate_raw_fd, warn,
+};
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
     linux, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
@@ -30,10 +34,6 @@ use devices::virtio::gpu::{GpuMode, GpuParameters};
 use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
-use sys_util::{
-    debug, error, getpid, info, kill_process_group, net::UnixSeqpacket, reap_child, syslog,
-    validate_raw_fd, warn,
-};
 use vm_control::{
     BalloonControlCommand, DiskControlCommand, MaybeOwnedFd, UsbControlCommand, UsbControlResult,
     VmControlRequestSocket, VmRequest, VmResponse, USB_CONTROL_MAX_PORTS,
@@ -777,7 +777,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 path: disk_path,
                 read_only: !name.starts_with("rw"),
                 sparse: false,
-                block_size: sys_util::pagesize() as u32,
+                block_size: base::pagesize() as u32,
             });
         }
         "pstore" => {
@@ -1771,7 +1771,7 @@ enum ModifyUsbError {
     ArgMissing(&'static str),
     ArgParse(&'static str, String),
     ArgParseInt(&'static str, String, ParseIntError),
-    FailedFdValidate(sys_util::Error),
+    FailedFdValidate(base::Error),
     PathDoesNotExist(PathBuf),
     SocketFailed,
     UnexpectedResponse(VmResponse),

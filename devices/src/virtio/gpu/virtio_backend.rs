@@ -8,9 +8,9 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use super::protocol::GpuResponse;
+use base::error;
 use data_model::*;
 use gpu_display::*;
-use sys_util::error;
 use vm_memory::GuestMemory;
 
 pub trait VirtioResource {

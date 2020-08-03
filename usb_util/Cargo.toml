@@ -9,5 +9,5 @@ assertions = { path = "../assertions" }
 data_model = { path = "../data_model" }
 libc = "*"
 remain = "*"
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }
 usb_sys = { path = "../usb_sys" }

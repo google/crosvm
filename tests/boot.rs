@@ -14,8 +14,8 @@ use std::sync::Once;
 use libc::{cpu_set_t, sched_getaffinity};
 
 use arch::{set_default_serial_parameters, SerialHardware, SerialParameters, SerialType};
+use base::syslog;
 use crosvm::{linux, Config, Executable};
-use sys_util::syslog;
 
 const CHROOT_KERNEL_PATH: &str = "/mnt/host/source/src/third_party/kernel/v4.19/";
 const CONTAINER_VM_DEFCONFIG: &str = "arch/x86/configs/chromiumos-container-vm-x86_64_defconfig";

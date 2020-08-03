@@ -4,9 +4,9 @@
 
 #![no_main]
 
+use base::SharedMemory;
 use cros_fuzz::fuzz_target;
 use disk::QcowFile;
-use sys_util::SharedMemory;
 
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};

@@ -17,10 +17,10 @@ use std::panic;
 use std::rc::Rc;
 use std::usize;
 
+use base::error;
 use gpu_display::*;
 use gpu_renderer::RendererFlags;
 use resources::Alloc;
-use sys_util::error;
 use vm_control::VmMemoryControlRequestSocket;
 use vm_memory::{GuestAddress, GuestMemory};
 

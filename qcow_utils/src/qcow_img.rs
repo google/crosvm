@@ -7,8 +7,8 @@ use std::io::{Read, Write};
 
 use getopts::Options;
 
+use base::WriteZeroes;
 use disk::QcowFile;
-use sys_util::WriteZeroes;
 
 fn show_usage(program_name: &str) {
     println!("Usage: {} [subcommand] <subcommand args>", program_name);

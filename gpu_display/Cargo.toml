@@ -10,7 +10,7 @@ x = []
 [dependencies]
 data_model = { path = "../data_model" }
 libc = "*"
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }
 linux_input_sys = { path = "../linux_input_sys" }
 
 [build-dependencies]

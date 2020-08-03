@@ -4,7 +4,7 @@
 
 //! Definition of the trait `Device` that each backend video device must implement.
 
-use sys_util::{PollContext, PollToken};
+use base::{PollContext, PollToken};
 
 use crate::virtio::resource_bridge::ResourceRequestSocket;
 use crate::virtio::video::command::{QueueType, VideoCmd};

@@ -14,13 +14,13 @@ use super::xhci_regs::{valid_slot_id, MAX_PORTS, MAX_SLOTS};
 use crate::register_space::Register;
 use crate::usb::xhci::ring_buffer_stop_cb::{fallible_closure, RingBufferStopCallback};
 use crate::utils::{EventLoop, FailHandle};
+use base::error;
 use bit_field::Error as BitFieldError;
 use std::fmt::{self, Display};
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
-use sys_util::error;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 #[derive(Debug)]

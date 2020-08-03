@@ -11,8 +11,8 @@ use kvm_sys::kvm_lapic_state;
 
 #[derive(Debug)]
 pub enum Error {
-    GetLapic(sys_util::Error),
-    SetLapic(sys_util::Error),
+    GetLapic(base::Error),
+    SetLapic(base::Error),
 }
 pub type Result<T> = result::Result<T, Error>;
 

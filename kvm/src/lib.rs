@@ -25,13 +25,13 @@ use libc::{open, EBUSY, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXE
 
 use kvm_sys::*;
 
-use msg_socket::MsgOnSocket;
 #[allow(unused_imports)]
-use sys_util::{
+use base::{
     block_signal, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
     ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, EventFd, IoctlNr, MappedRegion,
     MemoryMapping, MmapError, Result, SIGRTMIN,
 };
+use msg_socket::MsgOnSocket;
 use vm_memory::{GuestAddress, GuestMemory};
 
 pub use crate::cap::*;
@@ -944,7 +944,7 @@ impl Vm {
 
     /// Does KVM_CREATE_DEVICE for a generic device.
     pub fn create_device(&self, device: &mut kvm_create_device) -> Result<()> {
-        let ret = unsafe { sys_util::ioctl_with_ref(self, KVM_CREATE_DEVICE(), device) };
+        let ret = unsafe { base::ioctl_with_ref(self, KVM_CREATE_DEVICE(), device) };
         if ret == 0 {
             Ok(())
         } else {
@@ -2458,7 +2458,7 @@ mod tests {
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
         let vm = Vm::new(&kvm, gm).unwrap();
         let vcpu = Vcpu::new(0, &kvm, &vm).unwrap();
-        vcpu.set_signal_mask(&[sys_util::SIGRTMIN() + 0]).unwrap();
+        vcpu.set_signal_mask(&[base::SIGRTMIN() + 0]).unwrap();
     }
 
     #[test]

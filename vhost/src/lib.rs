@@ -17,8 +17,8 @@ use std::os::unix::io::AsRawFd;
 use std::ptr::null;
 
 use assertions::const_assert;
-use sys_util::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
-use sys_util::{EventFd, LayoutAllocation};
+use base::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
+use base::{EventFd, LayoutAllocation};
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 #[derive(Debug)]

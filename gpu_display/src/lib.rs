@@ -8,8 +8,8 @@ use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
 
+use base::Error as SysError;
 use data_model::VolatileSlice;
-use sys_util::Error as SysError;
 
 mod event_device;
 mod gpu_display_stub;

@@ -6,7 +6,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use sys_util::{ioctl_io_nr, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
+use base::{ioctl_io_nr, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
 
 // Each of the below modules defines ioctls specific to their platform.
 
@@ -16,7 +16,7 @@ pub mod x86 {
     #[allow(clippy::all)]
     pub mod bindings;
     pub use crate::bindings::*;
-    use sys_util::{ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
+    use base::{ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
 
     ioctl_iowr_nr!(KVM_GET_MSR_INDEX_LIST, KVMIO, 0x02, kvm_msr_list);
     ioctl_iowr_nr!(KVM_GET_SUPPORTED_CPUID, KVMIO, 0x05, kvm_cpuid2);
@@ -50,8 +50,8 @@ pub mod x86 {
 pub mod aarch64 {
     // generated with bindgen <arm sysroot>/usr/include/linux/kvm.h --no-unstable-rust --constified-enum '*' --with-derive-default -- -I<arm sysroot>/usr/include
     pub mod bindings;
+    use base::{ioctl_ior_nr, ioctl_iow_nr};
     pub use bindings::*;
-    use sys_util::{ioctl_ior_nr, ioctl_iow_nr};
 
     ioctl_iow_nr!(KVM_ARM_SET_DEVICE_ADDR, KVMIO, 0xab, kvm_arm_device_addr);
     ioctl_iow_nr!(KVM_ARM_VCPU_INIT, KVMIO, 0xae, kvm_vcpu_init);

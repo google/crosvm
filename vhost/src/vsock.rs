@@ -6,7 +6,7 @@ use std::fs::{File, OpenOptions};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use sys_util::ioctl_with_ref;
+use base::ioctl_with_ref;
 use virtio_sys::{VHOST_VSOCK_SET_GUEST_CID, VHOST_VSOCK_SET_RUNNING};
 use vm_memory::GuestMemory;
 

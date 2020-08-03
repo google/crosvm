@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::{error, Result};
 use bit_field::*;
-use sys_util::{error, Result};
 use vm_memory::GuestAddress;
 
 use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};

@@ -5,4 +5,4 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }

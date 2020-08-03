@@ -6,8 +6,8 @@
 
 use std::convert::{From, Into, TryFrom};
 
+use base::error;
 use data_model::Le32;
-use sys_util::error;
 
 use crate::virtio::video::command::{QueueType, ReadCmdError};
 use crate::virtio::video::format::*;

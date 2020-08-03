@@ -11,7 +11,7 @@ use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::thread;
 
-use sys_util::{error, EventFd, PollContext, PollToken};
+use base::{error, EventFd, PollContext, PollToken};
 use vm_memory::GuestMemory;
 
 use super::{

@@ -3,13 +3,13 @@
 // found in the LICENSE file.
 
 use super::error::{Error, Result};
+use base::{error, warn, EpollContext, EpollEvents, EventFd, PollToken, WatchingEvents};
 use std::collections::BTreeMap;
 use std::mem::drop;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::{Arc, Weak};
 use std::thread;
 use sync::Mutex;
-use sys_util::{error, warn, EpollContext, EpollEvents, EventFd, PollToken, WatchingEvents};
 
 /// A fail handle will do the clean up when we cannot recover from some error.
 pub trait FailHandle: Send + Sync {
@@ -203,8 +203,8 @@ impl EventLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base::EventFd;
     use std::sync::{Arc, Condvar, Mutex};
-    use sys_util::EventFd;
 
     struct EventLoopTestHandler {
         val: Mutex<u8>,

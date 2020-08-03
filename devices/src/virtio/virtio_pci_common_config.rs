@@ -4,7 +4,7 @@
 
 use std::convert::TryInto;
 
-use sys_util::warn;
+use base::warn;
 use vm_memory::GuestAddress;
 
 use super::*;
@@ -243,8 +243,8 @@ impl VirtioPciCommonConfig {
 mod tests {
     use super::*;
 
+    use base::EventFd;
     use std::os::unix::io::RawFd;
-    use sys_util::EventFd;
     use vm_memory::GuestMemory;
 
     struct DummyDevice(u32);

@@ -5,10 +5,10 @@
 use std::sync::Arc;
 use sync::Mutex;
 
+use base::{errno_result, ioctl_with_ref, Result, SafeDescriptor};
 use hypervisor::kvm::{KvmVcpu, KvmVm};
 use hypervisor::{DeviceKind, IrqRoute, Vm};
 use kvm_sys::*;
-use sys_util::{errno_result, ioctl_with_ref, Result, SafeDescriptor};
 
 use crate::IrqChipAArch64;
 

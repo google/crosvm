@@ -10,12 +10,12 @@ use std::ops::Range;
 use std::os::unix::io::RawFd;
 
 use crate::{create_disk_file, DiskFile, DiskGetLen, ImageType};
+use base::{
+    AsRawFds, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt,
+};
 use data_model::VolatileSlice;
 use protos::cdisk_spec;
 use remain::sorted;
-use sys_util::{
-    AsRawFds, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt,
-};
 
 #[sorted]
 #[derive(Debug)]
@@ -342,9 +342,9 @@ impl AsRawFds for CompositeDiskFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base::SharedMemory;
     use data_model::VolatileMemory;
     use std::os::unix::io::AsRawFd;
-    use sys_util::SharedMemory;
 
     #[test]
     fn block_duplicate_offset_disks() {

@@ -13,8 +13,8 @@ use crate::usb::xhci::xhci_transfer::{
 };
 use crate::utils::AsyncJobQueue;
 use crate::utils::FailHandle;
+use base::error;
 use sync::Mutex;
-use sys_util::error;
 use usb_util::{
     Device, EndpointDirection, EndpointType, Transfer, TransferStatus, ENDPOINT_DIRECTION_OFFSET,
 };

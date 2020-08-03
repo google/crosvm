@@ -14,8 +14,8 @@
 
 use crate::split_irqchip_common::GsiRelay;
 use crate::BusDevice;
+use base::{debug, warn};
 use std::sync::Arc;
-use sys_util::{debug, warn};
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq)]

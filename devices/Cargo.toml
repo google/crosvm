@@ -44,7 +44,7 @@ rand_ish = { path = "../rand_ish" }
 remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }
 syscall_defines = { path = "../syscall_defines" }
 tpm2 = { path = "../tpm2", optional = true }
 usb_util = { path = "../usb_util" }

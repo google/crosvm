@@ -12,11 +12,11 @@ use super::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use super::xhci_regs::*;
 use crate::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
 use crate::utils::{Error as UtilsError, EventLoop, FailHandle};
+use base::{error, EventFd};
 use std::fmt::{self, Display};
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
-use sys_util::{error, EventFd};
 use vm_memory::{GuestAddress, GuestMemory};
 
 #[derive(Debug)]

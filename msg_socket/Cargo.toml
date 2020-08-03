@@ -10,5 +10,5 @@ data_model = { path = "../data_model" }
 futures = "*"
 libc = "*"
 msg_on_socket_derive = { path = "msg_on_socket_derive" }
-sys_util = { path = "../sys_util"  }
+base = { path = "../base"  }
 sync = { path = "../sync"  }

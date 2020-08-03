@@ -55,6 +55,7 @@ TEST_MODULES_PARALLEL = [
 
 TEST_MODULES_SERIAL = [
     'sys_util',
+    'base',
 ]
 
 # Bright green.

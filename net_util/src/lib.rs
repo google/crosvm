@@ -14,9 +14,9 @@ use std::str::FromStr;
 
 use libc::EPERM;
 
-use sys_util::Error as SysError;
-use sys_util::FileReadWriteVolatile;
-use sys_util::{ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, volatile_impl, IoctlNr};
+use base::Error as SysError;
+use base::FileReadWriteVolatile;
+use base::{ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, volatile_impl, IoctlNr};
 
 #[derive(Debug)]
 pub enum Error {

@@ -4,8 +4,8 @@
 
 // Common constants and types used for Split IRQ chip devices (e.g. PIC, PIT, IOAPIC).
 
+use base::EventFd;
 use bit_field::*;
-use sys_util::EventFd;
 
 #[bitfield]
 #[derive(Clone, Copy, Debug, PartialEq)]

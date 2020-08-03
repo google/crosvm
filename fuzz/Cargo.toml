@@ -12,7 +12,7 @@ disk = { path = "../disk" }
 kernel_loader = { path = "../kernel_loader" }
 libc = "*"
 rand = "0.6"
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }
 usb_util = { path = "../usb_util" }
 vm_memory = { path = "../vm_memory" }
 
@@ -45,4 +45,4 @@ name = "crosvm_zimage_fuzzer"
 path = "zimage_fuzzer.rs"
 
 [patch.crates-io]
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }

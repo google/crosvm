@@ -13,8 +13,8 @@ use std::mem::{size_of, MaybeUninit};
 use std::ptr::copy_nonoverlapping;
 use std::result;
 
+use base::{FileReadWriteAtVolatile, FileReadWriteVolatile};
 use data_model::{DataInit, Le16, Le32, Le64, VolatileMemoryError, VolatileSlice};
-use sys_util::{FileReadWriteAtVolatile, FileReadWriteVolatile};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::DescriptorChain;

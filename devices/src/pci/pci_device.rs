@@ -5,9 +5,9 @@
 use std::fmt::{self, Display};
 use std::os::unix::io::RawFd;
 
+use base::EventFd;
 use kvm::Datamatch;
 use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
-use sys_util::EventFd;
 
 use crate::pci::pci_configuration;
 use crate::pci::{PciAddress, PciInterruptPin};

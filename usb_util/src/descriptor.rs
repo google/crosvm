@@ -4,12 +4,12 @@
 
 use crate::types::{self, Descriptor, DescriptorHeader, EndpointDescriptor};
 use crate::{Error, Result};
+use base::warn;
 use data_model::DataInit;
 use std::collections::BTreeMap;
 use std::io::{self, Read};
 use std::mem::size_of;
 use std::ops::Deref;
-use sys_util::warn;
 
 #[derive(Clone)]
 pub struct DeviceDescriptorTree {

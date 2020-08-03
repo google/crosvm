@@ -10,8 +10,8 @@ use std::panic::{self, PanicInfo};
 use std::process::abort;
 use std::string::String;
 
+use base::error;
 use libc::{close, dup, dup2, pipe2, O_NONBLOCK, STDERR_FILENO};
-use sys_util::error;
 
 // Opens a pipe and puts the write end into the stderr FD slot. On success, returns the read end of
 // the pipe and the old stderr as a pair of files.

@@ -66,8 +66,8 @@ use std::task::{Context, Poll};
 
 use futures::pin_mut;
 
+use base::WatchingEvents;
 use io_uring::URingContext;
-use sys_util::WatchingEvents;
 
 use crate::executor::{ExecutableFuture, Executor, FutureList};
 use crate::uring_mem::{BackingMemory, MemRegion};
@@ -78,7 +78,7 @@ pub enum Error {
     /// Attempts to create two Executors on the same thread fail.
     AttemptedDuplicateExecutor,
     /// Failed to copy the FD for the polling context.
-    DuplicatingFd(sys_util::Error),
+    DuplicatingFd(base::Error),
     /// Failed accessing the thread local storage for wakers.
     InvalidContext,
     /// Invalid offset or length given for an iovec in backing memory.
@@ -285,7 +285,7 @@ impl RingWakerState {
     fn submit_poll(
         &mut self,
         source_tag: &RegisteredSourceTag,
-        events: &sys_util::WatchingEvents,
+        events: &base::WatchingEvents,
     ) -> Result<WakerToken> {
         let source = self
             .registered_sources
@@ -557,7 +557,7 @@ impl<T: FutureList> Drop for URingExecutor<T> {
 unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
     let ret = libc::dup(fd);
     if ret < 0 {
-        Err(Error::DuplicatingFd(sys_util::Error::last()))
+        Err(Error::DuplicatingFd(base::Error::last()))
     } else {
         Ok(ret)
     }

@@ -8,9 +8,9 @@ use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::io;
 
+use base::error;
 use data_model::Le32;
 use enumn::N;
-use sys_util::error;
 
 use crate::virtio::video::control::*;
 use crate::virtio::video::format::*;

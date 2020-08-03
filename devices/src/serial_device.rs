@@ -5,7 +5,7 @@
 use std::io;
 use std::os::unix::io::RawFd;
 
-use sys_util::EventFd;
+use base::EventFd;
 
 /// Abstraction over serial-like devices that can be created given an event and optional input and
 /// output streams.

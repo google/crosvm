@@ -12,8 +12,8 @@ use self::constants::*;
 
 use std::os::unix::io::{AsRawFd, RawFd};
 
+use base::{error, warn, EventFd, PollContext, PollToken};
 use data_model::{DataInit, Le16, Le32};
-use sys_util::{error, warn, EventFd, PollContext, PollToken};
 use vm_memory::GuestMemory;
 
 use self::event_source::{EvdevEventSource, EventSource, SocketEventSource};
@@ -39,19 +39,19 @@ pub enum InputError {
     /// Failed to read events from the source
     EventsReadError(std::io::Error),
     // Failed to get name of event device
-    EvdevIdError(sys_util::Error),
+    EvdevIdError(base::Error),
     // Failed to get name of event device
-    EvdevNameError(sys_util::Error),
+    EvdevNameError(base::Error),
     // Failed to get serial name of event device
-    EvdevSerialError(sys_util::Error),
+    EvdevSerialError(base::Error),
     // Failed to get properties of event device
-    EvdevPropertiesError(sys_util::Error),
+    EvdevPropertiesError(base::Error),
     // Failed to get event types supported by device
-    EvdevEventTypesError(sys_util::Error),
+    EvdevEventTypesError(base::Error),
     // Failed to get axis information of event device
-    EvdevAbsInfoError(sys_util::Error),
+    EvdevAbsInfoError(base::Error),
     // Failed to grab event device
-    EvdevGrabError(sys_util::Error),
+    EvdevGrabError(base::Error),
     // Detected error on guest side
     GuestError(String),
     // Virtio descriptor error

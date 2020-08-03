@@ -5,7 +5,7 @@
 //! Implementation of the the `Encoder` struct, which is responsible for translation between the
 //! virtio protocols and LibVDA APIs.
 
-use sys_util::PollContext;
+use base::PollContext;
 
 use crate::virtio::resource_bridge::ResourceRequestSocket;
 use crate::virtio::video::command::VideoCmd;

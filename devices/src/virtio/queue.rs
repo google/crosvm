@@ -7,8 +7,8 @@ use std::num::Wrapping;
 use std::os::unix::io::AsRawFd;
 use std::sync::atomic::{fence, Ordering};
 
+use base::error;
 use cros_async::{AsyncError, U64Source};
-use sys_util::error;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -490,11 +490,11 @@ impl Queue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base::EventFd;
     use data_model::{DataInit, Le16, Le32, Le64};
     use std::convert::TryInto;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
-    use sys_util::EventFd;
 
     const GUEST_MEMORY_SIZE: u64 = 0x10000;
     const DESC_OFFSET: u64 = 0;

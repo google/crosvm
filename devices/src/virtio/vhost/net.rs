@@ -9,7 +9,7 @@ use std::thread;
 
 use net_util::{MacAddress, TapT};
 
-use sys_util::{error, warn, EventFd};
+use base::{error, warn, EventFd};
 use vhost::NetT as VhostNetT;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;

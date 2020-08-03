@@ -16,8 +16,8 @@ use audio_streams::{
     shm_streams::{ShmStream, ShmStreamSource},
     BoxError, DummyStreamControl, SampleFormat, StreamControl, StreamDirection, StreamEffect,
 };
+use base::{self, error, set_rt_prio_limit, set_rt_round_robin, warn, EventFd};
 use sync::{Condvar, Mutex};
-use sys_util::{self, error, set_rt_prio_limit, set_rt_round_robin, warn, EventFd};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::pci::ac97_mixer::Ac97Mixer;

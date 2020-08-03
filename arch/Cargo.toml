@@ -13,6 +13,6 @@ libc = "*"
 minijail = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }

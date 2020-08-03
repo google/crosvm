@@ -6,8 +6,8 @@ use std::fs::File;
 use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
+use base::{FileReadWriteAtVolatile, WriteZeroes};
 use data_model::VolatileSlice;
-use sys_util::{FileReadWriteAtVolatile, WriteZeroes};
 
 /// A qcow file. Allows reading/writing clusters and appending clusters.
 #[derive(Debug)]

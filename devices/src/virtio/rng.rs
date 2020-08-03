@@ -8,7 +8,7 @@ use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::thread;
 
-use sys_util::{error, warn, EventFd, PollContext, PollToken};
+use base::{error, warn, EventFd, PollContext, PollToken};
 use vm_memory::GuestMemory;
 
 use super::{Interrupt, Queue, VirtioDevice, Writer, TYPE_RNG};

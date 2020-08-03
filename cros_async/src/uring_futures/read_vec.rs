@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn eventfd() {
-        use sys_util::EventFd;
+        use base::EventFd;
 
         async fn write_event(ev: EventFd, wait: EventFd) {
             let wait = UringSource::new(wait).unwrap();
@@ -183,7 +183,7 @@ mod tests {
         use futures::future::Either;
 
         async fn do_test() {
-            let (read_source, _w) = sys_util::pipe(true).unwrap();
+            let (read_source, _w) = base::pipe(true).unwrap();
             let source = UringSource::new(read_source).unwrap();
             let done = async { 5usize };
             let pending = read_u64(&source);

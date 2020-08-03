@@ -3,12 +3,12 @@
 // found in the LICENSE file.
 
 use crate::pci::{PciCapability, PciCapabilityID};
+use base::{error, Error as SysError, EventFd};
 use msg_socket::{MsgError, MsgReceiver, MsgSender};
 use std::convert::TryInto;
 use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
-use sys_util::{error, Error as SysError, EventFd};
 use vm_control::{MaybeOwnedFd, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
 
 use data_model::DataInit;

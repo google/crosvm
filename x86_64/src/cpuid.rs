@@ -8,8 +8,8 @@ use std::result;
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    GetSupportedCpusFailed(sys_util::Error),
-    SetSupportedCpusFailed(sys_util::Error),
+    GetSupportedCpusFailed(base::Error),
+    SetSupportedCpusFailed(base::Error),
 }
 pub type Result<T> = result::Result<T, Error>;
 

@@ -3,11 +3,11 @@
 // found in the LICENSE file.
 
 use crate::Bus;
+use base::{error, Error, EventFd, Result};
 use hypervisor::kvm::KvmVcpu;
 use hypervisor::{IrqRoute, MPState};
 use kvm_sys::kvm_mp_state;
 use resources::SystemAllocator;
-use sys_util::{error, Error, EventFd, Result};
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86_64;

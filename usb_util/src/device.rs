@@ -7,6 +7,7 @@ use crate::{
     ControlRequestDataPhaseTransferDirection, ControlRequestRecipient, ControlRequestType,
     DeviceDescriptor, DeviceDescriptorTree, Error, Result, StandardControlRequest,
 };
+use base::{handle_eintr_errno, IoctlNr};
 use data_model::vec_with_array_field;
 use libc::{EAGAIN, ENODEV, ENOENT};
 use std::convert::TryInto;
@@ -15,7 +16,6 @@ use std::io::{Seek, SeekFrom};
 use std::mem::size_of_val;
 use std::os::raw::{c_int, c_uint, c_void};
 use std::sync::Arc;
-use sys_util::{handle_eintr_errno, IoctlNr};
 
 /// Device represents a USB device.
 pub struct Device {
@@ -69,33 +69,33 @@ impl Device {
     }
 
     unsafe fn ioctl(&self, nr: IoctlNr) -> Result<i32> {
-        let ret = handle_eintr_errno!(sys_util::ioctl(&*self.fd, nr));
+        let ret = handle_eintr_errno!(base::ioctl(&*self.fd, nr));
         if ret < 0 {
-            return Err(Error::IoctlFailed(nr, sys_util::Error::last()));
+            return Err(Error::IoctlFailed(nr, base::Error::last()));
         }
         Ok(ret)
     }
 
     unsafe fn ioctl_with_ref<T>(&self, nr: IoctlNr, arg: &T) -> Result<i32> {
-        let ret = handle_eintr_errno!(sys_util::ioctl_with_ref(&*self.fd, nr, arg));
+        let ret = handle_eintr_errno!(base::ioctl_with_ref(&*self.fd, nr, arg));
         if ret < 0 {
-            return Err(Error::IoctlFailed(nr, sys_util::Error::last()));
+            return Err(Error::IoctlFailed(nr, base::Error::last()));
         }
         Ok(ret)
     }
 
     unsafe fn ioctl_with_mut_ref<T>(&self, nr: IoctlNr, arg: &mut T) -> Result<i32> {
-        let ret = handle_eintr_errno!(sys_util::ioctl_with_mut_ref(&*self.fd, nr, arg));
+        let ret = handle_eintr_errno!(base::ioctl_with_mut_ref(&*self.fd, nr, arg));
         if ret < 0 {
-            return Err(Error::IoctlFailed(nr, sys_util::Error::last()));
+            return Err(Error::IoctlFailed(nr, base::Error::last()));
         }
         Ok(ret)
     }
 
     unsafe fn ioctl_with_mut_ptr<T>(&self, nr: IoctlNr, arg: *mut T) -> Result<i32> {
-        let ret = handle_eintr_errno!(sys_util::ioctl_with_mut_ptr(&*self.fd, nr, arg));
+        let ret = handle_eintr_errno!(base::ioctl_with_mut_ptr(&*self.fd, nr, arg));
         if ret < 0 {
-            return Err(Error::IoctlFailed(nr, sys_util::Error::last()));
+            return Err(Error::IoctlFailed(nr, base::Error::last()));
         }
         Ok(ret)
     }
@@ -434,7 +434,7 @@ impl TransferHandle {
         // Safe because fd is a valid usbdevfs file descriptor and we pass a valid
         // pointer to a usbdevfs_urb structure.
         if unsafe {
-            handle_eintr_errno!(sys_util::ioctl_with_mut_ptr(
+            handle_eintr_errno!(base::ioctl_with_mut_ptr(
                 &*fd,
                 usb_sys::USBDEVFS_DISCARDURB(),
                 urb_ptr
@@ -443,7 +443,7 @@ impl TransferHandle {
         {
             return Err(Error::IoctlFailed(
                 usb_sys::USBDEVFS_DISCARDURB(),
-                sys_util::Error::last(),
+                base::Error::last(),
             ));
         }
 

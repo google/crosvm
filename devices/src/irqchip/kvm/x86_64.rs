@@ -6,6 +6,10 @@ use std::sync::Arc;
 
 use sync::Mutex;
 
+#[cfg(not(test))]
+use base::Clock;
+#[cfg(test)]
+use base::FakeClock as Clock;
 use hypervisor::kvm::{KvmVcpu, KvmVm};
 use hypervisor::{
     IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState, MPState, PicSelect, PicState,
@@ -13,12 +17,8 @@ use hypervisor::{
 };
 use kvm_sys::*;
 use resources::SystemAllocator;
-#[cfg(not(test))]
-use sys_util::Clock;
-#[cfg(test)]
-use sys_util::FakeClock as Clock;
 
-use sys_util::{error, Error, EventFd, Result};
+use base::{error, Error, EventFd, Result};
 use vm_control::VmIrqRequestSocket;
 
 use crate::irqchip::{Ioapic, Pic, IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES};
@@ -640,8 +640,8 @@ impl IrqChipX86_64<KvmVcpu> for KvmSplitIrqChip {
 mod tests {
 
     use super::*;
+    use base::EventReadResult;
     use hypervisor::kvm::Kvm;
-    use sys_util::EventReadResult;
     use vm_memory::GuestMemory;
 
     use hypervisor::{IoapicRedirectionTableEntry, PitRWMode, TriggerMode, Vm, VmX86_64};

@@ -30,8 +30,8 @@ use crate::{
     EventDeviceKind, GpuDisplayError, GpuDisplayFramebuffer,
 };
 
+use base::{error, PollContext, PollToken, WatchingEvents};
 use data_model::VolatileSlice;
-use sys_util::{error, PollContext, PollToken, WatchingEvents};
 
 const BUFFER_COUNT: usize = 2;
 
@@ -674,7 +674,7 @@ impl DisplayX {
         }
     }
 
-    fn handle_poll_ctx(&mut self) -> sys_util::Result<()> {
+    fn handle_poll_ctx(&mut self) -> base::Result<()> {
         let poll_events = self.poll_ctx.wait_timeout(Duration::default())?.to_owned();
         for poll_event in poll_events.as_ref().iter_writable() {
             if let DisplayXPollToken::EventDevice { event_device_id } = poll_event.token() {

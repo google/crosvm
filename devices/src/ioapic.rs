@@ -7,11 +7,11 @@
 
 use crate::split_irqchip_common::*;
 use crate::BusDevice;
+use base::{error, warn, EventFd, Result};
 use bit_field::*;
 use kvm::Vm;
 use msg_socket::{MsgReceiver, MsgSender};
 use std::sync::Arc;
-use sys_util::{error, warn, EventFd, Result};
 use vm_control::{VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
 
 #[bitfield]

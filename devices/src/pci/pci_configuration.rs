@@ -6,7 +6,7 @@ use std::convert::TryInto;
 use std::fmt::{self, Display};
 
 use crate::pci::PciInterruptPin;
-use sys_util::warn;
+use base::warn;
 
 // The number of 32bit registers in the config space, 256 bytes.
 const NUM_CONFIGURATION_REGISTERS: usize = 64;

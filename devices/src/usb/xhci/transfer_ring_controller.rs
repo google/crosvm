@@ -6,9 +6,9 @@ use crate::usb::xhci::ring_buffer_controller::{
     Error as RingBufferControllerError, RingBufferController, TransferDescriptorHandler,
 };
 use crate::utils::EventLoop;
+use base::{error, EventFd};
 use std::sync::Arc;
 use sync::Mutex;
-use sys_util::{error, EventFd};
 use vm_memory::GuestMemory;
 
 use super::interrupter::Interrupter;

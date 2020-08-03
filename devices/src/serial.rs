@@ -10,7 +10,7 @@ use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
 use std::thread::{self};
 
-use sys_util::{error, EventFd, Result};
+use base::{error, EventFd, Result};
 
 use crate::{BusDevice, SerialDevice};
 

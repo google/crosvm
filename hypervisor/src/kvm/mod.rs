@@ -27,14 +27,14 @@ use libc::{
     open, sigset_t, EBUSY, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR,
 };
 
-use data_model::vec_with_array_field;
-use kvm_sys::*;
-use sync::Mutex;
-use sys_util::{
+use base::{
     block_signal, errno_result, error, ioctl, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
     pagesize, signal, unblock_signal, AsRawDescriptor, Error, EventFd, FromRawDescriptor,
     MappedRegion, MemoryMapping, MmapError, RawDescriptor, Result, SafeDescriptor,
 };
+use data_model::vec_with_array_field;
+use kvm_sys::*;
+use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::{
@@ -512,7 +512,7 @@ impl Vm for KvmVm {
 
         // Safe because we know that our file is a VM fd, we know the kernel will only write correct
         // amount of memory to our pointer, and we verify the return result.
-        let ret = unsafe { sys_util::ioctl_with_ref(self, KVM_CREATE_DEVICE(), &device) };
+        let ret = unsafe { base::ioctl_with_ref(self, KVM_CREATE_DEVICE(), &device) };
         if ret == 0 {
             // Safe because we verify that ret is valid and we own the fd.
             Ok(unsafe { SafeDescriptor::from_raw_descriptor(device.fd as i32) })
@@ -1095,9 +1095,9 @@ impl From<&MPState> for kvm_mp_state {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base::{pagesize, MemoryMapping, MemoryMappingArena};
     use std::os::unix::io::FromRawFd;
     use std::thread;
-    use sys_util::{pagesize, MemoryMapping, MemoryMappingArena};
     use vm_memory::GuestAddress;
 
     #[test]
@@ -1309,7 +1309,7 @@ mod tests {
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let vm = KvmVm::new(&kvm, gm).unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
-        vcpu.set_signal_mask(&[sys_util::SIGRTMIN() + 0]).unwrap();
+        vcpu.set_signal_mask(&[base::SIGRTMIN() + 0]).unwrap();
     }
 
     #[test]

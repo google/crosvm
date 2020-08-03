@@ -13,11 +13,11 @@ use crate::usb::xhci::xhci_backend_device::{BackendType, UsbDeviceAddress, XhciB
 use crate::usb::xhci::xhci_transfer::{XhciTransfer, XhciTransferState, XhciTransferType};
 use crate::utils::AsyncJobQueue;
 use crate::utils::FailHandle;
+use base::{error, warn};
 use data_model::DataInit;
 use std::collections::HashMap;
 use std::mem;
 use sync::Mutex;
-use sys_util::{error, warn};
 use usb_util::{
     ConfigDescriptorTree, ControlRequestDataPhaseTransferDirection, ControlRequestRecipient,
     Device, StandardControlRequest, Transfer, TransferStatus, UsbRequestSetup,

@@ -4,7 +4,7 @@
 
 use std::os::raw::c_ulonglong;
 
-use sys_util::{error, Error as SysError, EventFd, PollContext, PollToken};
+use base::{error, Error as SysError, EventFd, PollContext, PollToken};
 use vhost::Vhost;
 
 use super::control_socket::{VhostDevRequest, VhostDevResponse, VhostDevResponseSocket};

@@ -4,8 +4,8 @@
 
 use libc::ENXIO;
 
+use base::{errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, Error, Result};
 use kvm_sys::*;
-use sys_util::{errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, Error, Result};
 
 use super::{KvmVcpu, KvmVm};
 use crate::{ClockState, DeviceKind, IrqSourceChip, VcpuAArch64, VcpuFeature, VmAArch64, VmCap};

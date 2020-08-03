@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::Error as SysError;
 use msg_socket::{MsgOnSocket, MsgSocket};
-use sys_util::Error as SysError;
 
 #[derive(MsgOnSocket, Debug)]
 pub enum VhostDevRequest {

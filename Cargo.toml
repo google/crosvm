@@ -27,12 +27,13 @@ exclude = [
     "syscall_defines",
     "tempfile",
     "vm_memory",
+    "base",
     "hypervisor"
 ]
 
 [features]
 default = ["audio"]
-chromeos = ["sys_util/chromeos"]
+chromeos = ["base/chromeos"]
 default-no-sandbox = []
 audio = ["devices/audio"]
 gpu = ["devices/gpu"]
@@ -50,6 +51,7 @@ gfxstream = ["devices/gfxstream"]
 arch = { path = "arch" }
 assertions = { path = "assertions" }
 audio_streams = "*"
+base = "*"
 bit_field = { path = "bit_field" }
 crosvm_plugin = { path = "crosvm_plugin", optional = true }
 data_model = "*"
@@ -74,7 +76,6 @@ rand_ish = { path = "rand_ish" }
 remain = "*"
 resources = { path = "resources" }
 sync = { path = "sync" }
-sys_util = "*"
 vhost = { path = "vhost" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }
@@ -87,17 +88,17 @@ x86_64 = { path = "x86_64" }
 aarch64 = { path = "aarch64" }
 
 [dev-dependencies]
-sys_util = "*"
+base = "*"
 
 [patch.crates-io]
 assertions = { path = "assertions" }
 audio_streams = { path = "../../third_party/adhd/audio_streams" } # ignored by ebuild
+base = { path = "base" }
 data_model = { path = "data_model" }
 libcras = { path = "../../third_party/adhd/cras/client/libcras" } # ignored by ebuild
 libvda = { path = "../../platform2/arc/vm/libvda/rust" } # ignored by ebuild
 minijail = { path = "../../aosp/external/minijail/rust/minijail" } # ignored by ebuild
-poll_token_derive = { path = "sys_util/poll_token_derive" }
 sync = { path = "sync" }
-sys_util = { path = "sys_util" }
 syscall_defines = { path = "syscall_defines" }
+sys_util = { path = "sys_util" }
 tempfile = { path = "tempfile" }

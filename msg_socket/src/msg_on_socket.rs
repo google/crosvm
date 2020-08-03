@@ -14,10 +14,10 @@ use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
 use std::result;
 use std::sync::Arc;
 
+use base::{Error as SysError, EventFd};
 use data_model::*;
 use slice::{slice_read_helper, slice_write_helper};
 use sync::Mutex;
-use sys_util::{Error as SysError, EventFd};
 
 #[derive(Debug)]
 /// An error during transaction or serialization/deserialization.

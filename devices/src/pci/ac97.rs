@@ -12,9 +12,9 @@ use audio_streams::{
     shm_streams::{NullShmStreamSource, ShmStreamSource},
     StreamEffect,
 };
+use base::{error, EventFd};
 use libcras::{CrasClient, CrasClientType, CrasSocketType};
 use resources::{Alloc, MmioType, SystemAllocator};
-use sys_util::{error, EventFd};
 use vm_memory::GuestMemory;
 
 use crate::pci::ac97_bus_master::Ac97BusMaster;

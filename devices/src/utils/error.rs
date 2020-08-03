@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::Error as SysError;
 use std::fmt::{self, Display};
-use sys_util::Error as SysError;
 
 #[derive(Debug)]
 pub enum Error {

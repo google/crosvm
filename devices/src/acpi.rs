@@ -4,7 +4,7 @@
 
 use crate::{BusDevice, BusResumeDevice};
 use acpi_tables::{aml, aml::Aml};
-use sys_util::{error, warn, EventFd};
+use base::{error, warn, EventFd};
 
 /// ACPI PM resource for handling OS suspend/resume request
 pub struct ACPIPMResource {

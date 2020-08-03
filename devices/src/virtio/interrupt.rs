@@ -4,10 +4,10 @@
 
 use super::{INTERRUPT_STATUS_CONFIG_CHANGED, INTERRUPT_STATUS_USED_RING, VIRTIO_MSI_NO_VECTOR};
 use crate::pci::MsixConfig;
+use base::EventFd;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
-use sys_util::EventFd;
 
 pub struct Interrupt {
     interrupt_status: Arc<AtomicUsize>,

@@ -84,7 +84,7 @@ where
         .map_err(|_| Error::SeekElfStart)?;
     unsafe {
         // read_struct is safe when reading a POD struct.  It can be used and dropped without issue.
-        sys_util::read_struct(kernel_image, &mut ehdr).map_err(|_| Error::ReadElfHeader)?;
+        base::read_struct(kernel_image, &mut ehdr).map_err(|_| Error::ReadElfHeader)?;
     }
 
     // Sanity checks
@@ -111,7 +111,7 @@ where
         .map_err(|_| Error::SeekProgramHeader)?;
     let phdrs: Vec<elf::Elf64_Phdr> = unsafe {
         // Reading the structs is safe for a slice of POD structs.
-        sys_util::read_struct_slice(kernel_image, ehdr.e_phnum as usize)
+        base::read_struct_slice(kernel_image, ehdr.e_phnum as usize)
             .map_err(|_| Error::ReadProgramHeader)?
     };
 
@@ -177,9 +177,9 @@ pub fn load_cmdline(
 #[cfg(test)]
 mod test {
     use super::*;
+    use base::SharedMemory;
     use std::fs::File;
     use std::io::Write;
-    use sys_util::SharedMemory;
     use vm_memory::{GuestAddress, GuestMemory};
 
     const MEM_SIZE: u64 = 0x8000;

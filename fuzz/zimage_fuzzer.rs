@@ -4,8 +4,8 @@
 
 #![no_main]
 
+use base::SharedMemory;
 use cros_fuzz::fuzz_target;
-use sys_util::SharedMemory;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use std::fs::File;

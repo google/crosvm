@@ -6,13 +6,13 @@ mod qcow_raw_file;
 mod refcount;
 mod vec_cache;
 
-use data_model::{VolatileMemory, VolatileSlice};
-use libc::{EINVAL, ENOSPC, ENOTSUP};
-use remain::sorted;
-use sys_util::{
+use base::{
     error, AsRawFds, FileAllocate, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen,
     FileSync, PunchHole, SeekHole, WriteZeroesAt,
 };
+use data_model::{VolatileMemory, VolatileSlice};
+use libc::{EINVAL, ENOSPC, ENOTSUP};
+use remain::sorted;
 
 use std::cmp::{max, min};
 use std::fmt::{self, Display};
@@ -1761,9 +1761,9 @@ fn div_round_up_u32(dividend: u32, divisor: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base::{SharedMemory, WriteZeroes};
     use std::fs::File;
     use std::io::{Read, Seek, SeekFrom, Write};
-    use sys_util::{SharedMemory, WriteZeroes};
 
     fn valid_header() -> Vec<u8> {
         vec![

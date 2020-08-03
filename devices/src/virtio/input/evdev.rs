@@ -4,8 +4,8 @@
 
 use std::os::unix::io::AsRawFd;
 
+use base::{ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 use data_model::Le32;
-use sys_util::{ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 
 use super::constants::*;
 use super::virtio_input_absinfo;
@@ -107,8 +107,8 @@ ioctl_ior_nr!(EVIOCGBIT, EVDEV, 0x20 + evt, evdev_buffer, evt);
 ioctl_ior_nr!(EVIOCGABS, EVDEV, 0x40 + abs, evdev_abs_info, abs);
 ioctl_iow_nr!(EVIOCGRAB, EVDEV, 0x90, u32);
 
-fn errno() -> sys_util::Error {
-    sys_util::Error::last()
+fn errno() -> base::Error {
+    base::Error::last()
 }
 
 /// Gets id information from an event device (see EVIOCGID ioctl for details).

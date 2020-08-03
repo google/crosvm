@@ -10,21 +10,21 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use base::{error, warn, Error as SysError, EventFd, Fd, PollContext, PollToken};
 use bit_field::BitField1;
 use bit_field::*;
 use hypervisor::{PitChannelState, PitRWMode, PitRWState, PitState};
 use sync::Mutex;
-use sys_util::{error, warn, Error as SysError, EventFd, Fd, PollContext, PollToken};
 
 #[cfg(not(test))]
-use sys_util::Clock;
+use base::Clock;
 #[cfg(test)]
-use sys_util::FakeClock as Clock;
+use base::FakeClock as Clock;
 
 #[cfg(test)]
-use sys_util::FakeTimerFd as TimerFd;
+use base::FakeTimerFd as TimerFd;
 #[cfg(not(test))]
-use sys_util::TimerFd;
+use base::TimerFd;
 
 use crate::BusDevice;
 

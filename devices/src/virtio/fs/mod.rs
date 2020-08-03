@@ -10,8 +10,8 @@ use std::os::unix::io::RawFd;
 use std::sync::Arc;
 use std::thread;
 
+use base::{error, warn, Error as SysError, EventFd};
 use data_model::{DataInit, Le32};
-use sys_util::{error, warn, Error as SysError, EventFd};
 use vm_memory::GuestMemory;
 
 use crate::virtio::{

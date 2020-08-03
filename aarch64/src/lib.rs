@@ -15,12 +15,12 @@ use arch::{
     get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, SerialHardware, SerialParameters,
     VmComponents, VmImage,
 };
+use base::EventFd;
 use devices::{Bus, BusError, PciAddress, PciConfigMmio, PciDevice, PciInterruptPin};
 use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
-use sys_util::EventFd;
 use vm_control::VmIrqRequestSocket;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
@@ -116,30 +116,30 @@ const AARCH64_PMU_IRQ: u32 = 7;
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
-    CloneEventFd(sys_util::Error),
+    CloneEventFd(base::Error),
     Cmdline(kernel_cmdline::Error),
     CreateDevices(Box<dyn StdError>),
-    CreateEventFd(sys_util::Error),
+    CreateEventFd(base::Error),
     CreateFdt(arch::fdt::Error),
-    CreateGICFailure(sys_util::Error),
-    CreateKvm(sys_util::Error),
+    CreateGICFailure(base::Error),
+    CreateKvm(base::Error),
     CreatePciRoot(arch::DeviceRegistrationError),
     CreateSerialDevices(arch::DeviceRegistrationError),
     CreateSocket(io::Error),
-    CreateVcpu(sys_util::Error),
-    CreateVm(sys_util::Error),
+    CreateVcpu(base::Error),
+    CreateVm(base::Error),
     GetSerialCmdline(GetSerialCmdlineError),
     InitrdLoadFailure(arch::LoadImageError),
     KernelLoadFailure(arch::LoadImageError),
     KernelMissing,
-    ReadPreferredTarget(sys_util::Error),
-    RegisterIrqfd(sys_util::Error),
+    ReadPreferredTarget(base::Error),
+    RegisterIrqfd(base::Error),
     RegisterPci(BusError),
     RegisterVsock(arch::DeviceRegistrationError),
-    SetDeviceAttr(sys_util::Error),
-    SetReg(sys_util::Error),
+    SetDeviceAttr(base::Error),
+    SetReg(base::Error),
     SetupGuestMemory(GuestMemoryError),
-    VcpuInit(sys_util::Error),
+    VcpuInit(base::Error),
 }
 
 impl Display for Error {
@@ -406,7 +406,7 @@ impl AArch64 {
 
     /// This returns a base part of the kernel command for this architecture
     fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
-        let mut cmdline = kernel_cmdline::Cmdline::new(sys_util::pagesize());
+        let mut cmdline = kernel_cmdline::Cmdline::new(base::pagesize());
         cmdline.insert_str("panic=-1").unwrap();
         cmdline
     }
@@ -502,18 +502,17 @@ impl AArch64 {
 
         // Safe because we allocated the struct that's being passed in
         let ret = unsafe {
-            sys_util::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &cpu_redist_attr)
+            base::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &cpu_redist_attr)
         };
         if ret != 0 {
-            return Err(Error::CreateGICFailure(sys_util::Error::new(ret)));
+            return Err(Error::CreateGICFailure(base::Error::new(ret)));
         }
 
         // Safe because we allocated the struct that's being passed in
-        let ret = unsafe {
-            sys_util::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &dist_attr)
-        };
+        let ret =
+            unsafe { base::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &dist_attr) };
         if ret != 0 {
-            return Err(Error::CreateGICFailure(sys_util::Error::new(ret)));
+            return Err(Error::CreateGICFailure(base::Error::new(ret)));
         }
 
         // We need to tell the kernel how many irqs to support with this vgic
@@ -527,10 +526,10 @@ impl AArch64 {
         };
         // Safe because we allocated the struct that's being passed in
         let ret = unsafe {
-            sys_util::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &nr_irqs_attr)
+            base::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &nr_irqs_attr)
         };
         if ret != 0 {
-            return Err(Error::CreateGICFailure(sys_util::Error::new(ret)));
+            return Err(Error::CreateGICFailure(base::Error::new(ret)));
         }
 
         // Finalize the GIC
@@ -543,10 +542,10 @@ impl AArch64 {
 
         // Safe because we allocated the struct that's being passed in
         let ret = unsafe {
-            sys_util::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &init_gic_attr)
+            base::ioctl_with_ref(&vgic_fd, kvm_sys::KVM_SET_DEVICE_ATTR(), &init_gic_attr)
         };
         if ret != 0 {
-            return Err(Error::SetDeviceAttr(sys_util::Error::new(ret)));
+            return Err(Error::SetDeviceAttr(base::Error::new(ret)));
         }
         Ok((Some(vgic_fd), is_gicv3))
     }

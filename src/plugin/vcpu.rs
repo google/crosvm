@@ -16,6 +16,7 @@ use libc::{EINVAL, ENOENT, ENOTTY, EPERM, EPIPE, EPROTO};
 use protobuf::Message;
 
 use assertions::const_assert;
+use base::{error, LayoutAllocation};
 use data_model::DataInit;
 use kvm::{CpuId, Vcpu};
 use kvm_sys::{
@@ -25,7 +26,6 @@ use kvm_sys::{
 use protobuf::stream::CodedOutputStream;
 use protos::plugin::*;
 use sync::Mutex;
-use sys_util::{error, LayoutAllocation};
 
 use super::*;
 

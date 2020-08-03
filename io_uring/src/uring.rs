@@ -13,7 +13,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use sys_util::{MappedRegion, MemoryMapping, WatchingEvents};
+use base::{MappedRegion, MemoryMapping, WatchingEvents};
 
 use crate::bindings::*;
 use crate::syscalls::*;
@@ -29,11 +29,11 @@ pub enum Error {
     /// The call to `io_uring_setup` failed with the given errno.
     Setup(libc::c_int),
     /// Failed to map the completion ring.
-    MappingCompleteRing(sys_util::MmapError),
+    MappingCompleteRing(base::MmapError),
     /// Failed to map the submit ring.
-    MappingSubmitRing(sys_util::MmapError),
+    MappingSubmitRing(base::MmapError),
     /// Failed to map submit entries.
-    MappingSubmitEntries(sys_util::MmapError),
+    MappingSubmitEntries(base::MmapError),
     /// Too many ops are already queued.
     NoSpace,
 }
@@ -77,7 +77,7 @@ pub struct URingStats {
 /// # use std::fs::File;
 /// # use std::os::unix::io::AsRawFd;
 /// # use std::path::Path;
-/// # use sys_util::WatchingEvents;
+/// # use base::WatchingEvents;
 /// # use io_uring::URingContext;
 /// let f = File::open(Path::new("/dev/zero")).unwrap();
 /// let mut uring = URingContext::new(16).unwrap();
@@ -715,7 +715,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    use sys_util::PollContext;
+    use base::PollContext;
     use tempfile::TempDir;
 
     use super::*;

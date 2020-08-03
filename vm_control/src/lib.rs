@@ -19,14 +19,14 @@ use std::sync::Arc;
 
 use libc::{EINVAL, EIO, ENODEV};
 
+use base::{
+    error, Error as SysError, EventFd, ExternalMapping, MappedRegion, MemoryMapping, MmapError,
+    Result,
+};
 use kvm::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{Alloc, GpuMemoryDesc, MmioType, SystemAllocator};
 use sync::Mutex;
-use sys_util::{
-    error, Error as SysError, EventFd, ExternalMapping, MappedRegion, MemoryMapping, MmapError,
-    Result,
-};
 use vm_memory::GuestAddress;
 
 /// A file descriptor either borrowed or owned by this.

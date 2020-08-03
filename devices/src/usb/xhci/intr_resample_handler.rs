@@ -4,9 +4,9 @@
 
 use super::interrupter::Interrupter;
 use crate::utils::{EventHandler, EventLoop};
+use base::{error, EventFd, WatchingEvents};
 use std::sync::Arc;
 use sync::Mutex;
-use sys_util::{error, EventFd, WatchingEvents};
 
 /// Interrupt Resample handler handles resample event. It will reassert interrupt if needed.
 pub struct IntrResampleHandler {

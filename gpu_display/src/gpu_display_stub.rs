@@ -8,8 +8,8 @@ use std::os::unix::io::{AsRawFd, RawFd};
 
 use crate::{DisplayT, EventDevice, GpuDisplayError, GpuDisplayFramebuffer};
 
+use base::EventFd;
 use data_model::VolatileSlice;
-use sys_util::EventFd;
 
 type SurfaceId = NonZeroU32;
 

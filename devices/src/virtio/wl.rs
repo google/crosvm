@@ -53,19 +53,19 @@ use libc::{EBADF, EINVAL};
 use data_model::VolatileMemoryError;
 use data_model::*;
 
-use msg_socket::{MsgError, MsgReceiver, MsgSender};
 #[cfg(feature = "wl-dmabuf")]
-use resources::GpuMemoryDesc;
-#[cfg(feature = "wl-dmabuf")]
-use sys_util::ioctl_iow_nr;
-use sys_util::{
+use base::ioctl_iow_nr;
+use base::{
     error, pipe, round_up_to_page_size, warn, Error, EventFd, FileFlags, PollContext, PollToken,
     Result, ScmSocket, SharedMemory,
 };
+use msg_socket::{MsgError, MsgReceiver, MsgSender};
+#[cfg(feature = "wl-dmabuf")]
+use resources::GpuMemoryDesc;
 use vm_memory::{GuestMemory, GuestMemoryError};
 
 #[cfg(feature = "wl-dmabuf")]
-use sys_util::ioctl_with_ref;
+use base::ioctl_with_ref;
 
 use super::resource_bridge::*;
 use super::{

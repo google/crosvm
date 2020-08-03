@@ -10,12 +10,12 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::rc::Rc;
 
 use async_trait::async_trait;
-use libc::EINVAL;
-use remain::sorted;
-use sys_util::{
+use base::{
     AsRawFds, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole,
     WriteZeroesAt,
 };
+use libc::EINVAL;
+use remain::sorted;
 use vm_memory::GuestMemory;
 
 mod qcow;
@@ -32,7 +32,7 @@ use android_sparse::{AndroidSparse, SPARSE_HEADER_MAGIC};
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
-    BlockDeviceNew(sys_util::Error),
+    BlockDeviceNew(base::Error),
     ConversionNotSupported,
     CreateAndroidSparseDisk(android_sparse::Error),
     #[cfg(feature = "composite-disk")]

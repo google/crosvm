@@ -60,6 +60,7 @@ use arch::{
     get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, SerialHardware, SerialParameters,
     VmComponents, VmImage,
 };
+use base::{Clock, EventFd};
 use devices::split_irqchip_common::GsiRelay;
 use devices::{Ioapic, PciConfigIo, PciDevice, Pic, IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES};
 use kvm::*;
@@ -67,7 +68,6 @@ use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
-use sys_util::{Clock, EventFd};
 use vm_control::VmIrqRequestSocket;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
@@ -76,24 +76,24 @@ use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 pub enum Error {
     AllocateIOResouce(resources::Error),
     AllocateIrq,
-    CloneEventFd(sys_util::Error),
+    CloneEventFd(base::Error),
     Cmdline(kernel_cmdline::Error),
     ConfigureSystem,
     CreateDevices(Box<dyn StdError>),
-    CreateEventFd(sys_util::Error),
+    CreateEventFd(base::Error),
     CreateFdt(arch::fdt::Error),
-    CreateIoapicDevice(sys_util::Error),
-    CreateIrqChip(sys_util::Error),
-    CreateKvm(sys_util::Error),
+    CreateIoapicDevice(base::Error),
+    CreateIrqChip(base::Error),
+    CreateKvm(base::Error),
     CreatePciRoot(arch::DeviceRegistrationError),
-    CreatePit(sys_util::Error),
+    CreatePit(base::Error),
     CreatePitDevice(devices::PitError),
     CreateSerialDevices(arch::DeviceRegistrationError),
     CreateSocket(io::Error),
-    CreateVcpu(sys_util::Error),
-    CreateVm(sys_util::Error),
+    CreateVcpu(base::Error),
+    CreateVm(base::Error),
     E820Configuration,
-    EnableSplitIrqchip(sys_util::Error),
+    EnableSplitIrqchip(base::Error),
     GetSerialCmdline(GetSerialCmdlineError),
     KernelOffsetPastEnd,
     LoadBios(io::Error),
@@ -102,10 +102,10 @@ pub enum Error {
     LoadInitrd(arch::LoadImageError),
     LoadKernel(kernel_loader::Error),
     Pstore(arch::pstore::Error),
-    RegisterIrqfd(sys_util::Error),
+    RegisterIrqfd(base::Error),
     RegisterVsock(arch::DeviceRegistrationError),
     SetLint(interrupts::Error),
-    SetTssAddr(sys_util::Error),
+    SetTssAddr(base::Error),
     SetupCpuid(cpuid::Error),
     SetupFpu(regs::Error),
     SetupGuestMemory(GuestMemoryError),
@@ -642,7 +642,7 @@ impl X8664arch {
                     &mut initrd_file,
                     GuestAddress(free_addr),
                     GuestAddress(initrd_addr_max),
-                    sys_util::pagesize() as u64,
+                    base::pagesize() as u64,
                 )
                 .map_err(Error::LoadInitrd)?;
                 Some((initrd_start, initrd_size))

@@ -8,8 +8,8 @@ use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::thread;
 
-use sys_util::{error, EventFd, PollContext, PollToken};
-use sys_util::{Error as SysError, Result as SysResult};
+use base::{error, EventFd, PollContext, PollToken};
+use base::{Error as SysError, Result as SysResult};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use data_model::{DataInit, Le32, Le64};

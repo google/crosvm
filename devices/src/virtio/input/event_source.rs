@@ -6,13 +6,13 @@ use super::constants::*;
 use super::evdev::{grab_evdev, ungrab_evdev};
 use super::InputError;
 use super::Result;
+use base::warn;
 use data_model::DataInit;
 use linux_input_sys::{input_event, virtio_input_event, InputEventDecoder};
 use std::collections::VecDeque;
 use std::io::Read;
 use std::io::Write;
 use std::os::unix::io::{AsRawFd, RawFd};
-use sys_util::warn;
 
 /// Encapsulates a socket or device node into an abstract event source, providing a common
 /// interface.

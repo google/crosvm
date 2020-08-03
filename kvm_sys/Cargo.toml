@@ -6,4 +6,4 @@ edition = "2018"
 
 [dependencies]
 libc = "*"
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }

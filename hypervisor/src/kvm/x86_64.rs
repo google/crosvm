@@ -2,18 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::IoctlNr;
 use std::convert::TryInto;
 use std::os::unix::io::AsRawFd;
-use sys_util::IoctlNr;
 
 use libc::E2BIG;
 
-use data_model::vec_with_array_field;
-use kvm_sys::*;
-use sys_util::{
+use base::{
     errno_result, error, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr,
     ioctl_with_ref, ioctl_with_val, Error, MappedRegion, Result,
 };
+use data_model::vec_with_array_field;
+use kvm_sys::*;
 use vm_memory::GuestAddress;
 
 use super::{Kvm, KvmVcpu, KvmVm};

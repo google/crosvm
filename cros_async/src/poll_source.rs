@@ -18,24 +18,24 @@ use libc::O_NONBLOCK;
 
 use crate::fd_executor::{self, add_read_waker, add_write_waker, PendingWaker};
 use crate::uring_mem::{BackingMemory, BorrowedIoVec, MemRegion};
-use sys_util::{self, add_fd_flags};
+use base::{self, add_fd_flags};
 
 #[derive(Debug)]
 pub enum Error {
     /// An error occurred attempting to register a waker with the executor.
     AddingWaker(fd_executor::Error),
     /// An error occurred when executing fallocate synchronously.
-    Fallocate(sys_util::Error),
+    Fallocate(base::Error),
     /// An error occurred when executing fsync synchronously.
-    Fsync(sys_util::Error),
+    Fsync(base::Error),
     /// An error occurred when reading the FD.
-    Read(sys_util::Error),
+    Read(base::Error),
     /// Can't seek file.
-    Seeking(sys_util::Error),
+    Seeking(base::Error),
     /// An error occurred when setting the FD non-blocking.
-    SettingNonBlocking(sys_util::Error),
+    SettingNonBlocking(base::Error),
     /// An error occurred when writing the FD.
-    Write(sys_util::Error),
+    Write(base::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -151,7 +151,7 @@ impl<F: AsRawFd> PollSource<F> {
         if ret == 0 {
             Ok(())
         } else {
-            Err(Error::Fallocate(sys_util::Error::last()))
+            Err(Error::Fallocate(base::Error::last()))
         }
     }
 
@@ -161,7 +161,7 @@ impl<F: AsRawFd> PollSource<F> {
         if ret == 0 {
             Ok(())
         } else {
-            Err(Error::Fsync(sys_util::Error::last()))
+            Err(Error::Fsync(base::Error::last()))
         }
     }
 
@@ -226,7 +226,7 @@ impl<'a, F: AsRawFd> Future for PollReadVec<'a, F> {
     type Output = Result<(usize, Vec<u8>)>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        fn do_read(fd: RawFd, file_offset: u64, buf: &mut [u8]) -> sys_util::Result<usize> {
+        fn do_read(fd: RawFd, file_offset: u64, buf: &mut [u8]) -> base::Result<usize> {
             // Safe because we trust the kernel not to write past the length given and the length is
             // guaranteed to be valid from the pointer by the mut slice.
             let ret = unsafe {
@@ -239,7 +239,7 @@ impl<'a, F: AsRawFd> Future for PollReadVec<'a, F> {
             };
             match ret {
                 n if n >= 0 => Ok(n as usize),
-                _ => sys_util::errno_result(),
+                _ => base::errno_result(),
             }
         }
 
@@ -283,13 +283,13 @@ impl<'a, F: AsRawFd> Future for PollReadU64<'a, F> {
     type Output = Result<u64>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        fn do_read(fd: RawFd, buf: &mut [u8]) -> sys_util::Result<usize> {
+        fn do_read(fd: RawFd, buf: &mut [u8]) -> base::Result<usize> {
             // Safe because we trust the kernel not to write past the length given and the length is
             // guaranteed to be valid from the pointer by the mut slice.
             let ret = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut _, buf.len()) };
             match ret {
                 n if n >= 0 => Ok(n as usize),
-                _ => sys_util::errno_result(),
+                _ => base::errno_result(),
             }
         }
 
@@ -333,10 +333,10 @@ impl<'a, F: AsRawFd> Future for PollWaitReadable<'a, F> {
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        fn do_poll(fd: RawFd) -> sys_util::Result<usize> {
+        fn do_poll(fd: RawFd) -> base::Result<usize> {
             let poll_arg = libc::pollfd {
                 fd,
-                events: sys_util::WatchingEvents::empty().set_read().get_raw() as i16,
+                events: base::WatchingEvents::empty().set_read().get_raw() as i16,
                 revents: 0,
             };
 
@@ -344,7 +344,7 @@ impl<'a, F: AsRawFd> Future for PollWaitReadable<'a, F> {
             let ret = unsafe { libc::poll(&poll_arg as *const _ as *mut _, 1, 0) };
             match ret {
                 n if n >= 0 => Ok(n as usize),
-                _ => sys_util::errno_result(),
+                _ => base::errno_result(),
             }
         }
 
@@ -380,7 +380,7 @@ impl<'a, F: AsRawFd> Future for PollWriteVec<'a, F> {
     type Output = Result<(usize, Vec<u8>)>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        fn do_write(fd: RawFd, file_offset: u64, buf: &[u8]) -> sys_util::Result<usize> {
+        fn do_write(fd: RawFd, file_offset: u64, buf: &[u8]) -> base::Result<usize> {
             // Safe because we trust the kernel not to write to the buffer, only read from it and
             // the length is guaranteed to be valid from the pointer by the mut slice.
             let ret = unsafe {
@@ -393,7 +393,7 @@ impl<'a, F: AsRawFd> Future for PollWriteVec<'a, F> {
             };
             match ret {
                 n if n >= 0 => Ok(n as usize),
-                _ => sys_util::errno_result(),
+                _ => base::errno_result(),
             }
         }
 
@@ -445,7 +445,7 @@ impl<'a, F: AsRawFd> Future for PollReadMem<'a, F> {
             file_offset: u64,
             mem: &dyn BackingMemory,
             mem_offsets: &[MemRegion],
-        ) -> sys_util::Result<usize> {
+        ) -> base::Result<usize> {
             let mut iovecs = mem_offsets
                 .iter()
                 .filter_map(|&mem_vec| mem.get_iovec(mem_vec).ok())
@@ -462,7 +462,7 @@ impl<'a, F: AsRawFd> Future for PollReadMem<'a, F> {
             };
             match ret {
                 n if n >= 0 => Ok(n as usize),
-                _ => sys_util::errno_result(),
+                _ => base::errno_result(),
             }
         }
 
@@ -513,7 +513,7 @@ impl<'a, F: AsRawFd> Future for PollWriteMem<'a, F> {
             file_offset: u64,
             mem: &dyn BackingMemory,
             mem_offsets: &[MemRegion],
-        ) -> sys_util::Result<usize> {
+        ) -> base::Result<usize> {
             let iovecs = mem_offsets
                 .iter()
                 .map(|&mem_vec| mem.get_iovec(mem_vec))
@@ -531,7 +531,7 @@ impl<'a, F: AsRawFd> Future for PollWriteMem<'a, F> {
             };
             match ret {
                 n if n >= 0 => Ok(n as usize),
-                _ => sys_util::errno_result(),
+                _ => base::errno_result(),
             }
         }
 

@@ -355,7 +355,7 @@ pub fn setup_mptable(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sys_util::pagesize;
+    use base::pagesize;
 
     fn compute_page_aligned_mp_size(num_cpus: u8) -> u64 {
         let mp_size = compute_mp_size(num_cpus);

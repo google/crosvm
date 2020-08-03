@@ -8,8 +8,8 @@ use std::io::{IoSlice, Result};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
 
+use base::{handle_eintr, net::UnixSeqpacket, Error as SysError, ScmSocket};
 use cros_async::PollOrRing;
-use sys_util::{handle_eintr, net::UnixSeqpacket, Error as SysError, ScmSocket};
 
 pub use crate::msg_on_socket::*;
 pub use msg_on_socket_derive::*;

@@ -7,9 +7,9 @@
 use std::convert::{From, Into, TryFrom};
 use std::io;
 
+use base::error;
 use data_model::Le32;
 use enumn::N;
-use sys_util::error;
 
 use crate::virtio::video::command::ReadCmdError;
 use crate::virtio::video::protocol::*;

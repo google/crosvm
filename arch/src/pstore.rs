@@ -7,19 +7,19 @@ use std::fs::OpenOptions;
 use std::io;
 
 use crate::Pstore;
+use base::MemoryMapping;
 use kvm::Vm;
 use resources::SystemAllocator;
 use resources::{Alloc, MmioType};
-use sys_util::MemoryMapping;
 use vm_memory::GuestAddress;
 
 /// Error for pstore.
 #[derive(Debug)]
 pub enum Error {
     IoError(io::Error),
-    MmapError(sys_util::MmapError),
+    MmapError(base::MmapError),
     ResourcesError(resources::Error),
-    SysUtilError(sys_util::Error),
+    SysUtilError(base::Error),
 }
 
 impl Display for Error {

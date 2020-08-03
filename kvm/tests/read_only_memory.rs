@@ -4,9 +4,9 @@
 
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 
+use base::{MemoryMapping, SharedMemory};
 use kvm::*;
 use kvm_sys::kvm_regs;
-use sys_util::{MemoryMapping, SharedMemory};
 use vm_memory::{GuestAddress, GuestMemory};
 
 #[test]

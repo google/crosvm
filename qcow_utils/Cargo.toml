@@ -16,4 +16,4 @@ path = "src/qcow_img.rs"
 getopts = "*"
 libc = "*"
 disk = { path = "../disk" }
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }

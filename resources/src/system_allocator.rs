@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use sys_util::pagesize;
+use base::pagesize;
 
 use crate::address_allocator::AddressAllocator;
 use crate::gpu_allocator::{self, GpuMemoryAllocator};

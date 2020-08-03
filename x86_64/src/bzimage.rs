@@ -66,7 +66,7 @@ where
         .map_err(|_| Error::SeekBootParams)?;
     unsafe {
         // read_struct is safe when reading a POD struct.  It can be used and dropped without issue.
-        sys_util::read_struct(kernel_image, &mut params).map_err(|_| Error::ReadBootParams)?;
+        base::read_struct(kernel_image, &mut params).map_err(|_| Error::ReadBootParams)?;
     }
 
     // bzImage header signature "HdrS"

@@ -6,7 +6,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use sys_util::ioctl_io_nr;
+use base::ioctl_io_nr;
 
 pub mod vfio;
 pub use crate::vfio::*;

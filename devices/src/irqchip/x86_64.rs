@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::Result;
 use hypervisor::{IoapicState, LapicState, PicSelect, PicState, PitState, VcpuX86_64};
-use sys_util::Result;
 
 use crate::IrqChip;
 

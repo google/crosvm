@@ -10,7 +10,7 @@ use std::convert::TryInto;
 use std::fs::File;
 use std::os::unix::io::{AsRawFd, IntoRawFd};
 
-use sys_util::{error, PollContext};
+use base::{error, PollContext};
 
 use crate::virtio::resource_bridge::{self, ResourceInfo, ResourceRequestSocket};
 use crate::virtio::video::command::{QueueType, VideoCmd};

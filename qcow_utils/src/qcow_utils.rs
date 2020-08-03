@@ -9,8 +9,8 @@ use std::ffi::CStr;
 use std::fs::OpenOptions;
 use std::os::raw::{c_char, c_int};
 
+use base::{flock, FlockOperation};
 use disk::{DiskFile, ImageType, QcowFile};
-use sys_util::{flock, FlockOperation};
 
 #[no_mangle]
 pub unsafe extern "C" fn create_qcow_with_size(path: *const c_char, virtual_size: u64) -> c_int {

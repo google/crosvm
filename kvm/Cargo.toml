@@ -9,6 +9,6 @@ data_model = { path = "../data_model" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 msg_socket = { path = "../msg_socket" }
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }
 sync = { path = "../sync" }
 vm_memory = { path = "../vm_memory" }

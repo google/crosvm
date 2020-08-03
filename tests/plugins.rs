@@ -14,8 +14,8 @@ use std::process::{Command, Stdio};
 use std::thread::sleep;
 use std::time::Duration;
 
+use base::{ioctl, SharedMemory};
 use rand_ish::urandom_str;
-use sys_util::{ioctl, SharedMemory};
 
 struct RemovePath(PathBuf);
 impl Drop for RemovePath {

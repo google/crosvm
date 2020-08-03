@@ -7,12 +7,12 @@ use std::fmt::{self, Display};
 use std::{mem, result};
 
 use assertions::const_assert;
+use base::{self, warn, LayoutAllocation};
 use kvm_sys::kvm_fpu;
 use kvm_sys::kvm_msr_entry;
 use kvm_sys::kvm_msrs;
 use kvm_sys::kvm_regs;
 use kvm_sys::kvm_sregs;
-use sys_util::{self, warn, LayoutAllocation};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::gdt;
@@ -20,15 +20,15 @@ use crate::gdt;
 #[derive(Debug)]
 pub enum Error {
     /// Setting up msrs failed.
-    MsrIoctlFailed(sys_util::Error),
+    MsrIoctlFailed(base::Error),
     /// Failed to configure the FPU.
-    FpuIoctlFailed(sys_util::Error),
+    FpuIoctlFailed(base::Error),
     /// Failed to get sregs for this cpu.
-    GetSRegsIoctlFailed(sys_util::Error),
+    GetSRegsIoctlFailed(base::Error),
     /// Failed to set base registers for this cpu.
-    SettingRegistersIoctl(sys_util::Error),
+    SettingRegistersIoctl(base::Error),
     /// Failed to set sregs for this cpu.
-    SetSRegsIoctlFailed(sys_util::Error),
+    SetSRegsIoctlFailed(base::Error),
     /// Writing the GDT to RAM failed.
     WriteGDTFailure,
     /// Writing the IDT to RAM failed.

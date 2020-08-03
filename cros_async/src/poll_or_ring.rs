@@ -454,7 +454,7 @@ mod tests {
 
     #[test]
     fn read_eventfds() {
-        use sys_util::EventFd;
+        use base::EventFd;
 
         async fn go<F: AsRawFd + Unpin>(mut source: U64Source<F>) -> u64 {
             source.next_val().await.unwrap()

@@ -10,7 +10,7 @@
 
 use std::os::raw::{c_char, c_int, c_uchar, c_uint, c_void};
 
-use sys_util::{ioctl_io_nr, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
+use base::{ioctl_io_nr, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
 
 #[repr(C)]
 #[derive(Default)]

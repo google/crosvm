@@ -7,8 +7,8 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::mem::size_of;
 
+use base::error;
 use data_model::DataInit;
-use sys_util::error;
 
 use crate::virtio::fs::filesystem::{
     Context, DirEntry, Entry, FileSystem, GetxattrReply, IoctlReply, ListxattrReply,

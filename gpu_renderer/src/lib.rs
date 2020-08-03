@@ -482,7 +482,7 @@ impl Renderer {
             vsnprintf(raw, len.into(), fmt, &mut varargs);
             c_str = CString::from_raw(raw);
         }
-        sys_util::debug!("{}", c_str.to_string_lossy());
+        base::debug!("{}", c_str.to_string_lossy());
     }
 }
 

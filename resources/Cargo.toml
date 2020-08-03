@@ -11,4 +11,4 @@ wl-dmabuf = ["gpu_buffer"]
 gpu_buffer = { path = "../gpu_buffer", optional = true }
 libc = "*"
 msg_socket = { path = "../msg_socket" }
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }

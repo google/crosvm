@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use sys_util::ioctl_with_ref;
+use base::ioctl_with_ref;
 use vm_memory::GuestMemory;
 
 use super::{ioctl_result, Error, Result, Vhost};

@@ -6,9 +6,9 @@
 
 use std::fmt::{self, Display};
 
+use base::Error as SysError;
 use net_util::Error as TapError;
 use remain::sorted;
-use sys_util::Error as SysError;
 use vhost::Error as VhostError;
 
 mod control_socket;

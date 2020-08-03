@@ -10,14 +10,14 @@ use crate::usb::xhci::usb_hub::UsbHub;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::utils::AsyncJobQueue;
 use crate::utils::{EventHandler, EventLoop, FailHandle};
+use base::net::UnixSeqpacket;
+use base::{error, WatchingEvents};
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use std::collections::HashMap;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
 use sync::Mutex;
-use sys_util::net::UnixSeqpacket;
-use sys_util::{error, WatchingEvents};
 use usb_util::Device;
 use vm_control::{
     MaybeOwnedFd, UsbControlAttachedDevice, UsbControlCommand, UsbControlResult, UsbControlSocket,

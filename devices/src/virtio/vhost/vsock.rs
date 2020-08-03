@@ -7,7 +7,7 @@ use std::thread;
 
 use data_model::{DataInit, Le64};
 
-use sys_util::{error, warn, EventFd};
+use base::{error, warn, EventFd};
 use vhost::Vhost;
 use vhost::Vsock as VhostVsockHandle;
 use vm_memory::GuestMemory;

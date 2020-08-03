@@ -11,8 +11,8 @@ use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::thread;
 
+use base::{error, Error as SysError, EventFd};
 use data_model::{DataInit, Le32};
-use sys_util::{error, Error as SysError, EventFd};
 use vm_memory::GuestMemory;
 
 use crate::virtio::resource_bridge::ResourceRequestSocket;

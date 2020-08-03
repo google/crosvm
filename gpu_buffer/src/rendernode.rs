@@ -10,7 +10,7 @@ use std::os::raw::{c_char, c_int, c_uint};
 use std::path::Path;
 use std::ptr::null_mut;
 
-use sys_util::{ioctl_iowr_nr, ioctl_with_mut_ref};
+use base::{ioctl_iowr_nr, ioctl_with_mut_ref};
 
 // Consistent with __kernel_size_t in include/uapi/asm-generic/posix_types.h.
 #[cfg(not(target_pointer_width = "64"))]

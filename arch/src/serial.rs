@@ -12,16 +12,16 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use base::{error, info, read_raw_stdin, syslog, EventFd};
 use devices::{Bus, ProxyDevice, Serial, SerialDevice};
 use minijail::Minijail;
 use sync::Mutex;
-use sys_util::{error, info, read_raw_stdin, syslog, EventFd};
 
 use crate::DeviceRegistrationError;
 
 #[derive(Debug)]
 pub enum Error {
-    CloneEventFd(sys_util::Error),
+    CloneEventFd(base::Error),
     FileError(std::io::Error),
     InvalidSerialHardware(String),
     InvalidSerialType(String),

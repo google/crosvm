@@ -13,8 +13,8 @@
 // emotional context, this file refers to them instead as "primary" and "secondary" PICs.
 
 use crate::BusDevice;
+use base::{debug, warn, EventFd};
 use hypervisor::{PicInitState, PicSelect, PicState};
-use sys_util::{debug, warn, EventFd};
 
 pub struct Pic {
     // Indicates a pending INTR signal to LINT0 of vCPU, checked by vCPU thread.

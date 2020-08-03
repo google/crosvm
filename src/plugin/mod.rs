@@ -26,14 +26,14 @@ use libc::{
 use protobuf::ProtobufError;
 use remain::sorted;
 
-use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
-use minijail::{self, Minijail};
-use net_util::{Error as TapError, Tap, TapT};
-use sys_util::{
+use base::{
     block_signal, clear_signal, drop_capabilities, error, getegid, geteuid, info, pipe,
     register_rt_signal_handler, validate_raw_fd, warn, Error as SysError, EventFd, Killable,
     MmapError, PollContext, PollToken, Result as SysResult, SignalFd, SignalFdError, SIGRTMIN,
 };
+use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
+use minijail::{self, Minijail};
+use net_util::{Error as TapError, Tap, TapT};
 use vm_memory::GuestMemory;
 
 use self::process::*;
@@ -457,7 +457,7 @@ pub fn run_vcpus(
                     }
 
                     #[cfg(feature = "chromeos")]
-                    if let Err(e) = sys_util::sched::enable_core_scheduling() {
+                    if let Err(e) = base::sched::enable_core_scheduling() {
                         error!("Failed to enable core scheduling: {}", e);
                     }
 

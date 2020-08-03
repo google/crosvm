@@ -7,11 +7,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
 
+use base::{warn, EventFd, Result};
 use data_model::{DataInit, Le32};
 use kvm::Datamatch;
 use libc::ERANGE;
 use resources::{Alloc, MmioType, SystemAllocator};
-use sys_util::{warn, EventFd, Result};
 use vm_memory::GuestMemory;
 
 use super::*;
@@ -239,7 +239,7 @@ impl VirtioPciDevice {
         let num_queues = device.queue_max_sizes().len();
 
         // One MSI-X vector per queue plus one for configuration changes.
-        let msix_num = u16::try_from(num_queues + 1).map_err(|_| sys_util::Error::new(ERANGE))?;
+        let msix_num = u16::try_from(num_queues + 1).map_err(|_| base::Error::new(ERANGE))?;
         let msix_config = Arc::new(Mutex::new(MsixConfig::new(
             msix_num,
             Arc::new(msi_device_socket),

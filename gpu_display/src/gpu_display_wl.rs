@@ -4,8 +4,8 @@
 
 //! Crate for displaying simple surfaces and GPU buffers over wayland.
 
+extern crate base;
 extern crate data_model;
-extern crate sys_util;
 
 #[path = "dwl.rs"]
 mod dwl;
@@ -21,8 +21,8 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
 use std::ptr::{null, null_mut};
 
+use base::{round_up_to_page_size, MemoryMapping, SharedMemory};
 use data_model::VolatileMemory;
-use sys_util::{round_up_to_page_size, MemoryMapping, SharedMemory};
 
 const BUFFER_COUNT: usize = 3;
 const BYTES_PER_PIXEL: u32 = 4;

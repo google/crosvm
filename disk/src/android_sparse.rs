@@ -12,11 +12,9 @@ use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use crate::DiskGetLen;
+use base::{FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt};
 use data_model::{DataInit, Le16, Le32, VolatileSlice};
 use remain::sorted;
-use sys_util::{
-    FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt,
-};
 
 #[sorted]
 #[derive(Debug)]
@@ -331,8 +329,8 @@ impl FileReadWriteAtVolatile for AndroidSparse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base::SharedMemory;
     use std::io::{Cursor, Write};
-    use sys_util::SharedMemory;
 
     const CHUNK_SIZE: usize = mem::size_of::<ChunkHeader>();
 

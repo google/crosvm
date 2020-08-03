@@ -28,6 +28,7 @@ use libc::{self, c_int, gid_t, uid_t};
 
 use acpi_tables::sdt::SDT;
 
+use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
 use devices::virtio::{self, Console, VirtioDevice};
@@ -44,9 +45,8 @@ use net_util::{Error as NetError, MacAddress, Tap};
 use remain::sorted;
 use resources::{Alloc, MmioType, SystemAllocator};
 use sync::{Condvar, Mutex};
-use sys_util::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 
-use sys_util::{
+use base::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_rt_signal_handler,
     set_cpu_affinity, validate_raw_fd, warn, EventFd, ExternalMapping, FlockOperation, Killable,
@@ -77,34 +77,34 @@ use x86_64::X8664arch as Arch;
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
-    AddGpuDeviceMemory(sys_util::Error),
-    AddPmemDeviceMemory(sys_util::Error),
+    AddGpuDeviceMemory(base::Error),
+    AddPmemDeviceMemory(base::Error),
     AllocateGpuDeviceAddress,
     AllocatePmemDeviceAddress(resources::Error),
     BalloonDeviceNew(virtio::BalloonError),
-    BlockDeviceNew(sys_util::Error),
-    BlockSignal(sys_util::signal::Error),
+    BlockDeviceNew(base::Error),
+    BlockSignal(base::signal::Error),
     BuildVm(<Arch as LinuxArch>::Error),
-    ChownTpmStorage(sys_util::Error),
-    CloneEventFd(sys_util::Error),
+    ChownTpmStorage(base::Error),
+    CloneEventFd(base::Error),
     #[cfg(feature = "audio")]
     CreateAc97(devices::PciDeviceError),
     CreateConsole(arch::serial::Error),
     CreateDiskError(disk::Error),
-    CreateEventFd(sys_util::Error),
-    CreatePollContext(sys_util::Error),
-    CreateSignalFd(sys_util::SignalFdError),
+    CreateEventFd(base::Error),
+    CreatePollContext(base::Error),
+    CreateSignalFd(base::SignalFdError),
     CreateSocket(io::Error),
     CreateTapDevice(NetError),
-    CreateTimerFd(sys_util::Error),
+    CreateTimerFd(base::Error),
     CreateTpmStorage(PathBuf, io::Error),
     CreateUsbProvider(devices::usb::host_backend::error::Error),
     CreateVfioDevice(devices::vfio::VfioError),
     DeviceJail(minijail::Error),
     DevicePivotRoot(minijail::Error),
     Disk(PathBuf, io::Error),
-    DiskImageLock(sys_util::Error),
-    DropCapabilities(sys_util::Error),
+    DiskImageLock(base::Error),
+    DropCapabilities(base::Error),
     FsDeviceNew(virtio::fs::Error),
     GetMaxOpenFiles(io::Error),
     InputDeviceNew(virtio::InputError),
@@ -125,9 +125,9 @@ pub enum Error {
     ParseMaxOpenFiles(ParseIntError),
     PivotRootDoesntExist(&'static str),
     PmemDeviceImageTooBig,
-    PmemDeviceNew(sys_util::Error),
-    PollContextAdd(sys_util::Error),
-    PollContextDelete(sys_util::Error),
+    PmemDeviceNew(base::Error),
+    PollContextAdd(base::Error),
+    PollContextDelete(base::Error),
     ReadMemAvailable(io::Error),
     RegisterBalloon(arch::DeviceRegistrationError),
     RegisterBlock(arch::DeviceRegistrationError),
@@ -135,24 +135,24 @@ pub enum Error {
     RegisterNet(arch::DeviceRegistrationError),
     RegisterP9(arch::DeviceRegistrationError),
     RegisterRng(arch::DeviceRegistrationError),
-    RegisterSignalHandler(sys_util::Error),
+    RegisterSignalHandler(base::Error),
     RegisterWayland(arch::DeviceRegistrationError),
-    ReserveGpuMemory(sys_util::MmapError),
-    ReserveMemory(sys_util::Error),
-    ReservePmemMemory(sys_util::MmapError),
-    ResetTimerFd(sys_util::Error),
+    ReserveGpuMemory(base::MmapError),
+    ReserveMemory(base::Error),
+    ReservePmemMemory(base::MmapError),
+    ResetTimerFd(base::Error),
     RngDeviceNew(virtio::RngError),
     SettingGidMap(minijail::Error),
     SettingMaxOpenFiles(minijail::Error),
     SettingUidMap(minijail::Error),
-    SignalFd(sys_util::SignalFdError),
+    SignalFd(base::SignalFdError),
     SpawnVcpu(io::Error),
-    TimerFd(sys_util::Error),
-    ValidateRawFd(sys_util::Error),
+    TimerFd(base::Error),
+    ValidateRawFd(base::Error),
     VhostNetDeviceNew(virtio::vhost::Error),
     VhostVsockDeviceNew(virtio::vhost::Error),
-    VirtioPciDev(sys_util::Error),
-    WaylandDeviceNew(sys_util::Error),
+    VirtioPciDev(base::Error),
+    WaylandDeviceNew(base::Error),
 }
 
 impl Display for Error {
@@ -459,10 +459,10 @@ fn create_rng_device(cfg: &Config) -> DeviceResult {
 
 #[cfg(feature = "tpm")]
 fn create_tpm_device(cfg: &Config) -> DeviceResult {
+    use base::chown;
     use std::ffi::CString;
     use std::fs;
     use std::process;
-    use sys_util::chown;
 
     let tpm_storage: PathBuf;
     let mut tpm_jail = simple_jail(&cfg, "tpm_device")?;
@@ -1557,7 +1557,7 @@ fn run_vcpu(
             }
 
             #[cfg(feature = "chromeos")]
-            if let Err(e) = sys_util::sched::enable_core_scheduling() {
+            if let Err(e) = base::sched::enable_core_scheduling() {
                 error!("Failed to enable core scheduling: {}", e);
             }
 

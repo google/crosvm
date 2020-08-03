@@ -33,7 +33,7 @@ use libc::{E2BIG, EINVAL, ENOENT, ENOTCONN, EPROTO};
 
 use protobuf::{parse_from_bytes, Message, ProtobufEnum, RepeatedField};
 
-use sys_util::ScmSocket;
+use base::ScmSocket;
 
 use kvm::dirty_log_bitmap_size;
 

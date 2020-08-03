@@ -13,8 +13,8 @@ pub mod x86_64;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::c_int;
 
+use base::{EventFd, MappedRegion, Result, SafeDescriptor};
 use msg_socket::MsgOnSocket;
-use sys_util::{EventFd, MappedRegion, Result, SafeDescriptor};
 use vm_memory::{GuestAddress, GuestMemory};
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]

@@ -9,7 +9,7 @@ include = ["src/**/*", "Cargo.toml"]
 cros_async = { path = "../cros_async" } # provided by ebuild
 data_model = { path = "../data_model" } # provided by ebuild
 libc = "*"
-sys_util = { path = "../sys_util" } # provided by ebuild
+base = { path = "../base" } # provided by ebuild
 syscall_defines = { path = "../syscall_defines" } # provided by ebuild
 
 [workspace]

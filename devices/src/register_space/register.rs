@@ -8,8 +8,8 @@ use std::mem::size_of;
 use std::sync::{Arc, MutexGuard};
 use sync::Mutex;
 
+use base::error;
 use data_model::DataInit;
-use sys_util::error;
 
 /// Type of offset in the register space.
 pub type RegisterOffset = u64;

@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use crate::{IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
-use sys_util::Result;
+use base::Result;
 
 /// A wrapper for using a VM on aarch64 and getting/setting its state.
 pub trait VmAArch64: Vm {

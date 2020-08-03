@@ -42,12 +42,8 @@ pub trait GpuMemoryAllocator: Debug {
     /// * `width` - Width of buffer.
     /// * `height` - Height of buffer.
     /// * `format` - Fourcc format of buffer.
-    fn allocate(
-        &self,
-        width: u32,
-        height: u32,
-        format: u32,
-    ) -> sys_util::Result<(File, GpuMemoryDesc)>;
+    fn allocate(&self, width: u32, height: u32, format: u32)
+        -> base::Result<(File, GpuMemoryDesc)>;
 }
 
 #[cfg(feature = "wl-dmabuf")]
@@ -69,7 +65,7 @@ impl GpuMemoryAllocator for GpuBufferDevice {
         width: u32,
         height: u32,
         format: u32,
-    ) -> sys_util::Result<(File, GpuMemoryDesc)> {
+    ) -> base::Result<(File, GpuMemoryDesc)> {
         let buffer = match self.device.create_buffer(
             width,
             height,
@@ -83,13 +79,13 @@ impl GpuMemoryAllocator for GpuBufferDevice {
             gpu_buffer::Flags::empty().use_linear(true),
         ) {
             Ok(v) => v,
-            Err(_) => return Err(sys_util::Error::new(EINVAL)),
+            Err(_) => return Err(base::Error::new(EINVAL)),
         };
         // We only support one FD. Buffers with multiple planes are supported
         // as long as each plane is associated with the same handle.
         let fd = match buffer.export_plane_fd(0) {
             Ok(v) => v,
-            Err(e) => return Err(sys_util::Error::new(e)),
+            Err(e) => return Err(base::Error::new(e)),
         };
 
         let mut desc = GpuMemoryDesc::default();

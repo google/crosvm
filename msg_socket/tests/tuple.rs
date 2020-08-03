@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::EventFd;
 use msg_socket::*;
-use sys_util::EventFd;
 
 #[derive(MsgOnSocket)]
 struct Message(u8, u16, EventFd);

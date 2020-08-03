@@ -13,15 +13,15 @@ use std::result;
 use std::sync::Arc;
 
 use crate::guest_address::GuestAddress;
+use base::{pagesize, Error as SysError};
+use base::{MappedRegion, MemoryMapping, MmapError};
+use base::{MemfdSeals, SharedMemory};
 use cros_async::{
     uring_mem::{self, BorrowedIoVec},
     BackingMemory,
 };
 use data_model::volatile_memory::*;
 use data_model::DataInit;
-use sys_util::{pagesize, Error as SysError};
-use sys_util::{MappedRegion, MemoryMapping, MmapError};
-use sys_util::{MemfdSeals, SharedMemory};
 
 #[derive(Debug)]
 pub enum Error {
@@ -202,7 +202,7 @@ impl GuestMemory {
     /// # Examples
     ///
     /// ```
-    /// # use sys_util::MemoryMapping;
+    /// # use base::MemoryMapping;
     /// # use vm_memory::{GuestAddress, GuestMemory};
     /// # fn test_end_addr() -> Result<(), ()> {
     ///     let start_addr = GuestAddress(0x1000);
@@ -297,7 +297,7 @@ impl GuestMemory {
     /// * Write a slice at guestaddress 0x200.
     ///
     /// ```
-    /// # use sys_util::MemoryMapping;
+    /// # use base::MemoryMapping;
     /// # use vm_memory::{GuestAddress, GuestMemory};
     /// # fn test_write_u64() -> Result<(), ()> {
     /// #   let start_addr = GuestAddress(0x1000);
@@ -355,7 +355,7 @@ impl GuestMemory {
     /// * Read a slice of length 16 at guestaddress 0x200.
     ///
     /// ```
-    /// # use sys_util::MemoryMapping;
+    /// # use base::MemoryMapping;
     /// # use vm_memory::{GuestAddress, GuestMemory};
     /// # fn test_write_u64() -> Result<(), ()> {
     /// #   let start_addr = GuestAddress(0x1000);
@@ -414,7 +414,7 @@ impl GuestMemory {
     /// * Read a u64 from two areas of guest memory backed by separate mappings.
     ///
     /// ```
-    /// # use sys_util::MemoryMapping;
+    /// # use base::MemoryMapping;
     /// # use vm_memory::{GuestAddress, GuestMemory};
     /// # fn test_read_u64() -> Result<u64, ()> {
     /// #     let start_addr1 = GuestAddress(0x0);
@@ -441,7 +441,7 @@ impl GuestMemory {
     /// * Write a u64 at guest address 0x1100.
     ///
     /// ```
-    /// # use sys_util::MemoryMapping;
+    /// # use base::MemoryMapping;
     /// # use vm_memory::{GuestAddress, GuestMemory};
     /// # fn test_write_u64() -> Result<(), ()> {
     /// #   let start_addr = GuestAddress(0x1000);
@@ -465,7 +465,7 @@ impl GuestMemory {
     /// * Write `99` to 30 bytes starting at guest address 0x1010.
     ///
     /// ```
-    /// # use sys_util::MemoryMapping;
+    /// # use base::MemoryMapping;
     /// # use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
     /// # fn test_volatile_slice() -> Result<(), GuestMemoryError> {
     /// #   let start_addr = GuestAddress(0x1000);
@@ -497,7 +497,7 @@ impl GuestMemory {
     /// * Get a &u64 at offset 0x1010.
     ///
     /// ```
-    /// # use sys_util::MemoryMapping;
+    /// # use base::MemoryMapping;
     /// # use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
     /// # fn test_ref_u64() -> Result<(), GuestMemoryError> {
     /// #   let start_addr = GuestAddress(0x1000);
@@ -527,7 +527,7 @@ impl GuestMemory {
     /// * Read bytes from /dev/urandom
     ///
     /// ```
-    /// # use sys_util::MemoryMapping;
+    /// # use base::MemoryMapping;
     /// # use vm_memory::{GuestAddress, GuestMemory};
     /// # use std::fs::File;
     /// # use std::path::Path;
@@ -567,7 +567,7 @@ impl GuestMemory {
     /// * Write 128 bytes to /dev/null
     ///
     /// ```
-    /// # use sys_util::MemoryMapping;
+    /// # use base::MemoryMapping;
     /// # use vm_memory::{GuestAddress, GuestMemory};
     /// # use std::fs::File;
     /// # use std::path::Path;
@@ -691,7 +691,7 @@ unsafe impl BackingMemory for GuestMemory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sys_util::kernel_has_memfd;
+    use base::kernel_has_memfd;
 
     #[test]
     fn test_alignment() {

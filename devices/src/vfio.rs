@@ -16,10 +16,10 @@ use std::sync::Arc;
 use std::u32;
 use sync::Mutex;
 
-use kvm::Vm;
-use sys_util::{
+use base::{
     ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn, Error, EventFd,
 };
+use kvm::Vm;
 use vm_memory::GuestMemory;
 
 use vfio_sys::*;

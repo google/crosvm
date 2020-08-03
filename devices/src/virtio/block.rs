@@ -13,13 +13,13 @@ use std::thread;
 use std::time::Duration;
 use std::u32;
 
+use base::Error as SysError;
+use base::Result as SysResult;
+use base::{error, info, iov_max, warn, EventFd, PollContext, PollToken, TimerFd};
 use data_model::{DataInit, Le16, Le32, Le64};
 use disk::DiskFile;
 use msg_socket::{MsgReceiver, MsgSender};
 use sync::Mutex;
-use sys_util::Error as SysError;
-use sys_util::Result as SysResult;
-use sys_util::{error, info, iov_max, warn, EventFd, PollContext, PollToken, TimerFd};
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_control::{DiskControlCommand, DiskControlResponseSocket, DiskControlResult};
 use vm_memory::GuestMemory;

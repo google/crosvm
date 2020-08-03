@@ -9,7 +9,7 @@ io_uring = { path = "../io_uring" }
 libc = "*"
 paste = "*"
 pin-utils = "0.1.0-alpha.4"
-sys_util = { path = "../sys_util" }
+base = { path = "../base" }
 syscall_defines = { path = "../syscall_defines" }
 
 [dependencies.futures]

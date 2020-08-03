@@ -4,7 +4,7 @@
 
 use std::os::unix::io::RawFd;
 
-use sys_util::EventFd;
+use base::EventFd;
 use vm_memory::GuestMemory;
 
 use super::*;

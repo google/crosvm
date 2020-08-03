@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use acpi_tables::sdt::SDT;
+use base::{syslog, EventFd};
 use devices::split_irqchip_common::GsiRelay;
 use devices::virtio::VirtioDevice;
 use devices::{
@@ -27,7 +28,6 @@ use kvm::{IoeventAddress, Kvm, Vcpu, Vm};
 use minijail::Minijail;
 use resources::SystemAllocator;
 use sync::Mutex;
-use sys_util::{syslog, EventFd};
 use vm_control::VmIrqRequestSocket;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
@@ -126,21 +126,21 @@ pub enum DeviceRegistrationError {
     /// Could not allocate an IRQ number.
     AllocateIrq,
     // Unable to create a pipe.
-    CreatePipe(sys_util::Error),
+    CreatePipe(base::Error),
     // Unable to create serial device from serial parameters
     CreateSerialDevice(serial::Error),
     /// Could not clone an event fd.
-    EventFdClone(sys_util::Error),
+    EventFdClone(base::Error),
     /// Could not create an event fd.
-    EventFdCreate(sys_util::Error),
+    EventFdCreate(base::Error),
     /// Missing a required serial device.
     MissingRequiredSerialDevice(u8),
     /// Could not add a device to the mmio bus.
     MmioInsert(BusError),
     /// Failed to register ioevent with VM.
-    RegisterIoevent(sys_util::Error),
+    RegisterIoevent(base::Error),
     /// Failed to register irq eventfd with VM.
-    RegisterIrqfd(sys_util::Error),
+    RegisterIrqfd(base::Error),
     /// Failed to initialize proxy device for jailed device.
     ProxyDeviceCreation(devices::ProxyError),
     /// Appending to kernel command line failed.

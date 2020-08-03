@@ -6,9 +6,9 @@
 // See https://pdos.csail.mit.edu/6.828/2016/readings/ia32/ioapic.pdf for a specification.
 
 use crate::BusDevice;
+use base::{error, warn, EventFd, Result};
 use hypervisor::{IoapicState, MsiAddressMessage, MsiDataMessage, TriggerMode, NUM_IOAPIC_PINS};
 use msg_socket::{MsgReceiver, MsgSender};
-use sys_util::{error, warn, EventFd, Result};
 use vm_control::{VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
 
 const IOAPIC_VERSION_ID: u32 = 0x00170011;
