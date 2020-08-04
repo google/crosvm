@@ -2051,6 +2051,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn get_supported_cpuid() {
         let kvm = Kvm::new().unwrap();
         let mut cpuid = kvm.get_supported_cpuid().unwrap();
@@ -2059,6 +2060,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn get_emulated_cpuid() {
         let kvm = Kvm::new().unwrap();
         kvm.get_emulated_cpuid().unwrap();
