@@ -26,6 +26,8 @@ impl Cmos {
     pub fn new(mem_below_4g: u64, mem_above_4g: u64) -> Cmos {
         let mut data = [0u8; DATA_LEN];
 
+        data[0x0B] = 0x02; // Status Register B: 24-hour mode
+
         // Extended memory from 16 MB to 4 GB in units of 64 KB
         let ext_mem = min(
             0xFFFF,

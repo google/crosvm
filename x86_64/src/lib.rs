@@ -203,8 +203,8 @@ const X86_64_SERIAL_2_4_IRQ: u32 = 3;
 // reserve the IRQ number 5 for SCI and let the
 // the other devices starts from next.
 pub const X86_64_SCI_IRQ: u32 = 5;
-// So the IRQ_BASE start from SCI_IRQ + 1
-pub const X86_64_IRQ_BASE: u32 = X86_64_SCI_IRQ + 1;
+// The CMOS RTC uses IRQ 8; start allocating IRQs at 9.
+pub const X86_64_IRQ_BASE: u32 = 9;
 const ACPI_HI_RSDP_WINDOW_BASE: u64 = 0x000E0000;
 
 fn configure_system(
