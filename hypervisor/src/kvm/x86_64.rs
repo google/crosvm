@@ -1134,7 +1134,8 @@ mod tests {
     use crate::{
         DeliveryMode, DeliveryStatus, DestinationMode, Hypervisor, HypervisorCap, HypervisorX86_64,
         IoapicRedirectionTableEntry, IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState,
-        PicInitState, PicState, PitChannelState, PitRWMode, PitRWState, PitState, TriggerMode, Vm,
+        PicInitState, PicState, PitChannelState, PitRWMode, PitRWState, PitState, TriggerMode,
+        Vcpu, Vm,
     };
     use libc::EINVAL;
     use vm_memory::{GuestAddress, GuestMemory};
@@ -1409,6 +1410,17 @@ mod tests {
         let vcpu = vm.create_vcpu(0).unwrap();
         let state = vcpu.get_mp_state().unwrap();
         vcpu.set_mp_state(&state).unwrap();
+    }
+
+    #[test]
+    fn enable_feature() {
+        let kvm = Kvm::new().unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vm = KvmVm::new(&kvm, gm).unwrap();
+        vm.create_irq_chip().unwrap();
+        let vcpu = vm.create_vcpu(0).unwrap();
+        vcpu.enable_raw_capability(kvm_sys::KVM_CAP_HYPERV_SYNIC, &[0; 4])
+            .unwrap();
     }
 
     #[test]

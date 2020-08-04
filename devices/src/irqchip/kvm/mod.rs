@@ -161,7 +161,7 @@ mod tests {
     use crate::irqchip::{IrqChip, KvmKernelIrqChip};
 
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    use hypervisor::VmAarch64;
+    use hypervisor::VmAArch64;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     use hypervisor::VmX86_64;
 

@@ -169,14 +169,11 @@ pub(super) fn chip_to_kvm_chip(chip: IrqSourceChip) -> u32 {
     }
 }
 
-#[test]
+#[cfg(test)]
 mod tests {
+    use super::super::Kvm;
     use super::*;
-    use crate::{
-        DeliveryMode, DeliveryStatus, DestinationMode, HypervisorX86_64,
-        IoapicRedirectionTableEntry, IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState,
-        PicInitState, PicState, PitChannelState, PitRWMode, PitRWState, PitState, TriggerMode, Vm,
-    };
+    use crate::{IrqRoute, IrqSource, IrqSourceChip};
     use vm_memory::{GuestAddress, GuestMemory};
 
     #[test]

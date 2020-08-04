@@ -1304,17 +1304,6 @@ mod tests {
     }
 
     #[test]
-    fn enable_feature() {
-        let kvm = Kvm::new().unwrap();
-        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
-        vm.create_irq_chip().unwrap();
-        let vcpu = vm.create_vcpu(0).unwrap();
-        vcpu.enable_raw_capability(kvm_sys::KVM_CAP_HYPERV_SYNIC, &[0; 4])
-            .unwrap();
-    }
-
-    #[test]
     fn set_signal_mask() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
