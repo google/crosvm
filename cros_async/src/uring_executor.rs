@@ -232,6 +232,7 @@ impl Drop for RegisteredSource {
 // An operation that has been submitted to the uring and is potentially being waited on.
 struct OpData {
     _file: Rc<File>,
+    _mem: Option<Rc<dyn BackingMemory>>,
     waker: Option<Waker>,
 }
 
@@ -299,6 +300,7 @@ impl RingWakerState {
             next_op_token.clone(),
             OpData {
                 _file: Rc::clone(&source),
+                _mem: None,
                 waker: None,
             },
         );
@@ -325,6 +327,7 @@ impl RingWakerState {
             next_op_token.clone(),
             OpData {
                 _file: Rc::clone(&source),
+                _mem: None,
                 waker: None,
             },
         );
@@ -345,6 +348,7 @@ impl RingWakerState {
             next_op_token.clone(),
             OpData {
                 _file: Rc::clone(&source),
+                _mem: None,
                 waker: None,
             },
         );
@@ -379,6 +383,7 @@ impl RingWakerState {
         unsafe {
             // Safe because all the addresses are within the Memory that an Rc is kept for the
             // duration to ensure the memory is valid while the kernel accesses it.
+            // Tested by `dont_drop_backing_mem_read` unit test.
             self.ctx
                 .add_readv_iter(iovecs, source.as_raw_fd(), offset, self.next_op_token)
                 .map_err(Error::SubmittingOp)?;
@@ -388,6 +393,7 @@ impl RingWakerState {
             next_op_token.clone(),
             OpData {
                 _file: Rc::clone(&source),
+                _mem: Some(mem),
                 waker: None,
             },
         );
@@ -422,6 +428,7 @@ impl RingWakerState {
         unsafe {
             // Safe because all the addresses are within the Memory that an Rc is kept for the
             // duration to ensure the memory is valid while the kernel accesses it.
+            // Tested by `dont_drop_backing_mem_write` unit test.
             self.ctx
                 .add_writev_iter(iovecs, source.as_raw_fd(), offset, self.next_op_token)
                 .map_err(Error::SubmittingOp)?;
@@ -431,6 +438,7 @@ impl RingWakerState {
             next_op_token.clone(),
             OpData {
                 _file: Rc::clone(&source),
+                _mem: Some(mem),
                 waker: None,
             },
         );
@@ -441,7 +449,12 @@ impl RingWakerState {
     // Remove the waker for the given token if it hasn't fired yet.
     fn cancel_waker(token: &WakerToken) -> Result<()> {
         Self::with(|state| {
-            let _ = state.pending_ops.remove(token);
+            // Clear the waker as its no longer needed, keep the pending_op in the map because the
+            // uring might still be accessing either the source of the backing memory and pending op
+            // will ensure those live until completion.
+            if let Some(op) = state.pending_ops.get_mut(&token) {
+                op.waker = None;
+            }
             // TODO - handle canceling ops in the uring
             // For now the op will complete but the response will be dropped.
             let _ = state.completed_ops.remove(token);
@@ -668,5 +681,90 @@ impl Drop for PendingOperation {
         if let Some(waker_token) = self.waker_token.take() {
             let _ = RingWakerState::cancel_waker(&waker_token);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Read, Write};
+
+    use super::*;
+    use crate::uring_mem::{BackingMemory, MemRegion, VecIoWrapper};
+
+    #[test]
+    fn dont_drop_backing_mem_read() {
+        // Create a backing memory wrapped in an Rc and check that the drop isn't called while the
+        // op is pending.
+        let bm = Rc::new(VecIoWrapper::from(vec![0u8; 4096])) as Rc<dyn BackingMemory>;
+
+        // Use pipes to create a future that will block forever.
+        let (rx, mut tx) = base::pipe(true).unwrap();
+
+        // Set up the TLS for the uring_executor by creating one.
+        let _ex = URingExecutor::new(crate::executor::UnitFutures::new()).unwrap();
+
+        // Register the receive side of the pipe with the executor.
+        let registered_source = register_source(&rx).expect("register source failed");
+
+        // Submit the op to the kernel. Next, test that the source keeps its Rc open for the duration
+        // of the op.
+        let pending_op = registered_source
+            .start_read_to_mem(0, Rc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
+            .expect("failed to start read to mem");
+
+        // Here the Rc count must be two, one for `bm` and one to signify that the kernel has a
+        // reference while the op is active.
+        assert_eq!(Rc::strong_count(&bm), 2);
+
+        // Dropping the operation shouldn't reduce the Rc count, as the kernel could still be using
+        // it.
+        drop(pending_op);
+        assert_eq!(Rc::strong_count(&bm), 2);
+
+        // Finishing the operation should put the Rc count back to 1.
+        // write to the pipe to wake the read pipe and then wait for the uring result in the
+        // executor.
+        tx.write(&[0u8; 8]).expect("write failed");
+        RingWakerState::wait_wake_event().expect("Failed to wait for read pipe ready");
+        assert_eq!(Rc::strong_count(&bm), 1);
+    }
+
+    #[test]
+    fn dont_drop_backing_mem_write() {
+        // Create a backing memory wrapped in an Rc and check that the drop isn't called while the
+        // op is pending.
+        let bm = Rc::new(VecIoWrapper::from(vec![0u8; 4096])) as Rc<dyn BackingMemory>;
+
+        // Use pipes to create a future that will block forever.
+        let (mut rx, tx) = base::new_pipe_full().expect("Pipe failed");
+
+        // Set up the TLS for the uring_executor by creating one.
+        let _ex = URingExecutor::new(crate::executor::UnitFutures::new()).unwrap();
+
+        // Register the receive side of the pipe with the executor.
+        let registered_source = register_source(&tx).expect("register source failed");
+
+        // Submit the op to the kernel. Next, test that the source keeps its Rc open for the duration
+        // of the op.
+        let pending_op = registered_source
+            .start_write_from_mem(0, Rc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
+            .expect("failed to start write to mem");
+
+        // Here the Rc count must be two, one for `bm` and one to signify that the kernel has a
+        // reference while the op is active.
+        assert_eq!(Rc::strong_count(&bm), 2);
+
+        // Dropping the operation shouldn't reduce the Rc count, as the kernel could still be using
+        // it.
+        drop(pending_op);
+        assert_eq!(Rc::strong_count(&bm), 2);
+
+        // Finishing the operation should put the Rc count back to 1.
+        // write to the pipe to wake the read pipe and then wait for the uring result in the
+        // executor.
+        let mut buf = vec![0u8; base::round_up_to_page_size(1)];
+        rx.read(&mut buf).expect("read to empty failed");
+        RingWakerState::wait_wake_event().expect("Failed to wait for read pipe ready");
+        assert_eq!(Rc::strong_count(&bm), 1);
     }
 }

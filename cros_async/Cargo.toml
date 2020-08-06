@@ -18,5 +18,6 @@ default-features = false
 features = ["alloc"]
 
 [dev-dependencies]
+base = { path = "../base" }
 tempfile = { path = "../tempfile" }
 vm_memory = { path = "../vm_memory" }
