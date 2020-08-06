@@ -341,16 +341,7 @@ pub fn create_disk_file(raw_image: File) -> Result<Box<dyn DiskFile>> {
 
 /// An asynchronously accessible disk.
 #[async_trait(?Send)]
-pub trait AsyncDisk {
-    /// Returns the length of the disk image.
-    fn get_len(&self) -> io::Result<u64>;
-
-    /// Sets the length of the disk image. Similar to ftruncate.
-    fn set_len(&self, len: u64) -> io::Result<()>;
-
-    /// Allocates storage for the region of the file starting at `offset` and extending `len` bytes.
-    fn allocate(&mut self, offset: u64, len: u64) -> io::Result<()>;
-
+pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
     /// Returns the inner file consuming self.
     fn into_inner(self: Box<Self>) -> Box<dyn ToAsyncDisk>;
 
@@ -378,7 +369,7 @@ pub trait AsyncDisk {
     async fn punch_hole(&self, file_offset: u64, length: u64) -> Result<()>;
 
     /// Writes up to `length` bytes of zeroes to the stream, returning how many bytes were written.
-    async fn write_zeroes(&self, file_offset: u64, length: u64) -> Result<()>;
+    async fn write_zeroes_at(&self, file_offset: u64, length: u64) -> Result<()>;
 }
 
 use cros_async::PollOrRing;
@@ -397,20 +388,26 @@ impl TryFrom<File> for SingleFileDisk {
     }
 }
 
-#[async_trait(?Send)]
-impl AsyncDisk for SingleFileDisk {
+impl DiskGetLen for SingleFileDisk {
     fn get_len(&self) -> io::Result<u64> {
         self.inner.get_len()
     }
+}
 
+impl FileSetLen for SingleFileDisk {
     fn set_len(&self, len: u64) -> io::Result<()> {
         self.inner.set_len(len)
     }
+}
 
+impl FileAllocate for SingleFileDisk {
     fn allocate(&mut self, offset: u64, len: u64) -> io::Result<()> {
         self.inner.allocate(offset, len)
     }
+}
 
+#[async_trait(?Send)]
+impl AsyncDisk for SingleFileDisk {
     fn into_inner(self: Box<Self>) -> Box<dyn ToAsyncDisk> {
         Box::new(self.inner.into_source())
     }
@@ -454,7 +451,7 @@ impl AsyncDisk for SingleFileDisk {
             .map_err(Error::Fallocate)
     }
 
-    async fn write_zeroes(&self, file_offset: u64, length: u64) -> Result<()> {
+    async fn write_zeroes_at(&self, file_offset: u64, length: u64) -> Result<()> {
         if self
             .inner
             .fallocate(
