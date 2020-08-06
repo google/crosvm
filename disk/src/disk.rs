@@ -119,10 +119,14 @@ pub enum Error {
     #[error("failed to write data: {0}")]
     WritingData(io::Error),
     #[error("failed to convert to async: {0}")]
-    ToAsync(io::Error),
+    ToAsync(cros_async::AsyncError),
     #[cfg(windows)]
     #[error("failed to set disk file sparse: {0}")]
     SetSparseFailure(io::Error),
+    #[error("failure with guest memory access: {0}")]
+    GuestMemory(cros_async::mem::Error),
+    #[error("unsupported operation")]
+    UnsupportedOperation,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

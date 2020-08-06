@@ -12,7 +12,9 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::mem;
+use std::sync::Arc;
 
+use async_trait::async_trait;
 use base::AsRawDescriptor;
 use base::FileAllocate;
 use base::FileReadWriteAtVolatile;
@@ -21,7 +23,9 @@ use base::FileSync;
 use base::PunchHole;
 use base::RawDescriptor;
 use base::WriteZeroesAt;
+use cros_async::BackingMemory;
 use cros_async::Executor;
+use cros_async::IoSourceExt;
 use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
@@ -30,8 +34,10 @@ use remain::sorted;
 use thiserror::Error;
 
 use crate::AsyncDisk;
-use crate::AsyncDiskFileWrapper;
+use crate::DiskFile;
 use crate::DiskGetLen;
+use crate::Error as DiskError;
+use crate::Result as DiskResult;
 use crate::ToAsyncDisk;
 
 #[sorted]
@@ -338,9 +344,136 @@ impl FileReadWriteAtVolatile for AndroidSparse {
     }
 }
 
+/// An Android Sparse disk that implements `AsyncDisk` for access.
+pub struct AsyncAndroidSparse {
+    inner: Box<dyn IoSourceExt<File>>,
+    total_size: u64,
+    chunks: BTreeMap<u64, ChunkWithSize>,
+}
+
 impl ToAsyncDisk for AndroidSparse {
-    fn to_async_disk(self: Box<Self>, ex: &Executor) -> crate::Result<Box<dyn AsyncDisk>> {
-        Ok(Box::new(AsyncDiskFileWrapper::new(*self, ex)))
+    fn to_async_disk(self: Box<Self>, ex: &Executor) -> DiskResult<Box<dyn AsyncDisk>> {
+        Ok(Box::new(AsyncAndroidSparse {
+            inner: ex.async_from(self.file).map_err(DiskError::ToAsync)?,
+            total_size: self.total_size,
+            chunks: self.chunks,
+        }))
+    }
+}
+
+impl DiskGetLen for AsyncAndroidSparse {
+    fn get_len(&self) -> io::Result<u64> {
+        Ok(self.total_size)
+    }
+}
+
+impl FileSetLen for AsyncAndroidSparse {
+    fn set_len(&self, _len: u64) -> io::Result<()> {
+        Err(io::Error::new(
+            ErrorKind::PermissionDenied,
+            "unsupported operation",
+        ))
+    }
+}
+
+impl FileAllocate for AsyncAndroidSparse {
+    fn allocate(&mut self, _offset: u64, _length: u64) -> io::Result<()> {
+        Err(io::Error::new(
+            ErrorKind::PermissionDenied,
+            "unsupported operation",
+        ))
+    }
+}
+
+#[async_trait(?Send)]
+impl AsyncDisk for AsyncAndroidSparse {
+    fn into_inner(self: Box<Self>) -> Box<dyn DiskFile> {
+        Box::new(self.inner.into_source())
+    }
+
+    async fn fsync(&self) -> DiskResult<()> {
+        // Do nothing because it's read-only.
+        Ok(())
+    }
+
+    /// Reads data from `file_offset` to the end of the current chunk and write them into memory
+    /// `mem` at `mem_offsets`.
+    async fn read_to_mem<'a>(
+        &'a self,
+        file_offset: u64,
+        mem: Arc<dyn BackingMemory + Send + Sync>,
+        mem_offsets: &'a [cros_async::MemRegion],
+    ) -> DiskResult<usize> {
+        let found_chunk = self.chunks.range(..=file_offset).next_back();
+        let (
+            chunk_start,
+            ChunkWithSize {
+                chunk,
+                expanded_size,
+            },
+        ) = found_chunk.ok_or(DiskError::ReadingData(io::Error::new(
+            ErrorKind::UnexpectedEof,
+            format!("no chunk for offset {}", file_offset),
+        )))?;
+        let chunk_offset = file_offset - chunk_start;
+        let chunk_size = *expanded_size;
+
+        // Truncate `mem_offsets` to the remaining size of the current chunk.
+        let mem_offsets =
+            cros_async::MemRegion::truncate((chunk_size - chunk_offset) as usize, mem_offsets);
+        let mem_size = mem_offsets.iter().map(|x| x.len).sum();
+        match chunk {
+            Chunk::DontCare => {
+                for region in mem_offsets.iter() {
+                    mem.get_volatile_slice(*region)
+                        .map_err(DiskError::GuestMemory)?
+                        .write_bytes(0);
+                }
+                Ok(mem_size)
+            }
+            Chunk::Raw(offset) => self
+                .inner
+                .read_to_mem(Some(offset + chunk_offset), mem, &mem_offsets)
+                .await
+                .map_err(DiskError::ReadToMem),
+            Chunk::Fill(fill_bytes) => {
+                let chunk_offset_mod = chunk_offset % fill_bytes.len() as u64;
+                let filled_memory: Vec<u8> = fill_bytes
+                    .iter()
+                    .cloned()
+                    .cycle()
+                    .skip(chunk_offset_mod as usize)
+                    .take(mem_size)
+                    .collect();
+
+                let mut filled_count = 0;
+                for region in mem_offsets.iter() {
+                    let buf = &filled_memory[filled_count..filled_count + region.len];
+                    mem.get_volatile_slice(*region)
+                        .map_err(DiskError::GuestMemory)?
+                        .copy_from(buf);
+                    filled_count += region.len;
+                }
+                Ok(mem_size)
+            }
+        }
+    }
+
+    async fn write_from_mem<'a>(
+        &'a self,
+        _file_offset: u64,
+        _mem: Arc<dyn BackingMemory + Send + Sync>,
+        _mem_offsets: &'a [cros_async::MemRegion],
+    ) -> DiskResult<usize> {
+        Err(DiskError::UnsupportedOperation)
+    }
+
+    async fn punch_hole(&self, _file_offset: u64, _length: u64) -> DiskResult<()> {
+        Err(DiskError::UnsupportedOperation)
+    }
+
+    async fn write_zeroes_at(&self, _file_offset: u64, _length: u64) -> DiskResult<()> {
+        Err(DiskError::UnsupportedOperation)
     }
 }
 
@@ -543,5 +676,263 @@ mod tests {
             .expect("Could not read");
         let expected = [10, 20, 10, 20, 30, 40, 30, 40];
         assert_eq!(&expected[..], &input_memory[..]);
+    }
+
+    /**
+     * Tests for Async.
+     */
+    use cros_async::MemRegion;
+    use vm_memory::GuestAddress;
+    use vm_memory::GuestMemory;
+
+    fn test_async_image(
+        chunks: Vec<ChunkWithSize>,
+        ex: &Executor,
+    ) -> DiskResult<Box<dyn AsyncDisk>> {
+        Box::new(test_image(chunks)).to_async_disk(ex)
+    }
+
+    /// Reads `len` bytes of data from `image` at 'offset'.
+    async fn read_exact_at(image: &dyn AsyncDisk, offset: usize, len: usize) -> Vec<u8> {
+        let guest_mem = Arc::new(GuestMemory::new(&[(GuestAddress(0), 4096)]).unwrap());
+        // Fill in guest_mem with dirty data.
+        guest_mem
+            .write_all_at_addr(&vec![55u8; len], GuestAddress(0))
+            .unwrap();
+
+        let mut count = 0usize;
+        while count < len {
+            let result = image
+                .read_to_mem(
+                    (offset + count) as u64,
+                    guest_mem.clone(),
+                    &[MemRegion {
+                        offset: count as u64,
+                        len: len - count,
+                    }],
+                )
+                .await;
+            count += result.unwrap();
+        }
+
+        let mut buf = vec![0; len];
+        guest_mem.read_at_addr(&mut buf, GuestAddress(0)).unwrap();
+        buf
+    }
+
+    #[test]
+    fn async_read_dontcare() {
+        let ex = Executor::new().unwrap();
+        ex.run_until(async {
+            let chunks = vec![ChunkWithSize {
+                chunk: Chunk::DontCare,
+                expanded_size: 100,
+            }];
+            let image = test_async_image(chunks, &ex).unwrap();
+            let buf = read_exact_at(&*image, 0, 100).await;
+            assert!(buf.iter().all(|x| *x == 0));
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn async_read_dontcare_with_offsets() {
+        let ex = Executor::new().unwrap();
+        ex.run_until(async {
+            let chunks = vec![ChunkWithSize {
+                chunk: Chunk::DontCare,
+                expanded_size: 10,
+            }];
+            let image = test_async_image(chunks, &ex).unwrap();
+            // Prepare guest_mem with dirty data.
+            let guest_mem = Arc::new(GuestMemory::new(&[(GuestAddress(0), 4096)]).unwrap());
+            guest_mem
+                .write_all_at_addr(&[55u8; 20], GuestAddress(0))
+                .unwrap();
+
+            // Pass multiple `MemRegion` to `read_to_mem`.
+            image
+                .read_to_mem(
+                    0,
+                    guest_mem.clone(),
+                    &[
+                        MemRegion { offset: 1, len: 3 },
+                        MemRegion { offset: 6, len: 2 },
+                    ],
+                )
+                .await
+                .unwrap();
+            let mut buf = vec![0; 10];
+            guest_mem.read_at_addr(&mut buf, GuestAddress(0)).unwrap();
+            let expected = [55, 0, 0, 0, 55, 55, 0, 0, 55, 55];
+            assert_eq!(expected[..], buf[..]);
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn async_read_fill_simple() {
+        let ex = Executor::new().unwrap();
+        ex.run_until(async {
+            let chunks = vec![ChunkWithSize {
+                chunk: Chunk::Fill([10, 20, 10, 20]),
+                expanded_size: 8,
+            }];
+            let image = test_async_image(chunks, &ex).unwrap();
+            let buf = read_exact_at(&*image, 0, 8).await;
+            let expected = [10, 20, 10, 20, 10, 20, 10, 20];
+            assert_eq!(expected[..], buf[..]);
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn async_read_fill_simple_with_offset() {
+        let ex = Executor::new().unwrap();
+        ex.run_until(async {
+            let chunks = vec![ChunkWithSize {
+                chunk: Chunk::Fill([10, 20, 10, 20]),
+                expanded_size: 8,
+            }];
+            let image = test_async_image(chunks, &ex).unwrap();
+            // Prepare guest_mem with dirty data.
+            let guest_mem = Arc::new(GuestMemory::new(&[(GuestAddress(0), 4096)]).unwrap());
+            guest_mem
+                .write_all_at_addr(&[55u8; 20], GuestAddress(0))
+                .unwrap();
+
+            // Pass multiple `MemRegion` to `read_to_mem`.
+            image
+                .read_to_mem(
+                    0,
+                    guest_mem.clone(),
+                    &[
+                        MemRegion { offset: 1, len: 3 },
+                        MemRegion { offset: 6, len: 2 },
+                    ],
+                )
+                .await
+                .unwrap();
+            let mut buf = vec![0; 10];
+            guest_mem.read_at_addr(&mut buf, GuestAddress(0)).unwrap();
+            let expected = [55, 10, 20, 10, 55, 55, 20, 10, 55, 55];
+            assert_eq!(expected[..], buf[..]);
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn async_read_fill_edges() {
+        let ex = Executor::new().unwrap();
+        ex.run_until(async {
+            let chunks = vec![ChunkWithSize {
+                chunk: Chunk::Fill([10, 20, 30, 40]),
+                expanded_size: 8,
+            }];
+            let image = test_async_image(chunks, &ex).unwrap();
+            let buf = read_exact_at(&*image, 1, 6).await;
+            let expected = [20, 30, 40, 10, 20, 30];
+            assert_eq!(expected[..], buf[..]);
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn async_read_fill_offset_edges() {
+        let ex = Executor::new().unwrap();
+        ex.run_until(async {
+            let chunks = vec![
+                ChunkWithSize {
+                    chunk: Chunk::DontCare,
+                    expanded_size: 20,
+                },
+                ChunkWithSize {
+                    chunk: Chunk::Fill([10, 20, 30, 40]),
+                    expanded_size: 100,
+                },
+            ];
+            let image = test_async_image(chunks, &ex).unwrap();
+            let buf = read_exact_at(&*image, 39, 7).await;
+            let expected = [40, 10, 20, 30, 40, 10, 20];
+            assert_eq!(expected[..], buf[..]);
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn async_read_raw() {
+        let ex = Executor::new().unwrap();
+        ex.run_until(async {
+            let chunks = vec![ChunkWithSize {
+                chunk: Chunk::Raw(0),
+                expanded_size: 100,
+            }];
+            let mut image = Box::new(test_image(chunks));
+            write!(image.file, "hello").unwrap();
+            let async_image = image.to_async_disk(&ex).unwrap();
+            let buf = read_exact_at(&*async_image, 0, 5).await;
+            let expected = [104, 101, 108, 108, 111];
+            assert_eq!(&expected[..], &buf[..]);
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn async_read_fill_raw_with_offset() {
+        let ex = Executor::new().unwrap();
+        ex.run_until(async {
+            let chunks = vec![ChunkWithSize {
+                chunk: Chunk::Raw(0),
+                expanded_size: 100,
+            }];
+            let mut image = Box::new(test_image(chunks));
+            write!(image.file, "hello").unwrap();
+            let async_image = image.to_async_disk(&ex).unwrap();
+            // Prepare guest_mem with dirty data.
+            let guest_mem = Arc::new(GuestMemory::new(&[(GuestAddress(0), 4096)]).unwrap());
+            guest_mem
+                .write_all_at_addr(&[55u8; 20], GuestAddress(0))
+                .unwrap();
+
+            // Pass multiple `MemRegion` to `read_to_mem`.
+            async_image
+                .read_to_mem(
+                    0,
+                    guest_mem.clone(),
+                    &[
+                        MemRegion { offset: 1, len: 3 },
+                        MemRegion { offset: 6, len: 2 },
+                    ],
+                )
+                .await
+                .unwrap();
+            let mut buf = vec![0; 10];
+            guest_mem.read_at_addr(&mut buf, GuestAddress(0)).unwrap();
+            let expected = [55, 104, 101, 108, 55, 55, 108, 111, 55, 55];
+            assert_eq!(expected[..], buf[..]);
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn async_read_two_fills() {
+        let ex = Executor::new().unwrap();
+        ex.run_until(async {
+            let chunks = vec![
+                ChunkWithSize {
+                    chunk: Chunk::Fill([10, 20, 10, 20]),
+                    expanded_size: 4,
+                },
+                ChunkWithSize {
+                    chunk: Chunk::Fill([30, 40, 30, 40]),
+                    expanded_size: 4,
+                },
+            ];
+            let image = test_async_image(chunks, &ex).unwrap();
+            let buf = read_exact_at(&*image, 0, 8).await;
+            let expected = [10, 20, 10, 20, 30, 40, 30, 40];
+            assert_eq!(&expected[..], &buf[..]);
+        })
+        .unwrap();
     }
 }
