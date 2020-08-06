@@ -740,7 +740,7 @@ impl VfioPciDevice {
                         // Even if vm has mapped this region, but it is in vm main process,
                         // device process doesn't has this mapping, but vfio_dma_map() need it
                         // in device process, so here map it again.
-                        let mmap = match MemoryMapping::from_fd_offset(
+                        let mmap = match MemoryMapping::from_descriptor_offset(
                             self.device.as_ref(),
                             mmap_size as usize,
                             offset,

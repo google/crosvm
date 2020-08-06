@@ -6,7 +6,7 @@
 
 use std::env::{current_exe, var_os};
 use std::ffi::OsString;
-use std::fs::{remove_file, File};
+use std::fs::remove_file;
 use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -14,8 +14,9 @@ use std::process::{Command, Stdio};
 use std::thread::sleep;
 use std::time::Duration;
 
-use base::{ioctl, SharedMemory};
+use base::{ioctl, AsRawDescriptor};
 use rand_ish::urandom_str;
+use tempfile::tempfile;
 
 struct RemovePath(PathBuf);
 impl Drop for RemovePath {
@@ -134,28 +135,27 @@ fn keep_fd_on_exec<F: AsRawFd>(f: &F) {
 
 /// Takes assembly source code and returns the resulting assembly code.
 fn build_assembly(src: &str) -> Vec<u8> {
-    // Creates a shared memory region with the assembly source code in it.
-    let in_shm = SharedMemory::anon().unwrap();
-    let mut in_shm_file: File = in_shm.into();
-    keep_fd_on_exec(&in_shm_file);
-    in_shm_file.write_all(src.as_bytes()).unwrap();
+    // Creates a file with the assembly source code in it.
+    let mut in_file = tempfile().expect("failed to create tempfile");
+    keep_fd_on_exec(&in_file);
+    in_file.write_all(src.as_bytes()).unwrap();
 
-    // Creates a shared memory region that will hold the nasm output.
-    let mut out_shm_file: File = SharedMemory::anon().unwrap().into();
-    keep_fd_on_exec(&out_shm_file);
+    // Creates a file that will hold the nasm output.
+    let mut out_file = tempfile().expect("failed to create tempfile");
+    keep_fd_on_exec(&out_file);
 
     // Runs nasm with the input and output files set to the FDs of the above shared memory regions,
     // which we have preserved accross exec.
     let status = Command::new("nasm")
-        .arg(format!("/proc/self/fd/{}", in_shm_file.as_raw_fd()))
+        .arg(format!("/proc/self/fd/{}", in_file.as_raw_descriptor()))
         .args(&["-f", "bin", "-o"])
-        .arg(format!("/proc/self/fd/{}", out_shm_file.as_raw_fd()))
+        .arg(format!("/proc/self/fd/{}", out_file.as_raw_descriptor()))
         .status()
         .expect("failed to spawn assembler");
     assert!(status.success());
 
     let mut out_bytes = Vec::new();
-    out_shm_file.read_to_end(&mut out_bytes).unwrap();
+    out_file.read_to_end(&mut out_bytes).unwrap();
     out_bytes
 }
 

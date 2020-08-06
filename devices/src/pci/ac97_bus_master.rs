@@ -550,7 +550,7 @@ impl Ac97BusMaster {
                 DEVICE_SAMPLE_RATE,
                 buffer_frames,
                 &Self::stream_effects(func),
-                self.mem.as_ref(),
+                self.mem.as_ref().inner(),
                 starting_offsets,
             )
             .map_err(AudioError::CreateStream)?;

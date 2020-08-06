@@ -75,6 +75,7 @@ rand_ish = { path = "rand_ish" }
 remain = "*"
 resources = { path = "resources" }
 sync = { path = "sync" }
+tempfile = "*"
 vhost = { path = "vhost" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }

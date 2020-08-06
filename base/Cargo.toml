@@ -8,4 +8,5 @@ edition = "2018"
 chromeos = ["sys_util/chromeos"]
 
 [dependencies]
+data_model = { path = "../data_model" }
 sys_util = { path = "../sys_util" }

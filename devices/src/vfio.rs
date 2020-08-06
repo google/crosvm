@@ -17,8 +17,8 @@ use std::u32;
 use sync::Mutex;
 
 use base::{
-    ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn, Error,
-    EventFd, SafeDescriptor,
+    ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn,
+    AsRawDescriptor, Error, EventFd, RawDescriptor, SafeDescriptor,
 };
 use hypervisor::{DeviceKind, Vm};
 use vm_memory::GuestMemory;
@@ -807,8 +807,15 @@ impl VfioDevice {
     }
 }
 
+// TODO(mikehoyle): Remove this in favor of AsRawDescriptor
 impl AsRawFd for VfioDevice {
     fn as_raw_fd(&self) -> RawFd {
         self.dev.as_raw_fd()
+    }
+}
+
+impl AsRawDescriptor for VfioDevice {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.dev.as_raw_descriptor()
     }
 }

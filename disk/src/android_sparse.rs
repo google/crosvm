@@ -329,8 +329,8 @@ impl FileReadWriteAtVolatile for AndroidSparse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base::SharedMemory;
     use std::io::{Cursor, Write};
+    use tempfile::tempfile;
 
     const CHUNK_SIZE: usize = mem::size_of::<ChunkHeader>();
 
@@ -419,7 +419,7 @@ mod tests {
     }
 
     fn test_image(chunks: Vec<ChunkWithSize>) -> AndroidSparse {
-        let file: File = SharedMemory::anon().unwrap().into();
+        let file = tempfile().expect("failed to create tempfile");
         let size = chunks.iter().map(|x| x.expanded_size).sum();
         AndroidSparse::from_parts(file, size, chunks).expect("Could not create image")
     }

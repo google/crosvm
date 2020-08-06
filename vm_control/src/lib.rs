@@ -20,8 +20,8 @@ use std::sync::Arc;
 use libc::{EINVAL, EIO, ENODEV};
 
 use base::{
-    error, Error as SysError, EventFd, ExternalMapping, MappedRegion, MemoryMapping, MmapError,
-    Result,
+    error, AsRawDescriptor, Error as SysError, EventFd, ExternalMapping, MappedRegion,
+    MemoryMapping, MmapError, RawDescriptor, Result,
 };
 use hypervisor::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
@@ -37,15 +37,22 @@ pub enum MaybeOwnedFd {
     /// Owned by this enum variant, and will be destructed automatically if not moved out.
     Owned(File),
     /// A file descriptor borrwed by this enum.
-    Borrowed(RawFd),
+    Borrowed(RawDescriptor),
 }
 
+impl AsRawDescriptor for MaybeOwnedFd {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        match self {
+            MaybeOwnedFd::Owned(f) => f.as_raw_descriptor(),
+            MaybeOwnedFd::Borrowed(descriptor) => *descriptor,
+        }
+    }
+}
+
+// TODO(mikehoyle): Remove this in favor of just AsRawDescriptor
 impl AsRawFd for MaybeOwnedFd {
     fn as_raw_fd(&self) -> RawFd {
-        match self {
-            MaybeOwnedFd::Owned(f) => f.as_raw_fd(),
-            MaybeOwnedFd::Borrowed(fd) => *fd,
-        }
+        self.as_raw_descriptor()
     }
 }
 
@@ -370,7 +377,7 @@ impl VmMemoryRequest {
                 offset,
                 gpa,
             } => {
-                let mmap = match MemoryMapping::from_fd_offset(fd, size, offset as u64) {
+                let mmap = match MemoryMapping::from_descriptor_offset(fd, size, offset as u64) {
                     Ok(v) => v,
                     Err(_e) => return VmMemoryResponse::Err(SysError::new(EINVAL)),
                 };
@@ -571,11 +578,11 @@ pub enum VmRequest {
 fn register_memory(
     vm: &mut impl Vm,
     allocator: &mut SystemAllocator,
-    fd: &dyn AsRawFd,
+    fd: &dyn AsRawDescriptor,
     size: usize,
     pci_allocation: Option<(Alloc, u64)>,
 ) -> Result<(u64, MemSlot)> {
-    let mmap = match MemoryMapping::from_fd(fd, size) {
+    let mmap = match MemoryMapping::from_descriptor(fd, size) {
         Ok(v) => v,
         Err(MmapError::SystemCallFailed(e)) => return Err(e),
         _ => return Err(SysError::new(EINVAL)),

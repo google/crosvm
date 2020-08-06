@@ -31,8 +31,6 @@ pub enum GpuDisplayError {
     CreateEventFd,
     /// Creating shared memory failed.
     CreateShm(SysError),
-    /// Setting the size of shared memory failed.
-    SetSize(SysError),
     /// Failed to create a surface on the compositor.
     CreateSurface,
     /// Failed to import a buffer to the compositor.
@@ -61,7 +59,6 @@ impl Display for GpuDisplayError {
             InvalidPath => write!(f, "invalid path"),
             InvalidSurfaceId => write!(f, "invalid surface ID"),
             RequiredFeature(feature) => write!(f, "required feature was missing: {}", feature),
-            SetSize(e) => write!(f, "failed to set size of shared memory: {}", e),
             Unsupported => write!(f, "unsupported by the implementation"),
         }
     }

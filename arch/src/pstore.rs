@@ -63,7 +63,7 @@ pub fn create_memory_region(
         .map_err(Error::ResourcesError)?;
 
     let memory_mapping =
-        MemoryMapping::from_fd(&file, pstore.size as usize).map_err(Error::MmapError)?;
+        MemoryMapping::from_descriptor(&file, pstore.size as usize).map_err(Error::MmapError)?;
 
     vm.add_memory_region(
         GuestAddress(address),

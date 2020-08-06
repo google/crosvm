@@ -227,7 +227,7 @@ impl KvmVm {
         let vcpu = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
 
         let run_mmap =
-            MemoryMapping::from_fd(&vcpu, run_mmap_size).map_err(|_| Error::new(ENOSPC))?;
+            MemoryMapping::from_descriptor(&vcpu, run_mmap_size).map_err(|_| Error::new(ENOSPC))?;
 
         Ok(KvmVcpu {
             vm: self.vm.try_clone()?,
@@ -607,8 +607,8 @@ impl Vcpu for KvmVcpu {
     fn try_clone(&self) -> Result<Self> {
         let vm = self.vm.try_clone()?;
         let vcpu = self.vcpu.try_clone()?;
-        let run_mmap =
-            MemoryMapping::from_fd(&vcpu, self.run_mmap.size()).map_err(|_| Error::new(ENOSPC))?;
+        let run_mmap = MemoryMapping::from_descriptor(&vcpu, self.run_mmap.size())
+            .map_err(|_| Error::new(ENOSPC))?;
 
         Ok(KvmVcpu { vm, vcpu, run_mmap })
     }

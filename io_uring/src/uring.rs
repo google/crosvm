@@ -121,7 +121,7 @@ impl URingContext {
             // Safe because we trust the kernel to set valid sizes in `io_uring_setup` and any error
             // is checked.
             let submit_ring = SubmitQueueState::new(
-                MemoryMapping::from_fd_offset_populate(
+                MemoryMapping::from_descriptor_offset_populate(
                     &ring_file,
                     ring_params.sq_off.array as usize
                         + ring_params.sq_entries as usize * std::mem::size_of::<u32>(),
@@ -133,7 +133,7 @@ impl URingContext {
 
             let num_sqe = ring_params.sq_entries as usize;
             let submit_queue_entries = SubmitQueueEntries {
-                mmap: MemoryMapping::from_fd_offset_populate(
+                mmap: MemoryMapping::from_descriptor_offset_populate(
                     &ring_file,
                     ring_params.sq_entries as usize * std::mem::size_of::<io_uring_sqe>(),
                     u64::from(IORING_OFF_SQES),
@@ -143,7 +143,7 @@ impl URingContext {
             };
 
             let complete_ring = CompleteQueueState::new(
-                MemoryMapping::from_fd_offset_populate(
+                MemoryMapping::from_descriptor_offset_populate(
                     &ring_file,
                     ring_params.cq_off.cqes as usize
                         + ring_params.cq_entries as usize * std::mem::size_of::<io_uring_cqe>(),

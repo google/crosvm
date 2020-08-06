@@ -22,7 +22,7 @@ use protobuf::Message;
 
 use base::{
     error, Error as SysError, EventFd, Killable, MemoryMapping, Result as SysResult, ScmSocket,
-    SharedMemory, SIGRTMIN,
+    SharedMemory, SharedMemoryUnix, SIGRTMIN,
 };
 use kvm::{dirty_log_bitmap_size, Datamatch, IoeventAddress, IrqRoute, IrqSource, PicId, Vm};
 use kvm_sys::{kvm_clock_data, kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
@@ -360,7 +360,7 @@ impl Process {
             None => return Err(SysError::new(EOVERFLOW)),
             _ => {}
         }
-        let mem = MemoryMapping::from_fd_offset(&shm, length as usize, offset)
+        let mem = MemoryMapping::from_descriptor_offset(&shm, length as usize, offset)
             .map_err(mmap_to_sys_err)?;
         let slot =
             vm.add_memory_region(GuestAddress(start), Box::new(mem), read_only, dirty_log)?;

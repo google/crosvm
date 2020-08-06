@@ -56,8 +56,8 @@ use data_model::*;
 #[cfg(feature = "wl-dmabuf")]
 use base::ioctl_iow_nr;
 use base::{
-    error, pipe, round_up_to_page_size, warn, Error, EventFd, FileFlags, PollContext, PollToken,
-    Result, ScmSocket, SharedMemory,
+    error, pipe, round_up_to_page_size, warn, AsRawDescriptor, Error, EventFd, FileFlags,
+    PollContext, PollToken, Result, ScmSocket, SharedMemory, SharedMemoryUnix,
 };
 use msg_socket::{MsgError, MsgReceiver, MsgSender};
 #[cfg(feature = "wl-dmabuf")]
@@ -263,7 +263,6 @@ fn encode_resp(writer: &mut Writer, resp: WlResp) -> WlResult<()> {
 enum WlError {
     NewAlloc(Error),
     NewPipe(Error),
-    AllocSetSize(Error),
     SocketConnect(io::Error),
     SocketNonBlock(io::Error),
     VmControl(MsgError),
@@ -278,6 +277,7 @@ enum WlError {
     ReadPipe(io::Error),
     PollContextAdd(Error),
     DmabufSync(io::Error),
+    FromSharedMemory(Error),
     WriteResponse(io::Error),
     InvalidString(std::str::Utf8Error),
     UnknownSocketName(String),
@@ -290,7 +290,6 @@ impl Display for WlError {
         match self {
             NewAlloc(e) => write!(f, "failed to create shared memory allocation: {}", e),
             NewPipe(e) => write!(f, "failed to create pipe: {}", e),
-            AllocSetSize(e) => write!(f, "failed to set size of shared memory: {}", e),
             SocketConnect(e) => write!(f, "failed to connect socket: {}", e),
             SocketNonBlock(e) => write!(f, "failed to set socket as non-blocking: {}", e),
             VmControl(e) => write!(f, "failed to control parent VM: {}", e),
@@ -305,6 +304,9 @@ impl Display for WlError {
             ReadPipe(e) => write!(f, "failed to read a pipe: {}", e),
             PollContextAdd(e) => write!(f, "failed to listen to FD on poll context: {}", e),
             DmabufSync(e) => write!(f, "failed to synchronize DMABuf access: {}", e),
+            FromSharedMemory(e) => {
+                write!(f, "failed to create shared memory from descriptor: {}", e)
+            }
             WriteResponse(e) => write!(f, "failed to write response: {}", e),
             InvalidString(e) => write!(f, "invalid string: {}", e),
             UnknownSocketName(name) => write!(f, "unknown socket name: {}", name),
@@ -519,7 +521,7 @@ impl<'a> WlResp<'a> {
 #[derive(Default)]
 struct WlVfd {
     socket: Option<UnixStream>,
-    guest_shared_memory: Option<(u64 /* size */, File)>,
+    guest_shared_memory: Option<(u64 /* size */, SharedMemory)>,
     remote_pipe: Option<File>,
     local_pipe: Option<(u32 /* flags */, File)>,
     slot: Option<(MemSlot, u64 /* pfn */, VmRequester)>,
@@ -556,18 +558,17 @@ impl WlVfd {
 
     fn allocate(vm: VmRequester, size: u64) -> WlResult<WlVfd> {
         let size_page_aligned = round_up_to_page_size(size as usize) as u64;
-        let mut vfd_shm = SharedMemory::named("virtwl_alloc").map_err(WlError::NewAlloc)?;
-        vfd_shm
-            .set_size(size_page_aligned)
-            .map_err(WlError::AllocSetSize)?;
+        let vfd_shm =
+            SharedMemory::named("virtwl_alloc", size_page_aligned).map_err(WlError::NewAlloc)?;
+
         let register_response = vm.request(VmMemoryRequest::RegisterMemory(
-            MaybeOwnedFd::Borrowed(vfd_shm.as_raw_fd()),
+            MaybeOwnedFd::Borrowed(vfd_shm.as_raw_descriptor()),
             vfd_shm.size() as usize,
         ))?;
         match register_response {
             VmMemoryResponse::RegisterMemory { pfn, slot } => {
                 let mut vfd = WlVfd::default();
-                vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm.into()));
+                vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm));
                 vfd.slot = Some((slot, pfn, vm));
                 Ok(vfd)
             }
@@ -597,7 +598,7 @@ impl WlVfd {
             } => {
                 let mut vfd = WlVfd::default();
                 let vfd_shm = SharedMemory::from_file(file).map_err(WlError::NewAlloc)?;
-                vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm.into()));
+                vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm));
                 vfd.slot = Some((slot, pfn, vm));
                 vfd.is_dmabuf = true;
                 Ok((vfd, desc))
@@ -661,7 +662,10 @@ impl WlVfd {
                 match register_response {
                     VmMemoryResponse::RegisterMemory { pfn, slot } => {
                         let mut vfd = WlVfd::default();
-                        vfd.guest_shared_memory = Some((size, fd));
+                        vfd.guest_shared_memory = Some((
+                            size,
+                            SharedMemory::from_file(fd).map_err(WlError::FromSharedMemory)?,
+                        ));
                         vfd.slot = Some((slot, pfn, vm));
                         Ok(vfd)
                     }
@@ -716,7 +720,7 @@ impl WlVfd {
     fn send_fd(&self) -> Option<RawFd> {
         self.guest_shared_memory
             .as_ref()
-            .map(|(_, fd)| fd.as_raw_fd())
+            .map(|(_, fd)| fd.as_raw_descriptor())
             .or(self.socket.as_ref().map(|s| s.as_raw_fd()))
             .or(self.remote_pipe.as_ref().map(|p| p.as_raw_fd()))
     }

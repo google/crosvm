@@ -21,7 +21,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
 use std::ptr::{null, null_mut};
 
-use base::{round_up_to_page_size, MemoryMapping, SharedMemory};
+use base::{round_up_to_page_size, AsRawDescriptor, MemoryMapping, SharedMemory};
 use data_model::VolatileMemory;
 
 const BUFFER_COUNT: usize = 3;
@@ -204,12 +204,9 @@ impl DisplayT for DisplayWl {
         let row_size = width * BYTES_PER_PIXEL;
         let fb_size = row_size * height;
         let buffer_size = round_up_to_page_size(fb_size as usize * BUFFER_COUNT);
-        let mut buffer_shm =
-            SharedMemory::named("GpuDisplaySurface").map_err(GpuDisplayError::CreateShm)?;
-        buffer_shm
-            .set_size(buffer_size as u64)
-            .map_err(GpuDisplayError::SetSize)?;
-        let buffer_mem = MemoryMapping::from_fd(&buffer_shm, buffer_size).unwrap();
+        let buffer_shm = SharedMemory::named("GpuDisplaySurface", buffer_size as u64)
+            .map_err(GpuDisplayError::CreateShm)?;
+        let buffer_mem = MemoryMapping::from_descriptor(&buffer_shm, buffer_size).unwrap();
 
         // Safe because only a valid context, parent pointer (if not  None), and buffer FD are used.
         // The returned surface is checked for validity before being filed away.
@@ -217,7 +214,7 @@ impl DisplayT for DisplayWl {
             dwl_context_surface_new(
                 self.ctx(),
                 parent_ptr,
-                buffer_shm.as_raw_fd(),
+                buffer_shm.as_raw_descriptor(),
                 buffer_size,
                 fb_size as usize,
                 width,

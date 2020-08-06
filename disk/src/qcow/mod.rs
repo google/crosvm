@@ -1761,9 +1761,9 @@ fn div_round_up_u32(dividend: u32, divisor: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base::{SharedMemory, WriteZeroes};
-    use std::fs::File;
+    use base::WriteZeroes;
     use std::io::{Read, Seek, SeekFrom, Write};
+    use tempfile::tempfile;
 
     fn valid_header() -> Vec<u8> {
         vec![
@@ -1813,8 +1813,7 @@ mod tests {
     }
 
     fn basic_file(header: &[u8]) -> File {
-        let shm = SharedMemory::anon().unwrap();
-        let mut disk_file: File = shm.into();
+        let mut disk_file = tempfile().expect("failed to create tempfile");
         disk_file.write_all(&header).unwrap();
         disk_file.set_len(0x8000_0000).unwrap();
         disk_file.seek(SeekFrom::Start(0)).unwrap();
@@ -1832,8 +1831,8 @@ mod tests {
     where
         F: FnMut(QcowFile),
     {
-        let shm = SharedMemory::anon().unwrap();
-        let qcow_file = QcowFile::new(shm.into(), file_size).unwrap();
+        let file = tempfile().expect("failed to create tempfile");
+        let qcow_file = QcowFile::new(file, file_size).unwrap();
 
         testfn(qcow_file); // File closed when the function exits.
     }
@@ -1841,8 +1840,7 @@ mod tests {
     #[test]
     fn default_header() {
         let header = QcowHeader::create_for_size_and_path(0x10_0000, None);
-        let shm = SharedMemory::anon().unwrap();
-        let mut disk_file: File = shm.into();
+        let mut disk_file = tempfile().expect("failed to create tempfile");
         header
             .expect("Failed to create header.")
             .write_to(&mut disk_file)
@@ -1862,8 +1860,7 @@ mod tests {
     fn header_with_backing() {
         let header = QcowHeader::create_for_size_and_path(0x10_0000, Some("/my/path/to/a/file"))
             .expect("Failed to create header.");
-        let shm = SharedMemory::anon().unwrap();
-        let mut disk_file: File = shm.into();
+        let mut disk_file = tempfile().expect("failed to create tempfile");
         header
             .write_to(&mut disk_file)
             .expect("Failed to write header to shm.");

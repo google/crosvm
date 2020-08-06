@@ -7,8 +7,8 @@
 
 use std::fmt::{self, Display};
 use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::io::AsRawFd;
 
+use base::AsRawDescriptor;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::bootparam::boot_params;
@@ -58,7 +58,7 @@ pub fn load_bzimage<F>(
     kernel_image: &mut F,
 ) -> Result<(boot_params, u64)>
 where
-    F: Read + Seek + AsRawFd,
+    F: Read + Seek + AsRawDescriptor,
 {
     let mut params: boot_params = Default::default();
     kernel_image

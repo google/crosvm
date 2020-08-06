@@ -76,6 +76,7 @@ dependencies = [
 name = "base"
 version = "0.1.0"
 dependencies = [
+ "data_model 0.1.0",
  "sys_util 0.1.0",
 ]
 
@@ -166,6 +167,7 @@ dependencies = [
  "remain 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "resources 0.1.0",
  "sync 0.1.0",
+ "tempfile 3.0.7",
  "vhost 0.1.0",
  "vm_control 0.1.0",
  "vm_memory 0.1.0",
@@ -249,6 +251,7 @@ dependencies = [
  "protobuf 2.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "protos 0.1.0",
  "remain 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tempfile 3.0.7",
  "vm_memory 0.1.0",
 ]
 
@@ -418,6 +421,7 @@ version = "0.1.0"
 dependencies = [
  "base 0.1.0",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tempfile 3.0.7",
  "vm_memory 0.1.0",
 ]
 

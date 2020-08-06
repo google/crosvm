@@ -18,6 +18,7 @@ use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 use sync::Mutex;
 
+use base::{AsRawDescriptor, RawDescriptor};
 use data_model::vec_with_array_field;
 
 use libc::sigset_t;
@@ -947,7 +948,7 @@ impl Vcpu {
         let vcpu = unsafe { File::from_raw_fd(vcpu_fd) };
 
         let run_mmap =
-            MemoryMapping::from_fd(&vcpu, run_mmap_size).map_err(|_| Error::new(ENOSPC))?;
+            MemoryMapping::from_descriptor(&vcpu, run_mmap_size).map_err(|_| Error::new(ENOSPC))?;
 
         Ok(Vcpu { vcpu, run_mmap })
     }
@@ -1458,6 +1459,12 @@ impl AsRawFd for Vcpu {
     }
 }
 
+impl AsRawDescriptor for Vcpu {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.vcpu.as_raw_descriptor()
+    }
+}
+
 /// A Vcpu that has a thread and can be run. Created by calling `to_runnable` on a `Vcpu`.
 /// Implements `Deref` to a `Vcpu` so all `Vcpu` methods are usable, with the addition of the `run`
 /// function to execute the guest.
@@ -1619,7 +1626,7 @@ impl DerefMut for RunnableVcpu {
 
 impl AsRawFd for RunnableVcpu {
     fn as_raw_fd(&self) -> RawFd {
-        self.vcpu.as_raw_fd()
+        self.vcpu.as_raw_descriptor()
     }
 }
 

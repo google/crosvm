@@ -21,11 +21,9 @@ fn test_run() {
     let mem_size = 0x2000;
     let load_addr = GuestAddress(0x1000);
     let guest_mem = GuestMemory::new(&[]).unwrap();
-    let mut mem = SharedMemory::anon().expect("failed to create shared memory");
-    mem.set_size(mem_size)
-        .expect("failed to set shared memory size");
-    let mmap =
-        MemoryMapping::from_fd(&mem, mem_size as usize).expect("failed to create memory mapping");
+    let mem = SharedMemory::anon(mem_size).expect("failed to create shared memory");
+    let mmap = MemoryMapping::from_descriptor(&mem, mem_size as usize)
+        .expect("failed to create memory mapping");
 
     mmap.write_slice(&code[..], load_addr.offset() as usize)
         .expect("Writing code to memory failed.");
@@ -49,7 +47,7 @@ fn test_run() {
     vm.add_memory_region(
         GuestAddress(0),
         Box::new(
-            MemoryMapping::from_fd(&mem, mem_size as usize)
+            MemoryMapping::from_descriptor(&mem, mem_size as usize)
                 .expect("failed to create memory mapping"),
         ),
         false,
@@ -59,17 +57,18 @@ fn test_run() {
 
     // Give some read only memory for the test code to read from and force a vcpu exit when it reads
     // from it.
-    let mut mem_ro = SharedMemory::anon().expect("failed to create shared memory");
-    mem_ro
-        .set_size(0x1000)
-        .expect("failed to set shared memory size");
-    let mmap_ro = MemoryMapping::from_fd(&mem_ro, 0x1000).expect("failed to create memory mapping");
+    let mem_ro = SharedMemory::anon(0x1000).expect("failed to create shared memory");
+    let mmap_ro =
+        MemoryMapping::from_descriptor(&mem_ro, 0x1000).expect("failed to create memory mapping");
     mmap_ro
         .write_obj(vcpu_regs.rax as u8, 0)
         .expect("failed writing data to ro memory");
     vm.add_memory_region(
         GuestAddress(vcpu_sregs.es.base),
-        Box::new(MemoryMapping::from_fd(&mem_ro, 0x1000).expect("failed to create memory mapping")),
+        Box::new(
+            MemoryMapping::from_descriptor(&mem_ro, 0x1000)
+                .expect("failed to create memory mapping"),
+        ),
         true,
         false,
     )

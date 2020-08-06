@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use acpi_tables::sdt::SDT;
-use base::{syslog, EventFd};
+use base::{syslog, AsRawDescriptor, EventFd};
 use devices::virtio::VirtioDevice;
 use devices::{
     Bus, BusDevice, BusError, IrqChip, PciAddress, PciDevice, PciDeviceError, PciInterruptPin,
@@ -373,7 +373,7 @@ pub fn load_image<F>(
     max_size: u64,
 ) -> Result<usize, LoadImageError>
 where
-    F: Read + Seek + AsRawFd,
+    F: Read + Seek + AsRawDescriptor,
 {
     let size = image.seek(SeekFrom::End(0)).map_err(LoadImageError::Seek)?;
 
@@ -415,7 +415,7 @@ pub fn load_image_high<F>(
     align: u64,
 ) -> Result<(GuestAddress, usize), LoadImageError>
 where
-    F: Read + Seek + AsRawFd,
+    F: Read + Seek + AsRawDescriptor,
 {
     if !align.is_power_of_two() {
         return Err(LoadImageError::BadAlignment(align));
