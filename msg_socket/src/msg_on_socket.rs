@@ -17,7 +17,6 @@ use std::sync::Arc;
 use base::{Error as SysError, EventFd};
 use data_model::*;
 use slice::{slice_read_helper, slice_write_helper};
-use sync::Mutex;
 
 #[derive(Debug)]
 /// An error during transaction or serialization/deserialization.
@@ -187,28 +186,6 @@ impl<T: MsgOnSocket> MsgOnSocket for Option<T> {
                 inner.write_to_buffer(&mut buffer[1..], fds)
             }
         }
-    }
-}
-
-impl<T: MsgOnSocket> MsgOnSocket for Mutex<T> {
-    fn uses_fd() -> bool {
-        T::uses_fd()
-    }
-
-    fn msg_size(&self) -> usize {
-        self.lock().msg_size()
-    }
-
-    fn fd_count(&self) -> usize {
-        self.lock().fd_count()
-    }
-
-    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
-        T::read_from_buffer(buffer, fds).map(|(v, count)| (Mutex::new(v), count))
-    }
-
-    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
-        self.lock().write_to_buffer(buffer, fds)
     }
 }
 
