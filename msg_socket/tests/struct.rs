@@ -36,3 +36,16 @@ fn sock_send_recv_struct() {
     r.field1.write(0x0f0f).unwrap();
     assert_eq!(e1.read().unwrap(), 0x0f0f);
 }
+#[derive(MsgOnSocket)]
+struct SkipMessage {
+    #[msg_on_socket(skip)]
+    a: u8,
+}
+
+#[test]
+fn sock_send_recv_struct_skip_empty() {
+    let (req, res) = pair::<SkipMessage, DummyResponse>().unwrap();
+    req.send(&SkipMessage { a: 123 }).unwrap();
+    let r = res.recv().unwrap();
+    assert_eq!(r.a, <u8>::default());
+}
