@@ -291,6 +291,35 @@ pub fn pipe(close_on_exec: bool) -> Result<(File, File)> {
     }
 }
 
+/// Sets the pipe signified with fd to `size`.
+///
+/// Returns the new size of the pipe or an error if the OS fails to set the pipe size.
+pub fn set_pipe_size(fd: RawFd, size: usize) -> Result<usize> {
+    // Safe because fcntl with the `F_SETPIPE_SZ` arg doesn't touch memory.
+    let ret = unsafe { fcntl(fd, libc::F_SETPIPE_SZ, size as c_int) };
+    if ret < 0 {
+        return errno_result();
+    }
+    Ok(ret as usize)
+}
+
+/// Test-only function used to create a pipe that is full. The pipe is created, has its size set to
+/// the minimum and then has that much data written to it. Use `new_pipe_full` to test handling of
+/// blocking `write` calls in unit tests.
+pub fn new_pipe_full() -> Result<(File, File)> {
+    use std::io::Write;
+
+    let (rx, mut tx) = pipe(true)?;
+    // The smallest allowed size of a pipe is the system page size on linux.
+    let page_size = set_pipe_size(tx.as_raw_fd(), round_up_to_page_size(1))?;
+
+    // Fill the pipe with page_size zeros so the next write call will block.
+    let buf = vec![0u8; page_size];
+    tx.write_all(&buf)?;
+
+    Ok((rx, tx))
+}
+
 /// Used to attempt to clean up a named pipe after it is no longer used.
 pub struct UnlinkUnixDatagram(pub UnixDatagram);
 impl AsRef<UnixDatagram> for UnlinkUnixDatagram {
@@ -392,4 +421,22 @@ pub fn add_fd_flags(fd: RawFd, set_flags: c_int) -> Result<()> {
 pub fn clear_fd_flags(fd: RawFd, clear_flags: c_int) -> Result<()> {
     let start_flags = get_fd_flags(fd)?;
     set_fd_flags(fd, start_flags & !clear_flags)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use super::*;
+
+    #[test]
+    fn pipe_size_and_fill() {
+        let (_rx, mut tx) = new_pipe_full().expect("Failed to pipe");
+
+        // To  check that setting the size worked, set the descriptor to non blocking and check that
+        // write returns an error.
+        add_fd_flags(tx.as_raw_fd(), libc::O_NONBLOCK).expect("Failed to set tx non blocking");
+        tx.write(&[0u8; 8])
+            .expect_err("Write after fill didn't fail");
+    }
 }
