@@ -474,6 +474,9 @@ unsafe impl DataInit for virtio_video_set_control {}
 pub struct virtio_video_set_control_resp {
     pub hdr: virtio_video_cmd_hdr,
 }
+// Safe because auto-generated structs have no implicit padding.
+unsafe impl DataInit for virtio_video_set_control_resp {}
+
 pub const VIRTIO_VIDEO_EVENT_ERROR: virtio_video_event_type = 256;
 pub const VIRTIO_VIDEO_EVENT_DECODER_RESOLUTION_CHANGED: virtio_video_event_type = 512;
 pub type virtio_video_event_type = u32;
