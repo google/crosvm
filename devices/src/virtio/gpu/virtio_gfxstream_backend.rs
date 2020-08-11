@@ -25,7 +25,7 @@ use gpu_renderer::RendererFlags;
 use msg_socket::{MsgReceiver, MsgSender};
 use resources::Alloc;
 use sync::Mutex;
-use vm_control::{VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse};
+use vm_control::{MemSlot, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::protocol::GpuResponse;
@@ -247,7 +247,7 @@ const GFXSTREAM_RENDERER_CALLBACKS: &GfxStreamRendererCallbacks = &GfxStreamRend
 
 struct VirtioGfxStreamResource {
     guest_memory_backing: Option<Vec<iovec>>,
-    kvm_slot: Option<u32>,
+    slot: Option<MemSlot>,
 }
 
 pub struct VirtioGfxStreamBackend {
@@ -685,7 +685,7 @@ impl Backend for VirtioGfxStreamBackend {
             Entry::Vacant(entry) => {
                 entry.insert(VirtioGfxStreamResource {
                     guest_memory_backing: None, /* no guest memory attached yet */
-                    kvm_slot: None,
+                    slot: None,
                 });
             }
             Entry::Occupied(_) => {
@@ -826,7 +826,7 @@ impl Backend for VirtioGfxStreamBackend {
             Entry::Vacant(entry) => {
                 entry.insert(VirtioGfxStreamResource {
                     guest_memory_backing: None, /* no guest memory attached yet */
-                    kvm_slot: None,
+                    slot: None,
                 });
             }
             Entry::Occupied(_) => {
@@ -881,7 +881,7 @@ impl Backend for VirtioGfxStreamBackend {
         match response {
             VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
                 // 0x02 for uncached type in map info
-                resource.kvm_slot = Some(slot);
+                resource.slot = Some(slot);
                 GpuResponse::OkMapInfo { map_info: 0x02 }
             }
             VmMemoryResponse::Err(e) => {
@@ -901,12 +901,12 @@ impl Backend for VirtioGfxStreamBackend {
             None => return GpuResponse::ErrInvalidResourceId,
         };
 
-        let kvm_slot = match resource.kvm_slot {
-            Some(kvm_slot) => kvm_slot,
+        let slot = match resource.slot {
+            Some(slot) => slot,
             None => return GpuResponse::ErrUnspec,
         };
 
-        let request = VmMemoryRequest::UnregisterMemory(kvm_slot);
+        let request = VmMemoryRequest::UnregisterMemory(slot);
         match self.gpu_device_socket.send(&request) {
             Ok(_) => (),
             Err(e) => {
@@ -925,7 +925,7 @@ impl Backend for VirtioGfxStreamBackend {
 
         match response {
             VmMemoryResponse::Ok => {
-                resource.kvm_slot = None;
+                resource.slot = None;
                 GpuResponse::OkNoData
             }
             VmMemoryResponse::Err(e) => {
