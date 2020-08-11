@@ -35,7 +35,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 // Maps a external library resource given an id, returning address and size upon success
 pub type Map = fn(u32) -> Result<(u64, usize)>;
 // Unmaps the resource given a resource id.
-pub type Unmap = fn(u32) -> ();
+pub type Unmap = fn(u32);
 
 /// ExternalMapping wraps an external library mapping.  This is useful in cases where where the
 /// device memory is not compatible with the mmap interface, such as Vulkan VkDeviceMemory in the

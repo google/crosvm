@@ -284,7 +284,7 @@ fn map_func(resource_id: u32) -> ExternalMappingResult<(u64, usize)> {
     Ok((map as u64, size as usize))
 }
 
-fn unmap_func(resource_id: u32) -> () {
+fn unmap_func(resource_id: u32) {
     unsafe { stream_renderer_resource_unmap(resource_id) };
 }
 

@@ -8,6 +8,7 @@ mod command_buffer;
 mod generated;
 mod vsnprintf;
 
+use base::{ExternalMapping, ExternalMappingError, ExternalMappingResult};
 use std::cell::RefCell;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use std::ffi::CString;
@@ -20,7 +21,6 @@ use std::ptr::null_mut;
 use std::rc::Rc;
 use std::result;
 use std::sync::atomic::{AtomicBool, Ordering};
-use base::{ExternalMapping, ExternalMappingError, ExternalMappingResult};
 
 use libc::close;
 
@@ -568,7 +568,7 @@ fn map_func(resource_id: u32) -> ExternalMappingResult<(u64, usize)> {
 }
 
 #[allow(unused_variables)]
-fn unmap_func(resource_id: u32) -> () {
+fn unmap_func(resource_id: u32) {
     #[cfg(feature = "virtio-gpu-next")]
     {
         unsafe {
