@@ -12,13 +12,12 @@ use vm_memory::GuestMemory;
 use crate::virtio::queue::{DescriptorChain, Queue};
 use crate::virtio::resource_bridge::ResourceRequestSocket;
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
-use crate::virtio::video::command::{QueueType, VideoCmd};
+use crate::virtio::video::command::VideoCmd;
 use crate::virtio::video::device::{
-    AsyncCmdResponse, AsyncCmdTag, Device, Token, VideoCmdResponseType, VideoEvtResponseType,
+    AsyncCmdResponse, Device, Token, VideoCmdResponseType, VideoEvtResponseType,
 };
 use crate::virtio::video::event::{self, EvtType, VideoEvt};
-use crate::virtio::video::protocol;
-use crate::virtio::video::response::{self, CmdResponse, Response};
+use crate::virtio::video::response::{self, Response};
 use crate::virtio::video::{Error, Result};
 use crate::virtio::{Interrupt, Reader, Writer};
 
@@ -41,26 +40,27 @@ impl Worker {
         cmd_queue: &mut Queue,
         responses: &mut VecDeque<WritableResp>,
     ) -> Result<()> {
-        let mut needs_interrupt_commandq = false;
-        // Write responses into command virtqueue.
-        while let Some((desc, resp)) = responses.pop_front() {
+        if responses.is_empty() {
+            return Ok(());
+        }
+        while let Some((desc, response)) = responses.pop_front() {
             let desc_index = desc.index;
             let mut writer =
                 Writer::new(self.mem.clone(), desc).map_err(Error::InvalidDescriptorChain)?;
-            if let Err(e) = resp.write(&mut writer) {
-                error!("failed to write a command response for {:?}: {}", resp, e);
+            if let Err(e) = response.write(&mut writer) {
+                error!(
+                    "failed to write a command response for {:?}: {}",
+                    response, e
+                );
             }
             cmd_queue.add_used(&self.mem, desc_index, writer.bytes_written() as u32);
-            needs_interrupt_commandq = true;
         }
-        if needs_interrupt_commandq {
-            self.interrupt.signal_used_queue(cmd_queue.vector);
-        }
+        self.interrupt.signal_used_queue(cmd_queue.vector);
         Ok(())
     }
 
     /// Writes a `VideoEvt` into the event queue.
-    fn write_event(&self, event_queue: &mut Queue, event: &mut event::VideoEvt) -> Result<()> {
+    fn write_event(&self, event_queue: &mut Queue, event: event::VideoEvt) -> Result<()> {
         let desc = event_queue
             .peek(&self.mem)
             .ok_or_else(|| Error::DescriptorNotAvailable)?;
@@ -71,10 +71,7 @@ impl Worker {
             Writer::new(self.mem.clone(), desc).map_err(Error::InvalidDescriptorChain)?;
         event
             .write(&mut writer)
-            .map_err(|error| Error::WriteEventFailure {
-                event: event.clone(),
-                error,
-            })?;
+            .map_err(|error| Error::WriteEventFailure { event, error })?;
         event_queue.add_used(&self.mem, desc_index, writer.bytes_written() as u32);
         self.interrupt.signal_used_queue(event_queue.vector);
         Ok(())
@@ -143,15 +140,14 @@ impl Worker {
     }
 
     /// Handles each command in the command queue.
-    fn handle_command_queue<'a, T: Device>(
-        &'a self,
+    fn handle_command_queue<T: Device>(
+        &self,
         cmd_queue: &mut Queue,
         device: &mut T,
         poll_ctx: &PollContext<Token>,
         desc_map: &mut AsyncCmdDescMap,
     ) -> Result<()> {
         let _ = self.cmd_evt.read();
-
         while let Some(desc) = cmd_queue.pop(&self.mem) {
             let mut resps = self.handle_command_desc(device, poll_ctx, desc_map, desc)?;
             self.write_responses(cmd_queue, &mut resps)?;
@@ -159,132 +155,56 @@ impl Worker {
         Ok(())
     }
 
-    /// Handles a `VideoEvtResponseType` value and returns a `VecDeque` of `WritableResp`
-    /// to be sent to the guest.
-    fn handle_event_resp<'a, T: Device>(
-        &'a self,
-        event_queue: &mut Queue,
-        device: &mut T,
-        desc_map: &mut AsyncCmdDescMap,
-        resp: VideoEvtResponseType,
-    ) -> Result<VecDeque<WritableResp>> {
-        let mut responses: VecDeque<WritableResp> = Default::default();
-        match resp {
-            VideoEvtResponseType::AsyncCmd(async_response) => {
-                let AsyncCmdResponse {
-                    tag,
-                    response: cmd_result,
-                } = async_response;
-                let desc = desc_map
-                    .remove(&tag)
-                    .ok_or_else(|| Error::UnexpectedResponse(tag))?;
-
-                // TODO(b/161774071): handle_event_fd() can provide these responses
-                // so that we don't have to do an additional stage of processing here.
-                // TODO(b/161782360): Check that `response` is not an error before
-                // sending EOS in Drain, and cancelling pending requests in Clear.
-                match tag {
-                    AsyncCmdTag::Drain { stream_id } => {
-                        // When `Drain` request is completed, returns an empty output resource
-                        // with EOS flag first.
-                        let resource_id = device
-                            .take_resource_id_to_notify_eos(stream_id)
-                            .ok_or_else(|| Error::NoEOSBuffer { stream_id })?;
-
-                        let queue_desc = desc_map
-                            .remove(&AsyncCmdTag::Queue {
-                                stream_id,
-                                queue_type: QueueType::Output,
-                                resource_id,
-                            })
-                            .ok_or_else(|| Error::InvalidEOSResource {
-                                stream_id,
-                                resource_id,
-                            })?;
-
-                        responses.push_back((
-                            queue_desc,
-                            CmdResponse::ResourceQueue {
-                                timestamp: 0,
-                                flags: protocol::VIRTIO_VIDEO_BUFFER_FLAG_EOS,
-                                size: 0,
-                            },
-                        ));
-                    }
-
-                    AsyncCmdTag::Clear { stream_id, .. } => {
-                        // When `Clear` request is completed, invalidate all pending requests.
-                        for async_response in
-                            desc_map.create_cancellation_responses(&stream_id, None)
-                        {
-                            let AsyncCmdResponse {
-                                tag,
-                                response: cmd_result,
-                            } = async_response;
-                            let pending_desc = desc_map
-                                .remove(&tag)
-                                .ok_or_else(|| Error::UnexpectedResponse(tag))?;
-                            let pending_response = match cmd_result {
-                                Ok(r) => r,
-                                Err(e) => {
-                                    error!("returning async error response: {}", &e);
-                                    e.into()
-                                }
-                            };
-                            responses.push_back((pending_desc, pending_response));
-                        }
-                    }
-
-                    _ => {
-                        // No extra responses necessary.
-                    }
-                }
-
-                let cmd_response = match cmd_result {
-                    Ok(r) => r,
-                    Err(e) => {
-                        error!("returning async error response: {}", &e);
-                        e.into()
-                    }
-                };
-                responses.push_back((desc, cmd_response));
-            }
-            VideoEvtResponseType::Event(mut evt) => {
-                self.write_event(event_queue, &mut evt)?;
-            }
-        };
-        Ok(responses)
-    }
-
     /// Handles an event notified via an event FD.
-    fn handle_event_fd<'a, T: Device>(
-        &'a self,
+    fn handle_event_fd<T: Device>(
+        &self,
         cmd_queue: &mut Queue,
         event_queue: &mut Queue,
         device: &mut T,
         desc_map: &mut AsyncCmdDescMap,
         stream_id: u32,
     ) -> Result<()> {
-        if let Some(event_responses) = device.process_event_fd(stream_id) {
-            for r in event_responses {
-                match self.handle_event_resp(event_queue, device, desc_map, r) {
-                    Ok(mut resps) => {
-                        self.write_responses(cmd_queue, &mut resps)?;
+        let mut responses: VecDeque<WritableResp> = Default::default();
+        if let Some(event_responses) = device.process_event_fd(desc_map, stream_id) {
+            for event_response in event_responses {
+                match event_response {
+                    VideoEvtResponseType::AsyncCmd(async_response) => {
+                        let AsyncCmdResponse {
+                            tag,
+                            response: cmd_result,
+                        } = async_response;
+                        let desc = desc_map
+                            .remove(&tag)
+                            .ok_or_else(|| Error::UnexpectedResponse(tag))?;
+                        let cmd_response = match cmd_result {
+                            Ok(r) => r,
+                            Err(e) => {
+                                error!("returning async error response: {}", &e);
+                                e.into()
+                            }
+                        };
+                        responses.push_back((desc, cmd_response));
                     }
-                    Err(e) => {
-                        // Ignore result of write_event for a fatal error.
-                        let _ = self.write_event(
-                            event_queue,
-                            &mut VideoEvt {
-                                typ: EvtType::Error,
-                                stream_id,
-                            },
-                        );
-                        return Err(e);
+                    VideoEvtResponseType::Event(evt) => {
+                        self.write_event(event_queue, evt)?;
                     }
                 }
             }
         }
+
+        if let Err(e) = self.write_responses(cmd_queue, &mut responses) {
+            error!("Failed to write event responses: {:?}", e);
+            // Ignore result of write_event for a fatal error.
+            let _ = self.write_event(
+                event_queue,
+                VideoEvt {
+                    typ: EvtType::Error,
+                    stream_id,
+                },
+            );
+            return Err(e);
+        }
+
         Ok(())
     }
 

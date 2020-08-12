@@ -13,6 +13,7 @@ use std::os::unix::io::{AsRawFd, IntoRawFd};
 use base::{error, PollContext};
 
 use crate::virtio::resource_bridge::{self, ResourceInfo, ResourceRequestSocket};
+use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
 use crate::virtio::video::control::{CtrlType, CtrlVal, QueryCtrlResponse, QueryCtrlType};
 use crate::virtio::video::device::*;
@@ -20,6 +21,7 @@ use crate::virtio::video::error::*;
 use crate::virtio::video::event::*;
 use crate::virtio::video::format::*;
 use crate::virtio::video::params::Params;
+use crate::virtio::video::protocol;
 use crate::virtio::video::response::CmdResponse;
 
 mod capability;
@@ -530,6 +532,11 @@ impl<'a> Decoder<'a> {
 
         if ctx.keep_notification_output_buffer.is_none() {
             // Stores an output buffer to notify EOS.
+            // This is necessary because libvda is unable to indicate EOS along
+            // with returned buffers.
+            // For now, when a `Flush()` completes, this saved resource will be
+            // returned as a zero-sized buffer with the EOS flag.
+            // TODO(b/149725148): Remove this when libvda supports buffer flags.
             ctx.keep_notification_output_buffer = Some(resource_id);
 
             // Don't enqueue this resource to Chrome.
@@ -810,7 +817,11 @@ impl<'a> Device for Decoder<'a> {
         }
     }
 
-    fn process_event_fd(&mut self, stream_id: u32) -> Option<Vec<VideoEvtResponseType>> {
+    fn process_event_fd(
+        &mut self,
+        desc_map: &mut AsyncCmdDescMap,
+        stream_id: u32,
+    ) -> Option<Vec<VideoEvtResponseType>> {
         // TODO(b/161774071): Switch the return value from Option to VideoResult or another
         // result that would allow us to return an error to the caller.
 
@@ -847,7 +858,7 @@ impl<'a> Device for Decoder<'a> {
             }
         };
 
-        let event_response = match event {
+        let event_responses = match event {
             ProvidePictureBuffers {
                 min_num_buffers,
                 width,
@@ -866,10 +877,10 @@ impl<'a> Device for Decoder<'a> {
                     visible_rect_right,
                     visible_rect_bottom,
                 );
-                Event(VideoEvt {
+                vec![Event(VideoEvt {
                     typ: EvtType::DecResChanged,
                     stream_id,
-                })
+                })]
             }
             PictureReady {
                 buffer_id, // FrameBufferId
@@ -895,7 +906,7 @@ impl<'a> Device for Decoder<'a> {
                         size: 0,
                     },
                 );
-                AsyncCmd(async_response)
+                vec![AsyncCmd(async_response)]
             }
             NotifyEndOfBitstreamBuffer { bitstream_id } => {
                 let resource_id = ctx.handle_notify_end_of_bitstream_buffer(bitstream_id)?;
@@ -911,55 +922,96 @@ impl<'a> Device for Decoder<'a> {
                         size: 0,      // this field is only for encoder
                     },
                 );
-                AsyncCmd(async_response)
+                vec![AsyncCmd(async_response)]
             }
-            FlushResponse(resp) => {
-                let tag = AsyncCmdTag::Drain { stream_id };
-                let async_response = match resp {
+            FlushResponse(flush_response) => {
+                match flush_response {
                     libvda::decode::Response::Success => {
-                        AsyncCmdResponse::from_response(tag, CmdResponse::NoData)
+                        let eos_resource_id = match ctx.keep_notification_output_buffer.take() {
+                            Some(r) => r,
+                            None => {
+                                error!(
+                                    "No EOS resource available on successful flush response (stream id {})",
+                                    stream_id);
+                                return Some(vec![Event(VideoEvt {
+                                    typ: EvtType::Error,
+                                    stream_id,
+                                })]);
+                            }
+                        };
+
+                        let eos_tag = AsyncCmdTag::Queue {
+                            stream_id,
+                            queue_type: QueueType::Output,
+                            resource_id: eos_resource_id,
+                        };
+
+                        let eos_response = CmdResponse::ResourceQueue {
+                            timestamp: 0,
+                            flags: protocol::VIRTIO_VIDEO_BUFFER_FLAG_EOS,
+                            size: 0,
+                        };
+                        vec![
+                            AsyncCmd(AsyncCmdResponse::from_response(eos_tag, eos_response)),
+                            AsyncCmd(AsyncCmdResponse::from_response(
+                                AsyncCmdTag::Drain { stream_id },
+                                CmdResponse::NoData,
+                            )),
+                        ]
                     }
                     _ => {
                         // TODO(b/151810591): If `resp` is `libvda::decode::Response::Canceled`,
                         // we should notify it to the driver in some way.
-                        error!("failed to 'Flush' in VDA: {:?}", resp);
-                        AsyncCmdResponse::from_error(tag, VideoError::VdaFailure(resp))
+                        error!(
+                            "failed to 'Flush' in VDA (stream id {}): {:?}",
+                            stream_id, flush_response
+                        );
+                        vec![AsyncCmd(AsyncCmdResponse::from_error(
+                            AsyncCmdTag::Drain { stream_id },
+                            VideoError::VdaFailure(flush_response),
+                        ))]
                     }
-                };
-                AsyncCmd(async_response)
+                }
             }
-            ResetResponse(resp) => {
+            ResetResponse(reset_response) => {
                 let tag = AsyncCmdTag::Clear {
                     stream_id,
                     queue_type: ctx.handle_reset_response()?,
                 };
-                let async_response = match resp {
+                match reset_response {
                     libvda::decode::Response::Success => {
-                        AsyncCmdResponse::from_response(tag, CmdResponse::NoData)
+                        let mut responses: Vec<_> = desc_map
+                            .create_cancellation_responses(&stream_id, Some(tag))
+                            .into_iter()
+                            .map(AsyncCmd)
+                            .collect();
+                        responses.push(AsyncCmd(AsyncCmdResponse::from_response(
+                            tag,
+                            CmdResponse::NoData,
+                        )));
+                        responses
                     }
                     _ => {
-                        error!("failed to 'Reset' in VDA: {:?}", resp);
-                        AsyncCmdResponse::from_error(tag, VideoError::VdaFailure(resp))
+                        error!(
+                            "failed to 'Reset' in VDA (stream id {}): {:?}",
+                            stream_id, reset_response
+                        );
+                        vec![AsyncCmd(AsyncCmdResponse::from_error(
+                            tag,
+                            VideoError::VdaFailure(reset_response),
+                        ))]
                     }
-                };
-                AsyncCmd(async_response)
+                }
             }
             NotifyError(resp) => {
                 error!("an error is notified by VDA: {}", resp);
-                Event(VideoEvt {
+                vec![Event(VideoEvt {
                     typ: EvtType::Error,
                     stream_id,
-                })
+                })]
             }
         };
 
-        Some(vec![event_response])
-    }
-
-    fn take_resource_id_to_notify_eos(&mut self, stream_id: u32) -> Option<u32> {
-        self.contexts
-            .get_mut(&stream_id)
-            .ok()
-            .and_then(|s| s.keep_notification_output_buffer.take())
+        Some(event_responses)
     }
 }

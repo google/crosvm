@@ -7,6 +7,7 @@
 use base::{PollContext, PollToken};
 
 use crate::virtio::resource_bridge::ResourceRequestSocket;
+use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
 use crate::virtio::video::error::*;
 use crate::virtio::video::event::VideoEvt;
@@ -99,13 +100,14 @@ pub trait Device {
         resource_bridge: &ResourceRequestSocket,
     ) -> VideoResult<VideoCmdResponseType>;
 
-    /// Processes an available Token::EventFd event.
-    /// If the message is sent via commandq, the return value is `VideoEvtResponseType::AsyncCmd`.
-    /// Otherwise (i.e. case of eventq), it's `VideoEvtResponseType::Event`.
+    /// Processes an available `Token::EventFd` event and returns a list of `VideoEvtResponseType`
+    /// responses. It returns None if an invalid event comes.
+    /// For responses to be sent via command queue, the return type is `VideoEvtResponseType::AsyncCmd`.
+    /// For responses to be sent via event queue, the return type is `VideoEvtResponseType::Event`.
     /// TODO(b/149720783): Make this an async function.
-    fn process_event_fd(&mut self, stream_id: u32) -> Option<Vec<VideoEvtResponseType>>;
-
-    /// Returns an ID for an available output resource that can be used to notify EOS.
-    /// Note that this resource must be enqueued by `ResourceQueue` and not be returned yet.
-    fn take_resource_id_to_notify_eos(&mut self, stream_id: u32) -> Option<u32>;
+    fn process_event_fd(
+        &mut self,
+        desc_map: &mut AsyncCmdDescMap,
+        stream_id: u32,
+    ) -> Option<Vec<VideoEvtResponseType>>;
 }

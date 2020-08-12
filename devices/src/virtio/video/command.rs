@@ -59,6 +59,7 @@ pub enum QueueType {
 }
 impl_try_from_le32_for_enumn!(QueueType, "queue_type");
 
+#[derive(Debug)]
 pub enum VideoCmd {
     QueryCapability {
         queue_type: QueueType,
