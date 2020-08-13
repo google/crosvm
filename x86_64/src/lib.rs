@@ -432,7 +432,6 @@ impl arch::LinuxArch for X8664arch {
                 for param in components.extra_kernel_params {
                     cmdline.insert_str(&param).map_err(Error::Cmdline)?;
                 }
-
                 // It seems that default record_size is only 4096 byte even if crosvm allocates
                 // more memory. It means that one crash can only 4096 byte.
                 // Set record_size and console_size to 1/4 of allocated memory size.
@@ -481,6 +480,7 @@ impl arch::LinuxArch for X8664arch {
             mmio_bus,
             pid_debug_label_map,
             suspend_evt,
+            rt_cpus: components.rt_cpus,
         })
     }
 

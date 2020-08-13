@@ -51,9 +51,9 @@ use sync::{Condvar, Mutex};
 use base::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_rt_signal_handler,
-    set_cpu_affinity, signal, validate_raw_fd, warn, EventFd, ExternalMapping, FlockOperation,
-    Killable, MemoryMappingArena, PollContext, PollToken, Protection, ScopedEvent, SignalFd,
-    Terminal, TimerFd, WatchingEvents, SIGRTMIN,
+    set_cpu_affinity, set_rt_prio_limit, set_rt_round_robin, signal, validate_raw_fd, warn,
+    EventFd, ExternalMapping, FlockOperation, Killable, MemoryMappingArena, PollContext, PollToken,
+    Protection, ScopedEvent, SignalFd, Terminal, TimerFd, WatchingEvents, SIGRTMIN,
 };
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
@@ -1509,6 +1509,7 @@ fn runnable_vcpu<V, R>(
     vm: impl VmArch<Vcpu = V>,
     irq_chip: &mut impl IrqChipArch<V>,
     vcpu_count: usize,
+    run_rt: bool,
     vcpu_affinity: Vec<usize>,
     has_bios: bool,
     use_hypervisor_signals: bool,
@@ -1549,6 +1550,15 @@ where
     #[cfg(feature = "chromeos")]
     if let Err(e) = base::sched::enable_core_scheduling() {
         error!("Failed to enable core scheduling: {}", e);
+    }
+
+    if run_rt {
+        const DEFAULT_VCPU_RT_LEVEL: u16 = 6;
+        if let Err(e) = set_rt_prio_limit(u64::from(DEFAULT_VCPU_RT_LEVEL))
+            .and_then(|_| set_rt_round_robin(i32::from(DEFAULT_VCPU_RT_LEVEL)))
+        {
+            warn!("Failed to set vcpu to real time: {}", e);
+        }
     }
 
     if use_hypervisor_signals {
@@ -1602,6 +1612,7 @@ fn run_vcpu<V, R>(
     vm: impl VmArch<Vcpu = V> + 'static,
     mut irq_chip: impl IrqChipArch<V> + 'static,
     vcpu_count: usize,
+    run_rt: bool,
     vcpu_affinity: Vec<usize>,
     start_barrier: Arc<Barrier>,
     has_bios: bool,
@@ -1629,6 +1640,7 @@ where
                 vm,
                 &mut irq_chip,
                 vcpu_count,
+                run_rt,
                 vcpu_affinity,
                 has_bios,
                 use_hypervisor_signals,
@@ -1889,6 +1901,7 @@ where
             .iter()
             .map(|path| SDT::from_file(path).map_err(|e| Error::OpenAcpiTable(path.clone(), e)))
             .collect::<Result<Vec<SDT>>>()?,
+        rt_cpus: cfg.rt_cpus.clone(),
     };
 
     let control_server_socket = match &cfg.socket_path {
@@ -2081,6 +2094,7 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
             linux.vm.try_clone().map_err(Error::CloneEventFd)?,
             linux.irq_chip.try_clone().map_err(Error::CloneEventFd)?,
             linux.vcpu_count,
+            linux.rt_cpus.contains(&cpu_id),
             linux.vcpu_affinity.clone(),
             vcpu_thread_barrier.clone(),
             linux.has_bios,

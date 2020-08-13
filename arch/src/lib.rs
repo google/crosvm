@@ -69,6 +69,7 @@ pub struct VmComponents {
     pub extra_kernel_params: Vec<String>,
     pub wayland_dmabuf: bool,
     pub acpi_sdts: Vec<SDT>,
+    pub rt_cpus: Vec<usize>,
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.
@@ -87,6 +88,7 @@ pub struct RunnableLinuxVm<V: VmArch, I: IrqChipArch<V::Vcpu>> {
     pub mmio_bus: Bus,
     pub pid_debug_label_map: BTreeMap<u32, String>,
     pub suspend_evt: EventFd,
+    pub rt_cpus: Vec<usize>,
 }
 
 /// The device and optional jail.

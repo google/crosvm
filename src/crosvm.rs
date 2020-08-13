@@ -161,6 +161,7 @@ impl Default for SharedDir {
 /// Aggregate of all configurable options for a running VM.
 pub struct Config {
     pub vcpu_count: Option<usize>,
+    pub rt_cpus: Vec<usize>,
     pub vcpu_affinity: Vec<usize>,
     pub memory: Option<u64>,
     pub executable_path: Option<Executable>,
@@ -213,6 +214,7 @@ impl Default for Config {
     fn default() -> Config {
         Config {
             vcpu_count: None,
+            rt_cpus: Vec::new(),
             vcpu_affinity: Vec::new(),
             memory: None,
             executable_path: None,
