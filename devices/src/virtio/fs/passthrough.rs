@@ -73,6 +73,12 @@ ioctl_iow_nr!(FS_IOC_FSSETXATTR, 'X' as u32, 32, fsxattr);
 ioctl_ior_nr!(FS_IOC_GETFLAGS, 'f' as u32, 1, c_long);
 ioctl_iow_nr!(FS_IOC_SETFLAGS, 'f' as u32, 2, c_long);
 
+ioctl_ior_nr!(FS_IOC32_GETFLAGS, 'f' as u32, 1, u32);
+ioctl_iow_nr!(FS_IOC32_SETFLAGS, 'f' as u32, 2, u32);
+
+ioctl_ior_nr!(FS_IOC64_GETFLAGS, 'f' as u32, 1, u64);
+ioctl_iow_nr!(FS_IOC64_SETFLAGS, 'f' as u32, 2, u64);
+
 type Inode = u64;
 type Handle = u64;
 
@@ -2256,8 +2262,10 @@ impl FileSystem for PassthroughFs {
         const SET_ENCRYPTION_POLICY: u32 = FS_IOC_SET_ENCRYPTION_POLICY() as u32;
         const GET_FSXATTR: u32 = FS_IOC_FSGETXATTR() as u32;
         const SET_FSXATTR: u32 = FS_IOC_FSSETXATTR() as u32;
-        const GET_FLAGS: u32 = FS_IOC_GETFLAGS() as u32;
-        const SET_FLAGS: u32 = FS_IOC_SETFLAGS() as u32;
+        const GET_FLAGS32: u32 = FS_IOC32_GETFLAGS() as u32;
+        const SET_FLAGS32: u32 = FS_IOC32_SETFLAGS() as u32;
+        const GET_FLAGS64: u32 = FS_IOC64_GETFLAGS() as u32;
+        const SET_FLAGS64: u32 = FS_IOC64_SETFLAGS() as u32;
 
         // Normally, we wouldn't need to retry the FS_IOC_GET_ENCRYPTION_POLICY and
         // FS_IOC_SET_ENCRYPTION_POLICY ioctls. Unfortunately, the I/O directions for both of them
@@ -2301,14 +2309,14 @@ impl FileSystem for PassthroughFs {
                     self.set_fsxattr(handle, r)
                 }
             }
-            GET_FLAGS => {
+            GET_FLAGS32 | GET_FLAGS64 => {
                 if out_size < size_of::<c_int>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
                     self.get_flags(handle)
                 }
             }
-            SET_FLAGS => {
+            SET_FLAGS32 | SET_FLAGS64 => {
                 if in_size < size_of::<c_int>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
