@@ -45,6 +45,8 @@ pub enum CmdResponse {
     },
     QueryControl(QueryCtrlResponse),
     GetControl(CtrlVal),
+    // TODO(alexlau): SetControl is unused, remove this after encoder CL lands.
+    #[allow(dead_code)]
     SetControl,
     Error(CmdError),
 }
