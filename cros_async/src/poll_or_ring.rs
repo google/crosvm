@@ -283,7 +283,6 @@ impl<F: AsRawFd + Unpin> std::ops::DerefMut for U64Source<F> {
 #[cfg(test)]
 mod tests {
     use std::fs::{File, OpenOptions};
-    use std::path::PathBuf;
 
     use futures::pin_mut;
 
@@ -493,15 +492,7 @@ mod tests {
             source.fsync().await.unwrap();
         }
 
-        let dir = tempfile::TempDir::new().unwrap();
-        let mut file_path = PathBuf::from(dir.path());
-        file_path.push("test");
-
-        let f = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(&file_path)
-            .unwrap();
+        let f = tempfile::tempfile().unwrap();
         let source = PollOrRing::new(f).unwrap();
 
         let fut = go(source);

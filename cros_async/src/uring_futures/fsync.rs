@@ -55,9 +55,6 @@ impl<R: IoSource + ?Sized + Unpin> Future for Fsync<'_, R> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::OpenOptions;
-    use std::path::PathBuf;
-
     use futures::pin_mut;
 
     use crate::io_ext::IoSourceExt;
@@ -66,15 +63,7 @@ mod tests {
     #[test]
     fn fsync() {
         async fn go() {
-            let dir = tempfile::TempDir::new().unwrap();
-            let mut file_path = PathBuf::from(dir.path());
-            file_path.push("test");
-
-            let f = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(&file_path)
-                .unwrap();
+            let f = tempfile::tempfile().unwrap();
             let source = UringSource::new(f).unwrap();
             source.fsync().await.unwrap();
         }

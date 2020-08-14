@@ -832,9 +832,8 @@ impl VirtioDevice for Block {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{File, OpenOptions};
     use std::mem::size_of_val;
-    use tempfile::TempDir;
+    use tempfile::tempfile;
     use vm_memory::GuestAddress;
 
     use crate::virtio::descriptor_utils::{create_descriptor_chain, DescriptorType};
@@ -843,10 +842,7 @@ mod tests {
 
     #[test]
     fn read_size() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("disk_image");
-        let f = File::create(&path).unwrap();
+        let f = tempfile().unwrap();
         f.set_len(0x1000).unwrap();
 
         let b = Block::new(Box::new(f), true, false, 512, None).unwrap();
@@ -862,10 +858,7 @@ mod tests {
 
     #[test]
     fn read_block_size() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("disk_image");
-        let f = File::create(&path).unwrap();
+        let f = tempfile().unwrap();
         f.set_len(0x1000).unwrap();
 
         let b = Block::new(Box::new(f), true, false, 4096, None).unwrap();
@@ -877,13 +870,9 @@ mod tests {
 
     #[test]
     fn read_features() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("disk_image");
-
         // read-write block device
         {
-            let f = File::create(&path).unwrap();
+            let f = tempfile().unwrap();
             let b = Block::new(Box::new(f), false, true, 512, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
@@ -893,7 +882,7 @@ mod tests {
 
         // read-write block device, non-sparse
         {
-            let f = File::create(&path).unwrap();
+            let f = tempfile().unwrap();
             let b = Block::new(Box::new(f), false, false, 512, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
@@ -903,7 +892,7 @@ mod tests {
 
         // read-only block device
         {
-            let f = File::create(&path).unwrap();
+            let f = tempfile().unwrap();
             let b = Block::new(Box::new(f), true, true, 512, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
@@ -914,15 +903,7 @@ mod tests {
 
     #[test]
     fn read_last_sector() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("disk_image");
-        let mut f = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&path)
-            .unwrap();
+        let mut f = tempfile().unwrap();
         let disk_size = 0x1000;
         f.set_len(disk_size).unwrap();
 
@@ -975,15 +956,7 @@ mod tests {
 
     #[test]
     fn read_beyond_last_sector() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("disk_image");
-        let mut f = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&path)
-            .unwrap();
+        let mut f = tempfile().unwrap();
         let disk_size = 0x1000;
         f.set_len(disk_size).unwrap();
 

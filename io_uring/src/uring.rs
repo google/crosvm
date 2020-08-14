@@ -716,7 +716,7 @@ mod tests {
     use std::time::Duration;
 
     use base::PollContext;
-    use tempfile::TempDir;
+    use tempfile::{tempfile, TempDir};
 
     use super::*;
 
@@ -769,15 +769,8 @@ mod tests {
         assert_eq!(res.unwrap(), buf.len() as u32);
     }
 
-    fn create_test_file(temp_dir: &TempDir, size: u64) -> std::fs::File {
-        let file_path = append_file_name(temp_dir.path(), "test");
-        let f = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&file_path)
-            .unwrap();
+    fn create_test_file(size: u64) -> std::fs::File {
+        let f = tempfile().unwrap();
         f.set_len(size).unwrap();
         f
     }
@@ -785,13 +778,12 @@ mod tests {
     #[test]
     // Queue as many reads as possible and then collect the completions.
     fn read_parallel() {
-        let temp_dir = TempDir::new().unwrap();
         const QUEUE_SIZE: usize = 10;
         const BUF_SIZE: usize = 0x1000;
 
         let mut uring = URingContext::new(QUEUE_SIZE).unwrap();
         let mut buf = [0u8; BUF_SIZE * QUEUE_SIZE];
-        let f = create_test_file(&temp_dir, (BUF_SIZE * QUEUE_SIZE) as u64);
+        let f = create_test_file((BUF_SIZE * QUEUE_SIZE) as u64);
 
         // check that the whole file can be read and that the queues wrapping is handled by reading
         // double the quue depth of buffers.
@@ -818,12 +810,11 @@ mod tests {
 
     #[test]
     fn read_readv() {
-        let temp_dir = TempDir::new().unwrap();
         let queue_size = 128;
 
         let mut uring = URingContext::new(queue_size).unwrap();
         let mut buf = [0u8; 0x1000];
-        let f = create_test_file(&temp_dir, 0x1000 * 2);
+        let f = create_test_file(0x1000 * 2);
 
         // check that the whole file can be read and that the queues wrapping is handled by reading
         // double the quue depth of buffers.
@@ -848,7 +839,6 @@ mod tests {
 
     #[test]
     fn readv_vec() {
-        let temp_dir = TempDir::new().unwrap();
         let queue_size = 128;
         const BUF_SIZE: usize = 0x2000;
 
@@ -868,7 +858,7 @@ mod tests {
             .collect::<Vec<libc::iovec>>()
         };
         let total_len = io_vecs.iter().fold(0, |a, iovec| a + iovec.iov_len);
-        let f = create_test_file(&temp_dir, total_len as u64 * 2);
+        let f = create_test_file(total_len as u64 * 2);
         let (user_data_ret, res) = unsafe {
             // Safe because the `wait` call waits until the kernel is done with `buf`.
             uring
@@ -882,18 +872,9 @@ mod tests {
 
     #[test]
     fn write_one_block() {
-        let tempdir = TempDir::new().unwrap();
-        let file_path = append_file_name(tempdir.path(), "test");
-
         let mut uring = URingContext::new(16).unwrap();
         let mut buf = [0u8; 4096];
-        let mut f = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&file_path)
-            .unwrap();
+        let mut f = create_test_file(0);
         f.write(&buf).unwrap();
         f.write(&buf).unwrap();
 
@@ -910,18 +891,9 @@ mod tests {
 
     #[test]
     fn write_one_submit_poll() {
-        let tempdir = TempDir::new().unwrap();
-        let file_path = append_file_name(tempdir.path(), "test");
-
         let mut uring = URingContext::new(16).unwrap();
         let mut buf = [0u8; 4096];
-        let mut f = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&file_path)
-            .unwrap();
+        let mut f = create_test_file(0);
         f.write(&buf).unwrap();
         f.write(&buf).unwrap();
 
@@ -950,7 +922,6 @@ mod tests {
 
     #[test]
     fn writev_vec() {
-        let temp_dir = TempDir::new().unwrap();
         let queue_size = 128;
         const BUF_SIZE: usize = 0x2000;
         const OFFSET: u64 = 0x2000;
@@ -967,7 +938,7 @@ mod tests {
                 .collect::<Vec<libc::iovec>>()
         };
         let total_len = io_vecs.iter().fold(0, |a, iovec| a + iovec.iov_len);
-        let mut f = create_test_file(&temp_dir, total_len as u64 * 2);
+        let mut f = create_test_file(total_len as u64 * 2);
         let (user_data_ret, res) = unsafe {
             // Safe because the `wait` call waits until the kernel is done with `buf`.
             uring

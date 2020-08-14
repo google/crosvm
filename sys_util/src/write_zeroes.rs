@@ -120,21 +120,12 @@ impl<T: WriteZeroesAt + Seek> WriteZeroes for T {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::OpenOptions;
     use std::io::{Read, Seek, SeekFrom, Write};
-    use tempfile::TempDir;
+    use tempfile::tempfile;
 
     #[test]
     fn simple_test() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("file");
-        let mut f = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&path)
-            .unwrap();
+        let mut f = tempfile().unwrap();
         f.set_len(16384).unwrap();
 
         // Write buffer of non-zero bytes to offset 1234
@@ -192,15 +183,7 @@ mod tests {
 
     #[test]
     fn large_write_zeroes() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("file");
-        let mut f = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&path)
-            .unwrap();
+        let mut f = tempfile().unwrap();
         f.set_len(16384).unwrap();
 
         // Write buffer of non-zero bytes

@@ -657,8 +657,8 @@ pub fn create_descriptor_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::{File, OpenOptions};
-    use tempfile::TempDir;
+    use std::fs::File;
+    use tempfile::tempfile;
 
     #[test]
     fn reader_test_simple_chain() {
@@ -840,16 +840,7 @@ mod tests {
 
         let mut writer = Writer::new(&memory, chain).expect("failed to create Writer");
 
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("test_file");
-
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .expect("failed to create temp file");
+        let mut file = tempfile().unwrap();
 
         file.set_len(384).unwrap();
 

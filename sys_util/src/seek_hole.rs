@@ -56,7 +56,7 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::{Seek, SeekFrom, Write};
-    use tempfile::TempDir;
+    use tempfile::tempfile;
 
     fn seek_cur(file: &mut File) -> u64 {
         file.seek(SeekFrom::Current(0)).unwrap()
@@ -64,10 +64,7 @@ mod tests {
 
     #[test]
     fn seek_data() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("test_file");
-        let mut file = File::create(&path).unwrap();
+        let mut file = tempfile().unwrap();
 
         // Empty file
         assert_eq!(file.seek_data(0).unwrap(), None);
@@ -111,10 +108,7 @@ mod tests {
 
     #[test]
     fn seek_hole() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("test_file");
-        let mut file = File::create(&path).unwrap();
+        let mut file = tempfile().unwrap();
 
         // Empty file
         assert_eq!(file.seek_hole(0).unwrap(), None);
