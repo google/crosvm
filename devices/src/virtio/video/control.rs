@@ -16,7 +16,6 @@ use crate::virtio::Writer;
 
 #[derive(Debug)]
 pub enum QueryCtrlType {
-    Bitrate,
     Profile(Format),
     Level(Format),
 }

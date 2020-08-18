@@ -135,7 +135,6 @@ impl Capability {
                 let levels = self.levels.get(&fmt)?;
                 Some(QueryCtrlResponse::Level(levels.iter().copied().collect()))
             }
-            _ => None,
         }
     }
 }

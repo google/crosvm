@@ -270,7 +270,6 @@ impl<'a> VideoCmd {
             VIRTIO_VIDEO_CMD_QUERY_CONTROL => {
                 let body = r.read_obj::<virtio_video_query_control>()?;
                 let query_ctrl_type = match body.control.into() {
-                    VIRTIO_VIDEO_CONTROL_BITRATE => QueryCtrlType::Bitrate,
                     VIRTIO_VIDEO_CONTROL_PROFILE => QueryCtrlType::Profile(
                         r.read_obj::<virtio_video_query_control_profile>()?
                             .format
