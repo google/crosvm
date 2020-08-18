@@ -505,13 +505,13 @@ impl Queue {
 /// re-enabled on drop.
 pub struct NotifyGuard {
     queue: Rc<RefCell<Queue>>,
-    mem: Rc<GuestMemory>,
+    mem: GuestMemory,
 }
 
 impl NotifyGuard {
     /// Disable notifications for the lifetime of the returned guard. Useful when the caller is
     /// processing a descriptor and doesn't need notifications of further messages from the guest.
-    pub fn new(queue: Rc<RefCell<Queue>>, mem: Rc<GuestMemory>) -> Self {
+    pub fn new(queue: Rc<RefCell<Queue>>, mem: GuestMemory) -> Self {
         // Disable notification until we're done processing the next request.
         queue.borrow_mut().set_notify(&mem, false);
         NotifyGuard { queue, mem }
