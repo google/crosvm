@@ -2167,35 +2167,41 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
                             let host_available = file_to_i64(LOWMEM_AVAILABLE)
                                 .map_err(Error::ReadMemAvailable)?
                                 << 20;
-                            let guest_available_u = if let Some(available) = stats.available_memory
-                            {
-                                available
+                            let guest_free_u = if let Some(free) = stats.free_memory {
+                                free
                             } else {
-                                warn!("guest available_memory stat is missing");
+                                warn!("guest free_memory stat is missing");
                                 continue;
                             };
-                            if guest_available_u > i64::max_value() as u64 {
-                                warn!("guest available memory is too large");
+                            let guest_cached_u = if let Some(cached) = stats.disk_caches {
+                                cached
+                            } else {
+                                warn!("guest disk_caches stat is missing");
+                                continue;
+                            };
+                            if guest_free_u > i64::max_value() as u64 {
+                                warn!("guest free memory is too large");
+                                continue;
+                            }
+                            if guest_cached_u > i64::max_value() as u64 {
+                                warn!("guest cached memory is too large");
                                 continue;
                             }
                             if balloon_actual_u > i64::max_value() as u64 {
                                 warn!("actual balloon size is too large");
                                 continue;
                             }
-                            // Guest and host available memory is balanced equally.
-                            const GUEST_SHARE: i64 = 1;
-                            const HOST_SHARE: i64 = 1;
                             // Tell the guest to change the balloon size if the target balloon size
                             // is more than 5% different from the current balloon size.
                             const RESIZE_PERCENT: i64 = 5;
                             let balloon_actual = balloon_actual_u as i64;
-                            let guest_available = guest_available_u as i64;
+                            let guest_free = guest_free_u as i64;
+                            let guest_cached = guest_cached_u as i64;
                             // Compute how much memory the guest should have available after we
                             // rebalance.
-                            let guest_available_target = (GUEST_SHARE
-                                * (guest_available + host_available))
-                                / (GUEST_SHARE + HOST_SHARE);
-                            let guest_available_delta = guest_available_target - guest_available;
+                            let guest_available_target = host_available;
+                            let guest_available_delta =
+                                guest_available_target - guest_free - guest_cached;
                             // How much do we have to change the balloon to balance.
                             let balloon_target = max(balloon_actual - guest_available_delta, 0);
                             // Compute the change in balloon size in percent.  If the balloon size
@@ -2205,9 +2211,10 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
                                 / max(balloon_actual, 1);
 
                             if balloon_change_percent >= RESIZE_PERCENT {
-                                info!("resizing balloon: host avail {}, guest avail {} (target {}), balloon actual {} (target {})",
+                                info!("resizing balloon: host avail {}, guest free {} cached {} (target {}), balloon actual {} (target {})",
                                     host_available,
-                                    guest_available,
+                                    guest_free,
+                                    guest_cached,
                                     guest_available_target,
                                     balloon_actual,
                                     balloon_target,
