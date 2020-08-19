@@ -55,7 +55,7 @@ use base::{
     get_group_id, get_user_id, getegid, geteuid, info, register_rt_signal_handler,
     set_cpu_affinity, set_rt_prio_limit, set_rt_round_robin, signal, validate_raw_fd, warn,
     EventFd, ExternalMapping, FlockOperation, Killable, MemoryMappingArena, PollContext, PollToken,
-    Protection, ScopedEvent, SignalFd, Terminal, TimerFd, WatchingEvents, SIGRTMIN,
+    Protection, ScopedEvent, SignalFd, Terminal, Timer, WatchingEvents, SIGRTMIN,
 };
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
@@ -111,7 +111,7 @@ pub enum Error {
     CreateSignalFd(base::SignalFdError),
     CreateSocket(io::Error),
     CreateTapDevice(NetError),
-    CreateTimerFd(base::Error),
+    CreateTimer(base::Error),
     CreateTpmStorage(PathBuf, io::Error),
     CreateUsbProvider(devices::usb::host_backend::error::Error),
     CreateVcpu(base::Error),
@@ -157,7 +157,7 @@ pub enum Error {
     ReserveGpuMemory(base::MmapError),
     ReserveMemory(base::Error),
     ReservePmemMemory(base::MmapError),
-    ResetTimerFd(base::Error),
+    ResetTimer(base::Error),
     RngDeviceNew(virtio::RngError),
     RunnableVcpu(base::Error),
     SettingGidMap(minijail::Error),
@@ -166,7 +166,7 @@ pub enum Error {
     SettingUidMap(minijail::Error),
     SignalFd(base::SignalFdError),
     SpawnVcpu(io::Error),
-    TimerFd(base::Error),
+    Timer(base::Error),
     ValidateRawFd(base::Error),
     VhostNetDeviceNew(virtio::vhost::Error),
     VhostVsockDeviceNew(virtio::vhost::Error),
@@ -205,7 +205,7 @@ impl Display for Error {
             CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             CreateTapDevice(e) => write!(f, "failed to create tap device: {}", e),
-            CreateTimerFd(e) => write!(f, "failed to create timerfd: {}", e),
+            CreateTimer(e) => write!(f, "failed to create Timer: {}", e),
             CreateTpmStorage(p, e) => {
                 write!(f, "failed to create tpm storage dir {}: {}", p.display(), e)
             }
@@ -260,7 +260,7 @@ impl Display for Error {
             ReserveGpuMemory(e) => write!(f, "failed to reserve gpu memory: {}", e),
             ReserveMemory(e) => write!(f, "failed to reserve memory: {}", e),
             ReservePmemMemory(e) => write!(f, "failed to reserve pmem memory: {}", e),
-            ResetTimerFd(e) => write!(f, "failed to reset timerfd: {}", e),
+            ResetTimer(e) => write!(f, "failed to reset Timer: {}", e),
             RngDeviceNew(e) => write!(f, "failed to set up rng: {}", e),
             RunnableVcpu(e) => write!(f, "failed to set thread id for vcpu: {}", e),
             SettingGidMap(e) => write!(f, "error setting GID map: {}", e),
@@ -269,7 +269,7 @@ impl Display for Error {
             SettingUidMap(e) => write!(f, "error setting UID map: {}", e),
             SignalFd(e) => write!(f, "failed to read signal fd: {}", e),
             SpawnVcpu(e) => write!(f, "failed to spawn VCPU thread: {}", e),
-            TimerFd(e) => write!(f, "failed to read timer fd: {}", e),
+            Timer(e) => write!(f, "failed to read timer fd: {}", e),
             ValidateRawFd(e) => write!(f, "failed to validate raw fd: {}", e),
             VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {}", e),
             VhostVsockDeviceNew(e) => write!(f, "failed to set up virtual socket device: {}", e),
@@ -2077,7 +2077,7 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
     }
 
     // Balance available memory between guest and host every second.
-    let balancemem_timer = TimerFd::new().map_err(Error::CreateTimerFd)?;
+    let mut balancemem_timer = Timer::new().map_err(Error::CreateTimer)?;
     if Path::new(LOWMEM_AVAILABLE).exists() {
         // Create timer request balloon stats every 1s.
         poll_ctx
@@ -2087,7 +2087,7 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
         let balancemem_int = Duration::from_secs(1);
         balancemem_timer
             .reset(balancemem_dur, Some(balancemem_int))
-            .map_err(Error::ResetTimerFd)?;
+            .map_err(Error::ResetTimer)?;
 
         // Listen for balloon statistics from the guest so we can balance.
         poll_ctx
@@ -2194,7 +2194,7 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
                     }
                 }
                 Token::BalanceMemory => {
-                    balancemem_timer.wait().map_err(Error::TimerFd)?;
+                    balancemem_timer.wait().map_err(Error::Timer)?;
                     let command = BalloonControlCommand::Stats {};
                     if let Err(e) = balloon_host_socket.send(&command) {
                         warn!("failed to send stats request to balloon device: {}", e);

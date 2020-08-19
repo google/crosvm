@@ -10,7 +10,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use sync::Mutex;
 
-use libc::{self, timerfd_create, timerfd_gettime, timerfd_settime, CLOCK_MONOTONIC, TFD_CLOEXEC};
+use libc::{
+    self, clock_getres, timerfd_create, timerfd_gettime, timerfd_settime, CLOCK_MONOTONIC,
+    TFD_CLOEXEC,
+};
 
 use crate::{errno_result, EventFd, FakeClock, Result};
 
@@ -108,6 +111,21 @@ impl TimerFd {
 
         Ok(())
     }
+
+    /// Returns the resolution of timers on the host.
+    pub fn resolution() -> Result<Duration> {
+        // Safe because we are zero-initializing a struct with only primitive member fields.
+        let mut res: libc::timespec = unsafe { mem::zeroed() };
+
+        // Safe because it only modifies a local struct and we check the return value.
+        let ret = unsafe { clock_getres(CLOCK_MONOTONIC, &mut res) };
+
+        if ret != 0 {
+            return errno_result();
+        }
+
+        Ok(Duration::new(res.tv_sec as u64, res.tv_nsec as u32))
+    }
 }
 
 impl AsRawFd for TimerFd {
@@ -199,6 +217,11 @@ impl FakeTimerFd {
         self.deadline_ns = None;
         self.interval = None;
         Ok(())
+    }
+
+    /// Returns the resolution of timers on the host.
+    pub fn resolution() -> Result<Duration> {
+        Ok(Duration::from_nanos(1))
     }
 }
 

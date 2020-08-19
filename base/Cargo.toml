@@ -9,4 +9,5 @@ chromeos = ["sys_util/chromeos"]
 
 [dependencies]
 data_model = { path = "../data_model" }
+sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }

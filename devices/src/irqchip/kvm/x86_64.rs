@@ -187,7 +187,7 @@ impl KvmSplitIrqChip {
                     PitError::CreateEventFd(err) => err,
                     PitError::CreatePollContext(err) => err,
                     PitError::PollError(err) => err,
-                    PitError::TimerFdCreateError(err) => err,
+                    PitError::TimerCreateError(err) => err,
                     PitError::SpawnThread(_) => Error::new(libc::EIO),
                 },
             )?,

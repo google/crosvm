@@ -6,9 +6,11 @@ pub use sys_util::*;
 
 mod mmap;
 mod shm;
+mod timer;
 
 pub use mmap::MemoryMapping;
 pub use shm::{SharedMemory, Unix as SharedMemoryUnix};
+pub use timer::{FakeTimer, Timer};
 
 /// Wraps an AsRawDescriptor in the simple Descriptor struct, which
 /// has AsRawFd methods for interfacing with sys_util

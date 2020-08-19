@@ -72,7 +72,7 @@ pub enum PollOrRing<F: AsRawFd> {
 impl<F: AsRawFd + Unpin> PollOrRing<F> {
     /// Creates a `PollOrRing` that uses uring if available or falls back to the fd_executor if not.
     /// Note that on older kernels (pre 5.6) FDs such as event or timer FDs are unreliable when
-    /// having readvwritev performed through io_uring. To deal with EventFd or TimerFd, use
+    /// having readvwritev performed through io_uring. To deal with EventFd or Timer, use
     /// `U64Source` instead.
     pub fn new(f: F) -> Result<Self> {
         if crate::uring_executor::use_uring() {
@@ -231,7 +231,7 @@ impl<F: AsRawFd> std::ops::DerefMut for PollOrRing<F> {
     }
 }
 
-/// Convenience helper for reading a series of u64s which is common for timerfd and eventfd.
+/// Convenience helper for reading a series of u64s which is common for timer and eventfd.
 pub struct U64Source<F: AsRawFd + Unpin> {
     inner: PollOrRing<F>,
 }

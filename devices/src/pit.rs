@@ -22,9 +22,9 @@ use base::Clock;
 use base::FakeClock as Clock;
 
 #[cfg(test)]
-use base::FakeTimerFd as TimerFd;
+use base::FakeTimer as Timer;
 #[cfg(not(test))]
-use base::TimerFd;
+use base::Timer;
 
 use crate::BusDevice;
 
@@ -147,7 +147,7 @@ const MAX_TIMER_FREQ: u32 = 65536;
 
 #[derive(Debug)]
 pub enum PitError {
-    TimerFdCreateError(SysError),
+    TimerCreateError(SysError),
     /// Creating PollContext failed.
     CreatePollContext(SysError),
     /// Error while polling for events.
@@ -165,9 +165,7 @@ impl Display for PitError {
         use self::PitError::*;
 
         match self {
-            TimerFdCreateError(e) => {
-                write!(f, "failed to create pit counter due to timer fd: {}", e)
-            }
+            TimerCreateError(e) => write!(f, "failed to create pit counter due to timer fd: {}", e),
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             PollError(err) => write!(f, "failed to poll events: {}", err),
             SpawnThread(err) => write!(f, "failed to spawn thread: {}", err),
@@ -400,7 +398,7 @@ struct PitCounter {
     // Indicates whether the current timer is valid.
     timer_valid: bool,
     // Timer to set and receive periodic notifications.
-    timer: TimerFd,
+    timer: Timer,
 }
 
 impl Drop for PitCounter {
@@ -447,9 +445,9 @@ impl PitCounter {
         clock: Arc<Mutex<Clock>>,
     ) -> PitResult<PitCounter> {
         #[cfg(not(test))]
-        let timer = TimerFd::new().map_err(PitError::TimerFdCreateError)?;
+        let timer = Timer::new().map_err(PitError::TimerCreateError)?;
         #[cfg(test)]
-        let timer = TimerFd::new(clock.clone());
+        let timer = Timer::new(clock.clone());
         Ok(PitCounter {
             interrupt_evt,
             reload_value: 0,
@@ -825,7 +823,7 @@ impl PitCounter {
 
     fn timer_handler(&mut self) {
         if let Err(e) = self.timer.wait() {
-            // Under the current timerfd implementation (as of Jan 2019), this failure shouldn't
+            // Under the current Timer implementation (as of Jan 2019), this failure shouldn't
             // happen but implementation details may change in the future, and the failure
             // cases are complex to reason about. Because of this, avoid unwrap().
             error!("pit: timer wait unexpectedly failed: {}", e);
