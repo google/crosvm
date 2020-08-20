@@ -369,6 +369,47 @@ impl<'a> Decoder<'a> {
         self.sessions.map.remove(&stream_id);
     }
 
+    fn create_session(
+        vda: &'a libvda::decode::VdaInstance,
+        poll_ctx: &PollContext<Token>,
+        ctx: &Context,
+        stream_id: StreamId,
+    ) -> VideoResult<libvda::decode::Session<'a>> {
+        let profile = match ctx.in_params.format {
+            Some(Format::VP8) => Ok(libvda::Profile::VP8),
+            Some(Format::VP9) => Ok(libvda::Profile::VP9Profile0),
+            Some(Format::H264) => Ok(libvda::Profile::H264ProfileBaseline),
+            Some(f) => {
+                error!("specified format is invalid for bitstream: {:?}", f);
+                Err(VideoError::InvalidParameter)
+            }
+            None => {
+                error!("bitstream format is not specified");
+                Err(VideoError::InvalidParameter)
+            }
+        }?;
+
+        let session = vda.open_session(profile).map_err(|e| {
+            error!(
+                "failed to open a session {} for {:?}: {}",
+                stream_id, profile, e
+            );
+            VideoError::InvalidOperation
+        })?;
+
+        poll_ctx
+            .add(session.pipe(), Token::EventFd { id: stream_id })
+            .map_err(|e| {
+                error!(
+                    "failed to add FD to poll context for session {}: {}",
+                    stream_id, e
+                );
+                VideoError::InvalidOperation
+            })?;
+
+        Ok(session)
+    }
+
     fn create_resource(
         &mut self,
         poll_ctx: &PollContext<Token>,
@@ -382,38 +423,7 @@ impl<'a> Decoder<'a> {
         // Create a instance of `libvda::Session` at the first time `ResourceCreate` is
         // called here.
         if !self.sessions.contains_key(stream_id) {
-            let profile = match ctx.in_params.format {
-                Some(Format::VP8) => Ok(libvda::Profile::VP8),
-                Some(Format::VP9) => Ok(libvda::Profile::VP9Profile0),
-                Some(Format::H264) => Ok(libvda::Profile::H264ProfileBaseline),
-                Some(f) => {
-                    error!("specified format is invalid for bitstream: {:?}", f);
-                    Err(VideoError::InvalidParameter)
-                }
-                None => {
-                    error!("bitstream format is not specified");
-                    Err(VideoError::InvalidParameter)
-                }
-            }?;
-
-            let session = self.vda.open_session(profile).map_err(|e| {
-                error!(
-                    "failed to open a session {} for {:?}: {}",
-                    stream_id, profile, e
-                );
-                VideoError::InvalidOperation
-            })?;
-
-            poll_ctx
-                .add(session.pipe(), Token::EventFd { id: stream_id })
-                .map_err(|e| {
-                    error!(
-                        "failed to add FD to poll context for session {}: {}",
-                        stream_id, e
-                    );
-                    VideoError::InvalidOperation
-                })?;
-
+            let session = Self::create_session(self.vda, poll_ctx, ctx, stream_id)?;
             self.sessions.insert(stream_id, session);
         }
 
