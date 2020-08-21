@@ -215,6 +215,10 @@ fn default_keyboard_events() -> BTreeMap<u16, virtio_input_bitmap> {
             KEY_MENU,
             KEY_PRINT,
             KEY_POWER,
+            KEY_HOMEPAGE,
+            KEY_MUTE,
+            KEY_VOLUMEDOWN,
+            KEY_VOLUMEUP,
         ]),
     );
     supported_events.insert(
