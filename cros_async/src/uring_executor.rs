@@ -176,45 +176,86 @@ impl RegisteredSource {
         &self,
         file_offset: u64,
         mem: Rc<dyn BackingMemory>,
-        iovecs: &[MemRegion],
+        addrs: &[MemRegion],
     ) -> Result<PendingOperation> {
-        let op = IoOperation::ReadToVectored {
-            mem,
-            file_offset,
-            addrs: iovecs,
-        };
-        op.submit(&self.0)
+        let token = STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            if let Some(state) = state.as_mut() {
+                state.submit_read_to_vectored(&self.0, mem, file_offset, addrs)
+            } else {
+                Err(Error::InvalidContext)
+            }
+        })?;
+
+        Ok(PendingOperation {
+            waker_token: Some(token),
+        })
     }
 
     pub fn start_write_from_mem(
         &self,
         file_offset: u64,
         mem: Rc<dyn BackingMemory>,
-        iovecs: &[MemRegion],
+        addrs: &[MemRegion],
     ) -> Result<PendingOperation> {
-        let op = IoOperation::WriteFromVectored {
-            mem,
-            file_offset,
-            addrs: iovecs,
-        };
-        op.submit(&self.0)
+        let token = STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            if let Some(state) = state.as_mut() {
+                state.submit_write_from_vectored(&self.0, mem, file_offset, addrs)
+            } else {
+                Err(Error::InvalidContext)
+            }
+        })?;
+
+        Ok(PendingOperation {
+            waker_token: Some(token),
+        })
     }
 
     pub fn start_fallocate(&self, offset: u64, len: u64, mode: u32) -> Result<PendingOperation> {
-        let op = IoOperation::Fallocate { offset, len, mode };
-        op.submit(&self.0)
+        let token = STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            if let Some(state) = state.as_mut() {
+                state.submit_fallocate(&self.0, offset, len, mode)
+            } else {
+                Err(Error::InvalidContext)
+            }
+        })?;
+
+        Ok(PendingOperation {
+            waker_token: Some(token),
+        })
     }
 
     pub fn start_fsync(&self) -> Result<PendingOperation> {
-        let op = IoOperation::Fsync;
-        op.submit(&self.0)
+        let token = STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            if let Some(state) = state.as_mut() {
+                state.submit_fsync(&self.0)
+            } else {
+                Err(Error::InvalidContext)
+            }
+        })?;
+
+        Ok(PendingOperation {
+            waker_token: Some(token),
+        })
     }
 
     pub fn poll_fd_readable(&self) -> Result<PendingOperation> {
-        let op = IoOperation::PollFd {
-            events: WatchingEvents::empty().set_read(),
-        };
-        op.submit(&self.0)
+        let events = WatchingEvents::empty().set_read();
+        let token = STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            if let Some(state) = state.as_mut() {
+                state.submit_poll(&self.0, &events)
+            } else {
+                Err(Error::InvalidContext)
+            }
+        })?;
+
+        Ok(PendingOperation {
+            waker_token: Some(token),
+        })
     }
 
     pub fn poll_complete(&self, cx: &mut Context, op: &mut PendingOperation) -> Poll<Result<u32>> {
@@ -573,87 +614,6 @@ unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
         Err(Error::DuplicatingFd(base::Error::last()))
     } else {
         Ok(ret)
-    }
-}
-
-enum IoOperation<'a> {
-    ReadToVectored {
-        mem: Rc<dyn BackingMemory>,
-        file_offset: u64,
-        addrs: &'a [MemRegion],
-    },
-    WriteFromVectored {
-        mem: Rc<dyn BackingMemory>,
-        file_offset: u64,
-        addrs: &'a [MemRegion],
-    },
-    PollFd {
-        events: WatchingEvents,
-    },
-    Fallocate {
-        offset: u64,
-        len: u64,
-        mode: u32,
-    },
-    Fsync,
-}
-
-impl<'a> IoOperation<'a> {
-    fn submit(self, tag: &RegisteredSourceTag) -> Result<PendingOperation> {
-        let waker_token = match self {
-            IoOperation::ReadToVectored {
-                mem,
-                file_offset,
-                addrs,
-            } => STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                if let Some(state) = state.as_mut() {
-                    state.submit_read_to_vectored(tag, mem, file_offset, addrs)
-                } else {
-                    Err(Error::InvalidContext)
-                }
-            })?,
-            IoOperation::WriteFromVectored {
-                mem,
-                file_offset,
-                addrs,
-            } => STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                if let Some(state) = state.as_mut() {
-                    state.submit_write_from_vectored(tag, mem, file_offset, addrs)
-                } else {
-                    Err(Error::InvalidContext)
-                }
-            })?,
-            IoOperation::PollFd { events } => STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                if let Some(state) = state.as_mut() {
-                    state.submit_poll(tag, &events)
-                } else {
-                    Err(Error::InvalidContext)
-                }
-            })?,
-            IoOperation::Fallocate { offset, len, mode } => STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                if let Some(state) = state.as_mut() {
-                    state.submit_fallocate(tag, offset, len, mode)
-                } else {
-                    Err(Error::InvalidContext)
-                }
-            })?,
-            IoOperation::Fsync => STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                if let Some(state) = state.as_mut() {
-                    state.submit_fsync(tag)
-                } else {
-                    Err(Error::InvalidContext)
-                }
-            })?,
-        };
-
-        Ok(PendingOperation {
-            waker_token: Some(waker_token),
-        })
     }
 }
 
