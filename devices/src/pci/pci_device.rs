@@ -8,7 +8,10 @@ use base::{Event, RawDescriptor};
 use hypervisor::Datamatch;
 use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
 
-use crate::pci::pci_configuration;
+use crate::bus::ConfigWriteResult;
+use crate::pci::pci_configuration::{
+    self, COMMAND_REG, COMMAND_REG_IO_SPACE_MASK, COMMAND_REG_MEMORY_SPACE_MASK,
+};
 use crate::pci::{PciAddress, PciInterruptPin};
 #[cfg(feature = "audio")]
 use crate::virtio::snd::vios_backend::Error as VioSError;
@@ -140,12 +143,37 @@ impl<T: PciDevice> BusDevice for T {
         self.write_bar(info.address, data)
     }
 
-    fn config_register_write(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+    fn config_register_write(
+        &mut self,
+        reg_idx: usize,
+        offset: u64,
+        data: &[u8],
+    ) -> ConfigWriteResult {
+        let mut result = ConfigWriteResult {
+            ..Default::default()
+        };
         if offset as usize + data.len() > 4 {
-            return;
+            return result;
         }
 
-        self.write_config_register(reg_idx, offset, data)
+        if reg_idx == COMMAND_REG {
+            let old_command_reg = self.read_config_register(COMMAND_REG);
+            self.write_config_register(reg_idx, offset, data);
+            let new_command_reg = self.read_config_register(COMMAND_REG);
+
+            // Inform the caller of state changes.
+            if (old_command_reg ^ new_command_reg) & COMMAND_REG_MEMORY_SPACE_MASK != 0 {
+                result.mem_bus_new_state =
+                    Some((new_command_reg & COMMAND_REG_MEMORY_SPACE_MASK) != 0);
+            }
+            if (old_command_reg ^ new_command_reg) & COMMAND_REG_IO_SPACE_MASK != 0 {
+                result.io_bus_new_state = Some((new_command_reg & COMMAND_REG_IO_SPACE_MASK) != 0);
+            }
+        } else {
+            self.write_config_register(reg_idx, offset, data);
+        }
+
+        result
     }
 
     fn config_register_read(&self, reg_idx: usize) -> u32 {
@@ -204,5 +232,105 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     /// Invoked when the device is sandboxed.
     fn on_device_sandboxed(&mut self) {
         (**self).on_device_sandboxed()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pci_configuration::{PciClassCode, PciConfiguration, PciHeaderType, PciMultimediaSubclass};
+
+    struct TestDev {
+        pub config_regs: PciConfiguration,
+    }
+
+    impl PciDevice for TestDev {
+        fn debug_label(&self) -> String {
+            "test".to_owned()
+        }
+
+        fn keep_rds(&self) -> Vec<RawDescriptor> {
+            Vec::new()
+        }
+
+        fn read_config_register(&self, reg_idx: usize) -> u32 {
+            self.config_regs.read_reg(reg_idx)
+        }
+
+        fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+            (&mut self.config_regs).write_reg(reg_idx, offset, data)
+        }
+
+        fn read_bar(&mut self, _addr: u64, _data: &mut [u8]) {}
+
+        fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
+
+        fn allocate_address(&mut self, resources: &mut SystemAllocator) -> Result<PciAddress> {
+            Err(Error::PciAllocationFailed)
+        }
+    }
+
+    #[test]
+    fn config_write_result() {
+        let mut test_dev = TestDev {
+            config_regs: PciConfiguration::new(
+                0x1234,
+                0xABCD,
+                PciClassCode::MultimediaController,
+                &PciMultimediaSubclass::AudioDevice,
+                None,
+                PciHeaderType::Device,
+                0x5678,
+                0xEF01,
+            ),
+        };
+
+        // Initialize command register to an all-zeroes value.
+        test_dev.config_register_write(COMMAND_REG, 0, &0u32.to_le_bytes());
+
+        // Enable IO space access (bit 0 of command register).
+        assert_eq!(
+            test_dev.config_register_write(COMMAND_REG, 0, &1u32.to_le_bytes()),
+            ConfigWriteResult {
+                mem_bus_new_state: None,
+                io_bus_new_state: Some(true),
+            }
+        );
+
+        // Enable memory space access (bit 1 of command register).
+        assert_eq!(
+            test_dev.config_register_write(COMMAND_REG, 0, &3u32.to_le_bytes()),
+            ConfigWriteResult {
+                mem_bus_new_state: Some(true),
+                io_bus_new_state: None,
+            }
+        );
+
+        // Rewrite the same IO + mem value again (result should be no change).
+        assert_eq!(
+            test_dev.config_register_write(COMMAND_REG, 0, &3u32.to_le_bytes()),
+            ConfigWriteResult {
+                mem_bus_new_state: None,
+                io_bus_new_state: None,
+            }
+        );
+
+        // Disable IO space access, leaving mem enabled.
+        assert_eq!(
+            test_dev.config_register_write(COMMAND_REG, 0, &2u32.to_le_bytes()),
+            ConfigWriteResult {
+                mem_bus_new_state: None,
+                io_bus_new_state: Some(false),
+            }
+        );
+
+        // Re-enable IO space and disable mem simultaneously.
+        assert_eq!(
+            test_dev.config_register_write(COMMAND_REG, 0, &1u32.to_le_bytes()),
+            ConfigWriteResult {
+                mem_bus_new_state: Some(false),
+                io_bus_new_state: Some(true),
+            }
+        );
     }
 }

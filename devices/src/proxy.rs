@@ -13,6 +13,7 @@ use libc::{self, pid_t};
 use minijail::{self, Minijail};
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgSender, MsgSocket};
 
+use crate::bus::ConfigWriteResult;
 use crate::{BusAccessInfo, BusDevice};
 
 /// Errors for proxy devices.
@@ -62,6 +63,10 @@ enum CommandResult {
     Ok,
     ReadResult([u8; 8]),
     ReadConfigResult(u32),
+    WriteConfigResult {
+        mem_bus_new_state: Option<bool>,
+        io_bus_new_state: Option<bool>,
+    },
 }
 
 fn child_proc<D: BusDevice>(sock: UnixSeqpacket, device: &mut D) {
@@ -100,9 +105,12 @@ fn child_proc<D: BusDevice>(sock: UnixSeqpacket, device: &mut D) {
                 data,
             } => {
                 let len = len as usize;
-                device.config_register_write(reg_idx as usize, offset as u64, &data[0..len]);
-                // Command::WriteConfig does not have a result.
-                Ok(())
+                let res =
+                    device.config_register_write(reg_idx as usize, offset as u64, &data[0..len]);
+                sock.send(&CommandResult::WriteConfigResult {
+                    mem_bus_new_state: res.mem_bus_new_state,
+                    io_bus_new_state: res.io_bus_new_state,
+                })
             }
             Command::Shutdown => {
                 running = false;
@@ -214,18 +222,33 @@ impl BusDevice for ProxyDevice {
         self.debug_label.clone()
     }
 
-    fn config_register_write(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
+    fn config_register_write(
+        &mut self,
+        reg_idx: usize,
+        offset: u64,
+        data: &[u8],
+    ) -> ConfigWriteResult {
         let len = data.len() as u32;
         let mut buffer = [0u8; 4];
         buffer[0..data.len()].clone_from_slice(data);
         let reg_idx = reg_idx as u32;
         let offset = offset as u32;
-        self.send_no_result(&Command::WriteConfig {
+        if let Some(CommandResult::WriteConfigResult {
+            mem_bus_new_state,
+            io_bus_new_state,
+        }) = self.sync_send(&Command::WriteConfig {
             reg_idx,
             offset,
             len,
             data: buffer,
-        });
+        }) {
+            ConfigWriteResult {
+                mem_bus_new_state,
+                io_bus_new_state,
+            }
+        } else {
+            Default::default()
+        }
     }
 
     fn config_register_read(&self, reg_idx: usize) -> u32 {
@@ -296,9 +319,18 @@ mod tests {
             data[0] = self.data;
         }
 
-        fn config_register_write(&mut self, _reg_idx: usize, _offset: u64, data: &[u8]) {
+        fn config_register_write(
+            &mut self,
+            _reg_idx: usize,
+            _offset: u64,
+            data: &[u8],
+        ) -> ConfigWriteResult {
+            let result = ConfigWriteResult {
+                ..Default::default()
+            };
             assert!(data.len() == 1);
             self.config = data[0];
+            result
         }
 
         fn config_register_read(&self, _reg_idx: usize) -> u32 {

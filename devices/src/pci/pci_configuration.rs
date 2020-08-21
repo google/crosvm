@@ -11,6 +11,9 @@ use base::warn;
 // The number of 32bit registers in the config space, 256 bytes.
 const NUM_CONFIGURATION_REGISTERS: usize = 64;
 
+pub const COMMAND_REG: usize = 1;
+pub const COMMAND_REG_IO_SPACE_MASK: u32 = 0x0000_0001;
+pub const COMMAND_REG_MEMORY_SPACE_MASK: u32 = 0x0000_0002;
 const STATUS_REG: usize = 1;
 const STATUS_REG_CAPABILITIES_USED_MASK: u32 = 0x0010_0000;
 const BAR0_REG: usize = 4;

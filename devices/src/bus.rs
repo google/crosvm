@@ -31,6 +31,26 @@ impl std::fmt::Display for BusAccessInfo {
         write!(f, "{:?}", self)
     }
 }
+
+/// Result of a write to a device's PCI configuration space.
+/// This value represents the state change(s) that occurred due to the write.
+/// Each member of this structure may be `None` if no change occurred, or `Some(new_value)` to
+/// indicate a state change.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct ConfigWriteResult {
+    /// New state of the memory bus for this PCI device:
+    /// - `None`: no change in state.
+    /// - `Some(true)`: memory decode enabled; device should respond to memory accesses.
+    /// - `Some(false)`: memory decode disabled; device should not respond to memory accesses.
+    pub mem_bus_new_state: Option<bool>,
+
+    /// New state of the I/O bus for this PCI device:
+    /// - `None`: no change in state.
+    /// - `Some(true)`: I/O decode enabled; device should respond to I/O accesses.
+    /// - `Some(false)`: I/O decode disabled; device should not respond to I/O accesses.
+    pub io_bus_new_state: Option<bool>,
+}
+
 /// Trait for devices that respond to reads or writes in an arbitrary address space.
 ///
 /// The device does not care where it exists in address space as each method is only given an offset
@@ -46,7 +66,16 @@ pub trait BusDevice: Send {
     /// Sets a register in the configuration space. Only used by PCI.
     /// * `reg_idx` - The index of the config register to modify.
     /// * `offset` - Offset in to the register.
-    fn config_register_write(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {}
+    fn config_register_write(
+        &mut self,
+        reg_idx: usize,
+        offset: u64,
+        data: &[u8],
+    ) -> ConfigWriteResult {
+        ConfigWriteResult {
+            ..Default::default()
+        }
+    }
     /// Gets a register from the configuration space. Only used by PCI.
     /// * `reg_idx` - The index of the config register to read.
     fn config_register_read(&self, reg_idx: usize) -> u32 {
