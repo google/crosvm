@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use futures::task::ArcWake;
 
-/// Wrapper around a u64 used as a token to uniquely identify a pending waker.
-#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
-pub(crate) struct WakerToken(pub(crate) u64);
+/// Wrapper around a usize used as a token to uniquely identify a pending waker.
+#[derive(Debug)]
+pub(crate) struct WakerToken(pub(crate) usize);
 
 /// Raw waker used by executors. Associated with a single future and used to indicate whether that
 /// future needs to be polled.

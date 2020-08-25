@@ -11,6 +11,7 @@ paste = "*"
 pin-utils = "0.1.0-alpha.4"
 base = { path = "../base" }
 syscall_defines = { path = "../syscall_defines" }
+slab = "0.4"
 
 [dependencies.futures]
 version = "*"
