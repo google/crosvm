@@ -164,11 +164,11 @@ pub trait MsgReceiver: AsRef<UnixSeqpacket> {
             }
         };
 
-        if let Some(fixed_size) = Self::M::fixed_size() {
-            if msg_buffer.len() == 0 && fixed_size != 0 {
-                return Err(MsgError::RecvZero);
-            }
+        if msg_buffer.len() == 0 && Self::M::fixed_size() != Some(0) {
+            return Err(MsgError::RecvZero);
+        }
 
+        if let Some(fixed_size) = Self::M::fixed_size() {
             if fixed_size != msg_buffer.len() {
                 return Err(MsgError::BadRecvSize {
                     expected: fixed_size,
