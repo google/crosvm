@@ -13,6 +13,7 @@ remotes=(
     "https://chromium.googlesource.com/chromiumos/third_party/adhd"
     "https://gitlab.freedesktop.org/mesa/drm.git/"
     "https://android.googlesource.com/platform/external/minijail"
+    "https://gitlab.freedesktop.org/virgl/virglrenderer.git"
 )
 
 keys=(
@@ -23,6 +24,7 @@ keys=(
     "ADHD_COMMIT"
     "DRM_COMMIT"
     "MINIJAIL_COMMIT"
+    "VIRGL_COMMIT"
 )
 
 for (( i=0; i<${#remotes[*]}; ++i)); do

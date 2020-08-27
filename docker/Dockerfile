@@ -30,7 +30,8 @@ RUN apt-get update && apt-get install -y \
     ninja-build \
     pkg-config \
     protobuf-compiler \
-    python3
+    python3 \
+    python3-setuptools
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
@@ -99,13 +100,15 @@ RUN git clone https://github.com/anholt/libepoxy.git \
     && meson \
     && ninja install
 
-# We've forked virglrenderer to accomodate differences in the GBM header.
-# Until we can upstream our changes, build based on this downstream tree.
-RUN git clone https://gitlab.freedesktop.org/gurchetansingh/virglrenderer.git \
+# Build against virglrenderer master
+ARG VIRGL_COMMIT=master
+RUN git clone https://gitlab.freedesktop.org/virgl/virglrenderer.git \
     && cd virglrenderer \
-    && git checkout keep-kokoro-happy \
-    && ./autogen.sh \
-    && make install -j$(nproc)
+    && git checkout $VIRGL_COMMIT \
+    && mkdir build \
+    && cd build \
+    && meson \
+    && ninja install
 
 # Install libtpm2 so that tpm2-sys/build.rs does not try to build it in place in
 # the read-only source directory.
