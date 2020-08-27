@@ -21,6 +21,7 @@ use crate::virtio::{self, copy_config, DescriptorError, Interrupt, VIRTIO_F_VERS
 
 #[macro_use]
 mod macros;
+mod async_cmd_desc_map;
 mod command;
 mod control;
 mod decoder;
