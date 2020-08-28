@@ -112,7 +112,8 @@ const PCI_MSI_DATA_32: u32 = 0x8; // 16 bits of data for 32-bit message address
 const PCI_MSI_DATA_64: u32 = 0xC; // 16 bits of date for 64-bit message address
 
 // MSI length
-const MSI_LENGTH_32BIT: u32 = 0xA;
+const MSI_LENGTH_32BIT_WITHOUT_MASK: u32 = 0xA;
+const MSI_LENGTH_32BIT_WITH_MASK: u32 = 0x14;
 const MSI_LENGTH_64BIT_WITHOUT_MASK: u32 = 0xE;
 const MSI_LENGTH_64BIT_WITH_MASK: u32 = 0x18;
 
@@ -123,7 +124,8 @@ enum VfioMsiChange {
 
 struct VfioMsiCap {
     offset: u32,
-    size: u32,
+    is_64bit: bool,
+    mask_cap: bool,
     ctl: u16,
     address: u64,
     data: u16,
@@ -138,19 +140,12 @@ impl VfioMsiCap {
         msi_cap_start: u32,
         vm_socket_irq: Arc<VmIrqRequestSocket>,
     ) -> Self {
-        // msi minimum size is 0xa
-        let mut msi_len: u32 = MSI_LENGTH_32BIT;
         let msi_ctl = config.read_config_word(msi_cap_start + PCI_MSI_FLAGS);
-        if msi_ctl & PCI_MSI_FLAGS_64BIT != 0 {
-            msi_len = MSI_LENGTH_64BIT_WITHOUT_MASK;
-        }
-        if msi_ctl & PCI_MSI_FLAGS_MASKBIT != 0 {
-            msi_len = MSI_LENGTH_64BIT_WITH_MASK;
-        }
 
         VfioMsiCap {
             offset: msi_cap_start,
-            size: msi_len,
+            is_64bit: (msi_ctl & PCI_MSI_FLAGS_64BIT) != 0,
+            mask_cap: (msi_ctl & PCI_MSI_FLAGS_MASKBIT) != 0,
             ctl: 0,
             address: 0,
             data: 0,
@@ -161,9 +156,23 @@ impl VfioMsiCap {
     }
 
     fn is_msi_reg(&self, index: u64, len: usize) -> bool {
+        let msi_len: u32 = if self.is_64bit {
+            if self.mask_cap {
+                MSI_LENGTH_64BIT_WITH_MASK
+            } else {
+                MSI_LENGTH_64BIT_WITHOUT_MASK
+            }
+        } else {
+            if self.mask_cap {
+                MSI_LENGTH_32BIT_WITH_MASK
+            } else {
+                MSI_LENGTH_32BIT_WITHOUT_MASK
+            }
+        };
+
         if index >= self.offset as u64
-            && index + len as u64 <= (self.offset + self.size) as u64
-            && len as u32 <= self.size
+            && index + len as u64 <= (self.offset + msi_len) as u64
+            && len as u32 <= msi_len
         {
             true
         } else {
@@ -190,30 +199,29 @@ impl VfioMsiCap {
             } else if was_enabled && !is_enabled {
                 ret = Some(VfioMsiChange::Disable)
             }
-        } else if len == 4 && offset == PCI_MSI_ADDRESS_LO && self.size == MSI_LENGTH_32BIT {
+        } else if len == 4 && offset == PCI_MSI_ADDRESS_LO && !self.is_64bit {
             //write 32 bit message address
             let value: [u8; 8] = [data[0], data[1], data[2], data[3], 0, 0, 0, 0];
             self.address = u64::from_le_bytes(value);
-        } else if len == 4 && offset == PCI_MSI_ADDRESS_LO && self.size != MSI_LENGTH_32BIT {
+        } else if len == 4 && offset == PCI_MSI_ADDRESS_LO && self.is_64bit {
             // write 64 bit message address low part
             let value: [u8; 8] = [data[0], data[1], data[2], data[3], 0, 0, 0, 0];
             self.address &= !0xffffffff;
             self.address |= u64::from_le_bytes(value);
-        } else if len == 4 && offset == PCI_MSI_ADDRESS_HI && self.size != MSI_LENGTH_32BIT {
+        } else if len == 4 && offset == PCI_MSI_ADDRESS_HI && self.is_64bit {
             //write 64 bit message address high part
             let value: [u8; 8] = [0, 0, 0, 0, data[0], data[1], data[2], data[3]];
             self.address &= 0xffffffff;
             self.address |= u64::from_le_bytes(value);
-        } else if len == 8 && offset == PCI_MSI_ADDRESS_LO && self.size != MSI_LENGTH_32BIT {
+        } else if len == 8 && offset == PCI_MSI_ADDRESS_LO && self.is_64bit {
             // write 64 bit message address
             let value: [u8; 8] = [
                 data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
             ];
             self.address = u64::from_le_bytes(value);
         } else if len == 2
-            && ((offset == PCI_MSI_DATA_32 && self.size == MSI_LENGTH_32BIT)
-                || (offset == PCI_MSI_DATA_64 && self.size == MSI_LENGTH_64BIT_WITH_MASK)
-                || (offset == PCI_MSI_DATA_64 && self.size == MSI_LENGTH_64BIT_WITHOUT_MASK))
+            && ((offset == PCI_MSI_DATA_32 && !self.is_64bit)
+                || (offset == PCI_MSI_DATA_64 && self.is_64bit))
         {
             // write message data
             let value: [u8; 2] = [data[0], data[1]];
