@@ -90,12 +90,17 @@ pub struct Ac97Dev {
     irq_resample_evt: Option<EventFd>,
     bus_master: Ac97BusMaster,
     mixer: Ac97Mixer,
+    backend: Ac97Backend,
 }
 
 impl Ac97Dev {
     /// Creates an 'Ac97Dev' that uses the given `GuestMemory` and starts with all registers at
     /// default values.
-    pub fn new(mem: GuestMemory, audio_server: Box<dyn ShmStreamSource>) -> Self {
+    pub fn new(
+        mem: GuestMemory,
+        backend: Ac97Backend,
+        audio_server: Box<dyn ShmStreamSource>,
+    ) -> Self {
         let config_regs = PciConfiguration::new(
             0x8086,
             PCI_DEVICE_ID_INTEL_82801AA_5,
@@ -107,17 +112,46 @@ impl Ac97Dev {
             0x1,    // Subsystem ID.
         );
 
-        Ac97Dev {
+        Self {
             config_regs,
             pci_address: None,
             irq_evt: None,
             irq_resample_evt: None,
             bus_master: Ac97BusMaster::new(mem, audio_server),
             mixer: Ac97Mixer::new(),
+            backend,
         }
     }
 
-    fn create_cras_audio_device(params: Ac97Parameters, mem: GuestMemory) -> Result<Ac97Dev> {
+    /// Creates an `Ac97Dev` with suitable audio server inside based on Ac97Parameters. If it fails
+    /// to create `Ac97Dev` with the given back-end, it'll fallback to the null audio device.
+    pub fn try_new(mem: GuestMemory, param: Ac97Parameters) -> Result<Self> {
+        match param.backend {
+            Ac97Backend::CRAS => Self::create_cras_audio_device(param, mem.clone()).or_else(|e| {
+                error!(
+                    "Ac97Dev: create_cras_audio_device: {}. Fallback to null audio device",
+                    e
+                );
+                Self::create_null_audio_device(mem)
+            }),
+            Ac97Backend::NULL => Self::create_null_audio_device(mem),
+        }
+    }
+
+    /// Return the minijail policy file path for the current Ac97Dev.
+    pub fn minijail_policy(&self) -> &'static str {
+        match self.backend {
+            Ac97Backend::CRAS => "cras_audio_device",
+            Ac97Backend::NULL => "null_audio_device",
+        }
+    }
+
+    /// Provides the effect needed in capture stream creation
+    pub fn set_capture_effects(&mut self, effect: Vec<StreamEffect>) {
+        self.bus_master.set_capture_effects(effect);
+    }
+
+    fn create_cras_audio_device(params: Ac97Parameters, mem: GuestMemory) -> Result<Self> {
         let mut server = Box::new(
             CrasClient::with_type(CrasSocketType::Unified)
                 .map_err(|e| pci_device::Error::CreateCrasClientFailed(e))?,
@@ -127,28 +161,15 @@ impl Ac97Dev {
             server.enable_cras_capture();
         }
 
-        let mut cras_audio = Ac97Dev::new(mem, server);
+        let mut cras_audio = Self::new(mem, Ac97Backend::CRAS, server);
         cras_audio.set_capture_effects(params.capture_effects);
         Ok(cras_audio)
     }
 
-    fn create_null_audio_device(mem: GuestMemory) -> Result<Ac97Dev> {
+    fn create_null_audio_device(mem: GuestMemory) -> Result<Self> {
         let server = Box::new(NullShmStreamSource::new());
-        let null_audio = Ac97Dev::new(mem, server);
+        let null_audio = Self::new(mem, Ac97Backend::NULL, server);
         Ok(null_audio)
-    }
-
-    /// Creates an 'Ac97Dev' with suitable audio server inside based on Ac97Parameters
-    pub fn try_new(mem: GuestMemory, param: Ac97Parameters) -> Result<Ac97Dev> {
-        match param.backend {
-            Ac97Backend::CRAS => Ac97Dev::create_cras_audio_device(param, mem),
-            Ac97Backend::NULL => Ac97Dev::create_null_audio_device(mem),
-        }
-    }
-
-    /// Provides the effect needed in capture stream creation
-    pub fn set_capture_effects(&mut self, effect: Vec<StreamEffect>) {
-        self.bus_master.set_capture_effects(effect);
     }
 
     fn read_mixer(&mut self, offset: u64, data: &mut [u8]) {
@@ -342,7 +363,8 @@ mod tests {
     #[test]
     fn create() {
         let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)]).unwrap();
-        let mut ac97_dev = Ac97Dev::new(mem, Box::new(MockShmStreamSource::new()));
+        let mut ac97_dev =
+            Ac97Dev::new(mem, Ac97Backend::NULL, Box::new(MockShmStreamSource::new()));
         let mut allocator = SystemAllocator::builder()
             .add_io_addresses(0x1000_0000, 0x1000_0000)
             .add_low_mmio_addresses(0x2000_0000, 0x1000_0000)

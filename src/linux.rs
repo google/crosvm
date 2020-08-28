@@ -33,12 +33,12 @@ use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListene
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
 use devices::virtio::{self, Console, VirtioDevice};
+#[cfg(feature = "audio")]
+use devices::Ac97Dev;
 use devices::{
     self, HostBackendDeviceProvider, KvmKernelIrqChip, PciDevice, VfioContainer, VfioDevice,
     VfioPciDevice, VirtioPciDevice, XhciController,
 };
-#[cfg(feature = "audio")]
-use devices::{Ac97Backend, Ac97Dev};
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
 use hypervisor::{Hypervisor, HypervisorCap, RunnableVcpu, Vcpu, VcpuExit, Vm, VmCap};
 use minijail::{self, Minijail};
@@ -1351,12 +1351,8 @@ fn create_devices(
     #[cfg(feature = "audio")]
     for ac97_param in &cfg.ac97_parameters {
         let dev = Ac97Dev::try_new(mem.clone(), ac97_param.clone()).map_err(Error::CreateAc97)?;
-        let policy = match ac97_param.backend {
-            Ac97Backend::CRAS => "cras_audio_device",
-            Ac97Backend::NULL => "null_audio_device",
-        };
-
-        pci_devices.push((Box::new(dev), simple_jail(&cfg, &policy)?));
+        let jail = simple_jail(&cfg, dev.minijail_policy())?;
+        pci_devices.push((Box::new(dev), jail));
     }
 
     // Create xhci controller.
