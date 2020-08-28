@@ -730,8 +730,11 @@ fn create_gpu_device(
             jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
             let sys_devices_path = Path::new("/sys/devices");
             jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
+
             let drm_dri_path = Path::new("/dev/dri");
-            jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
+            if drm_dri_path.exists() {
+                jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
+            }
 
             // If the ARM specific devices exist on the host, bind mount them in.
             let mali0_path = Path::new("/dev/mali0");
