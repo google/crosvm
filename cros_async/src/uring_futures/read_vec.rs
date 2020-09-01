@@ -16,12 +16,12 @@ use super::uring_fut::UringFutState;
 /// Future for the `read_to_vec` function.
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct ReadVec<'a, R: IoSource + ?Sized> {
-    reader: &'a R,
+    reader: Pin<&'a R>,
     state: UringFutState<(u64, Rc<VecIoWrapper>), Rc<VecIoWrapper>>,
 }
 
-impl<'a, R: IoSource + ?Sized + Unpin> ReadVec<'a, R> {
-    pub(crate) fn new(reader: &'a R, file_offset: u64, vec: Vec<u8>) -> Self {
+impl<'a, R: IoSource + ?Sized> ReadVec<'a, R> {
+    pub(crate) fn new(reader: Pin<&'a R>, file_offset: u64, vec: Vec<u8>) -> Self {
         ReadVec {
             reader,
             state: UringFutState::new((file_offset, Rc::new(VecIoWrapper::from(vec)))),
@@ -29,7 +29,7 @@ impl<'a, R: IoSource + ?Sized + Unpin> ReadVec<'a, R> {
     }
 }
 
-impl<R: IoSource + ?Sized + Unpin> Future for ReadVec<'_, R> {
+impl<R: IoSource + ?Sized> Future for ReadVec<'_, R> {
     type Output = Result<(u32, Vec<u8>)>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -37,7 +37,7 @@ impl<R: IoSource + ?Sized + Unpin> Future for ReadVec<'_, R> {
         let (new_state, ret) = match state.advance(
             |(file_offset, wrapped_vec)| {
                 Ok((
-                    Pin::new(self.reader).read_to_mem(
+                    self.reader.as_ref().read_to_mem(
                         file_offset,
                         Rc::<VecIoWrapper>::clone(&wrapped_vec),
                         &[MemRegion {
@@ -48,7 +48,7 @@ impl<R: IoSource + ?Sized + Unpin> Future for ReadVec<'_, R> {
                     wrapped_vec,
                 ))
             },
-            |op| Pin::new(self.reader).poll_complete(cx, op),
+            |op| self.reader.as_ref().poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),

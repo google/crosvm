@@ -15,12 +15,12 @@ use super::uring_fut::UringFutState;
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Fallocate<'a, R: IoSource + ?Sized> {
-    reader: &'a R,
+    reader: Pin<&'a R>,
     state: UringFutState<(u64, u64, u32), ()>,
 }
 
-impl<'a, R: IoSource + ?Sized + Unpin> Fallocate<'a, R> {
-    pub(crate) fn new(reader: &'a R, file_offset: u64, len: u64, mode: u32) -> Self {
+impl<'a, R: IoSource + ?Sized> Fallocate<'a, R> {
+    pub(crate) fn new(reader: Pin<&'a R>, file_offset: u64, len: u64, mode: u32) -> Self {
         Fallocate {
             reader,
             state: UringFutState::new((file_offset, len, mode)),
@@ -28,16 +28,16 @@ impl<'a, R: IoSource + ?Sized + Unpin> Fallocate<'a, R> {
     }
 }
 
-impl<R: IoSource + ?Sized + Unpin> Future for Fallocate<'_, R> {
+impl<R: IoSource + ?Sized> Future for Fallocate<'_, R> {
     type Output = Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let state = std::mem::replace(&mut self.state, UringFutState::Processing);
         let (new_state, ret) = match state.advance(
             |(file_offset, len, mode)| {
-                Ok((Pin::new(self.reader).fallocate(file_offset, len, mode)?, ()))
+                Ok((self.reader.as_ref().fallocate(file_offset, len, mode)?, ()))
             },
-            |op| Pin::new(self.reader).poll_complete(cx, op),
+            |op| self.reader.as_ref().poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),

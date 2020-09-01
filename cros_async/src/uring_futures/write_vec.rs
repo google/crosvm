@@ -17,12 +17,12 @@ use super::uring_fut::UringFutState;
 /// Future for the `write_to_vec` function.
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct WriteVec<'a, W: IoSource + ?Sized> {
-    writer: &'a W,
+    writer: Pin<&'a W>,
     state: UringFutState<(u64, Rc<VecIoWrapper>), Rc<VecIoWrapper>>,
 }
 
-impl<'a, R: IoSource + ?Sized + Unpin> WriteVec<'a, R> {
-    pub(crate) fn new(writer: &'a R, file_offset: u64, vec: Vec<u8>) -> Self {
+impl<'a, W: IoSource + ?Sized> WriteVec<'a, W> {
+    pub(crate) fn new(writer: Pin<&'a W>, file_offset: u64, vec: Vec<u8>) -> Self {
         WriteVec {
             writer,
             state: UringFutState::new((file_offset, Rc::new(VecIoWrapper::from(vec)))),
@@ -30,7 +30,7 @@ impl<'a, R: IoSource + ?Sized + Unpin> WriteVec<'a, R> {
     }
 }
 
-impl<R: IoSource + ?Sized + Unpin> Future for WriteVec<'_, R> {
+impl<W: IoSource + ?Sized> Future for WriteVec<'_, W> {
     type Output = Result<(u32, Vec<u8>)>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -38,7 +38,7 @@ impl<R: IoSource + ?Sized + Unpin> Future for WriteVec<'_, R> {
         let (new_state, ret) = match state.advance(
             |(file_offset, wrapped_vec)| {
                 Ok((
-                    Pin::new(self.writer).write_from_mem(
+                    self.writer.as_ref().write_from_mem(
                         file_offset,
                         Rc::<VecIoWrapper>::clone(&wrapped_vec),
                         &[MemRegion {
@@ -49,7 +49,7 @@ impl<R: IoSource + ?Sized + Unpin> Future for WriteVec<'_, R> {
                     wrapped_vec,
                 ))
             },
-            |op| Pin::new(self.writer).poll_complete(cx, op),
+            |op| self.writer.as_ref().poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),

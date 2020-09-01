@@ -16,6 +16,7 @@
 //! Operations can only access memory in a `Vec` or an implementor of `BackingMemory`. See the
 //! `URingExecutor` documentation for an explaination of why.
 
+use std::pin::Pin;
 use std::rc::Rc;
 
 use crate::io_source::IoSource;
@@ -29,7 +30,7 @@ pub trait IoSourceExt: IoSource {
     where
         Self: Unpin,
     {
-        uring_futures::ReadVec::new(self, file_offset, vec)
+        uring_futures::ReadVec::new(Pin::new(self), file_offset, vec)
     }
 
     /// Writes from the given `vec` to the file starting at `file_offset`.
@@ -41,7 +42,7 @@ pub trait IoSourceExt: IoSource {
     where
         Self: Unpin,
     {
-        uring_futures::WriteVec::new(self, file_offset, vec)
+        uring_futures::WriteVec::new(Pin::new(self), file_offset, vec)
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
@@ -54,7 +55,7 @@ pub trait IoSourceExt: IoSource {
     where
         Self: Unpin,
     {
-        uring_futures::ReadMem::new(self, file_offset, mem, mem_offsets)
+        uring_futures::ReadMem::new(Pin::new(self), file_offset, mem, mem_offsets)
     }
 
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
@@ -67,7 +68,7 @@ pub trait IoSourceExt: IoSource {
     where
         Self: Unpin,
     {
-        uring_futures::WriteMem::new(self, file_offset, mem, mem_offsets)
+        uring_futures::WriteMem::new(Pin::new(self), file_offset, mem, mem_offsets)
     }
 
     /// See `fallocate(2)` for details.
@@ -75,7 +76,7 @@ pub trait IoSourceExt: IoSource {
     where
         Self: Unpin,
     {
-        uring_futures::Fallocate::new(self, file_offset, len, mode)
+        uring_futures::Fallocate::new(Pin::new(self), file_offset, len, mode)
     }
 
     /// Sync all completed write operations to the backing storage.
@@ -83,7 +84,7 @@ pub trait IoSourceExt: IoSource {
     where
         Self: Unpin,
     {
-        uring_futures::Fsync::new(self)
+        uring_futures::Fsync::new(Pin::new(self))
     }
 
     /// Wait for the FD of `self` to be readable.
@@ -91,7 +92,7 @@ pub trait IoSourceExt: IoSource {
     where
         Self: Unpin,
     {
-        uring_futures::PollFd::new(self)
+        uring_futures::PollFd::new(Pin::new(self))
     }
 }
 
