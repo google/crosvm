@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::File;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::pin::Pin;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -94,7 +95,7 @@ pub struct URingContext {
     submit_ring: SubmitQueueState,
     submit_queue_entries: SubmitQueueEntries,
     complete_ring: CompleteQueueState,
-    io_vecs: Vec<libc::iovec>,
+    io_vecs: Pin<Box<[libc::iovec]>>,
     in_flight: usize, // The number of pending operations.
     added: usize,     // The number of ops added since the last call to `io_uring_enter`.
     num_sqes: usize,  // The total number of sqes allocated in shared memory.
@@ -157,13 +158,16 @@ impl URingContext {
                 submit_ring,
                 submit_queue_entries,
                 complete_ring,
-                io_vecs: vec![
-                    libc::iovec {
-                        iov_base: null_mut(),
-                        iov_len: 0
-                    };
-                    num_sqe
-                ],
+                io_vecs: Pin::from(
+                    vec![
+                        libc::iovec {
+                            iov_base: null_mut(),
+                            iov_len: 0
+                        };
+                        num_sqe
+                    ]
+                    .into_boxed_slice(),
+                ),
                 added: 0,
                 num_sqes: ring_params.sq_entries as usize,
                 in_flight: 0,
@@ -282,7 +286,12 @@ impl URingContext {
     where
         I: Iterator<Item = libc::iovec>,
     {
-        self.add_writev(iovecs.collect(), fd, offset, user_data)
+        self.add_writev(
+            Pin::from(iovecs.collect::<Vec<_>>().into_boxed_slice()),
+            fd,
+            offset,
+            user_data,
+        )
     }
 
     /// Asynchronously writes to `fd` from the addresses given in `iovecs`.
@@ -295,7 +304,7 @@ impl URingContext {
     /// The iovecs reference must be kept alive until the op returns.
     pub unsafe fn add_writev(
         &mut self,
-        iovecs: Vec<libc::iovec>,
+        iovecs: Pin<Box<[libc::iovec]>>,
         fd: RawFd,
         offset: u64,
         user_data: UserData,
@@ -327,7 +336,12 @@ impl URingContext {
     where
         I: Iterator<Item = libc::iovec>,
     {
-        self.add_readv(iovecs.collect(), fd, offset, user_data)
+        self.add_readv(
+            Pin::from(iovecs.collect::<Vec<_>>().into_boxed_slice()),
+            fd,
+            offset,
+            user_data,
+        )
     }
 
     /// Asynchronously reads from `fd` to the addresses given in `iovecs`.
@@ -340,7 +354,7 @@ impl URingContext {
     /// The iovecs reference must be kept alive until the op returns.
     pub unsafe fn add_readv(
         &mut self,
-        iovecs: Vec<libc::iovec>,
+        iovecs: Pin<Box<[libc::iovec]>>,
         fd: RawFd,
         offset: u64,
         user_data: UserData,
@@ -588,7 +602,7 @@ struct CompleteQueueState {
     completed: usize,
     //For ops that pass in arrays of iovecs, they need to be valid for the duration of the
     //operation because the kernel might read them at any time.
-    pending_op_addrs: BTreeMap<UserData, Vec<libc::iovec>>,
+    pending_op_addrs: BTreeMap<UserData, Pin<Box<[libc::iovec]>>>,
 }
 
 impl CompleteQueueState {
@@ -610,7 +624,7 @@ impl CompleteQueueState {
         }
     }
 
-    fn add_op_data(&mut self, user_data: UserData, addrs: Vec<libc::iovec>) {
+    fn add_op_data(&mut self, user_data: UserData, addrs: Pin<Box<[libc::iovec]>>) {
         self.pending_op_addrs.insert(user_data, addrs);
     }
 
@@ -756,12 +770,11 @@ mod tests {
             vec![IoSliceMut::new(buf)]
                 .into_iter()
                 .map(|slice| std::mem::transmute::<IoSliceMut, libc::iovec>(slice))
-                .collect::<Vec<libc::iovec>>()
         };
         let (user_data_ret, res) = unsafe {
             // Safe because the `wait` call waits until the kernel is done with `buf`.
             uring
-                .add_readv_iter(io_vecs.into_iter(), fd, offset, user_data)
+                .add_readv_iter(io_vecs, fd, offset, user_data)
                 .unwrap();
             uring.wait().unwrap().next().unwrap()
         };
