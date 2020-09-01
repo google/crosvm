@@ -28,11 +28,16 @@ getdents64: 1
 getegid: 1
 geteuid: 1
 getrandom: 1
+# Use constants for verity ioctls since minijail doesn't understand them yet.
+# 0x40806685 = FS_IOC_ENABLE_VERITY
+# 0xc0046686 = FS_IOC_MEASURE_VERITY
 ioctl: arg1 == FS_IOC_FSGETXATTR || \
        arg1 == FS_IOC_FSSETXATTR || \
        arg1 == FS_IOC_GETFLAGS || \
        arg1 == FS_IOC_SETFLAGS || \
-       arg1 == FS_IOC_GET_ENCRYPTION_POLICY_EX
+       arg1 == FS_IOC_GET_ENCRYPTION_POLICY_EX || \
+       arg1 == 0x40806685 || \
+       arg1 == 0xc0046686
 linkat: 1
 lseek: 1
 mkdirat: 1

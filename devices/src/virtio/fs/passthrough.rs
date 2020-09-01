@@ -2,23 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::borrow::Cow;
-use std::cmp;
-use std::collections::btree_map;
-use std::collections::BTreeMap;
-use std::ffi::{CStr, CString};
-use std::fs::File;
-use std::io;
-use std::mem::{self, size_of, MaybeUninit};
-use std::os::raw::{c_int, c_long};
-use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    borrow::Cow,
+    cmp,
+    collections::{btree_map, BTreeMap},
+    ffi::{CStr, CString},
+    fs::File,
+    io,
+    mem::{self, size_of, MaybeUninit},
+    os::raw::{c_int, c_long},
+    ptr::{addr_of, addr_of_mut},
+    str::FromStr,
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use base::{
     error, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr, ioctl_with_mut_ptr, ioctl_with_ptr,
-    AsRawDescriptor, FromRawDescriptor, RawDescriptor,
+    AsRawDescriptor, FileFlags, FromRawDescriptor, RawDescriptor,
 };
 use data_model::DataInit;
 use fuse::filesystem::{
@@ -110,6 +114,33 @@ ioctl_iow_nr!(FS_IOC32_SETFLAGS, 'f' as u32, 2, u32);
 
 ioctl_ior_nr!(FS_IOC64_GETFLAGS, 'f' as u32, 1, u64);
 ioctl_iow_nr!(FS_IOC64_SETFLAGS, 'f' as u32, 2, u64);
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct fsverity_enable_arg {
+    _version: u32,
+    _hash_algorithm: u32,
+    _block_size: u32,
+    _salt_size: u32,
+    _salt_ptr: u64,
+    _sig_size: u32,
+    __reserved1: u32,
+    _sig_ptr: u64,
+    __reserved2: [u64; 11],
+}
+unsafe impl DataInit for fsverity_enable_arg {}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct fsverity_digest {
+    _digest_algorithm: u16,
+    digest_size: u16,
+    // __u8 digest[];
+}
+unsafe impl DataInit for fsverity_digest {}
+
+ioctl_iow_nr!(FS_IOC_ENABLE_VERITY, 'f' as u32, 133, fsverity_enable_arg);
+ioctl_iowr_nr!(FS_IOC_MEASURE_VERITY, 'f' as u32, 134, fsverity_digest);
 
 type Inode = u64;
 type Handle = u64;
@@ -975,6 +1006,142 @@ impl PassthroughFs {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
             Ok(IoctlReply::Done(Ok(Vec::new())))
+        }
+    }
+
+    fn enable_verity<R: io::Read>(
+        &self,
+        inode: Inode,
+        handle: Handle,
+        r: R,
+    ) -> io::Result<IoctlReply> {
+        let inode_data = self.find_inode(inode)?;
+
+        // These match the return codes from `fsverity_ioctl_enable` in the kernel.
+        match inode_data.filetype {
+            FileType::Regular => {}
+            FileType::Directory => return Err(io::Error::from_raw_os_error(libc::EISDIR)),
+            FileType::Other => return Err(io::Error::from_raw_os_error(libc::EINVAL)),
+        }
+
+        {
+            // We cannot enable verity while holding a writable fd so get a new one, if necessary.
+            let mut file = inode_data.file.lock();
+            let mut flags = file.1;
+            match flags & libc::O_ACCMODE {
+                libc::O_WRONLY | libc::O_RDWR => {
+                    flags &= !libc::O_ACCMODE;
+                    flags |= libc::O_RDONLY;
+
+                    // We need to get a read-only handle for this file.
+                    let newfile = self.open_fd(file.0.as_raw_descriptor(), libc::O_RDONLY)?;
+                    *file = (newfile, flags);
+                }
+                libc::O_RDONLY => {}
+                _ => panic!("Unexpected flags: {:#x}", flags),
+            }
+        }
+
+        let data: Arc<dyn AsRawDescriptor> = if self.zero_message_open.load(Ordering::Relaxed) {
+            inode_data
+        } else {
+            let data = self.find_handle(handle, inode)?;
+
+            {
+                // We can't enable verity while holding a writable fd. We don't know whether the file
+                // was opened for writing so check it here. We don't expect this to be a frequent
+                // operation so the extra latency should be fine.
+                let mut file = data.file.lock();
+                let flags = FileFlags::from_file(&*file).map_err(io::Error::from)?;
+                match flags {
+                    FileFlags::ReadWrite | FileFlags::Write => {
+                        // We need to get a read-only handle for this file.
+                        *file = self.open_fd(file.as_raw_descriptor(), libc::O_RDONLY)?;
+                    }
+                    FileFlags::Read => {}
+                }
+            }
+
+            data
+        };
+
+        let arg = fsverity_enable_arg::from_reader(r)?;
+
+        // Safe because this doesn't modify any memory and we check the return value.
+        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_ENABLE_VERITY(), &arg) };
+        if res < 0 {
+            Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
+        } else {
+            Ok(IoctlReply::Done(Ok(Vec::new())))
+        }
+    }
+
+    fn measure_verity<R: io::Read>(
+        &self,
+        inode: Inode,
+        handle: Handle,
+        r: R,
+        out_size: u32,
+    ) -> io::Result<IoctlReply> {
+        let data: Arc<dyn AsRawDescriptor> = if self.zero_message_open.load(Ordering::Relaxed) {
+            self.find_inode(inode)?
+        } else {
+            self.find_handle(handle, inode)?
+        };
+
+        let digest = fsverity_digest::from_reader(r)?;
+
+        // Taken from fs/verity/fsverity_private.h.
+        const FS_VERITY_MAX_DIGEST_SIZE: u16 = 64;
+
+        // This digest size is what the fsverity command line utility uses.
+        const DIGEST_SIZE: u16 = FS_VERITY_MAX_DIGEST_SIZE * 2 + 1;
+        const BUFLEN: usize = size_of::<fsverity_digest>() + DIGEST_SIZE as usize;
+        const ROUNDED_LEN: usize =
+            (BUFLEN + size_of::<fsverity_digest>() - 1) / size_of::<fsverity_digest>();
+
+        // Make sure we get a properly aligned allocation.
+        let mut buf = [MaybeUninit::<fsverity_digest>::uninit(); ROUNDED_LEN];
+
+        // Safe because we are only writing data and not reading uninitialized memory.
+        unsafe {
+            // TODO: Replace with `MaybeUninit::slice_as_mut_ptr` once it is stabilized.
+            addr_of_mut!((*(buf.as_mut_ptr() as *mut fsverity_digest)).digest_size)
+                .write(DIGEST_SIZE)
+        };
+
+        // Safe because this will only modify `buf` and we check the return value.
+        let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_MEASURE_VERITY(), buf.as_mut_ptr()) };
+        if res < 0 {
+            Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
+        } else {
+            // Safe because this value was initialized by us already and then overwritten by the
+            // kernel.
+            // TODO: Replace with `MaybeUninit::slice_as_ptr` once it is stabilized.
+            let digest_size =
+                unsafe { addr_of!((*(buf.as_ptr() as *const fsverity_digest)).digest_size).read() };
+            let outlen = size_of::<fsverity_digest>() as u32 + u32::from(digest_size);
+
+            // The kernel guarantees this but it doesn't hurt to be paranoid.
+            debug_assert!(outlen <= (ROUNDED_LEN * size_of::<fsverity_digest>()) as u32);
+            if digest.digest_size < digest_size || out_size < outlen {
+                return Ok(IoctlReply::Done(Err(io::Error::from_raw_os_error(
+                    libc::EOVERFLOW,
+                ))));
+            }
+
+            // Safe because any bit pattern is valid for `MaybeUninit<u8>` and `fsverity_digest`
+            // doesn't contain any references.
+            let buf: [MaybeUninit<u8>; ROUNDED_LEN * size_of::<fsverity_digest>()] =
+                unsafe { mem::transmute(buf) };
+
+            // Casting to `*const [u8]` is safe because the kernel guarantees that the first
+            // `outlen` bytes of `buf` are initialized and `MaybeUninit<u8>` is guaranteed to have
+            // the same layout as `u8`.
+            // TODO: Replace with `MaybeUninit::slice_assume_init_ref` once it is stabilized.
+            let buf =
+                unsafe { &*(&buf[..outlen as usize] as *const [MaybeUninit<u8>] as *const [u8]) };
+            Ok(IoctlReply::Done(Ok(buf.to_vec())))
         }
     }
 }
@@ -2071,6 +2238,8 @@ impl FileSystem for PassthroughFs {
         const SET_FLAGS32: u32 = FS_IOC32_SETFLAGS() as u32;
         const GET_FLAGS64: u32 = FS_IOC64_GETFLAGS() as u32;
         const SET_FLAGS64: u32 = FS_IOC64_SETFLAGS() as u32;
+        const ENABLE_VERITY: u32 = FS_IOC_ENABLE_VERITY() as u32;
+        const MEASURE_VERITY: u32 = FS_IOC_MEASURE_VERITY() as u32;
 
         match cmd {
             GET_ENCRYPTION_POLICY_EX => self.get_encryption_policy_ex(inode, handle, r),
@@ -2100,6 +2269,22 @@ impl FileSystem for PassthroughFs {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
                     self.set_flags(inode, handle, r)
+                }
+            }
+            ENABLE_VERITY => {
+                if in_size < size_of::<fsverity_enable_arg>() as u32 {
+                    Err(io::Error::from_raw_os_error(libc::ENOMEM))
+                } else {
+                    self.enable_verity(inode, handle, r)
+                }
+            }
+            MEASURE_VERITY => {
+                if in_size < size_of::<fsverity_digest>() as u32
+                    || out_size < size_of::<fsverity_digest>() as u32
+                {
+                    Err(io::Error::from_raw_os_error(libc::ENOMEM))
+                } else {
+                    self.measure_verity(inode, handle, r, out_size)
                 }
             }
             _ => Err(io::Error::from_raw_os_error(libc::ENOTTY)),
