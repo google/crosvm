@@ -173,7 +173,7 @@ mod tests {
                     file_offset,
                     mem,
                     mem_offsets,
-                } => match Pin::new(&self.inner).read_to_mem(file_offset, mem, mem_offsets) {
+                } => match Pin::new(self.inner).read_to_mem(file_offset, mem, mem_offsets) {
                     Ok(token) => Wait { token },
                     Err(e) => return Poll::Ready(Err(e)),
                 },
@@ -182,7 +182,7 @@ mod tests {
             };
 
             let ret = match &mut state {
-                Wait { token } => Pin::new(&self.inner).poll_complete(cx, token),
+                Wait { token } => Pin::new(self.inner).poll_complete(cx, token),
                 _ => panic!("Invalid state in future"),
             };
             self.state = state;

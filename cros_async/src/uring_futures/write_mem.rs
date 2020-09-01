@@ -49,7 +49,7 @@ impl<R: IoSource + ?Sized + Unpin> Future for WriteMem<'_, '_, R> {
         let (new_state, ret) = match state.advance(
             |(file_offset, mem, mem_offsets)| {
                 Ok((
-                    Pin::new(&self.writer).write_from_mem(
+                    Pin::new(self.writer).write_from_mem(
                         file_offset,
                         Rc::clone(&mem),
                         mem_offsets,
@@ -57,7 +57,7 @@ impl<R: IoSource + ?Sized + Unpin> Future for WriteMem<'_, '_, R> {
                     mem,
                 ))
             },
-            |op| Pin::new(&self.writer).poll_complete(cx, op),
+            |op| Pin::new(self.writer).poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),

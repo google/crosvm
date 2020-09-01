@@ -49,15 +49,11 @@ impl<R: IoSource + ?Sized + Unpin> Future for ReadMem<'_, '_, R> {
         let (new_state, ret) = match state.advance(
             |(file_offset, mem, mem_offsets)| {
                 Ok((
-                    Pin::new(&self.reader).read_to_mem(
-                        file_offset,
-                        Rc::clone(&mem),
-                        mem_offsets,
-                    )?,
+                    Pin::new(self.reader).read_to_mem(file_offset, Rc::clone(&mem), mem_offsets)?,
                     mem,
                 ))
             },
-            |op| Pin::new(&self.reader).poll_complete(cx, op),
+            |op| Pin::new(self.reader).poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),

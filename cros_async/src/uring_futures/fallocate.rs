@@ -35,12 +35,9 @@ impl<R: IoSource + ?Sized + Unpin> Future for Fallocate<'_, R> {
         let state = std::mem::replace(&mut self.state, UringFutState::Processing);
         let (new_state, ret) = match state.advance(
             |(file_offset, len, mode)| {
-                Ok((
-                    Pin::new(&self.reader).fallocate(file_offset, len, mode)?,
-                    (),
-                ))
+                Ok((Pin::new(self.reader).fallocate(file_offset, len, mode)?, ()))
             },
-            |op| Pin::new(&self.reader).poll_complete(cx, op),
+            |op| Pin::new(self.reader).poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),

@@ -34,8 +34,8 @@ impl<R: IoSource + ?Sized + Unpin> Future for PollFd<'_, R> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let state = std::mem::replace(&mut self.state, UringFutState::Processing);
         let (new_state, ret) = match state.advance(
-            |()| Ok((Pin::new(&self.reader).wait_readable()?, ())),
-            |op| Pin::new(&self.reader).poll_complete(cx, op),
+            |()| Ok((Pin::new(self.reader).wait_readable()?, ())),
+            |op| Pin::new(self.reader).poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),

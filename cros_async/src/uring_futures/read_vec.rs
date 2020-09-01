@@ -37,7 +37,7 @@ impl<R: IoSource + ?Sized + Unpin> Future for ReadVec<'_, R> {
         let (new_state, ret) = match state.advance(
             |(file_offset, wrapped_vec)| {
                 Ok((
-                    Pin::new(&self.reader).read_to_mem(
+                    Pin::new(self.reader).read_to_mem(
                         file_offset,
                         Rc::<VecIoWrapper>::clone(&wrapped_vec),
                         &[MemRegion {
@@ -48,7 +48,7 @@ impl<R: IoSource + ?Sized + Unpin> Future for ReadVec<'_, R> {
                     wrapped_vec,
                 ))
             },
-            |op| Pin::new(&self.reader).poll_complete(cx, op),
+            |op| Pin::new(self.reader).poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),

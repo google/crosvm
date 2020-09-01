@@ -38,7 +38,7 @@ impl<R: IoSource + ?Sized + Unpin> Future for WriteVec<'_, R> {
         let (new_state, ret) = match state.advance(
             |(file_offset, wrapped_vec)| {
                 Ok((
-                    Pin::new(&self.writer).write_from_mem(
+                    Pin::new(self.writer).write_from_mem(
                         file_offset,
                         Rc::<VecIoWrapper>::clone(&wrapped_vec),
                         &[MemRegion {
@@ -49,7 +49,7 @@ impl<R: IoSource + ?Sized + Unpin> Future for WriteVec<'_, R> {
                     wrapped_vec,
                 ))
             },
-            |op| Pin::new(&self.writer).poll_complete(cx, op),
+            |op| Pin::new(self.writer).poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),
