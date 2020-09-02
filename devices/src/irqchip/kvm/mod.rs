@@ -5,7 +5,11 @@
 use crate::Bus;
 use base::{error, Error, Event, Result};
 use hypervisor::kvm::KvmVcpu;
-use hypervisor::{IrqRoute, MPState, Vcpu};
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VmAArch64;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VmX86_64;
+use hypervisor::{HypervisorCap, IrqRoute, MPState, Vcpu};
 use kvm_sys::kvm_mp_state;
 use resources::SystemAllocator;
 
@@ -19,7 +23,7 @@ mod aarch64;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use aarch64::*;
 
-use crate::{IrqChip, IrqEventIndex};
+use crate::{IrqChip, IrqChipCap, IrqEventIndex, VcpuRunState};
 
 /// This IrqChip only works with Kvm so we only implement it for KvmVcpu.
 impl IrqChip for KvmKernelIrqChip {
@@ -99,20 +103,29 @@ impl IrqChip for KvmKernelIrqChip {
         Ok(())
     }
 
-    /// Return true if there is a pending interrupt for the specified vcpu.
-    /// For the KvmKernelIrqChip this should always return false because KVM is responsible for
-    /// injecting all interrupts.
-    fn interrupt_requested(&self, _vcpu_id: usize) -> bool {
-        false
+    /// Injects any pending interrupts for `vcpu`.
+    /// For KvmKernelIrqChip this is a no-op because KVM is responsible for injecting all
+    /// interrupts.
+    fn inject_interrupts(&self, _vcpu: &dyn Vcpu) -> Result<()> {
+        Ok(())
     }
 
-    /// Check if the specified vcpu has any pending interrupts. Returns None for no interrupts,
-    /// otherwise Some(u32) should be the injected interrupt vector.
-    /// For the KvmKernelIrqChip this should always return None because KVM is responsible for
-    /// injecting all interrupts.
-    fn get_external_interrupt(&mut self, _vcpu_id: usize) -> Result<Option<u32>> {
-        Ok(None)
+    /// Notifies the irq chip that the specified VCPU has executed a halt instruction.
+    /// For KvmKernelIrqChip this is a no-op because KVM handles VCPU blocking.
+    fn halted(&self, _vcpu_id: usize) {}
+
+    /// Blocks until `vcpu` is in a runnable state or until interrupted by
+    /// `IrqChip::kick_halted_vcpus`.  Returns `VcpuRunState::Runnable if vcpu is runnable, or
+    /// `VcpuRunState::Interrupted` if the wait was interrupted.
+    /// For KvmKernelIrqChip this is a no-op and always returns Runnable because KVM handles VCPU
+    /// blocking.
+    fn wait_until_runnable(&self, _vcpu: &dyn Vcpu) -> Result<VcpuRunState> {
+        Ok(VcpuRunState::Runnable)
     }
+
+    /// Makes unrunnable VCPUs return immediately from `wait_until_runnable`.
+    /// For KvmKernelIrqChip this is a no-op because KVM handles VCPU blocking.
+    fn kick_halted_vcpus(&self) {}
 
     /// Get the current MP state of the specified VCPU.
     fn get_mp_state(&self, vcpu_id: usize) -> Result<MPState> {
@@ -152,6 +165,16 @@ impl IrqChip for KvmKernelIrqChip {
     /// The KvmKernelIrqChip doesn't process irq events itself so this function does nothing.
     fn process_delayed_irq_events(&mut self) -> Result<()> {
         Ok(())
+    }
+
+    fn check_capability(&self, c: IrqChipCap) -> bool {
+        match c {
+            IrqChipCap::TscDeadlineTimer => self
+                .vm
+                .get_hypervisor()
+                .check_capability(&HypervisorCap::TscDeadlineTimer),
+            IrqChipCap::X2Apic => true,
+        }
     }
 }
 

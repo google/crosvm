@@ -39,8 +39,8 @@ use devices::virtio::{self, Console, VirtioDevice};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
 use devices::{
-    self, HostBackendDeviceProvider, IrqEventIndex, KvmKernelIrqChip, PciDevice, VfioContainer,
-    VfioDevice, VfioPciDevice, VirtioPciDevice, XhciController,
+    self, HostBackendDeviceProvider, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciDevice,
+    VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice, VirtioPciDevice, XhciController,
 };
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
 use hypervisor::{HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
@@ -82,13 +82,13 @@ use arch::{
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use {
     aarch64::AArch64 as Arch,
-    devices::{IrqChip, IrqChipAArch64 as IrqChipArch},
+    devices::IrqChipAArch64 as IrqChipArch,
     hypervisor::{VcpuAArch64 as VcpuArch, VmAArch64 as VmArch},
 };
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use {
-    devices::{IrqChipX86_64, IrqChipX86_64 as IrqChipArch, KvmSplitIrqChip},
-    hypervisor::{VcpuX86_64, VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
+    devices::{IrqChipX86_64 as IrqChipArch, KvmSplitIrqChip},
+    hypervisor::{VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
     x86_64::X8664arch as Arch,
 };
 
@@ -1683,37 +1683,6 @@ where
     Ok((vcpu, vcpu_run_handle))
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-fn inject_interrupt(irq_chip: &mut dyn IrqChipX86_64, vcpu: &dyn VcpuX86_64, vcpu_id: usize) {
-    if !irq_chip.interrupt_requested(vcpu_id) || !vcpu.ready_for_interrupt() {
-        return;
-    }
-
-    let vector = irq_chip
-        .get_external_interrupt(vcpu_id)
-        .unwrap_or_else(|e| {
-            error!("get_external_interrupt failed on vcpu {}: {}", vcpu_id, e);
-            None
-        });
-    if let Some(vector) = vector {
-        if let Err(e) = vcpu.interrupt(vector as u32) {
-            error!(
-                "Failed to inject interrupt {} to vcpu {}: {}",
-                vector, vcpu_id, e
-            );
-        }
-    }
-
-    // The second interrupt request should be handled immediately, so ask vCPU to exit as soon as
-    // possible.
-    if irq_chip.interrupt_requested(vcpu_id) {
-        vcpu.set_interrupt_window_requested(true);
-    }
-}
-
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-fn inject_interrupt(_irq_chip: &mut dyn IrqChip, _vcpu: &dyn Vcpu, _vcpu_id: usize) {}
-
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 fn handle_debug_msg<V>(
     cpu_id: usize,
@@ -1937,84 +1906,102 @@ where
 
                 interrupted_by_signal = false;
 
-                match vcpu.run(&vcpu_run_handle) {
-                    Ok(VcpuExit::IoIn { port, mut size }) => {
-                        let mut data = [0; 8];
-                        if size > data.len() {
-                            error!("unsupported IoIn size of {} bytes", size);
-                            size = data.len();
-                        }
-                        io_bus.read(port as u64, &mut data[..size]);
-                        if let Err(e) = vcpu.set_data(&data[..size]) {
-                            error!("failed to set return data for IoIn: {}", e);
-                        }
-                    }
-                    Ok(VcpuExit::IoOut {
-                        port,
-                        mut size,
-                        data,
-                    }) => {
-                        if size > data.len() {
-                            error!("unsupported IoOut size of {} bytes", size);
-                            size = data.len();
-                        }
-                        io_bus.write(port as u64, &data[..size]);
-                    }
-                    Ok(VcpuExit::MmioRead { address, size }) => {
-                        let mut data = [0; 8];
-                        mmio_bus.read(address, &mut data[..size]);
-                        // Setting data for mmio can not fail.
-                        let _ = vcpu.set_data(&data[..size]);
-                    }
-                    Ok(VcpuExit::MmioWrite {
-                        address,
-                        size,
-                        data,
-                    }) => {
-                        mmio_bus.write(address, &data[..size]);
-                    }
-                    Ok(VcpuExit::IoapicEoi { vector }) => {
-                        if let Err(e) = irq_chip.broadcast_eoi(vector) {
-                            error!(
-                                "failed to broadcast eoi {} on vcpu {}: {}",
-                                vector, cpu_id, e
-                            );
-                        }
-                    }
-                    Ok(VcpuExit::Hlt) => break,
-                    Ok(VcpuExit::Shutdown) => break,
-                    Ok(VcpuExit::FailEntry {
-                        hardware_entry_failure_reason,
-                    }) => {
-                        error!("vcpu hw run failure: {:#x}", hardware_entry_failure_reason);
-                        break;
-                    }
-                    Ok(VcpuExit::SystemEvent(_, _)) => break,
-                    Ok(VcpuExit::Debug { .. }) => {
-                        #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-                        {
-                            let msg = VcpuDebugStatusMessage {
-                                cpu: cpu_id as usize,
-                                msg: VcpuDebugStatus::HitBreakPoint,
-                            };
-                            if let Some(ref ch) = to_gdb_channel {
-                                if let Err(e) = ch.send(msg) {
-                                    error!("failed to notify breakpoint to GDB thread: {}", e);
-                                    break;
-                                }
+                // Vcpus may have run a HLT instruction, which puts them into a state other than
+                // VcpuRunState::Runnable. In that case, this call to wait_until_runnable blocks
+                // until either the irqchip receives an interrupt for this vcpu, or until the main
+                // thread kicks this vcpu as a result of some VmControl operation. In most IrqChip
+                // implementations HLT instructions do not make it to crosvm, and thus this is a
+                // no-op that always returns VcpuRunState::Runnable.
+                match irq_chip.wait_until_runnable(&vcpu) {
+                    Ok(VcpuRunState::Runnable) => {}
+                    Ok(VcpuRunState::Interrupted) => interrupted_by_signal = true,
+                    Err(e) => error!(
+                        "error waiting for vcpu {} to become runnable: {}",
+                        cpu_id, e
+                    ),
+                }
+
+                if !interrupted_by_signal {
+                    match vcpu.run(&vcpu_run_handle) {
+                        Ok(VcpuExit::IoIn { port, mut size }) => {
+                            let mut data = [0; 8];
+                            if size > data.len() {
+                                error!("unsupported IoIn size of {} bytes", size);
+                                size = data.len();
                             }
-                            run_mode = VmRunMode::Breakpoint;
+                            io_bus.read(port as u64, &mut data[..size]);
+                            if let Err(e) = vcpu.set_data(&data[..size]) {
+                                error!("failed to set return data for IoIn: {}", e);
+                            }
                         }
-                    }
-                    Ok(r) => warn!("unexpected vcpu exit: {:?}", r),
-                    Err(e) => match e.errno() {
-                        libc::EINTR => interrupted_by_signal = true,
-                        libc::EAGAIN => {}
-                        _ => {
-                            error!("vcpu hit unknown error: {}", e);
+                        Ok(VcpuExit::IoOut {
+                            port,
+                            mut size,
+                            data,
+                        }) => {
+                            if size > data.len() {
+                                error!("unsupported IoOut size of {} bytes", size);
+                                size = data.len();
+                            }
+                            io_bus.write(port as u64, &data[..size]);
+                        }
+                        Ok(VcpuExit::MmioRead { address, size }) => {
+                            let mut data = [0; 8];
+                            mmio_bus.read(address, &mut data[..size]);
+                            // Setting data for mmio can not fail.
+                            let _ = vcpu.set_data(&data[..size]);
+                        }
+                        Ok(VcpuExit::MmioWrite {
+                            address,
+                            size,
+                            data,
+                        }) => {
+                            mmio_bus.write(address, &data[..size]);
+                        }
+                        Ok(VcpuExit::IoapicEoi { vector }) => {
+                            if let Err(e) = irq_chip.broadcast_eoi(vector) {
+                                error!(
+                                    "failed to broadcast eoi {} on vcpu {}: {}",
+                                    vector, cpu_id, e
+                                );
+                            }
+                        }
+                        Ok(VcpuExit::IrqWindowOpen) => {}
+                        Ok(VcpuExit::Hlt) => irq_chip.halted(cpu_id),
+                        Ok(VcpuExit::Shutdown) => break,
+                        Ok(VcpuExit::FailEntry {
+                            hardware_entry_failure_reason,
+                        }) => {
+                            error!("vcpu hw run failure: {:#x}", hardware_entry_failure_reason);
                             break;
                         }
-                    },
+                        Ok(VcpuExit::SystemEvent(_, _)) => break,
+                        Ok(VcpuExit::Debug { .. }) => {
+                            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                            {
+                                let msg = VcpuDebugStatusMessage {
+                                    cpu: cpu_id as usize,
+                                    msg: VcpuDebugStatus::HitBreakPoint,
+                                };
+                                if let Some(ref ch) = to_gdb_channel {
+                                    if let Err(e) = ch.send(msg) {
+                                        error!("failed to notify breakpoint to GDB thread: {}", e);
+                                        break;
+                                    }
+                                }
+                                run_mode = VmRunMode::Breakpoint;
+                            }
+                        }
+                        Ok(r) => warn!("unexpected vcpu exit: {:?}", r),
+                        Err(e) => match e.errno() {
+                            libc::EINTR => interrupted_by_signal = true,
+                            libc::EAGAIN => {}
+                            _ => {
+                                error!("vcpu hit unknown error: {}", e);
+                                break;
+                            }
+                        },
+                    }
                 }
 
                 if interrupted_by_signal {
@@ -2030,7 +2017,9 @@ where
                     }
                 }
 
-                inject_interrupt(&mut irq_chip, &vcpu, cpu_id);
+                if let Err(e) = irq_chip.inject_interrupts(&vcpu) {
+                    error!("failed to inject interrupts for vcpu {}: {}", cpu_id, e);
+                }
             }
         })
         .map_err(Error::SpawnVcpu)
@@ -2282,6 +2271,24 @@ where
     )
 }
 
+/// Signals all running VCPUs to vmexit, sends VmRunMode message to each VCPU channel, and tells
+/// `irq_chip` to stop blocking halted VCPUs. The channel message is set first because both the
+/// signal and the irq_chip kick could cause the VCPU thread to continue through the VCPU run
+/// loop.
+fn kick_all_vcpus(
+    vcpu_handles: &[(JoinHandle<()>, mpsc::Sender<vm_control::VcpuControl>)],
+    irq_chip: &impl IrqChip,
+    run_mode: &VmRunMode,
+) {
+    for (handle, channel) in vcpu_handles {
+        if let Err(e) = channel.send(VcpuControl::RunState(run_mode.clone())) {
+            error!("failed to send VmRunMode: {}", e);
+        }
+        let _ = handle.kill(SIGRTMIN() + 0);
+    }
+    irq_chip.kick_halted_vcpus();
+}
+
 fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + 'static>(
     mut linux: RunnableLinuxVm<V, Vcpu, I>,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
@@ -2462,13 +2469,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                 Token::Suspend => {
                     info!("VM requested suspend");
                     linux.suspend_evt.read().unwrap();
-                    for (handle, channel) in &vcpu_handles {
-                        if let Err(e) = channel.send(VcpuControl::RunState(VmRunMode::Suspending)) {
-                            error!("failed to send VmRunMode: {}", e);
-                        }
-
-                        let _ = handle.kill(SIGRTMIN() + 0);
-                    }
+                    kick_all_vcpus(&vcpu_handles, &linux.irq_chip, &VmRunMode::Suspending);
                 }
                 Token::ChildSignal => {
                     // Print all available siginfo structs, then exit the loop.
@@ -2617,14 +2618,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                                 if other == VmRunMode::Running {
                                                     linux.io_bus.notify_resume();
                                                 }
-                                                for (handle, channel) in &vcpu_handles {
-                                                    if let Err(e) = channel
-                                                        .send(VcpuControl::RunState(other.clone()))
-                                                    {
-                                                        error!("failed to send VmRunMode: {}", e);
-                                                    }
-                                                    let _ = handle.kill(SIGRTMIN() + 0);
-                                                }
+                                                kick_all_vcpus(
+                                                    &vcpu_handles,
+                                                    &linux.irq_chip,
+                                                    &other,
+                                                );
                                             }
                                         }
                                     }
@@ -2777,18 +2775,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
         }
     }
 
-    for (handle, channel) in vcpu_handles {
-        // VCPU threads MUST see the VmRunMode flag, otherwise they may re-enter the VM.
-        if let Err(e) = channel.send(VcpuControl::RunState(VmRunMode::Exiting)) {
-            error!("failed to send VmRunMode: {}", e);
-        }
-        match handle.kill(SIGRTMIN() + 0) {
-            Ok(_) => {
-                if let Err(e) = handle.join() {
-                    error!("failed to join vcpu thread: {:?}", e);
-                }
-            }
-            Err(e) => error!("failed to kill vcpu thread: {}", e),
+    kick_all_vcpus(&vcpu_handles, &linux.irq_chip, &VmRunMode::Exiting);
+    for (handle, _) in vcpu_handles {
+        if let Err(e) = handle.join() {
+            error!("failed to join vcpu thread: {:?}", e);
         }
     }
 

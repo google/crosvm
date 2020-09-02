@@ -12,8 +12,8 @@ use base::Clock;
 use base::FakeClock as Clock;
 use hypervisor::kvm::{KvmVcpu, KvmVm};
 use hypervisor::{
-    IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState, MPState, PicSelect, PicState,
-    PitState, Vcpu, Vm, NUM_IOAPIC_PINS,
+    HypervisorCap, IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState, MPState, PicSelect,
+    PicState, PitState, Vcpu, VcpuX86_64, Vm, VmX86_64, NUM_IOAPIC_PINS,
 };
 use kvm_sys::*;
 use resources::SystemAllocator;
@@ -22,9 +22,10 @@ use base::{error, Error, Event, Result};
 use vm_control::VmIrqRequestSocket;
 
 use crate::irqchip::{
-    Ioapic, IrqEvent, IrqEventIndex, Pic, IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES,
+    Ioapic, IrqEvent, IrqEventIndex, Pic, VcpuRunState, IOAPIC_BASE_ADDRESS,
+    IOAPIC_MEM_LENGTH_BYTES,
 };
-use crate::{Bus, IrqChip, IrqChipX86_64, Pit, PitError};
+use crate::{Bus, IrqChip, IrqChipCap, IrqChipX86_64, Pit, PitError};
 
 /// PIT channel 0 timer is connected to IRQ 0
 const PIT_CHANNEL0_IRQ: u32 = 0;
@@ -170,6 +171,7 @@ fn kvm_dummy_msi_routes() -> Vec<IrqRoute> {
     }
     routes
 }
+
 impl KvmSplitIrqChip {
     /// Construct a new KvmSplitIrqChip.
     pub fn new(vm: KvmVm, num_vcpus: usize, irq_socket: VmIrqRequestSocket) -> Result<Self> {
@@ -235,6 +237,31 @@ impl KvmSplitIrqChip {
             }
         }
         chips
+    }
+
+    /// Return true if there is a pending interrupt for the specified vcpu. For KvmSplitIrqChip
+    /// this calls interrupt_requested on the pic.
+    fn interrupt_requested(&self, vcpu_id: usize) -> bool {
+        // Pic interrupts for the split irqchip only go to vcpu 0
+        if vcpu_id != 0 {
+            return false;
+        }
+        self.pic.lock().interrupt_requested()
+    }
+
+    /// Check if the specified vcpu has any pending interrupts. Returns None for no interrupts,
+    /// otherwise Some(u32) should be the injected interrupt vector. For KvmSplitIrqChip
+    /// this calls get_external_interrupt on the pic.
+    fn get_external_interrupt(&self, vcpu_id: usize) -> Result<Option<u32>> {
+        // Pic interrupts for the split irqchip only go to vcpu 0
+        if vcpu_id != 0 {
+            return Ok(None);
+        }
+        if let Some(vector) = self.pic.lock().get_external_interrupt() {
+            Ok(Some(vector as u32))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -431,30 +458,46 @@ impl IrqChip for KvmSplitIrqChip {
         Ok(())
     }
 
-    /// Return true if there is a pending interrupt for the specified vcpu. For KvmSplitIrqChip
-    /// this calls interrupt_requested on the pic.
-    fn interrupt_requested(&self, vcpu_id: usize) -> bool {
-        // Pic interrupts for the split irqchip only go to vcpu 0
-        if vcpu_id != 0 {
-            return false;
+    /// Injects any pending interrupts for `vcpu`.
+    /// For KvmSplitIrqChip this injects any PIC interrupts on vcpu_id 0.
+    fn inject_interrupts(&self, vcpu: &dyn Vcpu) -> Result<()> {
+        let vcpu: &KvmVcpu = vcpu
+            .downcast_ref()
+            .expect("KvmSplitIrqChip::add_vcpu called with non-KvmVcpu");
+
+        let vcpu_id = vcpu.id();
+        if !self.interrupt_requested(vcpu_id) || !vcpu.ready_for_interrupt() {
+            return Ok(());
         }
-        self.pic.lock().interrupt_requested()
+
+        if let Some(vector) = self.get_external_interrupt(vcpu_id)? {
+            vcpu.interrupt(vector as u32)?;
+        }
+
+        // The second interrupt request should be handled immediately, so ask vCPU to exit as soon as
+        // possible.
+        if self.interrupt_requested(vcpu_id) {
+            vcpu.set_interrupt_window_requested(true);
+        }
+        Ok(())
     }
 
-    /// Check if the specified vcpu has any pending interrupts. Returns None for no interrupts,
-    /// otherwise Some(u32) should be the injected interrupt vector. For KvmSplitIrqChip
-    /// this calls get_external_interrupt on the pic.
-    fn get_external_interrupt(&mut self, vcpu_id: usize) -> Result<Option<u32>> {
-        // Pic interrupts for the split irqchip only go to vcpu 0
-        if vcpu_id != 0 {
-            return Ok(None);
-        }
-        if let Some(vector) = self.pic.lock().get_external_interrupt() {
-            Ok(Some(vector as u32))
-        } else {
-            Ok(None)
-        }
+    /// Notifies the irq chip that the specified VCPU has executed a halt instruction.
+    /// For KvmSplitIrqChip this is a no-op because KVM handles VCPU blocking.
+    fn halted(&self, _vcpu_id: usize) {}
+
+    /// Blocks until `vcpu` is in a runnable state or until interrupted by
+    /// `IrqChip::kick_halted_vcpus`.  Returns `VcpuRunState::Runnable if vcpu is runnable, or
+    /// `VcpuRunState::Interrupted` if the wait was interrupted.
+    /// For KvmSplitIrqChip this is a no-op and always returns Runnable because KVM handles VCPU
+    /// blocking.
+    fn wait_until_runnable(&self, _vcpu: &dyn Vcpu) -> Result<VcpuRunState> {
+        Ok(VcpuRunState::Runnable)
     }
+
+    /// Makes unrunnable VCPUs return immediately from `wait_until_runnable`.
+    /// For KvmSplitIrqChip this is a no-op because KVM handles VCPU blocking.
+    fn kick_halted_vcpus(&self) {}
 
     /// Get the current MP state of the specified VCPU.
     fn get_mp_state(&self, vcpu_id: usize) -> Result<MPState> {
@@ -580,6 +623,16 @@ impl IrqChip for KvmSplitIrqChip {
             });
 
         Ok(())
+    }
+
+    fn check_capability(&self, c: IrqChipCap) -> bool {
+        match c {
+            IrqChipCap::TscDeadlineTimer => self
+                .vm
+                .get_hypervisor()
+                .check_capability(&HypervisorCap::TscDeadlineTimer),
+            IrqChipCap::X2Apic => true,
+        }
     }
 }
 

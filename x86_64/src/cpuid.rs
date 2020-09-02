@@ -6,7 +6,8 @@ use std::arch::x86_64::{__cpuid, __cpuid_count};
 use std::fmt::{self, Display};
 use std::result;
 
-use hypervisor::{HypervisorCap, HypervisorX86_64, VcpuX86_64};
+use devices::{IrqChipCap, IrqChipX86_64};
+use hypervisor::{HypervisorX86_64, VcpuX86_64};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -34,7 +35,8 @@ const EBX_CLFLUSH_SIZE_SHIFT: u32 = 8; // Bytes flushed when executing CLFLUSH.
 const EBX_CPU_COUNT_SHIFT: u32 = 16; // Index of this CPU.
 const EBX_CPUID_SHIFT: u32 = 24; // Index of this CPU.
 const ECX_EPB_SHIFT: u32 = 3; // "Energy Performance Bias" bit.
-const ECX_TSC_DEADLINE_TIMER_SHIFT: u32 = 24; // TSC deadline mode of APIC timer
+const ECX_X2APIC_SHIFT: u32 = 21; // APIC supports extended xAPIC (x2APIC) standard.
+const ECX_TSC_DEADLINE_TIMER_SHIFT: u32 = 24; // TSC deadline mode of APIC timer.
 const ECX_HYPERVISOR_SHIFT: u32 = 31; // Flag to be set when the cpu is running on a hypervisor.
 const EDX_HTT_SHIFT: u32 = 28; // Hyper Threading Enabled.
 const ECX_TOPO_TYPE_SHIFT: u32 = 8; // Topology Level type.
@@ -45,7 +47,7 @@ fn filter_cpuid(
     vcpu_id: usize,
     cpu_count: usize,
     cpuid: &mut hypervisor::CpuId,
-    hypervisor: &dyn HypervisorX86_64,
+    irq_chip: &dyn IrqChipX86_64,
     no_smt: bool,
 ) -> Result<()> {
     let entries = &mut cpuid.cpu_id_entries;
@@ -57,7 +59,12 @@ fn filter_cpuid(
                 if entry.index == 0 {
                     entry.ecx |= 1 << ECX_HYPERVISOR_SHIFT;
                 }
-                if hypervisor.check_capability(&HypervisorCap::TscDeadlineTimer) {
+                if irq_chip.check_capability(IrqChipCap::X2Apic) {
+                    entry.ecx |= 1 << ECX_X2APIC_SHIFT;
+                } else {
+                    entry.ecx &= !(1 << ECX_X2APIC_SHIFT);
+                }
+                if irq_chip.check_capability(IrqChipCap::TscDeadlineTimer) {
                     entry.ecx |= 1 << ECX_TSC_DEADLINE_TIMER_SHIFT;
                 }
                 entry.ebx = (vcpu_id << EBX_CPUID_SHIFT) as u32
@@ -129,6 +136,7 @@ fn filter_cpuid(
 /// * `nrcpus` - The number of vcpus being used by this VM.
 pub fn setup_cpuid(
     hypervisor: &dyn HypervisorX86_64,
+    irq_chip: &dyn IrqChipX86_64,
     vcpu: &dyn VcpuX86_64,
     vcpu_id: usize,
     nrcpus: usize,
@@ -138,7 +146,7 @@ pub fn setup_cpuid(
         .get_supported_cpuid()
         .map_err(Error::GetSupportedCpusFailed)?;
 
-    filter_cpuid(vcpu_id, nrcpus, &mut cpuid, hypervisor, no_smt)?;
+    filter_cpuid(vcpu_id, nrcpus, &mut cpuid, irq_chip, no_smt)?;
 
     vcpu.set_cpuid(&cpuid)
         .map_err(Error::SetSupportedCpusFailed)
@@ -165,7 +173,11 @@ mod tests {
     #[test]
     fn feature_and_vendor_name() {
         let mut cpuid = hypervisor::CpuId::new(2);
-        let hypervisor = hypervisor::kvm::Kvm::new().unwrap();
+        let guest_mem =
+            vm_memory::GuestMemory::new(&[(vm_memory::GuestAddress(0), 0x10000)]).unwrap();
+        let kvm = hypervisor::kvm::Kvm::new().unwrap();
+        let vm = hypervisor::kvm::KvmVm::new(&kvm, guest_mem).unwrap();
+        let irq_chip = devices::KvmKernelIrqChip::new(vm, 1).unwrap();
 
         let entries = &mut cpuid.cpu_id_entries;
         entries.push(CpuIdEntry {
@@ -178,7 +190,7 @@ mod tests {
             edx: 0,
             ..Default::default()
         });
-        assert_eq!(Ok(()), filter_cpuid(1, 2, &mut cpuid, &hypervisor, false));
+        assert_eq!(Ok(()), filter_cpuid(1, 2, &mut cpuid, &irq_chip, false));
 
         let entries = &mut cpuid.cpu_id_entries;
         assert_eq!(entries[0].function, 0);
