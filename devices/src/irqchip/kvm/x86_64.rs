@@ -150,10 +150,6 @@ pub struct KvmSplitIrqChip {
     /// locked the ioapic and the ioapic sends a AddMsiRoute signal to the main thread (which
     /// itself may be busy trying to call service_irq).
     delayed_ioapic_irq_events: Arc<Mutex<Vec<usize>>>,
-    /// Vec of Events that the ioapic will use to trigger interrupts in KVM. This is not
-    /// wrapped in an Arc<Mutex<>> because the Events themselves can be cloned and they will
-    /// not change after the IrqChip is created.
-    irqfds: Vec<Event>,
     /// Array of Events that devices will use to assert ioapic pins.
     irq_events: Arc<Mutex<Vec<Option<IrqEvent>>>>,
 }
@@ -192,15 +188,6 @@ impl KvmSplitIrqChip {
                 },
             )?,
         ));
-        let mut irqfds: Vec<Event> = Vec::with_capacity(NUM_IOAPIC_PINS);
-        let mut irqfds_for_ioapic: Vec<Event> = Vec::with_capacity(NUM_IOAPIC_PINS);
-
-        for i in 0..NUM_IOAPIC_PINS {
-            let evt = Event::new()?;
-            vm.register_irqfd(i as u32, &evt, None)?;
-            irqfds_for_ioapic.push(evt.try_clone()?);
-            irqfds.push(evt);
-        }
 
         let mut chip = KvmSplitIrqChip {
             vm,
@@ -208,9 +195,8 @@ impl KvmSplitIrqChip {
             routes: Arc::new(Mutex::new(Vec::new())),
             pit,
             pic: Arc::new(Mutex::new(Pic::new())),
-            ioapic: Arc::new(Mutex::new(Ioapic::new(irqfds_for_ioapic, irq_socket)?)),
+            ioapic: Arc::new(Mutex::new(Ioapic::new(irq_socket)?)),
             delayed_ioapic_irq_events: Arc::new(Mutex::new(Vec::new())),
-            irqfds,
             irq_events: Arc::new(Mutex::new(Default::default())),
         };
 
@@ -494,10 +480,6 @@ impl IrqChip for KvmSplitIrqChip {
 
     /// Attempt to clone this IrqChip instance.
     fn try_clone(&self) -> Result<Self> {
-        let mut new_irqfds: Vec<Event> = Vec::with_capacity(NUM_IOAPIC_PINS);
-        for i in 0..NUM_IOAPIC_PINS {
-            new_irqfds.push(self.irqfds[i].try_clone()?);
-        }
         Ok(KvmSplitIrqChip {
             vm: self.vm.try_clone()?,
             vcpus: self.vcpus.clone(),
@@ -506,7 +488,6 @@ impl IrqChip for KvmSplitIrqChip {
             pic: self.pic.clone(),
             ioapic: self.ioapic.clone(),
             delayed_ioapic_irq_events: self.delayed_ioapic_irq_events.clone(),
-            irqfds: new_irqfds,
             irq_events: self.irq_events.clone(),
         })
     }
