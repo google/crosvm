@@ -34,12 +34,7 @@ impl AsyncCmdDescMap {
         processing_tag: Option<AsyncCmdTag>,
     ) -> Vec<AsyncCmdResponse> {
         let mut responses = vec![];
-        for tag in self.0.keys() {
-            if let Some(ref t) = processing_tag {
-                if t == tag {
-                    continue;
-                }
-            }
+        for tag in self.0.keys().filter(|&&k| Some(k) != processing_tag) {
             match tag {
                 AsyncCmdTag::Queue { stream_id, .. } if stream_id == target_stream_id => {
                     responses.push(AsyncCmdResponse::from_response(
