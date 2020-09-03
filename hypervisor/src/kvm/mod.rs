@@ -190,11 +190,10 @@ impl KvmVm {
     }
 
     fn create_vcpu(&self, id: usize) -> Result<KvmVcpu> {
-        let id = c_ulong::try_from(id).unwrap();
         let run_mmap_size = self.kvm.get_vcpu_mmap_size()?;
 
         // Safe because we know that our file is a VM fd and we verify the return result.
-        let fd = unsafe { ioctl_with_val(self, KVM_CREATE_VCPU(), id) };
+        let fd = unsafe { ioctl_with_val(self, KVM_CREATE_VCPU(), c_ulong::try_from(id).unwrap()) };
         if fd < 0 {
             return errno_result();
         }
@@ -211,6 +210,7 @@ impl KvmVm {
         Ok(KvmVcpu {
             vm: self.vm.try_clone()?,
             vcpu,
+            id,
             run_mmap,
             vcpu_run_handle_fingerprint: Default::default(),
         })
@@ -570,6 +570,7 @@ impl AsRawDescriptor for KvmVm {
 pub struct KvmVcpu {
     vm: SafeDescriptor,
     vcpu: SafeDescriptor,
+    id: usize,
     run_mmap: MemoryMapping,
     vcpu_run_handle_fingerprint: Arc<AtomicU64>,
 }
@@ -594,6 +595,7 @@ impl Vcpu for KvmVcpu {
         Ok(KvmVcpu {
             vm,
             vcpu,
+            id: self.id,
             run_mmap,
             vcpu_run_handle_fingerprint,
         })
@@ -653,6 +655,10 @@ impl Vcpu for KvmVcpu {
         })?;
 
         Ok(ManuallyDrop::into_inner(vcpu_run_handle))
+    }
+
+    fn id(&self) -> usize {
+        self.id
     }
 
     #[allow(clippy::cast_ptr_alignment)]

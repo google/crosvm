@@ -1701,7 +1701,7 @@ fn inject_interrupt(irq_chip: &mut dyn IrqChipX86_64, vcpu: &dyn VcpuX86_64, vcp
     // The second interrupt request should be handled immediately, so ask vCPU to exit as soon as
     // possible.
     if irq_chip.interrupt_requested(vcpu_id) {
-        vcpu.request_interrupt_window();
+        vcpu.set_interrupt_window_requested(true);
     }
 }
 

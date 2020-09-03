@@ -221,6 +221,9 @@ pub trait Vcpu: downcast_rs::DowncastSync {
     /// `take_run_handle` for this `Vcpu`.
     fn run(&self, run_handle: &VcpuRunHandle) -> Result<VcpuExit>;
 
+    /// Returns the vcpu id.
+    fn id(&self) -> usize;
+
     /// Sets the bit that requests an immediate exit.
     fn set_immediate_exit(&self, exit: bool);
 

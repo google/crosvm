@@ -39,14 +39,18 @@ pub trait VmX86_64: Vm {
 
 /// A wrapper around creating and using a VCPU on x86_64.
 pub trait VcpuX86_64: Vcpu {
-    /// Request the VCPU to exit when it becomes possible to inject interrupts into the guest.
-    fn request_interrupt_window(&self);
+    /// Sets or clears the flag that requests the VCPU to exit when it becomes possible to inject
+    /// interrupts into the guest.
+    fn set_interrupt_window_requested(&self, requested: bool);
 
     /// Checks if we can inject an interrupt into the VCPU.
     fn ready_for_interrupt(&self) -> bool;
 
     /// Injects interrupt vector `irq` into the VCPU.
     fn interrupt(&self, irq: u32) -> Result<()>;
+
+    /// Injects a non-maskable interrupt into the VCPU.
+    fn inject_nmi(&self) -> Result<()>;
 
     /// Gets the VCPU general purpose registers.
     fn get_regs(&self) -> Result<Regs>;
@@ -154,6 +158,10 @@ pub enum DeliveryMode {
     External = 0b111,
 }
 
+// These MSI structures are for Intel's implementation of MSI.  The PCI spec defines most of MSI,
+// but the Intel spec defines the format of messages for raising interrupts.  The PCI spec defines
+// three u32s -- the address, address_high, and data -- but Intel only makes use of the address and
+// data.  The Intel portion of the specification is in Volume 3 section 10.11.
 #[bitfield]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct MsiAddressMessage {
@@ -174,7 +182,8 @@ pub struct MsiDataMessage {
     #[bits = 3]
     pub delivery_mode: DeliveryMode,
     pub reserved: BitField3,
-    pub level: BitField1,
+    #[bits = 1]
+    pub level: Level,
     #[bits = 1]
     pub trigger: TriggerMode,
     pub reserved2: BitField16,
@@ -185,6 +194,14 @@ pub struct MsiDataMessage {
 pub enum DeliveryStatus {
     Idle = 0,
     Pending = 1,
+}
+
+/// The level of a level-triggered interrupt: asserted or deasserted.
+#[bitfield]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Level {
+    Deassert = 0,
+    Assert = 1,
 }
 
 /// Represents a IOAPIC redirection table entry.

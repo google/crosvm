@@ -343,12 +343,12 @@ impl KvmVcpu {
 
 impl VcpuX86_64 for KvmVcpu {
     #[allow(clippy::cast_ptr_alignment)]
-    fn request_interrupt_window(&self) {
+    fn set_interrupt_window_requested(&self, requested: bool) {
         // Safe because we know we mapped enough memory to hold the kvm_run struct because the
         // kernel told us how large it was. The pointer is page aligned so casting to a different
         // type is well defined, hence the clippy allow attribute.
         let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
-        run.request_interrupt_window = 1;
+        run.request_interrupt_window = if requested { 1 } else { 0 };
     }
 
     #[allow(clippy::cast_ptr_alignment)]
@@ -369,6 +369,16 @@ impl VcpuX86_64 for KvmVcpu {
         // safe becuase we allocated the struct and we know the kernel will read
         // exactly the size of the struct
         let ret = unsafe { ioctl_with_ref(self, KVM_INTERRUPT(), &interrupt) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    fn inject_nmi(&self) -> Result<()> {
+        // Safe because we know that our file is a VCPU fd.
+        let ret = unsafe { ioctl(self, KVM_NMI()) };
         if ret == 0 {
             Ok(())
         } else {
