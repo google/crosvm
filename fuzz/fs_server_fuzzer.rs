@@ -41,8 +41,8 @@ fuzz_target!(|data| {
         )
         .unwrap();
 
-        let r = Reader::new(mem, chain.clone()).unwrap();
-        let w = Writer::new(mem, chain).unwrap();
+        let r = Reader::new(mem.clone(), chain.clone()).unwrap();
+        let w = Writer::new(mem.clone(), chain).unwrap();
         fuzz_server(r, w);
     });
 });
