@@ -1714,7 +1714,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                 Ok(())
             }
             Err(e) => {
-                error!("{}", e);
+                error!("crosvm has exited with error: {}", e);
                 Err(())
             }
         },
