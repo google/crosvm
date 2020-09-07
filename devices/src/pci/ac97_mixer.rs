@@ -56,6 +56,7 @@ impl Ac97Mixer {
     /// Reads a word from the register at `offset`.
     pub fn readw(&self, offset: u64) -> u16 {
         match offset {
+            MIXER_RESET_00 => BC_DEDICATED_MIC,
             MIXER_MASTER_VOL_MUTE_02 => self.get_master_reg(),
             MIXER_MIC_VOL_MUTE_0E => self.get_mic_volume(),
             MIXER_PCM_OUT_VOL_MUTE_18 => self.get_pcm_out_volume(),

@@ -8,10 +8,7 @@ use std::fmt::{self, Display};
 use std::os::unix::io::RawFd;
 use std::str::FromStr;
 
-use audio_streams::{
-    shm_streams::{NullShmStreamSource, ShmStreamSource},
-    StreamEffect,
-};
+use audio_streams::shm_streams::{NullShmStreamSource, ShmStreamSource};
 use base::{error, EventFd};
 use libcras::{CrasClient, CrasClientType, CrasSocketType};
 use resources::{Alloc, MmioType, SystemAllocator};
@@ -78,7 +75,6 @@ impl FromStr for Ac97Backend {
 pub struct Ac97Parameters {
     pub backend: Ac97Backend,
     pub capture: bool,
-    pub capture_effects: Vec<StreamEffect>,
 }
 
 pub struct Ac97Dev {
@@ -146,11 +142,6 @@ impl Ac97Dev {
         }
     }
 
-    /// Provides the effect needed in capture stream creation
-    pub fn set_capture_effects(&mut self, effect: Vec<StreamEffect>) {
-        self.bus_master.set_capture_effects(effect);
-    }
-
     fn create_cras_audio_device(params: Ac97Parameters, mem: GuestMemory) -> Result<Self> {
         let mut server = Box::new(
             CrasClient::with_type(CrasSocketType::Unified)
@@ -161,8 +152,7 @@ impl Ac97Dev {
             server.enable_cras_capture();
         }
 
-        let mut cras_audio = Self::new(mem, Ac97Backend::CRAS, server);
-        cras_audio.set_capture_effects(params.capture_effects);
+        let cras_audio = Self::new(mem, Ac97Backend::CRAS, server);
         Ok(cras_audio)
     }
 

@@ -32,6 +32,7 @@
 pub const MIXER_REGS_SIZE: u64 = 0x100;
 pub const MASTER_REGS_SIZE: u64 = 0x400;
 
+pub const MIXER_RESET_00: u64 = 0x00;
 pub const MIXER_MASTER_VOL_MUTE_02: u64 = 0x02;
 pub const MIXER_MIC_VOL_MUTE_0E: u64 = 0x0e;
 pub const MIXER_PCM_OUT_VOL_MUTE_18: u64 = 0x18;
@@ -45,6 +46,9 @@ pub const MIXER_VENDOR_ID2_7E: u64 = 0x7e;
 pub const MIXER_EI_CDAC: u16 = 0x0040; // PCM Center DAC is available.
 pub const MIXER_EI_SDAC: u16 = 0x0080; // PCM Surround DAC is available.
 pub const MIXER_EI_LDAC: u16 = 0x0100; // PCM LFE DAC is available.
+
+// Basic capabilities for MIXER_RESET_00
+pub const BC_DEDICATED_MIC: u16 = 0x0001; /* Dedicated Mic PCM In Channel */
 
 // Bus Master regs from ICH spec:
 // 00h PI_BDBAR PCM In Buffer Descriptor list Base Address Register
@@ -263,5 +267,10 @@ impl Ac97FunctionRegs {
     pub fn move_to_next_buffer(&mut self) {
         self.civ = self.piv;
         self.piv = (self.piv + 1) % 32; // move piv to the next buffer.
+    }
+
+    /// Returns irq status.
+    pub fn has_irq(&self) -> bool {
+        self.sr & self.int_mask() != 0
     }
 }

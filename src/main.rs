@@ -22,8 +22,6 @@ use arch::{
     set_default_serial_parameters, Pstore, SerialHardware, SerialParameters, SerialType,
     VcpuAffinity,
 };
-#[cfg(feature = "audio")]
-use audio_streams::StreamEffect;
 use base::{
     debug, error, getpid, info, kill_process_group, net::UnixSeqpacket, reap_child, syslog,
     validate_raw_fd, warn,
@@ -376,18 +374,6 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
                 ac97_params.capture = v.parse::<bool>().map_err(|e| {
                     argument::Error::Syntax(format!("invalid capture option: {}", e))
                 })?;
-            }
-            "capture_effects" => {
-                ac97_params.capture_effects = v
-                    .split('|')
-                    .map(|val| {
-                        val.parse::<StreamEffect>()
-                            .map_err(|e| argument::Error::InvalidValue {
-                                value: val.to_string(),
-                                expected: e.to_string(),
-                            })
-                    })
-                    .collect::<argument::Result<Vec<_>>>()?;
             }
             _ => {
                 return Err(argument::Error::UnknownArgument(format!(
@@ -2193,23 +2179,8 @@ mod tests {
 
     #[cfg(feature = "audio")]
     #[test]
-    fn parse_ac97_dup_effect_vaild() {
-        parse_ac97_options("backend=cras,capture=true,capture_effects=aec|aec")
-            .expect("parse should have succeded");
-    }
-
-    #[cfg(feature = "audio")]
-    #[test]
-    fn parse_ac97_effect_invaild() {
-        parse_ac97_options("backend=cras,capture=true,capture_effects=abc")
-            .expect_err("parse should have failed");
-    }
-
-    #[cfg(feature = "audio")]
-    #[test]
-    fn parse_ac97_effect_vaild() {
-        parse_ac97_options("backend=cras,capture=true,capture_effects=aec")
-            .expect("parse should have succeded");
+    fn parse_ac97_capture_vaild() {
+        parse_ac97_options("backend=cras,capture=true").expect("parse should have succeded");
     }
 
     #[test]

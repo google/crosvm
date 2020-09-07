@@ -88,6 +88,11 @@ impl Ac97BusMasterRegs {
             _ => DEVICE_INPUT_CHANNEL_COUNT,
         }
     }
+
+    /// Returns whether the irq is set for any one of the bus master function registers.
+    pub fn has_irq(&self) -> bool {
+        self.pi_regs.has_irq() || self.po_regs.has_irq() || self.mc_regs.has_irq()
+    }
 }
 
 // Internal error type used for reporting errors from guest memory reading.
@@ -185,9 +190,7 @@ pub struct Ac97BusMaster {
     // Bookkeeping info for playback and capture stream.
     po_info: AudioThreadInfo,
     pi_info: AudioThreadInfo,
-
-    // Audio effect
-    capture_effects: Vec<StreamEffect>,
+    pmic_info: AudioThreadInfo,
 
     // Audio server used to create playback or capture streams.
     audio_server: Box<dyn ShmStreamSource>,
@@ -207,17 +210,11 @@ impl Ac97BusMaster {
 
             po_info: AudioThreadInfo::new(),
             pi_info: AudioThreadInfo::new(),
-
-            capture_effects: Vec::new(),
+            pmic_info: AudioThreadInfo::new(),
             audio_server,
 
             irq_resample_thread: None,
         }
-    }
-
-    /// Provides the effect needed in capture stream creation.
-    pub fn set_capture_effects(&mut self, effects: Vec<StreamEffect>) {
-        self.capture_effects = effects;
     }
 
     /// Returns any file descriptors that need to be kept open when entering a jail.
@@ -243,12 +240,7 @@ impl Ac97BusMaster {
                 {
                     // Scope for the lock on thread_regs.
                     let regs = thread_regs.lock();
-                    // Check output and input irq
-                    let po_int_mask = regs.func_regs(Ac97Function::Output).int_mask();
-                    let pi_int_mask = regs.func_regs(Ac97Function::Input).int_mask();
-                    if regs.func_regs(Ac97Function::Output).sr & po_int_mask != 0
-                        || regs.func_regs(Ac97Function::Input).sr & pi_int_mask != 0
-                    {
+                    if regs.has_irq() {
                         if let Some(irq_evt) = regs.irq_evt.as_ref() {
                             if let Err(e) = irq_evt.write(1) {
                                 error!("Failed to set the irq from the resample thread: {}.", e);
@@ -369,6 +361,7 @@ impl Ac97BusMaster {
             PO_CR_1B => self.set_cr(Ac97Function::Output, val, mixer),
             MC_CIV_24 => (), // RO
             MC_LVI_25 => self.set_lvi(Ac97Function::Microphone, val),
+            MC_SR_26 => self.set_sr(Ac97Function::Microphone, u16::from(val)),
             MC_PIV_2A => (), // RO
             MC_CR_2B => self.set_cr(Ac97Function::Microphone, val, mixer),
             ACC_SEMA_34 => self.acc_sema = val,
@@ -434,7 +427,7 @@ impl Ac97BusMaster {
             match func {
                 Ac97Function::Input => self.pi_info.thread_semaphore.notify_one(),
                 Ac97Function::Output => self.po_info.thread_semaphore.notify_one(),
-                Ac97Function::Microphone => (),
+                Ac97Function::Microphone => self.pmic_info.thread_semaphore.notify_one(),
             }
         }
     }
@@ -498,6 +491,7 @@ impl Ac97BusMaster {
             // is playing or recording audio.
             if !self.po_info.thread_run.load(Ordering::Relaxed)
                 && !self.pi_info.thread_run.load(Ordering::Relaxed)
+                && !self.pmic_info.thread_run.load(Ordering::Relaxed)
             {
                 self.stop_all_audio();
                 let mut regs = self.regs.lock();
@@ -508,11 +502,17 @@ impl Ac97BusMaster {
         self.regs.lock().glob_cnt = new_glob_cnt;
     }
 
+    fn stream_effects(func: Ac97Function) -> Vec<StreamEffect> {
+        match func {
+            Ac97Function::Microphone => vec![StreamEffect::EchoCancellation],
+            _ => vec![StreamEffect::NoEffect],
+        }
+    }
+
     fn start_audio(&mut self, func: Ac97Function, mixer: &Ac97Mixer) -> AudioResult<()> {
         const AUDIO_THREAD_RTPRIO: u16 = 10; // Matches other cros audio clients.
-
         let (direction, thread_info) = match func {
-            Ac97Function::Microphone => return Ok(()),
+            Ac97Function::Microphone => (StreamDirection::Capture, &mut self.pmic_info),
             Ac97Function::Input => (StreamDirection::Capture, &mut self.pi_info),
             Ac97Function::Output => (StreamDirection::Playback, &mut self.po_info),
         };
@@ -549,7 +549,7 @@ impl Ac97BusMaster {
                 SampleFormat::S16LE,
                 DEVICE_SAMPLE_RATE,
                 buffer_frames,
-                self.capture_effects.as_slice(),
+                &Self::stream_effects(func),
                 self.mem.as_ref(),
                 starting_offsets,
             )
@@ -587,7 +587,7 @@ impl Ac97BusMaster {
 
     fn stop_audio(&mut self, func: Ac97Function) {
         let thread_info = match func {
-            Ac97Function::Microphone => return,
+            Ac97Function::Microphone => &mut self.pmic_info,
             Ac97Function::Input => &mut self.pi_info,
             Ac97Function::Output => &mut self.po_info,
         };
@@ -758,10 +758,6 @@ fn audio_thread(
     // A queue of the pending buffers at the server.
     mut pending_buffers: VecDeque<Option<GuestBuffer>>,
 ) -> AudioResult<()> {
-    if func == Ac97Function::Microphone {
-        return Ok(());
-    }
-
     // Set up picb.
     {
         let mut locked_regs = regs.lock();
@@ -1109,7 +1105,12 @@ mod test {
     }
 
     #[test]
-    fn start_capture() {
+    fn run_capture() {
+        start_capture(Ac97Function::Input);
+        start_capture(Ac97Function::Microphone);
+    }
+
+    fn start_capture(func: Ac97Function) {
         const TIMEOUT: Duration = Duration::from_millis(500);
         const LVI_MASK: u8 = 0x1f; // Five bits for 32 total entries.
         const IOC_MASK: u32 = 0x8000_0000; // Interrupt on completion.
@@ -1124,11 +1125,36 @@ mod test {
         let mut bm = Ac97BusMaster::new(mem.clone(), Box::new(stream_source.clone()));
         let mixer = Ac97Mixer::new();
 
+        let (bdbar_addr, lvi_addr, cr_addr, civ_addr, pcib_addr, sr_addr, int_mask) = match func {
+            Ac97Function::Input => (
+                PI_BDBAR_00,
+                PI_LVI_05,
+                PI_CR_0B,
+                PI_CIV_04,
+                PI_PICB_08,
+                PI_SR_06,
+                GS_PIINT,
+            ),
+            Ac97Function::Microphone => (
+                MC_BDBAR_20,
+                MC_LVI_25,
+                MC_CR_2B,
+                MC_CIV_24,
+                MC_PICB_28,
+                MC_SR_26,
+                GS_MINT,
+            ),
+            _ => {
+                assert!(false, "Invalid Ac97Function.");
+                (0, 0, 0, 0, 0, 0, 0)
+            }
+        };
+
         // Release cold reset.
         bm.writel(GLOB_CNT_2C, 0x0000_0002);
 
         // Setup ping-pong buffers.
-        bm.writel(PI_BDBAR_00, GUEST_ADDR_BASE);
+        bm.writel(bdbar_addr, GUEST_ADDR_BASE);
         for i in 0..num_buffers {
             let pointer_addr = GuestAddress(GUEST_ADDR_BASE as u64 + i as u64 * 8);
             let control_addr = GuestAddress(GUEST_ADDR_BASE as u64 + i as u64 * 8 + 4);
@@ -1138,10 +1164,10 @@ mod test {
                 .expect("Writing guest memory failed.");
         }
 
-        bm.writeb(PI_LVI_05, LVI_MASK, &mixer);
+        bm.writeb(lvi_addr, LVI_MASK, &mixer);
 
         // Start.
-        bm.writeb(PI_CR_0B, CR_IOCE | CR_RPBM, &mixer);
+        bm.writeb(cr_addr, CR_IOCE | CR_RPBM, &mixer);
         // TODO(crbug.com/1086337): Test flakiness in build time.
         // assert_eq!(bm.readw(PI_PICB_08), 0);
 
@@ -1152,55 +1178,55 @@ mod test {
         // server before creating the stream. When we triggered the callback
         // above, that means the first of those buffers was filled, so CIV
         // increments to 1.
-        let civ = bm.readb(PI_CIV_04);
+        let civ = bm.readb(civ_addr);
         assert_eq!(civ, 1);
         std::thread::sleep(Duration::from_millis(20));
-        let picb = bm.readw(PI_PICB_08);
+        let picb = bm.readw(pcib_addr);
         assert!(picb > 0);
-        assert!(bm.readw(PI_SR_06) & SR_DCH == 0); // DMA is running.
+        assert!(bm.readw(sr_addr) & SR_DCH == 0); // DMA is running.
 
         // Trigger 2 callbacks so that we'll move to buffer 3 since at that
         // point we can be certain that buffers 1 and 2 have been captured to.
         assert!(stream.trigger_callback_with_timeout(TIMEOUT));
         assert!(stream.trigger_callback_with_timeout(TIMEOUT));
-        assert_eq!(bm.readb(PI_CIV_04), 3);
+        assert_eq!(bm.readb(civ_addr), 3);
 
-        let civ = bm.readb(PI_CIV_04);
+        let civ = bm.readb(civ_addr);
         // Sets LVI to CIV + 2 to trigger last buffer hit
-        bm.writeb(PI_LVI_05, civ + 2, &mixer);
+        bm.writeb(lvi_addr, civ + 2, &mixer);
         assert!(stream.trigger_callback_with_timeout(TIMEOUT));
         assert!(stream.trigger_callback_with_timeout(TIMEOUT));
         assert!(stream.trigger_callback_with_timeout(TIMEOUT));
-        assert_ne!(bm.readw(PI_SR_06) & SR_LVBCI, 0); // Hit last buffer
-        assert_eq!(bm.readw(PI_SR_06) & SR_DCH, SR_DCH); // DMA stopped because of lack of buffers.
-        assert_eq!(bm.readw(PI_SR_06) & SR_CELV, SR_CELV);
-        assert_eq!(bm.readb(PI_LVI_05), bm.readb(PI_CIV_04));
+        assert_ne!(bm.readw(sr_addr) & SR_LVBCI, 0); // Hit last buffer
+        assert_eq!(bm.readw(sr_addr) & SR_DCH, SR_DCH); // DMA stopped because of lack of buffers.
+        assert_eq!(bm.readw(sr_addr) & SR_CELV, SR_CELV);
+        assert_eq!(bm.readb(lvi_addr), bm.readb(civ_addr));
         assert!(
-            bm.readl(GLOB_STA_30) & GS_PIINT != 0,
-            "PIINT bit should be set."
+            bm.readl(GLOB_STA_30) & int_mask != 0,
+            "int_mask bit should be set."
         );
 
         // Clear the LVB bit
-        bm.writeb(PI_SR_06, SR_LVBCI as u8, &mixer);
-        assert!(bm.readw(PI_SR_06) & SR_LVBCI == 0);
+        bm.writeb(sr_addr, SR_LVBCI as u8, &mixer);
+        assert!(bm.readw(sr_addr) & SR_LVBCI == 0);
         // Reset the LVI to the last buffer and check that playback resumes
-        bm.writeb(PI_LVI_05, LVI_MASK, &mixer);
-        assert!(bm.readw(PI_SR_06) & SR_DCH == 0); // DMA restarts.
-        assert_eq!(bm.readw(PI_SR_06) & SR_CELV, 0);
+        bm.writeb(lvi_addr, LVI_MASK, &mixer);
+        assert!(bm.readw(sr_addr) & SR_DCH == 0); // DMA restarts.
+        assert_eq!(bm.readw(sr_addr) & SR_CELV, 0);
 
-        let restart_civ = bm.readb(PI_CIV_04);
+        let restart_civ = bm.readb(civ_addr);
         assert!(stream.trigger_callback_with_timeout(TIMEOUT));
         assert!(stream.trigger_callback_with_timeout(TIMEOUT));
         assert!(stream.trigger_callback_with_timeout(TIMEOUT));
-        assert_ne!(bm.readb(PI_CIV_04), restart_civ);
+        assert_ne!(bm.readb(civ_addr), restart_civ);
 
         // Stop.
-        bm.writeb(PI_CR_0B, 0, &mixer);
-        assert!(bm.readw(PI_SR_06) & 0x01 != 0); // DMA is not running.
-        bm.writeb(PI_CR_0B, CR_RR, &mixer);
+        bm.writeb(cr_addr, 0, &mixer);
+        assert!(bm.readw(sr_addr) & 0x01 != 0); // DMA is not running.
+        bm.writeb(cr_addr, CR_RR, &mixer);
         assert!(
-            bm.readl(GLOB_STA_30) & GS_PIINT == 0,
-            "PIINT bit should be disabled."
+            bm.readl(GLOB_STA_30) & int_mask == 0,
+            "int_mask bit should be disabled."
         );
     }
 }
