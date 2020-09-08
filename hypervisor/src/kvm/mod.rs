@@ -529,7 +529,7 @@ impl Vm for KvmVm {
     }
 
     fn register_ioevent(
-        &self,
+        &mut self,
         evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
@@ -538,12 +538,17 @@ impl Vm for KvmVm {
     }
 
     fn unregister_ioevent(
-        &self,
+        &mut self,
         evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {
         self.ioeventfd(evt, addr, datamatch, true)
+    }
+
+    fn handle_io_events(&self, _addr: IoEventAddress, _data: &[u8]) -> Result<()> {
+        // KVM delivers IO events in-kernel with ioeventfds, so this is a no-op
+        Ok(())
     }
 
     fn get_pvclock(&self) -> Result<ClockState> {
@@ -674,11 +679,6 @@ impl Vcpu for KvmVcpu {
             KvmVcpu::set_local_immediate_exit(true);
         }
         f
-    }
-
-    fn handle_io_events(&self, _addr: IoEventAddress) -> Result<()> {
-        // KVM delivers IO events in-kernel with ioeventfds, so this is a no-op
-        Ok(())
     }
 
     #[allow(clippy::cast_ptr_alignment)]
@@ -1308,7 +1308,7 @@ mod tests {
     fn register_ioevent() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm).unwrap();
         let evtfd = Event::new().unwrap();
         vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();
@@ -1344,7 +1344,7 @@ mod tests {
     fn unregister_ioevent() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm).unwrap();
         let evtfd = Event::new().unwrap();
         vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();
