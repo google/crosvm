@@ -16,7 +16,7 @@ use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use arch::{Pstore, SerialHardware, SerialParameters};
+use arch::{Pstore, SerialHardware, SerialParameters, VcpuAffinity};
 use devices::virtio::fs::passthrough;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
@@ -162,7 +162,7 @@ impl Default for SharedDir {
 pub struct Config {
     pub vcpu_count: Option<usize>,
     pub rt_cpus: Vec<usize>,
-    pub vcpu_affinity: Vec<usize>,
+    pub vcpu_affinity: Option<VcpuAffinity>,
     pub memory: Option<u64>,
     pub executable_path: Option<Executable>,
     pub android_fstab: Option<PathBuf>,
@@ -215,7 +215,7 @@ impl Default for Config {
         Config {
             vcpu_count: None,
             rt_cpus: Vec::new(),
-            vcpu_affinity: Vec::new(),
+            vcpu_affinity: None,
             memory: None,
             executable_path: None,
             android_fstab: None,

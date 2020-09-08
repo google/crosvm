@@ -56,12 +56,24 @@ pub struct Pstore {
     pub size: u32,
 }
 
+/// Mapping of guest VCPU threads to host CPU cores.
+#[derive(Clone, Debug, PartialEq)]
+pub enum VcpuAffinity {
+    /// All VCPU threads will be pinned to the same set of host CPU cores.
+    Global(Vec<usize>),
+    /// Each VCPU may be pinned to a set of host CPU cores.
+    /// The map key is a guest VCPU index, and the corresponding value is the set of
+    /// host CPU indices that the VCPU thread will be allowed to run on.
+    /// If a VCPU index is not present in the map, its affinity will not be set.
+    PerVcpu(BTreeMap<usize, Vec<usize>>),
+}
+
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
 /// create a `RunnableLinuxVm`.
 pub struct VmComponents {
     pub memory_size: u64,
     pub vcpu_count: usize,
-    pub vcpu_affinity: Vec<usize>,
+    pub vcpu_affinity: Option<VcpuAffinity>,
     pub vm_image: VmImage,
     pub android_fstab: Option<File>,
     pub pstore: Option<Pstore>,
@@ -81,7 +93,7 @@ pub struct RunnableLinuxVm<V: VmArch, I: IrqChipArch<V::Vcpu>> {
     /// If vcpus is None, then it's the responsibility of the vcpu thread to create vcpus.
     /// If it's Some, then `build_vm` already created the vcpus.
     pub vcpus: Option<Vec<V::Vcpu>>,
-    pub vcpu_affinity: Vec<usize>,
+    pub vcpu_affinity: Option<VcpuAffinity>,
     pub irq_chip: I,
     pub has_bios: bool,
     pub io_bus: Bus,

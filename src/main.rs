@@ -6,6 +6,7 @@
 
 pub mod panic_hook;
 
+use std::collections::BTreeMap;
 use std::default::Default;
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -17,7 +18,10 @@ use std::string::String;
 use std::thread::sleep;
 use std::time::Duration;
 
-use arch::{set_default_serial_parameters, Pstore, SerialHardware, SerialParameters, SerialType};
+use arch::{
+    set_default_serial_parameters, Pstore, SerialHardware, SerialParameters, SerialType,
+    VcpuAffinity,
+};
 #[cfg(feature = "audio")]
 use audio_streams::StreamEffect;
 use base::{
@@ -114,6 +118,43 @@ fn parse_cpu_set(s: &str) -> argument::Result<Vec<usize>> {
         }
     }
     Ok(cpuset)
+}
+
+/// Parse a list of guest to host CPU mappings.
+///
+/// Each mapping consists of a single guest CPU index mapped to one or more host CPUs in the form
+/// accepted by `parse_cpu_set`:
+///
+///  `<GUEST-CPU>=<HOST-CPU-SET>[:<GUEST-CPU>=<HOST-CPU-SET>[:...]]`
+fn parse_cpu_affinity(s: &str) -> argument::Result<VcpuAffinity> {
+    if s.contains('=') {
+        let mut affinity_map = BTreeMap::new();
+        for cpu_pair in s.split(':') {
+            let assignment: Vec<&str> = cpu_pair.split('=').collect();
+            if assignment.len() != 2 {
+                return Err(argument::Error::InvalidValue {
+                    value: cpu_pair.to_owned(),
+                    expected: String::from("invalid VCPU assignment syntax"),
+                });
+            }
+            let guest_cpu = assignment[0]
+                .parse()
+                .map_err(|_| argument::Error::InvalidValue {
+                    value: assignment[0].to_owned(),
+                    expected: String::from("CPU index must be a non-negative integer"),
+                })?;
+            let host_cpu_set = parse_cpu_set(assignment[1])?;
+            if affinity_map.insert(guest_cpu, host_cpu_set).is_some() {
+                return Err(argument::Error::InvalidValue {
+                    value: cpu_pair.to_owned(),
+                    expected: String::from("VCPU index must be unique"),
+                });
+            }
+        }
+        Ok(VcpuAffinity::PerVcpu(affinity_map))
+    } else {
+        Ok(VcpuAffinity::Global(parse_cpu_set(s)?))
+    }
 }
 
 #[cfg(feature = "gpu")]
@@ -595,12 +636,12 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 )
         }
         "cpu-affinity" => {
-            if !cfg.vcpu_affinity.is_empty() {
+            if cfg.vcpu_affinity.is_some() {
                 return Err(argument::Error::TooManyArguments(
                     "`cpu-affinity` already given".to_owned(),
                 ));
             }
-            cfg.vcpu_affinity = parse_cpu_set(value.unwrap())?;
+            cfg.vcpu_affinity = Some(parse_cpu_affinity(value.unwrap())?);
         }
         "rt-cpus" => {
             if !cfg.rt_cpus.is_empty() {
@@ -1386,7 +1427,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                                 "PARAMS",
                                 "Extra kernel or plugin command line arguments. Can be given more than once."),
           Argument::short_value('c', "cpus", "N", "Number of VCPUs. (default: 1)"),
-          Argument::value("cpu-affinity", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: no mask)"),
+          Argument::value("cpu-affinity", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on (e.g. 0,1-3,5)
+                              or colon-separated list of assignments of guest to host CPU assignments (e.g. 0=0:1=1:2=2) (default: no mask)"),
           Argument::value("rt-cpus", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)"),
           Argument::short_value('m',
                                 "mem",
@@ -2094,6 +2136,39 @@ mod tests {
     #[test]
     fn parse_cpu_set_extra_comma() {
         parse_cpu_set("0,1,2,").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_cpu_affinity_global() {
+        assert_eq!(
+            parse_cpu_affinity("0,5-7,9").expect("parse failed"),
+            VcpuAffinity::Global(vec![0, 5, 6, 7, 9]),
+        );
+    }
+
+    #[test]
+    fn parse_cpu_affinity_per_vcpu_one_to_one() {
+        let mut expected_map = BTreeMap::new();
+        expected_map.insert(0, vec![0]);
+        expected_map.insert(1, vec![1]);
+        expected_map.insert(2, vec![2]);
+        expected_map.insert(3, vec![3]);
+        assert_eq!(
+            parse_cpu_affinity("0=0:1=1:2=2:3=3").expect("parse failed"),
+            VcpuAffinity::PerVcpu(expected_map),
+        );
+    }
+
+    #[test]
+    fn parse_cpu_affinity_per_vcpu_sets() {
+        let mut expected_map = BTreeMap::new();
+        expected_map.insert(0, vec![0, 1, 2]);
+        expected_map.insert(1, vec![3, 4, 5]);
+        expected_map.insert(2, vec![6, 7, 8]);
+        assert_eq!(
+            parse_cpu_affinity("0=0,1,2:1=3-5:2=6,7-8").expect("parse failed"),
+            VcpuAffinity::PerVcpu(expected_map),
+        );
     }
 
     #[cfg(feature = "audio")]

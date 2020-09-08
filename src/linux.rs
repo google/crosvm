@@ -67,8 +67,8 @@ use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::{Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption};
 use arch::{
-    self, LinuxArch, RunnableLinuxVm, SerialHardware, SerialParameters, VirtioDeviceStub,
-    VmComponents, VmImage,
+    self, LinuxArch, RunnableLinuxVm, SerialHardware, SerialParameters, VcpuAffinity,
+    VirtioDeviceStub, VmComponents, VmImage,
 };
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -2091,6 +2091,11 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
         None => iter::repeat_with(|| None).take(linux.vcpu_count).collect(),
     };
     for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
+        let vcpu_affinity = match linux.vcpu_affinity.clone() {
+            Some(VcpuAffinity::Global(v)) => v,
+            Some(VcpuAffinity::PerVcpu(mut m)) => m.remove(&cpu_id).unwrap_or_default(),
+            None => Default::default(),
+        };
         let handle = run_vcpu(
             cpu_id,
             vcpu,
@@ -2098,7 +2103,7 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
             linux.irq_chip.try_clone().map_err(Error::CloneEventFd)?,
             linux.vcpu_count,
             linux.rt_cpus.contains(&cpu_id),
-            linux.vcpu_affinity.clone(),
+            vcpu_affinity,
             vcpu_thread_barrier.clone(),
             linux.has_bios,
             linux.io_bus.clone(),
