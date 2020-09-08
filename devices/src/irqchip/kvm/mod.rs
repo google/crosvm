@@ -19,7 +19,7 @@ mod aarch64;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use aarch64::*;
 
-use crate::IrqChip;
+use crate::{IrqChip, IrqEventIndex};
 
 /// This IrqChip only works with Kvm so we only implement it for KvmVcpu.
 impl IrqChip for KvmKernelIrqChip {
@@ -38,8 +38,9 @@ impl IrqChip for KvmKernelIrqChip {
         irq: u32,
         irq_event: &Event,
         resample_event: Option<&Event>,
-    ) -> Result<()> {
-        self.vm.register_irqfd(irq, irq_event, resample_event)
+    ) -> Result<Option<IrqEventIndex>> {
+        self.vm.register_irqfd(irq, irq_event, resample_event)?;
+        Ok(None)
     }
 
     /// Unregister an event for a particular GSI.
@@ -65,11 +66,11 @@ impl IrqChip for KvmKernelIrqChip {
         self.vm.set_gsi_routing(&*current_routes)
     }
 
-    /// Return a vector of all registered irq numbers and their associated events.  To be used by
-    /// the main thread to wait for irq events to be triggered.
+    /// Return a vector of all registered irq numbers and their associated events and event
+    /// indices. These should be used by the main thread to wait for irq events.
     /// For the KvmKernelIrqChip, the kernel handles listening to irq events being triggered by
     /// devices, so this function always returns an empty Vec.
-    fn irq_event_tokens(&self) -> Result<Vec<(u32, Event)>> {
+    fn irq_event_tokens(&self) -> Result<Vec<(IrqEventIndex, u32, Event)>> {
         Ok(Vec::new())
     }
 
@@ -85,7 +86,7 @@ impl IrqChip for KvmKernelIrqChip {
     /// Event, then the deassert will only happen after an EOI is broadcast for a vector
     /// associated with the irq line.
     /// This function should never be called on KvmKernelIrqChip.
-    fn service_irq_event(&mut self, _irq: u32) -> Result<()> {
+    fn service_irq_event(&mut self, _event_index: IrqEventIndex) -> Result<()> {
         error!("service_irq_event should never be called for KvmKernelIrqChip");
         Ok(())
     }

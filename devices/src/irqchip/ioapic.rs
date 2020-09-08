@@ -60,8 +60,9 @@ pub struct Ioapic {
     rtc_remote_irr: bool,
     /// Irq events that are used to inject interrupts
     irq_events: Vec<Event>,
-    /// Events that should be triggered on an EOI
-    resample_events: Vec<Option<Event>>,
+    /// Events that should be triggered on an EOI. The outer Vec is indexed by GSI, and the inner
+    /// Vec is an unordered list of registered resample events for the GSI.
+    resample_events: Vec<Vec<Event>>,
     /// Socket used to route MSI irqs
     irq_socket: VmIrqRequestSocket,
 }
@@ -148,7 +149,7 @@ impl Ioapic {
         self.state = *state
     }
 
-    pub fn register_resample_events(&mut self, resample_events: Vec<Option<Event>>) {
+    pub fn register_resample_events(&mut self, resample_events: Vec<Vec<Event>>) {
         self.resample_events = resample_events;
     }
 
@@ -164,12 +165,18 @@ impl Ioapic {
             if self.state.redirect_table[i].get_vector() == vector
                 && self.state.redirect_table[i].get_trigger_mode() == TriggerMode::Level
             {
-                if self.resample_events.get(i).map_or(false, |e| e.is_some()) {
+                if self
+                    .resample_events
+                    .get(i)
+                    .map_or(false, |events| events.len() > 0)
+                {
                     self.service_irq(i, false);
                 }
 
-                if let Some(Some(resample_evt)) = &self.resample_events.get(i) {
-                    resample_evt.write(1).unwrap();
+                if let Some(resample_events) = self.resample_events.get(i) {
+                    for resample_evt in resample_events {
+                        resample_evt.write(1).unwrap();
+                    }
                 }
                 self.state.redirect_table[i].set_remote_irr(false);
             }

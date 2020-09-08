@@ -38,8 +38,8 @@ use devices::virtio::{self, Console, VirtioDevice};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
 use devices::{
-    self, HostBackendDeviceProvider, KvmKernelIrqChip, PciDevice, VfioContainer, VfioDevice,
-    VfioPciDevice, VirtioPciDevice, XhciController,
+    self, HostBackendDeviceProvider, IrqEventIndex, KvmKernelIrqChip, PciDevice, VfioContainer,
+    VfioDevice, VfioPciDevice, VirtioPciDevice, XhciController,
 };
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
 use hypervisor::{HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
@@ -2111,7 +2111,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
         Exit,
         Suspend,
         ChildSignal,
-        IrqFd { gsi: usize },
+        IrqFd { index: IrqEventIndex },
         BalanceMemory,
         BalloonResult,
         VmControlServer,
@@ -2145,9 +2145,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
         .irq_event_tokens()
         .map_err(Error::WaitContextAdd)?;
 
-    for (gsi, evt) in events {
+    for (index, _gsi, evt) in events {
         wait_ctx
-            .add(&evt, Token::IrqFd { gsi: gsi as usize })
+            .add(&evt, Token::IrqFd { index })
             .map_err(Error::WaitContextAdd)?;
     }
 
@@ -2264,9 +2264,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                     }
                     break 'wait;
                 }
-                Token::IrqFd { gsi } => {
-                    if let Err(e) = linux.irq_chip.service_irq_event(gsi as u32) {
-                        error!("failed to signal irq {}: {}", gsi, e);
+                Token::IrqFd { index } => {
+                    if let Err(e) = linux.irq_chip.service_irq_event(index) {
+                        error!("failed to signal irq {}: {}", index, e);
                     }
                 }
                 Token::BalanceMemory => {
@@ -2445,7 +2445,26 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                         request.execute(
                                             |setup| match setup {
                                                 IrqSetup::Event(irq, ev) => {
-                                                    irq_chip.register_irq_event(irq, ev, None)
+                                                    if let Some(event_index) = irq_chip
+                                                        .register_irq_event(irq, ev, None)?
+                                                    {
+                                                        match wait_ctx.add(
+                                                            ev,
+                                                            Token::IrqFd {
+                                                                index: event_index
+                                                            },
+                                                        ) {
+                                                            Err(e) => {
+                                                                warn!("failed to add IrqFd to poll context: {}", e);
+                                                                Err(e)
+                                                            },
+                                                            Ok(_) => {
+                                                                Ok(())
+                                                            }
+                                                        }
+                                                    } else {
+                                                        Ok(())
+                                                    }
                                                 }
                                                 IrqSetup::Route(route) => irq_chip.route_irq(route),
                                             },
@@ -2490,7 +2509,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                 Token::Exit => {}
                 Token::Suspend => {}
                 Token::ChildSignal => {}
-                Token::IrqFd { gsi: _ } => {}
+                Token::IrqFd { index: _ } => {}
                 Token::BalanceMemory => {}
                 Token::BalloonResult => {}
                 Token::VmControlServer => {}

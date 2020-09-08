@@ -19,8 +19,9 @@ use hypervisor::{PicInitState, PicSelect, PicState};
 pub struct Pic {
     // Indicates a pending INTR signal to LINT0 of vCPU, checked by vCPU thread.
     interrupt_request: bool,
-    // Events that need to be triggered when an ISR is cleared
-    resample_events: Vec<Option<Event>>,
+    // Events that need to be triggered when an ISR is cleared. The outer Vec is indexed by GSI,
+    // and the inner Vec is an unordered list of registered resample events for the GSI.
+    resample_events: Vec<Vec<Event>>,
     // Index 0 (aka PicSelect::Primary) is the primary pic, the rest are secondary.
     pics: [PicState; 2],
 }
@@ -154,7 +155,7 @@ impl Pic {
         self.pics[select as usize] = *state;
     }
 
-    pub fn register_resample_events(&mut self, resample_events: Vec<Option<Event>>) {
+    pub fn register_resample_events(&mut self, resample_events: Vec<Vec<Event>>) {
         self.resample_events = resample_events;
     }
 
@@ -370,8 +371,10 @@ impl Pic {
         } else {
             irq + 8
         };
-        if let Some(Some(resample_evt)) = self.resample_events.get(irq as usize) {
-            resample_evt.write(1).unwrap();
+        if let Some(resample_events) = self.resample_events.get(irq as usize) {
+            for resample_evt in resample_events {
+                resample_evt.write(1).unwrap();
+            }
         }
     }
 

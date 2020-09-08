@@ -21,7 +21,9 @@ use resources::SystemAllocator;
 use base::{error, Error, Event, Result};
 use vm_control::VmIrqRequestSocket;
 
-use crate::irqchip::{Ioapic, Pic, IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES};
+use crate::irqchip::{
+    Ioapic, IrqEvent, IrqEventIndex, Pic, IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES,
+};
 use crate::{Bus, IrqChip, IrqChipX86_64, Pit, PitError};
 
 /// PIT channel 0 timer is connected to IRQ 0
@@ -153,9 +155,7 @@ pub struct KvmSplitIrqChip {
     /// not change after the IrqChip is created.
     irqfds: Vec<Event>,
     /// Array of Events that devices will use to assert ioapic pins.
-    irq_events: Arc<Mutex<[Option<Event>; NUM_IOAPIC_PINS]>>,
-    /// Array of Events that should be asserted when the ioapic receives an EOI.
-    resample_events: Arc<Mutex<[Option<Event>; NUM_IOAPIC_PINS]>>,
+    irq_events: Arc<Mutex<Vec<Option<IrqEvent>>>>,
 }
 
 fn kvm_dummy_msi_routes() -> Vec<IrqRoute> {
@@ -212,7 +212,6 @@ impl KvmSplitIrqChip {
             delayed_ioapic_irq_events: Arc::new(Mutex::new(Vec::new())),
             irqfds,
             irq_events: Arc::new(Mutex::new(Default::default())),
-            resample_events: Arc::new(Mutex::new(Default::default())),
         };
 
         // Setup standard x86 irq routes
@@ -300,33 +299,41 @@ impl IrqChip for KvmSplitIrqChip {
         irq: u32,
         irq_event: &Event,
         resample_event: Option<&Event>,
-    ) -> Result<()> {
+    ) -> Result<Option<IrqEventIndex>> {
         if irq < NUM_IOAPIC_PINS as u32 {
-            // safe to index here because irq_events is NUM_IOAPIC_PINS long
-            self.irq_events.lock()[irq as usize] = Some(irq_event.try_clone()?);
-            if let Some(evt) = resample_event {
-                self.resample_events.lock()[irq as usize] = Some(evt.try_clone()?);
+            let mut evt = IrqEvent {
+                gsi: irq,
+                event: irq_event.try_clone()?,
+                resample_event: None,
+            };
+
+            if let Some(resample_event) = resample_event {
+                evt.resample_event = Some(resample_event.try_clone()?);
             }
 
-            Ok(())
+            let mut irq_events = self.irq_events.lock();
+            let index = irq_events.len();
+            irq_events.push(Some(evt));
+            Ok(Some(index))
         } else {
-            self.vm.register_irqfd(irq, irq_event, resample_event)
+            self.vm.register_irqfd(irq, irq_event, resample_event)?;
+            Ok(None)
         }
     }
 
     /// Unregister an event for a particular GSI.
     fn unregister_irq_event(&mut self, irq: u32, irq_event: &Event) -> Result<()> {
         if irq < NUM_IOAPIC_PINS as u32 {
-            match &self.irq_events.lock()[irq as usize] {
-                // We only do something if irq_event is the same as our existing event
-                Some(evt) if evt == irq_event => {
-                    // safe to index here because irq_events is NUM_IOAPIC_PINS long
-                    self.irq_events.lock()[irq as usize] = None;
-                    self.resample_events.lock()[irq as usize] = None;
-                    Ok(())
+            let mut irq_events = self.irq_events.lock();
+            for (index, evt) in irq_events.iter().enumerate() {
+                if let Some(evt) = evt {
+                    if evt.gsi == irq && irq_event.eq(&evt.event) {
+                        irq_events[index] = None;
+                        break;
+                    }
                 }
-                _ => Ok(()),
             }
+            Ok(())
         } else {
             self.vm.unregister_irqfd(irq, irq_event)
         }
@@ -364,13 +371,13 @@ impl IrqChip for KvmSplitIrqChip {
         self.vm.set_gsi_routing(&*msi_routes)
     }
 
-    /// Return a vector of all registered irq numbers and their associated events. To be used by
-    /// the main thread to wait for irq events to be triggered.
-    fn irq_event_tokens(&self) -> Result<Vec<(u32, Event)>> {
-        let mut tokens: Vec<(u32, Event)> = Vec::new();
-        for i in 0..NUM_IOAPIC_PINS {
-            if let Some(evt) = &self.irq_events.lock()[i] {
-                tokens.push((i as u32, evt.try_clone()?));
+    /// Return a vector of all registered irq numbers and their associated events and event
+    /// indices. These should be used by the main thread to wait for irq events.
+    fn irq_event_tokens(&self) -> Result<Vec<(IrqEventIndex, u32, Event)>> {
+        let mut tokens: Vec<(IrqEventIndex, u32, Event)> = Vec::new();
+        for (index, evt) in self.irq_events.lock().iter().enumerate() {
+            if let Some(evt) = evt {
+                tokens.push((index, evt.gsi, evt.event.try_clone()?));
             }
         }
         Ok(tokens)
@@ -402,36 +409,36 @@ impl IrqChip for KvmSplitIrqChip {
     /// attempts to call service_irq on those chips. If the ioapic is unable to be immediately
     /// locked, we add the irq to the delayed_ioapic_irq_events Vec (though we still read
     /// from the Event that triggered the irq event).
-    fn service_irq_event(&mut self, irq: u32) -> Result<()> {
-        if let Some(evt) = &self.irq_events.lock()[irq as usize] {
-            evt.read()?;
-        }
-        let chips = self.routes_to_chips(irq);
+    fn service_irq_event(&mut self, event_index: IrqEventIndex) -> Result<()> {
+        if let Some(evt) = &self.irq_events.lock()[event_index] {
+            evt.event.read()?;
+            let chips = self.routes_to_chips(evt.gsi);
 
-        for (chip, pin) in chips {
-            match chip {
-                IrqSourceChip::PicPrimary | IrqSourceChip::PicSecondary => {
-                    let mut pic = self.pic.lock();
-                    if self.resample_events.lock()[pin as usize].is_some() {
-                        pic.service_irq(pin as u8, true);
-                    } else {
-                        pic.service_irq(pin as u8, true);
-                        pic.service_irq(pin as u8, false);
-                    }
-                }
-                IrqSourceChip::Ioapic => {
-                    if let Ok(mut ioapic) = self.ioapic.try_lock() {
-                        if self.resample_events.lock()[pin as usize].is_some() {
-                            ioapic.service_irq(pin as usize, true);
+            for (chip, pin) in chips {
+                match chip {
+                    IrqSourceChip::PicPrimary | IrqSourceChip::PicSecondary => {
+                        let mut pic = self.pic.lock();
+                        if evt.resample_event.is_some() {
+                            pic.service_irq(pin as u8, true);
                         } else {
-                            ioapic.service_irq(pin as usize, true);
-                            ioapic.service_irq(pin as usize, false);
+                            pic.service_irq(pin as u8, true);
+                            pic.service_irq(pin as u8, false);
                         }
-                    } else {
-                        self.delayed_ioapic_irq_events.lock().push(pin as usize);
                     }
+                    IrqSourceChip::Ioapic => {
+                        if let Ok(mut ioapic) = self.ioapic.try_lock() {
+                            if evt.resample_event.is_some() {
+                                ioapic.service_irq(pin as usize, true);
+                            } else {
+                                ioapic.service_irq(pin as usize, true);
+                                ioapic.service_irq(pin as usize, false);
+                            }
+                        } else {
+                            self.delayed_ioapic_irq_events.lock().push(event_index);
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
 
@@ -501,7 +508,6 @@ impl IrqChip for KvmSplitIrqChip {
             delayed_ioapic_irq_events: self.delayed_ioapic_irq_events.clone(),
             irqfds: new_irqfds,
             irq_events: self.irq_events.clone(),
-            resample_events: self.resample_events.clone(),
         })
     }
 
@@ -534,20 +540,21 @@ impl IrqChip for KvmSplitIrqChip {
 
         // At this point, all of our devices have been created and they have registered their
         // irq events, so we can clone our resample events
-        let mut ioapic_resample_events: Vec<Option<Event>> = Vec::with_capacity(NUM_IOAPIC_PINS);
-        let mut pic_resample_events: Vec<Option<Event>> = Vec::with_capacity(NUM_IOAPIC_PINS);
+        let mut ioapic_resample_events: Vec<Vec<Event>> =
+            (0..NUM_IOAPIC_PINS).map(|_| Vec::new()).collect();
+        let mut pic_resample_events: Vec<Vec<Event>> =
+            (0..NUM_IOAPIC_PINS).map(|_| Vec::new()).collect();
 
-        for i in 0..NUM_IOAPIC_PINS {
-            match &self.resample_events.lock()[i] {
-                Some(e) => {
-                    ioapic_resample_events.push(Some(e.try_clone()?));
-                    pic_resample_events.push(Some(e.try_clone()?));
+        for evt in self.irq_events.lock().iter() {
+            if let Some(evt) = evt {
+                if (evt.gsi as usize) >= NUM_IOAPIC_PINS {
+                    continue;
                 }
-                None => {
-                    ioapic_resample_events.push(None);
-                    pic_resample_events.push(None);
+                if let Some(resample_evt) = &evt.resample_event {
+                    ioapic_resample_events[evt.gsi as usize].push(resample_evt.try_clone()?);
+                    pic_resample_events[evt.gsi as usize].push(resample_evt.try_clone()?);
                 }
-            };
+            }
         }
 
         // Register resample events with the ioapic
@@ -576,19 +583,26 @@ impl IrqChip for KvmSplitIrqChip {
     /// processes each delayed event in the vec each time it's called. If the ioapic is still
     /// locked, we keep the queued irqs for the next time this function is called.
     fn process_delayed_irq_events(&mut self) -> Result<()> {
-        self.delayed_ioapic_irq_events.lock().retain(|&irq| {
-            if let Ok(mut ioapic) = self.ioapic.try_lock() {
-                if self.resample_events.lock()[irq].is_some() {
-                    ioapic.service_irq(irq, true);
+        self.delayed_ioapic_irq_events
+            .lock()
+            .retain(|&event_index| {
+                if let Some(evt) = &self.irq_events.lock()[event_index] {
+                    if let Ok(mut ioapic) = self.ioapic.try_lock() {
+                        if evt.resample_event.is_some() {
+                            ioapic.service_irq(evt.gsi as usize, true);
+                        } else {
+                            ioapic.service_irq(evt.gsi as usize, true);
+                            ioapic.service_irq(evt.gsi as usize, false);
+                        }
+
+                        false
+                    } else {
+                        true
+                    }
                 } else {
-                    ioapic.service_irq(irq, true);
-                    ioapic.service_irq(irq, false);
+                    true
                 }
-                false
-            } else {
-                true
-            }
-        });
+            });
 
         Ok(())
     }
@@ -814,7 +828,7 @@ mod tests {
 
         // there should be one token on a fresh split irqchip, for the pit
         assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0].0, 0);
+        assert_eq!(tokens[0].1, 0);
 
         // register another irq event
         let evt = Event::new().expect("failed to create event");
@@ -827,9 +841,9 @@ mod tests {
 
         // now there should be two tokens
         assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0].0, 0);
-        assert_eq!(tokens[1].0, 6);
-        assert_eq!(tokens[1].1, evt);
+        assert_eq!(tokens[0].1, 0);
+        assert_eq!(tokens[1].1, 6);
+        assert_eq!(tokens[1].2, evt);
     }
 
     #[test]
@@ -849,8 +863,10 @@ mod tests {
         let evt = Event::new().expect("failed to create event");
         let mut resample_evt = Event::new().expect("failed to create event");
 
-        chip.register_irq_event(1, &evt, Some(&resample_evt))
-            .expect("failed to register_irq_event");
+        let evt_index = chip
+            .register_irq_event(1, &evt, Some(&resample_evt))
+            .expect("failed to register_irq_event")
+            .expect("register_irq_event should not return None");
 
         // Once we finalize devices, the pic/pit/ioapic should be attached to io and mmio busses
         chip.finalize_devices(&mut resources, &mut io_bus, &mut mmio_bus)
@@ -888,7 +904,8 @@ mod tests {
 
         // if we assert irq line one, and then get the resulting interrupt, an auto-eoi should
         // occur and cause the resample_event to be written to
-        chip.service_irq_event(1).expect("failed to service irq");
+        chip.service_irq_event(evt_index)
+            .expect("failed to service irq");
 
         assert!(chip.interrupt_requested(0));
         assert_eq!(

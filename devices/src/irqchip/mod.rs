@@ -40,6 +40,14 @@ mod ioapic;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use ioapic::*;
 
+pub type IrqEventIndex = usize;
+
+struct IrqEvent {
+    event: Event,
+    gsi: u32,
+    resample_event: Option<Event>,
+}
+
 /// Trait that abstracts interactions with interrupt controllers.
 ///
 /// Each VM will have one IrqChip instance which is responsible for routing IRQ lines and
@@ -58,7 +66,7 @@ pub trait IrqChip: Send {
         irq: u32,
         irq_event: &Event,
         resample_event: Option<&Event>,
-    ) -> Result<()>;
+    ) -> Result<Option<IrqEventIndex>>;
 
     /// Unregister an event for a particular GSI.
     fn unregister_irq_event(&mut self, irq: u32, irq_event: &Event) -> Result<()>;
@@ -69,9 +77,9 @@ pub trait IrqChip: Send {
     /// Replace all irq routes with the supplied routes
     fn set_irq_routes(&mut self, routes: &[IrqRoute]) -> Result<()>;
 
-    /// Return a vector of all registered irq numbers and their associated events.  To be used by
-    /// the main thread to wait for irq events to be triggered.
-    fn irq_event_tokens(&self) -> Result<Vec<(u32, Event)>>;
+    /// Return a vector of all registered irq numbers and their associated events and event
+    /// indices. These should be used by the main thread to wait for irq events.
+    fn irq_event_tokens(&self) -> Result<Vec<(IrqEventIndex, u32, Event)>>;
 
     /// Either assert or deassert an IRQ line.  Sends to either an interrupt controller, or does
     /// a send_msi if the irq is associated with an MSI.
@@ -81,7 +89,7 @@ pub trait IrqChip: Send {
     /// that triggered the irq event will be read from. If the irq is associated with a resample
     /// Event, then the deassert will only happen after an EOI is broadcast for a vector
     /// associated with the irq line.
-    fn service_irq_event(&mut self, irq: u32) -> Result<()>;
+    fn service_irq_event(&mut self, event_index: IrqEventIndex) -> Result<()>;
 
     /// Broadcast an end of interrupt.
     fn broadcast_eoi(&mut self, vector: u8) -> Result<()>;
