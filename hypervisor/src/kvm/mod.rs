@@ -13,7 +13,7 @@ mod x86_64;
 use x86_64::*;
 
 use std::cell::RefCell;
-use std::cmp::{min, Ordering};
+use std::cmp::{min, Reverse};
 use std::collections::{BTreeMap, BinaryHeap};
 use std::convert::TryFrom;
 use std::mem::{size_of, ManuallyDrop};
@@ -151,31 +151,14 @@ impl Hypervisor for Kvm {
     }
 }
 
-// Used to invert the order when stored in a max-heap.
-#[derive(Copy, Clone, Eq, PartialEq)]
-struct MemSlotOrd(MemSlot);
-
-impl Ord for MemSlotOrd {
-    fn cmp(&self, other: &MemSlotOrd) -> Ordering {
-        // Notice the order is inverted so the lowest magnitude slot has the highest priority in a
-        // max-heap.
-        other.0.cmp(&self.0)
-    }
-}
-
-impl PartialOrd for MemSlotOrd {
-    fn partial_cmp(&self, other: &MemSlotOrd) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 /// A wrapper around creating and using a KVM VM.
 pub struct KvmVm {
     kvm: Kvm,
     vm: SafeDescriptor,
     guest_mem: GuestMemory,
     mem_regions: Arc<Mutex<BTreeMap<MemSlot, Box<dyn MappedRegion>>>>,
-    mem_slot_gaps: Arc<Mutex<BinaryHeap<MemSlotOrd>>>,
+    /// A min heap of MemSlot numbers that were used and then removed and can now be re-used
+    mem_slot_gaps: Arc<Mutex<BinaryHeap<Reverse<MemSlot>>>>,
 }
 
 impl KvmVm {
@@ -468,7 +451,7 @@ impl Vm for KvmVm {
         };
 
         if let Err(e) = res {
-            gaps.push(MemSlotOrd(slot));
+            gaps.push(Reverse(slot));
             return Err(e);
         }
         regions.insert(slot, mem);
@@ -496,7 +479,7 @@ impl Vm for KvmVm {
         unsafe {
             set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut())?;
         }
-        self.mem_slot_gaps.lock().push(MemSlotOrd(slot));
+        self.mem_slot_gaps.lock().push(Reverse(slot));
         // This remove will always succeed because of the contains_key check above.
         Ok(regions.remove(&slot).unwrap())
     }
