@@ -332,6 +332,14 @@ impl From<fuse::InHeader> for Context {
     }
 }
 
+/// A trait for iterating over the contents of a directory. This trait is needed because rust
+/// doesn't support generic associated types, which means that it's not possible to implement a
+/// regular iterator that yields a `DirEntry` due to its generic lifetime parameter.
+pub trait DirectoryIterator {
+    /// Returns the next entry in the directory or `None` if there are no more.
+    fn next(&mut self) -> Option<DirEntry>;
+}
+
 /// The main trait that connects a file system with a transport.
 #[allow(unused_variables)]
 pub trait FileSystem {
@@ -361,6 +369,10 @@ pub trait FileSystem {
 
     /// Represents a file or directory that is open for reading/writing.
     type Handle: From<u64> + Into<u64>;
+
+    /// An iterator over the entries of a directory. See the documentation for `readdir` for more
+    /// details.
+    type DirIter: DirectoryIterator;
 
     /// Initialize the file system.
     ///
@@ -960,59 +972,14 @@ pub trait FileSystem {
     /// The lookup count for `Inode`s associated with the returned directory entries is **NOT**
     /// affected by this method.
     ///
-    // TODO(chirantan): Change method signature to return `Iterator<DirEntry>` rather than using an
-    // `FnMut` for adding entries.
-    fn readdir<F>(
+    fn readdir(
         &self,
         ctx: Context,
         inode: Self::Inode,
         handle: Self::Handle,
         size: u32,
         offset: u64,
-        add_entry: F,
-    ) -> io::Result<()>
-    where
-        F: FnMut(DirEntry) -> io::Result<usize>,
-    {
-        Err(io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Read a directory with entry attributes.
-    ///
-    /// Like `readdir` but also includes the attributes for each directory entry.
-    ///
-    /// `handle` is the `Handle` returned by the file system from the `opendir` method, if any. If
-    /// the file system did not return a `Handle` from `opendir` then the contents of `handle` are
-    /// undefined.
-    ///
-    /// `size` indicates the maximum number of bytes that should be returned by this method.
-    ///
-    /// Unlike `readdir`, the lookup count for `Inode`s associated with the returned directory
-    /// entries **IS** affected by this method (since it returns an `Entry` for each `DirEntry`).
-    /// The count for each `Inode` should be increased by 1.
-    ///
-    /// File systems that implement this method should enable the `FsOptions::DO_READDIRPLUS`
-    /// feature when supported by the kernel. The kernel will not call this method unless that
-    /// feature is enabled.
-    ///
-    /// Additionally, file systems that implement both `readdir` and `readdirplus` should enable the
-    /// `FsOptions::READDIRPLUS_AUTO` feature to allow the kernel to issue both `readdir` and
-    /// `readdirplus` requests, depending on how much information is expected to be required.
-    ///
-    /// TODO(chirantan): Change method signature to return `Iterator<(DirEntry, Entry)>` rather than
-    /// using an `FnMut` for adding entries.
-    fn readdirplus<F>(
-        &self,
-        ctx: Context,
-        inode: Self::Inode,
-        handle: Self::Handle,
-        size: u32,
-        offset: u64,
-        add_entry: F,
-    ) -> io::Result<()>
-    where
-        F: FnMut(DirEntry, Entry) -> io::Result<usize>,
-    {
+    ) -> io::Result<Self::DirIter> {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
 

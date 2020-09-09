@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::virtio::fs::filesystem::FileSystem;
+use crate::virtio::fs::filesystem::{DirEntry, DirectoryIterator, FileSystem};
 use crate::virtio::fs::server::Server;
 use crate::virtio::{Reader, Writer};
 
@@ -11,6 +11,14 @@ struct NullFs;
 impl FileSystem for NullFs {
     type Inode = u64;
     type Handle = u64;
+    type DirIter = NullIter;
+}
+
+struct NullIter;
+impl DirectoryIterator for NullIter {
+    fn next(&mut self) -> Option<DirEntry> {
+        None
+    }
 }
 
 /// Fuzz the server implementation.

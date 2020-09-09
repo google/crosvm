@@ -5,14 +5,15 @@
 use std::ffi::CStr;
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::mem::size_of;
+use std::mem::{size_of, MaybeUninit};
+use std::time::Duration;
 
 use base::error;
 use data_model::DataInit;
 
 use crate::virtio::fs::filesystem::{
-    Context, DirEntry, Entry, FileSystem, GetxattrReply, IoctlReply, ListxattrReply,
-    ZeroCopyReader, ZeroCopyWriter,
+    Context, DirEntry, DirectoryIterator, Entry, FileSystem, GetxattrReply, IoctlReply,
+    ListxattrReply, ZeroCopyReader, ZeroCopyWriter,
 };
 use crate::virtio::fs::fuse::*;
 use crate::virtio::fs::{Error, Result};
@@ -845,6 +846,8 @@ impl<F: FileSystem + Sync> Server<F> {
             | FsOptions::HANDLE_KILLPRIV
             | FsOptions::ASYNC_DIO
             | FsOptions::HAS_IOCTL_DIR
+            | FsOptions::DO_READDIRPLUS
+            | FsOptions::READDIRPLUS_AUTO
             | FsOptions::ATOMIC_O_TRUNC;
 
         let capable = FsOptions::from_bits_truncate(flags);
@@ -897,13 +900,7 @@ impl<F: FileSystem + Sync> Server<F> {
         }
     }
 
-    fn do_readdir(
-        &self,
-        in_header: InHeader,
-        mut r: Reader,
-        mut w: Writer,
-        plus: bool,
-    ) -> Result<usize> {
+    fn readdir(&self, in_header: InHeader, mut r: Reader, mut w: Writer) -> Result<usize> {
         let ReadIn {
             fh, offset, size, ..
         } = r.read_obj().map_err(Error::DecodeMessage)?;
@@ -927,49 +924,133 @@ impl<F: FileSystem + Sync> Server<F> {
 
         // Skip over enough bytes for the header.
         let mut cursor = w.split_at(size_of::<OutHeader>());
+        let unique = in_header.unique;
 
-        let res = if plus {
-            self.fs.readdirplus(
-                Context::from(in_header),
-                in_header.nodeid.into(),
-                fh.into(),
-                size,
-                offset,
-                |d, e| add_dirent(&mut cursor, size, d, Some(e)),
-            )
-        } else {
-            self.fs.readdir(
-                Context::from(in_header),
-                in_header.nodeid.into(),
-                fh.into(),
-                size,
-                offset,
-                |d| add_dirent(&mut cursor, size, d, None),
-            )
-        };
-
-        if let Err(e) = res {
-            reply_error(e, in_header.unique, w)
-        } else {
-            // Don't use `reply_ok` because we need to set a custom size length for the
-            // header.
-            let out = OutHeader {
-                len: (size_of::<OutHeader>() + cursor.bytes_written()) as u32,
-                error: 0,
-                unique: in_header.unique,
-            };
-
-            w.write_all(out.as_slice()).map_err(Error::EncodeMessage)?;
-            Ok(out.len as usize)
+        match self.fs.readdir(
+            Context::from(in_header),
+            in_header.nodeid.into(),
+            fh.into(),
+            size,
+            offset,
+        ) {
+            Ok(mut entries) => {
+                while let Some(dirent) = entries.next() {
+                    match add_dirent(&mut cursor, size, dirent, None) {
+                        // No more space left in the buffer.
+                        Ok(0) => break,
+                        Ok(_) => {}
+                        Err(e) => return reply_error(e, unique, w),
+                    }
+                }
+                reply_readdir(cursor.bytes_written(), unique, w)
+            }
+            Err(e) => reply_error(e, unique, w),
         }
     }
 
-    fn readdir(&self, in_header: InHeader, r: Reader, w: Writer) -> Result<usize> {
-        self.do_readdir(in_header, r, w, false)
+    fn handle_dirent<'d>(
+        &self,
+        in_header: &InHeader,
+        dir_entry: DirEntry<'d>,
+    ) -> io::Result<(DirEntry<'d>, Entry)> {
+        let parent = in_header.nodeid.into();
+        let name = dir_entry.name.to_bytes();
+        let entry = if name == b"." || name == b".." {
+            // Don't do lookups on the current directory or the parent directory. Safe because
+            // this only contains integer fields and any value is valid.
+            let mut attr = unsafe { MaybeUninit::<libc::stat64>::zeroed().assume_init() };
+            attr.st_ino = dir_entry.ino;
+            attr.st_mode = dir_entry.type_;
+
+            // We use 0 for the inode value to indicate a negative entry.
+            Entry {
+                inode: 0,
+                generation: 0,
+                attr,
+                attr_timeout: Duration::from_secs(0),
+                entry_timeout: Duration::from_secs(0),
+            }
+        } else {
+            self.fs
+                .lookup(Context::from(*in_header), parent, dir_entry.name)?
+        };
+
+        Ok((dir_entry, entry))
     }
 
-    fn readdirplus(&self, in_header: InHeader, r: Reader, w: Writer) -> Result<usize> {
-        self.do_readdir(in_header, r, w, true)
+    fn readdirplus(&self, in_header: InHeader, mut r: Reader, mut w: Writer) -> Result<usize> {
+        let ReadIn {
+            fh, offset, size, ..
+        } = r.read_obj().map_err(Error::DecodeMessage)?;
+
+        if size > MAX_BUFFER_SIZE {
+            return reply_error(
+                io::Error::from_raw_os_error(libc::ENOMEM),
+                in_header.unique,
+                w,
+            );
+        }
+
+        let available_bytes = w.available_bytes();
+        if available_bytes < size as usize {
+            return reply_error(
+                io::Error::from_raw_os_error(libc::ENOMEM),
+                in_header.unique,
+                w,
+            );
+        }
+
+        // Skip over enough bytes for the header.
+        let mut cursor = w.split_at(size_of::<OutHeader>());
+        let unique = in_header.unique;
+
+        match self.fs.readdir(
+            Context::from(in_header),
+            in_header.nodeid.into(),
+            fh.into(),
+            size,
+            offset,
+        ) {
+            Ok(mut entries) => {
+                while let Some(dirent) = entries.next() {
+                    let mut entry_inode = None;
+                    match self.handle_dirent(&in_header, dirent).and_then(|(d, e)| {
+                        entry_inode = Some(e.inode);
+                        add_dirent(&mut cursor, size, d, Some(e))
+                    }) {
+                        Ok(0) => {
+                            // No more space left in the buffer but we need to undo the lookup
+                            // that created the Entry or we will end up with mismatched lookup
+                            // counts.
+                            if let Some(inode) = entry_inode {
+                                self.fs.forget(Context::from(in_header), inode.into(), 1);
+                            }
+                            break;
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            if let Some(inode) = entry_inode {
+                                self.fs.forget(Context::from(in_header), inode.into(), 1);
+                            }
+
+                            if cursor.bytes_written() == 0 {
+                                // We haven't filled any entries yet so we can just propagate
+                                // the error.
+                                return reply_error(e, unique, w);
+                            }
+
+                            // We already filled in some entries. Returning an error now will
+                            // cause lookup count mismatches for those entries so just return
+                            // whatever we already have.
+                            break;
+                        }
+                    }
+                }
+
+                reply_readdir(cursor.bytes_written(), unique, w)
+            }
+            Err(e) => reply_error(e, unique, w),
+        }
     }
 
     fn releasedir(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
@@ -1323,6 +1404,17 @@ fn finish_ioctl(unique: u64, res: io::Result<Vec<u8>>, w: Writer) -> Result<usiz
         }
     };
     reply_ok(Some(out), data.as_ref().map(|d| &d[..]), unique, w)
+}
+
+fn reply_readdir(len: usize, unique: u64, mut w: Writer) -> Result<usize> {
+    let out = OutHeader {
+        len: (size_of::<OutHeader>() + len) as u32,
+        error: 0,
+        unique,
+    };
+
+    w.write_all(out.as_slice()).map_err(Error::EncodeMessage)?;
+    Ok(out.len as usize)
 }
 
 fn reply_ok<T: DataInit>(

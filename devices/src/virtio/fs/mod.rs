@@ -25,6 +25,7 @@ mod fuse;
 pub mod fuzzing;
 mod multikey;
 pub mod passthrough;
+mod read_dir;
 mod server;
 mod worker;
 

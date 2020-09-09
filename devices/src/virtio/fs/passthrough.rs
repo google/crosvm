@@ -24,11 +24,12 @@ use rand_ish::SimpleRng;
 use sync::Mutex;
 
 use crate::virtio::fs::filesystem::{
-    Context, DirEntry, Entry, FileSystem, FsOptions, GetxattrReply, IoctlFlags, IoctlIovec,
-    IoctlReply, ListxattrReply, OpenOptions, SetattrValid, ZeroCopyReader, ZeroCopyWriter,
+    Context, Entry, FileSystem, FsOptions, GetxattrReply, IoctlFlags, IoctlIovec, IoctlReply,
+    ListxattrReply, OpenOptions, SetattrValid, ZeroCopyReader, ZeroCopyWriter,
 };
 use crate::virtio::fs::fuse;
 use crate::virtio::fs::multikey::MultikeyBTreeMap;
+use crate::virtio::fs::read_dir::ReadDir;
 
 const EMPTY_CSTR: &[u8] = b"\0";
 const ROOT_CSTR: &[u8] = b"/\0";
@@ -99,16 +100,6 @@ struct HandleData {
     inode: Inode,
     file: Mutex<File>,
 }
-
-#[repr(C, packed)]
-#[derive(Clone, Copy, Debug)]
-struct LinuxDirent64 {
-    d_ino: libc::ino64_t,
-    d_off: libc::off64_t,
-    d_reclen: libc::c_ushort,
-    d_ty: libc::c_uchar,
-}
-unsafe impl DataInit for LinuxDirent64 {}
 
 macro_rules! scoped_cred {
     ($name:ident, $ty:ty, $syscall_nr:expr) => {
@@ -305,20 +296,6 @@ fn stat(f: &File) -> io::Result<libc::stat64> {
     } else {
         Err(io::Error::last_os_error())
     }
-}
-
-// Like `CStr::from_bytes_with_nul` but strips any bytes after the first '\0'-byte. Panics if `b`
-// doesn't contain any '\0' bytes.
-fn strip_padding(b: &[u8]) -> &CStr {
-    // It would be nice if we could use memchr here but that's locked behind an unstable gate.
-    let pos = b
-        .iter()
-        .position(|&c| c == 0)
-        .expect("`b` doesn't contain any nul bytes");
-
-    // Safe because we are creating this string with the first nul-byte we found so we can
-    // guarantee that it is nul-terminated and doesn't contain any interior nuls.
-    unsafe { CStr::from_bytes_with_nul_unchecked(&b[..pos + 1]) }
 }
 
 /// The caching policy that the file system should report to the FUSE client. By default the FUSE
@@ -652,21 +629,13 @@ impl PassthroughFs {
         })
     }
 
-    fn do_readdir<F>(
+    fn do_readdir(
         &self,
         inode: Inode,
         handle: Handle,
         size: u32,
         offset: u64,
-        mut add_entry: F,
-    ) -> io::Result<()>
-    where
-        F: FnMut(DirEntry) -> io::Result<usize>,
-    {
-        if size == 0 {
-            return Ok(());
-        }
-
+    ) -> io::Result<ReadDir<Box<[u8]>>> {
         let data = self
             .handles
             .lock()
@@ -678,78 +647,9 @@ impl PassthroughFs {
         let mut buf = Vec::with_capacity(size as usize);
         buf.resize(size as usize, 0);
 
-        {
-            // Since we are going to work with the kernel offset, we have to acquire the file lock
-            // for both the `lseek64` and `getdents64` syscalls to ensure that no other thread
-            // changes the kernel offset while we are using it.
-            let dir = data.file.lock();
+        let dir = data.file.lock();
 
-            // Safe because this doesn't modify any memory and we check the return value.
-            let res =
-                unsafe { libc::lseek64(dir.as_raw_fd(), offset as libc::off64_t, libc::SEEK_SET) };
-            if res < 0 {
-                return Err(io::Error::last_os_error());
-            }
-
-            // Safe because the kernel guarantees that it will only write to `buf` and we check the
-            // return value.
-            let res = unsafe {
-                libc::syscall(
-                    libc::SYS_getdents64,
-                    dir.as_raw_fd(),
-                    buf.as_mut_ptr() as *mut LinuxDirent64,
-                    size as libc::c_int,
-                )
-            };
-            if res < 0 {
-                return Err(io::Error::last_os_error());
-            }
-            buf.resize(res as usize, 0);
-
-            // Explicitly drop the lock so that it's not held while we fill in the fuse buffer.
-            mem::drop(dir);
-        }
-
-        let mut rem = &buf[..];
-        while rem.len() > 0 {
-            // We only use debug asserts here because these values are coming from the kernel and we
-            // trust them implicitly.
-            debug_assert!(
-                rem.len() >= size_of::<LinuxDirent64>(),
-                "not enough space left in `rem`"
-            );
-
-            let (front, back) = rem.split_at(size_of::<LinuxDirent64>());
-
-            let dirent64 =
-                LinuxDirent64::from_slice(front).expect("unable to get LinuxDirent64 from slice");
-
-            let namelen = dirent64.d_reclen as usize - size_of::<LinuxDirent64>();
-            debug_assert!(namelen <= back.len(), "back is smaller than `namelen`");
-
-            // The kernel will pad the name with additional nul bytes until it is 8-byte aligned so
-            // we need to strip those off here.
-            let name = strip_padding(&back[..namelen]);
-            let res = add_entry(DirEntry {
-                ino: dirent64.d_ino,
-                offset: dirent64.d_off as u64,
-                type_: dirent64.d_ty as u32,
-                name,
-            });
-
-            debug_assert!(
-                rem.len() >= dirent64.d_reclen as usize,
-                "rem is smaller than `d_reclen`"
-            );
-
-            match res {
-                Ok(0) => break,
-                Ok(_) => rem = &rem[dirent64.d_reclen as usize..],
-                Err(e) => return Err(e),
-            }
-        }
-
-        Ok(())
+        ReadDir::new(&*dir, offset as libc::off64_t, buf.into_boxed_slice())
     }
 
     fn do_open(&self, inode: Inode, flags: u32) -> io::Result<(Option<Handle>, OpenOptions)> {
@@ -1168,6 +1068,7 @@ fn has_default_posix_acl(path: &CStr) -> io::Result<bool> {
 impl FileSystem for PassthroughFs {
     type Inode = Inode;
     type Handle = Handle;
+    type DirIter = ReadDir<Box<[u8]>>;
 
     fn init(&self, capable: FsOptions) -> io::Result<FsOptions> {
         // Safe because this is a constant value and a valid C string.
@@ -1370,67 +1271,15 @@ impl FileSystem for PassthroughFs {
         self.do_unlink(parent, name, libc::AT_REMOVEDIR)
     }
 
-    fn readdir<F>(
+    fn readdir(
         &self,
         _ctx: Context,
         inode: Inode,
         handle: Handle,
         size: u32,
         offset: u64,
-        add_entry: F,
-    ) -> io::Result<()>
-    where
-        F: FnMut(DirEntry) -> io::Result<usize>,
-    {
-        self.do_readdir(inode, handle, size, offset, add_entry)
-    }
-
-    fn readdirplus<F>(
-        &self,
-        _ctx: Context,
-        inode: Inode,
-        handle: Handle,
-        size: u32,
-        offset: u64,
-        mut add_entry: F,
-    ) -> io::Result<()>
-    where
-        F: FnMut(DirEntry, Entry) -> io::Result<usize>,
-    {
-        self.do_readdir(inode, handle, size, offset, |dir_entry| {
-            let name = dir_entry.name.to_bytes();
-            let entry = if name == b"." || name == b".." {
-                // Don't do lookups on the current directory or the parent directory. Safe because
-                // this only contains integer fields and any value is valid.
-                let mut attr = unsafe { MaybeUninit::<libc::stat64>::zeroed().assume_init() };
-                attr.st_ino = dir_entry.ino;
-                attr.st_mode = dir_entry.type_;
-
-                // We use 0 for the inode value to indicate a negative entry.
-                Entry {
-                    inode: 0,
-                    generation: 0,
-                    attr,
-                    attr_timeout: Duration::from_secs(0),
-                    entry_timeout: Duration::from_secs(0),
-                }
-            } else {
-                self.do_lookup(inode, dir_entry.name)?
-            };
-
-            let entry_inode = entry.inode;
-            add_entry(dir_entry, entry).map_err(|e| {
-                if entry_inode != 0 {
-                    // Undo the `do_lookup` for this inode since we aren't going to report it to
-                    // the kernel. If `entry_inode` was 0 then that means this was the "." or
-                    // ".." entry and there wasn't a lookup in the first place.
-                    let mut inodes = self.inodes.lock();
-                    forget_one(&mut inodes, entry_inode, 1);
-                }
-
-                e
-            })
-        })
+    ) -> io::Result<Self::DirIter> {
+        self.do_readdir(inode, handle, size, offset)
     }
 
     fn open(
@@ -2387,27 +2236,6 @@ mod tests {
     use std::env;
     use std::os::unix::ffi::OsStringExt;
     use std::path::PathBuf;
-
-    #[test]
-    fn padded_cstrings() {
-        assert_eq!(strip_padding(b".\0\0\0\0\0\0\0").to_bytes(), b".");
-        assert_eq!(strip_padding(b"..\0\0\0\0\0\0").to_bytes(), b"..");
-        assert_eq!(
-            strip_padding(b"normal cstring\0").to_bytes(),
-            b"normal cstring"
-        );
-        assert_eq!(strip_padding(b"\0\0\0\0").to_bytes(), b"");
-        assert_eq!(
-            strip_padding(b"interior\0nul bytes\0\0\0").to_bytes(),
-            b"interior"
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "`b` doesn't contain any nul bytes")]
-    fn no_nul_byte() {
-        strip_padding(b"no nul bytes in string");
-    }
 
     #[test]
     fn create_temp_dir() {
