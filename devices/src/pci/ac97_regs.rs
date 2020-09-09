@@ -25,8 +25,13 @@
 // 22h 3D Control
 // 24h AC’97 RESERVED
 // 26h Powerdown Ctrl/Stat
-// 28h Extended Audio
-// 2Ah Extended Audio Ctrl/Stat
+// 28h Extended Audio ID
+// 2Ah Extended Audio Status and Control
+// 2CH PCM Front DAC Rate
+// 2Eh PCM Surr DAC Rate
+// 30h PCM LFE DAC Rate
+// 32h PCM L/R ADC Rate
+// 34h PCM MIC ADC Rate
 
 // Size of IO register regions
 pub const MIXER_REGS_SIZE: u64 = 0x100;
@@ -39,10 +44,15 @@ pub const MIXER_PCM_OUT_VOL_MUTE_18: u64 = 0x18;
 pub const MIXER_REC_VOL_MUTE_1C: u64 = 0x1c;
 pub const MIXER_POWER_DOWN_CONTROL_26: u64 = 0x26;
 pub const MIXER_EXTENDED_AUDIO_ID_28: u64 = 0x28;
+pub const MIXER_EXTENDED_AUDIO_STATUS_CONTROL_28: u64 = 0x2a;
+pub const MIXER_PCM_FRONT_DAC_RATE_2C: u64 = 0x2c;
+pub const MIXER_PCM_SURR_DAC_RATE_2E: u64 = 0x2e;
+pub const MIXER_PCM_LFE_DAC_RATE_30: u64 = 0x30;
 pub const MIXER_VENDOR_ID1_7C: u64 = 0x7c;
 pub const MIXER_VENDOR_ID2_7E: u64 = 0x7e;
 
 // Extended Audio ID Bits.
+pub const MIXER_EI_VRA: u16 = 0x0001; // Variable Rate Audio mode is available.
 pub const MIXER_EI_CDAC: u16 = 0x0040; // PCM Center DAC is available.
 pub const MIXER_EI_SDAC: u16 = 0x0080; // PCM Surround DAC is available.
 pub const MIXER_EI_LDAC: u16 = 0x0100; // PCM LFE DAC is available.

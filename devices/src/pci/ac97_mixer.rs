@@ -8,7 +8,7 @@ use crate::pci::ac97_regs::*;
 const AC97_VENDOR_ID1: u16 = 0x8086;
 const AC97_VENDOR_ID2: u16 = 0x8086;
 // Extented Audio ID
-const AC97_EXTENDED_ID: u16 = MIXER_EI_CDAC | MIXER_EI_SDAC | MIXER_EI_LDAC;
+const AC97_EXTENDED_ID: u16 = MIXER_EI_VRA | MIXER_EI_CDAC | MIXER_EI_SDAC | MIXER_EI_LDAC;
 
 // Master volume register is specified in 1.5dB steps.
 const MASTER_VOLUME_STEP_DB: f64 = 1.5;
@@ -31,6 +31,10 @@ pub struct Ac97Mixer {
     pcm_out_vol_r: u16,
     pcm_out_mute: bool,
     power_down_control: u16,
+    ext_audio_status_ctl: u16,
+    pcm_front_dac_rate: u16,
+    pcm_surr_dac_rate: u16,
+    pcm_lfe_dac_rate: u16,
 }
 
 impl Ac97Mixer {
@@ -50,7 +54,20 @@ impl Ac97Mixer {
             pcm_out_vol_r: 0x8,
             pcm_out_mute: true,
             power_down_control: PD_REG_STATUS_MASK, // Report everything is ready.
+            ext_audio_status_ctl: 0,
+            // Default to 48 kHz.
+            pcm_front_dac_rate: 0xBB80,
+            pcm_surr_dac_rate: 0xBB80,
+            pcm_lfe_dac_rate: 0xBB80,
         }
+    }
+
+    pub fn reset(&mut self) {
+        // Upon reset, the audio sample rate registers default to 48 kHz, and VRA=0.
+        self.ext_audio_status_ctl &= !MIXER_EI_VRA;
+        self.pcm_front_dac_rate = 0xBB80;
+        self.pcm_surr_dac_rate = 0xBB80;
+        self.pcm_lfe_dac_rate = 0xBB80;
     }
 
     /// Reads a word from the register at `offset`.
@@ -65,6 +82,10 @@ impl Ac97Mixer {
             MIXER_EXTENDED_AUDIO_ID_28 => AC97_EXTENDED_ID,
             MIXER_VENDOR_ID1_7C => AC97_VENDOR_ID1,
             MIXER_VENDOR_ID2_7E => AC97_VENDOR_ID2,
+            MIXER_EXTENDED_AUDIO_STATUS_CONTROL_28 => self.ext_audio_status_ctl,
+            MIXER_PCM_FRONT_DAC_RATE_2C => self.pcm_front_dac_rate,
+            MIXER_PCM_SURR_DAC_RATE_2E => self.pcm_surr_dac_rate,
+            MIXER_PCM_LFE_DAC_RATE_30 => self.pcm_lfe_dac_rate,
             _ => 0,
         }
     }
@@ -72,11 +93,16 @@ impl Ac97Mixer {
     /// Writes a word `val` to the register `offset`.
     pub fn writew(&mut self, offset: u64, val: u16) {
         match offset {
+            MIXER_RESET_00 => self.reset(),
             MIXER_MASTER_VOL_MUTE_02 => self.set_master_reg(val),
             MIXER_MIC_VOL_MUTE_0E => self.set_mic_volume(val),
             MIXER_PCM_OUT_VOL_MUTE_18 => self.set_pcm_out_volume(val),
             MIXER_REC_VOL_MUTE_1C => self.set_record_gain_reg(val),
             MIXER_POWER_DOWN_CONTROL_26 => self.set_power_down_reg(val),
+            MIXER_EXTENDED_AUDIO_STATUS_CONTROL_28 => self.ext_audio_status_ctl = val,
+            MIXER_PCM_FRONT_DAC_RATE_2C => self.pcm_front_dac_rate = val,
+            MIXER_PCM_SURR_DAC_RATE_2E => self.pcm_surr_dac_rate = val,
+            MIXER_PCM_LFE_DAC_RATE_30 => self.pcm_lfe_dac_rate = val,
             _ => (),
         }
     }
@@ -88,6 +114,13 @@ impl Ac97Mixer {
             f64::from(self.master_volume_l) * MASTER_VOLUME_STEP_DB,
             f64::from(self.master_volume_r) * MASTER_VOLUME_STEP_DB,
         )
+    }
+
+    /// Returns the front sample rate (reg 0x2c).
+    pub fn get_sample_rate(&self) -> u16 {
+        // MIXER_PCM_FRONT_DAC_RATE_2C, MIXER_PCM_SURR_DAC_RATE_2E, and MIXER_PCM_LFE_DAC_RATE_30
+        // are updated to the same rate when playback with 2,4 and 6 channels.
+        self.pcm_front_dac_rate
     }
 
     // Returns the master mute and l/r volumes (reg 0x02).

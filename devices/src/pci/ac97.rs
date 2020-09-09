@@ -190,7 +190,7 @@ impl Ac97Dev {
         match data.len() {
             1 => data[0] = self.bus_master.readb(offset),
             2 => {
-                let val: u16 = self.bus_master.readw(offset);
+                let val: u16 = self.bus_master.readw(offset, &self.mixer);
                 data[0] = val as u8;
                 data[1] = (val >> 8) as u8;
             }
@@ -217,6 +217,7 @@ impl Ac97Dev {
                     | (u32::from(data[1]) << 8)
                     | (u32::from(data[2]) << 16)
                     | (u32::from(data[3]) << 24),
+                &mut self.mixer,
             ),
             l => error!("write length of {}", l),
         }
