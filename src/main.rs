@@ -1141,6 +1141,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                             })?;
                         shared_dir.cfg.rewrite_security_xattrs = rewrite_security_xattrs;
                     }
+                    "ascii_casefold" => {
+                        let ascii_casefold =
+                            value.parse().map_err(|_| argument::Error::InvalidValue {
+                                value: value.to_owned(),
+                                expected: String::from("`ascii_casefold` must be a boolean"),
+                            })?;
+                        shared_dir.cfg.ascii_casefold = ascii_casefold;
+                    }
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: kind.to_owned(),

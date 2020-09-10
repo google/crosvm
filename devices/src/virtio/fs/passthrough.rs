@@ -24,8 +24,9 @@ use rand_ish::SimpleRng;
 use sync::Mutex;
 
 use crate::virtio::fs::filesystem::{
-    Context, Entry, FileSystem, FsOptions, GetxattrReply, IoctlFlags, IoctlIovec, IoctlReply,
-    ListxattrReply, OpenOptions, SetattrValid, ZeroCopyReader, ZeroCopyWriter,
+    Context, DirectoryIterator, Entry, FileSystem, FsOptions, GetxattrReply, IoctlFlags,
+    IoctlIovec, IoctlReply, ListxattrReply, OpenOptions, SetattrValid, ZeroCopyReader,
+    ZeroCopyWriter,
 };
 use crate::virtio::fs::fuse;
 use crate::virtio::fs::multikey::MultikeyBTreeMap;
@@ -382,6 +383,11 @@ pub struct Config {
     ///
     /// The default value for this option is `false`.
     pub rewrite_security_xattrs: bool,
+
+    /// Use case-insensitive lookups for directory entries (ASCII only).
+    ///
+    /// The default value for this option is `false`.
+    pub ascii_casefold: bool,
 }
 
 impl Default for Config {
@@ -392,6 +398,7 @@ impl Default for Config {
             cache_policy: Default::default(),
             writeback: false,
             rewrite_security_xattrs: false,
+            ascii_casefold: false,
         }
     }
 }
@@ -564,6 +571,33 @@ impl PassthroughFs {
         Ok(unsafe { File::from_raw_fd(fd) })
     }
 
+    // Performs an ascii case insensitive lookup and returns an O_PATH fd for the entry, if found.
+    fn ascii_casefold_lookup(&self, dir: Inode, name: &[u8]) -> io::Result<RawFd> {
+        let parent = self.open_inode(dir, libc::O_RDONLY | libc::O_DIRECTORY)?;
+        let mut buf = [0u8; 1024];
+        let mut offset = 0;
+        loop {
+            let mut read_dir = ReadDir::new(&parent, offset, &mut buf[..])?;
+            if read_dir.remaining() == 0 {
+                break;
+            }
+
+            while let Some(entry) = read_dir.next() {
+                offset = entry.offset as libc::off64_t;
+                if name.eq_ignore_ascii_case(entry.name.to_bytes()) {
+                    return Ok(unsafe {
+                        libc::openat(
+                            parent.as_raw_fd(),
+                            entry.name.as_ptr(),
+                            libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                        )
+                    });
+                }
+            }
+        }
+        Err(io::Error::from_raw_os_error(libc::ENOENT))
+    }
+
     fn do_lookup(&self, parent: Inode, name: &CStr) -> io::Result<Entry> {
         let p = self
             .inodes
@@ -572,13 +606,23 @@ impl PassthroughFs {
             .map(Arc::clone)
             .ok_or_else(ebadf)?;
 
-        // Safe because this doesn't modify any memory and we check the return value.
-        let fd = unsafe {
-            libc::openat(
-                p.file.as_raw_fd(),
-                name.as_ptr(),
-                libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-            )
+        let fd = {
+            // Safe because this doesn't modify any memory and we check the return value.
+            let fd = unsafe {
+                libc::openat(
+                    p.file.as_raw_fd(),
+                    name.as_ptr(),
+                    libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                )
+            };
+
+            if fd < 0 && self.cfg.ascii_casefold {
+                // Ignore any errors during casefold lookup.
+                self.ascii_casefold_lookup(parent, name.to_bytes())
+                    .unwrap_or(fd)
+            } else {
+                fd
+            }
         };
         if fd < 0 {
             return Err(io::Error::last_os_error());
