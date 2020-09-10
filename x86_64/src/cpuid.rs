@@ -84,6 +84,12 @@ fn filter_cpuid(
                 // Clear X86 EPB feature.  No frequency selection in the hypervisor.
                 entry.ecx &= !(1 << ECX_EPB_SHIFT);
             }
+            0xB | 0x1F => {
+                // Extended topology enumeration / V2 Extended topology enumeration
+                // NOTE: these will need to be split if any of the fields that differ between
+                // the two versions are to be set.
+                entry.edx = vcpu_id as u32; // x2APIC ID
+            }
             _ => (),
         }
     }
