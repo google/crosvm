@@ -5,7 +5,7 @@
 //! Implementation of a virtio video decoder device backed by LibVDA.
 
 use std::collections::btree_map::Entry;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use std::fs::File;
 use std::os::unix::io::{AsRawFd, IntoRawFd};
@@ -84,9 +84,14 @@ struct Context {
     // Once we have the way in the virtio-video protocol, we should remove this flag.
     set_output_buffer_count: bool,
 
-    // Reserves output resource that will be used to notify EOS.
-    // This resource must not be enqueued to Chrome.
-    keep_notification_output_buffer: Option<OutputResourceId>,
+    // Store the resource id of the queued output buffers.
+    queued_output_res_ids: BTreeSet<OutputResourceId>,
+
+    // Reserves output resource ID that will be used to notify EOS.
+    // If a guest enqueues a resource with this ID, the resource must not be sent to the host.
+    // Once the value is set, it won't be changed until resolution is changed or a stream is
+    // destroyed.
+    eos_resource_id: Option<OutputResourceId>,
 }
 
 impl Context {
@@ -147,6 +152,10 @@ impl Context {
         }
     }
 
+    fn dequeue_eos_resource_id(&mut self) -> Option<OutputResourceId> {
+        self.queued_output_res_ids.take(&self.eos_resource_id?)
+    }
+
     /*
      * Functions handling libvda events.
      */
@@ -179,7 +188,7 @@ impl Context {
             // Note that rect_width is sometimes smaller.
             frame_width: width as u32,
             frame_height: height as u32,
-            // Adding 1 to `min_buffers` to reserve a resource for `keep_notification_output_buffer`.
+            // Adding 1 to `min_buffers` to reserve a resource for `eos_resource_id`.
             min_buffers: min_num_buffers + 1,
             max_buffers: 32,
             crop: Crop {
@@ -219,7 +228,13 @@ impl Context {
             }
         };
 
-        Some(resource_id)
+        self.queued_output_res_ids.take(&resource_id).or_else(|| {
+            error!(
+                "resource_id {} is not enqueued for stream {:?}",
+                resource_id, self.stream_id
+            );
+            None
+        })
     }
 
     fn handle_notify_end_of_bitstream_buffer(&mut self, bitstream_id: i32) -> Option<ResourceId> {
@@ -540,16 +555,21 @@ impl<'a> Decoder<'a> {
             }
         };
 
-        if ctx.keep_notification_output_buffer.is_none() {
+        if !ctx.queued_output_res_ids.insert(resource_id) {
+            error!("resource_id {} is already enqueued", resource_id);
+            return Err(VideoError::InvalidParameter);
+        }
+        if ctx.eos_resource_id.is_none() {
             // Stores an output buffer to notify EOS.
             // This is necessary because libvda is unable to indicate EOS along
             // with returned buffers.
             // For now, when a `Flush()` completes, this saved resource will be
             // returned as a zero-sized buffer with the EOS flag.
             // TODO(b/149725148): Remove this when libvda supports buffer flags.
-            ctx.keep_notification_output_buffer = Some(resource_id);
-
-            // Don't enqueue this resource to Chrome.
+            ctx.eos_resource_id = Some(resource_id);
+        }
+        if ctx.eos_resource_id == Some(resource_id) {
+            // Don't enqueue this resource to the host.
             return Ok(());
         }
 
@@ -937,9 +957,12 @@ impl<'a> Device for Decoder<'a> {
             FlushResponse(flush_response) => {
                 match flush_response {
                     libvda::decode::Response::Success => {
-                        let eos_resource_id = match ctx.keep_notification_output_buffer.take() {
+                        let eos_resource_id = match ctx.dequeue_eos_resource_id() {
                             Some(r) => r,
                             None => {
+                                // TODO(b/168750131): Instead of trigger error, we should wait for
+                                // the next output buffer enqueued, then dequeue the buffer with
+                                // EOS flag.
                                 error!(
                                     "No EOS resource available on successful flush response (stream id {})",
                                     stream_id);
