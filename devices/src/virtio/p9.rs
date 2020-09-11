@@ -158,7 +158,7 @@ pub struct P9 {
 }
 
 impl P9 {
-    pub fn new<P: AsRef<Path>>(root: P, tag: &str) -> P9Result<P9> {
+    pub fn new<P: AsRef<Path> + Into<Box<Path>>>(root: P, tag: &str) -> P9Result<P9> {
         if tag.len() > ::std::u16::MAX as usize {
             return Err(P9Error::TagTooLong(tag.len()));
         }
@@ -176,7 +176,11 @@ impl P9 {
 
         Ok(P9 {
             config: cfg,
-            server: Some(p9::Server::new(root)),
+            server: Some(p9::Server::new(
+                root,
+                Default::default(),
+                Default::default(),
+            )),
             kill_evt: None,
             avail_features: 1 << VIRTIO_9P_MOUNT_TAG | 1 << VIRTIO_F_VERSION_1,
             acked_features: 0,

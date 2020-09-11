@@ -69,7 +69,6 @@ libcras = "*"
 minijail = "*" # provided by ebuild
 msg_socket = { path = "msg_socket" }
 net_util = { path = "net_util" }
-p9 = { path = "p9" }
 protobuf = { version = "2.3", optional = true }
 protos = { path = "protos", optional = true }
 rand_ish = { path = "rand_ish" }
@@ -98,7 +97,9 @@ data_model = { path = "data_model" }
 libcras = { path = "../../third_party/adhd/cras/client/libcras" } # ignored by ebuild
 libvda = { path = "../../platform2/arc/vm/libvda/rust" } # ignored by ebuild
 minijail = { path = "../../aosp/external/minijail/rust/minijail" } # ignored by ebuild
+p9 = { path = "../../platform2/vm_tools/p9" } # ignored by ebuild
 sync = { path = "sync" }
 syscall_defines = { path = "syscall_defines" }
 sys_util = { path = "sys_util" }
 tempfile = { path = "tempfile" }
+wire_format_derive = { path = "../../platform2/vm_tools/p9/wire_format_derive" } # ignored by ebuild

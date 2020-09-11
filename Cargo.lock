@@ -160,7 +160,6 @@ dependencies = [
  "minijail 0.2.1",
  "msg_socket 0.1.0",
  "net_util 0.1.0",
- "p9 0.1.0",
  "protobuf 2.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "protos 0.1.0",
  "rand_ish 0.1.0",
