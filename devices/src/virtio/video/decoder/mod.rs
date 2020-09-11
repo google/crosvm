@@ -156,6 +156,13 @@ impl Context {
         self.queued_output_res_ids.take(&self.eos_resource_id?)
     }
 
+    fn clear_output_resources(&mut self) {
+        self.res_id_to_frame_buf_id.clear();
+        self.frame_buf_id_to_res_id.clear();
+        self.queued_output_res_ids.clear();
+        self.eos_resource_id = None;
+    }
+
     /*
      * Functions handling libvda events.
      */
@@ -201,6 +208,9 @@ impl Context {
             // No need to set `frame_rate`, as it's only for the encoder.
             ..Default::default()
         };
+
+        // All the output buffers at VDA are dropped. Clear the output resources.
+        self.clear_output_resources();
     }
 
     fn handle_picture_ready(
