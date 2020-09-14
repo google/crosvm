@@ -44,13 +44,6 @@ type FrameBufferId = i32;
 type ResourceHandle = u32;
 type Timestamp = u64;
 
-// Represents queue types of pending Clear commands if exist.
-#[derive(Default)]
-struct PendingClearCmds {
-    input: bool,
-    output: bool,
-}
-
 // Context is associated with one `libvda::Session`, which corresponds to one stream from the
 // virtio-video's point of view.
 #[derive(Default)]
@@ -70,11 +63,6 @@ struct Context {
     frame_buf_id_to_res_id: BTreeMap<FrameBufferId, OutputResourceId>,
 
     keep_resources: Vec<File>,
-
-    // Stores queue types of pending Clear commands if exist.
-    // This is needed because libvda's Reset API clears both queues while virtio-video's Clear is
-    // called for each queue.
-    pending_clear_cmds: PendingClearCmds,
 
     // This is a flag that shows whether libvda's set_output_buffer_count is called.
     // This will be set to true when ResourceCreate for OutputBuffer is called for the first time.
@@ -257,20 +245,6 @@ impl Context {
                 error!("failed to remove a timestamp {}", timestamp);
                 None
             })
-    }
-
-    fn handle_reset_response(&mut self) -> Option<QueueType> {
-        if self.pending_clear_cmds.input {
-            self.pending_clear_cmds.input = false;
-            Some(QueueType::Input)
-        } else if self.pending_clear_cmds.output {
-            self.pending_clear_cmds.output = false;
-
-            Some(QueueType::Output)
-        } else {
-            error!("unexpected ResetResponse");
-            None
-        }
     }
 }
 
@@ -714,27 +688,21 @@ impl<'a> Decoder<'a> {
         let ctx = self.contexts.get_mut(&stream_id)?;
         let session = self.sessions.get(&stream_id)?;
 
-        let pending_clear_cmd = match queue_type {
-            QueueType::Input => &mut ctx.pending_clear_cmds.input,
-            QueueType::Output => &mut ctx.pending_clear_cmds.output,
-        };
-
-        if *pending_clear_cmd {
-            error!("Clear command is already in process");
-            return Err(VideoError::InvalidOperation);
-        }
-
         // TODO(b/153406792): Though QUEUE_CLEAR is defined as a per-queue command in the
-        // specification, Chrome VDA's `reset()` clears both input and output buffers.
-        // So, this code can be a problem when a guest application wants to reset only one
-        // queue by REQBUFS(0).
-        // To handle this problem, we need to
-        // (i) update libvda interface or,
-        // (ii) re-enqueue discarded requests that were pending for the other direction.
-        session.reset().map_err(VideoError::VdaError)?;
-
-        *pending_clear_cmd = true;
-
+        // specification, the VDA's `Reset()` clears the input buffers and may (or may not) drop
+        // output buffers. So, we call it only for input and resets only the crosvm's internal
+        // context for output.
+        // This code can be a problem when a guest application wants to reset only one queue by
+        // REQBUFS(0). To handle this problem correctly, we need to make libvda expose
+        // DismissPictureBuffer() method.
+        match queue_type {
+            QueueType::Input => {
+                session.reset().map_err(VideoError::VdaError)?;
+            }
+            QueueType::Output => {
+                ctx.queued_output_res_ids.clear();
+            }
+        }
         Ok(())
     }
 }
@@ -849,10 +817,10 @@ impl<'a> Device for Decoder<'a> {
                 queue_type,
             } => {
                 self.clear_queue(stream_id, queue_type)?;
-                Ok(Async(AsyncCmdTag::Clear {
-                    stream_id,
-                    queue_type,
-                }))
+                Ok(match queue_type {
+                    QueueType::Input => Async(AsyncCmdTag::Clear { stream_id }),
+                    QueueType::Output => Sync(CmdResponse::NoData),
+                })
             }
         }
     }
@@ -1017,10 +985,7 @@ impl<'a> Device for Decoder<'a> {
                 }
             }
             ResetResponse(reset_response) => {
-                let tag = AsyncCmdTag::Clear {
-                    stream_id,
-                    queue_type: ctx.handle_reset_response()?,
-                };
+                let tag = AsyncCmdTag::Clear { stream_id };
                 match reset_response {
                     libvda::decode::Response::Success => {
                         let mut responses: Vec<_> = desc_map
