@@ -604,7 +604,7 @@ impl<'a> Decoder<'a> {
 
                 // Only a few parameters can be changed by the guest.
                 ctx.in_params.format = params.format;
-                ctx.in_params.plane_formats = params.plane_formats.clone();
+                ctx.in_params.plane_formats = params.plane_formats;
             }
             QueueType::Output => {
                 // The guest cannot update parameters for output queue in the decoder.
