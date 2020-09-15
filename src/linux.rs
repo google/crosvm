@@ -4,6 +4,8 @@
 
 use std::cmp::{max, Reverse};
 use std::convert::TryFrom;
+#[cfg(feature = "gpu")]
+use std::env;
 use std::error::Error as StdError;
 use std::ffi::CStr;
 use std::fmt::{self, Display};
@@ -734,6 +736,29 @@ fn create_gpu_device(
             let drm_dri_path = Path::new("/dev/dri");
             if drm_dri_path.exists() {
                 jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
+            }
+
+            // Prepare GPU shader disk cache directory.
+            if let Some(cache_dir) = cfg
+                .gpu_parameters
+                .as_ref()
+                .and_then(|params| params.cache_path.as_ref())
+            {
+                if cfg!(any(target_arch = "arm", target_arch = "aarch64")) && cfg.sandbox {
+                    warn!("shader caching not yet supported on ARM with sandbox enabled");
+                    env::set_var("MESA_GLSL_CACHE_DISABLE", "true");
+                } else {
+                    env::set_var("MESA_GLSL_CACHE_DIR", cache_dir);
+                    if let Some(cache_size) = cfg
+                        .gpu_parameters
+                        .as_ref()
+                        .and_then(|params| params.cache_size.as_ref())
+                    {
+                        env::set_var("MESA_GLSL_CACHE_MAX_SIZE", cache_size);
+                    }
+                    let shadercache_path = Path::new(cache_dir);
+                    jail.mount_bind(shadercache_path, shadercache_path, true)?;
+                }
             }
 
             // If the ARM specific devices exist on the host, bind mount them in.

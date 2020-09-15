@@ -76,6 +76,8 @@ pub struct GpuParameters {
     #[cfg(feature = "gfxstream")]
     pub gfxstream_support_vulkan: bool,
     pub mode: GpuMode,
+    pub cache_path: Option<String>,
+    pub cache_size: Option<String>,
 }
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
@@ -101,6 +103,8 @@ impl Default for GpuParameters {
             #[cfg(feature = "gfxstream")]
             gfxstream_support_vulkan: true,
             mode: GpuMode::Mode3D,
+            cache_path: None,
+            cache_size: None,
         }
     }
 }

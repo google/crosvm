@@ -71,6 +71,14 @@ stat: 1
 statx: 1
 sysinfo: 1
 
+# Rules for Mesa's shader binary cache.
+flock: 1
+mkdir: 1
+newfstatat: 1
+rename: 1
+setpriority: 1
+unlink: 1
+
 # Rules specific to AMD gpus.
 uname: 1
 sched_setscheduler: 1

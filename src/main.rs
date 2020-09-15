@@ -322,6 +322,8 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                                 ),
                             })?;
                 }
+                "cache-path" => gpu_params.cache_path = Some(v.to_string()),
+                "cache-size" => gpu_params.cache_size = Some(v.to_string()),
                 "" => {}
                 _ => {
                     return Err(argument::Error::UnknownArgument(format!(
