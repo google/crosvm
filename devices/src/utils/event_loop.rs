@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use super::error::{Error, Result};
-use base::{error, warn, EpollContext, EpollEvents, EventFd, PollToken, WatchingEvents};
+use base::{error, warn, EpollContext, EpollEvents, Event, PollToken, WatchingEvents};
 use std::collections::BTreeMap;
 use std::mem::drop;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -60,7 +60,7 @@ pub struct EventLoop {
     fail_handle: Option<Arc<dyn FailHandle>>,
     poll_ctx: Arc<EpollContext<Fd>>,
     handlers: Arc<Mutex<BTreeMap<RawFd, Weak<dyn EventHandler>>>>,
-    stop_evt: EventFd,
+    stop_evt: Event,
 }
 
 /// Interface for event handler.
@@ -74,9 +74,9 @@ impl EventLoop {
         name: String,
         fail_handle: Option<Arc<dyn FailHandle>>,
     ) -> Result<(EventLoop, thread::JoinHandle<()>)> {
-        let (self_stop_evt, stop_evt) = EventFd::new()
+        let (self_stop_evt, stop_evt) = Event::new()
             .and_then(|e| Ok((e.try_clone()?, e)))
-            .map_err(Error::CreateEventFd)?;
+            .map_err(Error::CreateEvent)?;
 
         let fd_callbacks: Arc<Mutex<BTreeMap<RawFd, Weak<dyn EventHandler>>>> =
             Arc::new(Mutex::new(BTreeMap::new()));
@@ -203,13 +203,13 @@ impl EventLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base::EventFd;
+    use base::Event;
     use std::sync::{Arc, Condvar, Mutex};
 
     struct EventLoopTestHandler {
         val: Mutex<u8>,
         cvar: Condvar,
-        evt: EventFd,
+        evt: Event,
     }
 
     impl EventHandler for EventLoopTestHandler {
@@ -224,10 +224,10 @@ mod tests {
     #[test]
     fn event_loop_test() {
         let (l, j) = EventLoop::start("test".to_string(), None).unwrap();
-        let (self_evt, evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+        let (self_evt, evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed creating EventFd pair: {:?}", e);
+                error!("failed creating Event pair: {:?}", e);
                 return;
             }
         };

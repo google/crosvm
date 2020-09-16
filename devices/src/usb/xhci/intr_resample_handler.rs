@@ -4,14 +4,14 @@
 
 use super::interrupter::Interrupter;
 use crate::utils::{EventHandler, EventLoop};
-use base::{error, EventFd, WatchingEvents};
+use base::{error, Event, WatchingEvents};
 use std::sync::Arc;
 use sync::Mutex;
 
 /// Interrupt Resample handler handles resample event. It will reassert interrupt if needed.
 pub struct IntrResampleHandler {
     interrupter: Arc<Mutex<Interrupter>>,
-    resample_evt: EventFd,
+    resample_evt: Event,
 }
 
 impl IntrResampleHandler {
@@ -19,7 +19,7 @@ impl IntrResampleHandler {
     pub fn start(
         event_loop: &EventLoop,
         interrupter: Arc<Mutex<Interrupter>>,
-        resample_evt: EventFd,
+        resample_evt: Event,
     ) -> Option<Arc<IntrResampleHandler>> {
         let handler = Arc::new(IntrResampleHandler {
             interrupter,

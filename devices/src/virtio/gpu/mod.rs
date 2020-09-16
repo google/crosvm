@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use data_model::*;
 
-use base::{debug, error, warn, EventFd, ExternalMapping, PollContext, PollToken};
+use base::{debug, error, warn, Event, ExternalMapping, PollContext, PollToken};
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -896,14 +896,14 @@ impl Frontend {
 
 struct Worker {
     interrupt: Interrupt,
-    exit_evt: EventFd,
+    exit_evt: Event,
     mem: GuestMemory,
     ctrl_queue: Queue,
-    ctrl_evt: EventFd,
+    ctrl_evt: Event,
     cursor_queue: Queue,
-    cursor_evt: EventFd,
+    cursor_evt: Event,
     resource_bridges: Vec<ResourceResponseSocket>,
-    kill_evt: EventFd,
+    kill_evt: Event,
     state: Frontend,
 }
 
@@ -1080,11 +1080,11 @@ impl DisplayBackend {
 }
 
 pub struct Gpu {
-    exit_evt: EventFd,
+    exit_evt: Event,
     gpu_device_socket: Option<VmMemoryControlRequestSocket>,
     resource_bridges: Vec<ResourceResponseSocket>,
     event_devices: Vec<EventDevice>,
-    kill_evt: Option<EventFd>,
+    kill_evt: Option<Event>,
     config_event: bool,
     worker_thread: Option<thread::JoinHandle<()>>,
     num_scanouts: NonZeroU8,
@@ -1100,7 +1100,7 @@ pub struct Gpu {
 
 impl Gpu {
     pub fn new(
-        exit_evt: EventFd,
+        exit_evt: Event,
         gpu_device_socket: Option<VmMemoryControlRequestSocket>,
         num_scanouts: NonZeroU8,
         resource_bridges: Vec<ResourceResponseSocket>,
@@ -1228,7 +1228,7 @@ impl VirtioDevice for Gpu {
         mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
-        mut queue_evts: Vec<EventFd>,
+        mut queue_evts: Vec<Event>,
     ) {
         if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
             return;
@@ -1237,15 +1237,15 @@ impl VirtioDevice for Gpu {
         let exit_evt = match self.exit_evt.try_clone() {
             Ok(e) => e,
             Err(e) => {
-                error!("error cloning exit eventfd: {}", e);
+                error!("error cloning exit event: {}", e);
                 return;
             }
         };
 
-        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("error creating kill EventFd pair: {}", e);
+                error!("error creating kill Event pair: {}", e);
                 return;
             }
         };

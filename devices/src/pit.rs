@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use base::{error, warn, Error as SysError, EventFd, Fd, PollContext, PollToken};
+use base::{error, warn, Error as SysError, Event, Fd, PollContext, PollToken};
 use bit_field::BitField1;
 use bit_field::*;
 use hypervisor::{PitChannelState, PitRWMode, PitRWState, PitState};
@@ -154,10 +154,10 @@ pub enum PitError {
     PollError(SysError),
     /// Error while trying to create worker thread.
     SpawnThread(IoError),
-    /// Error while creating event FD.
-    CreateEventFd(SysError),
-    /// Error while cloning event FD for worker thread.
-    CloneEventFd(SysError),
+    /// Error while creating event.
+    CreateEvent(SysError),
+    /// Error while cloning event for worker thread.
+    CloneEvent(SysError),
 }
 
 impl Display for PitError {
@@ -169,8 +169,8 @@ impl Display for PitError {
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             PollError(err) => write!(f, "failed to poll events: {}", err),
             SpawnThread(err) => write!(f, "failed to spawn thread: {}", err),
-            CreateEventFd(err) => write!(f, "failed to create event fd: {}", err),
-            CloneEventFd(err) => write!(f, "failed to clone event fd: {}", err),
+            CreateEvent(err) => write!(f, "failed to create event: {}", err),
+            CloneEvent(err) => write!(f, "failed to clone event: {}", err),
         }
     }
 }
@@ -186,7 +186,7 @@ pub struct Pit {
     // when timers expire, so it needs asynchronous updates. All other counters need only update
     // when queried directly by the guest.
     worker_thread: Option<thread::JoinHandle<PitResult<()>>>,
-    kill_evt: EventFd,
+    kill_evt: Event,
 }
 
 impl Drop for Pit {
@@ -258,7 +258,7 @@ impl BusDevice for Pit {
 }
 
 impl Pit {
-    pub fn new(interrupt_evt: EventFd, clock: Arc<Mutex<Clock>>) -> PitResult<Pit> {
+    pub fn new(interrupt_evt: Event, clock: Arc<Mutex<Clock>>) -> PitResult<Pit> {
         let mut counters = Vec::new();
         let mut interrupt = Some(interrupt_evt);
         for i in 0..NUM_OF_COUNTERS {
@@ -274,7 +274,7 @@ impl Pit {
         // may not make sense to continue operation.
         assert_eq!(counters.len(), NUM_OF_COUNTERS);
 
-        let kill_evt = EventFd::new().map_err(PitError::CreateEventFd)?;
+        let kill_evt = Event::new().map_err(PitError::CreateEvent)?;
 
         Ok(Pit {
             counters,
@@ -297,7 +297,7 @@ impl Pit {
             pit_counter: self.counters[0].clone(),
             fd: Fd(self.counters[0].lock().timer.as_raw_fd()),
         };
-        let evt = self.kill_evt.try_clone().map_err(PitError::CloneEventFd)?;
+        let evt = self.kill_evt.try_clone().map_err(PitError::CloneEvent)?;
 
         self.worker_thread = Some(
             thread::Builder::new()
@@ -361,8 +361,8 @@ impl Pit {
 // Each instance of this represents one of the PIT counters. They are used to
 // implement one-shot and repeating timer alarms. An 8254 has three counters.
 struct PitCounter {
-    // EventFd to write when asserting an interrupt.
-    interrupt_evt: Option<EventFd>,
+    // Event to write when asserting an interrupt.
+    interrupt_evt: Option<Event>,
     // Stores the value with which the counter was initialized. Counters are 16-
     // bit values with an effective range of 1-65536 (65536 represented by 0).
     reload_value: u16,
@@ -441,7 +441,7 @@ fn get_monotonic_time() -> u64 {
 impl PitCounter {
     fn new(
         counter_id: usize,
-        interrupt_evt: Option<EventFd>,
+        interrupt_evt: Option<Event>,
         clock: Arc<Mutex<Clock>>,
     ) -> PitResult<PitCounter> {
         #[cfg(not(test))]
@@ -907,7 +907,7 @@ struct Worker {
 }
 
 impl Worker {
-    fn run(&mut self, kill_evt: EventFd) -> PitResult<()> {
+    fn run(&mut self, kill_evt: Event) -> PitResult<()> {
         #[derive(PollToken)]
         enum Token {
             // The timer expired.
@@ -940,7 +940,7 @@ mod tests {
     use super::*;
     struct TestData {
         pit: Pit,
-        irqfd: EventFd,
+        irqfd: Event,
         clock: Arc<Mutex<Clock>>,
     }
 
@@ -1002,7 +1002,7 @@ mod tests {
     }
 
     fn set_up() -> TestData {
-        let irqfd = EventFd::new().unwrap();
+        let irqfd = Event::new().unwrap();
         let clock = Arc::new(Mutex::new(Clock::new()));
         TestData {
             pit: Pit::new(irqfd.try_clone().unwrap(), clock.clone()).unwrap(),

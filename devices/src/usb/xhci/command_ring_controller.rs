@@ -15,7 +15,7 @@ use super::xhci_abi::{
 };
 use super::xhci_regs::{valid_slot_id, MAX_SLOTS};
 use crate::utils::EventLoop;
-use base::{error, warn, Error as SysError, EventFd};
+use base::{error, warn, Error as SysError, Event};
 use std::fmt::{self, Display};
 use std::sync::Arc;
 use sync::Mutex;
@@ -23,7 +23,7 @@ use vm_memory::{GuestAddress, GuestMemory};
 
 #[derive(Debug)]
 pub enum Error {
-    WriteEventFd(SysError),
+    WriteEvent(SysError),
     SendInterrupt(InterrupterError),
     CastTrb(TrbError),
     BadSlotId(u8),
@@ -43,7 +43,7 @@ impl Display for Error {
         use self::Error::*;
 
         match self {
-            WriteEventFd(e) => write!(f, "failed to write event fd: {}", e),
+            WriteEvent(e) => write!(f, "failed to write event: {}", e),
             SendInterrupt(e) => write!(f, "failed to send interrupt: {}", e),
             CastTrb(e) => write!(f, "failed to cast trb: {}", e),
             BadSlotId(id) => write!(f, "bad slot id: {}", id),
@@ -96,16 +96,16 @@ impl CommandRingTrbHandler {
         completion_code: TrbCompletionCode,
         slot_id: u8,
         trb_addr: u64,
-        event_fd: &EventFd,
+        event: &Event,
     ) -> Result<()> {
         interrupter
             .lock()
             .send_command_completion_trb(completion_code, slot_id, GuestAddress(trb_addr))
             .map_err(Error::SendInterrupt)?;
-        event_fd.write(1).map_err(Error::WriteEventFd)
+        event.write(1).map_err(Error::WriteEvent)
     }
 
-    fn enable_slot(&self, atrb: &AddressedTrb, event_fd: EventFd) -> Result<()> {
+    fn enable_slot(&self, atrb: &AddressedTrb, event: Event) -> Result<()> {
         for slot_id in 1..=MAX_SLOTS {
             if self.slot(slot_id)?.enable() {
                 return CommandRingTrbHandler::command_completion_callback(
@@ -113,7 +113,7 @@ impl CommandRingTrbHandler {
                     TrbCompletionCode::Success,
                     slot_id,
                     atrb.gpa,
-                    &event_fd,
+                    &event,
                 );
             }
         }
@@ -123,11 +123,11 @@ impl CommandRingTrbHandler {
             TrbCompletionCode::NoSlotsAvailableError,
             0,
             atrb.gpa,
-            &event_fd,
+            &event,
         )
     }
 
-    fn disable_slot(&self, atrb: &AddressedTrb, event_fd: EventFd) -> Result<()> {
+    fn disable_slot(&self, atrb: &AddressedTrb, event: Event) -> Result<()> {
         let trb = atrb
             .trb
             .cast::<DisableSlotCommandTrb>()
@@ -143,7 +143,7 @@ impl CommandRingTrbHandler {
                         completion_code,
                         slot_id,
                         gpa,
-                        &event_fd,
+                        &event,
                     )
                     .map_err(|e| {
                         error!("failed to run command completion callback: {}", e);
@@ -156,12 +156,12 @@ impl CommandRingTrbHandler {
                 TrbCompletionCode::TrbError,
                 slot_id,
                 atrb.gpa,
-                &event_fd,
+                &event,
             )
         }
     }
 
-    fn address_device(&self, atrb: &AddressedTrb, event_fd: EventFd) -> Result<()> {
+    fn address_device(&self, atrb: &AddressedTrb, event: Event) -> Result<()> {
         let trb = atrb
             .trb
             .cast::<AddressDeviceCommandTrb>()
@@ -181,11 +181,11 @@ impl CommandRingTrbHandler {
             completion_code,
             slot_id,
             atrb.gpa,
-            &event_fd,
+            &event,
         )
     }
 
-    fn configure_endpoint(&self, atrb: &AddressedTrb, event_fd: EventFd) -> Result<()> {
+    fn configure_endpoint(&self, atrb: &AddressedTrb, event: Event) -> Result<()> {
         let trb = atrb
             .trb
             .cast::<ConfigureEndpointCommandTrb>()
@@ -205,11 +205,11 @@ impl CommandRingTrbHandler {
             completion_code,
             slot_id,
             atrb.gpa,
-            &event_fd,
+            &event,
         )
     }
 
-    fn evaluate_context(&self, atrb: &AddressedTrb, event_fd: EventFd) -> Result<()> {
+    fn evaluate_context(&self, atrb: &AddressedTrb, event: Event) -> Result<()> {
         let trb = atrb
             .trb
             .cast::<EvaluateContextCommandTrb>()
@@ -229,11 +229,11 @@ impl CommandRingTrbHandler {
             completion_code,
             slot_id,
             atrb.gpa,
-            &event_fd,
+            &event,
         )
     }
 
-    fn reset_device(&self, atrb: &AddressedTrb, event_fd: EventFd) -> Result<()> {
+    fn reset_device(&self, atrb: &AddressedTrb, event: Event) -> Result<()> {
         let trb = atrb
             .trb
             .cast::<ResetDeviceCommandTrb>()
@@ -249,7 +249,7 @@ impl CommandRingTrbHandler {
                         completion_code,
                         slot_id,
                         gpa,
-                        &event_fd,
+                        &event,
                     )
                     .map_err(|e| {
                         error!("command completion callback failed: {}", e);
@@ -262,12 +262,12 @@ impl CommandRingTrbHandler {
                 TrbCompletionCode::TrbError,
                 slot_id,
                 atrb.gpa,
-                &event_fd,
+                &event,
             )
         }
     }
 
-    fn stop_endpoint(&self, atrb: &AddressedTrb, event_fd: EventFd) -> Result<()> {
+    fn stop_endpoint(&self, atrb: &AddressedTrb, event: Event) -> Result<()> {
         let trb = atrb
             .trb
             .cast::<StopEndpointCommandTrb>()
@@ -284,7 +284,7 @@ impl CommandRingTrbHandler {
                         completion_code,
                         slot_id,
                         gpa,
-                        &event_fd,
+                        &event,
                     )
                     .map_err(|e| {
                         error!("command completion callback failed: {}", e);
@@ -299,12 +299,12 @@ impl CommandRingTrbHandler {
                 TrbCompletionCode::TrbError,
                 slot_id,
                 atrb.gpa,
-                &event_fd,
+                &event,
             )
         }
     }
 
-    fn set_tr_dequeue_ptr(&self, atrb: &AddressedTrb, event_fd: EventFd) -> Result<()> {
+    fn set_tr_dequeue_ptr(&self, atrb: &AddressedTrb, event: Event) -> Result<()> {
         let trb = atrb
             .trb
             .cast::<SetTRDequeuePointerCommandTrb>()
@@ -328,7 +328,7 @@ impl CommandRingTrbHandler {
             completion_code,
             slot_id,
             atrb.gpa,
-            &event_fd,
+            &event,
         )
     }
 }
@@ -337,7 +337,7 @@ impl TransferDescriptorHandler for CommandRingTrbHandler {
     fn handle_transfer_descriptor(
         &self,
         descriptor: TransferDescriptor,
-        complete_event: EventFd,
+        complete_event: Event,
     ) -> std::result::Result<(), ()> {
         // Command descriptor always consist of a single TRB.
         assert_eq!(descriptor.len(), 1);
@@ -385,7 +385,7 @@ impl TransferDescriptorHandler for CommandRingTrbHandler {
                     GuestAddress(atrb.gpa),
                 ) {
                     Err(e) => Err(Error::SendInterrupt(e)),
-                    Ok(_) => complete_event.write(1).map_err(Error::WriteEventFd),
+                    Ok(_) => complete_event.write(1).map_err(Error::WriteEvent),
                 }
             }
         };

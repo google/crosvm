@@ -12,7 +12,7 @@ use self::constants::*;
 
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use base::{error, warn, EventFd, PollContext, PollToken};
+use base::{error, warn, Event, PollContext, PollToken};
 use data_model::{DataInit, Le16, Le32};
 use vm_memory::GuestMemory;
 
@@ -447,12 +447,7 @@ impl<T: EventSource> Worker<T> {
         Ok(needs_interrupt)
     }
 
-    fn run(
-        &mut self,
-        event_queue_evt_fd: EventFd,
-        status_queue_evt_fd: EventFd,
-        kill_evt: EventFd,
-    ) {
+    fn run(&mut self, event_queue_evt: Event, status_queue_evt: Event, kill_evt: Event) {
         if let Err(e) = self.event_source.init() {
             error!("failed initializing event source: {}", e);
             return;
@@ -467,8 +462,8 @@ impl<T: EventSource> Worker<T> {
             Kill,
         }
         let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
-            (&event_queue_evt_fd, Token::EventQAvailable),
-            (&status_queue_evt_fd, Token::StatusQAvailable),
+            (&event_queue_evt, Token::EventQAvailable),
+            (&status_queue_evt, Token::StatusQAvailable),
             (&self.event_source, Token::InputEventsAvailable),
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
@@ -493,15 +488,15 @@ impl<T: EventSource> Worker<T> {
             for poll_event in poll_events.iter_readable() {
                 match poll_event.token() {
                     Token::EventQAvailable => {
-                        if let Err(e) = event_queue_evt_fd.read() {
-                            error!("failed reading event queue EventFd: {}", e);
+                        if let Err(e) = event_queue_evt.read() {
+                            error!("failed reading event queue Event: {}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.send_events();
                     }
                     Token::StatusQAvailable => {
-                        if let Err(e) = status_queue_evt_fd.read() {
-                            error!("failed reading status queue EventFd: {}", e);
+                        if let Err(e) = status_queue_evt.read() {
+                            error!("failed reading status queue Event: {}", e);
                             break 'poll;
                         }
                         match self.process_status_queue() {
@@ -537,7 +532,7 @@ impl<T: EventSource> Worker<T> {
 /// Virtio input device
 
 pub struct Input<T: EventSource> {
-    kill_evt: Option<EventFd>,
+    kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker<T>>>,
     config: VirtioInputConfig,
     source: Option<T>,
@@ -588,16 +583,16 @@ where
         mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
-        mut queue_evts: Vec<EventFd>,
+        mut queue_evts: Vec<Event>,
     ) {
         if queues.len() != 2 || queue_evts.len() != 2 {
             return;
         }
 
-        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed to create kill EventFd pair: {}", e);
+                error!("failed to create kill Event pair: {}", e);
                 return;
             }
         };
@@ -605,10 +600,10 @@ where
 
         // Status is queue 1, event is queue 0
         let status_queue = queues.remove(1);
-        let status_queue_evt_fd = queue_evts.remove(1);
+        let status_queue_evt = queue_evts.remove(1);
 
         let event_queue = queues.remove(0);
-        let event_queue_evt_fd = queue_evts.remove(0);
+        let event_queue_evt = queue_evts.remove(0);
 
         if let Some(source) = self.source.take() {
             let worker_result = thread::Builder::new()
@@ -621,7 +616,7 @@ where
                         status_queue,
                         guest_memory: mem,
                     };
-                    worker.run(event_queue_evt_fd, status_queue_evt_fd, kill_evt);
+                    worker.run(event_queue_evt, status_queue_evt, kill_evt);
                     worker
                 });
 

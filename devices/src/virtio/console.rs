@@ -7,7 +7,7 @@ use std::os::unix::io::RawFd;
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::thread;
 
-use base::{error, EventFd, PollContext, PollToken};
+use base::{error, Event, PollContext, PollToken};
 use data_model::{DataInit, Le16, Le32};
 use vm_memory::GuestMemory;
 
@@ -97,7 +97,7 @@ impl Worker {
     // Start a thread that reads self.input and sends the input back via the returned channel.
     //
     // `in_avail_evt` will be triggered by the thread when new input is available.
-    fn spawn_input_thread(&mut self, in_avail_evt: &EventFd) -> Option<Receiver<u8>> {
+    fn spawn_input_thread(&mut self, in_avail_evt: &Event) -> Option<Receiver<u8>> {
         let mut rx = match self.input.take() {
             Some(input) => input,
             None => return None,
@@ -204,7 +204,7 @@ impl Worker {
         }
     }
 
-    fn run(&mut self, mut queues: Vec<Queue>, mut queue_evts: Vec<EventFd>, kill_evt: EventFd) {
+    fn run(&mut self, mut queues: Vec<Queue>, mut queue_evts: Vec<Event>, kill_evt: Event) {
         #[derive(PollToken)]
         enum Token {
             ReceiveQueueAvailable,
@@ -220,10 +220,10 @@ impl Worker {
         // Driver -> device
         let (mut transmit_queue, transmit_evt) = (queues.remove(0), queue_evts.remove(0));
 
-        let in_avail_evt = match EventFd::new() {
+        let in_avail_evt = match Event::new() {
             Ok(evt) => evt,
             Err(e) => {
-                error!("failed creating EventFd: {}", e);
+                error!("failed creating Event: {}", e);
                 return;
             }
         };
@@ -267,14 +267,14 @@ impl Worker {
                 match event.token() {
                     Token::TransmitQueueAvailable => {
                         if let Err(e) = transmit_evt.read() {
-                            error!("failed reading transmit queue EventFd: {}", e);
+                            error!("failed reading transmit queue Event: {}", e);
                             break 'poll;
                         }
                         self.process_transmit_queue(&mut transmit_queue, &mut output);
                     }
                     Token::ReceiveQueueAvailable => {
                         if let Err(e) = receive_evt.read() {
-                            error!("failed reading receive queue EventFd: {}", e);
+                            error!("failed reading receive queue Event: {}", e);
                             break 'poll;
                         }
                         self.handle_input(&mut in_channel, &mut receive_queue);
@@ -298,7 +298,7 @@ impl Worker {
 
 /// Virtio console device.
 pub struct Console {
-    kill_evt: Option<EventFd>,
+    kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
     input: Option<Box<dyn io::Read + Send>>,
     output: Option<Box<dyn io::Write + Send>>,
@@ -307,7 +307,7 @@ pub struct Console {
 
 impl SerialDevice for Console {
     fn new(
-        _evt_fd: EventFd,
+        _evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         output: Option<Box<dyn io::Write + Send>>,
         keep_fds: Vec<RawFd>,
@@ -365,16 +365,16 @@ impl VirtioDevice for Console {
         mem: GuestMemory,
         interrupt: Interrupt,
         queues: Vec<Queue>,
-        queue_evts: Vec<EventFd>,
+        queue_evts: Vec<Event>,
     ) {
         if queues.len() < 2 || queue_evts.len() < 2 {
             return;
         }
 
-        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed creating kill EventFd pair: {}", e);
+                error!("failed creating kill Event pair: {}", e);
                 return;
             }
         };

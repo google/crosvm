@@ -10,7 +10,7 @@ use std::os::unix::io::RawFd;
 use std::sync::Arc;
 use std::thread;
 
-use base::{error, warn, Error as SysError, EventFd};
+use base::{error, warn, Error as SysError, Event};
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
@@ -63,8 +63,8 @@ pub enum Error {
     CreatePollContext(SysError),
     /// Error while polling for events.
     PollError(SysError),
-    /// Error while reading from the virtio queue's EventFd.
-    ReadQueueEventFd(SysError),
+    /// Error while reading from the virtio queue's Event.
+    ReadQueueEvent(SysError),
     /// A request is missing readable descriptors.
     NoReadableDescriptors,
     /// A request is missing writable descriptors.
@@ -104,7 +104,7 @@ impl fmt::Display for Error {
             CreateFs(err) => write!(f, "failed to create file system: {}", err),
             CreatePollContext(err) => write!(f, "failed to create PollContext: {}", err),
             PollError(err) => write!(f, "failed to poll events: {}", err),
-            ReadQueueEventFd(err) => write!(f, "failed to read from virtio queue EventFd: {}", err),
+            ReadQueueEvent(err) => write!(f, "failed to read from virtio queue Event: {}", err),
             NoReadableDescriptors => write!(f, "request does not have any readable descriptors"),
             NoWritableDescriptors => write!(f, "request does not have any writable descriptors"),
             SignalUsedQueue(err) => write!(f, "failed to signal used queue: {}", err),
@@ -137,7 +137,7 @@ pub struct Fs {
     queue_sizes: Box<[u16]>,
     avail_features: u64,
     acked_features: u64,
-    workers: Vec<(EventFd, thread::JoinHandle<Result<()>>)>,
+    workers: Vec<(Event, thread::JoinHandle<Result<()>>)>,
 }
 
 impl Fs {
@@ -230,7 +230,7 @@ impl VirtioDevice for Fs {
         guest_mem: GuestMemory,
         interrupt: Interrupt,
         queues: Vec<Queue>,
-        queue_evts: Vec<EventFd>,
+        queue_evts: Vec<Event>,
     ) {
         if queues.len() != self.queue_sizes.len() || queue_evts.len() != self.queue_sizes.len() {
             return;
@@ -243,15 +243,15 @@ impl VirtioDevice for Fs {
 
         let mut watch_resample_event = true;
         for (idx, (queue, evt)) in queues.into_iter().zip(queue_evts.into_iter()).enumerate() {
-            let (self_kill_evt, kill_evt) =
-                match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!("fs: failed creating kill EventFd pair: {}", e);
-                        self.stop_workers();
-                        return;
-                    }
-                };
+            let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e)))
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("fs: failed creating kill Event pair: {}", e);
+                    self.stop_workers();
+                    return;
+                }
+            };
 
             let mem = guest_mem.clone();
             let server = server.clone();

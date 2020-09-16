@@ -6,7 +6,7 @@
 
 use std::collections::VecDeque;
 
-use base::{error, EventFd, PollContext};
+use base::{error, Event, PollContext};
 use vm_memory::GuestMemory;
 
 use crate::virtio::queue::{DescriptorChain, Queue};
@@ -24,9 +24,9 @@ use crate::virtio::{Interrupt, Reader, Writer};
 pub struct Worker {
     pub interrupt: Interrupt,
     pub mem: GuestMemory,
-    pub cmd_evt: EventFd,
-    pub event_evt: EventFd,
-    pub kill_evt: EventFd,
+    pub cmd_evt: Event,
+    pub event_evt: Event,
+    pub kill_evt: Event,
     pub resource_bridge: ResourceRequestSocket,
 }
 
@@ -160,8 +160,8 @@ impl Worker {
         Ok(())
     }
 
-    /// Handles an event notified via an event FD.
-    fn handle_event_fd<T: Device>(
+    /// Handles an event notified via an event.
+    fn handle_event<T: Device>(
         &self,
         cmd_queue: &mut Queue,
         event_queue: &mut Queue,
@@ -170,7 +170,7 @@ impl Worker {
         stream_id: u32,
     ) -> Result<()> {
         let mut responses: VecDeque<WritableResp> = Default::default();
-        if let Some(event_responses) = device.process_event_fd(desc_map, stream_id) {
+        if let Some(event_responses) = device.process_event(desc_map, stream_id) {
             for event_response in event_responses {
                 match event_response {
                     VideoEvtResponseType::AsyncCmd(async_response) => {
@@ -246,8 +246,8 @@ impl Worker {
                     Token::EventQueue => {
                         let _ = self.event_evt.read();
                     }
-                    Token::EventFd { id } => {
-                        self.handle_event_fd(
+                    Token::Event { id } => {
+                        self.handle_event(
                             &mut cmd_queue,
                             &mut event_queue,
                             &mut device,

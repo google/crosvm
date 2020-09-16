@@ -14,7 +14,7 @@ use arch::{
     get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, SerialHardware, SerialParameters,
     VmComponents, VmImage,
 };
-use base::EventFd;
+use base::Event;
 use devices::{
     Bus, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice, PciInterruptPin,
 };
@@ -110,10 +110,10 @@ const AARCH64_PMU_IRQ: u32 = 7;
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
-    CloneEventFd(base::Error),
+    CloneEvent(base::Error),
     Cmdline(kernel_cmdline::Error),
     CreateDevices(Box<dyn StdError>),
-    CreateEventFd(base::Error),
+    CreateEvent(base::Error),
     CreateFdt(arch::fdt::Error),
     CreateGICFailure(base::Error),
     CreateIrqChip(Box<dyn StdError>),
@@ -142,10 +142,10 @@ impl Display for Error {
 
         #[sorted]
         match self {
-            CloneEventFd(e) => write!(f, "unable to clone an EventFd: {}", e),
+            CloneEvent(e) => write!(f, "unable to clone an Event: {}", e),
             Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
             CreateDevices(e) => write!(f, "error creating devices: {}", e),
-            CreateEventFd(e) => write!(f, "unable to make an EventFd: {}", e),
+            CreateEvent(e) => write!(f, "unable to make an Event: {}", e),
             CreateFdt(e) => write!(f, "FDT could not be created: {}", e),
             CreateGICFailure(e) => write!(f, "failed to create GIC: {}", e),
             CreateIrqChip(e) => write!(f, "failed to create IRQ chip: {}", e),
@@ -206,7 +206,7 @@ impl arch::LinuxArch for AArch64 {
             &GuestMemory,
             &mut V,
             &mut SystemAllocator,
-            &EventFd,
+            &Event,
         ) -> std::result::Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E1>,
         FV: FnOnce(GuestMemory) -> std::result::Result<V, E2>,
         FI: FnOnce(&V, /* vcpu_count: */ usize) -> std::result::Result<I, E3>,
@@ -239,11 +239,11 @@ impl arch::LinuxArch for AArch64 {
 
         let mut mmio_bus = devices::Bus::new();
 
-        let exit_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+        let exit_evt = Event::new().map_err(Error::CreateEvent)?;
 
         // Event used by PMDevice to notify crosvm that
         // guest OS is trying to suspend.
-        let suspend_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+        let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
 
         let pci_devices = create_devices(&mem, &mut vm, &mut resources, &exit_evt)
             .map_err(|e| Error::CreateDevices(Box::new(e)))?;
@@ -263,8 +263,8 @@ impl arch::LinuxArch for AArch64 {
 
         Self::add_arch_devs(&mut irq_chip, &mut mmio_bus)?;
 
-        let com_evt_1_3 = EventFd::new().map_err(Error::CreateEventFd)?;
-        let com_evt_2_4 = EventFd::new().map_err(Error::CreateEventFd)?;
+        let com_evt_1_3 = Event::new().map_err(Error::CreateEvent)?;
+        let com_evt_2_4 = Event::new().map_err(Error::CreateEvent)?;
         arch::add_serial_devices(
             &mut mmio_bus,
             &com_evt_1_3,
@@ -434,7 +434,7 @@ impl AArch64 {
     /// * `irq_chip` - The IRQ chip to add irqs to.
     /// * `bus` - The bus to add devices to.
     fn add_arch_devs<T: VcpuAArch64>(irq_chip: &mut impl IrqChip<T>, bus: &mut Bus) -> Result<()> {
-        let rtc_evt = EventFd::new().map_err(Error::CreateEventFd)?;
+        let rtc_evt = Event::new().map_err(Error::CreateEvent)?;
         irq_chip
             .register_irq_event(AARCH64_RTC_IRQ, &rtc_evt, None)
             .map_err(Error::RegisterIrqfd)?;

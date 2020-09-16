@@ -20,8 +20,8 @@ use std::sync::Arc;
 use libc::{EINVAL, EIO, ENODEV};
 
 use base::{
-    error, AsRawDescriptor, Error as SysError, EventFd, ExternalMapping, MappedRegion,
-    MemoryMapping, MmapError, RawDescriptor, Result,
+    error, AsRawDescriptor, Error as SysError, Event, ExternalMapping, MappedRegion, MemoryMapping,
+    MmapError, RawDescriptor, Result,
 };
 use hypervisor::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
@@ -426,7 +426,7 @@ pub enum VmIrqRequest {
 /// VmIrqRequest::execute can't take an `IrqChip` argument, because of a dependency cycle between
 /// devices and vm_control, so it takes a Fn that processes an `IrqSetup`.
 pub enum IrqSetup<'a> {
-    Event(u32, &'a EventFd),
+    Event(u32, &'a Event),
     Route(IrqRoute),
 }
 
@@ -448,14 +448,14 @@ impl VmIrqRequest {
             AllocateOneMsi { ref irqfd } => {
                 if let Some(irq_num) = sys_allocator.allocate_irq() {
                     // Beacuse of the limitation of `MaybeOwnedFd` not fitting into `register_irqfd`
-                    // which expects an `&EventFd`, we use the unsafe `from_raw_fd` to assume that
-                    // the fd given is an `EventFd`, and we ignore the ownership question using
+                    // which expects an `&Event`, we use the unsafe `from_raw_fd` to assume that
+                    // the fd given is an `Event`, and we ignore the ownership question using
                     // `ManuallyDrop`. This is safe because `ManuallyDrop` prevents any Drop
                     // implementation from triggering on `irqfd` which already has an owner, and the
-                    // `EventFd` methods are never called. The underlying fd is merely passed to the
+                    // `Event` methods are never called. The underlying fd is merely passed to the
                     // kernel which doesn't care about ownership and deals with incorrect FDs, in
                     // the case of bugs on our part.
-                    let evt = unsafe { ManuallyDrop::new(EventFd::from_raw_fd(irqfd.as_raw_fd())) };
+                    let evt = unsafe { ManuallyDrop::new(Event::from_raw_fd(irqfd.as_raw_fd())) };
 
                     match set_up_irq(IrqSetup::Event(irq_num, &evt)) {
                         Ok(_) => VmIrqResponse::AllocateOneMsi { gsi: irq_num },

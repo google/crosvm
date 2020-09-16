@@ -21,7 +21,7 @@ use crate::{
 /// and out of the KVM API. They can also be polled like any other file descriptor.
 #[derive(Debug, PartialEq, Eq)]
 pub struct EventFd {
-    eventfd: SafeDescriptor,
+    event_handle: SafeDescriptor,
 }
 
 /// Wrapper around the return value of doing a read on an EventFd which distinguishes between
@@ -45,7 +45,7 @@ impl EventFd {
         // This is safe because we checked ret for success and know the kernel gave us an fd that we
         // own.
         Ok(EventFd {
-            eventfd: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
+            event_handle: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
         })
     }
 
@@ -145,34 +145,34 @@ impl EventFd {
         // This is safe because we checked ret for success and know the kernel gave us an fd that we
         // own.
         Ok(EventFd {
-            eventfd: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
+            event_handle: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
         })
     }
 }
 
 impl AsRawFd for EventFd {
     fn as_raw_fd(&self) -> RawFd {
-        self.eventfd.as_raw_fd()
+        self.event_handle.as_raw_fd()
     }
 }
 
 impl AsRawDescriptor for EventFd {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.eventfd.as_raw_descriptor()
+        self.event_handle.as_raw_descriptor()
     }
 }
 
 impl FromRawFd for EventFd {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         EventFd {
-            eventfd: SafeDescriptor::from_raw_descriptor(fd),
+            event_handle: SafeDescriptor::from_raw_descriptor(fd),
         }
     }
 }
 
 impl IntoRawFd for EventFd {
     fn into_raw_fd(self) -> RawFd {
-        self.eventfd.into_raw_descriptor()
+        self.event_handle.into_raw_descriptor()
     }
 }
 

@@ -8,7 +8,7 @@ use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::thread;
 
-use base::{error, EventFd, PollContext, PollToken};
+use base::{error, Event, PollContext, PollToken};
 use base::{Error as SysError, Result as SysResult};
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -168,7 +168,7 @@ impl Worker {
         needs_interrupt
     }
 
-    fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd) {
+    fn run(&mut self, queue_evt: Event, kill_evt: Event) {
         #[derive(PollToken)]
         enum Token {
             QueueAvailable,
@@ -202,7 +202,7 @@ impl Worker {
                 match event.token() {
                     Token::QueueAvailable => {
                         if let Err(e) = queue_evt.read() {
-                            error!("failed reading queue EventFd: {}", e);
+                            error!("failed reading queue Event: {}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_queue();
@@ -221,7 +221,7 @@ impl Worker {
 }
 
 pub struct Pmem {
-    kill_event: Option<EventFd>,
+    kill_event: Option<Event>,
     worker_thread: Option<thread::JoinHandle<()>>,
     disk_image: Option<File>,
     mapping_address: GuestAddress,
@@ -305,7 +305,7 @@ impl VirtioDevice for Pmem {
         memory: GuestMemory,
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
-        mut queue_events: Vec<EventFd>,
+        mut queue_events: Vec<Event>,
     ) {
         if queues.len() != 1 || queue_events.len() != 1 {
             return;
@@ -320,10 +320,10 @@ impl VirtioDevice for Pmem {
 
         if let Some(pmem_device_socket) = self.pmem_device_socket.take() {
             let (self_kill_event, kill_event) =
-                match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+                match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
                     Ok(v) => v,
                     Err(e) => {
-                        error!("failed creating kill EventFd pair: {}", e);
+                        error!("failed creating kill Event pair: {}", e);
                         return;
                     }
                 };

@@ -8,7 +8,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 
 use crate::{DisplayT, EventDevice, GpuDisplayError, GpuDisplayFramebuffer};
 
-use base::EventFd;
+use base::Event;
 use data_model::VolatileSlice;
 
 type SurfaceId = NonZeroU32;
@@ -130,17 +130,17 @@ impl SurfacesHelper {
 }
 
 pub struct DisplayStub {
-    /// This eventfd is never triggered and is used solely to fulfill AsRawFd.
-    eventfd: EventFd,
+    /// This event is never triggered and is used solely to fulfill AsRawFd.
+    event: Event,
     surfaces: SurfacesHelper,
 }
 
 impl DisplayStub {
     pub fn new() -> Result<DisplayStub, GpuDisplayError> {
-        let eventfd = EventFd::new().map_err(|_| GpuDisplayError::CreateEventFd)?;
+        let event = Event::new().map_err(|_| GpuDisplayError::CreateEvent)?;
 
         Ok(DisplayStub {
-            eventfd,
+            event,
             surfaces: SurfacesHelper::new(),
         })
     }
@@ -227,6 +227,6 @@ impl DisplayT for DisplayStub {
 
 impl AsRawFd for DisplayStub {
     fn as_raw_fd(&self) -> RawFd {
-        self.eventfd.as_raw_fd()
+        self.event.as_raw_fd()
     }
 }

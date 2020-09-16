@@ -53,8 +53,8 @@ use sync::{Condvar, Mutex};
 use base::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_rt_signal_handler,
-    set_cpu_affinity, set_rt_prio_limit, set_rt_round_robin, signal, validate_raw_fd, warn,
-    EventFd, ExternalMapping, FlockOperation, Killable, MemoryMappingArena, PollContext, PollToken,
+    set_cpu_affinity, set_rt_prio_limit, set_rt_round_robin, signal, validate_raw_fd, warn, Event,
+    ExternalMapping, FlockOperation, Killable, MemoryMappingArena, PollContext, PollToken,
     Protection, ScopedEvent, SignalFd, Terminal, Timer, WatchingEvents, SIGRTMIN,
 };
 use vm_control::{
@@ -99,14 +99,14 @@ pub enum Error {
     BlockSignal(base::signal::Error),
     BuildVm(<Arch as LinuxArch>::Error),
     ChownTpmStorage(base::Error),
-    CloneEventFd(base::Error),
+    CloneEvent(base::Error),
     CloneVcpu(base::Error),
     ConfigureVcpu(<Arch as LinuxArch>::Error),
     #[cfg(feature = "audio")]
     CreateAc97(devices::PciDeviceError),
     CreateConsole(arch::serial::Error),
     CreateDiskError(disk::Error),
-    CreateEventFd(base::Error),
+    CreateEvent(base::Error),
     CreatePollContext(base::Error),
     CreateSignalFd(base::SignalFdError),
     CreateSocket(io::Error),
@@ -193,14 +193,14 @@ impl Display for Error {
             BlockSignal(e) => write!(f, "failed to block signal: {}", e),
             BuildVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
             ChownTpmStorage(e) => write!(f, "failed to chown tpm storage: {}", e),
-            CloneEventFd(e) => write!(f, "failed to clone eventfd: {}", e),
+            CloneEvent(e) => write!(f, "failed to clone event: {}", e),
             CloneVcpu(e) => write!(f, "failed to clone vcpu: {}", e),
             ConfigureVcpu(e) => write!(f, "failed to configure vcpu: {}", e),
             #[cfg(feature = "audio")]
             CreateAc97(e) => write!(f, "failed to create ac97 device: {}", e),
             CreateConsole(e) => write!(f, "failed to create console device: {}", e),
             CreateDiskError(e) => write!(f, "failed to create virtual disk: {}", e),
-            CreateEventFd(e) => write!(f, "failed to create eventfd: {}", e),
+            CreateEvent(e) => write!(f, "failed to create event: {}", e),
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
@@ -677,7 +677,7 @@ fn create_net_device(
 #[cfg(feature = "gpu")]
 fn create_gpu_device(
     cfg: &Config,
-    exit_evt: &EventFd,
+    exit_evt: &Event,
     gpu_device_socket: VmMemoryControlRequestSocket,
     gpu_sockets: Vec<virtio::resource_bridge::ResourceResponseSocket>,
     wayland_socket_path: Option<&PathBuf>,
@@ -704,7 +704,7 @@ fn create_gpu_device(
     }
 
     let dev = virtio::Gpu::new(
-        exit_evt.try_clone().map_err(Error::CloneEventFd)?,
+        exit_evt.try_clone().map_err(Error::CloneEvent)?,
         Some(gpu_device_socket),
         NonZeroU8::new(1).unwrap(), // number of scanouts
         gpu_sockets,
@@ -1097,7 +1097,7 @@ fn create_pmem_device(
 
 fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult {
     let mut keep_fds = Vec::new();
-    let evt = EventFd::new().map_err(Error::CreateEventFd)?;
+    let evt = Event::new().map_err(Error::CreateEvent)?;
     let dev = param
         .create_serial_device::<Console>(&evt, &mut keep_fds)
         .map_err(Error::CreateConsole)?;
@@ -1137,7 +1137,7 @@ fn create_virtio_devices(
     mem: &GuestMemory,
     vm: &mut impl Vm,
     resources: &mut SystemAllocator,
-    _exit_evt: &EventFd,
+    _exit_evt: &Event,
     wayland_device_socket: VmMemoryControlRequestSocket,
     gpu_device_socket: VmMemoryControlRequestSocket,
     balloon_device_socket: BalloonControlResponseSocket,
@@ -1340,7 +1340,7 @@ fn create_devices(
     mem: &GuestMemory,
     vm: &mut impl Vm,
     resources: &mut SystemAllocator,
-    exit_evt: &EventFd,
+    exit_evt: &Event,
     control_sockets: &mut Vec<TaggedControlSocket>,
     wayland_device_socket: VmMemoryControlRequestSocket,
     gpu_device_socket: VmMemoryControlRequestSocket,
@@ -1653,7 +1653,7 @@ fn run_vcpu<V>(
     has_bios: bool,
     io_bus: devices::Bus,
     mmio_bus: devices::Bus,
-    exit_evt: EventFd,
+    exit_evt: Event,
     requires_pvclock_ctrl: bool,
     run_mode_arc: Arc<VcpuRunMode>,
     use_hypervisor_signals: bool,
@@ -2130,8 +2130,8 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
         let handle = run_vcpu(
             cpu_id,
             vcpu,
-            linux.vm.try_clone().map_err(Error::CloneEventFd)?,
-            linux.irq_chip.try_clone().map_err(Error::CloneEventFd)?,
+            linux.vm.try_clone().map_err(Error::CloneEvent)?,
+            linux.irq_chip.try_clone().map_err(Error::CloneEvent)?,
             linux.vcpu_count,
             linux.rt_cpus.contains(&cpu_id),
             vcpu_affinity,
@@ -2139,7 +2139,7 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
             linux.has_bios,
             linux.io_bus.clone(),
             linux.mmio_bus.clone(),
-            linux.exit_evt.try_clone().map_err(Error::CloneEventFd)?,
+            linux.exit_evt.try_clone().map_err(Error::CloneEvent)?,
             linux.vm.check_capability(VmCap::PvClockSuspend),
             run_mode_arc.clone(),
             use_hypervisor_signals,

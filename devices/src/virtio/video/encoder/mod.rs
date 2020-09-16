@@ -31,7 +31,7 @@ impl Device for Encoder {
         Err(VideoError::InvalidOperation)
     }
 
-    fn process_event_fd(
+    fn process_event(
         &mut self,
         _desc_map: &mut AsyncCmdDescMap,
         _stream_id: u32,

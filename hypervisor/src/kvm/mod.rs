@@ -29,7 +29,7 @@ use libc::{
 
 use base::{
     block_signal, errno_result, error, ioctl, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
-    pagesize, signal, unblock_signal, AsRawDescriptor, Error, EventFd, FromRawDescriptor,
+    pagesize, signal, unblock_signal, AsRawDescriptor, Error, Event, FromRawDescriptor,
     MappedRegion, MemoryMapping, MmapError, RawDescriptor, Result, SafeDescriptor,
 };
 use data_model::vec_with_array_field;
@@ -271,8 +271,8 @@ impl KvmVm {
     pub fn register_irqfd(
         &self,
         gsi: u32,
-        evt: &EventFd,
-        resample_evt: Option<&EventFd>,
+        evt: &Event,
+        resample_evt: Option<&Event>,
     ) -> Result<()> {
         let mut irqfd = kvm_irqfd {
             fd: evt.as_raw_fd() as u32,
@@ -300,7 +300,7 @@ impl KvmVm {
     ///
     /// The `evt` and `gsi` pair must be the same as the ones passed into
     /// `register_irqfd`.
-    pub fn unregister_irqfd(&self, gsi: u32, evt: &EventFd) -> Result<()> {
+    pub fn unregister_irqfd(&self, gsi: u32, evt: &Event) -> Result<()> {
         let irqfd = kvm_irqfd {
             fd: evt.as_raw_fd() as u32,
             gsi,
@@ -341,7 +341,7 @@ impl KvmVm {
 
     fn ioeventfd(
         &self,
-        evt: &EventFd,
+        evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
         deassign: bool,
@@ -551,7 +551,7 @@ impl Vm for KvmVm {
 
     fn register_ioevent(
         &self,
-        evt: &EventFd,
+        evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {
@@ -560,7 +560,7 @@ impl Vm for KvmVm {
 
     fn unregister_ioevent(
         &self,
-        evt: &EventFd,
+        evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {
@@ -1259,9 +1259,9 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let vm = KvmVm::new(&kvm, gm).unwrap();
-        let evtfd1 = EventFd::new().unwrap();
-        let evtfd2 = EventFd::new().unwrap();
-        let evtfd3 = EventFd::new().unwrap();
+        let evtfd1 = Event::new().unwrap();
+        let evtfd2 = Event::new().unwrap();
+        let evtfd3 = Event::new().unwrap();
         vm.create_irq_chip().unwrap();
         vm.register_irqfd(4, &evtfd1, None).unwrap();
         vm.register_irqfd(8, &evtfd2, None).unwrap();
@@ -1274,9 +1274,9 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let vm = KvmVm::new(&kvm, gm).unwrap();
-        let evtfd1 = EventFd::new().unwrap();
-        let evtfd2 = EventFd::new().unwrap();
-        let evtfd3 = EventFd::new().unwrap();
+        let evtfd1 = Event::new().unwrap();
+        let evtfd2 = Event::new().unwrap();
+        let evtfd3 = Event::new().unwrap();
         vm.create_irq_chip().unwrap();
         vm.register_irqfd(4, &evtfd1, None).unwrap();
         vm.register_irqfd(8, &evtfd2, None).unwrap();
@@ -1291,13 +1291,13 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let vm = KvmVm::new(&kvm, gm).unwrap();
-        let evtfd1 = EventFd::new().unwrap();
-        let evtfd2 = EventFd::new().unwrap();
+        let evtfd1 = Event::new().unwrap();
+        let evtfd2 = Event::new().unwrap();
         vm.create_irq_chip().unwrap();
         vm.register_irqfd(4, &evtfd1, Some(&evtfd2)).unwrap();
         vm.unregister_irqfd(4, &evtfd1).unwrap();
         // Ensures the ioctl is actually reading the resamplefd.
-        vm.register_irqfd(4, &evtfd1, Some(unsafe { &EventFd::from_raw_fd(-1) }))
+        vm.register_irqfd(4, &evtfd1, Some(unsafe { &Event::from_raw_fd(-1) }))
             .unwrap_err();
     }
 
@@ -1324,7 +1324,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let vm = KvmVm::new(&kvm, gm).unwrap();
-        let evtfd = EventFd::new().unwrap();
+        let evtfd = Event::new().unwrap();
         vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();
         vm.register_ioevent(&evtfd, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)
@@ -1360,7 +1360,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let vm = KvmVm::new(&kvm, gm).unwrap();
-        let evtfd = EventFd::new().unwrap();
+        let evtfd = Event::new().unwrap();
         vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();
         vm.register_ioevent(&evtfd, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)

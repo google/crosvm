@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use crate::pci::{PciCapability, PciCapabilityID};
-use base::{error, Error as SysError, EventFd};
+use base::{error, Error as SysError, Event};
 use msg_socket::{MsgError, MsgReceiver, MsgSender};
 use std::convert::TryInto;
 use std::fmt::{self, Display};
@@ -45,7 +45,7 @@ impl Default for MsixTableEntry {
 }
 
 struct IrqfdGsi {
-    irqfd: EventFd,
+    irqfd: Event,
     gsi: u32,
 }
 
@@ -235,7 +235,7 @@ impl MsixConfig {
     fn msix_enable(&mut self) -> MsixResult<()> {
         self.irq_vec.clear();
         for i in 0..self.msix_num {
-            let irqfd = EventFd::new().unwrap();
+            let irqfd = Event::new().unwrap();
             self.msi_device_socket
                 .send(&VmIrqRequest::AllocateOneMsi {
                     irqfd: MaybeOwnedFd::Borrowed(irqfd.as_raw_fd()),
@@ -506,7 +506,7 @@ impl MsixConfig {
     ///
     ///  # Arguments
     ///  * 'vector' - the index to the MSI-X table entry
-    pub fn get_irqfd(&self, vector: usize) -> Option<&EventFd> {
+    pub fn get_irqfd(&self, vector: usize) -> Option<&Event> {
         match self.irq_vec.get(vector) {
             Some(irq) => Some(&irq.irqfd),
             None => None,

@@ -11,7 +11,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
-use base::{EventFd, SharedMemory};
+use base::{Event, SharedMemory};
 use cros_fuzz::fuzz_target;
 use devices::virtio::{Block, Interrupt, Queue, VirtioDevice};
 use vm_memory::{GuestAddress, GuestMemory};
@@ -75,9 +75,9 @@ fuzz_target!(|bytes| {
     q.size = QUEUE_SIZE / 2;
     q.max_size = QUEUE_SIZE;
 
-    let queue_evts: Vec<EventFd> = vec![EventFd::new().unwrap()];
+    let queue_evts: Vec<Event> = vec![Event::new().unwrap()];
     let queue_fd = queue_evts[0].as_raw_fd();
-    let queue_evt = unsafe { EventFd::from_raw_fd(libc::dup(queue_fd)) };
+    let queue_evt = unsafe { Event::from_raw_fd(libc::dup(queue_fd)) };
 
     let shm = SharedMemory::anon().unwrap();
     let disk_file: File = shm.into();
@@ -87,8 +87,8 @@ fuzz_target!(|bytes| {
         mem,
         Interrupt::new(
             Arc::new(AtomicUsize::new(0)),
-            EventFd::new().unwrap(),
-            EventFd::new().unwrap(),
+            Event::new().unwrap(),
+            Event::new().unwrap(),
             None,   // msix_config
             0xFFFF, // VIRTIO_MSI_NO_VECTOR
         ),

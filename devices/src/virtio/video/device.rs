@@ -17,7 +17,7 @@ use crate::virtio::video::response;
 pub enum Token {
     CmdQueue,
     EventQueue,
-    EventFd { id: u32 },
+    Event { id: u32 },
     Kill,
     InterruptResample,
 }
@@ -89,8 +89,8 @@ pub trait Device {
     /// If the command expects a synchronous response, it returns a response as `VideoCmdResponseType::Sync`.
     /// Otherwise, it returns a name of the descriptor chain that will be used when a response is prepared.
     /// Implementations of this method is passed a PollContext object which can be used to add or remove
-    /// FDs to poll. It is expected that only Token::EventFd items would be added. When a Token::EventFd
-    /// event arrives, process_event_fd() will be invoked.
+    /// FDs to poll. It is expected that only Token::Event items would be added. When a Token::Event
+    /// event arrives, process_event() will be invoked.
     /// TODO(b/149720783): Make this an async function.
     fn process_cmd(
         &mut self,
@@ -99,12 +99,12 @@ pub trait Device {
         resource_bridge: &ResourceRequestSocket,
     ) -> VideoResult<VideoCmdResponseType>;
 
-    /// Processes an available `Token::EventFd` event and returns a list of `VideoEvtResponseType`
+    /// Processes an available `Token::Event` event and returns a list of `VideoEvtResponseType`
     /// responses. It returns None if an invalid event comes.
     /// For responses to be sent via command queue, the return type is `VideoEvtResponseType::AsyncCmd`.
     /// For responses to be sent via event queue, the return type is `VideoEvtResponseType::Event`.
     /// TODO(b/149720783): Make this an async function.
-    fn process_event_fd(
+    fn process_event(
         &mut self,
         desc_map: &mut AsyncCmdDescMap,
         stream_id: u32,

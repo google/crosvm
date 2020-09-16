@@ -28,7 +28,7 @@ pub enum GpuDisplayError {
     /// Connecting to the compositor failed.
     Connect,
     /// Creating event file descriptor failed.
-    CreateEventFd,
+    CreateEvent,
     /// Creating shared memory failed.
     CreateShm(SysError),
     /// Failed to create a surface on the compositor.
@@ -52,7 +52,7 @@ impl Display for GpuDisplayError {
         match self {
             Allocate => write!(f, "internal allocation failed"),
             Connect => write!(f, "failed to connect to compositor"),
-            CreateEventFd => write!(f, "failed to create event file descriptor"),
+            CreateEvent => write!(f, "failed to create event file descriptor"),
             CreateShm(e) => write!(f, "failed to create shared memory: {}", e),
             CreateSurface => write!(f, "failed to crate surface on the compositor"),
             FailedImport => write!(f, "failed to import a buffer to the compositor"),

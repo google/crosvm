@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::EventFd;
+use base::Event;
 
 use msg_socket::*;
 
 #[derive(MsgOnSocket)]
 struct Request {
     field0: u8,
-    field1: EventFd,
+    field1: Event,
     field2: u32,
     field3: bool,
 }
@@ -20,7 +20,7 @@ struct DummyResponse {}
 #[test]
 fn sock_send_recv_struct() {
     let (req, res) = pair::<Request, DummyResponse>().unwrap();
-    let e0 = EventFd::new().unwrap();
+    let e0 = Event::new().unwrap();
     let e1 = e0.try_clone().unwrap();
     req.send(&Request {
         field0: 2,

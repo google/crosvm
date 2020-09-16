@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::result;
 use std::thread;
 
-use base::{error, warn, Error as SysError, EventFd, PollContext, PollToken};
+use base::{error, warn, Error as SysError, Event, PollContext, PollToken};
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
 use vm_memory::GuestMemory;
 
@@ -35,8 +35,8 @@ pub enum P9Error {
     CreatePollContext(SysError),
     /// Error while polling for events.
     PollError(SysError),
-    /// Error while reading from the virtio queue's EventFd.
-    ReadQueueEventFd(SysError),
+    /// Error while reading from the virtio queue's Event.
+    ReadQueueEvent(SysError),
     /// A request is missing readable descriptors.
     NoReadableDescriptors,
     /// A request is missing writable descriptors.
@@ -69,7 +69,7 @@ impl Display for P9Error {
             ),
             CreatePollContext(err) => write!(f, "failed to create PollContext: {}", err),
             PollError(err) => write!(f, "failed to poll events: {}", err),
-            ReadQueueEventFd(err) => write!(f, "failed to read from virtio queue EventFd: {}", err),
+            ReadQueueEvent(err) => write!(f, "failed to read from virtio queue Event: {}", err),
             NoReadableDescriptors => write!(f, "request does not have any readable descriptors"),
             NoWritableDescriptors => write!(f, "request does not have any writable descriptors"),
             SignalUsedQueue(err) => write!(f, "failed to signal used queue: {}", err),
@@ -111,7 +111,7 @@ impl Worker {
         Ok(())
     }
 
-    fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd) -> P9Result<()> {
+    fn run(&mut self, queue_evt: Event, kill_evt: Event) -> P9Result<()> {
         #[derive(PollToken)]
         enum Token {
             // A request is ready on the queue.
@@ -134,7 +134,7 @@ impl Worker {
             for event in events.iter_readable() {
                 match event.token() {
                     Token::QueueReady => {
-                        queue_evt.read().map_err(P9Error::ReadQueueEventFd)?;
+                        queue_evt.read().map_err(P9Error::ReadQueueEvent)?;
                         self.process_queue()?;
                     }
                     Token::InterruptResample => {
@@ -151,7 +151,7 @@ impl Worker {
 pub struct P9 {
     config: Vec<u8>,
     server: Option<p9::Server>,
-    kill_evt: Option<EventFd>,
+    kill_evt: Option<Event>,
     avail_features: u64,
     acked_features: u64,
     worker: Option<thread::JoinHandle<P9Result<()>>>,
@@ -229,16 +229,16 @@ impl VirtioDevice for P9 {
         guest_mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
-        mut queue_evts: Vec<EventFd>,
+        mut queue_evts: Vec<Event>,
     ) {
         if queues.len() != 1 || queue_evts.len() != 1 {
             return;
         }
 
-        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed creating kill EventFd pair: {}", e);
+                error!("failed creating kill Event pair: {}", e);
                 return;
             }
         };

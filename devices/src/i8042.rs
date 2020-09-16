@@ -2,18 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, EventFd};
+use base::{error, Event};
 
 use crate::BusDevice;
 
 /// A i8042 PS/2 controller that emulates just enough to shutdown the machine.
 pub struct I8042Device {
-    reset_evt: EventFd,
+    reset_evt: Event,
 }
 
 impl I8042Device {
     /// Constructs a i8042 device that will signal the given event when the guest requests it.
-    pub fn new(reset_evt: EventFd) -> I8042Device {
+    pub fn new(reset_evt: Event) -> I8042Device {
         I8042Device { reset_evt }
     }
 }

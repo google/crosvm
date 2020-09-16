@@ -9,10 +9,12 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom};
 use std::mem;
-use std::os::unix::io::{AsRawFd, RawFd};
 
 use crate::DiskGetLen;
-use base::{FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, WriteZeroesAt};
+use base::{
+    AsRawDescriptor, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole,
+    RawDescriptor, WriteZeroesAt,
+};
 use data_model::{DataInit, Le16, Le32, VolatileSlice};
 use remain::sorted;
 
@@ -258,9 +260,9 @@ impl WriteZeroesAt for AndroidSparse {
     }
 }
 
-impl AsRawFd for AndroidSparse {
-    fn as_raw_fd(&self) -> RawFd {
-        self.file.as_raw_fd()
+impl AsRawDescriptor for AndroidSparse {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.file.as_raw_descriptor()
     }
 }
 

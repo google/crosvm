@@ -32,7 +32,7 @@ use kvm_sys::*;
 #[allow(unused_imports)]
 use base::{
     block_signal, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
-    ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, EventFd, IoctlNr, MappedRegion,
+    ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, Event, IoctlNr, MappedRegion,
     MemoryMapping, MmapError, Result, SIGRTMIN,
 };
 use msg_socket::MsgOnSocket;
@@ -649,7 +649,7 @@ impl Vm {
     /// triggered is prevented.
     pub fn register_ioevent(
         &self,
-        evt: &EventFd,
+        evt: &Event,
         addr: IoeventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {
@@ -662,7 +662,7 @@ impl Vm {
     /// `register_ioevent`.
     pub fn unregister_ioevent(
         &self,
-        evt: &EventFd,
+        evt: &Event,
         addr: IoeventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {
@@ -671,7 +671,7 @@ impl Vm {
 
     fn ioeventfd(
         &self,
-        evt: &EventFd,
+        evt: &Event,
         addr: IoeventAddress,
         datamatch: Datamatch,
         deassign: bool,
@@ -736,8 +736,8 @@ impl Vm {
     ))]
     pub fn register_irqfd_resample(
         &self,
-        evt: &EventFd,
-        resample_evt: &EventFd,
+        evt: &Event,
+        resample_evt: &Event,
         gsi: u32,
     ) -> Result<()> {
         let irqfd = kvm_irqfd {
@@ -768,7 +768,7 @@ impl Vm {
         target_arch = "arm",
         target_arch = "aarch64"
     ))]
-    pub fn unregister_irqfd(&self, evt: &EventFd, gsi: u32) -> Result<()> {
+    pub fn unregister_irqfd(&self, evt: &Event, gsi: u32) -> Result<()> {
         let irqfd = kvm_irqfd {
             fd: evt.as_raw_fd() as u32,
             gsi,
@@ -1869,7 +1869,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
         let vm = Vm::new(&kvm, gm).unwrap();
-        let evtfd = EventFd::new().unwrap();
+        let evtfd = Event::new().unwrap();
         vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();
         vm.register_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), Datamatch::AnyLength)
@@ -1905,7 +1905,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
         let vm = Vm::new(&kvm, gm).unwrap();
-        let evtfd = EventFd::new().unwrap();
+        let evtfd = Event::new().unwrap();
         vm.register_ioevent(&evtfd, IoeventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();
         vm.register_ioevent(&evtfd, IoeventAddress::Mmio(0x1000), Datamatch::AnyLength)
@@ -1933,13 +1933,13 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
         let vm = Vm::new(&kvm, gm).unwrap();
-        let evtfd1 = EventFd::new().unwrap();
-        let evtfd2 = EventFd::new().unwrap();
+        let evtfd1 = Event::new().unwrap();
+        let evtfd2 = Event::new().unwrap();
         vm.create_irq_chip().unwrap();
         vm.register_irqfd_resample(&evtfd1, &evtfd2, 4).unwrap();
         vm.unregister_irqfd(&evtfd1, 4).unwrap();
         // Ensures the ioctl is actually reading the resamplefd.
-        vm.register_irqfd_resample(&evtfd1, unsafe { &EventFd::from_raw_fd(-1) }, 4)
+        vm.register_irqfd_resample(&evtfd1, unsafe { &Event::from_raw_fd(-1) }, 4)
             .unwrap_err();
     }
 

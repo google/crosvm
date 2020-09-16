@@ -16,7 +16,7 @@ use audio_streams::{
     shm_streams::{ShmStream, ShmStreamSource},
     BoxError, DummyStreamControl, SampleFormat, StreamControl, StreamDirection, StreamEffect,
 };
-use base::{self, error, set_rt_prio_limit, set_rt_round_robin, warn, EventFd};
+use base::{self, error, set_rt_prio_limit, set_rt_round_robin, warn, Event};
 use sync::{Condvar, Mutex};
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -37,7 +37,7 @@ struct Ac97BusMasterRegs {
     glob_sta: u32,
 
     // IRQ event - driven by the glob_sta register.
-    irq_evt: Option<EventFd>,
+    irq_evt: Option<Event>,
 }
 
 impl Ac97BusMasterRegs {
@@ -225,7 +225,7 @@ impl Ac97BusMaster {
     }
 
     /// Provides the events needed to raise interrupts in the guest.
-    pub fn set_irq_event_fd(&mut self, irq_evt: EventFd, irq_resample_evt: EventFd) {
+    pub fn set_irq_event(&mut self, irq_evt: Event, irq_resample_evt: Event) {
         let thread_regs = self.regs.clone();
         self.regs.lock().irq_evt = Some(irq_evt);
         self.irq_resample_thread = Some(thread::spawn(move || {

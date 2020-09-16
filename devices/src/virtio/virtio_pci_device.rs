@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
 
-use base::{warn, EventFd, Result};
+use base::{warn, Event, Result};
 use data_model::{DataInit, Le32};
 use hypervisor::Datamatch;
 use libc::ERANGE;
@@ -206,10 +206,10 @@ pub struct VirtioPciDevice {
     device_activated: bool,
 
     interrupt_status: Arc<AtomicUsize>,
-    interrupt_evt: Option<EventFd>,
-    interrupt_resample_evt: Option<EventFd>,
+    interrupt_evt: Option<Event>,
+    interrupt_resample_evt: Option<Event>,
     queues: Vec<Queue>,
-    queue_evts: Vec<EventFd>,
+    queue_evts: Vec<Event>,
     mem: Option<GuestMemory>,
     settings_bar: u8,
     msix_config: Arc<Mutex<MsixConfig>>,
@@ -226,7 +226,7 @@ impl VirtioPciDevice {
     ) -> Result<Self> {
         let mut queue_evts = Vec::new();
         for _ in device.queue_max_sizes() {
-            queue_evts.push(EventFd::new()?)
+            queue_evts.push(Event::new()?)
         }
         let queues = device
             .queue_max_sizes()
@@ -372,7 +372,7 @@ impl VirtioPciDevice {
         Ok(())
     }
 
-    fn clone_queue_evts(&self) -> Result<Vec<EventFd>> {
+    fn clone_queue_evts(&self) -> Result<Vec<Event>> {
         self.queue_evts.iter().map(|e| e.try_clone()).collect()
     }
 }
@@ -401,8 +401,8 @@ impl PciDevice for VirtioPciDevice {
 
     fn assign_irq(
         &mut self,
-        irq_evt: EventFd,
-        irq_resample_evt: EventFd,
+        irq_evt: Event,
+        irq_resample_evt: Event,
         irq_num: u32,
         irq_pin: PciInterruptPin,
     ) {
@@ -500,7 +500,7 @@ impl PciDevice for VirtioPciDevice {
         Ok(())
     }
 
-    fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
+    fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
         let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
         self.queue_evts
@@ -571,7 +571,7 @@ impl PciDevice for VirtioPciDevice {
             o if NOTIFICATION_BAR_OFFSET <= o
                 && o < NOTIFICATION_BAR_OFFSET + NOTIFICATION_SIZE =>
             {
-                // Handled with ioeventfds.
+                // Handled with ioevents.
             }
 
             o if MSIX_TABLE_BAR_OFFSET <= o && o < MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE => {
@@ -619,7 +619,7 @@ impl PciDevice for VirtioPciDevice {
             o if NOTIFICATION_BAR_OFFSET <= o
                 && o < NOTIFICATION_BAR_OFFSET + NOTIFICATION_SIZE =>
             {
-                // Handled with ioeventfds.
+                // Handled with ioevents.
             }
             o if MSIX_TABLE_BAR_OFFSET <= o && o < MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE => {
                 let behavior = self

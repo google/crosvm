@@ -23,10 +23,10 @@ pub use self::vsock::Vsock;
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
-    /// Cloning kill eventfd failed.
-    CloneKillEventFd(SysError),
-    /// Creating kill eventfd failed.
-    CreateKillEventFd(SysError),
+    /// Cloning kill event failed.
+    CloneKillEvent(SysError),
+    /// Creating kill event failed.
+    CreateKillEvent(SysError),
     /// Creating poll context failed.
     CreatePollContext(SysError),
     /// Error while polling for events.
@@ -47,9 +47,9 @@ pub enum Error {
     TapSetVnetHdrSize(TapError),
     /// Get features failed.
     VhostGetFeatures(VhostError),
-    /// Failed to create vhost eventfd.
+    /// Failed to create vhost event.
     VhostIrqCreate(SysError),
-    /// Failed to read vhost eventfd.
+    /// Failed to read vhost event.
     VhostIrqRead(SysError),
     /// Net set backend failed.
     VhostNetSetBackend(VhostError),
@@ -86,8 +86,8 @@ impl Display for Error {
 
         #[sorted]
         match self {
-            CloneKillEventFd(e) => write!(f, "failed to clone kill eventfd: {}", e),
-            CreateKillEventFd(e) => write!(f, "failed to create kill eventfd: {}", e),
+            CloneKillEvent(e) => write!(f, "failed to clone kill event: {}", e),
+            CreateKillEvent(e) => write!(f, "failed to create kill event: {}", e),
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             PollError(e) => write!(f, "failed polling for events: {}", e),
             TapEnable(e) => write!(f, "failed to enable tap interface: {}", e),
@@ -98,8 +98,8 @@ impl Display for Error {
             TapSetOffload(e) => write!(f, "failed to set tap interface offload flags: {}", e),
             TapSetVnetHdrSize(e) => write!(f, "failed to set vnet header size: {}", e),
             VhostGetFeatures(e) => write!(f, "failed to get features: {}", e),
-            VhostIrqCreate(e) => write!(f, "failed to create vhost eventfd: {}", e),
-            VhostIrqRead(e) => write!(f, "failed to read vhost eventfd: {}", e),
+            VhostIrqCreate(e) => write!(f, "failed to create vhost event: {}", e),
+            VhostIrqRead(e) => write!(f, "failed to read vhost event: {}", e),
             VhostNetSetBackend(e) => write!(f, "net set backend failed: {}", e),
             VhostOpen(e) => write!(f, "failed to open vhost device: {}", e),
             VhostSetFeatures(e) => write!(f, "failed to set features: {}", e),

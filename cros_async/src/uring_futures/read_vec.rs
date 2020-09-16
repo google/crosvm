@@ -143,10 +143,10 @@ mod tests {
     }
 
     #[test]
-    fn eventfd() {
-        use base::EventFd;
+    fn event() {
+        use base::Event;
 
-        async fn write_event(ev: EventFd, wait: EventFd) {
+        async fn write_event(ev: Event, wait: Event) {
             let wait = UringSource::new(wait).unwrap();
             ev.write(55).unwrap();
             read_u64(&wait).await;
@@ -156,7 +156,7 @@ mod tests {
             read_u64(&wait).await;
         }
 
-        async fn read_events(ev: EventFd, signal: EventFd) {
+        async fn read_events(ev: Event, signal: Event) {
             let source = UringSource::new(ev).unwrap();
             assert_eq!(read_u64(&source).await, 55);
             signal.write(1).unwrap();
@@ -166,13 +166,10 @@ mod tests {
             signal.write(1).unwrap();
         }
 
-        let eventfd = EventFd::new().unwrap();
-        let signal_wait = EventFd::new().unwrap();
-        let write_task = write_event(
-            eventfd.try_clone().unwrap(),
-            signal_wait.try_clone().unwrap(),
-        );
-        let read_task = read_events(eventfd, signal_wait);
+        let event = Event::new().unwrap();
+        let signal_wait = Event::new().unwrap();
+        let write_task = write_event(event.try_clone().unwrap(), signal_wait.try_clone().unwrap());
+        let read_task = read_events(event, signal_wait);
         let joined = futures::future::join(read_task, write_task);
         pin_mut!(joined);
         crate::run_one_uring(joined).unwrap();

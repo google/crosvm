@@ -10,7 +10,7 @@ use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
 use std::thread::{self};
 
-use base::{error, EventFd, Result};
+use base::{error, Event, Result};
 
 use crate::{BusDevice, SerialDevice};
 
@@ -67,7 +67,7 @@ pub struct Serial {
     // Serial port registers
     interrupt_enable: Arc<AtomicU8>,
     interrupt_identification: u8,
-    interrupt_evt: EventFd,
+    interrupt_evt: Event,
     line_control: u8,
     line_status: u8,
     modem_control: u8,
@@ -84,7 +84,7 @@ pub struct Serial {
 
 impl SerialDevice for Serial {
     fn new(
-        interrupt_evt: EventFd,
+        interrupt_evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         out: Option<Box<dyn io::Write + Send>>,
         _keep_fds: Vec<RawFd>,
@@ -136,7 +136,7 @@ impl Serial {
         let interrupt_evt = match self.interrupt_evt.try_clone() {
             Ok(e) => e,
             Err(e) => {
-                error!("failed to clone interrupt eventfd: {}", e);
+                error!("failed to clone interrupt event: {}", e);
                 return;
             }
         };
@@ -204,9 +204,9 @@ impl Serial {
         }
     }
 
-    /// Gets the interrupt eventfd used to interrupt the driver when it needs to respond to this
+    /// Gets the interrupt event used to interrupt the driver when it needs to respond to this
     /// device.
-    pub fn interrupt_eventfd(&self) -> &EventFd {
+    pub fn interrupt_event(&self) -> &Event {
         &self.interrupt_evt
     }
 
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn serial_output() {
-        let intr_evt = EventFd::new().unwrap();
+        let intr_evt = Event::new().unwrap();
         let serial_out = SharedBuffer::new();
 
         let mut serial = Serial::new(
@@ -426,7 +426,7 @@ mod tests {
 
     #[test]
     fn serial_input() {
-        let intr_evt = EventFd::new().unwrap();
+        let intr_evt = Event::new().unwrap();
         let serial_out = SharedBuffer::new();
 
         let mut serial = Serial::new(

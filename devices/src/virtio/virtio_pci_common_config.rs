@@ -243,7 +243,7 @@ impl VirtioPciCommonConfig {
 mod tests {
     use super::*;
 
-    use base::EventFd;
+    use base::Event;
     use std::os::unix::io::RawFd;
     use vm_memory::GuestMemory;
 
@@ -266,7 +266,7 @@ mod tests {
             _mem: GuestMemory,
             _interrupt: Interrupt,
             _queues: Vec<Queue>,
-            _queue_evts: Vec<EventFd>,
+            _queue_evts: Vec<Event>,
         ) {
         }
         fn features(&self) -> u64 {

@@ -56,7 +56,7 @@ use data_model::*;
 #[cfg(feature = "wl-dmabuf")]
 use base::ioctl_iow_nr;
 use base::{
-    error, pipe, round_up_to_page_size, warn, AsRawDescriptor, Error, EventFd, FileFlags,
+    error, pipe, round_up_to_page_size, warn, AsRawDescriptor, Error, Event, FileFlags,
     PollContext, PollToken, Result, ScmSocket, SharedMemory, SharedMemoryUnix,
 };
 use msg_socket::{MsgError, MsgReceiver, MsgSender};
@@ -1379,7 +1379,7 @@ impl Worker {
         }
     }
 
-    fn run(&mut self, mut queue_evts: Vec<EventFd>, kill_evt: EventFd) {
+    fn run(&mut self, mut queue_evts: Vec<Event>, kill_evt: Event) {
         let mut in_desc_chains: VecDeque<DescriptorChain> =
             VecDeque::with_capacity(QUEUE_SIZE as usize);
         let in_queue_evt = queue_evts.remove(0);
@@ -1540,7 +1540,7 @@ impl Worker {
 }
 
 pub struct Wl {
-    kill_evt: Option<EventFd>,
+    kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<()>>,
     wayland_paths: Map<String, PathBuf>,
     vm_socket: Option<VmMemoryControlRequestSocket>,
@@ -1615,16 +1615,16 @@ impl VirtioDevice for Wl {
         mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
-        queue_evts: Vec<EventFd>,
+        queue_evts: Vec<Event>,
     ) {
         if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
             return;
         }
 
-        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed creating kill EventFd pair: {}", e);
+                error!("failed creating kill Event pair: {}", e);
                 return;
             }
         };

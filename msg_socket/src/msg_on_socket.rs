@@ -14,7 +14,7 @@ use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
 use std::result;
 use std::sync::Arc;
 
-use base::{Error as SysError, EventFd};
+use base::{Error as SysError, Event};
 use data_model::*;
 use slice::{slice_read_helper, slice_write_helper};
 
@@ -254,7 +254,7 @@ macro_rules! rawfd_impl {
     };
 }
 
-rawfd_impl!(EventFd);
+rawfd_impl!(Event);
 rawfd_impl!(File);
 rawfd_impl!(UnixStream);
 rawfd_impl!(TcpStream);

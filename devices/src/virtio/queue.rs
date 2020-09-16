@@ -389,14 +389,14 @@ impl Queue {
     pub async fn next_async<F: AsRawFd + Unpin>(
         &mut self,
         mem: &GuestMemory,
-        eventfd: &mut U64Source<F>,
+        event: &mut U64Source<F>,
     ) -> std::result::Result<DescriptorChain, AsyncError> {
         loop {
             // Check if there are more descriptors available.
             if let Some(chain) = self.pop(mem) {
                 return Ok(chain);
             }
-            eventfd.next_val().await?;
+            event.next_val().await?;
         }
     }
 
@@ -527,7 +527,7 @@ impl Drop for NotifyGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base::EventFd;
+    use base::Event;
     use data_model::{DataInit, Le16, Le32, Le64};
     use std::convert::TryInto;
     use std::sync::atomic::AtomicUsize;
@@ -641,8 +641,8 @@ mod tests {
 
         let interrupt = Interrupt::new(
             Arc::new(AtomicUsize::new(0)),
-            EventFd::new().unwrap(),
-            EventFd::new().unwrap(),
+            Event::new().unwrap(),
+            Event::new().unwrap(),
             None,
             10,
         );
@@ -717,8 +717,8 @@ mod tests {
 
         let interrupt = Interrupt::new(
             Arc::new(AtomicUsize::new(0)),
-            EventFd::new().unwrap(),
-            EventFd::new().unwrap(),
+            Event::new().unwrap(),
+            Event::new().unwrap(),
             None,
             10,
         );

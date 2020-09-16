@@ -160,13 +160,13 @@ impl IdAllocator {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum Stat {
-    IoEventFd,
+    IoEvent,
     MemoryGetDirtyLog,
     IrqEventGetFd,
     IrqEventGetResampleFd,
     Connect,
     DestroyConnection,
-    GetShutdownEventFd,
+    GetShutdownEvent,
     CheckExtentsion,
     EnableVmCapability,
     EnableVcpuCapability,
@@ -357,7 +357,7 @@ impl crosvm {
         Ok(())
     }
 
-    fn get_shutdown_eventfd(&mut self) -> result::Result<File, c_int> {
+    fn get_shutdown_event(&mut self) -> result::Result<File, c_int> {
         let mut r = MainRequest::new();
         r.mut_get_shutdown_eventfd();
         let (_, mut files) = self.main_transaction(&r, &[])?;
@@ -768,7 +768,7 @@ impl_ctor_dtor!(
 
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_io_event_fd(this: *mut crosvm_io_event) -> c_int {
-    let _u = record(Stat::IoEventFd);
+    let _u = record(Stat::IoEvent);
     (*this).evt.as_raw_fd()
 }
 
@@ -1404,9 +1404,9 @@ pub unsafe extern "C" fn crosvm_destroy_connection(self_: *mut *mut crosvm) -> c
 
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_get_shutdown_eventfd(self_: *mut crosvm) -> c_int {
-    let _u = record(Stat::GetShutdownEventFd);
+    let _u = record(Stat::GetShutdownEvent);
     let self_ = &mut (*self_);
-    match self_.get_shutdown_eventfd() {
+    match self_.get_shutdown_event() {
         Ok(f) => f.into_raw_fd(),
         Err(e) => -e,
     }

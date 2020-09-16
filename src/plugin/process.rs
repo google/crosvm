@@ -21,7 +21,7 @@ use libc::{pid_t, waitpid, EINVAL, ENODATA, ENOTTY, WEXITSTATUS, WIFEXITED, WNOH
 use protobuf::Message;
 
 use base::{
-    error, Error as SysError, EventFd, Killable, MemoryMapping, Result as SysResult, ScmSocket,
+    error, Error as SysError, Event, Killable, MemoryMapping, Result as SysResult, ScmSocket,
     SharedMemory, SharedMemoryUnix, SIGRTMIN,
 };
 use kvm::{dirty_log_bitmap_size, Datamatch, IoeventAddress, IrqRoute, IrqSource, PicId, Vm};
@@ -120,7 +120,7 @@ pub struct Process {
     per_vcpu_states: Vec<Arc<Mutex<PerVcpuState>>>,
 
     // Resource to sent to plugin
-    kill_evt: EventFd,
+    kill_evt: Event,
     vcpu_pipes: Vec<VcpuPipe>,
 
     // Socket Transmission
@@ -181,7 +181,7 @@ impl Process {
             objects: Default::default(),
             shared_vcpu_state: Default::default(),
             per_vcpu_states,
-            kill_evt: EventFd::new().map_err(Error::CreateEventFd)?,
+            kill_evt: Event::new().map_err(Error::CreateEvent)?,
             vcpu_pipes,
             request_buffer: vec![0; MAX_DATAGRAM_SIZE],
             response_buffer: Vec::new(),
@@ -307,7 +307,7 @@ impl Process {
         vm: &mut Vm,
         io_event: &MainRequest_Create_IoEvent,
     ) -> SysResult<RawFd> {
-        let evt = EventFd::new()?;
+        let evt = Event::new()?;
         let addr = match io_event.space {
             AddressSpace::IOPORT => IoeventAddress::Pio(io_event.address),
             AddressSpace::MMIO => IoeventAddress::Mmio(io_event.address),
@@ -557,7 +557,7 @@ impl Process {
                         }
                     } else if create.has_irq_event() {
                         let irq_event = create.get_irq_event();
-                        match (EventFd::new(), EventFd::new()) {
+                        match (Event::new(), Event::new()) {
                             (Ok(evt), Ok(resample_evt)) => match vm.register_irqfd_resample(
                                 &evt,
                                 &resample_evt,

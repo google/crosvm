@@ -13,14 +13,14 @@
 // emotional context, this file refers to them instead as "primary" and "secondary" PICs.
 
 use crate::BusDevice;
-use base::{debug, warn, EventFd};
+use base::{debug, warn, Event};
 use hypervisor::{PicInitState, PicSelect, PicState};
 
 pub struct Pic {
     // Indicates a pending INTR signal to LINT0 of vCPU, checked by vCPU thread.
     interrupt_request: bool,
-    // EventFds that need to be triggered when an ISR is cleared
-    resample_events: Vec<Option<EventFd>>,
+    // Events that need to be triggered when an ISR is cleared
+    resample_events: Vec<Option<Event>>,
     // Index 0 (aka PicSelect::Primary) is the primary pic, the rest are secondary.
     pics: [PicState; 2],
 }
@@ -154,7 +154,7 @@ impl Pic {
         self.pics[select as usize] = *state;
     }
 
-    pub fn register_resample_events(&mut self, resample_events: Vec<Option<EventFd>>) {
+    pub fn register_resample_events(&mut self, resample_events: Vec<Option<Event>>) {
         self.resample_events = resample_events;
     }
 

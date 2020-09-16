@@ -449,7 +449,7 @@ impl<'a> Decoder<'a> {
         })?;
 
         poll_ctx
-            .add(session.pipe(), Token::EventFd { id: stream_id })
+            .add(session.pipe(), Token::Event { id: stream_id })
             .map_err(|e| {
                 error!(
                     "failed to add FD to poll context for session {}: {}",
@@ -880,7 +880,7 @@ impl<'a> Device for Decoder<'a> {
         }
     }
 
-    fn process_event_fd(
+    fn process_event(
         &mut self,
         desc_map: &mut AsyncCmdDescMap,
         stream_id: u32,

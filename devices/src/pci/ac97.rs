@@ -9,7 +9,7 @@ use std::os::unix::io::RawFd;
 use std::str::FromStr;
 
 use audio_streams::shm_streams::{NullShmStreamSource, ShmStreamSource};
-use base::{error, EventFd};
+use base::{error, Event};
 use libcras::{CrasClient, CrasClientType, CrasSocketType};
 use resources::{Alloc, MmioType, SystemAllocator};
 use vm_memory::GuestMemory;
@@ -82,8 +82,8 @@ pub struct Ac97Dev {
     pci_address: Option<PciAddress>,
     // The irq events are temporarily saved here. They need to be passed to the device after the
     // jail forks. This happens when the bus is first written.
-    irq_evt: Option<EventFd>,
-    irq_resample_evt: Option<EventFd>,
+    irq_evt: Option<Event>,
+    irq_resample_evt: Option<Event>,
     bus_master: Ac97BusMaster,
     mixer: Ac97Mixer,
     backend: Ac97Backend,
@@ -234,8 +234,8 @@ impl PciDevice for Ac97Dev {
 
     fn assign_irq(
         &mut self,
-        irq_evt: EventFd,
-        irq_resample_evt: EventFd,
+        irq_evt: Event,
+        irq_resample_evt: Event,
         irq_num: u32,
         irq_pin: PciInterruptPin,
     ) {
@@ -335,7 +335,7 @@ impl PciDevice for Ac97Dev {
                 if let (Some(irq_evt), Some(irq_resample_evt)) =
                     (self.irq_evt.take(), self.irq_resample_evt.take())
                 {
-                    self.bus_master.set_irq_event_fd(irq_evt, irq_resample_evt);
+                    self.bus_master.set_irq_event(irq_evt, irq_resample_evt);
                 }
                 self.write_bus_master(addr - bar1, data)
             }

@@ -72,7 +72,7 @@ pub enum PollOrRing<F: AsRawFd> {
 impl<F: AsRawFd + Unpin> PollOrRing<F> {
     /// Creates a `PollOrRing` that uses uring if available or falls back to the fd_executor if not.
     /// Note that on older kernels (pre 5.6) FDs such as event or timer FDs are unreliable when
-    /// having readvwritev performed through io_uring. To deal with EventFd or Timer, use
+    /// having readvwritev performed through io_uring. To deal with Event or Timer, use
     /// `U64Source` instead.
     pub fn new(f: F) -> Result<Self> {
         if crate::uring_executor::use_uring() {
@@ -231,7 +231,7 @@ impl<F: AsRawFd> std::ops::DerefMut for PollOrRing<F> {
     }
 }
 
-/// Convenience helper for reading a series of u64s which is common for timer and eventfd.
+/// Convenience helper for reading a series of u64s which is common for timer and event.
 pub struct U64Source<F: AsRawFd + Unpin> {
     inner: PollOrRing<F>,
 }
@@ -452,16 +452,16 @@ mod tests {
     }
 
     #[test]
-    fn read_eventfds() {
-        use base::EventFd;
+    fn read_events() {
+        use base::Event;
 
         async fn go<F: AsRawFd + Unpin>(mut source: U64Source<F>) -> u64 {
             source.next_val().await.unwrap()
         }
 
-        let eventfd = EventFd::new().unwrap();
-        eventfd.write(0x55).unwrap();
-        let fut = go(U64Source::new(eventfd).unwrap());
+        let event = Event::new().unwrap();
+        event.write(0x55).unwrap();
+        let fut = go(U64Source::new(event).unwrap());
         pin_mut!(fut);
         let val = crate::uring_executor::URingExecutor::new(crate::RunOne::new(fut))
             .unwrap()
@@ -469,9 +469,9 @@ mod tests {
             .unwrap();
         assert_eq!(val, 0x55);
 
-        let eventfd = EventFd::new().unwrap();
-        eventfd.write(0xaa).unwrap();
-        let fut = go(U64Source::new_poll(eventfd).unwrap());
+        let event = Event::new().unwrap();
+        event.write(0xaa).unwrap();
+        let fut = go(U64Source::new_poll(event).unwrap());
         pin_mut!(fut);
         let val = crate::fd_executor::FdExecutor::new(crate::RunOne::new(fut))
             .unwrap()

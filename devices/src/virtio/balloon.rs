@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use base::{self, error, info, warn, EventFd, PollContext, PollToken};
+use base::{self, error, info, warn, Event, PollContext, PollToken};
 use data_model::{DataInit, Le16, Le32, Le64};
 use msg_socket::{MsgReceiver, MsgSender};
 use vm_control::{
@@ -215,7 +215,7 @@ impl Worker {
         }
     }
 
-    fn run(&mut self, mut queue_evts: Vec<EventFd>, kill_evt: EventFd) {
+    fn run(&mut self, mut queue_evts: Vec<Event>, kill_evt: Event) {
         #[derive(PartialEq, PollToken)]
         enum Token {
             Inflate,
@@ -260,21 +260,21 @@ impl Worker {
                 match event.token() {
                     Token::Inflate => {
                         if let Err(e) = inflate_queue_evt.read() {
-                            error!("failed reading inflate queue EventFd: {}", e);
+                            error!("failed reading inflate queue Event: {}", e);
                             break 'poll;
                         }
                         needs_interrupt_inflate |= self.process_inflate_deflate(true);
                     }
                     Token::Deflate => {
                         if let Err(e) = deflate_queue_evt.read() {
-                            error!("failed reading deflate queue EventFd: {}", e);
+                            error!("failed reading deflate queue Event: {}", e);
                             break 'poll;
                         }
                         needs_interrupt_deflate |= self.process_inflate_deflate(false);
                     }
                     Token::Stats => {
                         if let Err(e) = stats_queue_evt.read() {
-                            error!("failed reading stats queue EventFd: {}", e);
+                            error!("failed reading stats queue Event: {}", e);
                             break 'poll;
                         }
                         self.process_stats();
@@ -326,7 +326,7 @@ pub struct Balloon {
     command_socket: Option<BalloonControlResponseSocket>,
     config: Arc<BalloonConfig>,
     features: u64,
-    kill_evt: Option<EventFd>,
+    kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
 }
 
@@ -409,16 +409,16 @@ impl VirtioDevice for Balloon {
         mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
-        queue_evts: Vec<EventFd>,
+        queue_evts: Vec<Event>,
     ) {
         if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
             return;
         }
 
-        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed to create kill EventFd pair: {}", e);
+                error!("failed to create kill Event pair: {}", e);
                 return;
             }
         };

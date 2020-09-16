@@ -4,15 +4,15 @@
 
 use super::{INTERRUPT_STATUS_CONFIG_CHANGED, INTERRUPT_STATUS_USED_RING, VIRTIO_MSI_NO_VECTOR};
 use crate::pci::MsixConfig;
-use base::EventFd;
+use base::Event;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
 
 pub struct Interrupt {
     interrupt_status: Arc<AtomicUsize>,
-    interrupt_evt: EventFd,
-    interrupt_resample_evt: EventFd,
+    interrupt_evt: Event,
+    interrupt_resample_evt: Event,
     pub msix_config: Option<Arc<Mutex<MsixConfig>>>,
     config_msix_vector: u16,
 }
@@ -20,8 +20,8 @@ pub struct Interrupt {
 impl Interrupt {
     pub fn new(
         interrupt_status: Arc<AtomicUsize>,
-        interrupt_evt: EventFd,
-        interrupt_resample_evt: EventFd,
+        interrupt_evt: Event,
+        interrupt_resample_evt: Event,
         msix_config: Option<Arc<Mutex<MsixConfig>>>,
         config_msix_vector: u16,
     ) -> Interrupt {
@@ -88,7 +88,7 @@ impl Interrupt {
 
     /// Return the reference of interrupt_resample_evt
     /// To keep the interface clean, this member is private.
-    pub fn get_resample_evt(&self) -> &EventFd {
+    pub fn get_resample_evt(&self) -> &Event {
         &self.interrupt_resample_evt
     }
 }

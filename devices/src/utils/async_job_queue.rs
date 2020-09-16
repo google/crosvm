@@ -4,7 +4,7 @@
 
 use super::{Error, Result};
 use super::{EventHandler, EventLoop};
-use base::{error, EventFd, WatchingEvents};
+use base::{error, Event, WatchingEvents};
 use std::mem;
 use std::sync::Arc;
 use sync::Mutex;
@@ -12,13 +12,13 @@ use sync::Mutex;
 /// Async Job Queue can schedule async jobs.
 pub struct AsyncJobQueue {
     jobs: Mutex<Vec<Box<dyn FnMut() + Send>>>,
-    evt: EventFd,
+    evt: Event,
 }
 
 impl AsyncJobQueue {
     /// Init job queue on event loop.
     pub fn init(event_loop: &EventLoop) -> Result<Arc<AsyncJobQueue>> {
-        let evt = EventFd::new().map_err(Error::CreateEventFd)?;
+        let evt = Event::new().map_err(Error::CreateEvent)?;
         let queue = Arc::new(AsyncJobQueue {
             jobs: Mutex::new(Vec::new()),
             evt,
@@ -35,7 +35,7 @@ impl AsyncJobQueue {
     /// Queue a new job. It will be invoked on event loop.
     pub fn queue_job<T: Fn() + 'static + Send>(&self, cb: T) -> Result<()> {
         self.jobs.lock().push(Box::new(cb));
-        self.evt.write(1).map_err(Error::WriteEventFd)
+        self.evt.write(1).map_err(Error::WriteEvent)
     }
 }
 
@@ -45,7 +45,7 @@ impl EventHandler for AsyncJobQueue {
         match self.evt.read() {
             Ok(_) => {}
             Err(e) => {
-                error!("read event fd failed {}", e);
+                error!("read event failed {}", e);
                 return Err(());
             }
         }

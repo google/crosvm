@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::EventFd;
+use base::Event;
 
 use msg_socket::*;
 
@@ -13,7 +13,7 @@ struct DummyRequest {}
 enum Response {
     A(u8),
     B,
-    C(u32, EventFd),
+    C(u32, Event),
     D([u8; 4]),
     E { f0: u8, f1: u32 },
 }
@@ -21,7 +21,7 @@ enum Response {
 #[test]
 fn sock_send_recv_enum() {
     let (req, res) = pair::<DummyRequest, Response>().unwrap();
-    let e0 = EventFd::new().unwrap();
+    let e0 = Event::new().unwrap();
     let e1 = e0.try_clone().unwrap();
     res.send(&Response::C(0xf0f0, e0)).unwrap();
     let r = req.recv().unwrap();

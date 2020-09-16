@@ -18,7 +18,7 @@ use hypervisor::{
 use kvm_sys::*;
 use resources::SystemAllocator;
 
-use base::{error, Error, EventFd, Result};
+use base::{error, Error, Event, Result};
 use vm_control::VmIrqRequestSocket;
 
 use crate::irqchip::{Ioapic, Pic, IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES};
@@ -148,14 +148,14 @@ pub struct KvmSplitIrqChip {
     /// locked the ioapic and the ioapic sends a AddMsiRoute signal to the main thread (which
     /// itself may be busy trying to call service_irq).
     delayed_ioapic_irq_events: Arc<Mutex<Vec<usize>>>,
-    /// Vec of EventFds that the ioapic will use to trigger interrupts in KVM. This is not
-    /// wrapped in an Arc<Mutex<>> because the EventFds themselves can be cloned and they will
+    /// Vec of Events that the ioapic will use to trigger interrupts in KVM. This is not
+    /// wrapped in an Arc<Mutex<>> because the Events themselves can be cloned and they will
     /// not change after the IrqChip is created.
-    irqfds: Vec<EventFd>,
-    /// Array of EventFds that devices will use to assert ioapic pins.
-    irq_events: Arc<Mutex<[Option<EventFd>; NUM_IOAPIC_PINS]>>,
-    /// Array of EventFds that should be asserted when the ioapic receives an EOI.
-    resample_events: Arc<Mutex<[Option<EventFd>; NUM_IOAPIC_PINS]>>,
+    irqfds: Vec<Event>,
+    /// Array of Events that devices will use to assert ioapic pins.
+    irq_events: Arc<Mutex<[Option<Event>; NUM_IOAPIC_PINS]>>,
+    /// Array of Events that should be asserted when the ioapic receives an EOI.
+    resample_events: Arc<Mutex<[Option<Event>; NUM_IOAPIC_PINS]>>,
 }
 
 fn kvm_dummy_msi_routes() -> Vec<IrqRoute> {
@@ -179,12 +179,12 @@ impl KvmSplitIrqChip {
     pub fn new(vm: KvmVm, num_vcpus: usize, irq_socket: VmIrqRequestSocket) -> Result<Self> {
         vm.enable_split_irqchip()?;
 
-        let pit_evt = EventFd::new()?;
+        let pit_evt = Event::new()?;
         let pit = Arc::new(Mutex::new(
             Pit::new(pit_evt.try_clone()?, Arc::new(Mutex::new(Clock::new()))).map_err(
                 |e| match e {
-                    PitError::CloneEventFd(err) => err,
-                    PitError::CreateEventFd(err) => err,
+                    PitError::CloneEvent(err) => err,
+                    PitError::CreateEvent(err) => err,
                     PitError::CreatePollContext(err) => err,
                     PitError::PollError(err) => err,
                     PitError::TimerCreateError(err) => err,
@@ -192,11 +192,11 @@ impl KvmSplitIrqChip {
                 },
             )?,
         ));
-        let mut irqfds: Vec<EventFd> = Vec::with_capacity(NUM_IOAPIC_PINS);
-        let mut irqfds_for_ioapic: Vec<EventFd> = Vec::with_capacity(NUM_IOAPIC_PINS);
+        let mut irqfds: Vec<Event> = Vec::with_capacity(NUM_IOAPIC_PINS);
+        let mut irqfds_for_ioapic: Vec<Event> = Vec::with_capacity(NUM_IOAPIC_PINS);
 
         for i in 0..NUM_IOAPIC_PINS {
-            let evt = EventFd::new()?;
+            let evt = Event::new()?;
             vm.register_irqfd(i as u32, &evt, None)?;
             irqfds_for_ioapic.push(evt.try_clone()?);
             irqfds.push(evt);
@@ -295,8 +295,8 @@ impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
     fn register_irq_event(
         &mut self,
         irq: u32,
-        irq_event: &EventFd,
-        resample_event: Option<&EventFd>,
+        irq_event: &Event,
+        resample_event: Option<&Event>,
     ) -> Result<()> {
         if irq < NUM_IOAPIC_PINS as u32 {
             // safe to index here because irq_events is NUM_IOAPIC_PINS long
@@ -312,7 +312,7 @@ impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
     }
 
     /// Unregister an event for a particular GSI.
-    fn unregister_irq_event(&mut self, irq: u32, irq_event: &EventFd) -> Result<()> {
+    fn unregister_irq_event(&mut self, irq: u32, irq_event: &Event) -> Result<()> {
         if irq < NUM_IOAPIC_PINS as u32 {
             match &self.irq_events.lock()[irq as usize] {
                 // We only do something if irq_event is the same as our existing event
@@ -363,8 +363,8 @@ impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
 
     /// Return a vector of all registered irq numbers and their associated events. To be used by
     /// the main thread to wait for irq events to be triggered.
-    fn irq_event_tokens(&self) -> Result<Vec<(u32, EventFd)>> {
-        let mut tokens: Vec<(u32, EventFd)> = Vec::new();
+    fn irq_event_tokens(&self) -> Result<Vec<(u32, Event)>> {
+        let mut tokens: Vec<(u32, Event)> = Vec::new();
         for i in 0..NUM_IOAPIC_PINS {
             if let Some(evt) = &self.irq_events.lock()[i] {
                 tokens.push((i as u32, evt.try_clone()?));
@@ -391,14 +391,14 @@ impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
         Ok(())
     }
 
-    /// Service an IRQ event by asserting then deasserting an IRQ line. The associated EventFd
+    /// Service an IRQ event by asserting then deasserting an IRQ line. The associated Event
     /// that triggered the irq event will be read from. If the irq is associated with a resample
-    /// EventFd, then the deassert will only happen after an EOI is broadcast for a vector
+    /// Event, then the deassert will only happen after an EOI is broadcast for a vector
     /// associated with the irq line.
     /// For the KvmSplitIrqChip, this function identifies which chips the irq routes to, then
     /// attempts to call service_irq on those chips. If the ioapic is unable to be immediately
     /// locked, we add the irq to the delayed_ioapic_irq_events Vec (though we still read
-    /// from the EventFd that triggered the irq event).
+    /// from the Event that triggered the irq event).
     fn service_irq_event(&mut self, irq: u32) -> Result<()> {
         if let Some(evt) = &self.irq_events.lock()[irq as usize] {
             evt.read()?;
@@ -484,7 +484,7 @@ impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
 
     /// Attempt to clone this IrqChip instance.
     fn try_clone(&self) -> Result<Self> {
-        let mut new_irqfds: Vec<EventFd> = Vec::with_capacity(NUM_IOAPIC_PINS);
+        let mut new_irqfds: Vec<Event> = Vec::with_capacity(NUM_IOAPIC_PINS);
         for i in 0..NUM_IOAPIC_PINS {
             new_irqfds.push(self.irqfds[i].try_clone()?);
         }
@@ -531,8 +531,8 @@ impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
 
         // At this point, all of our devices have been created and they have registered their
         // irq events, so we can clone our resample events
-        let mut ioapic_resample_events: Vec<Option<EventFd>> = Vec::with_capacity(NUM_IOAPIC_PINS);
-        let mut pic_resample_events: Vec<Option<EventFd>> = Vec::with_capacity(NUM_IOAPIC_PINS);
+        let mut ioapic_resample_events: Vec<Option<Event>> = Vec::with_capacity(NUM_IOAPIC_PINS);
+        let mut pic_resample_events: Vec<Option<Event>> = Vec::with_capacity(NUM_IOAPIC_PINS);
 
         for i in 0..NUM_IOAPIC_PINS {
             match &self.resample_events.lock()[i] {
@@ -812,7 +812,7 @@ mod tests {
         assert_eq!(tokens[0].0, 0);
 
         // register another irq event
-        let evt = EventFd::new().expect("failed to create eventfd");
+        let evt = Event::new().expect("failed to create event");
         chip.register_irq_event(6, &evt, None)
             .expect("failed to register irq event");
 
@@ -841,8 +841,8 @@ mod tests {
             .expect("failed to create SystemAllocator");
 
         // setup an event and a resample event for irq line 1
-        let evt = EventFd::new().expect("failed to create eventfd");
-        let mut resample_evt = EventFd::new().expect("failed to create eventfd");
+        let evt = Event::new().expect("failed to create event");
+        let mut resample_evt = Event::new().expect("failed to create event");
 
         chip.register_irq_event(1, &evt, Some(&resample_evt))
             .expect("failed to register_irq_event");
@@ -879,7 +879,7 @@ mod tests {
         assert!(state.special_fully_nested_mode);
 
         // Need to write to the irq event before servicing it
-        evt.write(1).expect("failed to write to eventfd");
+        evt.write(1).expect("failed to write to event");
 
         // if we assert irq line one, and then get the resulting interrupt, an auto-eoi should
         // occur and cause the resample_event to be written to
@@ -956,8 +956,8 @@ mod tests {
             .expect("failed to create SystemAllocator");
 
         // setup an event and a resample event for irq line 1
-        let evt = EventFd::new().expect("failed to create eventfd");
-        let mut resample_evt = EventFd::new().expect("failed to create eventfd");
+        let evt = Event::new().expect("failed to create event");
+        let mut resample_evt = Event::new().expect("failed to create event");
 
         chip.register_irq_event(1, &evt, Some(&resample_evt))
             .expect("failed to register_irq_event");

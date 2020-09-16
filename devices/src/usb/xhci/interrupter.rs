@@ -9,7 +9,7 @@ use super::xhci_abi::{
 };
 use super::xhci_regs::*;
 use crate::register_space::Register;
-use base::{Error as SysError, EventFd};
+use base::{Error as SysError, Event};
 use std::fmt::{self, Display};
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -40,7 +40,7 @@ impl Display for Error {
 /// See spec 4.17 for interrupters. Controller can send an event back to guest kernel driver
 /// through interrupter.
 pub struct Interrupter {
-    interrupt_fd: EventFd,
+    interrupt_evt: Event,
     usbsts: Register<u32>,
     iman: Register<u32>,
     erdp: Register<u64>,
@@ -53,9 +53,9 @@ pub struct Interrupter {
 
 impl Interrupter {
     /// Create a new interrupter.
-    pub fn new(mem: GuestMemory, irq_evt: EventFd, regs: &XhciRegs) -> Self {
+    pub fn new(mem: GuestMemory, irq_evt: Event, regs: &XhciRegs) -> Self {
         Interrupter {
-            interrupt_fd: irq_evt,
+            interrupt_evt: irq_evt,
             usbsts: regs.usbsts.clone(),
             iman: regs.iman.clone(),
             erdp: regs.erdp.clone(),
@@ -184,7 +184,7 @@ impl Interrupter {
         self.usbsts.set_bits(USB_STS_EVENT_INTERRUPT);
         self.iman.set_bits(IMAN_INTERRUPT_PENDING);
         self.erdp.set_bits(ERDP_EVENT_HANDLER_BUSY);
-        self.interrupt_fd.write(1).map_err(Error::SendInterrupt)
+        self.interrupt_evt.write(1).map_err(Error::SendInterrupt)
     }
 
     fn interrupt_if_needed(&mut self) -> Result<()> {

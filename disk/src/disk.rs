@@ -11,8 +11,8 @@ use std::rc::Rc;
 
 use async_trait::async_trait;
 use base::{
-    AsRawFds, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole, SeekHole,
-    WriteZeroesAt,
+    AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole,
+    SeekHole, WriteZeroesAt,
 };
 use libc::EINVAL;
 use remain::sorted;
@@ -81,7 +81,7 @@ pub trait DiskFile:
     + WriteZeroesAt
     + FileAllocate
     + Send
-    + AsRawFds
+    + AsRawDescriptors
     + Debug
 {
 }
@@ -94,7 +94,7 @@ impl<
             + WriteZeroesAt
             + FileAllocate
             + Send
-            + AsRawFds
+            + AsRawDescriptors
             + Debug,
     > DiskFile for D
 {

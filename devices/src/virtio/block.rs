@@ -15,7 +15,7 @@ use std::u32;
 
 use base::Error as SysError;
 use base::Result as SysResult;
-use base::{error, info, iov_max, warn, EventFd, PollContext, PollToken, Timer};
+use base::{error, info, iov_max, warn, Event, PollContext, PollToken, Timer};
 use data_model::{DataInit, Le16, Le32, Le64};
 use disk::DiskFile;
 use msg_socket::{MsgReceiver, MsgSender};
@@ -359,7 +359,7 @@ impl Worker {
         DiskControlResult::Ok
     }
 
-    fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd) {
+    fn run(&mut self, queue_evt: Event, kill_evt: Event) {
         #[derive(PollToken)]
         enum Token {
             FlushTimer,
@@ -421,7 +421,7 @@ impl Worker {
                     }
                     Token::QueueAvailable => {
                         if let Err(e) = queue_evt.read() {
-                            error!("failed reading queue EventFd: {}", e);
+                            error!("failed reading queue Event: {}", e);
                             break 'poll;
                         }
                         self.process_queue(0, &mut flush_timer, &mut flush_timer_armed);
@@ -473,7 +473,7 @@ impl Worker {
 
 /// Virtio device for exposing block level read/write operations on a host file.
 pub struct Block {
-    kill_evt: Option<EventFd>,
+    kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
     disk_image: Option<Box<dyn DiskFile>>,
     disk_size: Arc<Mutex<u64>>,
@@ -721,7 +721,7 @@ impl VirtioDevice for Block {
         let mut keep_fds = Vec::new();
 
         if let Some(disk_image) = &self.disk_image {
-            keep_fds.extend(disk_image.as_raw_fds());
+            keep_fds.extend(disk_image.as_raw_descriptors());
         }
 
         if let Some(control_socket) = &self.control_socket {
@@ -756,16 +756,16 @@ impl VirtioDevice for Block {
         mem: GuestMemory,
         interrupt: Interrupt,
         queues: Vec<Queue>,
-        mut queue_evts: Vec<EventFd>,
+        mut queue_evts: Vec<Event>,
     ) {
         if queues.len() != 1 || queue_evts.len() != 1 {
             return;
         }
 
-        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed creating kill EventFd pair: {}", e);
+                error!("failed creating kill Event pair: {}", e);
                 return;
             }
         };

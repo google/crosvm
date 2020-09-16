@@ -4,11 +4,11 @@
 
 use crate::{BusDevice, BusResumeDevice};
 use acpi_tables::{aml, aml::Aml};
-use base::{error, warn, EventFd};
+use base::{error, warn, Event};
 
 /// ACPI PM resource for handling OS suspend/resume request
 pub struct ACPIPMResource {
-    suspend_evt: EventFd,
+    suspend_evt: Event,
     pm1_status: u16,
     pm1_enable: u16,
     pm1_control: u16,
@@ -18,7 +18,7 @@ pub struct ACPIPMResource {
 
 impl ACPIPMResource {
     /// Constructs ACPI Power Management Resouce.
-    pub fn new(suspend_evt: EventFd) -> ACPIPMResource {
+    pub fn new(suspend_evt: Event) -> ACPIPMResource {
         ACPIPMResource {
             suspend_evt,
             pm1_status: 0,

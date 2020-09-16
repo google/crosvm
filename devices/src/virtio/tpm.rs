@@ -11,7 +11,7 @@ use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::thread;
 
-use base::{error, EventFd, PollContext, PollToken};
+use base::{error, Event, PollContext, PollToken};
 use vm_memory::GuestMemory;
 
 use super::{
@@ -33,8 +33,8 @@ struct Worker {
     interrupt: Interrupt,
     queue: Queue,
     mem: GuestMemory,
-    queue_evt: EventFd,
-    kill_evt: EventFd,
+    queue_evt: Event,
+    kill_evt: Event,
     device: Device,
 }
 
@@ -137,7 +137,7 @@ impl Worker {
                 match event.token() {
                     Token::QueueAvailable => {
                         if let Err(e) = self.queue_evt.read() {
-                            error!("vtpm failed reading queue EventFd: {}", e);
+                            error!("vtpm failed reading queue Event: {}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_queue();
@@ -158,7 +158,7 @@ impl Worker {
 /// Virtio vTPM device.
 pub struct Tpm {
     storage: PathBuf,
-    kill_evt: Option<EventFd>,
+    kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<()>>,
 }
 
@@ -202,7 +202,7 @@ impl VirtioDevice for Tpm {
         mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
-        mut queue_evts: Vec<EventFd>,
+        mut queue_evts: Vec<Event>,
     ) {
         if queues.len() != 1 || queue_evts.len() != 1 {
             return;
@@ -220,10 +220,10 @@ impl VirtioDevice for Tpm {
         }
         let simulator = tpm2::Simulator::singleton_in_current_directory();
 
-        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(err) => {
-                error!("vtpm failed to create kill EventFd pair: {}", err);
+                error!("vtpm failed to create kill Event pair: {}", err);
                 return;
             }
         };

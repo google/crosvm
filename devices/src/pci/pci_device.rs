@@ -5,7 +5,7 @@
 use std::fmt::{self, Display};
 use std::os::unix::io::RawFd;
 
-use base::EventFd;
+use base::Event;
 use hypervisor::Datamatch;
 use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
 
@@ -60,8 +60,8 @@ pub trait PciDevice: Send {
     /// When `irq_resample_evt` is signaled, the device should re-assert `irq_evt` if necessary.
     fn assign_irq(
         &mut self,
-        _irq_evt: EventFd,
-        _irq_resample_evt: EventFd,
+        _irq_evt: Event,
+        _irq_resample_evt: Event,
         _irq_num: u32,
         _irq_pin: PciInterruptPin,
     ) {
@@ -87,9 +87,9 @@ pub trait PciDevice: Send {
         Ok(())
     }
 
-    /// Gets a list of ioeventfds that should be registered with the running VM. The list is
-    /// returned as a Vec of (eventfd, addr, datamatch) tuples.
-    fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
+    /// Gets a list of ioevents that should be registered with the running VM. The list is
+    /// returned as a Vec of (event, addr, datamatch) tuples.
+    fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
         Vec::new()
     }
 
@@ -158,8 +158,8 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     }
     fn assign_irq(
         &mut self,
-        irq_evt: EventFd,
-        irq_resample_evt: EventFd,
+        irq_evt: Event,
+        irq_resample_evt: Event,
         irq_num: u32,
         irq_pin: PciInterruptPin,
     ) {
@@ -174,8 +174,8 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     fn register_device_capabilities(&mut self) -> Result<()> {
         (**self).register_device_capabilities()
     }
-    fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
-        (**self).ioeventfds()
+    fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
+        (**self).ioevents()
     }
     fn read_config_register(&self, reg_idx: usize) -> u32 {
         (**self).read_config_register(reg_idx)

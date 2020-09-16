@@ -12,7 +12,7 @@ pub mod x86_64;
 
 use std::os::raw::c_int;
 
-use base::{EventFd, MappedRegion, Result, SafeDescriptor};
+use base::{Event, MappedRegion, Result, SafeDescriptor};
 use msg_socket::MsgOnSocket;
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -106,7 +106,7 @@ pub trait Vm: Send + Sized {
     /// triggered is prevented.
     fn register_ioevent(
         &self,
-        evt: &EventFd,
+        evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()>;
@@ -117,7 +117,7 @@ pub trait Vm: Send + Sized {
     /// `register_ioevent`.
     fn unregister_ioevent(
         &self,
-        evt: &EventFd,
+        evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()>;

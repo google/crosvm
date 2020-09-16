@@ -6,7 +6,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
 use std::u32;
 
-use base::{error, EventFd, MappedRegion, MemoryMapping};
+use base::{error, Event, MappedRegion, MemoryMapping};
 use hypervisor::Datamatch;
 use msg_socket::{MsgReceiver, MsgSender};
 use resources::{Alloc, MmioType, SystemAllocator};
@@ -130,7 +130,7 @@ struct VfioMsiCap {
     address: u64,
     data: u16,
     vm_socket_irq: VmIrqRequestSocket,
-    irqfd: Option<EventFd>,
+    irqfd: Option<Event>,
     gsi: Option<u32>,
 }
 
@@ -260,10 +260,10 @@ impl VfioMsiCap {
 
     fn allocate_one_msi(&mut self) {
         if self.irqfd.is_none() {
-            match EventFd::new() {
+            match Event::new() {
                 Ok(fd) => self.irqfd = Some(fd),
                 Err(e) => {
-                    error!("failed to create eventfd: {:?}", e);
+                    error!("failed to create event: {:?}", e);
                     return;
                 }
             };
@@ -290,7 +290,7 @@ impl VfioMsiCap {
         self.add_msi_route();
     }
 
-    fn get_msi_irqfd(&self) -> Option<&EventFd> {
+    fn get_msi_irqfd(&self) -> Option<&Event> {
         self.irqfd.as_ref()
     }
 }
@@ -423,7 +423,7 @@ impl VfioMsixCap {
         }
     }
 
-    fn get_msix_irqfds(&self) -> Option<Vec<&EventFd>> {
+    fn get_msix_irqfds(&self) -> Option<Vec<&Event>> {
         let mut irqfds = Vec::new();
 
         for i in 0..self.table_size {
@@ -458,8 +458,8 @@ pub struct VfioPciDevice {
     device: Arc<VfioDevice>,
     config: VfioPciConfig,
     pci_address: Option<PciAddress>,
-    interrupt_evt: Option<EventFd>,
-    interrupt_resample_evt: Option<EventFd>,
+    interrupt_evt: Option<Event>,
+    interrupt_resample_evt: Option<Event>,
     mmio_regions: Vec<MmioInfo>,
     io_regions: Vec<IoInfo>,
     msi_cap: Option<VfioMsiCap>,
@@ -796,8 +796,8 @@ impl PciDevice for VfioPciDevice {
 
     fn assign_irq(
         &mut self,
-        irq_evt: EventFd,
-        irq_resample_evt: EventFd,
+        irq_evt: Event,
+        irq_resample_evt: Event,
         irq_num: u32,
         _irq_pin: PciInterruptPin,
     ) {
@@ -955,7 +955,7 @@ impl PciDevice for VfioPciDevice {
         Ok(())
     }
 
-    fn ioeventfds(&self) -> Vec<(&EventFd, u64, Datamatch)> {
+    fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
         Vec::new()
     }
 

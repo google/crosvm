@@ -4,7 +4,7 @@
 
 use std::os::raw::c_ulonglong;
 
-use base::{error, Error as SysError, EventFd, PollContext, PollToken};
+use base::{error, Error as SysError, Event, PollContext, PollToken};
 use vhost::Vhost;
 
 use super::control_socket::{VhostDevRequest, VhostDevResponse, VhostDevResponseSocket};
@@ -18,9 +18,9 @@ pub struct Worker<T: Vhost> {
     interrupt: Interrupt,
     queues: Vec<Queue>,
     pub vhost_handle: T,
-    pub vhost_interrupt: Vec<EventFd>,
+    pub vhost_interrupt: Vec<Event>,
     acked_features: u64,
-    pub kill_evt: EventFd,
+    pub kill_evt: Event,
     pub response_socket: Option<VhostDevResponseSocket>,
 }
 
@@ -28,10 +28,10 @@ impl<T: Vhost> Worker<T> {
     pub fn new(
         queues: Vec<Queue>,
         vhost_handle: T,
-        vhost_interrupt: Vec<EventFd>,
+        vhost_interrupt: Vec<Event>,
         interrupt: Interrupt,
         acked_features: u64,
-        kill_evt: EventFd,
+        kill_evt: Event,
         response_socket: Option<VhostDevResponseSocket>,
     ) -> Worker<T> {
         Worker {
@@ -47,7 +47,7 @@ impl<T: Vhost> Worker<T> {
 
     pub fn run<F1, F2>(
         &mut self,
-        queue_evts: Vec<EventFd>,
+        queue_evts: Vec<Event>,
         queue_sizes: &[u16],
         activate_vqs: F1,
         cleanup_vqs: F2,

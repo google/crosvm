@@ -12,7 +12,7 @@ use crate::usb::xhci::xhci::Xhci;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::usb::xhci::xhci_regs::{init_xhci_mmio_space_and_regs, XhciRegs};
 use crate::utils::FailHandle;
-use base::{error, EventFd};
+use base::{error, Event};
 use resources::{Alloc, MmioType, SystemAllocator};
 use std::mem;
 use std::os::unix::io::RawFd;
@@ -80,8 +80,8 @@ enum XhciControllerState {
     },
     IrqAssigned {
         device_provider: HostBackendDeviceProvider,
-        irq_evt: EventFd,
-        irq_resample_evt: EventFd,
+        irq_evt: Event,
+        irq_resample_evt: Event,
     },
     Initialized {
         mmio: RegisterSpace,
@@ -183,8 +183,8 @@ impl PciDevice for XhciController {
 
     fn assign_irq(
         &mut self,
-        irq_evt: EventFd,
-        irq_resample_evt: EventFd,
+        irq_evt: Event,
+        irq_resample_evt: Event,
         irq_num: u32,
         irq_pin: PciInterruptPin,
     ) {

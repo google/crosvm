@@ -8,9 +8,9 @@ use std::fmt::{self, Display};
 #[derive(Debug)]
 pub enum Error {
     EventLoopAlreadyFailed,
-    CreateEventFd(SysError),
-    ReadEventFd(SysError),
-    WriteEventFd(SysError),
+    CreateEvent(SysError),
+    ReadEvent(SysError),
+    WriteEvent(SysError),
     CreatePollContext(SysError),
     PollContextAddFd(SysError),
     PollContextDeleteFd(SysError),
@@ -23,9 +23,9 @@ impl Display for Error {
 
         match self {
             EventLoopAlreadyFailed => write!(f, "event loop already failed due to previous errors"),
-            CreateEventFd(e) => write!(f, "failed to create event fd: {}", e),
-            ReadEventFd(e) => write!(f, "failed to read event fd: {}", e),
-            WriteEventFd(e) => write!(f, "failed to write event fd: {}", e),
+            CreateEvent(e) => write!(f, "failed to create event: {}", e),
+            ReadEvent(e) => write!(f, "failed to read event: {}", e),
+            WriteEvent(e) => write!(f, "failed to write event: {}", e),
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             PollContextAddFd(e) => write!(f, "failed to add fd to poll context: {}", e),
             PollContextDeleteFd(e) => write!(f, "failed to delete fd from poll context: {}", e),

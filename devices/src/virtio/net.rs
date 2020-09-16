@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::thread;
 
 use base::Error as SysError;
-use base::{error, warn, EventFd, PollContext, PollToken, WatchingEvents};
+use base::{error, warn, Event, PollContext, PollToken, WatchingEvents};
 use data_model::{DataInit, Le16, Le64};
 use net_util::{Error as TapError, MacAddress, TapT};
 use virtio_sys::virtio_net::{
@@ -31,12 +31,12 @@ const QUEUE_SIZE: u16 = 256;
 
 #[derive(Debug)]
 pub enum NetError {
-    /// Creating kill eventfd failed.
-    CreateKillEventFd(SysError),
+    /// Creating kill event failed.
+    CreateKillEvent(SysError),
     /// Creating PollContext failed.
     CreatePollContext(SysError),
-    /// Cloning kill eventfd failed.
-    CloneKillEventFd(SysError),
+    /// Cloning kill event failed.
+    CloneKillEvent(SysError),
     /// Descriptor chain was invalid.
     DescriptorChain(DescriptorError),
     /// Removing EPOLLIN from the tap fd events failed.
@@ -78,9 +78,9 @@ impl Display for NetError {
         use self::NetError::*;
 
         match self {
-            CreateKillEventFd(e) => write!(f, "failed to create kill eventfd: {}", e),
+            CreateKillEvent(e) => write!(f, "failed to create kill event: {}", e),
             CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
-            CloneKillEventFd(e) => write!(f, "failed to clone kill eventfd: {}", e),
+            CloneKillEvent(e) => write!(f, "failed to clone kill event: {}", e),
             DescriptorChain(e) => write!(f, "failed to valildate descriptor chain: {}", e),
             PollDisableTap(e) => write!(f, "failed to disable EPOLLIN on tap fd: {}", e),
             PollEnableTap(e) => write!(f, "failed to enable EPOLLIN on tap fd: {}", e),
@@ -154,7 +154,7 @@ struct Worker<T: TapT> {
     tap: T,
     acked_features: u64,
     vq_pairs: u16,
-    kill_evt: EventFd,
+    kill_evt: Event,
 }
 
 impl<T> Worker<T>
@@ -319,9 +319,9 @@ where
 
     fn run(
         &mut self,
-        rx_queue_evt: EventFd,
-        tx_queue_evt: EventFd,
-        ctrl_queue_evt: Option<EventFd>,
+        rx_queue_evt: Event,
+        tx_queue_evt: Event,
+        ctrl_queue_evt: Option<Event>,
     ) -> Result<(), NetError> {
         #[derive(PollToken)]
         enum Token {
@@ -374,7 +374,7 @@ where
                     },
                     Token::RxQueue => {
                         if let Err(e) = rx_queue_evt.read() {
-                            error!("net: error reading rx queue EventFd: {}", e);
+                            error!("net: error reading rx queue Event: {}", e);
                             break 'poll;
                         }
                         if !tap_polling_enabled {
@@ -386,7 +386,7 @@ where
                     }
                     Token::TxQueue => {
                         if let Err(e) = tx_queue_evt.read() {
-                            error!("net: error reading tx queue EventFd: {}", e);
+                            error!("net: error reading tx queue Event: {}", e);
                             break 'poll;
                         }
                         self.process_tx();
@@ -394,7 +394,7 @@ where
                     Token::CtrlQueue => {
                         if let Some(ctrl_evt) = &ctrl_queue_evt {
                             if let Err(e) = ctrl_evt.read() {
-                                error!("net: error reading ctrl queue EventFd: {}", e);
+                                error!("net: error reading ctrl queue Event: {}", e);
                                 break 'poll;
                             }
                         } else {
@@ -421,8 +421,8 @@ where
 
 pub struct Net<T: TapT> {
     queue_sizes: Box<[u16]>,
-    workers_kill_evt: Vec<EventFd>,
-    kill_evts: Vec<EventFd>,
+    workers_kill_evt: Vec<Event>,
+    kill_evts: Vec<Event>,
     worker_threads: Vec<thread::JoinHandle<Worker<T>>>,
     taps: Vec<T>,
     avail_features: u64,
@@ -479,11 +479,11 @@ where
             avail_features |= 1 << virtio_net::VIRTIO_NET_F_MQ;
         }
 
-        let mut kill_evts: Vec<EventFd> = Vec::new();
-        let mut workers_kill_evt: Vec<EventFd> = Vec::new();
+        let mut kill_evts: Vec<Event> = Vec::new();
+        let mut workers_kill_evt: Vec<Event> = Vec::new();
         for _ in 0..taps.len() {
-            let kill_evt = EventFd::new().map_err(NetError::CreateKillEventFd)?;
-            let worker_kill_evt = kill_evt.try_clone().map_err(NetError::CloneKillEventFd)?;
+            let kill_evt = Event::new().map_err(NetError::CreateKillEvent)?;
+            let worker_kill_evt = kill_evt.try_clone().map_err(NetError::CloneKillEvent)?;
             kill_evts.push(kill_evt);
             workers_kill_evt.push(worker_kill_evt);
         }
@@ -558,7 +558,7 @@ where
     fn drop(&mut self) {
         let len = self.kill_evts.len();
         for i in 0..len {
-            // Only kill the child if it claimed its eventfd.
+            // Only kill the child if it claimed its event.
             if self.workers_kill_evt.get(i).is_none() {
                 if let Some(kill_evt) = self.kill_evts.get(i) {
                     // Ignore the result because there is nothing we can do about it.
@@ -641,7 +641,7 @@ where
         mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
-        mut queue_evts: Vec<EventFd>,
+        mut queue_evts: Vec<Event>,
     ) {
         if queues.len() != self.queue_sizes.len() || queue_evts.len() != self.queue_sizes.len() {
             error!(
@@ -722,7 +722,7 @@ where
     fn reset(&mut self) -> bool {
         let len = self.kill_evts.len();
         for i in 0..len {
-            // Only kill the child if it claimed its eventfd.
+            // Only kill the child if it claimed its event.
             if self.workers_kill_evt.get(i).is_none() {
                 if let Some(kill_evt) = self.kill_evts.get(i) {
                     if kill_evt.write(1).is_err() {

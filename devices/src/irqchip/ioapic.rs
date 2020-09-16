@@ -6,7 +6,7 @@
 // See https://pdos.csail.mit.edu/6.828/2016/readings/ia32/ioapic.pdf for a specification.
 
 use crate::BusDevice;
-use base::{error, warn, EventFd, Result};
+use base::{error, warn, Event, Result};
 use hypervisor::{IoapicState, MsiAddressMessage, MsiDataMessage, TriggerMode, NUM_IOAPIC_PINS};
 use msg_socket::{MsgReceiver, MsgSender};
 use vm_control::{VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
@@ -59,9 +59,9 @@ pub struct Ioapic {
     /// one of its interrupts is being coalesced.
     rtc_remote_irr: bool,
     /// Irq events that are used to inject interrupts
-    irq_events: Vec<EventFd>,
+    irq_events: Vec<Event>,
     /// Events that should be triggered on an EOI
-    resample_events: Vec<Option<EventFd>>,
+    resample_events: Vec<Option<Event>>,
     /// Socket used to route MSI irqs
     irq_socket: VmIrqRequestSocket,
 }
@@ -124,7 +124,7 @@ impl BusDevice for Ioapic {
 }
 
 impl Ioapic {
-    pub fn new(irq_events: Vec<EventFd>, irq_socket: VmIrqRequestSocket) -> Result<Ioapic> {
+    pub fn new(irq_events: Vec<Event>, irq_socket: VmIrqRequestSocket) -> Result<Ioapic> {
         let mut state = IoapicState::default();
 
         for i in 0..NUM_IOAPIC_PINS {
@@ -148,7 +148,7 @@ impl Ioapic {
         self.state = *state
     }
 
-    pub fn register_resample_events(&mut self, resample_events: Vec<Option<EventFd>>) {
+    pub fn register_resample_events(&mut self, resample_events: Vec<Option<Event>>) {
         self.resample_events = resample_events;
     }
 

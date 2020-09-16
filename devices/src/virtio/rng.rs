@@ -8,7 +8,7 @@ use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::thread;
 
-use base::{error, warn, EventFd, PollContext, PollToken};
+use base::{error, warn, Event, PollContext, PollToken};
 use vm_memory::GuestMemory;
 
 use super::{Interrupt, Queue, VirtioDevice, Writer, TYPE_RNG};
@@ -66,7 +66,7 @@ impl Worker {
         needs_interrupt
     }
 
-    fn run(&mut self, queue_evt: EventFd, kill_evt: EventFd) {
+    fn run(&mut self, queue_evt: Event, kill_evt: Event) {
         #[derive(PollToken)]
         enum Token {
             QueueAvailable,
@@ -100,7 +100,7 @@ impl Worker {
                 match event.token() {
                     Token::QueueAvailable => {
                         if let Err(e) = queue_evt.read() {
-                            error!("failed reading queue EventFd: {}", e);
+                            error!("failed reading queue Event: {}", e);
                             break 'poll;
                         }
                         needs_interrupt |= self.process_queue();
@@ -120,7 +120,7 @@ impl Worker {
 
 /// Virtio device for exposing entropy to the guest OS through virtio.
 pub struct Rng {
-    kill_evt: Option<EventFd>,
+    kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
     random_file: Option<File>,
 }
@@ -174,16 +174,16 @@ impl VirtioDevice for Rng {
         mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
-        mut queue_evts: Vec<EventFd>,
+        mut queue_evts: Vec<Event>,
     ) {
         if queues.len() != 1 || queue_evts.len() != 1 {
             return;
         }
 
-        let (self_kill_evt, kill_evt) = match EventFd::new().and_then(|e| Ok((e.try_clone()?, e))) {
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed to create kill EventFd pair: {}", e);
+                error!("failed to create kill Event pair: {}", e);
                 return;
             }
         };

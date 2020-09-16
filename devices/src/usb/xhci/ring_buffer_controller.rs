@@ -9,7 +9,7 @@ use std::fmt::{self, Display};
 use std::sync::{Arc, MutexGuard};
 use sync::Mutex;
 
-use base::{error, Error as SysError, EventFd, WatchingEvents};
+use base::{error, Error as SysError, Event, WatchingEvents};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::ring_buffer::RingBuffer;
@@ -17,7 +17,7 @@ use super::ring_buffer::RingBuffer;
 #[derive(Debug)]
 pub enum Error {
     AddEvent(utils::Error),
-    CreateEventFd(SysError),
+    CreateEvent(SysError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -28,7 +28,7 @@ impl Display for Error {
 
         match self {
             AddEvent(e) => write!(f, "failed to add event to event loop: {}", e),
-            CreateEventFd(e) => write!(f, "failed to create event fd: {}", e),
+            CreateEvent(e) => write!(f, "failed to create event: {}", e),
         }
     }
 }
@@ -51,7 +51,7 @@ pub trait TransferDescriptorHandler {
     fn handle_transfer_descriptor(
         &self,
         descriptor: TransferDescriptor,
-        complete_event: EventFd,
+        complete_event: Event,
     ) -> std::result::Result<(), ()>;
     /// Stop is called when trying to stop ring buffer controller. Returns true when stop must be
     /// performed asynchronously. This happens because the handler is handling some descriptor
@@ -77,7 +77,7 @@ pub struct RingBufferController<T: 'static + TransferDescriptorHandler> {
     ring_buffer: Mutex<RingBuffer>,
     handler: Mutex<T>,
     event_loop: Arc<EventLoop>,
-    event: EventFd,
+    event: Event,
 }
 
 impl<T: 'static + TransferDescriptorHandler> Display for RingBufferController<T> {
@@ -97,7 +97,7 @@ where
         event_loop: Arc<EventLoop>,
         handler: T,
     ) -> Result<Arc<RingBufferController<T>>> {
-        let evt = EventFd::new().map_err(Error::CreateEventFd)?;
+        let evt = Event::new().map_err(Error::CreateEvent)?;
         let controller = Arc::new(RingBufferController {
             name: name.clone(),
             state: Mutex::new(RingBufferState::Stopped),
@@ -189,7 +189,7 @@ where
         match self.event.read() {
             Ok(_) => {}
             Err(e) => {
-                error!("cannot read from event fd: {}", e);
+                error!("cannot read from event: {}", e);
                 return Err(());
             }
         }
@@ -226,7 +226,7 @@ where
         let event = match self.event.try_clone() {
             Ok(evt) => evt,
             Err(e) => {
-                error!("cannot clone event fd: {}", e);
+                error!("cannot clone event: {}", e);
                 return Err(());
             }
         };
@@ -250,7 +250,7 @@ mod tests {
         fn handle_transfer_descriptor(
             &self,
             descriptor: TransferDescriptor,
-            complete_event: EventFd,
+            complete_event: Event,
         ) -> std::result::Result<(), ()> {
             for atrb in descriptor {
                 assert_eq!(atrb.trb.get_trb_type().unwrap(), TrbType::Normal);

@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use crate::Bus;
-use base::{error, Error, EventFd, Result};
+use base::{error, Error, Event, Result};
 use hypervisor::kvm::KvmVcpu;
 use hypervisor::{IrqRoute, MPState};
 use kvm_sys::kvm_mp_state;
@@ -33,14 +33,14 @@ impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
     fn register_irq_event(
         &mut self,
         irq: u32,
-        irq_event: &EventFd,
-        resample_event: Option<&EventFd>,
+        irq_event: &Event,
+        resample_event: Option<&Event>,
     ) -> Result<()> {
         self.vm.register_irqfd(irq, irq_event, resample_event)
     }
 
     /// Unregister an event for a particular GSI.
-    fn unregister_irq_event(&mut self, irq: u32, irq_event: &EventFd) -> Result<()> {
+    fn unregister_irq_event(&mut self, irq: u32, irq_event: &Event) -> Result<()> {
         self.vm.unregister_irqfd(irq, irq_event)
     }
 
@@ -66,7 +66,7 @@ impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
     /// the main thread to wait for irq events to be triggered.
     /// For the KvmKernelIrqChip, the kernel handles listening to irq events being triggered by
     /// devices, so this function always returns an empty Vec.
-    fn irq_event_tokens(&self) -> Result<Vec<(u32, EventFd)>> {
+    fn irq_event_tokens(&self) -> Result<Vec<(u32, Event)>> {
         Ok(Vec::new())
     }
 
@@ -77,9 +77,9 @@ impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
         self.vm.set_irq_line(irq, level)
     }
 
-    /// Service an IRQ event by asserting then deasserting an IRQ line. The associated EventFd
+    /// Service an IRQ event by asserting then deasserting an IRQ line. The associated Event
     /// that triggered the irq event will be read from. If the irq is associated with a resample
-    /// EventFd, then the deassert will only happen after an EOI is broadcast for a vector
+    /// Event, then the deassert will only happen after an EOI is broadcast for a vector
     /// associated with the irq line.
     /// This function should never be called on KvmKernelIrqChip.
     fn service_irq_event(&mut self, _irq: u32) -> Result<()> {
