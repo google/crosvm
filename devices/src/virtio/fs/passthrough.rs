@@ -680,23 +680,6 @@ impl PassthroughFs {
         })
     }
 
-    fn do_readdir(
-        &self,
-        inode: Inode,
-        handle: Handle,
-        size: u32,
-        offset: u64,
-    ) -> io::Result<ReadDir<Box<[u8]>>> {
-        let data = self.find_handle(handle, inode)?;
-
-        let mut buf = Vec::with_capacity(size as usize);
-        buf.resize(size as usize, 0);
-
-        let dir = data.file.lock();
-
-        ReadDir::new(&*dir, offset as libc::off64_t, buf.into_boxed_slice())
-    }
-
     fn do_open(&self, inode: Inode, flags: u32) -> io::Result<(Option<Handle>, OpenOptions)> {
         let file = Mutex::new(self.open_inode(inode, flags as i32)?);
 
@@ -1304,7 +1287,14 @@ impl FileSystem for PassthroughFs {
         size: u32,
         offset: u64,
     ) -> io::Result<Self::DirIter> {
-        self.do_readdir(inode, handle, size, offset)
+        let data = self.find_handle(handle, inode)?;
+
+        let mut buf = Vec::with_capacity(size as usize);
+        buf.resize(size as usize, 0);
+
+        let dir = data.file.lock();
+
+        ReadDir::new(&*dir, offset as libc::off64_t, buf.into_boxed_slice())
     }
 
     fn open(
