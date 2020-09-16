@@ -85,11 +85,11 @@ impl Surface {
 /// The user of `GpuDisplay` can use `AsRawFd` to poll on the compositor connection's file
 /// descriptor. When the connection is readable, `dispatch_events` can be called to process it.
 pub struct DisplayWl {
-    ctx: DwlContext,
     dmabufs: HashMap<u32, DwlDmabuf>,
     dmabuf_next_id: u32,
     surfaces: HashMap<u32, Surface>,
     surface_next_id: u32,
+    ctx: DwlContext,
 }
 
 impl DisplayWl {
@@ -124,11 +124,11 @@ impl DisplayWl {
         }
 
         Ok(DisplayWl {
-            ctx,
             dmabufs: Default::default(),
             dmabuf_next_id: 0,
             surfaces: Default::default(),
             surface_next_id: 0,
+            ctx,
         })
     }
 
