@@ -534,10 +534,8 @@ impl PassthroughFs {
             .ok_or_else(ebadf)
     }
 
-    fn open_inode(&self, inode: Inode, mut flags: i32) -> io::Result<File> {
-        let data = self.find_inode(inode)?;
-
-        let pathname = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
+    fn open_inode(&self, inode: &InodeData, mut flags: i32) -> io::Result<File> {
+        let pathname = CString::new(format!("self/fd/{}", inode.file.as_raw_fd()))
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         // When writeback caching is enabled, the kernel may send read requests even if the
@@ -579,7 +577,7 @@ impl PassthroughFs {
     }
 
     // Performs an ascii case insensitive lookup and returns an O_PATH fd for the entry, if found.
-    fn ascii_casefold_lookup(&self, dir: Inode, name: &[u8]) -> io::Result<RawFd> {
+    fn ascii_casefold_lookup(&self, dir: &InodeData, name: &[u8]) -> io::Result<RawFd> {
         let parent = self.open_inode(dir, libc::O_RDONLY | libc::O_DIRECTORY)?;
         let mut buf = [0u8; 1024];
         let mut offset = 0;
@@ -605,19 +603,12 @@ impl PassthroughFs {
         Err(io::Error::from_raw_os_error(libc::ENOENT))
     }
 
-    fn do_lookup(&self, parent: Inode, name: &CStr) -> io::Result<Entry> {
-        let p = self
-            .inodes
-            .lock()
-            .get(&parent)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
-
+    fn do_lookup(&self, parent: &InodeData, name: &CStr) -> io::Result<Entry> {
         let fd = {
             // Safe because this doesn't modify any memory and we check the return value.
             let fd = unsafe {
                 libc::openat(
-                    p.file.as_raw_fd(),
+                    parent.file.as_raw_fd(),
                     name.as_ptr(),
                     libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
                 )
@@ -681,7 +672,9 @@ impl PassthroughFs {
     }
 
     fn do_open(&self, inode: Inode, flags: u32) -> io::Result<(Option<Handle>, OpenOptions)> {
-        let file = Mutex::new(self.open_inode(inode, flags as i32)?);
+        let inode_data = self.find_inode(inode)?;
+
+        let file = Mutex::new(self.open_inode(&inode_data, flags as i32)?);
 
         let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
         let data = HandleData { inode, file };
@@ -723,19 +716,15 @@ impl PassthroughFs {
         Err(ebadf())
     }
 
-    fn do_getattr(&self, inode: Inode) -> io::Result<(libc::stat64, Duration)> {
-        let data = self.find_inode(inode)?;
-
-        let st = stat(&data.file)?;
+    fn do_getattr(&self, inode: &InodeData) -> io::Result<(libc::stat64, Duration)> {
+        let st = stat(&inode.file)?;
 
         Ok((st, self.cfg.attr_timeout.clone()))
     }
 
-    fn do_unlink(&self, parent: Inode, name: &CStr, flags: libc::c_int) -> io::Result<()> {
-        let data = self.find_inode(parent)?;
-
+    fn do_unlink(&self, parent: &InodeData, name: &CStr, flags: libc::c_int) -> io::Result<()> {
         // Safe because this doesn't modify any memory and we check the return value.
-        let res = unsafe { libc::unlinkat(data.file.as_raw_fd(), name.as_ptr(), flags) };
+        let res = unsafe { libc::unlinkat(parent.file.as_raw_fd(), name.as_ptr(), flags) };
         if res == 0 {
             Ok(())
         } else {
@@ -1166,7 +1155,8 @@ impl FileSystem for PassthroughFs {
     }
 
     fn lookup(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<Entry> {
-        self.do_lookup(parent, name)
+        let data = self.find_inode(parent)?;
+        self.do_lookup(&data, name)
     }
 
     fn forget(&self, _ctx: Context, inode: Inode, count: u64) {
@@ -1272,11 +1262,12 @@ impl FileSystem for PassthroughFs {
         // `tmpdir`.
         tmpdir.into_inner();
 
-        self.do_lookup(parent, name)
+        self.do_lookup(&data, name)
     }
 
     fn rmdir(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<()> {
-        self.do_unlink(parent, name, libc::AT_REMOVEDIR)
+        let data = self.find_inode(parent)?;
+        self.do_unlink(&data, name, libc::AT_REMOVEDIR)
     }
 
     fn readdir(
@@ -1413,7 +1404,7 @@ impl FileSystem for PassthroughFs {
         // We no longer need the tmpfile.
         mem::drop(tmpfile);
 
-        let entry = self.do_lookup(parent, name)?;
+        let entry = self.do_lookup(&data, name)?;
         let (handle, opts) = self
             .do_open(
                 entry.inode,
@@ -1429,7 +1420,8 @@ impl FileSystem for PassthroughFs {
     }
 
     fn unlink(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<()> {
-        self.do_unlink(parent, name, 0)
+        let data = self.find_inode(parent)?;
+        self.do_unlink(&data, name, 0)
     }
 
     fn read<W: io::Write + ZeroCopyWriter>(
@@ -1476,7 +1468,8 @@ impl FileSystem for PassthroughFs {
         inode: Inode,
         _handle: Option<Handle>,
     ) -> io::Result<(libc::stat64, Duration)> {
-        self.do_getattr(inode)
+        let data = self.find_inode(inode)?;
+        self.do_getattr(&data)
     }
 
     fn setattr(
@@ -1559,7 +1552,7 @@ impl FileSystem for PassthroughFs {
                 Data::Handle(_, fd) => unsafe { libc::ftruncate64(fd, attr.st_size) },
                 _ => {
                     // There is no `ftruncateat` so we need to get a new fd and truncate it.
-                    let f = self.open_inode(inode, libc::O_NONBLOCK | libc::O_RDWR)?;
+                    let f = self.open_inode(&inode_data, libc::O_NONBLOCK | libc::O_RDWR)?;
                     unsafe { libc::ftruncate64(f.as_raw_fd(), attr.st_size) }
                 }
             };
@@ -1606,7 +1599,7 @@ impl FileSystem for PassthroughFs {
             }
         }
 
-        self.do_getattr(inode)
+        self.do_getattr(&inode_data)
     }
 
     fn rename(
@@ -1680,7 +1673,7 @@ impl FileSystem for PassthroughFs {
         if res < 0 {
             Err(io::Error::last_os_error())
         } else {
-            self.do_lookup(parent, name)
+            self.do_lookup(&data, name)
         }
     }
 
@@ -1708,7 +1701,7 @@ impl FileSystem for PassthroughFs {
             )
         };
         if res == 0 {
-            self.do_lookup(newparent, newname)
+            self.do_lookup(&new_inode, newname)
         } else {
             Err(io::Error::last_os_error())
         }
@@ -1735,7 +1728,7 @@ impl FileSystem for PassthroughFs {
         let res =
             unsafe { libc::symlinkat(linkname.as_ptr(), data.file.as_raw_fd(), name.as_ptr()) };
         if res == 0 {
-            self.do_lookup(parent, name)
+            self.do_lookup(&data, name)
         } else {
             Err(io::Error::last_os_error())
         }
