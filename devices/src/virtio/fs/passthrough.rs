@@ -492,12 +492,7 @@ impl PassthroughFs {
     }
 
     fn get_path(&self, inode: Inode) -> io::Result<CString> {
-        let data = self
-            .inodes
-            .lock()
-            .get(&inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_inode(inode)?;
 
         let mut buf = Vec::with_capacity(libc::PATH_MAX as usize);
         buf.resize(libc::PATH_MAX as usize, 0);
@@ -522,13 +517,25 @@ impl PassthroughFs {
         CString::new(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
-    fn open_inode(&self, inode: Inode, mut flags: i32) -> io::Result<File> {
-        let data = self
-            .inodes
+    fn find_inode(&self, inode: Inode) -> io::Result<Arc<InodeData>> {
+        self.inodes
             .lock()
             .get(&inode)
             .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+            .ok_or_else(ebadf)
+    }
+
+    fn find_handle(&self, handle: Handle, inode: Inode) -> io::Result<Arc<HandleData>> {
+        self.handles
+            .lock()
+            .get(&handle)
+            .filter(|hd| hd.inode == inode)
+            .map(Arc::clone)
+            .ok_or_else(ebadf)
+    }
+
+    fn open_inode(&self, inode: Inode, mut flags: i32) -> io::Result<File> {
+        let data = self.find_inode(inode)?;
 
         let pathname = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -680,13 +687,7 @@ impl PassthroughFs {
         size: u32,
         offset: u64,
     ) -> io::Result<ReadDir<Box<[u8]>>> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .filter(|hd| hd.inode == inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_handle(handle, inode)?;
 
         let mut buf = Vec::with_capacity(size as usize);
         buf.resize(size as usize, 0);
@@ -740,12 +741,7 @@ impl PassthroughFs {
     }
 
     fn do_getattr(&self, inode: Inode) -> io::Result<(libc::stat64, Duration)> {
-        let data = self
-            .inodes
-            .lock()
-            .get(&inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_inode(inode)?;
 
         let st = stat(&data.file)?;
 
@@ -753,12 +749,7 @@ impl PassthroughFs {
     }
 
     fn do_unlink(&self, parent: Inode, name: &CStr, flags: libc::c_int) -> io::Result<()> {
-        let data = self
-            .inodes
-            .lock()
-            .get(&parent)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_inode(parent)?;
 
         // Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe { libc::unlinkat(data.file.as_raw_fd(), name.as_ptr(), flags) };
@@ -1177,12 +1168,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn statfs(&self, _ctx: Context, inode: Inode) -> io::Result<libc::statvfs64> {
-        let data = self
-            .inodes
-            .lock()
-            .get(&inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_inode(inode)?;
 
         let mut out = MaybeUninit::<libc::statvfs64>::zeroed();
 
@@ -1250,12 +1236,7 @@ impl FileSystem for PassthroughFs {
         // requested name. This ensures that even in the case of a power loss the directory is not
         // visible in the filesystem with the requested name but incorrect metadata. The only thing
         // left would be a empty hidden directory with a random name.
-        let data = self
-            .inodes
-            .lock()
-            .get(&parent)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_inode(parent)?;
 
         let path = self.get_path(parent)?;
 
@@ -1368,12 +1349,7 @@ impl FileSystem for PassthroughFs {
         //
         // To ensure that the file is created atomically with the proper uid/gid we use `O_TMPFILE`
         // + `linkat` as described in the `open(2)` manpage.
-        let data = self
-            .inodes
-            .lock()
-            .get(&parent)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_inode(parent)?;
 
         let _ctx = security_ctx
             .filter(|ctx| ctx.to_bytes() != UNLABELED)
@@ -1477,13 +1453,7 @@ impl FileSystem for PassthroughFs {
         _lock_owner: Option<u64>,
         _flags: u32,
     ) -> io::Result<usize> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .filter(|hd| hd.inode == inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_handle(handle, inode)?;
 
         let mut f = data.file.lock();
         w.write_from(&mut f, size as usize, offset)
@@ -1504,13 +1474,7 @@ impl FileSystem for PassthroughFs {
         // We need to change credentials during a write so that the kernel will remove setuid or
         // setgid bits from the file if it was written to by someone other than the owner.
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .filter(|hd| hd.inode == inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_handle(handle, inode)?;
 
         let mut f = data.file.lock();
         r.read_to(&mut f, size as usize, offset)
@@ -1533,12 +1497,7 @@ impl FileSystem for PassthroughFs {
         handle: Option<Handle>,
         valid: SetattrValid,
     ) -> io::Result<(libc::stat64, Duration)> {
-        let inode_data = self
-            .inodes
-            .lock()
-            .get(&inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let inode_data = self.find_inode(inode)?;
 
         enum Data {
             Handle(Arc<HandleData>, RawFd),
@@ -1547,13 +1506,7 @@ impl FileSystem for PassthroughFs {
 
         // If we have a handle then use it otherwise get a new fd from the inode.
         let data = if let Some(handle) = handle {
-            let hd = self
-                .handles
-                .lock()
-                .get(&handle)
-                .filter(|hd| hd.inode == inode)
-                .map(Arc::clone)
-                .ok_or_else(ebadf)?;
+            let hd = self.find_handle(handle, inode)?;
 
             let fd = hd.file.lock().as_raw_fd();
             Data::Handle(hd, fd)
@@ -1675,18 +1628,8 @@ impl FileSystem for PassthroughFs {
         newname: &CStr,
         flags: u32,
     ) -> io::Result<()> {
-        let old_inode = self
-            .inodes
-            .lock()
-            .get(&olddir)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
-        let new_inode = self
-            .inodes
-            .lock()
-            .get(&newdir)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let old_inode = self.find_inode(olddir)?;
+        let new_inode = self.find_inode(newdir)?;
 
         // Safe because this doesn't modify any memory and we check the return value.
         // TODO: Switch to libc::renameat2 once https://github.com/rust-lang/libc/pull/1508 lands
@@ -1727,12 +1670,7 @@ impl FileSystem for PassthroughFs {
             mode &= !umask;
         }
 
-        let data = self
-            .inodes
-            .lock()
-            .get(&parent)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_inode(parent)?;
 
         let _ctx = security_ctx
             .filter(|ctx| ctx.to_bytes() != UNLABELED)
@@ -1763,18 +1701,8 @@ impl FileSystem for PassthroughFs {
         newparent: Inode,
         newname: &CStr,
     ) -> io::Result<Entry> {
-        let data = self
-            .inodes
-            .lock()
-            .get(&inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
-        let new_inode = self
-            .inodes
-            .lock()
-            .get(&newparent)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_inode(inode)?;
+        let new_inode = self.find_inode(newparent)?;
 
         let path = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -1804,12 +1732,7 @@ impl FileSystem for PassthroughFs {
         name: &CStr,
         security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
-        let data = self
-            .inodes
-            .lock()
-            .get(&parent)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_inode(parent)?;
 
         let _ctx = security_ctx
             .filter(|ctx| ctx.to_bytes() != UNLABELED)
@@ -1829,12 +1752,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn readlink(&self, _ctx: Context, inode: Inode) -> io::Result<Vec<u8>> {
-        let data = self
-            .inodes
-            .lock()
-            .get(&inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_inode(inode)?;
 
         let mut buf = Vec::with_capacity(libc::PATH_MAX as usize);
         buf.resize(libc::PATH_MAX as usize, 0);
@@ -1866,13 +1784,7 @@ impl FileSystem for PassthroughFs {
         handle: Handle,
         _lock_owner: u64,
     ) -> io::Result<()> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .filter(|hd| hd.inode == inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_handle(handle, inode)?;
 
         // Since this method is called whenever an fd is closed in the client, we can emulate that
         // behavior by doing the same thing (dup-ing the fd and then immediately closing it). Safe
@@ -1892,13 +1804,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn fsync(&self, _ctx: Context, inode: Inode, datasync: bool, handle: Handle) -> io::Result<()> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .filter(|hd| hd.inode == inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_handle(handle, inode)?;
 
         let fd = data.file.lock().as_raw_fd();
 
@@ -1929,12 +1835,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn access(&self, ctx: Context, inode: Inode, mask: u32) -> io::Result<()> {
-        let data = self
-            .inodes
-            .lock()
-            .get(&inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_inode(inode)?;
 
         let st = stat(&data.file)?;
         let mode = mask as i32 & (libc::R_OK | libc::W_OK | libc::X_OK);
@@ -2115,13 +2016,7 @@ impl FileSystem for PassthroughFs {
         offset: u64,
         length: u64,
     ) -> io::Result<()> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .filter(|hd| hd.inode == inode)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data = self.find_handle(handle, inode)?;
 
         let fd = data.file.lock().as_raw_fd();
         // Safe because this doesn't modify any memory and we check the return value.
@@ -2235,20 +2130,8 @@ impl FileSystem for PassthroughFs {
         // We need to change credentials during a write so that the kernel will remove setuid or
         // setgid bits from the file if it was written to by someone other than the owner.
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
-        let src_data = self
-            .handles
-            .lock()
-            .get(&handle_src)
-            .filter(|hd| hd.inode == inode_src)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
-        let dst_data = self
-            .handles
-            .lock()
-            .get(&handle_dst)
-            .filter(|hd| hd.inode == inode_dst)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let src_data = self.find_handle(handle_src, inode_src)?;
+        let dst_data = self.find_handle(handle_dst, inode_dst)?;
 
         let src = src_data.file.lock().as_raw_fd();
         let dst = dst_data.file.lock().as_raw_fd();
