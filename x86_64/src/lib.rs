@@ -299,7 +299,7 @@ fn arch_memory_regions(size: u64, has_bios: bool) -> Vec<(GuestAddress, u64)> {
     let end_32bit_gap_start = GuestAddress(END_ADDR_BEFORE_32BITS);
 
     let mut regions = Vec::new();
-    if mem_end < end_32bit_gap_start {
+    if mem_end <= end_32bit_gap_start {
         regions.push((GuestAddress(0), size));
         if has_bios {
             regions.push((GuestAddress(BIOS_START), BIOS_LEN as u64));
@@ -876,5 +876,25 @@ mod tests {
         assert_eq!(GuestAddress(BIOS_START), regions[1].0);
         assert_eq!(BIOS_LEN as u64, regions[1].1);
         assert_eq!(GuestAddress(1u64 << 32), regions[2].0);
+    }
+
+    #[test]
+    fn regions_eq_4gb_nobios() {
+        // Test with size = 3328, which is exactly 4 GiB minus the size of the gap (768 MiB).
+        let regions = arch_memory_regions(3328 << 20, /* has_bios */ false);
+        assert_eq!(1, regions.len());
+        assert_eq!(GuestAddress(0), regions[0].0);
+        assert_eq!(3328 << 20, regions[0].1);
+    }
+
+    #[test]
+    fn regions_eq_4gb_bios() {
+        // Test with size = 3328, which is exactly 4 GiB minus the size of the gap (768 MiB).
+        let regions = arch_memory_regions(3328 << 20, /* has_bios */ true);
+        assert_eq!(2, regions.len());
+        assert_eq!(GuestAddress(0), regions[0].0);
+        assert_eq!(3328 << 20, regions[0].1);
+        assert_eq!(GuestAddress(BIOS_START), regions[1].0);
+        assert_eq!(BIOS_LEN as u64, regions[1].1);
     }
 }
