@@ -4,12 +4,10 @@
 
 mod msg_on_socket;
 
+use base::{handle_eintr, net::UnixSeqpacket, Error as SysError, ScmSocket, UnsyncMarker};
 use std::io::{IoSlice, Result};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
-
-use base::{handle_eintr, net::UnixSeqpacket, Error as SysError, ScmSocket, UnsyncMarker};
-use cros_async::PollOrRing;
 
 pub use crate::msg_on_socket::*;
 pub use msg_on_socket_derive::*;
@@ -213,7 +211,7 @@ impl<'a, I: MsgOnSocket, O: MsgOnSocket> AsyncReceiver<'a, I, O> {
     }
 
     pub async fn next(&mut self) -> MsgResult<O> {
-        let p = PollOrRing::new(self.inner).unwrap();
+        let p = cros_async::new(self.inner).unwrap();
         p.wait_readable().await.unwrap();
         self.inner.recv()
     }

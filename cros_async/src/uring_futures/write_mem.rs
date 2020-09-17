@@ -16,13 +16,13 @@ use super::uring_fut::UringFutState;
 /// Future for the `write_from_mem` function.
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct WriteMem<'a, 'b, W: IoSource + ?Sized> {
-    writer: Pin<&'a W>,
+    writer: &'a W,
     state: UringFutState<(u64, Rc<dyn BackingMemory>, &'b [MemRegion]), Rc<dyn BackingMemory>>,
 }
 
 impl<'a, 'b, W: IoSource + ?Sized> WriteMem<'a, 'b, W> {
     pub(crate) fn new(
-        writer: Pin<&'a W>,
+        writer: &'a W,
         file_offset: u64,
         mem: Rc<dyn BackingMemory>,
         mem_offsets: &'b [MemRegion],
@@ -49,15 +49,12 @@ impl<W: IoSource + ?Sized> Future for WriteMem<'_, '_, W> {
         let (new_state, ret) = match state.advance(
             |(file_offset, mem, mem_offsets)| {
                 Ok((
-                    self.writer.as_ref().write_from_mem(
-                        file_offset,
-                        Rc::clone(&mem),
-                        mem_offsets,
-                    )?,
+                    self.writer
+                        .write_from_mem(file_offset, Rc::clone(&mem), mem_offsets)?,
                     mem,
                 ))
             },
-            |op| self.writer.as_ref().poll_complete(cx, op),
+            |op| self.writer.poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),
@@ -79,7 +76,7 @@ mod tests {
 
     use futures::pin_mut;
 
-    use crate::io_ext::IoSourceExt;
+    use crate::io_ext::WriteAsync;
     use crate::uring_mem::MemRegion;
     use crate::UringSource;
 

@@ -4,13 +4,16 @@
 
 use std::ops::{Deref, DerefMut};
 use std::os::unix::io::AsRawFd;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
 
 use crate::io_source::IoSource;
 use crate::uring_executor::{self, PendingOperation, RegisteredSource, Result};
+use crate::uring_futures;
 use crate::uring_mem::{BackingMemory, MemRegion};
+use crate::AsyncError;
+use crate::AsyncResult;
+use async_trait::async_trait;
 
 /// `UringSource` wraps FD backed IO sources for use with io_uring. It is a thin wrapper around
 /// registering an IO source with the uring that provides an `IoSource` implementation.
@@ -19,9 +22,9 @@ use crate::uring_mem::{BackingMemory, MemRegion};
 /// # Example
 /// ```rust
 /// use std::fs::File;
-/// use cros_async::{UringSource, IoSourceExt};
+/// use cros_async::{UringSource, ReadAsync};
 ///
-/// async fn read_four_bytes(source: &UringSource<File>) -> (u32, Vec<u8>) {
+/// async fn read_four_bytes(source: &UringSource<File>) -> (usize, Vec<u8>) {
 ///    let mem = vec![0u8; 4];
 ///    source.read_to_vec(0, mem).await.unwrap()
 /// }
@@ -59,7 +62,7 @@ impl<F: AsRawFd> UringSource<F> {
 
 impl<F: AsRawFd> IoSource for UringSource<F> {
     fn read_to_mem(
-        self: Pin<&Self>,
+        &self,
         file_offset: u64,
         mem: Rc<dyn BackingMemory>,
         mem_offsets: &[MemRegion],
@@ -69,7 +72,7 @@ impl<F: AsRawFd> IoSource for UringSource<F> {
     }
 
     fn write_from_mem(
-        self: Pin<&Self>,
+        &self,
         file_offset: u64,
         mem: Rc<dyn BackingMemory>,
         mem_offsets: &[MemRegion],
@@ -78,31 +81,130 @@ impl<F: AsRawFd> IoSource for UringSource<F> {
             .start_write_from_mem(file_offset, mem, mem_offsets)
     }
 
-    fn fallocate(
-        self: Pin<&Self>,
-        file_offset: u64,
-        len: u64,
-        mode: u32,
-    ) -> Result<PendingOperation> {
+    fn fallocate(&self, file_offset: u64, len: u64, mode: u32) -> Result<PendingOperation> {
         self.registered_source
             .start_fallocate(file_offset, len, mode)
     }
 
-    fn fsync(self: Pin<&Self>) -> Result<PendingOperation> {
+    fn fsync(&self) -> Result<PendingOperation> {
         self.registered_source.start_fsync()
     }
 
     // wait for the inner source to be readable and return a refernce to it.
-    fn wait_readable(self: Pin<&Self>) -> Result<PendingOperation> {
+    fn wait_readable(&self) -> Result<PendingOperation> {
         self.registered_source.poll_fd_readable()
     }
 
-    fn poll_complete(
-        self: Pin<&Self>,
-        cx: &mut Context,
-        token: &mut PendingOperation,
-    ) -> Poll<Result<u32>> {
+    fn poll_complete(&self, cx: &mut Context, token: &mut PendingOperation) -> Poll<Result<u32>> {
         self.registered_source.poll_complete(cx, token)
+    }
+}
+
+#[async_trait(?Send)]
+impl<F: AsRawFd> crate::ReadAsync<F> for UringSource<F> {
+    /// Reads from the iosource at `file_offset` and fill the given `vec`.
+    async fn read_to_vec<'a>(
+        &'a self,
+        file_offset: u64,
+        vec: Vec<u8>,
+    ) -> AsyncResult<(usize, Vec<u8>)> {
+        uring_futures::ReadVec::new(self, file_offset, vec)
+            .await
+            .map(|(n, vec)| (n as usize, vec))
+            .map_err(AsyncError::Uring)
+    }
+
+    /// Wait for the FD of `self` to be readable.
+    async fn wait_readable(&self) -> AsyncResult<()> {
+        uring_futures::PollFd::new(self)
+            .await
+            .map_err(AsyncError::Uring)
+    }
+
+    /// Reads a single u64 from the current offset.
+    async fn read_u64(&self) -> AsyncResult<u64> {
+        crate::IoSourceExt::wait_readable(self).await?;
+        let mut bytes = 0u64.to_ne_bytes();
+        // Safe to read to the buffer of known length.
+        let ret =
+            unsafe { libc::read(self.as_raw_fd(), bytes.as_mut_ptr() as *mut _, bytes.len()) };
+        if ret < 0 {
+            return Err(AsyncError::ReadingInner(ret));
+        }
+        Ok(u64::from_ne_bytes(bytes))
+    }
+
+    /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
+    async fn read_to_mem<'a>(
+        &'a self,
+        file_offset: u64,
+        mem: Rc<dyn BackingMemory>,
+        mem_offsets: &'a [MemRegion],
+    ) -> AsyncResult<usize> {
+        uring_futures::ReadMem::new(self, file_offset, mem, mem_offsets)
+            .await
+            .map(|n| n as usize)
+            .map_err(AsyncError::Uring)
+    }
+}
+
+#[async_trait(?Send)]
+impl<F: AsRawFd> crate::WriteAsync<F> for UringSource<F> {
+    /// Writes from the given `vec` to the file starting at `file_offset`.
+    async fn write_from_vec<'a>(
+        &'a self,
+        file_offset: u64,
+        vec: Vec<u8>,
+    ) -> AsyncResult<(usize, Vec<u8>)> {
+        uring_futures::WriteVec::new(self, file_offset, vec)
+            .await
+            .map(|(n, vec)| (n as usize, vec))
+            .map_err(AsyncError::Uring)
+    }
+
+    /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
+    async fn write_from_mem<'a>(
+        &'a self,
+        file_offset: u64,
+        mem: Rc<dyn BackingMemory>,
+        mem_offsets: &'a [MemRegion],
+    ) -> AsyncResult<usize> {
+        uring_futures::WriteMem::new(self, file_offset, mem, mem_offsets)
+            .await
+            .map(|n| n as usize)
+            .map_err(AsyncError::Uring)
+    }
+
+    /// See `fallocate(2)`. Note this op is synchronous when using the Polled backend.
+    async fn fallocate(&self, file_offset: u64, len: u64, mode: u32) -> AsyncResult<()> {
+        uring_futures::Fallocate::new(self, file_offset, len, mode)
+            .await
+            .map_err(AsyncError::Uring)
+    }
+
+    /// Sync all completed write operations to the backing storage.
+    async fn fsync(&self) -> AsyncResult<()> {
+        uring_futures::Fsync::new(self)
+            .await
+            .map_err(AsyncError::Uring)
+    }
+}
+
+#[async_trait(?Send)]
+impl<F: AsRawFd> crate::IoSourceExt<F> for UringSource<F> {
+    /// Yields the underlying IO source.
+    fn into_source(self: Box<Self>) -> F {
+        self.source
+    }
+
+    /// Provides a mutable ref to the underlying IO source.
+    fn as_source(&self) -> &F {
+        &self.source
+    }
+
+    /// Provides a ref to the underlying IO source.
+    fn as_source_mut(&mut self) -> &mut F {
+        &mut self.source
     }
 }
 
@@ -124,6 +226,7 @@ impl<F: AsRawFd> DerefMut for UringSource<F> {
 mod tests {
     use futures::pin_mut;
     use std::future::Future;
+    use std::pin::Pin;
 
     use super::*;
 

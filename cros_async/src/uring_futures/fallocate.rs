@@ -15,12 +15,12 @@ use super::uring_fut::UringFutState;
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Fallocate<'a, R: IoSource + ?Sized> {
-    reader: Pin<&'a R>,
+    reader: &'a R,
     state: UringFutState<(u64, u64, u32), ()>,
 }
 
 impl<'a, R: IoSource + ?Sized> Fallocate<'a, R> {
-    pub(crate) fn new(reader: Pin<&'a R>, file_offset: u64, len: u64, mode: u32) -> Self {
+    pub(crate) fn new(reader: &'a R, file_offset: u64, len: u64, mode: u32) -> Self {
         Fallocate {
             reader,
             state: UringFutState::new((file_offset, len, mode)),
@@ -34,10 +34,8 @@ impl<R: IoSource + ?Sized> Future for Fallocate<'_, R> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let state = std::mem::replace(&mut self.state, UringFutState::Processing);
         let (new_state, ret) = match state.advance(
-            |(file_offset, len, mode)| {
-                Ok((self.reader.as_ref().fallocate(file_offset, len, mode)?, ()))
-            },
-            |op| self.reader.as_ref().poll_complete(cx, op),
+            |(file_offset, len, mode)| Ok((self.reader.fallocate(file_offset, len, mode)?, ())),
+            |op| self.reader.poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),
@@ -62,7 +60,7 @@ mod tests {
 
     use futures::pin_mut;
 
-    use crate::io_ext::IoSourceExt;
+    use crate::io_ext::WriteAsync;
     use crate::UringSource;
 
     #[test]
@@ -80,7 +78,7 @@ mod tests {
             let source = UringSource::new(f).unwrap();
             if let Err(e) = source.fallocate(0, 4096, 0).await {
                 match e {
-                    crate::uring_executor::Error::Io(io_err) => {
+                    crate::io_ext::Error::Uring(crate::uring_executor::Error::Io(io_err)) => {
                         if io_err.kind() == std::io::ErrorKind::InvalidInput {
                             // Skip the test on kernels before fallocate support.
                             return;

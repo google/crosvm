@@ -10,7 +10,7 @@ use std::rc::Rc;
 use std::sync::atomic::{fence, Ordering};
 
 use base::error;
-use cros_async::{AsyncError, U64Source};
+use cros_async::{AsyncError, EventAsync};
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -389,14 +389,14 @@ impl Queue {
     pub async fn next_async<F: AsRawFd + Unpin>(
         &mut self,
         mem: &GuestMemory,
-        event: &mut U64Source<F>,
+        eventfd: &mut EventAsync<F>,
     ) -> std::result::Result<DescriptorChain, AsyncError> {
         loop {
             // Check if there are more descriptors available.
             if let Some(chain) = self.pop(mem) {
                 return Ok(chain);
             }
-            event.next_val().await?;
+            eventfd.next_val().await?;
         }
     }
 

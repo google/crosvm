@@ -11,7 +11,7 @@ path = "src/disk.rs"
 composite-disk = ["protos", "protobuf"]
 
 [dependencies]
-async-trait = "*"
+async-trait = "0.1.36"
 base = { path = "../base" }
 libc = "*"
 protobuf = { version = "2.3", optional = true }

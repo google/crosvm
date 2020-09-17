@@ -372,17 +372,17 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
     async fn write_zeroes_at(&self, file_offset: u64, length: u64) -> Result<()>;
 }
 
-use cros_async::PollOrRing;
+use cros_async::IoSourceExt;
 
 /// A disk backed by a single file that implements `AsyncDisk` for access.
 pub struct SingleFileDisk {
-    inner: PollOrRing<File>,
+    inner: Box<dyn IoSourceExt<File>>,
 }
 
 impl TryFrom<File> for SingleFileDisk {
     type Error = Error;
     fn try_from(inner: File) -> Result<Self> {
-        PollOrRing::new(inner)
+        cros_async::new(inner)
             .map_err(Error::CreateSingleFileDisk)
             .map(|inner| SingleFileDisk { inner })
     }
@@ -390,19 +390,19 @@ impl TryFrom<File> for SingleFileDisk {
 
 impl DiskGetLen for SingleFileDisk {
     fn get_len(&self) -> io::Result<u64> {
-        self.inner.get_len()
+        self.inner.as_source().get_len()
     }
 }
 
 impl FileSetLen for SingleFileDisk {
     fn set_len(&self, len: u64) -> io::Result<()> {
-        self.inner.set_len(len)
+        self.inner.as_source().set_len(len)
     }
 }
 
 impl FileAllocate for SingleFileDisk {
     fn allocate(&mut self, offset: u64, len: u64) -> io::Result<()> {
-        self.inner.allocate(offset, len)
+        self.inner.as_source_mut().allocate(offset, len)
     }
 }
 

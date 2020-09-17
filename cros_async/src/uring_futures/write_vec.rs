@@ -17,12 +17,12 @@ use super::uring_fut::UringFutState;
 /// Future for the `write_to_vec` function.
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct WriteVec<'a, W: IoSource + ?Sized> {
-    writer: Pin<&'a W>,
+    writer: &'a W,
     state: UringFutState<(u64, Rc<VecIoWrapper>), Rc<VecIoWrapper>>,
 }
 
 impl<'a, W: IoSource + ?Sized> WriteVec<'a, W> {
-    pub(crate) fn new(writer: Pin<&'a W>, file_offset: u64, vec: Vec<u8>) -> Self {
+    pub(crate) fn new(writer: &'a W, file_offset: u64, vec: Vec<u8>) -> Self {
         WriteVec {
             writer,
             state: UringFutState::new((file_offset, Rc::new(VecIoWrapper::from(vec)))),
@@ -38,7 +38,7 @@ impl<W: IoSource + ?Sized> Future for WriteVec<'_, W> {
         let (new_state, ret) = match state.advance(
             |(file_offset, wrapped_vec)| {
                 Ok((
-                    self.writer.as_ref().write_from_mem(
+                    self.writer.write_from_mem(
                         file_offset,
                         Rc::<VecIoWrapper>::clone(&wrapped_vec),
                         &[MemRegion {
@@ -49,7 +49,7 @@ impl<W: IoSource + ?Sized> Future for WriteVec<'_, W> {
                     wrapped_vec,
                 ))
             },
-            |op| self.writer.as_ref().poll_complete(cx, op),
+            |op| self.writer.poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),
@@ -80,7 +80,7 @@ mod tests {
     use futures::pin_mut;
     use std::fs::OpenOptions;
 
-    use crate::io_ext::IoSourceExt;
+    use crate::io_ext::WriteAsync;
     use crate::UringSource;
 
     #[test]

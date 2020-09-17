@@ -50,20 +50,20 @@
 //! long as kernels < 5.4 are supported.
 //! The other method submits operations to io_uring and is signaled when they complete. This is more
 //! efficient, but only supported on kernel 5.4+.
-//! If `PollOrRing` is used to interface with async IO, then the correct backend will be chosen
+//! If `IoSourceExt::new` is used to interface with async IO, then the correct backend will be chosen
 //! automatically.
 //!
 //! # Examples
 //!
-//! See the docs for `PollOrRing` if support for kernels <5.4 is required. Focus on `UringSource` if
+//! See the docs for `IoSourceExt` if support for kernels <5.4 is required. Focus on `UringSource` if
 //! all systems have support for io_uring.
 
 mod complete;
+mod event;
 mod executor;
 mod fd_executor;
 mod io_ext;
 mod io_source;
-mod poll_or_ring;
 mod poll_source;
 mod select;
 mod uring_executor;
@@ -71,43 +71,35 @@ mod uring_futures;
 pub mod uring_mem;
 mod waker;
 
+pub use event::EventAsync;
 pub use executor::Executor;
-pub use io_ext::*;
-pub use poll_or_ring::Error as AsyncError;
-pub use poll_or_ring::{PollOrRing, U64Source};
+pub use io_ext::{
+    new, Error as AsyncError, IoSourceExt, ReadAsync, Result as AsyncResult, WriteAsync,
+};
+pub use poll_source::PollSource;
 pub use select::SelectResult;
 pub use uring_futures::UringSource;
 pub use uring_mem::{BackingMemory, MemRegion};
 
-use std::fmt::{self, Display};
 use std::future::Future;
 use std::pin::Pin;
 
 use executor::{FutureList, RunOne};
 use fd_executor::FdExecutor;
+use thiserror::Error as ThisError;
 use uring_executor::URingExecutor;
 use waker::WakerToken;
 
-#[derive(Debug)]
+#[derive(ThisError, Debug)]
 pub enum Error {
     /// Error from the FD executor.
+    #[error("Failure in the FD executor: {0}")]
     FdExecutor(fd_executor::Error),
     /// Error from the uring executor.
+    #[error("Failure in the uring executor: {0}")]
     URingExecutor(uring_executor::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            FdExecutor(e) => write!(f, "Failure in the FD executor: {}", e),
-            URingExecutor(e) => write!(f, "Failure in the uring executor: {}", e),
-        }
-    }
-}
-impl std::error::Error for Error {}
 
 // Runs an executor with the given future list.
 // Chooses the uring executor if available, otherwise falls back to the FD executor.

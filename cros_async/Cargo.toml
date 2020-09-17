@@ -5,6 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
+async-trait = "0.1.36"
 io_uring = { path = "../io_uring" }
 libc = "*"
 paste = "*"
@@ -12,6 +13,7 @@ pin-utils = "0.1.0-alpha.4"
 base = { path = "../base" }
 syscall_defines = { path = "../syscall_defines" }
 slab = "0.4"
+thiserror = "1.0.20"
 
 [dependencies.futures]
 version = "*"

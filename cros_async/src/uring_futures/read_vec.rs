@@ -16,12 +16,12 @@ use super::uring_fut::UringFutState;
 /// Future for the `read_to_vec` function.
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct ReadVec<'a, R: IoSource + ?Sized> {
-    reader: Pin<&'a R>,
+    reader: &'a R,
     state: UringFutState<(u64, Rc<VecIoWrapper>), Rc<VecIoWrapper>>,
 }
 
 impl<'a, R: IoSource + ?Sized> ReadVec<'a, R> {
-    pub(crate) fn new(reader: Pin<&'a R>, file_offset: u64, vec: Vec<u8>) -> Self {
+    pub(crate) fn new(reader: &'a R, file_offset: u64, vec: Vec<u8>) -> Self {
         ReadVec {
             reader,
             state: UringFutState::new((file_offset, Rc::new(VecIoWrapper::from(vec)))),
@@ -37,7 +37,7 @@ impl<R: IoSource + ?Sized> Future for ReadVec<'_, R> {
         let (new_state, ret) = match state.advance(
             |(file_offset, wrapped_vec)| {
                 Ok((
-                    self.reader.as_ref().read_to_mem(
+                    self.reader.read_to_mem(
                         file_offset,
                         Rc::<VecIoWrapper>::clone(&wrapped_vec),
                         &[MemRegion {
@@ -48,7 +48,7 @@ impl<R: IoSource + ?Sized> Future for ReadVec<'_, R> {
                     wrapped_vec,
                 ))
             },
-            |op| self.reader.as_ref().poll_complete(cx, op),
+            |op| self.reader.poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),
@@ -81,7 +81,7 @@ mod tests {
 
     use futures::pin_mut;
 
-    use crate::io_ext::IoSourceExt;
+    use crate::io_ext::ReadAsync;
     use crate::UringSource;
 
     #[test]

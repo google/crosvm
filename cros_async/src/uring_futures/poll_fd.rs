@@ -15,12 +15,12 @@ use super::uring_fut::UringFutState;
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct PollFd<'a, R: IoSource + ?Sized> {
-    reader: Pin<&'a R>,
+    reader: &'a R,
     state: UringFutState<(), ()>,
 }
 
 impl<'a, R: IoSource + ?Sized> PollFd<'a, R> {
-    pub(crate) fn new(reader: Pin<&'a R>) -> Self {
+    pub(crate) fn new(reader: &'a R) -> Self {
         PollFd {
             reader,
             state: UringFutState::new(()),
@@ -34,8 +34,8 @@ impl<R: IoSource + ?Sized> Future for PollFd<'_, R> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let state = std::mem::replace(&mut self.state, UringFutState::Processing);
         let (new_state, ret) = match state.advance(
-            |()| Ok((self.reader.as_ref().wait_readable()?, ())),
-            |op| self.reader.as_ref().poll_complete(cx, op),
+            |()| Ok((self.reader.wait_readable()?, ())),
+            |op| self.reader.poll_complete(cx, op),
         ) {
             Ok(d) => d,
             Err(e) => return Poll::Ready(Err(e)),
@@ -59,7 +59,7 @@ mod tests {
 
     use futures::pin_mut;
 
-    use crate::io_ext::IoSourceExt;
+    use crate::io_ext::ReadAsync;
     use crate::UringSource;
 
     #[test]
