@@ -44,6 +44,13 @@ type FrameBufferId = i32;
 type ResourceHandle = u32;
 type Timestamp = u64;
 
+// The result of OutputResources.queue_resource().
+enum QueueOutputResourceResult {
+    UsingAsEos,                // The resource is kept as EOS buffer.
+    Reused(FrameBufferId),     // The resource has been registered before.
+    Registered(FrameBufferId), // The resource is queued first time.
+}
+
 #[derive(Default)]
 struct OutputResources {
     // OutputResourceId <-> FrameBufferId
@@ -71,12 +78,58 @@ struct OutputResources {
 }
 
 impl OutputResources {
-    fn register_queued_frame_buffer(&mut self, resource_id: OutputResourceId) -> FrameBufferId {
-        // Generate a new FrameBufferId
-        let id = self.res_id_to_frame_buf_id.len() as FrameBufferId;
-        self.res_id_to_frame_buf_id.insert(resource_id, id);
-        self.frame_buf_id_to_res_id.insert(id, resource_id);
-        id
+    fn queue_resource(
+        &mut self,
+        resource_id: OutputResourceId,
+    ) -> VideoResult<QueueOutputResourceResult> {
+        if !self.queued_res_ids.insert(resource_id) {
+            error!("resource_id {} is already queued", resource_id);
+            return Err(VideoError::InvalidParameter);
+        }
+
+        // Stores an output buffer to notify EOS.
+        // This is necessary because libvda is unable to indicate EOS along with returned buffers.
+        // For now, when a `Flush()` completes, this saved resource will be returned as a zero-sized
+        // buffer with the EOS flag.
+        // TODO(b/149725148): Remove this when libvda supports buffer flags.
+        if *self.eos_resource_id.get_or_insert(resource_id) == resource_id {
+            return Ok(QueueOutputResourceResult::UsingAsEos);
+        }
+
+        Ok(match self.res_id_to_frame_buf_id.entry(resource_id) {
+            Entry::Occupied(e) => QueueOutputResourceResult::Reused(*e.get()),
+            Entry::Vacant(_) => {
+                let buffer_id = self.res_id_to_frame_buf_id.len() as FrameBufferId;
+                self.res_id_to_frame_buf_id.insert(resource_id, buffer_id);
+                self.frame_buf_id_to_res_id.insert(buffer_id, resource_id);
+                QueueOutputResourceResult::Registered(buffer_id)
+            }
+        })
+    }
+
+    fn dequeue_frame_buffer(
+        &mut self,
+        buffer_id: FrameBufferId,
+        stream_id: StreamId,
+    ) -> Option<ResourceId> {
+        let resource_id = match self.frame_buf_id_to_res_id.get(&buffer_id) {
+            Some(id) => *id,
+            None => {
+                error!(
+                    "unknown frame buffer id {} for stream {}",
+                    buffer_id, stream_id
+                );
+                return None;
+            }
+        };
+
+        self.queued_res_ids.take(&resource_id).or_else(|| {
+            error!(
+                "resource_id {} is not enqueued for stream {}",
+                resource_id, stream_id
+            );
+            None
+        })
     }
 
     fn dequeue_eos_resource_id(&mut self) -> Option<OutputResourceId> {
@@ -222,25 +275,7 @@ impl Context {
             // We don't need to set `plane_formats[i].stride` for the decoder.
         }
 
-        let resource_id: OutputResourceId =
-            match self.out_res.frame_buf_id_to_res_id.get(&buffer_id) {
-                Some(id) => *id,
-                None => {
-                    error!(
-                        "unknown frame buffer id {} for stream {:?}",
-                        buffer_id, self.stream_id
-                    );
-                    return None;
-                }
-            };
-
-        self.out_res.queued_res_ids.take(&resource_id).or_else(|| {
-            error!(
-                "resource_id {} is not enqueued for stream {:?}",
-                resource_id, self.stream_id
-            );
-            None
-        })
+        self.out_res.dequeue_frame_buffer(buffer_id, self.stream_id)
     }
 
     fn handle_notify_end_of_bitstream_buffer(&mut self, bitstream_id: i32) -> Option<ResourceId> {
@@ -546,59 +581,37 @@ impl<'a> Decoder<'a> {
             }
         };
 
-        if !ctx.out_res.queued_res_ids.insert(resource_id) {
-            error!("resource_id {} is already enqueued", resource_id);
-            return Err(VideoError::InvalidParameter);
+        match ctx.out_res.queue_resource(resource_id)? {
+            QueueOutputResourceResult::UsingAsEos => {
+                // Don't enqueue this resource to the host.
+                Ok(())
+            }
+            QueueOutputResourceResult::Reused(buffer_id) => session
+                .reuse_output_buffer(buffer_id)
+                .map_err(VideoError::VdaError),
+            QueueOutputResourceResult::Registered(buffer_id) => {
+                let resource_info = ctx.get_resource_info(resource_bridge, resource_id)?;
+                let fd = resource_info.file.as_raw_fd();
+                let planes = vec![
+                    libvda::FramePlane {
+                        offset: resource_info.planes[0].offset as i32,
+                        stride: resource_info.planes[0].stride as i32,
+                    },
+                    libvda::FramePlane {
+                        offset: resource_info.planes[1].offset as i32,
+                        stride: resource_info.planes[1].stride as i32,
+                    },
+                ];
+
+                // Take an ownership of `resource_info.file`.
+                // This file will be kept until the stream is destroyed.
+                ctx.out_res.keep_resources.push(resource_info.file);
+
+                session
+                    .use_output_buffer(buffer_id as i32, libvda::PixelFormat::NV12, fd, &planes)
+                    .map_err(VideoError::VdaError)
+            }
         }
-        if ctx.out_res.eos_resource_id.is_none() {
-            // Stores an output buffer to notify EOS.
-            // This is necessary because libvda is unable to indicate EOS along
-            // with returned buffers.
-            // For now, when a `Flush()` completes, this saved resource will be
-            // returned as a zero-sized buffer with the EOS flag.
-            // TODO(b/149725148): Remove this when libvda supports buffer flags.
-            ctx.out_res.eos_resource_id = Some(resource_id);
-        }
-        if ctx.out_res.eos_resource_id == Some(resource_id) {
-            // Don't enqueue this resource to the host.
-            return Ok(());
-        }
-
-        // In case a given resource has been imported to VDA, call
-        // `session.reuse_output_buffer()` and return a response.
-        // Otherwise, `session.use_output_buffer()` will be called below.
-        if let Some(buffer_id) = ctx.out_res.res_id_to_frame_buf_id.get(&resource_id) {
-            session
-                .reuse_output_buffer(*buffer_id)
-                .map_err(VideoError::VdaError)?;
-            return Ok(());
-        };
-
-        let resource_info = ctx.get_resource_info(resource_bridge, resource_id)?;
-        let fd = resource_info.file.as_raw_fd();
-
-        // Take an ownership of `resource_info.file`.
-        // This file will be kept until the stream is destroyed.
-        ctx.out_res.keep_resources.push(resource_info.file);
-
-        let planes = vec![
-            libvda::FramePlane {
-                offset: resource_info.planes[0].offset as i32,
-                stride: resource_info.planes[0].stride as i32,
-            },
-            libvda::FramePlane {
-                offset: resource_info.planes[1].offset as i32,
-                stride: resource_info.planes[1].stride as i32,
-            },
-        ];
-
-        let buffer_id = ctx.out_res.register_queued_frame_buffer(resource_id);
-
-        session
-            .use_output_buffer(buffer_id as i32, libvda::PixelFormat::NV12, fd, &planes)
-            .map_err(VideoError::VdaError)?;
-
-        Ok(())
     }
 
     fn get_params(&self, stream_id: StreamId, queue_type: QueueType) -> VideoResult<Params> {
