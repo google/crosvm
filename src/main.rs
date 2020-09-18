@@ -401,7 +401,7 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
 
     let opts = s
         .split(',')
-        .map(|frag| frag.split('='))
+        .map(|frag| frag.splitn(2, '='))
         .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
 
     for (k, v) in opts {
@@ -2192,6 +2192,13 @@ mod tests {
     #[test]
     fn parse_serial_valid_no_num() {
         parse_serial_options("type=syslog").expect("parse should have succeded");
+    }
+
+    #[test]
+    fn parse_serial_equals_in_value() {
+        let parsed = parse_serial_options("type=syslog,path=foo=bar==.log")
+            .expect("parse should have succeded");
+        assert_eq!(parsed.path, Some(PathBuf::from("foo=bar==.log")));
     }
 
     #[test]
