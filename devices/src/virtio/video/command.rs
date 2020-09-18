@@ -90,6 +90,7 @@ pub enum VideoCmd {
     },
     ResourceDestroyAll {
         stream_id: u32,
+        queue_type: QueueType,
     },
     QueueClear {
         stream_id: u32,
@@ -236,14 +237,10 @@ impl<'a> VideoCmd {
                 }
             }
             VIRTIO_VIDEO_CMD_RESOURCE_DESTROY_ALL => {
-                let virtio_video_resource_destroy_all {
-
-                    // `queue_type` should be ignored because destroy_all will affect both queues.
-                    // This field exists here by mistake.
-                    ..
-                } = r.read_obj()?;
+                let virtio_video_resource_destroy_all { queue_type, .. } = r.read_obj()?;
                 ResourceDestroyAll {
                     stream_id: hdr.stream_id.into(),
+                    queue_type: queue_type.try_into()?,
                 }
             }
             VIRTIO_VIDEO_CMD_QUEUE_CLEAR => {

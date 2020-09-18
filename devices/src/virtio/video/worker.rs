@@ -95,28 +95,33 @@ impl Worker {
         // If a destruction command comes, cancel pending requests.
         // TODO(b/161774071): Allow `process_cmd` to return multiple responses and move this
         // into encoder/decoder.
-        match cmd {
-            VideoCmd::ResourceDestroyAll { stream_id } | VideoCmd::StreamDestroy { stream_id } => {
-                for async_response in desc_map.create_cancellation_responses(&stream_id, None) {
-                    let AsyncCmdResponse {
-                        tag,
-                        response: cmd_result,
-                    } = async_response;
-                    let destroy_desc = desc_map
-                        .remove(&tag)
-                        .ok_or_else(|| Error::UnexpectedResponse(tag))?;
-                    let destroy_response = match cmd_result {
-                        Ok(r) => r,
-                        Err(e) => {
-                            error!("returning async error response: {}", &e);
-                            e.into()
-                        }
-                    };
-                    responses.push_back((destroy_desc, destroy_response));
-                }
+        let async_responses = match cmd {
+            VideoCmd::ResourceDestroyAll {
+                stream_id,
+                queue_type,
+            } => desc_map.create_cancellation_responses(&stream_id, Some(queue_type), None),
+            VideoCmd::StreamDestroy { stream_id } => {
+                desc_map.create_cancellation_responses(&stream_id, None, None)
             }
-            _ => (),
+            _ => Default::default(),
         };
+        for async_response in async_responses {
+            let AsyncCmdResponse {
+                tag,
+                response: cmd_result,
+            } = async_response;
+            let destroy_desc = desc_map
+                .remove(&tag)
+                .ok_or_else(|| Error::UnexpectedResponse(tag))?;
+            let destroy_response = match cmd_result {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("returning async error response: {}", &e);
+                    e.into()
+                }
+            };
+            responses.push_back((destroy_desc, destroy_response));
+        }
 
         // Process the command by the device.
         let process_cmd_response = device.process_cmd(cmd, &poll_ctx, &self.resource_bridge);

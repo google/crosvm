@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 
 use crate::virtio::queue::DescriptorChain;
+use crate::virtio::video::command::QueueType;
 use crate::virtio::video::device::{AsyncCmdResponse, AsyncCmdTag};
 use crate::virtio::video::error::VideoError;
 use crate::virtio::video::protocol;
@@ -26,17 +27,26 @@ impl AsyncCmdDescMap {
 
     /// Returns a list of `AsyncCmdResponse`s to cancel pending commands that target
     /// stream `target_stream_id`.
+    /// If `target_queue_type` is specified, then only create the requests for the specified queue.
+    /// Otherwise, create the requests for both input and output queue.
     /// If `processing_tag` is specified, a cancellation request for that tag will
     /// not be created.
     pub fn create_cancellation_responses(
         &self,
         target_stream_id: &u32,
+        target_queue_type: Option<QueueType>,
         processing_tag: Option<AsyncCmdTag>,
     ) -> Vec<AsyncCmdResponse> {
         let mut responses = vec![];
         for tag in self.0.keys().filter(|&&k| Some(k) != processing_tag) {
             match tag {
-                AsyncCmdTag::Queue { stream_id, .. } if stream_id == target_stream_id => {
+                AsyncCmdTag::Queue {
+                    stream_id,
+                    queue_type,
+                    ..
+                } if stream_id == target_stream_id
+                    && target_queue_type.as_ref().unwrap_or(&queue_type) == queue_type =>
+                {
                     responses.push(AsyncCmdResponse::from_response(
                         tag.clone(),
                         CmdResponse::ResourceQueue {

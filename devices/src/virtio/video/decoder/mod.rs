@@ -219,16 +219,6 @@ impl Context {
         res_id_to_res_handle.insert(resource_id, handle);
     }
 
-    fn reset(&mut self) {
-        // Reset `Context` except parameters.
-        *self = Context {
-            stream_id: self.stream_id,
-            in_params: self.in_params.clone(),
-            out_params: self.out_params.clone(),
-            ..Default::default()
-        }
-    }
-
     /*
      * Functions handling libvda events.
      */
@@ -525,9 +515,22 @@ impl<'a> Decoder<'a> {
         Ok(())
     }
 
-    fn destroy_all_resources(&mut self, stream_id: StreamId) -> VideoResult<()> {
+    fn destroy_all_resources(
+        &mut self,
+        stream_id: StreamId,
+        queue_type: QueueType,
+    ) -> VideoResult<()> {
+        let ctx = self.contexts.get_mut(&stream_id)?;
+
         // Reset the associated context.
-        self.contexts.get_mut(&stream_id)?.reset();
+        match queue_type {
+            QueueType::Input => {
+                ctx.in_res = Default::default();
+            }
+            QueueType::Output => {
+                ctx.out_res = Default::default();
+            }
+        }
         Ok(())
     }
 
@@ -790,8 +793,11 @@ impl<'a> Device for Decoder<'a> {
                 self.create_resource(poll_ctx, stream_id, queue_type, resource_id, uuid)?;
                 Ok(Sync(CmdResponse::NoData))
             }
-            ResourceDestroyAll { stream_id } => {
-                self.destroy_all_resources(stream_id)?;
+            ResourceDestroyAll {
+                stream_id,
+                queue_type,
+            } => {
+                self.destroy_all_resources(stream_id, queue_type)?;
                 Ok(Sync(CmdResponse::NoData))
             }
             ResourceQueue {
@@ -1038,7 +1044,11 @@ impl<'a> Device for Decoder<'a> {
                 match reset_response {
                     libvda::decode::Response::Success => {
                         let mut responses: Vec<_> = desc_map
-                            .create_cancellation_responses(&stream_id, Some(tag))
+                            .create_cancellation_responses(
+                                &stream_id,
+                                Some(QueueType::Input),
+                                Some(tag),
+                            )
                             .into_iter()
                             .map(AsyncCmd)
                             .collect();
