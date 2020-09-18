@@ -44,6 +44,54 @@ type FrameBufferId = i32;
 type ResourceHandle = u32;
 type Timestamp = u64;
 
+#[derive(Default)]
+struct OutputResources {
+    // OutputResourceId <-> FrameBufferId
+    res_id_to_frame_buf_id: BTreeMap<OutputResourceId, FrameBufferId>,
+    frame_buf_id_to_res_id: BTreeMap<FrameBufferId, OutputResourceId>,
+
+    // Store the resource id of the queued output buffers.
+    queued_res_ids: BTreeSet<OutputResourceId>,
+
+    // Reserves output resource ID that will be used to notify EOS.
+    // If a guest enqueues a resource with this ID, the resource must not be sent to the host.
+    // Once the value is set, it won't be changed until resolution is changed or a stream is
+    // destroyed.
+    eos_resource_id: Option<OutputResourceId>,
+
+    keep_resources: Vec<File>,
+
+    // This is a flag that shows whether libvda's set_output_buffer_count is called.
+    // This will be set to true when ResourceCreate for OutputBuffer is called for the first time.
+    //
+    // TODO(b/1518105): This field is added as a hack because the current virtio-video v3 spec
+    // doesn't have a way to send a number of frame buffers the guest provides.
+    // Once we have the way in the virtio-video protocol, we should remove this flag.
+    is_output_buffer_count_set: bool,
+}
+
+impl OutputResources {
+    fn register_queued_frame_buffer(&mut self, resource_id: OutputResourceId) -> FrameBufferId {
+        // Generate a new FrameBufferId
+        let id = self.res_id_to_frame_buf_id.len() as FrameBufferId;
+        self.res_id_to_frame_buf_id.insert(resource_id, id);
+        self.frame_buf_id_to_res_id.insert(id, resource_id);
+        id
+    }
+
+    fn dequeue_eos_resource_id(&mut self) -> Option<OutputResourceId> {
+        self.queued_res_ids.take(&self.eos_resource_id?)
+    }
+
+    fn set_output_buffer_count(&mut self) -> bool {
+        if !self.is_output_buffer_count_set {
+            self.is_output_buffer_count_set = true;
+            return true;
+        }
+        false
+    }
+}
+
 // Context is associated with one `libvda::Session`, which corresponds to one stream from the
 // virtio-video's point of view.
 #[derive(Default)]
@@ -58,28 +106,7 @@ struct Context {
     // {Input,Output}ResourceId -> ResourceHandle
     res_id_to_res_handle: BTreeMap<u32, ResourceHandle>,
 
-    // OutputResourceId <-> FrameBufferId
-    res_id_to_frame_buf_id: BTreeMap<OutputResourceId, FrameBufferId>,
-    frame_buf_id_to_res_id: BTreeMap<FrameBufferId, OutputResourceId>,
-
-    keep_resources: Vec<File>,
-
-    // This is a flag that shows whether libvda's set_output_buffer_count is called.
-    // This will be set to true when ResourceCreate for OutputBuffer is called for the first time.
-    //
-    // TODO(b/1518105): This field is added as a hack because the current virtio-video v3 spec
-    // doesn't have a way to send a number of frame buffers the guest provides.
-    // Once we have the way in the virtio-video protocol, we should remove this flag.
-    set_output_buffer_count: bool,
-
-    // Store the resource id of the queued output buffers.
-    queued_output_res_ids: BTreeSet<OutputResourceId>,
-
-    // Reserves output resource ID that will be used to notify EOS.
-    // If a guest enqueues a resource with this ID, the resource must not be sent to the host.
-    // Once the value is set, it won't be changed until resolution is changed or a stream is
-    // destroyed.
-    eos_resource_id: Option<OutputResourceId>,
+    out_res: OutputResources,
 }
 
 impl Context {
@@ -94,7 +121,6 @@ impl Context {
                 ..Default::default()
             },
             out_params: Default::default(),
-            set_output_buffer_count: false,
             ..Default::default()
         }
     }
@@ -122,14 +148,6 @@ impl Context {
         self.res_id_to_res_handle.insert(resource_id, handle);
     }
 
-    fn register_queued_frame_buffer(&mut self, resource_id: OutputResourceId) -> FrameBufferId {
-        // Generate a new FrameBufferId
-        let id = self.res_id_to_frame_buf_id.len() as FrameBufferId;
-        self.res_id_to_frame_buf_id.insert(resource_id, id);
-        self.frame_buf_id_to_res_id.insert(id, resource_id);
-        id
-    }
-
     fn reset(&mut self) {
         // Reset `Context` except parameters.
         *self = Context {
@@ -138,17 +156,6 @@ impl Context {
             out_params: self.out_params.clone(),
             ..Default::default()
         }
-    }
-
-    fn dequeue_eos_resource_id(&mut self) -> Option<OutputResourceId> {
-        self.queued_output_res_ids.take(&self.eos_resource_id?)
-    }
-
-    fn clear_output_resources(&mut self) {
-        self.res_id_to_frame_buf_id.clear();
-        self.frame_buf_id_to_res_id.clear();
-        self.queued_output_res_ids.clear();
-        self.eos_resource_id = None;
     }
 
     /*
@@ -198,7 +205,7 @@ impl Context {
         };
 
         // All the output buffers at VDA are dropped. Clear the output resources.
-        self.clear_output_resources();
+        self.out_res = Default::default();
     }
 
     fn handle_picture_ready(
@@ -215,18 +222,19 @@ impl Context {
             // We don't need to set `plane_formats[i].stride` for the decoder.
         }
 
-        let resource_id: OutputResourceId = match self.frame_buf_id_to_res_id.get(&buffer_id) {
-            Some(id) => *id,
-            None => {
-                error!(
-                    "unknown frame buffer id {} for stream {:?}",
-                    buffer_id, self.stream_id
-                );
-                return None;
-            }
-        };
+        let resource_id: OutputResourceId =
+            match self.out_res.frame_buf_id_to_res_id.get(&buffer_id) {
+                Some(id) => *id,
+                None => {
+                    error!(
+                        "unknown frame buffer id {} for stream {:?}",
+                        buffer_id, self.stream_id
+                    );
+                    return None;
+                }
+            };
 
-        self.queued_output_res_ids.take(&resource_id).or_else(|| {
+        self.out_res.queued_res_ids.take(&resource_id).or_else(|| {
             error!(
                 "resource_id {} is not enqueued for stream {:?}",
                 resource_id, self.stream_id
@@ -417,7 +425,7 @@ impl<'a> Decoder<'a> {
         resource_id: ResourceId,
         uuid: u128,
     ) -> VideoResult<()> {
-        let mut ctx = self.contexts.get_mut(&stream_id)?;
+        let ctx = self.contexts.get_mut(&stream_id)?;
 
         // Create a instance of `libvda::Session` at the first time `ResourceCreate` is
         // called here.
@@ -434,7 +442,7 @@ impl<'a> Decoder<'a> {
 
         // Set output_buffer_count when ResourceCreate is called for frame buffers for the
         // first time.
-        if !ctx.set_output_buffer_count {
+        if ctx.out_res.set_output_buffer_count() {
             const OUTPUT_BUFFER_COUNT: usize = 32;
 
             // Set the buffer count to the maximum value.
@@ -445,7 +453,6 @@ impl<'a> Decoder<'a> {
                 .get(&stream_id)?
                 .set_output_buffer_count(OUTPUT_BUFFER_COUNT)
                 .map_err(VideoError::VdaError)?;
-            ctx.set_output_buffer_count = true;
         }
 
         // We assume ResourceCreate is not called to an output resource that is already
@@ -453,7 +460,7 @@ impl<'a> Decoder<'a> {
         // TODO(keiichiw): We need to support this case for a guest client who may use
         // arbitrary numbers of buffers. (e.g. C2V4L2Component in ARCVM)
         // Such a client is valid as long as it uses at most 32 buffers at the same time.
-        if let Some(frame_buf_id) = ctx.res_id_to_frame_buf_id.get(&resource_id) {
+        if let Some(frame_buf_id) = ctx.out_res.res_id_to_frame_buf_id.get(&resource_id) {
             error!(
                 "resource {} has already been imported to Chrome as a frame buffer {}",
                 resource_id, frame_buf_id
@@ -539,20 +546,20 @@ impl<'a> Decoder<'a> {
             }
         };
 
-        if !ctx.queued_output_res_ids.insert(resource_id) {
+        if !ctx.out_res.queued_res_ids.insert(resource_id) {
             error!("resource_id {} is already enqueued", resource_id);
             return Err(VideoError::InvalidParameter);
         }
-        if ctx.eos_resource_id.is_none() {
+        if ctx.out_res.eos_resource_id.is_none() {
             // Stores an output buffer to notify EOS.
             // This is necessary because libvda is unable to indicate EOS along
             // with returned buffers.
             // For now, when a `Flush()` completes, this saved resource will be
             // returned as a zero-sized buffer with the EOS flag.
             // TODO(b/149725148): Remove this when libvda supports buffer flags.
-            ctx.eos_resource_id = Some(resource_id);
+            ctx.out_res.eos_resource_id = Some(resource_id);
         }
-        if ctx.eos_resource_id == Some(resource_id) {
+        if ctx.out_res.eos_resource_id == Some(resource_id) {
             // Don't enqueue this resource to the host.
             return Ok(());
         }
@@ -560,7 +567,7 @@ impl<'a> Decoder<'a> {
         // In case a given resource has been imported to VDA, call
         // `session.reuse_output_buffer()` and return a response.
         // Otherwise, `session.use_output_buffer()` will be called below.
-        if let Some(buffer_id) = ctx.res_id_to_frame_buf_id.get(&resource_id) {
+        if let Some(buffer_id) = ctx.out_res.res_id_to_frame_buf_id.get(&resource_id) {
             session
                 .reuse_output_buffer(*buffer_id)
                 .map_err(VideoError::VdaError)?;
@@ -572,7 +579,7 @@ impl<'a> Decoder<'a> {
 
         // Take an ownership of `resource_info.file`.
         // This file will be kept until the stream is destroyed.
-        ctx.keep_resources.push(resource_info.file);
+        ctx.out_res.keep_resources.push(resource_info.file);
 
         let planes = vec![
             libvda::FramePlane {
@@ -585,7 +592,7 @@ impl<'a> Decoder<'a> {
             },
         ];
 
-        let buffer_id = ctx.register_queued_frame_buffer(resource_id);
+        let buffer_id = ctx.out_res.register_queued_frame_buffer(resource_id);
 
         session
             .use_output_buffer(buffer_id as i32, libvda::PixelFormat::NV12, fd, &planes)
@@ -700,7 +707,7 @@ impl<'a> Decoder<'a> {
                 session.reset().map_err(VideoError::VdaError)?;
             }
             QueueType::Output => {
-                ctx.queued_output_res_ids.clear();
+                ctx.out_res.queued_res_ids.clear();
             }
         }
         Ok(())
@@ -935,7 +942,7 @@ impl<'a> Device for Decoder<'a> {
             FlushResponse(flush_response) => {
                 match flush_response {
                     libvda::decode::Response::Success => {
-                        let eos_resource_id = match ctx.dequeue_eos_resource_id() {
+                        let eos_resource_id = match ctx.out_res.dequeue_eos_resource_id() {
                             Some(r) => r,
                             None => {
                                 // TODO(b/168750131): Instead of trigger error, we should wait for
