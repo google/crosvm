@@ -2,13 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! Implementation of a virtio video decoder device backed by LibVDA.
+//! Implementation of a virtio video decoder backed by a device.
 
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use std::os::unix::io::IntoRawFd;
 
+use backend::*;
 use base::{error, WaitContext};
 
 use crate::virtio::resource_bridge::{self, ResourceInfo, ResourceRequestSocket};
@@ -23,7 +24,9 @@ use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol;
 use crate::virtio::video::response::CmdResponse;
 
+mod backend;
 mod capability;
+
 use capability::*;
 
 type StreamId = u32;
@@ -74,7 +77,7 @@ struct OutputResources {
     // destroyed.
     eos_resource_id: Option<OutputResourceId>,
 
-    // This is a flag that shows whether libvda's set_output_buffer_count is called.
+    // This is a flag that shows whether the device's set_output_buffer_count is called.
     // This will be set to true when ResourceCreate for OutputBuffer is called for the first time.
     //
     // TODO(b/1518105): This field is added as a hack because the current virtio-video v3 spec
@@ -154,7 +157,7 @@ impl OutputResources {
     }
 }
 
-// Context is associated with one `libvda::Session`, which corresponds to one stream from the
+// Context is associated with one `DecoderSession`, which corresponds to one stream from the
 // virtio-video's point of view.
 #[derive(Default)]
 struct Context {
@@ -220,7 +223,7 @@ impl Context {
     }
 
     /*
-     * Functions handling libvda events.
+     * Functions handling decoder events.
      */
 
     fn handle_provide_picture_buffers(
@@ -338,59 +341,52 @@ impl ContextMap {
     }
 }
 
-/// A thin wrapper of a map of libvda sesssions with error handlings.
-#[derive(Default)]
-struct SessionMap<'a> {
-    map: BTreeMap<u32, libvda::decode::Session<'a>>,
+/// A thin wrapper of a map of decoder sessions with error handlings.
+struct SessionMap<S: DecoderSession> {
+    map: BTreeMap<u32, S>,
 }
 
-impl<'a> SessionMap<'a> {
+impl<S: DecoderSession> Default for SessionMap<S> {
+    fn default() -> Self {
+        Self {
+            map: Default::default(),
+        }
+    }
+}
+
+impl<S: DecoderSession> SessionMap<S> {
     fn contains_key(&self, stream_id: StreamId) -> bool {
         self.map.contains_key(&stream_id)
     }
 
-    fn get(&self, stream_id: &StreamId) -> VideoResult<&libvda::decode::Session<'a>> {
+    fn get(&self, stream_id: &StreamId) -> VideoResult<&S> {
         self.map.get(&stream_id).ok_or_else(|| {
-            error!("failed to get libvda session {}", *stream_id);
+            error!("failed to get decoder session {}", *stream_id);
             VideoError::InvalidStreamId(*stream_id)
         })
     }
 
-    fn get_mut(&mut self, stream_id: &StreamId) -> VideoResult<&mut libvda::decode::Session<'a>> {
+    fn get_mut(&mut self, stream_id: &StreamId) -> VideoResult<&mut S> {
         self.map.get_mut(&stream_id).ok_or_else(|| {
-            error!("failed to get libvda session {}", *stream_id);
+            error!("failed to get decoder session {}", *stream_id);
             VideoError::InvalidStreamId(*stream_id)
         })
     }
 
-    fn insert(
-        &mut self,
-        stream_id: StreamId,
-        session: libvda::decode::Session<'a>,
-    ) -> Option<libvda::decode::Session<'a>> {
+    fn insert(&mut self, stream_id: StreamId, session: S) -> Option<S> {
         self.map.insert(stream_id, session)
     }
 }
 
-/// Represents information of a decoder backed with `libvda`.
-pub struct Decoder<'a> {
-    vda: &'a libvda::decode::VdaInstance,
+/// Represents information of a decoder backed by a `DecoderBackend`.
+pub struct Decoder<D: DecoderBackend> {
+    decoder: D,
     capability: Capability,
     contexts: ContextMap,
-    sessions: SessionMap<'a>,
+    sessions: SessionMap<D::Session>,
 }
 
-impl<'a> Decoder<'a> {
-    pub fn new(vda: &'a libvda::decode::VdaInstance) -> Self {
-        let capability = Capability::new(vda.get_capabilities());
-        Decoder {
-            vda,
-            capability,
-            contexts: Default::default(),
-            sessions: Default::default(),
-        }
-    }
-
+impl<'a, D: DecoderBackend> Decoder<D> {
     /*
      * Functions processing virtio-video commands.
      */
@@ -406,7 +402,7 @@ impl<'a> Decoder<'a> {
 
     fn create_stream(&mut self, stream_id: StreamId, coded_format: Format) -> VideoResult<()> {
         // Create an instance of `Context`.
-        // Note that `libvda::Session` will be created not here but at the first call of
+        // Note that the `DecoderSession` will be created not here but at the first call of
         // `ResourceCreate`. This is because we need to fix a coded format for it, which
         // will be set by `SetParams`.
         self.contexts.insert(Context::new(stream_id, coded_format))
@@ -417,18 +413,18 @@ impl<'a> Decoder<'a> {
             error!("Tried to destroy an invalid stream context {}", stream_id);
         }
 
-        // Close a libVDA session, as closing will be done in `Drop` for `session`.
+        // Close a decoder session, as closing will be done in `Drop` for `session`.
         // Note that `sessions` doesn't have an instance for `stream_id` if the
         // first `ResourceCreate` haven't been called yet.
         self.sessions.map.remove(&stream_id);
     }
 
     fn create_session(
-        vda: &'a libvda::decode::VdaInstance,
+        decoder: &D,
         wait_ctx: &WaitContext<Token>,
         ctx: &Context,
         stream_id: StreamId,
-    ) -> VideoResult<libvda::decode::Session<'a>> {
+    ) -> VideoResult<D::Session> {
         let profile = match ctx.in_params.format {
             Some(Format::VP8) => Ok(libvda::Profile::VP8),
             Some(Format::VP9) => Ok(libvda::Profile::VP9Profile0),
@@ -443,7 +439,7 @@ impl<'a> Decoder<'a> {
             }
         }?;
 
-        let session = vda.open_session(profile).map_err(|e| {
+        let session = decoder.new_session(profile).map_err(|e| {
             error!(
                 "failed to open a session {} for {:?}: {}",
                 stream_id, profile, e
@@ -452,7 +448,7 @@ impl<'a> Decoder<'a> {
         })?;
 
         wait_ctx
-            .add(session.pipe(), Token::Event { id: stream_id })
+            .add(session.event_pipe(), Token::Event { id: stream_id })
             .map_err(|e| {
                 error!(
                     "failed to add FD to poll context for session {}: {}",
@@ -474,10 +470,10 @@ impl<'a> Decoder<'a> {
     ) -> VideoResult<()> {
         let ctx = self.contexts.get_mut(&stream_id)?;
 
-        // Create a instance of `libvda::Session` at the first time `ResourceCreate` is
+        // Create a instance of `DecoderSession` at the first time `ResourceCreate` is
         // called here.
         if !self.sessions.contains_key(stream_id) {
-            let session = Self::create_session(self.vda, wait_ctx, ctx, stream_id)?;
+            let session = Self::create_session(&self.decoder, wait_ctx, ctx, stream_id)?;
             self.sessions.insert(stream_id, session);
         }
 
@@ -538,7 +534,8 @@ impl<'a> Decoder<'a> {
             return Err(VideoError::InvalidOperation);
         }
 
-        // Take an ownership of this file by `into_raw_fd()` as this file will be closed by libvda.
+        // Take an ownership of this file by `into_raw_fd()` as this file will be closed
+        // by the `DecoderBackend`.
         let fd = ctx
             .get_resource_info(QueueType::Input, resource_bridge, resource_id)?
             .file
@@ -762,7 +759,7 @@ impl<'a> Decoder<'a> {
     }
 }
 
-impl<'a> Device for Decoder<'a> {
+impl<D: DecoderBackend> Device for Decoder<D> {
     fn process_cmd(
         &mut self,
         cmd: VideoCmd,
@@ -1089,5 +1086,18 @@ impl<'a> Device for Decoder<'a> {
         };
 
         Some(event_responses)
+    }
+}
+
+/// Create a new decoder instance using a Libvda decoder instance to perform
+/// the decoding.
+impl<'a> Decoder<&'a libvda::decode::VdaInstance> {
+    pub fn new(vda: &'a libvda::decode::VdaInstance) -> Self {
+        Decoder {
+            decoder: vda,
+            capability: Capability::new(vda.get_capabilities()),
+            contexts: Default::default(),
+            sessions: Default::default(),
+        }
     }
 }
