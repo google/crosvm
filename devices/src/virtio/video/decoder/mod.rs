@@ -52,6 +52,15 @@ enum QueueOutputResourceResult {
 }
 
 #[derive(Default)]
+struct InputResources {
+    // Timestamp -> InputResourceId
+    timestamp_to_res_id: BTreeMap<Timestamp, InputResourceId>,
+
+    // InputResourceId -> ResourceHandle
+    res_id_to_res_handle: BTreeMap<InputResourceId, ResourceHandle>,
+}
+
+#[derive(Default)]
 struct OutputResources {
     // OutputResourceId <-> FrameBufferId
     res_id_to_frame_buf_id: BTreeMap<OutputResourceId, FrameBufferId>,
@@ -75,6 +84,9 @@ struct OutputResources {
     // doesn't have a way to send a number of frame buffers the guest provides.
     // Once we have the way in the virtio-video protocol, we should remove this flag.
     is_output_buffer_count_set: bool,
+
+    // OutputResourceId -> ResourceHandle
+    res_id_to_res_handle: BTreeMap<OutputResourceId, ResourceHandle>,
 }
 
 impl OutputResources {
@@ -154,11 +166,7 @@ struct Context {
     in_params: Params,
     out_params: Params,
 
-    // Timestamp -> InputResourceId
-    timestamp_to_input_res_id: BTreeMap<Timestamp, InputResourceId>,
-    // {Input,Output}ResourceId -> ResourceHandle
-    res_id_to_res_handle: BTreeMap<u32, ResourceHandle>,
-
+    in_res: InputResources,
     out_res: OutputResources,
 }
 
@@ -180,10 +188,16 @@ impl Context {
 
     fn get_resource_info(
         &self,
+        queue_type: QueueType,
         res_bridge: &ResourceRequestSocket,
         resource_id: u32,
     ) -> VideoResult<ResourceInfo> {
-        let handle = self.res_id_to_res_handle.get(&resource_id).copied().ok_or(
+        let res_id_to_res_handle = match queue_type {
+            QueueType::Input => &self.in_res.res_id_to_res_handle,
+            QueueType::Output => &self.out_res.res_id_to_res_handle,
+        };
+
+        let handle = res_id_to_res_handle.get(&resource_id).copied().ok_or(
             VideoError::InvalidResourceId {
                 stream_id: self.stream_id,
                 resource_id,
@@ -193,12 +207,16 @@ impl Context {
             .map_err(VideoError::ResourceBridgeFailure)
     }
 
-    fn register_buffer(&mut self, resource_id: u32, uuid: &u128) {
+    fn register_buffer(&mut self, queue_type: QueueType, resource_id: u32, uuid: &u128) {
         // TODO(stevensd): `Virtio3DBackend::resource_assign_uuid` is currently implemented to use
         // 32-bits resource_handles as UUIDs. Once it starts using real UUIDs, we need to update
         // this conversion.
         let handle = TryInto::<u32>::try_into(*uuid).expect("uuid is larger than 32 bits");
-        self.res_id_to_res_handle.insert(resource_id, handle);
+        let res_id_to_res_handle = match queue_type {
+            QueueType::Input => &mut self.in_res.res_id_to_res_handle,
+            QueueType::Output => &mut self.out_res.res_id_to_res_handle,
+        };
+        res_id_to_res_handle.insert(resource_id, handle);
     }
 
     fn reset(&mut self) {
@@ -282,7 +300,8 @@ impl Context {
         // `bitstream_id` in libvda is a timestamp passed via RESOURCE_QUEUE for the input buffer
         // in second.
         let timestamp: u64 = (bitstream_id as u64) * 1_000_000_000;
-        self.timestamp_to_input_res_id
+        self.in_res
+            .timestamp_to_res_id
             .remove(&(timestamp as u64))
             .or_else(|| {
                 error!("failed to remove a timestamp {}", timestamp);
@@ -469,7 +488,7 @@ impl<'a> Decoder<'a> {
             self.sessions.insert(stream_id, session);
         }
 
-        ctx.register_buffer(resource_id, &uuid);
+        ctx.register_buffer(queue_type, resource_id, &uuid);
 
         if queue_type == QueueType::Input {
             return Ok(());
@@ -530,12 +549,21 @@ impl<'a> Decoder<'a> {
 
         // Take an ownership of this file by `into_raw_fd()` as this file will be closed by libvda.
         let fd = ctx
-            .get_resource_info(resource_bridge, resource_id)?
+            .get_resource_info(QueueType::Input, resource_bridge, resource_id)?
             .file
             .into_raw_fd();
 
-        // Register  a mapping of timestamp to resource_id
-        ctx.timestamp_to_input_res_id.insert(timestamp, resource_id);
+        // Register a mapping of timestamp to resource_id
+        if let Some(old_resource_id) = ctx
+            .in_res
+            .timestamp_to_res_id
+            .insert(timestamp, resource_id)
+        {
+            error!(
+                "Mapping from timestamp {} to resource_id ({} => {}) exists!",
+                timestamp, old_resource_id, resource_id
+            );
+        }
 
         // While the virtio-video driver handles timestamps as nanoseconds,
         // Chrome assumes per-second timestamps coming. So, we need a conversion from nsec
@@ -590,7 +618,8 @@ impl<'a> Decoder<'a> {
                 .reuse_output_buffer(buffer_id)
                 .map_err(VideoError::VdaError),
             QueueOutputResourceResult::Registered(buffer_id) => {
-                let resource_info = ctx.get_resource_info(resource_bridge, resource_id)?;
+                let resource_info =
+                    ctx.get_resource_info(QueueType::Output, resource_bridge, resource_id)?;
                 let fd = resource_info.file.as_raw_fd();
                 let planes = vec![
                     libvda::FramePlane {
