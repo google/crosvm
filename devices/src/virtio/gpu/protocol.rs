@@ -509,9 +509,9 @@ pub struct virtio_gpu_resource_create_blob {
     pub resource_id: Le32,
     pub blob_mem: Le32,
     pub blob_flags: Le32,
+    pub nr_entries: Le32,
     pub blob_id: Le64,
     pub size: Le64,
-    pub nr_entries: Le32,
 }
 
 unsafe impl DataInit for virtio_gpu_resource_create_blob {}
