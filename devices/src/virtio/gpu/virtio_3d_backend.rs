@@ -90,6 +90,29 @@ impl Virtio3DResource {
     fn as_mut(&mut self) -> &mut dyn VirtioResource {
         self
     }
+
+    fn response_from_query(&self) -> VirtioGpuResult {
+        let query = self.gpu_resource.query()?;
+        match query.out_num_fds {
+            0 => Ok(OkNoData),
+            1 => {
+                let mut plane_info = Vec::with_capacity(4);
+                for plane_index in 0..4 {
+                    plane_info.push(GpuResponsePlaneInfo {
+                        stride: query.out_strides[plane_index],
+                        offset: query.out_offsets[plane_index],
+                    });
+                }
+
+                let format_modifier = query.out_modifier;
+                Ok(OkResourcePlaneInfo {
+                    format_modifier,
+                    plane_info,
+                })
+            }
+            _ => Err(ErrUnspec),
+        }
+    }
 }
 
 impl VirtioResource for Virtio3DResource {
@@ -641,30 +664,10 @@ impl Backend for Virtio3DBackend {
             Entry::Occupied(_) => Err(ErrInvalidResourceId),
             Entry::Vacant(slot) => {
                 let gpu_resource = self.renderer.create_resource(create_args)?;
-                let query = gpu_resource.query()?;
-                let response = match query.out_num_fds {
-                    0 => Ok(OkNoData),
-                    1 => {
-                        let mut plane_info = Vec::with_capacity(4);
-                        for plane_index in 0..4 {
-                            plane_info.push(GpuResponsePlaneInfo {
-                                stride: query.out_strides[plane_index],
-                                offset: query.out_offsets[plane_index],
-                            });
-                        }
-
-                        let format_modifier = query.out_modifier;
-                        Ok(OkResourcePlaneInfo {
-                            format_modifier,
-                            plane_info,
-                        })
-                    }
-                    _ => return Err(ErrUnspec),
-                };
-
                 let virtio_gpu_resource = Virtio3DResource::new(width, height, gpu_resource);
+                let response = virtio_gpu_resource.response_from_query()?;
                 slot.insert(virtio_gpu_resource);
-                response
+                Ok(response)
             }
         }
     }
@@ -795,15 +798,17 @@ impl Backend for Virtio3DBackend {
                     mem,
                 )?;
 
-                entry.insert(Virtio3DResource::blob_new(
+                let virtio_gpu_resource = Virtio3DResource::blob_new(
                     self.base.display_width,
                     self.base.display_height,
                     resource,
                     blob_flags,
                     size,
-                ));
+                );
 
-                Ok(OkNoData)
+                let response = virtio_gpu_resource.response_from_query()?;
+                entry.insert(virtio_gpu_resource);
+                Ok(response)
             }
             Entry::Occupied(_) => Err(ErrInvalidResourceId),
         }
