@@ -4,7 +4,7 @@
 
 use base::pagesize;
 
-use crate::address_allocator::AddressAllocator;
+use crate::address_allocator::{AddressAllocator, AddressAllocatorSet};
 use crate::gpu_allocator::{self, GpuMemoryAllocator};
 use crate::{Alloc, Error, Result};
 
@@ -49,8 +49,10 @@ pub enum MmioType {
 #[derive(Debug)]
 pub struct SystemAllocator {
     io_address_space: Option<AddressAllocator>,
-    high_mmio_address_space: AddressAllocator,
-    low_mmio_address_space: AddressAllocator,
+
+    // Indexed by MmioType::Low and MmioType::High.
+    mmio_address_spaces: [AddressAllocator; 2],
+
     gpu_allocator: Option<Box<dyn GpuMemoryAllocator>>,
     next_irq: u32,
     next_anon_id: usize,
@@ -86,8 +88,12 @@ impl SystemAllocator {
             } else {
                 None
             },
-            high_mmio_address_space: AddressAllocator::new(high_base, high_size, Some(page_size))?,
-            low_mmio_address_space: AddressAllocator::new(low_base, low_size, Some(page_size))?,
+            mmio_address_spaces: [
+                // MmioType::Low
+                AddressAllocator::new(low_base, low_size, Some(page_size))?,
+                // MmioType::High
+                AddressAllocator::new(high_base, high_size, Some(page_size))?,
+            ],
             gpu_allocator: if create_gpu_allocator {
                 gpu_allocator::create_gpu_memory_allocator().map_err(Error::CreateGpuAllocator)?
             } else {
@@ -122,10 +128,13 @@ impl SystemAllocator {
     ///    MmioType::Low: low mmio allocator
     ///    MmioType::High: high mmio allocator
     pub fn mmio_allocator(&mut self, mmio_type: MmioType) -> &mut AddressAllocator {
-        match mmio_type {
-            MmioType::Low => &mut self.low_mmio_address_space,
-            MmioType::High => &mut self.high_mmio_address_space,
-        }
+        &mut self.mmio_address_spaces[mmio_type as usize]
+    }
+
+    /// Gets a set of allocators to be used for MMIO allocation.
+    /// The set of allocators will try the low and high MMIO allocators, in that order.
+    pub fn mmio_allocator_any(&mut self) -> AddressAllocatorSet {
+        AddressAllocatorSet::new(&mut self.mmio_address_spaces)
     }
 
     /// Gets an allocator to be used for GPU memory.

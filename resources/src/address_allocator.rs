@@ -238,6 +238,91 @@ impl AddressAllocator {
     }
 }
 
+/// Contains a set of `AddressAllocator`s for allocating address ranges.
+/// When attempting an allocation, each allocator will be tried in order until
+/// the allocation is successful.
+/// See `AddressAllocator` for function documentation.
+pub struct AddressAllocatorSet<'a> {
+    allocators: &'a mut [AddressAllocator],
+}
+
+impl<'a> AddressAllocatorSet<'a> {
+    pub fn new(allocators: &'a mut [AddressAllocator]) -> Self {
+        AddressAllocatorSet { allocators }
+    }
+
+    pub fn allocate_with_align(
+        &mut self,
+        size: u64,
+        alloc: Alloc,
+        tag: String,
+        alignment: u64,
+    ) -> Result<u64> {
+        let mut last_res = Err(Error::OutOfSpace);
+        for allocator in self.allocators.iter_mut() {
+            last_res = allocator.allocate_with_align(size, alloc, tag.clone(), alignment);
+            if last_res.is_ok() {
+                return last_res;
+            }
+        }
+        last_res
+    }
+
+    pub fn allocate(&mut self, size: u64, alloc: Alloc, tag: String) -> Result<u64> {
+        let mut last_res = Err(Error::OutOfSpace);
+        for allocator in self.allocators.iter_mut() {
+            last_res = allocator.allocate(size, alloc, tag.clone());
+            if last_res.is_ok() {
+                return last_res;
+            }
+        }
+        last_res
+    }
+
+    pub fn allocate_at(&mut self, start: u64, size: u64, alloc: Alloc, tag: String) -> Result<()> {
+        let mut last_res = Err(Error::OutOfSpace);
+        for allocator in self.allocators.iter_mut() {
+            last_res = allocator.allocate_at(start, size, alloc, tag.clone());
+            if last_res.is_ok() {
+                return last_res;
+            }
+        }
+        last_res
+    }
+
+    pub fn release(&mut self, alloc: Alloc) -> Result<()> {
+        let mut last_res = Err(Error::OutOfSpace);
+        for allocator in self.allocators.iter_mut() {
+            last_res = allocator.release(alloc);
+            if last_res.is_ok() {
+                return last_res;
+            }
+        }
+        last_res
+    }
+
+    pub fn get(&self, alloc: &Alloc) -> Option<&(u64, u64, String)> {
+        for allocator in self.allocators.iter() {
+            let opt = allocator.get(alloc);
+            if opt.is_some() {
+                return opt;
+            }
+        }
+        None
+    }
+
+    pub fn address_from_pci_offset(&self, alloc: Alloc, offset: u64, size: u64) -> Result<u64> {
+        let mut last_res = Err(Error::OutOfSpace);
+        for allocator in self.allocators.iter() {
+            last_res = allocator.address_from_pci_offset(alloc, offset, size);
+            if last_res.is_ok() {
+                return last_res;
+            }
+        }
+        last_res
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
