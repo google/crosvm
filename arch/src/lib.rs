@@ -239,7 +239,7 @@ impl Display for DeviceRegistrationError {
 
 /// Creates a root PCI device for use by this Vm.
 pub fn generate_pci_root(
-    devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
+    mut devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
     irq_chip: &mut impl IrqChip,
     mmio_bus: &mut Bus,
     resources: &mut SystemAllocator,
@@ -259,15 +259,41 @@ pub fn generate_pci_root(
 
     let mut irqs: Vec<Option<u32>> = vec![None; max_irqs];
 
-    for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
-        // Auto assign PCI device numbers starting from 1
-        let address = PciAddress {
-            bus: 0,
-            dev: 1 + dev_idx as u8,
-            func: 0,
-        };
-        device.assign_address(address);
+    // Assign addresses to all devices before allocating BARs.
+    let device_addrs: Vec<PciAddress> = devices
+        .iter_mut()
+        .enumerate()
+        .map(|(dev_idx, (device, _jail))| {
+            let address = PciAddress {
+                bus: 0,
+                dev: 1 + dev_idx as u8,
+                func: 0,
+            };
+            device.assign_address(address);
+            address
+        })
+        .collect();
 
+    // Allocate ranges that may need to be in the low MMIO region (MmioType::Low).
+    let mut io_ranges = BTreeMap::new();
+    for (dev_idx, (device, _jail)) in devices.iter_mut().enumerate() {
+        let ranges = device
+            .allocate_io_bars(resources)
+            .map_err(DeviceRegistrationError::AllocateIoAddrs)?;
+        io_ranges.insert(dev_idx, ranges);
+    }
+
+    // Allocate device ranges that may be in low or high MMIO after low-only ranges.
+    let mut device_ranges = BTreeMap::new();
+    for (dev_idx, (device, _jail)) in devices.iter_mut().enumerate() {
+        let ranges = device
+            .allocate_device_bars(resources)
+            .map_err(DeviceRegistrationError::AllocateDeviceAddrs)?;
+        device_ranges.insert(dev_idx, ranges);
+    }
+
+    for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
+        let address = device_addrs[dev_idx];
         let mut keep_fds = device.keep_fds();
         syslog::push_fds(&mut keep_fds);
 
@@ -298,13 +324,8 @@ pub fn generate_pci_root(
         keep_fds.push(irq_resample_fd.as_raw_fd());
         device.assign_irq(irqfd, irq_resample_fd, irq_num, pci_irq_pin);
         pci_irqs.push((address, irq_num, pci_irq_pin));
-
-        let ranges = device
-            .allocate_io_bars(resources)
-            .map_err(DeviceRegistrationError::AllocateIoAddrs)?;
-        let device_ranges = device
-            .allocate_device_bars(resources)
-            .map_err(DeviceRegistrationError::AllocateDeviceAddrs)?;
+        let ranges = io_ranges.remove(&dev_idx).unwrap_or_default();
+        let device_ranges = device_ranges.remove(&dev_idx).unwrap_or_default();
         device
             .register_device_capabilities()
             .map_err(DeviceRegistrationError::RegisterDeviceCapabilities)?;
