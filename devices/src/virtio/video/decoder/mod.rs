@@ -379,7 +379,7 @@ impl<'a> Decoder<'a> {
             Some(Format::VP9) => Ok(libvda::Profile::VP9Profile0),
             Some(Format::H264) => Ok(libvda::Profile::H264ProfileBaseline),
             Some(f) => {
-                error!("specified format is invalid for bitstream: {:?}", f);
+                error!("specified format is invalid for bitstream: {}", f);
                 Err(VideoError::InvalidParameter)
             }
             None => {
@@ -528,7 +528,7 @@ impl<'a> Decoder<'a> {
             Some(Format::NV12) => (), // OK
             Some(f) => {
                 error!(
-                    "video decoder only supports NV12 as a frame format but {:?}",
+                    "video decoder only supports NV12 as a frame format, got {}",
                     f
                 );
                 return Err(VideoError::InvalidOperation);
@@ -643,7 +643,7 @@ impl<'a> Decoder<'a> {
                     Some(Format::VP9) => Profile::VP9Profile0,
                     Some(Format::H264) => Profile::H264Baseline,
                     Some(f) => {
-                        error!("specified format is invalid: {:?}", f);
+                        error!("specified format is invalid: {}", f);
                         return Err(VideoError::InvalidArgument);
                     }
                     None => {
@@ -658,7 +658,7 @@ impl<'a> Decoder<'a> {
                 let level = match ctx.in_params.format {
                     Some(Format::H264) => Level::H264_1_0,
                     Some(f) => {
-                        error!("specified format has no level: {:?}", f);
+                        error!("specified format has no level: {}", f);
                         return Err(VideoError::InvalidArgument);
                     }
                     None => {

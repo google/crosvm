@@ -5,6 +5,7 @@
 //! Data structures that represent video format information in virtio video devices.
 
 use std::convert::{From, Into, TryFrom};
+use std::fmt::{self, Display};
 use std::io;
 
 use base::error;
@@ -146,6 +147,20 @@ pub enum Format {
     VP9 = VIRTIO_VIDEO_FORMAT_VP9,
 }
 impl_try_from_le32_for_enumn!(Format, "format");
+
+impl Display for Format {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Format::*;
+        match self {
+            NV12 => write!(f, "NV12"),
+            YUV420 => write!(f, "YUV420"),
+            H264 => write!(f, "H264"),
+            HEVC => write!(f, "HEVC"),
+            VP8 => write!(f, "VP8"),
+            VP9 => write!(f, "VP9"),
+        }
+    }
+}
 
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Crop {
