@@ -56,8 +56,19 @@ impl AsyncCmdDescMap {
                         },
                     ));
                 }
-                AsyncCmdTag::Drain { stream_id } | AsyncCmdTag::Clear { stream_id, .. }
-                    if stream_id == target_stream_id =>
+                AsyncCmdTag::Drain { stream_id } if stream_id == target_stream_id => {
+                    // TODO(b/1518105): Use more appropriate error code if a new protocol supports
+                    // one.
+                    responses.push(AsyncCmdResponse::from_error(
+                        tag.clone(),
+                        VideoError::InvalidOperation,
+                    ));
+                }
+                AsyncCmdTag::Clear {
+                    stream_id,
+                    queue_type,
+                } if stream_id == target_stream_id
+                    && target_queue_type.as_ref().unwrap_or(&queue_type) == queue_type =>
                 {
                     // TODO(b/1518105): Use more appropriate error code if a new protocol supports
                     // one.
