@@ -1558,6 +1558,12 @@ where
         .add_vcpu(cpu_id, vcpu.try_clone().map_err(Error::CloneVcpu)?)
         .map_err(Error::AddIrqChipVcpu)?;
 
+    if !vcpu_affinity.is_empty() {
+        if let Err(e) = set_cpu_affinity(vcpu_affinity) {
+            error!("Failed to set CPU affinity: {}", e);
+        }
+    }
+
     Arch::configure_vcpu(
         vm.get_memory(),
         vm.get_hypervisor(),
@@ -1568,12 +1574,6 @@ where
         has_bios,
     )
     .map_err(Error::ConfigureVcpu)?;
-
-    if !vcpu_affinity.is_empty() {
-        if let Err(e) = set_cpu_affinity(vcpu_affinity) {
-            error!("Failed to set CPU affinity: {}", e);
-        }
-    }
 
     #[cfg(feature = "chromeos")]
     if let Err(e) = base::sched::enable_core_scheduling() {
