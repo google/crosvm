@@ -6,15 +6,20 @@
 
 copy_file_range: 1
 fallocate: 1
+fchdir: 1
 fchmod: 1
 fchmodat: 1
 fchown32: 1
 fchownat: 1
 fdatasync: 1
-lgetxattr: 1
-lsetxattr: 1
-llistxattr: 1
-lremovexattr: 1
+fgetxattr: 1
+getxattr: 1
+fsetxattr: 1
+setxattr: 1
+flistxattr: 1
+listxattr: 1
+fremovexattr: 1
+removexattr: 1
 fstatat64: 1
 fstatfs64: 1
 fsync: 1

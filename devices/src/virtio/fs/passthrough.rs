@@ -90,11 +90,29 @@ struct InodeAltKey {
     dev: libc::dev_t,
 }
 
+#[derive(PartialEq, Eq)]
+enum FileType {
+    Regular,
+    Directory,
+    Other,
+}
+
+impl From<libc::mode_t> for FileType {
+    fn from(mode: libc::mode_t) -> Self {
+        match mode & libc::S_IFMT {
+            libc::S_IFREG => FileType::Regular,
+            libc::S_IFDIR => FileType::Directory,
+            _ => FileType::Other,
+        }
+    }
+}
+
 struct InodeData {
     inode: Inode,
     // Most of these aren't actually files but ¯\_(ツ)_/¯.
     file: File,
     refcount: AtomicU64,
+    filetype: FileType,
 }
 
 struct HandleData {
@@ -431,6 +449,10 @@ pub struct PassthroughFs {
     // `cfg.writeback` is true and `init` was called with `FsOptions::WRITEBACK_CACHE`.
     writeback: AtomicBool,
 
+    // Used to ensure that only one thread at a time uses chdir(). Since chdir() affects the
+    // process-wide CWD, we cannot allow more than one thread to do it at the same time.
+    chdir_mutex: Mutex<()>,
+
     cfg: Config,
 }
 
@@ -464,6 +486,7 @@ impl PassthroughFs {
             proc,
 
             writeback: AtomicBool::new(false),
+            chdir_mutex: Mutex::new(()),
             cfg,
         })
     }
@@ -489,32 +512,6 @@ impl PassthroughFs {
         // The unwrap is safe here because the prefix doesn't contain any interior nul-bytes and the
         // to_bytes() call above will not return a byte slice with any interior nul-bytes either.
         Cow::Owned(CString::new(newname).expect("Failed to re-write xattr name"))
-    }
-
-    fn get_path(&self, inode: Inode) -> io::Result<CString> {
-        let data = self.find_inode(inode)?;
-
-        let mut buf = Vec::with_capacity(libc::PATH_MAX as usize);
-        buf.resize(libc::PATH_MAX as usize, 0);
-
-        let path = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
-        // Safe because this will only modify the contents of `buf` and we check the return value.
-        let res = unsafe {
-            libc::readlinkat(
-                self.proc.as_raw_fd(),
-                path.as_ptr(),
-                buf.as_mut_ptr() as *mut libc::c_char,
-                buf.len(),
-            )
-        };
-        if res < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        buf.resize(res as usize, 0);
-        CString::new(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     fn find_inode(&self, inode: Inode) -> io::Result<Arc<InodeData>> {
@@ -656,6 +653,7 @@ impl PassthroughFs {
                     inode,
                     file: f,
                     refcount: AtomicU64::new(1),
+                    filetype: st.st_mode.into(),
                 }),
             );
 
@@ -729,6 +727,104 @@ impl PassthroughFs {
             Ok(())
         } else {
             Err(io::Error::last_os_error())
+        }
+    }
+
+    // Changes the CWD to `self.proc`, runs `f`, and then changes the CWD back to the root
+    // directory. This effectively emulates an *at syscall starting at /proc, which is useful when
+    // there is no *at syscall available. Panics if any of the fchdir calls fail or if there is no
+    // root inode.
+    fn with_proc_chdir<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        let root = self
+            .find_inode(fuse::ROOT_ID)
+            .expect("failed to find root inode");
+        let chdir_lock = self.chdir_mutex.lock();
+
+        // Safe because this doesn't modify any memory and we check the return value. Since the
+        // fchdir should never fail we just use debug_asserts.
+        let proc_cwd = unsafe { libc::fchdir(self.proc.as_raw_fd()) };
+        debug_assert_eq!(
+            proc_cwd,
+            0,
+            "failed to fchdir to /proc: {}",
+            io::Error::last_os_error()
+        );
+
+        let res = f();
+
+        // Safe because this doesn't modify any memory and we check the return value. Since the
+        // fchdir should never fail we just use debug_asserts.
+        let root_cwd = unsafe { libc::fchdir(root.file.as_raw_fd()) };
+        debug_assert_eq!(
+            root_cwd,
+            0,
+            "failed to fchdir back to root directory: {}",
+            io::Error::last_os_error()
+        );
+
+        mem::drop(chdir_lock);
+        res
+    }
+
+    fn do_getxattr(&self, inode: &InodeData, name: &CStr, value: &mut [u8]) -> io::Result<usize> {
+        let res = if inode.filetype == FileType::Other {
+            // For non-regular files and directories, we cannot open the fd normally. Instead we
+            // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
+            // and then setting the CWD back to the root directory.
+            let path = CString::new(format!("self/fd/{}", inode.file.as_raw_fd()))
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+            // Safe because this will only modify `value` and we check the return value.
+            self.with_proc_chdir(|| unsafe {
+                libc::getxattr(
+                    path.as_ptr(),
+                    name.as_ptr(),
+                    value.as_mut_ptr() as *mut libc::c_void,
+                    value.len() as libc::size_t,
+                )
+            })
+        } else {
+            // For regular files and directories, we can just open an fd and use fgetxattr.
+            let dir = if inode.filetype == FileType::Directory {
+                libc::O_DIRECTORY
+            } else {
+                0
+            };
+            let f = self.open_inode(inode, libc::O_RDONLY | dir)?;
+
+            // Safe because this will only write to `value` and we check the return value.
+            unsafe {
+                libc::fgetxattr(
+                    f.as_raw_fd(),
+                    name.as_ptr(),
+                    value.as_mut_ptr() as *mut libc::c_void,
+                    value.len() as libc::size_t,
+                )
+            }
+        };
+
+        if res < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(res as usize)
+        }
+    }
+
+    // Checks whether `inode` has a default posix acl xattr.
+    fn has_default_posix_acl(&self, inode: &InodeData) -> io::Result<bool> {
+        // Safe because this is a valid c string with no interior nul-bytes.
+        let acl = unsafe { CStr::from_bytes_with_nul_unchecked(b"system.posix_acl_default\0") };
+
+        if let Err(e) = self.do_getxattr(inode, acl, &mut []) {
+            match e.raw_os_error() {
+                Some(libc::ENODATA) | Some(libc::EOPNOTSUPP) => Ok(false),
+                _ => Err(e),
+            }
+        } else {
+            Ok(true)
         }
     }
 
@@ -1053,25 +1149,6 @@ impl<'a> Drop for TempDir<'a> {
     }
 }
 
-// Checks whether `path` has a default posix acl xattr.
-fn has_default_posix_acl(path: &CStr) -> io::Result<bool> {
-    // Safe because this is a valid c string with no interior nul-bytes.
-    let acl = unsafe { CStr::from_bytes_with_nul_unchecked(b"system.posix_acl_default\0") };
-
-    // Safe because this doesn't modify any memory and we check the return value.
-    let res = unsafe { libc::lgetxattr(path.as_ptr(), acl.as_ptr(), ptr::null_mut(), 0) };
-
-    if res < 0 {
-        let err = io::Error::last_os_error();
-        match err.raw_os_error() {
-            Some(libc::ENODATA) | Some(libc::EOPNOTSUPP) => Ok(false),
-            _ => Err(err),
-        }
-    } else {
-        Ok(true)
-    }
-}
-
 impl FileSystem for PassthroughFs {
     type Inode = Inode;
     type Handle = Handle;
@@ -1118,6 +1195,7 @@ impl FileSystem for PassthroughFs {
                 inode: fuse::ROOT_ID,
                 file: f,
                 refcount: AtomicU64::new(2),
+                filetype: st.st_mode.into(),
             }),
         );
 
@@ -1211,8 +1289,6 @@ impl FileSystem for PassthroughFs {
         // left would be a empty hidden directory with a random name.
         let data = self.find_inode(parent)?;
 
-        let path = self.get_path(parent)?;
-
         let _ctx = security_ctx
             .filter(|ctx| ctx.to_bytes() != UNLABELED)
             .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
@@ -1220,7 +1296,7 @@ impl FileSystem for PassthroughFs {
 
         // The presence of a default posix acl xattr in the parent directory completely changes the
         // meaning of the mode parameter so only apply the umask if it doesn't have one.
-        if !has_default_posix_acl(&path)? {
+        if !self.has_default_posix_acl(&data)? {
             mode &= !umask;
         }
 
@@ -1350,8 +1426,7 @@ impl FileSystem for PassthroughFs {
 
         // The presence of a default posix acl xattr in the parent directory completely changes the
         // meaning of the mode parameter so only apply the umask if it doesn't have one.
-        let path = self.get_path(parent)?;
-        if !has_default_posix_acl(&path)? {
+        if !self.has_default_posix_acl(&data)? {
             mode &= !umask;
         }
 
@@ -1646,14 +1721,13 @@ impl FileSystem for PassthroughFs {
     ) -> io::Result<Entry> {
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
 
+        let data = self.find_inode(parent)?;
+
         // The presence of a default posix acl xattr in the parent directory completely changes the
         // meaning of the mode parameter so only apply the umask if it doesn't have one.
-        let path = self.get_path(parent)?;
-        if !has_default_posix_acl(&path)? {
+        if !self.has_default_posix_acl(&data)? {
             mode &= !umask;
         }
-
-        let data = self.find_inode(parent)?;
 
         let _ctx = security_ctx
             .filter(|ctx| ctx.to_bytes() != UNLABELED)
@@ -1877,24 +1951,51 @@ impl FileSystem for PassthroughFs {
             return Err(io::Error::from_raw_os_error(libc::EPERM));
         }
 
-        let path = self.get_path(inode)?;
-
+        let data = self.find_inode(inode)?;
         let name = self.rewrite_xattr_name(name);
 
-        // Safe because this doesn't modify any memory and we check the return value.
-        let res = unsafe {
-            libc::lsetxattr(
-                path.as_ptr(),
-                name.as_ptr(),
-                value.as_ptr() as *const libc::c_void,
-                value.len(),
-                flags as libc::c_int,
-            )
-        };
-        if res == 0 {
-            Ok(())
+        let res = if data.filetype == FileType::Other {
+            // For non-regular files and directories, we cannot open the fd normally. Instead we
+            // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
+            // and then setting the CWD back to the root directory.
+            let path = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+            // Safe because this doesn't modify any memory and we check the return value.
+            self.with_proc_chdir(|| unsafe {
+                libc::setxattr(
+                    path.as_ptr(),
+                    name.as_ptr(),
+                    value.as_ptr() as *const libc::c_void,
+                    value.len() as libc::size_t,
+                    flags as c_int,
+                )
+            })
         } else {
+            // For regular files and directories, we can just open an fd and use fsetxattr.
+            let dir = if data.filetype == FileType::Directory {
+                libc::O_DIRECTORY
+            } else {
+                0
+            };
+            let f = self.open_inode(&data, libc::O_RDONLY | dir)?;
+
+            // Safe because this doesn't modify any memory and we check the return value.
+            unsafe {
+                libc::fsetxattr(
+                    f.as_raw_fd(),
+                    name.as_ptr(),
+                    value.as_ptr() as *const libc::c_void,
+                    value.len() as libc::size_t,
+                    flags as c_int,
+                )
+            }
+        };
+
+        if res < 0 {
             Err(io::Error::last_os_error())
+        } else {
+            Ok(())
         }
     }
 
@@ -1911,48 +2012,59 @@ impl FileSystem for PassthroughFs {
             return Err(io::Error::from_raw_os_error(libc::ENODATA));
         }
 
-        let path = self.get_path(inode)?;
-
-        let mut buf = Vec::with_capacity(size as usize);
-        buf.resize(size as usize, 0);
-
+        let data = self.find_inode(inode)?;
         let name = self.rewrite_xattr_name(name);
+        let mut buf = vec![0u8; size as usize];
 
         // Safe because this will only modify the contents of `buf`.
-        let res = unsafe {
-            libc::lgetxattr(
-                path.as_ptr(),
-                name.as_ptr(),
-                buf.as_mut_ptr() as *mut libc::c_void,
-                size as libc::size_t,
-            )
-        };
-        if res < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
+        let res = self.do_getxattr(&data, &name, &mut buf[..])?;
         if size == 0 {
             Ok(GetxattrReply::Count(res as u32))
         } else {
-            buf.resize(res as usize, 0);
+            buf.truncate(res as usize);
             Ok(GetxattrReply::Value(buf))
         }
     }
 
     fn listxattr(&self, _ctx: Context, inode: Inode, size: u32) -> io::Result<ListxattrReply> {
-        let path = self.get_path(inode)?;
+        let data = self.find_inode(inode)?;
 
-        let mut buf = Vec::with_capacity(size as usize);
-        buf.resize(size as usize, 0);
+        let mut buf = vec![0u8; size as usize];
 
-        // Safe because this will only modify the contents of `buf`.
-        let res = unsafe {
-            libc::llistxattr(
-                path.as_ptr(),
-                buf.as_mut_ptr() as *mut libc::c_char,
-                size as libc::size_t,
-            )
+        let res = if data.filetype == FileType::Other {
+            // For non-regular files and directories, we cannot open the fd normally. Instead we
+            // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
+            // and then setting the CWD back to the root directory.
+            let path = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+            // Safe because this will only modify `buf` and we check the return value.
+            self.with_proc_chdir(|| unsafe {
+                libc::listxattr(
+                    path.as_ptr(),
+                    buf.as_mut_ptr() as *mut libc::c_char,
+                    buf.len() as libc::size_t,
+                )
+            })
+        } else {
+            // For regular files and directories, we can just open an fd and use fsetxattr.
+            let dir = if data.filetype == FileType::Directory {
+                libc::O_DIRECTORY
+            } else {
+                0
+            };
+            let f = self.open_inode(&data, libc::O_RDONLY | dir)?;
+
+            // Safe because this will only write to `buf` and we check the return value.
+            unsafe {
+                libc::flistxattr(
+                    f.as_raw_fd(),
+                    buf.as_mut_ptr() as *mut libc::c_char,
+                    buf.len() as libc::size_t,
+                )
+            }
         };
+
         if res < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -1960,7 +2072,7 @@ impl FileSystem for PassthroughFs {
         if size == 0 {
             Ok(ListxattrReply::Count(res as u32))
         } else {
-            buf.resize(res as usize, 0);
+            buf.truncate(res as usize);
 
             if self.cfg.rewrite_security_xattrs {
                 strip_xattr_prefix(&mut buf);
@@ -1976,12 +2088,30 @@ impl FileSystem for PassthroughFs {
             return Err(io::Error::from_raw_os_error(libc::ENODATA));
         }
 
-        let path = self.get_path(inode)?;
-
+        let data = self.find_inode(inode)?;
         let name = self.rewrite_xattr_name(name);
 
-        // Safe because this doesn't modify any memory and we check the return value.
-        let res = unsafe { libc::lremovexattr(path.as_ptr(), name.as_ptr()) };
+        let res = if data.filetype == FileType::Other {
+            // For non-regular files and directories, we cannot open the fd normally. Instead we
+            // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
+            // and then setting the CWD back to the root directory.
+            let path = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+            // Safe because this doesn't modify any memory and we check the return value.
+            self.with_proc_chdir(|| unsafe { libc::removexattr(path.as_ptr(), name.as_ptr()) })
+        } else {
+            // For regular files and directories, we can just open an fd and use fsetxattr.
+            let dir = if data.filetype == FileType::Directory {
+                libc::O_DIRECTORY
+            } else {
+                0
+            };
+            let f = self.open_inode(&data, libc::O_RDONLY | dir)?;
+
+            // Safe because this doesn't modify any memory and we check the return value.
+            unsafe { libc::fremovexattr(f.as_raw_fd(), name.as_ptr()) }
+        };
 
         if res == 0 {
             Ok(())
