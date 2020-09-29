@@ -15,6 +15,10 @@ const SYN_REPORT: u16 = 0;
 const REL_X: u16 = 0x00;
 #[allow(dead_code)]
 const REL_Y: u16 = 0x01;
+const ABS_MT_TRACKING_ID: u16 = 0x39;
+const ABS_MT_SLOT: u16 = 0x2f;
+const ABS_MT_POSITION_X: u16 = 0x35;
+const ABS_MT_POSITION_Y: u16 = 0x36;
 const ABS_X: u16 = 0x00;
 const ABS_Y: u16 = 0x01;
 const BTN_TOUCH: u16 = 0x14a;
@@ -104,6 +108,26 @@ impl virtio_input_event {
             code: Le16::from(code),
             value: Le32::from(value),
         }
+    }
+
+    #[inline]
+    pub fn multitouch_tracking_id(id: u32) -> virtio_input_event {
+        Self::absolute(ABS_MT_TRACKING_ID, id)
+    }
+
+    #[inline]
+    pub fn multitouch_slot(slot: u32) -> virtio_input_event {
+        Self::absolute(ABS_MT_SLOT, slot)
+    }
+
+    #[inline]
+    pub fn multitouch_absolute_x(x: u32) -> virtio_input_event {
+        Self::absolute(ABS_MT_POSITION_X, x)
+    }
+
+    #[inline]
+    pub fn multitouch_absolute_y(y: u32) -> virtio_input_event {
+        Self::absolute(ABS_MT_POSITION_Y, y)
     }
 
     #[inline]

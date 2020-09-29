@@ -693,6 +693,25 @@ where
     })
 }
 
+/// Creates a new virtio touch device which supports multi touch.
+pub fn new_multi_touch<T>(
+    source: T,
+    width: u32,
+    height: u32,
+    virtio_features: u64,
+) -> Result<Input<SocketEventSource<T>>>
+where
+    T: Read + Write + AsRawDescriptor,
+{
+    Ok(Input {
+        kill_evt: None,
+        worker_thread: None,
+        config: defaults::new_multi_touch_config(width, height),
+        source: Some(SocketEventSource::new(source)),
+        virtio_features,
+    })
+}
+
 /// Creates a new virtio trackpad device which supports (single) touch, primary and secondary
 /// buttons as well as X and Y axis.
 pub fn new_trackpad<T>(

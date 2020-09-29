@@ -1357,6 +1357,24 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.virtio_single_touch = Some(single_touch_spec);
         }
+        "multi-touch" => {
+            if cfg.virtio_multi_touch.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`multi-touch` already given".to_owned(),
+                ));
+            }
+            let mut it = value.unwrap().split(':');
+
+            let mut multi_touch_spec =
+                TouchDeviceOption::new(PathBuf::from(it.next().unwrap().to_owned()));
+            if let Some(width) = it.next() {
+                multi_touch_spec.set_width(width.trim().parse().unwrap());
+            }
+            if let Some(height) = it.next() {
+                multi_touch_spec.set_height(height.trim().parse().unwrap());
+            }
+            cfg.virtio_multi_touch = Some(multi_touch_spec);
+        }
         "trackpad" => {
             if cfg.virtio_trackpad.is_some() {
                 return Err(argument::Error::TooManyArguments(
@@ -1523,6 +1541,9 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
     {
         if let Some(gpu_parameters) = cfg.gpu_parameters.as_ref() {
             let (width, height) = (gpu_parameters.display_width, gpu_parameters.display_height);
+            if let Some(virtio_multi_touch) = cfg.virtio_multi_touch.as_mut() {
+                virtio_multi_touch.set_default_size(width, height);
+            }
             if let Some(virtio_single_touch) = cfg.virtio_single_touch.as_mut() {
                 virtio_single_touch.set_default_size(width, height);
             }
@@ -1665,6 +1686,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),
           Argument::value("evdev", "PATH", "Path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host"),
           Argument::value("single-touch", "PATH:WIDTH:HEIGHT", "Path to a socket from where to read single touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280)."),
+          Argument::value("multi-touch", "PATH:WIDTH:HEIGHT", "Path to a socket from where to read multi touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280)."),
           Argument::value("trackpad", "PATH:WIDTH:HEIGHT", "Path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280)."),
           Argument::value("mouse", "PATH", "Path to a socket from where to read mouse input events and write status updates to."),
           Argument::value("keyboard", "PATH", "Path to a socket from where to read keyboard input events and write status updates to."),

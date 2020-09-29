@@ -62,6 +62,19 @@ pub fn new_single_touch_config(width: u32, height: u32) -> VirtioInputConfig {
     )
 }
 
+/// Instantiates a VirtioInputConfig object with the default configuration for a multitouch
+/// touchscreen.
+pub fn new_multi_touch_config(width: u32, height: u32) -> VirtioInputConfig {
+    VirtioInputConfig::new(
+        virtio_input_device_ids::new(0, 0, 0, 0),
+        b"Crosvm Virtio Multitouch Touchscreen".to_vec(),
+        b"virtio-touchscreen".to_vec(),
+        virtio_input_bitmap::from_bits(&[INPUT_PROP_DIRECT]),
+        default_multitouchscreen_events(),
+        default_multitouchscreen_absinfo(width, height, 0, 0),
+    )
+}
+
 fn default_touchscreen_absinfo(width: u32, height: u32) -> BTreeMap<u16, virtio_input_absinfo> {
     let mut absinfo: BTreeMap<u16, virtio_input_absinfo> = BTreeMap::new();
     absinfo.insert(ABS_X, virtio_input_absinfo::new(0, width, 0, 0));
@@ -73,6 +86,38 @@ fn default_touchscreen_events() -> BTreeMap<u16, virtio_input_bitmap> {
     let mut supported_events: BTreeMap<u16, virtio_input_bitmap> = BTreeMap::new();
     supported_events.insert(EV_KEY, virtio_input_bitmap::from_bits(&[BTN_TOUCH]));
     supported_events.insert(EV_ABS, virtio_input_bitmap::from_bits(&[ABS_X, ABS_Y]));
+    supported_events
+}
+
+fn default_multitouchscreen_absinfo(
+    width: u32,
+    height: u32,
+    slot: u32,
+    id: u32,
+) -> BTreeMap<u16, virtio_input_absinfo> {
+    let mut absinfo: BTreeMap<u16, virtio_input_absinfo> = BTreeMap::new();
+    absinfo.insert(ABS_MT_SLOT, virtio_input_absinfo::new(0, slot, 0, 0));
+    absinfo.insert(ABS_MT_TRACKING_ID, virtio_input_absinfo::new(0, id, 0, 0));
+    absinfo.insert(ABS_MT_POSITION_X, virtio_input_absinfo::new(0, width, 0, 0));
+    absinfo.insert(
+        ABS_MT_POSITION_Y,
+        virtio_input_absinfo::new(0, height, 0, 0),
+    );
+    absinfo
+}
+
+fn default_multitouchscreen_events() -> BTreeMap<u16, virtio_input_bitmap> {
+    let mut supported_events: BTreeMap<u16, virtio_input_bitmap> = BTreeMap::new();
+    supported_events.insert(EV_KEY, virtio_input_bitmap::from_bits(&[BTN_TOUCH]));
+    supported_events.insert(
+        EV_ABS,
+        virtio_input_bitmap::from_bits(&[
+            ABS_MT_SLOT,
+            ABS_MT_TRACKING_ID,
+            ABS_MT_POSITION_X,
+            ABS_MT_POSITION_Y,
+        ]),
+    );
     supported_events
 }
 
