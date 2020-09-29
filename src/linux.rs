@@ -1393,10 +1393,14 @@ fn create_devices(
         ));
 
         for vfio_path in &cfg.vfio {
-            // create one Irq and Mem request socket for each vfio device
-            let (vfio_host_socket_irq, vfio_device_socket_irq) =
+            // create MSI, MSI-X, and Mem request sockets for each vfio device
+            let (vfio_host_socket_msi, vfio_device_socket_msi) =
                 msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
-            control_sockets.push(TaggedControlSocket::VmIrq(vfio_host_socket_irq));
+            control_sockets.push(TaggedControlSocket::VmIrq(vfio_host_socket_msi));
+
+            let (vfio_host_socket_msix, vfio_device_socket_msix) =
+                msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
+            control_sockets.push(TaggedControlSocket::VmIrq(vfio_host_socket_msix));
 
             let (vfio_host_socket_mem, vfio_device_socket_mem) =
                 msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>()
@@ -1407,7 +1411,8 @@ fn create_devices(
                 .map_err(Error::CreateVfioDevice)?;
             let vfiopcidevice = Box::new(VfioPciDevice::new(
                 vfiodevice,
-                vfio_device_socket_irq,
+                vfio_device_socket_msi,
+                vfio_device_socket_msix,
                 vfio_device_socket_mem,
             ));
             pci_devices.push((vfiopcidevice, simple_jail(&cfg, "vfio_device")?));

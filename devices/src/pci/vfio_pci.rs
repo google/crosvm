@@ -129,17 +129,13 @@ struct VfioMsiCap {
     ctl: u16,
     address: u64,
     data: u16,
-    vm_socket_irq: Arc<VmIrqRequestSocket>,
+    vm_socket_irq: VmIrqRequestSocket,
     irqfd: Option<EventFd>,
     gsi: Option<u32>,
 }
 
 impl VfioMsiCap {
-    fn new(
-        config: &VfioPciConfig,
-        msi_cap_start: u32,
-        vm_socket_irq: Arc<VmIrqRequestSocket>,
-    ) -> Self {
+    fn new(config: &VfioPciConfig, msi_cap_start: u32, vm_socket_irq: VmIrqRequestSocket) -> Self {
         let msi_ctl = config.read_config_word(msi_cap_start + PCI_MSI_FLAGS);
 
         VfioMsiCap {
@@ -320,11 +316,7 @@ struct VfioMsixCap {
 }
 
 impl VfioMsixCap {
-    fn new(
-        config: &VfioPciConfig,
-        msix_cap_start: u32,
-        vm_socket_irq: Arc<VmIrqRequestSocket>,
-    ) -> Self {
+    fn new(config: &VfioPciConfig, msix_cap_start: u32, vm_socket_irq: VmIrqRequestSocket) -> Self {
         let msix_ctl = config.read_config_word(msix_cap_start + PCI_MSIX_FLAGS);
         let table_size = (msix_ctl & PCI_MSIX_FLAGS_QSIZE) + 1;
         let table = config.read_config_dword(msix_cap_start + PCI_MSIX_TABLE);
@@ -474,7 +466,6 @@ pub struct VfioPciDevice {
     msix_cap: Option<VfioMsixCap>,
     irq_type: Option<VfioIrqType>,
     vm_socket_mem: VmMemoryControlRequestSocket,
-    vm_socket_irq: Arc<VmIrqRequestSocket>,
     device_data: Option<DeviceData>,
 
     // scratch MemoryMapping to avoid unmap beform vm exit
@@ -485,12 +476,14 @@ impl VfioPciDevice {
     /// Constructs a new Vfio Pci device for the give Vfio device
     pub fn new(
         device: VfioDevice,
-        vfio_device_socket_irq: VmIrqRequestSocket,
+        vfio_device_socket_msi: VmIrqRequestSocket,
+        vfio_device_socket_msix: VmIrqRequestSocket,
         vfio_device_socket_mem: VmMemoryControlRequestSocket,
     ) -> Self {
         let dev = Arc::new(device);
         let config = VfioPciConfig::new(Arc::clone(&dev));
-        let vm_socket_irq = Arc::new(vfio_device_socket_irq);
+        let mut msi_socket = Some(vfio_device_socket_msi);
+        let mut msix_socket = Some(vfio_device_socket_msix);
         let mut msi_cap: Option<VfioMsiCap> = None;
         let mut msix_cap: Option<VfioMsixCap> = None;
 
@@ -498,17 +491,13 @@ impl VfioPciDevice {
         while cap_next != 0 {
             let cap_id = config.read_config_byte(cap_next);
             if cap_id == PCI_CAP_ID_MSI {
-                msi_cap = Some(VfioMsiCap::new(
-                    &config,
-                    cap_next,
-                    Arc::clone(&vm_socket_irq),
-                ));
+                if let Some(msi_socket) = msi_socket.take() {
+                    msi_cap = Some(VfioMsiCap::new(&config, cap_next, msi_socket));
+                }
             } else if cap_id == PCI_CAP_ID_MSIX {
-                msix_cap = Some(VfioMsixCap::new(
-                    &config,
-                    cap_next,
-                    Arc::clone(&vm_socket_irq),
-                ));
+                if let Some(msix_socket) = msix_socket.take() {
+                    msix_cap = Some(VfioMsixCap::new(&config, cap_next, msix_socket));
+                }
             }
             let offset = cap_next + PCI_MSI_NEXT_POINTER;
             cap_next = config.read_config_byte(offset).into();
@@ -539,7 +528,6 @@ impl VfioPciDevice {
             msix_cap,
             irq_type: None,
             vm_socket_mem: vfio_device_socket_mem,
-            vm_socket_irq,
             device_data,
             mem: Vec::new(),
         }
@@ -797,7 +785,12 @@ impl PciDevice for VfioPciDevice {
             fds.push(interrupt_resample_evt.as_raw_fd());
         }
         fds.push(self.vm_socket_mem.as_raw_fd());
-        fds.push(self.vm_socket_irq.as_ref().as_raw_fd());
+        if let Some(msi_cap) = &self.msi_cap {
+            fds.push(msi_cap.vm_socket_irq.as_raw_fd());
+        }
+        if let Some(msix_cap) = &self.msix_cap {
+            fds.push(msix_cap.config.as_raw_fd());
+        }
         fds
     }
 

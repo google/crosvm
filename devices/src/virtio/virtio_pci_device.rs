@@ -240,10 +240,7 @@ impl VirtioPciDevice {
 
         // One MSI-X vector per queue plus one for configuration changes.
         let msix_num = u16::try_from(num_queues + 1).map_err(|_| base::Error::new(ERANGE))?;
-        let msix_config = Arc::new(Mutex::new(MsixConfig::new(
-            msix_num,
-            Arc::new(msi_device_socket),
-        )));
+        let msix_config = Arc::new(Mutex::new(MsixConfig::new(msix_num, msi_device_socket)));
 
         let config_regs = PciConfiguration::new(
             VIRTIO_PCI_VENDOR_ID,

@@ -8,7 +8,6 @@ use msg_socket::{MsgError, MsgReceiver, MsgSender};
 use std::convert::TryInto;
 use std::fmt::{self, Display};
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::Arc;
 use vm_control::{MaybeOwnedFd, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
 
 use data_model::DataInit;
@@ -57,7 +56,7 @@ pub struct MsixConfig {
     irq_vec: Vec<IrqfdGsi>,
     masked: bool,
     enabled: bool,
-    msi_device_socket: Arc<VmIrqRequestSocket>,
+    msi_device_socket: VmIrqRequestSocket,
     msix_num: u16,
 }
 
@@ -96,7 +95,7 @@ pub enum MsixStatus {
 }
 
 impl MsixConfig {
-    pub fn new(msix_vectors: u16, vm_socket: Arc<VmIrqRequestSocket>) -> Self {
+    pub fn new(msix_vectors: u16, vm_socket: VmIrqRequestSocket) -> Self {
         assert!(msix_vectors <= MAX_MSIX_VECTORS_PER_DEVICE);
 
         let mut table_entries: Vec<MsixTableEntry> = Vec::new();
@@ -512,6 +511,12 @@ impl MsixConfig {
             Some(irq) => Some(&irq.irqfd),
             None => None,
         }
+    }
+}
+
+impl AsRawFd for MsixConfig {
+    fn as_raw_fd(&self) -> RawFd {
+        self.msi_device_socket.as_raw_fd()
     }
 }
 
