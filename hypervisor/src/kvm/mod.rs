@@ -619,6 +619,10 @@ impl Vcpu for KvmVcpu {
         })
     }
 
+    fn as_vcpu(&self) -> &dyn Vcpu {
+        self
+    }
+
     #[allow(clippy::cast_ptr_alignment)]
     fn take_run_handle(&self, signal_num: Option<c_int>) -> Result<VcpuRunHandle> {
         fn vcpu_run_handle_drop() {
@@ -688,6 +692,13 @@ impl Vcpu for KvmVcpu {
                 };
             }
         });
+    }
+
+    fn set_local_immediate_exit_fn(&self) -> extern "C" fn() {
+        extern "C" fn f() {
+            KvmVcpu::set_local_immediate_exit(true);
+        }
+        f
     }
 
     fn handle_io_events(&self, _addr: IoEventAddress) -> Result<()> {

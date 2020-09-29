@@ -257,6 +257,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "downcast-rs"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "enumn"
 version = "0.1.0"
 dependencies = [
@@ -391,6 +396,7 @@ dependencies = [
  "base 0.1.0",
  "bit_field 0.1.0",
  "data_model 0.1.0",
+ "downcast-rs 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "enumn 0.1.0",
  "kvm 0.1.0",
  "kvm_sys 0.1.0",
@@ -886,6 +892,7 @@ dependencies = [
 "checksum bitflags 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "3d155346769a6855b86399e9bc3814ab343cd3d62c7e985113d46a0ec3c281fd"
 "checksum cc 1.0.25 (registry+https://github.com/rust-lang/crates.io-index)" = "f159dfd43363c4d08055a07703eb7a3406b0dac4d0584d96965a3262db3c9d16"
 "checksum cfg-if 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "0c4e7bb64a8ebb0d856483e1e682ea3422f883c5f5615a90d51a2c82fe87fdd3"
+"checksum downcast-rs 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 "checksum futures 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b6f16056ecbb57525ff698bb955162d0cd03bee84e6241c27ff75c08d8ca5987"
 "checksum futures-channel 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "fcae98ca17d102fd8a3603727b9259fcf7fa4239b603d2142926189bc8999b86"
 "checksum futures-core 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "79564c427afefab1dfb3298535b21eda083ef7935b4f0ecbfcb121f0aec10866"

@@ -26,18 +26,22 @@ pub use crate::x86_64::*;
 pub type MemSlot = u32;
 
 /// A trait for checking hypervisor capabilities.
-pub trait Hypervisor: Send + Sized {
+pub trait Hypervisor: Send {
     /// Makes a shallow clone of this `Hypervisor`.
-    fn try_clone(&self) -> Result<Self>;
+    fn try_clone(&self) -> Result<Self>
+    where
+        Self: Sized;
 
     /// Checks if a particular `HypervisorCap` is available.
     fn check_capability(&self, cap: &HypervisorCap) -> bool;
 }
 
 /// A wrapper for using a VM and getting/setting its state.
-pub trait Vm: Send + Sized {
+pub trait Vm: Send {
     /// Makes a shallow clone of this `Vm`.
-    fn try_clone(&self) -> Result<Self>;
+    fn try_clone(&self) -> Result<Self>
+    where
+        Self: Sized;
 
     /// Checks if a particular `VmCap` is available.
     ///
@@ -186,9 +190,14 @@ impl Drop for VcpuRunHandle {
 ///
 /// To run, `take_run_handle` must be called to lock the vcpu to a thread. Then the returned
 /// `VcpuRunHandle` can be used for running.
-pub trait Vcpu: Send + Sized {
+pub trait Vcpu: downcast_rs::DowncastSync {
     /// Makes a shallow clone of this `Vcpu`.
-    fn try_clone(&self) -> Result<Self>;
+    fn try_clone(&self) -> Result<Self>
+    where
+        Self: Sized;
+
+    /// Casts this architecture specific trait object to the base trait object `Vcpu`.
+    fn as_vcpu(&self) -> &dyn Vcpu;
 
     /// Returns a unique `VcpuRunHandle`. A `VcpuRunHandle` is required to run the guest.
     ///
@@ -210,7 +219,13 @@ pub trait Vcpu: Send + Sized {
     fn set_immediate_exit(&self, exit: bool);
 
     /// Sets/clears the bit for immediate exit for the vcpu on the current thread.
-    fn set_local_immediate_exit(exit: bool);
+    fn set_local_immediate_exit(exit: bool)
+    where
+        Self: Sized;
+
+    /// Returns a function pointer that invokes `set_local_immediate_exit` in a
+    /// signal-safe way when called.
+    fn set_local_immediate_exit_fn(&self) -> extern "C" fn();
 
     /// Trigger any io events based on the memory mapped IO at `addr`.  If the hypervisor does
     /// in-kernel IO event delivery, this is a no-op.
@@ -235,6 +250,8 @@ pub trait Vcpu: Send + Sized {
     /// hypervisor API (e.g., kvm.h).  `args` are the arguments for enabling the feature, if any.
     fn enable_raw_capability(&self, cap: u32, args: &[u64; 4]) -> Result<()>;
 }
+
+downcast_rs::impl_downcast!(sync Vcpu);
 
 /// An address either in programmable I/O space or in memory mapped I/O space.
 #[derive(Copy, Clone, Debug, MsgOnSocket)]

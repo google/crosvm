@@ -48,9 +48,9 @@ pub use ioapic::*;
 ///
 /// This trait is generic over a Vcpu type because some IrqChip implementations can support
 /// multiple hypervisors with a single implementation.
-pub trait IrqChip<V: Vcpu>: Send + Sized {
+pub trait IrqChip: Send {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: V) -> Result<()>;
+    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: &dyn Vcpu) -> Result<()>;
 
     /// Register an event that can trigger an interrupt for a particular GSI.
     fn register_irq_event(
@@ -100,7 +100,9 @@ pub trait IrqChip<V: Vcpu>: Send + Sized {
     fn set_mp_state(&mut self, vcpu_id: usize, state: &MPState) -> Result<()>;
 
     /// Attempt to create a shallow clone of this IrqChip instance.
-    fn try_clone(&self) -> Result<Self>;
+    fn try_clone(&self) -> Result<Self>
+    where
+        Self: Sized;
 
     /// Finalize irqchip setup. Should be called once all devices have registered irq events and
     /// been added to the io_bus and mmio_bus.

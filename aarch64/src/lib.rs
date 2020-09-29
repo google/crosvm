@@ -122,6 +122,7 @@ pub enum Error {
     CreateSocket(io::Error),
     CreateVcpu(base::Error),
     CreateVm(Box<dyn StdError>),
+    DowncastVcpu,
     GetSerialCmdline(GetSerialCmdlineError),
     InitrdLoadFailure(arch::LoadImageError),
     KernelLoadFailure(arch::LoadImageError),
@@ -154,6 +155,7 @@ impl Display for Error {
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
             CreateVm(e) => write!(f, "failed to create vm: {}", e),
+            DowncastVcpu => write!(f, "vm created wrong kind of vcpu"),
             GetSerialCmdline(e) => write!(f, "failed to get serial cmdline: {}", e),
             InitrdLoadFailure(e) => write!(f, "initrd cound not be loaded: {}", e),
             KernelLoadFailure(e) => write!(f, "kernel cound not be loaded: {}", e),
@@ -191,17 +193,18 @@ pub struct AArch64;
 impl arch::LinuxArch for AArch64 {
     type Error = Error;
 
-    fn build_vm<V, I, FD, FV, FI, E1, E2, E3>(
+    fn build_vm<V, Vcpu, I, FD, FV, FI, E1, E2, E3>(
         mut components: VmComponents,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         create_devices: FD,
         create_vm: FV,
         create_irq_chip: FI,
-    ) -> std::result::Result<RunnableLinuxVm<V, I>, Self::Error>
+    ) -> std::result::Result<RunnableLinuxVm<V, Vcpu, I>, Self::Error>
     where
         V: VmAArch64,
-        I: IrqChipAArch64<V::Vcpu>,
+        Vcpu: VcpuAArch64,
+        I: IrqChipAArch64,
         FD: FnOnce(
             &GuestMemory,
             &mut V,
@@ -225,7 +228,11 @@ impl arch::LinuxArch for AArch64 {
         let vcpu_count = components.vcpu_count;
         let mut vcpus = Vec::with_capacity(vcpu_count);
         for vcpu_id in 0..vcpu_count {
-            let vcpu = vm.create_vcpu(vcpu_id).map_err(Error::CreateVcpu)?;
+            let vcpu = *vm
+                .create_vcpu(vcpu_id)
+                .map_err(Error::CreateVcpu)?
+                .downcast::<Vcpu>()
+                .map_err(|_| Error::DowncastVcpu)?;
             Self::configure_vcpu_early(vm.get_memory(), &vcpu, vcpu_id, use_pmu)?;
             vcpus.push(vcpu);
         }
@@ -339,11 +346,11 @@ impl arch::LinuxArch for AArch64 {
         })
     }
 
-    fn configure_vcpu<T: VcpuAArch64>(
+    fn configure_vcpu(
         _guest_mem: &GuestMemory,
-        _hypervisor: &impl Hypervisor,
-        _irq_chip: &mut impl IrqChipAArch64<T>,
-        _vcpu: &mut impl VcpuAArch64,
+        _hypervisor: &dyn Hypervisor,
+        _irq_chip: &mut dyn IrqChipAArch64,
+        _vcpu: &mut dyn VcpuAArch64,
         _vcpu_id: usize,
         _num_cpus: usize,
         _has_bios: bool,
@@ -435,7 +442,7 @@ impl AArch64 {
     ///
     /// * `irq_chip` - The IRQ chip to add irqs to.
     /// * `bus` - The bus to add devices to.
-    fn add_arch_devs<T: VcpuAArch64>(irq_chip: &mut impl IrqChip<T>, bus: &mut Bus) -> Result<()> {
+    fn add_arch_devs(irq_chip: &mut dyn IrqChip, bus: &mut Bus) -> Result<()> {
         let rtc_evt = Event::new().map_err(Error::CreateEvent)?;
         irq_chip
             .register_irq_event(AARCH64_RTC_IRQ, &rtc_evt, None)
@@ -463,7 +470,7 @@ impl AArch64 {
     /// * `use_pmu` - Should `vcpu` be configured to use the Performance Monitor Unit.
     fn configure_vcpu_early(
         guest_mem: &GuestMemory,
-        vcpu: &impl VcpuAArch64,
+        vcpu: &dyn VcpuAArch64,
         vcpu_id: usize,
         use_pmu: bool,
     ) -> Result<()> {

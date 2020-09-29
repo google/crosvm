@@ -3,11 +3,11 @@
 // found in the LICENSE file.
 
 use base::Result;
-use hypervisor::{IoapicState, LapicState, PicSelect, PicState, PitState, VcpuX86_64};
+use hypervisor::{IoapicState, LapicState, PicSelect, PicState, PitState};
 
 use crate::IrqChip;
 
-pub trait IrqChipX86_64<V: VcpuX86_64>: IrqChip<V> {
+pub trait IrqChipX86_64: IrqChip {
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState>;
 
@@ -42,7 +42,7 @@ pub(super) mod tests {
     use super::*;
     use hypervisor::{IrqRoute, IrqSource, IrqSourceChip};
 
-    pub fn test_get_pic<V: VcpuX86_64>(mut chip: impl IrqChipX86_64<V>) {
+    pub fn test_get_pic(mut chip: impl IrqChipX86_64) {
         let state = chip
             .get_pic_state(PicSelect::Primary)
             .expect("could not get pic state");
@@ -61,7 +61,7 @@ pub(super) mod tests {
         assert_eq!(state.irr, 1);
     }
 
-    pub fn test_set_pic<V: VcpuX86_64>(mut chip: impl IrqChipX86_64<V>) {
+    pub fn test_set_pic(mut chip: impl IrqChipX86_64) {
         let mut state = chip
             .get_pic_state(PicSelect::Primary)
             .expect("could not get pic state");
@@ -80,7 +80,7 @@ pub(super) mod tests {
         assert_eq!(state.irr, 3);
     }
 
-    pub fn test_get_ioapic<V: VcpuX86_64>(mut chip: impl IrqChipX86_64<V>) {
+    pub fn test_get_ioapic(mut chip: impl IrqChipX86_64) {
         let state = chip.get_ioapic_state().expect("could not get ioapic state");
 
         // Default is that no irq lines are asserted
@@ -102,7 +102,7 @@ pub(super) mod tests {
         assert_eq!(state.current_interrupt_level_bitmap, 2);
     }
 
-    pub fn test_set_ioapic<V: VcpuX86_64>(mut chip: impl IrqChipX86_64<V>) {
+    pub fn test_set_ioapic(mut chip: impl IrqChipX86_64) {
         let mut state = chip.get_ioapic_state().expect("could not get ioapic state");
 
         // set a vector in the redirect table
@@ -120,7 +120,7 @@ pub(super) mod tests {
         assert_eq!(state.current_interrupt_level_bitmap, 4);
     }
 
-    pub fn test_get_pit<V: VcpuX86_64>(chip: impl IrqChipX86_64<V>) {
+    pub fn test_get_pit(chip: impl IrqChipX86_64) {
         let state = chip.get_pit().expect("failed to get pit state");
 
         assert_eq!(state.flags, 0);
@@ -131,7 +131,7 @@ pub(super) mod tests {
         }
     }
 
-    pub fn test_set_pit<V: VcpuX86_64>(mut chip: impl IrqChipX86_64<V>) {
+    pub fn test_set_pit(mut chip: impl IrqChipX86_64) {
         let mut state = chip.get_pit().expect("failed to get pit state");
 
         // set some values
@@ -148,7 +148,7 @@ pub(super) mod tests {
         assert_eq!(state.channels[0].mode, 1);
     }
 
-    pub fn test_get_lapic<V: VcpuX86_64>(chip: impl IrqChipX86_64<V>) {
+    pub fn test_get_lapic(chip: impl IrqChipX86_64) {
         let state = chip.get_lapic_state(0).expect("failed to get lapic state");
 
         // Checking some APIC reg defaults for KVM:
@@ -158,7 +158,7 @@ pub(super) mod tests {
         assert_eq!(state.regs[0xf], 0xff);
     }
 
-    pub fn test_set_lapic<V: VcpuX86_64>(mut chip: impl IrqChipX86_64<V>) {
+    pub fn test_set_lapic(mut chip: impl IrqChipX86_64) {
         // Get default state
         let mut state = chip.get_lapic_state(0).expect("failed to get lapic state");
 
@@ -175,11 +175,7 @@ pub(super) mod tests {
     }
 
     /// Helper function for checking the pic interrupt status
-    fn check_pic_interrupts<V: VcpuX86_64>(
-        chip: &impl IrqChipX86_64<V>,
-        select: PicSelect,
-        value: u8,
-    ) {
+    fn check_pic_interrupts(chip: &impl IrqChipX86_64, select: PicSelect, value: u8) {
         let state = chip
             .get_pic_state(select)
             .expect("could not get ioapic state");
@@ -188,14 +184,14 @@ pub(super) mod tests {
     }
 
     /// Helper function for checking the ioapic interrupt status
-    fn check_ioapic_interrupts<V: VcpuX86_64>(chip: &impl IrqChipX86_64<V>, value: u32) {
+    fn check_ioapic_interrupts(chip: &impl IrqChipX86_64, value: u32) {
         let state = chip.get_ioapic_state().expect("could not get ioapic state");
 
         // since the irq route goes nowhere the bitmap should still be 0
         assert_eq!(state.current_interrupt_level_bitmap, value);
     }
 
-    pub fn test_route_irq<V: VcpuX86_64>(mut chip: impl IrqChipX86_64<V>) {
+    pub fn test_route_irq(mut chip: impl IrqChipX86_64) {
         // clear out irq routes
         chip.set_irq_routes(&[])
             .expect("failed to set empty irq routes");

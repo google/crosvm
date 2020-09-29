@@ -13,7 +13,7 @@ use base::FakeClock as Clock;
 use hypervisor::kvm::{KvmVcpu, KvmVm};
 use hypervisor::{
     IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState, MPState, PicSelect, PicState,
-    PitState, Vm, NUM_IOAPIC_PINS,
+    PitState, Vcpu, Vm, NUM_IOAPIC_PINS,
 };
 use kvm_sys::*;
 use resources::SystemAllocator;
@@ -78,7 +78,7 @@ impl KvmKernelIrqChip {
     }
 }
 
-impl IrqChipX86_64<KvmVcpu> for KvmKernelIrqChip {
+impl IrqChipX86_64 for KvmKernelIrqChip {
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState> {
         Ok(PicState::from(&self.vm.get_pic_state(select)?))
@@ -284,10 +284,13 @@ fn routes_conflict(route: &IrqRoute, other: &IrqRoute) -> bool {
 }
 
 /// This IrqChip only works with Kvm so we only implement it for KvmVcpu.
-impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
+impl IrqChip for KvmSplitIrqChip {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: KvmVcpu) -> Result<()> {
-        self.vcpus.lock()[vcpu_id] = Some(vcpu);
+    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: &dyn Vcpu) -> Result<()> {
+        let vcpu: &KvmVcpu = vcpu
+            .downcast_ref()
+            .expect("KvmSplitIrqChip::add_vcpu called with non-KvmVcpu");
+        self.vcpus.lock()[vcpu_id] = Some(vcpu.try_clone()?);
         Ok(())
     }
 
@@ -591,7 +594,7 @@ impl IrqChip<KvmVcpu> for KvmSplitIrqChip {
     }
 }
 
-impl IrqChipX86_64<KvmVcpu> for KvmSplitIrqChip {
+impl IrqChipX86_64 for KvmSplitIrqChip {
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState> {
         Ok(self.pic.lock().get_pic_state(select))
@@ -672,7 +675,8 @@ mod tests {
             .expect("failed to instantiate KvmKernelIrqChip");
 
         let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
-        chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
+        chip.add_vcpu(0, vcpu.as_vcpu())
+            .expect("failed to add vcpu");
 
         chip
     }
@@ -694,7 +698,8 @@ mod tests {
         .expect("failed to instantiate KvmKernelIrqChip");
 
         let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
-        chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
+        chip.add_vcpu(0, vcpu.as_vcpu())
+            .expect("failed to add vcpu");
         chip
     }
 

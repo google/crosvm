@@ -7,8 +7,10 @@ use libc::ENXIO;
 use base::{errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, Error, Result};
 use kvm_sys::*;
 
-use super::{Kvm, KvmVcpu, KvmVm};
-use crate::{ClockState, DeviceKind, IrqSourceChip, VcpuAArch64, VcpuFeature, VmAArch64, VmCap};
+use super::{KvmVcpu, KvmVm};
+use crate::{
+    ClockState, DeviceKind, Hypervisor, IrqSourceChip, VcpuAArch64, VcpuFeature, VmAArch64, VmCap,
+};
 
 impl KvmVm {
     /// Checks if a particular `VmCap` is available, or returns None if arch-independent
@@ -47,17 +49,14 @@ impl KvmVm {
 }
 
 impl VmAArch64 for KvmVm {
-    type Hypervisor = Kvm;
-    type Vcpu = KvmVcpu;
-
-    fn get_hypervisor(&self) -> &Self::Hypervisor {
+    fn get_hypervisor(&self) -> &dyn Hypervisor {
         &self.kvm
     }
 
-    fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu> {
+    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>> {
         // create_vcpu is declared separately in VmAArch64 and VmX86, so it can return VcpuAArch64
         // or VcpuX86.  But both use the same implementation in KvmVm::create_vcpu.
-        KvmVm::create_vcpu(self, id)
+        Ok(Box::new(KvmVm::create_vcpu(self, id)?))
     }
 }
 

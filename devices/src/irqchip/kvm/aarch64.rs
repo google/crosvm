@@ -160,7 +160,7 @@ impl KvmKernelIrqChip {
     }
 }
 
-impl IrqChipAArch64<KvmVcpu> for KvmKernelIrqChip {
+impl IrqChipAArch64 for KvmKernelIrqChip {
     fn get_vgic_version(&self) -> DeviceKind {
         self.device_kind
     }

@@ -6,7 +6,7 @@ use std::arch::x86_64::{__cpuid, __cpuid_count};
 use std::fmt::{self, Display};
 use std::result;
 
-use hypervisor::{Hypervisor, HypervisorCap, HypervisorX86_64, VcpuX86_64};
+use hypervisor::{HypervisorCap, HypervisorX86_64, VcpuX86_64};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -45,7 +45,7 @@ fn filter_cpuid(
     vcpu_id: usize,
     cpu_count: usize,
     cpuid: &mut hypervisor::CpuId,
-    hypervisor: &impl Hypervisor,
+    hypervisor: &dyn HypervisorX86_64,
     no_smt: bool,
 ) -> Result<()> {
     let entries = &mut cpuid.cpu_id_entries;
@@ -128,8 +128,8 @@ fn filter_cpuid(
 /// * `vcpu_id` - The vcpu index of `vcpu`.
 /// * `nrcpus` - The number of vcpus being used by this VM.
 pub fn setup_cpuid(
-    hypervisor: &impl HypervisorX86_64,
-    vcpu: &impl VcpuX86_64,
+    hypervisor: &dyn HypervisorX86_64,
+    vcpu: &dyn VcpuX86_64,
     vcpu_id: usize,
     nrcpus: usize,
     no_smt: bool,

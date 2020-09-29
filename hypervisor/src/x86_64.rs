@@ -4,6 +4,8 @@
 
 use base::{error, Result};
 use bit_field::*;
+use downcast_rs::impl_downcast;
+use msg_socket::MsgOnSocket;
 use vm_memory::GuestAddress;
 
 use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
@@ -22,14 +24,11 @@ pub trait HypervisorX86_64: Hypervisor {
 
 /// A wrapper for using a VM on x86_64 and getting/setting its state.
 pub trait VmX86_64: Vm {
-    type Hypervisor: HypervisorX86_64;
-    type Vcpu: VcpuX86_64;
-
     /// Gets the `HypervisorX86_64` that created this VM.
-    fn get_hypervisor(&self) -> &Self::Hypervisor;
+    fn get_hypervisor(&self) -> &dyn HypervisorX86_64;
 
     /// Create a Vcpu with the specified Vcpu ID.
-    fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu>;
+    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuX86_64>>;
 
     /// Sets the address of the three-page region in the VM's address space.
     fn set_tss_addr(&self, addr: GuestAddress) -> Result<()>;
@@ -92,6 +91,8 @@ pub trait VcpuX86_64: Vcpu {
     /// Gets the system emulated hyper-v CPUID values.
     fn get_hyperv_cpuid(&self) -> Result<CpuId>;
 }
+
+impl_downcast!(VcpuX86_64);
 
 /// A CpuId Entry contains supported feature information for the given processor.
 /// This can be modified by the hypervisor to pass additional information to the guest kernel
@@ -545,7 +546,7 @@ pub struct DebugRegs {
 }
 
 /// State of one VCPU register.  Currently used for MSRs and XCRs.
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, MsgOnSocket)]
 pub struct Register {
     pub id: u32,
     pub value: u64,

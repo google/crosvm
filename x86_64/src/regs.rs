@@ -103,7 +103,7 @@ fn get_mtrr_pairs(base: u64, len: u64) -> Vec<(u64, u64)> {
     vecs
 }
 
-fn append_mtrr_entries(vpu: &impl VcpuX86_64, pci_start: u64, entries: &mut Vec<Register>) {
+fn append_mtrr_entries(vpu: &dyn VcpuX86_64, pci_start: u64, entries: &mut Vec<Register>) {
     // Get VAR MTRR num from MSR_MTRRcap
     let mut msrs = vec![Register {
         id: crate::msr_index::MSR_MTRRcap,
@@ -147,7 +147,7 @@ fn append_mtrr_entries(vpu: &impl VcpuX86_64, pci_start: u64, entries: &mut Vec<
     });
 }
 
-fn create_msr_entries(vcpu: &impl VcpuX86_64, pci_start: u64) -> Vec<Register> {
+fn create_msr_entries(vcpu: &dyn VcpuX86_64, pci_start: u64) -> Vec<Register> {
     let mut entries = vec![
         Register {
             id: crate::msr_index::MSR_IA32_SYSENTER_CS,
@@ -201,7 +201,7 @@ fn create_msr_entries(vcpu: &impl VcpuX86_64, pci_start: u64) -> Vec<Register> {
 /// # Arguments
 ///
 /// * `vcpu` - Structure for the vcpu that holds the vcpu fd.
-pub fn setup_msrs(vcpu: &impl VcpuX86_64, pci_start: u64) -> Result<()> {
+pub fn setup_msrs(vcpu: &dyn VcpuX86_64, pci_start: u64) -> Result<()> {
     let msrs = create_msr_entries(vcpu, pci_start);
     vcpu.set_msrs(&msrs).map_err(Error::MsrIoctlFailed)
 }
@@ -211,7 +211,7 @@ pub fn setup_msrs(vcpu: &impl VcpuX86_64, pci_start: u64) -> Result<()> {
 /// # Arguments
 ///
 /// * `vcpu` - Structure for the vcpu that holds the vcpu fd.
-pub fn setup_fpu(vcpu: &impl VcpuX86_64) -> Result<()> {
+pub fn setup_fpu(vcpu: &dyn VcpuX86_64) -> Result<()> {
     let fpu = Fpu {
         fcw: 0x37f,
         mxcsr: 0x1f80,
@@ -229,7 +229,7 @@ pub fn setup_fpu(vcpu: &impl VcpuX86_64) -> Result<()> {
 /// * `boot_ip` - Starting instruction pointer.
 /// * `boot_sp` - Starting stack pointer.
 /// * `boot_si` - Must point to zero page address per Linux ABI.
-pub fn setup_regs(vcpu: &impl VcpuX86_64, boot_ip: u64, boot_sp: u64, boot_si: u64) -> Result<()> {
+pub fn setup_regs(vcpu: &dyn VcpuX86_64, boot_ip: u64, boot_sp: u64, boot_si: u64) -> Result<()> {
     let regs = Regs {
         rflags: 0x0000000000000002u64,
         rip: boot_ip,
@@ -343,7 +343,7 @@ fn setup_page_tables(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
 ///
 /// * `mem` - The memory that will be passed to the guest.
 /// * `vcpu` - The VCPU to configure registers on.
-pub fn setup_sregs(mem: &GuestMemory, vcpu: &impl VcpuX86_64) -> Result<()> {
+pub fn setup_sregs(mem: &GuestMemory, vcpu: &dyn VcpuX86_64) -> Result<()> {
     let mut sregs = vcpu.get_sregs().map_err(Error::GetSRegsIoctlFailed)?;
 
     configure_segments_and_sregs(mem, &mut sregs)?;

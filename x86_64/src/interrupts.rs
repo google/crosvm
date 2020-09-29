@@ -6,7 +6,6 @@ use std::fmt::{self, Display};
 use std::result;
 
 use devices::IrqChipX86_64;
-use hypervisor::VcpuX86_64;
 
 #[derive(Debug)]
 pub enum Error {
@@ -56,7 +55,7 @@ fn set_apic_delivery_mode(reg: u32, mode: u32) -> u32 {
 /// # Arguments
 /// * `vcpu_id` - The number of the VCPU to configure.
 /// * `irqchip` - The IrqChip for getting/setting LAPIC state.
-pub fn set_lint<T: VcpuX86_64>(vcpu_id: usize, irqchip: &mut impl IrqChipX86_64<T>) -> Result<()> {
+pub fn set_lint(vcpu_id: usize, irqchip: &mut dyn IrqChipX86_64) -> Result<()> {
     let mut lapic = irqchip.get_lapic_state(vcpu_id).map_err(Error::GetLapic)?;
 
     for (reg, mode) in &[

@@ -3,9 +3,9 @@
 // found in the LICENSE file.
 
 use crate::IrqChip;
-use hypervisor::{DeviceKind, VcpuAArch64};
+use hypervisor::DeviceKind;
 
-pub trait IrqChipAArch64<V: VcpuAArch64>: IrqChip<V> {
+pub trait IrqChipAArch64: IrqChip {
     /// Get the version of VGIC that this chip is emulating. Currently KVM may either implement
     /// VGIC version 2 or 3.
     fn get_vgic_version(&self) -> DeviceKind;

@@ -289,17 +289,14 @@ impl KvmVm {
 }
 
 impl VmX86_64 for KvmVm {
-    type Hypervisor = Kvm;
-    type Vcpu = KvmVcpu;
-
-    fn get_hypervisor(&self) -> &Self::Hypervisor {
+    fn get_hypervisor(&self) -> &dyn HypervisorX86_64 {
         &self.kvm
     }
 
-    fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu> {
+    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuX86_64>> {
         // create_vcpu is declared separately in VmAArch64 and VmX86, so it can return VcpuAArch64
         // or VcpuX86.  But both use the same implementation in KvmVm::create_vcpu.
-        KvmVm::create_vcpu(self, id)
+        Ok(Box::new(KvmVm::create_vcpu(self, id)?))
     }
 
     /// Sets the address of the three-page region in the VM's address space.

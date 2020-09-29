@@ -42,7 +42,7 @@ use devices::{
     VfioPciDevice, VirtioPciDevice, XhciController,
 };
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
-use hypervisor::{Hypervisor, HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
+use hypervisor::{HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
 use minijail::{self, Minijail};
 use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 use net_util::{Error as NetError, MacAddress, Tap};
@@ -1552,8 +1552,8 @@ impl VcpuRunMode {
 fn runnable_vcpu<V>(
     cpu_id: usize,
     vcpu: Option<V>,
-    vm: impl VmArch<Vcpu = V>,
-    irq_chip: &mut impl IrqChipArch<V>,
+    vm: impl VmArch,
+    irq_chip: &mut impl IrqChipArch,
     vcpu_count: usize,
     run_rt: bool,
     vcpu_affinity: Vec<usize>,
@@ -1564,16 +1564,24 @@ fn runnable_vcpu<V>(
 where
     V: VcpuArch,
 {
-    let mut vcpu = if let Some(v) = vcpu {
-        v
-    } else {
-        // If vcpu is None, it means this arch/hypervisor requires create_vcpu to be called from the
-        // vcpu thread.
-        vm.create_vcpu(cpu_id).map_err(Error::CreateVcpu)?
+    let mut vcpu = match vcpu {
+        Some(v) => v,
+        None => {
+            // If vcpu is None, it means this arch/hypervisor requires create_vcpu to be called from
+            // the vcpu thread.
+            match vm
+                .create_vcpu(cpu_id)
+                .map_err(Error::CreateVcpu)?
+                .downcast::<V>()
+            {
+                Ok(v) => *v,
+                Err(_) => panic!("VM created wrong type of VCPU"),
+            }
+        }
     };
 
     irq_chip
-        .add_vcpu(cpu_id, vcpu.try_clone().map_err(Error::CloneVcpu)?)
+        .add_vcpu(cpu_id, &vcpu)
         .map_err(Error::AddIrqChipVcpu)?;
 
     if !vcpu_affinity.is_empty() {
@@ -1622,11 +1630,7 @@ where
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-fn inject_interrupt<T: VcpuX86_64>(
-    irq_chip: &mut impl IrqChipX86_64<T>,
-    vcpu: &impl VcpuX86_64,
-    vcpu_id: usize,
-) {
+fn inject_interrupt(irq_chip: &mut dyn IrqChipX86_64, vcpu: &dyn VcpuX86_64, vcpu_id: usize) {
     if !irq_chip.interrupt_requested(vcpu_id) || !vcpu.ready_for_interrupt() {
         return;
     }
@@ -1654,13 +1658,13 @@ fn inject_interrupt<T: VcpuX86_64>(
 }
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-fn inject_interrupt<T: Vcpu>(_irq_chip: &mut impl IrqChip<T>, _vcpu: &impl Vcpu, _vcpu_id: usize) {}
+fn inject_interrupt(_irq_chip: &mut dyn IrqChip, _vcpu: &dyn Vcpu, _vcpu_id: usize) {}
 
 fn run_vcpu<V>(
     cpu_id: usize,
     vcpu: Option<V>,
-    vm: impl VmArch<Vcpu = V> + 'static,
-    mut irq_chip: impl IrqChipArch<V> + 'static,
+    vm: impl VmArch + 'static,
+    mut irq_chip: impl IrqChipArch + 'static,
     vcpu_count: usize,
     run_rt: bool,
     vcpu_affinity: Vec<usize>,
@@ -1857,7 +1861,7 @@ fn create_kvm_kernel_irq_chip(
     vm: &KvmVm,
     vcpu_count: usize,
     _ioapic_device_socket: VmIrqRequestSocket,
-) -> base::Result<impl IrqChipArch<KvmVcpu>> {
+) -> base::Result<impl IrqChipArch> {
     let irq_chip = KvmKernelIrqChip::new(vm.try_clone()?, vcpu_count)?;
     Ok(irq_chip)
 }
@@ -1867,7 +1871,7 @@ fn create_kvm_split_irq_chip(
     vm: &KvmVm,
     vcpu_count: usize,
     ioapic_device_socket: VmIrqRequestSocket,
-) -> base::Result<impl IrqChipArch<KvmVcpu>> {
+) -> base::Result<impl IrqChipArch> {
     let irq_chip = KvmSplitIrqChip::new(vm.try_clone()?, vcpu_count, ioapic_device_socket)?;
     Ok(irq_chip)
 }
@@ -1881,17 +1885,18 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
-            run_vm(cfg, create_kvm, create_kvm_split_irq_chip)
+            run_vm::<_, KvmVcpu, _, _, _>(cfg, create_kvm, create_kvm_split_irq_chip)
         }
     } else {
-        run_vm(cfg, create_kvm, create_kvm_kernel_irq_chip)
+        run_vm::<_, KvmVcpu, _, _, _>(cfg, create_kvm, create_kvm_kernel_irq_chip)
     }
 }
 
-fn run_vm<V, I, FV, FI>(cfg: Config, create_vm: FV, create_irq_chip: FI) -> Result<()>
+fn run_vm<V, Vcpu, I, FV, FI>(cfg: Config, create_vm: FV, create_irq_chip: FI) -> Result<()>
 where
     V: VmArch + 'static,
-    I: IrqChipArch<V::Vcpu> + 'static,
+    Vcpu: VcpuArch + 'static,
+    I: IrqChipArch + 'static,
     FV: FnOnce(GuestMemory) -> base::Result<V>,
     FI: FnOnce(
         &V,
@@ -2003,7 +2008,7 @@ where
 
     let map_request: Arc<Mutex<Option<ExternalMapping>>> = Arc::new(Mutex::new(None));
 
-    let linux = Arch::build_vm(
+    let linux: RunnableLinuxVm<_, Vcpu, _> = Arch::build_vm(
         components,
         &cfg.serial_parameters,
         simple_jail(&cfg, "serial")?,
@@ -2042,8 +2047,8 @@ where
     )
 }
 
-fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
-    mut linux: RunnableLinuxVm<V, I>,
+fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + 'static>(
+    mut linux: RunnableLinuxVm<V, Vcpu, I>,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
     mut control_sockets: Vec<TaggedControlSocket>,
     balloon_host_socket: BalloonControlRequestSocket,
@@ -2133,9 +2138,9 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
         .vm
         .get_hypervisor()
         .check_capability(&HypervisorCap::ImmediateExit);
-    setup_vcpu_signal_handler::<V::Vcpu>(use_hypervisor_signals)?;
+    setup_vcpu_signal_handler::<Vcpu>(use_hypervisor_signals)?;
 
-    let vcpus: Vec<Option<V::Vcpu>> = match linux.vcpus.take() {
+    let vcpus: Vec<Option<_>> = match linux.vcpus.take() {
         Some(vec) => vec.into_iter().map(|vcpu| Some(vcpu)).collect(),
         None => iter::repeat_with(|| None).take(linux.vcpu_count).collect(),
     };

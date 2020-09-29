@@ -2,19 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
 use base::Result;
+use downcast_rs::impl_downcast;
+
+use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
 
 /// A wrapper for using a VM on aarch64 and getting/setting its state.
 pub trait VmAArch64: Vm {
-    type Hypervisor: Hypervisor;
-    type Vcpu: VcpuAArch64;
-
     /// Gets the `Hypervisor` that created this VM.
-    fn get_hypervisor(&self) -> &Self::Hypervisor;
+    fn get_hypervisor(&self) -> &dyn Hypervisor;
 
     /// Create a Vcpu with the specified Vcpu ID.
-    fn create_vcpu(&self, id: usize) -> Result<Self::Vcpu>;
+    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>>;
 }
 
 /// A wrapper around creating and using a VCPU on aarch64.
@@ -32,6 +31,8 @@ pub trait VcpuAArch64: Vcpu {
     /// KVM API documentation for KVM_SET_ONE_REG.
     fn set_one_reg(&self, reg_id: u64, data: u64) -> Result<()>;
 }
+
+impl_downcast!(VcpuAArch64);
 
 // Convenience constructors for IrqRoutes
 impl IrqRoute {

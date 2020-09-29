@@ -23,7 +23,7 @@ use devices::{
     Bus, BusDevice, BusError, IrqChip, PciAddress, PciDevice, PciDeviceError, PciInterruptPin,
     PciRoot, ProxyDevice,
 };
-use hypervisor::{IoEventAddress, Vcpu, Vm};
+use hypervisor::{IoEventAddress, Vm};
 use minijail::Minijail;
 use resources::SystemAllocator;
 use sync::Mutex;
@@ -86,14 +86,14 @@ pub struct VmComponents {
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.
-pub struct RunnableLinuxVm<V: VmArch, I: IrqChipArch<V::Vcpu>> {
+pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch, I: IrqChipArch> {
     pub vm: V,
     pub resources: SystemAllocator,
     pub exit_evt: Event,
     pub vcpu_count: usize,
     /// If vcpus is None, then it's the responsibility of the vcpu thread to create vcpus.
     /// If it's Some, then `build_vm` already created the vcpus.
-    pub vcpus: Option<Vec<V::Vcpu>>,
+    pub vcpus: Option<Vec<Vcpu>>,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub no_smt: bool,
     pub irq_chip: I,
@@ -125,17 +125,18 @@ pub trait LinuxArch {
     /// * `create_devices` - Function to generate a list of devices.
     /// * `create_vm` - Function to generate a VM.
     /// * `create_irq_chip` - Function to generate an IRQ chip.
-    fn build_vm<V, I, FD, FV, FI, E1, E2, E3>(
+    fn build_vm<V, Vcpu, I, FD, FV, FI, E1, E2, E3>(
         components: VmComponents,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         create_devices: FD,
         create_vm: FV,
         create_irq_chip: FI,
-    ) -> std::result::Result<RunnableLinuxVm<V, I>, Self::Error>
+    ) -> std::result::Result<RunnableLinuxVm<V, Vcpu, I>, Self::Error>
     where
         V: VmArch,
-        I: IrqChipArch<V::Vcpu>,
+        Vcpu: VcpuArch,
+        I: IrqChipArch,
         FD: FnOnce(
             &GuestMemory,
             &mut V,
@@ -159,11 +160,11 @@ pub trait LinuxArch {
     /// * `vcpu_id` - The id of the given `vcpu`.
     /// * `num_cpus` - Number of virtual CPUs the guest will have.
     /// * `has_bios` - Whether the `VmImage` is a `Bios` image
-    fn configure_vcpu<T: VcpuArch>(
+    fn configure_vcpu(
         guest_mem: &GuestMemory,
-        hypervisor: &impl HypervisorArch,
-        irq_chip: &mut impl IrqChipArch<T>,
-        vcpu: &mut impl VcpuArch,
+        hypervisor: &dyn HypervisorArch,
+        irq_chip: &mut dyn IrqChipArch,
+        vcpu: &mut dyn VcpuArch,
         vcpu_id: usize,
         num_cpus: usize,
         has_bios: bool,
@@ -236,9 +237,9 @@ impl Display for DeviceRegistrationError {
 }
 
 /// Creates a root PCI device for use by this Vm.
-pub fn generate_pci_root<T: Vcpu>(
+pub fn generate_pci_root(
     devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
-    irq_chip: &mut impl IrqChip<T>,
+    irq_chip: &mut impl IrqChip,
     mmio_bus: &mut Bus,
     resources: &mut SystemAllocator,
     vm: &mut impl Vm,

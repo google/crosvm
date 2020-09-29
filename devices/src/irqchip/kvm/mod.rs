@@ -5,7 +5,7 @@
 use crate::Bus;
 use base::{error, Error, Event, Result};
 use hypervisor::kvm::KvmVcpu;
-use hypervisor::{IrqRoute, MPState};
+use hypervisor::{IrqRoute, MPState, Vcpu};
 use kvm_sys::kvm_mp_state;
 use resources::SystemAllocator;
 
@@ -22,10 +22,13 @@ pub use aarch64::*;
 use crate::IrqChip;
 
 /// This IrqChip only works with Kvm so we only implement it for KvmVcpu.
-impl IrqChip<KvmVcpu> for KvmKernelIrqChip {
+impl IrqChip for KvmKernelIrqChip {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: KvmVcpu) -> Result<()> {
-        self.vcpus.lock()[vcpu_id] = Some(vcpu);
+    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: &dyn Vcpu) -> Result<()> {
+        let vcpu: &KvmVcpu = vcpu
+            .downcast_ref()
+            .expect("KvmKernelIrqChip::add_vcpu called with non-KvmVcpu");
+        self.vcpus.lock()[vcpu_id] = Some(vcpu.try_clone()?);
         Ok(())
     }
 
@@ -175,7 +178,8 @@ mod tests {
             .expect("failed to instantiate KvmKernelIrqChip");
 
         let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
-        chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
+        chip.add_vcpu(0, vcpu.as_vcpu())
+            .expect("failed to add vcpu");
     }
 
     #[test]
@@ -188,7 +192,8 @@ mod tests {
             .expect("failed to instantiate KvmKernelIrqChip");
 
         let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
-        chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
+        chip.add_vcpu(0, vcpu.as_vcpu())
+            .expect("failed to add vcpu");
 
         let state = chip.get_mp_state(0).expect("failed to get mp state");
         assert_eq!(state, MPState::Runnable);

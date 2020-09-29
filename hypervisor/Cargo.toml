@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 bit_field = { path = "../bit_field" }
 data_model = { path = "../data_model" }
+downcast-rs = "1.2.0"
 enumn = { path = "../enumn" }
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
