@@ -8,11 +8,18 @@ use std::slice::{from_raw_parts, from_raw_parts_mut};
 
 /// Types for which it is safe to initialize from raw data.
 ///
-/// A type `T` is `DataInit` if and only if it can be initialized by reading its contents from a
-/// byte array.  This is generally true for all plain-old-data structs.  It is notably not true for
-/// any type that includes a reference.
 ///
 /// Implementing this trait guarantees that it is safe to instantiate the struct with random data.
+///
+/// # Safety
+/// A type `T` is `DataInit` if it can be initialized by reading its contents from a byte array.
+/// This is generally true for all plain-old-data structs.  It is notably not true for any type
+/// that includes a reference.
+///
+/// It is unsafe for `T` to be `DataInit` if `T` contains implicit padding. (LLVM considers access
+/// to implicit padding to be undefined behavior, which can cause UB when working with `T`.
+/// For details on structure padding in Rust, see
+/// https://doc.rust-lang.org/reference/type-layout.html#the-c-representation
 pub unsafe trait DataInit: Copy + Send + Sync {
     /// Converts a slice of raw data into a reference of `Self`.
     ///
