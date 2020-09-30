@@ -42,7 +42,7 @@ use devices::{
     VfioPciDevice, VirtioPciDevice, XhciController,
 };
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
-use hypervisor::{Hypervisor, HypervisorCap, RunnableVcpu, Vcpu, VcpuExit, Vm, VmCap};
+use hypervisor::{Hypervisor, HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
 use minijail::{self, Minijail};
 use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 use net_util::{Error as NetError, MacAddress, Tap};
@@ -1536,7 +1536,7 @@ impl VcpuRunMode {
 }
 
 // Sets up a vcpu and converts it into a runnable vcpu.
-fn runnable_vcpu<V, R>(
+fn runnable_vcpu<V>(
     cpu_id: usize,
     vcpu: Option<V>,
     vm: impl VmArch<Vcpu = V>,
@@ -1546,10 +1546,9 @@ fn runnable_vcpu<V, R>(
     vcpu_affinity: Vec<usize>,
     has_bios: bool,
     use_hypervisor_signals: bool,
-) -> Result<R>
+) -> Result<(V, VcpuRunHandle)>
 where
-    V: VcpuArch<Runnable = R>,
-    R: RunnableVcpu<Vcpu = V>,
+    V: VcpuArch,
 {
     let mut vcpu = if let Some(v) = vcpu {
         v
@@ -1600,8 +1599,11 @@ where
         vcpu.set_signal_mask(&v).map_err(Error::SettingSignalMask)?;
     }
 
-    vcpu.to_runnable(Some(SIGRTMIN() + 0))
-        .map_err(Error::RunnableVcpu)
+    let vcpu_run_handle = vcpu
+        .take_run_handle(Some(SIGRTMIN() + 0))
+        .map_err(Error::RunnableVcpu)?;
+
+    Ok((vcpu, vcpu_run_handle))
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -1639,7 +1641,7 @@ fn inject_interrupt<T: VcpuX86_64>(
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 fn inject_interrupt<T: Vcpu>(_irq_chip: &mut impl IrqChip<T>, _vcpu: &impl Vcpu, _vcpu_id: usize) {}
 
-fn run_vcpu<V, R>(
+fn run_vcpu<V>(
     cpu_id: usize,
     vcpu: Option<V>,
     vm: impl VmArch<Vcpu = V> + 'static,
@@ -1657,8 +1659,7 @@ fn run_vcpu<V, R>(
     use_hypervisor_signals: bool,
 ) -> Result<JoinHandle<()>>
 where
-    V: VcpuArch<Runnable = R> + 'static,
-    R: RunnableVcpu<Vcpu = V>,
+    V: VcpuArch + 'static,
 {
     thread::Builder::new()
         .name(format!("crosvm_vcpu{}", cpu_id))
@@ -1667,7 +1668,7 @@ where
             // implementation accomplishes that.
             let _scoped_exit_evt = ScopedEvent::from(exit_evt);
 
-            let vcpu = runnable_vcpu(
+            let runnable_vcpu = runnable_vcpu(
                 cpu_id,
                 vcpu,
                 vm,
@@ -1681,7 +1682,7 @@ where
 
             start_barrier.wait();
 
-            let vcpu = match vcpu {
+            let (vcpu, vcpu_run_handle) = match runnable_vcpu {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed to start vcpu {}: {}", cpu_id, e);
@@ -1691,7 +1692,7 @@ where
 
             loop {
                 let mut interrupted_by_signal = false;
-                match vcpu.run() {
+                match vcpu.run(&vcpu_run_handle) {
                     Ok(VcpuExit::IoIn { port, mut size }) => {
                         let mut data = [0; 8];
                         if size > data.len() {
@@ -1794,7 +1795,7 @@ where
                     }
                 }
 
-                inject_interrupt(&mut irq_chip, vcpu.deref(), cpu_id);
+                inject_interrupt(&mut irq_chip, &vcpu, cpu_id);
             }
         })
         .map_err(Error::SpawnVcpu)

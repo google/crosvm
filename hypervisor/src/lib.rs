@@ -10,7 +10,6 @@ pub mod kvm;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86_64;
 
-use std::ops::{Deref, DerefMut};
 use std::os::raw::c_int;
 
 use base::{EventFd, MappedRegion, Result, SafeDescriptor};
@@ -132,23 +131,80 @@ pub trait Vm: Send + Sized {
     fn set_pvclock(&self, state: &ClockState) -> Result<()>;
 }
 
-/// A wrapper around using a VCPU.
-/// `Vcpu` provides all functionality except for running.  To run, `to_runnable` must be called to
-/// lock the vcpu to a thread.  Then the returned `RunnableVcpu` can be used for running.
-pub trait Vcpu: Send + Sized {
-    type Runnable: RunnableVcpu<Vcpu = Self>;
+/// A unique fingerprint for a particular `VcpuRunHandle`, used in `Vcpu` impls to ensure the
+/// `VcpuRunHandle ` they receive is the same one that was returned from `take_run_handle`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct VcpuRunHandleFingerprint(u64);
 
+impl VcpuRunHandleFingerprint {
+    pub fn as_u64(&self) -> u64 {
+        self.0
+    }
+}
+
+/// A handle returned by a `Vcpu` to be used with `Vcpu::run` to execute a virtual machine's VCPU.
+///
+/// This is used to ensure that the caller has bound the `Vcpu` to a thread with
+/// `Vcpu::take_run_handle` and to execute hypervisor specific cleanup routines when dropped.
+pub struct VcpuRunHandle {
+    drop_fn: fn(),
+    fingerprint: VcpuRunHandleFingerprint,
+    // Prevents Send+Sync for this type.
+    phantom: std::marker::PhantomData<*mut ()>,
+}
+
+impl VcpuRunHandle {
+    /// Used by `Vcpu` impls to create a unique run handle, that when dropped, will call the given
+    /// `drop_fn`.
+    pub fn new(drop_fn: fn()) -> Self {
+        // Creates a probably unique number with a hash of the current thread id and epoch time.
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        std::time::Instant::now().hash(&mut hasher);
+        std::thread::current().id().hash(&mut hasher);
+        Self {
+            drop_fn,
+            fingerprint: VcpuRunHandleFingerprint(hasher.finish()),
+            phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Gets the unique fingerprint which may be copied and compared freely.
+    pub fn fingerprint(&self) -> &VcpuRunHandleFingerprint {
+        &self.fingerprint
+    }
+}
+
+impl Drop for VcpuRunHandle {
+    fn drop(&mut self) {
+        (self.drop_fn)();
+    }
+}
+
+/// A virtual CPU holding a virtualized hardware thread's state, such as registers and interrupt
+/// state, which may be used to execute virtual machines.
+///
+/// To run, `take_run_handle` must be called to lock the vcpu to a thread. Then the returned
+/// `VcpuRunHandle` can be used for running.
+pub trait Vcpu: Send + Sized {
     /// Makes a shallow clone of this `Vcpu`.
     fn try_clone(&self) -> Result<Self>;
 
-    /// Consumes `self` and returns a `RunnableVcpu`.  A `RunnableVcpu` is required to run the
-    /// guest.  Assigns a vcpu to the current thread and stores it in a hash map that can be used
-    /// by signal handlers to call set_local_immediate_exit().  An optional signal number will be
-    /// temporarily blocked while assigning the vcpu to the thread and later blocked when
-    /// `RunnableVcpu` is destroyed.
+    /// Returns a unique `VcpuRunHandle`. A `VcpuRunHandle` is required to run the guest.
+    ///
+    /// Assigns a vcpu to the current thread so that signal handlers can call
+    /// set_local_immediate_exit().  An optional signal number will be temporarily blocked while
+    /// assigning the vcpu to the thread and later blocked when `VcpuRunHandle` is destroyed.
     ///
     /// Returns an error, `EBUSY`, if the current thread already contains a Vcpu.
-    fn to_runnable(self, signal_num: Option<c_int>) -> Result<Self::Runnable>;
+    fn take_run_handle(&self, signal_num: Option<c_int>) -> Result<VcpuRunHandle>;
+
+    /// Runs the VCPU until it exits, returning the reason for the exit.
+    ///
+    /// Note that the state of the VCPU and associated VM must be setup first for this to do
+    /// anything useful. The given `run_handle` must be the same as the one returned by
+    /// `take_run_handle` for this `Vcpu`.
+    fn run(&self, run_handle: &VcpuRunHandle) -> Result<VcpuExit>;
 
     /// Sets the bit that requests an immediate exit.
     fn set_immediate_exit(&self, exit: bool);
@@ -178,19 +234,6 @@ pub trait Vcpu: Send + Sized {
     /// Enables a hypervisor-specific extension on this Vcpu.  `cap` is a constant defined by the
     /// hypervisor API (e.g., kvm.h).  `args` are the arguments for enabling the feature, if any.
     fn enable_raw_capability(&self, cap: u32, args: &[u64; 4]) -> Result<()>;
-}
-
-/// A Vcpu that has a thread and can be run. Created by calling `to_runnable` on a `Vcpu`.
-/// Implements `Deref` to a `Vcpu` so all `Vcpu` methods are usable, with the addition of the `run`
-/// function to execute the guest.
-pub trait RunnableVcpu: Deref<Target = <Self as RunnableVcpu>::Vcpu> + DerefMut {
-    type Vcpu: Vcpu;
-
-    /// Runs the VCPU until it exits, returning the reason for the exit.
-    ///
-    /// Note that the state of the VCPU and associated VM must be setup first for this to do
-    /// anything useful.
-    fn run(&self) -> Result<VcpuExit>;
 }
 
 /// An address either in programmable I/O space or in memory mapped I/O space.
