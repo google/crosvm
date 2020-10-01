@@ -6,7 +6,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
 use std::u32;
 
-use base::{error, Event, MappedRegion, MemoryMapping};
+use base::{error, Event, MappedRegion, MemoryMapping, MemoryMappingBuilder};
 use hypervisor::Datamatch;
 use msg_socket::{MsgReceiver, MsgSender};
 use resources::{Alloc, MmioType, SystemAllocator};
@@ -728,11 +728,11 @@ impl VfioPciDevice {
                         // Even if vm has mapped this region, but it is in vm main process,
                         // device process doesn't has this mapping, but vfio_dma_map() need it
                         // in device process, so here map it again.
-                        let mmap = match MemoryMapping::from_descriptor_offset(
-                            self.device.as_ref(),
-                            mmap_size as usize,
-                            offset,
-                        ) {
+                        let mmap = match MemoryMappingBuilder::new(mmap_size as usize)
+                            .from_descriptor(self.device.as_ref())
+                            .offset(offset)
+                            .build()
+                        {
                             Ok(v) => v,
                             Err(_e) => break,
                         };

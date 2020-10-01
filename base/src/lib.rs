@@ -10,7 +10,7 @@ mod shm;
 mod timer;
 
 pub use event::{Event, EventReadResult, ScopedEvent};
-pub use mmap::MemoryMapping;
+pub use mmap::{MemoryMapping, MemoryMappingBuilder};
 pub use shm::{SharedMemory, Unix as SharedMemoryUnix};
 pub use sys_util::ioctl::*;
 pub use sys_util::sched::*;

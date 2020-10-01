@@ -7,7 +7,7 @@ use std::fs::OpenOptions;
 use std::io;
 
 use crate::Pstore;
-use base::MemoryMapping;
+use base::MemoryMappingBuilder;
 use hypervisor::Vm;
 use resources::SystemAllocator;
 use resources::{Alloc, MmioType};
@@ -62,8 +62,10 @@ pub fn create_memory_region(
         .allocate(pstore.size as u64, Alloc::Pstore, "pstore".to_owned())
         .map_err(Error::ResourcesError)?;
 
-    let memory_mapping =
-        MemoryMapping::from_descriptor(&file, pstore.size as usize).map_err(Error::MmapError)?;
+    let memory_mapping = MemoryMappingBuilder::new(pstore.size as usize)
+        .from_descriptor(&file)
+        .build()
+        .map_err(Error::MmapError)?;
 
     vm.add_memory_region(
         GuestAddress(address),

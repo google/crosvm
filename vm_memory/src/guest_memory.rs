@@ -15,8 +15,8 @@ use std::sync::Arc;
 use crate::guest_address::GuestAddress;
 use base::{pagesize, Error as SysError};
 use base::{
-    AsRawDescriptor, MappedRegion, MemfdSeals, MemoryMapping, MmapError, SharedMemory,
-    SharedMemoryUnix,
+    AsRawDescriptor, MappedRegion, MemfdSeals, MemoryMapping, MemoryMappingBuilder, MmapError,
+    SharedMemory, SharedMemoryUnix,
 };
 use cros_async::{
     uring_mem::{self, BorrowedIoVec},
@@ -178,7 +178,10 @@ impl GuestMemory {
 
             let size =
                 usize::try_from(range.1).map_err(|_| Error::MemoryRegionTooLarge(range.1))?;
-            let mapping = MemoryMapping::from_descriptor_offset(&memfd, size, offset)
+            let mapping = MemoryMappingBuilder::new(size)
+                .from_descriptor(&memfd)
+                .offset(offset)
+                .build()
                 .map_err(Error::MemoryMappingFailed)?;
             regions.push(MemoryRegion {
                 mapping,
@@ -851,8 +854,11 @@ mod tests {
             .unwrap();
 
         let _ = gm.with_regions::<_, ()>(|index, _, size, _, memfd_offset| {
-            let mmap =
-                MemoryMapping::from_descriptor_offset(gm.as_ref(), size, memfd_offset).unwrap();
+            let mmap = MemoryMappingBuilder::new(size)
+                .from_descriptor(gm.as_ref())
+                .offset(memfd_offset)
+                .build()
+                .unwrap();
 
             if index == 0 {
                 assert!(mmap.read_obj::<u16>(0x0).unwrap() == 0x1337u16);

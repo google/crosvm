@@ -30,7 +30,8 @@ use libc::{
 use base::{
     block_signal, errno_result, error, ioctl, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
     pagesize, signal, unblock_signal, AsRawDescriptor, Error, Event, FromRawDescriptor,
-    MappedRegion, MemoryMapping, MmapError, RawDescriptor, Result, SafeDescriptor,
+    MappedRegion, MemoryMapping, MemoryMappingBuilder, MmapError, RawDescriptor, Result,
+    SafeDescriptor,
 };
 use data_model::vec_with_array_field;
 use kvm_sys::*;
@@ -226,8 +227,10 @@ impl KvmVm {
         // the value of the fd and we own the fd.
         let vcpu = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
 
-        let run_mmap =
-            MemoryMapping::from_descriptor(&vcpu, run_mmap_size).map_err(|_| Error::new(ENOSPC))?;
+        let run_mmap = MemoryMappingBuilder::new(run_mmap_size)
+            .from_descriptor(&vcpu)
+            .build()
+            .map_err(|_| Error::new(ENOSPC))?;
 
         Ok(KvmVcpu {
             vm: self.vm.try_clone()?,
@@ -607,7 +610,9 @@ impl Vcpu for KvmVcpu {
     fn try_clone(&self) -> Result<Self> {
         let vm = self.vm.try_clone()?;
         let vcpu = self.vcpu.try_clone()?;
-        let run_mmap = MemoryMapping::from_descriptor(&vcpu, self.run_mmap.size())
+        let run_mmap = MemoryMappingBuilder::new(self.run_mmap.size())
+            .from_descriptor(&vcpu)
+            .build()
             .map_err(|_| Error::new(ENOSPC))?;
         let vcpu_run_handle_fingerprint = self.vcpu_run_handle_fingerprint.clone();
 
@@ -1104,7 +1109,7 @@ impl From<&MPState> for kvm_mp_state {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base::{pagesize, MemoryMapping, MemoryMappingArena};
+    use base::{pagesize, MemoryMappingArena, MemoryMappingBuilder};
     use std::os::unix::io::FromRawFd;
     use std::thread;
     use vm_memory::GuestAddress;
@@ -1194,10 +1199,10 @@ mod tests {
             GuestMemory::new(&[(GuestAddress(0), 0x1000), (GuestAddress(0x5000), 0x5000)]).unwrap();
         let mut vm = KvmVm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
-        let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
             .unwrap();
-        let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         vm.add_memory_region(GuestAddress(0x10000), Box::new(mem), false, false)
             .unwrap();
     }
@@ -1208,7 +1213,7 @@ mod tests {
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
         let mut vm = KvmVm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
-        let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), true, false)
             .unwrap();
     }
@@ -1219,7 +1224,7 @@ mod tests {
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
         let mut vm = KvmVm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
-        let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         let mem_ptr = mem.as_ptr();
         let slot = vm
             .add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
@@ -1243,7 +1248,7 @@ mod tests {
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
         let mut vm = KvmVm::new(&kvm, gm).unwrap();
         let mem_size = 0x2000;
-        let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         assert!(vm
             .add_memory_region(GuestAddress(0x2000), Box::new(mem), false, false)
             .is_err());

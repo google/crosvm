@@ -14,71 +14,6 @@ pub type Result<T> = std::result::Result<T, MmapError>;
 #[derive(Debug)]
 pub struct MemoryMapping(SysUtilMmap);
 impl MemoryMapping {
-    pub fn new(size: usize) -> Result<MemoryMapping> {
-        SysUtilMmap::new(size).map(|mmap| MemoryMapping(mmap))
-    }
-
-    pub fn from_descriptor(descriptor: &dyn AsRawDescriptor, size: usize) -> Result<MemoryMapping> {
-        SysUtilMmap::from_fd(&wrap_descriptor(descriptor), size).map(|mmap| MemoryMapping(mmap))
-    }
-
-    pub fn from_descriptor_offset(
-        descriptor: &dyn AsRawDescriptor,
-        size: usize,
-        offset: u64,
-    ) -> Result<MemoryMapping> {
-        SysUtilMmap::from_fd_offset(&wrap_descriptor(descriptor), size, offset)
-            .map(|mmap| MemoryMapping(mmap))
-    }
-
-    pub fn new_protection(size: usize, prot: Protection) -> Result<MemoryMapping> {
-        SysUtilMmap::new_protection(size, prot).map(|mmap| MemoryMapping(mmap))
-    }
-
-    pub fn from_descriptor_offset_protection(
-        descriptor: &dyn AsRawDescriptor,
-        size: usize,
-        offset: u64,
-        prot: Protection,
-    ) -> Result<MemoryMapping> {
-        SysUtilMmap::from_fd_offset_protection(&wrap_descriptor(descriptor), size, offset, prot)
-            .map(|mmap| MemoryMapping(mmap))
-    }
-
-    pub unsafe fn new_protection_fixed(
-        addr: *mut u8,
-        size: usize,
-        prot: Protection,
-    ) -> Result<MemoryMapping> {
-        SysUtilMmap::new_protection_fixed(addr, size, prot).map(|mmap| MemoryMapping(mmap))
-    }
-
-    pub unsafe fn from_descriptor_offset_protection_fixed(
-        addr: *mut u8,
-        descriptor: &dyn AsRawDescriptor,
-        size: usize,
-        offset: u64,
-        prot: Protection,
-    ) -> Result<MemoryMapping> {
-        SysUtilMmap::from_fd_offset_protection_fixed(
-            addr,
-            &wrap_descriptor(descriptor),
-            size,
-            offset,
-            prot,
-        )
-        .map(|mmap| MemoryMapping(mmap))
-    }
-
-    pub fn from_descriptor_offset_populate(
-        descriptor: &dyn AsRawDescriptor,
-        size: usize,
-        offset: u64,
-    ) -> Result<MemoryMapping> {
-        SysUtilMmap::from_fd_offset_populate(&wrap_descriptor(descriptor), size, offset)
-            .map(|mmap| MemoryMapping(mmap))
-    }
-
     pub fn write_slice(&self, buf: &[u8], offset: usize) -> Result<usize> {
         self.0.write_slice(buf, offset)
     }
@@ -121,6 +56,121 @@ impl MemoryMapping {
 
     pub fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()> {
         self.0.remove_range(mem_offset, count)
+    }
+}
+
+pub struct MemoryMappingBuilder<'a> {
+    descriptor: Option<&'a dyn AsRawDescriptor>,
+    size: usize,
+    offset: Option<u64>,
+    protection: Option<Protection>,
+    populate: bool,
+}
+
+/// Builds a MemoryMapping object from the specified arguments.
+impl<'a> MemoryMappingBuilder<'a> {
+    /// Creates a new builder specifying size of the memory region in bytes.
+    pub fn new(size: usize) -> MemoryMappingBuilder<'a> {
+        MemoryMappingBuilder {
+            descriptor: None,
+            size,
+            offset: None,
+            protection: None,
+            populate: false,
+        }
+    }
+
+    /// Build the memory mapping given the specified descriptor to mapped memory
+    ///
+    /// Default: Create a new memory mapping.
+    pub fn from_descriptor(mut self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder {
+        self.descriptor = Some(descriptor);
+        self
+    }
+
+    /// Offset in bytes from the beginning of the mapping to start the mmap.
+    ///
+    /// Default: No offset
+    pub fn offset(mut self, offset: u64) -> MemoryMappingBuilder<'a> {
+        self.offset = Some(offset);
+        self
+    }
+
+    /// Protection (e.g. readable/writable) of the memory region.
+    ///
+    /// Default: Read/write
+    pub fn protection(mut self, protection: Protection) -> MemoryMappingBuilder<'a> {
+        self.protection = Some(protection);
+        self
+    }
+
+    /// Request that the mapped pages are pre-populated
+    ///
+    /// Default: Do not populate
+    pub fn populate(mut self) -> MemoryMappingBuilder<'a> {
+        self.populate = true;
+        self
+    }
+
+    /// Build a MemoryMapping from the provided options.
+    pub fn build(self) -> Result<MemoryMapping> {
+        match self.descriptor {
+            None => {
+                if self.populate {
+                    // Population not supported for new mmaps
+                    return Err(MmapError::InvalidArgument);
+                }
+                MemoryMappingBuilder::wrap(SysUtilMmap::new_protection(
+                    self.size,
+                    self.protection.unwrap_or(Protection::read_write()),
+                ))
+            }
+            Some(descriptor) => {
+                MemoryMappingBuilder::wrap(SysUtilMmap::from_fd_offset_protection_populate(
+                    &wrap_descriptor(descriptor),
+                    self.size,
+                    self.offset.unwrap_or(0),
+                    self.protection.unwrap_or(Protection::read_write()),
+                    self.populate,
+                ))
+            }
+        }
+    }
+
+    /// Build a MemoryMapping from the provided options at a fixed address. Note this
+    /// is a separate function from build in order to isolate unsafe behavior.
+    ///
+    /// # Safety
+    ///
+    /// Function should not be called before the caller unmaps any mmap'd regions already
+    /// present at `(addr..addr+size)`. If another MemoryMapping object holds the same
+    /// address space, the destructors of those objects will conflict and the space could
+    /// be unmapped while still in use.
+    pub unsafe fn build_fixed(self, addr: *mut u8) -> Result<MemoryMapping> {
+        if self.populate {
+            // Population not supported for fixed mapping.
+            return Err(MmapError::InvalidArgument);
+        }
+        match self.descriptor {
+            None => MemoryMappingBuilder::wrap(SysUtilMmap::new_protection_fixed(
+                addr,
+                self.size,
+                self.protection.unwrap_or(Protection::read_write()),
+            )),
+            Some(descriptor) => {
+                MemoryMappingBuilder::wrap(SysUtilMmap::from_fd_offset_protection_fixed(
+                    addr,
+                    &wrap_descriptor(descriptor),
+                    self.size,
+                    self.offset.unwrap_or(0),
+                    self.protection.unwrap_or(Protection::read_write()),
+                ))
+            }
+        }
+    }
+
+    fn wrap(result: Result<SysUtilMmap>) -> Result<MemoryMapping> {
+        result.map(|mmap| MemoryMapping(mmap))
     }
 }
 

@@ -4,7 +4,7 @@
 
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 
-use base::{MemoryMapping, SharedMemory};
+use base::{MemoryMappingBuilder, SharedMemory};
 use kvm::*;
 use kvm_sys::kvm_regs;
 use vm_memory::{GuestAddress, GuestMemory};
@@ -20,7 +20,9 @@ fn test_run() {
     let load_addr = GuestAddress(0x1000);
     let guest_mem = GuestMemory::new(&[]).unwrap();
     let mem = SharedMemory::anon(mem_size).expect("failed to create shared memory");
-    let mmap = MemoryMapping::from_descriptor(&mem, mem_size as usize)
+    let mmap = MemoryMappingBuilder::new(mem_size as usize)
+        .from_descriptor(&mem)
+        .build()
         .expect("failed to create memory mapping");
 
     mmap.write_slice(&code[..], load_addr.offset() as usize)
@@ -45,7 +47,9 @@ fn test_run() {
         .add_memory_region(
             GuestAddress(0),
             Box::new(
-                MemoryMapping::from_descriptor(&mem, mem_size as usize)
+                MemoryMappingBuilder::new(mem_size as usize)
+                    .from_descriptor(&mem)
+                    .build()
                     .expect("failed to create memory mapping"),
             ),
             false,

@@ -33,7 +33,7 @@ use kvm_sys::*;
 use base::{
     block_signal, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
     ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, Event, IoctlNr, MappedRegion,
-    MemoryMapping, MmapError, Result, SIGRTMIN,
+    MemoryMapping, MemoryMappingBuilder, MmapError, Result, SIGRTMIN,
 };
 use msg_socket::MsgOnSocket;
 use vm_memory::{GuestAddress, GuestMemory};
@@ -950,8 +950,10 @@ impl Vcpu {
         // the value of the fd and we own the fd.
         let vcpu = unsafe { File::from_raw_fd(vcpu_fd) };
 
-        let run_mmap =
-            MemoryMapping::from_descriptor(&vcpu, run_mmap_size).map_err(|_| Error::new(ENOSPC))?;
+        let run_mmap = MemoryMappingBuilder::new(run_mmap_size)
+            .from_descriptor(&vcpu)
+            .build()
+            .map_err(|_| Error::new(ENOSPC))?;
 
         Ok(Vcpu { vcpu, run_mmap })
     }
@@ -1753,10 +1755,10 @@ mod tests {
         .unwrap();
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
-        let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
             .unwrap();
-        let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         vm.add_memory_region(GuestAddress(0x10000), Box::new(mem), false, false)
             .unwrap();
     }
@@ -1767,7 +1769,7 @@ mod tests {
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
-        let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), true, false)
             .unwrap();
     }
@@ -1778,7 +1780,7 @@ mod tests {
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x1000;
-        let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         let mem_ptr = mem.as_ptr();
         let slot = vm
             .add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
@@ -1802,7 +1804,7 @@ mod tests {
         let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap();
         let mut vm = Vm::new(&kvm, gm).unwrap();
         let mem_size = 0x2000;
-        let mem = MemoryMapping::new(mem_size).unwrap();
+        let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         assert!(vm
             .add_memory_region(GuestAddress(0x2000), Box::new(mem), false, false)
             .is_err());

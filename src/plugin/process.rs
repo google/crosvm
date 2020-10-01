@@ -21,8 +21,8 @@ use libc::{pid_t, waitpid, EINVAL, ENODATA, ENOTTY, WEXITSTATUS, WIFEXITED, WNOH
 use protobuf::Message;
 
 use base::{
-    error, Error as SysError, Event, Killable, MemoryMapping, Result as SysResult, ScmSocket,
-    SharedMemory, SharedMemoryUnix, SIGRTMIN,
+    error, Error as SysError, Event, Killable, MemoryMappingBuilder, Result as SysResult,
+    ScmSocket, SharedMemory, SharedMemoryUnix, SIGRTMIN,
 };
 use kvm::{dirty_log_bitmap_size, Datamatch, IoeventAddress, IrqRoute, IrqSource, PicId, Vm};
 use kvm_sys::{kvm_clock_data, kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
@@ -360,7 +360,10 @@ impl Process {
             None => return Err(SysError::new(EOVERFLOW)),
             _ => {}
         }
-        let mem = MemoryMapping::from_descriptor_offset(&shm, length as usize, offset)
+        let mem = MemoryMappingBuilder::new(length as usize)
+            .from_descriptor(&shm)
+            .offset(offset)
+            .build()
             .map_err(mmap_to_sys_err)?;
         let slot =
             vm.add_memory_region(GuestAddress(start), Box::new(mem), read_only, dirty_log)?;

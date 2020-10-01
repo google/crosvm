@@ -20,8 +20,8 @@ use std::sync::Arc;
 use libc::{EINVAL, EIO, ENODEV};
 
 use base::{
-    error, AsRawDescriptor, Error as SysError, Event, ExternalMapping, MappedRegion, MemoryMapping,
-    MmapError, RawDescriptor, Result,
+    error, AsRawDescriptor, Error as SysError, Event, ExternalMapping, MappedRegion,
+    MemoryMappingBuilder, MmapError, RawDescriptor, Result,
 };
 use hypervisor::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
@@ -377,7 +377,11 @@ impl VmMemoryRequest {
                 offset,
                 gpa,
             } => {
-                let mmap = match MemoryMapping::from_descriptor_offset(fd, size, offset as u64) {
+                let mmap = match MemoryMappingBuilder::new(size)
+                    .from_descriptor(fd)
+                    .offset(offset as u64)
+                    .build()
+                {
                     Ok(v) => v,
                     Err(_e) => return VmMemoryResponse::Err(SysError::new(EINVAL)),
                 };
@@ -582,7 +586,7 @@ fn register_memory(
     size: usize,
     pci_allocation: Option<(Alloc, u64)>,
 ) -> Result<(u64, MemSlot)> {
-    let mmap = match MemoryMapping::from_descriptor(fd, size) {
+    let mmap = match MemoryMappingBuilder::new(size).from_descriptor(fd).build() {
         Ok(v) => v,
         Err(MmapError::SystemCallFailed(e)) => return Err(e),
         _ => return Err(SysError::new(EINVAL)),
