@@ -758,6 +758,7 @@ fn create_gpu_device(
                     warn!("shader caching not yet supported on ARM with sandbox enabled");
                     env::set_var("MESA_GLSL_CACHE_DISABLE", "true");
                 } else {
+                    env::set_var("MESA_GLSL_CACHE_DISABLE", "false");
                     env::set_var("MESA_GLSL_CACHE_DIR", cache_dir);
                     if let Some(cache_size) = cfg
                         .gpu_parameters
