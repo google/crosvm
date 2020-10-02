@@ -851,7 +851,8 @@ mod tests {
             .unwrap();
 
         let _ = gm.with_regions::<_, ()>(|index, _, size, _, memfd_offset| {
-            let mmap = MemoryMapping::from_descriptor_offset(&gm, size, memfd_offset).unwrap();
+            let mmap =
+                MemoryMapping::from_descriptor_offset(gm.as_ref(), size, memfd_offset).unwrap();
 
             if index == 0 {
                 assert!(mmap.read_obj::<u16>(0x0).unwrap() == 0x1337u16);

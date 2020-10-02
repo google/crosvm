@@ -5,12 +5,19 @@
 
 """Builds crosvm in debug/release mode on all supported target architectures.
 
-A sysroot for each target architectures is required. The defaults are all
-generic boards' sysroots, but they can be changed with the command line
-arguments.
+A sysroot for each target architectures is required. The defaults are all generic boards' sysroots,
+but they can be changed with the command line arguments.
 
-To test changes more quickly, set the --noclean option. This prevents the
-target directories from being removed before building and testing.
+To test changes more quickly, set the --noclean option. This prevents the target directories from
+being removed before building and testing.
+
+For easy binary size comparison, use the --size-only option to only do builds that will result in a
+binary size output, which are non-test release builds.
+
+This script automatically determines which packages will need to be tested based on the directory
+structure with Cargo.toml files. Only top-level crates are tested directly. To skip a top-level
+package, add an empty .build_test_skip file to the directory. Rarely, if a package needs to have its
+tests run single-threaded, add an empty .build_test_serial file to the directory.
 """
 
 from __future__ import print_function
@@ -24,40 +31,6 @@ import sys
 ARM_TRIPLE = os.getenv('ARM_TRIPLE', 'armv7a-cros-linux-gnueabihf')
 AARCH64_TRIPLE = os.getenv('AARCH64_TRIPLE', 'aarch64-cros-linux-gnu')
 X86_64_TRIPLE = os.getenv('X86_64_TRIPLE', 'x86_64-cros-linux-gnu')
-
-TEST_MODULES_PARALLEL = [
-    'arch',
-    'assertions',
-    'bit_field',
-    'crosvm',
-    'data_model',
-    'devices',
-    'disk',
-    'enumn',
-    'hypervisor',
-    'kernel_cmdline',
-    'kernel_loader',
-    'kvm',
-    'kvm_sys',
-    'msg_socket',
-    'net_sys',
-    'net_util',
-    'qcow_utils',
-    'rand_ish',
-    'resources',
-    'sync',
-    'syscall_defines',
-    'tpm2',
-    'vhost',
-    'virtio_sys',
-    'vm_control',
-    'x86_64',
-]
-
-TEST_MODULES_SERIAL = [
-    'sys_util',
-    'base',
-]
 
 # Bright green.
 PASS_COLOR = '\033[1;32m'
@@ -132,11 +105,26 @@ def test_target(triple, is_release, env):
     env: Enviroment variables to run cargo with.
   """
 
+  test_modules_parallel = ['crosvm']
+  test_modules_serial = []
+  with os.scandir() as it:
+    for crate in it:
+      if os.path.isfile(os.path.join(crate.path, 'Cargo.toml')):
+        if os.path.isfile(os.path.join(crate.path, '.build_test_skip')):
+          continue
+        if os.path.isfile(os.path.join(crate.path, '.build_test_serial')):
+          test_modules_serial.append(crate.name)
+        else:
+          test_modules_parallel.append(crate.name)
+
+  test_modules_parallel.sort()
+  test_modules_serial.sort()
+
   parallel_result = test_target_modules(
-      triple, is_release, env, TEST_MODULES_PARALLEL, True)
+      triple, is_release, env, test_modules_parallel, True)
 
   serial_result = test_target_modules(
-      triple, is_release, env, TEST_MODULES_SERIAL, False)
+      triple, is_release, env, test_modules_serial, False)
 
   return parallel_result and serial_result
 
@@ -161,20 +149,24 @@ def check_build(sysroot, triple, kind, test_it, clean):
 
   is_release = kind == 'release'
 
-  # The pkgconfig dir could be in either lib or lib64 depending on the target.
-  # Rather than checking to see which one is valid, just add both and let
-  # pkg-config search.
-  libdir = os.path.join(sysroot, 'usr', 'lib', 'pkgconfig')
-  lib64dir = os.path.join(sysroot, 'usr', 'lib64', 'pkgconfig')
+  # The lib dir could be in either lib or lib64 depending on the target. Rather than checking to see
+  # which one is valid, just add both and let the dynamic linker and pkg-config search.
+  libdir = os.path.join(sysroot, 'usr', 'lib')
+  lib64dir = os.path.join(sysroot, 'usr', 'lib64')
+  libdir_pc = os.path.join(libdir, 'pkgconfig')
+  lib64dir_pc = os.path.join(lib64dir, 'pkgconfig')
 
   env = os.environ.copy()
   env['TARGET_CC'] = '%s-clang'%triple
   env['SYSROOT'] = sysroot
+  env['LD_LIBRARY_PATH'] = libdir + ':' + lib64dir
   env['CARGO_TARGET_DIR'] = target_path
   env['PKG_CONFIG_ALLOW_CROSS'] = '1'
-  env['PKG_CONFIG_LIBDIR'] = libdir + ':' + lib64dir
+  env['PKG_CONFIG_LIBDIR'] = libdir_pc + ':' + lib64dir_pc
   env['PKG_CONFIG_SYSROOT_DIR'] = sysroot
   env['RUSTFLAGS'] = '-C linker=' + env['TARGET_CC']
+  if is_release:
+    env['RUSTFLAGS'] += ' -Cembed-bitcode=yes -Clto'
 
   if test_it:
     if not test_target(triple, is_release, env):
@@ -216,14 +208,17 @@ def get_parser():
                       help='x86_64 sysroot directory (default=%(default)s)')
   parser.add_argument('--noclean', dest='clean', default=True,
                       action='store_false',
-                      help='Keep the tempororary build directories.')
+                      help='Keep the temporary build directories.')
+  parser.add_argument('--size-only', dest='size_only', default=False,
+                      action='store_true',
+                      help='Only perform builds that output their binary size (i.e. release non-test).')
   return parser
 
 
 def main(argv):
   opts = get_parser().parse_args(argv)
-  build_test_cases = (
-      #(sysroot path, target triple, debug/release, should test?)
+  build_test_cases = [
+      #(sysroot path, target triple, debug/release, should test, should clean)
       (opts.arm_sysroot, ARM_TRIPLE, "debug", False, opts.clean),
       (opts.arm_sysroot, ARM_TRIPLE, "release", False, opts.clean),
       (opts.aarch64_sysroot, AARCH64_TRIPLE, "debug", False, opts.clean),
@@ -232,7 +227,12 @@ def main(argv):
       (opts.x86_64_sysroot, X86_64_TRIPLE, "release", False, opts.clean),
       (opts.x86_64_sysroot, X86_64_TRIPLE, "debug", True, opts.clean),
       (opts.x86_64_sysroot, X86_64_TRIPLE, "release", True, opts.clean),
-  )
+  ]
+
+  if opts.size_only:
+    # Only include non-test release builds
+    build_test_cases = [case for case in build_test_cases
+                        if case[2] == 'release' and not case[3]]
 
   os.chdir(os.path.dirname(sys.argv[0]))
   pool = multiprocessing.pool.Pool(len(build_test_cases))
