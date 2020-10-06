@@ -1377,6 +1377,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
 
             cfg.acpi_tables.push(acpi_table);
         }
+        "protected-vm" => {
+            cfg.params.push("swiotlb=force".to_string());
+        }
 
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
@@ -1558,6 +1561,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           #[cfg(feature = "video-encoder")]
           Argument::flag("video-encoder", "(EXPERIMENTAL) enable virtio-video encoder device"),
           Argument::value("acpi-table", "PATH", "Path to user provided ACPI table"),
+          Argument::flag("protected-vm", "(EXPERIMENTAL) prevent host access to guest memory"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
