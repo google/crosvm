@@ -12,7 +12,7 @@ use vm_memory::GuestMemory;
 use crate::virtio::queue::{DescriptorChain, Queue};
 use crate::virtio::resource_bridge::ResourceRequestSocket;
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
-use crate::virtio::video::command::VideoCmd;
+use crate::virtio::video::command::{QueueType, VideoCmd};
 use crate::virtio::video::device::{
     AsyncCmdResponse, Device, Token, VideoCmdResponseType, VideoEvtResponseType,
 };
@@ -102,6 +102,15 @@ impl Worker {
             } => desc_map.create_cancellation_responses(&stream_id, Some(queue_type), None),
             VideoCmd::StreamDestroy { stream_id } => {
                 desc_map.create_cancellation_responses(&stream_id, None, None)
+            }
+            VideoCmd::QueueClear {
+                stream_id,
+                queue_type: QueueType::Output,
+            } => {
+                // TODO(b/153406792): Due to a workaround for a limitation in the VDA api,
+                // clearing the output queue doesn't go through the same Async path as clearing
+                // the input queue. However, we still need to cancel the pending resources.
+                desc_map.create_cancellation_responses(&stream_id, Some(QueueType::Output), None)
             }
             _ => Default::default(),
         };
