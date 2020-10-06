@@ -422,10 +422,10 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
                 let num = v.parse::<u8>().map_err(|e| {
                     argument::Error::Syntax(format!("serial device number is not parsable: {}", e))
                 })?;
-                if num < 1 || num > 4 {
+                if num < 1 {
                     return Err(argument::Error::InvalidValue {
                         value: num.to_string(),
-                        expected: String::from("Serial port num must be between 1 - 4"),
+                        expected: String::from("Serial port num must be at least 1"),
                     });
                 }
                 serial_setting.num = num;
@@ -472,6 +472,13 @@ fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
                 )));
             }
         }
+    }
+
+    if serial_setting.hardware == SerialHardware::Serial && serial_setting.num > 4 {
+        return Err(argument::Error::InvalidValue {
+            value: serial_setting.num.to_string(),
+            expected: String::from("Serial port num must be 4 or less"),
+        });
     }
 
     Ok(serial_setting)
@@ -2192,6 +2199,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_serial_virtio_console_vaild() {
+        parse_serial_options("type=syslog,num=5,console=true,stdin=true,hardware=virtio-console")
+            .expect("parse should have succeded");
+    }
+
+    #[test]
     fn parse_serial_valid_no_num() {
         parse_serial_options("type=syslog").expect("parse should have succeded");
     }
@@ -2216,6 +2229,12 @@ mod tests {
     #[test]
     fn parse_serial_invalid_num_lower() {
         parse_serial_options("type=syslog,num=0").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_serial_virtio_console_invalid_num_lower() {
+        parse_serial_options("type=syslog,hardware=virtio-console,num=0")
+            .expect_err("parse should have failed");
     }
 
     #[test]
