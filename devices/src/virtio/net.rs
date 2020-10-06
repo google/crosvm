@@ -16,11 +16,11 @@ use base::Error as SysError;
 use base::{error, warn, Event, PollContext, PollToken, WatchingEvents};
 use data_model::{DataInit, Le16, Le64};
 use net_util::{Error as TapError, MacAddress, TapT};
+use virtio_sys::virtio_net;
 use virtio_sys::virtio_net::{
     virtio_net_hdr_v1, VIRTIO_NET_CTRL_GUEST_OFFLOADS, VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET,
     VIRTIO_NET_CTRL_MQ, VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET, VIRTIO_NET_ERR, VIRTIO_NET_OK,
 };
-use virtio_sys::{vhost, virtio_net};
 use vm_memory::GuestMemory;
 
 use super::{
@@ -436,6 +436,7 @@ where
     /// Create a new virtio network device with the given IP address and
     /// netmask.
     pub fn new(
+        base_features: u64,
         ip_addr: Ipv4Addr,
         netmask: Ipv4Addr,
         mac_addr: MacAddress,
@@ -450,12 +451,12 @@ where
 
         tap.enable().map_err(NetError::TapEnable)?;
 
-        Net::from(tap, vq_pairs)
+        Net::from(base_features, tap, vq_pairs)
     }
 
     /// Creates a new virtio network device from a tap device that has already been
     /// configured.
-    pub fn from(tap: T, vq_pairs: u16) -> Result<Net<T>, NetError> {
+    pub fn from(base_features: u64, tap: T, vq_pairs: u16) -> Result<Net<T>, NetError> {
         let taps = tap.into_mq_taps(vq_pairs).map_err(NetError::TapOpen)?;
 
         // This would also validate a tap created by Self::new(), but that's a good thing as it
@@ -465,15 +466,15 @@ where
             validate_and_configure_tap(tap, vq_pairs)?;
         }
 
-        let mut avail_features = 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
+        let mut avail_features = base_features
+            | 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ
             | 1 << virtio_net::VIRTIO_NET_F_CTRL_GUEST_OFFLOADS
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_UFO
             | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
-            | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
-            | 1 << vhost::VIRTIO_F_VERSION_1;
+            | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO;
 
         if vq_pairs > 1 {
             avail_features |= 1 << virtio_net::VIRTIO_NET_F_MQ;

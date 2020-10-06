@@ -36,9 +36,9 @@ pub trait VirtioDevice: Send {
     /// The maximum size of each queue that this device supports.
     fn queue_max_sizes(&self) -> &[u16];
 
-    /// The set of feature bits that this device supports.
+    /// The set of feature bits that this device supports in addition to the base features.
     fn features(&self) -> u64 {
-        1 << VIRTIO_F_VERSION_1
+        0
     }
 
     /// Acknowledges that this set of features should be enabled.

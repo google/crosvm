@@ -26,7 +26,7 @@ use vm_memory::GuestMemory;
 
 use super::{
     copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
-    TYPE_BLOCK, VIRTIO_F_VERSION_1,
+    TYPE_BLOCK,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -504,6 +504,7 @@ fn build_config_space(disk_size: u64, seg_max: u32, block_size: u32) -> virtio_b
 impl Block {
     /// Create a new virtio block device that operates on the given DiskFile.
     pub fn new(
+        base_features: u64,
         disk_image: Box<dyn DiskFile>,
         read_only: bool,
         sparse: bool,
@@ -526,7 +527,8 @@ impl Block {
             );
         }
 
-        let mut avail_features: u64 = 1 << VIRTIO_BLK_F_FLUSH;
+        let mut avail_features: u64 = base_features;
+        avail_features |= 1 << VIRTIO_BLK_F_FLUSH;
         avail_features |= 1 << VIRTIO_RING_F_EVENT_IDX;
         if read_only {
             avail_features |= 1 << VIRTIO_BLK_F_RO;
@@ -536,7 +538,6 @@ impl Block {
             }
             avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
         }
-        avail_features |= 1 << VIRTIO_F_VERSION_1;
         avail_features |= 1 << VIRTIO_BLK_F_SEG_MAX;
         avail_features |= 1 << VIRTIO_BLK_F_BLK_SIZE;
 
@@ -837,6 +838,7 @@ mod tests {
     use tempfile::tempfile;
     use vm_memory::GuestAddress;
 
+    use crate::virtio::base_features;
     use crate::virtio::descriptor_utils::{create_descriptor_chain, DescriptorType};
 
     use super::*;
@@ -846,7 +848,8 @@ mod tests {
         let f = tempfile().unwrap();
         f.set_len(0x1000).unwrap();
 
-        let b = Block::new(Box::new(f), true, false, 512, None).unwrap();
+        let features = base_features();
+        let b = Block::new(features, Box::new(f), true, false, 512, None).unwrap();
         let mut num_sectors = [0u8; 4];
         b.read_config(0, &mut num_sectors);
         // size is 0x1000, so num_sectors is 8 (4096/512).
@@ -862,7 +865,8 @@ mod tests {
         let f = tempfile().unwrap();
         f.set_len(0x1000).unwrap();
 
-        let b = Block::new(Box::new(f), true, false, 4096, None).unwrap();
+        let features = base_features();
+        let b = Block::new(features, Box::new(f), true, false, 4096, None).unwrap();
         let mut blk_size = [0u8; 4];
         b.read_config(20, &mut blk_size);
         // blk_size should be 4096 (0x1000).
@@ -874,7 +878,8 @@ mod tests {
         // read-write block device
         {
             let f = tempfile().unwrap();
-            let b = Block::new(Box::new(f), false, true, 512, None).unwrap();
+            let features = base_features();
+            let b = Block::new(features, Box::new(f), false, true, 512, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
             // + VIRTIO_BLK_F_SEG_MAX + VIRTIO_RING_F_EVENT_IDX
@@ -884,7 +889,8 @@ mod tests {
         // read-write block device, non-sparse
         {
             let f = tempfile().unwrap();
-            let b = Block::new(Box::new(f), false, false, 512, None).unwrap();
+            let features = base_features();
+            let b = Block::new(features, Box::new(f), false, false, 512, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
             // + VIRTIO_BLK_F_SEG_MAX + VIRTIO_RING_F_EVENT_IDX
@@ -894,7 +900,8 @@ mod tests {
         // read-only block device
         {
             let f = tempfile().unwrap();
-            let b = Block::new(Box::new(f), true, true, 512, None).unwrap();
+            let features = base_features();
+            let b = Block::new(features, Box::new(f), true, true, 512, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
             // + VIRTIO_RING_F_EVENT_IDX

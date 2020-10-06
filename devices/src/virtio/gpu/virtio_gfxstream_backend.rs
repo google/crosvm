@@ -30,8 +30,7 @@ use vm_memory::{GuestAddress, GuestMemory};
 use super::protocol::{GpuResponse::*, VirtioGpuResult};
 pub use super::virtio_backend::{VirtioBackend, VirtioResource};
 use crate::virtio::gpu::{
-    Backend, VirtioScanoutBlobData, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_RESOURCE_BLOB,
-    VIRTIO_GPU_F_VIRGL,
+    Backend, VirtioScanoutBlobData, VIRTIO_GPU_F_RESOURCE_BLOB, VIRTIO_GPU_F_VIRGL,
 };
 use crate::virtio::resource_bridge::ResourceResponse;
 
@@ -346,9 +345,8 @@ impl Backend for VirtioGfxStreamBackend {
         1
     }
 
-    /// Returns the bitset of virtio features provided by the Backend.
     fn features() -> u64 {
-        1 << VIRTIO_GPU_F_VIRGL | 1 << VIRTIO_F_VERSION_1 | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
+        1 << VIRTIO_GPU_F_VIRGL | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
     }
 
     /// Returns the underlying Backend.

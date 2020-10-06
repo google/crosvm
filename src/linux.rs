@@ -460,6 +460,7 @@ fn create_block_device(
 
     let disk_file = disk::create_disk_file(raw_image).map_err(Error::CreateDiskError)?;
     let dev = virtio::Block::new(
+        virtio::base_features(),
         disk_file,
         disk.read_only,
         disk.sparse,
@@ -608,7 +609,8 @@ fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
 }
 
 fn create_balloon_device(cfg: &Config, socket: BalloonControlResponseSocket) -> DeviceResult {
-    let dev = virtio::Balloon::new(socket).map_err(Error::BalloonDeviceNew)?;
+    let dev =
+        virtio::Balloon::new(virtio::base_features(), socket).map_err(Error::BalloonDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -629,7 +631,8 @@ fn create_tap_net_device(cfg: &Config, tap_fd: RawFd) -> DeviceResult {
         error!("net vq pairs must be smaller than vcpu count, fall back to single queue mode");
         vq_pairs = 1;
     }
-    let dev = virtio::Net::from(tap, vq_pairs).map_err(Error::NetDeviceNew)?;
+    let features = virtio::base_features();
+    let dev = virtio::Net::from(features, tap, vq_pairs).map_err(Error::NetDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -651,13 +654,19 @@ fn create_net_device(
         vq_pairs = 1;
     }
 
+    let features = virtio::base_features();
     let dev = if cfg.vhost_net {
-        let dev =
-            virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(host_ip, netmask, mac_address, mem)
-                .map_err(Error::VhostNetDeviceNew)?;
+        let dev = virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(
+            features,
+            host_ip,
+            netmask,
+            mac_address,
+            mem,
+        )
+        .map_err(Error::VhostNetDeviceNew)?;
         Box::new(dev) as Box<dyn VirtioDevice>
     } else {
-        let dev = virtio::Net::<Tap>::new(host_ip, netmask, mac_address, vq_pairs)
+        let dev = virtio::Net::<Tap>::new(features, host_ip, netmask, mac_address, vq_pairs)
             .map_err(Error::NetDeviceNew)?;
         Box::new(dev) as Box<dyn VirtioDevice>
     };
@@ -713,6 +722,7 @@ fn create_gpu_device(
         event_devices,
         map_request,
         cfg.sandbox,
+        virtio::base_features(),
     );
 
     let jail = match simple_jail(&cfg, "gpu_device")? {
@@ -821,8 +831,14 @@ fn create_wayland_device(
         .collect::<Option<Vec<_>>>()
         .ok_or(Error::InvalidWaylandPath)?;
 
-    let dev = virtio::Wl::new(cfg.wayland_socket_paths.clone(), socket, resource_bridge)
-        .map_err(Error::WaylandDeviceNew)?;
+    let features = virtio::base_features();
+    let dev = virtio::Wl::new(
+        features,
+        cfg.wayland_socket_paths.clone(),
+        socket,
+        resource_bridge,
+    )
+    .map_err(Error::WaylandDeviceNew)?;
 
     let jail = match simple_jail(&cfg, "wl_device")? {
         Some(mut jail) => {
@@ -912,6 +928,7 @@ fn create_video_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(devices::virtio::VideoDevice::new(
+            virtio::base_features(),
             typ,
             Some(resource_bridge),
         )),
@@ -934,7 +951,8 @@ fn register_video_device(
 }
 
 fn create_vhost_vsock_device(cfg: &Config, cid: u64, mem: &GuestMemory) -> DeviceResult {
-    let dev = virtio::vhost::Vsock::new(cid, mem).map_err(Error::VhostVsockDeviceNew)?;
+    let features = virtio::base_features();
+    let dev = virtio::vhost::Vsock::new(features, cid, mem).map_err(Error::VhostVsockDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -970,9 +988,10 @@ fn create_fs_device(
         create_base_minijail(src, Some(max_open_files), None)?
     };
 
+    let features = virtio::base_features();
     // TODO(chirantan): Use more than one worker once the kernel driver has been fixed to not panic
     // when num_queues > 1.
-    let dev = virtio::fs::Fs::new(tag, 1, fs_cfg).map_err(Error::FsDeviceNew)?;
+    let dev = virtio::fs::Fs::new(features, tag, 1, fs_cfg).map_err(Error::FsDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1012,7 +1031,8 @@ fn create_9p_device(
         (None, src)
     };
 
-    let dev = virtio::P9::new(root, tag).map_err(Error::P9DeviceNew)?;
+    let features = virtio::base_features();
+    let dev = virtio::P9::new(features, root, tag).map_err(Error::P9DeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1094,6 +1114,7 @@ fn create_pmem_device(
         .map_err(Error::AddPmemDeviceMemory)?;
 
     let dev = virtio::Pmem::new(
+        virtio::base_features(),
         fd,
         GuestAddress(mapping_address),
         slot,

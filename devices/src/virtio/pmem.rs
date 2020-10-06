@@ -20,7 +20,7 @@ use vm_control::{MemSlot, VmMsyncRequest, VmMsyncRequestSocket, VmMsyncResponse}
 
 use super::{
     copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
-    TYPE_PMEM, VIRTIO_F_VERSION_1,
+    TYPE_PMEM,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -223,6 +223,7 @@ impl Worker {
 pub struct Pmem {
     kill_event: Option<Event>,
     worker_thread: Option<thread::JoinHandle<()>>,
+    base_features: u64,
     disk_image: Option<File>,
     mapping_address: GuestAddress,
     mapping_arena_slot: MemSlot,
@@ -232,6 +233,7 @@ pub struct Pmem {
 
 impl Pmem {
     pub fn new(
+        base_features: u64,
         disk_image: File,
         mapping_address: GuestAddress,
         mapping_arena_slot: MemSlot,
@@ -245,6 +247,7 @@ impl Pmem {
         Ok(Pmem {
             kill_event: None,
             worker_thread: None,
+            base_features,
             disk_image: Some(disk_image),
             mapping_address,
             mapping_arena_slot,
@@ -289,7 +292,7 @@ impl VirtioDevice for Pmem {
     }
 
     fn features(&self) -> u64 {
-        1 << VIRTIO_F_VERSION_1
+        self.base_features
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {

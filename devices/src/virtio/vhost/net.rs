@@ -46,6 +46,7 @@ where
     /// Create a new virtio network device with the given IP address and
     /// netmask.
     pub fn new(
+        base_features: u64,
         ip_addr: Ipv4Addr,
         netmask: Ipv4Addr,
         mac_addr: MacAddress,
@@ -73,7 +74,8 @@ where
         tap.enable().map_err(Error::TapEnable)?;
         let vhost_net_handle = U::new(mem).map_err(Error::VhostOpen)?;
 
-        let avail_features = 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
+        let avail_features = base_features
+            | 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_UFO
@@ -82,8 +84,7 @@ where
             | 1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF
             | 1 << virtio_sys::vhost::VIRTIO_RING_F_INDIRECT_DESC
             | 1 << virtio_sys::vhost::VIRTIO_RING_F_EVENT_IDX
-            | 1 << virtio_sys::vhost::VIRTIO_F_NOTIFY_ON_EMPTY
-            | 1 << virtio_sys::vhost::VIRTIO_F_VERSION_1;
+            | 1 << virtio_sys::vhost::VIRTIO_F_NOTIFY_ON_EMPTY;
 
         let mut vhost_interrupt = Vec::new();
         for _ in 0..NUM_QUEUES {
@@ -346,6 +347,7 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::virtio::base_features;
     use crate::virtio::VIRTIO_MSI_NO_VECTOR;
     use net_util::fakes::FakeTap;
     use std::result;
@@ -362,7 +364,9 @@ pub mod tests {
 
     fn create_net_common() -> Net<FakeTap, FakeNet<FakeTap>> {
         let guest_memory = create_guest_memory().unwrap();
+        let features = base_features();
         Net::<FakeTap, FakeNet<FakeTap>>::new(
+            features,
             Ipv4Addr::new(127, 0, 0, 1),
             Ipv4Addr::new(255, 255, 255, 0),
             "de:21:e8:47:6b:6a".parse().unwrap(),

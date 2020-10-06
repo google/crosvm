@@ -16,9 +16,7 @@ use vm_control::{
 };
 use vm_memory::{GuestAddress, GuestMemory};
 
-use super::{
-    copy_config, Interrupt, Queue, Reader, VirtioDevice, TYPE_BALLOON, VIRTIO_F_VERSION_1,
-};
+use super::{copy_config, Interrupt, Queue, Reader, VirtioDevice, TYPE_BALLOON};
 
 #[derive(Debug)]
 pub enum BalloonError {
@@ -332,7 +330,10 @@ pub struct Balloon {
 
 impl Balloon {
     /// Create a new virtio balloon device.
-    pub fn new(command_socket: BalloonControlResponseSocket) -> Result<Balloon> {
+    pub fn new(
+        base_features: u64,
+        command_socket: BalloonControlResponseSocket,
+    ) -> Result<Balloon> {
         Ok(Balloon {
             command_socket: Some(command_socket),
             config: Arc::new(BalloonConfig {
@@ -341,10 +342,10 @@ impl Balloon {
             }),
             kill_evt: None,
             worker_thread: None,
-            features: 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST
+            features: base_features
+                | 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST
                 | 1 << VIRTIO_BALLOON_F_STATS_VQ
-                | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM
-                | 1 << VIRTIO_F_VERSION_1,
+                | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM,
         })
     }
 

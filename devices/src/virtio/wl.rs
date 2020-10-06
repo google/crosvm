@@ -68,9 +68,7 @@ use vm_memory::{GuestMemory, GuestMemoryError};
 use base::ioctl_with_ref;
 
 use super::resource_bridge::*;
-use super::{
-    DescriptorChain, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_WL, VIRTIO_F_VERSION_1,
-};
+use super::{DescriptorChain, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_WL};
 use vm_control::{
     MaybeOwnedFd, MemSlot, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse,
 };
@@ -1546,10 +1544,12 @@ pub struct Wl {
     vm_socket: Option<VmMemoryControlRequestSocket>,
     resource_bridge: Option<ResourceRequestSocket>,
     use_transition_flags: bool,
+    base_features: u64,
 }
 
 impl Wl {
     pub fn new(
+        base_features: u64,
         wayland_paths: Map<String, PathBuf>,
         vm_socket: VmMemoryControlRequestSocket,
         resource_bridge: Option<ResourceRequestSocket>,
@@ -1561,6 +1561,7 @@ impl Wl {
             vm_socket: Some(vm_socket),
             resource_bridge,
             use_transition_flags: false,
+            base_features,
         })
     }
 }
@@ -1601,7 +1602,7 @@ impl VirtioDevice for Wl {
     }
 
     fn features(&self) -> u64 {
-        1 << VIRTIO_WL_F_TRANS_FLAGS | 1 << VIRTIO_F_VERSION_1
+        self.base_features | 1 << VIRTIO_WL_F_TRANS_FLAGS
     }
 
     fn ack_features(&mut self, value: u64) {

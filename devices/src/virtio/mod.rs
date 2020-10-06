@@ -149,3 +149,8 @@ pub fn copy_config(dst: &mut [u8], dst_offset: u64, src: &[u8], src_offset: u64)
         }
     }
 }
+
+/// Returns the set of reserved base features common to all virtio devices.
+pub fn base_features() -> u64 {
+    1 << VIRTIO_F_VERSION_1
+}

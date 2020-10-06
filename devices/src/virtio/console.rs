@@ -12,7 +12,7 @@ use data_model::{DataInit, Le16, Le32};
 use vm_memory::GuestMemory;
 
 use super::{
-    copy_config, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_CONSOLE, VIRTIO_F_VERSION_1,
+    base_features, copy_config, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_CONSOLE,
 };
 use crate::SerialDevice;
 
@@ -298,6 +298,7 @@ impl Worker {
 
 /// Virtio console device.
 pub struct Console {
+    base_features: u64,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
     input: Option<Box<dyn io::Read + Send>>,
@@ -313,6 +314,7 @@ impl SerialDevice for Console {
         keep_fds: Vec<RawFd>,
     ) -> Console {
         Console {
+            base_features: base_features(),
             kill_evt: None,
             worker_thread: None,
             input,
@@ -341,7 +343,7 @@ impl VirtioDevice for Console {
     }
 
     fn features(&self) -> u64 {
-        1 << VIRTIO_F_VERSION_1
+        self.base_features
     }
 
     fn device_type(&self) -> u32 {

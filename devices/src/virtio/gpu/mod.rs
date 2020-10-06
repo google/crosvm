@@ -36,7 +36,7 @@ use resources::Alloc;
 
 use super::{
     copy_config, resource_bridge::*, DescriptorChain, Interrupt, Queue, Reader, VirtioDevice,
-    Writer, TYPE_GPU, VIRTIO_F_VERSION_1,
+    Writer, TYPE_GPU,
 };
 
 use super::{PciCapabilityType, VirtioPciShmCap};
@@ -129,7 +129,8 @@ trait Backend {
     where
         Self: Sized;
 
-    /// Returns the bitset of virtio features provided by the Backend.
+    /// Returns the bitset of virtio features provided by the Backend in addition to the base set
+    /// of device features.
     fn features() -> u64
     where
         Self: Sized;
@@ -370,7 +371,8 @@ impl BackendKind {
         }
     }
 
-    /// Returns the bitset of virtio features provided by the Backend.
+    /// Returns the bitset of virtio features provided by the Backend in addition to the base set
+    /// of device features.
     fn features(&self) -> u64 {
         match self {
             BackendKind::Virtio2D => Virtio2DBackend::features(),
@@ -1116,6 +1118,7 @@ pub struct Gpu {
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     external_blob: bool,
     backend_kind: BackendKind,
+    base_features: u64,
 }
 
 impl Gpu {
@@ -1129,6 +1132,7 @@ impl Gpu {
         event_devices: Vec<EventDevice>,
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         external_blob: bool,
+        base_features: u64,
     ) -> Gpu {
         let renderer_flags = RendererFlags::new()
             .use_egl(gpu_parameters.renderer_use_egl)
@@ -1164,6 +1168,7 @@ impl Gpu {
             map_request,
             external_blob,
             backend_kind,
+            base_features,
         }
     }
 
@@ -1224,7 +1229,7 @@ impl VirtioDevice for Gpu {
     }
 
     fn features(&self) -> u64 {
-        self.backend_kind.features()
+        self.base_features | self.backend_kind.features()
     }
 
     fn ack_features(&mut self, value: u64) {

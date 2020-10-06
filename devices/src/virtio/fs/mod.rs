@@ -14,9 +14,7 @@ use base::{error, warn, Error as SysError, Event};
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
-use crate::virtio::{
-    copy_config, DescriptorError, Interrupt, Queue, VirtioDevice, TYPE_FS, VIRTIO_F_VERSION_1,
-};
+use crate::virtio::{copy_config, DescriptorError, Interrupt, Queue, VirtioDevice, TYPE_FS};
 
 mod filesystem;
 #[allow(dead_code)]
@@ -141,7 +139,12 @@ pub struct Fs {
 }
 
 impl Fs {
-    pub fn new(tag: &str, num_workers: usize, fs_cfg: passthrough::Config) -> Result<Fs> {
+    pub fn new(
+        base_features: u64,
+        tag: &str,
+        num_workers: usize,
+        fs_cfg: passthrough::Config,
+    ) -> Result<Fs> {
         if tag.len() > FS_MAX_TAG_LEN {
             return Err(Error::TagTooLong(tag.len()));
         }
@@ -163,7 +166,7 @@ impl Fs {
             cfg,
             fs: Some(fs),
             queue_sizes: vec![QUEUE_SIZE; num_queues].into_boxed_slice(),
-            avail_features: 1 << VIRTIO_F_VERSION_1,
+            avail_features: base_features,
             acked_features: 0,
             workers: Vec::with_capacity(num_workers + 1),
         })

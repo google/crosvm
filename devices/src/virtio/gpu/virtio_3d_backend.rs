@@ -32,8 +32,8 @@ use super::protocol::{
 };
 pub use crate::virtio::gpu::virtio_backend::{VirtioBackend, VirtioResource};
 use crate::virtio::gpu::{
-    Backend, VirtioScanoutBlobData, VIRTIO_F_VERSION_1, VIRTIO_GPU_F_RESOURCE_BLOB,
-    VIRTIO_GPU_F_RESOURCE_UUID, VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_F_VULKAN,
+    Backend, VirtioScanoutBlobData, VIRTIO_GPU_F_RESOURCE_BLOB, VIRTIO_GPU_F_RESOURCE_UUID,
+    VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_F_VULKAN,
 };
 use crate::virtio::resource_bridge::{PlaneInfo, ResourceInfo, ResourceResponse};
 
@@ -276,10 +276,8 @@ impl Backend for Virtio3DBackend {
         3
     }
 
-    /// Returns the bitset of virtio features provided by the Backend.
     fn features() -> u64 {
         1 << VIRTIO_GPU_F_VIRGL
-            | 1 << VIRTIO_F_VERSION_1
             | 1 << VIRTIO_GPU_F_RESOURCE_UUID
             | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
             | 1 << VIRTIO_GPU_F_VULKAN
