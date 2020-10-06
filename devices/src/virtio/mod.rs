@@ -88,6 +88,7 @@ const TYPE_WL: u32 = MAX_VIRTIO_DEVICE_ID;
 const TYPE_TPM: u32 = MAX_VIRTIO_DEVICE_ID - 1;
 
 const VIRTIO_F_VERSION_1: u32 = 32;
+const VIRTIO_F_ACCESS_PLATFORM: u32 = 33;
 
 const INTERRUPT_STATUS_USED_RING: u32 = 0x1;
 const INTERRUPT_STATUS_CONFIG_CHANGED: u32 = 0x2;
@@ -151,6 +152,12 @@ pub fn copy_config(dst: &mut [u8], dst_offset: u64, src: &[u8], src_offset: u64)
 }
 
 /// Returns the set of reserved base features common to all virtio devices.
-pub fn base_features() -> u64 {
-    1 << VIRTIO_F_VERSION_1
+pub fn base_features(protected_vm: bool) -> u64 {
+    let mut features: u64 = 1 << VIRTIO_F_VERSION_1;
+
+    if protected_vm {
+        features |= 1 << VIRTIO_F_ACCESS_PLATFORM;
+    }
+
+    features
 }

@@ -84,6 +84,7 @@ pub struct Serial {
 
 impl SerialDevice for Serial {
     fn new(
+        _protected_vm: bool,
         interrupt_evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         out: Option<Box<dyn io::Write + Send>>,
@@ -409,6 +410,7 @@ mod tests {
         let serial_out = SharedBuffer::new();
 
         let mut serial = Serial::new(
+            false,
             intr_evt,
             None,
             Some(Box::new(serial_out.clone())),
@@ -430,6 +432,7 @@ mod tests {
         let serial_out = SharedBuffer::new();
 
         let mut serial = Serial::new(
+            false,
             intr_evt.try_clone().unwrap(),
             None,
             Some(Box::new(serial_out.clone())),

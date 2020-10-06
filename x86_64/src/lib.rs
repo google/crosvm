@@ -387,7 +387,13 @@ impl arch::LinuxArch for X8664arch {
             components.memory_size,
         )?;
 
-        Self::setup_serial_devices(&mut irq_chip, &mut io_bus, serial_parameters, serial_jail)?;
+        Self::setup_serial_devices(
+            components.protected_vm,
+            &mut irq_chip,
+            &mut io_bus,
+            serial_parameters,
+            serial_jail,
+        )?;
 
         let acpi_dev_resource = Self::setup_acpi_devices(
             &mut io_bus,
@@ -824,6 +830,7 @@ impl X8664arch {
     /// * - `io_bus` the I/O bus to add the devices to
     /// * - `serial_parmaters` - definitions for how the serial devices should be configured
     fn setup_serial_devices(
+        protected_vm: bool,
         irq_chip: &mut impl IrqChip,
         io_bus: &mut devices::Bus,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
@@ -833,6 +840,7 @@ impl X8664arch {
         let com_evt_2_4 = Event::new().map_err(Error::CreateEvent)?;
 
         arch::add_serial_devices(
+            protected_vm,
             io_bus,
             &com_evt_1_3,
             &com_evt_2_4,

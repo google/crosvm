@@ -364,7 +364,7 @@ pub mod tests {
 
     fn create_net_common() -> Net<FakeTap, FakeNet<FakeTap>> {
         let guest_memory = create_guest_memory().unwrap();
-        let features = base_features();
+        let features = base_features(false);
         Net::<FakeTap, FakeNet<FakeTap>>::new(
             features,
             Ipv4Addr::new(127, 0, 0, 1),

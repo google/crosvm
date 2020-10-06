@@ -1378,6 +1378,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.acpi_tables.push(acpi_table);
         }
         "protected-vm" => {
+            cfg.protected_vm = true;
             cfg.params.push("swiotlb=force".to_string());
         }
 

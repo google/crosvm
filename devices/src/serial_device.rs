@@ -11,6 +11,7 @@ use base::Event;
 /// output streams.
 pub trait SerialDevice {
     fn new(
+        protected_vm: bool,
         interrupt_evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         output: Option<Box<dyn io::Write + Send>>,

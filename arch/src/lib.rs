@@ -83,6 +83,7 @@ pub struct VmComponents {
     pub wayland_dmabuf: bool,
     pub acpi_sdts: Vec<SDT>,
     pub rt_cpus: Vec<usize>,
+    pub protected_vm: bool,
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.

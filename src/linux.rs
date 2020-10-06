@@ -460,7 +460,7 @@ fn create_block_device(
 
     let disk_file = disk::create_disk_file(raw_image).map_err(Error::CreateDiskError)?;
     let dev = virtio::Block::new(
-        virtio::base_features(),
+        virtio::base_features(cfg.protected_vm),
         disk_file,
         disk.read_only,
         disk.sparse,
@@ -609,8 +609,8 @@ fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
 }
 
 fn create_balloon_device(cfg: &Config, socket: BalloonControlResponseSocket) -> DeviceResult {
-    let dev =
-        virtio::Balloon::new(virtio::base_features(), socket).map_err(Error::BalloonDeviceNew)?;
+    let dev = virtio::Balloon::new(virtio::base_features(cfg.protected_vm), socket)
+        .map_err(Error::BalloonDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -631,7 +631,7 @@ fn create_tap_net_device(cfg: &Config, tap_fd: RawFd) -> DeviceResult {
         error!("net vq pairs must be smaller than vcpu count, fall back to single queue mode");
         vq_pairs = 1;
     }
-    let features = virtio::base_features();
+    let features = virtio::base_features(cfg.protected_vm);
     let dev = virtio::Net::from(features, tap, vq_pairs).map_err(Error::NetDeviceNew)?;
 
     Ok(VirtioDeviceStub {
@@ -654,7 +654,7 @@ fn create_net_device(
         vq_pairs = 1;
     }
 
-    let features = virtio::base_features();
+    let features = virtio::base_features(cfg.protected_vm);
     let dev = if cfg.vhost_net {
         let dev = virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(
             features,
@@ -722,7 +722,7 @@ fn create_gpu_device(
         event_devices,
         map_request,
         cfg.sandbox,
-        virtio::base_features(),
+        virtio::base_features(cfg.protected_vm),
     );
 
     let jail = match simple_jail(&cfg, "gpu_device")? {
@@ -832,7 +832,7 @@ fn create_wayland_device(
         .collect::<Option<Vec<_>>>()
         .ok_or(Error::InvalidWaylandPath)?;
 
-    let features = virtio::base_features();
+    let features = virtio::base_features(cfg.protected_vm);
     let dev = virtio::Wl::new(
         features,
         cfg.wayland_socket_paths.clone(),
@@ -929,7 +929,7 @@ fn create_video_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(devices::virtio::VideoDevice::new(
-            virtio::base_features(),
+            virtio::base_features(cfg.protected_vm),
             typ,
             Some(resource_bridge),
         )),
@@ -952,7 +952,7 @@ fn register_video_device(
 }
 
 fn create_vhost_vsock_device(cfg: &Config, cid: u64, mem: &GuestMemory) -> DeviceResult {
-    let features = virtio::base_features();
+    let features = virtio::base_features(cfg.protected_vm);
     let dev = virtio::vhost::Vsock::new(features, cid, mem).map_err(Error::VhostVsockDeviceNew)?;
 
     Ok(VirtioDeviceStub {
@@ -989,7 +989,7 @@ fn create_fs_device(
         create_base_minijail(src, Some(max_open_files), None)?
     };
 
-    let features = virtio::base_features();
+    let features = virtio::base_features(cfg.protected_vm);
     // TODO(chirantan): Use more than one worker once the kernel driver has been fixed to not panic
     // when num_queues > 1.
     let dev = virtio::fs::Fs::new(features, tag, 1, fs_cfg).map_err(Error::FsDeviceNew)?;
@@ -1032,7 +1032,7 @@ fn create_9p_device(
         (None, src)
     };
 
-    let features = virtio::base_features();
+    let features = virtio::base_features(cfg.protected_vm);
     let dev = virtio::P9::new(features, root, tag).map_err(Error::P9DeviceNew)?;
 
     Ok(VirtioDeviceStub {
@@ -1115,7 +1115,7 @@ fn create_pmem_device(
         .map_err(Error::AddPmemDeviceMemory)?;
 
     let dev = virtio::Pmem::new(
-        virtio::base_features(),
+        virtio::base_features(cfg.protected_vm),
         fd,
         GuestAddress(mapping_address),
         slot,
@@ -1134,7 +1134,7 @@ fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult
     let mut keep_fds = Vec::new();
     let evt = Event::new().map_err(Error::CreateEvent)?;
     let dev = param
-        .create_serial_device::<Console>(&evt, &mut keep_fds)
+        .create_serial_device::<Console>(cfg.protected_vm, &evt, &mut keep_fds)
         .map_err(Error::CreateConsole)?;
 
     let jail = match simple_jail(&cfg, "serial")? {
@@ -1981,6 +1981,7 @@ where
             .map(|path| SDT::from_file(path).map_err(|e| Error::OpenAcpiTable(path.clone(), e)))
             .collect::<Result<Vec<SDT>>>()?,
         rt_cpus: cfg.rt_cpus.clone(),
+        protected_vm: cfg.protected_vm,
     };
 
     let control_server_socket = match &cfg.socket_path {

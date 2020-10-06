@@ -273,6 +273,7 @@ impl arch::LinuxArch for AArch64 {
         let com_evt_1_3 = Event::new().map_err(Error::CreateEvent)?;
         let com_evt_2_4 = Event::new().map_err(Error::CreateEvent)?;
         arch::add_serial_devices(
+            components.protected_vm,
             &mut mmio_bus,
             &com_evt_1_3,
             &com_evt_2_4,

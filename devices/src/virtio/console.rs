@@ -309,13 +309,14 @@ pub struct Console {
 
 impl SerialDevice for Console {
     fn new(
+        protected_vm: bool,
         _evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         output: Option<Box<dyn io::Write + Send>>,
         keep_fds: Vec<RawFd>,
     ) -> Console {
         Console {
-            base_features: base_features(),
+            base_features: base_features(protected_vm),
             kill_evt: None,
             worker_thread: None,
             input,
