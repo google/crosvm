@@ -50,7 +50,7 @@ you can install `libcap-dev` and `libfdt-dev`.
 Handy Debian one-liner for all build and runtime deps, particularly if you're
 running Crostini:
 ```sh
-sudo apt install build-essential libcap-dev libfdt-dev pkg-config python
+sudo apt install build-essential libcap-dev libfdt-dev libgbm-dev libvirglrenderer-dev libwayland-bin libwayland-dev pkg-config protobuf-compiler python wayland-protocols
 ```
 
 Known issues:
