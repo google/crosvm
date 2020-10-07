@@ -7,7 +7,7 @@ use std::os::unix::io::RawFd;
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::thread;
 
-use base::{error, Event, PollContext, PollToken};
+use base::{error, Event, PollToken, WaitContext};
 use data_model::{DataInit, Le16, Le32};
 use vm_memory::GuestMemory;
 
@@ -236,7 +236,7 @@ impl Worker {
         // the main worker thread with an event for notification bridges this gap.
         let mut in_channel = self.spawn_input_thread(&in_avail_evt);
 
-        let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
+        let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
             (&transmit_evt, Token::TransmitQueueAvailable),
             (&receive_evt, Token::ReceiveQueueAvailable),
             (&in_avail_evt, Token::InputAvailable),
@@ -245,7 +245,7 @@ impl Worker {
         ]) {
             Ok(pc) => pc,
             Err(e) => {
-                error!("failed creating PollContext: {}", e);
+                error!("failed creating WaitContext: {}", e);
                 return;
             }
         };
@@ -255,8 +255,8 @@ impl Worker {
             None => Box::new(io::sink()),
         };
 
-        'poll: loop {
-            let events = match poll_ctx.wait() {
+        'wait: loop {
+            let events = match wait_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed polling for events: {}", e);
@@ -264,33 +264,33 @@ impl Worker {
                 }
             };
 
-            for event in events.iter_readable() {
-                match event.token() {
+            for event in events.iter().filter(|e| e.is_readable) {
+                match event.token {
                     Token::TransmitQueueAvailable => {
                         if let Err(e) = transmit_evt.read() {
                             error!("failed reading transmit queue Event: {}", e);
-                            break 'poll;
+                            break 'wait;
                         }
                         self.process_transmit_queue(&mut transmit_queue, &mut output);
                     }
                     Token::ReceiveQueueAvailable => {
                         if let Err(e) = receive_evt.read() {
                             error!("failed reading receive queue Event: {}", e);
-                            break 'poll;
+                            break 'wait;
                         }
                         self.handle_input(&mut in_channel, &mut receive_queue);
                     }
                     Token::InputAvailable => {
                         if let Err(e) = in_avail_evt.read() {
                             error!("failed reading in_avail_evt: {}", e);
-                            break 'poll;
+                            break 'wait;
                         }
                         self.handle_input(&mut in_channel, &mut receive_queue);
                     }
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
                     }
-                    Token::Kill => break 'poll,
+                    Token::Kill => break 'wait,
                 }
             }
         }

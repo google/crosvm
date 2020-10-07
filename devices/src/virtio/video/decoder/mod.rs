@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use std::os::unix::io::IntoRawFd;
 
-use base::{error, PollContext};
+use base::{error, WaitContext};
 
 use crate::virtio::resource_bridge::{self, ResourceInfo, ResourceRequestSocket};
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
@@ -425,7 +425,7 @@ impl<'a> Decoder<'a> {
 
     fn create_session(
         vda: &'a libvda::decode::VdaInstance,
-        poll_ctx: &PollContext<Token>,
+        wait_ctx: &WaitContext<Token>,
         ctx: &Context,
         stream_id: StreamId,
     ) -> VideoResult<libvda::decode::Session<'a>> {
@@ -451,7 +451,7 @@ impl<'a> Decoder<'a> {
             VideoError::InvalidOperation
         })?;
 
-        poll_ctx
+        wait_ctx
             .add(session.pipe(), Token::Event { id: stream_id })
             .map_err(|e| {
                 error!(
@@ -466,7 +466,7 @@ impl<'a> Decoder<'a> {
 
     fn create_resource(
         &mut self,
-        poll_ctx: &PollContext<Token>,
+        wait_ctx: &WaitContext<Token>,
         stream_id: StreamId,
         queue_type: QueueType,
         resource_id: ResourceId,
@@ -477,7 +477,7 @@ impl<'a> Decoder<'a> {
         // Create a instance of `libvda::Session` at the first time `ResourceCreate` is
         // called here.
         if !self.sessions.contains_key(stream_id) {
-            let session = Self::create_session(self.vda, poll_ctx, ctx, stream_id)?;
+            let session = Self::create_session(self.vda, wait_ctx, ctx, stream_id)?;
             self.sessions.insert(stream_id, session);
         }
 
@@ -766,7 +766,7 @@ impl<'a> Device for Decoder<'a> {
     fn process_cmd(
         &mut self,
         cmd: VideoCmd,
-        poll_ctx: &PollContext<Token>,
+        wait_ctx: &WaitContext<Token>,
         resource_bridge: &ResourceRequestSocket,
     ) -> VideoResult<VideoCmdResponseType> {
         use VideoCmd::*;
@@ -793,7 +793,7 @@ impl<'a> Device for Decoder<'a> {
                 // ignore `plane_offsets` as we use `resource_info` given by `resource_bridge` instead.
                 ..
             } => {
-                self.create_resource(poll_ctx, stream_id, queue_type, resource_id, uuid)?;
+                self.create_resource(wait_ctx, stream_id, queue_type, resource_id, uuid)?;
                 Ok(Sync(CmdResponse::NoData))
             }
             ResourceDestroyAll {

@@ -17,12 +17,12 @@ use crate::{DisplayT, EventDevice, GpuDisplayError, GpuDisplayFramebuffer};
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
 use std::ptr::{null, null_mut};
 
 use base::{
-    round_up_to_page_size, AsRawDescriptor, MemoryMapping, MemoryMappingBuilder, SharedMemory,
+    round_up_to_page_size, AsRawDescriptor, MemoryMapping, MemoryMappingBuilder, RawDescriptor,
+    SharedMemory,
 };
 use data_model::VolatileMemory;
 
@@ -84,7 +84,7 @@ impl Surface {
 
 /// A connection to the compositor and associated collection of state.
 ///
-/// The user of `GpuDisplay` can use `AsRawFd` to poll on the compositor connection's file
+/// The user of `GpuDisplay` can use `AsRawDescriptor` to poll on the compositor connection's file
 /// descriptor. When the connection is readable, `dispatch_events` can be called to process it.
 pub struct DisplayWl {
     dmabufs: HashMap<u32, DwlDmabuf>,
@@ -146,7 +146,7 @@ impl DisplayWl {
 impl DisplayT for DisplayWl {
     fn import_dmabuf(
         &mut self,
-        fd: RawFd,
+        fd: RawDescriptor,
         offset: u32,
         stride: u32,
         modifiers: u64,
@@ -352,8 +352,8 @@ impl DisplayT for DisplayWl {
     }
 }
 
-impl AsRawFd for DisplayWl {
-    fn as_raw_fd(&self) -> RawFd {
+impl AsRawDescriptor for DisplayWl {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         // Safe given that the context pointer is valid.
         unsafe { dwl_context_fd(self.ctx.0) }
     }

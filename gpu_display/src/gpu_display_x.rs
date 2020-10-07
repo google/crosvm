@@ -18,7 +18,6 @@ use std::ffi::{c_void, CStr, CString};
 use std::mem::{transmute_copy, zeroed};
 use std::num::NonZeroU32;
 use std::os::raw::c_ulong;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::ptr::{null, null_mut, NonNull};
 use std::rc::Rc;
 use std::time::Duration;
@@ -30,7 +29,7 @@ use crate::{
     EventDeviceKind, GpuDisplayError, GpuDisplayFramebuffer,
 };
 
-use base::{error, PollContext, PollToken, WatchingEvents};
+use base::{error, AsRawDescriptor, EventType, PollToken, RawDescriptor, WaitContext};
 use data_model::VolatileSlice;
 
 const BUFFER_COUNT: usize = 2;
@@ -95,8 +94,8 @@ impl XDisplay {
     }
 }
 
-impl AsRawFd for XDisplay {
-    fn as_raw_fd(&self) -> RawFd {
+impl AsRawDescriptor for XDisplay {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         unsafe { xlib::XConnectionNumber(self.as_ptr()) }
     }
 }
@@ -542,7 +541,7 @@ enum DisplayXPollToken {
 }
 
 pub struct DisplayX {
-    poll_ctx: PollContext<DisplayXPollToken>,
+    wait_ctx: WaitContext<DisplayXPollToken>,
     display: XDisplay,
     screen: XScreen,
     visual: *mut xlib::Visual,
@@ -553,7 +552,7 @@ pub struct DisplayX {
 
 impl DisplayX {
     pub fn open_display(display: Option<&str>) -> Result<DisplayX, GpuDisplayError> {
-        let poll_ctx = PollContext::new().map_err(|_| GpuDisplayError::Allocate)?;
+        let wait_ctx = WaitContext::new().map_err(|_| GpuDisplayError::Allocate)?;
 
         let display_cstr = match display.map(CString::new) {
             Some(Ok(s)) => Some(s),
@@ -573,7 +572,7 @@ impl DisplayX {
                 None => return Err(GpuDisplayError::Connect),
             };
 
-            poll_ctx
+            wait_ctx
                 .add(&display, DisplayXPollToken::Display)
                 .map_err(|_| GpuDisplayError::Allocate)?;
 
@@ -618,7 +617,7 @@ impl DisplayX {
             x_free(visual_info);
 
             Ok(DisplayX {
-                poll_ctx,
+                wait_ctx,
                 display,
                 screen,
                 visual,
@@ -675,28 +674,28 @@ impl DisplayX {
     }
 
     fn handle_poll_ctx(&mut self) -> base::Result<()> {
-        let poll_events = self.poll_ctx.wait_timeout(Duration::default())?.to_owned();
-        for poll_event in poll_events.as_ref().iter_writable() {
-            if let DisplayXPollToken::EventDevice { event_device_id } = poll_event.token() {
+        let wait_events = self.wait_ctx.wait_timeout(Duration::default())?;
+        for wait_event in wait_events.iter().filter(|e| e.is_writable) {
+            if let DisplayXPollToken::EventDevice { event_device_id } = wait_event.token {
                 if let Some(event_device) = self.event_device_mut(event_device_id) {
                     if !event_device.flush_buffered_events()? {
                         continue;
                     }
                 }
                 // Although this looks exactly like the previous if-block, we need to reborrow self
-                // as immutable in order to make use of self.poll_ctx.
+                // as immutable in order to make use of self.wait_ctx.
                 if let Some(event_device) = self.event_device(event_device_id) {
-                    self.poll_ctx.modify(
+                    self.wait_ctx.modify(
                         event_device,
-                        WatchingEvents::empty().set_read(),
+                        EventType::Read,
                         DisplayXPollToken::EventDevice { event_device_id },
                     )?;
                 }
             }
         }
 
-        for poll_event in poll_events.as_ref().iter_readable() {
-            match poll_event.token() {
+        for wait_event in wait_events.iter().filter(|e| e.is_readable) {
+            match wait_event.token {
                 DisplayXPollToken::Display => self.dispatch_display_events(),
                 DisplayXPollToken::EventDevice { event_device_id } => {
                     self.handle_event_device(event_device_id)
@@ -772,7 +771,7 @@ impl DisplayT for DisplayX {
     #[allow(unused_variables)]
     fn import_dmabuf(
         &mut self,
-        fd: RawFd,
+        fd: RawDescriptor,
         offset: u32,
         stride: u32,
         modifiers: u64,
@@ -802,7 +801,7 @@ impl DisplayT for DisplayX {
     fn import_event_device(&mut self, event_device: EventDevice) -> Result<u32, GpuDisplayError> {
         let new_event_device_id = self.next_id;
 
-        self.poll_ctx
+        self.wait_ctx
             .add(
                 &event_device,
                 DisplayXPollToken::EventDevice {
@@ -836,8 +835,8 @@ impl DisplayT for DisplayX {
     }
 }
 
-impl AsRawFd for DisplayX {
-    fn as_raw_fd(&self) -> RawFd {
-        self.poll_ctx.as_raw_fd()
+impl AsRawDescriptor for DisplayX {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.wait_ctx.as_raw_descriptor()
     }
 }

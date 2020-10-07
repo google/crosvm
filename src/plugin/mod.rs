@@ -29,7 +29,7 @@ use remain::sorted;
 use base::{
     block_signal, clear_signal, drop_capabilities, error, getegid, geteuid, info, pipe,
     register_rt_signal_handler, validate_raw_fd, warn, Error as SysError, Event, Killable,
-    MmapError, PollContext, PollToken, Result as SysResult, SignalFd, SignalFdError, SIGRTMIN,
+    MmapError, PollToken, Result as SysResult, SignalFd, SignalFdError, WaitContext, SIGRTMIN,
 };
 use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use minijail::{self, Minijail};
@@ -54,13 +54,13 @@ pub enum Error {
     CreateKvm(SysError),
     CreateMainSocket(SysError),
     CreatePIT(SysError),
-    CreatePollContext(SysError),
     CreateSignalFd(SignalFdError),
     CreateSocketPair(io::Error),
     CreateTapFd(TapError),
     CreateVcpu(SysError),
     CreateVcpuSocket(SysError),
     CreateVm(SysError),
+    CreateWaitContext(SysError),
     DecodeRequest(ProtobufError),
     DropCapabilities(SysError),
     EncodeResponse(ProtobufError),
@@ -87,7 +87,6 @@ pub enum Error {
     PluginTimeout,
     PluginWait(SysError),
     Poll(SysError),
-    PollContextAdd(SysError),
     RootNotAbsolute,
     RootNotDir,
     SetGidMap(minijail::Error),
@@ -106,6 +105,7 @@ pub enum Error {
     TapSetMacAddress(TapError),
     TapSetNetmask(TapError),
     ValidateTapFd(SysError),
+    WaitContextAdd(SysError),
 }
 
 impl Display for Error {
@@ -123,13 +123,13 @@ impl Display for Error {
             CreateKvm(e) => write!(f, "error creating Kvm: {}", e),
             CreateMainSocket(e) => write!(f, "error creating main request socket: {}", e),
             CreatePIT(e) => write!(f, "failed to create kvm PIT: {}", e),
-            CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
             CreateSocketPair(e) => write!(f, "failed to create socket pair: {}", e),
             CreateTapFd(e) => write!(f, "failed to create tap device from raw fd: {}", e),
             CreateVcpu(e) => write!(f, "error creating vcpu: {}", e),
             CreateVcpuSocket(e) => write!(f, "error creating vcpu request socket: {}", e),
             CreateVm(e) => write!(f, "error creating vm: {}", e),
+            CreateWaitContext(e) => write!(f, "failed to create wait context: {}", e),
             DecodeRequest(e) => write!(f, "failed to decode plugin request: {}", e),
             DropCapabilities(e) => write!(f, "failed to drop process capabilities: {}", e),
             EncodeResponse(e) => write!(f, "failed to encode plugin response: {}", e),
@@ -152,7 +152,6 @@ impl Display for Error {
             PluginTimeout => write!(f, "plugin did not exit within timeout"),
             PluginWait(e) => write!(f, "error waiting for plugin to exit: {}", e),
             Poll(e) => write!(f, "failed to poll all FDs: {}", e),
-            PollContextAdd(e) => write!(f, "failed to add fd to poll context: {}", e),
             RootNotAbsolute => write!(f, "path to the root directory must be absolute"),
             RootNotDir => write!(f, "specified root directory is not a directory"),
             SetGidMap(e) => write!(f, "failed to set gidmap for jail: {}", e),
@@ -175,6 +174,7 @@ impl Display for Error {
             TapSetMacAddress(e) => write!(f, "error setting tap mac address: {}", e),
             TapSetNetmask(e) => write!(f, "error setting tap netmask: {}", e),
             ValidateTapFd(e) => write!(f, "failed to validate raw tap fd: {}", e),
+            WaitContextAdd(e) => write!(f, "failed to add descriptor to wait context: {}", e),
         }
     }
 }
@@ -710,17 +710,17 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let kill_signaled = Arc::new(AtomicBool::new(false));
     let mut vcpu_handles = Vec::with_capacity(vcpu_count as usize);
 
-    let poll_ctx =
-        PollContext::build_with(&[(&exit_evt, Token::Exit), (&sigchld_fd, Token::ChildSignal)])
-            .map_err(Error::PollContextAdd)?;
+    let wait_ctx =
+        WaitContext::build_with(&[(&exit_evt, Token::Exit), (&sigchld_fd, Token::ChildSignal)])
+            .map_err(Error::WaitContextAdd)?;
 
     let mut sockets_to_drop = Vec::new();
-    let mut redo_poll_ctx_sockets = true;
+    let mut redo_wait_ctx_sockets = true;
     // In this loop, make every attempt to not return early. If an error is encountered, set `res`
     // to the error, set `dying_instant` to now, and signal the plugin that it will be killed soon.
     // If the plugin cannot be signaled because it is dead of `signal_kill` failed, simply break
     // from the poll loop so that the VCPU threads can be cleaned up.
-    'poll: loop {
+    'wait: loop {
         // After we have waited long enough, it's time to give up and exit.
         if dying_instant
             .map(|i| i.elapsed() >= duration_to_die)
@@ -729,19 +729,19 @@ pub fn run_config(cfg: Config) -> Result<()> {
             break;
         }
 
-        if redo_poll_ctx_sockets {
+        if redo_wait_ctx_sockets {
             for (index, socket) in plugin.sockets().iter().enumerate() {
-                poll_ctx
+                wait_ctx
                     .add(socket, Token::Plugin { index })
-                    .map_err(Error::PollContextAdd)?;
+                    .map_err(Error::WaitContextAdd)?;
             }
         }
 
         let plugin_socket_count = plugin.sockets().len();
         let events = {
             let poll_res = match dying_instant {
-                Some(inst) => poll_ctx.wait_timeout(duration_to_die - inst.elapsed()),
-                None => poll_ctx.wait(),
+                Some(inst) => wait_ctx.wait_timeout(duration_to_die - inst.elapsed()),
+                None => wait_ctx.wait(),
             };
             match poll_res {
                 Ok(v) => v,
@@ -754,11 +754,11 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 }
             }
         };
-        for event in events.iter_readable() {
-            match event.token() {
+        for event in events.iter().filter(|e| e.is_readable) {
+            match event.token {
                 Token::Exit => {
                     // No need to check the exit event if we are already doing cleanup.
-                    let _ = poll_ctx.delete(&exit_evt);
+                    let _ = wait_ctx.delete(&exit_evt);
                     dying_instant.get_or_insert(Instant::now());
                     let sig_res = plugin.signal_kill();
                     if res.is_ok() && sig_res.is_err() {
@@ -773,7 +773,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                                 // If the plugin process has ended, there is no need to continue
                                 // processing plugin connections, so we break early.
                                 if siginfo.ssi_pid == plugin.pid() as u32 {
-                                    break 'poll;
+                                    break 'wait;
                                 }
                                 // Because SIGCHLD is not expected from anything other than the
                                 // plugin process, report it as an error.
@@ -840,7 +840,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
             }
         }
 
-        redo_poll_ctx_sockets =
+        redo_wait_ctx_sockets =
             !sockets_to_drop.is_empty() || plugin.sockets().len() != plugin_socket_count;
 
         // Cleanup all of the sockets that we have determined were disconnected or suffered some
@@ -848,9 +848,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
         plugin.drop_sockets(&mut sockets_to_drop);
         sockets_to_drop.clear();
 
-        if redo_poll_ctx_sockets {
+        if redo_wait_ctx_sockets {
             for socket in plugin.sockets() {
-                let _ = poll_ctx.delete(socket);
+                let _ = wait_ctx.delete(socket);
             }
         }
     }

@@ -6,15 +6,16 @@ use crate::{new, AsyncResult, IoSourceExt};
 use std::os::unix::io::AsRawFd;
 
 /// An async version of sys_util::EventFd.
-pub struct EventAsync<F: AsRawFd + 'static> {
+pub struct EventAsync<F> {
     io_source: Box<dyn IoSourceExt<F> + 'static>,
 }
 
-impl<F: AsRawFd + 'static> EventAsync<F> {
+impl<F> EventAsync<F> {
     /// Creates a new EventAsync wrapper around the provided eventfd.
     #[allow(dead_code)]
-    pub fn new(f: F) -> AsyncResult<EventAsync<F>> {
-        Ok(EventAsync { io_source: new(f)? })
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new<G: AsRawFd + 'static>(g: G) -> AsyncResult<EventAsync<G>> {
+        Ok(EventAsync { io_source: new(g)? })
     }
 
     /// Like new, but allows the source to be constructed directly. Used for

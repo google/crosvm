@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::{AsRawDescriptor, RawDescriptor};
 use data_model::DataInit;
 use linux_input_sys::{virtio_input_event, InputEventDecoder};
 use std::collections::VecDeque;
@@ -152,6 +153,12 @@ impl EventDevice {
 
 impl AsRawFd for EventDevice {
     fn as_raw_fd(&self) -> RawFd {
+        self.event_socket.as_raw_fd()
+    }
+}
+
+impl AsRawDescriptor for EventDevice {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         self.event_socket.as_raw_fd()
     }
 }

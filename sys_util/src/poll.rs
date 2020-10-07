@@ -132,6 +132,11 @@ impl<'a, T: PollToken> PollEvent<'a, T> {
         self.event.events & (EPOLLIN as u32) != 0
     }
 
+    /// True if the `fd` associated with this token in `PollContext::add` is writable.
+    pub fn writable(&self) -> bool {
+        self.event.events & (EPOLLOUT as u32) != 0
+    }
+
     /// True if the `fd` associated with this token in `PollContext::add` has been hungup on.
     pub fn hungup(&self) -> bool {
         self.event.events & (EPOLLHUP as u32) != 0

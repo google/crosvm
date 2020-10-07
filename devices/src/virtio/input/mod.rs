@@ -10,9 +10,7 @@ mod event_source;
 
 use self::constants::*;
 
-use std::os::unix::io::{AsRawFd, RawFd};
-
-use base::{error, warn, Event, PollContext, PollToken};
+use base::{error, warn, AsRawDescriptor, Event, PollToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le16, Le32};
 use vm_memory::GuestMemory;
 
@@ -265,7 +263,7 @@ impl VirtioInputConfig {
         }
     }
 
-    fn from_evdev<T: AsRawFd>(source: &T) -> Result<VirtioInputConfig> {
+    fn from_evdev<T: AsRawDescriptor>(source: &T) -> Result<VirtioInputConfig> {
         Ok(VirtioInputConfig::new(
             evdev::device_ids(source)?,
             evdev::name(source)?,
@@ -461,23 +459,23 @@ impl<T: EventSource> Worker<T> {
             InterruptResample,
             Kill,
         }
-        let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
+        let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
             (&event_queue_evt, Token::EventQAvailable),
             (&status_queue_evt, Token::StatusQAvailable),
             (&self.event_source, Token::InputEventsAvailable),
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ]) {
-            Ok(poll_ctx) => poll_ctx,
+            Ok(wait_ctx) => wait_ctx,
             Err(e) => {
-                error!("failed creating PollContext: {}", e);
+                error!("failed creating WaitContext: {}", e);
                 return;
             }
         };
 
-        'poll: loop {
-            let poll_events = match poll_ctx.wait() {
-                Ok(poll_events) => poll_events,
+        'wait: loop {
+            let wait_events = match wait_ctx.wait() {
+                Ok(wait_events) => wait_events,
                 Err(e) => {
                     error!("failed polling for events: {}", e);
                     break;
@@ -485,19 +483,19 @@ impl<T: EventSource> Worker<T> {
             };
 
             let mut needs_interrupt = false;
-            for poll_event in poll_events.iter_readable() {
-                match poll_event.token() {
+            for wait_event in wait_events.iter().filter(|e| e.is_readable) {
+                match wait_event.token {
                     Token::EventQAvailable => {
                         if let Err(e) = event_queue_evt.read() {
                             error!("failed reading event queue Event: {}", e);
-                            break 'poll;
+                            break 'wait;
                         }
                         needs_interrupt |= self.send_events();
                     }
                     Token::StatusQAvailable => {
                         if let Err(e) = status_queue_evt.read() {
                             error!("failed reading status queue Event: {}", e);
-                            break 'poll;
+                            break 'wait;
                         }
                         match self.process_status_queue() {
                             Ok(b) => needs_interrupt |= b,
@@ -513,7 +511,7 @@ impl<T: EventSource> Worker<T> {
                     }
                     Token::Kill => {
                         let _ = kill_evt.read();
-                        break 'poll;
+                        break 'wait;
                     }
                 }
             }
@@ -556,9 +554,9 @@ impl<T> VirtioDevice for Input<T>
 where
     T: 'static + EventSource + Send,
 {
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_fds(&self) -> Vec<RawDescriptor> {
         if let Some(source) = &self.source {
-            return vec![source.as_raw_fd()];
+            return vec![source.as_raw_descriptor()];
         }
         Vec::new()
     }
@@ -665,7 +663,7 @@ where
 /// Creates a new virtio input device from an event device node
 pub fn new_evdev<T>(source: T, virtio_features: u64) -> Result<Input<EvdevEventSource<T>>>
 where
-    T: Read + Write + AsRawFd,
+    T: Read + Write + AsRawDescriptor,
 {
     Ok(Input {
         kill_evt: None,
@@ -684,7 +682,7 @@ pub fn new_single_touch<T>(
     virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
-    T: Read + Write + AsRawFd,
+    T: Read + Write + AsRawDescriptor,
 {
     Ok(Input {
         kill_evt: None,
@@ -704,7 +702,7 @@ pub fn new_trackpad<T>(
     virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
-    T: Read + Write + AsRawFd,
+    T: Read + Write + AsRawDescriptor,
 {
     Ok(Input {
         kill_evt: None,
@@ -718,7 +716,7 @@ where
 /// Creates a new virtio mouse which supports primary, secondary, wheel and REL events.
 pub fn new_mouse<T>(source: T, virtio_features: u64) -> Result<Input<SocketEventSource<T>>>
 where
-    T: Read + Write + AsRawFd,
+    T: Read + Write + AsRawDescriptor,
 {
     Ok(Input {
         kill_evt: None,
@@ -732,7 +730,7 @@ where
 /// Creates a new virtio keyboard, which supports the same events as an en-us physical keyboard.
 pub fn new_keyboard<T>(source: T, virtio_features: u64) -> Result<Input<SocketEventSource<T>>>
 where
-    T: Read + Write + AsRawFd,
+    T: Read + Write + AsRawDescriptor,
 {
     Ok(Input {
         kill_evt: None,

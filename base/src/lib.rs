@@ -8,6 +8,7 @@ mod event;
 mod mmap;
 mod shm;
 mod timer;
+mod wait_context;
 
 pub use event::{Event, EventReadResult, ScopedEvent};
 pub use mmap::{MemoryMapping, MemoryMappingBuilder};
@@ -20,10 +21,11 @@ pub use sys_util::{
 };
 pub use sys_util::{SeekHole, WriteZeroesAt};
 pub use timer::{FakeTimer, Timer};
+pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
 
 /// Wraps an AsRawDescriptor in the simple Descriptor struct, which
 /// has AsRawFd methods for interfacing with sys_util
-fn wrap_descriptor(descriptor: &dyn AsRawDescriptor) -> Descriptor {
+pub fn wrap_descriptor(descriptor: &dyn AsRawDescriptor) -> Descriptor {
     Descriptor(descriptor.as_raw_descriptor())
 }
 

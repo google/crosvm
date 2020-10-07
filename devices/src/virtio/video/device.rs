@@ -4,7 +4,7 @@
 
 //! Definition of the trait `Device` that each backend video device must implement.
 
-use base::{PollContext, PollToken};
+use base::{PollToken, WaitContext};
 
 use crate::virtio::resource_bridge::ResourceRequestSocket;
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
@@ -94,14 +94,14 @@ pub trait Device {
     /// Processes a virtio-video command.
     /// If the command expects a synchronous response, it returns a response as `VideoCmdResponseType::Sync`.
     /// Otherwise, it returns a name of the descriptor chain that will be used when a response is prepared.
-    /// Implementations of this method is passed a PollContext object which can be used to add or remove
+    /// Implementations of this method is passed a WaitContext object which can be used to add or remove
     /// FDs to poll. It is expected that only Token::Event items would be added. When a Token::Event
     /// event arrives, process_event() will be invoked.
     /// TODO(b/149720783): Make this an async function.
     fn process_cmd(
         &mut self,
         cmd: VideoCmd,
-        poll_ctx: &PollContext<Token>,
+        wait_ctx: &WaitContext<Token>,
         resource_bridge: &ResourceRequestSocket,
     ) -> VideoResult<VideoCmdResponseType>;
 

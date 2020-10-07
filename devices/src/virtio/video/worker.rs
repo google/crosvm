@@ -6,7 +6,7 @@
 
 use std::collections::VecDeque;
 
-use base::{error, Event, PollContext};
+use base::{error, Event, WaitContext};
 use vm_memory::GuestMemory;
 
 use crate::virtio::queue::{DescriptorChain, Queue};
@@ -82,7 +82,7 @@ impl Worker {
     fn handle_command_desc<T: Device>(
         &self,
         device: &mut T,
-        poll_ctx: &PollContext<Token>,
+        wait_ctx: &WaitContext<Token>,
         desc_map: &mut AsyncCmdDescMap,
         desc: DescriptorChain,
     ) -> Result<VecDeque<WritableResp>> {
@@ -133,7 +133,7 @@ impl Worker {
         }
 
         // Process the command by the device.
-        let process_cmd_response = device.process_cmd(cmd, &poll_ctx, &self.resource_bridge);
+        let process_cmd_response = device.process_cmd(cmd, &wait_ctx, &self.resource_bridge);
         match process_cmd_response {
             Ok(VideoCmdResponseType::Sync(r)) => {
                 responses.push_back((desc, r));
@@ -158,12 +158,12 @@ impl Worker {
         &self,
         cmd_queue: &mut Queue,
         device: &mut T,
-        poll_ctx: &PollContext<Token>,
+        wait_ctx: &WaitContext<Token>,
         desc_map: &mut AsyncCmdDescMap,
     ) -> Result<()> {
         let _ = self.cmd_evt.read();
         while let Some(desc) = cmd_queue.pop(&self.mem) {
-            let mut resps = self.handle_command_desc(device, poll_ctx, desc_map, desc)?;
+            let mut resps = self.handle_command_desc(device, wait_ctx, desc_map, desc)?;
             self.write_responses(cmd_queue, &mut resps)?;
         }
         Ok(())
@@ -228,27 +228,27 @@ impl Worker {
         mut event_queue: Queue,
         mut device: T,
     ) -> Result<()> {
-        let poll_ctx: PollContext<Token> = PollContext::build_with(&[
+        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&self.cmd_evt, Token::CmdQueue),
             (&self.event_evt, Token::EventQueue),
             (&self.kill_evt, Token::Kill),
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
         ])
-        .map_err(Error::PollContextCreationFailed)?;
+        .map_err(Error::WaitContextCreationFailed)?;
 
         // Stores descriptors in which responses for asynchronous commands will be written.
         let mut desc_map: AsyncCmdDescMap = Default::default();
 
         loop {
-            let poll_events = poll_ctx.wait().map_err(Error::PollError)?;
+            let wait_events = wait_ctx.wait().map_err(Error::WaitError)?;
 
-            for poll_event in poll_events.iter_readable() {
-                match poll_event.token() {
+            for wait_event in wait_events.iter().filter(|e| e.is_readable) {
+                match wait_event.token {
                     Token::CmdQueue => {
                         self.handle_command_queue(
                             &mut cmd_queue,
                             &mut device,
-                            &poll_ctx,
+                            &wait_ctx,
                             &mut desc_map,
                         )?;
                     }

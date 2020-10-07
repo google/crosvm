@@ -53,9 +53,10 @@ use sync::{Condvar, Mutex};
 use base::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_rt_signal_handler,
-    set_cpu_affinity, set_rt_prio_limit, set_rt_round_robin, signal, validate_raw_fd, warn, Event,
-    ExternalMapping, FlockOperation, Killable, MemoryMappingArena, PollContext, PollToken,
-    Protection, ScopedEvent, SignalFd, Terminal, Timer, WatchingEvents, SIGRTMIN,
+    set_cpu_affinity, set_rt_prio_limit, set_rt_round_robin, signal, validate_raw_fd, warn,
+    AsRawDescriptor, Event, EventType, ExternalMapping, FlockOperation, Killable,
+    MemoryMappingArena, PollToken, Protection, RawDescriptor, ScopedEvent, SignalFd, Terminal,
+    Timer, WaitContext, SIGRTMIN,
 };
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
@@ -107,7 +108,6 @@ pub enum Error {
     CreateConsole(arch::serial::Error),
     CreateDiskError(disk::Error),
     CreateEvent(base::Error),
-    CreatePollContext(base::Error),
     CreateSignalFd(base::SignalFdError),
     CreateSocket(io::Error),
     CreateTapDevice(NetError),
@@ -116,6 +116,7 @@ pub enum Error {
     CreateUsbProvider(devices::usb::host_backend::error::Error),
     CreateVcpu(base::Error),
     CreateVfioDevice(devices::vfio::VfioError),
+    CreateWaitContext(base::Error),
     DeviceJail(minijail::Error),
     DevicePivotRoot(minijail::Error),
     Disk(PathBuf, io::Error),
@@ -143,8 +144,6 @@ pub enum Error {
     PivotRootDoesntExist(&'static str),
     PmemDeviceImageTooBig,
     PmemDeviceNew(base::Error),
-    PollContextAdd(base::Error),
-    PollContextDelete(base::Error),
     ReadMemAvailable(io::Error),
     RegisterBalloon(arch::DeviceRegistrationError),
     RegisterBlock(arch::DeviceRegistrationError),
@@ -171,6 +170,8 @@ pub enum Error {
     VhostNetDeviceNew(virtio::vhost::Error),
     VhostVsockDeviceNew(virtio::vhost::Error),
     VirtioPciDev(base::Error),
+    WaitContextAdd(base::Error),
+    WaitContextDelete(base::Error),
     WaylandDeviceNew(base::Error),
 }
 
@@ -201,7 +202,6 @@ impl Display for Error {
             CreateConsole(e) => write!(f, "failed to create console device: {}", e),
             CreateDiskError(e) => write!(f, "failed to create virtual disk: {}", e),
             CreateEvent(e) => write!(f, "failed to create event: {}", e),
-            CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
             CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             CreateTapDevice(e) => write!(f, "failed to create tap device: {}", e),
@@ -212,6 +212,7 @@ impl Display for Error {
             CreateUsbProvider(e) => write!(f, "failed to create usb provider: {}", e),
             CreateVcpu(e) => write!(f, "failed to create vcpu: {}", e),
             CreateVfioDevice(e) => write!(f, "Failed to create vfio device {}", e),
+            CreateWaitContext(e) => write!(f, "failed to create wait context: {}", e),
             DeviceJail(e) => write!(f, "failed to jail device: {}", e),
             DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
             Disk(p, e) => write!(f, "failed to load disk image {}: {}", p.display(), e),
@@ -246,8 +247,6 @@ impl Display for Error {
                 write!(f, "failed to create pmem device: pmem device image too big")
             }
             PmemDeviceNew(e) => write!(f, "failed to create pmem device: {}", e),
-            PollContextAdd(e) => write!(f, "failed to add fd to poll context: {}", e),
-            PollContextDelete(e) => write!(f, "failed to remove fd from poll context: {}", e),
             ReadMemAvailable(e) => write!(f, "failed to read /proc/meminfo: {}", e),
             RegisterBalloon(e) => write!(f, "error registering balloon device: {}", e),
             RegisterBlock(e) => write!(f, "error registering block device: {}", e),
@@ -274,6 +273,10 @@ impl Display for Error {
             VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {}", e),
             VhostVsockDeviceNew(e) => write!(f, "failed to set up virtual socket device: {}", e),
             VirtioPciDev(e) => write!(f, "failed to create virtio pci dev: {}", e),
+            WaitContextAdd(e) => write!(f, "failed to add descriptor to wait context: {}", e),
+            WaitContextDelete(e) => {
+                write!(f, "failed to remove descriptor from wait context: {}", e)
+            }
             WaylandDeviceNew(e) => write!(f, "failed to create wayland device: {}", e),
         }
     }
@@ -308,8 +311,8 @@ impl AsRef<UnixSeqpacket> for TaggedControlSocket {
     }
 }
 
-impl AsRawFd for TaggedControlSocket {
-    fn as_raw_fd(&self) -> RawFd {
+impl AsRawDescriptor for TaggedControlSocket {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         self.as_ref().as_raw_fd()
     }
 }
@@ -2119,42 +2122,42 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
         .set_raw_mode()
         .expect("failed to set terminal raw mode");
 
-    let poll_ctx = PollContext::build_with(&[
+    let wait_ctx = WaitContext::build_with(&[
         (&linux.exit_evt, Token::Exit),
         (&linux.suspend_evt, Token::Suspend),
         (&sigchld_fd, Token::ChildSignal),
     ])
-    .map_err(Error::PollContextAdd)?;
+    .map_err(Error::WaitContextAdd)?;
 
     if let Some(socket_server) = &control_server_socket {
-        poll_ctx
+        wait_ctx
             .add(socket_server, Token::VmControlServer)
-            .map_err(Error::PollContextAdd)?;
+            .map_err(Error::WaitContextAdd)?;
     }
     for (index, socket) in control_sockets.iter().enumerate() {
-        poll_ctx
+        wait_ctx
             .add(socket.as_ref(), Token::VmControl { index })
-            .map_err(Error::PollContextAdd)?;
+            .map_err(Error::WaitContextAdd)?;
     }
 
     let events = linux
         .irq_chip
         .irq_event_tokens()
-        .map_err(Error::PollContextAdd)?;
+        .map_err(Error::WaitContextAdd)?;
 
     for (gsi, evt) in events {
-        poll_ctx
+        wait_ctx
             .add(&evt, Token::IrqFd { gsi: gsi as usize })
-            .map_err(Error::PollContextAdd)?;
+            .map_err(Error::WaitContextAdd)?;
     }
 
     // Balance available memory between guest and host every second.
     let mut balancemem_timer = Timer::new().map_err(Error::CreateTimer)?;
     if Path::new(LOWMEM_AVAILABLE).exists() {
         // Create timer request balloon stats every 1s.
-        poll_ctx
+        wait_ctx
             .add(&balancemem_timer, Token::BalanceMemory)
-            .map_err(Error::PollContextAdd)?;
+            .map_err(Error::WaitContextAdd)?;
         let balancemem_dur = Duration::from_secs(1);
         let balancemem_int = Duration::from_secs(1);
         balancemem_timer
@@ -2162,9 +2165,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
             .map_err(Error::ResetTimer)?;
 
         // Listen for balloon statistics from the guest so we can balance.
-        poll_ctx
+        wait_ctx
             .add(&balloon_host_socket, Token::BalloonResult)
-            .map_err(Error::PollContextAdd)?;
+            .map_err(Error::WaitContextAdd)?;
     } else {
         warn!("Unable to open low mem available, maybe not a chrome os kernel");
     }
@@ -2216,9 +2219,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
 
     vcpu_thread_barrier.wait();
 
-    'poll: loop {
+    'wait: loop {
         let events = {
-            match poll_ctx.wait() {
+            match wait_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed to poll: {}", e);
@@ -2232,11 +2235,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
         }
 
         let mut vm_control_indices_to_remove = Vec::new();
-        for event in events.iter_readable() {
-            match event.token() {
+        for event in events.iter().filter(|e| e.is_readable) {
+            match event.token {
                 Token::Exit => {
                     info!("vcpu requested shutdown");
-                    break 'poll;
+                    break 'wait;
                 }
                 Token::Suspend => {
                     info!("VM requested suspend");
@@ -2259,7 +2262,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                             pid_label, siginfo.ssi_signo, siginfo.ssi_status, siginfo.ssi_code
                         );
                     }
-                    break 'poll;
+                    break 'wait;
                 }
                 Token::IrqFd { gsi } => {
                     if let Err(e) = linux.irq_chip.service_irq_event(gsi as u32) {
@@ -2352,14 +2355,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                     if let Some(socket_server) = &control_server_socket {
                         match socket_server.accept() {
                             Ok(socket) => {
-                                poll_ctx
+                                wait_ctx
                                     .add(
                                         &socket,
                                         Token::VmControl {
                                             index: control_sockets.len(),
                                         },
                                     )
-                                    .map_err(Error::PollContextAdd)?;
+                                    .map_err(Error::WaitContextAdd)?;
                                 control_sockets
                                     .push(TaggedControlSocket::Vm(MsgSocket::new(socket)));
                             }
@@ -2386,7 +2389,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                         info!("control socket changed run mode to {}", run_mode);
                                         match run_mode {
                                             VmRunMode::Exiting => {
-                                                break 'poll;
+                                                break 'wait;
                                             }
                                             VmRunMode::Running => {
                                                 if let VmRunMode::Suspending =
@@ -2482,8 +2485,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
             }
         }
 
-        for event in events.iter_hungup() {
-            match event.token() {
+        for event in events.iter().filter(|e| e.is_hungup) {
+            match event.token {
                 Token::Exit => {}
                 Token::Suspend => {}
                 Token::ChildSignal => {}
@@ -2512,31 +2515,27 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
         vm_control_indices_to_remove.sort_unstable_by_key(|&k| Reverse(k));
         vm_control_indices_to_remove.dedup();
         for index in vm_control_indices_to_remove {
-            // Delete the socket from the `poll_ctx` synchronously. Otherwise, the kernel will do
-            // this automatically when the FD inserted into the `poll_ctx` is closed after this
+            // Delete the socket from the `wait_ctx` synchronously. Otherwise, the kernel will do
+            // this automatically when the FD inserted into the `wait_ctx` is closed after this
             // if-block, but this removal can be deferred unpredictably. In some instances where the
-            // system is under heavy load, we can even get events returned by `poll_ctx` for an FD
+            // system is under heavy load, we can even get events returned by `wait_ctx` for an FD
             // that has already been closed. Because the token associated with that spurious event
             // now belongs to a different socket, the control loop will start to interact with
             // sockets that might not be ready to use. This can cause incorrect hangup detection or
             // blocking on a socket that will never be ready. See also: crbug.com/1019986
             if let Some(socket) = control_sockets.get(index) {
-                poll_ctx.delete(socket).map_err(Error::PollContextDelete)?;
+                wait_ctx.delete(socket).map_err(Error::WaitContextDelete)?;
             }
 
             // This line implicitly drops the socket at `index` when it gets returned by
             // `swap_remove`. After this line, the socket at `index` is not the one from
             // `vm_control_indices_to_remove`. Because of this socket's change in index, we need to
-            // use `poll_ctx.modify` to change the associated index in its `Token::VmControl`.
+            // use `wait_ctx.modify` to change the associated index in its `Token::VmControl`.
             control_sockets.swap_remove(index);
             if let Some(socket) = control_sockets.get(index) {
-                poll_ctx
-                    .modify(
-                        socket,
-                        WatchingEvents::empty().set_read(),
-                        Token::VmControl { index },
-                    )
-                    .map_err(Error::PollContextAdd)?;
+                wait_ctx
+                    .modify(socket, EventType::Read, Token::VmControl { index })
+                    .map_err(Error::WaitContextAdd)?;
             }
         }
     }

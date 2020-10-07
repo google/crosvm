@@ -4,7 +4,7 @@
 
 use std::os::raw::c_ulonglong;
 
-use base::{error, Error as SysError, Event, PollContext, PollToken};
+use base::{error, Error as SysError, Event, PollToken, WaitContext};
 use vhost::Vhost;
 
 use super::control_socket::{VhostDevRequest, VhostDevResponse, VhostDevResponseSocket};
@@ -106,28 +106,28 @@ impl<T: Vhost> Worker<T> {
             ControlNotify,
         }
 
-        let poll_ctx: PollContext<Token> = PollContext::build_with(&[
+        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&self.kill_evt, Token::Kill),
         ])
-        .map_err(Error::CreatePollContext)?;
+        .map_err(Error::CreateWaitContext)?;
 
         for (index, vhost_int) in self.vhost_interrupt.iter().enumerate() {
-            poll_ctx
+            wait_ctx
                 .add(vhost_int, Token::VhostIrqi { index })
-                .map_err(Error::CreatePollContext)?;
+                .map_err(Error::CreateWaitContext)?;
         }
         if let Some(socket) = &self.response_socket {
-            poll_ctx
+            wait_ctx
                 .add(socket, Token::ControlNotify)
-                .map_err(Error::CreatePollContext)?;
+                .map_err(Error::CreateWaitContext)?;
         }
 
-        'poll: loop {
-            let events = poll_ctx.wait().map_err(Error::PollError)?;
+        'wait: loop {
+            let events = wait_ctx.wait().map_err(Error::WaitError)?;
 
-            for event in events.iter_readable() {
-                match event.token() {
+            for event in events.iter().filter(|e| e.is_readable) {
+                match event.token {
                     Token::VhostIrqi { index } => {
                         self.vhost_interrupt[index]
                             .read()
@@ -139,7 +139,7 @@ impl<T: Vhost> Worker<T> {
                     }
                     Token::Kill => {
                         let _ = self.kill_evt.read();
-                        break 'poll;
+                        break 'wait;
                     }
                     Token::ControlNotify => {
                         if let Some(socket) = &self.response_socket {

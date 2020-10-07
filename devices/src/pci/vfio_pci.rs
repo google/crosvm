@@ -6,7 +6,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
 use std::u32;
 
-use base::{error, Event, MappedRegion, MemoryMapping, MemoryMappingBuilder};
+use base::{error, AsRawDescriptor, Event, MappedRegion, MemoryMapping, MemoryMappingBuilder};
 use hypervisor::Datamatch;
 use msg_socket::{MsgReceiver, MsgSender};
 use resources::{Alloc, MmioType, SystemAllocator};
@@ -779,17 +779,17 @@ impl PciDevice for VfioPciDevice {
     fn keep_fds(&self) -> Vec<RawFd> {
         let mut fds = self.device.keep_fds();
         if let Some(ref interrupt_evt) = self.interrupt_evt {
-            fds.push(interrupt_evt.as_raw_fd());
+            fds.push(interrupt_evt.as_raw_descriptor());
         }
         if let Some(ref interrupt_resample_evt) = self.interrupt_resample_evt {
-            fds.push(interrupt_resample_evt.as_raw_fd());
+            fds.push(interrupt_resample_evt.as_raw_descriptor());
         }
-        fds.push(self.vm_socket_mem.as_raw_fd());
+        fds.push(self.vm_socket_mem.as_raw_descriptor());
         if let Some(msi_cap) = &self.msi_cap {
-            fds.push(msi_cap.vm_socket_irq.as_raw_fd());
+            fds.push(msi_cap.vm_socket_irq.as_raw_descriptor());
         }
         if let Some(msix_cap) = &self.msix_cap {
-            fds.push(msix_cap.config.as_raw_fd());
+            fds.push(msix_cap.config.as_raw_descriptor());
         }
         fds
     }

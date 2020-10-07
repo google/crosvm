@@ -5,12 +5,13 @@
 
 use std::fmt::{self, Display};
 use std::io::Error as IoError;
-use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use base::{error, warn, Error as SysError, Event, Fd, PollContext, PollToken};
+use base::{
+    error, warn, AsRawDescriptor, Descriptor, Error as SysError, Event, PollToken, WaitContext,
+};
 use bit_field::BitField1;
 use bit_field::*;
 use hypervisor::{PitChannelState, PitRWMode, PitRWState, PitState};
@@ -148,10 +149,10 @@ const MAX_TIMER_FREQ: u32 = 65536;
 #[derive(Debug)]
 pub enum PitError {
     TimerCreateError(SysError),
-    /// Creating PollContext failed.
-    CreatePollContext(SysError),
-    /// Error while polling for events.
-    PollError(SysError),
+    /// Creating WaitContext failed.
+    CreateWaitContext(SysError),
+    /// Error while waiting for events.
+    WaitError(SysError),
     /// Error while trying to create worker thread.
     SpawnThread(IoError),
     /// Error while creating event.
@@ -166,8 +167,8 @@ impl Display for PitError {
 
         match self {
             TimerCreateError(e) => write!(f, "failed to create pit counter due to timer fd: {}", e),
-            CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
-            PollError(err) => write!(f, "failed to poll events: {}", err),
+            CreateWaitContext(e) => write!(f, "failed to create poll context: {}", e),
+            WaitError(err) => write!(f, "failed to wait for events: {}", err),
             SpawnThread(err) => write!(f, "failed to spawn thread: {}", err),
             CreateEvent(err) => write!(f, "failed to create event: {}", err),
             CloneEvent(err) => write!(f, "failed to clone event: {}", err),
@@ -295,7 +296,7 @@ impl Pit {
     fn start(&mut self) -> PitResult<()> {
         let mut worker = Worker {
             pit_counter: self.counters[0].clone(),
-            fd: Fd(self.counters[0].lock().timer.as_raw_fd()),
+            fd: Descriptor(self.counters[0].lock().timer.as_raw_descriptor()),
         };
         let evt = self.kill_evt.try_clone().map_err(PitError::CloneEvent)?;
 
@@ -903,7 +904,7 @@ impl PitCounter {
 
 struct Worker {
     pit_counter: Arc<Mutex<PitCounter>>,
-    fd: Fd,
+    fd: Descriptor,
 }
 
 impl Worker {
@@ -916,14 +917,14 @@ impl Worker {
             Kill,
         }
 
-        let poll_ctx: PollContext<Token> =
-            PollContext::build_with(&[(&self.fd, Token::TimerExpire), (&kill_evt, Token::Kill)])
-                .map_err(PitError::CreatePollContext)?;
+        let wait_ctx: WaitContext<Token> =
+            WaitContext::build_with(&[(&self.fd, Token::TimerExpire), (&kill_evt, Token::Kill)])
+                .map_err(PitError::CreateWaitContext)?;
 
         loop {
-            let events = poll_ctx.wait().map_err(PitError::PollError)?;
-            for event in events.iter_readable() {
-                match event.token() {
+            let events = wait_ctx.wait().map_err(PitError::WaitError)?;
+            for event in events.iter().filter(|e| e.is_readable) {
+                match event.token {
                     Token::TimerExpire => {
                         let mut pit = self.pit_counter.lock();
                         pit.timer_handler();

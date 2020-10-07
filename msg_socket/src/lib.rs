@@ -4,7 +4,10 @@
 
 mod msg_on_socket;
 
-use base::{handle_eintr, net::UnixSeqpacket, Error as SysError, ScmSocket, UnsyncMarker};
+use base::{
+    handle_eintr, net::UnixSeqpacket, AsRawDescriptor, Error as SysError, Fd, RawDescriptor,
+    ScmSocket, UnsyncMarker,
+};
 use std::io::{IoSlice, Result};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -85,14 +88,14 @@ impl<I: MsgOnSocket, O: MsgOnSocket> AsRef<UnixSeqpacket> for MsgSocket<I, O> {
     }
 }
 
-impl<I: MsgOnSocket, O: MsgOnSocket> AsRawFd for MsgSocket<I, O> {
-    fn as_raw_fd(&self) -> RawFd {
+impl<I: MsgOnSocket, O: MsgOnSocket> AsRawDescriptor for MsgSocket<I, O> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         self.sock.as_raw_fd()
     }
 }
 
-impl<I: MsgOnSocket, O: MsgOnSocket> AsRawFd for &MsgSocket<I, O> {
-    fn as_raw_fd(&self) -> RawFd {
+impl<I: MsgOnSocket, O: MsgOnSocket> AsRawDescriptor for &MsgSocket<I, O> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         self.sock.as_raw_fd()
     }
 }
@@ -211,7 +214,7 @@ impl<'a, I: MsgOnSocket, O: MsgOnSocket> AsyncReceiver<'a, I, O> {
     }
 
     pub async fn next(&mut self) -> MsgResult<O> {
-        let p = cros_async::new(self.inner).unwrap();
+        let p = cros_async::new(Fd(self.inner.as_raw_descriptor())).unwrap();
         p.wait_readable().await.unwrap();
         self.inner.recv()
     }

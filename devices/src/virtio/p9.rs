@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::result;
 use std::thread;
 
-use base::{error, warn, Error as SysError, Event, PollContext, PollToken};
+use base::{error, warn, Error as SysError, Event, PollToken, WaitContext};
 use vm_memory::GuestMemory;
 
 use super::{
@@ -30,10 +30,10 @@ pub enum P9Error {
     TagTooLong(usize),
     /// The root directory for the 9P server is not absolute.
     RootNotAbsolute(PathBuf),
-    /// Creating PollContext failed.
-    CreatePollContext(SysError),
+    /// Creating WaitContext failed.
+    CreateWaitContext(SysError),
     /// Error while polling for events.
-    PollError(SysError),
+    WaitError(SysError),
     /// Error while reading from the virtio queue's Event.
     ReadQueueEvent(SysError),
     /// A request is missing readable descriptors.
@@ -66,8 +66,8 @@ impl Display for P9Error {
                 "P9 root directory is not absolute: root = {}",
                 buf.display()
             ),
-            CreatePollContext(err) => write!(f, "failed to create PollContext: {}", err),
-            PollError(err) => write!(f, "failed to poll events: {}", err),
+            CreateWaitContext(err) => write!(f, "failed to create WaitContext: {}", err),
+            WaitError(err) => write!(f, "failed to wait for events: {}", err),
             ReadQueueEvent(err) => write!(f, "failed to read from virtio queue Event: {}", err),
             NoReadableDescriptors => write!(f, "request does not have any readable descriptors"),
             NoWritableDescriptors => write!(f, "request does not have any writable descriptors"),
@@ -121,17 +121,17 @@ impl Worker {
             Kill,
         }
 
-        let poll_ctx: PollContext<Token> = PollContext::build_with(&[
+        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&queue_evt, Token::QueueReady),
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ])
-        .map_err(P9Error::CreatePollContext)?;
+        .map_err(P9Error::CreateWaitContext)?;
 
         loop {
-            let events = poll_ctx.wait().map_err(P9Error::PollError)?;
-            for event in events.iter_readable() {
-                match event.token() {
+            let events = wait_ctx.wait().map_err(P9Error::WaitError)?;
+            for event in events.iter().filter(|e| e.is_readable) {
+                match event.token {
                     Token::QueueReady => {
                         queue_evt.read().map_err(P9Error::ReadQueueEvent)?;
                         self.process_queue()?;

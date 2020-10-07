@@ -7,13 +7,12 @@ use std::io::{self, Write};
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::raw::c_uint;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 use std::sync::Arc;
 use std::thread;
 
 use base::Error as SysError;
-use base::{error, warn, Event, PollContext, PollToken, WatchingEvents};
+use base::{error, warn, AsRawDescriptor, Event, EventType, PollToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le16, Le64};
 use net_util::{Error as TapError, MacAddress, TapT};
 use virtio_sys::virtio_net;
@@ -33,18 +32,18 @@ const QUEUE_SIZE: u16 = 256;
 pub enum NetError {
     /// Creating kill event failed.
     CreateKillEvent(SysError),
-    /// Creating PollContext failed.
-    CreatePollContext(SysError),
+    /// Creating WaitContext failed.
+    CreateWaitContext(SysError),
     /// Cloning kill event failed.
     CloneKillEvent(SysError),
     /// Descriptor chain was invalid.
     DescriptorChain(DescriptorError),
-    /// Removing EPOLLIN from the tap fd events failed.
-    PollDisableTap(SysError),
-    /// Adding EPOLLIN to the tap fd events failed.
-    PollEnableTap(SysError),
-    /// Error while polling for events.
-    PollError(SysError),
+    /// Removing read event from the tap fd events failed.
+    WaitContextDisableTap(SysError),
+    /// Adding read event to the tap fd events failed.
+    WaitContextEnableTap(SysError),
+    /// Error while waiting for events.
+    WaitError(SysError),
     /// Error reading data from control queue.
     ReadCtrlData(io::Error),
     /// Error reading header from control queue.
@@ -79,12 +78,12 @@ impl Display for NetError {
 
         match self {
             CreateKillEvent(e) => write!(f, "failed to create kill event: {}", e),
-            CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
+            CreateWaitContext(e) => write!(f, "failed to create wait context: {}", e),
             CloneKillEvent(e) => write!(f, "failed to clone kill event: {}", e),
             DescriptorChain(e) => write!(f, "failed to valildate descriptor chain: {}", e),
-            PollDisableTap(e) => write!(f, "failed to disable EPOLLIN on tap fd: {}", e),
-            PollEnableTap(e) => write!(f, "failed to enable EPOLLIN on tap fd: {}", e),
-            PollError(e) => write!(f, "error while polling for events: {}", e),
+            WaitContextDisableTap(e) => write!(f, "failed to disable EPOLLIN on tap fd: {}", e),
+            WaitContextEnableTap(e) => write!(f, "failed to enable EPOLLIN on tap fd: {}", e),
+            WaitError(e) => write!(f, "error while waiting for events: {}", e),
             ReadCtrlData(e) => write!(f, "failed to read control message data: {}", e),
             ReadCtrlHeader(e) => write!(f, "failed to read control message header: {}", e),
             RxDescriptorsExhausted => write!(f, "no rx descriptors available"),
@@ -339,35 +338,35 @@ where
             Kill,
         }
 
-        let poll_ctx: PollContext<Token> = PollContext::build_with(&[
+        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&self.tap, Token::RxTap),
             (&rx_queue_evt, Token::RxQueue),
             (&tx_queue_evt, Token::TxQueue),
             (&self.kill_evt, Token::Kill),
         ])
-        .map_err(NetError::CreatePollContext)?;
+        .map_err(NetError::CreateWaitContext)?;
 
         if let Some(ctrl_evt) = &ctrl_queue_evt {
-            poll_ctx
+            wait_ctx
                 .add(ctrl_evt, Token::CtrlQueue)
-                .map_err(NetError::CreatePollContext)?;
+                .map_err(NetError::CreateWaitContext)?;
             // Let CtrlQueue's thread handle InterruptResample also.
-            poll_ctx
+            wait_ctx
                 .add(self.interrupt.get_resample_evt(), Token::InterruptResample)
-                .map_err(NetError::CreatePollContext)?;
+                .map_err(NetError::CreateWaitContext)?;
         }
 
         let mut tap_polling_enabled = true;
-        'poll: loop {
-            let events = poll_ctx.wait().map_err(NetError::PollError)?;
-            for event in events.iter_readable() {
-                match event.token() {
+        'wait: loop {
+            let events = wait_ctx.wait().map_err(NetError::WaitError)?;
+            for event in events.iter().filter(|e| e.is_readable) {
+                match event.token {
                     Token::RxTap => match self.process_rx() {
                         Ok(()) => {}
                         Err(NetError::RxDescriptorsExhausted) => {
-                            poll_ctx
-                                .modify(&self.tap, WatchingEvents::empty(), Token::RxTap)
-                                .map_err(NetError::PollDisableTap)?;
+                            wait_ctx
+                                .modify(&self.tap, EventType::None, Token::RxTap)
+                                .map_err(NetError::WaitContextDisableTap)?;
                             tap_polling_enabled = false;
                         }
                         Err(e) => return Err(e),
@@ -375,19 +374,19 @@ where
                     Token::RxQueue => {
                         if let Err(e) = rx_queue_evt.read() {
                             error!("net: error reading rx queue Event: {}", e);
-                            break 'poll;
+                            break 'wait;
                         }
                         if !tap_polling_enabled {
-                            poll_ctx
-                                .modify(&self.tap, WatchingEvents::empty().set_read(), Token::RxTap)
-                                .map_err(NetError::PollEnableTap)?;
+                            wait_ctx
+                                .modify(&self.tap, EventType::Read, Token::RxTap)
+                                .map_err(NetError::WaitContextEnableTap)?;
                             tap_polling_enabled = true;
                         }
                     }
                     Token::TxQueue => {
                         if let Err(e) = tx_queue_evt.read() {
                             error!("net: error reading tx queue Event: {}", e);
-                            break 'poll;
+                            break 'wait;
                         }
                         self.process_tx();
                     }
@@ -395,14 +394,14 @@ where
                         if let Some(ctrl_evt) = &ctrl_queue_evt {
                             if let Err(e) = ctrl_evt.read() {
                                 error!("net: error reading ctrl queue Event: {}", e);
-                                break 'poll;
+                                break 'wait;
                             }
                         } else {
-                            break 'poll;
+                            break 'wait;
                         }
                         if let Err(e) = self.process_ctrl() {
                             error!("net: failed to process control message: {}", e);
-                            break 'poll;
+                            break 'wait;
                         }
                     }
                     Token::InterruptResample => {
@@ -410,7 +409,7 @@ where
                     }
                     Token::Kill => {
                         let _ = self.kill_evt.read();
-                        break 'poll;
+                        break 'wait;
                     }
                 }
             }
@@ -579,18 +578,18 @@ impl<T> VirtioDevice for Net<T>
 where
     T: 'static + TapT,
 {
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_fds(&self) -> Vec<RawDescriptor> {
         let mut keep_fds = Vec::new();
 
         for tap in &self.taps {
-            keep_fds.push(tap.as_raw_fd());
+            keep_fds.push(tap.as_raw_descriptor());
         }
 
         for worker_kill_evt in &self.workers_kill_evt {
-            keep_fds.push(worker_kill_evt.as_raw_fd());
+            keep_fds.push(worker_kill_evt.as_raw_descriptor());
         }
         for kill_evt in &self.kill_evts {
-            keep_fds.push(kill_evt.as_raw_fd());
+            keep_fds.push(kill_evt.as_raw_descriptor());
         }
 
         keep_fds

@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io;
 use std::sync::Arc;
 
-use base::{error, Event, PollContext, PollToken};
+use base::{error, Event, PollToken, WaitContext};
 use fuse::filesystem::{FileSystem, ZeroCopyReader, ZeroCopyWriter};
 use vm_memory::GuestMemory;
 
@@ -97,20 +97,20 @@ impl<F: FileSystem + Sync> Worker<F> {
             Kill,
         }
 
-        let poll_ctx =
-            PollContext::build_with(&[(&queue_evt, Token::QueueReady), (&kill_evt, Token::Kill)])
-                .map_err(Error::CreatePollContext)?;
+        let wait_ctx =
+            WaitContext::build_with(&[(&queue_evt, Token::QueueReady), (&kill_evt, Token::Kill)])
+                .map_err(Error::CreateWaitContext)?;
 
         if watch_resample_event {
-            poll_ctx
+            wait_ctx
                 .add(self.irq.get_resample_evt(), Token::InterruptResample)
-                .map_err(Error::CreatePollContext)?;
+                .map_err(Error::CreateWaitContext)?;
         }
 
         loop {
-            let events = poll_ctx.wait().map_err(Error::PollError)?;
-            for event in events.iter_readable() {
-                match event.token() {
+            let events = wait_ctx.wait().map_err(Error::WaitError)?;
+            for event in events.iter().filter(|e| e.is_readable) {
+                match event.token {
                     Token::QueueReady => {
                         queue_evt.read().map_err(Error::ReadQueueEvent)?;
                         if let Err(e) = self.process_queue() {

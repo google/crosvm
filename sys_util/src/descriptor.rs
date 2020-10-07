@@ -6,8 +6,10 @@ use std::fs::File;
 use std::mem;
 use std::ops::Drop;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::unix::net::{UnixDatagram, UnixStream};
 
-use crate::{errno_result, Result};
+use crate::net::UnlinkUnixSeqpacketListener;
+use crate::{errno_result, PollToken, Result};
 
 pub type RawDescriptor = RawFd;
 
@@ -129,6 +131,17 @@ impl AsRawFd for Descriptor {
     }
 }
 
+/// Implement token for implementations that wish to use this struct as such
+impl PollToken for Descriptor {
+    fn as_raw_token(&self) -> u64 {
+        self.0 as u64
+    }
+
+    fn from_raw_token(data: u64) -> Self {
+        Descriptor(data as RawDescriptor)
+    }
+}
+
 macro_rules! AsRawDescriptor {
     ($name:ident) => {
         impl AsRawDescriptor for $name {
@@ -164,8 +177,21 @@ macro_rules! IntoRawDescriptor {
 // descriptor container. That should go to either SafeDescriptor or another more
 // relevant container type.
 AsRawDescriptor!(File);
+AsRawDescriptor!(UnlinkUnixSeqpacketListener);
 FromRawDescriptor!(File);
 IntoRawDescriptor!(File);
+
+impl AsRawDescriptor for UnixStream {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.as_raw_fd()
+    }
+}
+
+impl AsRawDescriptor for UnixDatagram {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.as_raw_fd()
+    }
+}
 
 #[test]
 fn clone_equality() {

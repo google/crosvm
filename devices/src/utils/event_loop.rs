@@ -3,10 +3,12 @@
 // found in the LICENSE file.
 
 use super::error::{Error, Result};
-use base::{error, warn, EpollContext, EpollEvents, Event, PollToken, WatchingEvents};
+use base::{
+    error, warn, wrap_descriptor, AsRawDescriptor, Descriptor, EpollContext, EpollEvents, Event,
+    RawDescriptor, WatchingEvents,
+};
 use std::collections::BTreeMap;
 use std::mem::drop;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::{Arc, Weak};
 use std::thread;
 use sync::Mutex;
@@ -35,31 +37,12 @@ impl FailHandle for Option<Arc<dyn FailHandle>> {
     }
 }
 
-/// Fd is a wrapper of RawFd. It implements AsRawFd trait and PollToken trait for RawFd.
-/// It does not own the fd, thus won't close the fd when dropped.
-struct Fd(pub RawFd);
-impl AsRawFd for Fd {
-    fn as_raw_fd(&self) -> RawFd {
-        self.0
-    }
-}
-
-impl PollToken for Fd {
-    fn as_raw_token(&self) -> u64 {
-        self.0 as u64
-    }
-
-    fn from_raw_token(data: u64) -> Self {
-        Fd(data as RawFd)
-    }
-}
-
 /// EpollEventLoop is an event loop blocked on a set of fds. When a monitered events is triggered,
 /// event loop will invoke the mapped handler.
 pub struct EventLoop {
     fail_handle: Option<Arc<dyn FailHandle>>,
-    poll_ctx: Arc<EpollContext<Fd>>,
-    handlers: Arc<Mutex<BTreeMap<RawFd, Weak<dyn EventHandler>>>>,
+    poll_ctx: Arc<EpollContext<Descriptor>>,
+    handlers: Arc<Mutex<BTreeMap<RawDescriptor, Weak<dyn EventHandler>>>>,
     stop_evt: Event,
 }
 
@@ -78,11 +61,14 @@ impl EventLoop {
             .and_then(|e| Ok((e.try_clone()?, e)))
             .map_err(Error::CreateEvent)?;
 
-        let fd_callbacks: Arc<Mutex<BTreeMap<RawFd, Weak<dyn EventHandler>>>> =
+        let fd_callbacks: Arc<Mutex<BTreeMap<RawDescriptor, Weak<dyn EventHandler>>>> =
             Arc::new(Mutex::new(BTreeMap::new()));
-        let poll_ctx: EpollContext<Fd> = EpollContext::new()
-            .and_then(|pc| pc.add(&stop_evt, Fd(stop_evt.as_raw_fd())).and(Ok(pc)))
-            .map_err(Error::CreatePollContext)?;
+        let poll_ctx: EpollContext<Descriptor> = EpollContext::new()
+            .and_then(|pc| {
+                pc.add(&stop_evt, Descriptor(stop_evt.as_raw_descriptor()))
+                    .and(Ok(pc))
+            })
+            .map_err(Error::CreateWaitContext)?;
 
         let poll_ctx = Arc::new(poll_ctx);
         let event_loop = EventLoop {
@@ -110,10 +96,10 @@ impl EventLoop {
                         }
                     };
                     for event in &events {
-                        if event.token().as_raw_fd() == stop_evt.as_raw_fd() {
+                        if event.token().as_raw_descriptor() == stop_evt.as_raw_descriptor() {
                             return;
                         } else {
-                            let fd = event.token().as_raw_fd();
+                            let fd = event.token().as_raw_descriptor();
                             let mut locked = fd_callbacks.lock();
                             let weak_handler = match locked.get(&fd) {
                                 Some(cb) => cb.clone(),
@@ -137,7 +123,7 @@ impl EventLoop {
                                 }
                                 // If the handler is already gone, we remove the fd.
                                 None => {
-                                    let _ = poll_ctx.delete(&Fd(fd));
+                                    let _ = poll_ctx.delete(&Descriptor(fd));
                                     if locked.remove(&fd).is_none() {
                                         error!("fail to remove handler for file descriptor {}", fd);
                                     }
@@ -153,39 +139,45 @@ impl EventLoop {
     }
 
     /// Add a new event to event loop. The event handler will be invoked when `event` happens on
-    /// `fd`.
+    /// `descriptor`.
     ///
-    /// If the same `fd` is added multiple times, the old handler will be replaced.
+    /// If the same `descriptor` is added multiple times, the old handler will be replaced.
     /// EventLoop will not keep `handler` alive, if handler is dropped when `event` is triggered,
     /// the event will be removed.
     pub fn add_event(
         &self,
-        fd: &dyn AsRawFd,
+        descriptor: &dyn AsRawDescriptor,
         events: WatchingEvents,
         handler: Weak<dyn EventHandler>,
     ) -> Result<()> {
         if self.fail_handle.failed() {
             return Err(Error::EventLoopAlreadyFailed);
         }
-        self.handlers.lock().insert(fd.as_raw_fd(), handler);
+        self.handlers
+            .lock()
+            .insert(descriptor.as_raw_descriptor(), handler);
         // This might fail due to epoll syscall. Check epoll_ctl(2).
         self.poll_ctx
-            .add_fd_with_events(fd, events, Fd(fd.as_raw_fd()))
-            .map_err(Error::PollContextAddFd)
+            .add_fd_with_events(
+                &wrap_descriptor(descriptor),
+                events,
+                Descriptor(descriptor.as_raw_descriptor()),
+            )
+            .map_err(Error::WaitContextAddDescriptor)
     }
 
-    /// Removes event for this `fd`. This function returns false if it fails.
+    /// Removes event for this `descriptor`. This function returns false if it fails.
     ///
-    /// EventLoop does not guarantee all events for `fd` is handled.
-    pub fn remove_event_for_fd(&self, fd: &dyn AsRawFd) -> Result<()> {
+    /// EventLoop does not guarantee all events for `descriptor` is handled.
+    pub fn remove_event_for_fd(&self, descriptor: &dyn AsRawDescriptor) -> Result<()> {
         if self.fail_handle.failed() {
             return Err(Error::EventLoopAlreadyFailed);
         }
         // This might fail due to epoll syscall. Check epoll_ctl(2).
         self.poll_ctx
-            .delete(fd)
-            .map_err(Error::PollContextDeleteFd)?;
-        self.handlers.lock().remove(&fd.as_raw_fd());
+            .delete(&wrap_descriptor(descriptor))
+            .map_err(Error::WaitContextDeleteDescriptor)?;
+        self.handlers.lock().remove(&descriptor.as_raw_descriptor());
         Ok(())
     }
 

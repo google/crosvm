@@ -8,10 +8,9 @@
 //! [v3 RFC]: https://markmail.org/thread/wxdne5re7aaugbjg
 
 use std::fmt::{self, Display};
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::thread;
 
-use base::{error, Error as SysError, Event};
+use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor};
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
@@ -45,14 +44,14 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 /// An error indicating something went wrong in virtio-video's worker.
 #[derive(Debug)]
 pub enum Error {
-    /// Creating PollContext failed.
-    PollContextCreationFailed(SysError),
+    /// Creating WaitContext failed.
+    WaitContextCreationFailed(SysError),
     /// A DescriptorChain contains invalid data.
     InvalidDescriptorChain(DescriptorError),
     /// No available descriptor in which an event is written to.
     DescriptorNotAvailable,
     /// Error while polling for events.
-    PollError(SysError),
+    WaitError(SysError),
     /// Failed to read a virtio-video command.
     ReadFailure(ReadCmdError),
     /// Got response for an unexpected asynchronous command.
@@ -68,12 +67,12 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Error::*;
         match self {
-            PollContextCreationFailed(e) => write!(f, "failed to create PollContext: {}", e),
+            WaitContextCreationFailed(e) => write!(f, "failed to create WaitContext: {}", e),
             InvalidDescriptorChain(e) => write!(f, "DescriptorChain contains invalid data: {}", e),
             DescriptorNotAvailable => {
                 write!(f, "no available descriptor in which an event is written to")
             }
-            PollError(err) => write!(f, "failed to poll events: {}", err),
+            WaitError(err) => write!(f, "failed to wait for events: {}", err),
             ReadFailure(e) => write!(f, "failed to read a command from the guest: {}", e),
             UnexpectedResponse(tag) => {
                 write!(f, "got a response for an untracked command: {:?}", tag)
@@ -128,10 +127,10 @@ impl Drop for VideoDevice {
 }
 
 impl VirtioDevice for VideoDevice {
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_fds(&self) -> Vec<RawDescriptor> {
         let mut keep_fds = Vec::new();
         if let Some(resource_bridge) = &self.resource_bridge {
-            keep_fds.push(resource_bridge.as_raw_fd());
+            keep_fds.push(resource_bridge.as_raw_descriptor());
         }
         keep_fds
     }

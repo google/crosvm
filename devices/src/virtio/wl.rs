@@ -56,8 +56,8 @@ use data_model::*;
 #[cfg(feature = "wl-dmabuf")]
 use base::ioctl_iow_nr;
 use base::{
-    error, pipe, round_up_to_page_size, warn, AsRawDescriptor, Error, Event, FileFlags,
-    PollContext, PollToken, Result, ScmSocket, SharedMemory, SharedMemoryUnix,
+    error, pipe, round_up_to_page_size, warn, AsRawDescriptor, Error, Event, FileFlags, PollToken,
+    Result, ScmSocket, SharedMemory, SharedMemoryUnix, WaitContext,
 };
 use msg_socket::{MsgError, MsgReceiver, MsgSender};
 #[cfg(feature = "wl-dmabuf")]
@@ -273,7 +273,7 @@ enum WlError {
     WritePipe(io::Error),
     RecvVfd(Error),
     ReadPipe(io::Error),
-    PollContextAdd(Error),
+    WaitContextAdd(Error),
     DmabufSync(io::Error),
     FromSharedMemory(Error),
     WriteResponse(io::Error),
@@ -300,7 +300,7 @@ impl Display for WlError {
             WritePipe(e) => write!(f, "failed to write to a pipe: {}", e),
             RecvVfd(e) => write!(f, "failed to recv on a socket: {}", e),
             ReadPipe(e) => write!(f, "failed to read a pipe: {}", e),
-            PollContextAdd(e) => write!(f, "failed to listen to FD on poll context: {}", e),
+            WaitContextAdd(e) => write!(f, "failed to listen to descriptor on wait context: {}", e),
             DmabufSync(e) => write!(f, "failed to synchronize DMABuf access: {}", e),
             FromSharedMemory(e) => {
                 write!(f, "failed to create shared memory from descriptor: {}", e)
@@ -724,11 +724,14 @@ impl WlVfd {
     }
 
     // The FD that is used for polling for events on this VFD.
-    fn poll_fd(&self) -> Option<&dyn AsRawFd> {
+    fn wait_descriptor(&self) -> Option<&dyn AsRawDescriptor> {
         self.socket
             .as_ref()
-            .map(|s| s as &dyn AsRawFd)
-            .or(self.local_pipe.as_ref().map(|(_, p)| p as &dyn AsRawFd))
+            .map(|s| s as &dyn AsRawDescriptor)
+            .or(self
+                .local_pipe
+                .as_ref()
+                .map(|(_, p)| p as &dyn AsRawDescriptor))
     }
 
     // Sends data/files from the guest to the host over this VFD.
@@ -828,7 +831,7 @@ struct WlState {
     vm: VmRequester,
     resource_bridge: Option<ResourceRequestSocket>,
     use_transition_flags: bool,
-    poll_ctx: PollContext<u32>,
+    wait_ctx: WaitContext<u32>,
     vfds: Map<u32, WlVfd>,
     next_vfd_id: u32,
     in_file_queue: Vec<File>,
@@ -848,7 +851,7 @@ impl WlState {
             wayland_paths,
             vm: VmRequester::new(vm_socket),
             resource_bridge,
-            poll_ctx: PollContext::new().expect("failed to create PollContext"),
+            wait_ctx: WaitContext::new().expect("failed to create WaitContext"),
             use_transition_flags,
             vfds: Map::new(),
             next_vfd_id: NEXT_VFD_ID_BASE,
@@ -881,9 +884,9 @@ impl WlState {
                 } else {
                     return Ok(WlResp::InvalidFlags);
                 };
-                self.poll_ctx
-                    .add(vfd.poll_fd().unwrap(), id)
-                    .map_err(WlError::PollContextAdd)?;
+                self.wait_ctx
+                    .add(vfd.wait_descriptor().unwrap(), id)
+                    .map_err(WlError::WaitContextAdd)?;
                 let resp = WlResp::VfdNew {
                     id,
                     flags: 0,
@@ -985,9 +988,9 @@ impl WlState {
                         .get(name)
                         .ok_or(WlError::UnknownSocketName(name.to_string()))?,
                 )?);
-                self.poll_ctx
-                    .add(vfd.poll_fd().unwrap(), id)
-                    .map_err(WlError::PollContextAdd)?;
+                self.wait_ctx
+                    .add(vfd.wait_descriptor().unwrap(), id)
+                    .map_err(WlError::WaitContextAdd)?;
                 Ok(WlResp::VfdNew {
                     id,
                     flags,
@@ -1000,8 +1003,8 @@ impl WlState {
         }
     }
 
-    fn process_poll_context(&mut self) {
-        let events = match self.poll_ctx.wait_timeout(Duration::from_secs(0)) {
+    fn process_wait_context(&mut self) {
+        let events = match self.wait_ctx.wait_timeout(Duration::from_secs(0)) {
             Ok(v) => v.to_owned(),
             Err(e) => {
                 error!("failed polling for vfd evens: {}", e);
@@ -1009,17 +1012,17 @@ impl WlState {
             }
         };
 
-        for event in events.as_ref().iter_readable() {
-            if let Err(e) = self.recv(event.token()) {
+        for event in events.iter().filter(|e| e.is_readable) {
+            if let Err(e) = self.recv(event.token) {
                 error!("failed to recv from vfd: {}", e)
             }
         }
 
-        for event in events.as_ref().iter_hungup() {
-            if !event.readable() {
-                let vfd_id = event.token();
-                if let Some(fd) = self.vfds.get(&vfd_id).and_then(|vfd| vfd.poll_fd()) {
-                    if let Err(e) = self.poll_ctx.delete(fd) {
+        for event in events.iter().filter(|e| e.is_hungup) {
+            if !event.is_readable {
+                let vfd_id = event.token;
+                if let Some(fd) = self.vfds.get(&vfd_id).and_then(|vfd| vfd.wait_descriptor()) {
+                    if let Err(e) = self.wait_ctx.delete(fd) {
                         warn!("failed to remove hungup vfd from poll context: {}", e);
                     }
                 }
@@ -1154,10 +1157,10 @@ impl WlState {
         }
         for file in self.in_file_queue.drain(..) {
             let vfd = WlVfd::from_file(self.vm.clone(), file)?;
-            if let Some(poll_fd) = vfd.poll_fd() {
-                self.poll_ctx
-                    .add(poll_fd, self.next_vfd_id)
-                    .map_err(WlError::PollContextAdd)?;
+            if let Some(wait_descriptor) = vfd.wait_descriptor() {
+                self.wait_ctx
+                    .add(wait_descriptor, self.next_vfd_id)
+                    .map_err(WlError::WaitContextAdd)?;
             }
             self.vfds.insert(self.next_vfd_id, vfd);
             self.in_queue.push_back((
@@ -1391,24 +1394,24 @@ impl Worker {
             InterruptResample,
         }
 
-        let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
+        let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
             (&in_queue_evt, Token::InQueue),
             (&out_queue_evt, Token::OutQueue),
             (&kill_evt, Token::Kill),
-            (&self.state.poll_ctx, Token::State),
+            (&self.state.wait_ctx, Token::State),
             (self.interrupt.get_resample_evt(), Token::InterruptResample),
         ]) {
             Ok(pc) => pc,
             Err(e) => {
-                error!("failed creating PollContext: {}", e);
+                error!("failed creating WaitContext: {}", e);
                 return;
             }
         };
 
-        'poll: loop {
+        'wait: loop {
             let mut signal_used_in = false;
             let mut signal_used_out = false;
-            let events = match poll_ctx.wait() {
+            let events = match wait_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed polling for events: {}", e);
@@ -1417,7 +1420,7 @@ impl Worker {
             };
 
             for event in &events {
-                match event.token() {
+                match event.token {
                     Token::InQueue => {
                         let _ = in_queue_evt.read();
                         // Used to buffer descriptor indexes that are invalid for our uses.
@@ -1482,8 +1485,8 @@ impl Worker {
                             }
                         }
                     }
-                    Token::Kill => break 'poll,
-                    Token::State => self.state.process_poll_context(),
+                    Token::Kill => break 'wait,
+                    Token::State => self.state.process_wait_context(),
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
                     }
@@ -1584,10 +1587,10 @@ impl VirtioDevice for Wl {
         let mut keep_fds = Vec::new();
 
         if let Some(vm_socket) = &self.vm_socket {
-            keep_fds.push(vm_socket.as_raw_fd());
+            keep_fds.push(vm_socket.as_raw_descriptor());
         }
         if let Some(resource_bridge) = &self.resource_bridge {
-            keep_fds.push(resource_bridge.as_raw_fd());
+            keep_fds.push(resource_bridge.as_raw_descriptor());
         }
 
         keep_fds

@@ -50,10 +50,10 @@ pub enum Error {
     TagTooLong(usize),
     /// Failed to create the file system.
     CreateFs(io::Error),
-    /// Creating PollContext failed.
-    CreatePollContext(SysError),
+    /// Creating WaitContext failed.
+    CreateWaitContext(SysError),
     /// Error while polling for events.
-    PollError(SysError),
+    WaitError(SysError),
     /// Error while reading from the virtio queue's Event.
     ReadQueueEvent(SysError),
     /// A request is missing readable descriptors.
@@ -86,8 +86,8 @@ impl fmt::Display for Error {
                 len, FS_MAX_TAG_LEN
             ),
             CreateFs(err) => write!(f, "failed to create file system: {}", err),
-            CreatePollContext(err) => write!(f, "failed to create PollContext: {}", err),
-            PollError(err) => write!(f, "failed to poll events: {}", err),
+            CreateWaitContext(err) => write!(f, "failed to create WaitContext: {}", err),
+            WaitError(err) => write!(f, "failed to wait for events: {}", err),
             ReadQueueEvent(err) => write!(f, "failed to read from virtio queue Event: {}", err),
             NoReadableDescriptors => write!(f, "request does not have any readable descriptors"),
             NoWritableDescriptors => write!(f, "request does not have any writable descriptors"),

@@ -5,10 +5,9 @@
 //! Crate for displaying simple surfaces and GPU buffers over wayland.
 
 use std::fmt::{self, Display};
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
 
-use base::Error as SysError;
+use base::{AsRawDescriptor, Error as SysError, RawDescriptor};
 use data_model::VolatileSlice;
 
 mod event_device;
@@ -119,10 +118,10 @@ impl<'a> GpuDisplayFramebuffer<'a> {
     }
 }
 
-trait DisplayT: AsRawFd {
+trait DisplayT: AsRawDescriptor {
     fn import_dmabuf(
         &mut self,
-        fd: RawFd,
+        fd: RawDescriptor,
         offset: u32,
         stride: u32,
         modifiers: u64,
@@ -164,7 +163,7 @@ trait DisplayT: AsRawFd {
 
 /// A connection to the compositor and associated collection of state.
 ///
-/// The user of `GpuDisplay` can use `AsRawFd` to poll on the compositor connection's file
+/// The user of `GpuDisplay` can use `AsRawDescriptor` to poll on the compositor connection's file
 /// descriptor. When the connection is readable, `dispatch_events` can be called to process it.
 pub struct GpuDisplay {
     inner: Box<dyn DisplayT>,
@@ -213,7 +212,7 @@ impl GpuDisplay {
     /// Imports a dmabuf to the compositor for use as a surface buffer and returns a handle to it.
     pub fn import_dmabuf(
         &mut self,
-        fd: RawFd,
+        fd: RawDescriptor,
         offset: u32,
         stride: u32,
         modifiers: u64,
@@ -325,8 +324,8 @@ impl GpuDisplay {
     }
 }
 
-impl AsRawFd for GpuDisplay {
-    fn as_raw_fd(&self) -> RawFd {
-        self.inner.as_raw_fd()
+impl AsRawDescriptor for GpuDisplay {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.inner.as_raw_descriptor()
     }
 }

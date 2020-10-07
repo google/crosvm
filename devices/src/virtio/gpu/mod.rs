@@ -14,7 +14,6 @@ use std::i64;
 use std::io::Read;
 use std::mem::{self, size_of};
 use std::num::NonZeroU8;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -23,7 +22,10 @@ use std::time::Duration;
 
 use data_model::*;
 
-use base::{debug, error, warn, Event, ExternalMapping, PollContext, PollToken};
+use base::{
+    debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor,
+    WaitContext,
+};
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -941,7 +943,7 @@ impl Worker {
             ResourceBridge { index: usize },
         }
 
-        let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
+        let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
             (&self.ctrl_evt, Token::CtrlQueue),
             (&self.cursor_evt, Token::CursorQueue),
             (&*self.state.display().borrow(), Token::Display),
@@ -950,14 +952,14 @@ impl Worker {
         ]) {
             Ok(pc) => pc,
             Err(e) => {
-                error!("failed creating PollContext: {}", e);
+                error!("failed creating WaitContext: {}", e);
                 return;
             }
         };
 
         for (index, bridge) in self.resource_bridges.iter().enumerate() {
-            if let Err(e) = poll_ctx.add(bridge, Token::ResourceBridge { index }) {
-                error!("failed to add resource bridge to PollContext: {}", e);
+            if let Err(e) = wait_ctx.add(bridge, Token::ResourceBridge { index }) {
+                error!("failed to add resource bridge to WaitContext: {}", e);
             }
         }
 
@@ -971,7 +973,7 @@ impl Worker {
 
         // Declare this outside the loop so we don't keep allocating and freeing the vector.
         let mut process_resource_bridge = Vec::with_capacity(self.resource_bridges.len());
-        'poll: loop {
+        'wait: loop {
             // If there are outstanding fences, wake up early to poll them.
             let duration = if !self.state.fence_descriptors.is_empty() {
                 Duration::from_millis(FENCE_POLL_MS)
@@ -979,7 +981,7 @@ impl Worker {
                 Duration::new(i64::MAX as u64, 0)
             };
 
-            let events = match poll_ctx.wait_timeout(duration) {
+            let events = match wait_ctx.wait_timeout(duration) {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed polling for events: {}", e);
@@ -996,15 +998,15 @@ impl Worker {
 
             // This display isn't typically used when the virt-wl device is available and it can
             // lead to hung fds (crbug.com/1027379). Disable if it's hung.
-            for event in events.iter_hungup() {
-                if let Token::Display = event.token() {
+            for event in events.iter().filter(|e| e.is_hungup) {
+                if let Token::Display = event.token {
                     error!("default display hang-up detected");
-                    let _ = poll_ctx.delete(&*self.state.display().borrow());
+                    let _ = wait_ctx.delete(&*self.state.display().borrow());
                 }
             }
 
-            for event in events.iter_readable() {
-                match event.token() {
+            for event in events.iter().filter(|e| e.is_readable) {
+                match event.token {
                     Token::CtrlQueue => {
                         let _ = self.ctrl_evt.read();
                         // Set flag that control queue is available to be read, but defer reading
@@ -1030,7 +1032,7 @@ impl Worker {
                         self.interrupt.interrupt_resample();
                     }
                     Token::Kill => {
-                        break 'poll;
+                        break 'wait;
                     }
                 }
             }
@@ -1200,7 +1202,7 @@ impl Drop for Gpu {
 }
 
 impl VirtioDevice for Gpu {
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_fds(&self) -> Vec<RawDescriptor> {
         let mut keep_fds = Vec::new();
         // TODO(davidriley): Remove once virgl has another path to include
         // debugging logs.
@@ -1210,12 +1212,12 @@ impl VirtioDevice for Gpu {
         }
 
         if let Some(ref gpu_device_socket) = self.gpu_device_socket {
-            keep_fds.push(gpu_device_socket.as_raw_fd());
+            keep_fds.push(gpu_device_socket.as_raw_descriptor());
         }
 
-        keep_fds.push(self.exit_evt.as_raw_fd());
+        keep_fds.push(self.exit_evt.as_raw_descriptor());
         for bridge in &self.resource_bridges {
-            keep_fds.push(bridge.as_raw_fd());
+            keep_fds.push(bridge.as_raw_descriptor());
         }
         keep_fds
     }

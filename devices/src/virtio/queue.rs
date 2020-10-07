@@ -5,11 +5,10 @@
 use std::cell::RefCell;
 use std::cmp::min;
 use std::num::Wrapping;
-use std::os::unix::io::AsRawFd;
 use std::rc::Rc;
 use std::sync::atomic::{fence, Ordering};
 
-use base::error;
+use base::{error, AsRawDescriptor};
 use cros_async::{AsyncError, EventAsync};
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::{GuestAddress, GuestMemory};
@@ -386,7 +385,7 @@ impl Queue {
 
     /// Asynchronously read the next descriptor chain from the queue.
     /// Returns a `DescriptorChain` when it is `await`ed.
-    pub async fn next_async<F: AsRawFd + Unpin>(
+    pub async fn next_async<F: AsRawDescriptor + Unpin>(
         &mut self,
         mem: &GuestMemory,
         eventfd: &mut EventAsync<F>,

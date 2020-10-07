@@ -11,11 +11,10 @@ use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::utils::AsyncJobQueue;
 use crate::utils::{EventHandler, EventLoop, FailHandle};
 use base::net::UnixSeqpacket;
-use base::{error, WatchingEvents};
+use base::{error, AsRawDescriptor, RawDescriptor, WatchingEvents};
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use std::collections::HashMap;
 use std::mem;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
 use sync::Mutex;
 use usb_util::Device;
@@ -110,9 +109,9 @@ impl XhciBackendDeviceProvider for HostBackendDeviceProvider {
             })
     }
 
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_fds(&self) -> Vec<RawDescriptor> {
         match self {
-            HostBackendDeviceProvider::Created { sock } => vec![sock.lock().as_raw_fd()],
+            HostBackendDeviceProvider::Created { sock } => vec![sock.lock().as_raw_descriptor()],
             _ => {
                 error!(
                     "Trying to get keepfds when HostBackendDeviceProvider is not in created state"
@@ -169,7 +168,7 @@ impl ProviderInner {
             }
         };
 
-        let raw_fd = usb_file.as_raw_fd();
+        let raw_descriptor = usb_file.as_raw_descriptor();
         let device = match Device::new(usb_file) {
             Ok(d) => d,
             Err(e) => {
@@ -185,7 +184,7 @@ impl ProviderInner {
         });
 
         if let Err(e) = self.event_loop.add_event(
-            &MaybeOwnedFd::Borrowed(raw_fd),
+            &MaybeOwnedFd::Borrowed(raw_descriptor),
             WatchingEvents::empty().set_read().set_write(),
             Arc::downgrade(&event_handler),
         ) {
@@ -232,7 +231,7 @@ impl ProviderInner {
 
                     if let Err(e) = self
                         .event_loop
-                        .remove_event_for_fd(&MaybeOwnedFd::Borrowed(fd.as_raw_fd()))
+                        .remove_event_for_fd(&MaybeOwnedFd::Borrowed(fd.as_raw_descriptor()))
                     {
                         error!(
                             "failed to remove poll change handler from event loop: {}",

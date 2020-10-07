@@ -185,8 +185,8 @@ impl KvmSplitIrqChip {
                 |e| match e {
                     PitError::CloneEvent(err) => err,
                     PitError::CreateEvent(err) => err,
-                    PitError::CreatePollContext(err) => err,
-                    PitError::PollError(err) => err,
+                    PitError::CreateWaitContext(err) => err,
+                    PitError::WaitError(err) => err,
                     PitError::TimerCreateError(err) => err,
                     PitError::SpawnThread(_) => Error::new(libc::EIO),
                 },

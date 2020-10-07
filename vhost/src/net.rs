@@ -64,7 +64,7 @@ where
     fn set_backend(&self, queue_index: usize, fd: Option<&T>) -> Result<()> {
         let vring_file = virtio_sys::vhost_vring_file {
             index: queue_index as u32,
-            fd: fd.map_or(-1, |fd| fd.as_raw_fd()),
+            fd: fd.map_or(-1, |fd| fd.as_raw_descriptor()),
         };
 
         // This ioctl is called on a valid vhost_net fd and has its

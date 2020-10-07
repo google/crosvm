@@ -6,7 +6,7 @@ use crate::{
     AsRawDescriptor, FakeClock, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, Result,
 };
 
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
 use std::sync::Arc;
 use std::time::Duration;
 use sync::Mutex;
@@ -51,14 +51,6 @@ macro_rules! build_timer {
 
             pub fn resolution() -> Result<Duration> {
                 $inner::resolution()
-            }
-        }
-
-        // TODO(mikehoyle): Remove this in favor of AsRawDescriptor
-        // when PollContext is updated
-        impl AsRawFd for $timer {
-            fn as_raw_fd(&self) -> RawFd {
-                self.0.as_raw_fd()
             }
         }
 

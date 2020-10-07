@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::unix::io::AsRawFd;
-
 use base::{ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 use data_model::Le32;
 
@@ -17,6 +15,8 @@ use super::Result;
 use std::collections::BTreeMap;
 use std::os::raw::c_uint;
 use std::ptr::null;
+
+use base::{AsRawDescriptor, Descriptor};
 
 const EVDEV: c_uint = 69;
 
@@ -112,12 +112,16 @@ fn errno() -> base::Error {
 }
 
 /// Gets id information from an event device (see EVIOCGID ioctl for details).
-pub fn device_ids<T: AsRawFd>(fd: &T) -> Result<virtio_input_device_ids> {
+pub fn device_ids<T: AsRawDescriptor>(descriptor: &T) -> Result<virtio_input_device_ids> {
     let mut dev_id = evdev_id::new();
     let len = unsafe {
         // Safe because the kernel won't write more than size of evdev_id and we check the return
         // value
-        ioctl_with_mut_ref(fd, EVIOCGID(), &mut dev_id)
+        ioctl_with_mut_ref(
+            &Descriptor(descriptor.as_raw_descriptor()),
+            EVIOCGID(),
+            &mut dev_id,
+        )
     };
     if len < 0 {
         return Err(InputError::EvdevIdError(errno()));
@@ -131,12 +135,16 @@ pub fn device_ids<T: AsRawFd>(fd: &T) -> Result<virtio_input_device_ids> {
 }
 
 /// Gets the name of an event device (see EVIOCGNAME ioctl for details).
-pub fn name<T: AsRawFd>(fd: &T) -> Result<Vec<u8>> {
+pub fn name<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<u8>> {
     let mut name = evdev_buffer::new();
     let len = unsafe {
         // Safe because the kernel won't write more than size of evdev_buffer and we check the
         // return value
-        ioctl_with_mut_ref(fd, EVIOCGNAME(), &mut name)
+        ioctl_with_mut_ref(
+            &Descriptor(descriptor.as_raw_descriptor()),
+            EVIOCGNAME(),
+            &mut name,
+        )
     };
     if len < 0 {
         return Err(InputError::EvdevNameError(errno()));
@@ -145,12 +153,16 @@ pub fn name<T: AsRawFd>(fd: &T) -> Result<Vec<u8>> {
 }
 
 /// Gets the unique (serial) name of an event device (see EVIOCGUNIQ ioctl for details).
-pub fn serial_name<T: AsRawFd>(fd: &T) -> Result<Vec<u8>> {
+pub fn serial_name<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<u8>> {
     let mut uniq = evdev_buffer::new();
     let len = unsafe {
         // Safe because the kernel won't write more than size of evdev_buffer and we check the
         // return value
-        ioctl_with_mut_ref(fd, EVIOCGUNIQ(), &mut uniq)
+        ioctl_with_mut_ref(
+            &Descriptor(descriptor.as_raw_descriptor()),
+            EVIOCGUNIQ(),
+            &mut uniq,
+        )
     };
     if len < 0 {
         return Err(InputError::EvdevSerialError(errno()));
@@ -159,12 +171,16 @@ pub fn serial_name<T: AsRawFd>(fd: &T) -> Result<Vec<u8>> {
 }
 
 /// Gets the properties of an event device (see EVIOCGPROP ioctl for details).
-pub fn properties<T: AsRawFd>(fd: &T) -> Result<virtio_input_bitmap> {
+pub fn properties<T: AsRawDescriptor>(descriptor: &T) -> Result<virtio_input_bitmap> {
     let mut props = evdev_buffer::new();
     let len = unsafe {
         // Safe because the kernel won't write more than size of evdev_buffer and we check the
         // return value
-        ioctl_with_mut_ref(fd, EVIOCGPROP(), &mut props)
+        ioctl_with_mut_ref(
+            &Descriptor(descriptor.as_raw_descriptor()),
+            EVIOCGPROP(),
+            &mut props,
+        )
     };
     if len < 0 {
         return Err(InputError::EvdevPropertiesError(errno()));
@@ -174,14 +190,20 @@ pub fn properties<T: AsRawFd>(fd: &T) -> Result<virtio_input_bitmap> {
 
 /// Gets the event types supported by an event device as well as the event codes supported for each
 /// type (see EVIOCGBIT ioctl for details).
-pub fn supported_events<T: AsRawFd>(fd: &T) -> Result<BTreeMap<u16, virtio_input_bitmap>> {
+pub fn supported_events<T: AsRawDescriptor>(
+    descriptor: &T,
+) -> Result<BTreeMap<u16, virtio_input_bitmap>> {
     let mut evts: BTreeMap<u16, virtio_input_bitmap> = BTreeMap::new();
 
     let mut evt_types = evdev_buffer::new();
     let len = unsafe {
         // Safe because the kernel won't write more than size of evdev_buffer and we check the
         // return value
-        ioctl_with_mut_ref(fd, EVIOCGBIT(0), &mut evt_types)
+        ioctl_with_mut_ref(
+            &Descriptor(descriptor.as_raw_descriptor()),
+            EVIOCGBIT(0),
+            &mut evt_types,
+        )
     };
     if len < 0 {
         return Err(InputError::EvdevEventTypesError(errno()));
@@ -198,7 +220,11 @@ pub fn supported_events<T: AsRawFd>(fd: &T) -> Result<BTreeMap<u16, virtio_input
         let len = unsafe {
             // Safe because the kernel won't write more than size of evdev_buffer and we check the
             // return value
-            ioctl_with_mut_ref(fd, EVIOCGBIT(ev as c_uint), &mut evt_codes)
+            ioctl_with_mut_ref(
+                &Descriptor(descriptor.as_raw_descriptor()),
+                EVIOCGBIT(ev as c_uint),
+                &mut evt_codes,
+            )
         };
         if len < 0 {
             return Err(InputError::EvdevEventTypesError(errno()));
@@ -209,7 +235,7 @@ pub fn supported_events<T: AsRawFd>(fd: &T) -> Result<BTreeMap<u16, virtio_input
 }
 
 /// Gets the absolute axes of an event device (see EVIOCGABS ioctl for details).
-pub fn abs_info<T: AsRawFd>(fd: &T) -> BTreeMap<u16, virtio_input_absinfo> {
+pub fn abs_info<T: AsRawDescriptor>(descriptor: &T) -> BTreeMap<u16, virtio_input_absinfo> {
     let mut ret: BTreeMap<u16, virtio_input_absinfo> = BTreeMap::new();
 
     for abs in 0..ABS_MAX {
@@ -218,7 +244,11 @@ pub fn abs_info<T: AsRawFd>(fd: &T) -> BTreeMap<u16, virtio_input_absinfo> {
         let len = unsafe {
             // Safe because the kernel won't write more than size of evdev_buffer and we check the
             // return value
-            ioctl_with_mut_ref(fd, EVIOCGABS(abs as c_uint), &mut abs_info)
+            ioctl_with_mut_ref(
+                &Descriptor(descriptor.as_raw_descriptor()),
+                EVIOCGABS(abs as c_uint),
+                &mut abs_info,
+            )
         };
         if len > 0 {
             ret.insert(abs, virtio_input_absinfo::from(abs_info));
@@ -228,13 +258,17 @@ pub fn abs_info<T: AsRawFd>(fd: &T) -> BTreeMap<u16, virtio_input_absinfo> {
 }
 
 /// Grabs an event device (see EVIOCGGRAB ioctl for details). After this function succeeds the given
-/// fd has exclusive access to the device, effectively making it unusable for any other process in
+/// descriptor has exclusive access to the device, effectively making it unusable for any other process in
 /// the host.
-pub fn grab_evdev<T: AsRawFd>(fd: &mut T) -> Result<()> {
+pub fn grab_evdev<T: AsRawDescriptor>(descriptor: &mut T) -> Result<()> {
     let val: u32 = 1;
     let ret = unsafe {
         // Safe because the kernel only read the value of the ptr and we check the return value
-        ioctl_with_ref(fd, EVIOCGRAB(), &val)
+        ioctl_with_ref(
+            &Descriptor(descriptor.as_raw_descriptor()),
+            EVIOCGRAB(),
+            &val,
+        )
     };
     if ret == 0 {
         Ok(())
@@ -243,11 +277,15 @@ pub fn grab_evdev<T: AsRawFd>(fd: &mut T) -> Result<()> {
     }
 }
 
-pub fn ungrab_evdev<T: AsRawFd>(fd: &mut T) -> Result<()> {
+pub fn ungrab_evdev<T: AsRawDescriptor>(descriptor: &mut T) -> Result<()> {
     let ret = unsafe {
         // Safe because the kernel only reads the value of the ptr (doesn't dereference) and
         // we check the return value
-        ioctl_with_ptr(fd, EVIOCGRAB(), null::<u32>())
+        ioctl_with_ptr(
+            &Descriptor(descriptor.as_raw_descriptor()),
+            EVIOCGRAB(),
+            null::<u32>(),
+        )
     };
     if ret == 0 {
         Ok(())

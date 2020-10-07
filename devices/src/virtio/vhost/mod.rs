@@ -27,10 +27,8 @@ pub enum Error {
     CloneKillEvent(SysError),
     /// Creating kill event failed.
     CreateKillEvent(SysError),
-    /// Creating poll context failed.
-    CreatePollContext(SysError),
-    /// Error while polling for events.
-    PollError(SysError),
+    /// Creating wait context failed.
+    CreateWaitContext(SysError),
     /// Enabling tap interface failed.
     TapEnable(TapError),
     /// Open tap device failed.
@@ -75,6 +73,8 @@ pub enum Error {
     VhostVsockSetCid(VhostError),
     /// Failed to start vhost-vsock driver.
     VhostVsockStart(VhostError),
+    /// Error while waiting for events.
+    WaitError(SysError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -88,8 +88,7 @@ impl Display for Error {
         match self {
             CloneKillEvent(e) => write!(f, "failed to clone kill event: {}", e),
             CreateKillEvent(e) => write!(f, "failed to create kill event: {}", e),
-            CreatePollContext(e) => write!(f, "failed to create poll context: {}", e),
-            PollError(e) => write!(f, "failed polling for events: {}", e),
+            CreateWaitContext(e) => write!(f, "failed to create poll context: {}", e),
             TapEnable(e) => write!(f, "failed to enable tap interface: {}", e),
             TapOpen(e) => write!(f, "failed to open tap device: {}", e),
             TapSetIp(e) => write!(f, "failed to set tap IP: {}", e),
@@ -112,6 +111,7 @@ impl Display for Error {
             VhostSetVringNum(e) => write!(f, "failed to set vring num: {}", e),
             VhostVsockSetCid(e) => write!(f, "failed to set CID for guest: {}", e),
             VhostVsockStart(e) => write!(f, "failed to start vhost-vsock driver: {}", e),
+            WaitError(e) => write!(f, "failed waiting for events: {}", e),
         }
     }
 }

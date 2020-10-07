@@ -16,7 +16,10 @@ use libc::EPERM;
 
 use base::Error as SysError;
 use base::FileReadWriteVolatile;
-use base::{ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, volatile_impl, IoctlNr};
+use base::{
+    ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, volatile_impl, AsRawDescriptor, IoctlNr,
+    RawDescriptor,
+};
 
 #[derive(Debug)]
 pub enum Error {
@@ -226,7 +229,7 @@ impl Tap {
     }
 }
 
-pub trait TapT: FileReadWriteVolatile + Read + Write + AsRawFd + Send + Sized {
+pub trait TapT: FileReadWriteVolatile + Read + Write + AsRawDescriptor + Send + Sized {
     /// Create a new tap interface. Set the `vnet_hdr` flag to true to allow offloading on this tap,
     /// which will add an extra 12 byte virtio net header to incoming frames. Offloading cannot
     /// be used if `vnet_hdr` is false.
@@ -514,7 +517,13 @@ impl Write for Tap {
 
 impl AsRawFd for Tap {
     fn as_raw_fd(&self) -> RawFd {
-        self.tap_file.as_raw_fd()
+        self.tap_file.as_raw_descriptor()
+    }
+}
+
+impl AsRawDescriptor for Tap {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.tap_file.as_raw_descriptor()
     }
 }
 
@@ -617,7 +626,13 @@ pub mod fakes {
 
     impl AsRawFd for FakeTap {
         fn as_raw_fd(&self) -> RawFd {
-            self.tap_file.as_raw_fd()
+            self.tap_file.as_raw_descriptor()
+        }
+    }
+
+    impl AsRawDescriptor for FakeTap {
+        fn as_raw_descriptor(&self) -> RawDescriptor {
+            self.tap_file.as_raw_descriptor()
         }
     }
     volatile_impl!(FakeTap);

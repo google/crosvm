@@ -11,7 +11,7 @@ mod libvda_encoder;
 pub use encoder::EncoderError;
 pub use libvda_encoder::LibvdaEncoder;
 
-use base::{error, warn, PollContext};
+use base::{error, warn, WaitContext};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::virtio::resource_bridge::{self, ResourceRequestSocket};
@@ -168,7 +168,7 @@ impl<T: EncoderSession> Stream<T> {
     fn set_encode_session<U: Encoder<Session = T>>(
         &mut self,
         encoder: &mut U,
-        poll_ctx: &PollContext<Token>,
+        wait_ctx: &WaitContext<Token>,
     ) -> VideoResult<()> {
         if self.encoder_session.is_some() {
             error!(
@@ -190,7 +190,7 @@ impl<T: EncoderSession> Stream<T> {
 
         let event_pipe = new_session.event_pipe();
 
-        poll_ctx
+        wait_ctx
             .add(event_pipe, Token::Event { id: self.id })
             .map_err(|e| {
                 error!(
@@ -204,10 +204,10 @@ impl<T: EncoderSession> Stream<T> {
         Ok(())
     }
 
-    fn clear_encode_session(&mut self, poll_ctx: &PollContext<Token>) -> VideoResult<()> {
+    fn clear_encode_session(&mut self, wait_ctx: &WaitContext<Token>) -> VideoResult<()> {
         if let Some(session) = self.encoder_session.take() {
             let event_pipe = session.event_pipe();
-            poll_ctx.delete(event_pipe).map_err(|e| {
+            wait_ctx.delete(event_pipe).map_err(|e| {
                 error!(
                     "stream: {}: failed to remove fd from poll context: {}",
                     self.id, e
@@ -573,7 +573,7 @@ impl<T: Encoder> EncoderDevice<T> {
 
     fn resource_create(
         &mut self,
-        poll_ctx: &PollContext<Token>,
+        wait_ctx: &WaitContext<Token>,
         resource_bridge: &ResourceRequestSocket,
         stream_id: u32,
         queue_type: QueueType,
@@ -589,7 +589,7 @@ impl<T: Encoder> EncoderDevice<T> {
         if !stream.has_encode_session() {
             // No encode session would have been created upon the first
             // QBUF if there was no previous S_FMT call.
-            stream.set_encode_session(&mut self.encoder, poll_ctx)?;
+            stream.set_encode_session(&mut self.encoder, wait_ctx)?;
         }
 
         let num_planes = plane_offsets.len();
@@ -924,7 +924,7 @@ impl<T: Encoder> EncoderDevice<T> {
 
     fn set_params(
         &mut self,
-        poll_ctx: &PollContext<Token>,
+        wait_ctx: &WaitContext<Token>,
         stream_id: u32,
         queue_type: QueueType,
         format: Option<Format>,
@@ -991,7 +991,7 @@ impl<T: Encoder> EncoderDevice<T> {
         // callback which has output buffer size info, in order to populate
         // dst_params to have the correct size on subsequent GetParams (G_FMT) calls.
         if stream.encoder_session.is_some() {
-            stream.clear_encode_session(poll_ctx)?;
+            stream.clear_encode_session(wait_ctx)?;
             if !stream.received_input_buffers_event {
                 // This could happen if two SetParams calls are occuring at the same time.
                 // For example, the user calls SetParams for the input queue on one thread,
@@ -1006,7 +1006,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 warn!("New encoder session being created while waiting for RequireInputBuffers.")
             }
         }
-        stream.set_encode_session(&mut self.encoder, poll_ctx)?;
+        stream.set_encode_session(&mut self.encoder, wait_ctx)?;
         Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
     }
 
@@ -1146,7 +1146,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
     fn process_cmd(
         &mut self,
         req: VideoCmd,
-        poll_ctx: &PollContext<Token>,
+        wait_ctx: &WaitContext<Token>,
         resource_bridge: &ResourceRequestSocket,
     ) -> VideoResult<VideoCmdResponseType> {
         match req {
@@ -1164,7 +1164,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                 plane_offsets,
                 uuid,
             } => self.resource_create(
-                poll_ctx,
+                wait_ctx,
                 resource_bridge,
                 stream_id,
                 queue_type,
@@ -1207,7 +1207,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                         ..
                     },
             } => self.set_params(
-                poll_ctx,
+                wait_ctx,
                 stream_id,
                 queue_type,
                 format,
