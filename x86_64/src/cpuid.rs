@@ -37,12 +37,16 @@ const ECX_EPB_SHIFT: u32 = 3; // "Energy Performance Bias" bit.
 const ECX_TSC_DEADLINE_TIMER_SHIFT: u32 = 24; // TSC deadline mode of APIC timer
 const ECX_HYPERVISOR_SHIFT: u32 = 31; // Flag to be set when the cpu is running on a hypervisor.
 const EDX_HTT_SHIFT: u32 = 28; // Hyper Threading Enabled.
+const ECX_TOPO_TYPE_SHIFT: u32 = 8; // Topology Level type.
+const ECX_TOPO_SMT_TYPE: u32 = 1; // SMT type.
+const ECX_TOPO_CORE_TYPE: u32 = 2; // CORE type.
 
 fn filter_cpuid(
     vcpu_id: usize,
     cpu_count: usize,
     cpuid: &mut hypervisor::CpuId,
     hypervisor: &impl Hypervisor,
+    no_smt: bool,
 ) -> Result<()> {
     let entries = &mut cpuid.cpu_id_entries;
 
@@ -89,6 +93,23 @@ fn filter_cpuid(
                 // NOTE: these will need to be split if any of the fields that differ between
                 // the two versions are to be set.
                 entry.edx = vcpu_id as u32; // x2APIC ID
+                if no_smt {
+                    // Make it so that all VCPUs appear as different,
+                    // non-hyperthreaded cores on the same package.
+                    if entry.index == 0 {
+                        entry.eax = 0; // Shift to get id of next level
+                        entry.ebx = 1; // Number of logical cpus at this level
+                        entry.ecx = (ECX_TOPO_SMT_TYPE << ECX_TOPO_TYPE_SHIFT) | entry.index;
+                    } else if entry.index == 1 {
+                        entry.eax = 4;
+                        entry.ebx = (cpu_count as u32) & 0xffff;
+                        entry.ecx = (ECX_TOPO_CORE_TYPE << ECX_TOPO_TYPE_SHIFT) | entry.index;
+                    } else {
+                        entry.eax = 0;
+                        entry.ebx = 0;
+                        entry.ecx = 0;
+                    }
+                }
             }
             _ => (),
         }
@@ -111,12 +132,13 @@ pub fn setup_cpuid(
     vcpu: &impl VcpuX86_64,
     vcpu_id: usize,
     nrcpus: usize,
+    no_smt: bool,
 ) -> Result<()> {
     let mut cpuid = hypervisor
         .get_supported_cpuid()
         .map_err(Error::GetSupportedCpusFailed)?;
 
-    filter_cpuid(vcpu_id, nrcpus, &mut cpuid, hypervisor)?;
+    filter_cpuid(vcpu_id, nrcpus, &mut cpuid, hypervisor, no_smt)?;
 
     vcpu.set_cpuid(&cpuid)
         .map_err(Error::SetSupportedCpusFailed)
@@ -156,7 +178,7 @@ mod tests {
             edx: 0,
             ..Default::default()
         });
-        assert_eq!(Ok(()), filter_cpuid(1, 2, &mut cpuid, &hypervisor));
+        assert_eq!(Ok(()), filter_cpuid(1, 2, &mut cpuid, &hypervisor, false));
 
         let entries = &mut cpuid.cpu_id_entries;
         assert_eq!(entries[0].function, 0);

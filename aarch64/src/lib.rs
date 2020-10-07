@@ -328,6 +328,7 @@ impl arch::LinuxArch for AArch64 {
             vcpu_count,
             vcpus: Some(vcpus),
             vcpu_affinity: components.vcpu_affinity,
+            no_smt: components.no_smt,
             irq_chip,
             has_bios: false,
             io_bus,
@@ -346,6 +347,7 @@ impl arch::LinuxArch for AArch64 {
         _vcpu_id: usize,
         _num_cpus: usize,
         _has_bios: bool,
+        _no_smt: bool,
     ) -> std::result::Result<(), Self::Error> {
         // AArch64 doesn't configure vcpus on the vcpu thread, so nothing to do here.
         Ok(())

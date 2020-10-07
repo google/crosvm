@@ -1544,6 +1544,7 @@ fn runnable_vcpu<V>(
     vcpu_count: usize,
     run_rt: bool,
     vcpu_affinity: Vec<usize>,
+    no_smt: bool,
     has_bios: bool,
     use_hypervisor_signals: bool,
 ) -> Result<(V, VcpuRunHandle)>
@@ -1576,6 +1577,7 @@ where
         cpu_id,
         vcpu_count,
         has_bios,
+        no_smt,
     )
     .map_err(Error::ConfigureVcpu)?;
 
@@ -1649,6 +1651,7 @@ fn run_vcpu<V>(
     vcpu_count: usize,
     run_rt: bool,
     vcpu_affinity: Vec<usize>,
+    no_smt: bool,
     start_barrier: Arc<Barrier>,
     has_bios: bool,
     io_bus: devices::Bus,
@@ -1676,6 +1679,7 @@ where
                 vcpu_count,
                 run_rt,
                 vcpu_affinity,
+                no_smt,
                 has_bios,
                 use_hypervisor_signals,
             );
@@ -1920,6 +1924,7 @@ where
             .ok_or(Error::MemoryTooLarge)?,
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
+        no_smt: cfg.no_smt,
         vm_image,
         android_fstab: cfg
             .android_fstab
@@ -2135,6 +2140,7 @@ fn run_control<V: VmArch + 'static, I: IrqChipArch<V::Vcpu> + 'static>(
             linux.vcpu_count,
             linux.rt_cpus.contains(&cpu_id),
             vcpu_affinity,
+            linux.no_smt,
             vcpu_thread_barrier.clone(),
             linux.has_bios,
             linux.io_bus.clone(),

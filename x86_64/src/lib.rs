@@ -474,6 +474,7 @@ impl arch::LinuxArch for X8664arch {
             vcpu_count,
             vcpus: None,
             vcpu_affinity: components.vcpu_affinity,
+            no_smt: components.no_smt,
             irq_chip,
             has_bios,
             io_bus,
@@ -492,8 +493,10 @@ impl arch::LinuxArch for X8664arch {
         vcpu_id: usize,
         num_cpus: usize,
         has_bios: bool,
+        no_smt: bool,
     ) -> Result<()> {
-        cpuid::setup_cpuid(hypervisor, vcpu, vcpu_id, num_cpus).map_err(Error::SetupCpuid)?;
+        cpuid::setup_cpuid(hypervisor, vcpu, vcpu_id, num_cpus, no_smt)
+            .map_err(Error::SetupCpuid)?;
 
         if has_bios {
             return Ok(());

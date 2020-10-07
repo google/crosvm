@@ -638,6 +638,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.vcpu_affinity = Some(parse_cpu_affinity(value.unwrap())?);
         }
+        "no-smt" => {
+            cfg.no_smt = true;
+        }
         "rt-cpus" => {
             if !cfg.rt_cpus.is_empty() {
                 return Err(argument::Error::TooManyArguments(
@@ -1432,6 +1435,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::short_value('c', "cpus", "N", "Number of VCPUs. (default: 1)"),
           Argument::value("cpu-affinity", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on (e.g. 0,1-3,5)
                               or colon-separated list of assignments of guest to host CPU assignments (e.g. 0=0:1=1:2=2) (default: no mask)"),
+          Argument::flag("no-smt", "Don't use SMT in the guest"),
           Argument::value("rt-cpus", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)"),
           Argument::short_value('m',
                                 "mem",

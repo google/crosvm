@@ -74,6 +74,7 @@ pub struct VmComponents {
     pub memory_size: u64,
     pub vcpu_count: usize,
     pub vcpu_affinity: Option<VcpuAffinity>,
+    pub no_smt: bool,
     pub vm_image: VmImage,
     pub android_fstab: Option<File>,
     pub pstore: Option<Pstore>,
@@ -94,6 +95,7 @@ pub struct RunnableLinuxVm<V: VmArch, I: IrqChipArch<V::Vcpu>> {
     /// If it's Some, then `build_vm` already created the vcpus.
     pub vcpus: Option<Vec<V::Vcpu>>,
     pub vcpu_affinity: Option<VcpuAffinity>,
+    pub no_smt: bool,
     pub irq_chip: I,
     pub has_bios: bool,
     pub io_bus: Bus,
@@ -165,6 +167,7 @@ pub trait LinuxArch {
         vcpu_id: usize,
         num_cpus: usize,
         has_bios: bool,
+        no_smt: bool,
     ) -> Result<(), Self::Error>;
 }
 
