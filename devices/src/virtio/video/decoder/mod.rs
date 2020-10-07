@@ -873,7 +873,10 @@ impl<'a> Device for Decoder<'a> {
             } => {
                 self.clear_queue(stream_id, queue_type)?;
                 Ok(match queue_type {
-                    QueueType::Input => Async(AsyncCmdTag::Clear { stream_id }),
+                    QueueType::Input => Async(AsyncCmdTag::Clear {
+                        stream_id,
+                        queue_type: QueueType::Input,
+                    }),
                     QueueType::Output => Sync(CmdResponse::NoData),
                 })
             }
@@ -1040,7 +1043,10 @@ impl<'a> Device for Decoder<'a> {
                 }
             }
             ResetResponse(reset_response) => {
-                let tag = AsyncCmdTag::Clear { stream_id };
+                let tag = AsyncCmdTag::Clear {
+                    stream_id,
+                    queue_type: QueueType::Input,
+                };
                 match reset_response {
                     libvda::decode::Response::Success => {
                         let mut responses: Vec<_> = desc_map

@@ -36,6 +36,7 @@ pub enum AsyncCmdTag {
     },
     Clear {
         stream_id: u32,
+        queue_type: QueueType,
     },
 }
 
