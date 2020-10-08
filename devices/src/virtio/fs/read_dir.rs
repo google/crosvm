@@ -9,8 +9,7 @@ use std::ops::{Deref, DerefMut};
 use std::os::unix::io::AsRawFd;
 
 use data_model::DataInit;
-
-use crate::virtio::fs::filesystem::{DirEntry, DirectoryIterator};
+use fuse::filesystem::{DirEntry, DirectoryIterator};
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]

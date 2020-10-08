@@ -20,15 +20,14 @@ use std::time::Duration;
 
 use base::{error, ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ptr, ioctl_with_ptr, warn};
 use data_model::DataInit;
+use fuse::filesystem::{
+    Context, DirectoryIterator, Entry, FileSystem, FsOptions, GetxattrReply, IoctlFlags,
+    IoctlIovec, IoctlReply, ListxattrReply, OpenOptions, SetattrValid, ZeroCopyReader,
+    ZeroCopyWriter, ROOT_ID,
+};
 use rand_ish::SimpleRng;
 use sync::Mutex;
 
-use crate::virtio::fs::filesystem::{
-    Context, DirectoryIterator, Entry, FileSystem, FsOptions, GetxattrReply, IoctlFlags,
-    IoctlIovec, IoctlReply, ListxattrReply, OpenOptions, SetattrValid, ZeroCopyReader,
-    ZeroCopyWriter,
-};
-use crate::virtio::fs::fuse;
 use crate::virtio::fs::multikey::MultikeyBTreeMap;
 use crate::virtio::fs::read_dir::ReadDir;
 
@@ -478,7 +477,7 @@ impl PassthroughFs {
 
         Ok(PassthroughFs {
             inodes: Mutex::new(MultikeyBTreeMap::new()),
-            next_inode: AtomicU64::new(fuse::ROOT_ID + 1),
+            next_inode: AtomicU64::new(ROOT_ID + 1),
 
             handles: Mutex::new(BTreeMap::new()),
             next_handle: AtomicU64::new(0),
@@ -738,9 +737,7 @@ impl PassthroughFs {
     where
         F: FnOnce() -> T,
     {
-        let root = self
-            .find_inode(fuse::ROOT_ID)
-            .expect("failed to find root inode");
+        let root = self.find_inode(ROOT_ID).expect("failed to find root inode");
         let chdir_lock = self.chdir_mutex.lock();
 
         // Safe because this doesn't modify any memory and we check the return value. Since the
@@ -1186,13 +1183,13 @@ impl FileSystem for PassthroughFs {
 
         // Not sure why the root inode gets a refcount of 2 but that's what libfuse does.
         inodes.insert(
-            fuse::ROOT_ID,
+            ROOT_ID,
             InodeAltKey {
                 ino: st.st_ino,
                 dev: st.st_dev,
             },
             Arc::new(InodeData {
-                inode: fuse::ROOT_ID,
+                inode: ROOT_ID,
                 file: f,
                 refcount: AtomicU64::new(2),
                 filetype: st.st_mode.into(),

@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::virtio::fs::filesystem::{DirEntry, DirectoryIterator, FileSystem};
-use crate::virtio::fs::server::Server;
-use crate::virtio::{Reader, Writer};
+use crate::filesystem::{DirEntry, DirectoryIterator, FileSystem, ZeroCopyReader, ZeroCopyWriter};
+use crate::server::{Reader, Server, Writer};
 
 // Use a file system that does nothing since we are fuzzing the server implementation.
 struct NullFs;
@@ -22,7 +21,7 @@ impl DirectoryIterator for NullIter {
 }
 
 /// Fuzz the server implementation.
-pub fn fuzz_server(r: Reader, w: Writer) {
+pub fn fuzz_server<R: Reader + ZeroCopyReader, W: Writer + ZeroCopyWriter>(r: R, w: W) {
     let server = Server::new(NullFs);
 
     let _ = server.handle_message(r, w);

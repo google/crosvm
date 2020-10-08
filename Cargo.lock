@@ -206,11 +206,11 @@ dependencies = [
  "audio_streams 0.1.0",
  "base 0.1.0",
  "bit_field 0.1.0",
- "bitflags 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cros_async 0.1.0",
  "data_model 0.1.0",
  "disk 0.1.0",
  "enumn 0.1.0",
+ "fuse 0.1.0",
  "gpu_buffer 0.1.0",
  "gpu_display 0.1.0",
  "gpu_renderer 0.1.0",
@@ -271,6 +271,18 @@ dependencies = [
  "proc-macro2 1.0.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 1.0.14 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "fuse"
+version = "0.1.0"
+dependencies = [
+ "base 0.1.0",
+ "bitflags 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "data_model 0.1.0",
+ "enumn 0.1.0",
+ "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror 1.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

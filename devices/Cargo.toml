@@ -18,11 +18,11 @@ gfxstream = ["gpu", "gpu_renderer/gfxstream"]
 acpi_tables = {path = "../acpi_tables" }
 audio_streams = "*"
 bit_field = { path = "../bit_field" }
-bitflags = "1"
 cros_async = { path = "../cros_async" }
 data_model = { path = "../data_model" }
 disk = { path = "../disk" }
 enumn = { path = "../enumn" }
+fuse = {path = "../fuse" }
 gpu_buffer = { path = "../gpu_buffer", optional = true }
 gpu_display = { path = "../gpu_display", optional = true }
 gpu_renderer = { path = "../gpu_renderer", optional = true }

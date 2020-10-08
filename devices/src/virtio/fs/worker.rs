@@ -2,20 +2,44 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fs::File;
+use std::io;
 use std::sync::Arc;
 
 use base::{error, Event, PollContext, PollToken};
+use fuse::filesystem::{FileSystem, ZeroCopyReader, ZeroCopyWriter};
 use vm_memory::GuestMemory;
 
-use crate::virtio::fs::filesystem::FileSystem;
-use crate::virtio::fs::server::Server;
 use crate::virtio::fs::{Error, Result};
 use crate::virtio::{Interrupt, Queue, Reader, Writer};
 
+impl fuse::Reader for Reader {}
+
+impl fuse::Writer for Writer {
+    fn split_at(&mut self, offset: usize) -> Self {
+        Writer::split_at(self, offset)
+    }
+
+    fn has_sufficient_buffer(&self, size: u32) -> bool {
+        self.available_bytes() >= size as usize
+    }
+}
+
+impl ZeroCopyReader for Reader {
+    fn read_to(&mut self, f: &mut File, count: usize, off: u64) -> io::Result<usize> {
+        self.read_to_at(f, count, off)
+    }
+}
+
+impl ZeroCopyWriter for Writer {
+    fn write_from(&mut self, f: &mut File, count: usize, off: u64) -> io::Result<usize> {
+        self.write_from_at(f, count, off)
+    }
+}
 pub struct Worker<F: FileSystem + Sync> {
     mem: GuestMemory,
     queue: Queue,
-    server: Arc<Server<F>>,
+    server: Arc<fuse::Server<F>>,
     irq: Arc<Interrupt>,
 }
 
@@ -23,7 +47,7 @@ impl<F: FileSystem + Sync> Worker<F> {
     pub fn new(
         mem: GuestMemory,
         queue: Queue,
-        server: Arc<Server<F>>,
+        server: Arc<fuse::Server<F>>,
         irq: Arc<Interrupt>,
     ) -> Worker<F> {
         Worker {

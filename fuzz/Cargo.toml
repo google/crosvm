@@ -9,6 +9,7 @@ cros_fuzz = "*"
 data_model = { path = "../data_model" }
 devices = { path = "../devices" }
 disk = { path = "../disk" }
+fuse = { path = "../fuse" }
 kernel_loader = { path = "../kernel_loader" }
 libc = "*"
 rand = "0.6"
