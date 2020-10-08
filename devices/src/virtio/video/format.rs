@@ -273,3 +273,12 @@ pub fn find_closest_resolution(
         Some(format) => (format.width.max, format.height.max),
     }
 }
+
+/// A rectangle used to describe portions of a frame.
+#[derive(Debug)]
+pub struct Rect {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}

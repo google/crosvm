@@ -865,7 +865,6 @@ impl<D: DecoderBackend> Device for Decoder<D> {
         // result that would allow us to return an error to the caller.
 
         use crate::virtio::video::device::VideoEvtResponseType::*;
-        use libvda::decode::Event::*;
 
         let session = match self.sessions.get_mut(&stream_id) {
             Ok(s) => s,
@@ -898,38 +897,38 @@ impl<D: DecoderBackend> Device for Decoder<D> {
         };
 
         let event_responses = match event {
-            ProvidePictureBuffers {
+            DecoderEvent::ProvidePictureBuffers {
                 min_num_buffers,
                 width,
                 height,
-                visible_rect_left,
-                visible_rect_top,
-                visible_rect_right,
-                visible_rect_bottom,
+                visible_rect,
             } => {
                 ctx.handle_provide_picture_buffers(
                     min_num_buffers,
                     width,
                     height,
-                    visible_rect_left,
-                    visible_rect_top,
-                    visible_rect_right,
-                    visible_rect_bottom,
+                    visible_rect.left,
+                    visible_rect.top,
+                    visible_rect.right,
+                    visible_rect.bottom,
                 );
                 vec![Event(VideoEvt {
                     typ: EvtType::DecResChanged,
                     stream_id,
                 })]
             }
-            PictureReady {
-                buffer_id, // FrameBufferId
+            DecoderEvent::PictureReady {
+                picture_buffer_id, // FrameBufferId
                 bitstream_id: ts_sec,
-                left,
-                top,
-                right,
-                bottom,
+                visible_rect,
             } => {
-                let resource_id = ctx.handle_picture_ready(buffer_id, left, top, right, bottom)?;
+                let resource_id = ctx.handle_picture_ready(
+                    picture_buffer_id,
+                    visible_rect.left,
+                    visible_rect.top,
+                    visible_rect.right,
+                    visible_rect.bottom,
+                )?;
                 let async_response = AsyncCmdResponse::from_response(
                     AsyncCmdTag::Queue {
                         stream_id,
@@ -947,7 +946,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 );
                 vec![AsyncCmd(async_response)]
             }
-            NotifyEndOfBitstreamBuffer { bitstream_id } => {
+            DecoderEvent::NotifyEndOfBitstreamBuffer(bitstream_id) => {
                 let resource_id = ctx.handle_notify_end_of_bitstream_buffer(bitstream_id)?;
                 let async_response = AsyncCmdResponse::from_response(
                     AsyncCmdTag::Queue {
@@ -963,9 +962,9 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 );
                 vec![AsyncCmd(async_response)]
             }
-            FlushResponse(flush_response) => {
-                match flush_response {
-                    libvda::decode::Response::Success => {
+            DecoderEvent::FlushCompleted(flush_result) => {
+                match flush_result {
+                    Ok(()) => {
                         let eos_resource_id = match ctx.out_res.dequeue_eos_resource_id() {
                             Some(r) => r,
                             None => {
@@ -1001,27 +1000,27 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                             )),
                         ]
                     }
-                    _ => {
+                    Err(error) => {
                         // TODO(b/151810591): If `resp` is `libvda::decode::Response::Canceled`,
                         // we should notify it to the driver in some way.
                         error!(
                             "failed to 'Flush' in VDA (stream id {}): {:?}",
-                            stream_id, flush_response
+                            stream_id, error
                         );
                         vec![AsyncCmd(AsyncCmdResponse::from_error(
                             AsyncCmdTag::Drain { stream_id },
-                            VideoError::VdaFailure(flush_response),
+                            error,
                         ))]
                     }
                 }
             }
-            ResetResponse(reset_response) => {
+            DecoderEvent::ResetCompleted(reset_result) => {
                 let tag = AsyncCmdTag::Clear {
                     stream_id,
                     queue_type: QueueType::Input,
                 };
-                match reset_response {
-                    libvda::decode::Response::Success => {
+                match reset_result {
+                    Ok(()) => {
                         let mut responses: Vec<_> = desc_map
                             .create_cancellation_responses(
                                 &stream_id,
@@ -1037,20 +1036,17 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                         )));
                         responses
                     }
-                    _ => {
+                    Err(error) => {
                         error!(
                             "failed to 'Reset' in VDA (stream id {}): {:?}",
-                            stream_id, reset_response
+                            stream_id, error
                         );
-                        vec![AsyncCmd(AsyncCmdResponse::from_error(
-                            tag,
-                            VideoError::VdaFailure(reset_response),
-                        ))]
+                        vec![AsyncCmd(AsyncCmdResponse::from_error(tag, error))]
                     }
                 }
             }
-            NotifyError(resp) => {
-                error!("an error is notified by VDA: {}", resp);
+            DecoderEvent::NotifyError(error) => {
+                error!("an error is notified by VDA: {}", error);
                 vec![Event(VideoEvt {
                     typ: EvtType::Error,
                     stream_id,

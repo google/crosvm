@@ -6,10 +6,12 @@ use base::error;
 use std::convert::TryFrom;
 use std::os::unix::io::RawFd;
 
+use libvda::decode::Event as LibvdaEvent;
+
 use crate::virtio::video::{
     decoder::backend::*,
     error::{VideoError, VideoResult},
-    format::Format,
+    format::{Format, Rect},
 };
 
 impl TryFrom<Format> for libvda::Profile {
@@ -47,6 +49,70 @@ impl From<&FramePlane> for libvda::FramePlane {
         libvda::FramePlane {
             offset: plane.offset,
             stride: plane.stride,
+        }
+    }
+}
+
+impl From<libvda::decode::Event> for DecoderEvent {
+    fn from(event: libvda::decode::Event) -> Self {
+        // We cannot use the From trait here since neither libvda::decode::Response
+        // no std::result::Result are defined in the current crate.
+        fn vda_response_to_result(resp: libvda::decode::Response) -> VideoResult<()> {
+            match resp {
+                libvda::decode::Response::Success => Ok(()),
+                resp => Err(VideoError::VdaFailure(resp)),
+            }
+        }
+
+        match event {
+            LibvdaEvent::ProvidePictureBuffers {
+                min_num_buffers,
+                width,
+                height,
+                visible_rect_left,
+                visible_rect_top,
+                visible_rect_right,
+                visible_rect_bottom,
+            } => DecoderEvent::ProvidePictureBuffers {
+                min_num_buffers,
+                width,
+                height,
+                visible_rect: Rect {
+                    left: visible_rect_left,
+                    top: visible_rect_top,
+                    right: visible_rect_right,
+                    bottom: visible_rect_bottom,
+                },
+            },
+            LibvdaEvent::PictureReady {
+                buffer_id,
+                bitstream_id,
+                left,
+                top,
+                right,
+                bottom,
+            } => DecoderEvent::PictureReady {
+                picture_buffer_id: buffer_id,
+                bitstream_id,
+                visible_rect: Rect {
+                    left,
+                    top,
+                    right,
+                    bottom,
+                },
+            },
+            LibvdaEvent::NotifyEndOfBitstreamBuffer { bitstream_id } => {
+                DecoderEvent::NotifyEndOfBitstreamBuffer(bitstream_id)
+            }
+            LibvdaEvent::NotifyError(resp) => {
+                DecoderEvent::NotifyError(VideoError::VdaFailure(resp))
+            }
+            LibvdaEvent::ResetResponse(resp) => {
+                DecoderEvent::ResetCompleted(vda_response_to_result(resp))
+            }
+            LibvdaEvent::FlushResponse(resp) => {
+                DecoderEvent::FlushCompleted(vda_response_to_result(resp))
+            }
         }
     }
 }
@@ -102,8 +168,11 @@ impl<'a> DecoderSession for LibvdaSession<'a> {
         Ok(self.session.reuse_output_buffer(picture_buffer_id)?)
     }
 
-    fn read_event(&mut self) -> VideoResult<libvda::decode::Event> {
-        Ok(self.session.read_event()?)
+    fn read_event(&mut self) -> VideoResult<DecoderEvent> {
+        self.session
+            .read_event()
+            .map(Into::into)
+            .map_err(Into::into)
     }
 }
 

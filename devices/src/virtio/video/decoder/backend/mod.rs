@@ -7,7 +7,10 @@
 
 use std::{fs::File, os::unix::io::RawFd};
 
-use crate::virtio::video::{error::VideoResult, format::Format};
+use crate::virtio::video::{
+    error::{VideoError, VideoResult},
+    format::{Format, Rect},
+};
 
 pub mod vda;
 
@@ -42,12 +45,12 @@ pub trait DecoderSession {
     /// Flush the decoder device, i.e. finish processing of all queued decode
     /// requests.
     ///
-    /// The device will emit a `FlushReponse` event once the flush is done.
+    /// The device will emit a `FlushCompleted` event once the flush is done.
     fn flush(&self) -> VideoResult<()>;
 
     /// Reset the decoder device, i.e. cancel all pending decoding requests.
     ///
-    /// The device will emit a `ResetResponse` event once the reset is done.
+    /// The device will emit a `ResetCompleted` event once the reset is done.
     fn reset(&self) -> VideoResult<()>;
 
     /// Returns the event pipe on which the availability of an event will be
@@ -85,7 +88,7 @@ pub trait DecoderSession {
     fn reuse_output_buffer(&self, picture_buffer_id: i32) -> VideoResult<()>;
 
     /// Blocking call to read a single event from the event pipe.
-    fn read_event(&mut self) -> VideoResult<libvda::decode::Event>;
+    fn read_event(&mut self) -> VideoResult<DecoderEvent>;
 }
 
 pub trait DecoderBackend {
@@ -93,4 +96,37 @@ pub trait DecoderBackend {
 
     /// Create a new decoding session for the passed `profile`.
     fn new_session(&self, format: Format) -> VideoResult<Self::Session>;
+}
+
+#[derive(Debug)]
+pub enum DecoderEvent {
+    /// Emitted when the device knows the buffer format it will need to decode
+    /// frames, and how many buffers it will need. The decoder is supposed to
+    /// provide buffers of the requested dimensions using `use_output_buffer`.
+    ProvidePictureBuffers {
+        min_num_buffers: u32,
+        width: i32,
+        height: i32,
+        visible_rect: Rect,
+    },
+    /// Emitted when the decoder is done decoding a picture. `picture_buffer_id`
+    /// corresponds to the argument of the same name passed to `use_output_buffer()`
+    /// or `reuse_output_buffer()`. `bitstream_id` corresponds to the argument of
+    /// the same name passed to `decode()` and can be used to match decoded frames
+    /// to the input buffer they were produced from.
+    PictureReady {
+        picture_buffer_id: i32,
+        bitstream_id: i32,
+        visible_rect: Rect,
+    },
+    /// Emitted when an input buffer passed to `decode()` is not used by the
+    /// device anymore and can be reused by the decoder. The parameter corresponds
+    /// to the `bitstream_id` argument passed to `decode()`.
+    NotifyEndOfBitstreamBuffer(i32),
+    /// Emitted when a decoding error has occured.
+    NotifyError(VideoError),
+    /// Emitted after `flush()` has been called to signal that the flush is completed.
+    FlushCompleted(VideoResult<()>),
+    /// Emitted after `reset()` has been called to signal that the reset is completed.
+    ResetCompleted(VideoResult<()>),
 }
