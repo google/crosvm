@@ -228,6 +228,12 @@ impl RendererFlags {
         self.set_flag(GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT, !v)
     }
 
+    #[cfg(feature = "gfxstream")]
+    pub fn use_guest_angle(self, v: bool) -> RendererFlags {
+        const GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE: u32 = 1 << 21;
+        self.set_flag(GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE, v)
+    }
+
     pub fn use_external_blob(self, v: bool) -> RendererFlags {
         self.set_flag(VIRGL_RENDERER_USE_EXTERNAL_BLOB, v)
     }

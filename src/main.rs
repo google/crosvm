@@ -162,6 +162,8 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
     let mut vulkan_specified = false;
     #[cfg(feature = "gfxstream")]
     let mut syncfd_specified = false;
+    #[cfg(feature = "gfxstream")]
+    let mut angle_specified = false;
 
     if let Some(s) = s {
         let opts = s
@@ -283,6 +285,24 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                     }
                 }
                 #[cfg(feature = "gfxstream")]
+                "angle" => {
+                    angle_specified = true;
+                    match v {
+                        "true" | "" => {
+                            gpu_params.gfxstream_use_guest_angle = true;
+                        }
+                        "false" => {
+                            gpu_params.gfxstream_use_guest_angle = false;
+                        }
+                        _ => {
+                            return Err(argument::Error::InvalidValue {
+                                value: v.to_string(),
+                                expected: String::from("gpu parameter 'angle' should be a boolean"),
+                            });
+                        }
+                    }
+                }
+                #[cfg(feature = "gfxstream")]
                 "vulkan" => {
                     vulkan_specified = true;
                     match v {
@@ -337,7 +357,7 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
 
     #[cfg(feature = "gfxstream")]
     {
-        if vulkan_specified || syncfd_specified {
+        if vulkan_specified || syncfd_specified || angle_specified {
             match gpu_params.mode {
                 GpuMode::ModeGfxStream => {}
                 _ => {
@@ -1543,6 +1563,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                                   egl[=true|=false] - If the virtio-gpu backend should use a EGL context for rendering.
                                   glx[=true|=false] - If the virtio-gpu backend should use a GLX context for rendering.
                                   surfaceless[=true|=false] - If the virtio-gpu backend should use a surfaceless context for rendering.
+                                  angle[=true|=false] - If the guest is using ANGLE (OpenGL on Vulkan) as its native OpenGL driver.
                                   syncfd[=true|=false] - If the gfxstream backend should support EGL_ANDROID_native_fence_sync
                                   vulkan[=true|=false] - If the gfxstream backend should support vulkan
                                   "),
