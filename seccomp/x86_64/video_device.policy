@@ -24,3 +24,14 @@ setpriority: 1
 socket: arg0 == AF_UNIX
 stat: 1
 fstat: 1
+
+# Rules needed for minigbm on AMD devices.
+getrandom: 1
+lstat: 1
+# mmap/mprotect differ from the common_device.policy
+mmap: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ|PROT_EXEC || arg2 == PROT_WRITE || arg2 == PROT_READ
+mprotect: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ
+readlink: 1
+sched_setaffinity: 1
+sched_setscheduler: arg1 == SCHED_IDLE
+uname: 1

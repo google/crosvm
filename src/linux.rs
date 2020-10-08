@@ -886,6 +886,19 @@ fn create_video_device(
             let dev_dri_path = Path::new("/dev/dri/renderD128");
             jail.mount_bind(dev_dri_path, dev_dri_path, false)?;
 
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            {
+                // Device nodes used by libdrm through minigbm in libvda on AMD devices.
+                let sys_dev_char_path = Path::new("/sys/dev/char");
+                jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
+                let sys_devices_path = Path::new("/sys/devices");
+                jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
+
+                // Required for loading dri libraries loaded by minigbm on AMD devices.
+                let lib_dir = Path::new("/usr/lib64");
+                jail.mount_bind(lib_dir, lib_dir, false)?;
+            }
+
             // Device nodes required by libchrome which establishes Mojo connection in libvda.
             let dev_urandom_path = Path::new("/dev/urandom");
             jail.mount_bind(dev_urandom_path, dev_urandom_path, false)?;
