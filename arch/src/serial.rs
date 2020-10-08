@@ -445,13 +445,13 @@ pub fn add_serial_devices(
                         .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
                 ));
                 io_bus
-                    .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8, false)
+                    .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8)
                     .unwrap();
             }
             None => {
                 let com = Arc::new(Mutex::new(com));
                 io_bus
-                    .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8, false)
+                    .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8)
                     .unwrap();
             }
         }

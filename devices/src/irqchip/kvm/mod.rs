@@ -98,7 +98,7 @@ impl IrqChip for KvmKernelIrqChip {
     /// Broadcast an end of interrupt.
     /// This should never be called on a KvmKernelIrqChip because a KVM vcpu should never exit
     /// with the KVM_EXIT_EOI_BROADCAST reason when an in-kernel irqchip exists.
-    fn broadcast_eoi(&mut self, _vector: u8) -> Result<()> {
+    fn broadcast_eoi(&self, _vector: u8) -> Result<()> {
         error!("broadcast_eoi should never be called for KvmKernelIrqChip");
         Ok(())
     }

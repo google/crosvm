@@ -13,7 +13,7 @@ use libc::{self, pid_t};
 use minijail::{self, Minijail};
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgSender, MsgSocket};
 
-use crate::BusDevice;
+use crate::{BusAccessInfo, BusDevice};
 
 /// Errors for proxy devices.
 #[derive(Debug)]
@@ -40,11 +40,11 @@ const SOCKET_TIMEOUT_MS: u64 = 2000;
 enum Command {
     Read {
         len: u32,
-        offset: u64,
+        info: BusAccessInfo,
     },
     Write {
         len: u32,
-        offset: u64,
+        info: BusAccessInfo,
         data: [u8; 8],
     },
     ReadConfig(u32),
@@ -78,14 +78,14 @@ fn child_proc<D: BusDevice>(sock: UnixSeqpacket, device: &mut D) {
         };
 
         let res = match cmd {
-            Command::Read { len, offset } => {
+            Command::Read { len, info } => {
                 let mut buffer = [0u8; 8];
-                device.read(offset, &mut buffer[0..len as usize]);
+                device.read(info, &mut buffer[0..len as usize]);
                 sock.send(&CommandResult::ReadResult(buffer))
             }
-            Command::Write { len, offset, data } => {
+            Command::Write { len, info, data } => {
                 let len = len as usize;
-                device.write(offset, &data[0..len]);
+                device.write(info, &data[0..len]);
                 // Command::Write does not have a result.
                 Ok(())
             }
@@ -237,23 +237,23 @@ impl BusDevice for ProxyDevice {
         }
     }
 
-    fn read(&mut self, offset: u64, data: &mut [u8]) {
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
         let len = data.len() as u32;
         if let Some(CommandResult::ReadResult(buffer)) =
-            self.sync_send(&Command::Read { len, offset })
+            self.sync_send(&Command::Read { len, info })
         {
             let len = data.len();
             data.clone_from_slice(&buffer[0..len]);
         }
     }
 
-    fn write(&mut self, offset: u64, data: &[u8]) {
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         let mut buffer = [0u8; 8];
         let len = data.len() as u32;
         buffer[0..data.len()].clone_from_slice(data);
         self.send_no_result(&Command::Write {
             len,
-            offset,
+            info,
             data: buffer,
         });
     }
@@ -286,12 +286,12 @@ mod tests {
             "EchoDevice".to_owned()
         }
 
-        fn write(&mut self, _offset: u64, data: &[u8]) {
+        fn write(&mut self, _info: BusAccessInfo, data: &[u8]) {
             assert!(data.len() == 1);
             self.data = data[0];
         }
 
-        fn read(&mut self, _offset: u64, data: &mut [u8]) {
+        fn read(&mut self, _info: BusAccessInfo, data: &mut [u8]) {
             assert!(data.len() == 1);
             data[0] = self.data;
         }
@@ -322,9 +322,14 @@ mod tests {
     #[test]
     fn test_proxied_read_write() {
         let mut proxy_device = new_proxied_echo_device();
-        proxy_device.write(0, &[42]);
+        let address = BusAccessInfo {
+            offset: 0,
+            address: 0,
+            id: 0,
+        };
+        proxy_device.write(address, &[42]);
         let mut read_buffer = [0];
-        proxy_device.read(0, &mut read_buffer);
+        proxy_device.read(address, &mut read_buffer);
         assert_eq!(read_buffer, [42]);
     }
 

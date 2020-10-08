@@ -6,7 +6,7 @@ use libc::{gmtime_r, time, time_t, tm};
 use std::cmp::min;
 use std::mem;
 
-use crate::BusDevice;
+use crate::{BusAccessInfo, BusDevice};
 
 const INDEX_MASK: u8 = 0x7f;
 const INDEX_OFFSET: u64 = 0x0;
@@ -51,19 +51,19 @@ impl BusDevice for Cmos {
         "cmos".to_owned()
     }
 
-    fn write(&mut self, offset: u64, data: &[u8]) {
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         if data.len() != 1 {
             return;
         }
 
-        match offset {
+        match info.offset {
             INDEX_OFFSET => self.index = data[0] & INDEX_MASK,
             DATA_OFFSET => self.data[self.index as usize] = data[0],
             o => panic!("bad write offset on CMOS device: {}", o),
         }
     }
 
-    fn read(&mut self, offset: u64, data: &mut [u8]) {
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
         fn to_bcd(v: u8) -> u8 {
             assert!(v < 100);
             ((v / 10) << 4) | (v % 10)
@@ -73,7 +73,7 @@ impl BusDevice for Cmos {
             return;
         }
 
-        data[0] = match offset {
+        data[0] = match info.offset {
             INDEX_OFFSET => self.index,
             DATA_OFFSET => {
                 let seconds;

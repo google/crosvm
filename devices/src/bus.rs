@@ -10,8 +10,27 @@ use std::fmt::{self, Display};
 use std::result;
 use std::sync::Arc;
 
+use base::RawDescriptor;
+use msg_socket::MsgOnSocket;
 use sync::Mutex;
 
+/// Information about how a device was accessed.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, MsgOnSocket)]
+pub struct BusAccessInfo {
+    /// Offset from base address that the device was accessed at.
+    pub offset: u64,
+    /// Absolute address of the device's access in its address space.
+    pub address: u64,
+    /// ID of the entity requesting a device access, usually the VCPU id.
+    pub id: usize,
+}
+
+// Implement `Display` for `MinMax`.
+impl std::fmt::Display for BusAccessInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
 /// Trait for devices that respond to reads or writes in an arbitrary address space.
 ///
 /// The device does not care where it exists in address space as each method is only given an offset
@@ -21,9 +40,9 @@ pub trait BusDevice: Send {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String;
     /// Reads at `offset` from this device
-    fn read(&mut self, offset: u64, data: &mut [u8]) {}
+    fn read(&mut self, offset: BusAccessInfo, data: &mut [u8]) {}
     /// Writes at `offset` into this device
-    fn write(&mut self, offset: u64, data: &[u8]) {}
+    fn write(&mut self, offset: BusAccessInfo, data: &[u8]) {}
     /// Sets a register in the configuration space. Only used by PCI.
     /// * `reg_idx` - The index of the config register to modify.
     /// * `offset` - Offset in to the register.
@@ -35,6 +54,11 @@ pub trait BusDevice: Send {
     }
     /// Invoked when the device is sandboxed.
     fn on_sandboxed(&mut self) {}
+}
+
+pub trait BusDeviceSync: BusDevice + Sync {
+    fn read(&self, offset: BusAccessInfo, data: &mut [u8]);
+    fn write(&self, offset: BusAccessInfo, data: &[u8]);
 }
 
 pub trait BusResumeDevice: Send {
@@ -65,13 +89,10 @@ pub type Result<T> = result::Result<T, Error>;
 ///
 /// * base - The address at which the range start.
 /// * len - The length of the range in bytes.
-/// * full_addr - If true, return the full address from `get_device`, otherwise return the offset
-///               from `base`
 #[derive(Debug, Copy, Clone)]
 pub struct BusRange {
     pub base: u64,
     pub len: u64,
-    pub full_addr: bool,
 }
 
 impl BusRange {
@@ -106,6 +127,12 @@ impl PartialOrd for BusRange {
     }
 }
 
+#[derive(Clone)]
+enum BusDeviceEntry {
+    OuterSync(Arc<Mutex<dyn BusDevice>>),
+    InnerSync(Arc<dyn BusDeviceSync>),
+}
+
 /// A device container for routing reads and writes over some address space.
 ///
 /// This doesn't have any restrictions on what kind of device or address space this applies to. The
@@ -115,8 +142,9 @@ impl PartialOrd for BusRange {
 /// resume back from S3 suspended state.
 #[derive(Clone)]
 pub struct Bus {
-    devices: BTreeMap<BusRange, Arc<Mutex<dyn BusDevice>>>,
+    devices: BTreeMap<BusRange, BusDeviceEntry>,
     resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
+    access_id: usize,
 }
 
 impl Bus {
@@ -125,45 +153,68 @@ impl Bus {
         Bus {
             devices: BTreeMap::new(),
             resume_notify_devices: Vec::new(),
+            access_id: 0,
         }
     }
 
-    fn first_before(&self, addr: u64) -> Option<(BusRange, &Mutex<dyn BusDevice>)> {
+    /// Sets the id that will be used for BusAccessInfo.
+    pub fn set_access_id(&mut self, id: usize) {
+        self.access_id = id;
+    }
+
+    fn first_before(&self, addr: u64) -> Option<(BusRange, &BusDeviceEntry)> {
         let (range, dev) = self
             .devices
-            .range(
-                ..=BusRange {
-                    base: addr,
-                    len: 1,
-                    full_addr: false,
-                },
-            )
+            .range(..=BusRange { base: addr, len: 1 })
             .rev()
             .next()?;
         Some((*range, dev))
     }
 
-    fn get_device(&self, addr: u64) -> Option<(u64, &Mutex<dyn BusDevice>)> {
+    fn get_device(&self, addr: u64) -> Option<(u64, u64, &BusDeviceEntry)> {
         if let Some((range, dev)) = self.first_before(addr) {
             let offset = addr - range.base;
             if offset < range.len {
-                if range.full_addr {
-                    return Some((addr, dev));
-                } else {
-                    return Some((offset, dev));
-                }
+                return Some((offset, addr, dev));
             }
         }
         None
     }
 
     /// Puts the given device at the given address space.
-    pub fn insert(
+    pub fn insert(&mut self, device: Arc<Mutex<dyn BusDevice>>, base: u64, len: u64) -> Result<()> {
+        if len == 0 {
+            return Err(Error::Overlap);
+        }
+
+        // Reject all cases where the new device's range overlaps with an existing device.
+        if self
+            .devices
+            .iter()
+            .any(|(range, _dev)| range.overlaps(base, len))
+        {
+            return Err(Error::Overlap);
+        }
+
+        if self
+            .devices
+            .insert(BusRange { base, len }, BusDeviceEntry::OuterSync(device))
+            .is_some()
+        {
+            return Err(Error::Overlap);
+        }
+
+        Ok(())
+    }
+
+    /// Puts the given device that implements BusDeviceSync at the given address space. Devices
+    /// that implement BusDeviceSync manage thread safety internally, and thus can be written to
+    /// by multiple threads simultaneously.
+    pub fn insert_sync(
         &mut self,
-        device: Arc<Mutex<dyn BusDevice>>,
+        device: Arc<dyn BusDeviceSync>,
         base: u64,
         len: u64,
-        full_addr: bool,
     ) -> Result<()> {
         if len == 0 {
             return Err(Error::Overlap);
@@ -180,14 +231,7 @@ impl Bus {
 
         if self
             .devices
-            .insert(
-                BusRange {
-                    base,
-                    len,
-                    full_addr,
-                },
-                device,
-            )
+            .insert(BusRange { base, len }, BusDeviceEntry::InnerSync(device))
             .is_some()
         {
             return Err(Error::Overlap);
@@ -200,8 +244,16 @@ impl Bus {
     ///
     /// Returns true on success, otherwise `data` is untouched.
     pub fn read(&self, addr: u64, data: &mut [u8]) -> bool {
-        if let Some((offset, dev)) = self.get_device(addr) {
-            dev.lock().read(offset, data);
+        if let Some((offset, address, dev)) = self.get_device(addr) {
+            let io = BusAccessInfo {
+                address,
+                offset,
+                id: self.access_id,
+            };
+            match dev {
+                BusDeviceEntry::OuterSync(dev) => dev.lock().read(io, data),
+                BusDeviceEntry::InnerSync(dev) => dev.read(io, data),
+            }
             true
         } else {
             false
@@ -212,8 +264,16 @@ impl Bus {
     ///
     /// Returns true on success, otherwise `data` is untouched.
     pub fn write(&self, addr: u64, data: &[u8]) -> bool {
-        if let Some((offset, dev)) = self.get_device(addr) {
-            dev.lock().write(offset, data);
+        if let Some((offset, address, dev)) = self.get_device(addr) {
+            let io = BusAccessInfo {
+                address,
+                offset,
+                id: self.access_id,
+            };
+            match dev {
+                BusDeviceEntry::OuterSync(dev) => dev.lock().write(io, data),
+                BusDeviceEntry::InnerSync(dev) => dev.write(io, data),
+            }
             true
         } else {
             false
@@ -245,21 +305,34 @@ mod tests {
         }
     }
 
-    struct ConstantDevice;
+    struct ConstantDevice {
+        uses_full_addr: bool,
+    }
+
     impl BusDevice for ConstantDevice {
         fn debug_label(&self) -> String {
             "constant device".to_owned()
         }
 
-        fn read(&mut self, offset: u64, data: &mut [u8]) {
+        fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
+            let addr = if self.uses_full_addr {
+                info.address
+            } else {
+                info.offset
+            };
             for (i, v) in data.iter_mut().enumerate() {
-                *v = (offset as u8) + (i as u8);
+                *v = (addr as u8) + (i as u8);
             }
         }
 
-        fn write(&mut self, offset: u64, data: &[u8]) {
+        fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
+            let addr = if self.uses_full_addr {
+                info.address
+            } else {
+                info.offset
+            };
             for (i, v) in data.iter().enumerate() {
-                assert_eq!(*v, (offset as u8) + (i as u8))
+                assert_eq!(*v, (addr as u8) + (i as u8))
             }
         }
     }
@@ -268,41 +341,41 @@ mod tests {
     fn bus_insert() {
         let mut bus = Bus::new();
         let dummy = Arc::new(Mutex::new(DummyDevice));
-        assert!(bus.insert(dummy.clone(), 0x10, 0, false).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10, false).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x0f, 0x10, false).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10, false).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x15, false).is_err());
-        assert!(bus.insert(dummy.clone(), 0x12, 0x15, false).is_err());
-        assert!(bus.insert(dummy.clone(), 0x12, 0x01, false).is_err());
-        assert!(bus.insert(dummy.clone(), 0x0, 0x20, false).is_err());
-        assert!(bus.insert(dummy.clone(), 0x20, 0x05, false).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x25, 0x05, false).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x0, 0x10, false).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x10, 0).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x0f, 0x10).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x15).is_err());
+        assert!(bus.insert(dummy.clone(), 0x12, 0x15).is_err());
+        assert!(bus.insert(dummy.clone(), 0x12, 0x01).is_err());
+        assert!(bus.insert(dummy.clone(), 0x0, 0x20).is_err());
+        assert!(bus.insert(dummy.clone(), 0x20, 0x05).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x25, 0x05).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x0, 0x10).is_ok());
     }
 
     #[test]
     fn bus_insert_full_addr() {
         let mut bus = Bus::new();
         let dummy = Arc::new(Mutex::new(DummyDevice));
-        assert!(bus.insert(dummy.clone(), 0x10, 0, true).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10, true).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x0f, 0x10, true).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10, true).is_err());
-        assert!(bus.insert(dummy.clone(), 0x10, 0x15, true).is_err());
-        assert!(bus.insert(dummy.clone(), 0x12, 0x15, true).is_err());
-        assert!(bus.insert(dummy.clone(), 0x12, 0x01, true).is_err());
-        assert!(bus.insert(dummy.clone(), 0x0, 0x20, true).is_err());
-        assert!(bus.insert(dummy.clone(), 0x20, 0x05, true).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x25, 0x05, true).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x0, 0x10, true).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x10, 0).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x0f, 0x10).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_err());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x15).is_err());
+        assert!(bus.insert(dummy.clone(), 0x12, 0x15).is_err());
+        assert!(bus.insert(dummy.clone(), 0x12, 0x01).is_err());
+        assert!(bus.insert(dummy.clone(), 0x0, 0x20).is_err());
+        assert!(bus.insert(dummy.clone(), 0x20, 0x05).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x25, 0x05).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x0, 0x10).is_ok());
     }
 
     #[test]
     fn bus_read_write() {
         let mut bus = Bus::new();
         let dummy = Arc::new(Mutex::new(DummyDevice));
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10, false).is_ok());
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
         assert!(bus.read(0x10, &mut [0, 0, 0, 0]));
         assert!(bus.write(0x10, &[0, 0, 0, 0]));
         assert!(bus.read(0x11, &mut [0, 0, 0, 0]));
@@ -318,8 +391,10 @@ mod tests {
     #[test]
     fn bus_read_write_values() {
         let mut bus = Bus::new();
-        let dummy = Arc::new(Mutex::new(ConstantDevice));
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10, false).is_ok());
+        let dummy = Arc::new(Mutex::new(ConstantDevice {
+            uses_full_addr: false,
+        }));
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
 
         let mut values = [0, 1, 2, 3];
         assert!(bus.read(0x10, &mut values));
@@ -333,8 +408,10 @@ mod tests {
     #[test]
     fn bus_read_write_full_addr_values() {
         let mut bus = Bus::new();
-        let dummy = Arc::new(Mutex::new(ConstantDevice));
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10, true).is_ok());
+        let dummy = Arc::new(Mutex::new(ConstantDevice {
+            uses_full_addr: true,
+        }));
+        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
 
         let mut values = [0u8; 4];
         assert!(bus.read(0x10, &mut values));
@@ -350,7 +427,6 @@ mod tests {
         let a = BusRange {
             base: 0x1000,
             len: 0x400,
-            full_addr: false,
         };
         assert!(a.contains(0x1000));
         assert!(a.contains(0x13ff));
@@ -364,7 +440,6 @@ mod tests {
         let a = BusRange {
             base: 0x1000,
             len: 0x400,
-            full_addr: false,
         };
         assert!(a.overlaps(0x1000, 0x400));
         assert!(a.overlaps(0xf00, 0x400));

@@ -408,13 +408,13 @@ pub fn generate_pci_root(
         root.add_device(address, arced_dev.clone());
         for range in &ranges {
             mmio_bus
-                .insert(arced_dev.clone(), range.0, range.1, true)
+                .insert(arced_dev.clone(), range.0, range.1)
                 .map_err(DeviceRegistrationError::MmioInsert)?;
         }
 
         for range in &device_ranges {
             mmio_bus
-                .insert(arced_dev.clone(), range.0, range.1, true)
+                .insert(arced_dev.clone(), range.0, range.1)
                 .map_err(DeviceRegistrationError::MmioInsert)?;
         }
     }
@@ -484,7 +484,6 @@ pub fn add_goldfish_battery(
                     )),
                     mmio_base,
                     devices::bat::GOLDFISHBAT_MMIO_LEN,
-                    false,
                 )
                 .map_err(DeviceRegistrationError::MmioInsert)?;
         }
@@ -494,7 +493,6 @@ pub fn add_goldfish_battery(
                     Arc::new(Mutex::new(goldfish_bat)),
                     mmio_base,
                     devices::bat::GOLDFISHBAT_MMIO_LEN,
-                    false,
                 )
                 .map_err(DeviceRegistrationError::MmioInsert)?;
         }

@@ -993,7 +993,6 @@ impl X8664arch {
                 Arc::new(Mutex::new(devices::Cmos::new(mem_below_4g, mem_above_4g))),
                 0x70,
                 0x2,
-                false,
             )
             .unwrap();
 
@@ -1003,25 +1002,19 @@ impl X8664arch {
         )));
 
         if pit_uses_speaker_port {
-            io_bus.insert(i8042, 0x062, 0x3, true).unwrap();
+            io_bus.insert(i8042, 0x062, 0x3).unwrap();
         } else {
-            io_bus.insert(i8042, 0x061, 0x4, true).unwrap();
+            io_bus.insert(i8042, 0x061, 0x4).unwrap();
         }
 
-        io_bus
-            .insert(nul_device.clone(), 0x0ed, 0x1, false)
-            .unwrap(); // most likely this one does nothing
-        io_bus
-            .insert(nul_device.clone(), 0x0f0, 0x2, false)
-            .unwrap(); // ignore fpu
+        io_bus.insert(nul_device.clone(), 0x0ed, 0x1).unwrap(); // most likely this one does nothing
+        io_bus.insert(nul_device.clone(), 0x0f0, 0x2).unwrap(); // ignore fpu
 
         if let Some(pci_root) = pci {
-            io_bus.insert(pci_root, 0xcf8, 0x8, false).unwrap();
+            io_bus.insert(pci_root, 0xcf8, 0x8).unwrap();
         } else {
             // ignore pci.
-            io_bus
-                .insert(nul_device.clone(), 0xcf8, 0x8, false)
-                .unwrap();
+            io_bus.insert(nul_device.clone(), 0xcf8, 0x8).unwrap();
         }
 
         Ok(io_bus)
@@ -1074,7 +1067,6 @@ impl X8664arch {
                 pm.clone(),
                 pm_iobase as u64,
                 devices::acpi::ACPIPM_RESOURCE_LEN as u64,
-                false,
             )
             .unwrap();
         io_bus.notify_on_resume(pm);

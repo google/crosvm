@@ -14,7 +14,7 @@ use crate::pci::pci_configuration::{
     PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType,
 };
 use crate::pci::pci_device::PciDevice;
-use crate::BusDevice;
+use crate::{BusAccessInfo, BusDevice};
 
 // A PciDevice that holds the root hub's configuration.
 struct PciRootConfiguration {
@@ -226,16 +226,16 @@ impl BusDevice for PciConfigIo {
         format!("pci config io-port 0x{:03x}", self.config_address)
     }
 
-    fn read(&mut self, offset: u64, data: &mut [u8]) {
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
         // `offset` is relative to 0xcf8
-        let value = match offset {
+        let value = match info.offset {
             0..=3 => self.config_address,
             4..=7 => self.config_space_read(),
             _ => 0xffff_ffff,
         };
 
         // Only allow reads to the register boundary.
-        let start = offset as usize % 4;
+        let start = info.offset as usize % 4;
         let end = start + data.len();
         if end <= 4 {
             for i in start..end {
@@ -248,9 +248,9 @@ impl BusDevice for PciConfigIo {
         }
     }
 
-    fn write(&mut self, offset: u64, data: &[u8]) {
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         // `offset` is relative to 0xcf8
-        match offset {
+        match info.offset {
             o @ 0..=3 => self.set_config_address(o, data),
             o @ 4..=7 => self.config_space_write(o - 4, data),
             _ => (),
@@ -286,27 +286,27 @@ impl BusDevice for PciConfigMmio {
         "pci config mmio".to_owned()
     }
 
-    fn read(&mut self, offset: u64, data: &mut [u8]) {
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
         // Only allow reads to the register boundary.
-        let start = offset as usize % 4;
+        let start = info.offset as usize % 4;
         let end = start + data.len();
-        if end > 4 || offset > u32::max_value() as u64 {
+        if end > 4 || info.offset > u32::max_value() as u64 {
             for d in data {
                 *d = 0xff;
             }
             return;
         }
 
-        let value = self.config_space_read(offset as u32);
+        let value = self.config_space_read(info.offset as u32);
         for i in start..end {
             data[i - start] = (value >> (i * 8)) as u8;
         }
     }
 
-    fn write(&mut self, offset: u64, data: &[u8]) {
-        if offset > u32::max_value() as u64 {
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
+        if info.offset > u32::max_value() as u64 {
             return;
         }
-        self.config_space_write(offset as u32, offset % 4, data)
+        self.config_space_write(info.offset as u32, info.offset % 4, data)
     }
 }

@@ -296,12 +296,7 @@ impl arch::LinuxArch for AArch64 {
             .map_err(Error::RegisterIrqfd)?;
 
         mmio_bus
-            .insert(
-                pci_bus.clone(),
-                AARCH64_PCI_CFG_BASE,
-                AARCH64_PCI_CFG_SIZE,
-                false,
-            )
+            .insert(pci_bus.clone(), AARCH64_PCI_CFG_BASE, AARCH64_PCI_CFG_SIZE)
             .map_err(Error::RegisterPci)?;
 
         let mut cmdline = Self::get_base_linux_cmdline();
@@ -462,7 +457,7 @@ impl AArch64 {
             .map_err(Error::RegisterIrqfd)?;
 
         let rtc = Arc::new(Mutex::new(devices::pl030::Pl030::new(rtc_evt)));
-        bus.insert(rtc, AARCH64_RTC_ADDR, AARCH64_RTC_SIZE, false)
+        bus.insert(rtc, AARCH64_RTC_ADDR, AARCH64_RTC_SIZE)
             .expect("failed to add rtc device");
 
         Ok(())

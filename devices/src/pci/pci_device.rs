@@ -10,7 +10,7 @@ use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
 
 use crate::pci::pci_configuration;
 use crate::pci::{PciAddress, PciInterruptPin};
-use crate::BusDevice;
+use crate::{BusAccessInfo, BusDevice};
 
 #[derive(Debug)]
 pub enum Error {
@@ -119,12 +119,12 @@ impl<T: PciDevice> BusDevice for T {
         PciDevice::debug_label(self)
     }
 
-    fn read(&mut self, offset: u64, data: &mut [u8]) {
-        self.read_bar(offset, data)
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
+        self.read_bar(info.address, data)
     }
 
-    fn write(&mut self, offset: u64, data: &[u8]) {
-        self.write_bar(offset, data)
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
+        self.write_bar(info.address, data)
     }
 
     fn config_register_write(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {

@@ -8,6 +8,7 @@
 use std::fmt::{self, Display};
 
 use super::IrqEvent;
+use crate::bus::BusAccessInfo;
 use crate::BusDevice;
 use base::{error, warn, AsRawDescriptor, Error, Event, Result};
 use hypervisor::{IoapicState, MsiAddressMessage, MsiDataMessage, TriggerMode, NUM_IOAPIC_PINS};
@@ -75,20 +76,20 @@ impl BusDevice for Ioapic {
         "userspace IOAPIC".to_string()
     }
 
-    fn read(&mut self, offset: u64, data: &mut [u8]) {
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
         if data.len() > 8 || data.len() == 0 {
             warn!("IOAPIC: Bad read size: {}", data.len());
             return;
         }
-        if offset >= IOAPIC_MEM_LENGTH_BYTES {
-            warn!("IOAPIC: Bad read from offset {}", offset);
+        if info.offset >= IOAPIC_MEM_LENGTH_BYTES {
+            warn!("IOAPIC: Bad read from {}", info);
         }
-        let out = match offset as u8 {
+        let out = match info.offset as u8 {
             IOREGSEL_OFF => self.state.ioregsel.into(),
             IOREGSEL_DUMMY_UPPER_32_BITS_OFF => 0,
             IOWIN_OFF => self.ioapic_read(),
             _ => {
-                warn!("IOAPIC: Bad read from offset {}", offset);
+                warn!("IOAPIC: Bad read from {}", info);
                 return;
             }
         };
@@ -100,15 +101,15 @@ impl BusDevice for Ioapic {
         }
     }
 
-    fn write(&mut self, offset: u64, data: &[u8]) {
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         if data.len() > 8 || data.len() == 0 {
             warn!("IOAPIC: Bad write size: {}", data.len());
             return;
         }
-        if offset >= IOAPIC_MEM_LENGTH_BYTES {
-            warn!("IOAPIC: Bad write to offset {}", offset);
+        if info.offset >= IOAPIC_MEM_LENGTH_BYTES {
+            warn!("IOAPIC: Bad write to {}", info);
         }
-        match offset as u8 {
+        match info.offset as u8 {
             IOREGSEL_OFF => self.state.ioregsel = data[0],
             IOREGSEL_DUMMY_UPPER_32_BITS_OFF => {} // Ignored.
             IOWIN_OFF => {
@@ -121,7 +122,7 @@ impl BusDevice for Ioapic {
                 self.ioapic_write(val);
             }
             _ => {
-                warn!("IOAPIC: Bad write to offset {}", offset);
+                warn!("IOAPIC: Bad write to {}", info);
             }
         }
     }
@@ -437,6 +438,15 @@ mod tests {
         Ioapic::new(device_socket).unwrap()
     }
 
+    fn ioapic_bus_address(offset: u8) -> BusAccessInfo {
+        let offset = offset as u64;
+        BusAccessInfo {
+            offset,
+            address: IOAPIC_BASE_ADDRESS + offset,
+            id: 0,
+        }
+    }
+
     fn set_up(trigger: TriggerMode) -> (Ioapic, usize) {
         let irq = NUM_IOAPIC_PINS - 1;
         let ioapic = set_up_with_irq(irq, trigger);
@@ -456,14 +466,14 @@ mod tests {
 
     fn read_reg(ioapic: &mut Ioapic, selector: u8) -> u32 {
         let mut data = [0; 4];
-        ioapic.write(IOREGSEL_OFF.into(), &[selector]);
-        ioapic.read(IOWIN_OFF.into(), &mut data);
+        ioapic.write(ioapic_bus_address(IOREGSEL_OFF), &[selector]);
+        ioapic.read(ioapic_bus_address(IOWIN_OFF), &mut data);
         u32::from_ne_bytes(data)
     }
 
     fn write_reg(ioapic: &mut Ioapic, selector: u8, value: u32) {
-        ioapic.write(IOREGSEL_OFF.into(), &[selector]);
-        ioapic.write(IOWIN_OFF.into(), &value.to_ne_bytes());
+        ioapic.write(ioapic_bus_address(IOREGSEL_OFF), &[selector]);
+        ioapic.write(ioapic_bus_address(IOWIN_OFF), &value.to_ne_bytes());
     }
 
     fn read_entry(ioapic: &mut Ioapic, irq: usize) -> IoapicRedirectionTableEntry {
@@ -517,8 +527,8 @@ mod tests {
         let mut data_read = [0; 4];
 
         for i in 0..data_write.len() {
-            ioapic.write(IOREGSEL_OFF.into(), &data_write[i..i + 1]);
-            ioapic.read(IOREGSEL_OFF.into(), &mut data_read[i..i + 1]);
+            ioapic.write(ioapic_bus_address(IOREGSEL_OFF), &data_write[i..i + 1]);
+            ioapic.read(ioapic_bus_address(IOREGSEL_OFF), &mut data_read[i..i + 1]);
             assert_eq!(data_write[i], data_read[i]);
         }
     }

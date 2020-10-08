@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{BusDevice, BusResumeDevice};
+use crate::{BusAccessInfo, BusDevice, BusResumeDevice};
 use acpi_tables::{aml, aml::Aml};
 use base::{error, warn, Event};
 
@@ -56,15 +56,15 @@ impl BusDevice for ACPIPMResource {
         "ACPIPMResource".to_owned()
     }
 
-    fn read(&mut self, offset: u64, data: &mut [u8]) {
-        let val = match offset as u16 {
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
+        let val = match info.offset as u16 {
             PM1_STATUS => self.pm1_status,
             PM1_ENABLE => self.pm1_enable,
             PM1_CONTROL => self.pm1_control,
             SLEEP_CONTROL => self.sleep_control as u16,
             SLEEP_STATUS => self.sleep_status as u16,
             _ => {
-                warn!("ACPIPM: Bad read from offset {}", offset);
+                warn!("ACPIPM: Bad read from {}", info);
                 return;
             }
         };
@@ -77,7 +77,7 @@ impl BusDevice for ACPIPMResource {
         }
     }
 
-    fn write(&mut self, offset: u64, data: &[u8]) {
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         let max_bytes = std::mem::size_of::<u16>();
 
         // only allow maximum max_bytes to write
@@ -94,7 +94,7 @@ impl BusDevice for ACPIPMResource {
         }
         let val = u16::from_ne_bytes(val_arr);
 
-        match offset as u16 {
+        match info.offset as u16 {
             PM1_STATUS => self.pm1_status &= !val,
             PM1_ENABLE => self.pm1_enable = val,
             PM1_CONTROL => {
@@ -123,7 +123,7 @@ impl BusDevice for ACPIPMResource {
             }
             SLEEP_STATUS => self.sleep_status &= !val as u8,
             _ => {
-                warn!("ACPIPM: Bad write to offset {}", offset);
+                warn!("ACPIPM: Bad write to {}", info);
             }
         };
     }

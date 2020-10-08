@@ -11,6 +11,7 @@ use std::thread::{self};
 
 use base::{error, Event, RawDescriptor, Result};
 
+use crate::bus::BusAccessInfo;
 use crate::{BusDevice, SerialDevice};
 
 const LOOP_SIZE: usize = 0x40;
@@ -310,24 +311,24 @@ impl BusDevice for Serial {
         "serial".to_owned()
     }
 
-    fn write(&mut self, offset: u64, data: &[u8]) {
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         if data.len() != 1 {
             return;
         }
 
-        if let Err(e) = self.handle_write(offset as u8, data[0]) {
+        if let Err(e) = self.handle_write(info.offset as u8, data[0]) {
             error!("serial failed write: {}", e);
         }
     }
 
-    fn read(&mut self, offset: u64, data: &mut [u8]) {
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
         if data.len() != 1 {
             return;
         }
 
         self.handle_input_thread();
 
-        data[0] = match offset as u8 {
+        data[0] = match info.offset as u8 {
             DLAB_LOW if self.is_dlab_set() => self.baud_divisor as u8,
             DLAB_HIGH if self.is_dlab_set() => (self.baud_divisor >> 8) as u8,
             DATA => {
@@ -403,6 +404,15 @@ mod tests {
         }
     }
 
+    fn serial_bus_address(offset: u8) -> BusAccessInfo {
+        // Serial devices only use the offset of the BusAccessInfo
+        BusAccessInfo {
+            offset: offset as u64,
+            address: 0,
+            id: 0,
+        }
+    }
+
     #[test]
     fn serial_output() {
         let intr_evt = Event::new().unwrap();
@@ -416,9 +426,9 @@ mod tests {
             Vec::new(),
         );
 
-        serial.write(DATA as u64, &['a' as u8]);
-        serial.write(DATA as u64, &['b' as u8]);
-        serial.write(DATA as u64, &['c' as u8]);
+        serial.write(serial_bus_address(DATA), &['a' as u8]);
+        serial.write(serial_bus_address(DATA), &['b' as u8]);
+        serial.write(serial_bus_address(DATA), &['c' as u8]);
         assert_eq!(
             serial_out.buf.lock().as_slice(),
             &['a' as u8, 'b' as u8, 'c' as u8]
@@ -438,18 +448,18 @@ mod tests {
             Vec::new(),
         );
 
-        serial.write(IER as u64, &[IER_RECV_BIT]);
+        serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
         serial
             .queue_input_bytes(&['a' as u8, 'b' as u8, 'c' as u8])
             .unwrap();
 
         assert_eq!(intr_evt.read(), Ok(1));
         let mut data = [0u8; 1];
-        serial.read(DATA as u64, &mut data[..]);
+        serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], 'a' as u8);
-        serial.read(DATA as u64, &mut data[..]);
+        serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], 'b' as u8);
-        serial.read(DATA as u64, &mut data[..]);
+        serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], 'c' as u8);
     }
 }

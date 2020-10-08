@@ -12,6 +12,7 @@
 // For the purposes of both using more descriptive terms and avoiding terms with lots of charged
 // emotional context, this file refers to them instead as "primary" and "secondary" PICs.
 
+use crate::bus::BusAccessInfo;
 use crate::BusDevice;
 use base::{debug, warn, Event};
 use hypervisor::{PicInitState, PicSelect, PicState};
@@ -87,28 +88,28 @@ impl BusDevice for Pic {
         "userspace PIC".to_string()
     }
 
-    fn write(&mut self, offset: u64, data: &[u8]) {
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         if data.len() != 1 {
             warn!("PIC: Bad write size: {}", data.len());
             return;
         }
-        match offset {
+        match info.address {
             PIC_PRIMARY_COMMAND => self.pic_write_command(PicSelect::Primary, data[0]),
             PIC_PRIMARY_DATA => self.pic_write_data(PicSelect::Primary, data[0]),
             PIC_PRIMARY_ELCR => self.pic_write_elcr(PicSelect::Primary, data[0]),
             PIC_SECONDARY_COMMAND => self.pic_write_command(PicSelect::Secondary, data[0]),
             PIC_SECONDARY_DATA => self.pic_write_data(PicSelect::Secondary, data[0]),
             PIC_SECONDARY_ELCR => self.pic_write_elcr(PicSelect::Secondary, data[0]),
-            _ => warn!("PIC: Invalid write to offset {}", offset),
+            _ => warn!("PIC: Invalid write to {}", info),
         }
     }
 
-    fn read(&mut self, offset: u64, data: &mut [u8]) {
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
         if data.len() != 1 {
             warn!("PIC: Bad read size: {}", data.len());
             return;
         }
-        data[0] = match offset {
+        data[0] = match info.address {
             PIC_PRIMARY_COMMAND => self.pic_read_command(PicSelect::Primary),
             PIC_PRIMARY_DATA => self.pic_read_data(PicSelect::Primary),
             PIC_PRIMARY_ELCR => self.pic_read_elcr(PicSelect::Primary),
@@ -116,7 +117,7 @@ impl BusDevice for Pic {
             PIC_SECONDARY_DATA => self.pic_read_data(PicSelect::Secondary),
             PIC_SECONDARY_ELCR => self.pic_read_elcr(PicSelect::Secondary),
             _ => {
-                warn!("PIC: Invalid read from offset {}", offset);
+                warn!("PIC: Invalid read from {}", info);
                 return;
             }
         };
@@ -543,11 +544,29 @@ mod tests {
         pic: Pic,
     }
 
+    fn pic_bus_address(address: u64) -> BusAccessInfo {
+        // The PIC is added to the io_bus in three locations, so the offset depends on which
+        // address range the address is in. The PIC implementation currently does not use the
+        // offset, but we're setting it accurately here in case it does in the future.
+        let offset = match address {
+            x if x >= PIC_PRIMARY && x < PIC_PRIMARY + 0x2 => address - PIC_PRIMARY,
+            x if x >= PIC_SECONDARY && x < PIC_SECONDARY + 0x2 => address - PIC_SECONDARY,
+            x if x >= PIC_PRIMARY_ELCR && x < PIC_PRIMARY_ELCR + 0x2 => address - PIC_PRIMARY_ELCR,
+            _ => panic!("invalid PIC address: {:#x}", address),
+        };
+
+        BusAccessInfo {
+            offset,
+            address,
+            id: 0,
+        }
+    }
+
     fn set_up() -> TestData {
         let mut pic = Pic::new();
         // Use edge-triggered mode.
-        pic.write(PIC_PRIMARY_ELCR, &[0]);
-        pic.write(PIC_SECONDARY_ELCR, &[0]);
+        pic.write(pic_bus_address(PIC_PRIMARY_ELCR), &[0]);
+        pic.write(pic_bus_address(PIC_SECONDARY_ELCR), &[0]);
         TestData { pic }
     }
 
@@ -562,10 +581,10 @@ mod tests {
             PicSelect::Secondary => PIC_SECONDARY_DATA,
         };
 
-        pic.write(command_offset, &[icw1]);
-        pic.write(data_offset, &[icw2]);
-        pic.write(data_offset, &[icw3]);
-        pic.write(data_offset, &[icw4]);
+        pic.write(pic_bus_address(command_offset), &[icw1]);
+        pic.write(pic_bus_address(data_offset), &[icw2]);
+        pic.write(pic_bus_address(data_offset), &[icw3]);
+        pic.write(pic_bus_address(data_offset), &[icw4]);
     }
 
     /// Convenience function for primary ICW init.
@@ -610,12 +629,16 @@ mod tests {
         let data_write = [0x5f];
         let mut data_read = [0];
 
-        data.pic.write(PIC_PRIMARY_ELCR, &data_write);
-        data.pic.read(PIC_PRIMARY_ELCR, &mut data_read);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_ELCR), &data_write);
+        data.pic
+            .read(pic_bus_address(PIC_PRIMARY_ELCR), &mut data_read);
         assert_eq!(data_read, data_write);
 
-        data.pic.write(PIC_SECONDARY_ELCR, &data_write);
-        data.pic.read(PIC_SECONDARY_ELCR, &mut data_read);
+        data.pic
+            .write(pic_bus_address(PIC_SECONDARY_ELCR), &data_write);
+        data.pic
+            .read(pic_bus_address(PIC_SECONDARY_ELCR), &mut data_read);
         assert_eq!(data_read, data_write);
     }
 
@@ -626,13 +649,16 @@ mod tests {
 
         // ICW1
         let mut data_write = [0x10];
-        data.pic.write(PIC_PRIMARY_COMMAND, &data_write);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &data_write);
 
         data_write[0] = 0x08;
-        data.pic.write(PIC_PRIMARY_DATA, &data_write);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_DATA), &data_write);
 
         data_write[0] = 0xff;
-        data.pic.write(PIC_PRIMARY_DATA, &data_write);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_DATA), &data_write);
 
         assert_eq!(
             data.pic.pics[PicSelect::Primary as usize].init_state,
@@ -678,19 +704,23 @@ mod tests {
         icw_init_secondary(&mut data.pic);
 
         // OCW1: Write to IMR.
-        data.pic.write(PIC_SECONDARY_DATA, &[0x5f]);
+        data.pic.write(pic_bus_address(PIC_SECONDARY_DATA), &[0x5f]);
 
         // OCW2: Set rotate on auto EOI.
-        data.pic.write(PIC_SECONDARY_COMMAND, &[0x80]);
+        data.pic
+            .write(pic_bus_address(PIC_SECONDARY_COMMAND), &[0x80]);
 
         // OCW2: Set priority.
-        data.pic.write(PIC_SECONDARY_COMMAND, &[0xc0]);
+        data.pic
+            .write(pic_bus_address(PIC_SECONDARY_COMMAND), &[0xc0]);
 
         // OCW3: Change flags.
-        data.pic.write(PIC_SECONDARY_COMMAND, &[0x6b]);
+        data.pic
+            .write(pic_bus_address(PIC_SECONDARY_COMMAND), &[0x6b]);
 
         let mut data_read = [0];
-        data.pic.read(PIC_SECONDARY_DATA, &mut data_read);
+        data.pic
+            .read(pic_bus_address(PIC_SECONDARY_DATA), &mut data_read);
         assert_eq!(data_read, [0x5f]);
 
         let secondary_pic = &data.pic.pics[PicSelect::Secondary as usize];
@@ -716,13 +746,15 @@ mod tests {
         icw_init_secondary(&mut data.pic);
 
         // OCW2: Set rotate on auto EOI.
-        data.pic.write(PIC_SECONDARY_COMMAND, &[0x80]);
+        data.pic
+            .write(pic_bus_address(PIC_SECONDARY_COMMAND), &[0x80]);
 
         let secondary_pic = &data.pic.pics[PicSelect::Secondary as usize];
         assert!(secondary_pic.rotate_on_auto_eoi);
 
         // OCW2: Clear rotate on auto EOI.
-        data.pic.write(PIC_SECONDARY_COMMAND, &[0x00]);
+        data.pic
+            .write(pic_bus_address(PIC_SECONDARY_COMMAND), &[0x00]);
 
         let secondary_pic = &data.pic.pics[PicSelect::Secondary as usize];
         assert!(!secondary_pic.rotate_on_auto_eoi);
@@ -810,8 +842,10 @@ mod tests {
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
 
         // OCW2: Non-specific EOI, one for primary and one for secondary.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x20]);
-        data.pic.write(PIC_SECONDARY_COMMAND, &[0x20]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x20]);
+        data.pic
+            .write(pic_bus_address(PIC_SECONDARY_COMMAND), &[0x20]);
 
         // Now that the first IRQ is no longer in service, the second IRQ can be ack'd.
         assert_eq!(data.pic.get_external_interrupt(), Some(0x70 + 0));
@@ -830,7 +864,7 @@ mod tests {
         icw_init_both_with_icw4(&mut data.pic, FULLY_NESTED_NO_AUTO_EOI);
 
         // OCW2: Mask IRQ line 6 on secondary (IRQ 14).
-        data.pic.write(PIC_SECONDARY_DATA, &[0x40]);
+        data.pic.write(pic_bus_address(PIC_SECONDARY_DATA), &[0x40]);
 
         data.pic.service_irq(/*irq=*/ 14, /*level=*/ true);
         assert_eq!(data.pic.get_external_interrupt(), None);
@@ -842,7 +876,7 @@ mod tests {
 
         // OCW2: Unmask IRQ line 6 on secondary (IRQ 14)
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.write(PIC_SECONDARY_DATA, &[0x00]);
+        data.pic.write(pic_bus_address(PIC_SECONDARY_DATA), &[0x00]);
 
         // Previously-masked interrupt can now be served.
         assert_eq!(data.pic.get_external_interrupt(), Some(0x70 + 6));
@@ -862,8 +896,8 @@ mod tests {
         icw_init_both(&mut data.pic);
 
         // OCW2: Mask *all* IRQ lines on primary and secondary.
-        data.pic.write(PIC_PRIMARY_DATA, &[0xff]);
-        data.pic.write(PIC_SECONDARY_DATA, &[0xff]);
+        data.pic.write(pic_bus_address(PIC_PRIMARY_DATA), &[0xff]);
+        data.pic.write(pic_bus_address(PIC_SECONDARY_DATA), &[0xff]);
 
         data.pic.service_irq(/*irq=*/ 14, /*level=*/ true);
         data.pic.service_irq(/*irq=*/ 4, /*level=*/ true);
@@ -873,14 +907,14 @@ mod tests {
         assert_eq!(data.pic.get_external_interrupt(), None);
 
         // OCW2: Unmask IRQ lines on secondary.
-        data.pic.write(PIC_SECONDARY_DATA, &[0x00]);
+        data.pic.write(pic_bus_address(PIC_SECONDARY_DATA), &[0x00]);
 
         // Cascade line is masked, so the primary *still* cannot get any IRQs.
         assert_eq!(data.pic.get_external_interrupt(), None);
 
         // Unmask cascade line on primary.
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.write(PIC_PRIMARY_DATA, &[0xfb]);
+        data.pic.write(pic_bus_address(PIC_PRIMARY_DATA), &[0xfb]);
 
         // Previously-masked IRQs should now be served in order of priority.
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
@@ -889,7 +923,7 @@ mod tests {
 
         // Unmask all other IRQ lines on primary.
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.write(PIC_PRIMARY_DATA, &[0x00]);
+        data.pic.write(pic_bus_address(PIC_PRIMARY_DATA), &[0x00]);
         assert_eq!(data.pic.get_external_interrupt(), Some(0x08 + 4));
     }
 
@@ -906,25 +940,32 @@ mod tests {
         assert_eq!(data.pic.get_external_interrupt(), Some(0x08 + 4));
 
         // Read primary IRR.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x0a]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x0a]);
         let mut data_read = [0];
-        data.pic.read(PIC_PRIMARY_COMMAND, &mut data_read);
+        data.pic
+            .read(pic_bus_address(PIC_PRIMARY_COMMAND), &mut data_read);
         assert_eq!(data_read[0], 1 << 5);
 
         // Read primary ISR.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x0b]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x0b]);
         data_read = [0];
-        data.pic.read(PIC_PRIMARY_COMMAND, &mut data_read);
+        data.pic
+            .read(pic_bus_address(PIC_PRIMARY_COMMAND), &mut data_read);
         assert_eq!(data_read[0], 1 << 4);
 
         // Non-sepcific EOI to end IRQ4.  Then, PIC should signal CPU about IRQ5.
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x20]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x20]);
 
         // Poll command on primary.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x0c]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x0c]);
         data_read = [0];
-        data.pic.read(PIC_PRIMARY_COMMAND, &mut data_read);
+        data.pic
+            .read(pic_bus_address(PIC_PRIMARY_COMMAND), &mut data_read);
         assert_eq!(data_read[0], 5);
     }
 
@@ -956,7 +997,8 @@ mod tests {
 
         // In edge triggered mode, there should be no IRQ after this EOI.
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x20]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x20]);
     }
 
     /// Raising the same IRQ line twice in level-triggered mode should send two IRQ requests out.
@@ -966,7 +1008,7 @@ mod tests {
         icw_init_both_with_icw4(&mut data.pic, FULLY_NESTED_NO_AUTO_EOI);
 
         // Turn IRQ4 to level-triggered mode.
-        data.pic.write(PIC_PRIMARY_ELCR, &[0x10]);
+        data.pic.write(pic_bus_address(PIC_PRIMARY_ELCR), &[0x10]);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
         data.pic.service_irq(/*irq=*/ 4, /*level=*/ true);
@@ -977,7 +1019,8 @@ mod tests {
 
         // In level-triggered mode, there should be another IRQ request after this EOI.
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x20]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x20]);
     }
 
     /// Specific EOI command in OCW2.
@@ -992,11 +1035,13 @@ mod tests {
 
         // Specific EOI command on IRQ3. Primary PIC's ISR should be unaffected since it's targeted
         // at the wrong IRQ number.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x63]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x63]);
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].isr, 1 << 4);
 
         // Specific EOI command on IRQ4. Primary PIC's ISR should now be cleared.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x64]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x64]);
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].isr, 0);
     }
 
@@ -1007,7 +1052,8 @@ mod tests {
         icw_init_both(&mut data.pic);
 
         // OCW3: Clear rotate on auto EOI mode.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x00]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x00]);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
         data.pic.service_irq(/*irq=*/ 5, /*level=*/ true);
@@ -1021,7 +1067,8 @@ mod tests {
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].priority_add, 0);
 
         // OCW2: Set rotate on auto EOI mode.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x80]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x80]);
 
         // TODO(mutexlox): Verify APIC interaction when it is implemented.
         data.pic.service_irq(/*irq=*/ 5, /*level*/ true);
@@ -1046,12 +1093,14 @@ mod tests {
 
         // Rotate on specific EOI IRQ4. Since this is a different IRQ number, Should not have an
         // effect on isr.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0xe4]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0xe4]);
 
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].isr, 1 << 5);
 
         // Rotate on specific EOI IRQ5. This should clear the isr.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0xe5]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0xe5]);
 
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].isr, 0);
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].priority_add, 6);
@@ -1069,7 +1118,8 @@ mod tests {
         data.pic.service_irq(/*irq=*/ 5, /*level=*/ false);
 
         // Rotate on non-specific EOI.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0xa0]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0xa0]);
 
         // The EOI should have cleared isr.
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].isr, 0);
@@ -1099,9 +1149,11 @@ mod tests {
         //   - The first resets bit 2 in the primary isr (the highest-priority bit that was set
         //     before the EOI)
         //   - The second resets the secondary PIC's highest-priority isr bit.
-        data.pic.write(PIC_PRIMARY_COMMAND, &[0x20]);
+        data.pic
+            .write(pic_bus_address(PIC_PRIMARY_COMMAND), &[0x20]);
         // Rotate non-specific EOI.
-        data.pic.write(PIC_SECONDARY_COMMAND, &[0xa0]);
+        data.pic
+            .write(pic_bus_address(PIC_SECONDARY_COMMAND), &[0xa0]);
 
         assert_eq!(data.pic.pics[PicSelect::Primary as usize].isr, 0);
         assert_eq!(data.pic.pics[PicSelect::Secondary as usize].isr, 0);

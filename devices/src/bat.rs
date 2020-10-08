@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::BusDevice;
+use crate::{BusAccessInfo, BusDevice};
 use acpi_tables::{aml, aml::Aml};
 use base::{error, warn, AsRawDescriptor, Descriptor, Event, PollContext, PollToken};
 use msg_socket::{MsgReceiver, MsgSender};
@@ -324,7 +324,7 @@ impl BusDevice for GoldfishBattery {
         "GoldfishBattery".to_owned()
     }
 
-    fn read(&mut self, offset: u64, data: &mut [u8]) {
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
         if data.len() != std::mem::size_of::<u32>() {
             warn!(
                 "{}: unsupported read length {}, only support 4bytes read",
@@ -334,7 +334,7 @@ impl BusDevice for GoldfishBattery {
             return;
         }
 
-        let val = match offset as u32 {
+        let val = match info.offset as u32 {
             BATTERY_INT_STATUS => {
                 // read to clear the interrupt status
                 std::mem::replace(&mut self.state.lock().int_status, 0)
@@ -355,7 +355,7 @@ impl BusDevice for GoldfishBattery {
             BATTERY_CHARGE_FULL_UAH => 0,
             BATTERY_CYCLE_COUNT => 0,
             _ => {
-                warn!("{}: unsupported read offset {}", self.debug_label(), offset);
+                warn!("{}: unsupported read address {}", self.debug_label(), info);
                 return;
             }
         };
@@ -364,7 +364,7 @@ impl BusDevice for GoldfishBattery {
         data.copy_from_slice(&val_arr);
     }
 
-    fn write(&mut self, offset: u64, data: &[u8]) {
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         if data.len() != std::mem::size_of::<u32>() {
             warn!(
                 "{}: unsupported write length {}, only support 4bytes write",
@@ -378,7 +378,7 @@ impl BusDevice for GoldfishBattery {
         val_arr.copy_from_slice(data);
         let val = u32::from_ne_bytes(val_arr);
 
-        match offset as u32 {
+        match info.offset as u32 {
             BATTERY_INT_ENABLE => {
                 self.state.lock().int_enable = val;
                 if (val & BATTERY_INT_MASK) != 0 && !self.activated {
@@ -386,7 +386,7 @@ impl BusDevice for GoldfishBattery {
                 }
             }
             _ => {
-                warn!("{}: Bad write to offset {}", self.debug_label(), offset);
+                warn!("{}: Bad write to address {}", self.debug_label(), info);
             }
         };
     }

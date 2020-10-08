@@ -453,7 +453,7 @@ impl IrqChip for KvmSplitIrqChip {
     }
 
     /// Broadcast an end of interrupt. For KvmSplitIrqChip this sends the EOI to the ioapic
-    fn broadcast_eoi(&mut self, vector: u8) -> Result<()> {
+    fn broadcast_eoi(&self, vector: u8) -> Result<()> {
         self.ioapic.lock().end_of_interrupt(vector);
         Ok(())
     }
@@ -538,13 +538,13 @@ impl IrqChip for KvmSplitIrqChip {
         mmio_bus: &mut Bus,
     ) -> Result<()> {
         // Insert pit into io_bus
-        io_bus.insert(self.pit.clone(), 0x040, 0x8, true).unwrap();
-        io_bus.insert(self.pit.clone(), 0x061, 0x1, true).unwrap();
+        io_bus.insert(self.pit.clone(), 0x040, 0x8).unwrap();
+        io_bus.insert(self.pit.clone(), 0x061, 0x1).unwrap();
 
         // Insert pic into io_bus
-        io_bus.insert(self.pic.clone(), 0x20, 0x2, true).unwrap();
-        io_bus.insert(self.pic.clone(), 0xa0, 0x2, true).unwrap();
-        io_bus.insert(self.pic.clone(), 0x4d0, 0x2, true).unwrap();
+        io_bus.insert(self.pic.clone(), 0x20, 0x2).unwrap();
+        io_bus.insert(self.pic.clone(), 0xa0, 0x2).unwrap();
+        io_bus.insert(self.pic.clone(), 0x4d0, 0x2).unwrap();
 
         // Insert ioapic into mmio_bus
         mmio_bus
@@ -552,7 +552,6 @@ impl IrqChip for KvmSplitIrqChip {
                 self.ioapic.clone(),
                 IOAPIC_BASE_ADDRESS,
                 IOAPIC_MEM_LENGTH_BYTES,
-                false,
             )
             .unwrap();
 

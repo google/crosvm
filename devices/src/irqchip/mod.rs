@@ -92,7 +92,7 @@ pub trait IrqChip: Send {
     fn service_irq_event(&mut self, event_index: IrqEventIndex) -> Result<()>;
 
     /// Broadcast an end of interrupt.
-    fn broadcast_eoi(&mut self, vector: u8) -> Result<()>;
+    fn broadcast_eoi(&self, vector: u8) -> Result<()>;
 
     /// Injects any pending interrupts for `vcpu`.
     fn inject_interrupts(&self, vcpu: &dyn Vcpu) -> Result<()>;
