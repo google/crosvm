@@ -45,8 +45,6 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 /// An error indicating something went wrong in virtio-video's worker.
 #[derive(Debug)]
 pub enum Error {
-    /// Failed to create a libvda instance.
-    LibvdaCreationFailed(libvda::Error),
     /// Creating PollContext failed.
     PollContextCreationFailed(SysError),
     /// A DescriptorChain contains invalid data.
@@ -70,7 +68,6 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Error::*;
         match self {
-            LibvdaCreationFailed(e) => write!(f, "failed to create a libvda instance: {}", e),
             PollContextCreationFailed(e) => write!(f, "failed to create PollContext: {}", e),
             InvalidDescriptorChain(e) => write!(f, "DescriptorChain contains invalid data: {}", e),
             DescriptorNotAvailable => {
@@ -217,16 +214,28 @@ impl VirtioDevice for VideoDevice {
             VideoDeviceType::Decoder => thread::Builder::new()
                 .name("virtio video decoder".to_owned())
                 .spawn(move || {
-                    let vda = libvda::decode::VdaInstance::new(libvda::decode::VdaImplType::Gavda)
-                        .map_err(Error::LibvdaCreationFailed)?;
+                    let vda = match libvda::decode::VdaInstance::new(
+                        libvda::decode::VdaImplType::Gavda,
+                    ) {
+                        Ok(vda) => vda,
+                        Err(e) => {
+                            error!("Failed to initialize vda: {}", e);
+                            return;
+                        }
+                    };
                     let device = decoder::Decoder::new(&vda);
-                    worker.run(cmd_queue, event_queue, device)
+                    if let Err(e) = worker.run(cmd_queue, event_queue, device) {
+                        error!("Failed to start decoder worker: {}", e);
+                    };
+                    // Don't return any information since the return value is never checked.
                 }),
             VideoDeviceType::Encoder => thread::Builder::new()
                 .name("virtio video encoder".to_owned())
                 .spawn(move || {
                     let device = encoder::Encoder::new();
-                    worker.run(cmd_queue, event_queue, device)
+                    if let Err(e) = worker.run(cmd_queue, event_queue, device) {
+                        error!("Failed to start encoder worker: {}", e);
+                    }
                 }),
         };
         if let Err(e) = worker_result {
