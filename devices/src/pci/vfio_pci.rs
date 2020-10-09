@@ -2,19 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
 use std::u32;
 
-use base::{error, AsRawDescriptor, Event, MappedRegion, MemoryMapping, MemoryMappingBuilder};
+use base::{
+    error, AsRawDescriptor, Event, MappedRegion, MemoryMapping, MemoryMappingBuilder, RawDescriptor,
+};
 use hypervisor::Datamatch;
 use msg_socket::{MsgReceiver, MsgSender};
 use resources::{Alloc, MmioType, SystemAllocator};
 
 use vfio_sys::*;
 use vm_control::{
-    MaybeOwnedFd, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse, VmMemoryControlRequestSocket,
-    VmMemoryRequest, VmMemoryResponse,
+    MaybeOwnedDescriptor, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse,
+    VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse,
 };
 
 use crate::pci::msix::{
@@ -270,7 +271,7 @@ impl VfioMsiCap {
         }
 
         if let Err(e) = self.vm_socket_irq.send(&VmIrqRequest::AllocateOneMsi {
-            irqfd: MaybeOwnedFd::Borrowed(self.irqfd.as_ref().unwrap().as_raw_fd()),
+            irqfd: MaybeOwnedDescriptor::Borrowed(self.irqfd.as_ref().unwrap().as_raw_descriptor()),
         }) {
             error!("failed to send AllocateOneMsi request: {:?}", e);
             return;
@@ -709,7 +710,7 @@ impl VfioPciDevice {
                 if self
                     .vm_socket_mem
                     .send(&VmMemoryRequest::RegisterMmapMemory {
-                        fd: MaybeOwnedFd::Borrowed(self.device.as_raw_fd()),
+                        descriptor: MaybeOwnedDescriptor::Borrowed(self.device.as_raw_descriptor()),
                         size: mmap_size as usize,
                         offset,
                         gpa: guest_map_start,
@@ -776,7 +777,7 @@ impl PciDevice for VfioPciDevice {
         self.pci_address = Some(address);
     }
 
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_fds(&self) -> Vec<RawDescriptor> {
         let mut fds = self.device.keep_fds();
         if let Some(ref interrupt_evt) = self.interrupt_evt {
             fds.push(interrupt_evt.as_raw_descriptor());

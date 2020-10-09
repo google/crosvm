@@ -6,9 +6,8 @@ use net_util::TapT;
 use std::fs::{File, OpenOptions};
 use std::marker::PhantomData;
 use std::os::unix::fs::OpenOptionsExt;
-use std::os::unix::io::{AsRawFd, RawFd};
 
-use base::ioctl_with_ref;
+use base::{ioctl_with_ref, AsRawDescriptor, RawDescriptor};
 use vm_memory::GuestMemory;
 
 use super::{ioctl_result, Error, Result, Vhost};
@@ -20,14 +19,14 @@ static DEVICE: &str = "/dev/vhost-net";
 /// This provides a simple wrapper around a VHOST_NET file descriptor and
 /// methods that safely run ioctls on that file descriptor.
 pub struct Net<T> {
-    // fd must be dropped first, which will stop and tear down the
+    // descriptor must be dropped first, which will stop and tear down the
     // vhost-net worker before GuestMemory can potentially be unmapped.
-    fd: File,
+    descriptor: File,
     mem: GuestMemory,
     phantom: PhantomData<T>,
 }
 
-pub trait NetT<T: TapT>: Vhost + AsRawFd + Send + Sized {
+pub trait NetT<T: TapT>: Vhost + AsRawDescriptor + Send + Sized {
     /// Create a new NetT instance
     fn new(mem: &GuestMemory) -> Result<Self>;
 
@@ -36,8 +35,8 @@ pub trait NetT<T: TapT>: Vhost + AsRawFd + Send + Sized {
     ///
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
-    /// * `fd` - Tap interface that will be used as the backend.
-    fn set_backend(&self, queue_index: usize, fd: Option<&T>) -> Result<()>;
+    /// * `descriptor` - Tap interface that will be used as the backend.
+    fn set_backend(&self, queue_index: usize, descriptor: Option<&T>) -> Result<()>;
 }
 
 impl<T> NetT<T> for Net<T>
@@ -50,7 +49,7 @@ where
     /// * `mem` - Guest memory mapping.
     fn new(mem: &GuestMemory) -> Result<Net<T>> {
         Ok(Net::<T> {
-            fd: OpenOptions::new()
+            descriptor: OpenOptions::new()
                 .read(true)
                 .write(true)
                 .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
@@ -61,16 +60,21 @@ where
         })
     }
 
-    fn set_backend(&self, queue_index: usize, fd: Option<&T>) -> Result<()> {
+    fn set_backend(&self, queue_index: usize, event: Option<&T>) -> Result<()> {
         let vring_file = virtio_sys::vhost_vring_file {
             index: queue_index as u32,
-            fd: fd.map_or(-1, |fd| fd.as_raw_descriptor()),
+            event: event.map_or(-1, |event| event.as_raw_descriptor()),
         };
 
-        // This ioctl is called on a valid vhost_net fd and has its
+        // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
-        let ret =
-            unsafe { ioctl_with_ref(&self.fd, virtio_sys::VHOST_NET_SET_BACKEND(), &vring_file) };
+        let ret = unsafe {
+            ioctl_with_ref(
+                &self.descriptor,
+                virtio_sys::VHOST_NET_SET_BACKEND(),
+                &vring_file,
+            )
+        };
         if ret < 0 {
             return ioctl_result();
         }
@@ -84,9 +88,9 @@ impl<T> Vhost for Net<T> {
     }
 }
 
-impl<T> AsRawFd for Net<T> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.fd.as_raw_fd()
+impl<T> AsRawDescriptor for Net<T> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.descriptor.as_raw_descriptor()
     }
 }
 
@@ -98,7 +102,7 @@ pub mod fakes {
     const TMP_FILE: &str = "/tmp/crosvm_vhost_test_file";
 
     pub struct FakeNet<T> {
-        fd: File,
+        descriptor: File,
         mem: GuestMemory,
         phantom: PhantomData<T>,
     }
@@ -115,7 +119,7 @@ pub mod fakes {
     {
         fn new(mem: &GuestMemory) -> Result<FakeNet<T>> {
             Ok(FakeNet::<T> {
-                fd: OpenOptions::new()
+                descriptor: OpenOptions::new()
                     .read(true)
                     .append(true)
                     .create(true)
@@ -137,9 +141,9 @@ pub mod fakes {
         }
     }
 
-    impl<T> AsRawFd for FakeNet<T> {
-        fn as_raw_fd(&self) -> RawFd {
-            self.fd.as_raw_fd()
+    impl<T> AsRawDescriptor for FakeNet<T> {
+        fn as_raw_descriptor(&self) -> RawDescriptor {
+            self.descriptor.as_raw_descriptor()
         }
     }
 }

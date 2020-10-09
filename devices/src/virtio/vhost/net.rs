@@ -4,12 +4,11 @@
 
 use std::mem;
 use std::net::Ipv4Addr;
-use std::os::unix::io::RawFd;
 use std::thread;
 
 use net_util::{MacAddress, TapT};
 
-use base::{error, warn, AsRawDescriptor, Event};
+use base::{error, warn, AsRawDescriptor, Event, RawDescriptor};
 use vhost::NetT as VhostNetT;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
@@ -131,7 +130,7 @@ where
     T: TapT + 'static,
     U: VhostNetT<T> + 'static,
 {
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_fds(&self) -> Vec<RawDescriptor> {
         let mut keep_fds = Vec::new();
 
         if let Some(tap) = &self.tap {
@@ -139,7 +138,7 @@ where
         }
 
         if let Some(vhost_net_handle) = &self.vhost_net_handle {
-            keep_fds.push(vhost_net_handle.as_raw_fd());
+            keep_fds.push(vhost_net_handle.as_raw_descriptor());
         }
 
         if let Some(vhost_interrupt) = &self.vhost_interrupt {

@@ -4,13 +4,12 @@
 
 use base::IoctlNr;
 use std::convert::TryInto;
-use std::os::unix::io::AsRawFd;
 
 use libc::E2BIG;
 
 use base::{
     errno_result, error, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr,
-    ioctl_with_ref, ioctl_with_val, Error, MappedRegion, Result,
+    ioctl_with_ref, ioctl_with_val, AsRawDescriptor, Error, MappedRegion, Result,
 };
 use data_model::vec_with_array_field;
 use kvm_sys::*;
@@ -26,8 +25,8 @@ use crate::{
 
 type KvmCpuId = kvm::CpuId;
 
-fn get_cpuid_with_initial_capacity<T: AsRawFd>(
-    fd: &T,
+fn get_cpuid_with_initial_capacity<T: AsRawDescriptor>(
+    descriptor: &T,
     kind: IoctlNr,
     initial_capacity: usize,
 ) -> Result<CpuId> {
@@ -40,7 +39,7 @@ fn get_cpuid_with_initial_capacity<T: AsRawFd>(
             // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the
             // memory allocated for the struct. The limit is read from nent within KvmCpuId,
             // which is set to the allocated size above.
-            ioctl_with_mut_ptr(fd, kind, kvm_cpuid.as_mut_ptr())
+            ioctl_with_mut_ptr(descriptor, kind, kvm_cpuid.as_mut_ptr())
         };
         if ret < 0 {
             let err = Error::last();

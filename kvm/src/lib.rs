@@ -13,12 +13,11 @@ use std::fs::File;
 use std::mem::size_of;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::*;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 use sync::Mutex;
 
-use base::{AsRawDescriptor, RawDescriptor};
+use base::{AsRawDescriptor, FromRawDescriptor, RawDescriptor};
 use data_model::vec_with_array_field;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -44,7 +43,7 @@ fn errno_result<T>() -> Result<T> {
     Err(Error::last())
 }
 
-unsafe fn set_user_memory_region<F: AsRawFd>(
+unsafe fn set_user_memory_region<F: AsRawDescriptor>(
     fd: &F,
     slot: u32,
     read_only: bool,
@@ -103,7 +102,7 @@ impl Kvm {
         }
         // Safe because we verify that ret is valid and we own the fd.
         Ok(Kvm {
-            kvm: unsafe { File::from_raw_fd(ret) },
+            kvm: unsafe { File::from_raw_descriptor(ret) },
         })
     }
 
@@ -194,9 +193,9 @@ impl Kvm {
     }
 }
 
-impl AsRawFd for Kvm {
-    fn as_raw_fd(&self) -> RawFd {
-        self.kvm.as_raw_fd()
+impl AsRawDescriptor for Kvm {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.kvm.as_raw_descriptor()
     }
 }
 
@@ -271,7 +270,7 @@ impl Vm {
         let ret = unsafe { ioctl(kvm, KVM_CREATE_VM()) };
         if ret >= 0 {
             // Safe because we verify the value of ret and we are the owners of the fd.
-            let vm_file = unsafe { File::from_raw_fd(ret) };
+            let vm_file = unsafe { File::from_raw_descriptor(ret) };
             guest_mem.with_regions(|index, guest_addr, size, host_addr, _| {
                 unsafe {
                     // Safe because the guest regions are guaranteed not to overlap.
@@ -712,7 +711,7 @@ impl Vm {
                 IoeventAddress::Pio(p) => p as u64,
                 IoeventAddress::Mmio(m) => m,
             },
-            fd: evt.as_raw_fd(),
+            fd: evt.as_raw_descriptor(),
             flags,
             ..Default::default()
         };
@@ -742,8 +741,8 @@ impl Vm {
     ) -> Result<()> {
         let irqfd = kvm_irqfd {
             flags: KVM_IRQFD_FLAG_RESAMPLE,
-            fd: evt.as_raw_fd() as u32,
-            resamplefd: resample_evt.as_raw_fd() as u32,
+            fd: evt.as_raw_descriptor() as u32,
+            resamplefd: resample_evt.as_raw_descriptor() as u32,
             gsi,
             ..Default::default()
         };
@@ -770,7 +769,7 @@ impl Vm {
     ))]
     pub fn unregister_irqfd(&self, evt: &Event, gsi: u32) -> Result<()> {
         let irqfd = kvm_irqfd {
-            fd: evt.as_raw_fd() as u32,
+            fd: evt.as_raw_descriptor() as u32,
             gsi,
             flags: KVM_IRQFD_FLAG_DEASSIGN,
             ..Default::default()
@@ -837,9 +836,9 @@ impl Vm {
     }
 }
 
-impl AsRawFd for Vm {
-    fn as_raw_fd(&self) -> RawFd {
-        self.vm.as_raw_fd()
+impl AsRawDescriptor for Vm {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.vm.as_raw_descriptor()
     }
 }
 
@@ -948,7 +947,7 @@ impl Vcpu {
 
         // Wrap the vcpu now in case the following ? returns early. This is safe because we verified
         // the value of the fd and we own the fd.
-        let vcpu = unsafe { File::from_raw_fd(vcpu_fd) };
+        let vcpu = unsafe { File::from_raw_descriptor(vcpu_fd) };
 
         let run_mmap = MemoryMappingBuilder::new(run_mmap_size)
             .from_descriptor(&vcpu)
@@ -1458,12 +1457,6 @@ impl Vcpu {
     }
 }
 
-impl AsRawFd for Vcpu {
-    fn as_raw_fd(&self) -> RawFd {
-        self.vcpu.as_raw_fd()
-    }
-}
-
 impl AsRawDescriptor for Vcpu {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.vcpu.as_raw_descriptor()
@@ -1629,8 +1622,8 @@ impl DerefMut for RunnableVcpu {
     }
 }
 
-impl AsRawFd for RunnableVcpu {
-    fn as_raw_fd(&self) -> RawFd {
+impl AsRawDescriptor for RunnableVcpu {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         self.vcpu.as_raw_descriptor()
     }
 }
@@ -1941,7 +1934,7 @@ mod tests {
         vm.register_irqfd_resample(&evtfd1, &evtfd2, 4).unwrap();
         vm.unregister_irqfd(&evtfd1, 4).unwrap();
         // Ensures the ioctl is actually reading the resamplefd.
-        vm.register_irqfd_resample(&evtfd1, unsafe { &Event::from_raw_fd(-1) }, 4)
+        vm.register_irqfd_resample(&evtfd1, unsafe { &Event::from_raw_descriptor(-1) }, 4)
             .unwrap_err();
     }
 

@@ -86,8 +86,8 @@ pub fn slice_write_helper<T: MsgOnSocket>(
 }
 
 impl<T: MsgOnSocket> MsgOnSocket for Vec<T> {
-    fn uses_fd() -> bool {
-        T::uses_fd()
+    fn uses_descriptor() -> bool {
+        T::uses_descriptor()
     }
 
     fn fixed_size() -> Option<usize> {
@@ -102,9 +102,9 @@ impl<T: MsgOnSocket> MsgOnSocket for Vec<T> {
         size_of::<u64>() + vec_size
     }
 
-    fn fd_count(&self) -> usize {
-        if T::uses_fd() {
-            self.iter().map(|i| i.fd_count()).sum()
+    fn descriptor_count(&self) -> usize {
+        if T::uses_descriptor() {
+            self.iter().map(|i| i.descriptor_count()).sum()
         } else {
             0
         }

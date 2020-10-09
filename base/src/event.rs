@@ -4,7 +4,7 @@
 
 use std::mem;
 use std::ops::Deref;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
 use std::ptr;
 use std::time::Duration;
 
@@ -52,26 +52,6 @@ impl FromRawDescriptor for Event {
 
 impl IntoRawDescriptor for Event {
     fn into_raw_descriptor(self) -> RawDescriptor {
-        self.0.into_raw_fd()
-    }
-}
-
-// TODO(mikehoyle): Remove Fd-related trait impls once the rest
-// of base is complete to accomodate it.
-impl AsRawFd for Event {
-    fn as_raw_fd(&self) -> RawFd {
-        self.0.as_raw_fd()
-    }
-}
-
-impl FromRawFd for Event {
-    unsafe fn from_raw_fd(descriptor: RawFd) -> Self {
-        Event(EventFd::from_raw_fd(descriptor))
-    }
-}
-
-impl IntoRawFd for Event {
-    fn into_raw_fd(self) -> RawFd {
         self.0.into_raw_fd()
     }
 }

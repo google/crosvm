@@ -12,7 +12,7 @@ pub mod x86_64;
 
 use std::os::raw::c_int;
 
-use base::{Event, MappedRegion, Result, SafeDescriptor};
+use base::{Event, MappedRegion, RawDescriptor, Result, SafeDescriptor};
 use msg_socket::MsgOnSocket;
 use vm_memory::{GuestAddress, GuestMemory};
 

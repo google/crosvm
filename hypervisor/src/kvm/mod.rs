@@ -18,7 +18,6 @@ use std::collections::{BTreeMap, BinaryHeap};
 use std::convert::TryFrom;
 use std::mem::{size_of, ManuallyDrop};
 use std::os::raw::{c_char, c_int, c_ulong, c_void};
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::ptr::copy_nonoverlapping;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -122,12 +121,6 @@ impl Kvm {
 
 impl AsRawDescriptor for Kvm {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.kvm.as_raw_descriptor()
-    }
-}
-
-impl AsRawFd for Kvm {
-    fn as_raw_fd(&self) -> RawFd {
         self.kvm.as_raw_descriptor()
     }
 }
@@ -261,14 +254,14 @@ impl KvmVm {
         resample_evt: Option<&Event>,
     ) -> Result<()> {
         let mut irqfd = kvm_irqfd {
-            fd: evt.as_raw_fd() as u32,
+            fd: evt.as_raw_descriptor() as u32,
             gsi,
             ..Default::default()
         };
 
         if let Some(r_evt) = resample_evt {
             irqfd.flags = KVM_IRQFD_FLAG_RESAMPLE;
-            irqfd.resamplefd = r_evt.as_raw_fd() as u32;
+            irqfd.resamplefd = r_evt.as_raw_descriptor() as u32;
         }
 
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
@@ -288,7 +281,7 @@ impl KvmVm {
     /// `register_irqfd`.
     pub fn unregister_irqfd(&self, gsi: u32, evt: &Event) -> Result<()> {
         let irqfd = kvm_irqfd {
-            fd: evt.as_raw_fd() as u32,
+            fd: evt.as_raw_descriptor() as u32,
             gsi,
             flags: KVM_IRQFD_FLAG_DEASSIGN,
             ..Default::default()
@@ -368,7 +361,7 @@ impl KvmVm {
                 IoEventAddress::Pio(p) => p as u64,
                 IoEventAddress::Mmio(m) => m,
             },
-            fd: evt.as_raw_fd(),
+            fd: evt.as_raw_descriptor(),
             flags,
             ..Default::default()
         };
@@ -564,12 +557,6 @@ impl Vm for KvmVm {
 
 impl AsRawDescriptor for KvmVm {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.vm.as_raw_descriptor()
-    }
-}
-
-impl AsRawFd for KvmVm {
-    fn as_raw_fd(&self) -> RawFd {
         self.vm.as_raw_descriptor()
     }
 }
@@ -979,8 +966,8 @@ impl KvmVcpu {
     }
 }
 
-impl AsRawFd for KvmVcpu {
-    fn as_raw_fd(&self) -> RawFd {
+impl AsRawDescriptor for KvmVcpu {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         self.vcpu.as_raw_descriptor()
     }
 }
@@ -1092,8 +1079,7 @@ impl From<&MPState> for kvm_mp_state {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base::{pagesize, MemoryMappingArena, MemoryMappingBuilder};
-    use std::os::unix::io::FromRawFd;
+    use base::{pagesize, FromRawDescriptor, MemoryMappingArena, MemoryMappingBuilder};
     use std::thread;
     use vm_memory::GuestAddress;
 
@@ -1296,7 +1282,7 @@ mod tests {
         vm.register_irqfd(4, &evtfd1, Some(&evtfd2)).unwrap();
         vm.unregister_irqfd(4, &evtfd1).unwrap();
         // Ensures the ioctl is actually reading the resamplefd.
-        vm.register_irqfd(4, &evtfd1, Some(unsafe { &Event::from_raw_fd(-1) }))
+        vm.register_irqfd(4, &evtfd1, Some(unsafe { &Event::from_raw_descriptor(-1) }))
             .unwrap_err();
     }
 

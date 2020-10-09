@@ -59,12 +59,12 @@ macro_rules! tuple_impls {
     ($t: ident) => {
         #[allow(unused_variables, non_snake_case)]
         impl<$t: MsgOnSocket> MsgOnSocket for ($t,) {
-            fn uses_fd() -> bool {
-                $t::uses_fd()
+            fn uses_descriptor() -> bool {
+                $t::uses_descriptor()
             }
 
-            fn fd_count(&self) -> usize {
-                self.0.fd_count()
+            fn descriptor_count(&self) -> usize {
+                self.0.descriptor_count()
             }
 
             fn fixed_size() -> Option<usize> {
@@ -92,16 +92,16 @@ macro_rules! tuple_impls {
     ($t: ident, $($ts:ident),*) => {
         #[allow(unused_variables, non_snake_case)]
         impl<$t: MsgOnSocket $(, $ts: MsgOnSocket)*> MsgOnSocket for ($t$(, $ts)*) {
-            fn uses_fd() -> bool {
-                $t::uses_fd() $(|| $ts::uses_fd())*
+            fn uses_descriptor() -> bool {
+                $t::uses_descriptor() $(|| $ts::uses_descriptor())*
             }
 
-            fn fd_count(&self) -> usize {
-                if Self::uses_fd() {
+            fn descriptor_count(&self) -> usize {
+                if Self::uses_descriptor() {
                     return 0;
                 }
                 let ($t $(,$ts)*) = self;
-                $t.fd_count() $(+ $ts.fd_count())*
+                $t.descriptor_count() $(+ $ts.descriptor_count())*
             }
 
             fn fixed_size() -> Option<usize> {

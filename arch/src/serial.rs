@@ -6,13 +6,12 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, stdout, ErrorKind};
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use base::{error, info, read_raw_stdin, syslog, Event};
+use base::{error, info, read_raw_stdin, syslog, AsRawDescriptor, Event, RawDescriptor};
 use devices::{Bus, ProxyDevice, Serial, SerialDevice};
 use minijail::Minijail;
 use sync::Mutex;
@@ -226,16 +225,16 @@ impl SerialParameters {
         &self,
         protected_vm: bool,
         evt: &Event,
-        keep_fds: &mut Vec<RawFd>,
+        keep_fds: &mut Vec<RawDescriptor>,
     ) -> std::result::Result<T, Error> {
         let evt = evt.try_clone().map_err(Error::CloneEvent)?;
-        keep_fds.push(evt.as_raw_fd());
+        keep_fds.push(evt.as_raw_descriptor());
         let input: Option<Box<dyn io::Read + Send>> = if let Some(input_path) = &self.input {
             let input_file = File::open(input_path.as_path()).map_err(Error::FileError)?;
-            keep_fds.push(input_file.as_raw_fd());
+            keep_fds.push(input_file.as_raw_descriptor());
             Some(Box::new(input_file))
         } else if self.stdin {
-            keep_fds.push(stdin().as_raw_fd());
+            keep_fds.push(stdin().as_raw_descriptor());
             // This wrapper is used in place of the libstd native version because we don't want
             // buffering for stdin.
             struct StdinWrapper;
@@ -250,7 +249,7 @@ impl SerialParameters {
         };
         let output: Option<Box<dyn io::Write + Send>> = match self.type_ {
             SerialType::Stdout => {
-                keep_fds.push(stdout().as_raw_fd());
+                keep_fds.push(stdout().as_raw_descriptor());
                 Some(Box::new(stdout()))
             }
             SerialType::Sink => None,
@@ -268,7 +267,7 @@ impl SerialParameters {
                         .create(true)
                         .open(path.as_path())
                         .map_err(Error::FileError)?;
-                    keep_fds.push(file.as_raw_fd());
+                    keep_fds.push(file.as_raw_descriptor());
                     Some(Box::new(file))
                 }
                 None => return Err(Error::PathRequired),
@@ -291,7 +290,7 @@ impl SerialParameters {
                             }
                         }
                     };
-                    keep_fds.push(sock.as_raw_fd());
+                    keep_fds.push(sock.as_raw_descriptor());
                     Some(Box::new(WriteSocket::new(sock, path.to_path_buf())))
                 }
                 None => return Err(Error::PathRequired),

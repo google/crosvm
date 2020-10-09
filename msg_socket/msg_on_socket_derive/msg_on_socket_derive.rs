@@ -133,8 +133,8 @@ fn define_uses_fd_for_struct(fields: &[StructField]) -> TokenStream {
     }
 
     quote! {
-        fn uses_fd() -> bool {
-            #(<#field_types>::uses_fd())||*
+        fn uses_descriptor() -> bool {
+            #(<#field_types>::uses_descriptor())||*
         }
     }
 }
@@ -145,7 +145,7 @@ fn define_buffer_size_for_struct(fields: &[StructField]) -> TokenStream {
         fn msg_size(&self) -> usize {
             #msg_size
         }
-        fn fd_count(&self) -> usize {
+        fn descriptor_count(&self) -> usize {
             #fd_count
         }
     }
@@ -174,7 +174,7 @@ fn define_read_buffer_for_struct(_name: &Ident, fields: &[StructField]) -> Token
     quote! {
         unsafe fn read_from_buffer(
             buffer: &[u8],
-            fds: &[std::os::unix::io::RawFd],
+            fds: &[RawDescriptor],
         ) -> msg_socket::MsgResult<(Self, usize)> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
@@ -206,7 +206,7 @@ fn define_write_buffer_for_struct(_name: &Ident, fields: &[StructField]) -> Toke
         fn write_to_buffer(
             &self,
             buffer: &mut [u8],
-            fds: &mut [std::os::unix::io::RawFd],
+            fds: &mut [RawDescriptor],
         ) -> msg_socket::MsgResult<usize> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
@@ -245,8 +245,8 @@ fn define_uses_fd_for_enum(de: &DataEnum) -> TokenStream {
     }
 
     quote! {
-        fn uses_fd() -> bool {
-            #(<#variant_field_types>::uses_fd())||*
+        fn uses_descriptor() -> bool {
+            #(<#variant_field_types>::uses_descriptor())||*
         }
     }
 }
@@ -270,7 +270,7 @@ fn define_buffer_size_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
                 msg_size_match_variants.push(v);
 
                 let v = quote! {
-                    #name::#variant_name { #(#tmp_names),* } => #(#tmp_names.fd_count())+*,
+                    #name::#variant_name { #(#tmp_names),* } => #(#tmp_names.descriptor_count())+*,
                 };
                 fd_count_match_variants.push(v);
             }
@@ -288,7 +288,7 @@ fn define_buffer_size_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
                 msg_size_match_variants.push(v);
 
                 let v = quote! {
-                    #name::#variant_name(#(#tmp_names),*) => #(#tmp_names.fd_count())+*,
+                    #name::#variant_name(#(#tmp_names),*) => #(#tmp_names.descriptor_count())+*,
                 };
                 fd_count_match_variants.push(v);
             }
@@ -308,7 +308,7 @@ fn define_buffer_size_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
                 #(#msg_size_match_variants)*
             }
         }
-        fn fd_count(&self) -> usize {
+        fn descriptor_count(&self) -> usize {
             match self {
                 #(#fd_count_match_variants)*
             }
@@ -373,7 +373,7 @@ fn define_read_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
     quote! {
         unsafe fn read_from_buffer(
             buffer: &[u8],
-            fds: &[std::os::unix::io::RawFd],
+            fds: &[RawDescriptor],
         ) -> msg_socket::MsgResult<(Self, usize)> {
             let v = buffer.get(0).ok_or(msg_socket::MsgError::WrongMsgBufferSize)?;
             match v {
@@ -449,7 +449,7 @@ fn define_write_buffer_for_enum(name: &Ident, de: &DataEnum) -> TokenStream {
         fn write_to_buffer(
             &self,
             buffer: &mut [u8],
-            fds: &mut [std::os::unix::io::RawFd],
+            fds: &mut [RawDescriptor],
         ) -> msg_socket::MsgResult<usize> {
             if buffer.is_empty() {
                 return Err(msg_socket::MsgError::WrongMsgBufferSize)
@@ -514,8 +514,8 @@ fn define_uses_fd_for_tuples(fields: &[StructField]) -> TokenStream {
 
     let field_types = fields.iter().map(|f| &f.ty);
     quote! {
-        fn uses_fd() -> bool {
-            #(<#field_types>::uses_fd())||*
+        fn uses_descriptor() -> bool {
+            #(<#field_types>::uses_descriptor())||*
         }
     }
 }
@@ -534,7 +534,7 @@ fn define_read_buffer_for_tuples(name: &Ident, fields: &[StructField]) -> TokenS
     quote! {
         unsafe fn read_from_buffer(
             buffer: &[u8],
-            fds: &[std::os::unix::io::RawFd],
+            fds: &[RawDescriptor],
         ) -> msg_socket::MsgResult<(Self, usize)> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
@@ -562,7 +562,7 @@ fn define_write_buffer_for_tuples(name: &Ident, fields: &[StructField]) -> Token
         fn write_to_buffer(
             &self,
             buffer: &mut [u8],
-            fds: &mut [std::os::unix::io::RawFd],
+            fds: &mut [RawDescriptor],
         ) -> msg_socket::MsgResult<usize> {
             let mut __offset = 0usize;
             let mut __fd_offset = 0usize;
@@ -585,7 +585,7 @@ fn get_fields_buffer_size_sum(fields: &[StructField]) -> (TokenStream, TokenStre
                 #( self.#fields.msg_size() as usize )+*
             },
             quote! {
-                #( self.#fields.fd_count() as usize )+*
+                #( self.#fields.descriptor_count() as usize )+*
             },
         )
     } else {
@@ -621,29 +621,31 @@ mod tests {
         let input: DeriveInput = parse_quote! {
             struct MyMsg {
                 a: u8,
-                b: RawFd,
+                b: RawDescriptor,
                 c: u32,
             }
         };
 
         let expected = quote! {
             impl msg_socket::MsgOnSocket for MyMsg {
-                fn uses_fd() -> bool {
-                    <u8>::uses_fd() || <RawFd>::uses_fd() || <u32>::uses_fd()
+                fn uses_descriptor() -> bool {
+                    <u8>::uses_descriptor()
+                    || <RawDescriptor>::uses_descriptor()
+                    || <u32>::uses_descriptor()
                 }
                 fn msg_size(&self) -> usize {
                     self.a.msg_size() as usize
                         + self.b.msg_size() as usize
                         + self.c.msg_size() as usize
                 }
-                fn fd_count(&self) -> usize {
-                    self.a.fd_count() as usize
-                        + self.b.fd_count() as usize
-                        + self.c.fd_count() as usize
+                fn descriptor_count(&self) -> usize {
+                    self.a.descriptor_count() as usize
+                        + self.b.descriptor_count() as usize
+                        + self.c.descriptor_count() as usize
                 }
                 unsafe fn read_from_buffer(
                     buffer: &[u8],
-                    fds: &[std::os::unix::io::RawFd],
+                    fds: &[RawDescriptor],
                 ) -> msg_socket::MsgResult<(Self, usize)> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
@@ -651,7 +653,8 @@ mod tests {
                     __offset += t.0.msg_size();
                     __fd_offset += t.1;
                     let a = t.0;
-                    let t = <RawFd>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
+                    let t = <RawDescriptor>::read_from_buffer(
+                        &buffer[__offset..], &fds[__fd_offset..])?;
                     __offset += t.0.msg_size();
                     __fd_offset += t.1;
                     let b = t.0;
@@ -664,7 +667,7 @@ mod tests {
                 fn write_to_buffer(
                     &self,
                     buffer: &mut [u8],
-                    fds: &mut [std::os::unix::io::RawFd],
+                    fds: &mut [RawDescriptor],
                 ) -> msg_socket::MsgResult<usize> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
@@ -700,21 +703,21 @@ mod tests {
 
         let expected = quote! {
             impl msg_socket::MsgOnSocket for MyMsg {
-                fn uses_fd() -> bool {
-                    <u8>::uses_fd() || <u32>::uses_fd() || <File>::uses_fd()
+                fn uses_descriptor() -> bool {
+                    <u8>::uses_descriptor() || <u32>::uses_descriptor() || <File>::uses_descriptor()
                 }
                 fn msg_size(&self) -> usize {
                     self.0.msg_size() as usize
                         + self.1.msg_size() as usize + self.2.msg_size() as usize
                 }
-                fn fd_count(&self) -> usize {
-                    self.0.fd_count() as usize
-                        + self.1.fd_count() as usize
-                        + self.2.fd_count() as usize
+                fn descriptor_count(&self) -> usize {
+                    self.0.descriptor_count() as usize
+                        + self.1.descriptor_count() as usize
+                        + self.2.descriptor_count() as usize
                 }
                 unsafe fn read_from_buffer(
                     buffer: &[u8],
-                    fds: &[std::os::unix::io::RawFd],
+                    fds: &[RawDescriptor],
                 ) -> msg_socket::MsgResult<(Self, usize)> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
@@ -735,7 +738,7 @@ mod tests {
                 fn write_to_buffer(
                     &self,
                     buffer: &mut [u8],
-                    fds: &mut [std::os::unix::io::RawFd],
+                    fds: &mut [RawDescriptor],
                 ) -> msg_socket::MsgResult<usize> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
@@ -772,8 +775,8 @@ mod tests {
 
         let expected = quote! {
             impl msg_socket::MsgOnSocket for MyMsg {
-                fn uses_fd() -> bool {
-                    <u8>::uses_fd() || <u8>::uses_fd() || <RawFd>::uses_fd()
+                fn uses_descriptor() -> bool {
+                    <u8>::uses_descriptor() || <u8>::uses_descriptor() || <RawFd>::uses_descriptor()
                 }
                 fn msg_size(&self) -> usize {
                     1 + match self {
@@ -782,16 +785,16 @@ mod tests {
                         MyMsg::C { f0, f1 } => f0.msg_size() + f1.msg_size(),
                     }
                 }
-                fn fd_count(&self) -> usize {
+                fn descriptor_count(&self) -> usize {
                     match self {
-                        MyMsg::A(enum_field0) => enum_field0.fd_count(),
+                        MyMsg::A(enum_field0) => enum_field0.descriptor_count(),
                         MyMsg::B => 0,
-                        MyMsg::C { f0, f1 } => f0.fd_count() + f1.fd_count(),
+                        MyMsg::C { f0, f1 } => f0.descriptor_count() + f1.descriptor_count(),
                     }
                 }
                 unsafe fn read_from_buffer(
                     buffer: &[u8],
-                    fds: &[std::os::unix::io::RawFd],
+                    fds: &[RawDescriptor],
                 ) -> msg_socket::MsgResult<(Self, usize)> {
                     let v = buffer
                         .get(0)
@@ -826,7 +829,7 @@ mod tests {
                 fn write_to_buffer(
                     &self,
                     buffer: &mut [u8],
-                    fds: &mut [std::os::unix::io::RawFd],
+                    fds: &mut [RawDescriptor],
                 ) -> msg_socket::MsgResult<usize> {
                     if buffer.is_empty() {
                         return Err(msg_socket::MsgError::WrongMsgBufferSize)
@@ -880,12 +883,12 @@ mod tests {
                 fn msg_size(&self) -> usize {
                     0
                 }
-                fn fd_count(&self) -> usize {
+                fn descriptor_count(&self) -> usize {
                     0
                 }
                 unsafe fn read_from_buffer(
                     buffer: &[u8],
-                    fds: &[std::os::unix::io::RawFd],
+                    fds: &[RawDescriptor],
                 ) -> msg_socket::MsgResult<(Self, usize)> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;
@@ -894,7 +897,7 @@ mod tests {
                 fn write_to_buffer(
                     &self,
                     buffer: &mut [u8],
-                    fds: &mut [std::os::unix::io::RawFd],
+                    fds: &mut [RawDescriptor],
                 ) -> msg_socket::MsgResult<usize> {
                     let mut __offset = 0usize;
                     let mut __fd_offset = 0usize;

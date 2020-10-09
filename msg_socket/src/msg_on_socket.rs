@@ -6,15 +6,11 @@ mod slice;
 mod tuple;
 
 use std::fmt::{self, Display};
-use std::fs::File;
 use std::mem::{size_of, transmute_copy, MaybeUninit};
-use std::net::{TcpListener, TcpStream, UdpSocket};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
 use std::result;
 use std::sync::Arc;
 
-use base::{Error as SysError, Event};
+use base::{Error as SysError, RawDescriptor};
 use data_model::*;
 use slice::{slice_read_helper, slice_write_helper};
 
@@ -35,14 +31,14 @@ pub enum MsgError {
     /// There was no data received when the socket `recv`-ed.
     RecvZero,
     /// There was no associated file descriptor received for a request that expected it.
-    ExpectFd,
+    ExpectDescriptor,
     /// There was some associated file descriptor received but not used when deserialize.
-    NotExpectFd,
+    NotExpectDescriptor,
     /// Failed to set flags on the file descriptor.
-    SettingFdFlags(SysError),
+    SettingDescriptorFlags(SysError),
     /// Trying to serialize/deserialize, but fd buffer size is too small. This typically happens
     /// when max_fd_count() returns a value that is too small.
-    WrongFdBufferSize,
+    WrongDescriptorBufferSize,
     /// Trying to serialize/deserialize, but msg buffer size is too small. This typically happens
     /// when msg_size() returns a value that is too small.
     WrongMsgBufferSize,
@@ -65,10 +61,12 @@ impl Display for MsgError {
                 expected, actual
             ),
             RecvZero => write!(f, "received zero data"),
-            ExpectFd => write!(f, "missing associated file descriptor for request"),
-            NotExpectFd => write!(f, "unexpected file descriptor is unused"),
-            SettingFdFlags(e) => write!(f, "failed setting flags on the message FD: {}", e),
-            WrongFdBufferSize => write!(f, "fd buffer size too small"),
+            ExpectDescriptor => write!(f, "missing associated file descriptor for request"),
+            NotExpectDescriptor => write!(f, "unexpected file descriptor is unused"),
+            SettingDescriptorFlags(e) => {
+                write!(f, "failed setting flags on the message descriptor: {}", e)
+            }
+            WrongDescriptorBufferSize => write!(f, "descriptor buffer size too small"),
             WrongMsgBufferSize => write!(f, "msg buffer size too small"),
         }
     }
@@ -99,8 +97,8 @@ impl Display for MsgError {
 /// Thus, read/write functions always the return correct count of fds in this variant. There will be
 /// no padding in fd_buffer.
 pub trait MsgOnSocket: Sized {
-    // `true` if this structure can potentially serialize fds.
-    fn uses_fd() -> bool {
+    // `true` if this structure can potentially serialize descriptors.
+    fn uses_descriptor() -> bool {
         false
     }
 
@@ -114,9 +112,9 @@ pub trait MsgOnSocket: Sized {
         Self::fixed_size().unwrap()
     }
 
-    /// Number of FDs in this message. This must be overridden if `uses_fd()` returns true.
-    fn fd_count(&self) -> usize {
-        assert!(!Self::uses_fd());
+    /// Number of FDs in this message. This must be overridden if `uses_descriptor()` returns true.
+    fn descriptor_count(&self) -> usize {
+        assert!(!Self::uses_descriptor());
         0
     }
     /// Returns (self, fd read count).
@@ -125,29 +123,29 @@ pub trait MsgOnSocket: Sized {
     ///     1. For enum, fds contains correct fd layout of the particular variant.
     ///     2. write_to_buffer is implemented correctly(put valid fds into the buffer, has no padding,
     ///        return correct count).
-    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)>;
+    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawDescriptor]) -> MsgResult<(Self, usize)>;
 
     /// Serialize self to buffers.
-    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize>;
+    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawDescriptor]) -> MsgResult<usize>;
 }
 
 impl MsgOnSocket for SysError {
     fn fixed_size() -> Option<usize> {
         Some(size_of::<u32>())
     }
-    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawDescriptor]) -> MsgResult<(Self, usize)> {
         let (v, size) = u32::read_from_buffer(buffer, fds)?;
         Ok((SysError::new(v as i32), size))
     }
-    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
+    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawDescriptor]) -> MsgResult<usize> {
         let v = self.errno() as u32;
         v.write_to_buffer(buffer, fds)
     }
 }
 
 impl<T: MsgOnSocket> MsgOnSocket for Option<T> {
-    fn uses_fd() -> bool {
-        T::uses_fd()
+    fn uses_descriptor() -> bool {
+        T::uses_descriptor()
     }
 
     fn msg_size(&self) -> usize {
@@ -157,14 +155,14 @@ impl<T: MsgOnSocket> MsgOnSocket for Option<T> {
         }
     }
 
-    fn fd_count(&self) -> usize {
+    fn descriptor_count(&self) -> usize {
         match self {
-            Some(v) => v.fd_count(),
+            Some(v) => v.descriptor_count(),
             None => 0,
         }
     }
 
-    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawDescriptor]) -> MsgResult<(Self, usize)> {
         match buffer[0] {
             0 => Ok((None, 0)),
             1 => {
@@ -175,7 +173,7 @@ impl<T: MsgOnSocket> MsgOnSocket for Option<T> {
         }
     }
 
-    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
+    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawDescriptor]) -> MsgResult<usize> {
         match self {
             None => {
                 buffer[0] = 0;
@@ -190,23 +188,23 @@ impl<T: MsgOnSocket> MsgOnSocket for Option<T> {
 }
 
 impl<T: MsgOnSocket> MsgOnSocket for Arc<T> {
-    fn uses_fd() -> bool {
-        T::uses_fd()
+    fn uses_descriptor() -> bool {
+        T::uses_descriptor()
     }
 
     fn msg_size(&self) -> usize {
         (**self).msg_size()
     }
 
-    fn fd_count(&self) -> usize {
-        (**self).fd_count()
+    fn descriptor_count(&self) -> usize {
+        (**self).descriptor_count()
     }
 
-    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawDescriptor]) -> MsgResult<(Self, usize)> {
         T::read_from_buffer(buffer, fds).map(|(v, count)| (Arc::new(v), count))
     }
 
-    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
+    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawDescriptor]) -> MsgResult<usize> {
         (**self).write_to_buffer(buffer, fds)
     }
 }
@@ -216,59 +214,21 @@ impl MsgOnSocket for () {
         Some(0)
     }
 
-    unsafe fn read_from_buffer(_buffer: &[u8], _fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+    unsafe fn read_from_buffer(_buffer: &[u8], _fds: &[RawDescriptor]) -> MsgResult<(Self, usize)> {
         Ok(((), 0))
     }
 
-    fn write_to_buffer(&self, _buffer: &mut [u8], _fds: &mut [RawFd]) -> MsgResult<usize> {
+    fn write_to_buffer(&self, _buffer: &mut [u8], _fds: &mut [RawDescriptor]) -> MsgResult<usize> {
         Ok(0)
     }
 }
-
-macro_rules! rawfd_impl {
-    ($type:ident) => {
-        impl MsgOnSocket for $type {
-            fn uses_fd() -> bool {
-                true
-            }
-            fn msg_size(&self) -> usize {
-                0
-            }
-            fn fd_count(&self) -> usize {
-                1
-            }
-            unsafe fn read_from_buffer(_buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
-                if fds.len() < 1 {
-                    return Err(MsgError::ExpectFd);
-                }
-                Ok(($type::from_raw_fd(fds[0]), 1))
-            }
-            fn write_to_buffer(&self, _buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
-                if fds.is_empty() {
-                    return Err(MsgError::WrongFdBufferSize);
-                }
-                fds[0] = self.as_raw_fd();
-                Ok(1)
-            }
-        }
-    };
-}
-
-rawfd_impl!(Event);
-rawfd_impl!(File);
-rawfd_impl!(UnixStream);
-rawfd_impl!(TcpStream);
-rawfd_impl!(TcpListener);
-rawfd_impl!(UdpSocket);
-rawfd_impl!(UnixListener);
-rawfd_impl!(UnixDatagram);
 
 // usize could be different sizes on different targets. We always use u64.
 impl MsgOnSocket for usize {
     fn msg_size(&self) -> usize {
         size_of::<u64>()
     }
-    unsafe fn read_from_buffer(buffer: &[u8], _fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+    unsafe fn read_from_buffer(buffer: &[u8], _fds: &[RawDescriptor]) -> MsgResult<(Self, usize)> {
         if buffer.len() < size_of::<u64>() {
             return Err(MsgError::WrongMsgBufferSize);
         }
@@ -276,7 +236,7 @@ impl MsgOnSocket for usize {
         Ok((t as usize, 0))
     }
 
-    fn write_to_buffer(&self, buffer: &mut [u8], _fds: &mut [RawFd]) -> MsgResult<usize> {
+    fn write_to_buffer(&self, buffer: &mut [u8], _fds: &mut [RawDescriptor]) -> MsgResult<usize> {
         if buffer.len() < size_of::<u64>() {
             return Err(MsgError::WrongMsgBufferSize);
         }
@@ -291,7 +251,7 @@ impl MsgOnSocket for bool {
     fn msg_size(&self) -> usize {
         size_of::<u8>()
     }
-    unsafe fn read_from_buffer(buffer: &[u8], _fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+    unsafe fn read_from_buffer(buffer: &[u8], _fds: &[RawDescriptor]) -> MsgResult<(Self, usize)> {
         if buffer.len() < size_of::<u8>() {
             return Err(MsgError::WrongMsgBufferSize);
         }
@@ -302,7 +262,7 @@ impl MsgOnSocket for bool {
             _ => Err(MsgError::InvalidType),
         }
     }
-    fn write_to_buffer(&self, buffer: &mut [u8], _fds: &mut [RawFd]) -> MsgResult<usize> {
+    fn write_to_buffer(&self, buffer: &mut [u8], _fds: &mut [RawDescriptor]) -> MsgResult<usize> {
         if buffer.len() < size_of::<u8>() {
             return Err(MsgError::WrongMsgBufferSize);
         }
@@ -318,7 +278,10 @@ macro_rules! le_impl {
                 Some(size_of::<$native_type>())
             }
 
-            unsafe fn read_from_buffer(buffer: &[u8], _fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+            unsafe fn read_from_buffer(
+                buffer: &[u8],
+                _fds: &[RawDescriptor],
+            ) -> MsgResult<(Self, usize)> {
                 if buffer.len() < size_of::<$native_type>() {
                     return Err(MsgError::WrongMsgBufferSize);
                 }
@@ -326,7 +289,11 @@ macro_rules! le_impl {
                 Ok((t.into(), 0))
             }
 
-            fn write_to_buffer(&self, buffer: &mut [u8], _fds: &mut [RawFd]) -> MsgResult<usize> {
+            fn write_to_buffer(
+                &self,
+                buffer: &mut [u8],
+                _fds: &mut [RawDescriptor],
+            ) -> MsgResult<usize> {
                 if buffer.len() < size_of::<$native_type>() {
                     return Err(MsgError::WrongMsgBufferSize);
                 }
@@ -348,7 +315,7 @@ le_impl!(Le32, u32);
 le_impl!(Le64, u64);
 
 fn simple_read<T: MsgOnSocket>(buffer: &[u8], offset: &mut usize) -> MsgResult<T> {
-    assert!(!T::uses_fd());
+    assert!(!T::uses_descriptor());
     // Safety for T::read_from_buffer depends on the given FDs being valid, but we pass no FDs.
     let (v, _) = unsafe { T::read_from_buffer(&buffer[*offset..], &[])? };
     *offset += v.msg_size();
@@ -356,7 +323,7 @@ fn simple_read<T: MsgOnSocket>(buffer: &[u8], offset: &mut usize) -> MsgResult<T
 }
 
 fn simple_write<T: MsgOnSocket>(v: T, buffer: &mut [u8], offset: &mut usize) -> MsgResult<()> {
-    assert!(!T::uses_fd());
+    assert!(!T::uses_descriptor());
     v.write_to_buffer(&mut buffer[*offset..], &mut [])?;
     *offset += v.msg_size();
     Ok(())
@@ -380,8 +347,8 @@ macro_rules! array_impls {
     ($N:expr, $t: ident $($ts:ident)*)
     => {
         impl<T: MsgOnSocket + Clone> MsgOnSocket for [T; $N] {
-            fn uses_fd() -> bool {
-                T::uses_fd()
+            fn uses_descriptor() -> bool {
+                T::uses_descriptor()
             }
 
             fn fixed_size() -> Option<usize> {
@@ -395,15 +362,16 @@ macro_rules! array_impls {
                 }
             }
 
-            fn fd_count(&self) -> usize {
-                if T::uses_fd() {
-                    self.iter().map(|i| i.fd_count()).sum()
+            fn descriptor_count(&self) -> usize {
+                if T::uses_descriptor() {
+                    self.iter().map(|i| i.descriptor_count()).sum()
                 } else {
                     0
                 }
             }
 
-            unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+            unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawDescriptor])
+                    -> MsgResult<(Self, usize)> {
                 // Taken from the canonical example of initializing an array, the `assume_init` can
                 // be assumed safe because the array elements (`MaybeUninit<T>` in this case)
                 // themselves don't require initializing.
@@ -425,7 +393,7 @@ macro_rules! array_impls {
             fn write_to_buffer(
                 &self,
                 buffer: &mut [u8],
-                fds: &mut [RawFd],
+                fds: &mut [RawDescriptor],
                 ) -> MsgResult<usize> {
                 slice_write_helper(self, buffer, fds)
             }

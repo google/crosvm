@@ -14,14 +14,14 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::mem::ManuallyDrop;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::sync::Arc;
 
 use libc::{EINVAL, EIO, ENODEV};
 
 use base::{
-    error, AsRawDescriptor, Error as SysError, Event, ExternalMapping, MappedRegion,
-    MemoryMappingBuilder, MmapError, RawDescriptor, Result,
+    error, AsRawDescriptor, Error as SysError, Event, ExternalMapping, FromRawDescriptor,
+    IntoRawDescriptor, MappedRegion, MemoryMappingBuilder, MmapError, RawDescriptor, Result,
+    SafeDescriptor,
 };
 use hypervisor::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
@@ -33,50 +33,60 @@ pub use hypervisor::MemSlot;
 
 /// A file descriptor either borrowed or owned by this.
 #[derive(Debug)]
-pub enum MaybeOwnedFd {
+pub enum MaybeOwnedDescriptor {
     /// Owned by this enum variant, and will be destructed automatically if not moved out.
-    Owned(File),
+    Owned(SafeDescriptor),
     /// A file descriptor borrwed by this enum.
     Borrowed(RawDescriptor),
 }
 
-impl AsRawDescriptor for MaybeOwnedFd {
+impl AsRawDescriptor for MaybeOwnedDescriptor {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         match self {
-            MaybeOwnedFd::Owned(f) => f.as_raw_descriptor(),
-            MaybeOwnedFd::Borrowed(descriptor) => *descriptor,
+            MaybeOwnedDescriptor::Owned(f) => f.as_raw_descriptor(),
+            MaybeOwnedDescriptor::Borrowed(descriptor) => *descriptor,
         }
     }
 }
 
-// TODO(mikehoyle): Remove this in favor of just AsRawDescriptor
-impl AsRawFd for MaybeOwnedFd {
-    fn as_raw_fd(&self) -> RawFd {
-        self.as_raw_descriptor()
+impl AsRawDescriptor for &MaybeOwnedDescriptor {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        match self {
+            MaybeOwnedDescriptor::Owned(f) => f.as_raw_descriptor(),
+            MaybeOwnedDescriptor::Borrowed(descriptor) => *descriptor,
+        }
     }
 }
 
 // When sent, it could be owned or borrowed. On the receiver end, it always owned.
-impl MsgOnSocket for MaybeOwnedFd {
-    fn uses_fd() -> bool {
+impl MsgOnSocket for MaybeOwnedDescriptor {
+    fn uses_descriptor() -> bool {
         true
     }
     fn fixed_size() -> Option<usize> {
         Some(0)
     }
-    fn fd_count(&self) -> usize {
+    fn descriptor_count(&self) -> usize {
         1usize
     }
-    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
-        let (file, size) = File::read_from_buffer(buffer, fds)?;
-        Ok((MaybeOwnedFd::Owned(file), size))
+    unsafe fn read_from_buffer(
+        buffer: &[u8],
+        descriptors: &[RawDescriptor],
+    ) -> MsgResult<(Self, usize)> {
+        let (file, size) = File::read_from_buffer(buffer, descriptors)?;
+        let safe_descriptor = SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor());
+        Ok((MaybeOwnedDescriptor::Owned(safe_descriptor), size))
     }
-    fn write_to_buffer(&self, _buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
-        if fds.is_empty() {
-            return Err(MsgError::WrongFdBufferSize);
+    fn write_to_buffer(
+        &self,
+        _buffer: &mut [u8],
+        descriptors: &mut [RawDescriptor],
+    ) -> MsgResult<usize> {
+        if descriptors.is_empty() {
+            return Err(MsgError::WrongDescriptorBufferSize);
         }
 
-        fds[0] = self.as_raw_fd();
+        descriptors[0] = self.as_raw_descriptor();
         Ok(1)
     }
 }
@@ -215,7 +225,7 @@ pub enum UsbControlCommand {
         addr: u8,
         vid: u16,
         pid: u16,
-        fd: Option<MaybeOwnedFd>,
+        descriptor: Option<MaybeOwnedDescriptor>,
     },
     DetachDevice {
         port: u8,
@@ -271,12 +281,12 @@ impl Display for UsbControlResult {
 
 #[derive(MsgOnSocket, Debug)]
 pub enum VmMemoryRequest {
-    /// Register shared memory represented by the given fd into guest address space. The response
-    /// variant is `VmResponse::RegisterMemory`.
-    RegisterMemory(MaybeOwnedFd, usize),
+    /// Register shared memory represented by the given descriptor into guest address space.
+    /// The response variant is `VmResponse::RegisterMemory`.
+    RegisterMemory(MaybeOwnedDescriptor, usize),
     /// Similiar to `VmMemoryRequest::RegisterMemory`, but doesn't allocate new address space.
     /// Useful for cases where the address space is already allocated (PCI regions).
-    RegisterFdAtPciBarOffset(Alloc, MaybeOwnedFd, usize, u64),
+    RegisterFdAtPciBarOffset(Alloc, MaybeOwnedDescriptor, usize, u64),
     /// Similar to RegisterFdAtPciBarOffset, but is for buffers in the current address space.
     RegisterHostPointerAtPciBarOffset(Alloc, u64),
     /// Unregister the given memory slot that was previously registered with `RegisterMemory*`.
@@ -290,7 +300,7 @@ pub enum VmMemoryRequest {
     },
     /// Register mmaped memory into the hypervisor's EPT.
     RegisterMmapMemory {
-        fd: MaybeOwnedFd,
+        descriptor: MaybeOwnedDescriptor,
         size: usize,
         offset: u64,
         gpa: u64,
@@ -315,14 +325,14 @@ impl VmMemoryRequest {
     ) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
         match *self {
-            RegisterMemory(ref fd, size) => {
-                match register_memory(vm, sys_allocator, fd, size, None) {
+            RegisterMemory(ref descriptor, size) => {
+                match register_memory(vm, sys_allocator, descriptor, size, None) {
                     Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
                     Err(e) => VmMemoryResponse::Err(e),
                 }
             }
-            RegisterFdAtPciBarOffset(alloc, ref fd, size, offset) => {
-                match register_memory(vm, sys_allocator, fd, size, Some((alloc, offset))) {
+            RegisterFdAtPciBarOffset(alloc, ref descriptor, size, offset) => {
+                match register_memory(vm, sys_allocator, descriptor, size, Some((alloc, offset))) {
                     Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
                     Err(e) => VmMemoryResponse::Err(e),
                 }
@@ -363,7 +373,11 @@ impl VmMemoryRequest {
                 };
                 match register_memory(vm, sys_allocator, &fd, size as usize, None) {
                     Ok((pfn, slot)) => VmMemoryResponse::AllocateAndRegisterGpuMemory {
-                        fd: MaybeOwnedFd::Owned(fd),
+                        // Safe because ownership is transferred to SafeDescriptor via
+                        // into_raw_descriptor
+                        descriptor: MaybeOwnedDescriptor::Owned(unsafe {
+                            SafeDescriptor::from_raw_descriptor(fd.into_raw_descriptor())
+                        }),
                         pfn,
                         slot,
                         desc,
@@ -372,13 +386,13 @@ impl VmMemoryRequest {
                 }
             }
             RegisterMmapMemory {
-                ref fd,
+                ref descriptor,
                 size,
                 offset,
                 gpa,
             } => {
                 let mmap = match MemoryMappingBuilder::new(size)
-                    .from_descriptor(fd)
+                    .from_descriptor(descriptor)
                     .offset(offset as u64)
                     .build()
                 {
@@ -405,7 +419,7 @@ pub enum VmMemoryResponse {
     /// The request to allocate and register GPU memory into guest address space was successfully
     /// done at page frame number `pfn` and memory slot number `slot` for buffer with `desc`.
     AllocateAndRegisterGpuMemory {
-        fd: MaybeOwnedFd,
+        descriptor: MaybeOwnedDescriptor,
         pfn: u64,
         slot: MemSlot,
         desc: GpuMemoryDesc,
@@ -417,7 +431,7 @@ pub enum VmMemoryResponse {
 #[derive(MsgOnSocket, Debug)]
 pub enum VmIrqRequest {
     /// Allocate one gsi, and associate gsi to irqfd with register_irqfd()
-    AllocateOneMsi { irqfd: MaybeOwnedFd },
+    AllocateOneMsi { irqfd: MaybeOwnedDescriptor },
     /// Add one msi route entry into the IRQ chip.
     AddMsiRoute {
         gsi: u32,
@@ -451,15 +465,17 @@ impl VmIrqRequest {
         match *self {
             AllocateOneMsi { ref irqfd } => {
                 if let Some(irq_num) = sys_allocator.allocate_irq() {
-                    // Beacuse of the limitation of `MaybeOwnedFd` not fitting into `register_irqfd`
-                    // which expects an `&Event`, we use the unsafe `from_raw_fd` to assume that
-                    // the fd given is an `Event`, and we ignore the ownership question using
-                    // `ManuallyDrop`. This is safe because `ManuallyDrop` prevents any Drop
-                    // implementation from triggering on `irqfd` which already has an owner, and the
-                    // `Event` methods are never called. The underlying fd is merely passed to the
-                    // kernel which doesn't care about ownership and deals with incorrect FDs, in
-                    // the case of bugs on our part.
-                    let evt = unsafe { ManuallyDrop::new(Event::from_raw_fd(irqfd.as_raw_fd())) };
+                    // Because of the limitation of `MaybeOwnedDescriptor` not fitting into
+                    // `register_irqfd` which expects an `&Event`, we use the unsafe `from_raw_fd`
+                    // to assume that the descriptor given is an `Event`, and we ignore the
+                    // ownership question using `ManuallyDrop`. This is safe because `ManuallyDrop`
+                    // prevents any Drop implementation from triggering on `irqfd` which already has
+                    // an owner, and the `Event` methods are never called. The underlying descriptor
+                    // is merely passed to the kernel which doesn't care about ownership and deals
+                    // with incorrect FDs, in the case of bugs on our part.
+                    let evt = unsafe {
+                        ManuallyDrop::new(Event::from_raw_descriptor(irqfd.as_raw_descriptor()))
+                    };
 
                     match set_up_irq(IrqSetup::Event(irq_num, &evt)) {
                         Ok(_) => VmIrqResponse::AllocateOneMsi { gsi: irq_num },
@@ -582,11 +598,14 @@ pub enum VmRequest {
 fn register_memory(
     vm: &mut impl Vm,
     allocator: &mut SystemAllocator,
-    fd: &dyn AsRawDescriptor,
+    descriptor: &dyn AsRawDescriptor,
     size: usize,
     pci_allocation: Option<(Alloc, u64)>,
 ) -> Result<(u64, MemSlot)> {
-    let mmap = match MemoryMappingBuilder::new(size).from_descriptor(fd).build() {
+    let mmap = match MemoryMappingBuilder::new(size)
+        .from_descriptor(descriptor)
+        .build()
+    {
         Ok(v) => v,
         Err(MmapError::SystemCallFailed(e)) => return Err(e),
         _ => return Err(SysError::new(EINVAL)),
@@ -732,7 +751,7 @@ pub enum VmResponse {
     /// The request to allocate and register GPU memory into guest address space was successfully
     /// done at page frame number `pfn` and memory slot number `slot` for buffer with `desc`.
     AllocateAndRegisterGpuMemory {
-        fd: MaybeOwnedFd,
+        descriptor: MaybeOwnedDescriptor,
         pfn: u64,
         slot: u32,
         desc: GpuMemoryDesc,

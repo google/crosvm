@@ -144,7 +144,7 @@ impl<T: EventToken> WaitContext<T> {
     }
 }
 
-impl<T: EventToken> AsRawDescriptor for WaitContext<T> {
+impl<T: PollToken> AsRawDescriptor for WaitContext<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.0.as_raw_fd()
     }

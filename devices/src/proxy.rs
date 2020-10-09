@@ -9,7 +9,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
 use std::{self, io};
 
-use base::{error, net::UnixSeqpacket};
+use base::{error, net::UnixSeqpacket, RawDescriptor};
 use libc::{self, pid_t};
 use minijail::{self, Minijail};
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgSender, MsgSocket};

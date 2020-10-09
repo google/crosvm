@@ -8,6 +8,7 @@
 use std::fmt;
 use std::fs::File;
 
+use base::RawDescriptor;
 use msg_on_socket_derive::MsgOnSocket;
 use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 

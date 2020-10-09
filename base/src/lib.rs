@@ -5,12 +5,16 @@
 pub use sys_util::*;
 
 mod event;
+mod ioctl;
 mod mmap;
 mod shm;
 mod timer;
 mod wait_context;
 
 pub use event::{Event, EventReadResult, ScopedEvent};
+pub use ioctl::{
+    ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
+};
 pub use mmap::{MemoryMapping, MemoryMappingBuilder};
 pub use shm::{SharedMemory, Unix as SharedMemoryUnix};
 pub use sys_util::ioctl::*;

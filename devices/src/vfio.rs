@@ -9,7 +9,6 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::mem;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::prelude::FileExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -18,7 +17,7 @@ use sync::Mutex;
 
 use base::{
     ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn,
-    AsRawDescriptor, Error, Event, RawDescriptor, SafeDescriptor,
+    AsRawDescriptor, Error, Event, FromRawDescriptor, RawDescriptor, SafeDescriptor,
 };
 use hypervisor::{DeviceKind, Vm};
 use vm_memory::GuestMemory;
@@ -97,7 +96,7 @@ impl VfioContainer {
             .open("/dev/vfio/vfio")
             .map_err(VfioError::OpenContainer)?;
 
-        // Safe as file is vfio container fd and ioctl is defined by kernel.
+        // Safe as file is vfio container descriptor and ioctl is defined by kernel.
         let version = unsafe { ioctl(&container, VFIO_GET_API_VERSION()) };
         if version as u8 != VFIO_API_VERSION {
             return Err(VfioError::VfioApiVersion);
@@ -219,9 +218,9 @@ impl VfioContainer {
     }
 }
 
-impl AsRawFd for VfioContainer {
-    fn as_raw_fd(&self) -> RawFd {
-        self.container.as_raw_fd()
+impl AsRawDescriptor for VfioContainer {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.container.as_raw_descriptor()
     }
 }
 
@@ -256,10 +255,16 @@ impl VfioGroup {
             return Err(VfioError::GroupViable);
         }
 
-        // Safe as we are the owner of group_file and container_raw_fd which are valid value,
+        // Safe as we are the owner of group_file and container_raw_descriptor which are valid value,
         // and we verify the ret value
-        let container_raw_fd = container.as_raw_fd();
-        ret = unsafe { ioctl_with_ref(&group_file, VFIO_GROUP_SET_CONTAINER(), &container_raw_fd) };
+        let container_raw_descriptor = container.as_raw_descriptor();
+        ret = unsafe {
+            ioctl_with_ref(
+                &group_file,
+                VFIO_GROUP_SET_CONTAINER(),
+                &container_raw_descriptor,
+            )
+        };
         if ret < 0 {
             return Err(VfioError::GroupSetContainer(get_error()));
         }
@@ -268,13 +273,13 @@ impl VfioGroup {
     }
 
     fn kvm_device_add_group(&self, kvm_vfio_file: &SafeDescriptor) -> Result<(), VfioError> {
-        let group_fd = self.as_raw_fd();
-        let group_fd_ptr = &group_fd as *const i32;
+        let group_descriptor = self.as_raw_descriptor();
+        let group_descriptor_ptr = &group_descriptor as *const i32;
         let vfio_dev_attr = kvm_sys::kvm_device_attr {
             flags: 0,
             group: kvm_sys::KVM_DEV_VFIO_GROUP,
             attr: kvm_sys::KVM_DEV_VFIO_GROUP_ADD as u64,
-            addr: group_fd_ptr as u64,
+            addr: group_descriptor_ptr as u64,
         };
 
         // Safe as we are the owner of vfio_dev_fd and vfio_dev_attr which are valid value,
@@ -305,13 +310,13 @@ impl VfioGroup {
         }
 
         // Safe as ret is valid FD
-        Ok(unsafe { File::from_raw_fd(ret) })
+        Ok(unsafe { File::from_raw_descriptor(ret) })
     }
 }
 
-impl AsRawFd for VfioGroup {
-    fn as_raw_fd(&self) -> RawFd {
-        self.group.as_raw_fd()
+impl AsRawDescriptor for VfioGroup {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.group.as_raw_descriptor()
     }
 }
 
@@ -326,7 +331,7 @@ struct VfioRegion {
     // flags for this region: read/write/mmap
     flags: u32,
     size: u64,
-    // region offset used to read/write with vfio device fd
+    // region offset used to read/write with vfio device descriptor
     offset: u64,
     // vectors for mmap offset and size
     mmaps: Vec<vfio_region_sparse_mmap_area>,
@@ -338,7 +343,7 @@ struct VfioRegion {
 pub struct VfioDevice {
     dev: File,
     container: Arc<Mutex<VfioContainer>>,
-    group_fd: RawFd,
+    group_descriptor: RawDescriptor,
     // vec for vfio device's regions
     regions: Vec<VfioRegion>,
 }
@@ -370,16 +375,20 @@ impl VfioDevice {
         Ok(VfioDevice {
             dev: new_dev,
             container,
-            group_fd: group.as_raw_fd(),
+            group_descriptor: group.as_raw_descriptor(),
             regions: dev_regions,
         })
     }
 
     /// Enable vfio device's irq and associate Irqfd Event with device.
-    /// When MSIx is enabled, multi vectors will be supported, so fds is vector and the vector
+    /// When MSIx is enabled, multi vectors will be supported, so descriptors is vector and the vector
     /// length is the num of MSIx vectors
-    pub fn irq_enable(&self, fds: Vec<&Event>, irq_type: VfioIrqType) -> Result<(), VfioError> {
-        let count = fds.len();
+    pub fn irq_enable(
+        &self,
+        descriptors: Vec<&Event>,
+        irq_type: VfioIrqType,
+    ) -> Result<(), VfioError> {
+        let count = descriptors.len();
         let u32_size = mem::size_of::<u32>();
         let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(count);
         irq_set[0].argsz = (mem::size_of::<vfio_irq_set>() + count * u32_size) as u32;
@@ -392,14 +401,14 @@ impl VfioDevice {
         irq_set[0].start = 0;
         irq_set[0].count = count as u32;
 
-        // irq_set.data could be none, bool or fd according to flags, so irq_set.data
-        // is u8 default, here irq_set.data is fd as u32, so 4 default u8 are combined
+        // irq_set.data could be none, bool or descriptor according to flags, so irq_set.data
+        // is u8 default, here irq_set.data is descriptor as u32, so 4 default u8 are combined
         // together as u32. It is safe as enough space is reserved through
         // vec_with_array_field(u32)<count>.
         let mut data = unsafe { irq_set[0].data.as_mut_slice(count * u32_size) };
-        for fd in fds.iter().take(count) {
+        for descriptor in descriptors.iter().take(count) {
             let (left, right) = data.split_at_mut(u32_size);
-            left.copy_from_slice(&fd.as_raw_fd().to_ne_bytes()[..]);
+            left.copy_from_slice(&descriptor.as_raw_descriptor().to_ne_bytes()[..]);
             data = right;
         }
 
@@ -420,8 +429,8 @@ impl VfioDevice {
     /// generate another interrupts.
     /// This function enable resample irqfd and let vfio kernel could get EOI notification.
     ///
-    /// fd: should be resample IrqFd.
-    pub fn resample_virq_enable(&self, fd: &Event) -> Result<(), VfioError> {
+    /// descriptor: should be resample IrqFd.
+    pub fn resample_virq_enable(&self, descriptor: &Event) -> Result<(), VfioError> {
         let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(1);
         irq_set[0].argsz = (mem::size_of::<vfio_irq_set>() + mem::size_of::<u32>()) as u32;
         irq_set[0].flags = VFIO_IRQ_SET_DATA_EVENTFD | VFIO_IRQ_SET_ACTION_UNMASK;
@@ -430,12 +439,12 @@ impl VfioDevice {
         irq_set[0].count = 1;
 
         {
-            // irq_set.data could be none, bool or fd according to flags, so irq_set.data
-            // is u8 default, here irq_set.data is fd as u32, so 4 default u8 are combined
+            // irq_set.data could be none, bool or descriptor according to flags, so irq_set.data
+            // is u8 default, here irq_set.data is descriptor as u32, so 4 default u8 are combined
             // together as u32. It is safe as enough space is reserved through
             // vec_with_array_field(u32)<1>.
-            let fds = unsafe { irq_set[0].data.as_mut_slice(4) };
-            fds.copy_from_slice(&fd.as_raw_fd().to_le_bytes()[..]);
+            let descriptors = unsafe { irq_set[0].data.as_mut_slice(4) };
+            descriptors.copy_from_slice(&descriptor.as_raw_descriptor().to_le_bytes()[..]);
         }
 
         // Safe as we are the owner of self and irq_set which are valid value
@@ -675,7 +684,7 @@ impl VfioDevice {
     }
 
     /// get a region's offset
-    /// return: Region offset from the start of vfio device fd
+    /// return: Region offset from the start of vfio device descriptor
     pub fn get_region_offset(&self, index: u32) -> u64 {
         match self.regions.get(index as usize) {
             Some(v) => v.offset,
@@ -782,12 +791,12 @@ impl VfioDevice {
         }
     }
 
-    /// get vfio device's fds which are passed into minijail process
-    pub fn keep_fds(&self) -> Vec<RawFd> {
+    /// get vfio device's descriptors which are passed into minijail process
+    pub fn keep_fds(&self) -> Vec<RawDescriptor> {
         let mut fds = Vec::new();
-        fds.push(self.as_raw_fd());
-        fds.push(self.group_fd);
-        fds.push(self.container.lock().as_raw_fd());
+        fds.push(self.as_raw_descriptor());
+        fds.push(self.group_descriptor);
+        fds.push(self.container.lock().as_raw_descriptor());
         fds
     }
 
@@ -804,13 +813,6 @@ impl VfioDevice {
     /// Remove (iova, user_addr) map from vfio container iommu table
     pub fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<(), VfioError> {
         self.container.lock().vfio_dma_unmap(iova, size)
-    }
-}
-
-// TODO(mikehoyle): Remove this in favor of AsRawDescriptor
-impl AsRawFd for VfioDevice {
-    fn as_raw_fd(&self) -> RawFd {
-        self.dev.as_raw_fd()
     }
 }
 

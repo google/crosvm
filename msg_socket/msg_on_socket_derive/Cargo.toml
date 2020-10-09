@@ -5,6 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
+base = "*"
 proc-macro2 = "^1"
 quote = "^1"
 syn = "^1"

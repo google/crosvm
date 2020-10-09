@@ -3,7 +3,9 @@
 // found in the LICENSE file.
 
 use std::fs::File;
+use std::io::{Stderr, Stdin, Stdout};
 use std::mem;
+use std::net::UdpSocket;
 use std::ops::Drop;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::os::unix::net::{UnixDatagram, UnixStream};
@@ -180,6 +182,15 @@ AsRawDescriptor!(File);
 AsRawDescriptor!(UnlinkUnixSeqpacketListener);
 FromRawDescriptor!(File);
 IntoRawDescriptor!(File);
+AsRawDescriptor!(Stdin);
+AsRawDescriptor!(Stdout);
+AsRawDescriptor!(Stderr);
+
+impl AsRawDescriptor for UdpSocket {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.as_raw_fd()
+    }
+}
 
 impl AsRawDescriptor for UnixStream {
     fn as_raw_descriptor(&self) -> RawDescriptor {
@@ -190,6 +201,12 @@ impl AsRawDescriptor for UnixStream {
 impl AsRawDescriptor for UnixDatagram {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.as_raw_fd()
+    }
+}
+
+impl IntoRawDescriptor for UnixDatagram {
+    fn into_raw_descriptor(self) -> RawDescriptor {
+        self.into_raw_fd()
     }
 }
 

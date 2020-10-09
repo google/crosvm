@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::thread;
 
 use data_model::{DataInit, Le64};
 
-use base::{error, warn, Event};
+use base::{error, warn, AsRawDescriptor, Event, RawDescriptor};
 use vhost::Vhost;
 use vhost::Vsock as VhostVsockHandle;
 use vm_memory::GuestMemory;
@@ -89,21 +88,21 @@ impl Drop for Vsock {
 }
 
 impl VirtioDevice for Vsock {
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_fds(&self) -> Vec<RawDescriptor> {
         let mut keep_fds = Vec::new();
 
         if let Some(handle) = &self.vhost_handle {
-            keep_fds.push(handle.as_raw_fd());
+            keep_fds.push(handle.as_raw_descriptor());
         }
 
         if let Some(interrupt) = &self.interrupts {
             for vhost_int in interrupt.iter() {
-                keep_fds.push(vhost_int.as_raw_fd());
+                keep_fds.push(vhost_int.as_raw_descriptor());
             }
         }
 
         if let Some(worker_kill_evt) = &self.worker_kill_evt {
-            keep_fds.push(worker_kill_evt.as_raw_fd());
+            keep_fds.push(worker_kill_evt.as_raw_descriptor());
         }
 
         keep_fds

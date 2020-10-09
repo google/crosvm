@@ -65,8 +65,11 @@ impl EventLoop {
             Arc::new(Mutex::new(BTreeMap::new()));
         let poll_ctx: EpollContext<Descriptor> = EpollContext::new()
             .and_then(|pc| {
-                pc.add(&stop_evt, Descriptor(stop_evt.as_raw_descriptor()))
-                    .and(Ok(pc))
+                pc.add(
+                    &wrap_descriptor(&stop_evt),
+                    Descriptor(stop_evt.as_raw_descriptor()),
+                )
+                .and(Ok(pc))
             })
             .map_err(Error::CreateWaitContext)?;
 

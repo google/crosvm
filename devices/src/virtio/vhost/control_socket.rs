@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::Error as SysError;
+use base::{Error as SysError, RawDescriptor};
 use msg_socket::{MsgOnSocket, MsgSocket};
 
 #[derive(MsgOnSocket, Debug)]

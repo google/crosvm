@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 mod msg_on_socket;
+mod serializable_descriptors;
 
 use base::{
     handle_eintr, net::UnixSeqpacket, AsRawDescriptor, Error as SysError, Fd, RawDescriptor,
@@ -129,7 +130,7 @@ pub trait MsgSender: AsRef<UnixSeqpacket> {
     type M: MsgOnSocket;
     fn send(&self, msg: &Self::M) -> MsgResult<()> {
         let msg_size = msg.msg_size();
-        let fd_size = msg.fd_count();
+        let fd_size = msg.descriptor_count();
         let mut msg_buffer: Vec<u8> = vec![0; msg_size];
         let mut fd_buffer: Vec<RawFd> = vec![0; fd_size];
 
@@ -154,7 +155,7 @@ pub trait MsgReceiver: AsRef<UnixSeqpacket> {
         let sock: &UnixSeqpacket = self.as_ref();
 
         let (msg_buffer, fd_buffer) = {
-            if Self::M::uses_fd() {
+            if Self::M::uses_descriptor() {
                 sock.recv_as_vec_with_fds()
                     .map_err(|e| MsgError::Recv(SysError::new(e.raw_os_error().unwrap_or(0))))?
             } else {
@@ -183,7 +184,7 @@ pub trait MsgReceiver: AsRef<UnixSeqpacket> {
         // Safe because fd buffer is read from socket.
         let (v, read_fd_size) = unsafe { Self::M::read_from_buffer(&msg_buffer, &fd_buffer)? };
         if fd_buffer.len() != read_fd_size {
-            return Err(MsgError::NotExpectFd);
+            return Err(MsgError::NotExpectDescriptor);
         }
         Ok(v)
     }

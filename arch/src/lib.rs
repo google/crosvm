@@ -12,7 +12,6 @@ use std::error::Error as StdError;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
-use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -320,8 +319,8 @@ pub fn generate_pci_root(
             .register_irq_event(irq_num, &irqfd, Some(&irq_resample_fd))
             .map_err(DeviceRegistrationError::RegisterIrqfd)?;
 
-        keep_fds.push(irqfd.as_raw_fd());
-        keep_fds.push(irq_resample_fd.as_raw_fd());
+        keep_fds.push(irqfd.as_raw_descriptor());
+        keep_fds.push(irq_resample_fd.as_raw_descriptor());
         device.assign_irq(irqfd, irq_resample_fd, irq_num, pci_irq_pin);
         pci_irqs.push((address, irq_num, pci_irq_pin));
         let ranges = io_ranges.remove(&dev_idx).unwrap_or_default();
@@ -333,7 +332,7 @@ pub fn generate_pci_root(
             let io_addr = IoEventAddress::Mmio(addr);
             vm.register_ioevent(&event, io_addr, datamatch)
                 .map_err(DeviceRegistrationError::RegisterIoevent)?;
-            keep_fds.push(event.as_raw_fd());
+            keep_fds.push(event.as_raw_descriptor());
         }
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
             let proxy = ProxyDevice::new(device, &jail, keep_fds)

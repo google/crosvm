@@ -78,6 +78,7 @@ name = "base"
 version = "0.1.0"
 dependencies = [
  "data_model 0.1.0",
+ "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
  "sync 0.1.0",
  "sys_util 0.1.0",
 ]
@@ -536,6 +537,7 @@ dependencies = [
 name = "msg_on_socket_derive"
 version = "0.1.0"
 dependencies = [
+ "base 0.1.0",
  "proc-macro2 1.0.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 1.0.14 (registry+https://github.com/rust-lang/crates.io-index)",

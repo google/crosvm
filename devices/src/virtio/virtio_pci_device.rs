@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
 
-use base::{warn, Event, Result};
+use base::{warn, AsRawDescriptor, Event, RawDescriptor, Result};
 use data_model::{DataInit, Le32};
 use hypervisor::Datamatch;
 use libc::ERANGE;
@@ -386,13 +385,13 @@ impl PciDevice for VirtioPciDevice {
         self.pci_address = Some(address);
     }
 
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_fds(&self) -> Vec<RawDescriptor> {
         let mut fds = self.device.keep_fds();
         if let Some(interrupt_evt) = &self.interrupt_evt {
-            fds.push(interrupt_evt.as_raw_fd());
+            fds.push(interrupt_evt.as_raw_descriptor());
         }
         if let Some(interrupt_resample_evt) = &self.interrupt_resample_evt {
-            fds.push(interrupt_resample_evt.as_raw_fd());
+            fds.push(interrupt_resample_evt.as_raw_descriptor());
         }
         let fd = self.msix_config.lock().get_msi_socket();
         fds.push(fd);

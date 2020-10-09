@@ -70,7 +70,7 @@ use base::ioctl_with_ref;
 use super::resource_bridge::*;
 use super::{DescriptorChain, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_WL};
 use vm_control::{
-    MaybeOwnedFd, MemSlot, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse,
+    MaybeOwnedDescriptor, MemSlot, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse,
 };
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
@@ -560,7 +560,7 @@ impl WlVfd {
             SharedMemory::named("virtwl_alloc", size_page_aligned).map_err(WlError::NewAlloc)?;
 
         let register_response = vm.request(VmMemoryRequest::RegisterMemory(
-            MaybeOwnedFd::Borrowed(vfd_shm.as_raw_descriptor()),
+            MaybeOwnedDescriptor::Borrowed(vfd_shm.as_raw_descriptor()),
             vfd_shm.size() as usize,
         ))?;
         match register_response {
@@ -589,13 +589,14 @@ impl WlVfd {
             })?;
         match allocate_and_register_gpu_memory_response {
             VmMemoryResponse::AllocateAndRegisterGpuMemory {
-                fd: MaybeOwnedFd::Owned(file),
+                descriptor: MaybeOwnedDescriptor::Owned(file),
                 pfn,
                 slot,
                 desc,
             } => {
                 let mut vfd = WlVfd::default();
-                let vfd_shm = SharedMemory::from_file(file).map_err(WlError::NewAlloc)?;
+                let vfd_shm =
+                    SharedMemory::from_safe_descriptor(file).map_err(WlError::NewAlloc)?;
                 vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm));
                 vfd.slot = Some((slot, pfn, vm));
                 vfd.is_dmabuf = true;
@@ -653,7 +654,7 @@ impl WlVfd {
             Ok(fd_size) => {
                 let size = round_up_to_page_size(fd_size as usize) as u64;
                 let register_response = vm.request(VmMemoryRequest::RegisterMemory(
-                    MaybeOwnedFd::Borrowed(fd.as_raw_fd()),
+                    MaybeOwnedDescriptor::Borrowed(fd.as_raw_fd()),
                     size as usize,
                 ))?;
 

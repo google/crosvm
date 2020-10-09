@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, Result};
+use base::{error, RawDescriptor, Result};
 use bit_field::*;
 use downcast_rs::impl_downcast;
 use msg_socket::MsgOnSocket;

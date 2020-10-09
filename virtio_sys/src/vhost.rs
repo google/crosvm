@@ -574,7 +574,7 @@ impl Clone for vhost_vring_state {
 #[derive(Debug, Default, Copy)]
 pub struct vhost_vring_file {
     pub index: ::std::os::raw::c_uint,
-    pub fd: ::std::os::raw::c_int,
+    pub event: ::std::os::raw::c_int,
 }
 #[test]
 fn bindgen_test_layout_vhost_vring_file() {
@@ -599,7 +599,7 @@ fn bindgen_test_layout_vhost_vring_file() {
         )
     );
     assert_eq!(
-        unsafe { &(*(0 as *const vhost_vring_file)).fd as *const _ as usize },
+        unsafe { &(*(0 as *const vhost_vring_file)).event as *const _ as usize },
         4usize,
         concat!(
             "Alignment of field: ",

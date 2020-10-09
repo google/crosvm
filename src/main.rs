@@ -24,7 +24,7 @@ use arch::{
 };
 use base::{
     debug, error, getpid, info, kill_process_group, net::UnixSeqpacket, reap_child, syslog,
-    validate_raw_fd, warn,
+    validate_raw_fd, warn, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
 };
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
@@ -37,8 +37,8 @@ use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use vm_control::{
-    BalloonControlCommand, DiskControlCommand, MaybeOwnedFd, UsbControlCommand, UsbControlResult,
-    VmControlRequestSocket, VmRequest, VmResponse, USB_CONTROL_MAX_PORTS,
+    BalloonControlCommand, DiskControlCommand, MaybeOwnedDescriptor, UsbControlCommand,
+    UsbControlResult, VmControlRequestSocket, VmRequest, VmResponse, USB_CONTROL_MAX_PORTS,
 };
 
 fn executable_is_plugin(executable: &Option<Executable>) -> bool {
@@ -1943,7 +1943,12 @@ fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
         addr,
         vid,
         pid,
-        fd: usb_file.map(MaybeOwnedFd::Owned),
+        // Safe because we are transferring ownership to the rawdescriptor
+        descriptor: usb_file.map(|file| {
+            MaybeOwnedDescriptor::Owned(unsafe {
+                SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor())
+            })
+        }),
     });
     let response = handle_request(&request, args).map_err(|_| ModifyUsbError::SocketFailed)?;
     match response {

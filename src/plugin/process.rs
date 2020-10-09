@@ -7,7 +7,6 @@ use std::env::set_var;
 use std::fs::File;
 use std::io::{IoSlice, Write};
 use std::mem::transmute;
-use std::os::unix::io::{IntoRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
 use std::process::Command;
@@ -21,8 +20,9 @@ use libc::{pid_t, waitpid, EINVAL, ENODATA, ENOTTY, WEXITSTATUS, WIFEXITED, WNOH
 use protobuf::Message;
 
 use base::{
-    error, Error as SysError, Event, Killable, MemoryMappingBuilder, Result as SysResult,
-    ScmSocket, SharedMemory, SharedMemoryUnix, SIGRTMIN,
+    error, AsRawDescriptor, Error as SysError, Event, IntoRawDescriptor, Killable,
+    MemoryMappingBuilder, RawDescriptor, Result as SysResult, ScmSocket, SharedMemory,
+    SharedMemoryUnix, SIGRTMIN,
 };
 use kvm::{dirty_log_bitmap_size, Datamatch, IoeventAddress, IrqRoute, IrqSource, PicId, Vm};
 use kvm_sys::{kvm_clock_data, kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
@@ -306,7 +306,7 @@ impl Process {
         entry: VacantEntry<u32, PluginObject>,
         vm: &mut Vm,
         io_event: &MainRequest_Create_IoEvent,
-    ) -> SysResult<RawFd> {
+    ) -> SysResult<RawDescriptor> {
         let evt = Event::new()?;
         let addr = match io_event.space {
             AddressSpace::IOPORT => IoeventAddress::Pio(io_event.address),
@@ -327,7 +327,7 @@ impl Process {
             _ => return Err(SysError::new(EINVAL)),
         };
 
-        let fd = evt.as_raw_fd();
+        let fd = evt.as_raw_descriptor();
         entry.insert(PluginObject::IoEvent {
             evt,
             addr,
@@ -522,7 +522,7 @@ impl Process {
 
         /// Use this to make it easier to stuff various kinds of File-like objects into the
         /// `boxed_fds` list.
-        fn box_owned_fd<F: IntoRawFd + 'static>(f: F) -> Box<dyn IntoRawFd> {
+        fn box_owned_fd<F: IntoRawDescriptor + 'static>(f: F) -> Box<dyn IntoRawDescriptor> {
             Box::new(f)
         }
 
@@ -567,8 +567,8 @@ impl Process {
                                 irq_event.irq_id,
                             ) {
                                 Ok(()) => {
-                                    response_fds.push(evt.as_raw_fd());
-                                    response_fds.push(resample_evt.as_raw_fd());
+                                    response_fds.push(evt.as_raw_descriptor());
+                                    response_fds.push(resample_evt.as_raw_descriptor());
                                     boxed_fds.push(box_owned_fd(resample_evt));
                                     entry.insert(PluginObject::IrqEvent {
                                         irq_id: irq_event.irq_id,
@@ -605,7 +605,7 @@ impl Process {
             }
         } else if request.has_get_shutdown_eventfd() {
             response.mut_get_shutdown_eventfd();
-            response_fds.push(self.kill_evt.as_raw_fd());
+            response_fds.push(self.kill_evt.as_raw_descriptor());
             Ok(())
         } else if request.has_check_extension() {
             // Safe because the Cap enum is not read by the check_extension method. In that method,

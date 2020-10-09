@@ -38,7 +38,7 @@ use crate::virtio::gpu::{
 use crate::virtio::resource_bridge::{PlaneInfo, ResourceInfo, ResourceResponse};
 
 use vm_control::{
-    MaybeOwnedFd, MemSlot, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse,
+    MaybeOwnedDescriptor, MemSlot, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse,
 };
 
 struct Virtio3DResource {
@@ -829,7 +829,7 @@ impl Backend for Virtio3DBackend {
         let request = match export {
             Ok(ref export) => VmMemoryRequest::RegisterFdAtPciBarOffset(
                 self.pci_bar,
-                MaybeOwnedFd::Borrowed(export.as_raw_fd()),
+                MaybeOwnedDescriptor::Borrowed(export.as_raw_fd()),
                 resource.size as usize,
                 offset,
             ),

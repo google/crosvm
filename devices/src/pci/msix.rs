@@ -7,7 +7,7 @@ use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor};
 use msg_socket::{MsgError, MsgReceiver, MsgSender};
 use std::convert::TryInto;
 use std::fmt::{self, Display};
-use vm_control::{MaybeOwnedFd, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
+use vm_control::{MaybeOwnedDescriptor, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
 
 use data_model::DataInit;
 
@@ -237,7 +237,7 @@ impl MsixConfig {
             let irqfd = Event::new().unwrap();
             self.msi_device_socket
                 .send(&VmIrqRequest::AllocateOneMsi {
-                    irqfd: MaybeOwnedFd::Borrowed(irqfd.as_raw_descriptor()),
+                    irqfd: MaybeOwnedDescriptor::Borrowed(irqfd.as_raw_descriptor()),
                 })
                 .map_err(MsixError::AllocateOneMsiSend)?;
             let irq_num: u32;
