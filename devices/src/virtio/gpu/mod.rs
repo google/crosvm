@@ -121,7 +121,7 @@ pub struct VirtioScanoutBlobData {
 /// A virtio-gpu backend state tracker which supports display and potentially accelerated rendering.
 ///
 /// Commands from the virtio-gpu protocol can be submitted here using the methods, and they will be
-/// realized on the hardware. Most methods return a `GpuResponse` that indicate the success,
+/// realized on the hardware. Most methods return a `VirtioGpuResult` that indicate the success,
 /// failure, or requested data for the given command.
 trait Backend {
     /// Returns the number of capsets provided by the Backend.
@@ -156,7 +156,7 @@ trait Backend {
 
     /// Creates a fence with the given id that can be used to determine when the previous command
     /// completed.
-    fn create_fence(&mut self, ctx_id: u32, fence_id: u32) -> GpuResponse;
+    fn create_fence(&mut self, ctx_id: u32, fence_id: u32) -> VirtioGpuResult;
 
     /// Returns the id of the latest fence to complete.
     fn fence_poll(&mut self) -> u32;
@@ -166,7 +166,7 @@ trait Backend {
 
     /// Attaches the given input device to the given surface of the display (to allow for input
     /// from a X11 window for example).
-    fn import_event_device(&mut self, event_device: EventDevice, scanout: u32);
+    fn import_event_device(&mut self, event_device: EventDevice, scanout: u32) -> VirtioGpuResult;
 
     /// If supported, export the resource with the given id to a file.
     fn export_resource(&mut self, id: u32) -> ResourceResponse;
@@ -175,10 +175,16 @@ trait Backend {
     fn display_info(&self) -> [(u32, u32); 1];
 
     /// Creates a 2D resource with the given properties and associates it with the given id.
-    fn create_resource_2d(&mut self, id: u32, width: u32, height: u32, format: u32) -> GpuResponse;
+    fn create_resource_2d(
+        &mut self,
+        id: u32,
+        width: u32,
+        height: u32,
+        format: u32,
+    ) -> VirtioGpuResult;
 
     /// Removes the guest's reference count for the given resource id.
-    fn unref_resource(&mut self, id: u32) -> GpuResponse;
+    fn unref_resource(&mut self, id: u32) -> VirtioGpuResult;
 
     /// Sets the given resource id as the source of scanout to the display, with optional blob data.
     fn set_scanout(
@@ -186,10 +192,17 @@ trait Backend {
         _scanout_id: u32,
         resource_id: u32,
         scanout_data: Option<VirtioScanoutBlobData>,
-    ) -> GpuResponse;
+    ) -> VirtioGpuResult;
 
     /// Flushes the given rectangle of pixels of the given resource to the display.
-    fn flush_resource(&mut self, id: u32, x: u32, y: u32, width: u32, height: u32) -> GpuResponse;
+    fn flush_resource(
+        &mut self,
+        id: u32,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) -> VirtioGpuResult;
 
     /// Copes the given rectangle of pixels of the given resource's backing memory to the host side
     /// resource.
@@ -202,7 +215,7 @@ trait Backend {
         height: u32,
         src_offset: u64,
         mem: &GuestMemory,
-    ) -> GpuResponse;
+    ) -> VirtioGpuResult;
 
     /// Attaches backing memory to the given resource, represented by a `Vec` of `(address, size)`
     /// tuples in the guest's physical address space.
@@ -211,45 +224,45 @@ trait Backend {
         id: u32,
         mem: &GuestMemory,
         vecs: Vec<(GuestAddress, usize)>,
-    ) -> GpuResponse;
+    ) -> VirtioGpuResult;
 
     /// Detaches any backing memory from the given resource, if there is any.
-    fn detach_backing(&mut self, id: u32) -> GpuResponse;
+    fn detach_backing(&mut self, id: u32) -> VirtioGpuResult;
 
-    fn resource_assign_uuid(&mut self, _id: u32) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    fn resource_assign_uuid(&mut self, _id: u32) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 
     /// Updates the cursor's memory to the given id, and sets its position to the given coordinates.
-    fn update_cursor(&mut self, id: u32, x: u32, y: u32) -> GpuResponse;
+    fn update_cursor(&mut self, id: u32, x: u32, y: u32) -> VirtioGpuResult;
 
     /// Moves the cursor's position to the given coordinates.
-    fn move_cursor(&mut self, x: u32, y: u32) -> GpuResponse;
+    fn move_cursor(&mut self, x: u32, y: u32) -> VirtioGpuResult;
 
     /// Gets the renderer's capset information associated with `index`.
-    fn get_capset_info(&self, index: u32) -> GpuResponse;
+    fn get_capset_info(&self, index: u32) -> VirtioGpuResult;
 
     /// Gets the capset of `version` associated with `id`.
-    fn get_capset(&self, id: u32, version: u32) -> GpuResponse;
+    fn get_capset(&self, id: u32, version: u32) -> VirtioGpuResult;
 
     /// Creates a fresh renderer context with the given `id`.
-    fn create_renderer_context(&mut self, _id: u32) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    fn create_renderer_context(&mut self, _id: u32) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 
     /// Destorys the renderer context associated with `id`.
-    fn destroy_renderer_context(&mut self, _id: u32) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    fn destroy_renderer_context(&mut self, _id: u32) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 
     /// Attaches the indicated resource to the given context.
-    fn context_attach_resource(&mut self, _ctx_id: u32, _res_id: u32) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    fn context_attach_resource(&mut self, _ctx_id: u32, _res_id: u32) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 
     /// detaches the indicated resource to the given context.
-    fn context_detach_resource(&mut self, _ctx_id: u32, _res_id: u32) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    fn context_detach_resource(&mut self, _ctx_id: u32, _res_id: u32) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 
     /// Creates a 3D resource with the given properties and associates it with the given id.
@@ -266,8 +279,8 @@ trait Backend {
         _last_level: u32,
         _nr_samples: u32,
         _flags: u32,
-    ) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    ) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 
     /// Copes the given 3D rectangle of pixels of the given resource's backing memory to the host
@@ -286,8 +299,8 @@ trait Backend {
         _stride: u32,
         _layer_stride: u32,
         _offset: u64,
-    ) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    ) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 
     /// Copes the given rectangle of pixels from the resource to the given resource's backing
@@ -306,13 +319,13 @@ trait Backend {
         _stride: u32,
         _layer_stride: u32,
         _offset: u64,
-    ) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    ) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 
     /// Submits a command buffer to the given rendering context.
-    fn submit_command(&mut self, _ctx_id: u32, _commands: &mut [u8]) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    fn submit_command(&mut self, _ctx_id: u32, _commands: &mut [u8]) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 
     fn resource_create_blob(
@@ -325,16 +338,16 @@ trait Backend {
         _size: u64,
         _vecs: Vec<(GuestAddress, usize)>,
         _mem: &GuestMemory,
-    ) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    ) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 
-    fn resource_map_blob(&mut self, _resource_id: u32, _offset: u64) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    fn resource_map_blob(&mut self, _resource_id: u32, _offset: u64) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 
-    fn resource_unmap_blob(&mut self, _resource_id: u32) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    fn resource_unmap_blob(&mut self, _resource_id: u32) -> VirtioGpuResult {
+        Err(GpuResponse::ErrUnspec)
     }
 }
 
@@ -495,13 +508,13 @@ impl Frontend {
         mem: &GuestMemory,
         cmd: GpuCommand,
         reader: &mut Reader,
-    ) -> GpuResponse {
+    ) -> VirtioGpuResult {
         self.backend.force_ctx_0();
 
         match cmd {
-            GpuCommand::GetDisplayInfo(_) => {
-                GpuResponse::OkDisplayInfo(self.backend.display_info().to_vec())
-            }
+            GpuCommand::GetDisplayInfo(_) => Ok(GpuResponse::OkDisplayInfo(
+                self.backend.display_info().to_vec(),
+            )),
             GpuCommand::ResourceCreate2d(info) => self.backend.create_resource_2d(
                 info.resource_id.to_native(),
                 info.width.to_native(),
@@ -544,14 +557,14 @@ impl Frontend {
                                 let len = entry.length.to_native() as usize;
                                 vecs.push((addr, len))
                             }
-                            Err(_) => return GpuResponse::ErrUnspec,
+                            Err(_) => return Err(GpuResponse::ErrUnspec),
                         }
                     }
                     self.backend
                         .attach_backing(info.resource_id.to_native(), mem, vecs)
                 } else {
                     error!("missing data for command {:?}", cmd);
-                    GpuResponse::ErrUnspec
+                    Err(GpuResponse::ErrUnspec)
                 }
             }
             GpuCommand::ResourceDetachBacking(info) => {
@@ -668,12 +681,12 @@ impl Frontend {
                         self.backend
                             .submit_command(info.hdr.ctx_id.to_native(), &mut cmd_buf[..])
                     } else {
-                        GpuResponse::ErrInvalidParameter
+                        Err(GpuResponse::ErrInvalidParameter)
                     }
                 } else {
                     // Silently accept empty command buffers to allow for
                     // benchmarking.
-                    GpuResponse::OkNoData
+                    Ok(GpuResponse::OkNoData)
                 }
             }
             GpuCommand::ResourceCreateBlob(info) => {
@@ -687,7 +700,7 @@ impl Frontend {
                 if entry_count > VIRTIO_GPU_MAX_IOVEC_ENTRIES
                     || (reader.available_bytes() == 0 && entry_count > 0)
                 {
-                    return GpuResponse::ErrUnspec;
+                    return Err(GpuResponse::ErrUnspec);
                 }
 
                 let mut vecs = Vec::with_capacity(entry_count as usize);
@@ -698,7 +711,7 @@ impl Frontend {
                             let len = entry.length.to_native() as usize;
                             vecs.push((addr, len))
                         }
-                        Err(_) => return GpuResponse::ErrUnspec,
+                        Err(_) => return Err(GpuResponse::ErrUnspec),
                     }
                 }
 
@@ -729,7 +742,7 @@ impl Frontend {
                     VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM => Format::new(b'A', b'R', b'2', b'4'),
                     _ => {
                         error!("unrecognized virtio-gpu format {}", virtio_gpu_format);
-                        return GpuResponse::ErrUnspec;
+                        return Err(GpuResponse::ErrUnspec);
                     }
                 };
 
@@ -811,7 +824,7 @@ impl Frontend {
         reader: &mut Reader,
         writer: &mut Writer,
     ) -> Option<ReturnDescriptor> {
-        let mut resp = GpuResponse::ErrUnspec;
+        let mut resp = Err(GpuResponse::ErrUnspec);
         let mut gpu_cmd = None;
         let mut len = 0;
         match GpuCommand::decode(reader) {
@@ -821,9 +834,14 @@ impl Frontend {
             }
             Err(e) => debug!("descriptor decode error: {}", e),
         }
-        if resp.is_err() {
-            debug!("{:?} -> {:?}", gpu_cmd, resp);
-        }
+
+        let mut gpu_response = match resp {
+            Ok(gpu_response) => gpu_response,
+            Err(gpu_response) => {
+                debug!("{:?} -> {:?}", gpu_cmd, gpu_response);
+                gpu_response
+            }
+        };
 
         if writer.available_bytes() != 0 {
             let mut fence_id = 0;
@@ -836,17 +854,19 @@ impl Frontend {
                     ctx_id = ctrl_hdr.ctx_id.to_native();
                     flags = VIRTIO_GPU_FLAG_FENCE;
 
-                    let fence_resp = self.backend.create_fence(ctx_id, fence_id as u32);
-                    if fence_resp.is_err() {
-                        warn!("create_fence {} -> {:?}", fence_id, fence_resp);
-                        resp = fence_resp;
-                    }
+                    gpu_response = match self.backend.create_fence(ctx_id, fence_id as u32) {
+                        Ok(_) => gpu_response,
+                        Err(fence_resp) => {
+                            warn!("create_fence {} -> {:?}", fence_id, fence_resp);
+                            fence_resp
+                        }
+                    };
                 }
             }
 
             // Prepare the response now, even if it is going to wait until
             // fence is complete.
-            match resp.encode(flags, fence_id, ctx_id, writer) {
+            match gpu_response.encode(flags, fence_id, ctx_id, writer) {
                 Ok(l) => len = l,
                 Err(e) => debug!("ctrl queue response encode error: {}", e),
             }

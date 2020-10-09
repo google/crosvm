@@ -23,7 +23,7 @@ use sync::Mutex;
 use vm_control::VmMemoryControlRequestSocket;
 use vm_memory::{GuestAddress, GuestMemory};
 
-use super::protocol::GpuResponse;
+use super::protocol::{GpuResponse::*, VirtioGpuResult};
 pub use super::virtio_backend::{VirtioBackend, VirtioResource};
 use crate::virtio::gpu::{Backend, VirtioScanoutBlobData, VIRTIO_F_VERSION_1};
 use crate::virtio::resource_bridge::ResourceResponse;
@@ -246,19 +246,19 @@ impl Virtio2DResource {
         &mut self,
         iovecs: Vec<(GuestAddress, usize)>,
         mem: &GuestMemory,
-    ) -> bool {
+    ) -> VirtioGpuResult {
         if iovecs
             .iter()
             .any(|&(addr, len)| mem.get_slice_at_addr(addr, len).is_err())
         {
-            return false;
+            return Err(ErrUnspec);
         }
         self.detach_backing();
         self.guest_mem = Some(mem.clone());
         for (addr, len) in iovecs {
             self.guest_iovecs.push((addr, len));
         }
-        true
+        Ok(OkNoData)
     }
 
     /// Detaches previously attached scatter-gather memory from this resource.
@@ -452,8 +452,8 @@ impl Backend for Virtio2DBackend {
 
     /// Attaches the given input device to the given surface of the display (to allow for input
     /// from a X11 window for example).
-    fn import_event_device(&mut self, event_device: EventDevice, scanout: u32) {
-        self.base.import_event_device(event_device, scanout);
+    fn import_event_device(&mut self, event_device: EventDevice, scanout: u32) -> VirtioGpuResult {
+        self.base.import_event_device(event_device, scanout)
     }
 
     /// If supported, export the resource with the given id to a file.
@@ -463,10 +463,9 @@ impl Backend for Virtio2DBackend {
 
     /// Creates a fence with the given id that can be used to determine when the previous command
     /// completed.
-    fn create_fence(&mut self, _ctx_id: u32, fence_id: u32) -> GpuResponse {
+    fn create_fence(&mut self, _ctx_id: u32, fence_id: u32) -> VirtioGpuResult {
         self.latest_created_fence_id = fence_id;
-
-        GpuResponse::OkNoData
+        Ok(OkNoData)
     }
 
     /// Returns the id of the latest fence to complete.
@@ -480,9 +479,9 @@ impl Backend for Virtio2DBackend {
         width: u32,
         height: u32,
         _format: u32,
-    ) -> GpuResponse {
+    ) -> VirtioGpuResult {
         if id == 0 {
-            return GpuResponse::ErrInvalidResourceId;
+            return Err(ErrInvalidResourceId);
         }
         match self.resources.entry(id) {
             Entry::Vacant(slot) => {
@@ -501,17 +500,17 @@ impl Backend for Virtio2DBackend {
                     no_sync_send: PhantomData,
                 };
                 slot.insert(gpu_resource);
-                GpuResponse::OkNoData
+                Ok(OkNoData)
             }
-            Entry::Occupied(_) => GpuResponse::ErrInvalidResourceId,
+            Entry::Occupied(_) => Err(ErrInvalidResourceId),
         }
     }
 
     /// Removes the guest's reference count for the given resource id.
-    fn unref_resource(&mut self, id: u32) -> GpuResponse {
+    fn unref_resource(&mut self, id: u32) -> VirtioGpuResult {
         match self.resources.remove(&id) {
-            Some(_) => GpuResponse::OkNoData,
-            None => GpuResponse::ErrInvalidResourceId,
+            Some(_) => Ok(OkNoData),
+            None => Err(ErrInvalidResourceId),
         }
     }
 
@@ -521,11 +520,11 @@ impl Backend for Virtio2DBackend {
         _scanout_id: u32,
         resource_id: u32,
         _scanout_data: Option<VirtioScanoutBlobData>,
-    ) -> GpuResponse {
+    ) -> VirtioGpuResult {
         if resource_id == 0 || self.resources.get_mut(&resource_id).is_some() {
             self.base.set_scanout(resource_id)
         } else {
-            GpuResponse::ErrInvalidResourceId
+            Err(ErrInvalidResourceId)
         }
     }
 
@@ -537,16 +536,12 @@ impl Backend for Virtio2DBackend {
         _y: u32,
         _width: u32,
         _height: u32,
-    ) -> GpuResponse {
+    ) -> VirtioGpuResult {
         if id == 0 {
-            return GpuResponse::OkNoData;
+            return Ok(OkNoData);
         }
 
-        let resource = match self.resources.get_mut(&id) {
-            Some(r) => r,
-            None => return GpuResponse::ErrInvalidResourceId,
-        };
-
+        let resource = self.resources.get_mut(&id).ok_or(ErrInvalidResourceId)?;
         self.base.flush_resource(resource, id)
     }
 
@@ -561,13 +556,10 @@ impl Backend for Virtio2DBackend {
         height: u32,
         src_offset: u64,
         mem: &GuestMemory,
-    ) -> GpuResponse {
-        if let Some(resource) = self.resources.get_mut(&id) {
-            resource.write_from_guest_memory(x, y, width, height, src_offset, mem);
-            GpuResponse::OkNoData
-        } else {
-            GpuResponse::ErrInvalidResourceId
-        }
+    ) -> VirtioGpuResult {
+        let resource = self.resources.get_mut(&id).ok_or(ErrInvalidResourceId)?;
+        resource.write_from_guest_memory(x, y, width, height, src_offset, mem);
+        Ok(OkNoData)
     }
 
     /// Attaches backing memory to the given resource, represented by a `Vec` of `(address, size)`
@@ -577,49 +569,36 @@ impl Backend for Virtio2DBackend {
         id: u32,
         mem: &GuestMemory,
         vecs: Vec<(GuestAddress, usize)>,
-    ) -> GpuResponse {
-        match self.resources.get_mut(&id) {
-            Some(resource) => {
-                if resource.attach_backing(vecs, mem) {
-                    GpuResponse::OkNoData
-                } else {
-                    GpuResponse::ErrUnspec
-                }
-            }
-            None => GpuResponse::ErrInvalidResourceId,
-        }
+    ) -> VirtioGpuResult {
+        let resource = self.resources.get_mut(&id).ok_or(ErrInvalidResourceId)?;
+        resource.attach_backing(vecs, mem)
     }
 
     /// Detaches any backing memory from the given resource, if there is any.
-    fn detach_backing(&mut self, id: u32) -> GpuResponse {
-        match self.resources.get_mut(&id) {
-            Some(resource) => {
-                resource.detach_backing();
-                GpuResponse::OkNoData
-            }
-            None => GpuResponse::ErrInvalidResourceId,
-        }
+    fn detach_backing(&mut self, id: u32) -> VirtioGpuResult {
+        let resource = self.resources.get_mut(&id).ok_or(ErrInvalidResourceId)?;
+        resource.detach_backing();
+        Ok(OkNoData)
     }
 
     /// Updates the cursor's memory to the given id, and sets its position to the given coordinates.
-    fn update_cursor(&mut self, id: u32, x: u32, y: u32) -> GpuResponse {
+    fn update_cursor(&mut self, id: u32, x: u32, y: u32) -> VirtioGpuResult {
         let resource = self.resources.get_mut(&id).map(|r| r.as_mut());
-
         self.base.update_cursor(id, x, y, resource)
     }
 
     /// Moves the cursor's position to the given coordinates.
-    fn move_cursor(&mut self, x: u32, y: u32) -> GpuResponse {
+    fn move_cursor(&mut self, x: u32, y: u32) -> VirtioGpuResult {
         self.base.move_cursor(x, y)
     }
 
     /// Gets the renderer's capset information associated with `index`.
-    fn get_capset_info(&self, _index: u32) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    fn get_capset_info(&self, _index: u32) -> VirtioGpuResult {
+        Err(ErrUnspec)
     }
 
     /// Gets the capset of `version` associated with `id`.
-    fn get_capset(&self, _id: u32, _version: u32) -> GpuResponse {
-        GpuResponse::ErrUnspec
+    fn get_capset(&self, _id: u32, _version: u32) -> VirtioGpuResult {
+        Err(ErrUnspec)
     }
 }

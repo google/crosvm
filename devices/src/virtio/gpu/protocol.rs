@@ -6,6 +6,7 @@
 #![allow(non_camel_case_types)]
 
 use std::cmp::min;
+use std::convert::From;
 use std::fmt::{self, Display};
 use std::io::{self, Write};
 use std::marker::PhantomData;
@@ -14,7 +15,12 @@ use std::str::from_utf8;
 
 use super::super::DescriptorError;
 use super::{Reader, Writer};
+use base::Error as SysError;
+use base::ExternalMappingError;
 use data_model::{DataInit, Le32, Le64};
+use gpu_display::GpuDisplayError;
+use gpu_renderer::Error as RendererError;
+use msg_socket::MsgError;
 
 pub const VIRTIO_GPU_F_VIRGL: u32 = 0;
 pub const VIRTIO_GPU_F_EDID: u32 = 1;
@@ -771,7 +777,7 @@ pub struct GpuResponsePlaneInfo {
 }
 
 /// A response to a `GpuCommand`. These correspond to `VIRTIO_GPU_RESP_*`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum GpuResponse {
     OkNoData,
     OkDisplayInfo(Vec<(u32, u32)>),
@@ -792,11 +798,57 @@ pub enum GpuResponse {
         map_info: u32,
     },
     ErrUnspec,
+    ErrMsg(MsgError),
+    ErrSys(SysError),
+    ErrRenderer(RendererError),
+    ErrDisplay(GpuDisplayError),
+    ErrMapping(ExternalMappingError),
+    ErrScanout {
+        num_scanouts: u32,
+    },
     ErrOutOfMemory,
     ErrInvalidScanoutId,
     ErrInvalidResourceId,
     ErrInvalidContextId,
     ErrInvalidParameter,
+}
+
+impl From<MsgError> for GpuResponse {
+    fn from(e: MsgError) -> GpuResponse {
+        GpuResponse::ErrMsg(e)
+    }
+}
+
+impl From<RendererError> for GpuResponse {
+    fn from(e: RendererError) -> GpuResponse {
+        GpuResponse::ErrRenderer(e)
+    }
+}
+
+impl From<GpuDisplayError> for GpuResponse {
+    fn from(e: GpuDisplayError) -> GpuResponse {
+        GpuResponse::ErrDisplay(e)
+    }
+}
+
+impl From<ExternalMappingError> for GpuResponse {
+    fn from(e: ExternalMappingError) -> GpuResponse {
+        GpuResponse::ErrMapping(e)
+    }
+}
+
+impl Display for GpuResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::GpuResponse::*;
+        match self {
+            ErrMsg(e) => write!(f, "msg-on-socket error: {}", e),
+            ErrSys(e) => write!(f, "system error: {}", e),
+            ErrRenderer(e) => write!(f, "renderer error: {}", e),
+            ErrDisplay(e) => write!(f, "display error: {}", e),
+            ErrScanout { num_scanouts } => write!(f, "non-zero scanout: {}", num_scanouts),
+            _ => Ok(()),
+        }
+    }
 }
 
 /// An error indicating something went wrong decoding a `GpuCommand`.
@@ -840,6 +892,8 @@ impl From<io::Error> for GpuResponseEncodeError {
         GpuResponseEncodeError::IO(e)
     }
 }
+
+pub type VirtioGpuResult = std::result::Result<GpuResponse, GpuResponse>;
 
 impl GpuResponse {
     /// Encodes a this `GpuResponse` into `resp` and the given set of metadata.
@@ -958,30 +1012,17 @@ impl GpuResponse {
             GpuResponse::OkResourceUuid { .. } => VIRTIO_GPU_RESP_OK_RESOURCE_UUID,
             GpuResponse::OkMapInfo { .. } => VIRTIO_GPU_RESP_OK_MAP_INFO,
             GpuResponse::ErrUnspec => VIRTIO_GPU_RESP_ERR_UNSPEC,
+            GpuResponse::ErrMsg(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
+            GpuResponse::ErrSys(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
+            GpuResponse::ErrRenderer(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
+            GpuResponse::ErrDisplay(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
+            GpuResponse::ErrMapping(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
+            GpuResponse::ErrScanout { num_scanouts: _ } => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrOutOfMemory => VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY,
             GpuResponse::ErrInvalidScanoutId => VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID,
             GpuResponse::ErrInvalidResourceId => VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID,
             GpuResponse::ErrInvalidContextId => VIRTIO_GPU_RESP_ERR_INVALID_CONTEXT_ID,
             GpuResponse::ErrInvalidParameter => VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER,
         }
-    }
-
-    /// Returns true if this response indicates success.
-    pub fn is_ok(&self) -> bool {
-        match self {
-            GpuResponse::OkNoData => true,
-            GpuResponse::OkDisplayInfo(_) => true,
-            GpuResponse::OkCapsetInfo { .. } => true,
-            GpuResponse::OkCapset(_) => true,
-            GpuResponse::OkResourcePlaneInfo { .. } => true,
-            GpuResponse::OkResourceUuid { .. } => true,
-            GpuResponse::OkMapInfo { .. } => true,
-            _ => false,
-        }
-    }
-
-    /// Returns true if this response indicates an error.
-    pub fn is_err(&self) -> bool {
-        !self.is_ok()
     }
 }
