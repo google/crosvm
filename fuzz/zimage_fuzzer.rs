@@ -4,8 +4,8 @@
 
 #![no_main]
 
-use base::SharedMemory;
 use cros_fuzz::fuzz_target;
+use tempfile;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use std::fs::File;
@@ -14,12 +14,11 @@ use std::io::Write;
 const MEM_SIZE: u64 = 256 * 1024 * 1024;
 
 fn make_elf_bin(elf_bytes: &[u8]) -> File {
-    let mut shm = SharedMemory::anon().expect("failed to create shared memory");
-    shm.set_size(elf_bytes.len() as u64)
-        .expect("failed to set shared memory size");
-    shm.write_all(elf_bytes)
-        .expect("failed to write elf to shared memoy");
-    shm.into()
+    let mut elf_bin = tempfile::tempfile().expect("failed to create tempfile");
+    elf_bin
+        .write_all(elf_bytes)
+        .expect("failed to write elf to tempfile");
+    elf_bin
 }
 
 fuzz_target!(|bytes| {

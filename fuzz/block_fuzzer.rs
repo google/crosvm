@@ -4,16 +4,16 @@
 
 #![no_main]
 
-use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::mem::size_of;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
-use base::{Event, SharedMemory};
+use base::Event;
 use cros_fuzz::fuzz_target;
 use devices::virtio::{Block, Interrupt, Queue, VirtioDevice};
+use tempfile;
 use vm_memory::{GuestAddress, GuestMemory};
 
 const MEM_SIZE: u64 = 256 * 1024 * 1024;
@@ -79,8 +79,7 @@ fuzz_target!(|bytes| {
     let queue_fd = queue_evts[0].as_raw_fd();
     let queue_evt = unsafe { Event::from_raw_fd(libc::dup(queue_fd)) };
 
-    let shm = SharedMemory::anon().unwrap();
-    let disk_file: File = shm.into();
+    let disk_file = tempfile::tempfile().unwrap();
     let mut block = Block::new(Box::new(disk_file), false, true, 512, None).unwrap();
 
     block.activate(
