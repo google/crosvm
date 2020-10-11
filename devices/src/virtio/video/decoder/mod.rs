@@ -591,11 +591,11 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                 let resource_info =
                     ctx.get_resource_info(QueueType::Output, resource_bridge, resource_id)?;
                 let planes = vec![
-                    libvda::FramePlane {
+                    FramePlane {
                         offset: resource_info.planes[0].offset as i32,
                         stride: resource_info.planes[0].stride as i32,
                     },
-                    libvda::FramePlane {
+                    FramePlane {
                         offset: resource_info.planes[1].offset as i32,
                         stride: resource_info.planes[1].stride as i32,
                     },

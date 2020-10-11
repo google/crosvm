@@ -42,6 +42,15 @@ impl TryFrom<Format> for libvda::PixelFormat {
     }
 }
 
+impl From<&FramePlane> for libvda::FramePlane {
+    fn from(plane: &FramePlane) -> Self {
+        libvda::FramePlane {
+            offset: plane.offset,
+            stride: plane.stride,
+        }
+    }
+}
+
 pub struct LibvdaSession<'a> {
     session: libvda::decode::Session<'a>,
 }
@@ -78,13 +87,14 @@ impl<'a> DecoderSession for LibvdaSession<'a> {
         picture_buffer_id: i32,
         format: Format,
         output_buffer: RawFd,
-        planes: &[libvda::FramePlane],
+        planes: &[FramePlane],
     ) -> VideoResult<()> {
+        let vda_planes: Vec<libvda::FramePlane> = planes.into_iter().map(Into::into).collect();
         Ok(self.session.use_output_buffer(
             picture_buffer_id,
             libvda::PixelFormat::try_from(format)?,
             output_buffer,
-            planes,
+            &vda_planes,
         )?)
     }
 

@@ -11,6 +11,11 @@ use crate::virtio::video::{error::VideoResult, format::Format};
 
 pub mod vda;
 
+pub struct FramePlane {
+    pub offset: i32,
+    pub stride: i32,
+}
+
 /// Contains the device's state for one playback session, i.e. one stream.
 pub trait DecoderSession {
     /// Tell how many output buffers will be used for this session. This method
@@ -67,7 +72,7 @@ pub trait DecoderSession {
         picture_buffer_id: i32,
         format: Format,
         output_buffer: RawFd,
-        planes: &[libvda::FramePlane],
+        planes: &[FramePlane],
     ) -> VideoResult<()>;
 
     /// Ask the device to reuse an output buffer previously passed to
