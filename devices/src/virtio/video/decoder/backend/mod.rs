@@ -65,7 +65,7 @@ pub trait DecoderSession {
     fn use_output_buffer(
         &self,
         picture_buffer_id: i32,
-        format: libvda::PixelFormat,
+        format: Format,
         output_buffer: RawFd,
         planes: &[libvda::FramePlane],
     ) -> VideoResult<()>;

@@ -28,6 +28,20 @@ impl TryFrom<Format> for libvda::Profile {
     }
 }
 
+impl TryFrom<Format> for libvda::PixelFormat {
+    type Error = VideoError;
+
+    fn try_from(format: Format) -> Result<Self, Self::Error> {
+        Ok(match format {
+            Format::NV12 => libvda::PixelFormat::NV12,
+            _ => {
+                error!("specified format {} is not supported by VDA", format);
+                return Err(VideoError::InvalidParameter);
+            }
+        })
+    }
+}
+
 pub struct LibvdaSession<'a> {
     session: libvda::decode::Session<'a>,
 }
@@ -62,13 +76,16 @@ impl<'a> DecoderSession for LibvdaSession<'a> {
     fn use_output_buffer(
         &self,
         picture_buffer_id: i32,
-        format: libvda::PixelFormat,
+        format: Format,
         output_buffer: RawFd,
         planes: &[libvda::FramePlane],
     ) -> VideoResult<()> {
-        Ok(self
-            .session
-            .use_output_buffer(picture_buffer_id, format, output_buffer, planes)?)
+        Ok(self.session.use_output_buffer(
+            picture_buffer_id,
+            libvda::PixelFormat::try_from(format)?,
+            output_buffer,
+            planes,
+        )?)
     }
 
     fn reuse_output_buffer(&self, picture_buffer_id: i32) -> VideoResult<()> {
