@@ -484,21 +484,6 @@ impl<'a> Decoder<'a> {
             return Ok(());
         };
 
-        // Set output_buffer_count when ResourceCreate is called for frame buffers for the
-        // first time.
-        if ctx.out_res.set_output_buffer_count() {
-            const OUTPUT_BUFFER_COUNT: usize = 32;
-
-            // Set the buffer count to the maximum value.
-            // TODO(b/1518105): This is a hack due to the lack of way of telling a number of
-            // frame buffers explictly in virtio-video v3 RFC. Once we have the way,
-            // set_output_buffer_count should be called with a value passed by the guest.
-            self.sessions
-                .get(&stream_id)?
-                .set_output_buffer_count(OUTPUT_BUFFER_COUNT)
-                .map_err(VideoError::VdaError)?;
-        }
-
         // We assume ResourceCreate is not called to an output resource that is already
         // imported to Chrome for now.
         // TODO(keiichiw): We need to support this case for a guest client who may use
@@ -638,6 +623,19 @@ impl<'a> Decoder<'a> {
                 // Take an ownership of `resource_info.file`.
                 // This file will be kept until the stream is destroyed.
                 ctx.out_res.keep_resources.push(resource_info.file);
+
+                // Set output_buffer_count before passing the first output buffer.
+                if ctx.out_res.set_output_buffer_count() {
+                    const OUTPUT_BUFFER_COUNT: usize = 32;
+
+                    // Set the buffer count to the maximum value.
+                    // TODO(b/1518105): This is a hack due to the lack of way of telling a number of
+                    // frame buffers explictly in virtio-video v3 RFC. Once we have the way,
+                    // set_output_buffer_count should be called with a value passed by the guest.
+                    session
+                        .set_output_buffer_count(OUTPUT_BUFFER_COUNT)
+                        .map_err(VideoError::VdaError)?;
+                }
 
                 session
                     .use_output_buffer(buffer_id as i32, libvda::PixelFormat::NV12, fd, &planes)
