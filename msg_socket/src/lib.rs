@@ -8,7 +8,7 @@ use std::io::{IoSlice, Result};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use base::{handle_eintr, net::UnixSeqpacket, Error as SysError, ScmSocket};
+use base::{handle_eintr, net::UnixSeqpacket, Error as SysError, ScmSocket, UnsyncMarker};
 use cros_async::PollOrRing;
 
 pub use crate::msg_on_socket::*;
@@ -29,6 +29,7 @@ pub struct MsgSocket<I: MsgOnSocket, O: MsgOnSocket> {
     sock: UnixSeqpacket,
     _i: PhantomData<I>,
     _o: PhantomData<O>,
+    _unsync_marker: UnsyncMarker,
 }
 
 impl<I: MsgOnSocket, O: MsgOnSocket> MsgSocket<I, O> {
@@ -38,6 +39,7 @@ impl<I: MsgOnSocket, O: MsgOnSocket> MsgSocket<I, O> {
             sock: s,
             _i: PhantomData,
             _o: PhantomData,
+            _unsync_marker: PhantomData,
         }
     }
 

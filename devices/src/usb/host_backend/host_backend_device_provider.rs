@@ -31,7 +31,7 @@ const SOCKET_TIMEOUT_MS: u64 = 2000;
 pub enum HostBackendDeviceProvider {
     // The provider is created but not yet started.
     Created {
-        sock: MsgSocket<UsbControlResult, UsbControlCommand>,
+        sock: Mutex<MsgSocket<UsbControlResult, UsbControlCommand>>,
     },
     // The provider is started on an event loop.
     Started {
@@ -52,7 +52,7 @@ impl HostBackendDeviceProvider {
             .map_err(Error::SetupControlSock)?;
 
         let provider = HostBackendDeviceProvider::Created {
-            sock: MsgSocket::new(child_sock),
+            sock: Mutex::new(MsgSocket::new(child_sock)),
         };
         Ok((MsgSocket::new(control_sock), provider))
     }
@@ -77,7 +77,7 @@ impl HostBackendDeviceProvider {
                 let handler: Arc<dyn EventHandler> = inner.clone();
                 event_loop
                     .add_event(
-                        &inner.sock,
+                        &*inner.sock.lock(),
                         WatchingEvents::empty().set_read(),
                         Arc::downgrade(&handler),
                     )
@@ -112,7 +112,7 @@ impl XhciBackendDeviceProvider for HostBackendDeviceProvider {
 
     fn keep_fds(&self) -> Vec<RawFd> {
         match self {
-            HostBackendDeviceProvider::Created { sock } => vec![sock.as_raw_fd()],
+            HostBackendDeviceProvider::Created { sock } => vec![sock.lock().as_raw_fd()],
             _ => {
                 error!(
                     "Trying to get keepfds when HostBackendDeviceProvider is not in created state"
@@ -128,7 +128,7 @@ pub struct ProviderInner {
     fail_handle: Arc<dyn FailHandle>,
     job_queue: Arc<AsyncJobQueue>,
     event_loop: Arc<EventLoop>,
-    sock: MsgSocket<UsbControlResult, UsbControlCommand>,
+    sock: Mutex<MsgSocket<UsbControlResult, UsbControlCommand>>,
     usb_hub: Arc<UsbHub>,
 
     // Map of USB hub port number to per-device context.
@@ -145,7 +145,7 @@ impl ProviderInner {
         fail_handle: Arc<dyn FailHandle>,
         job_queue: Arc<AsyncJobQueue>,
         event_loop: Arc<EventLoop>,
-        sock: MsgSocket<UsbControlResult, UsbControlCommand>,
+        sock: Mutex<MsgSocket<UsbControlResult, UsbControlCommand>>,
         usb_hub: Arc<UsbHub>,
     ) -> ProviderInner {
         ProviderInner {
@@ -271,13 +271,14 @@ impl ProviderInner {
     }
 
     fn on_event_helper(&self) -> Result<()> {
-        let cmd = self.sock.recv().map_err(Error::ReadControlSock)?;
+        let sock = self.sock.lock();
+        let cmd = sock.recv().map_err(Error::ReadControlSock)?;
         let result = match cmd {
             UsbControlCommand::AttachDevice { fd, .. } => self.handle_attach_device(fd),
             UsbControlCommand::DetachDevice { port } => self.handle_detach_device(port),
             UsbControlCommand::ListDevice { ports } => self.handle_list_devices(ports),
         };
-        self.sock.send(&result).map_err(Error::WriteControlSock)?;
+        sock.send(&result).map_err(Error::WriteControlSock)?;
         Ok(())
     }
 }

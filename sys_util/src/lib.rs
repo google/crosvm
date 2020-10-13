@@ -81,6 +81,7 @@ pub use crate::seek_hole::SeekHole;
 pub use crate::signalfd::Error as SignalFdError;
 pub use crate::write_zeroes::{PunchHole, WriteZeroes, WriteZeroesAt};
 
+use std::cell::Cell;
 use std::ffi::CStr;
 use std::fs::{remove_file, File};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
@@ -93,6 +94,9 @@ use libc::{
 };
 
 use syscall_defines::linux::LinuxSyscall::SYS_getpid;
+
+/// Used to mark types as !Sync.
+pub type UnsyncMarker = std::marker::PhantomData<Cell<usize>>;
 
 /// Safe wrapper for `sysconf(_SC_PAGESIZE)`.
 #[inline(always)]
