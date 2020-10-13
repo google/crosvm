@@ -64,7 +64,7 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     pub fn handle_message(&self, mut r: Reader, w: Writer) -> Result<usize> {
-        let in_header: InHeader = r.read_obj().map_err(Error::DecodeMessage)?;
+        let in_header = InHeader::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         if in_header.len > MAX_BUFFER_SIZE {
             return reply_error(
@@ -153,7 +153,7 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn forget(&self, in_header: InHeader, mut r: Reader) -> Result<usize> {
-        let ForgetIn { nlookup } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let ForgetIn { nlookup } = ForgetIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         self.fs
             .forget(Context::from(in_header), in_header.nodeid.into(), nlookup);
@@ -167,7 +167,7 @@ impl<F: FileSystem + Sync> Server<F> {
             flags,
             dummy: _,
             fh,
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = GetattrIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         let handle = if (flags & GETATTR_FH) != 0 {
             Some(fh.into())
@@ -193,7 +193,7 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn setattr(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let setattr_in: SetattrIn = r.read_obj().map_err(Error::DecodeMessage)?;
+        let setattr_in = SetattrIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         let handle = if setattr_in.valid & FATTR_FH != 0 {
             Some(setattr_in.fh.into())
@@ -279,7 +279,7 @@ impl<F: FileSystem + Sync> Server<F> {
     fn mknod(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
         let MknodIn {
             mode, rdev, umask, ..
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = MknodIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         let buflen = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
@@ -316,7 +316,7 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn mkdir(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let MkdirIn { mode, umask } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let MkdirIn { mode, umask } = MkdirIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         let buflen = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
@@ -430,13 +430,14 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn rename(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let RenameIn { newdir } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let RenameIn { newdir } = RenameIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         self.do_rename(in_header, size_of::<RenameIn>(), newdir, 0, r, w)
     }
 
     fn rename2(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let Rename2In { newdir, flags, .. } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let Rename2In { newdir, flags, .. } =
+            Rename2In::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         let flags = flags & (libc::RENAME_EXCHANGE | libc::RENAME_NOREPLACE) as u32;
 
@@ -444,7 +445,7 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn link(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let LinkIn { oldnodeid } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let LinkIn { oldnodeid } = LinkIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         let namelen = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
@@ -471,7 +472,7 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn open(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let OpenIn { flags, .. } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let OpenIn { flags, .. } = OpenIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         match self
             .fs
@@ -499,7 +500,7 @@ impl<F: FileSystem + Sync> Server<F> {
             lock_owner,
             flags,
             ..
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = ReadIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         if size > MAX_BUFFER_SIZE {
             return reply_error(
@@ -553,7 +554,7 @@ impl<F: FileSystem + Sync> Server<F> {
             lock_owner,
             flags,
             ..
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = WriteIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         if size > MAX_BUFFER_SIZE {
             return reply_error(
@@ -612,7 +613,7 @@ impl<F: FileSystem + Sync> Server<F> {
             flags,
             release_flags,
             lock_owner,
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = ReleaseIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         let flush = release_flags & RELEASE_FLUSH != 0;
         let flock_release = release_flags & RELEASE_FLOCK_UNLOCK != 0;
@@ -639,7 +640,7 @@ impl<F: FileSystem + Sync> Server<F> {
     fn fsync(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
         let FsyncIn {
             fh, fsync_flags, ..
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = FsyncIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
         let datasync = fsync_flags & 0x1 != 0;
 
         match self.fs.fsync(
@@ -654,7 +655,8 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn setxattr(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let SetxattrIn { size, flags } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let SetxattrIn { size, flags } =
+            SetxattrIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         // The name and value and encoded one after another and separated by a '\0' character.
         let len = (in_header.len as usize)
@@ -692,7 +694,8 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn getxattr(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let GetxattrIn { size, .. } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let GetxattrIn { size, .. } =
+            GetxattrIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         let namelen = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
@@ -731,7 +734,8 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn listxattr(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let GetxattrIn { size, .. } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let GetxattrIn { size, .. } =
+            GetxattrIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         if size > MAX_BUFFER_SIZE {
             return reply_error(
@@ -785,7 +789,7 @@ impl<F: FileSystem + Sync> Server<F> {
             unused: _,
             padding: _,
             lock_owner,
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = FlushIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         match self.fs.flush(
             Context::from(in_header),
@@ -804,7 +808,7 @@ impl<F: FileSystem + Sync> Server<F> {
             minor,
             max_readahead,
             flags,
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = InitIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         if major < KERNEL_VERSION {
             error!("Unsupported fuse protocol version: {}.{}", major, minor);
@@ -881,7 +885,7 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn opendir(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let OpenIn { flags, .. } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let OpenIn { flags, .. } = OpenIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         match self
             .fs
@@ -903,7 +907,7 @@ impl<F: FileSystem + Sync> Server<F> {
     fn readdir(&self, in_header: InHeader, mut r: Reader, mut w: Writer) -> Result<usize> {
         let ReadIn {
             fh, offset, size, ..
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = ReadIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         if size > MAX_BUFFER_SIZE {
             return reply_error(
@@ -981,7 +985,7 @@ impl<F: FileSystem + Sync> Server<F> {
     fn readdirplus(&self, in_header: InHeader, mut r: Reader, mut w: Writer) -> Result<usize> {
         let ReadIn {
             fh, offset, size, ..
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = ReadIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         if size > MAX_BUFFER_SIZE {
             return reply_error(
@@ -1054,7 +1058,8 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn releasedir(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let ReleaseIn { fh, flags, .. } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let ReleaseIn { fh, flags, .. } =
+            ReleaseIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         match self.fs.releasedir(
             Context::from(in_header),
@@ -1070,7 +1075,7 @@ impl<F: FileSystem + Sync> Server<F> {
     fn fsyncdir(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
         let FsyncIn {
             fh, fsync_flags, ..
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = FsyncIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
         let datasync = fsync_flags & 0x1 != 0;
 
         match self.fs.fsyncdir(
@@ -1109,7 +1114,7 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn access(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let AccessIn { mask, .. } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let AccessIn { mask, .. } = AccessIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         match self
             .fs
@@ -1123,7 +1128,7 @@ impl<F: FileSystem + Sync> Server<F> {
     fn create(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
         let CreateIn {
             flags, mode, umask, ..
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = CreateIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         let buflen = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
@@ -1206,7 +1211,7 @@ impl<F: FileSystem + Sync> Server<F> {
             arg,
             in_size,
             out_size,
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = IoctlIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         let res = self.fs.ioctl(
             in_header.into(),
@@ -1247,7 +1252,8 @@ impl<F: FileSystem + Sync> Server<F> {
     }
 
     fn batch_forget(&self, in_header: InHeader, mut r: Reader, w: Writer) -> Result<usize> {
-        let BatchForgetIn { count, .. } = r.read_obj().map_err(Error::DecodeMessage)?;
+        let BatchForgetIn { count, .. } =
+            BatchForgetIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         if let Some(size) = (count as usize).checked_mul(size_of::<ForgetOne>()) {
             if size > MAX_BUFFER_SIZE as usize {
@@ -1268,7 +1274,7 @@ impl<F: FileSystem + Sync> Server<F> {
         let mut requests = Vec::with_capacity(count as usize);
         for _ in 0..count {
             requests.push(
-                r.read_obj::<ForgetOne>()
+                ForgetOne::from_reader(&mut r)
                     .map(|f| (f.nodeid.into(), f.nlookup))
                     .map_err(Error::DecodeMessage)?,
             );
@@ -1287,7 +1293,7 @@ impl<F: FileSystem + Sync> Server<F> {
             length,
             mode,
             ..
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = FallocateIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         match self.fs.fallocate(
             Context::from(in_header),
@@ -1319,7 +1325,7 @@ impl<F: FileSystem + Sync> Server<F> {
             off_dst,
             len,
             flags,
-        } = r.read_obj().map_err(Error::DecodeMessage)?;
+        } = CopyFileRangeIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         match self.fs.copy_file_range(
             Context::from(in_header),
