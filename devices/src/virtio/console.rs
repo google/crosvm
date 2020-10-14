@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::os::unix::io::RawFd;
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::thread;
@@ -97,7 +97,7 @@ impl Worker {
     // Start a thread that reads self.input and sends the input back via the returned channel.
     //
     // `in_avail_evt` will be triggered by the thread when new input is available.
-    fn spawn_input_thread(&mut self, in_avail_evt: &Event) -> Option<Receiver<u8>> {
+    fn spawn_input_thread(&mut self, in_avail_evt: &Event) -> Option<Receiver<Vec<u8>>> {
         let mut rx = match self.input.take() {
             Some(input) => input,
             None => return None,
@@ -118,12 +118,13 @@ impl Worker {
         let res = thread::Builder::new()
             .name(format!("console_input"))
             .spawn(move || {
-                let mut rx_buf = [0u8; 1];
                 loop {
+                    let mut rx_buf = vec![0u8; 1 << 12];
                     match rx.read(&mut rx_buf) {
                         Ok(0) => break, // Assume the stream of input has ended.
-                        Ok(_) => {
-                            if send_channel.send(rx_buf[0]).is_err() {
+                        Ok(size) => {
+                            rx_buf.truncate(size);
+                            if send_channel.send(rx_buf).is_err() {
                                 // The receiver has disconnected.
                                 break;
                             }
@@ -152,7 +153,7 @@ impl Worker {
     // Check for input from `in_channel_opt` and transfer it to the receive queue, if any.
     fn handle_input(
         &mut self,
-        in_channel_opt: &mut Option<Receiver<u8>>,
+        in_channel_opt: &mut Option<Receiver<Vec<u8>>>,
         receive_queue: &mut Queue,
     ) {
         let in_channel = match in_channel_opt.as_ref() {
@@ -173,8 +174,8 @@ impl Worker {
             let mut disconnected = false;
             while writer.available_bytes() > 0 {
                 match in_channel.try_recv() {
-                    Ok(byte) => {
-                        writer.write_obj(byte).unwrap();
+                    Ok(data) => {
+                        writer.write_all(&data).unwrap();
                     }
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => {
