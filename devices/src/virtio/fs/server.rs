@@ -938,15 +938,19 @@ impl<F: FileSystem + Sync> Server<F> {
             offset,
         ) {
             Ok(mut entries) => {
+                let mut total_written = 0;
                 while let Some(dirent) = entries.next() {
-                    match add_dirent(&mut cursor, size, dirent, None) {
+                    let remaining = (size as usize).saturating_sub(total_written);
+                    match add_dirent(&mut cursor, remaining, dirent, None) {
                         // No more space left in the buffer.
                         Ok(0) => break,
-                        Ok(_) => {}
+                        Ok(bytes_written) => {
+                            total_written += bytes_written;
+                        }
                         Err(e) => return reply_error(e, unique, w),
                     }
                 }
-                reply_readdir(cursor.bytes_written(), unique, w)
+                reply_readdir(total_written, unique, w)
             }
             Err(e) => reply_error(e, unique, w),
         }
@@ -1016,11 +1020,13 @@ impl<F: FileSystem + Sync> Server<F> {
             offset,
         ) {
             Ok(mut entries) => {
+                let mut total_written = 0;
                 while let Some(dirent) = entries.next() {
                     let mut entry_inode = None;
                     match self.handle_dirent(&in_header, dirent).and_then(|(d, e)| {
                         entry_inode = Some(e.inode);
-                        add_dirent(&mut cursor, size, d, Some(e))
+                        let remaining = (size as usize).saturating_sub(total_written);
+                        add_dirent(&mut cursor, remaining, d, Some(e))
                     }) {
                         Ok(0) => {
                             // No more space left in the buffer but we need to undo the lookup
@@ -1031,13 +1037,15 @@ impl<F: FileSystem + Sync> Server<F> {
                             }
                             break;
                         }
-                        Ok(_) => {}
+                        Ok(bytes_written) => {
+                            total_written += bytes_written;
+                        }
                         Err(e) => {
                             if let Some(inode) = entry_inode {
                                 self.fs.forget(Context::from(in_header), inode.into(), 1);
                             }
 
-                            if cursor.bytes_written() == 0 {
+                            if total_written == 0 {
                                 // We haven't filled any entries yet so we can just propagate
                                 // the error.
                                 return reply_error(e, unique, w);
@@ -1051,7 +1059,7 @@ impl<F: FileSystem + Sync> Server<F> {
                     }
                 }
 
-                reply_readdir(cursor.bytes_written(), unique, w)
+                reply_readdir(total_written, unique, w)
             }
             Err(e) => reply_error(e, unique, w),
         }
@@ -1382,14 +1390,17 @@ fn retry_ioctl(
         out_iovs: output.len() as u32,
     };
 
-    w.write_obj(header).map_err(Error::EncodeMessage)?;
-    w.write_obj(out).map_err(Error::EncodeMessage)?;
+    let mut total_bytes = size_of::<OutHeader>() + size_of::<IoctlOut>();
+    w.write_all(header.as_slice())
+        .map_err(Error::EncodeMessage)?;
+    w.write_all(out.as_slice()).map_err(Error::EncodeMessage)?;
     for i in input.into_iter().chain(output.into_iter()) {
-        w.write_obj(i).map_err(Error::EncodeMessage)?;
+        total_bytes += i.as_slice().len();
+        w.write_all(i.as_slice()).map_err(Error::EncodeMessage)?;
     }
 
-    debug_assert_eq!(len, w.bytes_written());
-    Ok(w.bytes_written())
+    debug_assert_eq!(len, total_bytes);
+    Ok(len)
 }
 
 fn finish_ioctl(unique: u64, res: io::Result<Vec<u8>>, w: Writer) -> Result<usize> {
@@ -1445,19 +1456,22 @@ fn reply_ok<T: DataInit>(
         unique,
     };
 
+    let mut total_bytes = size_of::<OutHeader>();
     w.write_all(header.as_slice())
         .map_err(Error::EncodeMessage)?;
 
     if let Some(out) = out {
+        total_bytes += out.as_slice().len();
         w.write_all(out.as_slice()).map_err(Error::EncodeMessage)?;
     }
 
     if let Some(data) = data {
+        total_bytes += data.len();
         w.write_all(data).map_err(Error::EncodeMessage)?;
     }
 
-    debug_assert_eq!(len, w.bytes_written());
-    Ok(w.bytes_written())
+    debug_assert_eq!(len, total_bytes);
+    Ok(len)
 }
 
 fn reply_error(e: io::Error, unique: u64, mut w: Writer) -> Result<usize> {
@@ -1470,8 +1484,7 @@ fn reply_error(e: io::Error, unique: u64, mut w: Writer) -> Result<usize> {
     w.write_all(header.as_slice())
         .map_err(Error::EncodeMessage)?;
 
-    debug_assert_eq!(header.len as usize, w.bytes_written());
-    Ok(w.bytes_written())
+    Ok(header.len as usize)
 }
 
 fn bytes_to_cstr(buf: &[u8]) -> Result<&CStr> {
@@ -1482,7 +1495,7 @@ fn bytes_to_cstr(buf: &[u8]) -> Result<&CStr> {
 
 fn add_dirent(
     cursor: &mut Writer,
-    max: u32,
+    max: usize,
     d: DirEntry,
     entry: Option<Entry>,
 ) -> io::Result<usize> {
@@ -1511,7 +1524,7 @@ fn add_dirent(
         padded_dirent_len
     };
 
-    if (max as usize).saturating_sub(cursor.bytes_written()) < total_len {
+    if max < total_len {
         Ok(0)
     } else {
         if let Some(entry) = entry {
