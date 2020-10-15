@@ -28,7 +28,7 @@ use base::{
 };
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
-    linux, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
+    platform, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{GpuMode, GpuParameters};
@@ -1604,7 +1604,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                 }
             }
         }
-        Ok(()) => match linux::run_config(cfg) {
+        Ok(()) => match platform::run_config(cfg) {
             Ok(_) => {
                 info!("crosvm has exited normally");
                 Ok(())

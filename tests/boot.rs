@@ -15,7 +15,7 @@ use libc::{cpu_set_t, sched_getaffinity};
 
 use arch::{set_default_serial_parameters, SerialHardware, SerialParameters, SerialType};
 use base::syslog;
-use crosvm::{linux, Config, Executable};
+use crosvm::{platform, Config, Executable};
 
 const CHROOT_KERNEL_PATH: &str = "/mnt/host/source/src/third_party/kernel/v4.19/";
 const CONTAINER_VM_DEFCONFIG: &str = "arch/x86/configs/chromiumos-container-vm-x86_64_defconfig";
@@ -243,6 +243,6 @@ fn boot() {
     set_default_serial_parameters(&mut c.serial_parameters);
     c.executable_path = Some(Executable::Kernel(kernel_path));
 
-    let r = linux::run_config(c);
+    let r = platform::run_config(c);
     r.expect("failed to run linux");
 }

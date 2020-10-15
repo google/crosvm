@@ -6,7 +6,8 @@
 //! configs.
 
 pub mod argument;
-pub mod linux;
+#[path = "linux.rs"]
+pub mod platform;
 #[cfg(feature = "plugin")]
 pub mod plugin;
 
