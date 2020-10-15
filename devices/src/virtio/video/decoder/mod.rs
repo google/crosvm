@@ -439,13 +439,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             }
         }?;
 
-        let session = decoder.new_session(profile).map_err(|e| {
-            error!(
-                "failed to open a session {} for {:?}: {}",
-                stream_id, profile, e
-            );
-            VideoError::InvalidOperation
-        })?;
+        let session = decoder.new_session(profile)?;
 
         wait_ctx
             .add(session.event_pipe(), Token::Event { id: stream_id })
@@ -560,16 +554,12 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         // a guest passes to a driver as a 32-bit integer in our implementation.
         // So, overflow must not happen in this conversion.
         let ts_sec: i32 = (timestamp / 1_000_000_000) as i32;
-        session
-            .decode(
-                ts_sec,
-                fd,            // fd
-                0,             // offset is always 0 due to the driver implementation.
-                data_sizes[0], // bytes_used
-            )
-            .map_err(VideoError::VdaError)?;
-
-        Ok(())
+        session.decode(
+            ts_sec,
+            fd,            // fd
+            0,             // offset is always 0 due to the driver implementation.
+            data_sizes[0], // bytes_used
+        )
     }
 
     fn queue_output_resource(
@@ -602,9 +592,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                 // Don't enqueue this resource to the host.
                 Ok(())
             }
-            QueueOutputResourceResult::Reused(buffer_id) => session
-                .reuse_output_buffer(buffer_id)
-                .map_err(VideoError::VdaError),
+            QueueOutputResourceResult::Reused(buffer_id) => session.reuse_output_buffer(buffer_id),
             QueueOutputResourceResult::Registered(buffer_id) => {
                 let resource_info =
                     ctx.get_resource_info(QueueType::Output, resource_bridge, resource_id)?;
@@ -627,17 +615,13 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                     // TODO(b/1518105): This is a hack due to the lack of way of telling a number of
                     // frame buffers explictly in virtio-video v3 RFC. Once we have the way,
                     // set_output_buffer_count should be called with a value passed by the guest.
-                    session
-                        .set_output_buffer_count(OUTPUT_BUFFER_COUNT)
-                        .map_err(VideoError::VdaError)?;
+                    session.set_output_buffer_count(OUTPUT_BUFFER_COUNT)?;
                 }
 
                 // Take ownership of this file by `into_raw_fd()` as this
                 // file will be closed by libvda.
                 let fd = resource_info.file.into_raw_fd();
-                session
-                    .use_output_buffer(buffer_id as i32, libvda::PixelFormat::NV12, fd, &planes)
-                    .map_err(VideoError::VdaError)
+                session.use_output_buffer(buffer_id as i32, libvda::PixelFormat::NV12, fd, &planes)
             }
         }
     }
@@ -725,11 +709,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
     }
 
     fn drain_stream(&mut self, stream_id: StreamId) -> VideoResult<()> {
-        self.sessions
-            .get(&stream_id)?
-            .flush()
-            .map_err(VideoError::VdaError)?;
-        Ok(())
+        self.sessions.get(&stream_id)?.flush()
     }
 
     fn clear_queue(&mut self, stream_id: StreamId, queue_type: QueueType) -> VideoResult<()> {
@@ -744,9 +724,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         // REQBUFS(0). To handle this problem correctly, we need to make libvda expose
         // DismissPictureBuffer() method.
         match queue_type {
-            QueueType::Input => {
-                session.reset().map_err(VideoError::VdaError)?;
-            }
+            QueueType::Input => session.reset()?,
             QueueType::Output => {
                 if std::mem::replace(&mut ctx.is_clear_out_res_needed, false) {
                     ctx.out_res = Default::default();
@@ -754,7 +732,8 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                     ctx.out_res.queued_res_ids.clear();
                 }
             }
-        }
+        };
+
         Ok(())
     }
 }
