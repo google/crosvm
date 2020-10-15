@@ -425,21 +425,15 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         ctx: &Context,
         stream_id: StreamId,
     ) -> VideoResult<D::Session> {
-        let profile = match ctx.in_params.format {
-            Some(Format::VP8) => Ok(libvda::Profile::VP8),
-            Some(Format::VP9) => Ok(libvda::Profile::VP9Profile0),
-            Some(Format::H264) => Ok(libvda::Profile::H264ProfileBaseline),
-            Some(f) => {
-                error!("specified format is invalid for bitstream: {}", f);
-                Err(VideoError::InvalidParameter)
-            }
+        let format = match ctx.in_params.format {
+            Some(f) => f,
             None => {
                 error!("bitstream format is not specified");
-                Err(VideoError::InvalidParameter)
+                return Err(VideoError::InvalidParameter);
             }
-        }?;
+        };
 
-        let session = decoder.new_session(profile)?;
+        let session = decoder.new_session(format)?;
 
         wait_ctx
             .add(session.event_pipe(), Token::Event { id: stream_id })

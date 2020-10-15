@@ -7,7 +7,7 @@
 
 use std::{fs::File, os::unix::io::RawFd};
 
-use crate::virtio::video::error::VideoResult;
+use crate::virtio::video::{error::VideoResult, format::Format};
 
 pub mod vda;
 
@@ -87,5 +87,5 @@ pub trait DecoderBackend {
     type Session: DecoderSession;
 
     /// Create a new decoding session for the passed `profile`.
-    fn new_session(&self, profile: libvda::Profile) -> VideoResult<Self::Session>;
+    fn new_session(&self, format: Format) -> VideoResult<Self::Session>;
 }

@@ -3,10 +3,30 @@
 // found in the LICENSE file.
 
 use base::error;
+use std::convert::TryFrom;
 use std::os::unix::io::RawFd;
 
-use crate::virtio::video::decoder::backend::*;
-use crate::virtio::video::error::VideoError;
+use crate::virtio::video::{
+    decoder::backend::*,
+    error::{VideoError, VideoResult},
+    format::Format,
+};
+
+impl TryFrom<Format> for libvda::Profile {
+    type Error = VideoError;
+
+    fn try_from(format: Format) -> Result<Self, Self::Error> {
+        Ok(match format {
+            Format::VP8 => libvda::Profile::VP8,
+            Format::VP9 => libvda::Profile::VP9Profile0,
+            Format::H264 => libvda::Profile::H264ProfileBaseline,
+            _ => {
+                error!("specified format {} is not supported by VDA", format);
+                return Err(VideoError::InvalidParameter);
+            }
+        })
+    }
+}
 
 pub struct LibvdaSession<'a> {
     session: libvda::decode::Session<'a>,
@@ -63,9 +83,10 @@ impl<'a> DecoderSession for LibvdaSession<'a> {
 impl<'a> DecoderBackend for &'a libvda::decode::VdaInstance {
     type Session = LibvdaSession<'a>;
 
-    fn new_session(&self, profile: libvda::Profile) -> VideoResult<Self::Session> {
+    fn new_session(&self, format: Format) -> VideoResult<Self::Session> {
+        let profile = libvda::Profile::try_from(format)?;
         let session = self.open_session(profile).map_err(|e| {
-            error!("failed to open a session for {:?}: {}", profile, e);
+            error!("failed to open a session for {:?}: {}", format, e);
             VideoError::InvalidOperation
         })?;
 
