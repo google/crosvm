@@ -231,16 +231,13 @@ impl Context {
         min_num_buffers: u32,
         width: i32,
         height: i32,
-        visible_rect_left: i32,
-        visible_rect_top: i32,
-        visible_rect_right: i32,
-        visible_rect_bottom: i32,
+        visible_rect: Rect,
     ) {
         // We only support NV12.
         let format = Some(Format::NV12);
 
-        let rect_width: u32 = (visible_rect_right - visible_rect_left) as u32;
-        let rect_height: u32 = (visible_rect_bottom - visible_rect_top) as u32;
+        let rect_width: u32 = (visible_rect.right - visible_rect.left) as u32;
+        let rect_height: u32 = (visible_rect.bottom - visible_rect.top) as u32;
 
         let plane_size = rect_width * rect_height;
         let stride = rect_width;
@@ -258,8 +255,8 @@ impl Context {
             min_buffers: min_num_buffers + 1,
             max_buffers: 32,
             crop: Crop {
-                left: visible_rect_left as u32,
-                top: visible_rect_top as u32,
+                left: visible_rect.left as u32,
+                top: visible_rect.top as u32,
                 width: rect_width,
                 height: rect_height,
             },
@@ -903,15 +900,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 height,
                 visible_rect,
             } => {
-                ctx.handle_provide_picture_buffers(
-                    min_num_buffers,
-                    width,
-                    height,
-                    visible_rect.left,
-                    visible_rect.top,
-                    visible_rect.right,
-                    visible_rect.bottom,
-                );
+                ctx.handle_provide_picture_buffers(min_num_buffers, width, height, visible_rect);
                 vec![Event(VideoEvt {
                     typ: EvtType::DecResChanged,
                     stream_id,
