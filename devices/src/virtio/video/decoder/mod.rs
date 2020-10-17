@@ -318,14 +318,14 @@ impl ContextMap {
     }
 
     fn get(&self, stream_id: &StreamId) -> VideoResult<&Context> {
-        self.map.get(&stream_id).ok_or_else(|| {
+        self.map.get(stream_id).ok_or_else(|| {
             error!("failed to get context of stream {}", *stream_id);
             VideoError::InvalidStreamId(*stream_id)
         })
     }
 
     fn get_mut(&mut self, stream_id: &StreamId) -> VideoResult<&mut Context> {
-        self.map.get_mut(&stream_id).ok_or_else(|| {
+        self.map.get_mut(stream_id).ok_or_else(|| {
             error!("failed to get context of stream {}", *stream_id);
             VideoError::InvalidStreamId(*stream_id)
         })
