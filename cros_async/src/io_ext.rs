@@ -29,9 +29,6 @@ pub enum Error {
     /// An error with a polled(FD) source.
     #[error("An error with a poll source: {0}")]
     Poll(crate::poll_source::Error),
-    /// An error reading from a wrapped source.
-    #[error("An error from the source: {0}")]
-    ReadingInner(isize),
     /// An error with a uring source.
     #[error("An error with a uring source: {0}")]
     Uring(crate::uring_executor::Error),

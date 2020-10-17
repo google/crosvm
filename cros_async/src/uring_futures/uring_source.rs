@@ -2,13 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::convert::TryInto;
+use std::io;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::io::AsRawFd;
 use std::rc::Rc;
 use std::task::{Context, Poll};
 
 use crate::io_source::IoSource;
-use crate::uring_executor::{self, PendingOperation, RegisteredSource, Result};
+use crate::uring_executor::{self, Error, PendingOperation, RegisteredSource, Result};
 use crate::uring_futures;
 use crate::uring_mem::{BackingMemory, MemRegion};
 use crate::AsyncError;
@@ -121,17 +123,19 @@ impl<F: AsRawFd> crate::ReadAsync for UringSource<F> {
             .map_err(AsyncError::Uring)
     }
 
-    /// Reads a single u64 from the current offset.
+    /// Reads a single u64 (e.g. from an eventfd).
     async fn read_u64(&self) -> AsyncResult<u64> {
-        crate::IoSourceExt::wait_readable(self).await?;
-        let mut bytes = 0u64.to_ne_bytes();
-        // Safe to read to the buffer of known length.
-        let ret =
-            unsafe { libc::read(self.as_raw_fd(), bytes.as_mut_ptr() as *mut _, bytes.len()) };
-        if ret < 0 {
-            return Err(AsyncError::ReadingInner(ret));
+        let bytes = 0u64.to_ne_bytes().to_vec();
+        let (len, bytes) = self.read_to_vec(0, bytes).await?;
+        if len != bytes.len() {
+            Err(AsyncError::Uring(Error::Io(io::Error::new(
+                io::ErrorKind::Other,
+                format!("expected to read {} bytes, but read {}", bytes.len(), len),
+            ))))
+        } else {
+            // Will never panic because bytes is of the appropriate size.
+            Ok(u64::from_ne_bytes(bytes[..].try_into().unwrap()))
         }
-        Ok(u64::from_ne_bytes(bytes))
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.

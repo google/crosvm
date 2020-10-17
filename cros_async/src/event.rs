@@ -17,6 +17,13 @@ impl<F: AsRawFd + 'static> EventAsync<F> {
         Ok(EventAsync { io_source: new(f)? })
     }
 
+    /// Like new, but allows the source to be constructed directly. Used for
+    /// testing only.
+    #[cfg(test)]
+    pub(crate) fn new_from_source(io_source: Box<dyn IoSourceExt<F> + 'static>) -> EventAsync<F> {
+        EventAsync { io_source }
+    }
+
     /// Gets the next value from the eventfd.
     #[allow(dead_code)]
     pub async fn next_val(&self) -> AsyncResult<u64> {
@@ -27,6 +34,7 @@ impl<F: AsRawFd + 'static> EventAsync<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io_ext::{new_poll, new_uring};
     use base::Event;
     use futures::pin_mut;
 
@@ -40,6 +48,28 @@ mod tests {
         let eventfd = Event::new().unwrap();
         eventfd.write(0xaa).unwrap();
         let fut = go(eventfd);
+        pin_mut!(fut);
+        let val = crate::run_executor(crate::RunOne::new(fut)).unwrap();
+        assert_eq!(val, 0xaa);
+    }
+
+    #[test]
+    fn next_val_reads_value_poll_and_ring() {
+        async fn go(source: Box<dyn IoSourceExt<Event> + 'static>) -> u64 {
+            let event_async = EventAsync::new_from_source(source);
+            event_async.next_val().await.unwrap()
+        }
+
+        let eventfd = Event::new().unwrap();
+        eventfd.write(0xaa).unwrap();
+        let fut = go(new_poll(eventfd).unwrap());
+        pin_mut!(fut);
+        let val = crate::run_executor(crate::RunOne::new(fut)).unwrap();
+        assert_eq!(val, 0xaa);
+
+        let eventfd = Event::new().unwrap();
+        eventfd.write(0xaa).unwrap();
+        let fut = go(new_uring(eventfd).unwrap());
         pin_mut!(fut);
         let val = crate::run_executor(crate::RunOne::new(fut)).unwrap();
         assert_eq!(val, 0xaa);
