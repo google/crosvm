@@ -171,7 +171,6 @@ dependencies = [
  "enumn",
  "gdbstub",
  "gpu_buffer",
- "gpu_renderer",
  "hypervisor",
  "kernel_cmdline",
  "kernel_loader",
@@ -188,6 +187,7 @@ dependencies = [
  "rand_ish",
  "remain",
  "resources",
+ "rutabaga_gfx",
  "sync",
  "tempfile",
  "thiserror",
@@ -242,7 +242,6 @@ dependencies = [
  "fuse",
  "gpu_buffer",
  "gpu_display",
- "gpu_renderer",
  "hypervisor",
  "kvm_sys",
  "libc",
@@ -260,6 +259,7 @@ dependencies = [
  "rand_ish",
  "remain",
  "resources",
+ "rutabaga_gfx",
  "sync",
  "syscall_defines",
  "tempfile",
@@ -446,16 +446,6 @@ dependencies = [
  "data_model",
  "libc",
  "linux_input_sys",
-]
-
-[[package]]
-name = "gpu_renderer"
-version = "0.1.0"
-dependencies = [
- "base",
- "data_model",
- "libc",
- "vm_memory",
 ]
 
 [[package]]
@@ -852,6 +842,15 @@ dependencies = [
  "gpu_buffer",
  "libc",
  "msg_socket",
+]
+
+[[package]]
+name = "rutabaga_gfx"
+version = "0.1.0"
+dependencies = [
+ "base",
+ "data_model",
+ "libc",
 ]
 
 [[package]]

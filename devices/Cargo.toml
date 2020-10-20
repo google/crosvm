@@ -6,13 +6,13 @@ edition = "2018"
 
 [features]
 audio = []
-gpu = ["gpu_buffer", "gpu_display", "gpu_renderer"]
+gpu = ["gpu_buffer", "gpu_display", "rutabaga_gfx/virgl_renderer"]
 tpm = ["protos/trunks", "tpm2"]
 video-decoder = ["libvda"]
 video-encoder = ["libvda"]
 wl-dmabuf = []
 x = ["gpu_display/x"]
-gfxstream = ["gpu", "gpu_renderer/gfxstream"]
+gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
 
 [dependencies]
 acpi_tables = {path = "../acpi_tables" }
@@ -25,7 +25,7 @@ enumn = { path = "../enumn" }
 fuse = {path = "../fuse" }
 gpu_buffer = { path = "../gpu_buffer", optional = true }
 gpu_display = { path = "../gpu_display", optional = true }
-gpu_renderer = { path = "../gpu_renderer", optional = true }
+rutabaga_gfx = { path = "../rutabaga_gfx", optional = true }
 hypervisor = { path = "../hypervisor" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"

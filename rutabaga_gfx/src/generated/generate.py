@@ -36,10 +36,12 @@ def generate_module(module_name, whitelist, header, clang_args, lib_name,
     '--whitelist-type', whitelist,
     '--no-prepend-enum-name',
     '--no-rustfmt-bindings',
-    '-o', module_name + '.rs',
+    '-o', module_name + '_bindings.rs',
   ];
 
   if lib_name:
+    args.extend(['--raw-line',
+                 '#[cfg(feature = \"{}\")]'.format(module_name)])
     args.extend(['--raw-line',
                  '#[link(name = "{}")] extern {{}}'.format(lib_name)])
 
@@ -117,36 +119,12 @@ def main(argv):
 
   modules = (
     (
-      'virglrenderer',
+      'virgl_renderer',
       '(virgl|VIRGL)_.+',
       os.path.join(opts.sysroot, 'usr/include/virgl/virglrenderer.h'),
       clang_args,
       'virglrenderer',
       True,
-    ),
-    (
-      'virgl_protocol',
-      '(virgl)|(VIRGL)_.+',
-      os.path.join(virgl_src_dir, 'src/virgl_protocol.h'),
-      clang_args,
-      None,
-      False,
-    ),
-    (
-      'p_defines',
-      '(pipe)|(PIPE).+',
-      os.path.join(virgl_src_dir, 'src/gallium/include/pipe/p_defines.h'),
-      clang_args,
-      None,
-      False,
-    ),
-    (
-      'p_format',
-      'pipe_format',
-      os.path.join(virgl_src_dir, 'src/gallium/include/pipe/p_format.h'),
-      clang_args,
-      None,
-      False,
     ),
   )
 
@@ -176,7 +154,7 @@ def main(argv):
     print('#![allow(non_snake_case)]', file=f)
     print('#![allow(non_upper_case_globals)]', file=f)
     for module in modules:
-      print('pub mod', module[0] + ';', file=f)
+      print('pub mod', module[0] + '_bindings;', file=f)
 
 
 if __name__ == '__main__':

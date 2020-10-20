@@ -3,10 +3,7 @@
 // found in the LICENSE file.
 
 mod protocol;
-mod virtio_2d_backend;
-mod virtio_3d_backend;
-mod virtio_backend;
-mod virtio_gfxstream_backend;
+mod virtio_gpu;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -21,21 +18,28 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use data_model::*;
-
 use base::{
     debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor,
     WaitContext,
 };
-use sync::Mutex;
-use vm_memory::{GuestAddress, GuestMemory};
+
+use data_model::*;
 
 use gpu_buffer::Format;
 pub use gpu_display::EventDevice;
 use gpu_display::*;
-use gpu_renderer::RendererFlags;
+use rutabaga_gfx::{
+    GfxstreamFlags, ResourceCreate3D, ResourceCreateBlob, RutabagaBuilder, RutabagaComponentType,
+    RutabagaFenceData, Transfer3D, VirglRendererFlags, RUTABAGA_PIPE_BIND_RENDER_TARGET,
+    RUTABAGA_PIPE_TEXTURE_2D,
+};
+
 use msg_socket::{MsgReceiver, MsgSender};
+
 use resources::Alloc;
+
+use sync::Mutex;
+use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
     copy_config, resource_bridge::*, DescriptorChain, Interrupt, Queue, Reader, VirtioDevice,
@@ -45,10 +49,8 @@ use super::{
 use super::{PciCapabilityType, VirtioPciShmCap};
 
 use self::protocol::*;
-use self::virtio_2d_backend::Virtio2DBackend;
-use self::virtio_3d_backend::Virtio3DBackend;
-#[cfg(feature = "gfxstream")]
-use self::virtio_gfxstream_backend::VirtioGfxStreamBackend;
+use self::virtio_gpu::VirtioGpu;
+
 use crate::pci::{
     PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability,
 };
@@ -62,8 +64,7 @@ pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
 pub enum GpuMode {
     Mode2D,
     Mode3D,
-    #[cfg(feature = "gfxstream")]
-    ModeGfxStream,
+    ModeGfxstream,
 }
 
 #[derive(Debug)]
@@ -74,11 +75,8 @@ pub struct GpuParameters {
     pub renderer_use_gles: bool,
     pub renderer_use_glx: bool,
     pub renderer_use_surfaceless: bool,
-    #[cfg(feature = "gfxstream")]
     pub gfxstream_use_guest_angle: bool,
-    #[cfg(feature = "gfxstream")]
     pub gfxstream_use_syncfd: bool,
-    #[cfg(feature = "gfxstream")]
     pub gfxstream_support_vulkan: bool,
     pub mode: GpuMode,
     pub cache_path: Option<String>,
@@ -103,11 +101,8 @@ impl Default for GpuParameters {
             renderer_use_gles: true,
             renderer_use_glx: false,
             renderer_use_surfaceless: true,
-            #[cfg(feature = "gfxstream")]
             gfxstream_use_guest_angle: false,
-            #[cfg(feature = "gfxstream")]
             gfxstream_use_syncfd: true,
-            #[cfg(feature = "gfxstream")]
             gfxstream_support_vulkan: true,
             mode: GpuMode::Mode3D,
             cache_path: None,
@@ -125,343 +120,48 @@ pub struct VirtioScanoutBlobData {
     pub offsets: [u32; 4],
 }
 
-/// A virtio-gpu backend state tracker which supports display and potentially accelerated rendering.
-///
-/// Commands from the virtio-gpu protocol can be submitted here using the methods, and they will be
-/// realized on the hardware. Most methods return a `VirtioGpuResult` that indicate the success,
-/// failure, or requested data for the given command.
-trait Backend {
-    /// Returns the number of capsets provided by the Backend.
-    fn capsets() -> u32
-    where
-        Self: Sized;
-
-    /// Returns the bitset of virtio features provided by the Backend in addition to the base set
-    /// of device features.
-    fn features() -> u64
-    where
-        Self: Sized;
-
-    /// Constructs a backend.
-    fn build(
-        display: GpuDisplay,
-        display_width: u32,
-        display_height: u32,
-        renderer_flags: RendererFlags,
-        event_devices: Vec<EventDevice>,
-        gpu_device_socket: VmMemoryControlRequestSocket,
-        pci_bar: Alloc,
-        map_request: Arc<Mutex<Option<ExternalMapping>>>,
-        external_blob: bool,
-    ) -> Option<Box<dyn Backend>>
-    where
-        Self: Sized;
-
-    fn display(&self) -> &Rc<RefCell<GpuDisplay>>;
-
-    /// Processes the internal `display` events and returns `true` if the main display was closed.
-    fn process_display(&mut self) -> bool;
-
-    /// Creates a fence with the given id that can be used to determine when the previous command
-    /// completed.
-    fn create_fence(&mut self, ctx_id: u32, fence_id: u32) -> VirtioGpuResult;
-
-    fn export_fence(&mut self, _fence_id: u32) -> ResourceResponse {
-        ResourceResponse::Invalid
-    }
-
-    /// Returns the id of the latest fence to complete.
-    fn fence_poll(&mut self) -> u32;
-
-    /// For accelerated rendering capable backends, switch to the default rendering context.
-    fn force_ctx_0(&mut self) {}
-
-    /// Attaches the given input device to the given surface of the display (to allow for input
-    /// from a X11 window for example).
-    fn import_event_device(&mut self, event_device: EventDevice, scanout: u32) -> VirtioGpuResult;
-
-    /// If supported, export the resource with the given id to a file.
-    fn export_resource(&mut self, id: u32) -> ResourceResponse;
-
-    /// Gets the list of supported display resolutions as a slice of `(width, height)` tuples.
-    fn display_info(&self) -> [(u32, u32); 1];
-
-    /// Creates a 2D resource with the given properties and associates it with the given id.
-    fn create_resource_2d(
-        &mut self,
-        id: u32,
-        width: u32,
-        height: u32,
-        format: u32,
-    ) -> VirtioGpuResult;
-
-    /// Removes the guest's reference count for the given resource id.
-    fn unref_resource(&mut self, id: u32) -> VirtioGpuResult;
-
-    /// Sets the given resource id as the source of scanout to the display, with optional blob data.
-    fn set_scanout(
-        &mut self,
-        _scanout_id: u32,
-        resource_id: u32,
-        scanout_data: Option<VirtioScanoutBlobData>,
-    ) -> VirtioGpuResult;
-
-    /// Flushes the given rectangle of pixels of the given resource to the display.
-    fn flush_resource(
-        &mut self,
-        id: u32,
-        x: u32,
-        y: u32,
-        width: u32,
-        height: u32,
-    ) -> VirtioGpuResult;
-
-    /// Copes the given rectangle of pixels of the given resource's backing memory to the host side
-    /// resource.
-    fn transfer_to_resource_2d(
-        &mut self,
-        id: u32,
-        x: u32,
-        y: u32,
-        width: u32,
-        height: u32,
-        src_offset: u64,
-        mem: &GuestMemory,
-    ) -> VirtioGpuResult;
-
-    /// Attaches backing memory to the given resource, represented by a `Vec` of `(address, size)`
-    /// tuples in the guest's physical address space.
-    fn attach_backing(
-        &mut self,
-        id: u32,
-        mem: &GuestMemory,
-        vecs: Vec<(GuestAddress, usize)>,
-    ) -> VirtioGpuResult;
-
-    /// Detaches any backing memory from the given resource, if there is any.
-    fn detach_backing(&mut self, id: u32) -> VirtioGpuResult;
-
-    fn resource_assign_uuid(&mut self, _id: u32) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-
-    /// Updates the cursor's memory to the given id, and sets its position to the given coordinates.
-    fn update_cursor(&mut self, id: u32, x: u32, y: u32) -> VirtioGpuResult;
-
-    /// Moves the cursor's position to the given coordinates.
-    fn move_cursor(&mut self, x: u32, y: u32) -> VirtioGpuResult;
-
-    /// Gets the renderer's capset information associated with `index`.
-    fn get_capset_info(&self, index: u32) -> VirtioGpuResult;
-
-    /// Gets the capset of `version` associated with `id`.
-    fn get_capset(&self, id: u32, version: u32) -> VirtioGpuResult;
-
-    /// Creates a fresh renderer context with the given `id`.
-    fn create_renderer_context(&mut self, _id: u32) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-
-    /// Destorys the renderer context associated with `id`.
-    fn destroy_renderer_context(&mut self, _id: u32) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-
-    /// Attaches the indicated resource to the given context.
-    fn context_attach_resource(&mut self, _ctx_id: u32, _res_id: u32) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-
-    /// detaches the indicated resource to the given context.
-    fn context_detach_resource(&mut self, _ctx_id: u32, _res_id: u32) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-
-    /// Creates a 3D resource with the given properties and associates it with the given id.
-    fn resource_create_3d(
-        &mut self,
-        _id: u32,
-        _target: u32,
-        _format: u32,
-        _bind: u32,
-        _width: u32,
-        _height: u32,
-        _depth: u32,
-        _array_size: u32,
-        _last_level: u32,
-        _nr_samples: u32,
-        _flags: u32,
-    ) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-
-    /// Copes the given 3D rectangle of pixels of the given resource's backing memory to the host
-    /// side resource.
-    fn transfer_to_resource_3d(
-        &mut self,
-        _ctx_id: u32,
-        _res_id: u32,
-        _x: u32,
-        _y: u32,
-        _z: u32,
-        _width: u32,
-        _height: u32,
-        _depth: u32,
-        _level: u32,
-        _stride: u32,
-        _layer_stride: u32,
-        _offset: u64,
-    ) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-
-    /// Copes the given rectangle of pixels from the resource to the given resource's backing
-    /// memory.
-    fn transfer_from_resource_3d(
-        &mut self,
-        _ctx_id: u32,
-        _res_id: u32,
-        _x: u32,
-        _y: u32,
-        _z: u32,
-        _width: u32,
-        _height: u32,
-        _depth: u32,
-        _level: u32,
-        _stride: u32,
-        _layer_stride: u32,
-        _offset: u64,
-    ) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-
-    /// Submits a command buffer to the given rendering context.
-    fn submit_command(&mut self, _ctx_id: u32, _commands: &mut [u8]) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-
-    fn resource_create_blob(
-        &mut self,
-        _resource_id: u32,
-        _ctx_id: u32,
-        _blob_mem: u32,
-        _blob_flags: u32,
-        _blob_id: u64,
-        _size: u64,
-        _vecs: Vec<(GuestAddress, usize)>,
-        _mem: &GuestMemory,
-    ) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-
-    fn resource_map_blob(&mut self, _resource_id: u32, _offset: u64) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-
-    fn resource_unmap_blob(&mut self, _resource_id: u32) -> VirtioGpuResult {
-        Err(GpuResponse::ErrUnspec)
-    }
-}
-
-#[derive(Clone)]
-enum BackendKind {
-    Virtio2D,
-    Virtio3D,
-    #[cfg(feature = "gfxstream")]
-    VirtioGfxStream,
-}
-
-impl BackendKind {
-    /// Returns the number of capsets provided by the Backend.
-    fn capsets(&self) -> u32 {
-        match self {
-            BackendKind::Virtio2D => Virtio2DBackend::capsets(),
-            BackendKind::Virtio3D => Virtio3DBackend::capsets(),
-            #[cfg(feature = "gfxstream")]
-            BackendKind::VirtioGfxStream => VirtioGfxStreamBackend::capsets(),
-        }
-    }
-
-    /// Returns the bitset of virtio features provided by the Backend in addition to the base set
-    /// of device features.
-    fn features(&self) -> u64 {
-        match self {
-            BackendKind::Virtio2D => Virtio2DBackend::features(),
-            BackendKind::Virtio3D => Virtio3DBackend::features(),
-            #[cfg(feature = "gfxstream")]
-            BackendKind::VirtioGfxStream => VirtioGfxStreamBackend::features(),
-        }
-    }
-
-    /// Initializes the backend.
-    fn build(
-        &self,
-        possible_displays: &[DisplayBackend],
-        display_width: u32,
-        display_height: u32,
-        renderer_flags: RendererFlags,
-        event_devices: Vec<EventDevice>,
-        gpu_device_socket: VmMemoryControlRequestSocket,
-        pci_bar: Alloc,
-        map_request: Arc<Mutex<Option<ExternalMapping>>>,
-        external_blob: bool,
-    ) -> Option<Box<dyn Backend>> {
-        let mut display_opt = None;
-        for display in possible_displays {
-            match display.build() {
-                Ok(c) => {
-                    display_opt = Some(c);
-                    break;
-                }
-                Err(e) => error!("failed to open display: {}", e),
-            };
-        }
-
-        let display = match display_opt {
-            Some(d) => d,
-            None => {
-                error!("failed to open any displays");
-                return None;
+/// Initializes the virtio_gpu state tracker.
+fn build(
+    possible_displays: &[DisplayBackend],
+    display_width: u32,
+    display_height: u32,
+    rutabaga_builder: RutabagaBuilder,
+    event_devices: Vec<EventDevice>,
+    gpu_device_socket: VmMemoryControlRequestSocket,
+    pci_bar: Alloc,
+    map_request: Arc<Mutex<Option<ExternalMapping>>>,
+    external_blob: bool,
+) -> Option<VirtioGpu> {
+    let mut display_opt = None;
+    for display in possible_displays {
+        match display.build() {
+            Ok(c) => {
+                display_opt = Some(c);
+                break;
             }
+            Err(e) => error!("failed to open display: {}", e),
         };
-
-        match self {
-            BackendKind::Virtio2D => Virtio2DBackend::build(
-                display,
-                display_width,
-                display_height,
-                renderer_flags,
-                event_devices,
-                gpu_device_socket,
-                pci_bar,
-                map_request,
-                external_blob,
-            ),
-            BackendKind::Virtio3D => Virtio3DBackend::build(
-                display,
-                display_width,
-                display_height,
-                renderer_flags,
-                event_devices,
-                gpu_device_socket,
-                pci_bar,
-                map_request,
-                external_blob,
-            ),
-            #[cfg(feature = "gfxstream")]
-            BackendKind::VirtioGfxStream => VirtioGfxStreamBackend::build(
-                display,
-                display_width,
-                display_height,
-                renderer_flags,
-                event_devices,
-                gpu_device_socket,
-                pci_bar,
-                map_request,
-                external_blob,
-            ),
-        }
     }
+
+    let display = match display_opt {
+        Some(d) => d,
+        None => {
+            error!("failed to open any displays");
+            return None;
+        }
+    };
+
+    VirtioGpu::new(
+        display,
+        display_width,
+        display_height,
+        rutabaga_builder,
+        event_devices,
+        gpu_device_socket,
+        pci_bar,
+        map_request,
+        external_blob,
+    )
 }
 
 struct ReturnDescriptor {
@@ -470,44 +170,72 @@ struct ReturnDescriptor {
 }
 
 struct FenceDescriptor {
-    fence_id: u32,
+    desc_fence: RutabagaFenceData,
     index: u16,
     len: u32,
+}
+
+fn fence_ctx_equal(desc_fence: &RutabagaFenceData, completed: &RutabagaFenceData) -> bool {
+    let desc_fence_ctx = desc_fence.flags & VIRTIO_GPU_FLAG_INFO_FENCE_CTX_IDX != 0;
+    let completed_fence_ctx = completed.flags & VIRTIO_GPU_FLAG_INFO_FENCE_CTX_IDX != 0;
+
+    // Both fences on global timeline -- only case with upstream kernel.  The rest of the logic
+    // is for per fence context prototype.
+    if !completed_fence_ctx && !desc_fence_ctx {
+        return true;
+    }
+
+    // One fence is on global timeline
+    if desc_fence_ctx != completed_fence_ctx {
+        return false;
+    }
+
+    // Different 3D contexts
+    if desc_fence.ctx_id != completed.ctx_id {
+        return false;
+    }
+
+    // Different fence contexts with same 3D context
+    if desc_fence.fence_ctx_idx != completed.fence_ctx_idx {
+        return false;
+    }
+
+    true
 }
 
 struct Frontend {
     return_ctrl_descriptors: VecDeque<ReturnDescriptor>,
     return_cursor_descriptors: VecDeque<ReturnDescriptor>,
     fence_descriptors: Vec<FenceDescriptor>,
-    backend: Box<dyn Backend>,
+    virtio_gpu: VirtioGpu,
 }
 
 impl Frontend {
-    fn new(backend: Box<dyn Backend>) -> Frontend {
+    fn new(virtio_gpu: VirtioGpu) -> Frontend {
         Frontend {
             return_ctrl_descriptors: Default::default(),
             return_cursor_descriptors: Default::default(),
             fence_descriptors: Default::default(),
-            backend,
+            virtio_gpu,
         }
     }
 
     fn display(&mut self) -> &Rc<RefCell<GpuDisplay>> {
-        self.backend.display()
+        self.virtio_gpu.display()
     }
 
     fn process_display(&mut self) -> bool {
-        self.backend.process_display()
+        self.virtio_gpu.process_display()
     }
 
     fn process_resource_bridge(&mut self, resource_bridge: &ResourceResponseSocket) {
         let response = match resource_bridge.recv() {
-            Ok(ResourceRequest::GetBuffer { id }) => self.backend.export_resource(id),
+            Ok(ResourceRequest::GetBuffer { id }) => self.virtio_gpu.export_resource(id),
             Ok(ResourceRequest::GetFence { seqno }) => {
                 // The seqno originated from self.backend, so
                 // it should fit in a u32.
                 match u32::try_from(seqno) {
-                    Ok(fence_id) => self.backend.export_fence(fence_id),
+                    Ok(fence_id) => self.virtio_gpu.export_fence(fence_id),
                     Err(_) => ResourceResponse::Invalid,
                 }
             }
@@ -528,42 +256,52 @@ impl Frontend {
         cmd: GpuCommand,
         reader: &mut Reader,
     ) -> VirtioGpuResult {
-        self.backend.force_ctx_0();
+        self.virtio_gpu.force_ctx_0();
 
         match cmd {
             GpuCommand::GetDisplayInfo(_) => Ok(GpuResponse::OkDisplayInfo(
-                self.backend.display_info().to_vec(),
+                self.virtio_gpu.display_info().to_vec(),
             )),
-            GpuCommand::ResourceCreate2d(info) => self.backend.create_resource_2d(
-                info.resource_id.to_native(),
-                info.width.to_native(),
-                info.height.to_native(),
-                info.format.to_native(),
-            ),
-            GpuCommand::ResourceUnref(info) => {
-                self.backend.unref_resource(info.resource_id.to_native())
+            GpuCommand::ResourceCreate2d(info) => {
+                let resource_id = info.resource_id.to_native();
+
+                let resource_create_3d = ResourceCreate3D {
+                    target: RUTABAGA_PIPE_TEXTURE_2D,
+                    format: info.format.to_native(),
+                    bind: RUTABAGA_PIPE_BIND_RENDER_TARGET,
+                    width: info.width.to_native(),
+                    height: info.height.to_native(),
+                    depth: 1,
+                    array_size: 1,
+                    last_level: 0,
+                    nr_samples: 0,
+                    flags: 0,
+                };
+
+                self.virtio_gpu
+                    .resource_create_3d(resource_id, resource_create_3d)
             }
-            GpuCommand::SetScanout(info) => self.backend.set_scanout(
+            GpuCommand::ResourceUnref(info) => {
+                self.virtio_gpu.unref_resource(info.resource_id.to_native())
+            }
+            GpuCommand::SetScanout(info) => self.virtio_gpu.set_scanout(
                 info.scanout_id.to_native(),
                 info.resource_id.to_native(),
                 None,
             ),
-            GpuCommand::ResourceFlush(info) => self.backend.flush_resource(
-                info.resource_id.to_native(),
-                info.r.x.to_native(),
-                info.r.y.to_native(),
-                info.r.width.to_native(),
-                info.r.height.to_native(),
-            ),
-            GpuCommand::TransferToHost2d(info) => self.backend.transfer_to_resource_2d(
-                info.resource_id.to_native(),
-                info.r.x.to_native(),
-                info.r.y.to_native(),
-                info.r.width.to_native(),
-                info.r.height.to_native(),
-                info.offset.to_native(),
-                mem,
-            ),
+            GpuCommand::ResourceFlush(info) => {
+                self.virtio_gpu.flush_resource(info.resource_id.to_native())
+            }
+            GpuCommand::TransferToHost2d(info) => {
+                let resource_id = info.resource_id.to_native();
+                let transfer = Transfer3D::new_2d(
+                    info.r.x.to_native(),
+                    info.r.y.to_native(),
+                    info.r.width.to_native(),
+                    info.r.height.to_native(),
+                );
+                self.virtio_gpu.transfer_write(0, resource_id, transfer)
+            }
             GpuCommand::ResourceAttachBacking(info) => {
                 let available_bytes = reader.available_bytes();
                 if available_bytes != 0 {
@@ -579,7 +317,7 @@ impl Frontend {
                             Err(_) => return Err(GpuResponse::ErrUnspec),
                         }
                     }
-                    self.backend
+                    self.virtio_gpu
                         .attach_backing(info.resource_id.to_native(), mem, vecs)
                 } else {
                     error!("missing data for command {:?}", cmd);
@@ -587,117 +325,102 @@ impl Frontend {
                 }
             }
             GpuCommand::ResourceDetachBacking(info) => {
-                self.backend.detach_backing(info.resource_id.to_native())
+                self.virtio_gpu.detach_backing(info.resource_id.to_native())
             }
-            GpuCommand::UpdateCursor(info) => self.backend.update_cursor(
+            GpuCommand::UpdateCursor(info) => self.virtio_gpu.update_cursor(
                 info.resource_id.to_native(),
                 info.pos.x.into(),
                 info.pos.y.into(),
             ),
             GpuCommand::MoveCursor(info) => self
-                .backend
+                .virtio_gpu
                 .move_cursor(info.pos.x.into(), info.pos.y.into()),
             GpuCommand::ResourceAssignUuid(info) => {
                 let resource_id = info.resource_id.to_native();
-                self.backend.resource_assign_uuid(resource_id)
+                self.virtio_gpu.resource_assign_uuid(resource_id)
             }
-            GpuCommand::GetCapsetInfo(info) => {
-                self.backend.get_capset_info(info.capset_index.to_native())
-            }
+            GpuCommand::GetCapsetInfo(info) => self
+                .virtio_gpu
+                .get_capset_info(info.capset_index.to_native()),
             GpuCommand::GetCapset(info) => self
-                .backend
+                .virtio_gpu
                 .get_capset(info.capset_id.to_native(), info.capset_version.to_native()),
             GpuCommand::CtxCreate(info) => self
-                .backend
-                .create_renderer_context(info.hdr.ctx_id.to_native()),
-            GpuCommand::CtxDestroy(info) => self
-                .backend
-                .destroy_renderer_context(info.hdr.ctx_id.to_native()),
+                .virtio_gpu
+                .create_context(info.hdr.ctx_id.to_native(), info.context_init.to_native()),
+            GpuCommand::CtxDestroy(info) => {
+                self.virtio_gpu.destroy_context(info.hdr.ctx_id.to_native())
+            }
             GpuCommand::CtxAttachResource(info) => self
-                .backend
+                .virtio_gpu
                 .context_attach_resource(info.hdr.ctx_id.to_native(), info.resource_id.to_native()),
             GpuCommand::CtxDetachResource(info) => self
-                .backend
+                .virtio_gpu
                 .context_detach_resource(info.hdr.ctx_id.to_native(), info.resource_id.to_native()),
             GpuCommand::ResourceCreate3d(info) => {
-                let id = info.resource_id.to_native();
-                let target = info.target.to_native();
-                let format = info.format.to_native();
-                let bind = info.bind.to_native();
-                let width = info.width.to_native();
-                let height = info.height.to_native();
-                let depth = info.depth.to_native();
-                let array_size = info.array_size.to_native();
-                let last_level = info.last_level.to_native();
-                let nr_samples = info.nr_samples.to_native();
-                let flags = info.flags.to_native();
-                self.backend.resource_create_3d(
-                    id, target, format, bind, width, height, depth, array_size, last_level,
-                    nr_samples, flags,
-                )
+                let resource_id = info.resource_id.to_native();
+                let resource_create_3d = ResourceCreate3D {
+                    target: info.target.to_native(),
+                    format: info.format.to_native(),
+                    bind: info.bind.to_native(),
+                    width: info.width.to_native(),
+                    height: info.height.to_native(),
+                    depth: info.depth.to_native(),
+                    array_size: info.array_size.to_native(),
+                    last_level: info.last_level.to_native(),
+                    nr_samples: info.nr_samples.to_native(),
+                    flags: info.flags.to_native(),
+                };
+
+                self.virtio_gpu
+                    .resource_create_3d(resource_id, resource_create_3d)
             }
             GpuCommand::TransferToHost3d(info) => {
                 let ctx_id = info.hdr.ctx_id.to_native();
-                let res_id = info.resource_id.to_native();
-                let x = info.box_.x.to_native();
-                let y = info.box_.y.to_native();
-                let z = info.box_.z.to_native();
-                let width = info.box_.w.to_native();
-                let height = info.box_.h.to_native();
-                let depth = info.box_.d.to_native();
-                let level = info.level.to_native();
-                let stride = info.stride.to_native();
-                let layer_stride = info.layer_stride.to_native();
-                let offset = info.offset.to_native();
-                self.backend.transfer_to_resource_3d(
-                    ctx_id,
-                    res_id,
-                    x,
-                    y,
-                    z,
-                    width,
-                    height,
-                    depth,
-                    level,
-                    stride,
-                    layer_stride,
-                    offset,
-                )
+                let resource_id = info.resource_id.to_native();
+
+                let transfer = Transfer3D {
+                    x: info.box_.x.to_native(),
+                    y: info.box_.y.to_native(),
+                    z: info.box_.z.to_native(),
+                    w: info.box_.w.to_native(),
+                    h: info.box_.h.to_native(),
+                    d: info.box_.d.to_native(),
+                    level: info.level.to_native(),
+                    stride: info.stride.to_native(),
+                    layer_stride: info.layer_stride.to_native(),
+                    offset: info.offset.to_native(),
+                };
+
+                self.virtio_gpu
+                    .transfer_write(ctx_id, resource_id, transfer)
             }
             GpuCommand::TransferFromHost3d(info) => {
                 let ctx_id = info.hdr.ctx_id.to_native();
-                let res_id = info.resource_id.to_native();
-                let x = info.box_.x.to_native();
-                let y = info.box_.y.to_native();
-                let z = info.box_.z.to_native();
-                let width = info.box_.w.to_native();
-                let height = info.box_.h.to_native();
-                let depth = info.box_.d.to_native();
-                let level = info.level.to_native();
-                let stride = info.stride.to_native();
-                let layer_stride = info.layer_stride.to_native();
-                let offset = info.offset.to_native();
-                self.backend.transfer_from_resource_3d(
-                    ctx_id,
-                    res_id,
-                    x,
-                    y,
-                    z,
-                    width,
-                    height,
-                    depth,
-                    level,
-                    stride,
-                    layer_stride,
-                    offset,
-                )
+                let resource_id = info.resource_id.to_native();
+
+                let transfer = Transfer3D {
+                    x: info.box_.x.to_native(),
+                    y: info.box_.y.to_native(),
+                    z: info.box_.z.to_native(),
+                    w: info.box_.w.to_native(),
+                    h: info.box_.h.to_native(),
+                    d: info.box_.d.to_native(),
+                    level: info.level.to_native(),
+                    stride: info.stride.to_native(),
+                    layer_stride: info.layer_stride.to_native(),
+                    offset: info.offset.to_native(),
+                };
+
+                self.virtio_gpu
+                    .transfer_read(ctx_id, resource_id, transfer, None)
             }
             GpuCommand::CmdSubmit3d(info) => {
                 if reader.available_bytes() != 0 {
                     let cmd_size = info.size.to_native() as usize;
                     let mut cmd_buf = vec![0; cmd_size];
                     if reader.read_exact(&mut cmd_buf[..]).is_ok() {
-                        self.backend
+                        self.virtio_gpu
                             .submit_command(info.hdr.ctx_id.to_native(), &mut cmd_buf[..])
                     } else {
                         Err(GpuResponse::ErrInvalidParameter)
@@ -711,10 +434,14 @@ impl Frontend {
             GpuCommand::ResourceCreateBlob(info) => {
                 let resource_id = info.resource_id.to_native();
                 let ctx_id = info.hdr.ctx_id.to_native();
-                let blob_mem = info.blob_mem.to_native();
-                let blob_flags = info.blob_flags.to_native();
-                let blob_id = info.blob_id.to_native();
-                let size = info.size.to_native();
+
+                let resource_create_blob = ResourceCreateBlob {
+                    blob_mem: info.blob_mem.to_native(),
+                    blob_flags: info.blob_flags.to_native(),
+                    blob_id: info.blob_id.to_native(),
+                    size: info.size.to_native(),
+                };
+
                 let entry_count = info.nr_entries.to_native();
                 if entry_count > VIRTIO_GPU_MAX_IOVEC_ENTRIES
                     || (reader.available_bytes() == 0 && entry_count > 0)
@@ -734,13 +461,10 @@ impl Frontend {
                     }
                 }
 
-                self.backend.resource_create_blob(
-                    resource_id,
+                self.virtio_gpu.resource_create_blob(
                     ctx_id,
-                    blob_mem,
-                    blob_flags,
-                    blob_id,
-                    size,
+                    resource_id,
+                    resource_create_blob,
                     vecs,
                     mem,
                 )
@@ -778,17 +502,17 @@ impl Frontend {
                     offsets,
                 };
 
-                self.backend
+                self.virtio_gpu
                     .set_scanout(scanout_id, resource_id, Some(scanout))
             }
             GpuCommand::ResourceMapBlob(info) => {
                 let resource_id = info.resource_id.to_native();
                 let offset = info.offset.to_native();
-                self.backend.resource_map_blob(resource_id, offset)
+                self.virtio_gpu.resource_map_blob(resource_id, offset)
             }
             GpuCommand::ResourceUnmapBlob(info) => {
                 let resource_id = info.resource_id.to_native();
-                self.backend.resource_unmap_blob(resource_id)
+                self.virtio_gpu.resource_unmap_blob(resource_id)
             }
         }
     }
@@ -866,14 +590,23 @@ impl Frontend {
             let mut fence_id = 0;
             let mut ctx_id = 0;
             let mut flags = 0;
+            let mut info = 0;
             if let Some(cmd) = gpu_cmd {
                 let ctrl_hdr = cmd.ctrl_hdr();
                 if ctrl_hdr.flags.to_native() & VIRTIO_GPU_FLAG_FENCE != 0 {
+                    flags = ctrl_hdr.flags.to_native();
                     fence_id = ctrl_hdr.fence_id.to_native();
                     ctx_id = ctrl_hdr.ctx_id.to_native();
-                    flags = VIRTIO_GPU_FLAG_FENCE;
+                    // The only possible current value for hdr info.
+                    info = ctrl_hdr.info.to_native();
 
-                    gpu_response = match self.backend.create_fence(ctx_id, fence_id as u32) {
+                    let fence_data = RutabagaFenceData {
+                        flags,
+                        fence_id,
+                        ctx_id,
+                        fence_ctx_idx: info,
+                    };
+                    gpu_response = match self.virtio_gpu.create_fence(fence_data) {
                         Ok(_) => gpu_response,
                         Err(fence_resp) => {
                             warn!("create_fence {} -> {:?}", fence_id, fence_resp);
@@ -885,14 +618,19 @@ impl Frontend {
 
             // Prepare the response now, even if it is going to wait until
             // fence is complete.
-            match gpu_response.encode(flags, fence_id, ctx_id, writer) {
+            match gpu_response.encode(flags, fence_id, ctx_id, info, writer) {
                 Ok(l) => len = l,
                 Err(e) => debug!("ctrl queue response encode error: {}", e),
             }
 
             if flags & VIRTIO_GPU_FLAG_FENCE != 0 {
                 self.fence_descriptors.push(FenceDescriptor {
-                    fence_id: fence_id as u32,
+                    desc_fence: RutabagaFenceData {
+                        flags,
+                        fence_id,
+                        ctx_id,
+                        fence_ctx_idx: info,
+                    },
                     index: desc_index,
                     len,
                 });
@@ -917,18 +655,22 @@ impl Frontend {
     }
 
     fn fence_poll(&mut self) {
-        let fence_id = self.backend.fence_poll();
+        let completed_fences = self.virtio_gpu.fence_poll();
         let return_descs = &mut self.return_ctrl_descriptors;
+
         self.fence_descriptors.retain(|f_desc| {
-            if f_desc.fence_id > fence_id {
-                true
-            } else {
-                return_descs.push_back(ReturnDescriptor {
-                    index: f_desc.index,
-                    len: f_desc.len,
-                });
-                false
+            for completed in &completed_fences {
+                if fence_ctx_equal(&f_desc.desc_fence, completed) {
+                    if f_desc.desc_fence.fence_id <= completed.fence_id {
+                        return_descs.push_back(ReturnDescriptor {
+                            index: f_desc.index,
+                            len: f_desc.len,
+                        });
+                        return false;
+                    }
+                }
             }
+            true
         })
     }
 }
@@ -1130,11 +872,11 @@ pub struct Gpu {
     display_backends: Vec<DisplayBackend>,
     display_width: u32,
     display_height: u32,
-    renderer_flags: RendererFlags,
+    rutabaga_builder: RutabagaBuilder,
     pci_bar: Option<Alloc>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     external_blob: bool,
-    backend_kind: BackendKind,
+    rutabaga_component: RutabagaComponentType,
     base_features: u64,
 }
 
@@ -1151,24 +893,26 @@ impl Gpu {
         external_blob: bool,
         base_features: u64,
     ) -> Gpu {
-        let renderer_flags = RendererFlags::new()
+        let virglrenderer_flags = VirglRendererFlags::new()
             .use_egl(gpu_parameters.renderer_use_egl)
             .use_gles(gpu_parameters.renderer_use_gles)
             .use_glx(gpu_parameters.renderer_use_glx)
             .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .use_external_blob(external_blob);
-        #[cfg(feature = "gfxstream")]
-        let renderer_flags = renderer_flags
+        let gfxstream_flags = GfxstreamFlags::new()
             .use_guest_angle(gpu_parameters.gfxstream_use_guest_angle)
             .use_syncfd(gpu_parameters.gfxstream_use_syncfd)
             .support_vulkan(gpu_parameters.gfxstream_support_vulkan);
 
-        let backend_kind = match gpu_parameters.mode {
-            GpuMode::Mode2D => BackendKind::Virtio2D,
-            GpuMode::Mode3D => BackendKind::Virtio3D,
-            #[cfg(feature = "gfxstream")]
-            GpuMode::ModeGfxStream => BackendKind::VirtioGfxStream,
+        let component = match gpu_parameters.mode {
+            GpuMode::Mode2D => RutabagaComponentType::Rutabaga2D,
+            GpuMode::Mode3D => RutabagaComponentType::VirglRenderer,
+            GpuMode::ModeGfxstream => RutabagaComponentType::Gfxstream,
         };
+
+        let rutabaga_builder = RutabagaBuilder::new(component)
+            .set_virglrenderer_flags(virglrenderer_flags)
+            .set_gfxstream_flags(gfxstream_flags);
 
         Gpu {
             exit_evt,
@@ -1182,11 +926,11 @@ impl Gpu {
             display_backends,
             display_width: gpu_parameters.display_width,
             display_height: gpu_parameters.display_height,
-            renderer_flags,
+            rutabaga_builder,
             pci_bar: None,
             map_request,
             external_blob,
-            backend_kind,
+            rutabaga_component: component,
             base_features,
         }
     }
@@ -1196,11 +940,17 @@ impl Gpu {
         if self.config_event {
             events_read |= VIRTIO_GPU_EVENT_DISPLAY;
         }
+
+        let capsets = match self.rutabaga_component {
+            RutabagaComponentType::Rutabaga2D => 0,
+            _ => 5,
+        };
+
         virtio_gpu_config {
             events_read: Le32::from(events_read),
             events_clear: Le32::from(0),
             num_scanouts: Le32::from(self.num_scanouts.get() as u32),
-            num_capsets: Le32::from(self.backend_kind.capsets()),
+            num_capsets: Le32::from(capsets),
         }
     }
 }
@@ -1248,7 +998,17 @@ impl VirtioDevice for Gpu {
     }
 
     fn features(&self) -> u64 {
-        self.base_features | self.backend_kind.features()
+        let rutabaga_features = match self.rutabaga_component {
+            RutabagaComponentType::Rutabaga2D => 0,
+            _ => {
+                1 << VIRTIO_GPU_F_VIRGL
+                    | 1 << VIRTIO_GPU_F_RESOURCE_UUID
+                    | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
+                    | 1 << VIRTIO_GPU_F_CONTEXT_INIT
+            }
+        };
+
+        self.base_features | rutabaga_features
     }
 
     fn ack_features(&mut self, value: u64) {
@@ -1297,7 +1057,6 @@ impl VirtioDevice for Gpu {
 
         let resource_bridges = mem::replace(&mut self.resource_bridges, Vec::new());
 
-        let backend_kind = self.backend_kind.clone();
         let ctrl_queue = queues.remove(0);
         let ctrl_evt = queue_evts.remove(0);
         let cursor_queue = queues.remove(0);
@@ -1305,7 +1064,7 @@ impl VirtioDevice for Gpu {
         let display_backends = self.display_backends.clone();
         let display_width = self.display_width;
         let display_height = self.display_height;
-        let renderer_flags = self.renderer_flags;
+        let rutabaga_builder = self.rutabaga_builder;
         let event_devices = self.event_devices.split_off(0);
         let map_request = Arc::clone(&self.map_request);
         let external_blob = self.external_blob;
@@ -1316,11 +1075,11 @@ impl VirtioDevice for Gpu {
                 thread::Builder::new()
                     .name("virtio_gpu".to_string())
                     .spawn(move || {
-                        let backend = match backend_kind.build(
+                        let virtio_gpu = match build(
                             &display_backends,
                             display_width,
                             display_height,
-                            renderer_flags,
+                            rutabaga_builder,
                             event_devices,
                             gpu_device_socket,
                             pci_bar,
@@ -1341,7 +1100,7 @@ impl VirtioDevice for Gpu {
                             cursor_evt,
                             resource_bridges,
                             kill_evt,
-                            state: Frontend::new(backend),
+                            state: Frontend::new(virtio_gpu),
                         }
                         .run()
                     });

@@ -1,10 +1,11 @@
 [package]
-name = "gpu_renderer"
+name = "rutabaga_gfx"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [features]
+virgl_renderer = []
 virtio-gpu-next = []
 gfxstream = []
 
@@ -12,4 +13,3 @@ gfxstream = []
 data_model = { path = "../data_model" }
 libc = "*"
 base = { path = "../base" }
-vm_memory = { path = "../vm_memory" }

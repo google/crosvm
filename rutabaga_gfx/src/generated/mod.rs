@@ -3,7 +3,4 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
-pub mod p_defines;
-pub mod p_format;
-pub mod virgl_protocol;
-pub mod virglrenderer;
+pub mod virgl_renderer_bindings;

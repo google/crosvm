@@ -43,7 +43,7 @@ video-decoder = ["devices/video-decoder"]
 video-encoder = ["devices/video-encoder"]
 wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
 x = ["devices/x"]
-virtio-gpu-next = ["gpu_renderer/virtio-gpu-next"]
+virtio-gpu-next = ["rutabaga_gfx/virtio-gpu-next"]
 composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
 gfxstream = ["devices/gfxstream"]
 gdb = ["gdbstub", "thiserror",  "arch/gdb", "vm_control/gdb", "x86_64/gdb"]
@@ -61,7 +61,7 @@ disk = { path = "disk" }
 enumn = { path = "enumn" }
 gdbstub = { version = "0.4.0", optional = true }
 gpu_buffer = { path = "gpu_buffer", optional = true }
-gpu_renderer = { path = "gpu_renderer", optional = true }
+rutabaga_gfx = { path = "rutabaga_gfx", optional = true }
 hypervisor = { path = "hypervisor" }
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }

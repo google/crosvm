@@ -182,7 +182,7 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                 }
                 #[cfg(feature = "gfxstream")]
                 "gfxstream" => {
-                    gpu_params.mode = GpuMode::ModeGfxStream;
+                    gpu_params.mode = GpuMode::ModeGfxstream;
                 }
                 // Preferred: Specifying --gpu,backend=<mode>
                 "backend" => match v {
@@ -194,7 +194,7 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                     }
                     #[cfg(feature = "gfxstream")]
                     "gfxstream" => {
-                        gpu_params.mode = GpuMode::ModeGfxStream;
+                        gpu_params.mode = GpuMode::ModeGfxstream;
                     }
                     _ => {
                         return Err(argument::Error::InvalidValue {
@@ -358,7 +358,7 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
     {
         if vulkan_specified || syncfd_specified || angle_specified {
             match gpu_params.mode {
-                GpuMode::ModeGfxStream => {}
+                GpuMode::ModeGfxstream => {}
                 _ => {
                     return Err(argument::Error::UnknownArgument(
                         "gpu parameter vulkan and syncfd are only supported for gfxstream backend"
