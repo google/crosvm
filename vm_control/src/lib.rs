@@ -10,6 +10,9 @@
 //! The wire message format is a little-endian C-struct of fixed size, along with a file descriptor
 //! if the request type expects one.
 
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+pub mod gdb;
+
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
@@ -31,7 +34,17 @@ use resources::{Alloc, GpuMemoryDesc, MmioType, SystemAllocator};
 use sync::Mutex;
 use vm_memory::GuestAddress;
 
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+pub use crate::gdb::*;
 pub use hypervisor::MemSlot;
+
+/// Control the state of a particular VM CPU.
+#[derive(Debug)]
+pub enum VcpuControl {
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    Debug(VcpuDebug),
+    RunState(VmRunMode),
+}
 
 /// A file descriptor either borrowed or owned by this.
 #[derive(Debug)]
@@ -102,6 +115,8 @@ pub enum VmRunMode {
     Suspending,
     /// Indicates that the VM is exiting all processes.
     Exiting,
+    /// Indicates that the VM is in a breakpoint waiting for the debugger to do continue.
+    Breakpoint,
 }
 
 impl Display for VmRunMode {
@@ -112,6 +127,7 @@ impl Display for VmRunMode {
             Running => write!(f, "running"),
             Suspending => write!(f, "suspending"),
             Exiting => write!(f, "exiting"),
+            Breakpoint => write!(f, "breakpoint"),
         }
     }
 }

@@ -6,6 +6,8 @@
 //! configs.
 
 pub mod argument;
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+pub mod gdb;
 #[path = "linux.rs"]
 pub mod platform;
 #[cfg(feature = "plugin")]
@@ -215,6 +217,8 @@ pub struct Config {
     pub acpi_tables: Vec<PathBuf>,
     pub protected_vm: bool,
     pub battery_type: Option<BatteryType>,
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    pub gdb: Option<u32>,
 }
 
 impl Default for Config {
@@ -271,6 +275,8 @@ impl Default for Config {
             acpi_tables: Vec::new(),
             protected_vm: false,
             battery_type: None,
+            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+            gdb: None,
         }
     }
 }

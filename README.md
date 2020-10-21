@@ -162,6 +162,33 @@ To use it, ensure that the `XDG_RUNTIME_DIR` enviroment variable is set and that
 the path `$XDG_RUNTIME_DIR/wayland-0` points to the socket of the Wayland
 compositor you would like the guest to use.
 
+### GDB Support
+
+crosvm supports [GDB Remote Serial Protocol] to allow developers to debug guest
+kernel via GDB.
+
+You can enable the feature by `--gdb` flag:
+
+```sh
+# Use uncompressed vmlinux
+$ crosvm run --gdb <port> ${USUAL_CROSVM_ARGS} vmlinux
+```
+
+Then, you can start GDB in another shell.
+
+```sh
+$ gdb vmlinux
+(gdb) target remote :<port>
+(gdb) c
+<start booting in the other shell>
+```
+
+For general techniques for debugging the Linux kernel via GDB, see this
+[kernel documentation].
+
+[GDB Remote Serial Protocol]: https://sourceware.org/gdb/onlinedocs/gdb/Remote-Protocol.html
+[kernel documentation]: https://www.kernel.org/doc/html/latest/dev-tools/gdb-kernel-debugging.html
+
 ## Defaults
 
 The following are crosvm's default arguments and how to override them.

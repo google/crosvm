@@ -62,13 +62,17 @@ use base::{
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
     BalloonControlResult, DiskControlCommand, DiskControlRequestSocket, DiskControlResponseSocket,
-    DiskControlResult, IrqSetup, UsbControlSocket, VmControlResponseSocket, VmIrqRequest,
-    VmIrqRequestSocket, VmIrqResponse, VmIrqResponseSocket, VmMemoryControlRequestSocket,
-    VmMemoryControlResponseSocket, VmMemoryRequest, VmMemoryResponse, VmMsyncRequest,
-    VmMsyncRequestSocket, VmMsyncResponse, VmMsyncResponseSocket, VmRunMode,
+    DiskControlResult, IrqSetup, UsbControlSocket, VcpuControl, VmControlResponseSocket,
+    VmIrqRequest, VmIrqRequestSocket, VmIrqResponse, VmIrqResponseSocket,
+    VmMemoryControlRequestSocket, VmMemoryControlResponseSocket, VmMemoryRequest, VmMemoryResponse,
+    VmMsyncRequest, VmMsyncRequestSocket, VmMsyncResponse, VmMsyncResponseSocket, VmRunMode,
 };
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use vm_control::{VcpuDebug, VcpuDebugStatus, VcpuDebugStatusMessage, VmRequest, VmResponse};
 use vm_memory::{GuestAddress, GuestMemory};
 
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use crate::gdb::{gdb_thread, GdbStub};
 use crate::{Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption};
 use arch::{
     self, LinuxArch, RunnableLinuxVm, SerialHardware, SerialParameters, VcpuAffinity,
@@ -126,6 +130,8 @@ pub enum Error {
     FsDeviceNew(virtio::fs::Error),
     GetMaxOpenFiles(io::Error),
     GetSignalMask(signal::Error),
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    HandleDebugCommand(<Arch as LinuxArch>::Error),
     InputDeviceNew(virtio::InputError),
     InputEventsOpen(std::io::Error),
     InvalidFdPath,
@@ -160,11 +166,15 @@ pub enum Error {
     ResetTimer(base::Error),
     RngDeviceNew(virtio::RngError),
     RunnableVcpu(base::Error),
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    SendDebugStatus(Box<mpsc::SendError<VcpuDebugStatusMessage>>),
     SettingGidMap(minijail::Error),
     SettingMaxOpenFiles(minijail::Error),
     SettingSignalMask(base::Error),
     SettingUidMap(minijail::Error),
     SignalFd(base::SignalFdError),
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    SpawnGdbServer(io::Error),
     SpawnVcpu(io::Error),
     Timer(base::Error),
     ValidateRawFd(base::Error),
@@ -222,6 +232,8 @@ impl Display for Error {
             FsDeviceNew(e) => write!(f, "failed to create fs device: {}", e),
             GetMaxOpenFiles(e) => write!(f, "failed to get max number of open files: {}", e),
             GetSignalMask(e) => write!(f, "failed to retrieve signal mask for vcpu: {}", e),
+            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+            HandleDebugCommand(e) => write!(f, "failed to handle a gdb command: {}", e),
             InputDeviceNew(e) => write!(f, "failed to set up input device: {}", e),
             InputEventsOpen(e) => write!(f, "failed to open event device: {}", e),
             InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
@@ -263,11 +275,15 @@ impl Display for Error {
             ResetTimer(e) => write!(f, "failed to reset Timer: {}", e),
             RngDeviceNew(e) => write!(f, "failed to set up rng: {}", e),
             RunnableVcpu(e) => write!(f, "failed to set thread id for vcpu: {}", e),
+            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+            SendDebugStatus(e) => write!(f, "failed to send a debug status to GDB thread: {}", e),
             SettingGidMap(e) => write!(f, "error setting GID map: {}", e),
             SettingMaxOpenFiles(e) => write!(f, "error setting max open files: {}", e),
             SettingSignalMask(e) => write!(f, "failed to set the signal mask for vcpu: {}", e),
             SettingUidMap(e) => write!(f, "error setting UID map: {}", e),
             SignalFd(e) => write!(f, "failed to read signal fd: {}", e),
+            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+            SpawnGdbServer(e) => write!(f, "failed to spawn GDB thread: {}", e),
             SpawnVcpu(e) => write!(f, "failed to spawn VCPU thread: {}", e),
             Timer(e) => write!(f, "failed to read timer fd: {}", e),
             ValidateRawFd(e) => write!(f, "failed to validate raw fd: {}", e),
@@ -298,10 +314,6 @@ enum TaggedControlSocket {
     VmMemory(VmMemoryControlResponseSocket),
     VmIrq(VmIrqResponseSocket),
     VmMsync(VmMsyncResponseSocket),
-}
-
-enum VcpuControl {
-    RunState(VmRunMode),
 }
 
 impl AsRef<UnixSeqpacket> for TaggedControlSocket {
@@ -1700,6 +1712,63 @@ fn inject_interrupt(irq_chip: &mut dyn IrqChipX86_64, vcpu: &dyn VcpuX86_64, vcp
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 fn inject_interrupt(_irq_chip: &mut dyn IrqChip, _vcpu: &dyn Vcpu, _vcpu_id: usize) {}
 
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+fn handle_debug_msg<V>(
+    cpu_id: usize,
+    vcpu: &V,
+    guest_mem: &GuestMemory,
+    d: VcpuDebug,
+    reply_channel: &mpsc::Sender<VcpuDebugStatusMessage>,
+) -> Result<()>
+where
+    V: VcpuArch + 'static,
+{
+    match d {
+        VcpuDebug::ReadRegs => {
+            let msg = VcpuDebugStatusMessage {
+                cpu: cpu_id as usize,
+                msg: VcpuDebugStatus::RegValues(
+                    Arch::debug_read_registers(vcpu as &V).map_err(Error::HandleDebugCommand)?,
+                ),
+            };
+            reply_channel
+                .send(msg)
+                .map_err(|e| Error::SendDebugStatus(Box::new(e)))
+        }
+        VcpuDebug::WriteRegs(regs) => {
+            Arch::debug_write_registers(vcpu as &V, &regs).map_err(Error::HandleDebugCommand)?;
+            reply_channel
+                .send(VcpuDebugStatusMessage {
+                    cpu: cpu_id as usize,
+                    msg: VcpuDebugStatus::CommandComplete,
+                })
+                .map_err(|e| Error::SendDebugStatus(Box::new(e)))
+        }
+        VcpuDebug::ReadMem(vaddr, len) => {
+            let msg = VcpuDebugStatusMessage {
+                cpu: cpu_id as usize,
+                msg: VcpuDebugStatus::MemoryRegion(
+                    Arch::debug_read_memory(vcpu as &V, guest_mem, vaddr, len)
+                        .unwrap_or(Vec::new()),
+                ),
+            };
+            reply_channel
+                .send(msg)
+                .map_err(|e| Error::SendDebugStatus(Box::new(e)))
+        }
+        VcpuDebug::WriteMem(vaddr, buf) => {
+            Arch::debug_write_memory(vcpu as &V, guest_mem, vaddr, &buf)
+                .map_err(Error::HandleDebugCommand)?;
+            reply_channel
+                .send(VcpuDebugStatusMessage {
+                    cpu: cpu_id as usize,
+                    msg: VcpuDebugStatus::CommandComplete,
+                })
+                .map_err(|e| Error::SendDebugStatus(Box::new(e)))
+        }
+    }
+}
+
 fn run_vcpu<V>(
     cpu_id: usize,
     vcpu: Option<V>,
@@ -1717,6 +1786,9 @@ fn run_vcpu<V>(
     requires_pvclock_ctrl: bool,
     from_main_channel: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))] to_gdb_channel: Option<
+        mpsc::Sender<VcpuDebugStatusMessage>,
+    >,
 ) -> Result<JoinHandle<()>>
 where
     V: VcpuArch + 'static,
@@ -1728,6 +1800,8 @@ where
             // implementation accomplishes that.
             let _scoped_exit_evt = ScopedEvent::from(exit_evt);
 
+            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+            let guest_mem = vm.get_memory().clone();
             let runnable_vcpu = runnable_vcpu(
                 cpu_id,
                 vcpu,
@@ -1752,6 +1826,12 @@ where
             };
 
             let mut run_mode = VmRunMode::Running;
+            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+            if to_gdb_channel.is_some() {
+                // Wait until a GDB client attaches
+                run_mode = VmRunMode::Breakpoint;
+            }
+
             let mut interrupted_by_signal = false;
 
             'vcpu_loop: loop {
@@ -1765,7 +1845,7 @@ where
                             Ok(m) => m,
                             Err(mpsc::TryRecvError::Empty) if run_mode == VmRunMode::Running => {
                                 // If the VM is running and no message is pending, the state won't
-                                // be changed.
+                                // change.
                                 break 'state_loop;
                             }
                             Err(mpsc::TryRecvError::Empty) => {
@@ -1788,26 +1868,47 @@ where
                         let mut messages = vec![msg];
                         messages.append(&mut from_main_channel.try_iter().collect());
 
-                        for VcpuControl::RunState(new_mode) in messages {
-                            run_mode = new_mode.clone();
-                            match run_mode {
-                                VmRunMode::Running => break 'state_loop,
-                                VmRunMode::Suspending => {
-                                    // On KVM implementations that use a paravirtualized clock (e.g.
-                                    // x86), a flag must be set to indicate to the guest kernel that a
-                                    // VCPU was suspended. The guest kernel will use this flag to
-                                    // prevent the soft lockup detection from triggering when this VCPU
-                                    // resumes, which could happen days later in realtime.
-                                    if requires_pvclock_ctrl {
-                                        if let Err(e) = vcpu.pvclock_ctrl() {
-                                            error!(
-                                            "failed to tell hypervisor vcpu {} is suspending: {}",
-                                            cpu_id, e
-                                        );
+                        for msg in messages {
+                            match msg {
+                                VcpuControl::RunState(new_mode) => {
+                                    run_mode = new_mode;
+                                    match run_mode {
+                                        VmRunMode::Running => break 'state_loop,
+                                        VmRunMode::Suspending => {
+                                            // On KVM implementations that use a paravirtualized
+                                            // clock (e.g. x86), a flag must be set to indicate to
+                                            // the guest kernel that a vCPU was suspended. The guest
+                                            // kernel will use this flag to prevent the soft lockup
+                                            // detection from triggering when this vCPU resumes,
+                                            // which could happen days later in realtime.
+                                            if requires_pvclock_ctrl {
+                                                if let Err(e) = vcpu.pvclock_ctrl() {
+                                                    error!(
+                                                        "failed to tell hypervisor vcpu {} is suspending: {}",
+                                                        cpu_id, e
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        VmRunMode::Breakpoint => {}
+                                        VmRunMode::Exiting => break 'vcpu_loop,
+                                    }
+                                }
+                                #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                                VcpuControl::Debug(d) => {
+                                    match &to_gdb_channel {
+                                        Some(ref ch) => {
+                                            if let Err(e) = handle_debug_msg(
+                                                cpu_id, &vcpu, &guest_mem, d, &ch,
+                                            ) {
+                                                error!("Failed to handle gdb message: {}", e);
+                                            }
+                                        },
+                                        None => {
+                                            error!("VcpuControl::Debug received while GDB feature is disabled: {:?}", d);
                                         }
                                     }
                                 }
-                                VmRunMode::Exiting => break 'vcpu_loop,
                             }
                         }
                     }
@@ -2010,6 +2111,18 @@ where
         _ => panic!("Did not receive a bios or kernel, should be impossible."),
     };
 
+    let mut control_sockets = Vec::new();
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    let gdb_socket = if let Some(port) = cfg.gdb {
+        // GDB needs a control socket to interrupt vcpus.
+        let (gdb_host_socket, gdb_control_socket) =
+            msg_socket::pair::<VmResponse, VmRequest>().map_err(Error::CreateSocket)?;
+        control_sockets.push(TaggedControlSocket::Vm(gdb_host_socket));
+        Some((port, gdb_control_socket))
+    } else {
+        None
+    };
+
     let components = VmComponents {
         memory_size: cfg
             .memory
@@ -2036,6 +2149,8 @@ where
             .collect::<Result<Vec<SDT>>>()?,
         rt_cpus: cfg.rt_cpus.clone(),
         protected_vm: cfg.protected_vm,
+        #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+        gdb: gdb_socket,
     };
 
     let control_server_socket = match &cfg.socket_path {
@@ -2045,7 +2160,6 @@ where
         None => None,
     };
 
-    let mut control_sockets = Vec::new();
     let (wayland_host_socket, wayland_device_socket) =
         msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>().map_err(Error::CreateSocket)?;
     control_sockets.push(TaggedControlSocket::VmMemory(wayland_host_socket));
@@ -2209,6 +2323,15 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
         drop_capabilities().map_err(Error::DropCapabilities)?;
     }
 
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    // Create a channel for GDB thread.
+    let (to_gdb_channel, from_vcpu_channel) = if linux.gdb.is_some() {
+        let (s, r) = mpsc::channel();
+        (Some(s), Some(r))
+    } else {
+        (None, None)
+    };
+
     let mut vcpu_handles = Vec::with_capacity(linux.vcpu_count);
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpu_count + 1));
     let use_hypervisor_signals = !linux
@@ -2245,9 +2368,29 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
             linux.vm.check_capability(VmCap::PvClockSuspend),
             from_main_channel,
             use_hypervisor_signals,
+            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+            to_gdb_channel.clone(),
         )?;
         vcpu_handles.push((handle, to_vcpu_channel));
     }
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    // Spawn GDB thread.
+    if let Some((gdb_port_num, gdb_control_socket)) = linux.gdb.take() {
+        let to_vcpu_channels = vcpu_handles
+            .iter()
+            .map(|(_handle, channel)| channel.clone())
+            .collect();
+        let target = GdbStub::new(
+            gdb_control_socket,
+            to_vcpu_channels,
+            from_vcpu_channel.unwrap(), // Must succeed to unwrap()
+        );
+        thread::Builder::new()
+            .name("gdb".to_owned())
+            .spawn(move || gdb_thread(target, gdb_port_num))
+            .map_err(Error::SpawnGdbServer)?;
+    };
 
     vcpu_thread_barrier.wait();
 
@@ -2426,14 +2569,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                             VmRunMode::Exiting => {
                                                 break 'wait;
                                             }
-                                            VmRunMode::Suspending | VmRunMode::Running => {
-                                                if run_mode == VmRunMode::Suspending {
+                                            other => {
+                                                if other == VmRunMode::Suspending {
                                                     linux.io_bus.notify_resume();
                                                 }
                                                 for (handle, channel) in &vcpu_handles {
-                                                    if let Err(e) = channel.send(
-                                                        VcpuControl::RunState(VmRunMode::Running),
-                                                    ) {
+                                                    if let Err(e) = channel
+                                                        .send(VcpuControl::RunState(other.clone()))
+                                                    {
                                                         error!("failed to send VmRunMode: {}", e);
                                                     }
                                                     let _ = handle.kill(SIGRTMIN() + 0);

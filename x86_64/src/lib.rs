@@ -69,6 +69,11 @@ use resources::SystemAllocator;
 use sync::Mutex;
 use vm_control::BatteryType;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use {
+    gdbstub::arch::x86::reg::X86_64CoreRegs,
+    hypervisor::x86_64::{Regs, Sregs},
+};
 
 #[sorted]
 #[derive(Debug)]
@@ -100,7 +105,10 @@ pub enum Error {
     LoadCmdline(kernel_loader::Error),
     LoadInitrd(arch::LoadImageError),
     LoadKernel(kernel_loader::Error),
+    PageNotPresent,
     Pstore(arch::pstore::Error),
+    ReadingGuestMemory(vm_memory::GuestMemoryError),
+    ReadRegs(base::Error),
     RegisterIrqfd(base::Error),
     RegisterVsock(arch::DeviceRegistrationError),
     SetLint(interrupts::Error),
@@ -113,6 +121,9 @@ pub enum Error {
     SetupRegs(regs::Error),
     SetupSmbios(smbios::Error),
     SetupSregs(regs::Error),
+    TranslatingVirtAddr,
+    WriteRegs(base::Error),
+    WritingGuestMemory(GuestMemoryError),
     ZeroPagePastRamEnd,
     ZeroPageSetup,
 }
@@ -151,7 +162,10 @@ impl Display for Error {
             LoadCmdline(e) => write!(f, "error loading command line: {}", e),
             LoadInitrd(e) => write!(f, "error loading initrd: {}", e),
             LoadKernel(e) => write!(f, "error loading Kernel: {}", e),
+            PageNotPresent => write!(f, "error translating address: Page not present"),
             Pstore(e) => write!(f, "failed to allocate pstore region: {}", e),
+            ReadingGuestMemory(e) => write!(f, "error reading guest memory {}", e),
+            ReadRegs(e) => write!(f, "error reading CPU registers {}", e),
             RegisterIrqfd(e) => write!(f, "error registering an IrqFd: {}", e),
             RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
             SetLint(e) => write!(f, "failed to set interrupts: {}", e),
@@ -164,6 +178,9 @@ impl Display for Error {
             SetupRegs(e) => write!(f, "failed to set up registers: {}", e),
             SetupSmbios(e) => write!(f, "failed to set up SMBIOS: {}", e),
             SetupSregs(e) => write!(f, "failed to set up sregs: {}", e),
+            TranslatingVirtAddr => write!(f, "failed to translate virtual address"),
+            WriteRegs(e) => write!(f, "error writing CPU registers {}", e),
+            WritingGuestMemory(e) => write!(f, "error writing guest memory {}", e),
             ZeroPagePastRamEnd => write!(f, "the zero page extends past the end of guest_mem"),
             ZeroPageSetup => write!(f, "error writing the zero page of guest memory"),
         }
@@ -493,6 +510,8 @@ impl arch::LinuxArch for X8664arch {
             pid_debug_label_map,
             suspend_evt,
             rt_cpus: components.rt_cpus,
+            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+            gdb: components.gdb,
         })
     }
 
@@ -531,6 +550,219 @@ impl arch::LinuxArch for X8664arch {
 
         Ok(())
     }
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    fn debug_read_registers<T: VcpuX86_64>(vcpu: &T) -> Result<X86_64CoreRegs> {
+        // General registers: RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP, r8-r15
+        let gregs = vcpu.get_regs().map_err(Error::ReadRegs)?;
+        let regs = [
+            gregs.rax, gregs.rbx, gregs.rcx, gregs.rdx, gregs.rsi, gregs.rdi, gregs.rbp, gregs.rsp,
+            gregs.r8, gregs.r9, gregs.r10, gregs.r11, gregs.r12, gregs.r13, gregs.r14, gregs.r15,
+        ];
+
+        // GDB exposes 32-bit eflags instead of 64-bit rflags.
+        // https://github.com/bminor/binutils-gdb/blob/master/gdb/features/i386/64bit-core.xml
+        let eflags = gregs.rflags as u32;
+        let rip = gregs.rip;
+
+        // Segment registers: CS, SS, DS, ES, FS, GS
+        let sregs = vcpu.get_sregs().map_err(Error::ReadRegs)?;
+        let sgs = [sregs.cs, sregs.ss, sregs.ds, sregs.es, sregs.fs, sregs.gs];
+        let mut segments = [0u32; 6];
+        // GDB uses only the selectors.
+        for i in 0..sgs.len() {
+            segments[i] = sgs[i].selector as u32;
+        }
+
+        // TODO(keiichiw): Other registers such as FPU, xmm and mxcsr.
+
+        Ok(X86_64CoreRegs {
+            regs,
+            eflags,
+            rip,
+            segments,
+            ..Default::default()
+        })
+    }
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    fn debug_write_registers<T: VcpuX86_64>(vcpu: &T, regs: &X86_64CoreRegs) -> Result<()> {
+        // General purpose registers (RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP, r8-r15) + RIP + rflags
+        let orig_gregs = vcpu.get_regs().map_err(Error::ReadRegs)?;
+        let gregs = Regs {
+            rax: regs.regs[0],
+            rbx: regs.regs[1],
+            rcx: regs.regs[2],
+            rdx: regs.regs[3],
+            rsi: regs.regs[4],
+            rdi: regs.regs[5],
+            rbp: regs.regs[6],
+            rsp: regs.regs[7],
+            r8: regs.regs[8],
+            r9: regs.regs[9],
+            r10: regs.regs[10],
+            r11: regs.regs[11],
+            r12: regs.regs[12],
+            r13: regs.regs[13],
+            r14: regs.regs[14],
+            r15: regs.regs[15],
+            rip: regs.rip,
+            // Update the lower 32 bits of rflags.
+            rflags: (orig_gregs.rflags & !(u32::MAX as u64)) | (regs.eflags as u64),
+        };
+        vcpu.set_regs(&gregs).map_err(Error::WriteRegs)?;
+
+        // Segment registers: CS, SS, DS, ES, FS, GS
+        // Since GDB care only selectors, we call get_sregs() first.
+        let mut sregs = vcpu.get_sregs().map_err(Error::ReadRegs)?;
+        sregs.cs.selector = regs.segments[0] as u16;
+        sregs.ss.selector = regs.segments[1] as u16;
+        sregs.ds.selector = regs.segments[2] as u16;
+        sregs.es.selector = regs.segments[3] as u16;
+        sregs.fs.selector = regs.segments[4] as u16;
+        sregs.gs.selector = regs.segments[5] as u16;
+
+        vcpu.set_sregs(&sregs).map_err(Error::WriteRegs)?;
+
+        // TODO(keiichiw): Other registers such as FPU, xmm and mxcsr.
+
+        Ok(())
+    }
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    fn debug_read_memory<T: VcpuX86_64>(
+        vcpu: &T,
+        guest_mem: &GuestMemory,
+        vaddr: GuestAddress,
+        len: usize,
+    ) -> Result<Vec<u8>> {
+        let sregs = vcpu.get_sregs().map_err(Error::ReadRegs)?;
+        let mut buf = vec![0; len];
+        let mut total_read = 0u64;
+        // Handle reads across page boundaries.
+
+        while total_read < len as u64 {
+            let (paddr, psize) = phys_addr(guest_mem, vaddr.0 + total_read, &sregs)?;
+            let read_len = std::cmp::min(len as u64 - total_read, psize - (paddr & (psize - 1)));
+            guest_mem
+                .get_slice_at_addr(GuestAddress(paddr), read_len as usize)
+                .map_err(Error::ReadingGuestMemory)?
+                .copy_to(&mut buf[total_read as usize..]);
+            total_read += read_len;
+        }
+        Ok(buf)
+    }
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    fn debug_write_memory<T: VcpuX86_64>(
+        vcpu: &T,
+        guest_mem: &GuestMemory,
+        vaddr: GuestAddress,
+        buf: &[u8],
+    ) -> Result<()> {
+        let sregs = vcpu.get_sregs().map_err(Error::ReadRegs)?;
+        let mut total_written = 0u64;
+        // Handle writes across page boundaries.
+        while total_written < buf.len() as u64 {
+            let (paddr, psize) = phys_addr(guest_mem, vaddr.0 + total_written, &sregs)?;
+            let write_len = std::cmp::min(
+                buf.len() as u64 - total_written,
+                psize - (paddr & (psize - 1)),
+            );
+
+            guest_mem
+                .write_all_at_addr(
+                    &buf[total_written as usize..(total_written as usize + write_len as usize)],
+                    GuestAddress(paddr),
+                )
+                .map_err(Error::WritingGuestMemory)?;
+            total_written += write_len;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+// return the translated address and the size of the page it resides in.
+fn phys_addr(mem: &GuestMemory, vaddr: u64, sregs: &Sregs) -> Result<(u64, u64)> {
+    const CR0_PG_MASK: u64 = 1 << 31;
+    const CR4_PAE_MASK: u64 = 1 << 5;
+    const CR4_LA57_MASK: u64 = 1 << 12;
+    const MSR_EFER_LMA: u64 = 1 << 10;
+    // bits 12 through 51 are the address in a PTE.
+    const PTE_ADDR_MASK: u64 = ((1 << 52) - 1) & !0x0fff;
+    const PAGE_PRESENT: u64 = 0x1;
+    const PAGE_PSE_MASK: u64 = 0x1 << 7;
+
+    const PAGE_SIZE_4K: u64 = 4 * 1024;
+    const PAGE_SIZE_2M: u64 = 2 * 1024 * 1024;
+    const PAGE_SIZE_1G: u64 = 1024 * 1024 * 1024;
+
+    fn next_pte(mem: &GuestMemory, curr_table_addr: u64, vaddr: u64, level: usize) -> Result<u64> {
+        let ent: u64 = mem
+            .read_obj_from_addr(GuestAddress(
+                (curr_table_addr & PTE_ADDR_MASK) + page_table_offset(vaddr, level),
+            ))
+            .map_err(|_| Error::TranslatingVirtAddr)?;
+        /* TODO - convert to a trace
+        println!(
+            "level {} vaddr {:x} table-addr {:x} mask {:x} ent {:x} offset {:x}",
+            level,
+            vaddr,
+            curr_table_addr,
+            PTE_ADDR_MASK,
+            ent,
+            page_table_offset(vaddr, level)
+        );
+        */
+        if ent & PAGE_PRESENT == 0 {
+            return Err(Error::PageNotPresent);
+        }
+        Ok(ent)
+    }
+
+    // Get the offset in to the page of `vaddr`.
+    fn page_offset(vaddr: u64, page_size: u64) -> u64 {
+        vaddr & (page_size - 1)
+    }
+
+    // Get the offset in to the page table of the given `level` specified by the virtual `address`.
+    // `level` is 1 through 5 in x86_64 to handle the five levels of paging.
+    fn page_table_offset(addr: u64, level: usize) -> u64 {
+        let offset = (level - 1) * 9 + 12;
+        ((addr >> offset) & 0x1ff) << 3
+    }
+
+    if sregs.cr0 & CR0_PG_MASK == 0 {
+        return Ok((vaddr, PAGE_SIZE_4K));
+    }
+
+    if sregs.cr4 & CR4_PAE_MASK == 0 {
+        return Err(Error::TranslatingVirtAddr);
+    }
+
+    if sregs.efer & MSR_EFER_LMA != 0 {
+        // TODO - check LA57
+        if sregs.cr4 & CR4_LA57_MASK != 0 {}
+        let p4_ent = next_pte(mem, sregs.cr3, vaddr, 4)?;
+        let p3_ent = next_pte(mem, p4_ent, vaddr, 3)?;
+        // TODO check if it's a 1G page with the PSE bit in p2_ent
+        if p3_ent & PAGE_PSE_MASK != 0 {
+            // It's a 1G page with the PSE bit in p3_ent
+            let paddr = p3_ent & PTE_ADDR_MASK | page_offset(vaddr, PAGE_SIZE_1G);
+            return Ok((paddr, PAGE_SIZE_1G));
+        }
+        let p2_ent = next_pte(mem, p3_ent, vaddr, 2)?;
+        if p2_ent & PAGE_PSE_MASK != 0 {
+            // It's a 2M page with the PSE bit in p2_ent
+            let paddr = p2_ent & PTE_ADDR_MASK | page_offset(vaddr, PAGE_SIZE_2M);
+            return Ok((paddr, PAGE_SIZE_2M));
+        }
+        let p1_ent = next_pte(mem, p2_ent, vaddr, 1)?;
+        let paddr = p1_ent & PTE_ADDR_MASK | page_offset(vaddr, PAGE_SIZE_4K);
+        return Ok((paddr, PAGE_SIZE_4K));
+    }
+    Err(Error::TranslatingVirtAddr)
 }
 
 impl X8664arch {

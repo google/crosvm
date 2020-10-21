@@ -27,9 +27,15 @@ use hypervisor::{IoEventAddress, Vm};
 use minijail::Minijail;
 use resources::{MmioType, SystemAllocator};
 use sync::Mutex;
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use vm_control::VmControlRequestSocket;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 use vm_control::BatteryType;
+
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use gdbstub::arch::x86::reg::X86_64CoreRegs as GdbStubRegs;
+
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use {
     devices::IrqChipAArch64 as IrqChipArch,
@@ -85,6 +91,8 @@ pub struct VmComponents {
     pub acpi_sdts: Vec<SDT>,
     pub rt_cpus: Vec<usize>,
     pub protected_vm: bool,
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    pub gdb: Option<(u32, VmControlRequestSocket)>, // port and control socket.
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.
@@ -105,6 +113,8 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch, I: IrqChipArch> {
     pub pid_debug_label_map: BTreeMap<u32, String>,
     pub suspend_evt: Event,
     pub rt_cpus: Vec<usize>,
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    pub gdb: Option<(u32, VmControlRequestSocket)>,
 }
 
 /// The device and optional jail.
@@ -173,6 +183,32 @@ pub trait LinuxArch {
         num_cpus: usize,
         has_bios: bool,
         no_smt: bool,
+    ) -> Result<(), Self::Error>;
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    /// Reads vCPU's registers.
+    fn debug_read_registers<T: VcpuArch>(vcpu: &T) -> Result<GdbStubRegs, Self::Error>;
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    /// Writes vCPU's registers.
+    fn debug_write_registers<T: VcpuArch>(vcpu: &T, regs: &GdbStubRegs) -> Result<(), Self::Error>;
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    /// Reads bytes from the guest memory.
+    fn debug_read_memory<T: VcpuArch>(
+        vcpu: &T,
+        guest_mem: &GuestMemory,
+        vaddr: GuestAddress,
+        len: usize,
+    ) -> Result<Vec<u8>, Self::Error>;
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    /// Writes bytes to the specified guest memory.
+    fn debug_write_memory<T: VcpuArch>(
+        vcpu: &T,
+        guest_mem: &GuestMemory,
+        vaddr: GuestAddress,
+        buf: &[u8],
     ) -> Result<(), Self::Error>;
 }
 

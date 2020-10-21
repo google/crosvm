@@ -4,8 +4,12 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
 
+[features]
+gdb = ["gdbstub"]
+
 [dependencies]
 data_model = { path = "../data_model" }
+gdbstub = { version = "0.4.0", optional = true }
 hypervisor = { path = "../hypervisor" }
 libc = "*"
 msg_socket = { path = "../msg_socket" }

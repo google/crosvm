@@ -1438,7 +1438,17 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             let params = parse_battery_options(value)?;
             cfg.battery_type = Some(params);
         }
-
+        #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+        "gdb" => {
+            let port = value
+                .unwrap()
+                .parse()
+                .map_err(|_| argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("expected a valid port number"),
+                })?;
+            cfg.gdb = Some(port);
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -1478,6 +1488,14 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
             if let Some(virtio_single_touch) = cfg.virtio_single_touch.as_mut() {
                 virtio_single_touch.set_default_size(width, height);
             }
+        }
+    }
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    if cfg.gdb.is_some() {
+        if cfg.vcpu_count.unwrap_or(1) != 1 {
+            return Err(argument::Error::ExpectedArgument(
+                "`gdb` requires the number of vCPU to be 1".to_owned(),
+            ));
         }
     }
     set_default_serial_parameters(&mut cfg.serial_parameters);
@@ -1627,6 +1645,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                                   Possible key values:
                                   type=goldfish - type of battery emulation, defaults to goldfish
                                   "),
+          Argument::value("gdb", "PORT", "(EXPERIMENTAL) gdb on the given port"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

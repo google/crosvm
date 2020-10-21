@@ -4,13 +4,18 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
 
+[features]
+gdb = ["gdbstub", "msg_socket"]
+
 [dependencies]
 acpi_tables = { path = "../acpi_tables" }
 devices = { path = "../devices" }
+gdbstub = { version = "0.4.0", optional = true }
 hypervisor = { path = "../hypervisor" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 libc = "*"
 minijail = "*"
+msg_socket = { path = "../msg_socket", optional = true }
 resources = { path = "../resources" }
 sync = { path = "../sync" }
 base = { path = "../base" }
