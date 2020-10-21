@@ -88,7 +88,7 @@ impl<F: AsRawFd> Deref for PollSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> ReadAsync<F> for PollSource<F> {
+impl<F: AsRawFd> ReadAsync for PollSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
     async fn read_to_vec<'a>(
         &'a self,
@@ -138,7 +138,7 @@ impl<F: AsRawFd> ReadAsync<F> for PollSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> WriteAsync<F> for PollSource<F> {
+impl<F: AsRawFd> WriteAsync for PollSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
     async fn write_from_vec<'a>(
         &'a self,

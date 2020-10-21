@@ -101,7 +101,7 @@ impl<F: AsRawFd> IoSource for UringSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> crate::ReadAsync<F> for UringSource<F> {
+impl<F: AsRawFd> crate::ReadAsync for UringSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
     async fn read_to_vec<'a>(
         &'a self,
@@ -149,7 +149,7 @@ impl<F: AsRawFd> crate::ReadAsync<F> for UringSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> crate::WriteAsync<F> for UringSource<F> {
+impl<F: AsRawFd> crate::WriteAsync for UringSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
     async fn write_from_vec<'a>(
         &'a self,

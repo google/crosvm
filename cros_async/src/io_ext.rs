@@ -40,7 +40,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Ergonomic methods for async reads.
 #[async_trait(?Send)]
-pub trait ReadAsync<F: AsRawFd> {
+pub trait ReadAsync {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
     async fn read_to_vec<'a>(&'a self, file_offset: u64, vec: Vec<u8>) -> Result<(usize, Vec<u8>)>;
 
@@ -61,7 +61,7 @@ pub trait ReadAsync<F: AsRawFd> {
 
 /// Ergonomic methods for async writes.
 #[async_trait(?Send)]
-pub trait WriteAsync<F: AsRawFd> {
+pub trait WriteAsync {
     /// Writes from the given `vec` to the file starting at `file_offset`.
     async fn write_from_vec<'a>(
         &'a self,
@@ -86,7 +86,7 @@ pub trait WriteAsync<F: AsRawFd> {
 
 /// Subtrait for general async IO.
 #[async_trait(?Send)]
-pub trait IoSourceExt<F: AsRawFd>: ReadAsync<F> + WriteAsync<F> {
+pub trait IoSourceExt<F>: ReadAsync + WriteAsync {
     /// Yields the underlying IO source.
     fn into_source(self: Box<Self>) -> F;
 
