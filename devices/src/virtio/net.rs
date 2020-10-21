@@ -578,21 +578,21 @@ impl<T> VirtioDevice for Net<T>
 where
     T: 'static + TapT,
 {
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
-        let mut keep_fds = Vec::new();
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut keep_rds = Vec::new();
 
         for tap in &self.taps {
-            keep_fds.push(tap.as_raw_descriptor());
+            keep_rds.push(tap.as_raw_descriptor());
         }
 
         for worker_kill_evt in &self.workers_kill_evt {
-            keep_fds.push(worker_kill_evt.as_raw_descriptor());
+            keep_rds.push(worker_kill_evt.as_raw_descriptor());
         }
         for kill_evt in &self.kill_evts {
-            keep_fds.push(kill_evt.as_raw_descriptor());
+            keep_rds.push(kill_evt.as_raw_descriptor());
         }
 
-        keep_fds
+        keep_rds
     }
 
     fn device_type(&self) -> u32 {

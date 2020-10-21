@@ -374,7 +374,7 @@ impl Drop for Balloon {
 }
 
 impl VirtioDevice for Balloon {
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
         vec![self.command_socket.as_ref().unwrap().as_raw_descriptor()]
     }
 

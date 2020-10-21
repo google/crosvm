@@ -4,13 +4,12 @@
 
 use std::collections::VecDeque;
 use std::io::{self, Write};
-use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
 use std::thread::{self};
 
-use base::{error, Event, Result};
+use base::{error, Event, RawDescriptor, Result};
 
 use crate::{BusDevice, SerialDevice};
 
@@ -88,7 +87,7 @@ impl SerialDevice for Serial {
         interrupt_evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         out: Option<Box<dyn io::Write + Send>>,
-        _keep_fds: Vec<RawFd>,
+        _keep_rds: Vec<RawDescriptor>,
     ) -> Serial {
         Serial {
             interrupt_enable: Default::default(),

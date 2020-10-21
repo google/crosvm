@@ -3,11 +3,10 @@
 // found in the LICENSE file.
 
 use std::io::{self, Read, Write};
-use std::os::unix::io::RawFd;
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::thread;
 
-use base::{error, Event, PollToken, WaitContext};
+use base::{error, Event, PollToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le16, Le32};
 use vm_memory::GuestMemory;
 
@@ -304,7 +303,7 @@ pub struct Console {
     worker_thread: Option<thread::JoinHandle<Worker>>,
     input: Option<Box<dyn io::Read + Send>>,
     output: Option<Box<dyn io::Write + Send>>,
-    keep_fds: Vec<RawFd>,
+    keep_rds: Vec<RawDescriptor>,
 }
 
 impl SerialDevice for Console {
@@ -313,7 +312,7 @@ impl SerialDevice for Console {
         _evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         output: Option<Box<dyn io::Write + Send>>,
-        keep_fds: Vec<RawFd>,
+        keep_rds: Vec<RawDescriptor>,
     ) -> Console {
         Console {
             base_features: base_features(protected_vm),
@@ -321,7 +320,7 @@ impl SerialDevice for Console {
             worker_thread: None,
             input,
             output,
-            keep_fds,
+            keep_rds,
         }
     }
 }
@@ -340,8 +339,8 @@ impl Drop for Console {
 }
 
 impl VirtioDevice for Console {
-    fn keep_fds(&self) -> Vec<RawFd> {
-        self.keep_fds.clone()
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        self.keep_rds.clone()
     }
 
     fn features(&self) -> u64 {

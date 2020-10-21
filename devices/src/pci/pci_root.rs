@@ -5,9 +5,9 @@
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::fmt::{self, Display};
-use std::os::unix::io::RawFd;
 use std::sync::Arc;
 
+use base::RawDescriptor;
 use sync::Mutex;
 
 use crate::pci::pci_configuration::{
@@ -25,7 +25,7 @@ impl PciDevice for PciRootConfiguration {
     fn debug_label(&self) -> String {
         "pci root device".to_owned()
     }
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
         Vec::new()
     }
     fn read_config_register(&self, reg_idx: usize) -> u32 {

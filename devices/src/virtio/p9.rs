@@ -5,11 +5,10 @@
 use std::fmt::{self, Display};
 use std::io::{self, Write};
 use std::mem;
-use std::os::unix::io::RawFd;
 use std::result;
 use std::thread;
 
-use base::{error, warn, Error as SysError, Event, PollToken, WaitContext};
+use base::{error, warn, Error as SysError, Event, PollToken, RawDescriptor, WaitContext};
 use vm_memory::GuestMemory;
 
 use super::{
@@ -177,7 +176,7 @@ impl P9 {
 }
 
 impl VirtioDevice for P9 {
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
         self.server
             .as_ref()
             .map(p9::Server::keep_fds)

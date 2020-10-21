@@ -554,7 +554,7 @@ impl<T> VirtioDevice for Input<T>
 where
     T: 'static + EventSource + Send,
 {
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
         if let Some(source) = &self.source {
             return vec![source.as_raw_descriptor()];
         }

@@ -4,7 +4,7 @@
 
 use super::usb_hub::UsbHub;
 use crate::utils::{EventLoop, FailHandle};
-use std::os::unix::io::RawFd;
+use base::RawDescriptor;
 use std::sync::Arc;
 
 /// Xhci backend provider will run on an EventLoop and connect new devices to usb ports.
@@ -17,6 +17,6 @@ pub trait XhciBackendDeviceProvider: Send {
         hub: Arc<UsbHub>,
     ) -> std::result::Result<(), ()>;
 
-    /// Keep fds that should be kept open.
-    fn keep_fds(&self) -> Vec<RawFd>;
+    /// Keep raw descriptors that should be kept open.
+    fn keep_rds(&self) -> Vec<RawDescriptor>;
 }

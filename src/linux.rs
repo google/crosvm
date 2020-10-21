@@ -1151,10 +1151,10 @@ fn create_pmem_device(
 }
 
 fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult {
-    let mut keep_fds = Vec::new();
+    let mut keep_rds = Vec::new();
     let evt = Event::new().map_err(Error::CreateEvent)?;
     let dev = param
-        .create_serial_device::<Console>(cfg.protected_vm, &evt, &mut keep_fds)
+        .create_serial_device::<Console>(cfg.protected_vm, &evt, &mut keep_rds)
         .map_err(Error::CreateConsole)?;
 
     let jail = match simple_jail(&cfg, "serial")? {

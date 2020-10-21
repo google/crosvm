@@ -718,18 +718,18 @@ impl Drop for Block {
 }
 
 impl VirtioDevice for Block {
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
-        let mut keep_fds = Vec::new();
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut keep_rds = Vec::new();
 
         if let Some(disk_image) = &self.disk_image {
-            keep_fds.extend(disk_image.as_raw_descriptors());
+            keep_rds.extend(disk_image.as_raw_descriptors());
         }
 
         if let Some(control_socket) = &self.control_socket {
-            keep_fds.push(control_socket.as_raw_descriptor());
+            keep_rds.push(control_socket.as_raw_descriptor());
         }
 
-        keep_fds
+        keep_rds
     }
 
     fn features(&self) -> u64 {

@@ -662,8 +662,8 @@ impl VfioPciDevice {
             None => return,
         };
 
-        if let Some(fds) = irqfds {
-            if let Err(e) = self.device.irq_enable(fds, VfioIrqType::Msix) {
+        if let Some(descriptors) = irqfds {
+            if let Err(e) = self.device.irq_enable(descriptors, VfioIrqType::Msix) {
                 error!("failed to enable msix: {}", e);
                 self.enable_intx();
                 return;
@@ -777,22 +777,22 @@ impl PciDevice for VfioPciDevice {
         self.pci_address = Some(address);
     }
 
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
-        let mut fds = self.device.keep_fds();
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut rds = self.device.keep_rds();
         if let Some(ref interrupt_evt) = self.interrupt_evt {
-            fds.push(interrupt_evt.as_raw_descriptor());
+            rds.push(interrupt_evt.as_raw_descriptor());
         }
         if let Some(ref interrupt_resample_evt) = self.interrupt_resample_evt {
-            fds.push(interrupt_resample_evt.as_raw_descriptor());
+            rds.push(interrupt_resample_evt.as_raw_descriptor());
         }
-        fds.push(self.vm_socket_mem.as_raw_descriptor());
+        rds.push(self.vm_socket_mem.as_raw_descriptor());
         if let Some(msi_cap) = &self.msi_cap {
-            fds.push(msi_cap.vm_socket_irq.as_raw_descriptor());
+            rds.push(msi_cap.vm_socket_irq.as_raw_descriptor());
         }
         if let Some(msix_cap) = &self.msix_cap {
-            fds.push(msix_cap.config.as_raw_descriptor());
+            rds.push(msix_cap.config.as_raw_descriptor());
         }
-        fds
+        rds
     }
 
     fn assign_irq(

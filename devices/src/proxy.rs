@@ -5,11 +5,10 @@
 //! Runs hardware devices in child processes.
 
 use std::fmt::{self, Display};
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
 use std::{self, io};
 
-use base::{error, net::UnixSeqpacket, RawDescriptor};
+use base::{error, net::UnixSeqpacket, AsRawDescriptor, RawDescriptor};
 use libc::{self, pid_t};
 use minijail::{self, Minijail};
 use msg_socket::{MsgOnSocket, MsgReceiver, MsgSender, MsgSocket};
@@ -135,19 +134,19 @@ impl ProxyDevice {
     /// # Arguments
     /// * `device` - The device to isolate to another process.
     /// * `jail` - The jail to use for isolating the given device.
-    /// * `keep_fds` - File descriptors that will be kept open in the child.
+    /// * `keep_rds` - File descriptors that will be kept open in the child.
     pub fn new<D: BusDevice>(
         mut device: D,
         jail: &Minijail,
-        mut keep_fds: Vec<RawFd>,
+        mut keep_rds: Vec<RawDescriptor>,
     ) -> Result<ProxyDevice> {
         let debug_label = device.debug_label();
         let (child_sock, parent_sock) = UnixSeqpacket::pair().map_err(Error::Io)?;
 
-        keep_fds.push(child_sock.as_raw_fd());
+        keep_rds.push(child_sock.as_raw_descriptor());
         // Forking here is safe as long as the program is still single threaded.
         let pid = unsafe {
-            match jail.fork(Some(&keep_fds)).map_err(Error::ForkingJail)? {
+            match jail.fork(Some(&keep_rds)).map_err(Error::ForkingJail)? {
                 0 => {
                     device.on_sandboxed();
                     child_proc(child_sock, &mut device);

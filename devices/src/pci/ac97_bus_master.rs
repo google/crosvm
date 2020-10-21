@@ -6,7 +6,6 @@ use std::collections::VecDeque;
 use std::convert::AsRef;
 use std::convert::TryInto;
 use std::fmt::{self, Display};
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -16,7 +15,9 @@ use audio_streams::{
     shm_streams::{ShmStream, ShmStreamSource},
     BoxError, DummyStreamControl, SampleFormat, StreamControl, StreamDirection, StreamEffect,
 };
-use base::{self, error, set_rt_prio_limit, set_rt_round_robin, warn, Event};
+use base::{
+    self, error, set_rt_prio_limit, set_rt_round_robin, warn, AsRawDescriptor, Event, RawDescriptor,
+};
 use sync::{Condvar, Mutex};
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -218,10 +219,10 @@ impl Ac97BusMaster {
     }
 
     /// Returns any file descriptors that need to be kept open when entering a jail.
-    pub fn keep_fds(&self) -> Option<Vec<RawFd>> {
-        let mut fds = self.audio_server.keep_fds();
-        fds.push(self.mem.as_raw_fd());
-        Some(fds)
+    pub fn keep_rds(&self) -> Option<Vec<RawDescriptor>> {
+        let mut rds = self.audio_server.keep_fds();
+        rds.push(self.mem.as_raw_descriptor());
+        Some(rds)
     }
 
     /// Provides the events needed to raise interrupts in the guest.

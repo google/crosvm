@@ -7,11 +7,10 @@ use std::fmt::{self, Display};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::ops::BitOrAssign;
-use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::thread;
 
-use base::{error, Event, PollToken, WaitContext};
+use base::{error, Event, PollToken, RawDescriptor, WaitContext};
 use vm_memory::GuestMemory;
 
 use super::{
@@ -185,7 +184,7 @@ impl Drop for Tpm {
 }
 
 impl VirtioDevice for Tpm {
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
         Vec::new()
     }
 

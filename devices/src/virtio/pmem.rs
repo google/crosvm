@@ -270,16 +270,16 @@ impl Drop for Pmem {
 }
 
 impl VirtioDevice for Pmem {
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
-        let mut keep_fds = Vec::new();
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut keep_rds = Vec::new();
         if let Some(disk_image) = &self.disk_image {
-            keep_fds.push(disk_image.as_raw_descriptor());
+            keep_rds.push(disk_image.as_raw_descriptor());
         }
 
         if let Some(ref pmem_device_socket) = self.pmem_device_socket {
-            keep_fds.push(pmem_device_socket.as_raw_descriptor());
+            keep_rds.push(pmem_device_socket.as_raw_descriptor());
         }
-        keep_fds
+        keep_rds
     }
 
     fn device_type(&self) -> u32 {

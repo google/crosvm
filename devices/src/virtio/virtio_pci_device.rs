@@ -396,17 +396,17 @@ impl PciDevice for VirtioPciDevice {
         self.pci_address = Some(address);
     }
 
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
-        let mut fds = self.device.keep_fds();
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut rds = self.device.keep_rds();
         if let Some(interrupt_evt) = &self.interrupt_evt {
-            fds.push(interrupt_evt.as_raw_descriptor());
+            rds.push(interrupt_evt.as_raw_descriptor());
         }
         if let Some(interrupt_resample_evt) = &self.interrupt_resample_evt {
-            fds.push(interrupt_resample_evt.as_raw_descriptor());
+            rds.push(interrupt_resample_evt.as_raw_descriptor());
         }
-        let fd = self.msix_config.lock().get_msi_socket();
-        fds.push(fd);
-        fds
+        let descriptor = self.msix_config.lock().get_msi_socket();
+        rds.push(descriptor);
+        rds
     }
 
     fn assign_irq(

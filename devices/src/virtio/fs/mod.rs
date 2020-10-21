@@ -5,11 +5,10 @@
 use std::fmt;
 use std::io;
 use std::mem;
-use std::os::unix::io::RawFd;
 use std::sync::Arc;
 use std::thread;
 
-use base::{error, warn, Error as SysError, Event};
+use base::{error, warn, Error as SysError, Event, RawDescriptor};
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
@@ -164,10 +163,10 @@ impl Fs {
 }
 
 impl VirtioDevice for Fs {
-    fn keep_fds(&self) -> Vec<RawFd> {
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
         self.fs
             .as_ref()
-            .map(PassthroughFs::keep_fds)
+            .map(PassthroughFs::keep_rds)
             .unwrap_or_else(Vec::new)
     }
 

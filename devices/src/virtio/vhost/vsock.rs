@@ -88,24 +88,24 @@ impl Drop for Vsock {
 }
 
 impl VirtioDevice for Vsock {
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
-        let mut keep_fds = Vec::new();
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut keep_rds = Vec::new();
 
         if let Some(handle) = &self.vhost_handle {
-            keep_fds.push(handle.as_raw_descriptor());
+            keep_rds.push(handle.as_raw_descriptor());
         }
 
         if let Some(interrupt) = &self.interrupts {
             for vhost_int in interrupt.iter() {
-                keep_fds.push(vhost_int.as_raw_descriptor());
+                keep_rds.push(vhost_int.as_raw_descriptor());
             }
         }
 
         if let Some(worker_kill_evt) = &self.worker_kill_evt {
-            keep_fds.push(worker_kill_evt.as_raw_descriptor());
+            keep_rds.push(worker_kill_evt.as_raw_descriptor());
         }
 
-        keep_fds
+        keep_rds
     }
 
     fn device_type(&self) -> u32 {

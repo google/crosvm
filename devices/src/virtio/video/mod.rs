@@ -127,12 +127,12 @@ impl Drop for VideoDevice {
 }
 
 impl VirtioDevice for VideoDevice {
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
-        let mut keep_fds = Vec::new();
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut keep_rds = Vec::new();
         if let Some(resource_bridge) = &self.resource_bridge {
-            keep_fds.push(resource_bridge.as_raw_descriptor());
+            keep_rds.push(resource_bridge.as_raw_descriptor());
         }
-        keep_fds
+        keep_rds
     }
 
     fn device_type(&self) -> u32 {

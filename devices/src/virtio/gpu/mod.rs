@@ -1207,24 +1207,24 @@ impl Drop for Gpu {
 }
 
 impl VirtioDevice for Gpu {
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
-        let mut keep_fds = Vec::new();
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut keep_rds = Vec::new();
         // TODO(davidriley): Remove once virgl has another path to include
         // debugging logs.
         if cfg!(debug_assertions) {
-            keep_fds.push(libc::STDOUT_FILENO);
-            keep_fds.push(libc::STDERR_FILENO);
+            keep_rds.push(libc::STDOUT_FILENO);
+            keep_rds.push(libc::STDERR_FILENO);
         }
 
         if let Some(ref gpu_device_socket) = self.gpu_device_socket {
-            keep_fds.push(gpu_device_socket.as_raw_descriptor());
+            keep_rds.push(gpu_device_socket.as_raw_descriptor());
         }
 
-        keep_fds.push(self.exit_evt.as_raw_descriptor());
+        keep_rds.push(self.exit_evt.as_raw_descriptor());
         for bridge in &self.resource_bridges {
-            keep_fds.push(bridge.as_raw_descriptor());
+            keep_rds.push(bridge.as_raw_descriptor());
         }
-        keep_fds
+        keep_rds
     }
 
     fn device_type(&self) -> u32 {

@@ -39,7 +39,6 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 #[cfg(feature = "wl-dmabuf")]
 use std::os::raw::{c_uint, c_ulonglong};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -56,8 +55,9 @@ use data_model::*;
 #[cfg(feature = "wl-dmabuf")]
 use base::ioctl_iow_nr;
 use base::{
-    error, pipe, round_up_to_page_size, warn, AsRawDescriptor, Error, Event, FileFlags, PollToken,
-    Result, ScmSocket, SharedMemory, SharedMemoryUnix, WaitContext,
+    error, pipe, round_up_to_page_size, warn, AsRawDescriptor, Error, Event, FileFlags,
+    FromRawDescriptor, PollToken, RawDescriptor, Result, ScmSocket, SharedMemory, SharedMemoryUnix,
+    WaitContext,
 };
 use msg_socket::{MsgError, MsgReceiver, MsgSender};
 #[cfg(feature = "wl-dmabuf")]
@@ -531,16 +531,16 @@ impl fmt::Debug for WlVfd {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "WlVfd {{")?;
         if let Some(s) = &self.socket {
-            write!(f, " socket: {}", s.as_raw_fd())?;
+            write!(f, " socket: {}", s.as_raw_descriptor())?;
         }
         if let Some((slot, pfn, _)) = &self.slot {
             write!(f, " slot: {} pfn: {}", slot, pfn)?;
         }
         if let Some(s) = &self.remote_pipe {
-            write!(f, " remote: {}", s.as_raw_fd())?;
+            write!(f, " remote: {}", s.as_raw_descriptor())?;
         }
         if let Some((_, s)) = &self.local_pipe {
-            write!(f, " local: {}", s.as_raw_fd())?;
+            write!(f, " local: {}", s.as_raw_descriptor())?;
         }
         write!(f, " }}")
     }
@@ -613,12 +613,12 @@ impl WlVfd {
         }
 
         match &self.guest_shared_memory {
-            Some((_, fd)) => {
+            Some((_, descriptor)) => {
                 let sync = dma_buf_sync {
                     flags: flags as u64,
                 };
-                // Safe as fd is a valid dmabuf and incorrect flags will return an error.
-                if unsafe { ioctl_with_ref(fd, DMA_BUF_IOCTL_SYNC(), &sync) } < 0 {
+                // Safe as descriptor is a valid dmabuf and incorrect flags will return an error.
+                if unsafe { ioctl_with_ref(descriptor, DMA_BUF_IOCTL_SYNC(), &sync) } < 0 {
                     Err(WlError::DmabufSync(io::Error::last_os_error()))
                 } else {
                     Ok(())
@@ -644,17 +644,17 @@ impl WlVfd {
         Ok(vfd)
     }
 
-    fn from_file(vm: VmRequester, mut fd: File) -> WlResult<WlVfd> {
+    fn from_file(vm: VmRequester, mut descriptor: File) -> WlResult<WlVfd> {
         // We need to determine if the given file is more like shared memory or a pipe/socket. A
         // quick and easy check is to seek to the end of the file. If it works we assume it's not a
         // pipe/socket because those have no end. We can even use that seek location as an indicator
         // for how big the shared memory chunk to map into guest memory is. If seeking to the end
         // fails, we assume it's a socket or pipe with read/write semantics.
-        match fd.seek(SeekFrom::End(0)) {
+        match descriptor.seek(SeekFrom::End(0)) {
             Ok(fd_size) => {
                 let size = round_up_to_page_size(fd_size as usize) as u64;
                 let register_response = vm.request(VmMemoryRequest::RegisterMemory(
-                    MaybeOwnedDescriptor::Borrowed(fd.as_raw_fd()),
+                    MaybeOwnedDescriptor::Borrowed(descriptor.as_raw_descriptor()),
                     size as usize,
                 ))?;
 
@@ -663,7 +663,8 @@ impl WlVfd {
                         let mut vfd = WlVfd::default();
                         vfd.guest_shared_memory = Some((
                             size,
-                            SharedMemory::from_file(fd).map_err(WlError::FromSharedMemory)?,
+                            SharedMemory::from_file(descriptor)
+                                .map_err(WlError::FromSharedMemory)?,
                         ));
                         vfd.slot = Some((slot, pfn, vm));
                         Ok(vfd)
@@ -672,14 +673,14 @@ impl WlVfd {
                 }
             }
             _ => {
-                let flags = match FileFlags::from_file(&fd) {
+                let flags = match FileFlags::from_file(&descriptor) {
                     Ok(FileFlags::Read) => VIRTIO_WL_VFD_READ,
                     Ok(FileFlags::Write) => VIRTIO_WL_VFD_WRITE,
                     Ok(FileFlags::ReadWrite) => VIRTIO_WL_VFD_READ | VIRTIO_WL_VFD_WRITE,
                     _ => 0,
                 };
                 let mut vfd = WlVfd::default();
-                vfd.local_pipe = Some((flags, fd));
+                vfd.local_pipe = Some((flags, descriptor));
                 Ok(vfd)
             }
         }
@@ -716,12 +717,12 @@ impl WlVfd {
     }
 
     // The FD that gets sent if this VFD is sent over a socket.
-    fn send_fd(&self) -> Option<RawFd> {
+    fn send_descriptor(&self) -> Option<RawDescriptor> {
         self.guest_shared_memory
             .as_ref()
-            .map(|(_, fd)| fd.as_raw_descriptor())
-            .or(self.socket.as_ref().map(|s| s.as_raw_fd()))
-            .or(self.remote_pipe.as_ref().map(|p| p.as_raw_fd()))
+            .map(|(_, shm)| shm.as_raw_descriptor())
+            .or(self.socket.as_ref().map(|s| s.as_raw_descriptor()))
+            .or(self.remote_pipe.as_ref().map(|p| p.as_raw_descriptor()))
     }
 
     // The FD that is used for polling for events on this VFD.
@@ -736,17 +737,17 @@ impl WlVfd {
     }
 
     // Sends data/files from the guest to the host over this VFD.
-    fn send(&mut self, fds: &[RawFd], data: &mut Reader) -> WlResult<WlResp> {
+    fn send(&mut self, rds: &[RawDescriptor], data: &mut Reader) -> WlResult<WlResp> {
         if let Some(socket) = &self.socket {
             socket
-                .send_with_fds(&data.get_remaining(), fds)
+                .send_with_fds(&data.get_remaining(), rds)
                 .map_err(WlError::SendVfd)?;
             // All remaining data in `data` is now considered consumed.
             data.consume(::std::usize::MAX);
             Ok(WlResp::Ok)
         } else if let Some((_, local_pipe)) = &mut self.local_pipe {
-            // Impossible to send fds over a simple pipe.
-            if !fds.is_empty() {
+            // Impossible to send descriptors over a simple pipe.
+            if !rds.is_empty() {
                 return Ok(WlResp::InvalidType);
             }
             data.read_to(local_pipe, usize::max_value())
@@ -776,7 +777,7 @@ impl WlVfd {
                 in_file_queue.extend(
                     fd_buf[..file_count]
                         .iter()
-                        .map(|&fd| unsafe { File::from_raw_fd(fd) }),
+                        .map(|&descriptor| unsafe { File::from_raw_descriptor(descriptor) }),
                 );
                 return Ok(buf);
             }
@@ -1022,8 +1023,10 @@ impl WlState {
         for event in events.iter().filter(|e| e.is_hungup) {
             if !event.is_readable {
                 let vfd_id = event.token;
-                if let Some(fd) = self.vfds.get(&vfd_id).and_then(|vfd| vfd.wait_descriptor()) {
-                    if let Err(e) = self.wait_ctx.delete(fd) {
+                if let Some(descriptor) =
+                    self.vfds.get(&vfd_id).and_then(|vfd| vfd.wait_descriptor())
+                {
+                    if let Err(e) = self.wait_ctx.delete(descriptor) {
                         warn!("failed to remove hungup vfd from poll context: {}", e);
                     }
                 }
@@ -1076,15 +1079,15 @@ impl WlState {
         }
 
         // Next stage collects corresponding file descriptors for each id.
-        let mut fds = [0; VIRTWL_SEND_MAX_ALLOCS];
+        let mut rds = [0; VIRTWL_SEND_MAX_ALLOCS];
         #[cfg(feature = "gpu")]
         let mut bridged_files = Vec::new();
-        for (&send_vfd_id, fd) in send_vfd_ids[..vfd_count].iter().zip(fds.iter_mut()) {
+        for (&send_vfd_id, descriptor) in send_vfd_ids[..vfd_count].iter().zip(rds.iter_mut()) {
             let id = send_vfd_id.id.to_native();
             match send_vfd_id.kind.to_native() {
                 VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL => match self.vfds.get(&id) {
-                    Some(vfd) => match vfd.send_fd() {
-                        Some(vfd_fd) => *fd = vfd_fd,
+                    Some(vfd) => match vfd.send_descriptor() {
+                        Some(vfd_fd) => *descriptor = vfd_fd,
                         None => return Ok(WlResp::InvalidType),
                     },
                     None => {
@@ -1097,7 +1100,7 @@ impl WlState {
                     let sock = self.resource_bridge.as_ref().unwrap();
                     match get_resource_info(sock, id) {
                         Ok(info) => {
-                            *fd = info.file.as_raw_fd();
+                            *descriptor = info.file.as_raw_descriptor();
                             bridged_files.push(info.file);
                         }
                         Err(ResourceBridgeError::InvalidResource(id)) => {
@@ -1129,7 +1132,7 @@ impl WlState {
 
         // Final stage sends file descriptors and data to the target vfd's socket.
         match self.vfds.get_mut(&vfd_id) {
-            Some(vfd) => match vfd.send(&fds[..vfd_count], reader)? {
+            Some(vfd) => match vfd.send(&rds[..vfd_count], reader)? {
                 WlResp::Ok => {}
                 _ => return Ok(WlResp::InvalidType),
             },
@@ -1584,17 +1587,17 @@ impl Drop for Wl {
 }
 
 impl VirtioDevice for Wl {
-    fn keep_fds(&self) -> Vec<RawFd> {
-        let mut keep_fds = Vec::new();
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut keep_rds = Vec::new();
 
         if let Some(vm_socket) = &self.vm_socket {
-            keep_fds.push(vm_socket.as_raw_descriptor());
+            keep_rds.push(vm_socket.as_raw_descriptor());
         }
         if let Some(resource_bridge) = &self.resource_bridge {
-            keep_fds.push(resource_bridge.as_raw_descriptor());
+            keep_rds.push(resource_bridge.as_raw_descriptor());
         }
 
-        keep_fds
+        keep_rds
     }
 
     fn device_type(&self) -> u32 {

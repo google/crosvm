@@ -5,10 +5,9 @@
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::thread;
 
-use base::{error, warn, Event, PollToken, WaitContext};
+use base::{error, warn, AsRawDescriptor, Event, PollToken, RawDescriptor, WaitContext};
 use vm_memory::GuestMemory;
 
 use super::{Interrupt, Queue, VirtioDevice, Writer, TYPE_RNG};
@@ -151,14 +150,14 @@ impl Drop for Rng {
 }
 
 impl VirtioDevice for Rng {
-    fn keep_fds(&self) -> Vec<RawFd> {
-        let mut keep_fds = Vec::new();
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut keep_rds = Vec::new();
 
         if let Some(random_file) = &self.random_file {
-            keep_fds.push(random_file.as_raw_fd());
+            keep_rds.push(random_file.as_raw_descriptor());
         }
 
-        keep_fds
+        keep_rds
     }
 
     fn device_type(&self) -> u32 {

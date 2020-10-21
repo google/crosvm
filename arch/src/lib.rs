@@ -293,8 +293,8 @@ pub fn generate_pci_root(
 
     for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
         let address = device_addrs[dev_idx];
-        let mut keep_fds = device.keep_fds();
-        syslog::push_fds(&mut keep_fds);
+        let mut keep_rds = device.keep_rds();
+        syslog::push_fds(&mut keep_rds);
 
         let irqfd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
         let irq_resample_fd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
@@ -319,8 +319,8 @@ pub fn generate_pci_root(
             .register_irq_event(irq_num, &irqfd, Some(&irq_resample_fd))
             .map_err(DeviceRegistrationError::RegisterIrqfd)?;
 
-        keep_fds.push(irqfd.as_raw_descriptor());
-        keep_fds.push(irq_resample_fd.as_raw_descriptor());
+        keep_rds.push(irqfd.as_raw_descriptor());
+        keep_rds.push(irq_resample_fd.as_raw_descriptor());
         device.assign_irq(irqfd, irq_resample_fd, irq_num, pci_irq_pin);
         pci_irqs.push((address, irq_num, pci_irq_pin));
         let ranges = io_ranges.remove(&dev_idx).unwrap_or_default();
@@ -332,10 +332,10 @@ pub fn generate_pci_root(
             let io_addr = IoEventAddress::Mmio(addr);
             vm.register_ioevent(&event, io_addr, datamatch)
                 .map_err(DeviceRegistrationError::RegisterIoevent)?;
-            keep_fds.push(event.as_raw_descriptor());
+            keep_rds.push(event.as_raw_descriptor());
         }
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
-            let proxy = ProxyDevice::new(device, &jail, keep_fds)
+            let proxy = ProxyDevice::new(device, &jail, keep_rds)
                 .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
             pid_labels.insert(proxy.pid() as u32, proxy.debug_label());
             Arc::new(Mutex::new(proxy))

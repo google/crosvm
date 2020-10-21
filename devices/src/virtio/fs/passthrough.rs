@@ -11,14 +11,16 @@ use std::fs::File;
 use std::io;
 use std::mem::{self, size_of, MaybeUninit};
 use std::os::raw::{c_int, c_long};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::ptr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use base::{error, ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ptr, ioctl_with_ptr, warn};
+use base::{
+    error, ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ptr, ioctl_with_ptr, warn, AsRawDescriptor,
+    FromRawDescriptor, RawDescriptor,
+};
 use data_model::DataInit;
 use fuse::filesystem::{
     Context, DirectoryIterator, Entry, FileSystem, FsOptions, GetxattrReply, IoctlFlags,
@@ -220,9 +222,9 @@ fn open_fscreate(proc: &File) -> File {
     let fscreate = unsafe { CStr::from_bytes_with_nul_unchecked(b"thread-self/attr/fscreate\0") };
 
     // Safe because this doesn't modify any memory and we check the return value.
-    let fd = unsafe {
+    let raw_descriptor = unsafe {
         libc::openat(
-            proc.as_raw_fd(),
+            proc.as_raw_descriptor(),
             fscreate.as_ptr(),
             libc::O_CLOEXEC | libc::O_WRONLY,
         )
@@ -230,15 +232,15 @@ fn open_fscreate(proc: &File) -> File {
 
     // We don't expect this to fail and we're not in a position to return an error here so just
     // panic.
-    if fd < 0 {
+    if raw_descriptor < 0 {
         panic!(
             "Failed to open /proc/thread-self/attr/fscreate: {}",
             io::Error::last_os_error()
         );
     }
 
-    // Safe because we just opened this fd.
-    unsafe { File::from_raw_fd(fd) }
+    // Safe because we just opened this descriptor.
+    unsafe { File::from_raw_descriptor(raw_descriptor) }
 }
 
 struct ScopedSecurityContext;
@@ -251,7 +253,7 @@ impl ScopedSecurityContext {
             // Safe because this doesn't modify any memory and we check the return value.
             let ret = unsafe {
                 libc::write(
-                    file.as_raw_fd(),
+                    file.as_raw_descriptor(),
                     ctx.as_ptr() as *const libc::c_void,
                     ctx.to_bytes_with_nul().len(),
                 )
@@ -276,7 +278,7 @@ impl Drop for ScopedSecurityContext {
                 .expect("Uninitialized thread-local when dropping ScopedSecurityContext");
 
             // Safe because this doesn't modify any memory and we check the return value.
-            let ret = unsafe { libc::write(file.as_raw_fd(), ptr::null(), 0) };
+            let ret = unsafe { libc::write(file.as_raw_descriptor(), ptr::null(), 0) };
 
             if ret < 0 {
                 warn!(
@@ -302,7 +304,7 @@ fn stat(f: &File) -> io::Result<libc::stat64> {
     // value.
     let res = unsafe {
         libc::fstatat64(
-            f.as_raw_fd(),
+            f.as_raw_descriptor(),
             pathname.as_ptr(),
             st.as_mut_ptr(),
             libc::AT_EMPTY_PATH | libc::AT_SYMLINK_NOFOLLOW,
@@ -461,19 +463,19 @@ impl PassthroughFs {
         let proc_cstr = unsafe { CStr::from_bytes_with_nul_unchecked(PROC_CSTR) };
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let fd = unsafe {
+        let raw_descriptor = unsafe {
             libc::openat(
                 libc::AT_FDCWD,
                 proc_cstr.as_ptr(),
                 libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
             )
         };
-        if fd < 0 {
+        if raw_descriptor < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        // Safe because we just opened this fd.
-        let proc = unsafe { File::from_raw_fd(fd) };
+        // Safe because we just opened this descriptor.
+        let proc = unsafe { File::from_raw_descriptor(raw_descriptor) };
 
         Ok(PassthroughFs {
             inodes: Mutex::new(MultikeyBTreeMap::new()),
@@ -490,8 +492,8 @@ impl PassthroughFs {
         })
     }
 
-    pub fn keep_fds(&self) -> Vec<RawFd> {
-        vec![self.proc.as_raw_fd()]
+    pub fn keep_rds(&self) -> Vec<RawDescriptor> {
+        vec![self.proc.as_raw_descriptor()]
     }
 
     fn rewrite_xattr_name<'xattr>(&self, name: &'xattr CStr) -> Cow<'xattr, CStr> {
@@ -531,7 +533,7 @@ impl PassthroughFs {
     }
 
     fn open_inode(&self, inode: &InodeData, mut flags: i32) -> io::Result<File> {
-        let pathname = CString::new(format!("self/fd/{}", inode.file.as_raw_fd()))
+        let pathname = CString::new(format!("self/fd/{}", inode.file.as_raw_descriptor()))
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         // When writeback caching is enabled, the kernel may send read requests even if the
@@ -557,23 +559,23 @@ impl PassthroughFs {
         // really check `flags` because if the kernel can't handle poorly specified flags then we
         // have much bigger problems. Also, clear the `O_NOFOLLOW` flag if it is set since we need
         // to follow the `/proc/self/fd` symlink to get the file.
-        let fd = unsafe {
+        let raw_descriptor = unsafe {
             libc::openat(
-                self.proc.as_raw_fd(),
+                self.proc.as_raw_descriptor(),
                 pathname.as_ptr(),
                 (flags | libc::O_CLOEXEC) & !(libc::O_NOFOLLOW | libc::O_DIRECT),
             )
         };
-        if fd < 0 {
+        if raw_descriptor < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        // Safe because we just opened this fd.
-        Ok(unsafe { File::from_raw_fd(fd) })
+        // Safe because we just opened this descriptor.
+        Ok(unsafe { File::from_raw_descriptor(raw_descriptor) })
     }
 
     // Performs an ascii case insensitive lookup and returns an O_PATH fd for the entry, if found.
-    fn ascii_casefold_lookup(&self, dir: &InodeData, name: &[u8]) -> io::Result<RawFd> {
+    fn ascii_casefold_lookup(&self, dir: &InodeData, name: &[u8]) -> io::Result<RawDescriptor> {
         let parent = self.open_inode(dir, libc::O_RDONLY | libc::O_DIRECTORY)?;
         let mut buf = [0u8; 1024];
         let mut offset = 0;
@@ -588,7 +590,7 @@ impl PassthroughFs {
                 if name.eq_ignore_ascii_case(entry.name.to_bytes()) {
                     return Ok(unsafe {
                         libc::openat(
-                            parent.as_raw_fd(),
+                            parent.as_raw_descriptor(),
                             entry.name.as_ptr(),
                             libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
                         )
@@ -600,30 +602,30 @@ impl PassthroughFs {
     }
 
     fn do_lookup(&self, parent: &InodeData, name: &CStr) -> io::Result<Entry> {
-        let fd = {
+        let raw_descriptor = {
             // Safe because this doesn't modify any memory and we check the return value.
-            let fd = unsafe {
+            let raw_descriptor = unsafe {
                 libc::openat(
-                    parent.file.as_raw_fd(),
+                    parent.file.as_raw_descriptor(),
                     name.as_ptr(),
                     libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
                 )
             };
 
-            if fd < 0 && self.cfg.ascii_casefold {
+            if raw_descriptor < 0 && self.cfg.ascii_casefold {
                 // Ignore any errors during casefold lookup.
                 self.ascii_casefold_lookup(parent, name.to_bytes())
-                    .unwrap_or(fd)
+                    .unwrap_or(raw_descriptor)
             } else {
-                fd
+                raw_descriptor
             }
         };
-        if fd < 0 {
+        if raw_descriptor < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        // Safe because we just opened this fd.
-        let f = unsafe { File::from_raw_fd(fd) };
+        // Safe because we just opened this descriptor.
+        let f = unsafe { File::from_raw_descriptor(raw_descriptor) };
 
         let st = stat(&f)?;
 
@@ -721,7 +723,7 @@ impl PassthroughFs {
 
     fn do_unlink(&self, parent: &InodeData, name: &CStr, flags: libc::c_int) -> io::Result<()> {
         // Safe because this doesn't modify any memory and we check the return value.
-        let res = unsafe { libc::unlinkat(parent.file.as_raw_fd(), name.as_ptr(), flags) };
+        let res = unsafe { libc::unlinkat(parent.file.as_raw_descriptor(), name.as_ptr(), flags) };
         if res == 0 {
             Ok(())
         } else {
@@ -742,7 +744,7 @@ impl PassthroughFs {
 
         // Safe because this doesn't modify any memory and we check the return value. Since the
         // fchdir should never fail we just use debug_asserts.
-        let proc_cwd = unsafe { libc::fchdir(self.proc.as_raw_fd()) };
+        let proc_cwd = unsafe { libc::fchdir(self.proc.as_raw_descriptor()) };
         debug_assert_eq!(
             proc_cwd,
             0,
@@ -754,7 +756,7 @@ impl PassthroughFs {
 
         // Safe because this doesn't modify any memory and we check the return value. Since the
         // fchdir should never fail we just use debug_asserts.
-        let root_cwd = unsafe { libc::fchdir(root.file.as_raw_fd()) };
+        let root_cwd = unsafe { libc::fchdir(root.file.as_raw_descriptor()) };
         debug_assert_eq!(
             root_cwd,
             0,
@@ -771,7 +773,7 @@ impl PassthroughFs {
             // For non-regular files and directories, we cannot open the fd normally. Instead we
             // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
             // and then setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", inode.file.as_raw_fd()))
+            let path = CString::new(format!("self/fd/{}", inode.file.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             // Safe because this will only modify `value` and we check the return value.
@@ -795,7 +797,7 @@ impl PassthroughFs {
             // Safe because this will only write to `value` and we check the return value.
             unsafe {
                 libc::fgetxattr(
-                    f.as_raw_fd(),
+                    f.as_raw_descriptor(),
                     name.as_ptr(),
                     value.as_mut_ptr() as *mut libc::c_void,
                     value.len() as libc::size_t,
@@ -1051,7 +1053,7 @@ fn create_temp_dir(parent: &File, mode: libc::mode_t) -> io::Result<CString> {
         let name = CString::new(name).expect("SimpleRng produced string with nul-bytes");
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let ret = unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), mode) };
+        let ret = unsafe { libc::mkdirat(parent.as_raw_descriptor(), name.as_ptr(), mode) };
         if ret == 0 {
             return Ok(name);
         }
@@ -1086,22 +1088,22 @@ impl<'a> TempDir<'a> {
         let name = create_temp_dir(parent, mode)?;
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let fd = unsafe {
+        let raw_descriptor = unsafe {
             libc::openat(
-                parent.as_raw_fd(),
+                parent.as_raw_descriptor(),
                 name.as_ptr(),
                 libc::O_DIRECTORY | libc::O_CLOEXEC,
             )
         };
-        if fd < 0 {
+        if raw_descriptor < 0 {
             return Err(io::Error::last_os_error());
         }
 
         Ok(TempDir {
             parent,
             name,
-            // Safe because we just opened this fd.
-            file: unsafe { File::from_raw_fd(fd) },
+            // Safe because we just opened this descriptor.
+            file: unsafe { File::from_raw_descriptor(raw_descriptor) },
         })
     }
 
@@ -1123,9 +1125,9 @@ impl<'a> TempDir<'a> {
     }
 }
 
-impl<'a> AsRawFd for TempDir<'a> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.file.as_raw_fd()
+impl<'a> AsRawDescriptor for TempDir<'a> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.file.as_raw_descriptor()
     }
 }
 
@@ -1134,7 +1136,7 @@ impl<'a> Drop for TempDir<'a> {
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe {
             libc::unlinkat(
-                self.parent.as_raw_fd(),
+                self.parent.as_raw_descriptor(),
                 self.name.as_ptr(),
                 libc::AT_REMOVEDIR,
             )
@@ -1158,19 +1160,19 @@ impl FileSystem for PassthroughFs {
         // Safe because this doesn't modify any memory and we check the return value.
         // We use `O_PATH` because we just want this for traversing the directory tree
         // and not for actually reading the contents.
-        let fd = unsafe {
+        let raw_descriptor = unsafe {
             libc::openat(
                 libc::AT_FDCWD,
                 root.as_ptr(),
                 libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
             )
         };
-        if fd < 0 {
+        if raw_descriptor < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        // Safe because we just opened this fd above.
-        let f = unsafe { File::from_raw_fd(fd) };
+        // Safe because we just opened this descriptor above.
+        let f = unsafe { File::from_raw_descriptor(raw_descriptor) };
 
         let st = stat(&f)?;
 
@@ -1220,7 +1222,7 @@ impl FileSystem for PassthroughFs {
         let mut out = MaybeUninit::<libc::statvfs64>::zeroed();
 
         // Safe because this will only modify `out` and we check the return value.
-        let res = unsafe { libc::fstatvfs64(data.file.as_raw_fd(), out.as_mut_ptr()) };
+        let res = unsafe { libc::fstatvfs64(data.file.as_raw_descriptor(), out.as_mut_ptr()) };
         if res == 0 {
             // Safe because the kernel guarantees that `out` has been initialized.
             Ok(unsafe { out.assume_init() })
@@ -1309,7 +1311,7 @@ impl FileSystem for PassthroughFs {
 
         // Set the uid and gid for the directory. Safe because this doesn't modify any memory and we
         // check the return value.
-        let ret = unsafe { libc::fchown(tmpdir.as_raw_fd(), ctx.uid, gid) };
+        let ret = unsafe { libc::fchown(tmpdir.as_raw_descriptor(), ctx.uid, gid) };
         if ret < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -1320,9 +1322,9 @@ impl FileSystem for PassthroughFs {
         let ret = unsafe {
             libc::syscall(
                 libc::SYS_renameat2,
-                data.file.as_raw_fd(),
+                data.file.as_raw_descriptor(),
                 tmpdir.basename().as_ptr(),
-                data.file.as_raw_fd(),
+                data.file.as_raw_descriptor(),
                 name.as_ptr(),
                 libc::RENAME_NOREPLACE,
             )
@@ -1431,14 +1433,20 @@ impl FileSystem for PassthroughFs {
         let current_dir = unsafe { CStr::from_bytes_with_nul_unchecked(b".\0") };
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let fd =
-            unsafe { libc::openat(data.file.as_raw_fd(), current_dir.as_ptr(), tmpflags, mode) };
-        if fd < 0 {
+        let raw_descriptor = unsafe {
+            libc::openat(
+                data.file.as_raw_descriptor(),
+                current_dir.as_ptr(),
+                tmpflags,
+                mode,
+            )
+        };
+        if raw_descriptor < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        // Safe because we just opened this fd.
-        let tmpfile = unsafe { File::from_raw_fd(fd) };
+        // Safe because we just opened this descriptor.
+        let tmpfile = unsafe { File::from_raw_descriptor(raw_descriptor) };
 
         // We need to respect the setgid bit in the parent directory if it is set.
         let st = stat(&data.file)?;
@@ -1450,21 +1458,21 @@ impl FileSystem for PassthroughFs {
 
         // Now set the uid and gid for the file. Safe because this doesn't modify any memory and we
         // check the return value.
-        let ret = unsafe { libc::fchown(tmpfile.as_raw_fd(), ctx.uid, gid) };
+        let ret = unsafe { libc::fchown(tmpfile.as_raw_descriptor(), ctx.uid, gid) };
         if ret < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        let proc_path = CString::new(format!("self/fd/{}", tmpfile.as_raw_fd()))
+        let proc_path = CString::new(format!("self/fd/{}", tmpfile.as_raw_descriptor()))
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         // Finally link it into the file system tree so that it's visible to other processes. Safe
         // because this doesn't modify any memory and we check the return value.
         let ret = unsafe {
             libc::linkat(
-                self.proc.as_raw_fd(),
+                self.proc.as_raw_descriptor(),
                 proc_path.as_ptr(),
-                data.file.as_raw_fd(),
+                data.file.as_raw_descriptor(),
                 name.as_ptr(),
                 libc::AT_SYMLINK_FOLLOW,
             )
@@ -1555,7 +1563,7 @@ impl FileSystem for PassthroughFs {
         let inode_data = self.find_inode(inode)?;
 
         enum Data {
-            Handle(Arc<HandleData>, RawFd),
+            Handle(Arc<HandleData>, RawDescriptor),
             ProcPath(CString),
         }
 
@@ -1563,10 +1571,10 @@ impl FileSystem for PassthroughFs {
         let data = if let Some(handle) = handle {
             let hd = self.find_handle(handle, inode)?;
 
-            let fd = hd.file.lock().as_raw_fd();
+            let fd = hd.file.lock().as_raw_descriptor();
             Data::Handle(hd, fd)
         } else {
-            let pathname = CString::new(format!("self/fd/{}", inode_data.file.as_raw_fd()))
+            let pathname = CString::new(format!("self/fd/{}", inode_data.file.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             Data::ProcPath(pathname)
         };
@@ -1577,7 +1585,7 @@ impl FileSystem for PassthroughFs {
                 match data {
                     Data::Handle(_, fd) => libc::fchmod(fd, attr.st_mode),
                     Data::ProcPath(ref p) => {
-                        libc::fchmodat(self.proc.as_raw_fd(), p.as_ptr(), attr.st_mode, 0)
+                        libc::fchmodat(self.proc.as_raw_descriptor(), p.as_ptr(), attr.st_mode, 0)
                     }
                 }
             };
@@ -1606,7 +1614,7 @@ impl FileSystem for PassthroughFs {
             // Safe because this doesn't modify any memory and we check the return value.
             let res = unsafe {
                 libc::fchownat(
-                    inode_data.file.as_raw_fd(),
+                    inode_data.file.as_raw_descriptor(),
                     empty.as_ptr(),
                     uid,
                     gid,
@@ -1625,7 +1633,7 @@ impl FileSystem for PassthroughFs {
                 _ => {
                     // There is no `ftruncateat` so we need to get a new fd and truncate it.
                     let f = self.open_inode(&inode_data, libc::O_NONBLOCK | libc::O_RDWR)?;
-                    unsafe { libc::ftruncate64(f.as_raw_fd(), attr.st_size) }
+                    unsafe { libc::ftruncate64(f.as_raw_descriptor(), attr.st_size) }
                 }
             };
             if res < 0 {
@@ -1663,7 +1671,7 @@ impl FileSystem for PassthroughFs {
             let res = match data {
                 Data::Handle(_, fd) => unsafe { libc::futimens(fd, tvs.as_ptr()) },
                 Data::ProcPath(ref p) => unsafe {
-                    libc::utimensat(self.proc.as_raw_fd(), p.as_ptr(), tvs.as_ptr(), 0)
+                    libc::utimensat(self.proc.as_raw_descriptor(), p.as_ptr(), tvs.as_ptr(), 0)
                 },
             };
             if res < 0 {
@@ -1692,9 +1700,9 @@ impl FileSystem for PassthroughFs {
         let res = unsafe {
             libc::syscall(
                 libc::SYS_renameat2,
-                old_inode.file.as_raw_fd(),
+                old_inode.file.as_raw_descriptor(),
                 oldname.as_ptr(),
-                new_inode.file.as_raw_fd(),
+                new_inode.file.as_raw_descriptor(),
                 newname.as_ptr(),
                 flags,
             )
@@ -1734,7 +1742,7 @@ impl FileSystem for PassthroughFs {
         // Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe {
             libc::mknodat(
-                data.file.as_raw_fd(),
+                data.file.as_raw_descriptor(),
                 name.as_ptr(),
                 mode as libc::mode_t,
                 rdev as libc::dev_t,
@@ -1758,15 +1766,15 @@ impl FileSystem for PassthroughFs {
         let data = self.find_inode(inode)?;
         let new_inode = self.find_inode(newparent)?;
 
-        let path = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
+        let path = CString::new(format!("self/fd/{}", data.file.as_raw_descriptor()))
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         // Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe {
             libc::linkat(
-                self.proc.as_raw_fd(),
+                self.proc.as_raw_descriptor(),
                 path.as_ptr(),
-                new_inode.file.as_raw_fd(),
+                new_inode.file.as_raw_descriptor(),
                 newname.as_ptr(),
                 libc::AT_SYMLINK_FOLLOW,
             )
@@ -1796,8 +1804,13 @@ impl FileSystem for PassthroughFs {
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let res =
-            unsafe { libc::symlinkat(linkname.as_ptr(), data.file.as_raw_fd(), name.as_ptr()) };
+        let res = unsafe {
+            libc::symlinkat(
+                linkname.as_ptr(),
+                data.file.as_raw_descriptor(),
+                name.as_ptr(),
+            )
+        };
         if res == 0 {
             self.do_lookup(&data, name)
         } else {
@@ -1817,7 +1830,7 @@ impl FileSystem for PassthroughFs {
         // Safe because this will only modify the contents of `buf` and we check the return value.
         let res = unsafe {
             libc::readlinkat(
-                data.file.as_raw_fd(),
+                data.file.as_raw_descriptor(),
                 empty.as_ptr(),
                 buf.as_mut_ptr() as *mut libc::c_char,
                 buf.len(),
@@ -1844,7 +1857,7 @@ impl FileSystem for PassthroughFs {
         // behavior by doing the same thing (dup-ing the fd and then immediately closing it). Safe
         // because this doesn't modify any memory and we check the return values.
         unsafe {
-            let newfd = libc::dup(data.file.lock().as_raw_fd());
+            let newfd = libc::dup(data.file.lock().as_raw_descriptor());
             if newfd < 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -1860,7 +1873,7 @@ impl FileSystem for PassthroughFs {
     fn fsync(&self, _ctx: Context, inode: Inode, datasync: bool, handle: Handle) -> io::Result<()> {
         let data = self.find_handle(handle, inode)?;
 
-        let fd = data.file.lock().as_raw_fd();
+        let fd = data.file.lock().as_raw_descriptor();
 
         // Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe {
@@ -1955,7 +1968,7 @@ impl FileSystem for PassthroughFs {
             // For non-regular files and directories, we cannot open the fd normally. Instead we
             // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
             // and then setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
+            let path = CString::new(format!("self/fd/{}", data.file.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             // Safe because this doesn't modify any memory and we check the return value.
@@ -1980,7 +1993,7 @@ impl FileSystem for PassthroughFs {
             // Safe because this doesn't modify any memory and we check the return value.
             unsafe {
                 libc::fsetxattr(
-                    f.as_raw_fd(),
+                    f.as_raw_descriptor(),
                     name.as_ptr(),
                     value.as_ptr() as *const libc::c_void,
                     value.len() as libc::size_t,
@@ -2032,7 +2045,7 @@ impl FileSystem for PassthroughFs {
             // For non-regular files and directories, we cannot open the fd normally. Instead we
             // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
             // and then setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
+            let path = CString::new(format!("self/fd/{}", data.file.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             // Safe because this will only modify `buf` and we check the return value.
@@ -2055,7 +2068,7 @@ impl FileSystem for PassthroughFs {
             // Safe because this will only write to `buf` and we check the return value.
             unsafe {
                 libc::flistxattr(
-                    f.as_raw_fd(),
+                    f.as_raw_descriptor(),
                     buf.as_mut_ptr() as *mut libc::c_char,
                     buf.len() as libc::size_t,
                 )
@@ -2092,7 +2105,7 @@ impl FileSystem for PassthroughFs {
             // For non-regular files and directories, we cannot open the fd normally. Instead we
             // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
             // and then setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", data.file.as_raw_fd()))
+            let path = CString::new(format!("self/fd/{}", data.file.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             // Safe because this doesn't modify any memory and we check the return value.
@@ -2107,7 +2120,7 @@ impl FileSystem for PassthroughFs {
             let f = self.open_inode(&data, libc::O_RDONLY | dir)?;
 
             // Safe because this doesn't modify any memory and we check the return value.
-            unsafe { libc::fremovexattr(f.as_raw_fd(), name.as_ptr()) }
+            unsafe { libc::fremovexattr(f.as_raw_descriptor(), name.as_ptr()) }
         };
 
         if res == 0 {
@@ -2128,7 +2141,7 @@ impl FileSystem for PassthroughFs {
     ) -> io::Result<()> {
         let data = self.find_handle(handle, inode)?;
 
-        let fd = data.file.lock().as_raw_fd();
+        let fd = data.file.lock().as_raw_descriptor();
         // Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe {
             libc::fallocate64(
@@ -2243,8 +2256,8 @@ impl FileSystem for PassthroughFs {
         let src_data = self.find_handle(handle_src, inode_src)?;
         let dst_data = self.find_handle(handle_dst, inode_dst)?;
 
-        let src = src_data.file.lock().as_raw_fd();
-        let dst = dst_data.file.lock().as_raw_fd();
+        let src = src_data.file.lock().as_raw_descriptor();
+        let dst = dst_data.file.lock().as_raw_descriptor();
 
         let res = unsafe {
             libc::syscall(
@@ -2286,7 +2299,7 @@ mod tests {
             )
         };
         assert!(fd >= 0, "Failed to open env::temp_dir()");
-        let parent = unsafe { File::from_raw_fd(fd) };
+        let parent = unsafe { File::from_raw_descriptor(fd) };
         let t = TempDir::new(&parent, 0o755).expect("Failed to create temporary directory");
 
         let basename = t.basename().to_string_lossy();
@@ -2307,7 +2320,7 @@ mod tests {
             )
         };
         assert!(fd >= 0, "Failed to open env::temp_dir()");
-        let parent = unsafe { File::from_raw_fd(fd) };
+        let parent = unsafe { File::from_raw_descriptor(fd) };
         let t = TempDir::new(&parent, 0o755).expect("Failed to create temporary directory");
 
         let basename = t.basename().to_string_lossy();
@@ -2328,7 +2341,7 @@ mod tests {
             )
         };
         assert!(fd >= 0, "Failed to open env::temp_dir()");
-        let parent = unsafe { File::from_raw_fd(fd) };
+        let parent = unsafe { File::from_raw_descriptor(fd) };
         let t = TempDir::new(&parent, 0o755).expect("Failed to create temporary directory");
 
         let (basename_cstr, _) = t.into_inner();

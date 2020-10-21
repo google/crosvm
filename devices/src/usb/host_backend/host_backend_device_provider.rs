@@ -110,7 +110,7 @@ impl XhciBackendDeviceProvider for HostBackendDeviceProvider {
             })
     }
 
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
         match self {
             HostBackendDeviceProvider::Created { sock } => vec![sock.lock().as_raw_descriptor()],
             _ => {

@@ -5,11 +5,10 @@
 use std::default::Default;
 use std::error;
 use std::fmt::{self, Display};
-use std::os::unix::io::RawFd;
 use std::str::FromStr;
 
 use audio_streams::shm_streams::{NullShmStreamSource, ShmStreamSource};
-use base::{error, Event};
+use base::{error, Event, RawDescriptor};
 use libcras::{CrasClient, CrasClientType, CrasSocketType};
 use resources::{Alloc, MmioType, SystemAllocator};
 use vm_memory::GuestMemory;
@@ -306,8 +305,8 @@ impl PciDevice for Ac97Dev {
         (&mut self.config_regs).write_reg(reg_idx, offset, data)
     }
 
-    fn keep_fds(&self) -> Vec<RawFd> {
-        if let Some(server_fds) = self.bus_master.keep_fds() {
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        if let Some(server_fds) = self.bus_master.keep_rds() {
             server_fds
         } else {
             Vec::new()
