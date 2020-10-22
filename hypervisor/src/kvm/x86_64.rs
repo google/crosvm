@@ -564,6 +564,45 @@ impl VcpuX86_64 for KvmVcpu {
         const KVM_MAX_ENTRIES: usize = 256;
         get_cpuid_with_initial_capacity(self, KVM_GET_SUPPORTED_HV_CPUID(), KVM_MAX_ENTRIES)
     }
+
+    fn set_guest_debug(&self, addrs: &[GuestAddress], enable_singlestep: bool) -> Result<()> {
+        use kvm_sys::*;
+        let mut dbg: kvm_guest_debug = Default::default();
+
+        if addrs.len() > 4 {
+            error!(
+                "Support 4 breakpoints at most but {} addresses are passed",
+                addrs.len()
+            );
+            return Err(base::Error::new(libc::EINVAL));
+        }
+
+        dbg.control = KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_USE_HW_BP;
+        if enable_singlestep {
+            dbg.control |= KVM_GUESTDBG_SINGLESTEP;
+        }
+
+        // Set bits 9 and 10.
+        // bit 9: GE (global exact breakpoint enable) flag.
+        // bit 10: always 1.
+        dbg.arch.debugreg[7] = 0x0600;
+
+        for i in 0..addrs.len() {
+            dbg.arch.debugreg[i] = addrs[i].0;
+            // Set global breakpoint enable flag
+            dbg.arch.debugreg[7] |= 2 << (i * 2);
+        }
+
+        let ret = unsafe {
+            // Here we trust the kernel not to read past the end of the kvm_guest_debug struct.
+            ioctl_with_ref(self, KVM_SET_GUEST_DEBUG(), &dbg)
+        };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
 }
 
 impl KvmVcpu {

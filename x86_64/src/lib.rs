@@ -97,6 +97,7 @@ pub enum Error {
     CreateVcpu(base::Error),
     CreateVm(Box<dyn StdError>),
     E820Configuration,
+    EnableSinglestep(base::Error),
     EnableSplitIrqchip(base::Error),
     GetSerialCmdline(GetSerialCmdlineError),
     KernelOffsetPastEnd,
@@ -111,6 +112,7 @@ pub enum Error {
     ReadRegs(base::Error),
     RegisterIrqfd(base::Error),
     RegisterVsock(arch::DeviceRegistrationError),
+    SetHwBreakpoint(base::Error),
     SetLint(interrupts::Error),
     SetTssAddr(base::Error),
     SetupCpuid(cpuid::Error),
@@ -154,6 +156,7 @@ impl Display for Error {
             CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
             CreateVm(e) => write!(f, "failed to create VM: {}", e),
             E820Configuration => write!(f, "invalid e820 setup params"),
+            EnableSinglestep(e) => write!(f, "failed to enable singlestep execution: {}", e),
             EnableSplitIrqchip(e) => write!(f, "failed to enable split irqchip: {}", e),
             GetSerialCmdline(e) => write!(f, "failed to get serial cmdline: {}", e),
             KernelOffsetPastEnd => write!(f, "the kernel extends past the end of RAM"),
@@ -168,6 +171,7 @@ impl Display for Error {
             ReadRegs(e) => write!(f, "error reading CPU registers {}", e),
             RegisterIrqfd(e) => write!(f, "error registering an IrqFd: {}", e),
             RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
+            SetHwBreakpoint(e) => write!(f, "failed to set a hardware breakpoint: {}", e),
             SetLint(e) => write!(f, "failed to set interrupts: {}", e),
             SetTssAddr(e) => write!(f, "failed to set tss addr: {}", e),
             SetupCpuid(e) => write!(f, "failed to set up cpuid: {}", e),
@@ -679,6 +683,21 @@ impl arch::LinuxArch for X8664arch {
             total_written += write_len;
         }
         Ok(())
+    }
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    fn debug_enable_singlestep<T: VcpuX86_64>(vcpu: &T) -> Result<()> {
+        vcpu.set_guest_debug(&[], true /* enable_singlestep */)
+            .map_err(Error::EnableSinglestep)
+    }
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    fn debug_set_hw_breakpoints<T: VcpuX86_64>(
+        vcpu: &T,
+        breakpoints: &[GuestAddress],
+    ) -> Result<()> {
+        vcpu.set_guest_debug(&breakpoints, false /* enable_singlestep */)
+            .map_err(Error::SetHwBreakpoint)
     }
 }
 

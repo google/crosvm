@@ -13,6 +13,8 @@ pub enum VcpuDebug {
     ReadRegs,
     WriteRegs(Box<CoreRegs>),
     WriteMem(GuestAddress, Vec<u8>),
+    EnableSinglestep,
+    SetHwBreakPoint(Vec<GuestAddress>),
 }
 
 /// Messages that can be sent from a vCPU to update the state to the debugger.
@@ -21,6 +23,7 @@ pub enum VcpuDebugStatus {
     RegValues(CoreRegs),
     MemoryRegion(Vec<u8>),
     CommandComplete,
+    HitBreakPoint,
 }
 
 /// Pair of a vCPU ID and messages that can be sent from the vCPU to update the state to the

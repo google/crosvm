@@ -210,6 +210,17 @@ pub trait LinuxArch {
         vaddr: GuestAddress,
         buf: &[u8],
     ) -> Result<(), Self::Error>;
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    /// Make the next vCPU's run single-step.
+    fn debug_enable_singlestep<T: VcpuArch>(vcpu: &T) -> Result<(), Self::Error>;
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    /// Set hardware breakpoints at the given addresses.
+    fn debug_set_hw_breakpoints<T: VcpuArch>(
+        vcpu: &T,
+        breakpoints: &[GuestAddress],
+    ) -> Result<(), Self::Error>;
 }
 
 /// Errors for device manager.

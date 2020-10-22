@@ -1766,6 +1766,25 @@ where
                 })
                 .map_err(|e| Error::SendDebugStatus(Box::new(e)))
         }
+        VcpuDebug::EnableSinglestep => {
+            Arch::debug_enable_singlestep(vcpu as &V).map_err(Error::HandleDebugCommand)?;
+            reply_channel
+                .send(VcpuDebugStatusMessage {
+                    cpu: cpu_id as usize,
+                    msg: VcpuDebugStatus::CommandComplete,
+                })
+                .map_err(|e| Error::SendDebugStatus(Box::new(e)))
+        }
+        VcpuDebug::SetHwBreakPoint(addrs) => {
+            Arch::debug_set_hw_breakpoints(vcpu as &V, &addrs)
+                .map_err(Error::HandleDebugCommand)?;
+            reply_channel
+                .send(VcpuDebugStatusMessage {
+                    cpu: cpu_id as usize,
+                    msg: VcpuDebugStatus::CommandComplete,
+                })
+                .map_err(|e| Error::SendDebugStatus(Box::new(e)))
+        }
     }
 }
 
@@ -1969,6 +1988,22 @@ where
                         break;
                     }
                     Ok(VcpuExit::SystemEvent(_, _)) => break,
+                    Ok(VcpuExit::Debug { .. }) => {
+                        #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                        {
+                            let msg = VcpuDebugStatusMessage {
+                                cpu: cpu_id as usize,
+                                msg: VcpuDebugStatus::HitBreakPoint,
+                            };
+                            if let Some(ref ch) = to_gdb_channel {
+                                if let Err(e) = ch.send(msg) {
+                                    error!("failed to notify breakpoint to GDB thread: {}", e);
+                                    break;
+                                }
+                            }
+                            run_mode = VmRunMode::Breakpoint;
+                        }
+                    }
                     Ok(r) => warn!("unexpected vcpu exit: {:?}", r),
                     Err(e) => match e.errno() {
                         libc::EINTR => interrupted_by_signal = true,

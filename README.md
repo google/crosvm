@@ -179,6 +179,7 @@ Then, you can start GDB in another shell.
 ```sh
 $ gdb vmlinux
 (gdb) target remote :<port>
+(gdb) hbreak start_kernel
 (gdb) c
 <start booting in the other shell>
 ```
