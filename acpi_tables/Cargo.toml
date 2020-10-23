@@ -6,3 +6,4 @@ edition = "2018"
 
 [dependencies]
 data_model = { path = "../data_model" }
+tempfile = { path = "../tempfile" }

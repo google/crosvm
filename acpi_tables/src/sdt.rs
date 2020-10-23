@@ -114,6 +114,8 @@ impl SDT {
 #[cfg(test)]
 mod tests {
     use super::SDT;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_sdt() {
@@ -129,5 +131,23 @@ mod tests {
             .iter()
             .fold(0u8, |acc, x| acc.wrapping_add(*x));
         assert_eq!(sum, 0);
+    }
+
+    #[test]
+    fn test_sdt_read_write() -> Result<(), std::io::Error> {
+        let temp_file = NamedTempFile::new()?;
+        let expected_sdt = SDT::new(*b"TEST", 40, 1, *b"CROSVM", *b"TESTTEST", 1);
+
+        // Write SDT to file.
+        {
+            let mut writer = temp_file.as_file();
+            writer.write_all(&expected_sdt.as_slice())?;
+        }
+
+        // Read it back and verify.
+        let actual_sdt = SDT::from_file(&temp_file.path().to_path_buf())?;
+        assert!(actual_sdt.is_signature(b"TEST"));
+        assert_eq!(actual_sdt.as_slice(), expected_sdt.as_slice());
+        Ok(())
     }
 }
