@@ -275,11 +275,20 @@ impl SerialParameters {
             },
             SerialType::UnixSocket => match &self.path {
                 Some(path) => {
-                    let sock = match UnixDatagram::bind(path).map_err(Error::FileError) {
+                    let sock = match UnixDatagram::bind(path) {
                         Ok(sock) => sock,
                         Err(e) => {
-                            error!("Couldn't bind: {:?}", e);
-                            UnixDatagram::unbound().map_err(Error::FileError)?
+                            if e.kind() == ErrorKind::AddrInUse {
+                                // In most cases vmlog_forwarder will
+                                // have already bound this address and
+                                // this error is expected. This
+                                // unbound socket will be connected on
+                                // first write.
+                                UnixDatagram::unbound().map_err(Error::FileError)?
+                            } else {
+                                error!("Couldn't bind: {:?}", e);
+                                return Err(Error::FileError(e));
+                            }
                         }
                     };
                     keep_fds.push(sock.as_raw_fd());
