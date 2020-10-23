@@ -4,3 +4,4 @@ target/
 **/*.orig
 **/Cargo.lock
 !/Cargo.lock
+lcov.info

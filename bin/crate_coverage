@@ -1,0 +1,36 @@
+#!/bin/bash
+# Copyright 2020 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Calculates coverage for the specified crate only
+# Usage:
+# $ ./bin/crate_coverage arch [additional arguments for cargo test]
+# Requirements:
+# $ rustup toolchain install nightly
+# $ cargo install grcov rust-covfix
+set -ex
+cd "${0%/*}/../"
+
+target_dir=$(
+    cargo metadata --no-deps --format-version 1 |
+        jq -r ".target_directory"
+)
+
+# Delete old coverage profiles
+find "$target_dir/debug" -name "*.gcda" -delete
+
+# Run test with coverage profiling
+(cd $1 && CARGO_INCREMENTAL=0 \
+    RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Copt-level=0 -Coverflow-checks=off \
+-Zpanic_abort_tests" \
+    cargo +nightly test "${@:2}")
+
+# Calculate code coverage
+grcov "$target_dir/debug" -s . \
+    --ignore "/*" --ignore-not-existing \
+    -t lcov --llvm --branch \
+    -o /tmp/lcov.info
+
+# Apply code coverage fixes
+rust-covfix /tmp/lcov.info >lcov.info
