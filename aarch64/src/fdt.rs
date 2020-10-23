@@ -208,6 +208,12 @@ fn create_chosen_node(
     begin_node(fdt, "chosen")?;
     property_u32(fdt, "linux,pci-probe-only", 1)?;
     property_cstring(fdt, "bootargs", cmdline)?;
+    // Used by android bootloader for boot console output
+    property_string(
+        fdt,
+        "stdout-path",
+        &format!("/U6_16550A@{:x}", SERIAL_ADDR[0]),
+    )?;
 
     let mut random_file = File::open("/dev/urandom").map_err(Error::FdtIoError)?;
     let mut kaslr_seed_bytes = [0u8; 8];
