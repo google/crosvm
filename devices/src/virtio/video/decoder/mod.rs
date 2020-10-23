@@ -261,9 +261,6 @@ impl Context {
             // No need to set `frame_rate`, as it's only for the encoder.
             ..Default::default()
         };
-
-        // All the output buffers at VDA are dropped. Clear the output resources.
-        self.out_res = Default::default();
     }
 
     fn handle_picture_ready(
@@ -745,7 +742,7 @@ impl<'a> Decoder<'a> {
                 session.reset().map_err(VideoError::VdaError)?;
             }
             QueueType::Output => {
-                ctx.out_res.queued_res_ids.clear();
+                ctx.out_res = Default::default();
             }
         }
         Ok(())
