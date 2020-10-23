@@ -4,26 +4,27 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 
+fcntl: 1
 pread64: 1
 pwrite64: 1
-lstat64: 1
 stat64: 1
 statx: 1
 fstat64: 1
 ioctl: arg1 == FIOCLEX
+_llseek: 1
 getdents64: 1
 fdatasync: 1
 fsync: 1
-mkdir: 1
+mkdirat: 1
 open: 1
 openat: 1
 rmdir: 1
-rename: 1
-link: 1
-unlink: 1
+renameat: 1
+linkat: 1
+unlinkat: 1
 socket: arg0 == AF_UNIX
 utimensat: 1
 ftruncate64: 1
 fchown: arg1 == 0xffffffff && arg2 == 0xffffffff
-statfs64: 1
+fstatfs64: 1
 fstatat64: 1

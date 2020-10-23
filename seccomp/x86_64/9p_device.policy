@@ -7,23 +7,24 @@ openat: 1
 
 @include /usr/share/policy/crosvm/common_device.policy
 
+fcntl: 1
 pwrite64: 1
 stat: 1
 statx: 1
-lstat: 1
 fstat: 1
 ioctl: arg1 == FIOCLEX
-link: 1
-unlink: 1
-rename: 1
+linkat: 1
+unlinkat: 1
+renameat: 1
 pread64: 1
-getdents: 1
-mkdir: 1
+lseek: 1
+getdents64: 1
+mkdirat: 1
 rmdir: 1
 fsync: 1
 fdatasync: 1
 utimensat: 1
 ftruncate: 1
 fchown: arg1 == 0xffffffff && arg2 == 0xffffffff
-statfs: 1
+fstatfs: 1
 newfstatat: 1

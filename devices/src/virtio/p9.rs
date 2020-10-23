@@ -32,6 +32,8 @@ pub enum P9Error {
     RootNotAbsolute(PathBuf),
     /// Creating WaitContext failed.
     CreateWaitContext(SysError),
+    /// Failed to create a 9p server.
+    CreateServer(io::Error),
     /// Error while polling for events.
     WaitError(SysError),
     /// Error while reading from the virtio queue's Event.
@@ -68,6 +70,7 @@ impl Display for P9Error {
             ),
             CreateWaitContext(err) => write!(f, "failed to create WaitContext: {}", err),
             WaitError(err) => write!(f, "failed to wait for events: {}", err),
+            CreateServer(err) => write!(f, "failed to create 9p server: {}", err),
             ReadQueueEvent(err) => write!(f, "failed to read from virtio queue Event: {}", err),
             NoReadableDescriptors => write!(f, "request does not have any readable descriptors"),
             NoWritableDescriptors => write!(f, "request does not have any writable descriptors"),
@@ -177,13 +180,11 @@ impl P9 {
 
         cfg.write_all(tag.as_bytes()).map_err(P9Error::Internal)?;
 
+        let server = p9::Server::new(root, Default::default(), Default::default())
+            .map_err(P9Error::CreateServer)?;
         Ok(P9 {
             config: cfg,
-            server: Some(p9::Server::new(
-                root,
-                Default::default(),
-                Default::default(),
-            )),
+            server: Some(server),
             kill_evt: None,
             avail_features: base_features | 1 << VIRTIO_9P_MOUNT_TAG,
             acked_features: 0,
@@ -194,7 +195,10 @@ impl P9 {
 
 impl VirtioDevice for P9 {
     fn keep_fds(&self) -> Vec<RawFd> {
-        Vec::new()
+        self.server
+            .as_ref()
+            .map(p9::Server::keep_fds)
+            .unwrap_or_else(Vec::new)
     }
 
     fn device_type(&self) -> u32 {
