@@ -17,7 +17,6 @@ use crate::filesystem::{
 use crate::sys::*;
 use crate::{Error, Result};
 
-const MAX_BUFFER_SIZE: u32 = 1 << 20;
 const DIRENT_PADDING: [u8; 8] = [0; 8];
 
 /// A trait for reading from the underlying FUSE endpoint.
@@ -62,7 +61,7 @@ impl<F: FileSystem + Sync> Server<F> {
     ) -> Result<usize> {
         let in_header = InHeader::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
-        if in_header.len > MAX_BUFFER_SIZE {
+        if in_header.len > self.fs.max_buffer_size() {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
                 in_header.unique,
@@ -503,7 +502,7 @@ impl<F: FileSystem + Sync> Server<F> {
             ..
         } = ReadIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
-        if size > MAX_BUFFER_SIZE {
+        if size > self.fs.max_buffer_size() {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
                 in_header.unique,
@@ -563,7 +562,7 @@ impl<F: FileSystem + Sync> Server<F> {
             ..
         } = WriteIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
-        if size > MAX_BUFFER_SIZE {
+        if size > self.fs.max_buffer_size() {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
                 in_header.unique,
@@ -711,7 +710,7 @@ impl<F: FileSystem + Sync> Server<F> {
 
         r.read_exact(&mut name).map_err(Error::DecodeMessage)?;
 
-        if size > MAX_BUFFER_SIZE {
+        if size > self.fs.max_buffer_size() {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
                 in_header.unique,
@@ -747,7 +746,7 @@ impl<F: FileSystem + Sync> Server<F> {
         let GetxattrIn { size, .. } =
             GetxattrIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
-        if size > MAX_BUFFER_SIZE {
+        if size > self.fs.max_buffer_size() {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
                 in_header.unique,
@@ -888,7 +887,7 @@ impl<F: FileSystem + Sync> Server<F> {
                     flags: enabled.bits(),
                     max_background: ::std::u16::MAX,
                     congestion_threshold: (::std::u16::MAX / 4) * 3,
-                    max_write: MAX_BUFFER_SIZE,
+                    max_write: self.fs.max_buffer_size(),
                     time_gran: 1, // nanoseconds
                     ..Default::default()
                 };
@@ -929,7 +928,7 @@ impl<F: FileSystem + Sync> Server<F> {
             fh, offset, size, ..
         } = ReadIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
-        if size > MAX_BUFFER_SIZE {
+        if size > self.fs.max_buffer_size() {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
                 in_header.unique,
@@ -1020,7 +1019,7 @@ impl<F: FileSystem + Sync> Server<F> {
             fh, offset, size, ..
         } = ReadIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
-        if size > MAX_BUFFER_SIZE {
+        if size > self.fs.max_buffer_size() {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
                 in_header.unique,
@@ -1311,7 +1310,7 @@ impl<F: FileSystem + Sync> Server<F> {
             BatchForgetIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
         if let Some(size) = (count as usize).checked_mul(size_of::<ForgetOne>()) {
-            if size > MAX_BUFFER_SIZE as usize {
+            if size > self.fs.max_buffer_size() as usize {
                 return reply_error(
                     io::Error::from_raw_os_error(libc::ENOMEM),
                     in_header.unique,

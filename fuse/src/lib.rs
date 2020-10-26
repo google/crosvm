@@ -13,6 +13,7 @@ pub mod fuzzing;
 mod server;
 #[allow(dead_code)]
 pub mod sys;
+pub mod worker;
 
 pub use server::{Reader, Server, Writer};
 
@@ -29,6 +30,9 @@ pub enum Error {
     /// Failed to flush protocol messages.
     #[error("failed to flush fuse message: {0}")]
     FlushMessage(io::Error),
+    /// Failed to set up FUSE endpoint to talk with.
+    #[error("failed to set up FUSE endpoint to talk with: {0}")]
+    EndpointSetup(io::Error),
     /// One or more parameters are missing.
     #[error("one or more parameters are missing")]
     MissingParameter,

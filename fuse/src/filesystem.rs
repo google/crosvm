@@ -13,6 +13,8 @@ use crate::sys;
 
 pub use crate::sys::{FsOptions, IoctlFlags, IoctlIovec, OpenOptions, SetattrValid, ROOT_ID};
 
+const MAX_BUFFER_SIZE: u32 = 1 << 20;
+
 /// Information about a path in the filesystem.
 pub struct Entry {
     /// An `Inode` that uniquely identifies this path. During `lookup`, setting this to `0` means a
@@ -373,6 +375,12 @@ pub trait FileSystem {
     /// An iterator over the entries of a directory. See the documentation for `readdir` for more
     /// details.
     type DirIter: DirectoryIterator;
+
+    /// Maximum size of the buffer that the filesystem can generate data to, including the header.
+    /// This corresponds to max_write in the initialization.
+    fn max_buffer_size(&self) -> u32 {
+        MAX_BUFFER_SIZE
+    }
 
     /// Initialize the file system.
     ///
