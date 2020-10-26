@@ -10,6 +10,8 @@ use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 use base::{error, info, read_raw_stdin, syslog, AsRawDescriptor, Event, RawDescriptor};
 use devices::{Bus, ProxyDevice, Serial, SerialDevice};
@@ -114,27 +116,20 @@ impl FromStr for SerialHardware {
 
 struct WriteSocket {
     sock: UnixDatagram,
-    path: PathBuf,
     buf: String,
 }
 
 const BUF_CAPACITY: usize = 1024;
 
 impl WriteSocket {
-    pub fn new(s: UnixDatagram, p: PathBuf) -> WriteSocket {
+    pub fn new(s: UnixDatagram) -> WriteSocket {
         WriteSocket {
             sock: s,
-            path: p,
             buf: String::with_capacity(BUF_CAPACITY),
         }
     }
 
-    // |send_buf| uses an immutable |self|, even though its |sock| is possibly
-    // going be modified. This is needed to allow the mutating of |buf| between
-    // calls to |send_buf| in the io::Write impl.
     pub fn send_buf(&self, buf: &[u8]) -> io::Result<usize> {
-        // It's possible we aren't yet connected to the socket. Always try once
-        // to reconnect if sending fails.
         const SEND_RETRY: usize = 2;
         let mut sent = 0;
         for _ in 0..SEND_RETRY {
@@ -143,22 +138,7 @@ impl WriteSocket {
                     sent = bytes_sent;
                     break;
                 }
-                Err(e) => match e.kind() {
-                    ErrorKind::ConnectionRefused
-                    | ErrorKind::ConnectionReset
-                    | ErrorKind::ConnectionAborted
-                    | ErrorKind::NotConnected
-                    | ErrorKind::Other => match self.sock.connect(self.path.as_path()) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            info!("Couldn't connect {:?}", e);
-                            break;
-                        }
-                    },
-                    _ => {
-                        info!("Send error: {:?}", e);
-                    }
-                },
+                Err(e) => info!("Send error: {:?}", e),
             }
         }
         Ok(sent)
@@ -273,29 +253,39 @@ impl SerialParameters {
                 }
                 None => return Err(Error::PathRequired),
             },
-            SerialType::UnixSocket => match &self.path {
-                Some(path) => {
-                    let sock = match UnixDatagram::bind(path) {
-                        Ok(sock) => sock,
-                        Err(e) => {
-                            if e.kind() == ErrorKind::AddrInUse {
-                                // In most cases vmlog_forwarder will
-                                // have already bound this address and
-                                // this error is expected. This
-                                // unbound socket will be connected on
-                                // first write.
-                                UnixDatagram::unbound().map_err(Error::FileError)?
-                            } else {
-                                error!("Couldn't bind: {:?}", e);
-                                return Err(Error::FileError(e));
-                            }
+            SerialType::UnixSocket => {
+                match &self.path {
+                    Some(path) => {
+                        // There's a race condition between
+                        // vmlog_forwarder making the logging socket and
+                        // crosvm starting up, so we loop here until it's
+                        // available.
+                        let sock = UnixDatagram::unbound().map_err(Error::FileError)?;
+                        loop {
+                            match sock.connect(path) {
+                                Ok(_) => break,
+                                Err(e) => {
+                                    match e.kind() {
+                                        ErrorKind::NotFound | ErrorKind::ConnectionRefused => {
+                                            // logging socket doesn't
+                                            // exist yet, sleep for 10 ms
+                                            // and try again.
+                                            thread::sleep(Duration::from_millis(10))
+                                        }
+                                        _ => {
+                                            error!("Unexpected error connecting to logging socket: {:?}", e);
+                                            return Err(Error::FileError(e));
+                                        }
+                                    }
+                                }
+                            };
                         }
-                    };
-                    keep_rds.push(sock.as_raw_descriptor());
-                    Some(Box::new(WriteSocket::new(sock, path.to_path_buf())))
+                        keep_rds.push(sock.as_raw_descriptor());
+                        Some(Box::new(WriteSocket::new(sock)))
+                    }
+                    None => return Err(Error::PathRequired),
                 }
-                None => return Err(Error::PathRequired),
-            },
+            }
         };
         Ok(T::new(protected_vm, evt, input, output, keep_rds.to_vec()))
     }
