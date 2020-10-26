@@ -23,12 +23,24 @@ const DIRENT_PADDING: [u8; 8] = [0; 8];
 /// A trait for reading from the underlying FUSE endpoint.
 pub trait Reader: io::Read {}
 
-/// A trait for writing to the underlying FUSE endpoint.
+/// A trait for writing to the underlying FUSE endpoint. The FUSE device expects the write
+/// operation to happen in one write transaction. Since there are cases when data needs to be
+/// generated earlier than the header, it implies the writer implementation to keep an internal
+/// buffer. The buffer then can be flushed once header and data are both prepared.
 pub trait Writer: io::Write {
-    /// Splits out a new writer for writing from the given offset. The implementation may need to
-    /// keep an output buffer to achieve so. This allows the filesystem to generate output data
-    /// before the header is generated, especially when the data size is dynamic.
-    fn split_at(&mut self, offset: usize) -> Self;
+    /// Allows a closure to generate and write data at the current writer's offset. The current
+    /// writer is passed as a mutable reference to the closure. As an example, this provides an
+    /// adapter for the read implementation of a filesystem to write directly to the final buffer
+    /// without generating the FUSE header first.
+    ///
+    /// Notes: An alternative implementation would be to return a slightly different writer for the
+    /// API client to write to the offset. Since the API needs to be called for more than one time,
+    /// it imposes some complexity to deal with borrowing and mutability. The current approach
+    /// simply does not need to create a different writer, thus no need to deal with the mentioned
+    /// complexity.
+    fn write_at<F>(&mut self, offset: usize, f: F) -> io::Result<usize>
+    where
+        F: Fn(&mut Self) -> io::Result<usize>;
 
     /// Checks if the writer can still accept certain amount of data.
     fn has_sufficient_buffer(&self, size: u32) -> bool;
@@ -505,19 +517,19 @@ impl<F: FileSystem + Sync> Server<F> {
             None
         };
 
-        // Split the writer into 2 pieces: one for the `OutHeader` and the rest for the data.
-        let data_writer = w.split_at(size_of::<OutHeader>());
-
-        match self.fs.read(
-            Context::from(in_header),
-            in_header.nodeid.into(),
-            fh.into(),
-            data_writer,
-            size,
-            offset,
-            owner,
-            flags,
-        ) {
+        // Skip for the header size to write the data first.
+        match w.write_at(size_of::<OutHeader>(), |writer| {
+            self.fs.read(
+                Context::from(in_header),
+                in_header.nodeid.into(),
+                fh.into(),
+                writer,
+                size,
+                offset,
+                owner,
+                flags,
+            )
+        }) {
             Ok(count) => {
                 // Don't use `reply_ok` because we need to set a custom size length for the
                 // header.
@@ -528,6 +540,7 @@ impl<F: FileSystem + Sync> Server<F> {
                 };
 
                 w.write_all(out.as_slice()).map_err(Error::EncodeMessage)?;
+                w.flush().map_err(Error::FlushMessage)?;
                 Ok(out.len as usize)
             }
             Err(e) => reply_error(e, in_header.unique, w),
@@ -933,31 +946,36 @@ impl<F: FileSystem + Sync> Server<F> {
         }
 
         // Skip over enough bytes for the header.
-        let mut cursor = w.split_at(size_of::<OutHeader>());
         let unique = in_header.unique;
-
-        match self.fs.readdir(
-            Context::from(in_header),
-            in_header.nodeid.into(),
-            fh.into(),
-            size,
-            offset,
-        ) {
-            Ok(mut entries) => {
-                let mut total_written = 0;
-                while let Some(dirent) = entries.next() {
-                    let remaining = (size as usize).saturating_sub(total_written);
-                    match add_dirent(&mut cursor, remaining, dirent, None) {
-                        // No more space left in the buffer.
-                        Ok(0) => break,
-                        Ok(bytes_written) => {
-                            total_written += bytes_written;
+        let result = w.write_at(size_of::<OutHeader>(), |cursor| {
+            match self.fs.readdir(
+                Context::from(in_header),
+                in_header.nodeid.into(),
+                fh.into(),
+                size,
+                offset,
+            ) {
+                Ok(mut entries) => {
+                    let mut total_written = 0;
+                    while let Some(dirent) = entries.next() {
+                        let remaining = (size as usize).saturating_sub(total_written);
+                        match add_dirent(cursor, remaining, dirent, None) {
+                            // No more space left in the buffer.
+                            Ok(0) => break,
+                            Ok(bytes_written) => {
+                                total_written += bytes_written;
+                            }
+                            Err(e) => return Err(e),
                         }
-                        Err(e) => return reply_error(e, unique, w),
                     }
+                    Ok(total_written)
                 }
-                reply_readdir(total_written, unique, w)
+                Err(e) => Err(e),
             }
+        });
+
+        match result {
+            Ok(total_written) => reply_readdir(total_written, unique, w),
             Err(e) => reply_error(e, unique, w),
         }
     }
@@ -1019,58 +1037,62 @@ impl<F: FileSystem + Sync> Server<F> {
         }
 
         // Skip over enough bytes for the header.
-        let mut cursor = w.split_at(size_of::<OutHeader>());
         let unique = in_header.unique;
-
-        match self.fs.readdir(
-            Context::from(in_header),
-            in_header.nodeid.into(),
-            fh.into(),
-            size,
-            offset,
-        ) {
-            Ok(mut entries) => {
-                let mut total_written = 0;
-                while let Some(dirent) = entries.next() {
-                    let mut entry_inode = None;
-                    match self.handle_dirent(&in_header, dirent).and_then(|(d, e)| {
-                        entry_inode = Some(e.inode);
-                        let remaining = (size as usize).saturating_sub(total_written);
-                        add_dirent(&mut cursor, remaining, d, Some(e))
-                    }) {
-                        Ok(0) => {
-                            // No more space left in the buffer but we need to undo the lookup
-                            // that created the Entry or we will end up with mismatched lookup
-                            // counts.
-                            if let Some(inode) = entry_inode {
-                                self.fs.forget(Context::from(in_header), inode.into(), 1);
+        let result = w.write_at(size_of::<OutHeader>(), |cursor| {
+            match self.fs.readdir(
+                Context::from(in_header),
+                in_header.nodeid.into(),
+                fh.into(),
+                size,
+                offset,
+            ) {
+                Ok(mut entries) => {
+                    let mut total_written = 0;
+                    while let Some(dirent) = entries.next() {
+                        let mut entry_inode = None;
+                        match self.handle_dirent(&in_header, dirent).and_then(|(d, e)| {
+                            entry_inode = Some(e.inode);
+                            let remaining = (size as usize).saturating_sub(total_written);
+                            add_dirent(cursor, remaining, d, Some(e))
+                        }) {
+                            Ok(0) => {
+                                // No more space left in the buffer but we need to undo the lookup
+                                // that created the Entry or we will end up with mismatched lookup
+                                // counts.
+                                if let Some(inode) = entry_inode {
+                                    self.fs.forget(Context::from(in_header), inode.into(), 1);
+                                }
+                                break;
                             }
-                            break;
-                        }
-                        Ok(bytes_written) => {
-                            total_written += bytes_written;
-                        }
-                        Err(e) => {
-                            if let Some(inode) = entry_inode {
-                                self.fs.forget(Context::from(in_header), inode.into(), 1);
+                            Ok(bytes_written) => {
+                                total_written += bytes_written;
                             }
+                            Err(e) => {
+                                if let Some(inode) = entry_inode {
+                                    self.fs.forget(Context::from(in_header), inode.into(), 1);
+                                }
 
-                            if total_written == 0 {
-                                // We haven't filled any entries yet so we can just propagate
-                                // the error.
-                                return reply_error(e, unique, w);
+                                if total_written == 0 {
+                                    // We haven't filled any entries yet so we can just propagate
+                                    // the error.
+                                    return Err(e);
+                                }
+
+                                // We already filled in some entries. Returning an error now will
+                                // cause lookup count mismatches for those entries so just return
+                                // whatever we already have.
+                                break;
                             }
-
-                            // We already filled in some entries. Returning an error now will
-                            // cause lookup count mismatches for those entries so just return
-                            // whatever we already have.
-                            break;
                         }
                     }
+                    Ok(total_written)
                 }
-
-                reply_readdir(total_written, unique, w)
+                Err(e) => Err(e),
             }
+        });
+
+        match result {
+            Ok(total_written) => reply_readdir(total_written, unique, w),
             Err(e) => reply_error(e, unique, w),
         }
     }
@@ -1434,6 +1456,7 @@ fn retry_ioctl<W: Writer>(
         w.write_all(i.as_slice()).map_err(Error::EncodeMessage)?;
     }
 
+    w.flush().map_err(Error::FlushMessage)?;
     debug_assert_eq!(len, total_bytes);
     Ok(len)
 }
@@ -1466,6 +1489,7 @@ fn reply_readdir<W: Writer>(len: usize, unique: u64, mut w: W) -> Result<usize> 
     };
 
     w.write_all(out.as_slice()).map_err(Error::EncodeMessage)?;
+    w.flush().map_err(Error::FlushMessage)?;
     Ok(out.len as usize)
 }
 
@@ -1505,6 +1529,7 @@ fn reply_ok<T: DataInit, W: Writer>(
         w.write_all(data).map_err(Error::EncodeMessage)?;
     }
 
+    w.flush().map_err(Error::FlushMessage)?;
     debug_assert_eq!(len, total_bytes);
     Ok(len)
 }
@@ -1518,6 +1543,7 @@ fn reply_error<W: Writer>(e: io::Error, unique: u64, mut w: W) -> Result<usize> 
 
     w.write_all(header.as_slice())
         .map_err(Error::EncodeMessage)?;
+    w.flush().map_err(Error::FlushMessage)?;
 
     Ok(header.len as usize)
 }

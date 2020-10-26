@@ -16,8 +16,12 @@ use crate::virtio::{Interrupt, Queue, Reader, Writer};
 impl fuse::Reader for Reader {}
 
 impl fuse::Writer for Writer {
-    fn split_at(&mut self, offset: usize) -> Self {
-        Writer::split_at(self, offset)
+    fn write_at<F>(&mut self, offset: usize, f: F) -> io::Result<usize>
+    where
+        F: Fn(&mut Self) -> io::Result<usize>,
+    {
+        let mut writer = Writer::split_at(self, offset);
+        f(&mut writer)
     }
 
     fn has_sufficient_buffer(&self, size: u32) -> bool {
