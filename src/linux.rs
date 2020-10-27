@@ -543,7 +543,13 @@ fn create_single_touch_device(cfg: &Config, single_touch_spec: &TouchDeviceOptio
         })?;
 
     let (width, height) = single_touch_spec.get_size();
-    let dev = virtio::new_single_touch(socket, width, height).map_err(Error::InputDeviceNew)?;
+    let dev = virtio::new_single_touch(
+        socket,
+        width,
+        height,
+        virtio::base_features(cfg.protected_vm),
+    )
+    .map_err(Error::InputDeviceNew)?;
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
         jail: simple_jail(&cfg, "input_device")?,
@@ -557,7 +563,13 @@ fn create_trackpad_device(cfg: &Config, trackpad_spec: &TouchDeviceOption) -> De
     })?;
 
     let (width, height) = trackpad_spec.get_size();
-    let dev = virtio::new_trackpad(socket, width, height).map_err(Error::InputDeviceNew)?;
+    let dev = virtio::new_trackpad(
+        socket,
+        width,
+        height,
+        virtio::base_features(cfg.protected_vm),
+    )
+    .map_err(Error::InputDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -571,7 +583,8 @@ fn create_mouse_device<T: IntoUnixStream>(cfg: &Config, mouse_socket: T) -> Devi
         e
     })?;
 
-    let dev = virtio::new_mouse(socket).map_err(Error::InputDeviceNew)?;
+    let dev = virtio::new_mouse(socket, virtio::base_features(cfg.protected_vm))
+        .map_err(Error::InputDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -585,7 +598,8 @@ fn create_keyboard_device<T: IntoUnixStream>(cfg: &Config, keyboard_socket: T) -
         e
     })?;
 
-    let dev = virtio::new_keyboard(socket).map_err(Error::InputDeviceNew)?;
+    let dev = virtio::new_keyboard(socket, virtio::base_features(cfg.protected_vm))
+        .map_err(Error::InputDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -600,7 +614,8 @@ fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
         .open(dev_path)
         .map_err(|e| Error::OpenVinput(dev_path.to_owned(), e))?;
 
-    let dev = virtio::new_evdev(dev_file).map_err(Error::InputDeviceNew)?;
+    let dev = virtio::new_evdev(dev_file, virtio::base_features(cfg.protected_vm))
+        .map_err(Error::InputDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1314,6 +1329,7 @@ fn create_virtio_devices(
                     virtio_dev_socket,
                     single_touch_width,
                     single_touch_height,
+                    virtio::base_features(cfg.protected_vm),
                 )
                 .map_err(Error::InputDeviceNew)?;
                 devs.push(VirtioDeviceStub {
@@ -1325,7 +1341,11 @@ fn create_virtio_devices(
             if cfg.display_window_keyboard {
                 let (event_device_socket, virtio_dev_socket) =
                     UnixStream::pair().map_err(Error::CreateSocket)?;
-                let dev = virtio::new_keyboard(virtio_dev_socket).map_err(Error::InputDeviceNew)?;
+                let dev = virtio::new_keyboard(
+                    virtio_dev_socket,
+                    virtio::base_features(cfg.protected_vm),
+                )
+                .map_err(Error::InputDeviceNew)?;
                 devs.push(VirtioDeviceStub {
                     dev: Box::new(dev),
                     jail: simple_jail(&cfg, "input_device")?,

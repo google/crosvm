@@ -536,6 +536,7 @@ pub struct Input<T: EventSource> {
     worker_thread: Option<thread::JoinHandle<Worker<T>>>,
     config: VirtioInputConfig,
     source: Option<T>,
+    virtio_features: u64,
 }
 
 impl<T: EventSource> Drop for Input<T> {
@@ -576,6 +577,10 @@ where
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
         self.config.write(offset as usize, data);
+    }
+
+    fn features(&self) -> u64 {
+        self.virtio_features
     }
 
     fn activate(
@@ -658,7 +663,7 @@ where
 }
 
 /// Creates a new virtio input device from an event device node
-pub fn new_evdev<T>(source: T) -> Result<Input<EvdevEventSource<T>>>
+pub fn new_evdev<T>(source: T, virtio_features: u64) -> Result<Input<EvdevEventSource<T>>>
 where
     T: Read + Write + AsRawFd,
 {
@@ -667,6 +672,7 @@ where
         worker_thread: None,
         config: VirtioInputConfig::from_evdev(&source)?,
         source: Some(EvdevEventSource::new(source)),
+        virtio_features,
     })
 }
 
@@ -675,6 +681,7 @@ pub fn new_single_touch<T>(
     source: T,
     width: u32,
     height: u32,
+    virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
     T: Read + Write + AsRawFd,
@@ -684,12 +691,18 @@ where
         worker_thread: None,
         config: defaults::new_single_touch_config(width, height),
         source: Some(SocketEventSource::new(source)),
+        virtio_features,
     })
 }
 
 /// Creates a new virtio trackpad device which supports (single) touch, primary and secondary
 /// buttons as well as X and Y axis.
-pub fn new_trackpad<T>(source: T, width: u32, height: u32) -> Result<Input<SocketEventSource<T>>>
+pub fn new_trackpad<T>(
+    source: T,
+    width: u32,
+    height: u32,
+    virtio_features: u64,
+) -> Result<Input<SocketEventSource<T>>>
 where
     T: Read + Write + AsRawFd,
 {
@@ -698,11 +711,12 @@ where
         worker_thread: None,
         config: defaults::new_trackpad_config(width, height),
         source: Some(SocketEventSource::new(source)),
+        virtio_features,
     })
 }
 
 /// Creates a new virtio mouse which supports primary, secondary, wheel and REL events.
-pub fn new_mouse<T>(source: T) -> Result<Input<SocketEventSource<T>>>
+pub fn new_mouse<T>(source: T, virtio_features: u64) -> Result<Input<SocketEventSource<T>>>
 where
     T: Read + Write + AsRawFd,
 {
@@ -711,11 +725,12 @@ where
         worker_thread: None,
         config: defaults::new_mouse_config(),
         source: Some(SocketEventSource::new(source)),
+        virtio_features,
     })
 }
 
 /// Creates a new virtio keyboard, which supports the same events as an en-us physical keyboard.
-pub fn new_keyboard<T>(source: T) -> Result<Input<SocketEventSource<T>>>
+pub fn new_keyboard<T>(source: T, virtio_features: u64) -> Result<Input<SocketEventSource<T>>>
 where
     T: Read + Write + AsRawFd,
 {
@@ -724,5 +739,6 @@ where
         worker_thread: None,
         config: defaults::new_keyboard_config(),
         source: Some(SocketEventSource::new(source)),
+        virtio_features,
     })
 }
