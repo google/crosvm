@@ -1024,6 +1024,7 @@ fn create_9p_device(
     gid_map: &str,
     src: &Path,
     tag: &str,
+    mut p9_cfg: p9::Config,
 ) -> DeviceResult {
     let max_open_files = get_max_open_files()?;
     let (jail, root) = if cfg.sandbox {
@@ -1051,7 +1052,8 @@ fn create_9p_device(
     };
 
     let features = virtio::base_features(cfg.protected_vm);
-    let dev = virtio::P9::new(features, root, tag).map_err(Error::P9DeviceNew)?;
+    p9_cfg.root = root.into();
+    let dev = virtio::P9::new(features, tag, p9_cfg).map_err(Error::P9DeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1380,12 +1382,13 @@ fn create_virtio_devices(
             kind,
             uid_map,
             gid_map,
-            cfg: fs_cfg,
+            fs_cfg,
+            p9_cfg,
         } = shared_dir;
 
         let dev = match kind {
             SharedDirKind::FS => create_fs_device(cfg, uid_map, gid_map, src, tag, fs_cfg.clone())?,
-            SharedDirKind::P9 => create_9p_device(cfg, uid_map, gid_map, src, tag)?,
+            SharedDirKind::P9 => create_9p_device(cfg, uid_map, gid_map, src, tag, p9_cfg.clone())?,
         };
         devs.push(dev);
     }

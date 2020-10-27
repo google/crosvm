@@ -6,7 +6,6 @@ use std::fmt::{self, Display};
 use std::io::{self, Write};
 use std::mem;
 use std::os::unix::io::RawFd;
-use std::path::{Path, PathBuf};
 use std::result;
 use std::thread;
 
@@ -28,8 +27,6 @@ const VIRTIO_9P_MOUNT_TAG: u8 = 0;
 pub enum P9Error {
     /// The tag for the 9P device was too large to fit in the config space.
     TagTooLong(usize),
-    /// The root directory for the 9P server is not absolute.
-    RootNotAbsolute(PathBuf),
     /// Creating WaitContext failed.
     CreateWaitContext(SysError),
     /// Failed to create a 9p server.
@@ -62,11 +59,6 @@ impl Display for P9Error {
                 "P9 device tag is too long: len = {}, max = {}",
                 len,
                 ::std::u16::MAX
-            ),
-            RootNotAbsolute(buf) => write!(
-                f,
-                "P9 root directory is not absolute: root = {}",
-                buf.display()
             ),
             CreateWaitContext(err) => write!(f, "failed to create WaitContext: {}", err),
             WaitError(err) => write!(f, "failed to wait for events: {}", err),
@@ -160,17 +152,9 @@ pub struct P9 {
 }
 
 impl P9 {
-    pub fn new<P: AsRef<Path> + Into<Box<Path>>>(
-        base_features: u64,
-        root: P,
-        tag: &str,
-    ) -> P9Result<P9> {
+    pub fn new(base_features: u64, tag: &str, p9_cfg: p9::Config) -> P9Result<P9> {
         if tag.len() > ::std::u16::MAX as usize {
             return Err(P9Error::TagTooLong(tag.len()));
-        }
-
-        if !root.as_ref().is_absolute() {
-            return Err(P9Error::RootNotAbsolute(root.as_ref().into()));
         }
 
         let len = tag.len() as u16;
@@ -180,8 +164,7 @@ impl P9 {
 
         cfg.write_all(tag.as_bytes()).map_err(P9Error::Internal)?;
 
-        let server = p9::Server::new(root, Default::default(), Default::default())
-            .map_err(P9Error::CreateServer)?;
+        let server = p9::Server::with_config(p9_cfg).map_err(P9Error::CreateServer)?;
         Ok(P9 {
             config: cfg,
             server: Some(server),

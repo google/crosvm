@@ -69,6 +69,7 @@ libcras = "*"
 minijail = "*" # provided by ebuild
 msg_socket = { path = "msg_socket" }
 net_util = { path = "net_util" }
+p9 = "*"
 protobuf = { version = "2.3", optional = true }
 protos = { path = "protos", optional = true }
 rand_ish = { path = "rand_ish" }

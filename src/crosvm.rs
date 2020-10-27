@@ -142,7 +142,8 @@ pub struct SharedDir {
     pub kind: SharedDirKind,
     pub uid_map: String,
     pub gid_map: String,
-    pub cfg: passthrough::Config,
+    pub fs_cfg: passthrough::Config,
+    pub p9_cfg: p9::Config,
 }
 
 impl Default for SharedDir {
@@ -153,7 +154,8 @@ impl Default for SharedDir {
             kind: Default::default(),
             uid_map: format!("0 {} 1", unsafe { geteuid() }),
             gid_map: format!("0 {} 1", unsafe { getegid() }),
-            cfg: Default::default(),
+            fs_cfg: Default::default(),
+            p9_cfg: Default::default(),
         }
     }
 }

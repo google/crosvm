@@ -1129,8 +1129,8 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         })?;
 
                         let dur = Duration::from_secs(seconds);
-                        shared_dir.cfg.entry_timeout = dur.clone();
-                        shared_dir.cfg.attr_timeout = dur;
+                        shared_dir.fs_cfg.entry_timeout = dur.clone();
+                        shared_dir.fs_cfg.attr_timeout = dur;
                     }
                     "cache" => {
                         let policy = value.parse().map_err(|_| argument::Error::InvalidValue {
@@ -1139,7 +1139,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                                 "`cache` must be one of `never`, `always`, or `auto`",
                             ),
                         })?;
-                        shared_dir.cfg.cache_policy = policy;
+                        shared_dir.fs_cfg.cache_policy = policy;
                     }
                     "writeback" => {
                         let writeback =
@@ -1147,7 +1147,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                                 value: value.to_owned(),
                                 expected: String::from("`writeback` must be a boolean"),
                             })?;
-                        shared_dir.cfg.writeback = writeback;
+                        shared_dir.fs_cfg.writeback = writeback;
                     }
                     "rewrite-security-xattrs" => {
                         let rewrite_security_xattrs =
@@ -1157,7 +1157,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                                     "`rewrite-security-xattrs` must be a boolean",
                                 ),
                             })?;
-                        shared_dir.cfg.rewrite_security_xattrs = rewrite_security_xattrs;
+                        shared_dir.fs_cfg.rewrite_security_xattrs = rewrite_security_xattrs;
                     }
                     "ascii_casefold" => {
                         let ascii_casefold =
@@ -1165,7 +1165,8 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                                 value: value.to_owned(),
                                 expected: String::from("`ascii_casefold` must be a boolean"),
                             })?;
-                        shared_dir.cfg.ascii_casefold = ascii_casefold;
+                        shared_dir.fs_cfg.ascii_casefold = ascii_casefold;
+                        shared_dir.p9_cfg.ascii_casefold = ascii_casefold;
                     }
                     _ => {
                         return Err(argument::Error::InvalidValue {
