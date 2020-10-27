@@ -143,3 +143,35 @@ impl BusDevice for Pl030 {
         data[3] = (reg_content >> 24) as u8;
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_interrupt_status_register() {
+        let event = Event::new().unwrap();
+        let mut device = Pl030::new(event.try_clone().unwrap());
+        let mut register = [0, 0, 0, 0];
+
+        // set interrupt
+        device.write(RTCEOI, &[1, 0, 0, 0]);
+        device.read(RTCSTAT, &mut register);
+        assert_eq!(register, [1, 0, 0, 0]);
+        assert_eq!(event.read().unwrap(), 1);
+
+        // clear interrupt
+        device.write(RTCEOI, &[0, 0, 0, 0]);
+        device.read(RTCSTAT, &mut register);
+        assert_eq!(register, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_match_register() {
+        let mut device = Pl030::new(Event::new().unwrap());
+        let mut register = [0, 0, 0, 0];
+
+        device.write(RTCMR, &[1, 2, 3, 4]);
+        device.read(RTCMR, &mut register);
+        assert_eq!(register, [4, 3, 2, 1]);
+    }
+}
