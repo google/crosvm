@@ -264,3 +264,74 @@ impl Drop for ProxyDevice {
         self.sync_send(&Command::Shutdown);
     }
 }
+
+/// Note: These tests must be run with --test-threads=1 to allow minijail to fork
+/// the process.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A simple test echo device that outputs the same u8 that was written to it.
+    struct EchoDevice {
+        data: u8,
+        config: u8,
+    }
+    impl EchoDevice {
+        fn new() -> EchoDevice {
+            EchoDevice { data: 0, config: 0 }
+        }
+    }
+    impl BusDevice for EchoDevice {
+        fn debug_label(&self) -> String {
+            "EchoDevice".to_owned()
+        }
+
+        fn write(&mut self, _offset: u64, data: &[u8]) {
+            assert!(data.len() == 1);
+            self.data = data[0];
+        }
+
+        fn read(&mut self, _offset: u64, data: &mut [u8]) {
+            assert!(data.len() == 1);
+            data[0] = self.data;
+        }
+
+        fn config_register_write(&mut self, _reg_idx: usize, _offset: u64, data: &[u8]) {
+            assert!(data.len() == 1);
+            self.config = data[0];
+        }
+
+        fn config_register_read(&self, _reg_idx: usize) -> u32 {
+            self.config as u32
+        }
+    }
+
+    fn new_proxied_echo_device() -> ProxyDevice {
+        let device = EchoDevice::new();
+        let keep_fds: Vec<RawDescriptor> = Vec::new();
+        let minijail = Minijail::new().unwrap();
+        ProxyDevice::new(device, &minijail, keep_fds).unwrap()
+    }
+
+    #[test]
+    fn test_debug_label() {
+        let proxy_device = new_proxied_echo_device();
+        assert_eq!(proxy_device.debug_label(), "EchoDevice");
+    }
+
+    #[test]
+    fn test_proxied_read_write() {
+        let mut proxy_device = new_proxied_echo_device();
+        proxy_device.write(0, &[42]);
+        let mut read_buffer = [0];
+        proxy_device.read(0, &mut read_buffer);
+        assert_eq!(read_buffer, [42]);
+    }
+
+    #[test]
+    fn test_proxied_config() {
+        let mut proxy_device = new_proxied_echo_device();
+        proxy_device.config_register_write(0, 0, &[42]);
+        assert_eq!(proxy_device.config_register_read(0), 42);
+    }
+}
