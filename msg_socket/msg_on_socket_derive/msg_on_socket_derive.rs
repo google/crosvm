@@ -240,7 +240,7 @@ fn define_uses_fd_for_enum(de: &DataEnum) -> TokenStream {
         }
     }
 
-    if variant_field_types.len() == 0 {
+    if variant_field_types.is_empty() {
         return quote!();
     }
 
@@ -508,7 +508,7 @@ fn get_tuple_fields(ds: DataStruct) -> Vec<StructField> {
 }
 
 fn define_uses_fd_for_tuples(fields: &[StructField]) -> TokenStream {
-    if fields.len() == 0 {
+    if fields.is_empty() {
         return quote!();
     }
 
@@ -579,7 +579,7 @@ fn get_fields_buffer_size_sum(fields: &[StructField]) -> (TokenStream, TokenStre
         .filter(|f| !f.skipped)
         .map(|f| &f.member)
         .collect();
-    if fields.len() > 0 {
+    if !fields.is_empty() {
         (
             quote! {
                 #( self.#fields.msg_size() as usize )+*
