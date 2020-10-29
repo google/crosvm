@@ -79,7 +79,7 @@ fuzz_target!(|bytes| {
     let queue_fd = queue_evts[0].as_raw_fd();
     let queue_evt = unsafe { Event::from_raw_fd(libc::dup(queue_fd)) };
 
-    let features = base_features();
+    let features = base_features(false);
 
     let disk_file = tempfile::tempfile().unwrap();
     let mut block = Block::new(features, Box::new(disk_file), false, true, 512, None).unwrap();
