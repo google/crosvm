@@ -329,6 +329,84 @@ impl Queue {
         }
     }
 
+    // Get the index of the first available descriptor chain in the available ring
+    // (the next one that the driver will fill).
+    //
+    // All available ring entries between `self.next_avail` and `get_avail_index()` are available
+    // to be processed by the device.
+    fn get_avail_index(&self, mem: &GuestMemory) -> Wrapping<u16> {
+        let avail_index_addr = self.avail_ring.unchecked_add(2);
+        let avail_index: u16 = mem.read_obj_from_addr(avail_index_addr).unwrap();
+
+        // Make sure following reads (e.g. desc_idx) don't pass the avail_index read.
+        fence(Ordering::Acquire);
+
+        Wrapping(avail_index)
+    }
+
+    // Set the `avail_event` field in the used ring.
+    //
+    // This allows the device to inform the driver that driver-to-device notification
+    // (kicking the ring) is not necessary until the driver reaches the `avail_index` descriptor.
+    //
+    // This value is only used if the `VIRTIO_F_EVENT_IDX` feature has been negotiated.
+    fn set_avail_event(&mut self, mem: &GuestMemory, avail_index: Wrapping<u16>) {
+        let avail_event_addr = self
+            .used_ring
+            .unchecked_add(4 + 8 * u64::from(self.actual_size()));
+        mem.write_obj_at_addr(avail_index.0, avail_event_addr)
+            .unwrap();
+    }
+
+    // Query the value of a single-bit flag in the available ring.
+    //
+    // Returns `true` if `flag` is currently set (by the driver) in the available ring flags.
+    fn get_avail_flag(&self, mem: &GuestMemory, flag: u16) -> bool {
+        let avail_flags: u16 = mem.read_obj_from_addr(self.avail_ring).unwrap();
+        avail_flags & flag == flag
+    }
+
+    // Get the `used_event` field in the available ring.
+    //
+    // The returned value is the index of the next descriptor chain entry for which the driver
+    // needs to be notified upon use.  Entries before this index may be used without notifying
+    // the driver.
+    //
+    // This value is only valid if the `VIRTIO_F_EVENT_IDX` feature has been negotiated.
+    fn get_used_event(&self, mem: &GuestMemory) -> Wrapping<u16> {
+        let used_event_addr = self
+            .avail_ring
+            .unchecked_add(4 + 2 * u64::from(self.actual_size()));
+        let used_event: u16 = mem.read_obj_from_addr(used_event_addr).unwrap();
+        Wrapping(used_event)
+    }
+
+    // Set the `idx` field in the used ring.
+    //
+    // This indicates to the driver that all entries up to (but not including) `used_index` have
+    // been used by the device and may be processed by the driver.
+    fn set_used_index(&mut self, mem: &GuestMemory, used_index: Wrapping<u16>) {
+        // This fence ensures all descriptor writes are visible before the index update.
+        fence(Ordering::Release);
+
+        let used_index_addr = self.used_ring.unchecked_add(2);
+        mem.write_obj_at_addr(used_index.0, used_index_addr)
+            .unwrap();
+    }
+
+    // Set a single-bit flag in the used ring.
+    //
+    // Changes the bit specified by the mask in `flag` to `value`.
+    fn set_used_flag(&mut self, mem: &GuestMemory, flag: u16, value: bool) {
+        let mut used_flags: u16 = mem.read_obj_from_addr(self.used_ring).unwrap();
+        if value {
+            used_flags |= flag;
+        } else {
+            used_flags &= !flag;
+        }
+        mem.write_obj_at_addr(used_flags, self.used_ring).unwrap();
+    }
+
     /// Get the first available descriptor chain without removing it from the queue.
     /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
     pub fn peek(&mut self, mem: &GuestMemory) -> Option<DescriptorChain> {
@@ -337,13 +415,10 @@ impl Queue {
         }
 
         let queue_size = self.actual_size();
-        let avail_index_addr = mem.checked_offset(self.avail_ring, 2).unwrap();
-        let avail_index: u16 = mem.read_obj_from_addr(avail_index_addr).unwrap();
-        // make sure desc_index read doesn't bypass avail_index read
-        fence(Ordering::Acquire);
-        let avail_len = Wrapping(avail_index) - self.next_avail;
+        let avail_index = self.get_avail_index(mem);
+        let avail_len = avail_index - self.next_avail;
 
-        if avail_len.0 > queue_size || self.next_avail == Wrapping(avail_index) {
+        if avail_len.0 > queue_size || self.next_avail == avail_index {
             return None;
         }
 
@@ -361,11 +436,7 @@ impl Queue {
     pub fn pop_peeked(&mut self, mem: &GuestMemory) {
         self.next_avail += Wrapping(1);
         if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
-            let avail_event_off = self
-                .used_ring
-                .unchecked_add((4 + 8 * self.actual_size()).into());
-            mem.write_obj_at_addr(self.next_avail.0 as u16, avail_event_off)
-                .unwrap();
+            self.set_avail_event(mem, self.next_avail);
         }
     }
 
@@ -419,12 +490,7 @@ impl Queue {
             .unwrap();
 
         self.next_used += Wrapping(1);
-
-        // This fence ensures all descriptor writes are visible before the index update is.
-        fence(Ordering::Release);
-
-        mem.write_obj_at_addr(self.next_used.0 as u16, used_ring.unchecked_add(2))
-            .unwrap();
+        self.set_used_index(mem, self.next_used);
     }
 
     /// Enable / Disable guest notify device that requests are available on
@@ -437,47 +503,27 @@ impl Queue {
         }
 
         if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
-            let avail_index_addr = mem.checked_offset(self.avail_ring, 2).unwrap();
-            let avail_index: u16 = mem.read_obj_from_addr(avail_index_addr).unwrap();
-            let avail_event_off = self
-                .used_ring
-                .unchecked_add((4 + 8 * self.actual_size()).into());
-            mem.write_obj_at_addr(avail_index, avail_event_off).unwrap();
+            self.set_avail_event(mem, self.get_avail_index(mem));
         } else {
-            let mut used_flags: u16 = mem.read_obj_from_addr(self.used_ring).unwrap();
-            if self.notification_disable_count == 0 {
-                used_flags &= !VIRTQ_USED_F_NO_NOTIFY;
-            } else {
-                used_flags |= VIRTQ_USED_F_NO_NOTIFY;
-            }
-            mem.write_obj_at_addr(used_flags, self.used_ring).unwrap();
+            self.set_used_flag(
+                mem,
+                VIRTQ_USED_F_NO_NOTIFY,
+                self.notification_disable_count > 0,
+            );
         }
     }
 
     // Check Whether guest enable interrupt injection or not.
     fn available_interrupt_enabled(&self, mem: &GuestMemory) -> bool {
         if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
-            let used_event_off = self
-                .avail_ring
-                .unchecked_add((4 + 2 * self.actual_size()).into());
-            let used_event: u16 = mem.read_obj_from_addr(used_event_off).unwrap();
+            let used_event = self.get_used_event(mem);
             // if used_event >= self.last_used, driver handle interrupt quickly enough, new
             // interrupt could be injected.
             // if used_event < self.last_used, driver hasn't finished the last interrupt,
             // so no need to inject new interrupt.
-            if self.next_used - Wrapping(used_event) - Wrapping(1) < self.next_used - self.last_used
-            {
-                true
-            } else {
-                false
-            }
+            self.next_used - used_event - Wrapping(1) < self.next_used - self.last_used
         } else {
-            let avail_flags: u16 = mem.read_obj_from_addr(self.avail_ring).unwrap();
-            if avail_flags & VIRTQ_AVAIL_F_NO_INTERRUPT == VIRTQ_AVAIL_F_NO_INTERRUPT {
-                false
-            } else {
-                true
-            }
+            !self.get_avail_flag(mem, VIRTQ_AVAIL_F_NO_INTERRUPT)
         }
     }
 
