@@ -165,6 +165,9 @@ struct Context {
 
     in_res: InputResources,
     out_res: OutputResources,
+
+    // Set the flag if we need to clear output resource when the output queue is cleared next time.
+    is_clear_out_res_needed: bool,
 }
 
 impl Context {
@@ -261,6 +264,12 @@ impl Context {
             // No need to set `frame_rate`, as it's only for the encoder.
             ..Default::default()
         };
+
+        // That eos_resource_id has value means there are previous output resources.
+        // Clear the output resources when the output queue is cleared next time.
+        if self.out_res.eos_resource_id.is_some() {
+            self.is_clear_out_res_needed = true;
+        }
     }
 
     fn handle_picture_ready(
@@ -742,7 +751,11 @@ impl<'a> Decoder<'a> {
                 session.reset().map_err(VideoError::VdaError)?;
             }
             QueueType::Output => {
-                ctx.out_res = Default::default();
+                if std::mem::replace(&mut ctx.is_clear_out_res_needed, false) {
+                    ctx.out_res = Default::default();
+                } else {
+                    ctx.out_res.queued_res_ids.clear();
+                }
             }
         }
         Ok(())
