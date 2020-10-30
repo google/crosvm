@@ -52,12 +52,12 @@ impl LibvdaEncoder {
                     frame_formats: vec![FrameFormat {
                         width: FormatRange {
                             min: 2,
-                            max: 1920,
+                            max: 4096,
                             step: 1,
                         },
                         height: FormatRange {
                             min: 2,
-                            max: 1080,
+                            max: 4096,
                             step: 1,
                         },
                         bitrates: vec![FormatRange {
