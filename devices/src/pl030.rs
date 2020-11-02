@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use base::{warn, Event};
+use std::convert::TryFrom;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::BusDevice;
@@ -75,15 +76,15 @@ impl BusDevice for Pl030 {
     }
 
     fn write(&mut self, offset: u64, data: &[u8]) {
-        if data.len() != 4 {
-            warn!("bad write size: {} for pl030", data.len());
-            return;
-        }
+        let data_array = match <&[u8; 4]>::try_from(data) {
+            Ok(array) => array,
+            _ => {
+                warn!("bad write size: {} for pl030", data.len());
+                return;
+            }
+        };
 
-        let reg_val: u32 = (data[0] as u32) << 24
-            | (data[1] as u32) << 16
-            | (data[2] as u32) << 8
-            | (data[3] as u32);
+        let reg_val = u32::from_ne_bytes(*data_array);
         match offset {
             RTCDR => {
                 warn!("invalid write to read-only RTCDR register");
@@ -118,10 +119,13 @@ impl BusDevice for Pl030 {
     }
 
     fn read(&mut self, offset: u64, data: &mut [u8]) {
-        if data.len() != 4 {
-            warn!("bad read size: {} for pl030", data.len());
-            return;
-        }
+        let data_array = match <&mut [u8; 4]>::try_from(data) {
+            Ok(array) => array,
+            _ => {
+                warn!("bad write size for pl030");
+                return;
+            }
+        };
 
         let reg_content: u32 = match offset {
             RTCDR => get_epoch_time(),
@@ -137,10 +141,7 @@ impl BusDevice for Pl030 {
 
             o => panic!("pl030: bad read offset {}", o),
         };
-        data[0] = reg_content as u8;
-        data[1] = (reg_content >> 8) as u8;
-        data[2] = (reg_content >> 16) as u8;
-        data[3] = (reg_content >> 24) as u8;
+        *data_array = reg_content.to_ne_bytes();
     }
 }
 #[cfg(test)]
@@ -172,6 +173,6 @@ mod tests {
 
         device.write(RTCMR, &[1, 2, 3, 4]);
         device.read(RTCMR, &mut register);
-        assert_eq!(register, [4, 3, 2, 1]);
+        assert_eq!(register, [1, 2, 3, 4]);
     }
 }
