@@ -16,8 +16,8 @@ use vm_memory::GuestMemory;
 use super::*;
 use crate::pci::{
     MsixCap, MsixConfig, PciAddress, PciBarConfiguration, PciCapability, PciCapabilityID,
-    PciClassCode, PciConfiguration, PciDevice, PciDeviceError, PciHeaderType, PciInterruptPin,
-    PciSubclass,
+    PciClassCode, PciConfiguration, PciDevice, PciDeviceError, PciDisplaySubclass, PciHeaderType,
+    PciInterruptPin, PciSubclass,
 };
 use vm_control::VmIrqRequestSocket;
 
@@ -235,6 +235,17 @@ impl VirtioPciDevice {
 
         let pci_device_id = VIRTIO_PCI_DEVICE_ID_BASE + device.device_type() as u16;
 
+        let (pci_device_class, pci_device_subclass) = match device.device_type() {
+            TYPE_GPU => (
+                PciClassCode::DisplayController,
+                &PciDisplaySubclass::Other as &dyn PciSubclass,
+            ),
+            _ => (
+                PciClassCode::Other,
+                &PciVirtioSubclass::NonTransitionalBase as &dyn PciSubclass,
+            ),
+        };
+
         let num_queues = device.queue_max_sizes().len();
 
         // One MSI-X vector per queue plus one for configuration changes.
@@ -244,8 +255,8 @@ impl VirtioPciDevice {
         let config_regs = PciConfiguration::new(
             VIRTIO_PCI_VENDOR_ID,
             pci_device_id,
-            PciClassCode::Other,
-            &PciVirtioSubclass::NonTransitionalBase,
+            pci_device_class,
+            pci_device_subclass,
             None,
             PciHeaderType::Device,
             VIRTIO_PCI_VENDOR_ID,

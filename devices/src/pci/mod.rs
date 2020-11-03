@@ -23,8 +23,8 @@ pub use self::ac97::{Ac97Backend, Ac97Dev, Ac97Parameters};
 pub use self::msix::{MsixCap, MsixConfig, MsixStatus};
 pub use self::pci_configuration::{
     PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability, PciCapabilityID,
-    PciClassCode, PciConfiguration, PciHeaderType, PciProgrammingInterface, PciSerialBusSubClass,
-    PciSubclass,
+    PciClassCode, PciConfiguration, PciDisplaySubclass, PciHeaderType, PciProgrammingInterface,
+    PciSerialBusSubClass, PciSubclass,
 };
 pub use self::pci_device::Error as PciDeviceError;
 pub use self::pci_device::PciDevice;

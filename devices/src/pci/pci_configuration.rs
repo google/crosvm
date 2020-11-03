@@ -70,6 +70,22 @@ pub trait PciSubclass {
     fn get_register_value(&self) -> u8;
 }
 
+/// Subclasses of the DisplayController class.
+#[allow(dead_code)]
+#[derive(Copy, Clone)]
+pub enum PciDisplaySubclass {
+    VgaCompatibleController = 0x00,
+    XgaCompatibleController = 0x01,
+    ThreeDController = 0x02,
+    Other = 0x80,
+}
+
+impl PciSubclass for PciDisplaySubclass {
+    fn get_register_value(&self) -> u8 {
+        *self as u8
+    }
+}
+
 /// Subclasses of the MultimediaController class.
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
