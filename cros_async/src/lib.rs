@@ -66,6 +66,7 @@ mod io_ext;
 mod io_source;
 mod poll_source;
 mod select;
+mod timer;
 mod uring_executor;
 mod uring_futures;
 pub mod uring_mem;
@@ -79,6 +80,7 @@ pub use io_ext::{
 };
 pub use poll_source::PollSource;
 pub use select::SelectResult;
+pub use timer::TimerAsync;
 pub use uring_futures::UringSource;
 pub use uring_mem::{BackingMemory, MemRegion};
 
