@@ -322,10 +322,7 @@ enum VcpuRunData<'a> {
 
 impl<'a> VcpuRunData<'a> {
     fn is_write(&self) -> bool {
-        match self {
-            VcpuRunData::Write(_) => true,
-            _ => false,
-        }
+        matches!(self, VcpuRunData::Write(_))
     }
 
     fn as_slice(&self) -> &[u8] {

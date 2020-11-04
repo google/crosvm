@@ -345,10 +345,7 @@ impl arch::LinuxArch for X8664arch {
         E2: StdError + 'static,
         E3: StdError + 'static,
     {
-        let has_bios = match components.vm_image {
-            VmImage::Bios(_) => true,
-            _ => false,
-        };
+        let has_bios = matches!(components.vm_image, VmImage::Bios(_));
         let mem = Self::setup_memory(components.memory_size, has_bios)?;
         let mut resources = Self::get_resource_allocator(&mem, components.wayland_dmabuf);
 

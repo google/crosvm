@@ -551,28 +551,9 @@ impl PitCounter {
         //  - 2 counter select bits, which aren't used by the counter/channel itself
         self.command = (state.mode << 1) | ((state.rw_mode as u8) << 4);
         self.gate = state.gate;
-        self.latched = match state.count_latched {
-            PitRWState::None => false,
-            _ => true,
-        };
-
-        match state.read_state {
-            PitRWState::Word1 => {
-                self.read_low_byte = true;
-            }
-            _ => {
-                self.read_low_byte = false;
-            }
-        }
-
-        match state.write_state {
-            PitRWState::Word1 => {
-                self.wrote_low_byte = true;
-            }
-            _ => {
-                self.wrote_low_byte = false;
-            }
-        }
+        self.latched = state.count_latched != PitRWState::None;
+        self.read_low_byte = state.read_state == PitRWState::Word1;
+        self.wrote_low_byte = state.write_state == PitRWState::Word1;
 
         // To convert the count_load_time to an instant we have to convert it to a
         // duration by comparing it to get_monotonic_time.  Then subtract that duration from

@@ -42,10 +42,7 @@ use vm_control::{
 };
 
 fn executable_is_plugin(executable: &Option<Executable>) -> bool {
-    match executable {
-        Some(Executable::Plugin(_)) => true,
-        _ => false,
-    }
+    matches!(executable, Some(Executable::Plugin(_)))
 }
 
 // Wait for all children to exit. Return true if they have all exited, false

@@ -44,10 +44,7 @@ fn socket_msg_impl(input: DeriveInput) -> TokenStream {
 }
 
 fn is_named_struct(ds: &DataStruct) -> bool {
-    match &ds.fields {
-        Fields::Named(_f) => true,
-        _ => false,
-    }
+    matches!(&ds.fields, Fields::Named(_f))
 }
 
 /************************** Named Struct Impls ********************************************/

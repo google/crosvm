@@ -834,10 +834,7 @@ impl PciDevice for VfioPciDevice {
             low = self.config.read_config_dword(offset);
 
             let low_flag = low & 0xf;
-            let is_64bit = match low_flag & 0x4 {
-                0x4 => true,
-                _ => false,
-            };
+            let is_64bit = low_flag & 0x4 == 0x4;
             if (low_flag & 0x1 == 0 || i == VFIO_PCI_ROM_REGION_INDEX) && low != 0 {
                 let mut upper: u32 = 0xffffffff;
                 if is_64bit {
