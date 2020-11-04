@@ -2,12 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, stdout, ErrorKind};
+use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixDatagram;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
@@ -26,6 +28,7 @@ pub enum Error {
     FileError(std::io::Error),
     InvalidSerialHardware(String),
     InvalidSerialType(String),
+    InvalidPath,
     PathRequired,
     SocketCreateFailed,
     Unimplemented(SerialType),
@@ -40,6 +43,7 @@ impl Display for Error {
             FileError(e) => write!(f, "unable to open/create file: {}", e),
             InvalidSerialHardware(e) => write!(f, "invalid serial hardware: {}", e),
             InvalidSerialType(e) => write!(f, "invalid serial type: {}", e),
+            InvalidPath => write!(f, "serial device path is invalid"),
             PathRequired => write!(f, "serial device type file requires a path"),
             SocketCreateFailed => write!(f, "failed to create unbound socket"),
             Unimplemented(e) => write!(f, "serial device type {} not implemented", e.to_string()),
@@ -194,6 +198,10 @@ pub struct SerialParameters {
     pub stdin: bool,
 }
 
+// The maximum length of a path that can be used as the address of a
+// unix socket. Note that this includes the null-terminator.
+const MAX_SOCKET_PATH_LENGTH: usize = 108;
+
 impl SerialParameters {
     /// Helper function to create a serial device from the defined parameters.
     ///
@@ -256,13 +264,47 @@ impl SerialParameters {
             SerialType::UnixSocket => {
                 match &self.path {
                     Some(path) => {
+                        // If the path is longer than 107 characters,
+                        // then we won't be able to connect directly
+                        // to it. Instead we can shorten the path by
+                        // opening the containing directory and using
+                        // /proc/self/fd/*/ to access it via a shorter
+                        // path.
+                        let mut path_cow = Cow::<Path>::Borrowed(path);
+                        let mut _dir_fd = None;
+                        if path.as_os_str().len() >= MAX_SOCKET_PATH_LENGTH {
+                            let mut short_path = PathBuf::with_capacity(MAX_SOCKET_PATH_LENGTH);
+                            short_path.push("/proc/self/fd/");
+
+                            // We don't actually want to open this
+                            // directory for reading, but the stdlib
+                            // requires all files be opened as at
+                            // least one of readable, writeable, or
+                            // appeandable.
+                            let dir = OpenOptions::new()
+                                .read(true)
+                                .open(path.parent().ok_or(Error::InvalidPath)?)
+                                .map_err(Error::FileError)?;
+
+                            short_path.push(dir.as_raw_fd().to_string());
+                            short_path.push(path.file_name().ok_or(Error::InvalidPath)?);
+                            path_cow = Cow::Owned(short_path);
+                            _dir_fd = Some(dir);
+                        }
+
+                        // The shortened path may still be too long,
+                        // in which case we must give up here.
+                        if path_cow.as_os_str().len() >= MAX_SOCKET_PATH_LENGTH {
+                            return Err(Error::InvalidPath);
+                        }
+
                         // There's a race condition between
                         // vmlog_forwarder making the logging socket and
                         // crosvm starting up, so we loop here until it's
                         // available.
                         let sock = UnixDatagram::unbound().map_err(Error::FileError)?;
                         loop {
-                            match sock.connect(path) {
+                            match sock.connect(&path_cow) {
                                 Ok(_) => break,
                                 Err(e) => {
                                     match e.kind() {
