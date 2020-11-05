@@ -114,6 +114,7 @@ impl<F: FileSystem + Sync> Server<F> {
             Some(Opcode::Rename2) => self.rename2(in_header, r, w),
             Some(Opcode::Lseek) => self.lseek(in_header, r, w),
             Some(Opcode::CopyFileRange) => self.copy_file_range(in_header, r, w),
+            Some(Opcode::ChromeOsTmpfile) => self.chromeos_tmpfile(in_header, r, w),
             Some(Opcode::SetUpMapping) | Some(Opcode::RemoveMapping) | None => reply_error(
                 io::Error::from_raw_os_error(libc::ENOSYS),
                 in_header.unique,
@@ -333,6 +334,44 @@ impl<F: FileSystem + Sync> Server<F> {
             Context::from(in_header),
             in_header.nodeid.into(),
             name,
+            mode,
+            umask,
+            security_ctx,
+        ) {
+            Ok(entry) => {
+                let out = EntryOut::from(entry);
+
+                reply_ok(Some(out), None, in_header.unique, w)
+            }
+            Err(e) => reply_error(e, in_header.unique, w),
+        }
+    }
+
+    fn chromeos_tmpfile<R: Reader, W: Writer>(
+        &self,
+        in_header: InHeader,
+        mut r: R,
+        w: W,
+    ) -> Result<usize> {
+        let ChromeOsTmpfileIn { mode, umask } =
+            ChromeOsTmpfileIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
+
+        let buflen = (in_header.len as usize)
+            .checked_sub(size_of::<InHeader>())
+            .and_then(|l| l.checked_sub(size_of::<MkdirIn>()))
+            .ok_or(Error::InvalidHeaderLength)?;
+        let mut buf = vec![0u8; buflen];
+
+        let security_ctx = if buflen > 0 {
+            r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
+            Some(bytes_to_cstr(&buf)?)
+        } else {
+            None
+        };
+
+        match self.fs.chromeos_tmpfile(
+            Context::from(in_header),
+            in_header.nodeid.into(),
             mode,
             umask,
             security_ctx,

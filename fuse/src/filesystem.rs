@@ -544,6 +544,18 @@ pub trait FileSystem {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
+    /// Create an unnamed temporary file.
+    fn chromeos_tmpfile(
+        &self,
+        ctx: Context,
+        parent: Self::Inode,
+        mode: u32,
+        umask: u32,
+        security_ctx: Option<&CStr>,
+    ) -> io::Result<Entry> {
+        Err(io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
     /// Remove a file.
     ///
     /// If the file's inode lookup count is non-zero, then the file system is expected to delay

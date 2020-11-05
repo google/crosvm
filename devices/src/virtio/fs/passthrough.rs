@@ -630,32 +630,8 @@ impl PassthroughFs {
         Err(io::Error::from_raw_os_error(libc::ENOENT))
     }
 
-    fn do_lookup(&self, parent: &InodeData, name: &CStr) -> io::Result<Entry> {
-        let raw_descriptor = {
-            // Safe because this doesn't modify any memory and we check the return value.
-            let raw_descriptor = unsafe {
-                libc::openat(
-                    parent.file.as_raw_descriptor(),
-                    name.as_ptr(),
-                    libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-                )
-            };
-
-            if raw_descriptor < 0 && self.cfg.ascii_casefold {
-                // Ignore any errors during casefold lookup.
-                self.ascii_casefold_lookup(parent, name.to_bytes())
-                    .unwrap_or(raw_descriptor)
-            } else {
-                raw_descriptor
-            }
-        };
-        if raw_descriptor < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        // Safe because we just opened this descriptor.
-        let f = unsafe { File::from_raw_descriptor(raw_descriptor) };
-
+    // Creates a new entry for `f` or increases the refcount of the existing entry for `f`.
+    fn add_entry(&self, f: File) -> io::Result<Entry> {
         let st = stat(&f)?;
 
         let altkey = InodeAltKey {
@@ -699,6 +675,35 @@ impl PassthroughFs {
         })
     }
 
+    fn do_lookup(&self, parent: &InodeData, name: &CStr) -> io::Result<Entry> {
+        let fd = {
+            // Safe because this doesn't modify any memory and we check the return value.
+            let fd = unsafe {
+                libc::openat(
+                    parent.file.as_raw_descriptor(),
+                    name.as_ptr(),
+                    libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                )
+            };
+
+            if fd < 0 && self.cfg.ascii_casefold {
+                // Ignore any errors during casefold lookup.
+                self.ascii_casefold_lookup(parent, name.to_bytes())
+                    .unwrap_or(fd)
+            } else {
+                fd
+            }
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        // Safe because we just opened this fd.
+        let f = unsafe { File::from_raw_descriptor(fd) };
+
+        self.add_entry(f)
+    }
+
     fn do_open(&self, inode: Inode, flags: u32) -> io::Result<(Option<Handle>, OpenOptions)> {
         let inode_data = self.find_inode(inode)?;
 
@@ -727,6 +732,68 @@ impl PassthroughFs {
         };
 
         Ok((Some(handle), opts))
+    }
+
+    fn do_tmpfile(
+        &self,
+        ctx: &Context,
+        dir: &InodeData,
+        flags: u32,
+        mut mode: u32,
+        umask: u32,
+    ) -> io::Result<File> {
+        // We don't want to use `O_EXCL` with `O_TMPFILE` as it has a different meaning when used in
+        // that combination.
+        let mut tmpflags = (flags as i32 | libc::O_TMPFILE | libc::O_CLOEXEC | libc::O_NOFOLLOW)
+            & !(libc::O_EXCL | libc::O_CREAT);
+
+        // O_TMPFILE requires that we use O_RDWR or O_WRONLY.
+        if flags as i32 & libc::O_ACCMODE == libc::O_RDONLY {
+            tmpflags &= !libc::O_ACCMODE;
+            tmpflags |= libc::O_RDWR;
+        }
+
+        // The presence of a default posix acl xattr in the parent directory completely changes the
+        // meaning of the mode parameter so only apply the umask if it doesn't have one.
+        if !self.has_default_posix_acl(&dir)? {
+            mode &= !umask;
+        }
+
+        // Safe because this is a valid c string.
+        let current_dir = unsafe { CStr::from_bytes_with_nul_unchecked(b".\0") };
+
+        // Safe because this doesn't modify any memory and we check the return value.
+        let fd = unsafe {
+            libc::openat(
+                dir.file.as_raw_descriptor(),
+                current_dir.as_ptr(),
+                tmpflags,
+                mode,
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        // Safe because we just opened this fd.
+        let tmpfile = unsafe { File::from_raw_descriptor(fd) };
+
+        // We need to respect the setgid bit in the parent directory if it is set.
+        let st = stat(&dir.file)?;
+        let gid = if st.st_mode & libc::S_ISGID != 0 {
+            st.st_gid
+        } else {
+            ctx.gid
+        };
+
+        // Now set the uid and gid for the file. Safe because this doesn't modify any memory and we
+        // check the return value.
+        let ret = unsafe { libc::fchown(tmpfile.as_raw_descriptor(), ctx.uid, gid) };
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(tmpfile)
     }
 
     fn do_release(&self, inode: Inode, handle: Handle) -> io::Result<()> {
@@ -1403,12 +1470,32 @@ impl FileSystem for PassthroughFs {
         self.do_release(inode, handle)
     }
 
+    fn chromeos_tmpfile(
+        &self,
+        ctx: Context,
+        parent: Self::Inode,
+        mode: u32,
+        umask: u32,
+        security_ctx: Option<&CStr>,
+    ) -> io::Result<Entry> {
+        let data = self.find_inode(parent)?;
+
+        let _ctx = security_ctx
+            .filter(|ctx| ctx.to_bytes() != UNLABELED)
+            .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
+            .transpose()?;
+
+        let tmpfile = self.do_tmpfile(&ctx, &data, 0, mode, umask)?;
+
+        self.add_entry(tmpfile)
+    }
+
     fn create(
         &self,
         ctx: Context,
         parent: Inode,
         name: &CStr,
-        mut mode: u32,
+        mode: u32,
         flags: u32,
         umask: u32,
         security_ctx: Option<&CStr>,
@@ -1430,56 +1517,7 @@ impl FileSystem for PassthroughFs {
             .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
             .transpose()?;
 
-        // We don't want to use `O_EXCL` with `O_TMPFILE` as it has a different meaning when used in
-        // that combination.
-        let mut tmpflags = (flags as i32 | libc::O_TMPFILE | libc::O_CLOEXEC | libc::O_NOFOLLOW)
-            & !(libc::O_EXCL | libc::O_CREAT);
-
-        // O_TMPFILE requires that we use O_RDWR or O_WRONLY.
-        if flags as i32 & libc::O_ACCMODE == libc::O_RDONLY {
-            tmpflags &= !libc::O_ACCMODE;
-            tmpflags |= libc::O_RDWR;
-        }
-
-        // The presence of a default posix acl xattr in the parent directory completely changes the
-        // meaning of the mode parameter so only apply the umask if it doesn't have one.
-        if !self.has_default_posix_acl(&data)? {
-            mode &= !umask;
-        }
-
-        // Safe because this is a valid c string.
-        let current_dir = unsafe { CStr::from_bytes_with_nul_unchecked(b".\0") };
-
-        // Safe because this doesn't modify any memory and we check the return value.
-        let raw_descriptor = unsafe {
-            libc::openat(
-                data.file.as_raw_descriptor(),
-                current_dir.as_ptr(),
-                tmpflags,
-                mode,
-            )
-        };
-        if raw_descriptor < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        // Safe because we just opened this descriptor.
-        let tmpfile = unsafe { File::from_raw_descriptor(raw_descriptor) };
-
-        // We need to respect the setgid bit in the parent directory if it is set.
-        let st = stat(&data.file)?;
-        let gid = if st.st_mode & libc::S_ISGID != 0 {
-            st.st_gid
-        } else {
-            ctx.gid
-        };
-
-        // Now set the uid and gid for the file. Safe because this doesn't modify any memory and we
-        // check the return value.
-        let ret = unsafe { libc::fchown(tmpfile.as_raw_descriptor(), ctx.uid, gid) };
-        if ret < 0 {
-            return Err(io::Error::last_os_error());
-        }
+        let tmpfile = self.do_tmpfile(&ctx, &data, flags, mode, umask)?;
 
         let proc_path = CString::new(format!("self/fd/{}", tmpfile.as_raw_descriptor()))
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;

@@ -588,6 +588,8 @@ pub enum Opcode {
     CopyFileRange = 47,
     SetUpMapping = 48,
     RemoveMapping = 49,
+
+    ChromeOsTmpfile = u32::MAX,
 }
 
 #[repr(u32)]
@@ -674,6 +676,14 @@ pub struct MkdirIn {
     pub umask: u32,
 }
 unsafe impl DataInit for MkdirIn {}
+
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ChromeOsTmpfileIn {
+    pub mode: u32,
+    pub umask: u32,
+}
+unsafe impl DataInit for ChromeOsTmpfileIn {}
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
