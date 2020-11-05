@@ -173,8 +173,8 @@ impl EncoderCapabilities {
     pub fn populate_dst_params(
         &self,
         dst_params: &mut Params,
-        src_params: &Params,
         desired_format: Format,
+        buffer_size: u32,
         frame_rate: u32,
     ) -> Result<()> {
         // TODO(alexlau): Should the first be the default?
@@ -189,12 +189,11 @@ impl EncoderCapabilities {
             );
         dst_params.format = Some(format_desc.format.clone());
 
-        // TODO(alexlau): What values should be assigned here?
-        dst_params.frame_width = src_params.frame_width;
-        dst_params.frame_height = src_params.frame_height;
+        // The requested output buffer size might be adjusted by the encoder to match hardware
+        // requirements in RequireInputBuffers.
         dst_params.plane_formats = vec![PlaneFormat {
-            plane_size: src_params.frame_width * dst_params.frame_height * 4,
-            stride: src_params.frame_width * 2,
+            plane_size: buffer_size,
+            stride: 0,
         }];
         dst_params.frame_rate = frame_rate;
         Ok(())

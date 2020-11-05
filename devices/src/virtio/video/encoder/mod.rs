@@ -30,7 +30,7 @@ use crate::virtio::video::encoder::encoder::{
 };
 use crate::virtio::video::error::*;
 use crate::virtio::video::event::{EvtType, VideoEvt};
-use crate::virtio::video::format::{Format, Level, Profile};
+use crate::virtio::video::format::{Format, Level, PlaneFormat, Profile};
 use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol;
 use crate::virtio::video::response::CmdResponse;
@@ -102,6 +102,7 @@ impl<T: EncoderSession> Stream<T> {
         const DEFAULT_WIDTH: u32 = 640;
         const DEFAULT_HEIGHT: u32 = 480;
         const DEFAULT_BITRATE: u32 = 6000;
+        const DEFAULT_BUFFER_SIZE: u32 = 2097152; // 2MB; chosen empirically for 1080p video
         const DEFAULT_FPS: u32 = 30;
 
         let mut src_params = Params {
@@ -124,8 +125,8 @@ impl<T: EncoderSession> Stream<T> {
         cros_capabilities
             .populate_dst_params(
                 &mut dst_params,
-                &src_params,
                 desired_format,
+                DEFAULT_BUFFER_SIZE,
                 /* fps= */ DEFAULT_FPS,
             )
             .map_err(|_| VideoError::InvalidArgument)?;
@@ -936,6 +937,7 @@ impl<T: Encoder> EncoderDevice<T> {
         frame_width: u32,
         frame_height: u32,
         frame_rate: u32,
+        plane_formats: Vec<PlaneFormat>,
     ) -> VideoResult<VideoCmdResponseType> {
         let stream = self
             .streams
@@ -961,11 +963,17 @@ impl<T: Encoder> EncoderDevice<T> {
             }
             QueueType::Output => {
                 let desired_format = format.or(stream.dst_params.format).unwrap_or(Format::H264);
+
+                // There should be exactly one output buffer.
+                if plane_formats.len() != 1 {
+                    return Err(VideoError::InvalidArgument);
+                }
+
                 self.cros_capabilities
                     .populate_dst_params(
                         &mut stream.dst_params,
-                        &stream.src_params,
                         desired_format,
+                        plane_formats[0].plane_size,
                         frame_rate,
                     )
                     .map_err(VideoError::EncoderImpl)?;
@@ -1208,6 +1216,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                         frame_width,
                         frame_height,
                         frame_rate,
+                        plane_formats,
                         ..
                     },
             } => self.set_params(
@@ -1218,6 +1227,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                 frame_width,
                 frame_height,
                 frame_rate,
+                plane_formats,
             ),
             VideoCmd::QueryControl { query_ctrl_type } => self.query_control(query_ctrl_type),
             VideoCmd::GetControl {
