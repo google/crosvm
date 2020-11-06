@@ -8,7 +8,7 @@ use std::num::Wrapping;
 use std::rc::Rc;
 use std::sync::atomic::{fence, Ordering};
 
-use base::{error, AsRawDescriptor};
+use base::error;
 use cros_async::{AsyncError, EventAsync};
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::{GuestAddress, GuestMemory};
@@ -385,10 +385,10 @@ impl Queue {
 
     /// Asynchronously read the next descriptor chain from the queue.
     /// Returns a `DescriptorChain` when it is `await`ed.
-    pub async fn next_async<F: AsRawDescriptor + Unpin>(
+    pub async fn next_async(
         &mut self,
         mem: &GuestMemory,
-        eventfd: &mut EventAsync<F>,
+        eventfd: &mut EventAsync,
     ) -> std::result::Result<DescriptorChain, AsyncError> {
         loop {
             // Check if there are more descriptors available.

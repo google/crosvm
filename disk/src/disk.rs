@@ -382,7 +382,7 @@ pub struct SingleFileDisk {
 impl TryFrom<File> for SingleFileDisk {
     type Error = Error;
     fn try_from(inner: File) -> Result<Self> {
-        cros_async::new(inner)
+        cros_async::async_from(inner)
             .map_err(Error::CreateSingleFileDisk)
             .map(|inner| SingleFileDisk { inner })
     }

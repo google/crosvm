@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 libc = "*"
 syscall_defines = { path = "../syscall_defines" }
-base = { path = "../base" }
+sys_util = { path = "../sys_util" }
 
 [dev-dependencies]
 tempfile = { path = "../tempfile" }

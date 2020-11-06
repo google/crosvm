@@ -68,8 +68,8 @@ use std::task::{Context, Poll};
 use futures::pin_mut;
 use slab::Slab;
 
-use base::WatchingEvents;
 use io_uring::URingContext;
+use sys_util::WatchingEvents;
 
 use crate::executor::{ExecutableFuture, Executor, FutureList};
 use crate::uring_mem::{BackingMemory, MemRegion};
@@ -80,7 +80,7 @@ pub enum Error {
     /// Attempts to create two Executors on the same thread fail.
     AttemptedDuplicateExecutor,
     /// Failed to copy the FD for the polling context.
-    DuplicatingFd(base::Error),
+    DuplicatingFd(sys_util::Error),
     /// Failed accessing the thread local storage for wakers.
     InvalidContext,
     /// Invalid offset or length given for an iovec in backing memory.
@@ -346,7 +346,7 @@ impl RingWakerState {
     fn submit_poll(
         &mut self,
         source: &RegisteredSource,
-        events: &base::WatchingEvents,
+        events: &sys_util::WatchingEvents,
     ) -> Result<WakerToken> {
         let src = self
             .registered_sources
@@ -679,7 +679,7 @@ impl<T: FutureList> Drop for URingExecutor<T> {
 unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
     let ret = libc::dup(fd);
     if ret < 0 {
-        Err(Error::DuplicatingFd(base::Error::last()))
+        Err(Error::DuplicatingFd(sys_util::Error::last()))
     } else {
         Ok(ret)
     }
@@ -733,7 +733,7 @@ mod tests {
         let bm = Rc::new(VecIoWrapper::from(vec![0u8; 4096])) as Rc<dyn BackingMemory>;
 
         // Use pipes to create a future that will block forever.
-        let (rx, mut tx) = base::pipe(true).unwrap();
+        let (rx, mut tx) = sys_util::pipe(true).unwrap();
 
         // Set up the TLS for the uring_executor by creating one.
         let _ex = URingExecutor::new(crate::executor::UnitFutures::new()).unwrap();
@@ -771,7 +771,7 @@ mod tests {
         let bm = Rc::new(VecIoWrapper::from(vec![0u8; 4096])) as Rc<dyn BackingMemory>;
 
         // Use pipes to create a future that will block forever.
-        let (mut rx, tx) = base::new_pipe_full().expect("Pipe failed");
+        let (mut rx, tx) = sys_util::new_pipe_full().expect("Pipe failed");
 
         // Set up the TLS for the uring_executor by creating one.
         let _ex = URingExecutor::new(crate::executor::UnitFutures::new()).unwrap();
@@ -797,7 +797,7 @@ mod tests {
         // Finishing the operation should put the Rc count back to 1.
         // write to the pipe to wake the read pipe and then wait for the uring result in the
         // executor.
-        let mut buf = vec![0u8; base::round_up_to_page_size(1)];
+        let mut buf = vec![0u8; sys_util::round_up_to_page_size(1)];
         rx.read(&mut buf).expect("read to empty failed");
         RingWakerState::wait_wake_event().expect("Failed to wait for read pipe ready");
         assert_eq!(Rc::strong_count(&bm), 1);
@@ -806,7 +806,7 @@ mod tests {
     #[test]
     fn registered_source_outlives_executor() {
         let bm = Rc::new(VecIoWrapper::from(vec![0u8; 4096])) as Rc<dyn BackingMemory>;
-        let (rx, tx) = base::pipe(true).unwrap();
+        let (rx, tx) = sys_util::pipe(true).unwrap();
 
         // Register a source before creating the executor.
         let rx_source = register_source(&rx).expect("register source failed");
@@ -854,7 +854,7 @@ mod tests {
 
         let bm = Rc::new(VecIoWrapper::from(vec![0u8; 16])) as Rc<dyn BackingMemory>;
 
-        let (rx, tx) = base::pipe(true).expect("Pipe failed");
+        let (rx, tx) = sys_util::pipe(true).expect("Pipe failed");
 
         let mut ex = URingExecutor::new(crate::executor::UnitFutures::new()).unwrap();
 

@@ -8,6 +8,7 @@ edition = "2018"
 chromeos = ["sys_util/chromeos"]
 
 [dependencies]
+cros_async = { path = "../cros_async" }
 data_model = { path = "../data_model" }
 libc = "*"
 sync = { path = "../sync" }

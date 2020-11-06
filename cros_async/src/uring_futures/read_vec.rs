@@ -144,9 +144,9 @@ mod tests {
 
     #[test]
     fn event() {
-        use base::Event;
+        use sys_util::EventFd;
 
-        async fn write_event(ev: Event, wait: Event) {
+        async fn write_event(ev: EventFd, wait: EventFd) {
             let wait = UringSource::new(wait).unwrap();
             ev.write(55).unwrap();
             read_u64(&wait).await;
@@ -156,7 +156,7 @@ mod tests {
             read_u64(&wait).await;
         }
 
-        async fn read_events(ev: Event, signal: Event) {
+        async fn read_events(ev: EventFd, signal: EventFd) {
             let source = UringSource::new(ev).unwrap();
             assert_eq!(read_u64(&source).await, 55);
             signal.write(1).unwrap();
@@ -166,8 +166,8 @@ mod tests {
             signal.write(1).unwrap();
         }
 
-        let event = Event::new().unwrap();
-        let signal_wait = Event::new().unwrap();
+        let event = EventFd::new().unwrap();
+        let signal_wait = EventFd::new().unwrap();
         let write_task = write_event(event.try_clone().unwrap(), signal_wait.try_clone().unwrap());
         let read_task = read_events(event, signal_wait);
         let joined = futures::future::join(read_task, write_task);
@@ -180,7 +180,7 @@ mod tests {
         use futures::future::Either;
 
         async fn do_test() {
-            let (read_source, _w) = base::pipe(true).unwrap();
+            let (read_source, _w) = sys_util::pipe(true).unwrap();
             let source = UringSource::new(read_source).unwrap();
             let done = async { 5usize };
             let pending = read_u64(&source);

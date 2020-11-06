@@ -42,7 +42,7 @@ pub enum EventType {
 ///
 /// ```
 /// # use base::{
-///     Result, Event, WaitContext, EventMethods, EventTrigger,
+///     Result, Event, WaitContext,
 /// };
 /// # fn test() -> Result<()> {
 ///     let evt1 = Event::new()?;

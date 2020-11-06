@@ -6,8 +6,8 @@ mod msg_on_socket;
 mod serializable_descriptors;
 
 use base::{
-    handle_eintr, net::UnixSeqpacket, AsRawDescriptor, Error as SysError, Fd, RawDescriptor,
-    ScmSocket, UnsyncMarker,
+    handle_eintr, net::UnixSeqpacket, AsRawDescriptor, Error as SysError, RawDescriptor, ScmSocket,
+    UnsyncMarker,
 };
 use std::io::{IoSlice, Result};
 use std::marker::PhantomData;
@@ -215,7 +215,7 @@ impl<'a, I: MsgOnSocket, O: MsgOnSocket> AsyncReceiver<'a, I, O> {
     }
 
     pub async fn next(&mut self) -> MsgResult<O> {
-        let p = cros_async::new(Fd(self.inner.as_raw_descriptor())).unwrap();
+        let p = cros_async::async_from(&self.inner.sock).unwrap();
         p.wait_readable().await.unwrap();
         self.inner.recv()
     }

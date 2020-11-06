@@ -21,7 +21,7 @@ use std::task::Waker;
 
 use slab::Slab;
 
-use base::{PollContext, WatchingEvents};
+use sys_util::{PollContext, WatchingEvents};
 
 use crate::executor::{ExecutableFuture, Executor, FutureList};
 use crate::WakerToken;
@@ -31,15 +31,15 @@ pub enum Error {
     /// Attempts to create two Executors on the same thread fail.
     AttemptedDuplicateExecutor,
     /// Failed to copy the FD for the polling context.
-    DuplicatingFd(base::Error),
+    DuplicatingFd(sys_util::Error),
     /// Failed accessing the thread local storage for wakers.
     InvalidContext,
     /// Creating a context to wait on FDs failed.
-    CreatingContext(base::Error),
+    CreatingContext(sys_util::Error),
     /// PollContext failure.
-    PollContextError(base::Error),
+    PollContextError(sys_util::Error),
     /// Failed to submit the waker to the polling context.
-    SubmittingWaker(base::Error),
+    SubmittingWaker(sys_util::Error),
     /// A Waker was canceled, but the operation isn't running.
     UnknownWaker,
 }
@@ -274,7 +274,7 @@ impl<T: FutureList> Drop for FdExecutor<T> {
 unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
     let ret = libc::dup(fd);
     if ret < 0 {
-        Err(Error::DuplicatingFd(base::Error::last()))
+        Err(Error::DuplicatingFd(sys_util::Error::last()))
     } else {
         Ok(ret)
     }
@@ -338,7 +338,7 @@ mod test {
     #[test]
     fn test_it() {
         async fn do_test() {
-            let (r, _w) = base::pipe(true).unwrap();
+            let (r, _w) = sys_util::pipe(true).unwrap();
             let done = Box::pin(async { 5usize });
             let pending = Box::pin(TestFut::new(r));
             match futures::future::select(pending, done).await {

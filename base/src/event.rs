@@ -15,7 +15,7 @@ pub use sys_util::EventReadResult;
 /// See [EventFd](sys_util::EventFd) for struct- and method-level
 /// documentation.
 #[derive(Debug, PartialEq, Eq)]
-pub struct Event(pub(self) EventFd);
+pub struct Event(pub EventFd);
 impl Event {
     pub fn new() -> Result<Event> {
         EventFd::new().map(|eventfd| Event(eventfd))

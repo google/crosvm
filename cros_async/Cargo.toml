@@ -10,7 +10,7 @@ io_uring = { path = "../io_uring" }
 libc = "*"
 paste = "*"
 pin-utils = "0.1.0-alpha.4"
-base = { path = "../base" }
+sys_util = { path = "../sys_util" }
 syscall_defines = { path = "../syscall_defines" }
 slab = "0.4"
 thiserror = "1.0.20"
@@ -21,6 +21,5 @@ default-features = false
 features = ["alloc"]
 
 [dev-dependencies]
-base = { path = "../base" }
 tempfile = { path = "../tempfile" }
 vm_memory = { path = "../vm_memory" }

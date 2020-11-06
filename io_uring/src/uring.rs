@@ -14,7 +14,7 @@ use std::pin::Pin;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use base::{MappedRegion, MemoryMapping, MemoryMappingBuilder, WatchingEvents};
+use sys_util::{MappedRegion, MemoryMapping, Protection, WatchingEvents};
 
 use crate::bindings::*;
 use crate::syscalls::*;
@@ -30,11 +30,11 @@ pub enum Error {
     /// The call to `io_uring_setup` failed with the given errno.
     Setup(libc::c_int),
     /// Failed to map the completion ring.
-    MappingCompleteRing(base::MmapError),
+    MappingCompleteRing(sys_util::MmapError),
     /// Failed to map the submit ring.
-    MappingSubmitRing(base::MmapError),
+    MappingSubmitRing(sys_util::MmapError),
     /// Failed to map submit entries.
-    MappingSubmitEntries(base::MmapError),
+    MappingSubmitEntries(sys_util::MmapError),
     /// Too many ops are already queued.
     NoSpace,
 }
@@ -78,7 +78,7 @@ pub struct URingStats {
 /// # use std::fs::File;
 /// # use std::os::unix::io::AsRawFd;
 /// # use std::path::Path;
-/// # use base::WatchingEvents;
+/// # use sys_util::WatchingEvents;
 /// # use io_uring::URingContext;
 /// let f = File::open(Path::new("/dev/zero")).unwrap();
 /// let mut uring = URingContext::new(16).unwrap();
@@ -121,40 +121,40 @@ impl URingContext {
             // Safe because we trust the kernel to set valid sizes in `io_uring_setup` and any error
             // is checked.
             let submit_ring = SubmitQueueState::new(
-                MemoryMappingBuilder::new(
+                MemoryMapping::from_fd_offset_protection_populate(
+                    &ring_file,
                     ring_params.sq_off.array as usize
                         + ring_params.sq_entries as usize * std::mem::size_of::<u32>(),
+                    u64::from(IORING_OFF_SQ_RING),
+                    Protection::read_write(),
+                    true,
                 )
-                .from_descriptor(&ring_file)
-                .offset(u64::from(IORING_OFF_SQ_RING))
-                .populate()
-                .build()
                 .map_err(Error::MappingSubmitRing)?,
                 &ring_params,
             );
 
             let num_sqe = ring_params.sq_entries as usize;
             let submit_queue_entries = SubmitQueueEntries {
-                mmap: MemoryMappingBuilder::new(
+                mmap: MemoryMapping::from_fd_offset_protection_populate(
+                    &ring_file,
                     ring_params.sq_entries as usize * std::mem::size_of::<io_uring_sqe>(),
+                    u64::from(IORING_OFF_SQES),
+                    Protection::read_write(),
+                    true,
                 )
-                .from_descriptor(&ring_file)
-                .offset(u64::from(IORING_OFF_SQES))
-                .populate()
-                .build()
                 .map_err(Error::MappingSubmitEntries)?,
                 len: num_sqe,
             };
 
             let complete_ring = CompleteQueueState::new(
-                MemoryMappingBuilder::new(
+                MemoryMapping::from_fd_offset_protection_populate(
+                    &ring_file,
                     ring_params.cq_off.cqes as usize
                         + ring_params.cq_entries as usize * std::mem::size_of::<io_uring_cqe>(),
+                    u64::from(IORING_OFF_CQ_RING),
+                    Protection::read_write(),
+                    true,
                 )
-                .from_descriptor(&ring_file)
-                .offset(u64::from(IORING_OFF_CQ_RING))
-                .populate()
-                .build()
                 .map_err(Error::MappingCompleteRing)?,
                 &ring_params,
             );
@@ -735,7 +735,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    use base::PollContext;
+    use sys_util::PollContext;
     use tempfile::{tempfile, TempDir};
 
     use super::*;

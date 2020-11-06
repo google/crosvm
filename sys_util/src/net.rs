@@ -339,6 +339,12 @@ impl AsRawFd for UnixSeqpacket {
     }
 }
 
+impl AsRawFd for &UnixSeqpacket {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd
+    }
+}
+
 impl AsRawDescriptor for UnixSeqpacket {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.fd
