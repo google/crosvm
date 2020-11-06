@@ -1082,10 +1082,9 @@ impl<T: Encoder> EncoderDevice<T> {
         match ctrl_val {
             CtrlVal::Bitrate(bitrate) => {
                 if let Some(ref mut encoder_session) = stream.encoder_session {
-                    if let Err(e) = encoder_session.request_encoding_params_change(
-                        stream.dst_bitrate,
-                        stream.dst_params.frame_rate,
-                    ) {
+                    if let Err(e) = encoder_session
+                        .request_encoding_params_change(bitrate, stream.dst_params.frame_rate)
+                    {
                         error!(
                             "failed to dynamically request encoding params change: {}",
                             e
