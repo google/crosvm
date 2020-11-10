@@ -2226,7 +2226,31 @@ where
     control_sockets.push(TaggedControlSocket::VmIrq(ioapic_host_socket));
 
     let battery = if cfg.battery_type.is_some() {
-        (&cfg.battery_type, simple_jail(&cfg, "battery")?)
+        let jail = match simple_jail(&cfg, "battery")? {
+            #[cfg_attr(not(feature = "powerd-monitor-powerd"), allow(unused_mut))]
+            Some(mut jail) => {
+                // Setup a bind mount to the system D-Bus socket if the powerd monitor is used.
+                #[cfg(feature = "power-monitor-powerd")]
+                {
+                    add_crosvm_user_to_jail(&mut jail, "battery")?;
+
+                    // Create a tmpfs in the device's root directory so that we can bind mount files.
+                    jail.mount_with_data(
+                        Path::new("none"),
+                        Path::new("/"),
+                        "tmpfs",
+                        (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                        "size=67108864",
+                    )?;
+
+                    let system_bus_socket_path = Path::new("/run/dbus/system_bus_socket");
+                    jail.mount_bind(system_bus_socket_path, system_bus_socket_path, true)?;
+                }
+                Some(jail)
+            }
+            None => None,
+        };
+        (&cfg.battery_type, jail)
     } else {
         (&cfg.battery_type, None)
     };

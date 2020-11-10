@@ -255,6 +255,7 @@ dependencies = [
  "net_sys",
  "net_util",
  "p9",
+ "power_monitor",
  "protos",
  "rand_ish",
  "remain",

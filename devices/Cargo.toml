@@ -38,6 +38,7 @@ msg_socket = { path = "../msg_socket" }
 net_sys = { path = "../net_sys" }
 net_util = { path = "../net_util" }
 p9 = "*"
+power_monitor = { path = "../power_monitor" }
 protos = { path = "../protos", optional = true }
 rand_ish = { path = "../rand_ish" }
 remain = "*"
