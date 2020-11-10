@@ -1,0 +1,16 @@
+[package]
+name = "power_monitor"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2018"
+
+[features]
+powerd = ["dbus", "protobuf", "protoc-rust"]
+
+[dependencies]
+base = { path = "../base" }
+dbus = { version = "0.6.1", optional = true }
+protobuf = { version = "2.8.1", optional = true }
+
+[build-dependencies]
+protoc-rust = { version = "2.8.1", optional = true }

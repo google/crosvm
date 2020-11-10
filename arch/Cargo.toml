@@ -5,6 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [features]
+power-monitor-powerd = ["power_monitor/powerd"]
 gdb = ["gdbstub"]
 
 [dependencies]
@@ -21,3 +22,4 @@ sync = { path = "../sync" }
 base = { path = "../base" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
+power_monitor = { path = "../power_monitor" }
