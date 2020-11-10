@@ -18,7 +18,9 @@ use base::Event;
 use devices::{
     Bus, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice, PciInterruptPin,
 };
-use hypervisor::{DeviceKind, Hypervisor, HypervisorCap, VcpuAArch64, VcpuFeature, VmAArch64};
+use hypervisor::{
+    DeviceKind, Hypervisor, HypervisorCap, PsciVersion, VcpuAArch64, VcpuFeature, VmAArch64,
+};
 use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
@@ -124,6 +126,7 @@ pub enum Error {
     CreateVcpu(base::Error),
     CreateVm(Box<dyn StdError>),
     DowncastVcpu,
+    GetPsciVersion(base::Error),
     GetSerialCmdline(GetSerialCmdlineError),
     InitrdLoadFailure(arch::LoadImageError),
     KernelLoadFailure(arch::LoadImageError),
@@ -157,6 +160,7 @@ impl Display for Error {
             CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
             CreateVm(e) => write!(f, "failed to create vm: {}", e),
             DowncastVcpu => write!(f, "vm created wrong kind of vcpu"),
+            GetPsciVersion(e) => write!(f, "failed to get PSCI version: {}", e),
             GetSerialCmdline(e) => write!(f, "failed to get serial cmdline: {}", e),
             InitrdLoadFailure(e) => write!(f, "initrd cound not be loaded: {}", e),
             KernelLoadFailure(e) => write!(f, "kernel cound not be loaded: {}", e),
@@ -318,6 +322,8 @@ impl arch::LinuxArch for AArch64 {
         let kernel_size = arch::load_image(&mem, kernel_image, get_kernel_addr(), u64::max_value())
             .map_err(Error::KernelLoadFailure)?;
         let kernel_end = get_kernel_addr().offset() + kernel_size as u64;
+        let psci_version = vcpus[0].get_psci_version().map_err(Error::GetPsciVersion)?;
+
         Self::setup_system_memory(
             &mem,
             components.memory_size,
@@ -329,6 +335,7 @@ impl arch::LinuxArch for AArch64 {
             kernel_end,
             irq_chip.get_vgic_version() == DeviceKind::ArmVgicV3,
             use_pmu,
+            psci_version,
         )?;
 
         Ok(RunnableLinuxVm {
@@ -377,6 +384,7 @@ impl AArch64 {
         kernel_end: u64,
         is_gicv3: bool,
         use_pmu: bool,
+        psci_version: PsciVersion,
     ) -> Result<()> {
         let initrd = match initrd_file {
             Some(initrd_file) => {
@@ -406,6 +414,7 @@ impl AArch64 {
             android_fstab,
             is_gicv3,
             use_pmu,
+            psci_version,
         )
         .map_err(Error::CreateFdt)?;
         Ok(())

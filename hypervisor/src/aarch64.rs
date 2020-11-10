@@ -7,6 +7,12 @@ use downcast_rs::impl_downcast;
 
 use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
 
+/// Represents a version of Power State Coordination Interface (PSCI).
+pub struct PsciVersion {
+    pub major: u32,
+    pub minor: u32,
+}
+
 /// A wrapper for using a VM on aarch64 and getting/setting its state.
 pub trait VmAArch64: Vm {
     /// Gets the `Hypervisor` that created this VM.
@@ -30,6 +36,13 @@ pub trait VcpuAArch64: Vcpu {
     /// Sets the value of a register on this VCPU.  `reg_id` is the register ID, as specified in the
     /// KVM API documentation for KVM_SET_ONE_REG.
     fn set_one_reg(&self, reg_id: u64, data: u64) -> Result<()>;
+
+    /// Gets the value of a register on this VCPU.  `reg_id` is the register ID, as specified in the
+    /// KVM API documentation for KVM_GET_ONE_REG.
+    fn get_one_reg(&self, reg_id: u64) -> Result<u64>;
+
+    /// Gets the current PSCI version.
+    fn get_psci_version(&self) -> Result<PsciVersion>;
 }
 
 impl_downcast!(VcpuAArch64);

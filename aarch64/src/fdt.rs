@@ -12,6 +12,7 @@ use arch::fdt::{
 };
 use arch::SERIAL_ADDR;
 use devices::{PciAddress, PciInterruptPin};
+use hypervisor::PsciVersion;
 use vm_memory::{GuestAddress, GuestMemory};
 
 // This is the start of DRAM in the physical address space.
@@ -182,18 +183,20 @@ fn create_serial_nodes(fdt: &mut Vec<u8>) -> Result<()> {
     Ok(())
 }
 
-// TODO(sonnyrao) -- check to see if host kernel supports PSCI 0_2
-fn create_psci_node(fdt: &mut Vec<u8>) -> Result<()> {
-    let compatible = "arm,psci-0.2";
+fn create_psci_node(fdt: &mut Vec<u8>, version: &PsciVersion) -> Result<()> {
+    let compatible = if version.major == 1 {
+        // Put `psci-0.2` as well because PSCI 1.0 is compatible with PSCI 0.2.
+        format!(
+            "\"arm,psci-{}.{}\", \"arm,psci-0.2\"",
+            version.major, version.minor
+        )
+    } else {
+        format!("arm,psci-{}.{}", version.major, version.minor)
+    };
     begin_node(fdt, "psci")?;
-    property_string(fdt, "compatible", compatible)?;
+    property_string(fdt, "compatible", &compatible)?;
     // Only support aarch64 guest
     property_string(fdt, "method", "hvc")?;
-    // These constants are from PSCI
-    property_u32(fdt, "cpu_suspend", 0xc4000001)?;
-    property_u32(fdt, "cpu_off", 0x84000002)?;
-    property_u32(fdt, "cpu_on", 0xc4000003)?;
-    property_u32(fdt, "migrate", 0xc4000005)?;
     end_node(fdt)?;
 
     Ok(())
@@ -358,6 +361,7 @@ fn create_rtc_node(fdt: &mut Vec<u8>) -> Result<()> {
 /// * `initrd` - An optional tuple of initrd guest physical address and size
 /// * `android_fstab` - An optional file holding Android fstab entries
 /// * `is_gicv3` - True if gicv3, false if v2
+/// * `psci_version` - the current PSCI version
 pub fn create_fdt(
     fdt_max_size: usize,
     guest_mem: &GuestMemory,
@@ -371,6 +375,7 @@ pub fn create_fdt(
     android_fstab: Option<File>,
     is_gicv3: bool,
     use_pmu: bool,
+    psci_version: PsciVersion,
 ) -> Result<()> {
     let mut fdt = vec![0; fdt_max_size];
     start_fdt(&mut fdt, fdt_max_size)?;
@@ -393,7 +398,7 @@ pub fn create_fdt(
         create_pmu_node(&mut fdt, num_cpus)?;
     }
     create_serial_nodes(&mut fdt)?;
-    create_psci_node(&mut fdt)?;
+    create_psci_node(&mut fdt, &psci_version)?;
     create_pci_nodes(&mut fdt, pci_irqs, pci_device_base, pci_device_size)?;
     create_rtc_node(&mut fdt)?;
     // End giant node

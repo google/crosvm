@@ -9,7 +9,8 @@ use kvm_sys::*;
 
 use super::{KvmVcpu, KvmVm};
 use crate::{
-    ClockState, DeviceKind, Hypervisor, IrqSourceChip, VcpuAArch64, VcpuFeature, VmAArch64, VmCap,
+    ClockState, DeviceKind, Hypervisor, IrqSourceChip, PsciVersion, VcpuAArch64, VcpuFeature,
+    VmAArch64, VmCap,
 };
 
 impl KvmVm {
@@ -154,6 +155,42 @@ impl VcpuAArch64 for KvmVcpu {
             Ok(())
         } else {
             errno_result()
+        }
+    }
+
+    fn get_one_reg(&self, reg_id: u64) -> Result<u64> {
+        let val: u64 = 0;
+        let mut onereg = kvm_one_reg {
+            id: reg_id,
+            addr: (&val as *const u64) as u64,
+        };
+
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct.
+        let ret = unsafe { ioctl_with_ref(self, KVM_GET_ONE_REG(), &mut onereg) };
+        if ret == 0 {
+            Ok(val)
+        } else {
+            return errno_result();
+        }
+    }
+
+    fn get_psci_version(&self) -> Result<PsciVersion> {
+        // The definition of KVM_REG_ARM_PSCI_VERSION is in arch/arm64/include/uapi/asm/kvm.h.
+        const KVM_REG_ARM_PSCI_VERSION: u64 =
+            KVM_REG_ARM64 | (KVM_REG_SIZE_U64 as u64) | (KVM_REG_ARM_FW as u64);
+
+        match self.get_one_reg(KVM_REG_ARM_PSCI_VERSION) {
+            Ok(v) => {
+                let major = (v >> PSCI_VERSION_MAJOR_SHIFT) as u32;
+                let minor = (v as u32) & PSCI_VERSION_MINOR_MASK;
+                Ok(PsciVersion { major, minor })
+            }
+            Err(_) => {
+                // When `KVM_REG_ARM_PSCI_VERSION` is not supported, we can return PSCI 0.2, as vCPU
+                // has been initialized with `KVM_ARM_VCPU_PSCI_0_2` successfully.
+                Ok(PsciVersion { major: 0, minor: 2 })
+            }
         }
     }
 }
