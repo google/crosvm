@@ -16,7 +16,10 @@ panic = 'abort'
 overflow-checks = true
 
 [workspace]
-members = ["qcow_utils"]
+members = [
+    "qcow_utils",
+    "integration_tests",
+]
 exclude = [
     "assertions",
     "base",

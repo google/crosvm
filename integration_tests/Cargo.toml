@@ -1,0 +1,13 @@
+[package]
+name = "integration_tests"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2018"
+
+[dev-dependencies]
+tempfile = { path = "../tempfile" }
+crosvm = { path = ".." }
+arch = { path = "../arch" }
+base = "*"
+libc = "0.2.65"
+anyhow = "*"
