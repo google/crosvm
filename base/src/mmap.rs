@@ -53,8 +53,14 @@ impl MemoryMapping {
         self.0
             .write_from_memory(mem_offset, &wrap_descriptor(dst), count)
     }
+}
 
-    pub fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()> {
+pub trait Unix {
+    fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()>;
+}
+
+impl Unix for MemoryMapping {
+    fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()> {
         self.0.remove_range(mem_offset, count)
     }
 }
