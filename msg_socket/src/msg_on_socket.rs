@@ -79,16 +79,16 @@ impl Display for MsgError {
 ///
 /// e.g.
 /// ```
-/// use std::os::unix::io::RawFd;
+/// use base::RawDescriptor;
 /// enum Message {
 ///     VariantA(u8),
-///     VariantB(u32, RawFd),
+///     VariantB(u32, RawDescriptor),
 ///     VariantC,
 /// }
 /// ```
 ///
 /// For variant A, we need 1 byte to store its inner value.
-/// For variant B, we need 4 bytes and 1 RawFd to store its inner value.
+/// For variant B, we need 4 bytes and 1 RawDescriptor to store its inner value.
 /// For variant C, we need 0 bytes to store its inner value.
 /// When we serialize Message to (buffer, fd_buffer), we always use fixed number of bytes in
 /// the buffer. Unused buffer bytes will be padded with zero.

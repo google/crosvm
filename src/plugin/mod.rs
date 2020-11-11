@@ -8,7 +8,6 @@ mod vcpu;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
-use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
 use std::result;
@@ -28,8 +27,9 @@ use remain::sorted;
 
 use base::{
     block_signal, clear_signal, drop_capabilities, error, getegid, geteuid, info, pipe,
-    register_rt_signal_handler, validate_raw_fd, warn, Error as SysError, Event, Killable,
-    MmapError, PollToken, Result as SysResult, SignalFd, SignalFdError, WaitContext, SIGRTMIN,
+    register_rt_signal_handler, validate_raw_descriptor, warn, AsRawDescriptor, Error as SysError,
+    Event, FromRawDescriptor, Killable, MmapError, PollToken, Result as SysResult, SignalFd,
+    SignalFdError, WaitContext, SIGRTMIN,
 };
 use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use minijail::{self, Minijail};
@@ -188,8 +188,8 @@ fn new_seqpacket_pair() -> SysResult<(UnixDatagram, UnixDatagram)> {
         if ret == 0 {
             ioctl(fds[0], FIOCLEX);
             Ok((
-                UnixDatagram::from_raw_fd(fds[0]),
-                UnixDatagram::from_raw_fd(fds[1]),
+                UnixDatagram::from_raw_descriptor(fds[0]),
+                UnixDatagram::from_raw_descriptor(fds[1]),
             ))
         } else {
             Err(SysError::last())
@@ -212,7 +212,7 @@ fn new_pipe_pair() -> SysResult<VcpuPipe> {
     // though it's not necessary a hard requirement for things to work.
     let flags = unsafe {
         fcntl(
-            to_crosvm.0.as_raw_fd(),
+            to_crosvm.0.as_raw_descriptor(),
             F_SETPIPE_SZ,
             MAX_VCPU_DATAGRAM_SIZE as c_int,
         )
@@ -226,7 +226,7 @@ fn new_pipe_pair() -> SysResult<VcpuPipe> {
     }
     let flags = unsafe {
         fcntl(
-            to_plugin.0.as_raw_fd(),
+            to_plugin.0.as_raw_descriptor(),
             F_SETPIPE_SZ,
             MAX_VCPU_DATAGRAM_SIZE as c_int,
         )
@@ -677,7 +677,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     for tap_fd in cfg.tap_fd {
         // Safe because we ensure that we get a unique handle to the fd.
         let tap = unsafe {
-            Tap::from_raw_fd(validate_raw_fd(tap_fd).map_err(Error::ValidateTapFd)?)
+            Tap::from_raw_descriptor(validate_raw_descriptor(tap_fd).map_err(Error::ValidateTapFd)?)
                 .map_err(Error::CreateTapFd)?
         };
         tap_interfaces.push(tap);

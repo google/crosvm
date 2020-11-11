@@ -7,8 +7,8 @@ mod refcount;
 mod vec_cache;
 
 use base::{
-    error, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileReadWriteVolatile,
-    FileSetLen, FileSync, PunchHole, SeekHole, WriteZeroesAt,
+    error, AsRawDescriptor, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile,
+    FileReadWriteVolatile, FileSetLen, FileSync, PunchHole, RawDescriptor, SeekHole, WriteZeroesAt,
 };
 use data_model::{VolatileMemory, VolatileSlice};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
@@ -19,7 +19,6 @@ use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::str;
 
 use crate::qcow::qcow_raw_file::QcowRawFile;
@@ -1534,12 +1533,12 @@ impl Drop for QcowFile {
 }
 
 impl AsRawDescriptors for QcowFile {
-    fn as_raw_descriptors(&self) -> Vec<RawFd> {
-        let mut fds = vec![self.raw_file.file().as_raw_fd()];
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        let mut descriptors = vec![self.raw_file.file().as_raw_descriptor()];
         if let Some(backing) = &self.backing_file {
-            fds.append(&mut backing.as_raw_descriptors());
+            descriptors.append(&mut backing.as_raw_descriptors());
         }
-        fds
+        descriptors
     }
 }
 

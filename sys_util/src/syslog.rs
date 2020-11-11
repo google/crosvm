@@ -21,6 +21,7 @@
 //! ```
 
 use crate::target_os::syslog::PlatformSyslog;
+use crate::RawDescriptor;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::{self, Display};
@@ -306,6 +307,11 @@ pub fn push_fds(fds: &mut Vec<RawFd>) {
     let state = lock!();
     state.syslog.push_fds(fds);
     fds.extend(state.file.iter().map(|f| f.as_raw_fd()));
+}
+
+/// Does the same as push_fds, but using the RawDescriptorType
+pub fn push_descriptors(descriptors: &mut Vec<RawDescriptor>) {
+    push_fds(descriptors)
 }
 
 /// Records a log message with the given details.

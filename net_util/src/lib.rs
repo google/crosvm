@@ -17,8 +17,8 @@ use libc::EPERM;
 use base::Error as SysError;
 use base::FileReadWriteVolatile;
 use base::{
-    ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, volatile_impl, AsRawDescriptor, IoctlNr,
-    RawDescriptor,
+    ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, volatile_impl, AsRawDescriptor,
+    FromRawDescriptor, IoctlNr, RawDescriptor,
 };
 
 #[derive(Debug)]
@@ -174,8 +174,8 @@ pub struct Tap {
 }
 
 impl Tap {
-    pub unsafe fn from_raw_fd(fd: RawFd) -> Result<Tap> {
-        let tap_file = File::from_raw_fd(fd);
+    pub unsafe fn from_raw_descriptor(fd: RawDescriptor) -> Result<Tap> {
+        let tap_file = File::from_raw_descriptor(fd);
 
         // Get the interface name since we will need it for some ioctls.
         let mut ifreq: net_sys::ifreq = Default::default();
@@ -206,7 +206,7 @@ impl Tap {
         }
 
         // We just checked that the fd is valid.
-        let tuntap = unsafe { File::from_raw_fd(fd) };
+        let tuntap = unsafe { File::from_raw_descriptor(fd) };
         // ioctl is safe since we call it with a valid tap fd and check the return
         // value.
         let ret = unsafe { ioctl_with_mut_ref(&tuntap, net_sys::TUNSETIFF(), ifreq) };

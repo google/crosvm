@@ -5,12 +5,11 @@
 use std::env;
 use std::fs::File;
 use std::io::{stderr, Read};
-use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::panic::{self, PanicInfo};
 use std::process::abort;
 use std::string::String;
 
-use base::error;
+use base::{error, FromRawDescriptor, IntoRawDescriptor};
 use libc::{close, dup, dup2, pipe2, O_NONBLOCK, STDERR_FILENO};
 
 // Opens a pipe and puts the write end into the stderr FD slot. On success, returns the read end of
@@ -38,16 +37,20 @@ fn redirect_stderr() -> Option<(File, File)> {
         // The write end is no longer needed.
         close(fds[1]);
         // Safe because each of the fds was the result of a successful FD creation syscall.
-        Some((File::from_raw_fd(fds[0]), File::from_raw_fd(old_stderr)))
+        Some((
+            File::from_raw_descriptor(fds[0]),
+            File::from_raw_descriptor(old_stderr),
+        ))
     }
 }
 
 // Sets stderr to the given file. Returns true on success.
 fn restore_stderr(stderr: File) -> bool {
-    let fd = stderr.into_raw_fd();
+    let descriptor = stderr.into_raw_descriptor();
 
-    // Safe because fd is guaranteed to be valid and replacing stderr should be an atomic operation.
-    unsafe { dup2(fd, STDERR_FILENO) != -1 }
+    // Safe because descriptor is guaranteed to be valid and replacing stderr
+    // should be an atomic operation.
+    unsafe { dup2(descriptor, STDERR_FILENO) != -1 }
 }
 
 // Sends as much information about the panic as possible to syslog.

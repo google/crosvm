@@ -5,12 +5,13 @@
 //! This module implements the interface that actual decoder devices need to
 //! implement in order to provide video decoding capability to the guest.
 
-use std::{fs::File, os::unix::io::RawFd};
+use std::fs::File;
 
 use crate::virtio::video::{
     error::{VideoError, VideoResult},
     format::{Format, Rect},
 };
+use base::RawDescriptor;
 
 pub mod vda;
 
@@ -27,10 +28,10 @@ pub trait DecoderSession {
     fn set_output_buffer_count(&self, count: usize) -> VideoResult<()>;
 
     /// Decode the compressed stream contained in [`offset`..`offset`+`bytes_used`]
-    /// of the shared memory in `fd`. `bitstream_id` is the identifier for that
+    /// of the shared memory in `descriptor`. `bitstream_id` is the identifier for that
     /// part of the stream (most likely, a timestamp).
     ///
-    /// The device takes ownership of `fd` and is responsible for closing it
+    /// The device takes ownership of `descriptor` and is responsible for closing it
     /// once it is not used anymore.
     ///
     /// The device will emit a `NotifyEndOfBitstreamBuffer` event after the input
@@ -39,8 +40,13 @@ pub trait DecoderSession {
     /// The device will emit a `PictureReady` event with the `bitstream_id` field
     /// set to the same value as the argument of the same name for each picture
     /// produced from that input buffer.
-    fn decode(&self, bitstream_id: i32, fd: RawFd, offset: u32, bytes_used: u32)
-        -> VideoResult<()>;
+    fn decode(
+        &self,
+        bitstream_id: i32,
+        descriptor: RawDescriptor,
+        offset: u32,
+        bytes_used: u32,
+    ) -> VideoResult<()>;
 
     /// Flush the decoder device, i.e. finish processing of all queued decode
     /// requests.
@@ -74,7 +80,7 @@ pub trait DecoderSession {
         &self,
         picture_buffer_id: i32,
         format: Format,
-        output_buffer: RawFd,
+        output_buffer: RawDescriptor,
         planes: &[FramePlane],
     ) -> VideoResult<()>;
 

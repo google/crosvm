@@ -12,7 +12,6 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader};
 use std::num::ParseIntError;
-use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::string::String;
 use std::thread::sleep;
@@ -24,7 +23,8 @@ use arch::{
 };
 use base::{
     debug, error, getpid, info, kill_process_group, net::UnixSeqpacket, reap_child, syslog,
-    validate_raw_fd, warn, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
+    validate_raw_descriptor, warn, FromRawDescriptor, IntoRawDescriptor, RawDescriptor,
+    SafeDescriptor,
 };
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
@@ -1917,7 +1917,7 @@ enum ModifyUsbError {
     ArgMissing(&'static str),
     ArgParse(&'static str, String),
     ArgParseInt(&'static str, String, ParseIntError),
-    FailedFdValidate(base::Error),
+    FailedDescriptorValidate(base::Error),
     PathDoesNotExist(PathBuf),
     SocketFailed,
     UnexpectedResponse(VmResponse),
@@ -1939,7 +1939,7 @@ impl fmt::Display for ModifyUsbError {
                 "failed to parse integer argument {} value `{}`: {}",
                 name, value, e
             ),
-            FailedFdValidate(e) => write!(f, "failed to validate file descriptor: {}", e),
+            FailedDescriptorValidate(e) => write!(f, "failed to validate file descriptor: {}", e),
             PathDoesNotExist(p) => write!(f, "path `{}` does not exist", p.display()),
             SocketFailed => write!(f, "socket failed"),
             UnexpectedResponse(r) => write!(f, "unexpected response: {}", r),
@@ -1975,11 +1975,11 @@ fn parse_bus_id_addr(v: &str) -> ModifyUsbResult<(u8, u8, u16, u16)> {
     }
 }
 
-fn raw_fd_from_path(path: &Path) -> ModifyUsbResult<RawFd> {
+fn raw_descriptor_from_path(path: &Path) -> ModifyUsbResult<RawDescriptor> {
     if !path.exists() {
         return Err(ModifyUsbError::PathDoesNotExist(path.to_owned()));
     }
-    let raw_fd = path
+    let raw_descriptor = path
         .file_name()
         .and_then(|fd_osstr| fd_osstr.to_str())
         .map_or(
@@ -1993,7 +1993,7 @@ fn raw_fd_from_path(path: &Path) -> ModifyUsbResult<RawFd> {
                 })
             },
         )?;
-    validate_raw_fd(raw_fd).map_err(ModifyUsbError::FailedFdValidate)
+    validate_raw_descriptor(raw_descriptor).map_err(ModifyUsbError::FailedDescriptorValidate)
 }
 
 fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
@@ -2010,7 +2010,7 @@ fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
     } else if dev_path.parent() == Some(Path::new("/proc/self/fd")) {
         // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
         // Safe because we will validate |raw_fd|.
-        Some(unsafe { File::from_raw_fd(raw_fd_from_path(&dev_path)?) })
+        Some(unsafe { File::from_raw_descriptor(raw_descriptor_from_path(&dev_path)?) })
     } else {
         Some(
             OpenOptions::new()

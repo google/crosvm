@@ -8,12 +8,11 @@
 use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
-use std::os::unix::io::AsRawFd;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::usize;
 
-use base::{error, warn, Error, ExternalMapping};
+use base::{error, warn, AsRawDescriptor, Error, ExternalMapping};
 use data_model::*;
 use msg_socket::{MsgReceiver, MsgSender};
 use resources::Alloc;
@@ -152,7 +151,7 @@ impl VirtioResource for Virtio3DResource {
         };
 
         match display.borrow_mut().import_dmabuf(
-            dmabuf.as_raw_fd(),
+            dmabuf.as_raw_descriptor(),
             offset,
             stride,
             query.out_modifier,
@@ -829,7 +828,7 @@ impl Backend for Virtio3DBackend {
         let request = match export {
             Ok(ref export) => VmMemoryRequest::RegisterFdAtPciBarOffset(
                 self.pci_bar,
-                MaybeOwnedDescriptor::Borrowed(export.as_raw_fd()),
+                MaybeOwnedDescriptor::Borrowed(export.as_raw_descriptor()),
                 resource.size as usize,
                 offset,
             ),

@@ -35,6 +35,12 @@ pub fn wrap_descriptor(descriptor: &dyn AsRawDescriptor) -> Descriptor {
     Descriptor(descriptor.as_raw_descriptor())
 }
 
+/// Verifies that |raw_descriptor| is actually owned by this process and duplicates it
+/// to ensure that we have a unique handle to it.
+pub fn validate_raw_descriptor(raw_descriptor: RawDescriptor) -> Result<RawDescriptor> {
+    validate_raw_fd(raw_descriptor)
+}
+
 /// A trait similar to `AsRawDescriptor` but supports an arbitrary number of descriptors.
 pub trait AsRawDescriptors {
     fn as_raw_descriptors(&self) -> Vec<RawDescriptor>;

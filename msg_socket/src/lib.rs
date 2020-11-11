@@ -11,7 +11,6 @@ use base::{
 };
 use std::io::{IoSlice, Result};
 use std::marker::PhantomData;
-use std::os::unix::io::{AsRawFd, RawFd};
 
 pub use crate::msg_on_socket::*;
 pub use msg_on_socket_derive::*;
@@ -91,13 +90,13 @@ impl<I: MsgOnSocket, O: MsgOnSocket> AsRef<UnixSeqpacket> for MsgSocket<I, O> {
 
 impl<I: MsgOnSocket, O: MsgOnSocket> AsRawDescriptor for MsgSocket<I, O> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.sock.as_raw_fd()
+        self.sock.as_raw_descriptor()
     }
 }
 
 impl<I: MsgOnSocket, O: MsgOnSocket> AsRawDescriptor for &MsgSocket<I, O> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.sock.as_raw_fd()
+        self.sock.as_raw_descriptor()
     }
 }
 
@@ -107,9 +106,9 @@ impl<M: MsgOnSocket> AsRef<UnixSeqpacket> for Sender<M> {
     }
 }
 
-impl<M: MsgOnSocket> AsRawFd for Sender<M> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.sock.as_raw_fd()
+impl<M: MsgOnSocket> AsRawDescriptor for Sender<M> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.sock.as_raw_descriptor()
     }
 }
 
@@ -119,9 +118,9 @@ impl<M: MsgOnSocket> AsRef<UnixSeqpacket> for Receiver<M> {
     }
 }
 
-impl<M: MsgOnSocket> AsRawFd for Receiver<M> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.sock.as_raw_fd()
+impl<M: MsgOnSocket> AsRawDescriptor for Receiver<M> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.sock.as_raw_descriptor()
     }
 }
 
@@ -130,18 +129,18 @@ pub trait MsgSender: AsRef<UnixSeqpacket> {
     type M: MsgOnSocket;
     fn send(&self, msg: &Self::M) -> MsgResult<()> {
         let msg_size = msg.msg_size();
-        let fd_size = msg.descriptor_count();
+        let descriptor_size = msg.descriptor_count();
         let mut msg_buffer: Vec<u8> = vec![0; msg_size];
-        let mut fd_buffer: Vec<RawFd> = vec![0; fd_size];
+        let mut descriptor_buffer: Vec<RawDescriptor> = vec![0; descriptor_size];
 
-        let fd_size = msg.write_to_buffer(&mut msg_buffer, &mut fd_buffer)?;
+        let descriptor_size = msg.write_to_buffer(&mut msg_buffer, &mut descriptor_buffer)?;
         let sock: &UnixSeqpacket = self.as_ref();
-        if fd_size == 0 {
+        if descriptor_size == 0 {
             handle_eintr!(sock.send(&msg_buffer))
                 .map_err(|e| MsgError::Send(SysError::new(e.raw_os_error().unwrap_or(0))))?;
         } else {
             let ioslice = IoSlice::new(&msg_buffer[..]);
-            sock.send_with_fds(&[ioslice], &fd_buffer[0..fd_size])
+            sock.send_with_fds(&[ioslice], &descriptor_buffer[0..descriptor_size])
                 .map_err(MsgError::Send)?;
         }
         Ok(())
@@ -154,7 +153,7 @@ pub trait MsgReceiver: AsRef<UnixSeqpacket> {
     fn recv(&self) -> MsgResult<Self::M> {
         let sock: &UnixSeqpacket = self.as_ref();
 
-        let (msg_buffer, fd_buffer) = {
+        let (msg_buffer, descriptor_buffer) = {
             if Self::M::uses_descriptor() {
                 sock.recv_as_vec_with_fds()
                     .map_err(|e| MsgError::Recv(SysError::new(e.raw_os_error().unwrap_or(0))))?
@@ -182,8 +181,9 @@ pub trait MsgReceiver: AsRef<UnixSeqpacket> {
         }
 
         // Safe because fd buffer is read from socket.
-        let (v, read_fd_size) = unsafe { Self::M::read_from_buffer(&msg_buffer, &fd_buffer)? };
-        if fd_buffer.len() != read_fd_size {
+        let (v, read_descriptor_size) =
+            unsafe { Self::M::read_from_buffer(&msg_buffer, &descriptor_buffer)? };
+        if descriptor_buffer.len() != read_descriptor_size {
             return Err(MsgError::NotExpectDescriptor);
         }
         Ok(v)

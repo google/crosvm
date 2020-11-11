@@ -8,7 +8,7 @@ mod command_buffer;
 mod generated;
 mod vsnprintf;
 
-use base::{ExternalMapping, ExternalMappingError, ExternalMappingResult};
+use base::{ExternalMapping, ExternalMappingError, ExternalMappingResult, FromRawDescriptor};
 use std::cell::RefCell;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use std::ffi::CString;
@@ -16,7 +16,6 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::mem::{size_of, transmute};
 use std::os::raw::{c_char, c_void};
-use std::os::unix::io::FromRawFd;
 use std::ptr::null_mut;
 use std::rc::Rc;
 use std::result;
@@ -646,7 +645,7 @@ impl Resource {
                 return Err(Error::Unsupported);
             }
 
-            let dmabuf = unsafe { File::from_raw_fd(fd) };
+            let dmabuf = unsafe { File::from_raw_descriptor(fd) };
             Ok(dmabuf)
         }
         #[cfg(not(feature = "virtio-gpu-next"))]
@@ -674,7 +673,7 @@ impl Resource {
 
         // Safe because the FD was just returned by a successful virglrenderer call so it must
         // be valid and owned by us.
-        let dmabuf = unsafe { File::from_raw_fd(query.out_fds[0]) };
+        let dmabuf = unsafe { File::from_raw_descriptor(query.out_fds[0]) };
         Ok(dmabuf)
     }
 

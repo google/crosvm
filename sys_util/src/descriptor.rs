@@ -204,6 +204,12 @@ impl AsRawDescriptor for UnixDatagram {
     }
 }
 
+impl FromRawDescriptor for UnixDatagram {
+    unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
+        Self::from_raw_fd(descriptor)
+    }
+}
+
 impl IntoRawDescriptor for UnixDatagram {
     fn into_raw_descriptor(self) -> RawDescriptor {
         self.into_raw_fd()

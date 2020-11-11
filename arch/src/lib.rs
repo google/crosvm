@@ -356,7 +356,7 @@ pub fn generate_pci_root(
     for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
         let address = device_addrs[dev_idx];
         let mut keep_rds = device.keep_rds();
-        syslog::push_fds(&mut keep_rds);
+        syslog::push_descriptors(&mut keep_rds);
 
         let irqfd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
         let irq_resample_fd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;

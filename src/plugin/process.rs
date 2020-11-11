@@ -162,13 +162,19 @@ impl Process {
 
         let plugin_pid = match jail {
             Some(jail) => {
-                set_var("CROSVM_SOCKET", child_socket.as_raw_fd().to_string());
-                jail.run(cmd, &[0, 1, 2, child_socket.as_raw_fd()], args)
+                set_var(
+                    "CROSVM_SOCKET",
+                    child_socket.as_raw_descriptor().to_string(),
+                );
+                jail.run(cmd, &[0, 1, 2, child_socket.as_raw_descriptor()], args)
                     .map_err(Error::PluginRunJail)?
             }
             None => Command::new(cmd)
                 .args(args)
-                .env("CROSVM_SOCKET", child_socket.as_raw_fd().to_string())
+                .env(
+                    "CROSVM_SOCKET",
+                    child_socket.as_raw_descriptor().to_string(),
+                )
                 .spawn()
                 .map_err(Error::PluginSpawn)?
                 .id() as pid_t,
@@ -597,7 +603,7 @@ impl Process {
             match new_seqpacket_pair() {
                 Ok((request_socket, child_socket)) => {
                     self.request_sockets.push(request_socket);
-                    response_fds.push(child_socket.as_raw_fd());
+                    response_fds.push(child_socket.as_raw_descriptor());
                     boxed_fds.push(box_owned_fd(child_socket));
                     Ok(())
                 }
@@ -650,8 +656,8 @@ impl Process {
         } else if request.has_get_vcpus() {
             response.mut_get_vcpus();
             for pipe in self.vcpu_pipes.iter() {
-                response_fds.push(pipe.plugin_write.as_raw_fd());
-                response_fds.push(pipe.plugin_read.as_raw_fd());
+                response_fds.push(pipe.plugin_write.as_raw_descriptor());
+                response_fds.push(pipe.plugin_read.as_raw_descriptor());
             }
             Ok(())
         } else if request.has_start() {
@@ -667,7 +673,7 @@ impl Process {
                 Some(tap) => {
                     match Self::handle_get_net_config(tap, response.mut_get_net_config()) {
                         Ok(_) => {
-                            response_fds.push(tap.as_raw_fd());
+                            response_fds.push(tap.as_raw_descriptor());
                             Ok(())
                         }
                         Err(e) => Err(e),

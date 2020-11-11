@@ -7,12 +7,11 @@ use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom};
 use std::ops::Range;
-use std::os::unix::io::RawFd;
 
 use crate::{create_disk_file, DiskFile, DiskGetLen, ImageType};
 use base::{
     AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole,
-    WriteZeroesAt,
+    RawDescriptor, WriteZeroesAt,
 };
 use data_model::VolatileSlice;
 use protos::cdisk_spec;
@@ -331,7 +330,7 @@ impl WriteZeroesAt for CompositeDiskFile {
 }
 
 impl AsRawDescriptors for CompositeDiskFile {
-    fn as_raw_descriptors(&self) -> Vec<RawFd> {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
         self.component_disks
             .iter()
             .map(|d| d.file.as_raw_descriptors())
@@ -343,9 +342,8 @@ impl AsRawDescriptors for CompositeDiskFile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base::SharedMemory;
+    use base::{AsRawDescriptor, SharedMemory};
     use data_model::VolatileMemory;
-    use std::os::unix::io::AsRawFd;
 
     #[test]
     fn block_duplicate_offset_disks() {
@@ -410,7 +408,11 @@ mod tests {
         let file1: File = SharedMemory::new(None).unwrap().into();
         let file2: File = SharedMemory::new(None).unwrap().into();
         let file3: File = SharedMemory::new(None).unwrap().into();
-        let mut in_fds = vec![file1.as_raw_fd(), file2.as_raw_fd(), file3.as_raw_fd()];
+        let mut in_fds = vec![
+            file1.as_raw_descriptor(),
+            file2.as_raw_descriptor(),
+            file3.as_raw_descriptor(),
+        ];
         in_fds.sort();
         let disk_part1 = ComponentDiskPart {
             file: Box::new(file1),

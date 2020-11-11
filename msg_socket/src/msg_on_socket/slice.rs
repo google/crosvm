@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::RawDescriptor;
 use std::mem::{size_of, ManuallyDrop, MaybeUninit};
-use std::os::unix::io::RawFd;
 use std::ptr::drop_in_place;
 
 use crate::{MsgOnSocket, MsgResult};
@@ -17,7 +17,7 @@ use super::{simple_read, simple_write};
 /// requirements that the `msgs` are only used on success of this function
 pub unsafe fn slice_read_helper<T: MsgOnSocket>(
     buffer: &[u8],
-    fds: &[RawFd],
+    fds: &[RawDescriptor],
     msgs: &mut [MaybeUninit<T>],
 ) -> MsgResult<usize> {
     let mut offset = 0usize;
@@ -64,7 +64,7 @@ pub unsafe fn slice_read_helper<T: MsgOnSocket>(
 pub fn slice_write_helper<T: MsgOnSocket>(
     msgs: &[T],
     buffer: &mut [u8],
-    fds: &mut [RawFd],
+    fds: &mut [RawDescriptor],
 ) -> MsgResult<usize> {
     let mut offset = 0usize;
     let mut fd_offset = 0usize;
@@ -110,7 +110,7 @@ impl<T: MsgOnSocket> MsgOnSocket for Vec<T> {
         }
     }
 
-    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawFd]) -> MsgResult<(Self, usize)> {
+    unsafe fn read_from_buffer(buffer: &[u8], fds: &[RawDescriptor]) -> MsgResult<(Self, usize)> {
         let mut offset = 0;
         let len = simple_read::<u64>(buffer, &mut offset)? as usize;
         let mut msgs: Vec<MaybeUninit<T>> = Vec::with_capacity(len);
@@ -123,7 +123,7 @@ impl<T: MsgOnSocket> MsgOnSocket for Vec<T> {
         ))
     }
 
-    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawFd]) -> MsgResult<usize> {
+    fn write_to_buffer(&self, buffer: &mut [u8], fds: &mut [RawDescriptor]) -> MsgResult<usize> {
         let mut offset = 0;
         simple_write(self.len() as u64, buffer, &mut offset)?;
         slice_write_helper(self, &mut buffer[offset..], fds)

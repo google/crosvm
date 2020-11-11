@@ -17,7 +17,7 @@ use std::net::Ipv4Addr;
 #[cfg(feature = "gpu")]
 use std::num::NonZeroU8;
 use std::num::ParseIntError;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -54,10 +54,10 @@ use sync::Mutex;
 use base::{
     self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
     get_group_id, get_user_id, getegid, geteuid, info, register_rt_signal_handler,
-    set_cpu_affinity, set_rt_prio_limit, set_rt_round_robin, signal, validate_raw_fd, warn,
-    AsRawDescriptor, Event, EventType, ExternalMapping, FlockOperation, Killable,
-    MemoryMappingArena, PollToken, Protection, RawDescriptor, ScopedEvent, SignalFd, Terminal,
-    Timer, WaitContext, SIGRTMIN,
+    set_cpu_affinity, set_rt_prio_limit, set_rt_round_robin, signal, validate_raw_descriptor, warn,
+    AsRawDescriptor, Event, EventType, ExternalMapping, FlockOperation, FromRawDescriptor,
+    Killable, MemoryMappingArena, PollToken, Protection, RawDescriptor, ScopedEvent, SignalFd,
+    Terminal, Timer, WaitContext, SIGRTMIN,
 };
 use vm_control::{
     BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
@@ -177,7 +177,7 @@ pub enum Error {
     SpawnGdbServer(io::Error),
     SpawnVcpu(io::Error),
     Timer(base::Error),
-    ValidateRawFd(base::Error),
+    ValidateRawDescriptor(base::Error),
     VhostNetDeviceNew(virtio::vhost::Error),
     VhostVsockDeviceNew(virtio::vhost::Error),
     VirtioPciDev(base::Error),
@@ -286,7 +286,7 @@ impl Display for Error {
             SpawnGdbServer(e) => write!(f, "failed to spawn GDB thread: {}", e),
             SpawnVcpu(e) => write!(f, "failed to spawn VCPU thread: {}", e),
             Timer(e) => write!(f, "failed to read timer fd: {}", e),
-            ValidateRawFd(e) => write!(f, "failed to validate raw fd: {}", e),
+            ValidateRawDescriptor(e) => write!(f, "failed to validate raw descriptor: {}", e),
             VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {}", e),
             VhostVsockDeviceNew(e) => write!(f, "failed to set up virtual socket device: {}", e),
             VirtioPciDev(e) => write!(f, "failed to create virtio pci dev: {}", e),
@@ -330,7 +330,7 @@ impl AsRef<UnixSeqpacket> for TaggedControlSocket {
 
 impl AsRawDescriptor for TaggedControlSocket {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.as_ref().as_raw_fd()
+        self.as_ref().as_raw_descriptor()
     }
 }
 
@@ -462,7 +462,7 @@ fn create_block_device(
     // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
     let raw_image: File = if disk.path.parent() == Some(Path::new("/proc/self/fd")) {
         // Safe because we will validate |raw_fd|.
-        unsafe { File::from_raw_fd(raw_fd_from_path(&disk.path)?) }
+        unsafe { File::from_raw_descriptor(raw_descriptor_from_path(&disk.path)?) }
     } else {
         OpenOptions::new()
             .read(true)
@@ -653,11 +653,13 @@ fn create_balloon_device(cfg: &Config, socket: BalloonControlResponseSocket) -> 
     })
 }
 
-fn create_tap_net_device(cfg: &Config, tap_fd: RawFd) -> DeviceResult {
+fn create_tap_net_device(cfg: &Config, tap_fd: RawDescriptor) -> DeviceResult {
     // Safe because we ensure that we get a unique handle to the fd.
     let tap = unsafe {
-        Tap::from_raw_fd(validate_raw_fd(tap_fd).map_err(Error::ValidateRawFd)?)
-            .map_err(Error::CreateTapDevice)?
+        Tap::from_raw_descriptor(
+            validate_raw_descriptor(tap_fd).map_err(Error::ValidateRawDescriptor)?,
+        )
+        .map_err(Error::CreateTapDevice)?
     };
 
     let mut vq_pairs = cfg.net_vq_pairs.unwrap_or(1);
@@ -1541,16 +1543,16 @@ fn add_crosvm_user_to_jail(jail: &mut Minijail, feature: &str) -> Result<Ids> {
     })
 }
 
-fn raw_fd_from_path(path: &Path) -> Result<RawFd> {
+fn raw_descriptor_from_path(path: &Path) -> Result<RawDescriptor> {
     if !path.is_file() {
         return Err(Error::InvalidFdPath);
     }
-    let raw_fd = path
+    let raw_descriptor = path
         .file_name()
         .and_then(|fd_osstr| fd_osstr.to_str())
         .and_then(|fd_str| fd_str.parse::<c_int>().ok())
         .ok_or(Error::InvalidFdPath)?;
-    validate_raw_fd(raw_fd).map_err(Error::ValidateRawFd)
+    validate_raw_descriptor(raw_descriptor).map_err(Error::ValidateRawDescriptor)
 }
 
 trait IntoUnixStream {
@@ -1561,7 +1563,7 @@ impl<'a> IntoUnixStream for &'a Path {
     fn into_unix_stream(self) -> Result<UnixStream> {
         if self.parent() == Some(Path::new("/proc/self/fd")) {
             // Safe because we will validate |raw_fd|.
-            unsafe { Ok(UnixStream::from_raw_fd(raw_fd_from_path(self)?)) }
+            unsafe { Ok(UnixStream::from_raw_fd(raw_descriptor_from_path(self)?)) }
         } else {
             UnixStream::connect(self).map_err(Error::InputEventsOpen)
         }

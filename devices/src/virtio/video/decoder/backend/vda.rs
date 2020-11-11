@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::error;
+use base::{error, RawDescriptor};
 use std::convert::TryFrom;
-use std::os::unix::io::RawFd;
 
 use libvda::decode::Event as LibvdaEvent;
 
@@ -129,11 +128,13 @@ impl<'a> DecoderSession for LibvdaSession<'a> {
     fn decode(
         &self,
         bitstream_id: i32,
-        fd: RawFd,
+        descriptor: RawDescriptor,
         offset: u32,
         bytes_used: u32,
     ) -> VideoResult<()> {
-        Ok(self.session.decode(bitstream_id, fd, offset, bytes_used)?)
+        Ok(self
+            .session
+            .decode(bitstream_id, descriptor, offset, bytes_used)?)
     }
 
     fn flush(&self) -> VideoResult<()> {
@@ -152,7 +153,7 @@ impl<'a> DecoderSession for LibvdaSession<'a> {
         &self,
         picture_buffer_id: i32,
         format: Format,
-        output_buffer: RawFd,
+        output_buffer: RawDescriptor,
         planes: &[FramePlane],
     ) -> VideoResult<()> {
         let vda_planes: Vec<libvda::FramePlane> = planes.into_iter().map(Into::into).collect();

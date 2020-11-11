@@ -765,7 +765,7 @@ mod tests {
                 B,
                 C {
                     f0: u8,
-                    f1: RawFd,
+                    f1: RawDescriptor,
                 },
             }
         };
@@ -773,7 +773,9 @@ mod tests {
         let expected = quote! {
             impl msg_socket::MsgOnSocket for MyMsg {
                 fn uses_descriptor() -> bool {
-                    <u8>::uses_descriptor() || <u8>::uses_descriptor() || <RawFd>::uses_descriptor()
+                    <u8>::uses_descriptor()
+                    || <u8>::uses_descriptor()
+                    || <RawDescriptor>::uses_descriptor()
                 }
                 fn msg_size(&self) -> usize {
                     1 + match self {
@@ -814,7 +816,7 @@ mod tests {
                             __offset += t.0.msg_size();
                             __fd_offset += t.1;
                             let f0 = t.0;
-                            let t = <RawFd>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
+                            let t = <RawDescriptor>::read_from_buffer(&buffer[__offset..], &fds[__fd_offset..])?;
                             __offset += t.0.msg_size();
                             __fd_offset += t.1;
                             let f1 = t.0;

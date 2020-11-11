@@ -7,10 +7,9 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
-use std::os::unix::io::IntoRawFd;
 
 use backend::*;
-use base::{error, WaitContext};
+use base::{error, IntoRawDescriptor, WaitContext};
 
 use crate::virtio::resource_bridge::{self, ResourceInfo, ResourceRequestSocket};
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
@@ -490,12 +489,12 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             return Err(VideoError::InvalidOperation);
         }
 
-        // Take an ownership of this file by `into_raw_fd()` as this file will be closed
+        // Take an ownership of this file by `into_raw_descriptor()` as this file will be closed
         // by the `DecoderBackend`.
         let fd = ctx
             .get_resource_info(QueueType::Input, resource_bridge, resource_id)?
             .file
-            .into_raw_fd();
+            .into_raw_descriptor();
 
         // Register a mapping of timestamp to resource_id
         if let Some(old_resource_id) = ctx
@@ -580,9 +579,9 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                     session.set_output_buffer_count(OUTPUT_BUFFER_COUNT)?;
                 }
 
-                // Take ownership of this file by `into_raw_fd()` as this
+                // Take ownership of this file by `into_raw_descriptor()` as this
                 // file will be closed by libvda.
-                let fd = resource_info.file.into_raw_fd();
+                let fd = resource_info.file.into_raw_descriptor();
                 session.use_output_buffer(buffer_id as i32, Format::NV12, fd, &planes)
             }
         }

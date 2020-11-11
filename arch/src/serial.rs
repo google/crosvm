@@ -243,7 +243,7 @@ impl SerialParameters {
             }
             SerialType::Sink => None,
             SerialType::Syslog => {
-                syslog::push_fds(keep_rds);
+                syslog::push_descriptors(keep_rds);
                 Some(Box::new(syslog::Syslogger::new(
                     syslog::Priority::Info,
                     syslog::Facility::Daemon,
