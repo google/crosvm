@@ -1016,7 +1016,7 @@ impl From<&IrqRoute> for kvm_irq_routing_entry {
                         address_lo: *address as u32,
                         address_hi: (*address >> 32) as u32,
                         data: *data,
-                        pad: 0,
+                        ..Default::default()
                     },
                 },
                 ..Default::default()
