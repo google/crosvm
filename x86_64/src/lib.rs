@@ -421,6 +421,7 @@ impl arch::LinuxArch for X8664arch {
             &mut io_bus,
             &mut resources,
             suspend_evt.try_clone().map_err(Error::CloneEvent)?,
+            exit_evt.try_clone().map_err(Error::CloneEvent)?,
             components.acpi_sdts,
             &mut irq_chip,
             battery,
@@ -1043,6 +1044,7 @@ impl X8664arch {
         io_bus: &mut devices::Bus,
         resources: &mut SystemAllocator,
         suspend_evt: Event,
+        exit_evt: Event,
         sdts: Vec<SDT>,
         irq_chip: &mut impl IrqChip,
         battery: (&Option<BatteryType>, Option<Minijail>),
@@ -1064,7 +1066,7 @@ impl X8664arch {
             None => 0x600,
         };
 
-        let pmresource = devices::ACPIPMResource::new(suspend_evt);
+        let pmresource = devices::ACPIPMResource::new(suspend_evt, exit_evt);
         Aml::to_aml_bytes(&pmresource, &mut amls);
         let pm = Arc::new(Mutex::new(pmresource));
         io_bus

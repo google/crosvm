@@ -9,6 +9,7 @@ use base::{error, warn, Event};
 /// ACPI PM resource for handling OS suspend/resume request
 pub struct ACPIPMResource {
     suspend_evt: Event,
+    exit_evt: Event,
     pm1_status: u16,
     pm1_enable: u16,
     pm1_control: u16,
@@ -18,9 +19,10 @@ pub struct ACPIPMResource {
 
 impl ACPIPMResource {
     /// Constructs ACPI Power Management Resouce.
-    pub fn new(suspend_evt: Event) -> ACPIPMResource {
+    pub fn new(suspend_evt: Event, exit_evt: Event) -> ACPIPMResource {
         ACPIPMResource {
             suspend_evt,
+            exit_evt,
             pm1_status: 0,
             pm1_enable: 0,
             pm1_control: 0,
@@ -45,6 +47,9 @@ const BITMASK_PM1CNT_SLEEP_ENABLE: u16 = 0x2000;
 const BITMASK_SLEEPCNT_SLEEP_ENABLE: u8 = 0x20;
 const BITMASK_PM1CNT_WAKE_STATUS: u16 = 0x8000;
 const BITMASK_SLEEPCNT_WAKE_STATUS: u8 = 0x80;
+
+const BITMASK_PM1CNT_SLEEP_TYPE: u16 = 0x1C00;
+const SLEEP_TYPE_S5: u16 = 0;
 
 impl BusDevice for ACPIPMResource {
     fn debug_label(&self) -> String {
@@ -94,8 +99,14 @@ impl BusDevice for ACPIPMResource {
             PM1_ENABLE => self.pm1_enable = val,
             PM1_CONTROL => {
                 if (val & BITMASK_PM1CNT_SLEEP_ENABLE) == BITMASK_PM1CNT_SLEEP_ENABLE {
-                    if let Err(e) = self.suspend_evt.write(1) {
-                        error!("ACPIPM: failed to trigger suspend event: {}", e);
+                    if val & BITMASK_PM1CNT_SLEEP_TYPE == SLEEP_TYPE_S5 {
+                        if let Err(e) = self.exit_evt.write(1) {
+                            error!("ACPIPM: failed to trigger exit event: {}", e);
+                        }
+                    } else {
+                        if let Err(e) = self.suspend_evt.write(1) {
+                            error!("ACPIPM: failed to trigger suspend event: {}", e);
+                        }
                     }
                 }
                 self.pm1_control = val & !BITMASK_PM1CNT_SLEEP_ENABLE;
@@ -134,6 +145,13 @@ impl Aml for ACPIPMResource {
         aml::Name::new(
             "_S1_".into(),
             &aml::Package::new(vec![&aml::ONE, &aml::ONE, &aml::ZERO, &aml::ZERO]),
+        )
+        .to_aml_bytes(bytes);
+
+        // S5
+        aml::Name::new(
+            "_S5_".into(),
+            &aml::Package::new(vec![&aml::ZERO, &aml::ZERO, &aml::ZERO, &aml::ZERO]),
         )
         .to_aml_bytes(bytes);
     }
