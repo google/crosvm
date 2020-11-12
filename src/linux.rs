@@ -2614,7 +2614,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                                 break 'wait;
                                             }
                                             other => {
-                                                if other == VmRunMode::Suspending {
+                                                if other == VmRunMode::Running {
                                                     linux.io_bus.notify_resume();
                                                 }
                                                 for (handle, channel) in &vcpu_handles {
