@@ -43,11 +43,11 @@ pub fn vec_with_array_field<T: Default, F>(count: usize) -> Vec<T> {
 /// A complete definition of flexible array structs is found in the ISO 9899 specification
 /// (http://www.iso-9899.info/n1570.html). A flexible array struct is of the form:
 ///
-/// ```
+/// ```ignore
 /// #[repr(C)]
 /// struct T {
 ///    some_data: u32,
-///    nent: u32
+///    nent: u32,
 ///    entries: __IncompleteArrayField<S>,
 /// }
 /// ```
