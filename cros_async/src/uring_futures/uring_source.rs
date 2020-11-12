@@ -299,17 +299,15 @@ mod tests {
 
     #[test]
     fn read_to_mem() {
-        use vm_memory::{GuestAddress, GuestMemory};
-
         use crate::uring_mem::VecIoWrapper;
+        use std::io::Write;
+        use tempfile::tempfile;
 
         let io_obj = Box::pin({
             // Use guest memory as a test file, it implements AsRawFd.
-            let source = GuestMemory::new(&[(GuestAddress(0), 8192)]).unwrap();
-            source
-                .get_slice_at_addr(GuestAddress(0), 8192)
-                .unwrap()
-                .write_bytes(0x55);
+            let mut source = tempfile().unwrap();
+            let data = vec![0x55; 8192];
+            source.write(&data).unwrap();
             UringSource::new(source).unwrap()
         });
 
