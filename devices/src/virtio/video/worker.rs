@@ -6,7 +6,7 @@
 
 use std::collections::VecDeque;
 
-use base::{error, Event, WaitContext};
+use base::{error, info, Event, WaitContext};
 use vm_memory::GuestMemory;
 
 use crate::virtio::queue::{DescriptorChain, Queue};
@@ -14,7 +14,7 @@ use crate::virtio::resource_bridge::ResourceRequestSocket;
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
 use crate::virtio::video::device::{
-    AsyncCmdResponse, Device, Token, VideoCmdResponseType, VideoEvtResponseType,
+    AsyncCmdResponse, AsyncCmdTag, Device, Token, VideoCmdResponseType, VideoEvtResponseType,
 };
 use crate::virtio::video::event::{self, EvtType, VideoEvt};
 use crate::virtio::video::response::{self, Response};
@@ -187,17 +187,29 @@ impl Worker {
                             tag,
                             response: cmd_result,
                         } = async_response;
-                        let desc = desc_map
-                            .remove(&tag)
-                            .ok_or_else(|| Error::UnexpectedResponse(tag))?;
-                        let cmd_response = match cmd_result {
-                            Ok(r) => r,
-                            Err(e) => {
-                                error!("returning async error response: {}", &e);
-                                e.into()
+                        match desc_map.remove(&tag) {
+                            Some(desc) => {
+                                let cmd_response = match cmd_result {
+                                    Ok(r) => r,
+                                    Err(e) => {
+                                        error!("returning async error response: {}", &e);
+                                        e.into()
+                                    }
+                                };
+                                responses.push_back((desc, cmd_response))
                             }
-                        };
-                        responses.push_back((desc, cmd_response));
+                            None => match tag {
+                                // TODO(b/153406792): Drain is cancelled by clearing either of the
+                                // stream's queues. To work around a limitation in the VDA api, the
+                                // output queue is cleared synchronously without going through VDA.
+                                // Because of this, the cancellation response from VDA for the
+                                // input queue might fail to find the drain's AsyncCmdTag.
+                                AsyncCmdTag::Drain { stream_id: _ } => {
+                                    info!("ignoring unknown drain response");
+                                }
+                                _ => return Err(Error::UnexpectedResponse(tag)),
+                            },
+                        }
                     }
                     VideoEvtResponseType::Event(evt) => {
                         self.write_event(event_queue, evt)?;
