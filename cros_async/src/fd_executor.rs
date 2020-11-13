@@ -21,7 +21,7 @@ use std::task::Waker;
 
 use slab::Slab;
 
-use sys_util::{PollContext, WatchingEvents};
+use sys_util::{error, PollContext, WatchingEvents};
 
 use crate::executor::{ExecutableFuture, Executor, FutureList};
 use crate::WakerToken;
@@ -150,7 +150,7 @@ pub(crate) fn add_future(future: Pin<Box<dyn Future<Output = ()>>>) -> Result<()
 // Tracks active wakers and associates wakers with the futures that registered them.
 struct FdWakerState {
     poll_ctx: PollContext<usize>,
-    tokens: Slab<(File, Waker)>,
+    tokens: Slab<(File, Option<Waker>)>,
     new_futures: VecDeque<ExecutableFuture<()>>,
 }
 
@@ -175,7 +175,7 @@ impl FdWakerState {
         self.poll_ctx
             .add_fd_with_events(&duped_fd, events, next_token)
             .map_err(Error::SubmittingWaker)?;
-        entry.insert((duped_fd, waker));
+        entry.insert((duped_fd, Some(waker)));
         Ok(WakerToken(next_token))
     }
 
@@ -184,9 +184,16 @@ impl FdWakerState {
         let events = self.poll_ctx.wait().map_err(Error::PollContextError)?;
         for e in events.iter() {
             let token = e.token();
-            let (fd, waker) = self.tokens.remove(token);
-            self.poll_ctx.delete(&fd).map_err(Error::PollContextError)?;
-            waker.wake();
+            if let Some((fd, waker)) = self.tokens.get_mut(token) {
+                self.poll_ctx.delete(fd).map_err(Error::PollContextError)?;
+                if let Some(waker) = waker.take() {
+                    waker.wake();
+                } else {
+                    error!("Woken twice");
+                }
+            } else {
+                error!("Unknown waker");
+            }
         }
         Ok(())
     }
