@@ -78,14 +78,14 @@ mod tests {
         eventfd.write(0xaa).unwrap();
         let fut = go(EventAsync::new_uring(eventfd).unwrap());
         pin_mut!(fut);
-        let val = crate::run_executor(crate::RunOne::new(fut)).unwrap();
+        let val = crate::run_one_uring(fut).unwrap();
         assert_eq!(val, 0xaa);
 
         let eventfd = EventFd::new().unwrap();
         eventfd.write(0xaa).unwrap();
         let fut = go(EventAsync::new_poll(eventfd).unwrap());
         pin_mut!(fut);
-        let val = crate::run_executor(crate::RunOne::new(fut)).unwrap();
+        let val = crate::run_one_poll(fut).unwrap();
         assert_eq!(val, 0xaa);
     }
 }
