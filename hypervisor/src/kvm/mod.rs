@@ -18,6 +18,7 @@ use std::collections::{BTreeMap, BinaryHeap};
 use std::convert::TryFrom;
 use std::mem::{size_of, ManuallyDrop};
 use std::os::raw::{c_char, c_int, c_ulong, c_void};
+use std::os::unix::io::AsRawFd;
 use std::ptr::copy_nonoverlapping;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -29,8 +30,8 @@ use libc::{
 use base::{
     block_signal, errno_result, error, ioctl, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
     pagesize, signal, unblock_signal, AsRawDescriptor, Error, Event, FromRawDescriptor,
-    MappedRegion, MemoryMapping, MemoryMappingBuilder, MmapError, RawDescriptor, Result,
-    SafeDescriptor,
+    MappedRegion, MemoryMapping, MemoryMappingBuilder, MmapError, Protection, RawDescriptor,
+    Result, SafeDescriptor,
 };
 use data_model::vec_with_array_field;
 use kvm_sys::*;
@@ -559,6 +560,36 @@ impl Vm for KvmVm {
 
     fn set_pvclock(&self, state: &ClockState) -> Result<()> {
         self.set_pvclock_arch(state)
+    }
+
+    fn add_fd_mapping(
+        &mut self,
+        slot: u32,
+        offset: usize,
+        size: usize,
+        fd: &dyn AsRawFd,
+        fd_offset: u64,
+        prot: Protection,
+    ) -> Result<()> {
+        let mut regions = self.mem_regions.lock();
+        let region = regions.get_mut(&slot).ok_or(Error::new(EINVAL))?;
+
+        match region.add_fd_mapping(offset, size, fd, fd_offset, prot) {
+            Ok(()) => Ok(()),
+            Err(MmapError::SystemCallFailed(e)) => Err(e),
+            Err(_) => Err(Error::new(EIO)),
+        }
+    }
+
+    fn remove_mapping(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
+        let mut regions = self.mem_regions.lock();
+        let region = regions.get_mut(&slot).ok_or(Error::new(EINVAL))?;
+
+        match region.remove_mapping(offset, size) {
+            Ok(()) => Ok(()),
+            Err(MmapError::SystemCallFailed(e)) => Err(e),
+            Err(_) => Err(Error::new(EIO)),
+        }
     }
 }
 

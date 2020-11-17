@@ -21,6 +21,8 @@ use crate::{errno, pagesize};
 
 #[derive(Debug)]
 pub enum Error {
+    /// `add_fd_mapping` is not supported.
+    AddFdMappingIsUnsupported,
     /// Requested memory out of range.
     InvalidAddress,
     /// Invalid argument provided when building mmap.
@@ -35,6 +37,8 @@ pub enum Error {
     SystemCallFailed(errno::Error),
     /// Writing to memory failed
     ReadToMemory(io::Error),
+    /// `remove_mapping` is not supported
+    RemoveMappingIsUnsupported,
     /// Reading from memory failed
     WriteFromMemory(io::Error),
 }
@@ -45,6 +49,7 @@ impl Display for Error {
         use self::Error::*;
 
         match self {
+            AddFdMappingIsUnsupported => write!(f, "`add_fd_mapping` is unsupported"),
             InvalidAddress => write!(f, "requested memory out of range"),
             InvalidArgument => write!(f, "invalid argument provided when creating mapping"),
             InvalidOffset => write!(f, "requested offset is out of range of off_t"),
@@ -56,6 +61,7 @@ impl Display for Error {
             ),
             SystemCallFailed(e) => write!(f, "mmap system call failed: {}", e),
             ReadToMemory(e) => write!(f, "failed to read from file to memory: {}", e),
+            RemoveMappingIsUnsupported => write!(f, "`remove_mapping` is unsupported"),
             WriteFromMemory(e) => write!(f, "failed to write from memory to file: {}", e),
         }
     }
@@ -134,6 +140,32 @@ pub unsafe trait MappedRegion: Send + Sync {
 
     /// Returns the size of the memory region in bytes.
     fn size(&self) -> usize;
+
+    /// Maps `size` bytes starting at `fd_offset` bytes from within the given `fd`
+    /// at `offset` bytes from the start of the region with `prot` protections.
+    /// `offset` must be page aligned.
+    ///
+    /// # Arguments
+    /// * `offset` - Page aligned offset into the arena in bytes.
+    /// * `size` - Size of memory region in bytes.
+    /// * `fd` - File descriptor to mmap from.
+    /// * `fd_offset` - Offset in bytes from the beginning of `fd` to start the mmap.
+    /// * `prot` - Protection (e.g. readable/writable) of the memory region.
+    fn add_fd_mapping(
+        &mut self,
+        _offset: usize,
+        _size: usize,
+        _fd: &dyn AsRawFd,
+        _fd_offset: u64,
+        _prot: Protection,
+    ) -> Result<()> {
+        Err(Error::AddFdMappingIsUnsupported)
+    }
+
+    /// Remove `size`-byte mapping starting at `offset`.
+    fn remove_mapping(&mut self, _offset: usize, _size: usize) -> Result<()> {
+        Err(Error::RemoveMappingIsUnsupported)
+    }
 }
 
 impl dyn MappedRegion {
@@ -843,6 +875,21 @@ unsafe impl MappedRegion for MemoryMappingArena {
 
     fn size(&self) -> usize {
         self.size
+    }
+
+    fn add_fd_mapping(
+        &mut self,
+        offset: usize,
+        size: usize,
+        fd: &dyn AsRawFd,
+        fd_offset: u64,
+        prot: Protection,
+    ) -> Result<()> {
+        self.add_fd_offset_protection(offset, size, fd, fd_offset, prot)
+    }
+
+    fn remove_mapping(&mut self, offset: usize, size: usize) -> Result<()> {
+        self.remove(offset, size)
     }
 }
 

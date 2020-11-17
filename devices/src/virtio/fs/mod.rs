@@ -5,14 +5,23 @@
 use std::fmt;
 use std::io;
 use std::mem;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
-use base::{error, warn, Error as SysError, Event, RawDescriptor};
+use base::{error, warn, AsRawDescriptor, Error as SysError, Event, RawDescriptor};
 use data_model::{DataInit, Le32};
+use msg_socket::{MsgReceiver, MsgSender};
+use resources::Alloc;
+use vm_control::{FsMappingRequest, FsMappingRequestSocket, VmResponse};
 use vm_memory::GuestMemory;
 
-use crate::virtio::{copy_config, DescriptorError, Interrupt, Queue, VirtioDevice, TYPE_FS};
+use crate::pci::{
+    PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability,
+};
+use crate::virtio::{
+    copy_config, DescriptorError, Interrupt, PciCapabilityType, Queue, VirtioDevice,
+    VirtioPciShmCap, TYPE_FS,
+};
 
 mod multikey;
 pub mod passthrough;
@@ -25,6 +34,13 @@ use worker::Worker;
 
 // The fs device does not have a fixed number of queues.
 const QUEUE_SIZE: u16 = 1024;
+
+const FS_BAR_NUM: u8 = 4;
+const FS_BAR_OFFSET: u64 = 0;
+const FS_BAR_SIZE: u64 = 1 << 33;
+
+/// Defined in kernel/include/uapi/linux/virtio_fs.h.
+const VIRTIO_FS_SHMCAP_ID_CACHE: u8 = 0;
 
 /// The maximum allowable length of the tag used to identify a specific virtio-fs device.
 pub const FS_MAX_TAG_LEN: usize = 36;
@@ -105,6 +121,8 @@ pub struct Fs {
     queue_sizes: Box<[u16]>,
     avail_features: u64,
     acked_features: u64,
+    pci_bar: Option<Alloc>,
+    socket: Option<FsMappingRequestSocket>,
     workers: Vec<(Event, thread::JoinHandle<Result<()>>)>,
 }
 
@@ -114,6 +132,7 @@ impl Fs {
         tag: &str,
         num_workers: usize,
         fs_cfg: passthrough::Config,
+        socket: FsMappingRequestSocket,
     ) -> Result<Fs> {
         if tag.len() > FS_MAX_TAG_LEN {
             return Err(Error::TagTooLong(tag.len()));
@@ -138,6 +157,8 @@ impl Fs {
             queue_sizes: vec![QUEUE_SIZE; num_queues].into_boxed_slice(),
             avail_features: base_features,
             acked_features: 0,
+            pci_bar: None,
+            socket: Some(socket),
             workers: Vec::with_capacity(num_workers + 1),
         })
     }
@@ -164,10 +185,16 @@ impl Fs {
 
 impl VirtioDevice for Fs {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        self.fs
+        let mut fds = self
+            .fs
             .as_ref()
             .map(PassthroughFs::keep_rds)
-            .unwrap_or_else(Vec::new)
+            .unwrap_or_else(Vec::new);
+        if let Some(rd) = self.socket.as_ref().map(|s| s.as_raw_descriptor()) {
+            fds.push(rd);
+        }
+
+        fds
     }
 
     fn device_type(&self) -> u32 {
@@ -213,7 +240,24 @@ impl VirtioDevice for Fs {
 
         let server = Arc::new(Server::new(fs));
         let irq = Arc::new(interrupt);
+        let socket = self.socket.take().expect("missing mapping socket");
 
+        // Create the shared memory region now before we start processing requests.
+        let request = FsMappingRequest::AllocateSharedMemoryRegion(
+            self.pci_bar.as_ref().cloned().expect("No pci_bar"),
+        );
+        socket
+            .send(&request)
+            .expect("failed to send allocation message");
+        let slot = match socket.recv() {
+            Ok(VmResponse::RegisterMemory { pfn: _, slot }) => slot,
+            Ok(VmResponse::Err(e)) => panic!("failed to allocate shared memory region: {}", e),
+            r => panic!(
+                "unexpected response to allocate shared memory region: {:?}",
+                r
+            ),
+        };
+        let socket = Arc::new(Mutex::new(socket));
         let mut watch_resample_event = true;
         for (idx, (queue, evt)) in queues.into_iter().zip(queue_evts.into_iter()).enumerate() {
             let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e)))
@@ -229,11 +273,12 @@ impl VirtioDevice for Fs {
             let mem = guest_mem.clone();
             let server = server.clone();
             let irq = irq.clone();
+            let socket = Arc::clone(&socket);
 
             let worker_result = thread::Builder::new()
                 .name(format!("virtio-fs worker {}", idx))
                 .spawn(move || {
-                    let mut worker = Worker::new(mem, queue, server, irq);
+                    let mut worker = Worker::new(mem, queue, server, irq, socket, slot);
                     worker.run(evt, kill_evt, watch_resample_event)
                 });
 
@@ -250,6 +295,32 @@ impl VirtioDevice for Fs {
                 }
             }
         }
+    }
+
+    fn get_device_bars(&mut self, address: PciAddress) -> Vec<PciBarConfiguration> {
+        self.pci_bar = Some(Alloc::PciBar {
+            bus: address.bus,
+            dev: address.dev,
+            func: address.func,
+            bar: FS_BAR_NUM,
+        });
+
+        vec![PciBarConfiguration::new(
+            FS_BAR_NUM as usize,
+            FS_BAR_SIZE,
+            PciBarRegionType::Memory64BitRegion,
+            PciBarPrefetchable::NotPrefetchable,
+        )]
+    }
+
+    fn get_device_caps(&self) -> Vec<Box<dyn PciCapability>> {
+        vec![Box::new(VirtioPciShmCap::new(
+            PciCapabilityType::SharedMemoryConfig,
+            FS_BAR_NUM,
+            FS_BAR_OFFSET,
+            FS_BAR_SIZE,
+            VIRTIO_FS_SHMCAP_ID_CACHE,
+        ))]
     }
 }
 

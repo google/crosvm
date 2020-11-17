@@ -17,6 +17,7 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::mem::ManuallyDrop;
+use std::os::raw::c_int;
 use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -24,9 +25,9 @@ use std::sync::Arc;
 use libc::{EINVAL, EIO, ENODEV};
 
 use base::{
-    error, AsRawDescriptor, Error as SysError, Event, ExternalMapping, FromRawDescriptor,
-    IntoRawDescriptor, MappedRegion, MemoryMappingBuilder, MmapError, RawDescriptor, Result,
-    SafeDescriptor,
+    error, AsRawDescriptor, Error as SysError, Event, ExternalMapping, Fd, FromRawDescriptor,
+    IntoRawDescriptor, MappedRegion, MemoryMappingArena, MemoryMappingBuilder, MmapError,
+    Protection, RawDescriptor, Result, SafeDescriptor,
 };
 use hypervisor::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
@@ -766,6 +767,112 @@ pub struct BatControl {
     pub control_socket: BatControlRequestSocket,
 }
 
+#[derive(MsgOnSocket, Debug)]
+pub enum FsMappingRequest {
+    /// Create an anonymous memory mapping that spans the entire region described by `Alloc`.
+    AllocateSharedMemoryRegion(Alloc),
+    /// Create a memory mapping.
+    CreateMemoryMapping {
+        /// The slot for a MemoryMappingArena, previously returned by a response to an
+        /// `AllocateSharedMemoryRegion` request.
+        slot: u32,
+        /// The file descriptor that should be mapped.
+        fd: MaybeOwnedDescriptor,
+        /// The size of the mapping.
+        size: usize,
+        /// The offset into the file from where the mapping should start.
+        file_offset: u64,
+        /// The memory protection to be used for the mapping.  Protections other than readable and
+        /// writable will be silently dropped.
+        prot: u32,
+        /// The offset into the shared memory region where the mapping should be placed.
+        mem_offset: usize,
+    },
+    /// Remove a memory mapping.
+    RemoveMemoryMapping {
+        /// The slot for a MemoryMappingArena.
+        slot: u32,
+        /// The offset into the shared memory region.
+        offset: usize,
+        /// The size of the mapping.
+        size: usize,
+    },
+}
+
+impl FsMappingRequest {
+    pub fn execute(&self, vm: &mut dyn Vm, allocator: &mut SystemAllocator) -> VmResponse {
+        use self::FsMappingRequest::*;
+        match *self {
+            AllocateSharedMemoryRegion(Alloc::PciBar {
+                bus,
+                dev,
+                func,
+                bar,
+            }) => {
+                match allocator
+                    .mmio_allocator(MmioType::High)
+                    .get(&Alloc::PciBar {
+                        bus,
+                        dev,
+                        func,
+                        bar,
+                    }) {
+                    Some((addr, length, _)) => {
+                        let arena = match MemoryMappingArena::new(*length as usize) {
+                            Ok(a) => a,
+                            Err(MmapError::SystemCallFailed(e)) => return VmResponse::Err(e),
+                            _ => return VmResponse::Err(SysError::new(EINVAL)),
+                        };
+
+                        match vm.add_memory_region(
+                            GuestAddress(*addr),
+                            Box::new(arena),
+                            false,
+                            false,
+                        ) {
+                            Ok(slot) => VmResponse::RegisterMemory {
+                                pfn: addr >> 12,
+                                slot,
+                            },
+                            Err(e) => VmResponse::Err(e),
+                        }
+                    }
+                    None => VmResponse::Err(SysError::new(EINVAL)),
+                }
+            }
+            CreateMemoryMapping {
+                slot,
+                ref fd,
+                size,
+                file_offset,
+                prot,
+                mem_offset,
+            } => {
+                let raw_fd: Fd = Fd(fd.as_raw_descriptor());
+
+                match vm.add_fd_mapping(
+                    slot,
+                    mem_offset,
+                    size,
+                    &raw_fd,
+                    file_offset,
+                    Protection::from(prot as c_int & (libc::PROT_READ | libc::PROT_WRITE)),
+                ) {
+                    Ok(()) => VmResponse::Ok,
+                    Err(e) => VmResponse::Err(e),
+                }
+            }
+            RemoveMemoryMapping { slot, offset, size } => {
+                match vm.remove_mapping(slot, offset, size) {
+                    Ok(()) => VmResponse::Ok,
+                    Err(e) => VmResponse::Err(e),
+                }
+            }
+            _ => VmResponse::Err(SysError::new(EINVAL)),
+        }
+    }
+}
+
 pub type BalloonControlRequestSocket = MsgSocket<BalloonControlCommand, BalloonControlResult>;
 pub type BalloonControlResponseSocket = MsgSocket<BalloonControlResult, BalloonControlCommand>;
 
@@ -774,6 +881,9 @@ pub type BatControlResponseSocket = MsgSocket<BatControlResult, BatControlComman
 
 pub type DiskControlRequestSocket = MsgSocket<DiskControlCommand, DiskControlResult>;
 pub type DiskControlResponseSocket = MsgSocket<DiskControlResult, DiskControlCommand>;
+
+pub type FsMappingRequestSocket = MsgSocket<FsMappingRequest, VmResponse>;
+pub type FsMappingResponseSocket = MsgSocket<VmResponse, FsMappingRequest>;
 
 pub type UsbControlSocket = MsgSocket<UsbControlCommand, UsbControlResult>;
 

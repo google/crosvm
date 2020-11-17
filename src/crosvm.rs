@@ -122,6 +122,7 @@ impl TouchDeviceOption {
     }
 }
 
+#[derive(Eq, PartialEq)]
 pub enum SharedDirKind {
     FS,
     P9,

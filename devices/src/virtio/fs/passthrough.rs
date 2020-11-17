@@ -25,8 +25,10 @@ use base::{
 use data_model::DataInit;
 use fuse::filesystem::{
     Context, DirectoryIterator, Entry, FileSystem, FsOptions, GetxattrReply, IoctlFlags,
-    IoctlReply, ListxattrReply, OpenOptions, SetattrValid, ZeroCopyReader, ZeroCopyWriter, ROOT_ID,
+    IoctlReply, ListxattrReply, OpenOptions, RemoveMappingOne, SetattrValid, ZeroCopyReader,
+    ZeroCopyWriter, ROOT_ID,
 };
+use fuse::Mapper;
 use rand_ish::SimpleRng;
 use sync::Mutex;
 
@@ -2305,6 +2307,40 @@ impl FileSystem for PassthroughFs {
         } else {
             Err(io::Error::last_os_error())
         }
+    }
+
+    fn set_up_mapping<M: Mapper>(
+        &self,
+        _ctx: Context,
+        inode: Self::Inode,
+        _handle: Self::Handle,
+        file_offset: u64,
+        mem_offset: u64,
+        size: usize,
+        prot: u32,
+        mapper: M,
+    ) -> io::Result<()> {
+        let read = prot & libc::PROT_READ as u32 != 0;
+        let write = prot & libc::PROT_WRITE as u32 != 0;
+
+        let flags = match (read, write) {
+            (true, true) => libc::O_RDWR,
+            (true, false) => libc::O_RDONLY,
+            (false, true) => libc::O_WRONLY,
+            (false, false) => return Err(io::Error::from_raw_os_error(libc::EINVAL)),
+        };
+        let data = self.find_inode(inode)?;
+
+        let file = self.open_inode(&data, flags | libc::O_NONBLOCK)?;
+
+        mapper.map(mem_offset, size, &file, file_offset, prot)
+    }
+
+    fn remove_mapping<M: Mapper>(&self, msgs: &[RemoveMappingOne], mapper: M) -> io::Result<()> {
+        for RemoveMappingOne { moffset, len } in msgs {
+            mapper.unmap(*moffset, *len)?;
+        }
+        Ok(())
     }
 }
 

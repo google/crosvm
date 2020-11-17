@@ -11,8 +11,9 @@ pub mod kvm;
 pub mod x86_64;
 
 use std::os::raw::c_int;
+use std::os::unix::io::AsRawFd;
 
-use base::{Event, MappedRegion, RawDescriptor, Result, SafeDescriptor};
+use base::{Event, MappedRegion, Protection, RawDescriptor, Result, SafeDescriptor};
 use msg_socket::MsgOnSocket;
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -139,6 +140,29 @@ pub trait Vm: Send {
     /// Sets the current timestamp of the paravirtual clock as seen by the current guest.
     /// Only works on VMs that support `VmCap::PvClock`.
     fn set_pvclock(&self, state: &ClockState) -> Result<()>;
+
+    /// Maps `size` bytes starting at `fs_offset` bytes from within the given `fd`
+    /// at `offset` bytes from the start of the arena with `prot` protections.
+    /// `offset` must be page aligned.
+    ///
+    /// # Arguments
+    /// * `offset` - Page aligned offset into the arena in bytes.
+    /// * `size` - Size of memory region in bytes.
+    /// * `fd` - File descriptor to mmap from.
+    /// * `fd_offset` - Offset in bytes from the beginning of `fd` to start the mmap.
+    /// * `prot` - Protection (e.g. readable/writable) of the memory region.
+    fn add_fd_mapping(
+        &mut self,
+        slot: u32,
+        offset: usize,
+        size: usize,
+        fd: &dyn AsRawFd,
+        fd_offset: u64,
+        prot: Protection,
+    ) -> Result<()>;
+
+    /// Remove `size`-byte mapping starting at `offset`.
+    fn remove_mapping(&mut self, slot: u32, offset: usize, size: usize) -> Result<()>;
 }
 
 /// A unique fingerprint for a particular `VcpuRunHandle`, used in `Vcpu` impls to ensure the

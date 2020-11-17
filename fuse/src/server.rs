@@ -2,12 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::convert::TryInto;
 use std::ffi::CStr;
 use std::io;
 use std::mem::{size_of, MaybeUninit};
+use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 
-use base::error;
+use base::{error, pagesize};
 use data_model::DataInit;
 
 use crate::filesystem::{
@@ -45,6 +47,58 @@ pub trait Writer: io::Write {
     fn has_sufficient_buffer(&self, size: u32) -> bool;
 }
 
+/// A trait for memory mapping for DAX.
+///
+/// For some transports (like virtio) it may be possible to share a region of memory with the
+/// FUSE kernel driver so that it can access file contents directly without issuing read or
+/// write requests.  In this case the driver will instead send requests to map a section of a
+/// file into the shared memory region.
+pub trait Mapper {
+    /// Maps `size` bytes starting at `file_offset` bytes from within the given `fd` at `mem_offset`
+    /// bytes from the start of the memory region with `prot` protections. `mem_offset` must be
+    /// page aligned.
+    ///
+    /// # Arguments
+    /// * `mem_offset` - Page aligned offset into the memory region in bytes.
+    /// * `size` - Size of memory region in bytes.
+    /// * `fd` - File descriptor to mmap from.
+    /// * `file_offset` - Offset in bytes from the beginning of `fd` to start the mmap.
+    /// * `prot` - Protection (e.g. `libc::PROT_READ`) of the memory region.
+    fn map(
+        &self,
+        mem_offset: u64,
+        size: usize,
+        fd: &dyn AsRawFd,
+        file_offset: u64,
+        prot: u32,
+    ) -> io::Result<()>;
+
+    /// Unmaps `size` bytes at `offset` bytes from the start of the memory region. `offset` must be
+    /// page aligned.
+    ///
+    /// # Arguments
+    /// * `offset` - Page aligned offset into the arena in bytes.
+    /// * `size` - Size of memory region in bytes.
+    fn unmap(&self, offset: u64, size: u64) -> io::Result<()>;
+}
+
+impl<'a, M: Mapper> Mapper for &'a M {
+    fn map(
+        &self,
+        mem_offset: u64,
+        size: usize,
+        fd: &dyn AsRawFd,
+        file_offset: u64,
+        prot: u32,
+    ) -> io::Result<()> {
+        (**self).map(mem_offset, size, fd, file_offset, prot)
+    }
+
+    fn unmap(&self, offset: u64, size: u64) -> io::Result<()> {
+        (**self).unmap(offset, size)
+    }
+}
+
 pub struct Server<F: FileSystem + Sync> {
     fs: F,
 }
@@ -54,13 +108,13 @@ impl<F: FileSystem + Sync> Server<F> {
         Server { fs }
     }
 
-    pub fn handle_message<R: Reader + ZeroCopyReader, W: Writer + ZeroCopyWriter>(
+    pub fn handle_message<R: Reader + ZeroCopyReader, W: Writer + ZeroCopyWriter, M: Mapper>(
         &self,
         mut r: R,
         w: W,
+        mapper: M,
     ) -> Result<usize> {
         let in_header = InHeader::from_reader(&mut r).map_err(Error::DecodeMessage)?;
-
         if in_header.len > self.fs.max_buffer_size() {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
@@ -115,7 +169,9 @@ impl<F: FileSystem + Sync> Server<F> {
             Some(Opcode::Lseek) => self.lseek(in_header, r, w),
             Some(Opcode::CopyFileRange) => self.copy_file_range(in_header, r, w),
             Some(Opcode::ChromeOsTmpfile) => self.chromeos_tmpfile(in_header, r, w),
-            Some(Opcode::SetUpMapping) | Some(Opcode::RemoveMapping) | None => reply_error(
+            Some(Opcode::SetUpMapping) => self.set_up_mapping(in_header, r, w, mapper),
+            Some(Opcode::RemoveMapping) => self.remove_mapping(in_header, r, w, mapper),
+            None => reply_error(
                 io::Error::from_raw_os_error(libc::ENOSYS),
                 in_header.unique,
                 w,
@@ -905,7 +961,8 @@ impl<F: FileSystem + Sync> Server<F> {
             | FsOptions::HAS_IOCTL_DIR
             | FsOptions::DO_READDIRPLUS
             | FsOptions::READDIRPLUS_AUTO
-            | FsOptions::ATOMIC_O_TRUNC;
+            | FsOptions::ATOMIC_O_TRUNC
+            | FsOptions::MAP_ALIGNMENT;
 
         let capable = FsOptions::from_bits_truncate(flags);
 
@@ -928,6 +985,7 @@ impl<F: FileSystem + Sync> Server<F> {
                     congestion_threshold: (::std::u16::MAX / 4) * 3,
                     max_write: self.fs.max_buffer_size(),
                     time_gran: 1, // nanoseconds
+                    map_alignment: pagesize().trailing_zeros() as u16,
                     ..Default::default()
                 };
 
@@ -1449,6 +1507,101 @@ impl<F: FileSystem + Sync> Server<F> {
 
                 reply_ok(Some(out), None, in_header.unique, w)
             }
+            Err(e) => reply_error(e, in_header.unique, w),
+        }
+    }
+
+    fn set_up_mapping<R, W, M>(
+        &self,
+        in_header: InHeader,
+        mut r: R,
+        w: W,
+        mapper: M,
+    ) -> Result<usize>
+    where
+        R: Reader,
+        W: Writer,
+        M: Mapper,
+    {
+        let SetUpMappingIn {
+            fh,
+            foffset,
+            len,
+            flags,
+            moffset,
+        } = SetUpMappingIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
+        let flags = SetUpMappingFlags::from_bits_truncate(flags);
+
+        let mut prot = 0;
+        if flags.contains(SetUpMappingFlags::READ) {
+            prot |= libc::PROT_READ as u32;
+        }
+        if flags.contains(SetUpMappingFlags::WRITE) {
+            prot |= libc::PROT_WRITE as u32;
+        }
+
+        let size = if let Ok(s) = len.try_into() {
+            s
+        } else {
+            return reply_error(
+                io::Error::from_raw_os_error(libc::EOVERFLOW),
+                in_header.unique,
+                w,
+            );
+        };
+
+        match self.fs.set_up_mapping(
+            Context::from(in_header),
+            in_header.nodeid.into(),
+            fh.into(),
+            foffset,
+            moffset,
+            size,
+            prot,
+            mapper,
+        ) {
+            Ok(()) => reply_ok(None::<u8>, None, in_header.unique, w),
+            Err(e) => {
+                error!("set_up_mapping failed: {}", e);
+                reply_error(e, in_header.unique, w)
+            }
+        }
+    }
+
+    fn remove_mapping<R, W, M>(
+        &self,
+        in_header: InHeader,
+        mut r: R,
+        w: W,
+        mapper: M,
+    ) -> Result<usize>
+    where
+        R: Reader,
+        W: Writer,
+        M: Mapper,
+    {
+        let RemoveMappingIn { count } =
+            RemoveMappingIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
+
+        // `FUSE_REMOVEMAPPING_MAX_ENTRY` is defined as
+        // `PAGE_SIZE / sizeof(struct fuse_removemapping_one)` in /kernel/include/uapi/linux/fuse.h.
+        let max_entry = pagesize() / std::mem::size_of::<RemoveMappingOne>();
+
+        if max_entry < count as usize {
+            return reply_error(
+                io::Error::from_raw_os_error(libc::EINVAL),
+                in_header.unique,
+                w,
+            );
+        }
+
+        let mut msgs = Vec::with_capacity(count as usize);
+        for _ in 0..(count as usize) {
+            msgs.push(RemoveMappingOne::from_reader(&mut r).map_err(Error::DecodeMessage)?);
+        }
+
+        match self.fs.remove_mapping(&msgs, mapper) {
+            Ok(()) => reply_ok(None::<u8>, None, in_header.unique, w),
             Err(e) => reply_error(e, in_header.unique, w),
         }
     }

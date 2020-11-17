@@ -6,9 +6,10 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, Cursor, Read, Write};
 use std::mem::size_of;
 use std::os::unix::fs::FileExt;
+use std::os::unix::io::AsRawFd;
 
 use crate::filesystem::{FileSystem, ZeroCopyReader, ZeroCopyWriter};
-use crate::server::{Reader, Server, Writer};
+use crate::server::{Mapper, Reader, Server, Writer};
 use crate::sys;
 use crate::{Error, Result};
 
@@ -111,6 +112,31 @@ impl ZeroCopyWriter for DevFuseWriter<'_> {
     }
 }
 
+struct DevFuseMapper;
+
+impl DevFuseMapper {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Mapper for DevFuseMapper {
+    fn map(
+        &self,
+        _mem_offset: u64,
+        _size: usize,
+        _fd: &dyn AsRawFd,
+        _file_offset: u64,
+        _prot: u32,
+    ) -> io::Result<()> {
+        Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
+    }
+
+    fn unmap(&self, _offset: u64, _size: u64) -> io::Result<()> {
+        Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
+    }
+}
+
 /// Start the FUSE message handling loop. Returns when an error happens.
 pub fn start_message_loop<F: FileSystem + Sync>(
     dev_fuse: File,
@@ -129,8 +155,9 @@ pub fn start_message_loop<F: FileSystem + Sync>(
     loop {
         let dev_fuse_reader = DevFuseReader::new(&mut buf_reader);
         let dev_fuse_writer = DevFuseWriter::new(&mut wfile, &mut write_buf);
+        let dev_fuse_mapper = DevFuseMapper::new();
 
-        if let Err(e) = server.handle_message(dev_fuse_reader, dev_fuse_writer) {
+        if let Err(e) = server.handle_message(dev_fuse_reader, dev_fuse_writer, &dev_fuse_mapper) {
             return Err(e);
         }
     }

@@ -11,7 +11,10 @@ use std::time::Duration;
 
 use crate::sys;
 
-pub use crate::sys::{FsOptions, IoctlFlags, IoctlIovec, OpenOptions, SetattrValid, ROOT_ID};
+use crate::server::Mapper;
+pub use crate::sys::{
+    FsOptions, IoctlFlags, IoctlIovec, OpenOptions, RemoveMappingOne, SetattrValid, ROOT_ID,
+};
 
 const MAX_BUFFER_SIZE: u32 = 1 << 20;
 
@@ -1156,6 +1159,39 @@ pub trait FileSystem {
         length: u64,
         flags: u64,
     ) -> io::Result<usize> {
+        Err(io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Set up memory mappings.
+    ///
+    /// Used to set up file mappings in DAX window.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_offset` - Offset into the file to start the mapping.
+    /// * `mem_offset` - Offset in Memory Window.
+    /// * `size` - Length of mapping required.
+    /// * `flags` - Bit field of `FUSE_SETUPMAPPING_FLAGS_*`.
+    /// * `mapper` - Mapper object which performs the mapping.
+    fn set_up_mapping<M: Mapper>(
+        &self,
+        ctx: Context,
+        inode: Self::Inode,
+        handle: Self::Handle,
+        file_offset: u64,
+        mem_offset: u64,
+        size: usize,
+        flags: u32,
+        mapper: M,
+    ) -> io::Result<()> {
+        Err(io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Remove memory mappings.
+    ///
+    /// Used to tear down file mappings in DAX window. This method must be supported when
+    /// `set_up_mapping` is supported.
+    fn remove_mapping<M: Mapper>(&self, msgs: &[RemoveMappingOne], mapper: M) -> io::Result<()> {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
 }
