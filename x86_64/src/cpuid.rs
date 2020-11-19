@@ -42,6 +42,7 @@ const EDX_HTT_SHIFT: u32 = 28; // Hyper Threading Enabled.
 const ECX_TOPO_TYPE_SHIFT: u32 = 8; // Topology Level type.
 const ECX_TOPO_SMT_TYPE: u32 = 1; // SMT type.
 const ECX_TOPO_CORE_TYPE: u32 = 2; // CORE type.
+const EAX_CPU_CORES_SHIFT: u32 = 26; // Index of cpu cores in the same physical package.
 
 fn filter_cpuid(
     vcpu_id: usize,
@@ -90,6 +91,16 @@ fn filter_cpuid(
                     entry.edx = result.edx;
                 }
                 entry.eax &= !0xFC000000;
+                if cpu_count > 1 {
+                    let cpu_cores = if no_smt {
+                        cpu_count as u32
+                    } else if cpu_count % 2 == 0 {
+                        (cpu_count >> 1) as u32
+                    } else {
+                        1
+                    };
+                    entry.eax |= (cpu_cores - 1) << EAX_CPU_CORES_SHIFT;
+                }
             }
             6 => {
                 // Clear X86 EPB feature.  No frequency selection in the hypervisor.
@@ -100,22 +111,32 @@ fn filter_cpuid(
                 // NOTE: these will need to be split if any of the fields that differ between
                 // the two versions are to be set.
                 entry.edx = vcpu_id as u32; // x2APIC ID
-                if no_smt {
-                    // Make it so that all VCPUs appear as different,
-                    // non-hyperthreaded cores on the same package.
-                    if entry.index == 0 {
+                if entry.index == 0 {
+                    if no_smt || (cpu_count == 1) {
+                        // Make it so that all VCPUs appear as different,
+                        // non-hyperthreaded cores on the same package.
                         entry.eax = 0; // Shift to get id of next level
                         entry.ebx = 1; // Number of logical cpus at this level
-                        entry.ecx = (ECX_TOPO_SMT_TYPE << ECX_TOPO_TYPE_SHIFT) | entry.index;
-                    } else if entry.index == 1 {
-                        entry.eax = 4;
-                        entry.ebx = (cpu_count as u32) & 0xffff;
-                        entry.ecx = (ECX_TOPO_CORE_TYPE << ECX_TOPO_TYPE_SHIFT) | entry.index;
+                    } else if cpu_count % 2 == 0 {
+                        // Each core has 2 hyperthreads
+                        entry.eax = 1; // Shift to get id of next level
+                        entry.ebx = 2; // Number of logical cpus at this level
                     } else {
-                        entry.eax = 0;
-                        entry.ebx = 0;
-                        entry.ecx = 0;
+                        // One core contain all the cpu_count hyperthreads
+                        let cpu_bits: u32 = 32 - ((cpu_count - 1) as u32).leading_zeros();
+                        entry.eax = cpu_bits; // Shift to get id of next level
+                        entry.ebx = cpu_count as u32; // Number of logical cpus at this level
                     }
+                    entry.ecx = (ECX_TOPO_SMT_TYPE << ECX_TOPO_TYPE_SHIFT) | entry.index;
+                } else if entry.index == 1 {
+                    let cpu_bits: u32 = 32 - ((cpu_count - 1) as u32).leading_zeros();
+                    entry.eax = cpu_bits;
+                    entry.ebx = (cpu_count as u32) & 0xffff; // Number of logical cpus at this level
+                    entry.ecx = (ECX_TOPO_CORE_TYPE << ECX_TOPO_TYPE_SHIFT) | entry.index;
+                } else {
+                    entry.eax = 0;
+                    entry.ebx = 0;
+                    entry.ecx = 0;
                 }
             }
             _ => (),
