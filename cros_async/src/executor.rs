@@ -8,7 +8,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use futures::future::FutureExt;
 use futures::task::waker_ref;
 
 use crate::waker::NeedsPoll;
@@ -144,23 +143,23 @@ impl FutureList for UnitFutures {
 }
 
 // Execute one future until it completes.
-pub(crate) struct RunOne<F: Future + Unpin> {
-    fut: F,
+pub(crate) struct RunOne<F: Future> {
+    fut: Pin<Box<F>>,
     fut_state: FutureState,
     added_futures: UnitFutures,
 }
 
-impl<F: Future + Unpin> RunOne<F> {
+impl<F: Future> RunOne<F> {
     pub fn new(f: F) -> RunOne<F> {
         RunOne {
-            fut: f,
+            fut: Box::pin(f),
             fut_state: FutureState::new(),
             added_futures: UnitFutures::new(),
         }
     }
 }
 
-impl<F: Future + Unpin> FutureList for RunOne<F> {
+impl<F: Future> FutureList for RunOne<F> {
     type Output = F::Output;
 
     fn futures_mut(&mut self) -> &mut UnitFutures {
@@ -175,7 +174,7 @@ impl<F: Future + Unpin> FutureList for RunOne<F> {
             let mut ctx = Context::from_waker(&waker);
             // The future impls `Unpin`, use `poll_unpin` to avoid wrapping it in
             // `Pin` to call `poll`.
-            if let Poll::Ready(o) = self.fut.poll_unpin(&mut ctx) {
+            if let Poll::Ready(o) = self.fut.as_mut().poll(&mut ctx) {
                 return Some(o);
             }
         };

@@ -7,12 +7,10 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::task::Context;
+use std::task::{Context, Poll};
 
-use futures::future::{maybe_done, FutureExt, MaybeDone};
-use futures::task::waker_ref;
-
-use crate::executor::{FutureList, FutureState, UnitFutures};
+use futures::future::{maybe_done, MaybeDone};
+use pin_utils::unsafe_pinned;
 
 // Macro-generate future combinators to allow for running different numbers of top-level futures in
 // this FutureList. Generates the implementation of `FutureList` for the completion types. For an
@@ -23,64 +21,53 @@ macro_rules! generate {
         ($Complete:ident, <$($Fut:ident),*>),
     )*) => ($(
         #[must_use = "Combinations of futures don't do anything unless run in an executor."]
-        paste::item! {
-            pub(crate) struct $Complete<$($Fut: Future + Unpin),*> {
-                added_futures: UnitFutures,
-                $($Fut: MaybeDone<$Fut>,)*
-                $([<$Fut _state>]: FutureState,)*
-            }
+        pub(crate) struct $Complete<$($Fut: Future),*> {
+            $($Fut: MaybeDone<$Fut>,)*
         }
 
-        impl<$($Fut: Future + Unpin),*> $Complete<$($Fut),*> {
-            paste::item! {
-                pub(crate) fn new($($Fut: $Fut),*) -> $Complete<$($Fut),*> {
-                    $Complete {
-                        added_futures: UnitFutures::new(),
-                        $($Fut: maybe_done($Fut),)*
-                        $([<$Fut _state>]: FutureState::new(),)*
-                    }
+        impl<$($Fut),*> $Complete<$($Fut),*>
+        where $(
+            $Fut: Future,
+        )*
+        {
+            // Safety:
+            // * No Drop impl
+            // * No Unpin impl
+            // * Not #[repr(packed)]
+            $(
+                unsafe_pinned!($Fut: MaybeDone<$Fut>);
+            )*
+
+            pub(crate) fn new($($Fut: $Fut),*) -> $Complete<$($Fut),*> {
+                $(
+                    let $Fut = maybe_done($Fut);
+                )*
+                $Complete {
+                    $($Fut),*
                 }
             }
         }
 
-        impl<$($Fut: Future + Unpin),*> FutureList for $Complete<$($Fut),*> {
+        impl<$($Fut),*> Future for $Complete<$($Fut),*>
+        where $(
+            $Fut: Future,
+        )*
+        {
             type Output = ($($Fut::Output),*);
 
-            fn futures_mut(&mut self) -> &mut UnitFutures {
-                &mut self.added_futures
-            }
+            fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+                let mut complete = true;
+                $(
+                    complete &= self.as_mut().$Fut().poll(cx).is_ready();
+                )*
 
-            paste::item! {
-                fn poll_results(&mut self) -> Option<Self::Output> {
-                    let _ = self.added_futures.poll_results();
-
-                    let mut complete = true;
+                if complete {
                     $(
-                        if self.[<$Fut _state>].needs_poll.swap(false) {
-                            let waker = waker_ref(&self.[<$Fut _state>].needs_poll);
-                            let mut ctx = Context::from_waker(&waker);
-                            // The future impls `Unpin`, use `poll_unpin` to avoid wrapping it in
-                            // `Pin` to call `poll`.
-                            complete &= self.$Fut.poll_unpin(&mut ctx).is_ready();
-                        }
+                        let $Fut = self.as_mut().$Fut().take_output().unwrap();
                     )*
-
-                    if complete {
-                        $(
-                            let $Fut = Pin::new(&mut self.$Fut);
-                        )*
-                        Some(($($Fut.take_output().unwrap()), *))
-                    } else {
-                        None
-                    }
-                }
-
-                fn any_ready(&self) -> bool {
-                    let mut ready = self.added_futures.any_ready();
-                    $(
-                        ready |= self.[<$Fut _state>].needs_poll.get();
-                    )*
-                    ready
+                    Poll::Ready(($($Fut), *))
+                } else {
+                    Poll::Pending
                 }
             }
         }
