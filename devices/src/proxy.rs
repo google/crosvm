@@ -313,13 +313,16 @@ mod tests {
         ProxyDevice::new(device, &minijail, keep_fds).unwrap()
     }
 
+    // TODO(b/173833661): Find a way to ensure these tests are run single-threaded.
     #[test]
+    #[ignore]
     fn test_debug_label() {
         let proxy_device = new_proxied_echo_device();
         assert_eq!(proxy_device.debug_label(), "EchoDevice");
     }
 
     #[test]
+    #[ignore]
     fn test_proxied_read_write() {
         let mut proxy_device = new_proxied_echo_device();
         let address = BusAccessInfo {
@@ -334,6 +337,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_proxied_config() {
         let mut proxy_device = new_proxied_echo_device();
         proxy_device.config_register_write(0, 0, &[42]);
