@@ -10,11 +10,13 @@ use thiserror::Error as ThisError;
 pub mod filesystem;
 #[cfg(fuzzing)]
 pub mod fuzzing;
+pub mod mount;
 mod server;
 #[allow(dead_code)]
 pub mod sys;
 pub mod worker;
 
+pub use mount::mount;
 pub use server::{Reader, Server, Writer};
 
 /// Errors that may occur during the creation or operation of an Fs device.
