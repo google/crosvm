@@ -496,7 +496,10 @@ fn create_block_device(
 }
 
 fn create_rng_device(cfg: &Config) -> DeviceResult {
-    let dev = virtio::Rng::new().map_err(Error::RngDeviceNew)?;
+    let dev = virtio::Rng::new(
+        virtio::base_features(cfg.protected_vm)
+    )
+    .map_err(Error::RngDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),

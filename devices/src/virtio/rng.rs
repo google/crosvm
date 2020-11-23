@@ -122,16 +122,18 @@ pub struct Rng {
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
     random_file: Option<File>,
+    virtio_features: u64,
 }
 
 impl Rng {
     /// Create a new virtio rng device that gets random data from /dev/urandom.
-    pub fn new() -> Result<Rng> {
+    pub fn new(virtio_features: u64) -> Result<Rng> {
         let random_file = File::open("/dev/urandom").map_err(RngError::AccessingRandomDev)?;
         Ok(Rng {
             kill_evt: None,
             worker_thread: None,
             random_file: Some(random_file),
+            virtio_features,
         })
     }
 }
@@ -166,6 +168,10 @@ impl VirtioDevice for Rng {
 
     fn queue_max_sizes(&self) -> &[u16] {
         QUEUE_SIZES
+    }
+
+    fn features(&self) -> u64 {
+        self.virtio_features
     }
 
     fn activate(
