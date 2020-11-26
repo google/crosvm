@@ -4,6 +4,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::cmp;
 use std::collections::btree_map;
 use std::collections::BTreeMap;
 use std::ffi::{c_void, CStr, CString};
@@ -18,8 +19,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use base::{
-    error, ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ptr, ioctl_with_ptr, warn, AsRawDescriptor,
-    FromRawDescriptor, RawDescriptor,
+    error, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr, ioctl_with_mut_ptr, ioctl_with_ptr, warn,
+    AsRawDescriptor, FromRawDescriptor, RawDescriptor,
 };
 use data_model::DataInit;
 use fuse::filesystem::{
@@ -42,9 +43,10 @@ const SECURITY_XATTR: &[u8] = b"security.";
 const SELINUX_XATTR: &[u8] = b"security.selinux";
 
 const FSCRYPT_KEY_DESCRIPTOR_SIZE: usize = 8;
+const FSCRYPT_KEY_IDENTIFIER_SIZE: usize = 16;
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct fscrypt_policy_v1 {
     _version: u8,
     _contents_encryption_mode: u8,
@@ -53,6 +55,37 @@ struct fscrypt_policy_v1 {
     _master_key_descriptor: [u8; FSCRYPT_KEY_DESCRIPTOR_SIZE],
 }
 unsafe impl DataInit for fscrypt_policy_v1 {}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct fscrypt_policy_v2 {
+    _version: u8,
+    _contents_encryption_mode: u8,
+    _filenames_encryption_mode: u8,
+    _flags: u8,
+    __reserved: [u8; 4],
+    master_key_identifier: [u8; FSCRYPT_KEY_IDENTIFIER_SIZE],
+}
+unsafe impl DataInit for fscrypt_policy_v2 {}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+union fscrypt_policy {
+    _version: u8,
+    _v1: fscrypt_policy_v1,
+    _v2: fscrypt_policy_v2,
+}
+unsafe impl DataInit for fscrypt_policy {}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct fscrypt_get_policy_ex_arg {
+    policy_size: u64,       /* input/output */
+    policy: fscrypt_policy, /* output */
+}
+unsafe impl DataInit for fscrypt_get_policy_ex_arg {}
+
+ioctl_iowr_nr!(FS_IOC_GET_ENCRYPTION_POLICY_EX, 'f' as u32, 22, [u8; 9]);
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -820,6 +853,37 @@ impl PassthroughFs {
             }
         } else {
             Ok(true)
+        }
+    }
+
+    fn get_encryption_policy_ex<R: io::Read>(
+        &self,
+        handle: Handle,
+        mut r: R,
+    ) -> io::Result<IoctlReply> {
+        let data = self
+            .handles
+            .lock()
+            .get(&handle)
+            .map(Arc::clone)
+            .ok_or_else(ebadf)?;
+
+        // Safe because this only has integer fields.
+        let mut arg = unsafe { MaybeUninit::<fscrypt_get_policy_ex_arg>::zeroed().assume_init() };
+        r.read_exact(arg.policy_size.as_mut_slice())?;
+
+        let policy_size = cmp::min(arg.policy_size, size_of::<fscrypt_policy>() as u64);
+        arg.policy_size = policy_size;
+
+        let file = data.file.lock();
+        // Safe because the kernel will only write to `arg` and we check the return value.
+        let res =
+            unsafe { ioctl_with_mut_ptr(&*file, FS_IOC_GET_ENCRYPTION_POLICY_EX(), &mut arg) };
+        if res < 0 {
+            Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
+        } else {
+            let len = size_of::<u64>() + arg.policy_size as usize;
+            Ok(IoctlReply::Done(Ok(arg.as_slice()[..len].to_vec())))
         }
     }
 
@@ -2123,6 +2187,7 @@ impl FileSystem for PassthroughFs {
         out_size: u32,
         r: R,
     ) -> io::Result<IoctlReply> {
+        const GET_ENCRYPTION_POLICY_EX: u32 = FS_IOC_GET_ENCRYPTION_POLICY_EX() as u32;
         const GET_FSXATTR: u32 = FS_IOC_FSGETXATTR() as u32;
         const SET_FSXATTR: u32 = FS_IOC_FSSETXATTR() as u32;
         const GET_FLAGS32: u32 = FS_IOC32_GETFLAGS() as u32;
@@ -2131,6 +2196,7 @@ impl FileSystem for PassthroughFs {
         const SET_FLAGS64: u32 = FS_IOC64_SETFLAGS() as u32;
 
         match cmd {
+            GET_ENCRYPTION_POLICY_EX => self.get_encryption_policy_ex(handle, r),
             GET_FSXATTR => {
                 if out_size < size_of::<fsxattr>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))

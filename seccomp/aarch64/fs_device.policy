@@ -31,7 +31,8 @@ getrandom: 1
 ioctl: arg1 == FS_IOC_FSGETXATTR || \
        arg1 == FS_IOC_FSSETXATTR || \
        arg1 == FS_IOC_GETFLAGS || \
-       arg1 == FS_IOC_SETFLAGS
+       arg1 == FS_IOC_SETFLAGS || \
+       arg1 == FS_IOC_GET_ENCRYPTION_POLICY_EX
 linkat: 1
 lseek: 1
 mkdirat: 1
