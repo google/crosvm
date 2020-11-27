@@ -722,6 +722,13 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         #[cfg(feature = "audio")]
         "ac97" => {
             let ac97_params = parse_ac97_options(value.unwrap())?;
+            // Add kernel parameters related to the intel8x0 driver for ac97 devices once.
+            if cfg.ac97_parameters.is_empty() {
+                // Set `inside_vm=1` to save some register read ops in the driver.
+                cfg.params.push("snd_intel8x0.inside_vm=1".to_string());
+                // Set `ac97_clock=48000` to save intel8x0_measure_ac97_clock call in the driver.
+                cfg.params.push("snd_intel8x0.ac97_clock=48000".to_string());
+            }
             cfg.ac97_parameters.push(ac97_params);
         }
         "serial" => {
