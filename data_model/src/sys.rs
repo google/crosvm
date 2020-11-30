@@ -1,3 +1,7 @@
+// Copyright 2020 The Chromium OS Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 use std::ffi::c_void;
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
@@ -69,6 +73,13 @@ impl<'a> IoSliceMut<'a> {
         unsafe { slice::from_raw_parts(iovs.as_ptr() as *const libc::iovec, iovs.len()) }
     }
 }
+
+// It's safe to implement Send + Sync for this type for the same reason that `std::io::IoSliceMut`
+// is Send + Sync. Internally, it contains a pointer and a length. The integer length is safely Send
+// + Sync.  There's nothing wrong with sending a pointer between threads and de-referencing the
+// pointer requires an unsafe block anyway. See also https://github.com/rust-lang/rust/pull/70342.
+unsafe impl<'a> Send for IoSliceMut<'a> {}
+unsafe impl<'a> Sync for IoSliceMut<'a> {}
 
 struct DebugIovec(iovec);
 impl Debug for DebugIovec {
