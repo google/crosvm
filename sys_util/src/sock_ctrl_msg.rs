@@ -353,7 +353,7 @@ unsafe impl<'a> IntoIobuf for IoSliceMut<'a> {
 // pointer and size are guaranteed to be accurate.
 unsafe impl<'a> IntoIobuf for VolatileSlice<'a> {
     fn into_iobuf(&self) -> iovec {
-        self.as_iobuf()
+        *self.as_iobuf()
     }
 
     fn as_iobufs(bufs: &[Self]) -> &[iovec] {

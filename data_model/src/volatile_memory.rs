@@ -138,8 +138,8 @@ impl<'a> VolatileSlice<'a> {
     }
 
     /// Returns this `VolatileSlice` as an `iovec`.
-    pub fn as_iobuf(&self) -> iovec {
-        self.0.as_iobuf()
+    pub fn as_iobuf(&self) -> &iovec {
+        self.0.as_ref()
     }
 
     /// Converts a slice of `VolatileSlice`s into a slice of `iovec`s

@@ -48,11 +48,6 @@ impl<'a> IoSliceMut<'a> {
         self.iov.iov_len as usize
     }
 
-    #[inline]
-    pub fn as_iobuf(&self) -> libc::iovec {
-        self.iov
-    }
-
     /// Gets a const pointer to this slice's memory.
     #[inline]
     pub fn as_ptr(&self) -> *const u8 {
@@ -71,6 +66,18 @@ impl<'a> IoSliceMut<'a> {
     pub fn as_iobufs<'slice>(iovs: &'slice [IoSliceMut<'_>]) -> &'slice [iovec] {
         // Safe because `IoSliceMut` is ABI-compatible with `iovec`.
         unsafe { slice::from_raw_parts(iovs.as_ptr() as *const libc::iovec, iovs.len()) }
+    }
+}
+
+impl<'a> AsRef<libc::iovec> for IoSliceMut<'a> {
+    fn as_ref(&self) -> &libc::iovec {
+        &self.iov
+    }
+}
+
+impl<'a> AsMut<libc::iovec> for IoSliceMut<'a> {
+    fn as_mut(&mut self) -> &mut libc::iovec {
+        &mut self.iov
     }
 }
 
