@@ -133,6 +133,7 @@ impl EncoderCapabilities {
         desired_format: Format,
         desired_width: u32,
         desired_height: u32,
+        mut stride: u32,
     ) -> Result<()> {
         let format_desc = self
             .input_format_descs
@@ -147,15 +148,19 @@ impl EncoderCapabilities {
         let (allowed_width, allowed_height) =
             find_closest_resolution(&format_desc.frame_formats, desired_width, desired_height);
 
+        if stride == 0 {
+            stride = allowed_width;
+        }
+
         let plane_formats = match format_desc.format {
             Format::NV12 => {
                 let y_plane = PlaneFormat {
-                    plane_size: allowed_width * allowed_height,
-                    stride: allowed_width,
+                    plane_size: stride * allowed_height,
+                    stride,
                 };
                 let crcb_plane = PlaneFormat {
                     plane_size: y_plane.plane_size / 2,
-                    stride: allowed_width,
+                    stride,
                 };
                 vec![y_plane, crcb_plane]
             }

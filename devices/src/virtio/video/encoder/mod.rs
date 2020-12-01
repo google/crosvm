@@ -114,7 +114,13 @@ impl<T: EncoderSession> Stream<T> {
         let cros_capabilities = &encoder.cros_capabilities;
 
         cros_capabilities
-            .populate_src_params(&mut src_params, Format::NV12, DEFAULT_WIDTH, DEFAULT_HEIGHT)
+            .populate_src_params(
+                &mut src_params,
+                Format::NV12,
+                DEFAULT_WIDTH,
+                DEFAULT_HEIGHT,
+                0,
+            )
             .map_err(|_| VideoError::InvalidArgument)?;
 
         let mut dst_params = Default::default();
@@ -956,6 +962,11 @@ impl<T: Encoder> EncoderDevice<T> {
 
         match queue_type {
             QueueType::Input => {
+                // There should be at least a single plane.
+                if plane_formats.is_empty() {
+                    return Err(VideoError::InvalidArgument);
+                }
+
                 let desired_format = format.or(stream.src_params.format).unwrap_or(Format::NV12);
                 self.cros_capabilities
                     .populate_src_params(
@@ -963,6 +974,7 @@ impl<T: Encoder> EncoderDevice<T> {
                         desired_format,
                         frame_width,
                         frame_height,
+                        plane_formats[0].stride,
                     )
                     .map_err(VideoError::EncoderImpl)?;
             }
