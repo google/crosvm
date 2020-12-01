@@ -290,6 +290,7 @@ impl<'a> VideoCmd {
                     VIRTIO_VIDEO_CONTROL_BITRATE => CtrlType::Bitrate,
                     VIRTIO_VIDEO_CONTROL_PROFILE => CtrlType::Profile,
                     VIRTIO_VIDEO_CONTROL_LEVEL => CtrlType::Level,
+                    VIRTIO_VIDEO_CONTROL_FORCE_KEYFRAME => CtrlType::ForceKeyframe,
                     t => {
                         return Err(ReadCmdError::UnsupportedCtrlType(t));
                     }
@@ -317,6 +318,7 @@ impl<'a> VideoCmd {
                             .level
                             .try_into()?,
                     ),
+                    VIRTIO_VIDEO_CONTROL_FORCE_KEYFRAME => CtrlVal::ForceKeyframe(),
                     t => {
                         return Err(ReadCmdError::UnsupportedCtrlType(t));
                     }

@@ -78,6 +78,7 @@ struct Stream<T: EncoderSession> {
     dst_profile: Profile,
     dst_h264_level: Option<Level>,
     frame_rate: u32,
+    force_keyframe: bool,
 
     encoder_session: Option<T>,
     received_input_buffers_event: bool,
@@ -154,6 +155,7 @@ impl<T: EncoderSession> Stream<T> {
             dst_profile,
             dst_h264_level,
             frame_rate: DEFAULT_FPS,
+            force_keyframe: false,
             encoder_session: None,
             received_input_buffers_event: false,
             src_resources: Default::default(),
@@ -708,14 +710,13 @@ impl<T: Encoder> EncoderDevice<T> {
                 let resource_info =
                     get_resource_info(resource_bridge, src_resource.resource_handle)?;
 
-                // TODO(alexlau): Figure out what to do with force_keyframe.
-                // Perhaps by something in the protocol that allows the user
-                // to specify the VIRTIO_VIDEO_BUFFER_FLAG_[IPB]FRAME constants?
+                let force_keyframe = std::mem::replace(&mut stream.force_keyframe, false);
+
                 match encoder_session.encode(
                     resource_info.file,
                     &src_resource.planes,
                     timestamp,
-                    /* force_keyframe= */ false,
+                    force_keyframe,
                 ) {
                     Ok(input_buffer_id) => {
                         if let Some(last_resource_id) = stream
@@ -1112,6 +1113,8 @@ impl<T: Encoder> EncoderDevice<T> {
                     }
                 }
             }
+            // Button controls should not be queried.
+            CtrlType::ForceKeyframe => return Err(VideoError::UnsupportedControl(ctrl_type)),
         };
         Ok(VideoCmdResponseType::Sync(CmdResponse::GetControl(
             ctrl_val,
@@ -1183,6 +1186,9 @@ impl<T: Encoder> EncoderDevice<T> {
                     return Err(VideoError::InvalidOperation);
                 }
                 stream.dst_h264_level = Some(level);
+            }
+            CtrlVal::ForceKeyframe() => {
+                stream.force_keyframe = true;
             }
         }
         Ok(VideoCmdResponseType::Sync(CmdResponse::SetControl))
