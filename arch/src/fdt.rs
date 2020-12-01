@@ -156,17 +156,16 @@ pub fn property_null(fdt: &mut Vec<u8>, name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn property_cstring(fdt: &mut Vec<u8>, name: &str, cstr_value: &CStr) -> Result<()> {
-    let value_bytes = cstr_value.to_bytes_with_nul();
+pub fn property_bytes(fdt: &mut Vec<u8>, name: &str, bytes: &[u8]) -> Result<()> {
     let cstr_name = CString::new(name).unwrap();
 
-    // Safe because we allocated fdt, converted name and value to CStrings
+    // Safe because we allocated fdt, converted name to CStrings
     let fdt_ret = unsafe {
         fdt_property(
             fdt.as_mut_ptr() as *mut c_void,
             cstr_name.as_ptr(),
-            value_bytes.as_ptr() as *mut c_void,
-            value_bytes.len() as i32,
+            bytes.as_ptr() as *mut c_void,
+            bytes.len() as i32,
         )
     };
     if fdt_ret != 0 {
@@ -175,9 +174,28 @@ pub fn property_cstring(fdt: &mut Vec<u8>, name: &str, cstr_value: &CStr) -> Res
     Ok(())
 }
 
+pub fn property_cstring(fdt: &mut Vec<u8>, name: &str, cstr_value: &CStr) -> Result<()> {
+    let value_bytes = cstr_value.to_bytes_with_nul();
+    property_bytes(fdt, name, value_bytes)
+}
+
 pub fn property_string(fdt: &mut Vec<u8>, name: &str, value: &str) -> Result<()> {
     let cstr_value = CString::new(value).unwrap();
     property_cstring(fdt, name, &cstr_value)
+}
+
+pub fn property_string_list(fdt: &mut Vec<u8>, name: &str, values: Vec<String>) -> Result<()> {
+    let bytes = values
+        .into_iter()
+        .map(|s| {
+            let mut bytes = s.into_bytes();
+            // Each value must be null-terminated.
+            bytes.push(0);
+            bytes
+        })
+        .flatten()
+        .collect::<Vec<u8>>();
+    property_bytes(fdt, name, &bytes)
 }
 
 pub fn start_fdt(fdt: &mut Vec<u8>, fdt_max_size: usize) -> Result<()> {
