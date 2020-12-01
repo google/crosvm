@@ -139,6 +139,16 @@ RUN mkdir -p $RUST_SYSROOT/usr/include/chromeos/dbus/trunks \
   && cp $PLATFORM2_ROOT/trunks/interface.proto \
         $RUST_SYSROOT/usr/include/chromeos/dbus/trunks
 
+# Copy power_supply_properties.proto from system_api, required for
+# power_monitor's powerd feature.
+RUN mkdir -p $SYSROOT/usr/include/chromeos/dbus/power_manager \
+    && cp $PLATFORM2_ROOT/system_api/dbus/power_manager/power_supply_properties.proto \
+          $SYSROOT/usr/include/chromeos/dbus/power_manager
+# Copy it under rustc's sysroot as well for cargo clippy.
+RUN mkdir -p $RUST_SYSROOT/usr/include/chromeos/dbus/power_manager \
+    && cp $PLATFORM2_ROOT/system_api/dbus/power_manager/power_supply_properties.proto \
+          $RUST_SYSROOT/usr/include/chromeos/dbus/power_manager
+
 # Inform pkg-config where libraries we install are placed.
 # Also, copy a dummy libvda.pc to compile crosvm with video features.
 COPY pkgconfig/* /usr/lib/pkgconfig/
