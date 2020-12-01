@@ -337,6 +337,7 @@ impl<T: EncoderSession> Stream<T> {
         &mut self,
         output_buffer_id: OutputBufferId,
         bytesused: u32,
+        keyframe: bool,
         timestamp: u64,
     ) -> Option<Vec<VideoEvtResponseType>> {
         let resource_id = *match self.encoder_output_buffer_ids.get(&output_buffer_id) {
@@ -382,7 +383,11 @@ impl<T: EncoderSession> Stream<T> {
             // At the moment, a buffer is saved in `eos_notification_buffer`, and
             // the EOS flag is populated and returned after a flush() command.
             // TODO(b/149725148): Populate flags once libvda supports it.
-            flags: 0,
+            flags: if keyframe {
+                protocol::VIRTIO_VIDEO_BUFFER_FLAG_IFRAME
+            } else {
+                0
+            },
             size: bytesused,
         };
 
@@ -1292,8 +1297,9 @@ impl<T: Encoder> Device for EncoderDevice<T> {
             EncoderEvent::ProcessedOutputBuffer {
                 id: output_buffer_id,
                 bytesused,
+                keyframe,
                 timestamp,
-            } => stream.processed_output_buffer(output_buffer_id, bytesused, timestamp),
+            } => stream.processed_output_buffer(output_buffer_id, bytesused, keyframe, timestamp),
             EncoderEvent::FlushResponse { flush_done } => stream.flush_response(flush_done),
             EncoderEvent::NotifyError { error } => stream.notify_error(error),
         }

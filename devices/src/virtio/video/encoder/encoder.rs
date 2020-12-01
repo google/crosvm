@@ -54,6 +54,7 @@ pub enum EncoderEvent {
     ProcessedOutputBuffer {
         id: OutputBufferId,
         bytesused: u32,
+        keyframe: bool,
         timestamp: u64,
     },
     FlushResponse {

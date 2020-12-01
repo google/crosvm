@@ -347,13 +347,13 @@ impl<'a> EncoderSession for LibvdaEncoderSession<'a> {
             ProcessedOutputBuffer {
                 output_buffer_id,
                 payload_size,
+                key_frame,
                 timestamp,
-                // TODO(alexlau): Pass the `key_frame` field here when it's possible to
-                // propagate back to the client.
                 ..
             } => EncoderEvent::ProcessedOutputBuffer {
                 id: output_buffer_id as u32,
                 bytesused: payload_size,
+                keyframe: key_frame,
                 timestamp: timestamp as u64,
             },
             FlushResponse { flush_done } => EncoderEvent::FlushResponse { flush_done },
