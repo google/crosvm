@@ -47,7 +47,8 @@ writev: 1
 
 # Rules specific to gpu
 connect: 1
-fcntl: arg1 == F_DUPFD_CLOEXEC
+fcntl: arg1 == F_DUPFD_CLOEXEC || arg1 == F_SETFD || arg1 == F_GETFL || \
+       arg1 == F_SETFL
 fstat: 1
 # Used to set of size new memfd.
 ftruncate: 1
@@ -70,6 +71,11 @@ socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
 stat: 1
 statx: 1
 sysinfo: 1
+
+# Required for perfetto tracing
+# fcntl: arg1 == F_SETFD || arg1 == F_GETFL || arg1 == F_SETFL (merged above)
+getsockopt: 1
+shutdown: 1
 
 # Rules for Mesa's shader binary cache.
 flock: 1

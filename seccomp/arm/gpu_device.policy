@@ -44,6 +44,10 @@ sigaltstack: 1
 write: 1
 writev: 1
 
+# Required for perfetto tracing
+getsockopt: 1
+shutdown: 1
+
 ## Rules specific to gpu
 connect: 1
 getrandom: 1

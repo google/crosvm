@@ -848,6 +848,13 @@ fn create_gpu_device(
                 (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_RDONLY) as usize,
             )?;
 
+            // To enable perfetto tracing, we need to give access to the perfetto service IPC
+            // endpoints.
+            let perfetto_path = Path::new("/run/perfetto");
+            if perfetto_path.exists() {
+                jail.mount_bind(perfetto_path, perfetto_path, true)?;
+            }
+
             Some(jail)
         }
         None => None,
