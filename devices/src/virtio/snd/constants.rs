@@ -13,6 +13,11 @@ pub const STREAM_STOP: u32 = 0x0100 + 5;
 
 pub const CHANNEL_MAP_INFO: u32 = 0x0200;
 
+pub const VIRTIO_SND_S_OK: u32 = 0x8000;
+pub const VIRTIO_SND_S_BAD_MSG: u32 = 0x8001;
+pub const VIRTIO_SND_S_NOT_SUPP: u32 = 0x8002;
+pub const VIRTIO_SND_S_IO_ERR: u32 = 0x8003;
+
 pub const VIRTIO_SND_D_OUTPUT: u8 = 0;
 pub const VIRTIO_SND_D_INPUT: u8 = 1;
 

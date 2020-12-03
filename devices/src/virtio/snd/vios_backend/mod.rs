@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-pub mod constants;
+mod shm_streams;
+mod shm_vios;
 
-pub mod layout;
+#[cfg(target_os = "linux")]
+pub use self::shm_streams::*;
 
-pub mod vios_backend;
+pub use self::shm_vios::*;

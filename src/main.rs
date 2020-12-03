@@ -13,6 +13,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader};
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::string::String;
 use std::thread::sleep;
 use std::time::Duration;
@@ -396,10 +397,39 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
                     argument::Error::Syntax(format!("invalid capture option: {}", e))
                 })?;
             }
+            #[cfg(target_os = "linux")]
+            "server" => {
+                ac97_params.vios_server_path =
+                    Some(
+                        PathBuf::from_str(v).map_err(|e| argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: e.to_string(),
+                        })?,
+                    );
+            }
             _ => {
                 return Err(argument::Error::UnknownArgument(format!(
                     "unknown ac97 parameter {}",
                     k
+                )));
+            }
+        }
+    }
+
+    // server is required for and exclusive to vios backend
+    #[cfg(target_os = "linux")]
+    match ac97_params.backend {
+        Ac97Backend::VIOS => {
+            if ac97_params.vios_server_path.is_none() {
+                return Err(argument::Error::ExpectedArgument(String::from(
+                    "server argument is required for VIOS backend",
+                )));
+            }
+        }
+        _ => {
+            if ac97_params.vios_server_path.is_some() {
+                return Err(argument::Error::UnexpectedValue(String::from(
+                    "server argument is exclusive to the VIOS backend",
                 )));
             }
         }
@@ -1605,13 +1635,14 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("net-vq-pairs", "N", "virtio net virtual queue paris. (default: 1)"),
           #[cfg(feature = "audio")]
           Argument::value("ac97",
-                          "[backend=BACKEND,capture=true,capture_effect=EFFECT]",
+                          "[backend=BACKEND,capture=true,capture_effect=EFFECT,shm-fd=FD,client-fd=FD,server-fd=FD]",
                           "Comma separated key=value pairs for setting up Ac97 devices. Can be given more than once .
                           Possible key values:
-                          backend=(null, cras) - Where to route the audio device. If not provided, backend will default to null.
-                          `null` for /dev/null, and  cras for CRAS server.
+                          backend=(null, cras, vios) - Where to route the audio device. If not provided, backend will default to null.
+                          `null` for /dev/null, cras for CRAS server and vios for VioS server.
                           capture - Enable audio capture
-                          capture_effects - | separated effects to be enabled for recording. The only supported effect value now is EchoCancellation or aec."),
+                          capture_effects - | separated effects to be enabled for recording. The only supported effect value now is EchoCancellation or aec.
+                          server - The to the VIOS server (unix socket)."),
           Argument::value("serial",
                           "type=TYPE,[hardware=HW,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
                           "Comma separated key=value pairs for setting up serial devices. Can be given more than once.
@@ -2399,6 +2430,13 @@ mod tests {
     #[test]
     fn parse_ac97_capture_vaild() {
         parse_ac97_options("backend=cras,capture=true").expect("parse should have succeded");
+    }
+
+    #[cfg(feature = "audio")]
+    #[test]
+    fn parse_ac97_vios_valid() {
+        parse_ac97_options("backend=vios,server=/path/to/server")
+            .expect("parse should have succeded");
     }
 
     #[test]

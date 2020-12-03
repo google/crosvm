@@ -51,7 +51,7 @@ use std::result;
 pub enum Error {
     /// There was a syntax error with the argument.
     Syntax(String),
-    /// The argumen's name is unused.
+    /// The argument's name is unused.
     UnknownArgument(String),
     /// The argument was required.
     ExpectedArgument(String),

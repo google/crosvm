@@ -4,7 +4,7 @@
 
 use data_model::{DataInit, Le32, Le64};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct virtio_snd_hdr {
     pub code: Le32,
@@ -23,7 +23,7 @@ pub struct virtio_snd_query_info {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_query_info {}
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct virtio_snd_info {
     pub hda_fn_nid: Le32,
@@ -31,7 +31,7 @@ pub struct virtio_snd_info {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_info {}
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct virtio_snd_pcm_info {
     pub hdr: virtio_snd_info,

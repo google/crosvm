@@ -45,8 +45,10 @@ rand_ish = { path = "../rand_ish" }
 remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
+sys_util = { path = "../sys_util" }
 base = { path = "../base" }
 syscall_defines = { path = "../syscall_defines" }
+thiserror = "1.0.20"
 tpm2 = { path = "../tpm2", optional = true }
 usb_util = { path = "../usb_util" }
 vfio_sys = { path = "../vfio_sys" }

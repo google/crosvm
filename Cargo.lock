@@ -275,8 +275,10 @@ dependencies = [
  "resources",
  "rutabaga_gfx",
  "sync",
+ "sys_util",
  "syscall_defines",
  "tempfile",
+ "thiserror",
  "tpm2",
  "usb_util",
  "vfio_sys",
@@ -566,7 +568,6 @@ dependencies = [
  "libc",
  "log",
  "protobuf",
- "thiserror",
 ]
 
 [[package]]

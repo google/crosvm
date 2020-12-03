@@ -11,6 +11,7 @@ use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
 use crate::pci::pci_configuration;
 use crate::pci::{PciAddress, PciInterruptPin};
 use crate::{BusAccessInfo, BusDevice};
+use crate::virtio::snd::vios_backend::Error as VioSError;
 
 #[derive(Debug)]
 pub enum Error {
@@ -23,6 +24,9 @@ pub enum Error {
     /// Create cras client failed.
     #[cfg(feature = "audio")]
     CreateCrasClientFailed(libcras::Error),
+    /// Create VioS client failed.
+    #[cfg(feature = "audio")]
+    CreateViosClientFailed(VioSError),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -34,6 +38,8 @@ impl Display for Error {
             CapabilitiesSetup(e) => write!(f, "failed to add capability {}", e),
             #[cfg(feature = "audio")]
             CreateCrasClientFailed(e) => write!(f, "failed to create CRAS Client: {}", e),
+            #[cfg(feature = "audio")]
+            CreateViosClientFailed(e) => write!(f, "failed to create VioS Client: {}", e),
             IoAllocationFailed(size, e) => write!(
                 f,
                 "failed to allocate space for an IO BAR, size={}: {}",

@@ -5,6 +5,7 @@
 use std::default::Default;
 use std::error;
 use std::fmt::{self, Display};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use audio_streams::shm_streams::{NullShmStreamSource, ShmStreamSource};
@@ -13,6 +14,10 @@ use libcras::{CrasClient, CrasClientType, CrasSocketType};
 use resources::{Alloc, MmioType, SystemAllocator};
 use vm_memory::GuestMemory;
 
+#[cfg(target_os = "linux")]
+use crate::virtio::snd::vios_backend::VioSShmStreamSource;
+#[cfg(not(target_os = "linux"))]
+use crate::virtio::snd::vios_backend::Error as VioSError;
 use crate::pci::ac97_bus_master::Ac97BusMaster;
 use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;
@@ -34,6 +39,7 @@ const PCI_DEVICE_ID_INTEL_82801AA_5: u16 = 0x2415;
 pub enum Ac97Backend {
     NULL,
     CRAS,
+    VIOS,
 }
 
 impl Default for Ac97Backend {
@@ -46,6 +52,7 @@ impl Default for Ac97Backend {
 #[derive(Debug)]
 pub enum Ac97Error {
     InvalidBackend,
+    MissingServerPath,
 }
 
 impl error::Error for Ac97Error {}
@@ -53,7 +60,8 @@ impl error::Error for Ac97Error {}
 impl Display for Ac97Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Ac97Error::InvalidBackend => write!(f, "Must be cras or null"),
+            Ac97Error::InvalidBackend => write!(f, "Must be cras, vios or null"),
+            Ac97Error::MissingServerPath => write!(f, "server must be provided for vios backend"),
         }
     }
 }
@@ -63,6 +71,7 @@ impl FromStr for Ac97Backend {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
             "cras" => Ok(Ac97Backend::CRAS),
+            "vios" => Ok(Ac97Backend::VIOS),
             "null" => Ok(Ac97Backend::NULL),
             _ => Err(Ac97Error::InvalidBackend),
         }
@@ -74,6 +83,7 @@ impl FromStr for Ac97Backend {
 pub struct Ac97Parameters {
     pub backend: Ac97Backend,
     pub capture: bool,
+    pub vios_server_path: Option<PathBuf>,
 }
 
 pub struct Ac97Dev {
@@ -129,6 +139,7 @@ impl Ac97Dev {
                 );
                 Self::create_null_audio_device(mem)
             }),
+            Ac97Backend::VIOS => Self::create_vios_audio_device(mem, param),
             Ac97Backend::NULL => Self::create_null_audio_device(mem),
         }
     }
@@ -137,6 +148,7 @@ impl Ac97Dev {
     pub fn minijail_policy(&self) -> &'static str {
         match self.backend {
             Ac97Backend::CRAS => "cras_audio_device",
+            Ac97Backend::VIOS => "vios_audio_device",
             Ac97Backend::NULL => "null_audio_device",
         }
     }
@@ -153,6 +165,21 @@ impl Ac97Dev {
 
         let cras_audio = Self::new(mem, Ac97Backend::CRAS, server);
         Ok(cras_audio)
+    }
+
+    fn create_vios_audio_device(mem: GuestMemory, param: Ac97Parameters) -> Result<Self> {
+        #[cfg(target_os = "linux")]
+        {
+            let server = Box::new(
+                // The presence of vios_server_path is checked during argument parsing
+                VioSShmStreamSource::new(param.vios_server_path.expect("Missing server path"))
+                    .map_err(|e| pci_device::Error::CreateViosClientFailed(e))?,
+            );
+            let vios_audio = Self::new(mem, Ac97Backend::VIOS, server);
+            return Ok(vios_audio);
+        }
+        #[cfg(not(target_os = "linux"))]
+        Err(pci_device::Error::CreateViosClientFailed(VioSError::PlatformNotSupported))
     }
 
     fn create_null_audio_device(mem: GuestMemory) -> Result<Self> {
