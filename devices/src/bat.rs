@@ -4,11 +4,12 @@
 
 use crate::{BusAccessInfo, BusDevice};
 use acpi_tables::{aml, aml::Aml};
-use base::{error, warn, AsRawDescriptor, Descriptor, Event, PollContext, PollToken};
+use base::{
+    error, warn, AsRawDescriptor, Descriptor, Event, PollToken, RawDescriptor, WaitContext,
+};
 use msg_socket::{MsgReceiver, MsgSender};
 use power_monitor::{BatteryStatus, CreatePowerMonitorFn};
 use std::fmt::{self, Display};
-use std::os::unix::io::RawFd;
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
@@ -137,7 +138,7 @@ fn command_monitor(
     state: Arc<Mutex<GoldfishBatteryState>>,
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
 ) {
-    let poll_ctx: PollContext<Token> = match PollContext::build_with(&[
+    let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
         (&Descriptor(socket.as_raw_descriptor()), Token::Commands),
         (
             &Descriptor(irq_resample_evt.as_raw_descriptor()),
@@ -147,14 +148,14 @@ fn command_monitor(
     ]) {
         Ok(pc) => pc,
         Err(e) => {
-            error!("failed to build PollContext: {}", e);
+            error!("failed to build WaitContext: {}", e);
             return;
         }
     };
 
     let mut power_monitor = match create_power_monitor {
         Some(f) => match f() {
-            Ok(p) => match poll_ctx.add(&Descriptor(p.poll_fd()), Token::Monitor) {
+            Ok(p) => match wait_ctx.add(&Descriptor(p.poll_fd()), Token::Monitor) {
                 Ok(()) => Some(p),
                 Err(e) => {
                     error!("failed to add power monitor to poll context: {}", e);
@@ -178,7 +179,7 @@ fn command_monitor(
     }
 
     'poll: loop {
-        let events = match poll_ctx.wait() {
+        let events = match wait_ctx.wait() {
             Ok(v) => v,
             Err(e) => {
                 error!("error while polling for events: {}", e);
@@ -186,8 +187,8 @@ fn command_monitor(
             }
         };
 
-        for event in events.iter_readable() {
-            match event.token() {
+        for event in events.iter().filter(|e| e.is_readable) {
+            match event.token {
                 Token::Commands => {
                     let req = match socket.recv() {
                         Ok(req) => req,
@@ -323,17 +324,17 @@ impl GoldfishBattery {
     }
 
     /// return the fds used by this device
-    pub fn keep_fds(&self) -> Vec<RawFd> {
-        let mut fds = vec![
+    pub fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut rds = vec![
             self.irq_evt.as_raw_descriptor(),
             self.irq_resample_evt.as_raw_descriptor(),
         ];
 
         if let Some(socket) = &self.socket {
-            fds.push(socket.as_raw_descriptor());
+            rds.push(socket.as_raw_descriptor());
         }
 
-        fds
+        rds
     }
 
     /// start a monitor thread to monitor the events from host

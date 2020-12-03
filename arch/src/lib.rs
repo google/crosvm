@@ -482,12 +482,12 @@ pub fn add_goldfish_battery(
 
     match battery_jail.as_ref() {
         Some(jail) => {
-            let mut keep_fds = goldfish_bat.keep_fds();
-            syslog::push_fds(&mut keep_fds);
+            let mut keep_rds = goldfish_bat.keep_rds();
+            syslog::push_fds(&mut keep_rds);
             mmio_bus
                 .insert(
                     Arc::new(Mutex::new(
-                        ProxyDevice::new(goldfish_bat, &jail, keep_fds)
+                        ProxyDevice::new(goldfish_bat, &jail, keep_rds)
                             .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
                     )),
                     mmio_base,
