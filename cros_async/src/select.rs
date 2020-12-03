@@ -7,12 +7,9 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::task::Context;
+use std::task::{Context, Poll};
 
 use futures::future::{maybe_done, FutureExt, MaybeDone};
-use futures::task::waker_ref;
-
-use crate::executor::{FutureList, FutureState, UnitFutures};
 
 pub enum SelectResult<F: Future> {
     Pending(F),
@@ -30,9 +27,7 @@ macro_rules! generate {
         #[must_use = "Combinations of futures don't do anything unless run in an executor."]
         paste::item! {
             pub(crate) struct $Select<$($Fut: Future + Unpin),*> {
-                added_futures: UnitFutures,
                 $($Fut: MaybeDone<$Fut>,)*
-                $([<$Fut _state>]: FutureState,)*
             }
         }
 
@@ -40,56 +35,34 @@ macro_rules! generate {
             paste::item! {
                 pub(crate) fn new($($Fut: $Fut),*) -> $Select<$($Fut),*> {
                     $Select {
-                        added_futures: UnitFutures::new(),
                         $($Fut: maybe_done($Fut),)*
-                        $([<$Fut _state>]: FutureState::new(),)*
                     }
                 }
             }
         }
 
-        impl<$($Fut: Future + Unpin),*> FutureList for $Select<$($Fut),*> {
+        impl<$($Fut: Future + Unpin),*> Future for $Select<$($Fut),*> {
             type Output = ($(SelectResult<$Fut>),*);
 
-            fn futures_mut(&mut self) -> &mut UnitFutures {
-                &mut self.added_futures
-            }
+            fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+                let mut complete = false;
+                $(
+                    let $Fut = Pin::new(&mut self.$Fut);
+                    // The future impls `Unpin`, use `poll_unpin` to avoid wrapping it in
+                    // `Pin` to call `poll`.
+                    complete |= self.$Fut.poll_unpin(cx).is_ready();
+                )*
 
-            paste::item! {
-                fn poll_results(&mut self) -> Option<Self::Output> {
-                    let _ = self.added_futures.poll_results();
-
-                    let mut complete = false;
-                    $(
-                        let $Fut = Pin::new(&mut self.$Fut);
-                        if self.[<$Fut _state>].needs_poll.swap(false) {
-                            let waker = waker_ref(&self.[<$Fut _state>].needs_poll);
-                            let mut ctx = Context::from_waker(&waker);
-                            // The future impls `Unpin`, use `poll_unpin` to avoid wrapping it in
-                            // `Pin` to call `poll`.
-                            complete |= self.$Fut.poll_unpin(&mut ctx).is_ready();
+                if complete {
+                    Poll::Ready(($(
+                        match std::mem::replace(&mut self.$Fut, MaybeDone::Gone) {
+                            MaybeDone::Future(f) => SelectResult::Pending(f),
+                            MaybeDone::Done(o) => SelectResult::Finished(o),
+                            MaybeDone::Gone => unreachable!(),
                         }
-                    )*
-
-                    if complete {
-                        Some(($(
-                                    match std::mem::replace(&mut self.$Fut, MaybeDone::Gone) {
-                                        MaybeDone::Future(f) => SelectResult::Pending(f),
-                                        MaybeDone::Done(o) => SelectResult::Finished(o),
-                                        MaybeDone::Gone=>unreachable!(),
-                                    }
-                               ), *))
-                    } else {
-                        None
-                    }
-                }
-
-                fn any_ready(&self) -> bool {
-                    let mut ready = self.added_futures.any_ready();
-                    $(
-                        ready |= self.[<$Fut _state>].needs_poll.get();
-                    )*
-                    ready
+                    ), *))
+                } else {
+                    Poll::Pending
                 }
             }
         }

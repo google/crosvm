@@ -177,13 +177,13 @@ pub fn run_one_poll<F: Future>(fut: F) -> Result<F::Output> {
 
 // Select helpers to run until any future completes.
 
-/// Creates an executor that runs the two given futures until one completes, returning a tuple
+/// Creates a combinator that runs the two given futures until one completes, returning a tuple
 /// containing the result of the finished future and the still pending future.
 ///
 ///  # Example
 ///
 ///    ```
-///    use cros_async::{Executor, select2, SelectResult};
+///    use cros_async::{SelectResult, select2, run_one};
 ///    use futures::future::pending;
 ///    use futures::pin_mut;
 ///
@@ -191,25 +191,25 @@ pub fn run_one_poll<F: Future>(fut: F) -> Result<F::Output> {
 ///    let second = async {let () = pending().await;};
 ///    pin_mut!(first);
 ///    pin_mut!(second);
-///    match select2(first, second) {
+///    match run_one(select2(first, second)) {
 ///        Ok((SelectResult::Finished(5), SelectResult::Pending(_second))) => (),
 ///        _ => panic!("Select didn't return the first future"),
 ///    };
 ///    ```
-pub fn select2<F1: Future + Unpin, F2: Future + Unpin>(
+pub async fn select2<F1: Future + Unpin, F2: Future + Unpin>(
     f1: F1,
     f2: F2,
-) -> Result<(SelectResult<F1>, SelectResult<F2>)> {
-    run_executor(select::Select2::new(f1, f2))
+) -> (SelectResult<F1>, SelectResult<F2>) {
+    select::Select2::new(f1, f2).await
 }
 
-/// Creates an executor that runs the three given futures until one or more completes, returning a
+/// Creates a combinator that runs the three given futures until one or more completes, returning a
 /// tuple containing the result of the finished future(s) and the still pending future(s).
 ///
 ///  # Example
 ///
 ///    ```
-///    use cros_async::{Executor, select3, SelectResult};
+///    use cros_async::{SelectResult, select3, run_one};
 ///    use futures::future::pending;
 ///    use futures::pin_mut;
 ///
@@ -219,28 +219,28 @@ pub fn select2<F1: Future + Unpin, F2: Future + Unpin>(
 ///    pin_mut!(first);
 ///    pin_mut!(second);
 ///    pin_mut!(third);
-///    match select3(first, second, third) {
+///    match run_one(select3(first, second, third)) {
 ///        Ok((SelectResult::Finished(4),
 ///            SelectResult::Pending(_second),
 ///            SelectResult::Finished(5))) => (),
 ///        _ => panic!("Select didn't return the futures"),
 ///    };
 ///    ```
-pub fn select3<F1: Future + Unpin, F2: Future + Unpin, F3: Future + Unpin>(
+pub async fn select3<F1: Future + Unpin, F2: Future + Unpin, F3: Future + Unpin>(
     f1: F1,
     f2: F2,
     f3: F3,
-) -> Result<(SelectResult<F1>, SelectResult<F2>, SelectResult<F3>)> {
-    run_executor(select::Select3::new(f1, f2, f3))
+) -> (SelectResult<F1>, SelectResult<F2>, SelectResult<F3>) {
+    select::Select3::new(f1, f2, f3).await
 }
 
-/// Creates an executor that runs the four given futures until one or more completes, returning a
+/// Creates a combinator that runs the four given futures until one or more completes, returning a
 /// tuple containing the result of the finished future(s) and the still pending future(s).
 ///
 ///  # Example
 ///
 ///    ```
-///    use cros_async::{Executor, select4, SelectResult};
+///    use cros_async::{SelectResult, select4, run_one};
 ///    use futures::future::pending;
 ///    use futures::pin_mut;
 ///
@@ -252,33 +252,38 @@ pub fn select3<F1: Future + Unpin, F2: Future + Unpin, F3: Future + Unpin>(
 ///    pin_mut!(second);
 ///    pin_mut!(third);
 ///    pin_mut!(fourth);
-///    match select4(first, second, third, fourth) {
+///    match run_one(select4(first, second, third, fourth)) {
 ///        Ok((SelectResult::Finished(4), SelectResult::Pending(_second),
 ///            SelectResult::Finished(5), SelectResult::Pending(_fourth))) => (),
 ///        _ => panic!("Select didn't return the futures"),
 ///    };
 ///    ```
-pub fn select4<F1: Future + Unpin, F2: Future + Unpin, F3: Future + Unpin, F4: Future + Unpin>(
+pub async fn select4<
+    F1: Future + Unpin,
+    F2: Future + Unpin,
+    F3: Future + Unpin,
+    F4: Future + Unpin,
+>(
     f1: F1,
     f2: F2,
     f3: F3,
     f4: F4,
-) -> Result<(
+) -> (
     SelectResult<F1>,
     SelectResult<F2>,
     SelectResult<F3>,
     SelectResult<F4>,
-)> {
-    run_executor(select::Select4::new(f1, f2, f3, f4))
+) {
+    select::Select4::new(f1, f2, f3, f4).await
 }
 
-/// Creates an executor that runs the five given futures until one or more completes, returning a
+/// Creates a combinator that runs the five given futures until one or more completes, returning a
 /// tuple containing the result of the finished future(s) and the still pending future(s).
 ///
 ///  # Example
 ///
 ///    ```
-///    use cros_async::{Executor, select5, SelectResult};
+///    use cros_async::{SelectResult, select5, run_one};
 ///    use futures::future::pending;
 ///    use futures::pin_mut;
 ///
@@ -292,14 +297,14 @@ pub fn select4<F1: Future + Unpin, F2: Future + Unpin, F3: Future + Unpin, F4: F
 ///    pin_mut!(third);
 ///    pin_mut!(fourth);
 ///    pin_mut!(fifth);
-///    match select5(first, second, third, fourth, fifth) {
+///    match run_one(select5(first, second, third, fourth, fifth)) {
 ///        Ok((SelectResult::Finished(4), SelectResult::Pending(_second),
 ///            SelectResult::Finished(5), SelectResult::Pending(_fourth),
 ///            SelectResult::Finished(6))) => (),
 ///        _ => panic!("Select didn't return the futures"),
 ///    };
 ///    ```
-pub fn select5<
+pub async fn select5<
     F1: Future + Unpin,
     F2: Future + Unpin,
     F3: Future + Unpin,
@@ -311,23 +316,23 @@ pub fn select5<
     f3: F3,
     f4: F4,
     f5: F5,
-) -> Result<(
+) -> (
     SelectResult<F1>,
     SelectResult<F2>,
     SelectResult<F3>,
     SelectResult<F4>,
     SelectResult<F5>,
-)> {
-    run_executor(select::Select5::new(f1, f2, f3, f4, f5))
+) {
+    select::Select5::new(f1, f2, f3, f4, f5).await
 }
 
-/// Creates an executor that runs the six given futures until one or more completes, returning a
+/// Creates a combinator that runs the six given futures until one or more completes, returning a
 /// tuple containing the result of the finished future(s) and the still pending future(s).
 ///
 ///  # Example
 ///
 ///    ```
-///    use cros_async::{Executor, select6, SelectResult};
+///    use cros_async::{SelectResult, select6, run_one};
 ///    use futures::future::pending;
 ///    use futures::pin_mut;
 ///
@@ -343,14 +348,14 @@ pub fn select5<
 ///    pin_mut!(fourth);
 ///    pin_mut!(fifth);
 ///    pin_mut!(sixth);
-///    match select6(first, second, third, fourth, fifth, sixth) {
+///    match run_one(select6(first, second, third, fourth, fifth, sixth)) {
 ///        Ok((SelectResult::Finished(1), SelectResult::Pending(_second),
 ///            SelectResult::Finished(3), SelectResult::Pending(_fourth),
 ///            SelectResult::Finished(5), SelectResult::Finished(6))) => (),
 ///        _ => panic!("Select didn't return the futures"),
 ///    };
 ///    ```
-pub fn select6<
+pub async fn select6<
     F1: Future + Unpin,
     F2: Future + Unpin,
     F3: Future + Unpin,
@@ -364,15 +369,15 @@ pub fn select6<
     f4: F4,
     f5: F5,
     f6: F6,
-) -> Result<(
+) -> (
     SelectResult<F1>,
     SelectResult<F2>,
     SelectResult<F3>,
     SelectResult<F4>,
     SelectResult<F5>,
     SelectResult<F6>,
-)> {
-    run_executor(select::Select6::new(f1, f2, f3, f4, f5, f6))
+) {
+    select::Select6::new(f1, f2, f3, f4, f5, f6).await
 }
 
 // Combination helpers to run until all futures are complete.
