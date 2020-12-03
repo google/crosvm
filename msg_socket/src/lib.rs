@@ -5,12 +5,14 @@
 mod msg_on_socket;
 mod serializable_descriptors;
 
+use std::io::{IoSlice, Result};
+use std::marker::PhantomData;
+
 use base::{
     handle_eintr, net::UnixSeqpacket, AsRawDescriptor, Error as SysError, RawDescriptor, ScmSocket,
     UnsyncMarker,
 };
-use std::io::{IoSlice, Result};
-use std::marker::PhantomData;
+use cros_async::{Executor, IoSourceExt};
 
 pub use crate::msg_on_socket::*;
 pub use msg_on_socket_derive::*;
@@ -45,8 +47,8 @@ impl<I: MsgOnSocket, O: MsgOnSocket> MsgSocket<I, O> {
     }
 
     // Creates an async receiver that implements `futures::Stream`.
-    pub fn async_receiver(&self) -> MsgResult<AsyncReceiver<I, O>> {
-        AsyncReceiver::new(self)
+    pub fn async_receiver(&self, ex: &Executor) -> MsgResult<AsyncReceiver<I, O>> {
+        AsyncReceiver::new(self, ex)
     }
 }
 
@@ -205,18 +207,26 @@ impl<O: MsgOnSocket> MsgReceiver for Receiver<O> {
 }
 
 /// Asynchronous adaptor for `MsgSocket`.
-pub struct AsyncReceiver<'a, I: MsgOnSocket, O: MsgOnSocket> {
-    inner: &'a MsgSocket<I, O>,
+pub struct AsyncReceiver<'m, I: MsgOnSocket, O: MsgOnSocket> {
+    // This weirdness is because we can't directly implement IntoAsync for &MsgSocket because there
+    // is no AsRawFd impl for references.
+    inner: &'m MsgSocket<I, O>,
+    sock: Box<dyn IoSourceExt<&'m UnixSeqpacket> + 'm>,
 }
 
-impl<'a, I: MsgOnSocket, O: MsgOnSocket> AsyncReceiver<'a, I, O> {
-    fn new(msg_socket: &MsgSocket<I, O>) -> MsgResult<AsyncReceiver<I, O>> {
-        Ok(AsyncReceiver { inner: msg_socket })
+impl<'m, I: MsgOnSocket, O: MsgOnSocket> AsyncReceiver<'m, I, O> {
+    fn new(msg_socket: &'m MsgSocket<I, O>, ex: &Executor) -> MsgResult<Self> {
+        let sock = ex
+            .async_from(&msg_socket.sock)
+            .map_err(MsgError::CreateAsync)?;
+        Ok(AsyncReceiver {
+            inner: msg_socket,
+            sock,
+        })
     }
 
     pub async fn next(&mut self) -> MsgResult<O> {
-        let p = cros_async::async_from(&self.inner.sock).unwrap();
-        p.wait_readable().await.unwrap();
+        self.sock.wait_readable().await.unwrap();
         self.inner.recv()
     }
 }

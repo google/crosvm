@@ -11,8 +11,8 @@ use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::mem::{size_of, MaybeUninit};
 use std::ptr::copy_nonoverlapping;
-use std::rc::Rc;
 use std::result;
+use std::sync::Arc;
 
 use base::{FileReadWriteAtVolatile, FileReadWriteVolatile};
 use cros_async::MemRegion;
@@ -399,7 +399,7 @@ impl Reader {
     ) -> disk::Result<usize> {
         let mem_regions = self.regions.get_remaining_regions_with_count(count);
         let written = dst
-            .write_from_mem(off, Rc::new(self.mem.clone()), &mem_regions)
+            .write_from_mem(off, Arc::new(self.mem.clone()), &mem_regions)
             .await?;
         self.regions.consume(written);
         Ok(written)
@@ -654,7 +654,7 @@ impl Writer {
     ) -> disk::Result<usize> {
         let regions = self.regions.get_remaining_regions_with_count(count);
         let read = src
-            .read_to_mem(off, Rc::new(self.mem.clone()), &regions)
+            .read_to_mem(off, Arc::new(self.mem.clone()), &regions)
             .await?;
         self.regions.consume(read);
         Ok(read)
@@ -792,9 +792,10 @@ pub fn create_descriptor_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::convert::TryFrom;
     use std::fs::File;
     use tempfile::tempfile;
+
+    use cros_async::Executor;
 
     #[test]
     fn reader_test_simple_chain() {
@@ -1461,9 +1462,10 @@ mod tests {
 
     #[test]
     fn region_reader_failing_io() {
-        cros_async::run_one(Box::pin(region_reader_failing_io_async())).unwrap();
+        let ex = Executor::new().unwrap();
+        ex.run_until(region_reader_failing_io_async(&ex)).unwrap();
     }
-    async fn region_reader_failing_io_async() {
+    async fn region_reader_failing_io_async(ex: &Executor) {
         use DescriptorType::*;
 
         let memory_start_addr = GuestAddress(0x0);
@@ -1482,7 +1484,7 @@ mod tests {
 
         // Open a file in read-only mode so writes to it to trigger an I/O error.
         let ro_file = File::open("/dev/zero").expect("failed to open /dev/zero");
-        let async_ro_file = disk::SingleFileDisk::try_from(ro_file).expect("Failed to crate SFD");
+        let async_ro_file = disk::SingleFileDisk::new(ro_file, ex).expect("Failed to crate SFD");
 
         reader
             .read_exact_to_at_fut(&async_ro_file, 512, 0)
@@ -1496,9 +1498,10 @@ mod tests {
 
     #[test]
     fn region_writer_failing_io() {
-        cros_async::run_one(Box::pin(region_writer_failing_io_async())).unwrap()
+        let ex = Executor::new().unwrap();
+        ex.run_until(region_writer_failing_io_async(&ex)).unwrap()
     }
-    async fn region_writer_failing_io_async() {
+    async fn region_writer_failing_io_async(ex: &Executor) {
         use DescriptorType::*;
 
         let memory_start_addr = GuestAddress(0x0);
@@ -1518,7 +1521,7 @@ mod tests {
         let file = tempfile().expect("failed to create temp file");
 
         file.set_len(384).unwrap();
-        let async_file = disk::SingleFileDisk::try_from(file).expect("Failed to crate SFD");
+        let async_file = disk::SingleFileDisk::new(file, ex).expect("Failed to crate SFD");
 
         writer
             .write_all_from_at_fut(&async_file, 512, 0)

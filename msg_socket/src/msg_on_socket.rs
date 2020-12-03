@@ -17,8 +17,8 @@ use slice::{slice_read_helper, slice_write_helper};
 #[derive(Debug)]
 /// An error during transaction or serialization/deserialization.
 pub enum MsgError {
-    /// Error adding a waker for async read.
-    AddingWaker(cros_async::Error),
+    /// Error while creating an async socket.
+    CreateAsync(cros_async::AsyncError),
     /// Error while sending a request or response.
     Send(SysError),
     /// Error while receiving a request or response.
@@ -51,7 +51,7 @@ impl Display for MsgError {
         use self::MsgError::*;
 
         match self {
-            AddingWaker(e) => write!(f, "failed to add a waker: {}", e),
+            CreateAsync(e) => write!(f, "failed to create an async socket: {}", e),
             Send(e) => write!(f, "failed to send request or response: {}", e),
             Recv(e) => write!(f, "failed to receive request or response: {}", e),
             InvalidType => write!(f, "invalid type"),

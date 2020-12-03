@@ -9,270 +9,447 @@
 //! `FdExecutor` is meant to be used with the `futures-rs` crate that provides combinators and
 //! utility functions to combine futures.
 
-use std::cell::RefCell;
-use std::collections::VecDeque;
-use std::fmt::{self, Display};
 use std::fs::File;
 use std::future::Future;
-use std::os::unix::io::FromRawFd;
-use std::os::unix::io::RawFd;
+use std::mem;
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::pin::Pin;
-use std::task::Waker;
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::{Arc, Weak};
+use std::task::{Context, Poll, Waker};
 
+use async_task::Task;
+use futures::task::{noop_waker, waker_ref, ArcWake};
+use pin_utils::pin_mut;
 use slab::Slab;
+use sync::Mutex;
+use sys_util::{add_fd_flags, warn, EpollContext, EpollEvents, EventFd, WatchingEvents};
+use thiserror::Error as ThisError;
 
-use sys_util::{error, PollContext, WatchingEvents};
+use crate::queue::RunnableQueue;
+use crate::waker::WakerToken;
 
-use crate::executor::{ExecutableFuture, Executor, FutureList};
-use crate::WakerToken;
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug, ThisError)]
 pub enum Error {
-    /// Attempts to create two Executors on the same thread fail.
-    AttemptedDuplicateExecutor,
+    /// Failed to clone the EventFd for waking the executor.
+    #[error("Failed to clone the EventFd for waking the executor: {0}")]
+    CloneEventFd(sys_util::Error),
+    /// Failed to create the EventFd for waking the executor.
+    #[error("Failed to create the EventFd for waking the executor: {0}")]
+    CreateEventFd(sys_util::Error),
     /// Failed to copy the FD for the polling context.
+    #[error("Failed to copy the FD for the polling context: {0}")]
     DuplicatingFd(sys_util::Error),
-    /// Failed accessing the thread local storage for wakers.
-    InvalidContext,
+    /// The Executor is gone.
+    #[error("The FDExecutor is gone")]
+    ExecutorGone,
     /// Creating a context to wait on FDs failed.
+    #[error("An error creating the fd waiting context: {0}")]
     CreatingContext(sys_util::Error),
     /// PollContext failure.
+    #[error("PollContext failure: {0}")]
     PollContextError(sys_util::Error),
     /// Failed to submit the waker to the polling context.
+    #[error("An error adding to the Aio context: {0}")]
     SubmittingWaker(sys_util::Error),
     /// A Waker was canceled, but the operation isn't running.
+    #[error("Unknown waker")]
     UnknownWaker,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            AttemptedDuplicateExecutor => write!(f, "Cannot have two executors on one thread."),
-            DuplicatingFd(e) => write!(f, "Failed to copy the FD for the polling context: {}", e),
-            InvalidContext => write!(
-                f,
-                "Invalid context, was the Fd executor created successfully?"
-            ),
-            CreatingContext(e) => write!(f, "An error creating the fd waiting context: {}.", e),
-            PollContextError(e) => write!(f, "PollContext failure: {}", e),
-            SubmittingWaker(e) => write!(f, "An error adding to the Aio context: {}.", e),
-            UnknownWaker => write!(f, "Unknown waker"),
-        }
-    }
+// A poll operation that has been submitted and is potentially being waited on.
+struct OpData {
+    file: File,
+    waker: Option<Waker>,
 }
 
-// Temporary vectors of new additions to the executor.
-
-// Tracks active wakers and the futures they are associated with.
-thread_local!(static STATE: RefCell<Option<FdWakerState>> = RefCell::new(None));
-
-fn add_waker(fd: RawFd, waker: Waker, events: WatchingEvents) -> Result<WakerToken> {
-    STATE.with(|state| {
-        let mut state = state.borrow_mut();
-        if let Some(state) = state.as_mut() {
-            state.add_waker(fd, waker, events)
-        } else {
-            Err(Error::InvalidContext)
-        }
-    })
+// The current status of a submitted operation.
+enum OpStatus {
+    Pending(OpData),
+    Completed,
 }
 
-/// A token returned from `add_waker` that can be used to cancel the waker before it completes.
+/// A token returned from `add_operation` that can be used to cancel the waker before it completes.
 /// Used to manage getting the result from the underlying executor for a completed operation.
-/// Dropping a `PendingWaker` will get the result from the executor.
-pub struct PendingWaker {
+/// Dropping a `PendingOperation` will get the result from the executor.
+pub struct PendingOperation {
     token: Option<WakerToken>,
+    ex: Weak<RawExecutor>,
 }
 
-impl PendingWaker {
-    pub(crate) fn new(token: WakerToken) -> PendingWaker {
-        PendingWaker { token: Some(token) }
+impl Future for PendingOperation {
+    type Output = Result<()>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let token = self
+            .token
+            .as_ref()
+            .expect("PendingOperation polled after returning Poll::Ready");
+        if let Some(ex) = self.ex.upgrade() {
+            if ex.is_ready(token, cx) {
+                self.token = None;
+                Poll::Ready(Ok(()))
+            } else {
+                Poll::Pending
+            }
+        } else {
+            Poll::Ready(Err(Error::ExecutorGone))
+        }
     }
 }
 
-impl Drop for PendingWaker {
+impl Drop for PendingOperation {
     fn drop(&mut self) {
         if let Some(token) = self.token.take() {
-            let _ = cancel_waker(token);
+            if let Some(ex) = self.ex.upgrade() {
+                let _ = ex.cancel_operation(token);
+            }
         }
     }
 }
 
-/// Tells the waking system to wake `waker` when `fd` becomes readable.
-/// The 'fd' must be fully owned by the future adding the waker, and must not be closed until the
-/// next time the future is polled. If the fd is closed, there is a race where another FD can be
-/// opened on top of it causing the next poll to access the new target file.
-/// Returns a `PendingWaker` that can be used to poll for completion or cancel the waker before it
-/// completes.
-pub(crate) fn add_read_waker(fd: RawFd, waker: Waker) -> Result<PendingWaker> {
-    add_waker(fd, waker, WatchingEvents::empty().set_read()).map(PendingWaker::new)
-}
+// This function exists to guarantee that non-epoll futures will not starve until an epoll future is
+// ready to be polled again. The mechanism is very similar to the self-pipe trick used by C programs
+// to reliably mix select / poll with signal handling. This is how it works:
+//
+// * RawExecutor::new creates an eventfd, dupes it, and spawns this async function with the duped fd.
+// * The first time notify_task is polled it tries to read from the eventfd and if that fails, waits
+//   for the fd to become readable.
+// * Meanwhile the RawExecutor keeps the original fd for the eventfd.
+// * Whenever RawExecutor::wake is called it will write to the eventfd if it determines that the
+//   executor thread is currently blocked inside an io_epoll_enter call. This can happen when a
+//   non-epoll future becomes ready to poll.
+// * The write to the eventfd causes the fd to become readable, which then allows the epoll() call
+//   to return with at least one readable fd.
+// * The executor then polls the non-epoll future that became ready, any epoll futures that
+//   completed, and the notify_task function, which then queues up another read on the eventfd and
+//   the process can repeat.
+async fn notify_task(notify: EventFd, raw: Weak<RawExecutor>) {
+    add_fd_flags(notify.as_raw_fd(), libc::O_NONBLOCK)
+        .expect("Failed to set notify EventFd as non-blocking");
 
-/// Tells the waking system to wake `waker` when `fd` becomes writable.
-/// The 'fd' must be fully owned by the future adding the waker, and must not be closed until the
-/// next time the future is polled. If the fd is closed, there is a race where another FD can be
-/// opened on top of it causing the next poll to access the new target file.
-/// Returns a `PendingWaker` that can be used to poll for completion or cancel the waker before it
-/// completes.
-pub(crate) fn add_write_waker(fd: RawFd, waker: Waker) -> Result<PendingWaker> {
-    add_waker(fd, waker, WatchingEvents::empty().set_write()).map(PendingWaker::new)
-}
-
-/// Cancels the waker that returned the given token if the waker hasn't yet fired.
-pub(crate) fn cancel_waker(token: WakerToken) -> Result<()> {
-    STATE.with(|state| {
-        let mut state = state.borrow_mut();
-        if let Some(state) = state.as_mut() {
-            state.cancel_waker(token)
-        } else {
-            Err(Error::InvalidContext)
+    loop {
+        match notify.read() {
+            Ok(_) => {}
+            Err(e) if e.errno() == libc::EWOULDBLOCK => {}
+            Err(e) => panic!("Unexpected error while reading notify EventFd: {}", e),
         }
-    })
-}
 
-/// Adds a new top level future to the Executor.
-/// These futures must return `()`, indicating they are intended to create side-effects only.
-pub(crate) fn add_future(future: Pin<Box<dyn Future<Output = ()>>>) -> Result<()> {
-    STATE.with(|state| {
-        let mut state = state.borrow_mut();
-        if let Some(state) = state.as_mut() {
-            state.new_futures.push_back(ExecutableFuture::new(future));
-            Ok(())
+        if let Some(ex) = raw.upgrade() {
+            let token = ex
+                .add_operation(notify.as_raw_fd(), WatchingEvents::empty().set_read())
+                .expect("Failed to add notify EventFd to PollCtx");
+
+            // We don't want to hold an active reference to the executor in the .await below.
+            mem::drop(ex);
+
+            let op = PendingOperation {
+                token: Some(token),
+                ex: raw.clone(),
+            };
+
+            match op.await {
+                Ok(()) => {}
+                Err(Error::ExecutorGone) => break,
+                Err(e) => panic!("Unexpected error while waiting for notify EventFd: {}", e),
+            }
         } else {
-            Err(Error::InvalidContext)
+            // The executor is gone so we should also exit.
+            break;
         }
-    })
+    }
 }
 
-// Tracks active wakers and associates wakers with the futures that registered them.
-struct FdWakerState {
-    poll_ctx: PollContext<usize>,
-    tokens: Slab<(File, Option<Waker>)>,
-    new_futures: VecDeque<ExecutableFuture<()>>,
+// Indicates that the executor is either within or about to make a PollContext::wait() call. When a
+// waker sees this value, it will write to the notify EventFd, which will cause the
+// PollContext::wait() call to return.
+const WAITING: i32 = 0x1d5b_c019u32 as i32;
+
+// Indicates that the executor is processing any futures that are ready to run.
+const PROCESSING: i32 = 0xd474_77bcu32 as i32;
+
+// Indicates that one or more futures may be ready to make progress.
+const WOKEN: i32 = 0x3e4d_3276u32 as i32;
+
+struct RawExecutor {
+    queue: RunnableQueue,
+    poll_ctx: EpollContext<usize>,
+    ops: Mutex<Slab<OpStatus>>,
+    state: AtomicI32,
+    notify: EventFd,
 }
 
-impl FdWakerState {
-    fn new() -> Result<Self> {
-        Ok(FdWakerState {
-            poll_ctx: PollContext::new().map_err(Error::CreatingContext)?,
-            tokens: Slab::with_capacity(64),
-            new_futures: VecDeque::new(),
+impl RawExecutor {
+    fn new(notify: EventFd) -> Result<Self> {
+        Ok(RawExecutor {
+            queue: RunnableQueue::new(),
+            poll_ctx: EpollContext::new().map_err(Error::CreatingContext)?,
+            ops: Mutex::new(Slab::with_capacity(64)),
+            state: AtomicI32::new(PROCESSING),
+            notify,
         })
     }
 
-    // Adds an fd that, when signaled, will trigger the given waker.
-    fn add_waker(&mut self, fd: RawFd, waker: Waker, events: WatchingEvents) -> Result<WakerToken> {
+    fn add_operation(&self, fd: RawFd, events: WatchingEvents) -> Result<WakerToken> {
         let duped_fd = unsafe {
             // Safe because duplicating an FD doesn't affect memory safety, and the dup'd FD
             // will only be added to the poll loop.
             File::from_raw_fd(dup_fd(fd)?)
         };
-        let entry = self.tokens.vacant_entry();
+        let mut ops = self.ops.lock();
+        let entry = ops.vacant_entry();
         let next_token = entry.key();
         self.poll_ctx
             .add_fd_with_events(&duped_fd, events, next_token)
             .map_err(Error::SubmittingWaker)?;
-        entry.insert((duped_fd, Some(waker)));
+        entry.insert(OpStatus::Pending(OpData {
+            file: duped_fd,
+            waker: None,
+        }));
         Ok(WakerToken(next_token))
     }
 
-    // Waits until one of the FDs is readable and wakes the associated waker.
-    fn wait_wake_event(&mut self) -> Result<()> {
-        let events = self.poll_ctx.wait().map_err(Error::PollContextError)?;
-        for e in events.iter() {
-            let token = e.token();
-            if let Some((fd, waker)) = self.tokens.get_mut(token) {
-                self.poll_ctx.delete(fd).map_err(Error::PollContextError)?;
-                if let Some(waker) = waker.take() {
-                    waker.wake();
-                } else {
-                    error!("Woken twice");
-                }
-            } else {
-                error!("Unknown waker");
+    fn wake(&self) {
+        let oldstate = self.state.swap(WOKEN, Ordering::Release);
+        if oldstate == WAITING {
+            if let Err(e) = self.notify.write(1) {
+                warn!("Failed to notify executor that a future is ready: {}", e);
             }
         }
-        Ok(())
+    }
+
+    fn spawn<F>(self: &Arc<Self>, f: F) -> Task<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let raw = Arc::downgrade(self);
+        let schedule = move |runnable| {
+            if let Some(r) = raw.upgrade() {
+                r.queue.schedule(runnable);
+            }
+        };
+        let (runnable, task) = async_task::spawn(f, schedule);
+        self.queue.schedule(runnable);
+        task
+    }
+
+    fn spawn_local<F>(self: &Arc<Self>, f: F) -> Task<F::Output>
+    where
+        F: Future + 'static,
+        F::Output: 'static,
+    {
+        let raw = Arc::downgrade(self);
+        let schedule = move |runnable| {
+            if let Some(r) = raw.upgrade() {
+                r.queue.schedule(runnable);
+            }
+        };
+        let (runnable, task) = async_task::spawn_local(f, schedule);
+        self.queue.schedule(runnable);
+        task
+    }
+
+    fn run<F: Future>(&self, cx: &mut Context, done: F) -> Result<F::Output> {
+        let events = EpollEvents::new();
+        pin_mut!(done);
+
+        loop {
+            self.state.store(PROCESSING, Ordering::Release);
+            self.queue.set_waker(cx.waker().clone());
+            for runnable in self.queue.iter() {
+                runnable.run();
+            }
+
+            if let Poll::Ready(val) = done.as_mut().poll(cx) {
+                return Ok(val);
+            }
+
+            let oldstate = self
+                .state
+                .compare_and_swap(PROCESSING, WAITING, Ordering::Acquire);
+            if oldstate != PROCESSING {
+                debug_assert_eq!(oldstate, WOKEN);
+                // One or more futures have become runnable.
+                continue;
+            }
+
+            let events = self
+                .poll_ctx
+                .wait(&events)
+                .map_err(Error::PollContextError)?;
+
+            // Set the state back to PROCESSING to prevent any tasks woken up by the loop below from
+            // writing to the eventfd.
+            self.state.store(PROCESSING, Ordering::Release);
+            for e in events.iter() {
+                let token = e.token();
+                let mut ops = self.ops.lock();
+
+                // The op could have been canceled and removed by another thread so ignore it if it
+                // doesn't exist.
+                if let Some(op) = ops.get_mut(token) {
+                    let (file, waker) = match mem::replace(op, OpStatus::Completed) {
+                        OpStatus::Pending(OpData { file, waker }) => (file, waker),
+                        OpStatus::Completed => {
+                            panic!("poll operation completed more than once")
+                        }
+                    };
+
+                    mem::drop(ops);
+
+                    self.poll_ctx
+                        .delete(&file)
+                        .map_err(Error::PollContextError)?;
+
+                    if let Some(waker) = waker {
+                        waker.wake();
+                    }
+                }
+            }
+        }
+    }
+
+    fn is_ready(&self, token: &WakerToken, cx: &mut Context) -> bool {
+        let mut ops = self.ops.lock();
+
+        let op = ops
+            .get_mut(token.0)
+            .expect("`is_ready` called on unknown operation");
+        match op {
+            OpStatus::Pending(data) => {
+                data.waker = Some(cx.waker().clone());
+                false
+            }
+            OpStatus::Completed => {
+                ops.remove(token.0);
+                true
+            }
+        }
     }
 
     // Remove the waker for the given token if it hasn't fired yet.
-    fn cancel_waker(&mut self, token: WakerToken) -> Result<()> {
-        let (fd, _waker) = self.tokens.remove(token.0);
-        self.poll_ctx.delete(&fd).map_err(Error::PollContextError)?;
-        Ok(())
-    }
-}
-
-/// Runs futures to completion on a single thread. Futures are allowed to block on file descriptors
-/// only. Futures can only block on FDs becoming readable or writable. `FdExecutor` is meant to be
-/// used where a poll or select loop would be used otherwise.
-pub(crate) struct FdExecutor<T: FutureList> {
-    futures: T,
-}
-
-impl<T: FutureList> Executor for FdExecutor<T> {
-    type Output = Result<T::Output>;
-
-    fn run(&mut self) -> Self::Output {
-        self.append_futures();
-
-        loop {
-            if let Some(output) = self.futures.poll_results() {
-                return Ok(output);
-            }
-
-            self.append_futures();
-
-            // If no futures are ready, sleep until a waker is signaled.
-            if !self.futures.any_ready() {
-                STATE.with(|state| {
-                    let mut state = state.borrow_mut();
-                    if let Some(state) = state.as_mut() {
-                        state.wait_wake_event()?;
-                    } else {
-                        unreachable!("Can't get here without a context being created");
-                    }
-                    Ok(())
-                })?;
-            }
+    fn cancel_operation(&self, token: WakerToken) -> Result<()> {
+        match self.ops.lock().remove(token.0) {
+            OpStatus::Pending(data) => self
+                .poll_ctx
+                .delete(&data.file)
+                .map_err(Error::PollContextError),
+            OpStatus::Completed => Ok(()),
         }
     }
 }
 
-impl<T: FutureList> FdExecutor<T> {
-    /// Create a new executor.
-    pub fn new(futures: T) -> Result<FdExecutor<T>> {
-        STATE.with(|state| {
-            if state.borrow().is_some() {
-                return Err(Error::AttemptedDuplicateExecutor);
-            }
-            state.replace(Some(FdWakerState::new()?));
-            Ok(())
-        })?;
-        Ok(FdExecutor { futures })
-    }
-
-    // Add any new futures and wakers to the lists.
-    fn append_futures(&mut self) {
-        STATE.with(|state| {
-            let mut state = state.borrow_mut();
-            if let Some(state) = state.as_mut() {
-                self.futures.futures_mut().append(&mut state.new_futures);
-            } else {
-                unreachable!("Can't get here without a context being created");
-            }
-        });
+impl ArcWake for RawExecutor {
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        RawExecutor::wake(arc_self);
     }
 }
 
-impl<T: FutureList> Drop for FdExecutor<T> {
+impl Drop for RawExecutor {
     fn drop(&mut self) {
-        STATE.with(|state| {
-            state.replace(None);
-        });
+        // Wake up the notify_task. We set the state to WAITING here so that wake() will write to
+        // the eventfd.
+        self.state.store(WAITING, Ordering::Release);
+        self.wake();
+
+        // Wake up any futures still waiting on poll operations as they are just going to get an
+        // ExecutorGone error now.
+        for op in self.ops.get_mut().drain() {
+            match op {
+                OpStatus::Pending(mut data) => {
+                    if let Some(waker) = data.waker.take() {
+                        waker.wake();
+                    }
+
+                    if let Err(e) = self.poll_ctx.delete(&data.file) {
+                        warn!("Failed to remove file from EpollCtx: {}", e);
+                    }
+                }
+                OpStatus::Completed => {}
+            }
+        }
+
+        // Now run the executor one more time to drive any remaining futures to completion.
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        if let Err(e) = self.run(&mut cx, async {}) {
+            warn!("Failed to drive FdExecutor to completion: {}", e);
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct FdExecutor {
+    raw: Arc<RawExecutor>,
+}
+
+impl FdExecutor {
+    pub fn new() -> Result<FdExecutor> {
+        let notify = EventFd::new().map_err(Error::CreateEventFd)?;
+        let raw = notify
+            .try_clone()
+            .map_err(Error::CloneEventFd)
+            .and_then(RawExecutor::new)
+            .map(Arc::new)?;
+
+        raw.spawn(notify_task(notify, Arc::downgrade(&raw)))
+            .detach();
+
+        Ok(FdExecutor { raw })
+    }
+
+    pub fn spawn<F>(&self, f: F) -> Task<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        self.raw.spawn(f)
+    }
+
+    pub fn spawn_local<F>(&self, f: F) -> Task<F::Output>
+    where
+        F: Future + 'static,
+        F::Output: 'static,
+    {
+        self.raw.spawn_local(f)
+    }
+
+    pub fn run(&self) -> Result<()> {
+        let waker = waker_ref(&self.raw);
+        let mut cx = Context::from_waker(&waker);
+
+        self.raw.run(&mut cx, crate::empty::<()>())
+    }
+
+    pub fn run_until<F: Future>(&self, f: F) -> Result<F::Output> {
+        let waker = waker_ref(&self.raw);
+        let mut ctx = Context::from_waker(&waker);
+
+        self.raw.run(&mut ctx, f)
+    }
+
+    pub fn wait_readable<F: AsRawFd>(&self, f: &F) -> Result<PendingOperation> {
+        let token = self
+            .raw
+            .add_operation(f.as_raw_fd(), WatchingEvents::empty().set_read())?;
+
+        Ok(PendingOperation {
+            token: Some(token),
+            ex: Arc::downgrade(&self.raw),
+        })
+    }
+
+    pub fn wait_writable<F: AsRawFd>(&self, f: &F) -> Result<PendingOperation> {
+        let token = self
+            .raw
+            .add_operation(f.as_raw_fd(), WatchingEvents::empty().set_read())?;
+
+        Ok(PendingOperation {
+            token: Some(token),
+            ex: Arc::downgrade(&self.raw),
+        })
     }
 }
 
@@ -290,75 +467,27 @@ unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
 #[cfg(test)]
 mod test {
     use std::cell::RefCell;
-    use std::fs::File;
-    use std::future::Future;
-    use std::os::unix::io::AsRawFd;
+    use std::io::{Read, Write};
     use std::rc::Rc;
-    use std::task::{Context, Poll};
 
     use futures::future::Either;
 
     use super::*;
 
-    // test function to get the number of pending wakers.
-    fn pending_ops() -> usize {
-        STATE.with(|state| {
-            let state = state.borrow_mut();
-            state.as_ref().unwrap().tokens.len()
-        })
-    }
-
-    struct TestFut {
-        f: File,
-        pending_waker: Option<PendingWaker>,
-    }
-
-    impl TestFut {
-        fn new(f: File) -> TestFut {
-            TestFut {
-                f,
-                pending_waker: None,
-            }
-        }
-    }
-
-    impl Future for TestFut {
-        type Output = u64;
-        fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-            if self.pending_waker.is_none() {
-                println!("pend");
-                self.pending_waker = Some(
-                    crate::fd_executor::add_read_waker(self.f.as_raw_fd(), cx.waker().clone())
-                        .unwrap(),
-                );
-            }
-            Poll::Pending
-        }
-    }
-
-    impl Drop for TestFut {
-        fn drop(&mut self) {
-            println!("drop test fut");
-        }
-    }
-
     #[test]
     fn test_it() {
-        async fn do_test() {
+        async fn do_test(ex: &FdExecutor) {
             let (r, _w) = sys_util::pipe(true).unwrap();
             let done = Box::pin(async { 5usize });
-            let pending = Box::pin(TestFut::new(r));
+            let pending = ex.wait_readable(&r).unwrap();
             match futures::future::select(pending, done).await {
                 Either::Right((5, pending)) => std::mem::drop(pending),
                 _ => panic!("unexpected select result"),
             }
-            // test that dropping the incomplete future removed the waker.
-            assert_eq!(0, pending_ops());
         }
 
-        let fut = do_test();
-
-        crate::run_one_poll(Box::pin(fut)).unwrap();
+        let ex = FdExecutor::new().unwrap();
+        ex.run_until(do_test(&ex)).unwrap();
 
         // Example of starting the framework and running a future:
         async fn my_async(x: Rc<RefCell<u64>>) {
@@ -366,7 +495,43 @@ mod test {
         }
 
         let x = Rc::new(RefCell::new(0));
-        crate::run_one_poll(Box::pin(my_async(x.clone()))).unwrap();
+        crate::run_one_poll(my_async(x.clone())).unwrap();
         assert_eq!(*x.borrow(), 4);
+    }
+
+    #[test]
+    fn drop_before_completion() {
+        const VALUE: u64 = 0x66ae_cb65_12fb_d260;
+
+        async fn write_value(mut tx: File) {
+            let buf = VALUE.to_ne_bytes();
+            tx.write_all(&buf[..]).expect("Failed to write to pipe");
+        }
+
+        async fn check_op(op: PendingOperation) {
+            let err = op.await.expect_err("Task completed successfully");
+            match err {
+                Error::ExecutorGone => {}
+                e => panic!("Unexpected error from task: {}", e),
+            }
+        }
+
+        let (mut rx, tx) = sys_util::pipe(true).expect("Pipe failed");
+
+        let ex = FdExecutor::new().unwrap();
+
+        let op = ex.wait_writable(&tx).unwrap();
+
+        ex.spawn_local(write_value(tx)).detach();
+        ex.spawn_local(check_op(op)).detach();
+
+        // Now drop the executor. It should still run until the write to the pipe is complete.
+        mem::drop(ex);
+
+        let mut buf = 0u64.to_ne_bytes();
+        rx.read_exact(&mut buf[..])
+            .expect("Failed to read from pipe");
+
+        assert_eq!(u64::from_ne_bytes(buf), VALUE);
     }
 }

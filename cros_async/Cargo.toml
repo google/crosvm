@@ -6,13 +6,15 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1.36"
+async-task = "4"
 io_uring = { path = "../io_uring" }
 libc = "*"
 paste = "1.0"
 pin-utils = "0.1.0-alpha.4"
+slab = "0.4"
+sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
 syscall_defines = { path = "../syscall_defines" }
-slab = "0.4"
 thiserror = "1.0.20"
 
 [dependencies.futures]
@@ -21,5 +23,6 @@ default-features = false
 features = ["alloc"]
 
 [dev-dependencies]
+futures = { version = "*", features = ["executor"] }
 tempfile = { path = "../tempfile" }
 vm_memory = { path = "../vm_memory" }

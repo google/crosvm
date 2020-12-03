@@ -2,38 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
-use futures::task::ArcWake;
-
 /// Wrapper around a usize used as a token to uniquely identify a pending waker.
 #[derive(Debug)]
 pub(crate) struct WakerToken(pub(crate) usize);
-
-/// Raw waker used by executors. Associated with a single future and used to indicate whether that
-/// future needs to be polled.
-pub(crate) struct NeedsPoll(AtomicBool);
-
-impl NeedsPoll {
-    /// Creates a new `NeedsPoll` initialized to `true`.
-    pub fn new() -> Arc<NeedsPoll> {
-        Arc::new(NeedsPoll(AtomicBool::new(true)))
-    }
-
-    /// Returns the current value of this `NeedsPoll`.
-    pub fn get(&self) -> bool {
-        self.0.load(Ordering::Acquire)
-    }
-
-    /// Changes the internal value to `val` and returns the old value.
-    pub fn swap(&self, val: bool) -> bool {
-        self.0.swap(val, Ordering::AcqRel)
-    }
-}
-
-impl ArcWake for NeedsPoll {
-    fn wake_by_ref(arc_self: &Arc<Self>) {
-        arc_self.0.store(true, Ordering::Release);
-    }
-}

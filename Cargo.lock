@@ -66,6 +66,12 @@ name = "assertions"
 version = "0.1.0"
 
 [[package]]
+name = "async-task"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e91831deabf0d6d7ec49552e489aed63b7456a7a3c46cff62adad428110b0af0"
+
+[[package]]
 name = "async-trait"
 version = "0.1.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -147,6 +153,7 @@ dependencies = [
 name = "cros_async"
 version = "0.1.0"
 dependencies = [
+ "async-task",
  "async-trait",
  "futures",
  "io_uring",
@@ -154,6 +161,7 @@ dependencies = [
  "paste",
  "pin-utils",
  "slab",
+ "sync",
  "sys_util",
  "syscall_defines",
  "thiserror",

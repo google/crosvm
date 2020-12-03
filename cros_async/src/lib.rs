@@ -63,35 +63,34 @@ mod event;
 mod executor;
 mod fd_executor;
 mod io_ext;
-mod io_source;
 mod poll_source;
+mod queue;
 mod select;
 mod timer;
 mod uring_executor;
-mod uring_futures;
 pub mod uring_mem;
+mod uring_source;
 mod waker;
 
 pub use event::EventAsync;
 pub use executor::Executor;
+pub use fd_executor::FdExecutor;
 pub use io_ext::{
-    async_from, Error as AsyncError, IntoAsync, IoSourceExt, ReadAsync, Result as AsyncResult,
-    WriteAsync,
+    Error as AsyncError, IntoAsync, IoSourceExt, ReadAsync, Result as AsyncResult, WriteAsync,
 };
 pub use poll_source::PollSource;
 pub use select::SelectResult;
 pub use timer::TimerAsync;
-pub use uring_futures::UringSource;
+pub use uring_executor::URingExecutor;
 pub use uring_mem::{BackingMemory, MemRegion};
+pub use uring_source::UringSource;
 
 use std::future::Future;
+use std::marker::PhantomData;
 use std::pin::Pin;
+use std::task::{Context, Poll};
 
-use executor::{FutureList, RunOne};
-use fd_executor::FdExecutor;
 use thiserror::Error as ThisError;
-use uring_executor::URingExecutor;
-use waker::WakerToken;
 
 #[derive(ThisError, Debug)]
 pub enum Error {
@@ -104,28 +103,22 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
-// Runs an executor with the given future list.
-// Chooses the uring executor if available, otherwise falls back to the FD executor.
-fn run_executor<T: FutureList>(future_list: T) -> Result<T::Output> {
-    if uring_executor::use_uring() {
-        URingExecutor::new(future_list)
-            .and_then(|mut ex| ex.run())
-            .map_err(Error::URingExecutor)
-    } else {
-        FdExecutor::new(future_list)
-            .and_then(|mut ex| ex.run())
-            .map_err(Error::FdExecutor)
+// A Future that never completes.
+pub struct Empty<T> {
+    phantom: PhantomData<T>,
+}
+
+impl<T> Future for Empty<T> {
+    type Output = T;
+
+    fn poll(self: Pin<&mut Self>, _: &mut Context) -> Poll<T> {
+        Poll::Pending
     }
 }
 
-/// Adds a new top level future to the Executor.
-/// These futures must return `()`, indicating they are intended to create side-effects only.
-pub fn add_future(future: Pin<Box<dyn Future<Output = ()>>>) -> Result<()> {
-    if uring_executor::use_uring() {
-        uring_executor::add_future(future);
-        Ok(())
-    } else {
-        fd_executor::add_future(future).map_err(Error::FdExecutor)
+pub fn empty<T>() -> Empty<T> {
+    Empty {
+        phantom: PhantomData,
     }
 }
 
@@ -137,10 +130,14 @@ pub fn add_future(future: Pin<Box<dyn Future<Output = ()>>>) -> Result<()> {
 ///    use cros_async::run_one;
 ///
 ///    let fut = async { 55 };
-///    assert_eq!(55, run_one(Box::pin(fut)).unwrap());
+///    assert_eq!(55, run_one(fut).unwrap());
 ///    ```
 pub fn run_one<F: Future>(fut: F) -> Result<F::Output> {
-    run_executor(RunOne::new(fut))
+    if uring_executor::use_uring() {
+        run_one_uring(fut)
+    } else {
+        run_one_poll(fut)
+    }
 }
 
 /// Creates a URingExecutor that runs one future to completion.
@@ -151,11 +148,11 @@ pub fn run_one<F: Future>(fut: F) -> Result<F::Output> {
 ///    use cros_async::run_one_uring;
 ///
 ///    let fut = async { 55 };
-///    assert_eq!(55, run_one_uring(Box::pin(fut)).unwrap());
+///    assert_eq!(55, run_one_uring(fut).unwrap());
 ///    ```
 pub fn run_one_uring<F: Future>(fut: F) -> Result<F::Output> {
-    URingExecutor::new(RunOne::new(fut))
-        .and_then(|mut ex| ex.run())
+    URingExecutor::new()
+        .and_then(|ex| ex.run_until(fut))
         .map_err(Error::URingExecutor)
 }
 
@@ -167,11 +164,11 @@ pub fn run_one_uring<F: Future>(fut: F) -> Result<F::Output> {
 ///    use cros_async::run_one_poll;
 ///
 ///    let fut = async { 55 };
-///    assert_eq!(55, run_one_poll(Box::pin(fut)).unwrap());
+///    assert_eq!(55, run_one_poll(fut).unwrap());
 ///    ```
 pub fn run_one_poll<F: Future>(fut: F) -> Result<F::Output> {
-    FdExecutor::new(RunOne::new(fut))
-        .and_then(|mut ex| ex.run())
+    FdExecutor::new()
+        .and_then(|ex| ex.run_until(fut))
         .map_err(Error::FdExecutor)
 }
 

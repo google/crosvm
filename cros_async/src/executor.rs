@@ -2,216 +2,304 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::VecDeque;
 use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::task::{Context, Poll};
 
-use futures::task::waker_ref;
+use async_task::Task;
 
-use crate::waker::NeedsPoll;
+use crate::poll_source::Error as PollError;
+use crate::uring_executor::use_uring;
+use crate::{
+    AsyncResult, FdExecutor, IntoAsync, IoSourceExt, PollSource, URingExecutor, UringSource,
+};
 
-/// Represents a future executor that can be run. Implementers of the trait will take a list of
-/// futures and poll them until completed.
-pub trait Executor {
-    /// The type returned by the executor. This is normally `()` or a combination of the output the
-    /// futures produce.
-    type Output;
-
-    /// Run the executor, this will return once the exit criteria is met. The exit criteria is
-    /// specified when the executor is created, for example running until all futures are complete.
-    fn run(&mut self) -> Self::Output;
+pub(crate) fn async_uring_from<'a, F: IntoAsync + 'a>(
+    f: F,
+    ex: &URingExecutor,
+) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
+    Ok(UringSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F>>)?)
 }
 
-// Tracks if a future needs to be polled and the waker to use.
-pub(crate) struct FutureState {
-    pub needs_poll: Arc<NeedsPoll>,
+/// Creates a concrete `IoSourceExt` using the fd_executor.
+pub(crate) fn async_poll_from<'a, F: IntoAsync + 'a>(
+    f: F,
+    ex: &FdExecutor,
+) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
+    Ok(PollSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F>>)?)
 }
 
-impl FutureState {
-    pub fn new() -> FutureState {
-        FutureState {
-            needs_poll: NeedsPoll::new(),
-        }
-    }
+/// An executor for scheduling tasks that poll futures to completion.
+///
+/// All asynchronous operations must run within an executor, which is capable of spawning futures as
+/// tasks. This executor also provides a mechanism for performing asynchronous I/O operations.
+///
+/// The returned type is a cheap, clonable handle to the underlying executor. Cloning it will only
+/// create a new reference, not a new executor.
+///
+/// # Examples
+///
+/// Concurrently wait for multiple files to become readable/writable and then read/write the data.
+///
+/// ```
+/// use std::cmp::min;
+/// use std::error::Error;
+/// use std::fs::{File, OpenOptions};
+///
+/// use cros_async::{AsyncResult, Executor, IoSourceExt, complete3};
+/// const CHUNK_SIZE: usize = 32;
+///
+/// // Write all bytes from `data` to `f`.
+/// async fn write_file(f: &dyn IoSourceExt<File>, mut data: Vec<u8>) -> AsyncResult<()> {
+///     while data.len() > 0 {
+///         let (count, mut buf) = f.write_from_vec(0, data).await?;
+///
+///         data = buf.split_off(count);
+///     }
+///
+///     Ok(())
+/// }
+///
+/// // Transfer `len` bytes of data from `from` to `to`.
+/// async fn transfer_data(
+///     from: Box<dyn IoSourceExt<File>>,
+///     to: Box<dyn IoSourceExt<File>>,
+///     len: usize,
+/// ) -> AsyncResult<usize> {
+///     let mut rem = len;
+///
+///     while rem > 0 {
+///         let buf = vec![0u8; min(rem, CHUNK_SIZE)];
+///         let (count, mut data) = from.read_to_vec(0, buf).await?;
+///
+///         if count == 0 {
+///             // End of file. Return the number of bytes transferred.
+///             return Ok(len - rem);
+///         }
+///
+///         data.truncate(count);
+///         write_file(&*to, data).await?;
+///
+///         rem = rem.saturating_sub(count);
+///     }
+///
+///     Ok(len)
+/// }
+///
+/// # fn do_it() -> Result<(), Box<dyn Error>> {
+///     let ex = Executor::new()?;
+///
+///     let (rx, tx) = sys_util::pipe(true)?;
+///     let zero = File::open("/dev/zero")?;
+///     let zero_bytes = CHUNK_SIZE * 7;
+///     let zero_to_pipe = transfer_data(
+///         ex.async_from(zero)?,
+///         ex.async_from(tx.try_clone()?)?,
+///         zero_bytes,
+///     );
+///
+///     let rand = File::open("/dev/urandom")?;
+///     let rand_bytes = CHUNK_SIZE * 19;
+///     let rand_to_pipe = transfer_data(ex.async_from(rand)?, ex.async_from(tx)?, rand_bytes);
+///
+///     let null = OpenOptions::new().write(true).open("/dev/null")?;
+///     let null_bytes = zero_bytes + rand_bytes;
+///     let pipe_to_null = transfer_data(ex.async_from(rx)?, ex.async_from(null)?, null_bytes);
+///
+///     ex.run_until(complete3(
+///         async { assert_eq!(pipe_to_null.await.unwrap(), null_bytes) },
+///         async { assert_eq!(zero_to_pipe.await.unwrap(), zero_bytes) },
+///         async { assert_eq!(rand_to_pipe.await.unwrap(), rand_bytes) },
+///     ))?;
+///
+/// #     Ok(())
+/// # }
+///
+/// # do_it().unwrap();
+/// ```
+
+#[derive(Clone)]
+pub enum Executor {
+    Uring(URingExecutor),
+    Fd(FdExecutor),
 }
 
-// Couples a future owned by the executor with a flag that indicates the future is ready to be
-// polled. Futures will start with the flag set. After blocking by returning `Poll::Pending`, the
-// flag will be false until the waker is triggered and sets the flag to true, signalling the
-// executor to poll the future again.
-pub(crate) struct ExecutableFuture<T> {
-    future: Pin<Box<dyn Future<Output = T>>>,
-    state: FutureState,
-}
-
-impl<T> ExecutableFuture<T> {
-    // Creates an `ExecutableFuture` from the future. The returned struct is used to track when the
-    // future should be polled again.
-    pub fn new(future: Pin<Box<dyn Future<Output = T>>>) -> ExecutableFuture<T> {
-        ExecutableFuture {
-            future,
-            state: FutureState::new(),
-        }
-    }
-
-    // Polls the future if needed and returns the result.
-    // Covers setting up the waker and context before calling the future.
-    fn poll(&mut self) -> Poll<T> {
-        let waker = waker_ref(&self.state.needs_poll);
-        let mut ctx = Context::from_waker(&waker);
-        let f = self.future.as_mut();
-        f.poll(&mut ctx)
-    }
-}
-
-// Private trait used to allow one executor to behave differently.  Using FutureList allows the
-// executor code to be common across different collections of crates and different termination
-// behavior. For example, one list can decide to exit after the first trait completes, others can
-// wait until all are complete.
-pub(crate) trait FutureList {
-    type Output;
-
-    // Return a mutable reference to the list of futures that can be added or removed from this
-    // List.
-    fn futures_mut(&mut self) -> &mut UnitFutures;
-    // Polls all futures that are ready. Returns the results if this list has completed.
-    fn poll_results(&mut self) -> Option<Self::Output>;
-    // Returns true if any future in the list is ready to be polled.
-    fn any_ready(&self) -> bool;
-}
-
-// `UnitFutures` is the simplest implementor of `FutureList`. It runs all futures added to it until
-// there are none left to poll. The futures must all return `()`.
-pub(crate) struct UnitFutures {
-    futures: VecDeque<ExecutableFuture<()>>,
-}
-
-impl UnitFutures {
-    // Creates a new, empty list of futures.
-    pub fn new() -> UnitFutures {
-        UnitFutures {
-            futures: VecDeque::new(),
-        }
-    }
-
-    // Adds a future to the list of futures to be polled.
-    pub fn append(&mut self, futures: &mut VecDeque<ExecutableFuture<()>>) {
-        self.futures.append(futures);
-    }
-
-    // Polls all futures that are ready to be polled. Removes any futures that indicate they are
-    // completed.
-    pub fn poll_all(&mut self) {
-        let mut i = 0;
-        while i < self.futures.len() {
-            let fut = &mut self.futures[i];
-            let remove = if fut.state.needs_poll.swap(false) {
-                fut.poll().is_ready()
-            } else {
-                false
-            };
-            if remove {
-                self.futures.remove(i);
-            } else {
-                i += 1;
-            }
-        }
-    }
-}
-
-impl FutureList for UnitFutures {
-    type Output = ();
-
-    fn futures_mut(&mut self) -> &mut UnitFutures {
-        self
-    }
-
-    fn poll_results(&mut self) -> Option<Self::Output> {
-        self.poll_all();
-        if self.futures.is_empty() {
-            Some(())
+impl Executor {
+    /// Create a new `Executor`.
+    pub fn new() -> AsyncResult<Self> {
+        if use_uring() {
+            Ok(URingExecutor::new().map(Executor::Uring)?)
         } else {
-            None
+            Ok(FdExecutor::new()
+                .map(Executor::Fd)
+                .map_err(PollError::Executor)?)
         }
     }
 
-    fn any_ready(&self) -> bool {
-        self.futures.iter().any(|fut| fut.state.needs_poll.get())
-    }
-}
-
-// Execute one future until it completes.
-pub(crate) struct RunOne<F: Future> {
-    fut: Pin<Box<F>>,
-    fut_state: FutureState,
-    added_futures: UnitFutures,
-}
-
-impl<F: Future> RunOne<F> {
-    pub fn new(f: F) -> RunOne<F> {
-        RunOne {
-            fut: Box::pin(f),
-            fut_state: FutureState::new(),
-            added_futures: UnitFutures::new(),
+    /// Create a new `Box<dyn IoSourceExt<F>>` associated with `self`. Callers may then use the
+    /// returned `IoSourceExt` to directly start async operations without needing a separate
+    /// reference to the executor.
+    pub fn async_from<'a, F: IntoAsync + 'a>(
+        &self,
+        f: F,
+    ) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
+        match self {
+            Executor::Uring(ex) => async_uring_from(f, ex),
+            Executor::Fd(ex) => async_poll_from(f, ex),
         }
     }
-}
 
-impl<F: Future> FutureList for RunOne<F> {
-    type Output = F::Output;
-
-    fn futures_mut(&mut self) -> &mut UnitFutures {
-        &mut self.added_futures
+    /// Spawn a new future for this executor to run to completion. Callers may use the returned
+    /// `Task` to await on the result of `f`. Dropping the returned `Task` will cancel `f`,
+    /// preventing it from being polled again. To drop a `Task` without canceling the future
+    /// associated with it use `Task::detach`. To cancel a task gracefully and wait until it is
+    /// fully destroyed, use `Task::cancel`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cros_async::AsyncResult;
+    /// # fn example_spawn() -> AsyncResult<()> {
+    /// #      use std::thread;
+    ///
+    /// #      use cros_async::Executor;
+    ///       use futures::executor::block_on;
+    ///
+    /// #      let ex = Executor::new()?;
+    ///
+    /// #      // Spawn a thread that runs the executor.
+    /// #      let ex2 = ex.clone();
+    /// #      thread::spawn(move || ex2.run());
+    ///
+    ///       let task = ex.spawn(async { 7 + 13 });
+    ///
+    ///       let result = block_on(task);
+    ///       assert_eq!(result, 20);
+    /// #     Ok(())
+    /// # }
+    ///
+    /// # example_spawn().unwrap();
+    /// ```
+    pub fn spawn<F>(&self, f: F) -> Task<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        match self {
+            Executor::Uring(ex) => ex.spawn(f),
+            Executor::Fd(ex) => ex.spawn(f),
+        }
     }
 
-    fn poll_results(&mut self) -> Option<Self::Output> {
-        let _ = self.added_futures.poll_results();
-
-        if self.fut_state.needs_poll.swap(false) {
-            let waker = waker_ref(&self.fut_state.needs_poll);
-            let mut ctx = Context::from_waker(&waker);
-            // The future impls `Unpin`, use `poll_unpin` to avoid wrapping it in
-            // `Pin` to call `poll`.
-            if let Poll::Ready(o) = self.fut.as_mut().poll(&mut ctx) {
-                return Some(o);
-            }
-        };
-        None
+    /// Spawn a thread-local task for this executor to drive to completion. Like `spawn` but without
+    /// requiring `Send` on `F` or `F::Output`. This method should only be called from the same
+    /// thread where `run()` or `run_until()` is called.
+    ///
+    /// # Panics
+    ///
+    /// `Executor::run` and `Executor::run_util` will panic if they try to poll a future that was
+    /// added by calling `spawn_local` from a different thread.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cros_async::AsyncResult;
+    /// # fn example_spawn_local() -> AsyncResult<()> {
+    /// #      use cros_async::Executor;
+    ///
+    /// #      let ex = Executor::new()?;
+    ///
+    ///       let task = ex.spawn_local(async { 7 + 13 });
+    ///
+    ///       let result = ex.run_until(task)?;
+    ///       assert_eq!(result, 20);
+    /// #     Ok(())
+    /// # }
+    ///
+    /// # example_spawn_local().unwrap();
+    /// ```
+    pub fn spawn_local<F>(&self, f: F) -> Task<F::Output>
+    where
+        F: Future + 'static,
+        F::Output: 'static,
+    {
+        match self {
+            Executor::Uring(ex) => ex.spawn_local(f),
+            Executor::Fd(ex) => ex.spawn_local(f),
+        }
     }
 
-    fn any_ready(&self) -> bool {
-        self.added_futures.any_ready() || self.fut_state.needs_poll.get()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::rc::Rc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    #[test]
-    fn basic_run() {
-        async fn f(called: Rc<AtomicUsize>) {
-            called.fetch_add(1, Ordering::Relaxed);
+    /// Run the executor indefinitely, driving all spawned futures to completion. This method will
+    /// block the current thread and only return in the case of an error.
+    ///
+    /// # Panics
+    ///
+    /// Once this method has been called on a thread, it may only be called on that thread from that
+    /// point on. Attempting to call it from another thread will panic.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cros_async::AsyncResult;
+    /// # fn example_run() -> AsyncResult<()> {
+    ///       use std::thread;
+    ///
+    ///       use cros_async::Executor;
+    ///       use futures::executor::block_on;
+    ///
+    ///       let ex = Executor::new()?;
+    ///
+    ///       // Spawn a thread that runs the executor.
+    ///       let ex2 = ex.clone();
+    ///       thread::spawn(move || ex2.run());
+    ///
+    ///       let task = ex.spawn(async { 7 + 13 });
+    ///
+    ///       let result = block_on(task);
+    ///       assert_eq!(result, 20);
+    /// #     Ok(())
+    /// # }
+    ///
+    /// # example_run().unwrap();
+    /// ```
+    pub fn run(&self) -> AsyncResult<()> {
+        match self {
+            Executor::Uring(ex) => ex.run()?,
+            Executor::Fd(ex) => ex.run().map_err(PollError::Executor)?,
         }
 
-        let f1_called = Rc::new(AtomicUsize::new(0));
-        let f2_called = Rc::new(AtomicUsize::new(0));
+        Ok(())
+    }
 
-        let fut1 = Box::pin(f(f1_called.clone()));
-        let fut2 = Box::pin(f(f2_called.clone()));
-
-        let mut futures = VecDeque::new();
-        futures.push_back(ExecutableFuture::new(fut1));
-        futures.push_back(ExecutableFuture::new(fut2));
-
-        let mut uf = UnitFutures::new();
-        uf.append(&mut futures);
-        assert!(uf.poll_results().is_some());
-        assert_eq!(f1_called.load(Ordering::Relaxed), 1);
-        assert_eq!(f2_called.load(Ordering::Relaxed), 1);
+    /// Drive all futures spawned in this executor until `f` completes. This method will block the
+    /// current thread only until `f` is complete and there may still be unfinished futures in the
+    /// executor.
+    ///
+    /// # Panics
+    ///
+    /// Once this method has been called on a thread, from then onwards it may only be called on
+    /// that thread. Attempting to call it from another thread will panic.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cros_async::AsyncResult;
+    /// # fn example_run_until() -> AsyncResult<()> {
+    ///       use cros_async::Executor;
+    ///
+    ///       let ex = Executor::new()?;
+    ///
+    ///       let task = ex.spawn_local(async { 7 + 13 });
+    ///
+    ///       let result = ex.run_until(task)?;
+    ///       assert_eq!(result, 20);
+    /// #     Ok(())
+    /// # }
+    ///
+    /// # example_run_until().unwrap();
+    /// ```
+    pub fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output> {
+        match self {
+            Executor::Uring(ex) => Ok(ex.run_until(f)?),
+            Executor::Fd(ex) => Ok(ex.run_until(f).map_err(PollError::Executor)?),
+        }
     }
 }
