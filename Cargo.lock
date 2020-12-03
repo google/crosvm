@@ -478,6 +478,7 @@ dependencies = [
 name = "io_uring"
 version = "0.1.0"
 dependencies = [
+ "data_model",
  "libc",
  "sys_util",
  "syscall_defines",
