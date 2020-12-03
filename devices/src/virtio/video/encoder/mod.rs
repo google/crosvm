@@ -77,6 +77,7 @@ struct Stream<T: EncoderSession> {
     dst_bitrate: u32,
     dst_profile: Profile,
     dst_h264_level: Option<Level>,
+    frame_rate: u32,
 
     encoder_session: Option<T>,
     received_input_buffers_event: bool,
@@ -129,12 +130,7 @@ impl<T: EncoderSession> Stream<T> {
         // rate, because VEA's request_encoding_params_change requires both framerate and
         // bitrate to be specified.
         cros_capabilities
-            .populate_dst_params(
-                &mut dst_params,
-                desired_format,
-                DEFAULT_BUFFER_SIZE,
-                /* fps= */ DEFAULT_FPS,
-            )
+            .populate_dst_params(&mut dst_params, desired_format, DEFAULT_BUFFER_SIZE)
             .map_err(|_| VideoError::InvalidArgument)?;
         // `format` is an Option since for the decoder, it is not populated until decoding has
         // started. for encoder, format should always be populated.
@@ -157,6 +153,7 @@ impl<T: EncoderSession> Stream<T> {
             dst_bitrate: DEFAULT_BITRATE,
             dst_profile,
             dst_h264_level,
+            frame_rate: DEFAULT_FPS,
             encoder_session: None,
             received_input_buffers_event: false,
             src_resources: Default::default(),
@@ -192,6 +189,7 @@ impl<T: EncoderSession> Stream<T> {
                 dst_profile: self.dst_profile,
                 dst_bitrate: self.dst_bitrate,
                 dst_h264_level: self.dst_h264_level.clone(),
+                frame_rate: self.frame_rate,
             })
             .map_err(|_| VideoError::InvalidOperation)?;
 
@@ -975,6 +973,12 @@ impl<T: Encoder> EncoderDevice<T> {
                         plane_formats[0].stride,
                     )
                     .map_err(VideoError::EncoderImpl)?;
+
+                // Following the V4L2 standard the framerate requested on the
+                // input queue should also be applied to the output queue.
+                if frame_rate > 0 {
+                    stream.frame_rate = frame_rate;
+                }
             }
             QueueType::Output => {
                 let desired_format = format.or(stream.dst_params.format).unwrap_or(Format::H264);
@@ -989,9 +993,12 @@ impl<T: Encoder> EncoderDevice<T> {
                         &mut stream.dst_params,
                         desired_format,
                         plane_formats[0].plane_size,
-                        frame_rate,
                     )
                     .map_err(VideoError::EncoderImpl)?;
+
+                if frame_rate > 0 {
+                    stream.frame_rate = frame_rate;
+                }
 
                 // Format is always populated for encoder.
                 let new_format = stream
@@ -1110,8 +1117,8 @@ impl<T: Encoder> EncoderDevice<T> {
         match ctrl_val {
             CtrlVal::Bitrate(bitrate) => {
                 if let Some(ref mut encoder_session) = stream.encoder_session {
-                    if let Err(e) = encoder_session
-                        .request_encoding_params_change(bitrate, stream.dst_params.frame_rate)
+                    if let Err(e) =
+                        encoder_session.request_encoding_params_change(bitrate, stream.frame_rate)
                     {
                         error!(
                             "failed to dynamically request encoding params change: {}",

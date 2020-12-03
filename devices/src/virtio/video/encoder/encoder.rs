@@ -72,6 +72,7 @@ pub struct SessionConfig {
     pub dst_profile: Profile,
     pub dst_bitrate: u32,
     pub dst_h264_level: Option<Level>,
+    pub frame_rate: u32,
 }
 
 #[derive(Debug)]
@@ -181,7 +182,6 @@ impl EncoderCapabilities {
         dst_params: &mut Params,
         desired_format: Format,
         buffer_size: u32,
-        frame_rate: u32,
     ) -> Result<()> {
         // TODO(alexlau): Should the first be the default?
         let format_desc = self
@@ -201,7 +201,6 @@ impl EncoderCapabilities {
             plane_size: buffer_size,
             stride: 0,
         }];
-        dst_params.frame_rate = frame_rate;
         Ok(())
     }
 

@@ -208,10 +208,10 @@ impl<'a> Encoder for &'a LibvdaEncoder {
             input_visible_height: config.src_params.frame_height,
             output_profile,
             initial_bitrate: config.dst_bitrate,
-            initial_framerate: if config.dst_params.frame_rate == 0 {
+            initial_framerate: if config.frame_rate == 0 {
                 None
             } else {
-                Some(config.dst_params.frame_rate)
+                Some(config.frame_rate)
             },
             h264_output_level: config.dst_h264_level.map(|level| {
                 // This value is aligned to the H264 standard definition of SPS.level_idc.
