@@ -33,5 +33,8 @@ mmap: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ|PRO
 mprotect: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ
 readlink: 1
 sched_setaffinity: 1
-sched_setscheduler: arg1 == SCHED_IDLE
+sched_setscheduler: arg1 == SCHED_IDLE || arg1 == SCHED_BATCH
 uname: 1
+
+# Required by mesa on AMD GPU
+sysinfo: 1
