@@ -1,0 +1,4 @@
+Name: libminijail
+Description: Dummy config for libminijail
+Version: 0.0.0
+Libs: -lminijail

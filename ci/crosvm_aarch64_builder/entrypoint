@@ -1,0 +1,27 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+echo "Building ChromeOS dependencies..."
+if ! make -j $(nproc) -C ci/build_environment TARGET_ARCH=aarch64 \
+    >/root/build_environment.log 2>&1; then
+    echo "Failed to build ChromeOS dependencies"
+    cat /root/build_environment.log
+    exit 1
+fi
+
+# TODO(b/177079396): Make test target configurable (e.g. run on remote device,
+# in VM, ...)
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="\
+    qemu-aarch64-static -E LD_LIBRARY_PATH=/workspace/scratch/lib"
+
+echo ""
+echo "crosvm-aarch64 builder is ready:"
+echo "  Cargo version: $(cargo --version)"
+echo "  Cargo target: $CARGO_BUILD_TARGET"
+echo "  Test target: User-space Emulation"
+echo ""
+
+# Run user provided command (Docker defaults to bash)
+$@

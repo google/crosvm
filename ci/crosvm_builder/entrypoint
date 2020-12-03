@@ -1,0 +1,20 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+echo "Building ChromeOS dependencies..."
+if ! make -j $(nproc) -C ci/build_environment \
+    >/root/build_environment.log 2>&1; then
+    echo "Failed to build ChromeOS dependencies"
+    cat /root/build_environment.log
+    exit 1
+fi
+
+echo ""
+echo "crosvm-$(arch) builder is ready:"
+echo "  Cargo version: $(cargo --version)"
+echo ""
+
+# Run user provided command (Docker defaults to bash)
+$@

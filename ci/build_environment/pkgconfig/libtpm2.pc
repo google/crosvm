@@ -1,0 +1,5 @@
+Name: tpm2
+Description: Dummy config for libtpm2
+Version: 0.0.0
+Requires: libssl
+Libs: -ltpm2
