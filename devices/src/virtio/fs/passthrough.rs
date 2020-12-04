@@ -24,8 +24,7 @@ use base::{
 use data_model::DataInit;
 use fuse::filesystem::{
     Context, DirectoryIterator, Entry, FileSystem, FsOptions, GetxattrReply, IoctlFlags,
-    IoctlIovec, IoctlReply, ListxattrReply, OpenOptions, SetattrValid, ZeroCopyReader,
-    ZeroCopyWriter, ROOT_ID,
+    IoctlReply, ListxattrReply, OpenOptions, SetattrValid, ZeroCopyReader, ZeroCopyWriter, ROOT_ID,
 };
 use rand_ish::SimpleRng;
 use sync::Mutex;
@@ -54,9 +53,6 @@ struct fscrypt_policy_v1 {
     _master_key_descriptor: [u8; FSCRYPT_KEY_DESCRIPTOR_SIZE],
 }
 unsafe impl DataInit for fscrypt_policy_v1 {}
-
-ioctl_ior_nr!(FS_IOC_SET_ENCRYPTION_POLICY, 0x66, 19, fscrypt_policy_v1);
-ioctl_iow_nr!(FS_IOC_GET_ENCRYPTION_POLICY, 0x66, 21, fscrypt_policy_v1);
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -824,48 +820,6 @@ impl PassthroughFs {
             }
         } else {
             Ok(true)
-        }
-    }
-
-    fn get_encryption_policy(&self, handle: Handle) -> io::Result<IoctlReply> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
-
-        let mut buf = MaybeUninit::<fscrypt_policy_v1>::zeroed();
-        let file = data.file.lock();
-
-        // Safe because the kernel will only write to `buf` and we check the return value.
-        let res =
-            unsafe { ioctl_with_mut_ptr(&*file, FS_IOC_GET_ENCRYPTION_POLICY(), buf.as_mut_ptr()) };
-        if res < 0 {
-            Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
-        } else {
-            // Safe because the kernel guarantees that the policy is now initialized.
-            let policy = unsafe { buf.assume_init() };
-            Ok(IoctlReply::Done(Ok(policy.as_slice().to_vec())))
-        }
-    }
-
-    fn set_encryption_policy<R: io::Read>(&self, handle: Handle, r: R) -> io::Result<IoctlReply> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
-
-        let policy = fscrypt_policy_v1::from_reader(r)?;
-        let file = data.file.lock();
-        // Safe because the kernel will only read from `policy` and we check the return value.
-        let res = unsafe { ioctl_with_ptr(&*file, FS_IOC_SET_ENCRYPTION_POLICY(), &policy) };
-        if res < 0 {
-            Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
-        } else {
-            Ok(IoctlReply::Done(Ok(Vec::new())))
         }
     }
 
@@ -2164,13 +2118,11 @@ impl FileSystem for PassthroughFs {
         handle: Handle,
         _flags: IoctlFlags,
         cmd: u32,
-        arg: u64,
+        _arg: u64,
         in_size: u32,
         out_size: u32,
         r: R,
     ) -> io::Result<IoctlReply> {
-        const GET_ENCRYPTION_POLICY: u32 = FS_IOC_GET_ENCRYPTION_POLICY() as u32;
-        const SET_ENCRYPTION_POLICY: u32 = FS_IOC_SET_ENCRYPTION_POLICY() as u32;
         const GET_FSXATTR: u32 = FS_IOC_FSGETXATTR() as u32;
         const SET_FSXATTR: u32 = FS_IOC_FSSETXATTR() as u32;
         const GET_FLAGS32: u32 = FS_IOC32_GETFLAGS() as u32;
@@ -2178,34 +2130,7 @@ impl FileSystem for PassthroughFs {
         const GET_FLAGS64: u32 = FS_IOC64_GETFLAGS() as u32;
         const SET_FLAGS64: u32 = FS_IOC64_SETFLAGS() as u32;
 
-        // Normally, we wouldn't need to retry the FS_IOC_GET_ENCRYPTION_POLICY and
-        // FS_IOC_SET_ENCRYPTION_POLICY ioctls. Unfortunately, the I/O directions for both of them
-        // are encoded backwards so they can only be handled as unrestricted fuse ioctls.
         match cmd {
-            GET_ENCRYPTION_POLICY => {
-                if out_size < size_of::<fscrypt_policy_v1>() as u32 {
-                    let input = Vec::new();
-                    let output = vec![IoctlIovec {
-                        base: arg,
-                        len: size_of::<fscrypt_policy_v1>() as u64,
-                    }];
-                    Ok(IoctlReply::Retry { input, output })
-                } else {
-                    self.get_encryption_policy(handle)
-                }
-            }
-            SET_ENCRYPTION_POLICY => {
-                if in_size < size_of::<fscrypt_policy_v1>() as u32 {
-                    let input = vec![IoctlIovec {
-                        base: arg,
-                        len: size_of::<fscrypt_policy_v1>() as u64,
-                    }];
-                    let output = Vec::new();
-                    Ok(IoctlReply::Retry { input, output })
-                } else {
-                    self.set_encryption_policy(handle, r)
-                }
-            }
             GET_FSXATTR => {
                 if out_size < size_of::<fsxattr>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))

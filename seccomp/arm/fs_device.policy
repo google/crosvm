@@ -28,7 +28,10 @@ getdents64: 1
 getegid32: 1
 geteuid32: 1
 getrandom: 1
-ioctl: arg1 == FS_IOC_GET_ENCRYPTION_POLICY || arg1 == FS_IOC_SET_ENCRYPTION_POLICY || arg1 == FS_IOC_FSGETXATTR || arg1 == FS_IOC_FSSETXATTR || arg1 == FS_IOC_GETFLAGS || arg1 == FS_IOC_SETFLAGS
+ioctl: arg1 == FS_IOC_FSGETXATTR || \
+       arg1 == FS_IOC_FSSETXATTR || \
+       arg1 == FS_IOC_GETFLAGS || \
+       arg1 == FS_IOC_SETFLAGS
 linkat: 1
 _llseek: 1
 mkdir: 1
