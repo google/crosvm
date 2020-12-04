@@ -1155,7 +1155,8 @@ impl Gpu {
             .use_egl(gpu_parameters.renderer_use_egl)
             .use_gles(gpu_parameters.renderer_use_gles)
             .use_glx(gpu_parameters.renderer_use_glx)
-            .use_surfaceless(gpu_parameters.renderer_use_surfaceless);
+            .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
+            .use_external_blob(external_blob);
         #[cfg(feature = "gfxstream")]
         let renderer_flags = renderer_flags
             .use_guest_angle(gpu_parameters.gfxstream_use_guest_angle)
