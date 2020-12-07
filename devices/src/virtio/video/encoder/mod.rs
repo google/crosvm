@@ -1055,10 +1055,23 @@ impl<T: Encoder> EncoderDevice<T> {
             },
             QueryCtrlType::Level(format) => {
                 match format {
-                    Format::H264 => {
-                        // TODO(alexlau): Figure out valid range of values.
-                        QueryCtrlResponse::Level(vec![Level::H264_1_0])
-                    }
+                    Format::H264 => QueryCtrlResponse::Level(vec![
+                        Level::H264_1_0,
+                        Level::H264_1_1,
+                        Level::H264_1_2,
+                        Level::H264_1_3,
+                        Level::H264_2_0,
+                        Level::H264_2_1,
+                        Level::H264_2_2,
+                        Level::H264_3_0,
+                        Level::H264_3_1,
+                        Level::H264_3_2,
+                        Level::H264_4_0,
+                        Level::H264_4_1,
+                        Level::H264_4_2,
+                        Level::H264_5_0,
+                        Level::H264_5_1,
+                    ]),
                     _ => {
                         // Levels are only supported for H264.
                         return Err(VideoError::UnsupportedControl(CtrlType::Level));
