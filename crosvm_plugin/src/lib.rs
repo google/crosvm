@@ -246,7 +246,7 @@ pub struct crosvm {
     socket: UnixDatagram,
     request_buffer: Vec<u8>,
     response_buffer: Vec<u8>,
-    vcpus: Arc<Vec<crosvm_vcpu>>,
+    vcpus: Arc<[crosvm_vcpu]>,
 }
 
 impl crosvm {
@@ -256,7 +256,7 @@ impl crosvm {
             socket,
             request_buffer: Vec::new(),
             response_buffer: vec![0; MAX_DATAGRAM_SIZE],
-            vcpus: Default::default(),
+            vcpus: Arc::new([]),
         };
         crosvm.load_all_vcpus()?;
         Ok(crosvm)
@@ -265,7 +265,7 @@ impl crosvm {
     fn new(
         id_allocator: Arc<IdAllocator>,
         socket: UnixDatagram,
-        vcpus: Arc<Vec<crosvm_vcpu>>,
+        vcpus: Arc<[crosvm_vcpu]>,
     ) -> crosvm {
         crosvm {
             id_allocator,
@@ -350,10 +350,7 @@ impl crosvm {
             let read_pipe = files.remove(0);
             vcpus.push(crosvm_vcpu::new(fd_cast(read_pipe), fd_cast(write_pipe)));
         }
-        // Only called once by the `from_connection` constructor, which makes a new unique
-        // `self.vcpus`.
-        let self_vcpus = Arc::get_mut(&mut self.vcpus).unwrap();
-        *self_vcpus = vcpus;
+        self.vcpus = Arc::from(vcpus);
         Ok(())
     }
 

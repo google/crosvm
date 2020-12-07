@@ -184,7 +184,7 @@ impl<'a> Encoder for &'a LibvdaEncoder {
         let input_format = match config
             .src_params
             .format
-            .ok_or_else(|| EncoderError::InvalidArgument)?
+            .ok_or(EncoderError::InvalidArgument)?
         {
             Format::NV12 => libvda::PixelFormat::NV12,
             Format::YUV420 => libvda::PixelFormat::YV12,

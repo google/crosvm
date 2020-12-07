@@ -110,7 +110,7 @@ impl MemoryRegion {
 /// fd of the underlying memory regions.
 #[derive(Clone)]
 pub struct GuestMemory {
-    regions: Arc<Vec<MemoryRegion>>,
+    regions: Arc<[MemoryRegion]>,
     memfd: Arc<SharedMemory>,
 }
 
@@ -192,7 +192,7 @@ impl GuestMemory {
         }
 
         Ok(GuestMemory {
-            regions: Arc::new(regions),
+            regions: Arc::from(regions),
             memfd: Arc::new(memfd),
         })
     }

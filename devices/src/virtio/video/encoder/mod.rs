@@ -138,13 +138,11 @@ impl<T: EncoderSession> Stream<T> {
             .map_err(|_| VideoError::InvalidArgument)?;
         // `format` is an Option since for the decoder, it is not populated until decoding has
         // started. for encoder, format should always be populated.
-        let dest_format = dst_params
-            .format
-            .ok_or_else(|| VideoError::InvalidArgument)?;
+        let dest_format = dst_params.format.ok_or(VideoError::InvalidArgument)?;
 
         let dst_profile = cros_capabilities
             .get_default_profile(&dest_format)
-            .ok_or_else(|| VideoError::InvalidArgument)?;
+            .ok_or(VideoError::InvalidArgument)?;
 
         let dst_h264_level = if dest_format == Format::H264 {
             Some(Level::H264_1_0)
@@ -999,14 +997,14 @@ impl<T: Encoder> EncoderDevice<T> {
                 let new_format = stream
                     .dst_params
                     .format
-                    .ok_or_else(|| VideoError::InvalidArgument)?;
+                    .ok_or(VideoError::InvalidArgument)?;
 
                 // If the selected profile no longer corresponds to the selected coded format,
                 // reset it.
                 stream.dst_profile = self
                     .cros_capabilities
                     .get_default_profile(&new_format)
-                    .ok_or_else(|| VideoError::InvalidArgument)?;
+                    .ok_or(VideoError::InvalidArgument)?;
 
                 if new_format == Format::H264 {
                     stream.dst_h264_level = Some(Level::H264_1_0);
@@ -1083,7 +1081,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 let format = stream
                     .dst_params
                     .format
-                    .ok_or_else(|| VideoError::InvalidArgument)?;
+                    .ok_or(VideoError::InvalidArgument)?;
                 match format {
                     Format::H264 => CtrlVal::Level(stream.dst_h264_level.ok_or_else(|| {
                         error!("H264 level not set");
@@ -1135,7 +1133,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 let format = stream
                     .dst_params
                     .format
-                    .ok_or_else(|| VideoError::InvalidArgument)?;
+                    .ok_or(VideoError::InvalidArgument)?;
                 if format != profile.to_format() {
                     error!(
                         "specified profile does not correspond to the selected format ({})",
@@ -1156,7 +1154,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 let format = stream
                     .dst_params
                     .format
-                    .ok_or_else(|| VideoError::InvalidArgument)?;
+                    .ok_or(VideoError::InvalidArgument)?;
                 if format != Format::H264 {
                     error!(
                         "set control called for level but format is not H264 ({})",
