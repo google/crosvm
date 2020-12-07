@@ -22,6 +22,7 @@ pub mod syslog;
 mod capabilities;
 mod clock;
 mod descriptor;
+mod descriptor_reflection;
 mod errno;
 mod eventfd;
 mod external_mapping;
@@ -68,6 +69,10 @@ pub use crate::sock_ctrl_msg::*;
 pub use crate::struct_util::*;
 pub use crate::terminal::*;
 pub use crate::timerfd::*;
+pub use descriptor_reflection::{
+    deserialize_with_descriptors, with_as_descriptor, with_raw_descriptor, FileSerdeWrapper,
+    SerializeDescriptors,
+};
 pub use poll_token_derive::*;
 
 pub use crate::external_mapping::Error as ExternalMappingError;
