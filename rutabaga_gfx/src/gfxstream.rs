@@ -141,7 +141,7 @@ impl RutabagaContext for GfxstreamContext {
         ret_to_res(ret)
     }
 
-    fn attach(&mut self, resource: &RutabagaResource) {
+    fn attach(&mut self, resource: &mut RutabagaResource) {
         // The context id and resource id must be valid because the respective instances ensure
         // their lifetime.
         unsafe {
@@ -220,6 +220,10 @@ impl Gfxstream {
 
         Ok(Box::new(Gfxstream { fence_state }))
     }
+
+    fn map_info(&self, _resource_id: u32) -> RutabagaResult<u32> {
+        Ok(RUTABAGA_MAP_CACHE_WC)
+    }
 }
 
 impl RutabagaComponent for Gfxstream {
@@ -266,14 +270,18 @@ impl RutabagaComponent for Gfxstream {
         // returning a new resource. The backing buffers are not supplied with this call.
         let ret = unsafe { pipe_virgl_renderer_resource_create(&mut args, null_mut(), 0) };
         ret_to_res(ret)?;
+
         Ok(RutabagaResource {
             resource_id,
             handle: None,
             blob: false,
             blob_mem: 0,
             blob_flags: 0,
-            backing_iovecs: Vec::new(),
-            resource_2d: None,
+            map_info: None,
+            info_2d: None,
+            info_3d: None,
+            vulkan_info: None,
+            backing_iovecs: None,
         })
     }
 
@@ -402,7 +410,7 @@ impl RutabagaComponent for Gfxstream {
         _ctx_id: u32,
         resource_id: u32,
         resource_create_blob: ResourceCreateBlob,
-        iovecs: Vec<RutabagaIovec>,
+        _iovecs: Vec<RutabagaIovec>,
     ) -> RutabagaResult<RutabagaResource> {
         unsafe {
             stream_renderer_resource_create_v2(resource_id, resource_create_blob.blob_id);
@@ -413,8 +421,11 @@ impl RutabagaComponent for Gfxstream {
             blob: true,
             blob_mem: resource_create_blob.blob_mem,
             blob_flags: resource_create_blob.blob_flags,
-            backing_iovecs: iovecs,
-            resource_2d: None,
+            map_info: self.map_info(resource_id).ok(),
+            info_2d: None,
+            info_3d: None,
+            vulkan_info: None,
+            backing_iovecs: None,
         })
     }
 
@@ -424,10 +435,6 @@ impl RutabagaComponent for Gfxstream {
             Ok(mapping) => Ok(mapping),
             Err(e) => Err(RutabagaError::MappingFailed(e)),
         }
-    }
-
-    fn map_info(&self, _resource_id: u32) -> RutabagaResult<u32> {
-        Ok(RUTABAGA_MAP_CACHE_WC)
     }
 
     fn create_context(

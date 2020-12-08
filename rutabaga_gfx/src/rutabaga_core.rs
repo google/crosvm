@@ -2,13 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! rutabaga_core: Cross-platform, Rust-based, Vulkan centric GPU virtualization.
+//! rutabaga_core: Cross-platform, Rust-based, Wayland and Vulkan centric GPU virtualization.
 
 use std::collections::BTreeMap as Map;
 use std::sync::Arc;
 
 use base::ExternalMapping;
 use data_model::VolatileSlice;
+
+use crate::cross_domain::CrossDomain;
 
 #[cfg(feature = "gfxstream")]
 use crate::gfxstream::Gfxstream;
@@ -33,8 +35,11 @@ pub struct RutabagaResource {
     pub blob: bool,
     pub blob_mem: u32,
     pub blob_flags: u32,
-    pub backing_iovecs: Vec<RutabagaIovec>,
-    pub resource_2d: Option<Rutabaga2DInfo>,
+    pub map_info: Option<u32>,
+    pub info_2d: Option<Rutabaga2DInfo>,
+    pub info_3d: Option<Resource3DInfo>,
+    pub vulkan_info: Option<VulkanInfo>,
+    pub backing_iovecs: Option<Vec<RutabagaIovec>>,
 }
 
 /// A RutabagaComponent is a building block of the Virtual Graphics Interface (VGI).  Each component
@@ -138,21 +143,6 @@ pub trait RutabagaComponent {
         Err(RutabagaError::Unsupported)
     }
 
-    /// Implementations must return information about the mapping on success.
-    fn map_info(&self, _resource_id: u32) -> RutabagaResult<u32> {
-        Err(RutabagaError::Unsupported)
-    }
-
-    /// Implementations must return accurate 3D metadata on success.
-    fn query(&self, _resource_id: u32) -> RutabagaResult<Resource3DMetadata> {
-        Err(RutabagaError::Unsupported)
-    }
-
-    /// Implementations must return a RutabagaHandle of the blob resource on success.
-    fn export_blob(&self, _resource_id: u32) -> RutabagaResult<Arc<RutabagaHandle>> {
-        Err(RutabagaError::Unsupported)
-    }
-
     /// Implementations must return a RutabagaHandle of the fence on success.
     fn export_fence(&self, _fence_id: u32) -> RutabagaResult<RutabagaHandle> {
         Err(RutabagaError::Unsupported)
@@ -171,11 +161,20 @@ pub trait RutabagaComponent {
 }
 
 pub trait RutabagaContext {
+    /// Implementations must return a RutabagaResource given the `resource_create_blob` parameters.
+    fn context_create_blob(
+        &mut self,
+        _resource_id: u32,
+        _resource_create_blob: ResourceCreateBlob,
+    ) -> RutabagaResult<RutabagaResource> {
+        Err(RutabagaError::Unsupported)
+    }
+
     /// Implementations must handle the context-specific command stream.
     fn submit_cmd(&mut self, _commands: &mut [u8]) -> RutabagaResult<()>;
 
     /// Implementations may use `resource` in this context's command stream.
-    fn attach(&mut self, _resource: &RutabagaResource);
+    fn attach(&mut self, _resource: &mut RutabagaResource);
 
     /// Implementations must stop using `resource` in this context's command stream.
     fn detach(&mut self, _resource: &RutabagaResource);
@@ -193,32 +192,10 @@ pub trait RutabagaContext {
     }
 }
 
-fn capset_id_to_component_type(capset_id: u32) -> RutabagaResult<RutabagaComponentType> {
-    let component_type = match capset_id {
-        RUTABAGA_CAPSET_VIRGL => RutabagaComponentType::VirglRenderer,
-        RUTABAGA_CAPSET_VIRGL2 => RutabagaComponentType::VirglRenderer,
-        RUTABAGA_CAPSET_VENUS => RutabagaComponentType::VirglRenderer,
-        RUTABAGA_CAPSET_GFXSTREAM => RutabagaComponentType::Gfxstream,
-        RUTABAGA_CAPSET_CROSS_DOMAIN => RutabagaComponentType::CrossDomain,
-        _ => return Err(RutabagaError::Unsupported),
-    };
-
-    Ok(component_type)
-}
-
-fn capset_index_to_component_info(index: u32) -> RutabagaResult<(RutabagaComponentType, u32)> {
-    let component_info = match index {
-        0 => (RutabagaComponentType::VirglRenderer, RUTABAGA_CAPSET_VIRGL),
-        1 => (RutabagaComponentType::VirglRenderer, RUTABAGA_CAPSET_VIRGL2),
-        2 => (RutabagaComponentType::Gfxstream, RUTABAGA_CAPSET_GFXSTREAM),
-        3 => (RutabagaComponentType::VirglRenderer, RUTABAGA_CAPSET_VENUS),
-        4 => (
-            RutabagaComponentType::CrossDomain,
-            RUTABAGA_CAPSET_CROSS_DOMAIN,
-        ),
-        _ => return Err(RutabagaError::Unsupported),
-    };
-    Ok(component_info)
+#[derive(Copy, Clone)]
+struct RutabagaCapsetInfo {
+    pub capset_id: u32,
+    pub component: RutabagaComponentType,
 }
 
 /// The global libary handle used to query capability sets, create resources and contexts.
@@ -233,22 +210,41 @@ pub struct Rutabaga {
     components: Map<RutabagaComponentType, Box<dyn RutabagaComponent>>,
     contexts: Map<u32, Box<dyn RutabagaContext>>,
     default_component: RutabagaComponentType,
+    capset_info: Vec<RutabagaCapsetInfo>,
 }
 
 impl Rutabaga {
+    fn capset_id_to_component_type(&self, capset_id: u32) -> RutabagaResult<RutabagaComponentType> {
+        let component = self
+            .capset_info
+            .iter()
+            .find(|capset_info| capset_info.capset_id == capset_id)
+            .ok_or(RutabagaError::InvalidCapset)?
+            .component;
+
+        Ok(component)
+    }
+
+    fn capset_index_to_component_info(&self, index: u32) -> RutabagaResult<RutabagaCapsetInfo> {
+        let idx = index as usize;
+        if idx >= self.capset_info.len() {
+            return Err(RutabagaError::InvalidCapset);
+        }
+
+        Ok(self.capset_info[idx])
+    }
+
     /// Gets the version and size for the capabilty set `index`.
     pub fn get_capset_info(&self, index: u32) -> RutabagaResult<(u32, u32, u32)> {
-        let (_component_type, capset_id) = capset_index_to_component_info(index)?;
+        let capset_info = self.capset_index_to_component_info(index)?;
 
-        // The default workaround is just until context types are fully supported in all
-        // Google kernels.  We should really use the component_type.
         let component = self
             .components
-            .get(&self.default_component)
+            .get(&capset_info.component)
             .ok_or(RutabagaError::InvalidComponent)?;
 
-        let (capset_version, capset_size) = component.get_capset_info(capset_id);
-        Ok((capset_id, capset_version, capset_size))
+        let (capset_version, capset_size) = component.get_capset_info(capset_info.capset_id);
+        Ok((capset_info.capset_id, capset_version, capset_size))
     }
 
     /// Gets the capability set for the `capset_id` and `version`.
@@ -257,8 +253,9 @@ impl Rutabaga {
     pub fn get_capset(&self, capset_id: u32, version: u32) -> RutabagaResult<Vec<u8>> {
         // The default workaround is just until context types are fully supported in all
         // Google kernels.
-        let component_type =
-            capset_id_to_component_type(capset_id).unwrap_or(self.default_component);
+        let component_type = self
+            .capset_id_to_component_type(capset_id)
+            .unwrap_or(self.default_component);
 
         let component = self
             .components
@@ -341,9 +338,7 @@ impl Rutabaga {
             return Err(RutabagaError::InvalidResourceId);
         }
 
-        let mut resource = component.create_3d(resource_id, resource_create_3d)?;
-        resource.handle = component.export_blob(resource_id).ok();
-
+        let resource = component.create_3d(resource_id, resource_create_3d)?;
         self.resources.insert(resource_id, resource);
         Ok(())
     }
@@ -359,13 +354,13 @@ impl Rutabaga {
             .get_mut(&self.default_component)
             .ok_or(RutabagaError::InvalidComponent)?;
 
-        let resource = self
+        let mut resource = self
             .resources
             .get_mut(&resource_id)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
         component.attach_backing(resource_id, &mut vecs)?;
-        resource.backing_iovecs = vecs;
+        resource.backing_iovecs = Some(vecs);
         Ok(())
     }
 
@@ -382,7 +377,7 @@ impl Rutabaga {
             .ok_or(RutabagaError::InvalidResourceId)?;
 
         component.detach_backing(resource_id);
-        resource.backing_iovecs.clear();
+        resource.backing_iovecs = None;
         Ok(())
     }
 
@@ -455,19 +450,31 @@ impl Rutabaga {
         resource_create_blob: ResourceCreateBlob,
         iovecs: Vec<RutabagaIovec>,
     ) -> RutabagaResult<()> {
+        if self.resources.contains_key(&resource_id) {
+            return Err(RutabagaError::InvalidResourceId);
+        }
+
+        // For the cross-domain context, we'll need to create the blob resource via a home-grown
+        // rutabaga context rather than one from an external C/C++ component.  Use `ctx_id` to check
+        // if it happens to be a cross-domain context.
+        if ctx_id > 0 {
+            let ctx = self
+                .contexts
+                .get_mut(&ctx_id)
+                .ok_or(RutabagaError::InvalidContextId)?;
+
+            if let Ok(resource) = ctx.context_create_blob(resource_id, resource_create_blob) {
+                self.resources.insert(resource_id, resource);
+                return Ok(());
+            }
+        }
+
         let component = self
             .components
             .get_mut(&self.default_component)
             .ok_or(RutabagaError::InvalidComponent)?;
 
-        if self.resources.contains_key(&resource_id) {
-            return Err(RutabagaError::InvalidResourceId);
-        }
-
-        let mut resource =
-            component.create_blob(ctx_id, resource_id, resource_create_blob, iovecs)?;
-        resource.handle = component.export_blob(resource_id).ok();
-
+        let resource = component.create_blob(ctx_id, resource_id, resource_create_blob, iovecs)?;
         self.resources.insert(resource_id, resource);
         Ok(())
     }
@@ -489,30 +496,24 @@ impl Rutabaga {
     /// Returns the `map_info` of the blob resource. The valid values for `map_info`
     /// are defined in the virtio-gpu spec.
     pub fn map_info(&self, resource_id: u32) -> RutabagaResult<u32> {
-        let component = self
-            .components
-            .get(&self.default_component)
-            .ok_or(RutabagaError::InvalidComponent)?;
+        let resource = self
+            .resources
+            .get(&resource_id)
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
-        if !self.resources.contains_key(&resource_id) {
-            return Err(RutabagaError::InvalidResourceId);
-        }
-
-        component.map_info(resource_id)
+        let map_info = resource.map_info.ok_or(RutabagaError::SpecViolation)?;
+        Ok(map_info)
     }
 
-    /// Returns the 3D metadata associated with the resource, if any.
-    pub fn query(&self, resource_id: u32) -> RutabagaResult<Resource3DMetadata> {
-        let component = self
-            .components
-            .get(&self.default_component)
-            .ok_or(RutabagaError::InvalidComponent)?;
+    /// Returns the 3D info associated with the resource, if any.
+    pub fn query(&self, resource_id: u32) -> RutabagaResult<Resource3DInfo> {
+        let resource = self
+            .resources
+            .get(&resource_id)
+            .ok_or(RutabagaError::InvalidResourceId)?;
 
-        if !self.resources.contains_key(&resource_id) {
-            return Err(RutabagaError::InvalidResourceId);
-        }
-
-        component.query(resource_id)
+        let info_3d = resource.info_3d.ok_or(RutabagaError::Unsupported)?;
+        Ok(info_3d)
     }
 
     /// Exports a blob resource.  See virtio-gpu spec for blob flag use flags.
@@ -559,8 +560,9 @@ impl Rutabaga {
         // The default workaround is just until context types are fully supported in all
         // Google kernels.
         let capset_id = context_init & RUTABAGA_CONTEXT_INIT_CAPSET_ID_MASK;
-        let component_type =
-            capset_id_to_component_type(capset_id).unwrap_or(self.default_component);
+        let component_type = self
+            .capset_id_to_component_type(capset_id)
+            .unwrap_or(self.default_component);
 
         let component = self
             .components
@@ -591,12 +593,12 @@ impl Rutabaga {
             .get_mut(&ctx_id)
             .ok_or(RutabagaError::InvalidContextId)?;
 
-        let resource = self
+        let mut resource = self
             .resources
             .get_mut(&resource_id)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        ctx.attach(&resource);
+        ctx.attach(&mut resource);
         Ok(())
     }
 
@@ -628,13 +630,13 @@ impl Rutabaga {
 }
 
 /// Rutabaga Builder, following the Rust builder pattern.
-#[derive(Copy, Clone)]
 pub struct RutabagaBuilder {
     display_width: Option<u32>,
     display_height: Option<u32>,
     default_component: RutabagaComponentType,
     virglrenderer_flags: Option<VirglRendererFlags>,
     gfxstream_flags: Option<GfxstreamFlags>,
+    channels: Option<Vec<RutabagaChannel>>,
 }
 
 impl RutabagaBuilder {
@@ -646,6 +648,7 @@ impl RutabagaBuilder {
             default_component,
             virglrenderer_flags: None,
             gfxstream_flags: None,
+            channels: None,
         }
     }
 
@@ -676,6 +679,15 @@ impl RutabagaBuilder {
         self
     }
 
+    /// Set rutabaga channels for the RutabagaBuilder
+    pub fn set_rutabaga_channels(
+        mut self,
+        channels: Option<Vec<RutabagaChannel>>,
+    ) -> RutabagaBuilder {
+        self.channels = channels;
+        self
+    }
+
     /// Builds Rutabaga and returns a handle to it.
     ///
     /// This should be only called once per every virtual machine instance.  Rutabaga tries to
@@ -684,6 +696,8 @@ impl RutabagaBuilder {
     pub fn build(self) -> RutabagaResult<Rutabaga> {
         let mut rutabaga_components: Map<RutabagaComponentType, Box<dyn RutabagaComponent>> =
             Default::default();
+
+        let mut rutabaga_capsets: Vec<RutabagaCapsetInfo> = Default::default();
 
         if self.default_component == RutabagaComponentType::Rutabaga2D {
             let rutabaga_2d = Rutabaga2D::init()?;
@@ -697,6 +711,19 @@ impl RutabagaBuilder {
 
                 let virgl = VirglRenderer::init(virglrenderer_flags)?;
                 rutabaga_components.insert(RutabagaComponentType::VirglRenderer, virgl);
+
+                rutabaga_capsets.push(RutabagaCapsetInfo {
+                    capset_id: RUTABAGA_CAPSET_VIRGL,
+                    component: RutabagaComponentType::VirglRenderer,
+                });
+                rutabaga_capsets.push(RutabagaCapsetInfo {
+                    capset_id: RUTABAGA_CAPSET_VIRGL2,
+                    component: RutabagaComponentType::VirglRenderer,
+                });
+                rutabaga_capsets.push(RutabagaCapsetInfo {
+                    capset_id: RUTABAGA_CAPSET_VENUS,
+                    component: RutabagaComponentType::VirglRenderer,
+                });
             }
 
             #[cfg(feature = "gfxstream")]
@@ -714,7 +741,20 @@ impl RutabagaBuilder {
 
                 let gfxstream = Gfxstream::init(display_width, display_height, gfxstream_flags)?;
                 rutabaga_components.insert(RutabagaComponentType::Gfxstream, gfxstream);
+
+                rutabaga_capsets.push(RutabagaCapsetInfo {
+                    capset_id: RUTABAGA_CAPSET_GFXSTREAM,
+                    component: RutabagaComponentType::Gfxstream,
+                });
             }
+
+            let cross_domain = CrossDomain::init(self.channels)?;
+            rutabaga_components.insert(RutabagaComponentType::CrossDomain, cross_domain);
+
+            rutabaga_capsets.push(RutabagaCapsetInfo {
+                capset_id: RUTABAGA_CAPSET_CROSS_DOMAIN,
+                component: RutabagaComponentType::CrossDomain,
+            });
         }
 
         Ok(Rutabaga {
@@ -722,6 +762,7 @@ impl RutabagaBuilder {
             resources: Default::default(),
             contexts: Default::default(),
             default_component: self.default_component,
+            capset_info: rutabaga_capsets,
         })
     }
 }

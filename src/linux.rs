@@ -782,6 +782,13 @@ fn create_gpu_device(
 ) -> DeviceResult {
     let jailed_wayland_path = Path::new("/wayland-0");
 
+    let wayland_socket_dirs = cfg
+        .wayland_socket_paths
+        .iter()
+        .map(|(_name, path)| path.parent())
+        .collect::<Option<Vec<_>>>()
+        .ok_or(Error::InvalidWaylandPath)?;
+
     let mut display_backends = vec![
         virtio::DisplayBackend::X(x_display),
         virtio::DisplayBackend::Stub,
@@ -809,6 +816,7 @@ fn create_gpu_device(
         map_request,
         cfg.sandbox,
         virtio::base_features(cfg.protected_vm),
+        cfg.wayland_socket_paths.clone(),
     );
 
     let jail = match simple_jail(&cfg, "gpu_device")? {
@@ -884,10 +892,12 @@ fn create_gpu_device(
                 }
             }
 
-            // Bind mount the wayland socket into jail's root. This is necessary since each
-            // new wayland context must open() the socket.
-            if let Some(path) = wayland_socket_path {
-                jail.mount_bind(path, jailed_wayland_path, true)?;
+            // Bind mount the wayland socket's directory into jail's root. This is necessary since
+            // each new wayland context must open() the socket. If the wayland socket is ever
+            // destroyed and remade in the same host directory, new connections will be possible
+            // without restarting the wayland device.
+            for dir in &wayland_socket_dirs {
+                jail.mount_bind(dir, dir, true)?;
             }
 
             add_crosvm_user_to_jail(&mut jail, "gpu")?;

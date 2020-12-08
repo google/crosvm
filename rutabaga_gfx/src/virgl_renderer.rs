@@ -60,7 +60,7 @@ impl RutabagaContext for VirglRendererContext {
         ret_to_res(ret)
     }
 
-    fn attach(&mut self, resource: &RutabagaResource) {
+    fn attach(&mut self, resource: &mut RutabagaResource) {
         // The context id and resource id must be valid because the respective instances ensure
         // their lifetime.
         unsafe {
@@ -116,13 +116,13 @@ const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks = &virgl_renderer_call
 
 /// Retrieves metadata suitable for export about this resource. If "export_fd" is true,
 /// performs an export of this resource so that it may be imported by other processes.
-fn export_query(resource_id: u32, export_fd: bool) -> RutabagaResult<Query> {
+fn export_query(resource_id: u32) -> RutabagaResult<Query> {
     let mut query: Query = Default::default();
     query.hdr.stype = VIRGL_RENDERER_STRUCTURE_TYPE_EXPORT_QUERY;
     query.hdr.stype_version = 0;
     query.hdr.size = size_of::<Query>() as u32;
     query.in_resource_id = resource_id;
-    query.in_export_fds = if export_fd { 1 } else { 0 };
+    query.in_export_fds = 0;
 
     // Safe because the image parameters are stack variables of the correct type.
     let ret =
@@ -214,6 +214,67 @@ impl VirglRenderer {
         ret_to_res(ret)?;
         Ok(Box::new(VirglRenderer { fence_state }))
     }
+
+    #[allow(unused_variables)]
+    fn map_info(&self, resource_id: u32) -> RutabagaResult<u32> {
+        #[cfg(feature = "virgl_renderer_next")]
+        {
+            let mut map_info = 0;
+            let ret =
+                unsafe { virgl_renderer_resource_get_map_info(resource_id as u32, &mut map_info) };
+            ret_to_res(ret)?;
+
+            Ok(map_info)
+        }
+        #[cfg(not(feature = "virgl_renderer_next"))]
+        Err(RutabagaError::Unsupported)
+    }
+
+    fn query(&self, resource_id: u32) -> RutabagaResult<Resource3DInfo> {
+        let query = export_query(resource_id)?;
+        if query.out_num_fds == 0 {
+            return Err(RutabagaError::Unsupported);
+        }
+
+        // virglrenderer unfortunately doesn't return the width or height, so map to zero.
+        Ok(Resource3DInfo {
+            width: 0,
+            height: 0,
+            drm_fourcc: query.out_fourcc,
+            strides: query.out_strides,
+            offsets: query.out_offsets,
+            modifier: query.out_modifier,
+        })
+    }
+
+    #[allow(unused_variables)]
+    fn export_blob(&self, resource_id: u32) -> RutabagaResult<Arc<RutabagaHandle>> {
+        #[cfg(feature = "virgl_renderer_next")]
+        {
+            let mut fd_type = 0;
+            let mut fd = 0;
+            let ret = unsafe {
+                virgl_renderer_resource_export_blob(resource_id as u32, &mut fd_type, &mut fd)
+            };
+            ret_to_res(ret)?;
+
+            /* Only support dma-bufs until someone wants opaque fds too. */
+            if fd_type != VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF {
+                // Safe because the FD was just returned by a successful virglrenderer
+                // call so it must be valid and owned by us.
+                unsafe { close(fd) };
+                return Err(RutabagaError::Unsupported);
+            }
+
+            let dmabuf = unsafe { File::from_raw_descriptor(fd) };
+            Ok(Arc::new(RutabagaHandle {
+                os_handle: dmabuf,
+                handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
+            }))
+        }
+        #[cfg(not(feature = "virgl_renderer_next"))]
+        Err(RutabagaError::Unsupported)
+    }
 }
 
 impl RutabagaComponent for VirglRenderer {
@@ -277,14 +338,18 @@ impl RutabagaComponent for VirglRenderer {
         // returning a new resource. The backing buffers are not supplied with this call.
         let ret = unsafe { virgl_renderer_resource_create(&mut args, null_mut(), 0) };
         ret_to_res(ret)?;
+
         Ok(RutabagaResource {
             resource_id,
-            handle: None,
+            handle: self.export_blob(resource_id).ok(),
             blob: false,
             blob_mem: 0,
             blob_flags: 0,
-            backing_iovecs: Vec::new(),
-            resource_2d: None,
+            map_info: None,
+            info_2d: None,
+            info_3d: self.query(resource_id).ok(),
+            vulkan_info: None,
+            backing_iovecs: None,
         })
     }
 
@@ -429,14 +494,23 @@ impl RutabagaComponent for VirglRenderer {
             };
             let ret = unsafe { virgl_renderer_resource_create_blob(&resource_create_args) };
             ret_to_res(ret)?;
+
+            let iovec_opt = match resource_create_blob.blob_mem {
+                RUTABAGA_BLOB_MEM_GUEST => Some(iovecs),
+                _ => None,
+            };
+
             Ok(RutabagaResource {
                 resource_id,
-                handle: None,
+                handle: self.export_blob(resource_id).ok(),
                 blob: true,
                 blob_mem: resource_create_blob.blob_mem,
                 blob_flags: resource_create_blob.blob_flags,
-                backing_iovecs: iovecs,
-                resource_2d: None,
+                map_info: self.map_info(resource_id).ok(),
+                info_2d: None,
+                info_3d: self.query(resource_id).ok(),
+                vulkan_info: None,
+                backing_iovecs: iovec_opt,
             })
         }
         #[cfg(not(feature = "virgl_renderer_next"))]
@@ -449,67 +523,6 @@ impl RutabagaComponent for VirglRenderer {
             Ok(mapping) => Ok(mapping),
             Err(e) => Err(RutabagaError::MappingFailed(e)),
         }
-    }
-
-    #[allow(unused_variables)]
-    fn map_info(&self, resource_id: u32) -> RutabagaResult<u32> {
-        #[cfg(feature = "virgl_renderer_next")]
-        {
-            let mut map_info = 0;
-            let ret =
-                unsafe { virgl_renderer_resource_get_map_info(resource_id as u32, &mut map_info) };
-            ret_to_res(ret)?;
-
-            Ok(map_info)
-        }
-        #[cfg(not(feature = "virgl_renderer_next"))]
-        Err(RutabagaError::Unsupported)
-    }
-
-    fn query(&self, resource_id: u32) -> RutabagaResult<Resource3DMetadata> {
-        let query = export_query(resource_id, false)?;
-        if query.out_num_fds == 0 {
-            return Err(RutabagaError::Unsupported);
-        }
-
-        // virglrenderer unfortunately doesn't return the width or height, so map to zero.
-        Ok(Resource3DMetadata {
-            width: 0,
-            height: 0,
-            drm_fourcc: query.out_fourcc,
-            strides: query.out_strides,
-            offsets: query.out_offsets,
-            modifier: query.out_modifier,
-        })
-    }
-
-    #[allow(unused_variables)]
-    fn export_blob(&self, resource_id: u32) -> RutabagaResult<Arc<RutabagaHandle>> {
-        #[cfg(feature = "virgl_renderer_next")]
-        {
-            let mut fd_type = 0;
-            let mut fd = 0;
-            let ret = unsafe {
-                virgl_renderer_resource_export_blob(resource_id as u32, &mut fd_type, &mut fd)
-            };
-            ret_to_res(ret)?;
-
-            /* Only support dma-bufs until someone wants opaque fds too. */
-            if fd_type != VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF {
-                // Safe because the FD was just returned by a successful virglrenderer
-                // call so it must be valid and owned by us.
-                unsafe { close(fd) };
-                return Err(RutabagaError::Unsupported);
-            }
-
-            let dmabuf = unsafe { File::from_raw_descriptor(fd) };
-            Ok(Arc::new(RutabagaHandle {
-                os_handle: dmabuf,
-                handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
-            }))
-        }
-        #[cfg(not(feature = "virgl_renderer_next"))]
-        Err(RutabagaError::Unsupported)
     }
 
     #[allow(unused_variables)]

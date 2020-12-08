@@ -870,6 +870,7 @@ dependencies = [
  "base",
  "data_model",
  "libc",
+ "sync",
 ]
 
 [[package]]
