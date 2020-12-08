@@ -12,7 +12,9 @@ use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::utils::AsyncJobQueue;
 use crate::utils::{EventHandler, EventLoop, FailHandle};
 use base::net::UnixSeqpacket;
-use base::{error, AsRawDescriptor, FromRawDescriptor, RawDescriptor, WatchingEvents};
+use base::{
+    error, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, WatchingEvents,
+};
 use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use std::collections::HashMap;
 use std::mem;
@@ -169,7 +171,7 @@ impl ProviderInner {
             }
         };
 
-        let raw_descriptor = usb_file.as_raw_descriptor();
+        let raw_descriptor = usb_file.into_raw_descriptor();
         // Safe as it is valid to have multiple variables accessing the same fd.
         let device = match Device::new(unsafe { File::from_raw_descriptor(raw_descriptor) }) {
             Ok(d) => d,
