@@ -128,7 +128,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                 }
                 MemoryMappingBuilder::wrap(SysUtilMmap::new_protection(
                     self.size,
-                    self.protection.unwrap_or(Protection::read_write()),
+                    self.protection.unwrap_or_else(Protection::read_write),
                 ))
             }
             Some(descriptor) => {
@@ -136,7 +136,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                     &wrap_descriptor(descriptor),
                     self.size,
                     self.offset.unwrap_or(0),
-                    self.protection.unwrap_or(Protection::read_write()),
+                    self.protection.unwrap_or_else(Protection::read_write),
                     self.populate,
                 ))
             }
@@ -161,7 +161,7 @@ impl<'a> MemoryMappingBuilder<'a> {
             None => MemoryMappingBuilder::wrap(SysUtilMmap::new_protection_fixed(
                 addr,
                 self.size,
-                self.protection.unwrap_or(Protection::read_write()),
+                self.protection.unwrap_or_else(Protection::read_write),
             )),
             Some(descriptor) => {
                 MemoryMappingBuilder::wrap(SysUtilMmap::from_fd_offset_protection_fixed(
@@ -169,7 +169,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                     &wrap_descriptor(descriptor),
                     self.size,
                     self.offset.unwrap_or(0),
-                    self.protection.unwrap_or(Protection::read_write()),
+                    self.protection.unwrap_or_else(Protection::read_write),
                 ))
             }
         }

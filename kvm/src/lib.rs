@@ -330,7 +330,9 @@ impl Vm {
         log_dirty_pages: bool,
     ) -> Result<u32> {
         let size = mem.size() as u64;
-        let end_addr = guest_addr.checked_add(size).ok_or(Error::new(EOVERFLOW))?;
+        let end_addr = guest_addr
+            .checked_add(size)
+            .ok_or_else(|| Error::new(EOVERFLOW))?;
         if self.guest_mem.range_overlap(guest_addr, end_addr) {
             return Err(Error::new(ENOSPC));
         }
