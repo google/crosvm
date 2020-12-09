@@ -65,7 +65,7 @@ pub struct WaitContext<T: EventToken>(PollContext<T>);
 impl<T: EventToken> WaitContext<T> {
     /// Creates a new WaitContext.
     pub fn new() -> Result<WaitContext<T>> {
-        PollContext::new().map(|poll_ctx| WaitContext(poll_ctx))
+        PollContext::new().map(WaitContext)
     }
 
     /// Creates a new WaitContext with the the associated triggers.

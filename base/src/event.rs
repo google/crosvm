@@ -18,7 +18,7 @@ pub use sys_util::EventReadResult;
 pub struct Event(pub EventFd);
 impl Event {
     pub fn new() -> Result<Event> {
-        EventFd::new().map(|eventfd| Event(eventfd))
+        EventFd::new().map(Event)
     }
 
     pub fn write(&self, v: u64) -> Result<()> {
@@ -34,7 +34,7 @@ impl Event {
     }
 
     pub fn try_clone(&self) -> Result<Event> {
-        self.0.try_clone().map(|eventfd| Event(eventfd))
+        self.0.try_clone().map(Event)
     }
 }
 

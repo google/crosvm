@@ -176,7 +176,7 @@ impl<'a> MemoryMappingBuilder<'a> {
     }
 
     fn wrap(result: Result<SysUtilMmap>) -> Result<MemoryMapping> {
-        result.map(|mmap| MemoryMapping(mmap))
+        result.map(MemoryMapping)
     }
 }
 

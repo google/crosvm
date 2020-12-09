@@ -17,7 +17,7 @@ use sys_util::{FakeTimerFd, TimerFd};
 pub struct Timer(pub TimerFd);
 impl Timer {
     pub fn new() -> Result<Timer> {
-        TimerFd::new().map(|timerfd| Timer(timerfd))
+        TimerFd::new().map(Timer)
     }
 }
 
