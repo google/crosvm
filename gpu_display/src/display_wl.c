@@ -327,6 +327,18 @@ static void toplevel_close(void *data,
 static const struct zxdg_toplevel_v6_listener toplevel_listener = {
     .configure = toplevel_configure, .close = toplevel_close};
 
+static void xdg_surface_configure_handler(void *data,
+					  struct zxdg_surface_v6 *xdg_surface,
+					  uint32_t serial)
+{
+	(void)data;
+	zxdg_surface_v6_ack_configure(xdg_surface, serial);
+}
+
+static const struct zxdg_surface_v6_listener xdg_surface_listener = {
+	.configure = xdg_surface_configure_handler
+};
+
 static void surface_enter(void *data, struct wl_surface *wl_surface,
 			  struct wl_output *wl_output)
 {
@@ -626,6 +638,9 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		zxdg_toplevel_v6_add_listener(disp_surface->toplevel,
 					      &toplevel_listener, disp_surface);
 
+		zxdg_surface_v6_add_listener(disp_surface->xdg,
+					     &xdg_surface_listener,
+					     NULL);
 		if (self->ifaces.aura) {
 			disp_surface->aura = zaura_shell_get_aura_surface(
 			    self->ifaces.aura, disp_surface->surface);
@@ -637,6 +652,12 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 			    disp_surface->aura,
 			    ZAURA_SURFACE_FRAME_TYPE_NORMAL);
 		}
+
+		// signal that the surface is ready to be configured
+		wl_surface_commit(disp_surface->surface);
+
+		// wait for the surface to be configured
+		wl_display_roundtrip(self->display);
 	} else {
 		disp_surface->subsurface = wl_subcompositor_get_subsurface(
 		    self->ifaces.subcompositor, disp_surface->surface,
