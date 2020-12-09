@@ -44,7 +44,7 @@ power-monitor-powerd = ["arch/power-monitor-powerd"]
 tpm = ["devices/tpm"]
 video-decoder = ["devices/video-decoder"]
 video-encoder = ["devices/video-encoder"]
-wl-dmabuf = ["devices/wl-dmabuf", "gpu_buffer", "resources/wl-dmabuf"]
+wl-dmabuf = ["devices/minigbm"]
 x = ["devices/x"]
 virgl_renderer_next = ["rutabaga_gfx/virgl_renderer_next"]
 composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
@@ -64,8 +64,7 @@ devices = { path = "devices" }
 disk = { path = "disk" }
 enumn = { path = "enumn" }
 gdbstub = { version = "0.4.0", optional = true }
-gpu_buffer = { path = "gpu_buffer", optional = true }
-rutabaga_gfx = { path = "rutabaga_gfx", optional = true }
+rutabaga_gfx = { path = "rutabaga_gfx"}
 hypervisor = { path = "hypervisor" }
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }

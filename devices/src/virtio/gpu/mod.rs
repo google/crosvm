@@ -25,13 +25,12 @@ use base::{
 
 use data_model::*;
 
-use gpu_buffer::Format;
 pub use gpu_display::EventDevice;
 use gpu_display::*;
 use rutabaga_gfx::{
-    GfxstreamFlags, ResourceCreate3D, ResourceCreateBlob, RutabagaBuilder, RutabagaComponentType,
-    RutabagaFenceData, Transfer3D, VirglRendererFlags, RUTABAGA_PIPE_BIND_RENDER_TARGET,
-    RUTABAGA_PIPE_TEXTURE_2D,
+    DrmFormat, GfxstreamFlags, ResourceCreate3D, ResourceCreateBlob, RutabagaBuilder,
+    RutabagaComponentType, RutabagaFenceData, Transfer3D, VirglRendererFlags,
+    RUTABAGA_PIPE_BIND_RENDER_TARGET, RUTABAGA_PIPE_TEXTURE_2D,
 };
 
 use msg_socket::{MsgReceiver, MsgSender};
@@ -115,7 +114,7 @@ impl Default for GpuParameters {
 pub struct VirtioScanoutBlobData {
     pub width: u32,
     pub height: u32,
-    pub drm_format: Format,
+    pub drm_format: DrmFormat,
     pub strides: [u32; 4],
     pub offsets: [u32; 4],
 }
@@ -481,8 +480,8 @@ impl Frontend {
                 // As of v4.19, virtio-gpu kms only really uses these formats.  If that changes,
                 // the following may have to change too.
                 let drm_format = match virtio_gpu_format {
-                    VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM => Format::new(b'X', b'R', b'2', b'4'),
-                    VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM => Format::new(b'A', b'R', b'2', b'4'),
+                    VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM => DrmFormat::new(b'X', b'R', b'2', b'4'),
+                    VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM => DrmFormat::new(b'A', b'R', b'2', b'4'),
                     _ => {
                         error!("unrecognized virtio-gpu format {}", virtio_gpu_format);
                         return Err(GpuResponse::ErrUnspec);

@@ -386,7 +386,7 @@ mod tests {
             .add_io_addresses(0x1000_0000, 0x1000_0000)
             .add_low_mmio_addresses(0x2000_0000, 0x1000_0000)
             .add_high_mmio_addresses(0x3000_0000, 0x1000_0000)
-            .create_allocator(5, false)
+            .create_allocator(5)
             .unwrap();
         ac97_dev.assign_address(PciAddress {
             bus: 0,

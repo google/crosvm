@@ -5,7 +5,6 @@
 use base::pagesize;
 
 use crate::address_allocator::{AddressAllocator, AddressAllocatorSet};
-use crate::gpu_allocator::{self, GpuMemoryAllocator};
 use crate::{Alloc, Error, Result};
 
 /// Manages allocating system resources such as address space and interrupt numbers.
@@ -18,7 +17,7 @@ use crate::{Alloc, Error, Result};
 ///           .add_io_addresses(0x1000, 0x10000)
 ///           .add_high_mmio_addresses(0x10000000, 0x10000000)
 ///           .add_low_mmio_addresses(0x30000000, 0x10000)
-///           .create_allocator(5, false) {
+///           .create_allocator(5) {
 ///       assert_eq!(a.allocate_irq(), Some(5));
 ///       assert_eq!(a.allocate_irq(), Some(6));
 ///       assert_eq!(
@@ -53,7 +52,6 @@ pub struct SystemAllocator {
     // Indexed by MmioType::Low and MmioType::High.
     mmio_address_spaces: [AddressAllocator; 2],
 
-    gpu_allocator: Option<Box<dyn GpuMemoryAllocator>>,
     next_irq: u32,
     next_anon_id: usize,
 }
@@ -69,7 +67,6 @@ impl SystemAllocator {
     /// * `high_size` - The size of high MMIO space.
     /// * `low_base` - The starting address of low MMIO space.
     /// * `low_size` - The size of low MMIO space.
-    /// * `create_gpu_allocator` - If true, enable gpu memory allocation.
     /// * `first_irq` - The first irq number to give out.
     fn new(
         io_base: Option<u64>,
@@ -78,7 +75,6 @@ impl SystemAllocator {
         high_size: u64,
         low_base: u64,
         low_size: u64,
-        create_gpu_allocator: bool,
         first_irq: u32,
     ) -> Result<Self> {
         let page_size = pagesize() as u64;
@@ -94,11 +90,6 @@ impl SystemAllocator {
                 // MmioType::High
                 AddressAllocator::new(high_base, high_size, Some(page_size))?,
             ],
-            gpu_allocator: if create_gpu_allocator {
-                gpu_allocator::create_gpu_memory_allocator().map_err(Error::CreateGpuAllocator)?
-            } else {
-                None
-            },
             next_irq: first_irq,
             next_anon_id: 0,
         })
@@ -135,11 +126,6 @@ impl SystemAllocator {
     /// The set of allocators will try the low and high MMIO allocators, in that order.
     pub fn mmio_allocator_any(&mut self) -> AddressAllocatorSet {
         AddressAllocatorSet::new(&mut self.mmio_address_spaces)
-    }
-
-    /// Gets an allocator to be used for GPU memory.
-    pub fn gpu_memory_allocator(&self) -> Option<&dyn GpuMemoryAllocator> {
-        self.gpu_allocator.as_ref().map(|v| v.as_ref())
     }
 
     /// Gets a unique anonymous allocation
@@ -189,11 +175,7 @@ impl SystemAllocatorBuilder {
         self
     }
 
-    pub fn create_allocator(
-        &self,
-        first_irq: u32,
-        gpu_allocation: bool,
-    ) -> Result<SystemAllocator> {
+    pub fn create_allocator(&self, first_irq: u32) -> Result<SystemAllocator> {
         SystemAllocator::new(
             self.io_base,
             self.io_size,
@@ -201,7 +183,6 @@ impl SystemAllocatorBuilder {
             self.high_mmio_size.ok_or(Error::MissingHighMMIOAddresses)?,
             self.low_mmio_base.ok_or(Error::MissingLowMMIOAddresses)?,
             self.low_mmio_size.ok_or(Error::MissingLowMMIOAddresses)?,
-            gpu_allocation,
             first_irq,
         )
     }

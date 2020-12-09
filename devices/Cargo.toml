@@ -6,11 +6,11 @@ edition = "2018"
 
 [features]
 audio = []
-gpu = ["gpu_buffer", "gpu_display","rutabaga_gfx"]
+gpu = ["gpu_display","rutabaga_gfx"]
 tpm = ["protos/trunks", "tpm2"]
 video-decoder = ["libvda"]
 video-encoder = ["libvda"]
-wl-dmabuf = []
+minigbm = ["rutabaga_gfx/minigbm"]
 x = ["gpu_display/x"]
 virgl_renderer = ["gpu", "rutabaga_gfx/virgl_renderer"]
 gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
@@ -24,7 +24,6 @@ data_model = { path = "../data_model" }
 disk = { path = "../disk" }
 enumn = { path = "../enumn" }
 fuse = {path = "../fuse" }
-gpu_buffer = { path = "../gpu_buffer", optional = true }
 gpu_display = { path = "../gpu_display", optional = true }
 rutabaga_gfx = { path = "../rutabaga_gfx", optional = true }
 hypervisor = { path = "../hypervisor" }

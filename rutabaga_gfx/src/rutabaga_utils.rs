@@ -8,9 +8,19 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::os::raw::c_void;
 use std::path::PathBuf;
+use std::str::Utf8Error;
 
-use base::ExternalMappingError;
+use base::{Error as SysError, ExternalMappingError};
 use data_model::VolatileMemoryError;
+
+#[cfg(feature = "vulkano")]
+use vulkano::device::DeviceCreationError;
+#[cfg(feature = "vulkano")]
+use vulkano::image::ImageCreationError;
+#[cfg(feature = "vulkano")]
+use vulkano::instance::InstanceCreationError;
+#[cfg(feature = "vulkano")]
+use vulkano::memory::DeviceMemoryAllocError;
 
 /// Represents a buffer.  `base` contains the address of a buffer, while `len` contains the length
 /// of the buffer.
@@ -55,7 +65,7 @@ pub struct ResourceCreateBlob {
 }
 
 /// Metadata associated with a swapchain, video or camera image.
-#[derive(Debug)]
+#[derive(Default, Copy, Clone, Debug)]
 pub struct Resource3DMetadata {
     pub width: u32,
     pub height: u32,
@@ -63,6 +73,13 @@ pub struct Resource3DMetadata {
     pub strides: [u32; 4],
     pub offsets: [u32; 4],
     pub modifier: u64,
+}
+
+/// Memory index and physical device index of the associated VkDeviceMemory.
+#[derive(Copy, Clone, Default)]
+pub struct VulkanInfo {
+    pub memory_idx: u32,
+    pub physical_device_idx: u32,
 }
 
 /// Rutabaga context init capset id mask (not upstreamed).
@@ -98,7 +115,7 @@ pub const RUTABAGA_CAPSET_CROSS_DOMAIN: u32 = 5;
 pub enum RutabagaError {
     /// Indicates `Rutabaga` was already initialized since only one Rutabaga instance per process
     /// is allowed.
-    AlreadyInitialized,
+    AlreadyInUse,
     /// Checked Arithmetic error
     CheckedArithmetic {
         field1: (&'static str, usize),
@@ -114,6 +131,8 @@ pub enum RutabagaError {
     ExportedRutabagaHandle,
     /// A command size was submitted that was invalid.
     InvalidCommandSize(usize),
+    /// Invalid RutabagaComponent
+    InvalidComponent,
     /// Invalid Context ID
     InvalidContextId,
     /// The indicated region of guest memory is invalid.
@@ -127,16 +146,34 @@ pub enum RutabagaError {
     /// Memory copy failure.
     MemCopy(VolatileMemoryError),
     /// An internal Rutabaga component error was returned.
-    RutabagaComponentError(i32),
+    ComponentError(i32),
+    /// Violation of the Rutabaga spec occured.
+    SpecViolation,
+    /// System error returned as a result of rutabaga library operation.
+    SysError(SysError),
     /// The command is unsupported.
     Unsupported,
+    /// Utf8 error.
+    Utf8Error(Utf8Error),
+    /// Image creation error
+    #[cfg(feature = "vulkano")]
+    VkImageCreationError(ImageCreationError),
+    /// Instance creation error
+    #[cfg(feature = "vulkano")]
+    VkInstanceCreationError(InstanceCreationError),
+    /// Device creation error
+    #[cfg(feature = "vulkano")]
+    VkDeviceCreationError(DeviceCreationError),
+    /// Device memory allocation error
+    #[cfg(feature = "vulkano")]
+    VkDeviceMemoryAllocError(DeviceMemoryAllocError),
 }
 
 impl Display for RutabagaError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::RutabagaError::*;
         match self {
-            AlreadyInitialized => write!(f, "rutabaga component was already initailized"),
+            AlreadyInUse => write!(f, "attempted to use a rutabaga asset already in use"),
             CheckedArithmetic {
                 field1: (label1, value1),
                 field2: (label2, value2),
@@ -156,15 +193,41 @@ impl Display for RutabagaError {
             ),
             ExportedRutabagaHandle => write!(f, "failed to export Rutabaga handle"),
             InvalidCommandSize(s) => write!(f, "command buffer submitted with invalid size: {}", s),
+            InvalidComponent => write!(f, "invalid rutabaga component"),
             InvalidContextId => write!(f, "invalid context id"),
             InvalidIovec => write!(f, "an iovec is outside of guest memory's range"),
             InvalidResourceId => write!(f, "invalid resource id"),
             InvalidRutabagaBuild => write!(f, "invalid rutabaga build parameters"),
             MappingFailed(s) => write!(f, "The mapping failed for the following reason: {}", s),
             MemCopy(e) => write!(f, "{}", e),
-            RutabagaComponentError(ret) => write!(f, "rutabaga failed with error {}", ret),
-            Unsupported => write!(f, "gpu renderer function unsupported"),
+            ComponentError(ret) => write!(f, "rutabaga component failed with error {}", ret),
+            SpecViolation => write!(f, "violation of the rutabaga spec"),
+            SysError(e) => write!(f, "rutabaga received a system error: {}", e),
+            Unsupported => write!(f, "feature or function unsupported"),
+            Utf8Error(e) => write!(f, "an utf8 error occured: {}", e),
+            #[cfg(feature = "vulkano")]
+            VkDeviceCreationError(e) => write!(f, "vulkano device creation failure {}", e),
+            #[cfg(feature = "vulkano")]
+            VkDeviceMemoryAllocError(e) => {
+                write!(f, "vulkano device memory allocation failure {}", e)
+            }
+            #[cfg(feature = "vulkano")]
+            VkImageCreationError(e) => write!(f, "vulkano image creation failure {}", e),
+            #[cfg(feature = "vulkano")]
+            VkInstanceCreationError(e) => write!(f, "vulkano instance creation failure {}", e),
         }
+    }
+}
+
+impl From<SysError> for RutabagaError {
+    fn from(e: SysError) -> RutabagaError {
+        RutabagaError::SysError(e)
+    }
+}
+
+impl From<Utf8Error> for RutabagaError {
+    fn from(e: Utf8Error) -> RutabagaError {
+        RutabagaError::Utf8Error(e)
     }
 }
 

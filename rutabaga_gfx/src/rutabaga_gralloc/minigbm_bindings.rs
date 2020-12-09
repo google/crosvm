@@ -5,6 +5,7 @@
 // Generated with bindgen --whitelist-function='gbm_.*' --whitelist-type='gbm_.*' minigbm/gbm.h
 // Then modified manually
 
+#![cfg(feature = "minigbm")]
 /* Added below line manually */
 #![allow(dead_code, non_camel_case_types)]
 

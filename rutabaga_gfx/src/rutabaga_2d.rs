@@ -11,41 +11,6 @@ use data_model::*;
 use crate::rutabaga_core::{Rutabaga2DInfo, RutabagaComponent, RutabagaResource};
 use crate::rutabaga_utils::*;
 
-macro_rules! checked_arithmetic {
-    ($x:ident $op:ident $y:ident $op_name:expr) => {
-        $x.$op($y).ok_or_else(|| RutabagaError::CheckedArithmetic {
-            field1: (stringify!($x), $x as usize),
-            field2: (stringify!($y), $y as usize),
-            op: $op_name,
-        })
-    };
-    ($x:ident + $y:ident) => {
-        checked_arithmetic!($x checked_add $y "+")
-    };
-    ($x:ident - $y:ident) => {
-        checked_arithmetic!($x checked_sub $y "-")
-    };
-    ($x:ident * $y:ident) => {
-        checked_arithmetic!($x checked_mul $y "*")
-    };
-}
-
-macro_rules! checked_range {
-    ($x:expr; <= $y:expr) => {
-        if $x <= $y {
-            Ok(())
-        } else {
-            Err(RutabagaError::CheckedRange {
-                field1: (stringify!($x), $x as usize),
-                field2: (stringify!($y), $y as usize),
-            })
-        }
-    };
-    ($x:ident <= $y:ident) => {
-        check_range!($x; <= $y)
-    };
-}
-
 /// Transfers a resource from potentially many chunked src VolatileSlices to a dst VolatileSlice.
 pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
     resource_w: u32,

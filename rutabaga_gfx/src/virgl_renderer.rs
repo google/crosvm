@@ -182,7 +182,7 @@ impl VirglRenderer {
         // to whichever thread called this function first.
         static INIT_ONCE: AtomicBool = AtomicBool::new(false);
         if INIT_ONCE.compare_and_swap(false, true, Ordering::Acquire) {
-            return Err(RutabagaError::AlreadyInitialized);
+            return Err(RutabagaError::AlreadyInUse);
         }
 
         // Cookie is intentionally never freed because virglrenderer never gets uninitialized.
@@ -533,6 +533,7 @@ impl RutabagaComponent for VirglRenderer {
         Err(RutabagaError::Unsupported)
     }
 
+    #[allow(unused_variables)]
     fn create_context(
         &self,
         ctx_id: u32,

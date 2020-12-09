@@ -76,3 +76,9 @@ impl AsRawDescriptor for SharedMemory {
         self.0.as_raw_fd()
     }
 }
+
+impl Into<File> for SharedMemory {
+    fn into(self) -> File {
+        self.0.into()
+    }
+}

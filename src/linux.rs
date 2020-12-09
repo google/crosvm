@@ -49,6 +49,7 @@ use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 use net_util::{Error as NetError, MacAddress, Tap};
 use remain::sorted;
 use resources::{Alloc, MmioType, SystemAllocator};
+use rutabaga_gfx::RutabagaGralloc;
 use sync::Mutex;
 
 use base::{
@@ -116,6 +117,7 @@ pub enum Error {
     CreateConsole(arch::serial::Error),
     CreateDiskError(disk::Error),
     CreateEvent(base::Error),
+    CreateGrallocError(rutabaga_gfx::RutabagaError),
     CreateSignalFd(base::SignalFdError),
     CreateSocket(io::Error),
     CreateTapDevice(NetError),
@@ -222,6 +224,7 @@ impl Display for Error {
             CreateConsole(e) => write!(f, "failed to create console device: {}", e),
             CreateDiskError(e) => write!(f, "failed to create virtual disk: {}", e),
             CreateEvent(e) => write!(f, "failed to create event: {}", e),
+            CreateGrallocError(e) => write!(f, "failed to create gralloc: {}", e),
             CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             CreateTapDevice(e) => write!(f, "failed to create tap device: {}", e),
@@ -2332,6 +2335,7 @@ where
         (&cfg.battery_type, None)
     };
 
+    let gralloc = RutabagaGralloc::new().map_err(Error::CreateGrallocError)?;
     let map_request: Arc<Mutex<Option<ExternalMapping>>> = Arc::new(Mutex::new(None));
 
     let fs_count = cfg
@@ -2386,6 +2390,7 @@ where
         cfg.sandbox,
         Arc::clone(&map_request),
         cfg.balloon_bias,
+        gralloc,
     )
 }
 
@@ -2582,6 +2587,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
     sandbox: bool,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     balloon_bias: i64,
+    mut gralloc: RutabagaGralloc,
 ) -> Result<()> {
     #[derive(PollToken)]
     enum Token {
@@ -2890,6 +2896,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                         &mut linux.vm,
                                         &mut linux.resources,
                                         Arc::clone(&map_request),
+                                        &mut gralloc,
                                     );
                                     if let Err(e) = socket.send(&response) {
                                         error!("failed to send VmMemoryControlResponse: {}", e);

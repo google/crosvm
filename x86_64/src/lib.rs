@@ -372,7 +372,7 @@ impl arch::LinuxArch for X8664arch {
     {
         let has_bios = matches!(components.vm_image, VmImage::Bios(_));
         let mem = Self::setup_memory(components.memory_size, has_bios)?;
-        let mut resources = Self::get_resource_allocator(&mem, components.wayland_dmabuf);
+        let mut resources = Self::get_resource_allocator(&mem);
 
         let vcpu_count = components.vcpu_count;
         let mut vm = create_vm(mem.clone()).map_err(|e| Error::CreateVm(Box::new(e)))?;
@@ -942,13 +942,13 @@ impl X8664arch {
     }
 
     /// Returns a system resource allocator.
-    fn get_resource_allocator(mem: &GuestMemory, gpu_allocation: bool) -> SystemAllocator {
+    fn get_resource_allocator(mem: &GuestMemory) -> SystemAllocator {
         let high_mmio_start = Self::get_high_mmio_base(mem);
         SystemAllocator::builder()
             .add_io_addresses(0xc000, 0x10000)
             .add_low_mmio_addresses(END_ADDR_BEFORE_32BITS, MMIO_SIZE)
             .add_high_mmio_addresses(high_mmio_start, u64::max_value() - high_mmio_start)
-            .create_allocator(X86_64_IRQ_BASE, gpu_allocation)
+            .create_allocator(X86_64_IRQ_BASE)
             .unwrap()
     }
 

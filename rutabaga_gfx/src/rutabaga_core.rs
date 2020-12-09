@@ -245,7 +245,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let (capset_version, capset_size) = component.get_capset_info(capset_id);
         Ok((capset_id, capset_version, capset_size))
@@ -263,7 +263,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&component_type)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         Ok(component.get_capset(capset_id, version))
     }
@@ -290,7 +290,7 @@ impl Rutabaga {
             let component = self
                 .components
                 .get_mut(&self.default_component)
-                .ok_or(RutabagaError::Unsupported)?;
+                .ok_or(RutabagaError::InvalidComponent)?;
 
             component.create_fence(fence_data)?;
         }
@@ -335,7 +335,7 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         if self.resources.contains_key(&resource_id) {
             return Err(RutabagaError::InvalidResourceId);
@@ -357,7 +357,7 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let resource = self
             .resources
@@ -374,7 +374,7 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let resource = self
             .resources
@@ -391,7 +391,7 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         self.resources
             .remove(&resource_id)
@@ -412,7 +412,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let resource = self
             .resources
@@ -436,7 +436,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         let resource = self
             .resources
@@ -458,7 +458,7 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         if self.resources.contains_key(&resource_id) {
             return Err(RutabagaError::InvalidResourceId);
@@ -477,7 +477,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         if !self.resources.contains_key(&resource_id) {
             return Err(RutabagaError::InvalidResourceId);
@@ -492,7 +492,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         if !self.resources.contains_key(&resource_id) {
             return Err(RutabagaError::InvalidResourceId);
@@ -506,7 +506,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         if !self.resources.contains_key(&resource_id) {
             return Err(RutabagaError::InvalidResourceId);
@@ -536,7 +536,7 @@ impl Rutabaga {
             }
             (Some(handle), false) => {
                 // Exactly one strong reference in this case.
-                let hnd = Arc::try_unwrap(handle).map_err(|_| RutabagaError::Unsupported)?;
+                let hnd = Arc::try_unwrap(handle).map_err(|_| RutabagaError::SpecViolation)?;
                 Ok(hnd)
             }
             _ => Err(RutabagaError::Unsupported),
@@ -548,7 +548,7 @@ impl Rutabaga {
         let component = self
             .components
             .get(&self.default_component)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         component.export_fence(fence_id)
     }
@@ -565,7 +565,7 @@ impl Rutabaga {
         let component = self
             .components
             .get_mut(&component_type)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidComponent)?;
 
         if self.contexts.contains_key(&ctx_id) {
             return Err(RutabagaError::InvalidContextId);

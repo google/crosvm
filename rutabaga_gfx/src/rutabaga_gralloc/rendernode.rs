@@ -2,8 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(feature = "minigbm")]
+
 use std::ffi::CString;
 use std::fs::{File, OpenOptions};
+
 #[cfg(target_pointer_width = "64")]
 use std::os::raw::c_ulong;
 use std::os::raw::{c_char, c_int, c_uint};
@@ -11,6 +14,8 @@ use std::path::Path;
 use std::ptr::null_mut;
 
 use base::{ioctl_iowr_nr, ioctl_with_mut_ref};
+
+use crate::rutabaga_utils::{RutabagaError, RutabagaResult};
 
 // Consistent with __kernel_size_t in include/uapi/asm-generic/posix_types.h.
 #[cfg(not(target_pointer_width = "64"))]
@@ -83,7 +88,7 @@ fn get_drm_device_name(fd: &File) -> Result<String, ()> {
 
 /// Returns a `fd` for an opened rendernode device, while filtering out specified
 /// undesired drivers.
-pub fn open_device(undesired: &[&str]) -> Result<File, ()> {
+pub fn open_device(undesired: &[&str]) -> RutabagaResult<File> {
     const DRM_DIR_NAME: &str = "/dev/dri";
     const DRM_MAX_MINOR: u32 = 15;
     const RENDER_NODE_START: u32 = 128;
@@ -100,17 +105,5 @@ pub fn open_device(undesired: &[&str]) -> Result<File, ()> {
         }
     }
 
-    Err(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[ignore] // no access to /dev/dri
-    fn open_rendernode_device() {
-        let undesired: &[&str] = &["bad_driver", "another_bad_driver"];
-        open_device(undesired).expect("failed to open rendernode");
-    }
+    Err(RutabagaError::Unsupported)
 }

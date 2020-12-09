@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! virgl_renderer: Handles 3D virtio-gpu hypercalls using gfxstream.
+//! gfxstream: Handles 3D virtio-gpu hypercalls using gfxstream.
+//!
 //! External code found at https://android.googlesource.com/device/generic/vulkan-cereal/.
 
 #![cfg(feature = "gfxstream")]

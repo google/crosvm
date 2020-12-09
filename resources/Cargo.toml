@@ -4,11 +4,7 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
 
-[features]
-wl-dmabuf = ["gpu_buffer"]
-
 [dependencies]
-gpu_buffer = { path = "../gpu_buffer", optional = true }
 libc = "*"
 msg_socket = { path = "../msg_socket" }
 base = { path = "../base" }

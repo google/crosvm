@@ -14,6 +14,7 @@ hypervisor = { path = "../hypervisor" }
 libc = "*"
 msg_socket = { path = "../msg_socket" }
 resources = { path = "../resources" }
+rutabaga_gfx = { path = "../rutabaga_gfx"}
 sync = { path = "../sync" }
 base = { path = "../base" }
 vm_memory = { path = "../vm_memory" }

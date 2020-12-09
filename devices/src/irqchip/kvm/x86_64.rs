@@ -883,7 +883,7 @@ mod tests {
             .add_io_addresses(0xc000, 0x10000)
             .add_low_mmio_addresses(0, 2048)
             .add_high_mmio_addresses(2048, 4096)
-            .create_allocator(5, false)
+            .create_allocator(5)
             .expect("failed to create SystemAllocator");
 
         // setup an event and a resample event for irq line 1
@@ -1001,7 +1001,7 @@ mod tests {
             .add_io_addresses(0xc000, 0x10000)
             .add_low_mmio_addresses(0, 2048)
             .add_high_mmio_addresses(2048, 4096)
-            .create_allocator(5, false)
+            .create_allocator(5)
             .expect("failed to create SystemAllocator");
 
         // setup an event and a resample event for irq line 1

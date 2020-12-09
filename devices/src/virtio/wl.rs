@@ -37,7 +37,7 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 use std::os::raw::{c_uint, c_ulonglong};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -46,28 +46,26 @@ use std::result;
 use std::thread;
 use std::time::Duration;
 
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 use libc::{EBADF, EINVAL};
 
 use data_model::VolatileMemoryError;
 use data_model::*;
 
-#[cfg(feature = "wl-dmabuf")]
-use base::ioctl_iow_nr;
 use base::{
     error, pipe, round_up_to_page_size, warn, AsRawDescriptor, Error, Event, FileFlags,
     FromRawDescriptor, PollToken, RawDescriptor, Result, ScmSocket, SharedMemory, SharedMemoryUnix,
     WaitContext,
 };
+#[cfg(feature = "minigbm")]
+use base::{ioctl_iow_nr, ioctl_with_ref};
 #[cfg(feature = "gpu")]
 use base::{IntoRawDescriptor, SafeDescriptor};
 use msg_socket::{MsgError, MsgReceiver, MsgSender};
-#[cfg(feature = "wl-dmabuf")]
-use resources::GpuMemoryDesc;
 use vm_memory::{GuestMemory, GuestMemoryError};
 
-#[cfg(feature = "wl-dmabuf")]
-use base::ioctl_with_ref;
+#[cfg(feature = "minigbm")]
+use vm_control::GpuMemoryDesc;
 
 use super::resource_bridge::*;
 use super::{DescriptorChain, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_WL};
@@ -83,16 +81,16 @@ const VIRTIO_WL_CMD_VFD_RECV: u32 = 259;
 const VIRTIO_WL_CMD_VFD_NEW_CTX: u32 = 260;
 const VIRTIO_WL_CMD_VFD_NEW_PIPE: u32 = 261;
 const VIRTIO_WL_CMD_VFD_HUP: u32 = 262;
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 const VIRTIO_WL_CMD_VFD_NEW_DMABUF: u32 = 263;
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 const VIRTIO_WL_CMD_VFD_DMABUF_SYNC: u32 = 264;
 #[cfg(feature = "gpu")]
 const VIRTIO_WL_CMD_VFD_SEND_FOREIGN_ID: u32 = 265;
 const VIRTIO_WL_CMD_VFD_NEW_CTX_NAMED: u32 = 266;
 const VIRTIO_WL_RESP_OK: u32 = 4096;
 const VIRTIO_WL_RESP_VFD_NEW: u32 = 4097;
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 const VIRTIO_WL_RESP_VFD_NEW_DMABUF: u32 = 4098;
 const VIRTIO_WL_RESP_ERR: u32 = 4352;
 const VIRTIO_WL_RESP_OUT_OF_MEMORY: u32 = 4353;
@@ -117,20 +115,20 @@ const VFD_ID_HOST_MASK: u32 = NEXT_VFD_ID_BASE;
 const IN_BUFFER_LEN: usize =
     0x1000 - size_of::<CtrlVfdRecv>() - VIRTWL_SEND_MAX_ALLOCS * size_of::<Le32>();
 
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 const VIRTIO_WL_VFD_DMABUF_SYNC_VALID_FLAG_MASK: u32 = 0x7;
 
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 const DMA_BUF_IOCTL_BASE: c_uint = 0x62;
 
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct dma_buf_sync {
     flags: c_ulonglong,
 }
 
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 ioctl_iow_nr!(DMA_BUF_IOCTL_SYNC, DMA_BUF_IOCTL_BASE, 0, dma_buf_sync);
 
 const VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL: u32 = 0;
@@ -166,7 +164,7 @@ fn encode_vfd_new(
         .map_err(WlError::WriteResponse)
 }
 
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 fn encode_vfd_new_dmabuf(
     writer: &mut Writer,
     vfd_id: u32,
@@ -245,7 +243,7 @@ fn encode_resp(writer: &mut Writer, resp: WlResp) -> WlResult<()> {
             size,
             resp,
         } => encode_vfd_new(writer, resp, id, flags, pfn, size),
-        #[cfg(feature = "wl-dmabuf")]
+        #[cfg(feature = "minigbm")]
         WlResp::VfdNewDmabuf {
             id,
             flags,
@@ -387,7 +385,7 @@ unsafe impl DataInit for CtrlVfdNewCtxNamed {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 struct CtrlVfdNewDmabuf {
     hdr: CtrlHeader,
     id: Le32,
@@ -405,19 +403,19 @@ struct CtrlVfdNewDmabuf {
     offset2: Le32,
 }
 
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 unsafe impl DataInit for CtrlVfdNewDmabuf {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 struct CtrlVfdDmabufSync {
     hdr: CtrlHeader,
     id: Le32,
     flags: Le32,
 }
 
-#[cfg(feature = "wl-dmabuf")]
+#[cfg(feature = "minigbm")]
 unsafe impl DataInit for CtrlVfdDmabufSync {}
 
 #[repr(C)]
@@ -504,7 +502,7 @@ enum WlResp<'a> {
         // is important for the `get_code` method.
         resp: bool,
     },
-    #[cfg(feature = "wl-dmabuf")]
+    #[cfg(feature = "minigbm")]
     VfdNewDmabuf {
         id: u32,
         flags: u32,
@@ -539,7 +537,7 @@ impl<'a> WlResp<'a> {
                     VIRTIO_WL_CMD_VFD_NEW
                 }
             }
-            #[cfg(feature = "wl-dmabuf")]
+            #[cfg(feature = "minigbm")]
             WlResp::VfdNewDmabuf { .. } => VIRTIO_WL_RESP_VFD_NEW_DMABUF,
             WlResp::VfdRecv { .. } => VIRTIO_WL_CMD_VFD_RECV,
             WlResp::VfdHup { .. } => VIRTIO_WL_CMD_VFD_HUP,
@@ -560,7 +558,7 @@ struct WlVfd {
     remote_pipe: Option<File>,
     local_pipe: Option<(u32 /* flags */, File)>,
     slot: Option<(MemSlot, u64 /* pfn */, VmRequester)>,
-    #[cfg(feature = "wl-dmabuf")]
+    #[cfg(feature = "minigbm")]
     is_dmabuf: bool,
 }
 
@@ -611,7 +609,7 @@ impl WlVfd {
         }
     }
 
-    #[cfg(feature = "wl-dmabuf")]
+    #[cfg(feature = "minigbm")]
     fn dmabuf(
         vm: VmRequester,
         width: u32,
@@ -643,7 +641,7 @@ impl WlVfd {
         }
     }
 
-    #[cfg(feature = "wl-dmabuf")]
+    #[cfg(feature = "minigbm")]
     fn dmabuf_sync(&self, flags: u32) -> WlResult<()> {
         if !self.is_dmabuf {
             return Err(WlError::DmabufSync(io::Error::from_raw_os_error(EINVAL)));
@@ -978,7 +976,7 @@ impl WlState {
         }
     }
 
-    #[cfg(feature = "wl-dmabuf")]
+    #[cfg(feature = "minigbm")]
     fn new_dmabuf(&mut self, id: u32, width: u32, height: u32, format: u32) -> WlResult<WlResp> {
         if id & VFD_ID_HOST_MASK != 0 {
             return Ok(WlResp::InvalidId);
@@ -1001,7 +999,7 @@ impl WlState {
         }
     }
 
-    #[cfg(feature = "wl-dmabuf")]
+    #[cfg(feature = "minigbm")]
     fn dmabuf_sync(&mut self, vfd_id: u32, flags: u32) -> WlResult<WlResp> {
         if flags & !(VIRTIO_WL_VFD_DMABUF_SYNC_VALID_FLAG_MASK) != 0 {
             return Ok(WlResp::InvalidFlags);
@@ -1343,7 +1341,7 @@ impl WlState {
                     .map_err(WlError::ParseDesc)?;
                 self.new_pipe(ctrl.id.into(), ctrl.flags.into())
             }
-            #[cfg(feature = "wl-dmabuf")]
+            #[cfg(feature = "minigbm")]
             VIRTIO_WL_CMD_VFD_NEW_DMABUF => {
                 let ctrl = reader
                     .read_obj::<CtrlVfdNewDmabuf>()
@@ -1355,7 +1353,7 @@ impl WlState {
                     ctrl.format.into(),
                 )
             }
-            #[cfg(feature = "wl-dmabuf")]
+            #[cfg(feature = "minigbm")]
             VIRTIO_WL_CMD_VFD_DMABUF_SYNC => {
                 let ctrl = reader
                     .read_obj::<CtrlVfdDmabufSync>()

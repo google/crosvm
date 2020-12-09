@@ -184,7 +184,6 @@ dependencies = [
  "disk",
  "enumn",
  "gdbstub",
- "gpu_buffer",
  "hypervisor",
  "kernel_cmdline",
  "kernel_loader",
@@ -254,7 +253,6 @@ dependencies = [
  "disk",
  "enumn",
  "fuse",
- "gpu_buffer",
  "gpu_display",
  "hypervisor",
  "kvm_sys",
@@ -446,14 +444,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpu_buffer"
-version = "0.1.0"
-dependencies = [
- "base",
- "data_model",
-]
-
-[[package]]
 name = "gpu_display"
 version = "0.1.0"
 dependencies = [
@@ -554,9 +544,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.65"
+version = "0.2.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a31a0627fdf1f6a39ec0dd577e101440b7db22672c0901fe00a9a6fbb5c24e8"
+checksum = "1482821306169ec4d07f6aca392a4681f66c75c9918aa49641a2595db64053cb"
 
 [[package]]
 name = "libchromeos"
@@ -868,7 +858,6 @@ name = "resources"
 version = "0.1.0"
 dependencies = [
  "base",
- "gpu_buffer",
  "libc",
  "msg_socket",
 ]
@@ -1030,6 +1019,7 @@ dependencies = [
  "libc",
  "msg_socket",
  "resources",
+ "rutabaga_gfx",
  "sync",
  "vm_memory",
 ]

@@ -15,7 +15,6 @@ pub mod gdb;
 
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{Seek, SeekFrom};
 use std::mem::ManuallyDrop;
 use std::os::raw::c_int;
 use std::result::Result as StdResult;
@@ -31,9 +30,23 @@ use base::{
 };
 use hypervisor::{IrqRoute, IrqSource, Vm};
 use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
-use resources::{Alloc, GpuMemoryDesc, MmioType, SystemAllocator};
+use resources::{Alloc, MmioType, SystemAllocator};
+use rutabaga_gfx::{DrmFormat, ImageAllocationInfo, RutabagaGralloc, RutabagaGrallocFlags};
 use sync::Mutex;
 use vm_memory::GuestAddress;
+
+/// Struct that describes the offset and stride of a plane located in GPU memory.
+#[derive(Clone, Copy, Debug, PartialEq, Default, MsgOnSocket)]
+pub struct GpuMemoryPlaneDesc {
+    pub stride: u32,
+    pub offset: u32,
+}
+
+/// Struct that describes a GPU memory allocation that consists of up to 3 planes.
+#[derive(Clone, Copy, Debug, Default, MsgOnSocket)]
+pub struct GpuMemoryDesc {
+    pub planes: [GpuMemoryPlaneDesc; 3],
+}
 
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 pub use crate::gdb::*;
@@ -341,6 +354,7 @@ impl VmMemoryRequest {
         vm: &mut impl Vm,
         sys_allocator: &mut SystemAllocator,
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
+        gralloc: &mut RutabagaGralloc,
     ) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
         match *self {
@@ -377,25 +391,57 @@ impl VmMemoryRequest {
                 height,
                 format,
             } => {
-                let (mut fd, desc) = match sys_allocator.gpu_memory_allocator() {
-                    Some(gpu_allocator) => match gpu_allocator.allocate(width, height, format) {
-                        Ok(v) => v,
-                        Err(e) => return VmMemoryResponse::Err(e),
-                    },
-                    None => return VmMemoryResponse::Err(SysError::new(ENODEV)),
+                let img = ImageAllocationInfo {
+                    width,
+                    height,
+                    drm_format: DrmFormat::from(format),
+                    // Linear layout is a requirement as virtio wayland guest expects
+                    // this for CPU access to the buffer. Scanout and texturing are
+                    // optional as the consumer (wayland compositor) is expected to
+                    // fall-back to a less efficient meachnisms for presentation if
+                    // neccesary. In practice, linear buffers for commonly used formats
+                    // will also support scanout and texturing.
+                    flags: RutabagaGrallocFlags::empty().use_linear(true),
                 };
-                // Determine size of buffer using 0 byte seek from end. This is preferred over
-                // `stride * height` as it's not limited to packed pixel formats.
-                let size = match fd.seek(SeekFrom::End(0)) {
-                    Ok(v) => v,
-                    Err(e) => return VmMemoryResponse::Err(SysError::from(e)),
+
+                let reqs = match gralloc.get_image_memory_requirements(img) {
+                    Ok(reqs) => reqs,
+                    Err(e) => {
+                        error!("gralloc failed to get image requirements: {}", e);
+                        return VmMemoryResponse::Err(SysError::new(EINVAL));
+                    }
                 };
-                match register_memory(vm, sys_allocator, &fd, size as usize, None) {
+
+                let handle = match gralloc.allocate_memory(reqs) {
+                    Ok(handle) => handle,
+                    Err(e) => {
+                        error!("gralloc failed to allocate memory: {}", e);
+                        return VmMemoryResponse::Err(SysError::new(EINVAL));
+                    }
+                };
+
+                let mut desc = GpuMemoryDesc::default();
+                for i in 0..3 {
+                    desc.planes[i] = GpuMemoryPlaneDesc {
+                        stride: reqs.strides[i],
+                        offset: reqs.offsets[i],
+                    }
+                }
+
+                match register_memory(
+                    vm,
+                    sys_allocator,
+                    &handle.os_handle,
+                    reqs.size as usize,
+                    None,
+                ) {
                     Ok((pfn, slot)) => VmMemoryResponse::AllocateAndRegisterGpuMemory {
                         // Safe because ownership is transferred to SafeDescriptor via
                         // into_raw_descriptor
                         descriptor: MaybeOwnedDescriptor::Owned(unsafe {
-                            SafeDescriptor::from_raw_descriptor(fd.into_raw_descriptor())
+                            SafeDescriptor::from_raw_descriptor(
+                                handle.os_handle.into_raw_descriptor(),
+                            )
                         }),
                         pfn,
                         slot,

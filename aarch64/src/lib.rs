@@ -234,8 +234,8 @@ impl arch::LinuxArch for AArch64 {
             VmImage::Bios(_) => true,
             _ => false,
         };
-        let mut resources =
-            Self::get_resource_allocator(components.memory_size, components.wayland_dmabuf);
+
+        let mut resources = Self::get_resource_allocator(components.memory_size);
         let mem = Self::setup_memory(components.memory_size)?;
         let mut vm = create_vm(mem.clone()).map_err(|e| Error::CreateVm(Box::new(e)))?;
 
@@ -424,12 +424,12 @@ impl AArch64 {
     }
 
     /// Returns a system resource allocator.
-    fn get_resource_allocator(mem_size: u64, gpu_allocation: bool) -> SystemAllocator {
+    fn get_resource_allocator(mem_size: u64) -> SystemAllocator {
         let (high_mmio_base, high_mmio_size) = Self::get_high_mmio_base_size(mem_size);
         SystemAllocator::builder()
             .add_high_mmio_addresses(high_mmio_base, high_mmio_size)
             .add_low_mmio_addresses(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
-            .create_allocator(AARCH64_IRQ_BASE, gpu_allocation)
+            .create_allocator(AARCH64_IRQ_BASE)
             .unwrap()
     }
 

@@ -44,7 +44,7 @@ extern "C" {
 pub fn ret_to_res(ret: i32) -> RutabagaResult<()> {
     match ret {
         0 => Ok(()),
-        _ => Err(RutabagaError::RutabagaComponentError(ret)),
+        _ => Err(RutabagaError::ComponentError(ret)),
     }
 }
 
