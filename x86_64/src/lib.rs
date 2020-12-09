@@ -1143,6 +1143,9 @@ impl X8664arch {
 }
 
 #[cfg(test)]
+mod test_integration;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
