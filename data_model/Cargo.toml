@@ -8,5 +8,6 @@ include = ["src/**/*", "Cargo.toml"]
 [dependencies]
 assertions = { path = "../assertions" } # provided by ebuild
 libc = "*"
+serde = { version = "1", features = ["derive"] }
 
 [workspace]

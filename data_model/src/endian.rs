@@ -30,8 +30,10 @@
 //!   assert_ne!(b_trans, l_trans);
 //! ```
 
-use assertions::const_assert;
 use std::mem::{align_of, size_of};
+
+use assertions::const_assert;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::DataInit;
 
@@ -78,6 +80,24 @@ macro_rules! endian_type {
         impl From<$old_type> for $new_type {
             fn from(v: $old_type) -> $new_type {
                 $new_type($old_type::$to_new(v))
+            }
+        }
+
+        impl Serialize for $new_type {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                self.to_native().serialize(serializer)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $new_type {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                Ok($old_type::deserialize(deserializer)?.into())
             }
         }
     };
