@@ -363,7 +363,7 @@ impl VmMemoryRequest {
                 let mem = map_request
                     .lock()
                     .take()
-                    .ok_or(VmMemoryResponse::Err(SysError::new(EINVAL)))
+                    .ok_or_else(|| VmMemoryResponse::Err(SysError::new(EINVAL)))
                     .unwrap();
 
                 match register_memory_hva(vm, sys_allocator, Box::new(mem), (alloc, offset)) {

@@ -285,10 +285,12 @@ impl FileReadWriteAtVolatile for AndroidSparse {
                 chunk,
                 expanded_size,
             },
-        ) = found_chunk.ok_or(io::Error::new(
-            ErrorKind::UnexpectedEof,
-            format!("no chunk for offset {}", offset),
-        ))?;
+        ) = found_chunk.ok_or_else(|| {
+            io::Error::new(
+                ErrorKind::UnexpectedEof,
+                format!("no chunk for offset {}", offset),
+            )
+        })?;
         let chunk_offset = offset - chunk_start;
         let chunk_size = *expanded_size;
         let subslice = if chunk_offset + (slice.size() as u64) > chunk_size {

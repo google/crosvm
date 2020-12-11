@@ -758,8 +758,8 @@ impl WlVfd {
         self.guest_shared_memory
             .as_ref()
             .map(|(_, shm)| shm.as_raw_descriptor())
-            .or(self.socket.as_ref().map(|s| s.as_raw_descriptor()))
-            .or(self.remote_pipe.as_ref().map(|p| p.as_raw_descriptor()))
+            .or_else(|| self.socket.as_ref().map(|s| s.as_raw_descriptor()))
+            .or_else(|| self.remote_pipe.as_ref().map(|p| p.as_raw_descriptor()))
     }
 
     // The FD that is used for polling for events on this VFD.
@@ -767,10 +767,11 @@ impl WlVfd {
         self.socket
             .as_ref()
             .map(|s| s as &dyn AsRawDescriptor)
-            .or(self
-                .local_pipe
-                .as_ref()
-                .map(|(_, p)| p as &dyn AsRawDescriptor))
+            .or_else(|| {
+                self.local_pipe
+                    .as_ref()
+                    .map(|(_, p)| p as &dyn AsRawDescriptor)
+            })
     }
 
     // Sends data/files from the guest to the host over this VFD.
@@ -1032,7 +1033,7 @@ impl WlState {
                     &self
                         .wayland_paths
                         .get(name)
-                        .ok_or(WlError::UnknownSocketName(name.to_string()))?,
+                        .ok_or_else(|| WlError::UnknownSocketName(name.to_string()))?,
                 )?);
                 self.wait_ctx
                     .add(vfd.wait_descriptor().unwrap(), id)

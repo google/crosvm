@@ -1011,7 +1011,7 @@ impl QcowFile {
         let l2_addr_disk = *self
             .l1_table
             .get(l1_index)
-            .ok_or(std::io::Error::from_raw_os_error(EINVAL))?;
+            .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
 
         if l2_addr_disk == 0 {
             // Reading from an unallocated cluster will return zeros.
@@ -1054,7 +1054,7 @@ impl QcowFile {
         let l2_addr_disk = *self
             .l1_table
             .get(l1_index)
-            .ok_or(std::io::Error::from_raw_os_error(EINVAL))?;
+            .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
         let l2_index = self.l2_table_index(address) as usize;
 
         let mut set_refcounts = Vec::new();
@@ -1188,7 +1188,7 @@ impl QcowFile {
         let l2_addr_disk = *self
             .l1_table
             .get(l1_index)
-            .ok_or(std::io::Error::from_raw_os_error(EINVAL))?;
+            .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
         let l2_index = self.l2_table_index(address) as usize;
 
         if l2_addr_disk == 0 {
@@ -1260,7 +1260,7 @@ impl QcowFile {
         let l2_addr_disk = *self
             .l1_table
             .get(l1_index)
-            .ok_or(std::io::Error::from_raw_os_error(EINVAL))?;
+            .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
         let l2_index = self.l2_table_index(address) as usize;
 
         if l2_addr_disk == 0 {

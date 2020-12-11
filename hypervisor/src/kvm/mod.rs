@@ -416,7 +416,9 @@ impl Vm for KvmVm {
         log_dirty_pages: bool,
     ) -> Result<MemSlot> {
         let size = mem.size() as u64;
-        let end_addr = guest_addr.checked_add(size).ok_or(Error::new(EOVERFLOW))?;
+        let end_addr = guest_addr
+            .checked_add(size)
+            .ok_or_else(|| Error::new(EOVERFLOW))?;
         if self.guest_mem.range_overlap(guest_addr, end_addr) {
             return Err(Error::new(ENOSPC));
         }
@@ -453,7 +455,7 @@ impl Vm for KvmVm {
 
     fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
         let mut regions = self.mem_regions.lock();
-        let mem = regions.get_mut(&slot).ok_or(Error::new(ENOENT))?;
+        let mem = regions.get_mut(&slot).ok_or_else(|| Error::new(ENOENT))?;
 
         mem.msync(offset, size).map_err(|err| match err {
             MmapError::InvalidAddress => Error::new(EFAULT),
@@ -507,7 +509,7 @@ impl Vm for KvmVm {
 
     fn get_dirty_log(&self, slot: MemSlot, dirty_log: &mut [u8]) -> Result<()> {
         let regions = self.mem_regions.lock();
-        let mmap = regions.get(&slot).ok_or(Error::new(ENOENT))?;
+        let mmap = regions.get(&slot).ok_or_else(|| Error::new(ENOENT))?;
         // Ensures that there are as many bytes in dirty_log as there are pages in the mmap.
         if dirty_log_bitmap_size(mmap.size()) > dirty_log.len() {
             return Err(Error::new(EINVAL));
