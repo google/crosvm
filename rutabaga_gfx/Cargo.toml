@@ -5,9 +5,9 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [features]
-virgl_renderer = []
-virtio-gpu-next = []
 gfxstream = []
+virgl_renderer = []
+virgl_renderer_next = []
 
 [dependencies]
 data_model = { path = "../data_model" }

@@ -134,7 +134,7 @@ fn export_query(resource_id: u32, export_fd: bool) -> RutabagaResult<Query> {
 
 #[allow(unused_variables)]
 fn map_func(resource_id: u32) -> ExternalMappingResult<(u64, usize)> {
-    #[cfg(feature = "virtio-gpu-next")]
+    #[cfg(feature = "virgl_renderer_next")]
     {
         let mut map: *mut c_void = null_mut();
         let map_ptr: *mut *mut c_void = &mut map;
@@ -147,13 +147,13 @@ fn map_func(resource_id: u32) -> ExternalMappingResult<(u64, usize)> {
 
         Ok((map as u64, size as usize))
     }
-    #[cfg(not(feature = "virtio-gpu-next"))]
+    #[cfg(not(feature = "virgl_renderer_next"))]
     Err(ExternalMappingError::Unsupported)
 }
 
 #[allow(unused_variables)]
 fn unmap_func(resource_id: u32) {
-    #[cfg(feature = "virtio-gpu-next")]
+    #[cfg(feature = "virgl_renderer_next")]
     {
         unsafe {
             // Usually, process_gpu_command forces ctx0 when processing a virtio-gpu command.
@@ -412,7 +412,7 @@ impl RutabagaComponent for VirglRenderer {
         resource_create_blob: ResourceCreateBlob,
         mut iovecs: Vec<RutabagaIovec>,
     ) -> RutabagaResult<RutabagaResource> {
-        #[cfg(feature = "virtio-gpu-next")]
+        #[cfg(feature = "virgl_renderer_next")]
         {
             let resource_create_args = virgl_renderer_resource_create_blob_args {
                 res_handle: resource_id,
@@ -436,7 +436,7 @@ impl RutabagaComponent for VirglRenderer {
                 resource_2d: None,
             })
         }
-        #[cfg(not(feature = "virtio-gpu-next"))]
+        #[cfg(not(feature = "virgl_renderer_next"))]
         Err(RutabagaError::Unsupported)
     }
 
@@ -450,7 +450,7 @@ impl RutabagaComponent for VirglRenderer {
 
     #[allow(unused_variables)]
     fn map_info(&self, resource_id: u32) -> RutabagaResult<u32> {
-        #[cfg(feature = "virtio-gpu-next")]
+        #[cfg(feature = "virgl_renderer_next")]
         {
             let mut map_info = 0;
             let ret =
@@ -459,7 +459,7 @@ impl RutabagaComponent for VirglRenderer {
 
             Ok(map_info)
         }
-        #[cfg(not(feature = "virtio-gpu-next"))]
+        #[cfg(not(feature = "virgl_renderer_next"))]
         Err(RutabagaError::Unsupported)
     }
 
@@ -482,7 +482,7 @@ impl RutabagaComponent for VirglRenderer {
 
     #[allow(unused_variables)]
     fn export_blob(&self, resource_id: u32) -> RutabagaResult<Arc<RutabagaHandle>> {
-        #[cfg(feature = "virtio-gpu-next")]
+        #[cfg(feature = "virgl_renderer_next")]
         {
             let mut fd_type = 0;
             let mut fd = 0;
@@ -505,13 +505,13 @@ impl RutabagaComponent for VirglRenderer {
                 handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
             }))
         }
-        #[cfg(not(feature = "virtio-gpu-next"))]
+        #[cfg(not(feature = "virgl_renderer_next"))]
         Err(RutabagaError::Unsupported)
     }
 
     #[allow(unused_variables)]
     fn export_fence(&self, fence_id: u32) -> RutabagaResult<RutabagaHandle> {
-        #[cfg(feature = "virtio-gpu-next")]
+        #[cfg(feature = "virgl_renderer_next")]
         {
             // Safe because the parameters are stack variables of the correct type.
             let mut fd: i32 = 0;
@@ -526,7 +526,7 @@ impl RutabagaComponent for VirglRenderer {
                 handle_type: RUTABAGA_FENCE_HANDLE_TYPE_SYNC_FD,
             })
         }
-        #[cfg(not(feature = "virtio-gpu-next"))]
+        #[cfg(not(feature = "virgl_renderer_next"))]
         Err(RutabagaError::Unsupported)
     }
 

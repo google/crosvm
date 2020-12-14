@@ -6,12 +6,13 @@ edition = "2018"
 
 [features]
 audio = []
-gpu = ["gpu_buffer", "gpu_display", "rutabaga_gfx/virgl_renderer"]
+gpu = ["gpu_buffer", "gpu_display","rutabaga_gfx"]
 tpm = ["protos/trunks", "tpm2"]
 video-decoder = ["libvda"]
 video-encoder = ["libvda"]
 wl-dmabuf = []
 x = ["gpu_display/x"]
+virgl_renderer = ["gpu", "rutabaga_gfx/virgl_renderer"]
 gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
 
 [dependencies]
