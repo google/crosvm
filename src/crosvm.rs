@@ -226,6 +226,7 @@ pub struct Config {
     pub battery_type: Option<BatteryType>,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<u32>,
+    pub balloon_bias: i64,
 }
 
 impl Default for Config {
@@ -284,6 +285,7 @@ impl Default for Config {
             battery_type: None,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: None,
+            balloon_bias: 0,
         }
     }
 }

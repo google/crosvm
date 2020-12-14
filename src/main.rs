@@ -1475,6 +1475,18 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 })?;
             cfg.gdb = Some(port);
         }
+        "balloon_bias_mib" => {
+            cfg.balloon_bias =
+                value
+                    .unwrap()
+                    .parse::<i64>()
+                    .map_err(|_| argument::Error::InvalidValue {
+                        value: value.unwrap().to_owned(),
+                        expected: String::from("expected a valid ballon bias in MiB"),
+                    })?
+                    * 1024
+                    * 1024; // cfg.balloon_bias is in bytes.
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -1673,6 +1685,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                                   type=goldfish - type of battery emulation, defaults to goldfish
                                   "),
           Argument::value("gdb", "PORT", "(EXPERIMENTAL) gdb on the given port"),
+          Argument::value("balloon_bias_mib", "N", "Amount to bias balance of memory between host and guest as the balloon inflates, in MiB."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
