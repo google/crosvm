@@ -11,8 +11,8 @@
 //!     --with-derive-default            \
 //!     --no-layout-tests                \
 //!     --no-prepend-enum-name > protocol.rs
-//! $ sed -i 's/u/u/g' protocol.rs
-//! $ sed -i 's/Le/Le/g' protocol.rs
+//! $ sed -i "s/__u/u/g" protocol.rs
+//! $ sed -i "s/__le/Le/g" protocol.rs
 //! ```
 //!
 //! The main points of the manual modifications are as follows:
