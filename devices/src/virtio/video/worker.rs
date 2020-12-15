@@ -63,7 +63,7 @@ impl Worker {
     fn write_event(&self, event_queue: &mut Queue, event: event::VideoEvt) -> Result<()> {
         let desc = event_queue
             .peek(&self.mem)
-            .ok_or_else(|| Error::DescriptorNotAvailable)?;
+            .ok_or(Error::DescriptorNotAvailable)?;
         event_queue.pop_peeked(&self.mem);
 
         let desc_index = desc.index;
@@ -121,7 +121,7 @@ impl Worker {
             } = async_response;
             let destroy_desc = desc_map
                 .remove(&tag)
-                .ok_or_else(|| Error::UnexpectedResponse(tag))?;
+                .ok_or(Error::UnexpectedResponse(tag))?;
             let destroy_response = match cmd_result {
                 Ok(r) => r,
                 Err(e) => {
