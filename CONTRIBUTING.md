@@ -20,9 +20,9 @@ In the `bin/` directory of the crosvm repository, there is the `clippy` script w
 
 ###  Submitting Code
 
-See also, [Chrome OS Contributing Guide](https://chromium.googlesource.com/chromiumos/docs/+/master/contributing.md)
+See also, [Chrome OS Contributing Guide](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/contributing.md)
 
-When a change is approved, verified, and added to the [commit queue](https://chromium.googlesource.com/chromiumos/docs/+/master/contributing.md#send-your-changes-to-the-commit-queue), crosvm will be built and the unit tests (with some exceptions) will be run by the Chrome OS infrastructure. Only if that passes, will the change be submitted. Failures here will cause the commit queue to reject the change until it is re-added (CQ+2). Unfortunately, it is extremely common for false negatives to cause a change to get rejected, so be ready to re-apply the CQ+2 label if you're the owner of a ready to submit change.
+When a change is approved, verified, and added to the [commit queue](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/contributing.md#send-your-changes-to-the-commit-queue), crosvm will be built and the unit tests (with some exceptions) will be run by the Chrome OS infrastructure. Only if that passes, will the change be submitted. Failures here will cause the commit queue to reject the change until it is re-added (CQ+2). Unfortunately, it is extremely common for false negatives to cause a change to get rejected, so be ready to re-apply the CQ+2 label if you're the owner of a ready to submit change.
 
 ### Style guidelines
 

@@ -22,7 +22,7 @@ workflow as any `cros_workon` package. The full package name is
 See the [Chromium OS developer guide] for more on how to build and deploy with
 Portage.
 
-[Chromium OS developer guide]: https://chromium.googlesource.com/chromiumos/docs/+/master/developer_guide.md
+[Chromium OS developer guide]: https://chromium.googlesource.com/chromiumos/docs/+/HEAD/developer_guide.md
 
 ### Building with Docker
 
