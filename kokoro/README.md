@@ -1,6 +1,6 @@
 # Kokoro CI for crosvm
 
-For presubmit testing, each change posted for Gerrit on the master branch of crosvm will be tried by
+For presubmit testing, each change posted for Gerrit on the main branch of crosvm will be tried by
 Kokoro. The configuration is found in [`presubmit.cfg`](presubmit.cfg) and the build script is at
 [`build.sh`](build.sh). A Docker image called `crosvm-base` is used as the testing environment which
 is built with a [`Dockerfile`](../docker/Dockerfile).
