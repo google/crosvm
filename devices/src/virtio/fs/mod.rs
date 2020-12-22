@@ -241,22 +241,28 @@ impl VirtioDevice for Fs {
         let server = Arc::new(Server::new(fs));
         let irq = Arc::new(interrupt);
         let socket = self.socket.take().expect("missing mapping socket");
+        let mut slot = 0;
 
-        // Create the shared memory region now before we start processing requests.
-        let request = FsMappingRequest::AllocateSharedMemoryRegion(
-            self.pci_bar.as_ref().cloned().expect("No pci_bar"),
-        );
-        socket
-            .send(&request)
-            .expect("failed to send allocation message");
-        let slot = match socket.recv() {
-            Ok(VmResponse::RegisterMemory { pfn: _, slot }) => slot,
-            Ok(VmResponse::Err(e)) => panic!("failed to allocate shared memory region: {}", e),
-            r => panic!(
-                "unexpected response to allocate shared memory region: {:?}",
-                r
-            ),
-        };
+        // Set up shared memory for DAX.
+        // TODO(b/176129399): Remove cfg! once DAX is supported on ARM.
+        if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
+            // Create the shared memory region now before we start processing requests.
+            let request = FsMappingRequest::AllocateSharedMemoryRegion(
+                self.pci_bar.as_ref().cloned().expect("No pci_bar"),
+            );
+            socket
+                .send(&request)
+                .expect("failed to send allocation message");
+            slot = match socket.recv() {
+                Ok(VmResponse::RegisterMemory { pfn: _, slot }) => slot,
+                Ok(VmResponse::Err(e)) => panic!("failed to allocate shared memory region: {}", e),
+                r => panic!(
+                    "unexpected response to allocate shared memory region: {:?}",
+                    r
+                ),
+            };
+        }
+
         let socket = Arc::new(Mutex::new(socket));
         let mut watch_resample_event = true;
         for (idx, (queue, evt)) in queues.into_iter().zip(queue_evts.into_iter()).enumerate() {
