@@ -182,7 +182,7 @@ impl<S: DecoderSession> Context<S> {
             stream_id,
             in_params: Params {
                 format: Some(format),
-                min_buffers: 2,
+                min_buffers: 1,
                 max_buffers: 32,
                 plane_formats: vec![Default::default()],
                 ..Default::default()
