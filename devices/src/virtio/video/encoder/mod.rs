@@ -99,7 +99,7 @@ impl<T: EncoderSession> Stream<T> {
         desired_format: Format,
         encoder: &EncoderDevice<E>,
     ) -> VideoResult<Self> {
-        const MIN_BUFFERS: u32 = 2;
+        const MIN_BUFFERS: u32 = 1;
         const MAX_BUFFERS: u32 = 342;
         const DEFAULT_WIDTH: u32 = 640;
         const DEFAULT_HEIGHT: u32 = 480;
