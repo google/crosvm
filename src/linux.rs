@@ -843,7 +843,13 @@ fn create_gpu_device(
             }
 
             // Libraries that are required when mesa drivers are dynamically loaded.
-            let lib_dirs = &["/usr/lib", "/usr/lib64", "/lib", "/lib64"];
+            let lib_dirs = &[
+                "/usr/lib",
+                "/usr/lib64",
+                "/lib",
+                "/lib64",
+                "/usr/share/vulkan",
+            ];
             for dir in lib_dirs {
                 let dir_path = Path::new(dir);
                 if dir_path.exists() {
