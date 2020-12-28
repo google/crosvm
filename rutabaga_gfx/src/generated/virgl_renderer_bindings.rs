@@ -322,6 +322,14 @@ extern "C" {
         execute_size: u32,
     ) -> ::std::os::raw::c_int;
 }
+extern "C" {
+    pub fn virgl_renderer_context_create_with_flags(
+        ctx_id: u32,
+        ctx_flags: u32,
+        nlen: u32,
+        name: *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct virgl_renderer_resource_create_blob_args {
