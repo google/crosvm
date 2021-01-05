@@ -20,6 +20,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+#[cfg(feature = "udmabuf")]
+use base::AsRawDescriptors;
 use base::{
     debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor, Tube,
     WaitContext,
@@ -1021,7 +1023,7 @@ impl VirtioDevice for Gpu {
         }
 
         #[cfg(feature = "udmabuf")]
-        keep_rds.push(self.mem.as_raw_descriptor());
+        keep_rds.append(&mut self.mem.as_raw_descriptors());
 
         if let Some(ref gpu_device_tube) = self.gpu_device_tube {
             keep_rds.push(gpu_device_tube.as_raw_descriptor());

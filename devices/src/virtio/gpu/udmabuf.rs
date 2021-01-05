@@ -144,7 +144,8 @@ impl UdmabufDriver {
                 return Err(UdmabufError::NotPageAligned);
             }
 
-            items[i].memfd = mem.as_raw_descriptor() as u32;
+            // `unwrap` can't panic if `memory_offset obove succeeds.
+            items[i].memfd = mem.shm_region(addr).unwrap().as_raw_descriptor() as u32;
             items[i].__pad = 0;
             items[i].offset = offset;
             items[i].size = len as u64;

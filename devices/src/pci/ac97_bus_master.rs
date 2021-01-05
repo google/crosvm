@@ -16,7 +16,8 @@ use audio_streams::{
     BoxError, NoopStreamControl, SampleFormat, StreamControl, StreamDirection, StreamEffect,
 };
 use base::{
-    self, error, set_rt_prio_limit, set_rt_round_robin, warn, AsRawDescriptor, Event, RawDescriptor,
+    self, error, set_rt_prio_limit, set_rt_round_robin, warn, AsRawDescriptors, Event,
+    RawDescriptor,
 };
 use sync::{Condvar, Mutex};
 use vm_memory::{GuestAddress, GuestMemory};
@@ -255,7 +256,7 @@ impl Ac97BusMaster {
     /// Returns any file descriptors that need to be kept open when entering a jail.
     pub fn keep_rds(&self) -> Option<Vec<RawDescriptor>> {
         let mut rds = self.audio_server.keep_fds();
-        rds.push(self.mem.as_raw_descriptor());
+        rds.append(&mut self.mem.as_raw_descriptors());
         Some(rds)
     }
 

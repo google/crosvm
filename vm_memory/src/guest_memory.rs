@@ -14,8 +14,9 @@ use std::sync::Arc;
 use crate::guest_address::GuestAddress;
 use base::{pagesize, Error as SysError};
 use base::{
-    AsRawDescriptor, MappedRegion, MemfdSeals, MemoryMapping, MemoryMappingBuilder,
-    MemoryMappingUnix, MmapError, RawDescriptor, SharedMemory, SharedMemoryUnix,
+    AsRawDescriptor, AsRawDescriptors, MappedRegion, MemfdSeals, MemoryMapping,
+    MemoryMappingBuilder, MemoryMappingUnix, MmapError, RawDescriptor, SharedMemory,
+    SharedMemoryUnix,
 };
 use cros_async::{mem, BackingMemory};
 use data_model::volatile_memory::*;
@@ -85,7 +86,8 @@ impl Display for Error {
 struct MemoryRegion {
     mapping: MemoryMapping,
     guest_base: GuestAddress,
-    memfd_offset: u64,
+    shm_offset: u64,
+    shm: Arc<SharedMemory>,
 }
 
 impl MemoryRegion {
@@ -108,24 +110,26 @@ impl MemoryRegion {
 #[derive(Clone)]
 pub struct GuestMemory {
     regions: Arc<[MemoryRegion]>,
-    shm: Arc<SharedMemory>,
 }
 
-impl AsRawDescriptor for GuestMemory {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.shm.as_raw_descriptor()
+impl AsRawDescriptors for GuestMemory {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        self.regions
+            .iter()
+            .map(|r| r.shm.as_raw_descriptor())
+            .collect()
     }
 }
 
 impl AsRef<SharedMemory> for GuestMemory {
     fn as_ref(&self) -> &SharedMemory {
-        &self.shm
+        &self.regions[0].shm
     }
 }
 
 impl GuestMemory {
     /// Creates backing shm for GuestMemory regions
-    fn create_memfd(ranges: &[(GuestAddress, u64)]) -> Result<SharedMemory> {
+    fn create_shm(ranges: &[(GuestAddress, u64)]) -> Result<SharedMemory> {
         let mut aligned_size = 0;
         let pg_size = pagesize();
         for range in ranges {
@@ -154,7 +158,7 @@ impl GuestMemory {
     pub fn new(ranges: &[(GuestAddress, u64)]) -> Result<GuestMemory> {
         // Create shm
 
-        let shm = GuestMemory::create_memfd(ranges)?;
+        let shm = Arc::new(GuestMemory::create_shm(ranges)?);
         // Create memory regions
         let mut regions = Vec::<MemoryRegion>::new();
         let mut offset = 0;
@@ -173,14 +177,15 @@ impl GuestMemory {
             let size =
                 usize::try_from(range.1).map_err(|_| Error::MemoryRegionTooLarge(range.1))?;
             let mapping = MemoryMappingBuilder::new(size)
-                .from_descriptor(&shm)
+                .from_descriptor(shm.as_ref())
                 .offset(offset)
                 .build()
                 .map_err(Error::MemoryMappingFailed)?;
             regions.push(MemoryRegion {
                 mapping,
                 guest_base: range.0,
-                memfd_offset: offset,
+                shm_offset: offset,
+                shm: Arc::clone(&shm),
             });
 
             offset += size as u64;
@@ -188,7 +193,6 @@ impl GuestMemory {
 
         Ok(GuestMemory {
             regions: Arc::from(regions),
-            shm: Arc::new(shm),
         })
     }
 
@@ -266,10 +270,11 @@ impl GuestMemory {
     ///  * guest_addr : GuestAddress
     ///  * size: usize
     ///  * host_addr: usize
-    ///  * memfd_offset: usize
+    ///  * shm: SharedMemory backing for the given region
+    ///  * shm_offset: usize
     pub fn with_regions<F, E>(&self, mut cb: F) -> result::Result<(), E>
     where
-        F: FnMut(usize, GuestAddress, usize, usize, u64) -> result::Result<(), E>,
+        F: FnMut(usize, GuestAddress, usize, usize, &SharedMemory, u64) -> result::Result<(), E>,
     {
         for (index, region) in self.regions.iter().enumerate() {
             cb(
@@ -277,7 +282,8 @@ impl GuestMemory {
                 region.start(),
                 region.mapping.size(),
                 region.mapping.as_ptr() as usize,
-                region.memfd_offset,
+                region.shm.as_ref(),
+                region.shm_offset,
             )?;
         }
         Ok(())
@@ -616,6 +622,15 @@ impl GuestMemory {
         })
     }
 
+    /// Returns a reference to the SharedMemory region that backs the given address.
+    pub fn shm_region(&self, guest_addr: GuestAddress) -> Result<&SharedMemory> {
+        self.regions
+            .iter()
+            .find(|region| region.contains(guest_addr))
+            .ok_or(Error::InvalidGuestAddress(guest_addr))
+            .map(|region| region.shm.as_ref())
+    }
+
     /// Loops over all guest memory regions of `self`, and performs the callback function `F` in
     /// the target region that contains `guest_addr`.  The callback function `F` takes in:
     ///
@@ -637,12 +652,12 @@ impl GuestMemory {
                 cb(
                     &region.mapping,
                     guest_addr.offset_from(region.start()) as usize,
-                    region.memfd_offset,
+                    region.shm_offset,
                 )
             })
     }
 
-    /// Convert a GuestAddress into an offset within self.shm.
+    /// Convert a GuestAddress into an offset within the associated shm region.
     ///
     /// Due to potential gaps within GuestMemory, it is helpful to know the
     /// offset within the shm where a given address is found. This offset
@@ -670,7 +685,7 @@ impl GuestMemory {
             .iter()
             .find(|region| region.contains(guest_addr))
             .ok_or(Error::InvalidGuestAddress(guest_addr))
-            .map(|region| region.memfd_offset + guest_addr.offset_from(region.start()))
+            .map(|region| region.shm_offset + guest_addr.offset_from(region.start()))
     }
 }
 
@@ -833,7 +848,7 @@ mod tests {
     }
 
     #[test]
-    fn memfd_offset() {
+    fn shm_offset() {
         if !kernel_has_memfd() {
             return;
         }
@@ -849,10 +864,10 @@ mod tests {
         gm.write_obj_at_addr(0x0420u16, GuestAddress(0x10000))
             .unwrap();
 
-        let _ = gm.with_regions::<_, ()>(|index, _, size, _, memfd_offset| {
+        let _ = gm.with_regions::<_, ()>(|index, _, size, _, shm, shm_offset| {
             let mmap = MemoryMappingBuilder::new(size)
-                .from_descriptor(gm.as_ref())
-                .offset(memfd_offset)
+                .from_descriptor(shm)
+                .offset(shm_offset)
                 .build()
                 .unwrap();
 

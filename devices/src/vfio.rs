@@ -174,7 +174,7 @@ impl VfioContainer {
 
         // Add all guest memory regions into vfio container's iommu table,
         // then vfio kernel driver could access guest memory from gfn
-        guest_mem.with_regions(|_index, guest_addr, size, host_addr, _fd_offset| {
+        guest_mem.with_regions(|_index, guest_addr, size, host_addr, _mmap, _fd_offset| {
             // Safe because the guest regions are guaranteed not to overlap
             unsafe { self.vfio_dma_map(guest_addr.0, size as u64, host_addr as u64) }
         })?;
