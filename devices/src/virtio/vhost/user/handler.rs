@@ -173,11 +173,11 @@ impl VhostUserHandler {
             .set_vring_base(queue_index, 0)
             .map_err(Error::SetVringBase)?;
 
-        let msix_config = interrupt
-            .msix_config
+        let msix_config_opt = interrupt
+            .get_msix_config()
             .as_ref()
-            .ok_or(Error::MsixConfigUnavailable)?
-            .lock();
+            .ok_or(Error::MsixConfigUnavailable)?;
+        let msix_config = msix_config_opt.lock();
         let irqfd = msix_config
             .get_irqfd(queue.vector as usize)
             .ok_or(Error::MsixIrqfdUnavailable)?;

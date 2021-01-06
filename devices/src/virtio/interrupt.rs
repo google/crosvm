@@ -13,7 +13,7 @@ pub struct Interrupt {
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: Event,
     interrupt_resample_evt: Event,
-    pub msix_config: Option<Arc<Mutex<MsixConfig>>>,
+    msix_config: Option<Arc<Mutex<MsixConfig>>>,
     config_msix_vector: u16,
 }
 
@@ -90,5 +90,10 @@ impl Interrupt {
     /// To keep the interface clean, this member is private.
     pub fn get_resample_evt(&self) -> &Event {
         &self.interrupt_resample_evt
+    }
+
+    /// Get a reference to the msix configuration
+    pub fn get_msix_config(&self) -> &Option<Arc<Mutex<MsixConfig>>> {
+        &self.msix_config
     }
 }
