@@ -421,7 +421,7 @@ impl VfioDevice {
         }
 
         // Safe as we are the owner of self and irq_set which are valid value
-        let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
+        let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
             Err(VfioError::VfioIrqEnable(get_error()))
         } else {
@@ -447,8 +447,8 @@ impl VfioDevice {
         irq_set[0].count = 1;
 
         {
-            // irq_set.data could be none, bool or descriptor according to flags, so irq_set.data
-            // is u8 default, here irq_set.data is descriptor as u32, so 4 default u8 are combined
+            // irq_set.data could be none, bool or descriptor according to flags, so irq_set.data is
+            // u8 default, here irq_set.data is descriptor as u32, so 4 default u8 are combined
             // together as u32. It is safe as enough space is reserved through
             // vec_with_array_field(u32)<1>.
             let descriptors = unsafe { irq_set[0].data.as_mut_slice(4) };
@@ -456,7 +456,7 @@ impl VfioDevice {
         }
 
         // Safe as we are the owner of self and irq_set which are valid value
-        let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
+        let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
             Err(VfioError::VfioIrqEnable(get_error()))
         } else {
@@ -478,7 +478,7 @@ impl VfioDevice {
         irq_set[0].count = 0;
 
         // Safe as we are the owner of self and irq_set which are valid value
-        let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
+        let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
             Err(VfioError::VfioIrqDisable(get_error()))
         } else {
@@ -500,7 +500,7 @@ impl VfioDevice {
         irq_set[0].count = 1;
 
         // Safe as we are the owner of self and irq_set which are valid value
-        let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
+        let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
             Err(VfioError::VfioIrqUnmask(get_error()))
         } else {
@@ -522,7 +522,7 @@ impl VfioDevice {
         irq_set[0].count = 1;
 
         // Safe as we are the owner of self and irq_set which are valid value
-        let ret = unsafe { ioctl_with_ref(self, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
+        let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_SET_IRQS(), &irq_set[0]) };
         if ret < 0 {
             Err(VfioError::VfioIrqMask(get_error()))
         } else {
@@ -802,7 +802,7 @@ impl VfioDevice {
     /// get vfio device's descriptors which are passed into minijail process
     pub fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = Vec::new();
-        rds.push(self.as_raw_descriptor());
+        rds.push(self.dev.as_raw_descriptor());
         rds.push(self.group_descriptor);
         rds.push(self.container.lock().as_raw_descriptor());
         rds
@@ -822,10 +822,9 @@ impl VfioDevice {
     pub fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<(), VfioError> {
         self.container.lock().vfio_dma_unmap(iova, size)
     }
-}
 
-impl AsRawDescriptor for VfioDevice {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.dev.as_raw_descriptor()
+    /// Gets the vfio device backing `File`.
+    pub fn device_file(&self) -> &File {
+        &self.dev
     }
 }

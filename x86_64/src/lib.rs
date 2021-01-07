@@ -1092,7 +1092,7 @@ impl X8664arch {
         let bat_control = if let Some(battery_type) = battery.0 {
             match battery_type {
                 BatteryType::Goldfish => {
-                    let control_socket = arch::add_goldfish_battery(
+                    let control_tube = arch::add_goldfish_battery(
                         &mut amls,
                         battery.1,
                         mmio_bus,
@@ -1103,7 +1103,7 @@ impl X8664arch {
                     .map_err(Error::CreateBatDevices)?;
                     Some(BatControl {
                         type_: BatteryType::Goldfish,
-                        control_socket,
+                        control_tube,
                     })
                 }
             }

@@ -10,12 +10,11 @@ use std::fmt::{self, Display};
 use std::result;
 use std::sync::Arc;
 
-use base::RawDescriptor;
-use msg_socket::MsgOnSocket;
+use serde::{Deserialize, Serialize};
 use sync::Mutex;
 
 /// Information about how a device was accessed.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, MsgOnSocket)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub struct BusAccessInfo {
     /// Offset from base address that the device was accessed at.
     pub offset: u64,

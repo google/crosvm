@@ -37,7 +37,6 @@ use base::{
     ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, Event, IoctlNr, MappedRegion,
     MemoryMapping, MemoryMappingBuilder, MmapError, Result, SIGRTMIN,
 };
-use msg_socket::MsgOnSocket;
 use vm_memory::{GuestAddress, GuestMemory};
 
 pub use crate::cap::*;
@@ -208,7 +207,7 @@ impl AsRawDescriptor for Kvm {
 }
 
 /// An address either in programmable I/O space or in memory mapped I/O space.
-#[derive(Copy, Clone, Debug, MsgOnSocket)]
+#[derive(Copy, Clone, Debug)]
 pub enum IoeventAddress {
     Pio(u64),
     Mmio(u64),

@@ -7,15 +7,11 @@ use std::fs::File;
 use std::io;
 use std::thread;
 
-use base::{error, AsRawDescriptor, Event, PollToken, RawDescriptor, WaitContext};
+use base::{error, AsRawDescriptor, Event, PollToken, RawDescriptor, Tube, WaitContext};
 use base::{Error as SysError, Result as SysResult};
-use vm_memory::{GuestAddress, GuestMemory};
-
 use data_model::{DataInit, Le32, Le64};
-
-use msg_socket::{MsgReceiver, MsgSender};
-
-use vm_control::{MemSlot, VmMsyncRequest, VmMsyncRequestSocket, VmMsyncResponse};
+use vm_control::{MemSlot, VmMsyncRequest, VmMsyncResponse};
+use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
     copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
@@ -87,7 +83,7 @@ struct Worker {
     interrupt: Interrupt,
     queue: Queue,
     memory: GuestMemory,
-    pmem_device_socket: VmMsyncRequestSocket,
+    pmem_device_tube: Tube,
     mapping_arena_slot: MemSlot,
     mapping_size: usize,
 }
@@ -102,12 +98,12 @@ impl Worker {
                     size: self.mapping_size,
                 };
 
-                if let Err(e) = self.pmem_device_socket.send(&request) {
+                if let Err(e) = self.pmem_device_tube.send(&request) {
                     error!("failed to send request: {}", e);
                     return VIRTIO_PMEM_RESP_TYPE_EIO;
                 }
 
-                match self.pmem_device_socket.recv() {
+                match self.pmem_device_tube.recv() {
                     Ok(response) => match response {
                         VmMsyncResponse::Ok => VIRTIO_PMEM_RESP_TYPE_OK,
                         VmMsyncResponse::Err(e) => {
@@ -227,7 +223,7 @@ pub struct Pmem {
     mapping_address: GuestAddress,
     mapping_arena_slot: MemSlot,
     mapping_size: u64,
-    pmem_device_socket: Option<VmMsyncRequestSocket>,
+    pmem_device_tube: Option<Tube>,
 }
 
 impl Pmem {
@@ -237,7 +233,7 @@ impl Pmem {
         mapping_address: GuestAddress,
         mapping_arena_slot: MemSlot,
         mapping_size: u64,
-        pmem_device_socket: Option<VmMsyncRequestSocket>,
+        pmem_device_tube: Option<Tube>,
     ) -> SysResult<Pmem> {
         if mapping_size > usize::max_value() as u64 {
             return Err(SysError::new(libc::EOVERFLOW));
@@ -251,7 +247,7 @@ impl Pmem {
             mapping_address,
             mapping_arena_slot,
             mapping_size,
-            pmem_device_socket,
+            pmem_device_tube,
         })
     }
 }
@@ -276,8 +272,8 @@ impl VirtioDevice for Pmem {
             keep_rds.push(disk_image.as_raw_descriptor());
         }
 
-        if let Some(ref pmem_device_socket) = self.pmem_device_socket {
-            keep_rds.push(pmem_device_socket.as_raw_descriptor());
+        if let Some(ref pmem_device_tube) = self.pmem_device_tube {
+            keep_rds.push(pmem_device_tube.as_raw_descriptor());
         }
         keep_rds
     }
@@ -320,7 +316,7 @@ impl VirtioDevice for Pmem {
         // We checked that this fits in a usize in `Pmem::new`.
         let mapping_size = self.mapping_size as usize;
 
-        if let Some(pmem_device_socket) = self.pmem_device_socket.take() {
+        if let Some(pmem_device_tube) = self.pmem_device_tube.take() {
             let (self_kill_event, kill_event) =
                 match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
                     Ok(v) => v,
@@ -338,7 +334,7 @@ impl VirtioDevice for Pmem {
                         interrupt,
                         memory,
                         queue,
-                        pmem_device_socket,
+                        pmem_device_tube,
                         mapping_arena_slot,
                         mapping_size,
                     };

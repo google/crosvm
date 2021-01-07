@@ -12,7 +12,7 @@ enumn = { path = "../enumn" }
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
-msg_socket = { path = "../msg_socket" }
+serde = { version = "1", features = [ "derive" ] }
 sync = { path = "../sync" }
 base = { path = "../base" }
 vm_memory = { path = "../vm_memory" }

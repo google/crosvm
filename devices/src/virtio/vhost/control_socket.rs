@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{Error as SysError, RawDescriptor};
-use msg_socket::{MsgOnSocket, MsgSocket};
+use serde::{Deserialize, Serialize};
 
-#[derive(MsgOnSocket, Debug)]
+use base::Error as SysError;
+
+#[derive(Serialize, Deserialize, Debug)]
 pub enum VhostDevRequest {
     /// Mask or unmask all the MSI entries for a Virtio Vhost device.
     MsixChanged,
@@ -13,24 +14,8 @@ pub enum VhostDevRequest {
     MsixEntryChanged(usize),
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum VhostDevResponse {
     Ok,
     Err(SysError),
-}
-
-pub type VhostDevRequestSocket = MsgSocket<VhostDevRequest, VhostDevResponse>;
-pub type VhostDevResponseSocket = MsgSocket<VhostDevResponse, VhostDevRequest>;
-
-/// Create control socket pair. This pair is used to communicate with the
-/// virtio device process.
-/// Mainly between the virtio and activate thread.
-pub fn create_control_sockets() -> (
-    Option<VhostDevRequestSocket>,
-    Option<VhostDevResponseSocket>,
-) {
-    match msg_socket::pair::<VhostDevRequest, VhostDevResponse>() {
-        Ok((request, response)) => (Some(request), Some(response)),
-        _ => (None, None),
-    }
 }

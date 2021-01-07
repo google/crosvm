@@ -46,8 +46,6 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "kvm_sys": [Requirements.PRIVILEGED],
     "kvm": [Requirements.PRIVILEGED, Requirements.X86_64],
     "linux_input_sys": [],
-    "msg_socket": [Requirements.PRIVILEGED],
-    "msg_on_socket_derive": [],
     "net_sys": [],
     "net_util": [Requirements.PRIVILEGED],
     "power_monitor": [],

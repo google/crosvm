@@ -9,11 +9,9 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::convert::TryInto;
 
 use backend::*;
-use base::{error, IntoRawDescriptor, WaitContext};
+use base::{error, IntoRawDescriptor, Tube, WaitContext};
 
-use crate::virtio::resource_bridge::{
-    self, BufferInfo, ResourceInfo, ResourceRequest, ResourceRequestSocket,
-};
+use crate::virtio::resource_bridge::{self, BufferInfo, ResourceInfo, ResourceRequest};
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
 use crate::virtio::video::control::{CtrlType, CtrlVal, QueryCtrlType};
@@ -258,7 +256,7 @@ impl<S: DecoderSession> Context<S> {
     fn get_resource_info(
         &self,
         queue_type: QueueType,
-        res_bridge: &ResourceRequestSocket,
+        res_bridge: &Tube,
         resource_id: u32,
     ) -> VideoResult<BufferInfo> {
         let res_id_to_res_handle = match queue_type {
@@ -530,7 +528,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
 
     fn queue_input_resource(
         &mut self,
-        resource_bridge: &ResourceRequestSocket,
+        resource_bridge: &Tube,
         stream_id: StreamId,
         resource_id: ResourceId,
         timestamp: u64,
@@ -594,7 +592,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
 
     fn queue_output_resource(
         &mut self,
-        resource_bridge: &ResourceRequestSocket,
+        resource_bridge: &Tube,
         stream_id: StreamId,
         resource_id: ResourceId,
     ) -> VideoResult<VideoCmdResponseType> {
@@ -809,7 +807,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
         &mut self,
         cmd: VideoCmd,
         wait_ctx: &WaitContext<Token>,
-        resource_bridge: &ResourceRequestSocket,
+        resource_bridge: &Tube,
     ) -> (
         VideoCmdResponseType,
         Option<(u32, Vec<VideoEvtResponseType>)>,

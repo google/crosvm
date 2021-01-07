@@ -75,8 +75,8 @@ Most threads in crosvm will have a wait loop using a `PollContext`, which is a w
 
 Note that the limitations of `PollContext` are the same as the limitations of `epoll`. The same FD can not be inserted more than once, and the FD will be automatically removed if the process runs out of references to that FD. A `dup`/`fork` call will increment that reference count, so closing the original FD will not actually remove it from the `PollContext`. It is possible to receive tokens from `PollContext` for an FD that was closed because of a race condition in which an event was registered in the background before the `close` happened. Best practice is to remove an FD before closing it so that events associated with it can be reliably eliminated.
 
-### MsgSocket
+### `serde` with Descriptors.
 
-Using raw sockets and pipes to communicate is very inconvenient for rich data types. To help make this easier and less error prone, crosvm has the `msg_socket` crate. Included is a trait for messages encodable on a Unix socket (`MsgOnSocket`), a set of traits for sending and receiving (`MsgSender`/`MsgReceiver`), and implementations of those traits over `UnixSeqpacket` (`MsgSocket`/`Sender`/`Receiver`). To make implementing `MsgOnSocket` very easy, a custom derive for that trait can be utilized with `#[derive(MsgOnSocket)]`. The custom derive will work for enums and structs with nested data, primitive types, and anything that implements `AsRawFd`. However, structures with no fixed upper limit in size, such as `Vec` or `BTreeMap`, are not supported.
+Using raw sockets and pipes to communicate is very inconvenient for rich data types. To help make this easier and less error prone, crosvm uses the `serde` crate. To allow transmitting types with embedded descriptors (FDs on Linux or HANDLEs on Windows), a module is provided for sending and receiving descriptors alongside the plain old bytes that serde consumes.
 
 [minijail]: https://android.googlesource.com/platform/external/minijail

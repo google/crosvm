@@ -6,11 +6,10 @@
 
 use std::collections::VecDeque;
 
-use base::{error, info, Event, WaitContext};
+use base::{error, info, Event, Tube, WaitContext};
 use vm_memory::GuestMemory;
 
 use crate::virtio::queue::{DescriptorChain, Queue};
-use crate::virtio::resource_bridge::ResourceRequestSocket;
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
 use crate::virtio::video::device::{
@@ -27,7 +26,7 @@ pub struct Worker {
     pub cmd_evt: Event,
     pub event_evt: Event,
     pub kill_evt: Event,
-    pub resource_bridge: ResourceRequestSocket,
+    pub resource_bridge: Tube,
 }
 
 /// Pair of a descriptor chain and a response to be written.

@@ -24,8 +24,7 @@ use arch::{
 };
 use base::{
     debug, error, getpid, info, kill_process_group, net::UnixSeqpacket, reap_child, syslog,
-    validate_raw_descriptor, warn, FromRawDescriptor, IntoRawDescriptor, RawDescriptor,
-    SafeDescriptor,
+    validate_raw_descriptor, warn, FromRawDescriptor, RawDescriptor, Tube,
 };
 #[cfg(feature = "direct")]
 use crosvm::DirectIoOption;
@@ -40,11 +39,9 @@ use devices::ProtectionType;
 #[cfg(feature = "audio")]
 use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
-use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
 use vm_control::{
     BalloonControlCommand, BatControlCommand, BatControlResult, BatteryType, DiskControlCommand,
-    MaybeOwnedDescriptor, UsbControlCommand, UsbControlResult, VmControlRequestSocket, VmRequest,
-    VmResponse, USB_CONTROL_MAX_PORTS,
+    UsbControlCommand, UsbControlResult, VmRequest, VmResponse, USB_CONTROL_MAX_PORTS,
 };
 
 fn executable_is_plugin(executable: &Option<Executable>) -> bool {
@@ -1948,7 +1945,7 @@ fn handle_request(
     for socket_path in args {
         match UnixSeqpacket::connect(&socket_path) {
             Ok(s) => {
-                let socket: VmControlRequestSocket = MsgSocket::new(s);
+                let socket = Tube::new(s);
                 if let Err(e) = socket.send(request) {
                     error!(
                         "failed to send request to socket at '{}': {}",
@@ -2256,20 +2253,16 @@ fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
         args.next()
             .ok_or(ModifyUsbError::ArgMissing("usb device path"))?,
     );
-    let usb_file: Option<File> = if dev_path == Path::new("-") {
-        None
-    } else if dev_path.parent() == Some(Path::new("/proc/self/fd")) {
+    let usb_file = if dev_path.parent() == Some(Path::new("/proc/self/fd")) {
         // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
         // Safe because we will validate |raw_fd|.
-        Some(unsafe { File::from_raw_descriptor(raw_descriptor_from_path(&dev_path)?) })
+        unsafe { File::from_raw_descriptor(raw_descriptor_from_path(&dev_path)?) }
     } else {
-        Some(
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&dev_path)
-                .map_err(|_| ModifyUsbError::UsbControl(UsbControlResult::FailedToOpenDevice))?,
-        )
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&dev_path)
+            .map_err(|_| ModifyUsbError::UsbControl(UsbControlResult::FailedToOpenDevice))?
     };
 
     let request = VmRequest::UsbCommand(UsbControlCommand::AttachDevice {
@@ -2277,12 +2270,7 @@ fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
         addr,
         vid,
         pid,
-        // Safe because we are transferring ownership to the rawdescriptor
-        descriptor: usb_file.map(|file| {
-            MaybeOwnedDescriptor::Owned(unsafe {
-                SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor())
-            })
-        }),
+        file: usb_file,
     });
     let response = handle_request(&request, args).map_err(|_| ModifyUsbError::SocketFailed)?;
     match response {

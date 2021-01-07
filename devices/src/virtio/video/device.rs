@@ -4,9 +4,8 @@
 
 //! Definition of the trait `Device` that each backend video device must implement.
 
-use base::{PollToken, WaitContext};
+use base::{PollToken, Tube, WaitContext};
 
-use crate::virtio::resource_bridge::ResourceRequestSocket;
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
 use crate::virtio::video::error::*;
@@ -102,7 +101,7 @@ pub trait Device {
         &mut self,
         cmd: VideoCmd,
         wait_ctx: &WaitContext<Token>,
-        resource_bridge: &ResourceRequestSocket,
+        resource_bridge: &Tube,
     ) -> (
         VideoCmdResponseType,
         Option<(u32, Vec<VideoEvtResponseType>)>,

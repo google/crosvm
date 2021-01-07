@@ -11,13 +11,12 @@ use std::fmt::{self, Display};
 use super::IrqEvent;
 use crate::bus::BusAccessInfo;
 use crate::BusDevice;
-use base::{error, warn, AsRawDescriptor, Error, Event, Result};
+use base::{error, warn, Error, Event, Result, Tube, TubeError};
 use hypervisor::{
     IoapicRedirectionTableEntry, IoapicState, MsiAddressMessage, MsiDataMessage, TriggerMode,
     NUM_IOAPIC_PINS,
 };
-use msg_socket::{MsgError, MsgReceiver, MsgSender};
-use vm_control::{MaybeOwnedDescriptor, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
+use vm_control::{VmIrqRequest, VmIrqResponse};
 
 // ICH10 I/O APIC version: 0x20
 const IOAPIC_VERSION_ID: u32 = 0x00000020;
@@ -82,8 +81,8 @@ pub struct Ioapic {
     redirect_table: Vec<IoapicRedirectionTableEntry>,
     /// Interrupt activation state.
     interrupt_level: Vec<bool>,
-    /// Socket used to route MSI irqs.
-    irq_socket: VmIrqRequestSocket,
+    /// Tube used to route MSI irqs.
+    irq_tube: Tube,
 }
 
 impl BusDevice for Ioapic {
@@ -146,7 +145,7 @@ impl BusDevice for Ioapic {
 }
 
 impl Ioapic {
-    pub fn new(irq_socket: VmIrqRequestSocket, num_pins: usize) -> Result<Ioapic> {
+    pub fn new(irq_tube: Tube, num_pins: usize) -> Result<Ioapic> {
         let num_pins = num_pins.max(NUM_IOAPIC_PINS as usize);
         let mut entry = IoapicRedirectionTableEntry::new();
         entry.set_interrupt_mask(true);
@@ -159,7 +158,7 @@ impl Ioapic {
             resample_events: Vec::new(),
             redirect_table: (0..num_pins).map(|_| entry.clone()).collect(),
             interrupt_level: (0..num_pins).map(|_| false).collect(),
-            irq_socket,
+            irq_tube,
         })
     }
 
@@ -382,21 +381,22 @@ impl Ioapic {
             evt.gsi
         } else {
             let event = Event::new().map_err(IoapicError::CreateEvent)?;
-            let request = VmIrqRequest::AllocateOneMsi {
-                irqfd: MaybeOwnedDescriptor::Borrowed(event.as_raw_descriptor()),
-            };
-            self.irq_socket
+            let request = VmIrqRequest::AllocateOneMsi { irqfd: event };
+            self.irq_tube
                 .send(&request)
                 .map_err(IoapicError::AllocateOneMsiSend)?;
             match self
-                .irq_socket
+                .irq_tube
                 .recv()
                 .map_err(IoapicError::AllocateOneMsiRecv)?
             {
                 VmIrqResponse::AllocateOneMsi { gsi, .. } => {
                     self.out_events[index] = Some(IrqEvent {
                         gsi,
-                        event,
+                        event: match request {
+                            VmIrqRequest::AllocateOneMsi { irqfd } => irqfd,
+                            _ => unreachable!(),
+                        },
                         resample_event: None,
                     });
                     gsi
@@ -414,14 +414,10 @@ impl Ioapic {
             msi_address,
             msi_data,
         };
-        self.irq_socket
+        self.irq_tube
             .send(&request)
             .map_err(IoapicError::AddMsiRouteSend)?;
-        if let VmIrqResponse::Err(e) = self
-            .irq_socket
-            .recv()
-            .map_err(IoapicError::AddMsiRouteRecv)?
-        {
+        if let VmIrqResponse::Err(e) = self.irq_tube.recv().map_err(IoapicError::AddMsiRouteRecv)? {
             return Err(IoapicError::AddMsiRoute(e));
         }
         Ok(())
@@ -452,11 +448,11 @@ impl Ioapic {
 #[derive(Debug)]
 enum IoapicError {
     AddMsiRoute(Error),
-    AddMsiRouteRecv(MsgError),
-    AddMsiRouteSend(MsgError),
+    AddMsiRouteRecv(TubeError),
+    AddMsiRouteSend(TubeError),
     AllocateOneMsi(Error),
-    AllocateOneMsiRecv(MsgError),
-    AllocateOneMsiSend(MsgError),
+    AllocateOneMsiRecv(TubeError),
+    AllocateOneMsiSend(TubeError),
     CreateEvent(Error),
 }
 
@@ -487,8 +483,8 @@ mod tests {
     const DEFAULT_DESTINATION_ID: u8 = 0x5f;
 
     fn new() -> Ioapic {
-        let (_, device_socket) = msg_socket::pair::<VmIrqResponse, VmIrqRequest>().unwrap();
-        Ioapic::new(device_socket, NUM_IOAPIC_PINS).unwrap()
+        let (_, irq_tube) = Tube::pair().unwrap();
+        Ioapic::new(irq_tube, NUM_IOAPIC_PINS).unwrap()
     }
 
     fn ioapic_bus_address(offset: u8) -> BusAccessInfo {

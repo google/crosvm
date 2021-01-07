@@ -18,8 +18,7 @@ use hypervisor::{
 use kvm_sys::*;
 use resources::SystemAllocator;
 
-use base::{error, Error, Event, Result};
-use vm_control::VmIrqRequestSocket;
+use base::{error, Error, Event, Result, Tube};
 
 use crate::irqchip::{
     Ioapic, IrqEvent, IrqEventIndex, Pic, VcpuRunState, IOAPIC_BASE_ADDRESS,
@@ -27,7 +26,7 @@ use crate::irqchip::{
 };
 use crate::{Bus, IrqChip, IrqChipCap, IrqChipX86_64, Pit, PitError};
 
-/// PIT channel 0 timer is connected to IRQ 0
+/// PIT tube 0 timer is connected to IRQ 0
 const PIT_CHANNEL0_IRQ: u32 = 0;
 
 /// Default x86 routing table.  Pins 0-7 go to primary pic and ioapic, pins 8-15 go to secondary
@@ -178,7 +177,7 @@ impl KvmSplitIrqChip {
     pub fn new(
         vm: KvmVm,
         num_vcpus: usize,
-        irq_socket: VmIrqRequestSocket,
+        irq_tube: Tube,
         ioapic_pins: Option<usize>,
     ) -> Result<Self> {
         let ioapic_pins = ioapic_pins.unwrap_or(hypervisor::NUM_IOAPIC_PINS);
@@ -203,7 +202,7 @@ impl KvmSplitIrqChip {
             routes: Arc::new(Mutex::new(Vec::new())),
             pit,
             pic: Arc::new(Mutex::new(Pic::new())),
-            ioapic: Arc::new(Mutex::new(Ioapic::new(irq_socket, ioapic_pins)?)),
+            ioapic: Arc::new(Mutex::new(Ioapic::new(irq_tube, ioapic_pins)?)),
             ioapic_pins,
             delayed_ioapic_irq_events: Arc::new(Mutex::new(Vec::new())),
             irq_events: Arc::new(Mutex::new(Default::default())),
@@ -708,7 +707,6 @@ mod tests {
     use vm_memory::GuestMemory;
 
     use hypervisor::{IoapicRedirectionTableEntry, PitRWMode, TriggerMode, Vm, VmX86_64};
-    use vm_control::{VmIrqRequest, VmIrqResponse};
 
     use super::super::super::tests::*;
     use crate::IrqChip;
@@ -735,13 +733,12 @@ mod tests {
         let mem = GuestMemory::new(&[]).unwrap();
         let vm = KvmVm::new(&kvm, mem).expect("failed tso instantiate vm");
 
-        let (_, device_socket) =
-            msg_socket::pair::<VmIrqResponse, VmIrqRequest>().expect("failed to create irq socket");
+        let (_, device_tube) = Tube::pair().expect("failed to create irq tube");
 
         let mut chip = KvmSplitIrqChip::new(
             vm.try_clone().expect("failed to clone vm"),
             1,
-            device_socket,
+            device_tube,
             None,
         )
         .expect("failed to instantiate KvmKernelIrqChip");

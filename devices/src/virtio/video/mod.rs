@@ -10,11 +10,10 @@
 use std::fmt::{self, Display};
 use std::thread;
 
-use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor};
+use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube};
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
-use crate::virtio::resource_bridge::ResourceRequestSocket;
 use crate::virtio::virtio_device::VirtioDevice;
 use crate::virtio::{self, copy_config, DescriptorError, Interrupt};
 
@@ -92,7 +91,7 @@ pub enum VideoDeviceType {
 pub struct VideoDevice {
     device_type: VideoDeviceType,
     kill_evt: Option<Event>,
-    resource_bridge: Option<ResourceRequestSocket>,
+    resource_bridge: Option<Tube>,
     base_features: u64,
 }
 
@@ -100,7 +99,7 @@ impl VideoDevice {
     pub fn new(
         base_features: u64,
         device_type: VideoDeviceType,
-        resource_bridge: Option<ResourceRequestSocket>,
+        resource_bridge: Option<Tube>,
     ) -> VideoDevice {
         VideoDevice {
             device_type,

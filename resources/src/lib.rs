@@ -4,13 +4,9 @@
 
 //! Manages system resources that can be allocated to VMs and their devices.
 
-extern crate base;
-extern crate libc;
-extern crate msg_socket;
-
-use base::RawDescriptor;
-use msg_socket::MsgOnSocket;
 use std::fmt::Display;
+
+use serde::{Deserialize, Serialize};
 
 pub use crate::address_allocator::AddressAllocator;
 pub use crate::system_allocator::{MmioType, SystemAllocator};
@@ -19,7 +15,7 @@ mod address_allocator;
 mod system_allocator;
 
 /// Used to tag SystemAllocator allocations.
-#[derive(Debug, Eq, PartialEq, Hash, MsgOnSocket, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone, Serialize, Deserialize)]
 pub enum Alloc {
     /// An anonymous resource allocation.
     /// Should only be instantiated through `SystemAllocator::get_anon_alloc()`.

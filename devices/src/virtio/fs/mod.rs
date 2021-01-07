@@ -8,11 +8,10 @@ use std::mem;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use base::{error, warn, AsRawDescriptor, Error as SysError, Event, RawDescriptor};
+use base::{error, warn, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube};
 use data_model::{DataInit, Le32};
-use msg_socket::{MsgReceiver, MsgSender};
 use resources::Alloc;
-use vm_control::{FsMappingRequest, FsMappingRequestSocket, VmResponse};
+use vm_control::{FsMappingRequest, VmResponse};
 use vm_memory::GuestMemory;
 
 use crate::pci::{
@@ -133,7 +132,7 @@ pub struct Fs {
     avail_features: u64,
     acked_features: u64,
     pci_bar: Option<Alloc>,
-    socket: Option<FsMappingRequestSocket>,
+    tube: Option<Tube>,
     workers: Vec<(Event, thread::JoinHandle<Result<()>>)>,
 }
 
@@ -143,7 +142,7 @@ impl Fs {
         tag: &str,
         num_workers: usize,
         fs_cfg: passthrough::Config,
-        socket: FsMappingRequestSocket,
+        tube: Tube,
     ) -> Result<Fs> {
         if tag.len() > FS_MAX_TAG_LEN {
             return Err(Error::TagTooLong(tag.len()));
@@ -169,7 +168,7 @@ impl Fs {
             avail_features: base_features,
             acked_features: 0,
             pci_bar: None,
-            socket: Some(socket),
+            tube: Some(tube),
             workers: Vec::with_capacity(num_workers + 1),
         })
     }
@@ -201,7 +200,7 @@ impl VirtioDevice for Fs {
             .as_ref()
             .map(PassthroughFs::keep_rds)
             .unwrap_or_else(Vec::new);
-        if let Some(rd) = self.socket.as_ref().map(|s| s.as_raw_descriptor()) {
+        if let Some(rd) = self.tube.as_ref().map(|s| s.as_raw_descriptor()) {
             fds.push(rd);
         }
 
@@ -251,7 +250,7 @@ impl VirtioDevice for Fs {
 
         let server = Arc::new(Server::new(fs));
         let irq = Arc::new(interrupt);
-        let socket = self.socket.take().expect("missing mapping socket");
+        let socket = self.tube.take().expect("missing mapping socket");
         let mut slot = 0;
 
         // Set up shared memory for DAX.

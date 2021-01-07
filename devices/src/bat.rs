@@ -5,15 +5,14 @@
 use crate::{BusAccessInfo, BusDevice};
 use acpi_tables::{aml, aml::Aml};
 use base::{
-    error, warn, AsRawDescriptor, Descriptor, Event, PollToken, RawDescriptor, WaitContext,
+    error, warn, AsRawDescriptor, Descriptor, Event, PollToken, RawDescriptor, Tube, WaitContext,
 };
-use msg_socket::{MsgReceiver, MsgSender};
 use power_monitor::{BatteryStatus, CreatePowerMonitorFn};
 use std::fmt::{self, Display};
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
-use vm_control::{BatControlCommand, BatControlResponseSocket, BatControlResult};
+use vm_control::{BatControlCommand, BatControlResult};
 
 /// Errors for battery devices.
 #[derive(Debug)]
@@ -106,7 +105,7 @@ pub struct GoldfishBattery {
     activated: bool,
     monitor_thread: Option<thread::JoinHandle<()>>,
     kill_evt: Option<Event>,
-    socket: Option<BatControlResponseSocket>,
+    tube: Option<Tube>,
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
 }
 
@@ -143,7 +142,7 @@ const BATTERY_STATUS_VAL_NOT_CHARGING: u32 = 3;
 const BATTERY_HEALTH_VAL_UNKNOWN: u32 = 0;
 
 fn command_monitor(
-    socket: BatControlResponseSocket,
+    tube: Tube,
     irq_evt: Event,
     irq_resample_evt: Event,
     kill_evt: Event,
@@ -151,7 +150,7 @@ fn command_monitor(
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
 ) {
     let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
-        (&Descriptor(socket.as_raw_descriptor()), Token::Commands),
+        (&Descriptor(tube.as_raw_descriptor()), Token::Commands),
         (
             &Descriptor(irq_resample_evt.as_raw_descriptor()),
             Token::Resample,
@@ -202,7 +201,7 @@ fn command_monitor(
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
                 Token::Commands => {
-                    let req = match socket.recv() {
+                    let req = match tube.recv() {
                         Ok(req) => req,
                         Err(e) => {
                             error!("failed to receive request: {}", e);
@@ -232,7 +231,7 @@ fn command_monitor(
                         let _ = irq_evt.write(1);
                     }
 
-                    if let Err(e) = socket.send(&BatControlResult::Ok) {
+                    if let Err(e) = tube.send(&BatControlResult::Ok) {
                         error!("failed to send response: {}", e);
                     }
                 }
@@ -309,7 +308,7 @@ impl GoldfishBattery {
         irq_num: u32,
         irq_evt: Event,
         irq_resample_evt: Event,
-        socket: BatControlResponseSocket,
+        tube: Tube,
         create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
     ) -> Result<Self> {
         if mmio_base + GOLDFISHBAT_MMIO_LEN - 1 > u32::MAX as u64 {
@@ -338,7 +337,7 @@ impl GoldfishBattery {
             activated: false,
             monitor_thread: None,
             kill_evt: None,
-            socket: Some(socket),
+            tube: Some(tube),
             create_power_monitor,
         })
     }
@@ -350,8 +349,8 @@ impl GoldfishBattery {
             self.irq_resample_evt.as_raw_descriptor(),
         ];
 
-        if let Some(socket) = &self.socket {
-            rds.push(socket.as_raw_descriptor());
+        if let Some(tube) = &self.tube {
+            rds.push(tube.as_raw_descriptor());
         }
 
         rds
@@ -375,7 +374,7 @@ impl GoldfishBattery {
             }
         };
 
-        if let Some(socket) = self.socket.take() {
+        if let Some(tube) = self.tube.take() {
             let irq_evt = self.irq_evt.try_clone().unwrap();
             let irq_resample_evt = self.irq_resample_evt.try_clone().unwrap();
             let bat_state = self.state.clone();
@@ -385,7 +384,7 @@ impl GoldfishBattery {
                 .name(self.debug_label())
                 .spawn(move || {
                     command_monitor(
-                        socket,
+                        tube,
                         irq_evt,
                         irq_resample_evt,
                         kill_evt,

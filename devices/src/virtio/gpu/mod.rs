@@ -21,7 +21,7 @@ use std::thread;
 use std::time::Duration;
 
 use base::{
-    debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor,
+    debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor, Tube,
     WaitContext,
 };
 
@@ -29,14 +29,7 @@ use data_model::*;
 
 pub use gpu_display::EventDevice;
 use gpu_display::*;
-use rutabaga_gfx::{
-    DrmFormat, GfxstreamFlags, ResourceCreate3D, ResourceCreateBlob, RutabagaBuilder,
-    RutabagaChannel, RutabagaComponentType, RutabagaFenceData, Transfer3D, VirglRendererFlags,
-    RUTABAGA_CHANNEL_TYPE_CAMERA, RUTABAGA_CHANNEL_TYPE_WAYLAND, RUTABAGA_PIPE_BIND_RENDER_TARGET,
-    RUTABAGA_PIPE_TEXTURE_2D,
-};
-
-use msg_socket::{MsgReceiver, MsgSender};
+use rutabaga_gfx::*;
 
 use resources::Alloc;
 
@@ -56,8 +49,6 @@ use self::virtio_gpu::VirtioGpu;
 use crate::pci::{
     PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability,
 };
-
-use vm_control::VmMemoryControlRequestSocket;
 
 pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
 pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
@@ -129,7 +120,7 @@ fn build(
     display_height: u32,
     rutabaga_builder: RutabagaBuilder,
     event_devices: Vec<EventDevice>,
-    gpu_device_socket: VmMemoryControlRequestSocket,
+    gpu_device_tube: Tube,
     pci_bar: Alloc,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     external_blob: bool,
@@ -159,7 +150,7 @@ fn build(
         display_height,
         rutabaga_builder,
         event_devices,
-        gpu_device_socket,
+        gpu_device_tube,
         pci_bar,
         map_request,
         external_blob,
@@ -230,7 +221,7 @@ impl Frontend {
         self.virtio_gpu.process_display()
     }
 
-    fn process_resource_bridge(&mut self, resource_bridge: &ResourceResponseSocket) {
+    fn process_resource_bridge(&mut self, resource_bridge: &Tube) {
         let response = match resource_bridge.recv() {
             Ok(ResourceRequest::GetBuffer { id }) => self.virtio_gpu.export_resource(id),
             Ok(ResourceRequest::GetFence { seqno }) => {
@@ -687,7 +678,7 @@ struct Worker {
     ctrl_evt: Event,
     cursor_queue: Queue,
     cursor_evt: Event,
-    resource_bridges: Vec<ResourceResponseSocket>,
+    resource_bridges: Vec<Tube>,
     kill_evt: Event,
     state: Frontend,
 }
@@ -866,8 +857,8 @@ impl DisplayBackend {
 
 pub struct Gpu {
     exit_evt: Event,
-    gpu_device_socket: Option<VmMemoryControlRequestSocket>,
-    resource_bridges: Vec<ResourceResponseSocket>,
+    gpu_device_tube: Option<Tube>,
+    resource_bridges: Vec<Tube>,
     event_devices: Vec<EventDevice>,
     kill_evt: Option<Event>,
     config_event: bool,
@@ -889,9 +880,9 @@ pub struct Gpu {
 impl Gpu {
     pub fn new(
         exit_evt: Event,
-        gpu_device_socket: Option<VmMemoryControlRequestSocket>,
+        gpu_device_tube: Option<Tube>,
         num_scanouts: NonZeroU8,
-        resource_bridges: Vec<ResourceResponseSocket>,
+        resource_bridges: Vec<Tube>,
         display_backends: Vec<DisplayBackend>,
         gpu_parameters: &GpuParameters,
         event_devices: Vec<EventDevice>,
@@ -947,7 +938,7 @@ impl Gpu {
 
         Gpu {
             exit_evt,
-            gpu_device_socket,
+            gpu_device_tube,
             num_scanouts,
             resource_bridges,
             event_devices,
@@ -1032,8 +1023,8 @@ impl VirtioDevice for Gpu {
         #[cfg(feature = "udmabuf")]
         keep_rds.push(self.mem.as_raw_descriptor());
 
-        if let Some(ref gpu_device_socket) = self.gpu_device_socket {
-            keep_rds.push(gpu_device_socket.as_raw_descriptor());
+        if let Some(ref gpu_device_tube) = self.gpu_device_tube {
+            keep_rds.push(gpu_device_tube.as_raw_descriptor());
         }
 
         keep_rds.push(self.exit_evt.as_raw_descriptor());
@@ -1122,8 +1113,8 @@ impl VirtioDevice for Gpu {
         let event_devices = self.event_devices.split_off(0);
         let map_request = Arc::clone(&self.map_request);
         let external_blob = self.external_blob;
-        if let (Some(gpu_device_socket), Some(pci_bar), Some(rutabaga_builder)) = (
-            self.gpu_device_socket.take(),
+        if let (Some(gpu_device_tube), Some(pci_bar), Some(rutabaga_builder)) = (
+            self.gpu_device_tube.take(),
             self.pci_bar.take(),
             self.rutabaga_builder.take(),
         ) {
@@ -1137,7 +1128,7 @@ impl VirtioDevice for Gpu {
                             display_height,
                             rutabaga_builder,
                             event_devices,
-                            gpu_device_socket,
+                            gpu_device_tube,
                             pci_bar,
                             map_request,
                             external_blob,

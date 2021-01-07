@@ -39,8 +39,8 @@ pub struct virtio_snd_pcm_info {
     pub formats: Le64,
     pub rates: Le64,
     pub direction: u8,
-    pub channels_min: u8,
-    pub channels_max: u8,
+    pub tubes_min: u8,
+    pub tubes_max: u8,
 
     pub padding: [u8; 5],
 }
@@ -63,7 +63,7 @@ pub struct virtio_snd_pcm_set_params {
     pub buffer_bytes: Le32,
     pub period_bytes: Le32,
     pub features: Le32,
-    pub channels: u8,
+    pub tubes: u8,
     pub format: u8,
     pub rate: u8,
     pub padding: u8,

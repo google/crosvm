@@ -3,11 +3,11 @@
 // found in the LICENSE file.
 
 use crate::pci::{PciCapability, PciCapabilityID};
-use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor};
-use msg_socket::{MsgError, MsgReceiver, MsgSender};
+use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube, TubeError};
+
 use std::convert::TryInto;
 use std::fmt::{self, Display};
-use vm_control::{MaybeOwnedDescriptor, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
+use vm_control::{VmIrqRequest, VmIrqResponse};
 
 use data_model::DataInit;
 
@@ -55,17 +55,17 @@ pub struct MsixConfig {
     irq_vec: Vec<IrqfdGsi>,
     masked: bool,
     enabled: bool,
-    msi_device_socket: VmIrqRequestSocket,
+    msi_device_socket: Tube,
     msix_num: u16,
 }
 
 enum MsixError {
     AddMsiRoute(SysError),
-    AddMsiRouteRecv(MsgError),
-    AddMsiRouteSend(MsgError),
+    AddMsiRouteRecv(TubeError),
+    AddMsiRouteSend(TubeError),
     AllocateOneMsi(SysError),
-    AllocateOneMsiRecv(MsgError),
-    AllocateOneMsiSend(MsgError),
+    AllocateOneMsiRecv(TubeError),
+    AllocateOneMsiSend(TubeError),
 }
 
 impl Display for MsixError {
@@ -94,7 +94,7 @@ pub enum MsixStatus {
 }
 
 impl MsixConfig {
-    pub fn new(msix_vectors: u16, vm_socket: VmIrqRequestSocket) -> Self {
+    pub fn new(msix_vectors: u16, vm_socket: Tube) -> Self {
         assert!(msix_vectors <= MAX_MSIX_VECTORS_PER_DEVICE);
 
         let mut table_entries: Vec<MsixTableEntry> = Vec::new();
@@ -235,10 +235,9 @@ impl MsixConfig {
         self.irq_vec.clear();
         for i in 0..self.msix_num {
             let irqfd = Event::new().unwrap();
+            let request = VmIrqRequest::AllocateOneMsi { irqfd };
             self.msi_device_socket
-                .send(&VmIrqRequest::AllocateOneMsi {
-                    irqfd: MaybeOwnedDescriptor::Borrowed(irqfd.as_raw_descriptor()),
-                })
+                .send(&request)
                 .map_err(MsixError::AllocateOneMsiSend)?;
             let irq_num: u32;
             match self
@@ -251,7 +250,10 @@ impl MsixConfig {
                 _ => unreachable!(),
             }
             self.irq_vec.push(IrqfdGsi {
-                irqfd,
+                irqfd: match request {
+                    VmIrqRequest::AllocateOneMsi { irqfd } => irqfd,
+                    _ => unreachable!(),
+                },
                 gsi: irq_num,
             });
 
@@ -498,7 +500,7 @@ impl MsixConfig {
 
     /// Return the raw fd of the MSI device socket
     pub fn get_msi_socket(&self) -> RawDescriptor {
-        self.msi_device_socket.as_ref().as_raw_descriptor()
+        self.msi_device_socket.as_raw_descriptor()
     }
 
     /// Return irqfd of MSI-X Table entry

@@ -76,7 +76,6 @@ kvm_sys = { path = "kvm_sys", optional = true }
 libc = "0.2.65"
 libcras = "*"
 minijail = "*" # provided by ebuild
-msg_socket = { path = "msg_socket" }
 net_util = { path = "net_util" }
 p9 = "*"
 protobuf = { version = "2.3", optional = true }

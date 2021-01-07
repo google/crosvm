@@ -11,19 +11,14 @@ use crate::usb::xhci::usb_hub::UsbHub;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::utils::AsyncJobQueue;
 use crate::utils::{EventHandler, EventLoop, FailHandle};
-use base::net::UnixSeqpacket;
-use base::{
-    error, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, WatchingEvents,
-};
-use msg_socket::{MsgReceiver, MsgSender, MsgSocket};
+use base::{error, AsRawDescriptor, Descriptor, RawDescriptor, Tube, WatchingEvents};
 use std::collections::HashMap;
 use std::mem;
 use std::time::Duration;
 use sync::Mutex;
 use usb_util::Device;
 use vm_control::{
-    MaybeOwnedDescriptor, UsbControlAttachedDevice, UsbControlCommand, UsbControlResult,
-    UsbControlSocket, USB_CONTROL_MAX_PORTS,
+    UsbControlAttachedDevice, UsbControlCommand, UsbControlResult, USB_CONTROL_MAX_PORTS,
 };
 
 const SOCKET_TIMEOUT_MS: u64 = 2000;
@@ -32,31 +27,27 @@ const SOCKET_TIMEOUT_MS: u64 = 2000;
 /// devices.
 pub enum HostBackendDeviceProvider {
     // The provider is created but not yet started.
-    Created {
-        sock: Mutex<MsgSocket<UsbControlResult, UsbControlCommand>>,
-    },
+    Created { control_tube: Mutex<Tube> },
     // The provider is started on an event loop.
-    Started {
-        inner: Arc<ProviderInner>,
-    },
+    Started { inner: Arc<ProviderInner> },
     // The provider has failed.
     Failed,
 }
 
 impl HostBackendDeviceProvider {
-    pub fn new() -> Result<(UsbControlSocket, HostBackendDeviceProvider)> {
-        let (child_sock, control_sock) = UnixSeqpacket::pair().map_err(Error::CreateControlSock)?;
-        control_sock
-            .set_write_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))
-            .map_err(Error::SetupControlSock)?;
-        control_sock
-            .set_read_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))
-            .map_err(Error::SetupControlSock)?;
+    pub fn new() -> Result<(Tube, HostBackendDeviceProvider)> {
+        let (child_tube, control_tube) = Tube::pair().map_err(Error::CreateControlTube)?;
+        control_tube
+            .set_send_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))
+            .map_err(Error::SetupControlTube)?;
+        control_tube
+            .set_recv_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))
+            .map_err(Error::SetupControlTube)?;
 
         let provider = HostBackendDeviceProvider::Created {
-            sock: Mutex::new(MsgSocket::new(child_sock)),
+            control_tube: Mutex::new(child_tube),
         };
-        Ok((MsgSocket::new(control_sock), provider))
+        Ok((control_tube, provider))
     }
 
     fn start_helper(
@@ -66,20 +57,20 @@ impl HostBackendDeviceProvider {
         hub: Arc<UsbHub>,
     ) -> Result<()> {
         match mem::replace(self, HostBackendDeviceProvider::Failed) {
-            HostBackendDeviceProvider::Created { sock } => {
+            HostBackendDeviceProvider::Created { control_tube } => {
                 let job_queue =
                     AsyncJobQueue::init(&event_loop).map_err(Error::StartAsyncJobQueue)?;
                 let inner = Arc::new(ProviderInner::new(
                     fail_handle,
                     job_queue,
                     event_loop.clone(),
-                    sock,
+                    control_tube,
                     hub,
                 ));
                 let handler: Arc<dyn EventHandler> = inner.clone();
                 event_loop
                     .add_event(
-                        &*inner.sock.lock(),
+                        &*inner.control_tube.lock(),
                         WatchingEvents::empty().set_read(),
                         Arc::downgrade(&handler),
                     )
@@ -111,7 +102,9 @@ impl XhciBackendDeviceProvider for HostBackendDeviceProvider {
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         match self {
-            HostBackendDeviceProvider::Created { sock } => vec![sock.lock().as_raw_descriptor()],
+            HostBackendDeviceProvider::Created { control_tube } => {
+                vec![control_tube.lock().as_raw_descriptor()]
+            }
             _ => {
                 error!(
                     "Trying to get keepfds when HostBackendDeviceProvider is not in created state"
@@ -127,7 +120,7 @@ pub struct ProviderInner {
     fail_handle: Arc<dyn FailHandle>,
     job_queue: Arc<AsyncJobQueue>,
     event_loop: Arc<EventLoop>,
-    sock: Mutex<MsgSocket<UsbControlResult, UsbControlCommand>>,
+    control_tube: Mutex<Tube>,
     usb_hub: Arc<UsbHub>,
 
     // Map of USB hub port number to per-device context.
@@ -144,14 +137,14 @@ impl ProviderInner {
         fail_handle: Arc<dyn FailHandle>,
         job_queue: Arc<AsyncJobQueue>,
         event_loop: Arc<EventLoop>,
-        sock: Mutex<MsgSocket<UsbControlResult, UsbControlCommand>>,
+        control_tube: Mutex<Tube>,
         usb_hub: Arc<UsbHub>,
     ) -> ProviderInner {
         ProviderInner {
             fail_handle,
             job_queue,
             event_loop,
-            sock,
+            control_tube,
             usb_hub,
             devices: Mutex::new(HashMap::new()),
         }
@@ -159,24 +152,16 @@ impl ProviderInner {
 
     /// Open a usbdevfs file to create a host USB device object.
     /// `fd` should be an open file descriptor for a file in `/dev/bus/usb`.
-    fn handle_attach_device(&self, fd: Option<MaybeOwnedDescriptor>) -> UsbControlResult {
-        let usb_file = match fd {
-            Some(MaybeOwnedDescriptor::Owned(file)) => file,
-            _ => {
-                error!("missing fd in UsbControlCommand::AttachDevice message");
-                return UsbControlResult::FailedToOpenDevice;
-            }
-        };
-
-        let raw_descriptor = usb_file.into_raw_descriptor();
-        // Safe as it is valid to have multiple variables accessing the same fd.
-        let device = match Device::new(unsafe { File::from_raw_descriptor(raw_descriptor) }) {
+    fn handle_attach_device(&self, usb_file: File) -> UsbControlResult {
+        let device = match Device::new(usb_file) {
             Ok(d) => d,
             Err(e) => {
                 error!("could not construct USB device from fd: {}", e);
                 return UsbControlResult::NoSuchDevice;
             }
         };
+
+        let device_descriptor = Descriptor(device.as_raw_descriptor());
 
         let arc_mutex_device = Arc::new(Mutex::new(device));
 
@@ -185,7 +170,7 @@ impl ProviderInner {
         });
 
         if let Err(e) = self.event_loop.add_event(
-            &MaybeOwnedDescriptor::Borrowed(raw_descriptor),
+            &device_descriptor,
             WatchingEvents::empty().set_read().set_write(),
             Arc::downgrade(&event_handler),
         ) {
@@ -230,12 +215,7 @@ impl ProviderInner {
                     let device = device_ctx.device.lock();
                     let fd = device.fd();
 
-                    if let Err(e) =
-                        self.event_loop
-                            .remove_event_for_fd(&MaybeOwnedDescriptor::Borrowed(
-                                fd.as_raw_descriptor(),
-                            ))
-                    {
+                    if let Err(e) = self.event_loop.remove_event_for_fd(&*fd) {
                         error!(
                             "failed to remove poll change handler from event loop: {}",
                             e
@@ -273,16 +253,14 @@ impl ProviderInner {
     }
 
     fn on_event_helper(&self) -> Result<()> {
-        let sock = self.sock.lock();
-        let cmd = sock.recv().map_err(Error::ReadControlSock)?;
+        let tube = self.control_tube.lock();
+        let cmd = tube.recv().map_err(Error::ReadControlTube)?;
         let result = match cmd {
-            UsbControlCommand::AttachDevice { descriptor, .. } => {
-                self.handle_attach_device(descriptor)
-            }
+            UsbControlCommand::AttachDevice { file, .. } => self.handle_attach_device(file),
             UsbControlCommand::DetachDevice { port } => self.handle_detach_device(port),
             UsbControlCommand::ListDevice { ports } => self.handle_list_devices(ports),
         };
-        sock.send(&result).map_err(Error::WriteControlSock)?;
+        tube.send(&result).map_err(Error::WriteControlTube)?;
         Ok(())
     }
 }

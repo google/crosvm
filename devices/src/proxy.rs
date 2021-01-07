@@ -7,12 +7,11 @@
 use std::ffi::CString;
 use std::fmt::{self, Display};
 use std::time::Duration;
-use std::{self, io};
 
-use base::{error, net::UnixSeqpacket, AsRawDescriptor, RawDescriptor};
+use base::{error, AsRawDescriptor, RawDescriptor, Tube, TubeError};
 use libc::{self, pid_t};
 use minijail::{self, Minijail};
-use msg_socket::{MsgOnSocket, MsgReceiver, MsgSender, MsgSocket};
+use serde::{Deserialize, Serialize};
 
 use crate::bus::ConfigWriteResult;
 use crate::{BusAccessInfo, BusDevice};
@@ -21,7 +20,7 @@ use crate::{BusAccessInfo, BusDevice};
 #[derive(Debug)]
 pub enum Error {
     ForkingJail(minijail::Error),
-    Io(io::Error),
+    Tube(TubeError),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -31,14 +30,14 @@ impl Display for Error {
 
         match self {
             ForkingJail(e) => write!(f, "Failed to fork jail process: {}", e),
-            Io(e) => write!(f, "IO error configuring proxy device {}.", e),
+            Tube(e) => write!(f, "Failed to configure tube: {}.", e),
         }
     }
 }
 
 const SOCKET_TIMEOUT_MS: u64 = 2000;
 
-#[derive(Debug, MsgOnSocket)]
+#[derive(Debug, Serialize, Deserialize)]
 enum Command {
     Read {
         len: u32,
@@ -58,8 +57,7 @@ enum Command {
     },
     Shutdown,
 }
-
-#[derive(MsgOnSocket)]
+#[derive(Debug, Serialize, Deserialize)]
 enum CommandResult {
     Ok,
     ReadResult([u8; 8]),
@@ -70,12 +68,11 @@ enum CommandResult {
     },
 }
 
-fn child_proc<D: BusDevice>(sock: UnixSeqpacket, device: &mut D) {
+fn child_proc<D: BusDevice>(tube: Tube, device: &mut D) {
     let mut running = true;
-    let sock = MsgSocket::<CommandResult, Command>::new(sock);
 
     while running {
-        let cmd = match sock.recv() {
+        let cmd = match tube.recv() {
             Ok(cmd) => cmd,
             Err(err) => {
                 error!("child device process failed recv: {}", err);
@@ -87,7 +84,7 @@ fn child_proc<D: BusDevice>(sock: UnixSeqpacket, device: &mut D) {
             Command::Read { len, info } => {
                 let mut buffer = [0u8; 8];
                 device.read(info, &mut buffer[0..len as usize]);
-                sock.send(&CommandResult::ReadResult(buffer))
+                tube.send(&CommandResult::ReadResult(buffer))
             }
             Command::Write { len, info, data } => {
                 let len = len as usize;
@@ -97,7 +94,7 @@ fn child_proc<D: BusDevice>(sock: UnixSeqpacket, device: &mut D) {
             }
             Command::ReadConfig(idx) => {
                 let val = device.config_register_read(idx as usize);
-                sock.send(&CommandResult::ReadConfigResult(val))
+                tube.send(&CommandResult::ReadConfigResult(val))
             }
             Command::WriteConfig {
                 reg_idx,
@@ -108,14 +105,14 @@ fn child_proc<D: BusDevice>(sock: UnixSeqpacket, device: &mut D) {
                 let len = len as usize;
                 let res =
                     device.config_register_write(reg_idx as usize, offset as u64, &data[0..len]);
-                sock.send(&CommandResult::WriteConfigResult {
+                tube.send(&CommandResult::WriteConfigResult {
                     mem_bus_new_state: res.mem_bus_new_state,
                     io_bus_new_state: res.io_bus_new_state,
                 })
             }
             Command::Shutdown => {
                 running = false;
-                sock.send(&CommandResult::Ok)
+                tube.send(&CommandResult::Ok)
             }
         };
         if let Err(e) = res {
@@ -129,7 +126,7 @@ fn child_proc<D: BusDevice>(sock: UnixSeqpacket, device: &mut D) {
 /// Because forks are very unfriendly to destructors and all memory mappings and file descriptors
 /// are inherited, this should be used as early as possible in the main process.
 pub struct ProxyDevice {
-    sock: MsgSocket<Command, CommandResult>,
+    tube: Tube,
     pid: pid_t,
     debug_label: String,
 }
@@ -150,9 +147,9 @@ impl ProxyDevice {
         mut keep_rds: Vec<RawDescriptor>,
     ) -> Result<ProxyDevice> {
         let debug_label = device.debug_label();
-        let (child_sock, parent_sock) = UnixSeqpacket::pair().map_err(Error::Io)?;
+        let (child_tube, parent_tube) = Tube::pair().map_err(Error::Tube)?;
 
-        keep_rds.push(child_sock.as_raw_descriptor());
+        keep_rds.push(child_tube.as_raw_descriptor());
         // Forking here is safe as long as the program is still single threaded.
         let pid = unsafe {
             match jail.fork(Some(&keep_rds)).map_err(Error::ForkingJail)? {
@@ -163,7 +160,7 @@ impl ProxyDevice {
                     let thread_name = CString::new(debug_label_trimmed).unwrap();
                     let _ = libc::pthread_setname_np(libc::pthread_self(), thread_name.as_ptr());
                     device.on_sandboxed();
-                    child_proc(child_sock, &mut device);
+                    child_proc(child_tube, &mut device);
 
                     // We're explicitly not using std::process::exit here to avoid the cleanup of
                     // stdout/stderr globals. This can cause cascading panics and SIGILL if a worker
@@ -179,14 +176,14 @@ impl ProxyDevice {
             }
         };
 
-        parent_sock
-            .set_write_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))
-            .map_err(Error::Io)?;
-        parent_sock
-            .set_read_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))
-            .map_err(Error::Io)?;
+        parent_tube
+            .set_send_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))
+            .map_err(Error::Tube)?;
+        parent_tube
+            .set_recv_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))
+            .map_err(Error::Tube)?;
         Ok(ProxyDevice {
-            sock: MsgSocket::<Command, CommandResult>::new(parent_sock),
+            tube: parent_tube,
             pid,
             debug_label,
         })
@@ -198,7 +195,7 @@ impl ProxyDevice {
 
     /// Send a command that does not expect a response from the child device process.
     fn send_no_result(&self, cmd: &Command) {
-        let res = self.sock.send(cmd);
+        let res = self.tube.send(cmd);
         if let Err(e) = res {
             error!(
                 "failed write to child device process {}: {}",
@@ -210,7 +207,7 @@ impl ProxyDevice {
     /// Send a command and read its response from the child device process.
     fn sync_send(&self, cmd: &Command) -> Option<CommandResult> {
         self.send_no_result(cmd);
-        match self.sock.recv() {
+        match self.tube.recv() {
             Err(e) => {
                 error!(
                     "failed to read result of {:?} from child device process {}: {}",

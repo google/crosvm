@@ -28,7 +28,6 @@
 //! the virtio queue, and routing messages in and out of `WlState`. Possible events include the kill
 //! event, available descriptors on the `in` or `out` queue, and incoming data on any vfd's socket.
 
-use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap as Map, BTreeSet as Set, VecDeque};
 use std::convert::From;
@@ -49,29 +48,27 @@ use std::time::Duration;
 #[cfg(feature = "minigbm")]
 use libc::{EBADF, EINVAL};
 
-use data_model::VolatileMemoryError;
 use data_model::*;
 
 use base::{
     error, pipe, round_up_to_page_size, warn, AsRawDescriptor, Error, Event, FileFlags,
     FromRawDescriptor, PollToken, RawDescriptor, Result, ScmSocket, SharedMemory, SharedMemoryUnix,
-    WaitContext,
+    Tube, TubeError, WaitContext,
 };
 #[cfg(feature = "minigbm")]
 use base::{ioctl_iow_nr, ioctl_with_ref};
 #[cfg(feature = "gpu")]
 use base::{IntoRawDescriptor, SafeDescriptor};
-use msg_socket::{MsgError, MsgReceiver, MsgSender};
 use vm_memory::{GuestMemory, GuestMemoryError};
 
 #[cfg(feature = "minigbm")]
 use vm_control::GpuMemoryDesc;
 
-use super::resource_bridge::*;
-use super::{DescriptorChain, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_WL};
-use vm_control::{
-    MaybeOwnedDescriptor, MemSlot, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse,
+use super::resource_bridge::{
+    get_resource_info, BufferInfo, ResourceBridgeError, ResourceInfo, ResourceRequest,
 };
+use super::{DescriptorChain, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_WL};
+use vm_control::{MemSlot, VmMemoryRequest, VmMemoryResponse};
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
 const VIRTIO_WL_CMD_VFD_NEW: u32 = 256;
@@ -266,7 +263,7 @@ enum WlError {
     NewPipe(Error),
     SocketConnect(io::Error),
     SocketNonBlock(io::Error),
-    VmControl(MsgError),
+    VmControl(TubeError),
     VmBadResponse,
     CheckedOffset,
     ParseDesc(io::Error),
@@ -333,21 +330,28 @@ impl From<VolatileMemoryError> for WlError {
 
 #[derive(Clone)]
 struct VmRequester {
-    inner: Rc<RefCell<VmMemoryControlRequestSocket>>,
+    inner: Rc<Tube>,
 }
 
 impl VmRequester {
-    fn new(vm_socket: VmMemoryControlRequestSocket) -> VmRequester {
+    fn new(vm_socket: Tube) -> VmRequester {
         VmRequester {
-            inner: Rc::new(RefCell::new(vm_socket)),
+            inner: Rc::new(vm_socket),
         }
     }
 
-    fn request(&self, request: VmMemoryRequest) -> WlResult<VmMemoryResponse> {
-        let mut inner = self.inner.borrow_mut();
-        let vm_socket = &mut *inner;
-        vm_socket.send(&request).map_err(WlError::VmControl)?;
-        vm_socket.recv().map_err(WlError::VmControl)
+    fn request(&self, request: &VmMemoryRequest) -> WlResult<VmMemoryResponse> {
+        self.inner.send(&request).map_err(WlError::VmControl)?;
+        self.inner.recv().map_err(WlError::VmControl)
+    }
+
+    fn register_memory(&self, shm: SharedMemory) -> WlResult<(SharedMemory, VmMemoryResponse)> {
+        let request = VmMemoryRequest::RegisterMemory(shm);
+        let response = self.request(&request)?;
+        match request {
+            VmMemoryRequest::RegisterMemory(shm) => Ok((shm, response)),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -554,7 +558,7 @@ impl<'a> WlResp<'a> {
 #[derive(Default)]
 struct WlVfd {
     socket: Option<UnixStream>,
-    guest_shared_memory: Option<(u64 /* size */, SharedMemory)>,
+    guest_shared_memory: Option<SharedMemory>,
     remote_pipe: Option<File>,
     local_pipe: Option<(u32 /* flags */, File)>,
     slot: Option<(MemSlot, u64 /* pfn */, VmRequester)>,
@@ -594,14 +598,16 @@ impl WlVfd {
         let vfd_shm =
             SharedMemory::named("virtwl_alloc", size_page_aligned).map_err(WlError::NewAlloc)?;
 
-        let register_response = vm.request(VmMemoryRequest::RegisterMemory(
-            MaybeOwnedDescriptor::Borrowed(vfd_shm.as_raw_descriptor()),
-            vfd_shm.size() as usize,
-        ))?;
+        let register_request = VmMemoryRequest::RegisterMemory(vfd_shm);
+        let register_response = vm.request(&register_request)?;
         match register_response {
             VmMemoryResponse::RegisterMemory { pfn, slot } => {
                 let mut vfd = WlVfd::default();
-                vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm));
+                let vfd_shm = match register_request {
+                    VmMemoryRequest::RegisterMemory(shm) => shm,
+                    _ => unreachable!(),
+                };
+                vfd.guest_shared_memory = Some(vfd_shm);
                 vfd.slot = Some((slot, pfn, vm));
                 Ok(vfd)
             }
@@ -617,22 +623,22 @@ impl WlVfd {
         format: u32,
     ) -> WlResult<(WlVfd, GpuMemoryDesc)> {
         let allocate_and_register_gpu_memory_response =
-            vm.request(VmMemoryRequest::AllocateAndRegisterGpuMemory {
+            vm.request(&VmMemoryRequest::AllocateAndRegisterGpuMemory {
                 width,
                 height,
                 format,
             })?;
         match allocate_and_register_gpu_memory_response {
             VmMemoryResponse::AllocateAndRegisterGpuMemory {
-                descriptor: MaybeOwnedDescriptor::Owned(file),
+                descriptor,
                 pfn,
                 slot,
                 desc,
             } => {
                 let mut vfd = WlVfd::default();
                 let vfd_shm =
-                    SharedMemory::from_safe_descriptor(file).map_err(WlError::NewAlloc)?;
-                vfd.guest_shared_memory = Some((vfd_shm.size(), vfd_shm));
+                    SharedMemory::from_safe_descriptor(descriptor).map_err(WlError::NewAlloc)?;
+                vfd.guest_shared_memory = Some(vfd_shm);
                 vfd.slot = Some((slot, pfn, vm));
                 vfd.is_dmabuf = true;
                 Ok((vfd, desc))
@@ -648,7 +654,7 @@ impl WlVfd {
         }
 
         match &self.guest_shared_memory {
-            Some((_, descriptor)) => {
+            Some(descriptor) => {
                 let sync = dma_buf_sync {
                     flags: flags as u64,
                 };
@@ -686,21 +692,14 @@ impl WlVfd {
         // for how big the shared memory chunk to map into guest memory is. If seeking to the end
         // fails, we assume it's a socket or pipe with read/write semantics.
         match descriptor.seek(SeekFrom::End(0)) {
-            Ok(fd_size) => {
-                let size = round_up_to_page_size(fd_size as usize) as u64;
-                let register_response = vm.request(VmMemoryRequest::RegisterMemory(
-                    MaybeOwnedDescriptor::Borrowed(descriptor.as_raw_descriptor()),
-                    size as usize,
-                ))?;
+            Ok(_) => {
+                let shm = SharedMemory::from_file(descriptor).map_err(WlError::FromSharedMemory)?;
+                let (shm, register_response) = vm.register_memory(shm)?;
 
                 match register_response {
                     VmMemoryResponse::RegisterMemory { pfn, slot } => {
                         let mut vfd = WlVfd::default();
-                        vfd.guest_shared_memory = Some((
-                            size,
-                            SharedMemory::from_file(descriptor)
-                                .map_err(WlError::FromSharedMemory)?,
-                        ));
+                        vfd.guest_shared_memory = Some(shm);
                         vfd.slot = Some((slot, pfn, vm));
                         Ok(vfd)
                     }
@@ -748,16 +747,16 @@ impl WlVfd {
 
     // Size in bytes of the shared memory VFD.
     fn size(&self) -> Option<u64> {
-        self.guest_shared_memory.as_ref().map(|&(size, _)| size)
+        self.guest_shared_memory.as_ref().map(|shm| shm.size())
     }
 
     // The FD that gets sent if this VFD is sent over a socket.
     fn send_descriptor(&self) -> Option<RawDescriptor> {
         self.guest_shared_memory
             .as_ref()
-            .map(|(_, shm)| shm.as_raw_descriptor())
-            .or_else(|| self.socket.as_ref().map(|s| s.as_raw_descriptor()))
-            .or_else(|| self.remote_pipe.as_ref().map(|p| p.as_raw_descriptor()))
+            .map(|shm| shm.as_raw_descriptor())
+            .or(self.socket.as_ref().map(|s| s.as_raw_descriptor()))
+            .or(self.remote_pipe.as_ref().map(|p| p.as_raw_descriptor()))
     }
 
     // The FD that is used for polling for events on this VFD.
@@ -842,7 +841,7 @@ impl WlVfd {
 
     fn close(&mut self) -> WlResult<()> {
         if let Some((slot, _, vm)) = self.slot.take() {
-            vm.request(VmMemoryRequest::UnregisterMemory(slot))?;
+            vm.request(&VmMemoryRequest::UnregisterMemory(slot))?;
         }
         self.socket = None;
         self.remote_pipe = None;
@@ -867,7 +866,7 @@ enum WlRecv {
 struct WlState {
     wayland_paths: Map<String, PathBuf>,
     vm: VmRequester,
-    resource_bridge: Option<ResourceRequestSocket>,
+    resource_bridge: Option<Tube>,
     use_transition_flags: bool,
     wait_ctx: WaitContext<u32>,
     vfds: Map<u32, WlVfd>,
@@ -884,14 +883,14 @@ struct WlState {
 impl WlState {
     fn new(
         wayland_paths: Map<String, PathBuf>,
-        vm_socket: VmMemoryControlRequestSocket,
+        vm_tube: Tube,
         use_transition_flags: bool,
         use_send_vfd_v2: bool,
-        resource_bridge: Option<ResourceRequestSocket>,
+        resource_bridge: Option<Tube>,
     ) -> WlState {
         WlState {
             wayland_paths,
-            vm: VmRequester::new(vm_socket),
+            vm: VmRequester::new(vm_tube),
             resource_bridge,
             wait_ctx: WaitContext::new().expect("failed to create WaitContext"),
             use_transition_flags,
@@ -1476,10 +1475,10 @@ impl Worker {
         in_queue: Queue,
         out_queue: Queue,
         wayland_paths: Map<String, PathBuf>,
-        vm_socket: VmMemoryControlRequestSocket,
+        vm_tube: Tube,
         use_transition_flags: bool,
         use_send_vfd_v2: bool,
-        resource_bridge: Option<ResourceRequestSocket>,
+        resource_bridge: Option<Tube>,
     ) -> Worker {
         Worker {
             interrupt,
@@ -1488,7 +1487,7 @@ impl Worker {
             out_queue,
             state: WlState::new(
                 wayland_paths,
-                vm_socket,
+                vm_tube,
                 use_transition_flags,
                 use_send_vfd_v2,
                 resource_bridge,
@@ -1660,8 +1659,8 @@ pub struct Wl {
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<()>>,
     wayland_paths: Map<String, PathBuf>,
-    vm_socket: Option<VmMemoryControlRequestSocket>,
-    resource_bridge: Option<ResourceRequestSocket>,
+    vm_socket: Option<Tube>,
+    resource_bridge: Option<Tube>,
     use_transition_flags: bool,
     use_send_vfd_v2: bool,
     base_features: u64,
@@ -1671,14 +1670,14 @@ impl Wl {
     pub fn new(
         base_features: u64,
         wayland_paths: Map<String, PathBuf>,
-        vm_socket: VmMemoryControlRequestSocket,
-        resource_bridge: Option<ResourceRequestSocket>,
+        vm_tube: Tube,
+        resource_bridge: Option<Tube>,
     ) -> Result<Wl> {
         Ok(Wl {
             kill_evt: None,
             worker_thread: None,
             wayland_paths,
-            vm_socket: Some(vm_socket),
+            vm_socket: Some(vm_tube),
             resource_bridge,
             use_transition_flags: false,
             use_send_vfd_v2: false,

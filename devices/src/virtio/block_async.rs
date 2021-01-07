@@ -20,14 +20,16 @@ use thiserror::Error as ThisError;
 
 use base::Error as SysError;
 use base::Result as SysResult;
-use base::{error, info, iov_max, warn, AsRawDescriptor, Event, RawDescriptor, Timer};
+use base::{
+    error, info, iov_max, warn, AsRawDescriptor, AsyncTube, Event, RawDescriptor, Timer, Tube,
+    TubeError,
+};
 use cros_async::{
     select5, sync::Mutex as AsyncMutex, AsyncError, EventAsync, Executor, SelectResult, TimerAsync,
 };
 use data_model::{DataInit, Le16, Le32, Le64};
 use disk::{AsyncDisk, ToAsyncDisk};
-use msg_socket::{MsgError, MsgSender};
-use vm_control::{DiskControlCommand, DiskControlResponseSocket, DiskControlResult};
+use vm_control::{DiskControlCommand, DiskControlResult};
 use vm_memory::GuestMemory;
 
 use super::{
@@ -151,8 +153,6 @@ unsafe impl DataInit for virtio_blk_discard_write_zeroes {}
 enum ExecuteError {
     #[error("failed to copy ID string: {0}")]
     CopyId(io::Error),
-    #[error("couldn't create a message receiver: {0}")]
-    CreatingMessageReceiver(MsgError),
     #[error("virtio descriptor error: {0}")]
     Descriptor(DescriptorError),
     #[error("failed to perform discard or write zeroes; sector={sector} num_sectors={num_sectors} flags={flags}; {ioerr:?}")]
@@ -178,10 +178,10 @@ enum ExecuteError {
     },
     #[error("read only; request_type={request_type}")]
     ReadOnly { request_type: u32 },
-    #[error("failed to read command message: {0}")]
-    ReceivingCommand(MsgError),
+    #[error("failed to recieve command message: {0}")]
+    ReceivingCommand(TubeError),
     #[error("failed to send command response: {0}")]
-    SendingResponse(MsgError),
+    SendingResponse(TubeError),
     #[error("couldn't reset the timer: {0}")]
     TimerReset(base::Error),
     #[error("unsupported ({0})")]
@@ -200,7 +200,6 @@ impl ExecuteError {
     fn status(&self) -> u8 {
         match self {
             ExecuteError::CopyId(_) => VIRTIO_BLK_S_IOERR,
-            ExecuteError::CreatingMessageReceiver(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::Descriptor(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::DiscardWriteZeroes { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
@@ -370,24 +369,20 @@ async fn wait_kill(kill_evt: EventAsync) {
     let _ = kill_evt.next_val().await;
 }
 
-async fn handle_command_socket(
-    ex: &Executor,
-    command_socket: &Option<DiskControlResponseSocket>,
+async fn handle_command_tube(
+    command_tube: &Option<AsyncTube>,
     interrupt: Rc<RefCell<Interrupt>>,
     disk_state: Rc<AsyncMutex<DiskState>>,
 ) -> Result<(), ExecuteError> {
-    let command_socket = match command_socket {
+    let command_tube = match command_tube {
         Some(c) => c,
         None => {
             let () = futures::future::pending().await;
             return Ok(());
         }
     };
-    let mut async_messages = command_socket
-        .async_receiver(ex)
-        .map_err(ExecuteError::CreatingMessageReceiver)?;
     loop {
-        match async_messages.next().await {
+        match command_tube.next().await {
             Ok(command) => {
                 let resp = match command {
                     DiskControlCommand::Resize { new_size } => {
@@ -395,7 +390,7 @@ async fn handle_command_socket(
                     }
                 };
 
-                command_socket
+                command_tube
                     .send(&resp)
                     .map_err(ExecuteError::SendingResponse)?;
                 if let DiskControlResult::Ok = resp {
@@ -475,7 +470,7 @@ fn run_worker(
     queues: Vec<Queue>,
     mem: GuestMemory,
     disk_state: &Rc<AsyncMutex<DiskState>>,
-    control_socket: &Option<DiskControlResponseSocket>,
+    control_tube: &Option<AsyncTube>,
     queue_evts: Vec<Event>,
     kill_evt: Event,
 ) -> Result<(), String> {
@@ -527,7 +522,7 @@ fn run_worker(
     pin_mut!(disk_flush);
 
     // Handles control requests.
-    let control = handle_command_socket(&ex, control_socket, interrupt.clone(), disk_state.clone());
+    let control = handle_command_tube(control_tube, interrupt.clone(), disk_state.clone());
     pin_mut!(control);
 
     // Process any requests to resample the irq value.
@@ -559,8 +554,7 @@ fn run_worker(
 /// Virtio device for exposing block level read/write operations on a host file.
 pub struct BlockAsync {
     kill_evt: Option<Event>,
-    worker_thread:
-        Option<thread::JoinHandle<(Box<dyn ToAsyncDisk>, Option<DiskControlResponseSocket>)>>,
+    worker_thread: Option<thread::JoinHandle<(Box<dyn ToAsyncDisk>, Option<Tube>)>>,
     disk_image: Option<Box<dyn ToAsyncDisk>>,
     disk_size: Arc<AtomicU64>,
     avail_features: u64,
@@ -569,7 +563,7 @@ pub struct BlockAsync {
     seg_max: u32,
     block_size: u32,
     id: Option<BlockId>,
-    control_socket: Option<DiskControlResponseSocket>,
+    control_tube: Option<Tube>,
 }
 
 fn build_config_space(disk_size: u64, seg_max: u32, block_size: u32) -> virtio_blk_config {
@@ -598,7 +592,7 @@ impl BlockAsync {
         sparse: bool,
         block_size: u32,
         id: Option<BlockId>,
-        control_socket: Option<DiskControlResponseSocket>,
+        control_tube: Option<Tube>,
     ) -> SysResult<BlockAsync> {
         if block_size % SECTOR_SIZE as u32 != 0 {
             error!(
@@ -648,7 +642,7 @@ impl BlockAsync {
             seg_max,
             block_size,
             id,
-            control_socket,
+            control_tube,
         })
     }
 
@@ -840,8 +834,8 @@ impl VirtioDevice for BlockAsync {
             keep_rds.extend(disk_image.as_raw_descriptors());
         }
 
-        if let Some(control_socket) = &self.control_socket {
-            keep_rds.push(control_socket.as_raw_descriptor());
+        if let Some(control_tube) = &self.control_tube {
+            keep_rds.push(control_tube.as_raw_descriptor());
         }
 
         keep_rds
@@ -888,12 +882,14 @@ impl VirtioDevice for BlockAsync {
         let disk_size = self.disk_size.clone();
         let id = self.id.take();
         if let Some(disk_image) = self.disk_image.take() {
-            let control_socket = self.control_socket.take();
+            let control_tube = self.control_tube.take();
             let worker_result =
                 thread::Builder::new()
                     .name("virtio_blk".to_string())
                     .spawn(move || {
                         let ex = Executor::new().expect("Failed to create an executor");
+                        let async_control = control_tube
+                            .map(|c| c.into_async_tube(&ex).expect("failed to create async tube"));
                         let async_image = match disk_image.to_async_disk(&ex) {
                             Ok(d) => d,
                             Err(e) => panic!("Failed to create async disk {}", e),
@@ -911,7 +907,7 @@ impl VirtioDevice for BlockAsync {
                             queues,
                             mem,
                             &disk_state,
-                            &control_socket,
+                            &async_control,
                             queue_evts,
                             kill_evt,
                         ) {
@@ -922,7 +918,10 @@ impl VirtioDevice for BlockAsync {
                             Ok(d) => d.into_inner(),
                             Err(_) => panic!("too many refs to the disk"),
                         };
-                        (disk_state.disk_image.into_inner(), control_socket)
+                        (
+                            disk_state.disk_image.into_inner(),
+                            async_control.map(|c| c.into()),
+                        )
                     });
 
             match worker_result {
@@ -951,9 +950,9 @@ impl VirtioDevice for BlockAsync {
                     error!("{}: failed to get back resources", self.debug_label());
                     return false;
                 }
-                Ok((disk_image, control_socket)) => {
+                Ok((disk_image, control_tube)) => {
                     self.disk_image = Some(disk_image);
-                    self.control_socket = control_socket;
+                    self.control_tube = control_tube;
                     return true;
                 }
             }

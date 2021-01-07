@@ -15,35 +15,34 @@ pub mod gdb;
 
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::mem::ManuallyDrop;
 use std::os::raw::c_int;
 use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::Arc;
 
 use libc::{EINVAL, EIO, ENODEV};
+use serde::{Deserialize, Serialize};
 
 use base::{
-    error, AsRawDescriptor, Error as SysError, Event, ExternalMapping, Fd, FromRawDescriptor,
-    IntoRawDescriptor, MappedRegion, MemoryMappingArena, MemoryMappingBuilder, MmapError,
-    Protection, RawDescriptor, Result, SafeDescriptor,
+    error, with_as_descriptor, AsRawDescriptor, Error as SysError, Event, ExternalMapping, Fd,
+    FromRawDescriptor, IntoRawDescriptor, MappedRegion, MemoryMappingArena, MemoryMappingBuilder,
+    MmapError, Protection, Result, SafeDescriptor, SharedMemory, Tube,
 };
 use hypervisor::{IrqRoute, IrqSource, Vm};
-use msg_socket::{MsgError, MsgOnSocket, MsgReceiver, MsgResult, MsgSender, MsgSocket};
 use resources::{Alloc, MmioType, SystemAllocator};
 use rutabaga_gfx::{DrmFormat, ImageAllocationInfo, RutabagaGralloc, RutabagaGrallocFlags};
 use sync::Mutex;
 use vm_memory::GuestAddress;
 
 /// Struct that describes the offset and stride of a plane located in GPU memory.
-#[derive(Clone, Copy, Debug, PartialEq, Default, MsgOnSocket)]
+#[derive(Clone, Copy, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct GpuMemoryPlaneDesc {
     pub stride: u32,
     pub offset: u32,
 }
 
 /// Struct that describes a GPU memory allocation that consists of up to 3 planes.
-#[derive(Clone, Copy, Debug, Default, MsgOnSocket)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct GpuMemoryDesc {
     pub planes: [GpuMemoryPlaneDesc; 3],
 }
@@ -58,66 +57,6 @@ pub enum VcpuControl {
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     Debug(VcpuDebug),
     RunState(VmRunMode),
-}
-
-/// A file descriptor either borrowed or owned by this.
-#[derive(Debug)]
-pub enum MaybeOwnedDescriptor {
-    /// Owned by this enum variant, and will be destructed automatically if not moved out.
-    Owned(SafeDescriptor),
-    /// A file descriptor borrwed by this enum.
-    Borrowed(RawDescriptor),
-}
-
-impl AsRawDescriptor for MaybeOwnedDescriptor {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        match self {
-            MaybeOwnedDescriptor::Owned(f) => f.as_raw_descriptor(),
-            MaybeOwnedDescriptor::Borrowed(descriptor) => *descriptor,
-        }
-    }
-}
-
-impl AsRawDescriptor for &MaybeOwnedDescriptor {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        match self {
-            MaybeOwnedDescriptor::Owned(f) => f.as_raw_descriptor(),
-            MaybeOwnedDescriptor::Borrowed(descriptor) => *descriptor,
-        }
-    }
-}
-
-// When sent, it could be owned or borrowed. On the receiver end, it always owned.
-impl MsgOnSocket for MaybeOwnedDescriptor {
-    fn uses_descriptor() -> bool {
-        true
-    }
-    fn fixed_size() -> Option<usize> {
-        Some(0)
-    }
-    fn descriptor_count(&self) -> usize {
-        1usize
-    }
-    unsafe fn read_from_buffer(
-        buffer: &[u8],
-        descriptors: &[RawDescriptor],
-    ) -> MsgResult<(Self, usize)> {
-        let (file, size) = File::read_from_buffer(buffer, descriptors)?;
-        let safe_descriptor = SafeDescriptor::from_raw_descriptor(file.into_raw_descriptor());
-        Ok((MaybeOwnedDescriptor::Owned(safe_descriptor), size))
-    }
-    fn write_to_buffer(
-        &self,
-        _buffer: &mut [u8],
-        descriptors: &mut [RawDescriptor],
-    ) -> MsgResult<usize> {
-        if descriptors.is_empty() {
-            return Err(MsgError::WrongDescriptorBufferSize);
-        }
-
-        descriptors[0] = self.as_raw_descriptor();
-        Ok(1)
-    }
 }
 
 /// Mode of execution for the VM.
@@ -159,7 +98,7 @@ impl Default for VmRunMode {
 /// require adding a big dependency for a single const.
 pub const USB_CONTROL_MAX_PORTS: usize = 16;
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum BalloonControlCommand {
     /// Set the size of the VM's balloon.
     Adjust {
@@ -169,7 +108,7 @@ pub enum BalloonControlCommand {
 }
 
 // BalloonStats holds stats returned from the stats_queue.
-#[derive(Default, MsgOnSocket, Debug)]
+#[derive(Default, Serialize, Deserialize, Debug)]
 pub struct BalloonStats {
     pub swap_in: Option<u64>,
     pub swap_out: Option<u64>,
@@ -220,7 +159,7 @@ impl Display for BalloonStats {
     }
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum BalloonControlResult {
     Stats {
         stats: BalloonStats,
@@ -228,7 +167,7 @@ pub enum BalloonControlResult {
     },
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum DiskControlCommand {
     /// Resize a disk to `new_size` in bytes.
     Resize { new_size: u64 },
@@ -244,20 +183,21 @@ impl Display for DiskControlCommand {
     }
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum DiskControlResult {
     Ok,
     Err(SysError),
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum UsbControlCommand {
     AttachDevice {
         bus: u8,
         addr: u8,
         vid: u16,
         pid: u16,
-        descriptor: Option<MaybeOwnedDescriptor>,
+        #[serde(with = "with_as_descriptor")]
+        file: File,
     },
     DetachDevice {
         port: u8,
@@ -267,7 +207,7 @@ pub enum UsbControlCommand {
     },
 }
 
-#[derive(MsgOnSocket, Copy, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Default)]
 pub struct UsbControlAttachedDevice {
     pub port: u8,
     pub vendor_id: u16,
@@ -280,7 +220,7 @@ impl UsbControlAttachedDevice {
     }
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum UsbControlResult {
     Ok { port: u8 },
     NoAvailablePort,
@@ -295,7 +235,7 @@ impl Display for UsbControlResult {
         use self::UsbControlResult::*;
 
         match self {
-            Ok { port } => write!(f, "ok {}", port),
+            UsbControlResult::Ok { port } => write!(f, "ok {}", port),
             NoAvailablePort => write!(f, "no_available_port"),
             NoSuchDevice => write!(f, "no_such_device"),
             NoSuchPort => write!(f, "no_such_port"),
@@ -311,14 +251,14 @@ impl Display for UsbControlResult {
     }
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize)]
 pub enum VmMemoryRequest {
     /// Register shared memory represented by the given descriptor into guest address space.
     /// The response variant is `VmResponse::RegisterMemory`.
-    RegisterMemory(MaybeOwnedDescriptor, usize),
+    RegisterMemory(SharedMemory),
     /// Similiar to `VmMemoryRequest::RegisterMemory`, but doesn't allocate new address space.
     /// Useful for cases where the address space is already allocated (PCI regions).
-    RegisterFdAtPciBarOffset(Alloc, MaybeOwnedDescriptor, usize, u64),
+    RegisterFdAtPciBarOffset(Alloc, SafeDescriptor, usize, u64),
     /// Similar to RegisterFdAtPciBarOffset, but is for buffers in the current address space.
     RegisterHostPointerAtPciBarOffset(Alloc, u64),
     /// Unregister the given memory slot that was previously registered with `RegisterMemory*`.
@@ -332,7 +272,7 @@ pub enum VmMemoryRequest {
     },
     /// Register mmaped memory into the hypervisor's EPT.
     RegisterMmapMemory {
-        descriptor: MaybeOwnedDescriptor,
+        descriptor: SafeDescriptor,
         size: usize,
         offset: u64,
         gpa: u64,
@@ -358,8 +298,8 @@ impl VmMemoryRequest {
     ) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
         match *self {
-            RegisterMemory(ref descriptor, size) => {
-                match register_memory(vm, sys_allocator, descriptor, size, None) {
+            RegisterMemory(ref shm) => {
+                match register_memory(vm, sys_allocator, shm, shm.size() as usize, None) {
                     Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
                     Err(e) => VmMemoryResponse::Err(e),
                 }
@@ -438,11 +378,11 @@ impl VmMemoryRequest {
                     Ok((pfn, slot)) => VmMemoryResponse::AllocateAndRegisterGpuMemory {
                         // Safe because ownership is transferred to SafeDescriptor via
                         // into_raw_descriptor
-                        descriptor: MaybeOwnedDescriptor::Owned(unsafe {
+                        descriptor: unsafe {
                             SafeDescriptor::from_raw_descriptor(
                                 handle.os_handle.into_raw_descriptor(),
                             )
-                        }),
+                        },
                         pfn,
                         slot,
                         desc,
@@ -473,7 +413,7 @@ impl VmMemoryRequest {
     }
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum VmMemoryResponse {
     /// The request to register memory into guest address space was successfully done at page frame
     /// number `pfn` and memory slot number `slot`.
@@ -484,7 +424,7 @@ pub enum VmMemoryResponse {
     /// The request to allocate and register GPU memory into guest address space was successfully
     /// done at page frame number `pfn` and memory slot number `slot` for buffer with `desc`.
     AllocateAndRegisterGpuMemory {
-        descriptor: MaybeOwnedDescriptor,
+        descriptor: SafeDescriptor,
         pfn: u64,
         slot: MemSlot,
         desc: GpuMemoryDesc,
@@ -493,10 +433,10 @@ pub enum VmMemoryResponse {
     Err(SysError),
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum VmIrqRequest {
     /// Allocate one gsi, and associate gsi to irqfd with register_irqfd()
-    AllocateOneMsi { irqfd: MaybeOwnedDescriptor },
+    AllocateOneMsi { irqfd: Event },
     /// Add one msi route entry into the IRQ chip.
     AddMsiRoute {
         gsi: u32,
@@ -530,19 +470,7 @@ impl VmIrqRequest {
         match *self {
             AllocateOneMsi { ref irqfd } => {
                 if let Some(irq_num) = sys_allocator.allocate_irq() {
-                    // Because of the limitation of `MaybeOwnedDescriptor` not fitting into
-                    // `register_irqfd` which expects an `&Event`, we use the unsafe `from_raw_fd`
-                    // to assume that the descriptor given is an `Event`, and we ignore the
-                    // ownership question using `ManuallyDrop`. This is safe because `ManuallyDrop`
-                    // prevents any Drop implementation from triggering on `irqfd` which already has
-                    // an owner, and the `Event` methods are never called. The underlying descriptor
-                    // is merely passed to the kernel which doesn't care about ownership and deals
-                    // with incorrect FDs, in the case of bugs on our part.
-                    let evt = unsafe {
-                        ManuallyDrop::new(Event::from_raw_descriptor(irqfd.as_raw_descriptor()))
-                    };
-
-                    match set_up_irq(IrqSetup::Event(irq_num, &evt)) {
+                    match set_up_irq(IrqSetup::Event(irq_num, &irqfd)) {
                         Ok(_) => VmIrqResponse::AllocateOneMsi { gsi: irq_num },
                         Err(e) => VmIrqResponse::Err(e),
                     }
@@ -571,14 +499,14 @@ impl VmIrqRequest {
     }
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum VmIrqResponse {
     AllocateOneMsi { gsi: u32 },
     Ok,
     Err(SysError),
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum VmMsyncRequest {
     /// Flush the content of a memory mapping to its backing file.
     /// `slot` selects the arena (as returned by `Vm::add_mmap_arena`).
@@ -591,7 +519,7 @@ pub enum VmMsyncRequest {
     },
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum VmMsyncResponse {
     Ok,
     Err(SysError),
@@ -617,7 +545,7 @@ impl VmMsyncRequest {
     }
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum BatControlResult {
     Ok,
     NoBatDevice,
@@ -644,7 +572,7 @@ impl Display for BatControlResult {
     }
 }
 
-#[derive(MsgOnSocket, Copy, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
 pub enum BatteryType {
     Goldfish,
 }
@@ -666,7 +594,7 @@ impl FromStr for BatteryType {
     }
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum BatProperty {
     Status,
     Health,
@@ -690,7 +618,7 @@ impl FromStr for BatProperty {
     }
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum BatStatus {
     Unknown,
     Charging,
@@ -733,7 +661,7 @@ impl From<BatStatus> for u32 {
     }
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum BatHealth {
     Unknown,
     Good,
@@ -773,7 +701,7 @@ impl From<BatHealth> for u32 {
     }
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum BatControlCommand {
     SetStatus(BatStatus),
     SetHealth(BatHealth),
@@ -810,10 +738,10 @@ impl BatControlCommand {
 /// Used for VM to control battery properties.
 pub struct BatControl {
     pub type_: BatteryType,
-    pub control_socket: BatControlRequestSocket,
+    pub control_tube: Tube,
 }
 
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum FsMappingRequest {
     /// Create an anonymous memory mapping that spans the entire region described by `Alloc`.
     AllocateSharedMemoryRegion(Alloc),
@@ -823,7 +751,7 @@ pub enum FsMappingRequest {
         /// `AllocateSharedMemoryRegion` request.
         slot: u32,
         /// The file descriptor that should be mapped.
-        fd: MaybeOwnedDescriptor,
+        fd: SafeDescriptor,
         /// The size of the mapping.
         size: usize,
         /// The offset into the file from where the mapping should start.
@@ -918,37 +846,10 @@ impl FsMappingRequest {
         }
     }
 }
-
-pub type BalloonControlRequestSocket = MsgSocket<BalloonControlCommand, BalloonControlResult>;
-pub type BalloonControlResponseSocket = MsgSocket<BalloonControlResult, BalloonControlCommand>;
-
-pub type BatControlRequestSocket = MsgSocket<BatControlCommand, BatControlResult>;
-pub type BatControlResponseSocket = MsgSocket<BatControlResult, BatControlCommand>;
-
-pub type DiskControlRequestSocket = MsgSocket<DiskControlCommand, DiskControlResult>;
-pub type DiskControlResponseSocket = MsgSocket<DiskControlResult, DiskControlCommand>;
-
-pub type FsMappingRequestSocket = MsgSocket<FsMappingRequest, VmResponse>;
-pub type FsMappingResponseSocket = MsgSocket<VmResponse, FsMappingRequest>;
-
-pub type UsbControlSocket = MsgSocket<UsbControlCommand, UsbControlResult>;
-
-pub type VmMemoryControlRequestSocket = MsgSocket<VmMemoryRequest, VmMemoryResponse>;
-pub type VmMemoryControlResponseSocket = MsgSocket<VmMemoryResponse, VmMemoryRequest>;
-
-pub type VmIrqRequestSocket = MsgSocket<VmIrqRequest, VmIrqResponse>;
-pub type VmIrqResponseSocket = MsgSocket<VmIrqResponse, VmIrqRequest>;
-
-pub type VmMsyncRequestSocket = MsgSocket<VmMsyncRequest, VmMsyncResponse>;
-pub type VmMsyncResponseSocket = MsgSocket<VmMsyncResponse, VmMsyncRequest>;
-
-pub type VmControlRequestSocket = MsgSocket<VmRequest, VmResponse>;
-pub type VmControlResponseSocket = MsgSocket<VmResponse, VmRequest>;
-
 /// A request to the main process to perform some operation on the VM.
 ///
 /// Unless otherwise noted, each request should expect a `VmResponse::Ok` to be received on success.
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum VmRequest {
     /// Break the VM's run loop and exit.
     Exit,
@@ -1029,9 +930,9 @@ impl VmRequest {
     pub fn execute(
         &self,
         run_mode: &mut Option<VmRunMode>,
-        balloon_host_socket: &BalloonControlRequestSocket,
-        disk_host_sockets: &[DiskControlRequestSocket],
-        usb_control_socket: &UsbControlSocket,
+        balloon_host_tube: &Tube,
+        disk_host_tubes: &[Tube],
+        usb_control_tube: &Tube,
         bat_control: &mut Option<BatControl>,
     ) -> VmResponse {
         match *self {
@@ -1048,14 +949,14 @@ impl VmRequest {
                 VmResponse::Ok
             }
             VmRequest::BalloonCommand(BalloonControlCommand::Adjust { num_bytes }) => {
-                match balloon_host_socket.send(&BalloonControlCommand::Adjust { num_bytes }) {
+                match balloon_host_tube.send(&BalloonControlCommand::Adjust { num_bytes }) {
                     Ok(_) => VmResponse::Ok,
                     Err(_) => VmResponse::Err(SysError::last()),
                 }
             }
             VmRequest::BalloonCommand(BalloonControlCommand::Stats) => {
-                match balloon_host_socket.send(&BalloonControlCommand::Stats {}) {
-                    Ok(_) => match balloon_host_socket.recv() {
+                match balloon_host_tube.send(&BalloonControlCommand::Stats {}) {
+                    Ok(_) => match balloon_host_tube.recv() {
                         Ok(BalloonControlResult::Stats {
                             stats,
                             balloon_actual,
@@ -1076,7 +977,7 @@ impl VmRequest {
                 ref command,
             } => {
                 // Forward the request to the block device process via its control socket.
-                if let Some(sock) = disk_host_sockets.get(disk_index) {
+                if let Some(sock) = disk_host_tubes.get(disk_index) {
                     if let Err(e) = sock.send(command) {
                         error!("disk socket send failed: {}", e);
                         VmResponse::Err(SysError::new(EINVAL))
@@ -1095,12 +996,12 @@ impl VmRequest {
                 }
             }
             VmRequest::UsbCommand(ref cmd) => {
-                let res = usb_control_socket.send(cmd);
+                let res = usb_control_tube.send(cmd);
                 if let Err(e) = res {
                     error!("fail to send command to usb control socket: {}", e);
                     return VmResponse::Err(SysError::new(EIO));
                 }
-                match usb_control_socket.recv() {
+                match usb_control_tube.recv() {
                     Ok(response) => VmResponse::UsbResponse(response),
                     Err(e) => {
                         error!("fail to recv command from usb control socket: {}", e);
@@ -1116,13 +1017,13 @@ impl VmRequest {
                             return VmResponse::Err(SysError::new(EINVAL));
                         }
 
-                        let res = battery.control_socket.send(cmd);
+                        let res = battery.control_tube.send(cmd);
                         if let Err(e) = res {
                             error!("fail to send command to bat control socket: {}", e);
                             return VmResponse::Err(SysError::new(EIO));
                         }
 
-                        match battery.control_socket.recv() {
+                        match battery.control_tube.recv() {
                             Ok(response) => VmResponse::BatResponse(response),
                             Err(e) => {
                                 error!("fail to recv command from bat control socket: {}", e);
@@ -1140,7 +1041,7 @@ impl VmRequest {
 /// Indication of success or failure of a `VmRequest`.
 ///
 /// Success is usually indicated `VmResponse::Ok` unless there is data associated with the response.
-#[derive(MsgOnSocket, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum VmResponse {
     /// Indicates the request was executed successfully.
     Ok,
@@ -1152,7 +1053,7 @@ pub enum VmResponse {
     /// The request to allocate and register GPU memory into guest address space was successfully
     /// done at page frame number `pfn` and memory slot number `slot` for buffer with `desc`.
     AllocateAndRegisterGpuMemory {
-        descriptor: MaybeOwnedDescriptor,
+        descriptor: SafeDescriptor,
         pfn: u64,
         slot: u32,
         desc: GpuMemoryDesc,
@@ -1185,7 +1086,7 @@ impl Display for VmResponse {
                 "gpu memory allocated and registered to page frame number {:#x} and memory slot {}",
                 pfn, slot
             ),
-            BalloonStats {
+            VmResponse::BalloonStats {
                 stats,
                 balloon_actual,
             } => write!(

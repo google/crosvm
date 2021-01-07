@@ -58,7 +58,7 @@ pub const MIXER_EI_SDAC: u16 = 0x0080; // PCM Surround DAC is available.
 pub const MIXER_EI_LDAC: u16 = 0x0100; // PCM LFE DAC is available.
 
 // Basic capabilities for MIXER_RESET_00
-pub const BC_DEDICATED_MIC: u16 = 0x0001; /* Dedicated Mic PCM In Channel */
+pub const BC_DEDICATED_MIC: u16 = 0x0001; /* Dedicated Mic PCM In Tube */
 
 // Bus Master regs from ICH spec:
 // 00h PI_BDBAR PCM In Buffer Descriptor list Base Address Register
@@ -93,14 +93,14 @@ pub const GLOB_CNT_WARM_RESET: u32 = 0x0000_0004;
 pub const GLOB_CNT_STABLE_BITS: u32 = 0x0000_007f; // Bits not affected by reset.
 
 // PCM 4/6 Enable bits
-pub const GLOB_CNT_PCM_2: u32 = 0x0000_0000; // 2 channels
-pub const GLOB_CNT_PCM_4: u32 = 0x0010_0000; // 4 channels
-pub const GLOB_CNT_PCM_6: u32 = 0x0020_0000; // 6 channels
-pub const GLOB_CNT_PCM_246_MASK: u32 = GLOB_CNT_PCM_4 | GLOB_CNT_PCM_6; // channel mask
+pub const GLOB_CNT_PCM_2: u32 = 0x0000_0000; // 2 tubes
+pub const GLOB_CNT_PCM_4: u32 = 0x0010_0000; // 4 tubes
+pub const GLOB_CNT_PCM_6: u32 = 0x0020_0000; // 6 tubes
+pub const GLOB_CNT_PCM_246_MASK: u32 = GLOB_CNT_PCM_4 | GLOB_CNT_PCM_6; // tube mask
 
 // Global status
 pub const GLOB_STA_30: u64 = 0x30;
-// Primary codec ready set and turn on D20:21 to support 4 and 6 channels on PCM out.
+// Primary codec ready set and turn on D20:21 to support 4 and 6 tubes on PCM out.
 pub const GLOB_STA_RESET_VAL: u32 = 0x0030_0100;
 
 // glob_sta bits

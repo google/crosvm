@@ -32,7 +32,8 @@ use libc::{self, c_int, gid_t, uid_t};
 
 use acpi_tables::sdt::SDT;
 
-use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
+use base::net::{UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
+use base::*;
 use devices::virtio::vhost::user::{
     Block as VhostUserBlock, Error as VhostUserError, Fs as VhostUserFs, Net as VhostUserNet,
 };
@@ -48,33 +49,12 @@ use devices::{
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
 use hypervisor::{HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
 use minijail::{self, Minijail};
-use msg_socket::{MsgError, MsgReceiver, MsgSender, MsgSocket};
 use net_util::{Error as NetError, MacAddress, Tap};
 use remain::sorted;
 use resources::{Alloc, MmioType, SystemAllocator};
 use rutabaga_gfx::RutabagaGralloc;
 use sync::Mutex;
-
-use base::{
-    self, block_signal, clear_signal, drop_capabilities, error, flock, get_blocked_signals,
-    get_group_id, get_user_id, getegid, geteuid, info, register_rt_signal_handler,
-    set_cpu_affinity, set_rt_prio_limit, set_rt_round_robin, signal, validate_raw_descriptor, warn,
-    AsRawDescriptor, Event, EventType, ExternalMapping, FlockOperation, FromRawDescriptor,
-    Killable, MemoryMappingArena, PollToken, Protection, RawDescriptor, ScopedEvent, SignalFd,
-    Terminal, Timer, WaitContext, SIGRTMIN,
-};
-use vm_control::{
-    BalloonControlCommand, BalloonControlRequestSocket, BalloonControlResponseSocket,
-    BalloonControlResult, BalloonStats, DiskControlCommand, DiskControlRequestSocket,
-    DiskControlResponseSocket, DiskControlResult, FsMappingRequest, FsMappingRequestSocket,
-    FsMappingResponseSocket, IrqSetup, UsbControlSocket, VcpuControl, VmControlResponseSocket,
-    VmIrqRequest, VmIrqRequestSocket, VmIrqResponse, VmIrqResponseSocket,
-    VmMemoryControlRequestSocket, VmMemoryControlResponseSocket, VmMemoryRequest, VmMemoryResponse,
-    VmMsyncRequest, VmMsyncRequestSocket, VmMsyncResponse, VmMsyncResponseSocket, VmResponse,
-    VmRunMode,
-};
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-use vm_control::{VcpuDebug, VcpuDebugStatus, VcpuDebugStatusMessage, VmRequest};
+use vm_control::*;
 use vm_memory::{GuestAddress, GuestMemory};
 
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
@@ -121,6 +101,7 @@ pub enum Error {
     #[cfg(feature = "audio")]
     CreateAc97(devices::PciDeviceError),
     CreateConsole(arch::serial::Error),
+    CreateControlServer(io::Error),
     CreateDiskError(disk::Error),
     CreateEvent(base::Error),
     CreateGrallocError(rutabaga_gfx::RutabagaError),
@@ -129,6 +110,7 @@ pub enum Error {
     CreateTapDevice(NetError),
     CreateTimer(base::Error),
     CreateTpmStorage(PathBuf, io::Error),
+    CreateTube(TubeError),
     CreateUsbProvider(devices::usb::host_backend::error::Error),
     CreateVcpu(base::Error),
     CreateVfioDevice(devices::vfio::VfioError),
@@ -233,6 +215,7 @@ impl Display for Error {
             #[cfg(feature = "audio")]
             CreateAc97(e) => write!(f, "failed to create ac97 device: {}", e),
             CreateConsole(e) => write!(f, "failed to create console device: {}", e),
+            CreateControlServer(e) => write!(f, "failed to create control server: {}", e),
             CreateDiskError(e) => write!(f, "failed to create virtual disk: {}", e),
             CreateEvent(e) => write!(f, "failed to create event: {}", e),
             CreateGrallocError(e) => write!(f, "failed to create gralloc: {}", e),
@@ -243,6 +226,7 @@ impl Display for Error {
             CreateTpmStorage(p, e) => {
                 write!(f, "failed to create tpm storage dir {}: {}", p.display(), e)
             }
+            CreateTube(e) => write!(f, "failed to create tube: {}", e),
             CreateUsbProvider(e) => write!(f, "failed to create usb provider: {}", e),
             CreateVcpu(e) => write!(f, "failed to create vcpu: {}", e),
             CreateVfioDevice(e) => write!(f, "Failed to create vfio device {}", e),
@@ -357,28 +341,24 @@ impl std::error::Error for Error {}
 
 type Result<T> = std::result::Result<T, Error>;
 
-enum TaggedControlSocket {
-    Fs(FsMappingResponseSocket),
-    Vm(VmControlResponseSocket),
-    VmMemory(VmMemoryControlResponseSocket),
-    VmIrq(VmIrqResponseSocket),
-    VmMsync(VmMsyncResponseSocket),
+enum TaggedControlTube {
+    Fs(Tube),
+    Vm(Tube),
+    VmMemory(Tube),
+    VmIrq(Tube),
+    VmMsync(Tube),
 }
 
-impl AsRef<UnixSeqpacket> for TaggedControlSocket {
-    fn as_ref(&self) -> &UnixSeqpacket {
-        use self::TaggedControlSocket::*;
+impl AsRef<Tube> for TaggedControlTube {
+    fn as_ref(&self) -> &Tube {
+        use self::TaggedControlTube::*;
         match &self {
-            Fs(ref socket) => socket.as_ref(),
-            Vm(ref socket) => socket.as_ref(),
-            VmMemory(ref socket) => socket.as_ref(),
-            VmIrq(ref socket) => socket.as_ref(),
-            VmMsync(ref socket) => socket.as_ref(),
+            Fs(tube) | Vm(tube) | VmMemory(tube) | VmIrq(tube) | VmMsync(tube) => tube,
         }
     }
 }
 
-impl AsRawDescriptor for TaggedControlSocket {
+impl AsRawDescriptor for TaggedControlTube {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.as_ref().as_raw_descriptor()
     }
@@ -504,11 +484,7 @@ fn simple_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
 
 type DeviceResult<T = VirtioDeviceStub> = std::result::Result<T, Error>;
 
-fn create_block_device(
-    cfg: &Config,
-    disk: &DiskOption,
-    disk_device_socket: DiskControlResponseSocket,
-) -> DeviceResult {
+fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) -> DeviceResult {
     // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
     let raw_image: File = if disk.path.parent() == Some(Path::new("/proc/self/fd")) {
         // Safe because we will validate |raw_fd|.
@@ -538,7 +514,7 @@ fn create_block_device(
                 disk.sparse,
                 disk.block_size,
                 disk.id,
-                Some(disk_device_socket),
+                Some(disk_device_tube),
             )
             .map_err(Error::BlockDeviceNew)?,
         ) as Box<dyn VirtioDevice>
@@ -552,7 +528,7 @@ fn create_block_device(
                 disk.sparse,
                 disk.block_size,
                 disk.id,
-                Some(disk_device_socket),
+                Some(disk_device_tube),
             )
             .map_err(Error::BlockDeviceNew)?,
         ) as Box<dyn VirtioDevice>
@@ -602,7 +578,6 @@ fn create_rng_device(cfg: &Config) -> DeviceResult {
 
 #[cfg(feature = "tpm")]
 fn create_tpm_device(cfg: &Config) -> DeviceResult {
-    use base::chown;
     use std::ffi::CString;
     use std::fs;
     use std::process;
@@ -778,8 +753,8 @@ fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
     })
 }
 
-fn create_balloon_device(cfg: &Config, socket: BalloonControlResponseSocket) -> DeviceResult {
-    let dev = virtio::Balloon::new(virtio::base_features(cfg.protected_vm), socket)
+fn create_balloon_device(cfg: &Config, tube: Tube) -> DeviceResult {
+    let dev = virtio::Balloon::new(virtio::base_features(cfg.protected_vm), tube)
         .map_err(Error::BalloonDeviceNew)?;
 
     Ok(VirtioDeviceStub {
@@ -871,8 +846,8 @@ fn create_vhost_user_net_device(cfg: &Config, opt: &VhostUserOption) -> DeviceRe
 fn create_gpu_device(
     cfg: &Config,
     exit_evt: &Event,
-    gpu_device_socket: VmMemoryControlRequestSocket,
-    gpu_sockets: Vec<virtio::resource_bridge::ResourceResponseSocket>,
+    gpu_device_tube: Tube,
+    resource_bridges: Vec<Tube>,
     wayland_socket_path: Option<&PathBuf>,
     x_display: Option<String>,
     event_devices: Vec<EventDevice>,
@@ -899,9 +874,9 @@ fn create_gpu_device(
 
     let dev = virtio::Gpu::new(
         exit_evt.try_clone().map_err(Error::CloneEvent)?,
-        Some(gpu_device_socket),
+        Some(gpu_device_tube),
         NonZeroU8::new(1).unwrap(), // number of scanouts
-        gpu_sockets,
+        resource_bridges,
         display_backends,
         cfg.gpu_parameters.as_ref().unwrap(),
         event_devices,
@@ -1031,8 +1006,8 @@ fn create_gpu_device(
 
 fn create_wayland_device(
     cfg: &Config,
-    socket: VmMemoryControlRequestSocket,
-    resource_bridge: Option<virtio::resource_bridge::ResourceRequestSocket>,
+    control_tube: Tube,
+    resource_bridge: Option<Tube>,
 ) -> DeviceResult {
     let wayland_socket_dirs = cfg
         .wayland_socket_paths
@@ -1045,7 +1020,7 @@ fn create_wayland_device(
     let dev = virtio::Wl::new(
         features,
         cfg.wayland_socket_paths.clone(),
-        socket,
+        control_tube,
         resource_bridge,
     )
     .map_err(Error::WaylandDeviceNew)?;
@@ -1086,7 +1061,7 @@ fn create_wayland_device(
 fn create_video_device(
     cfg: &Config,
     typ: devices::virtio::VideoDeviceType,
-    resource_bridge: virtio::resource_bridge::ResourceRequestSocket,
+    resource_bridge: Tube,
 ) -> DeviceResult {
     let jail = match simple_jail(&cfg, "video_device")? {
         Some(mut jail) => {
@@ -1149,14 +1124,13 @@ fn create_video_device(
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 fn register_video_device(
     devs: &mut Vec<VirtioDeviceStub>,
-    resource_bridges: &mut Vec<virtio::resource_bridge::ResourceResponseSocket>,
+    resource_bridges: &mut Vec<Tube>,
     cfg: &Config,
     typ: devices::virtio::VideoDeviceType,
 ) -> std::result::Result<(), Error> {
-    let (video_socket, gpu_socket) =
-        virtio::resource_bridge::pair().map_err(Error::CreateSocket)?;
-    resource_bridges.push(gpu_socket);
-    devs.push(create_video_device(cfg, typ, video_socket)?);
+    let (video_tube, gpu_tube) = Tube::pair().map_err(Error::CreateTube)?;
+    resource_bridges.push(gpu_tube);
+    devs.push(create_video_device(cfg, typ, video_tube)?);
     Ok(())
 }
 
@@ -1178,7 +1152,7 @@ fn create_fs_device(
     src: &Path,
     tag: &str,
     fs_cfg: virtio::fs::passthrough::Config,
-    device_socket: FsMappingRequestSocket,
+    device_tube: Tube,
 ) -> DeviceResult {
     let max_open_files = get_max_open_files()?;
     let j = if cfg.sandbox {
@@ -1204,7 +1178,7 @@ fn create_fs_device(
     // TODO(chirantan): Use more than one worker once the kernel driver has been fixed to not panic
     // when num_queues > 1.
     let dev =
-        virtio::fs::Fs::new(features, tag, 1, fs_cfg, device_socket).map_err(Error::FsDeviceNew)?;
+        virtio::fs::Fs::new(features, tag, 1, fs_cfg, device_tube).map_err(Error::FsDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1261,7 +1235,7 @@ fn create_pmem_device(
     resources: &mut SystemAllocator,
     disk: &DiskOption,
     index: usize,
-    pmem_device_socket: VmMsyncRequestSocket,
+    pmem_device_tube: Tube,
 ) -> DeviceResult {
     // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
     let fd: File = if disk.path.parent() == Some(Path::new("/proc/self/fd")) {
@@ -1340,7 +1314,7 @@ fn create_pmem_device(
         GuestAddress(mapping_address),
         slot,
         arena_size,
-        Some(pmem_device_socket),
+        Some(pmem_device_tube),
     )
     .map_err(Error::PmemDeviceNew)?;
 
@@ -1385,7 +1359,7 @@ fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult
     })
 }
 
-// gpu_device_socket is not used when GPU support is disabled.
+// gpu_device_tube is not used when GPU support is disabled.
 #[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
 fn create_virtio_devices(
     cfg: &Config,
@@ -1393,13 +1367,13 @@ fn create_virtio_devices(
     vm: &mut impl Vm,
     resources: &mut SystemAllocator,
     _exit_evt: &Event,
-    wayland_device_socket: VmMemoryControlRequestSocket,
-    gpu_device_socket: VmMemoryControlRequestSocket,
-    balloon_device_socket: BalloonControlResponseSocket,
-    disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
-    pmem_device_sockets: &mut Vec<VmMsyncRequestSocket>,
+    wayland_device_tube: Tube,
+    gpu_device_tube: Tube,
+    balloon_device_tube: Tube,
+    disk_device_tubes: &mut Vec<Tube>,
+    pmem_device_tubes: &mut Vec<Tube>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
-    fs_device_sockets: &mut Vec<FsMappingRequestSocket>,
+    fs_device_tubes: &mut Vec<Tube>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -1413,8 +1387,8 @@ fn create_virtio_devices(
     }
 
     for disk in &cfg.disks {
-        let disk_device_socket = disk_device_sockets.remove(0);
-        devs.push(create_block_device(cfg, disk, disk_device_socket)?);
+        let disk_device_tube = disk_device_tubes.remove(0);
+        devs.push(create_block_device(cfg, disk, disk_device_tube)?);
     }
 
     for blk in &cfg.vhost_user_blk {
@@ -1422,14 +1396,14 @@ fn create_virtio_devices(
     }
 
     for (index, pmem_disk) in cfg.pmem_devices.iter().enumerate() {
-        let pmem_device_socket = pmem_device_sockets.remove(0);
+        let pmem_device_tube = pmem_device_tubes.remove(0);
         devs.push(create_pmem_device(
             cfg,
             vm,
             resources,
             pmem_disk,
             index,
-            pmem_device_socket,
+            pmem_device_tube,
         )?);
     }
 
@@ -1470,7 +1444,7 @@ fn create_virtio_devices(
         devs.push(create_vinput_device(cfg, dev_path)?);
     }
 
-    devs.push(create_balloon_device(cfg, balloon_device_socket)?);
+    devs.push(create_balloon_device(cfg, balloon_device_tube)?);
 
     // We checked above that if the IP is defined, then the netmask is, too.
     for tap_fd in &cfg.tap_fd {
@@ -1491,17 +1465,16 @@ fn create_virtio_devices(
     }
 
     #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
-    let mut resource_bridges = Vec::<virtio::resource_bridge::ResourceResponseSocket>::new();
+    let mut resource_bridges = Vec::<Tube>::new();
 
     if !cfg.wayland_socket_paths.is_empty() {
         #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
-        let mut wl_resource_bridge = None::<virtio::resource_bridge::ResourceRequestSocket>;
+        let mut wl_resource_bridge = None::<Tube>;
 
         #[cfg(feature = "gpu")]
         {
             if cfg.gpu_parameters.is_some() {
-                let (wl_socket, gpu_socket) =
-                    virtio::resource_bridge::pair().map_err(Error::CreateSocket)?;
+                let (wl_socket, gpu_socket) = Tube::pair().map_err(Error::CreateTube)?;
                 resource_bridges.push(gpu_socket);
                 wl_resource_bridge = Some(wl_socket);
             }
@@ -1509,7 +1482,7 @@ fn create_virtio_devices(
 
         devs.push(create_wayland_device(
             cfg,
-            wayland_device_socket,
+            wayland_device_tube,
             wl_resource_bridge,
         )?);
     }
@@ -1580,7 +1553,7 @@ fn create_virtio_devices(
             devs.push(create_gpu_device(
                 cfg,
                 _exit_evt,
-                gpu_device_socket,
+                gpu_device_tube,
                 resource_bridges,
                 // Use the unnamed socket for GPU display screens.
                 cfg.wayland_socket_paths.get(""),
@@ -1613,16 +1586,8 @@ fn create_virtio_devices(
 
         let dev = match kind {
             SharedDirKind::FS => {
-                let device_socket = fs_device_sockets.remove(0);
-                create_fs_device(
-                    cfg,
-                    uid_map,
-                    gid_map,
-                    src,
-                    tag,
-                    fs_cfg.clone(),
-                    device_socket,
-                )?
+                let device_tube = fs_device_tubes.remove(0);
+                create_fs_device(cfg, uid_map, gid_map, src, tag, fs_cfg.clone(), device_tube)?
             }
             SharedDirKind::P9 => create_9p_device(cfg, uid_map, gid_map, src, tag, p9_cfg.clone())?,
         };
@@ -1638,13 +1603,13 @@ fn create_devices(
     vm: &mut impl Vm,
     resources: &mut SystemAllocator,
     exit_evt: &Event,
-    control_sockets: &mut Vec<TaggedControlSocket>,
-    wayland_device_socket: VmMemoryControlRequestSocket,
-    gpu_device_socket: VmMemoryControlRequestSocket,
-    balloon_device_socket: BalloonControlResponseSocket,
-    disk_device_sockets: &mut Vec<DiskControlResponseSocket>,
-    pmem_device_sockets: &mut Vec<VmMsyncRequestSocket>,
-    fs_device_sockets: &mut Vec<FsMappingRequestSocket>,
+    control_tubes: &mut Vec<TaggedControlTube>,
+    wayland_device_tube: Tube,
+    gpu_device_tube: Tube,
+    balloon_device_tube: Tube,
+    disk_device_tubes: &mut Vec<Tube>,
+    pmem_device_tubes: &mut Vec<Tube>,
+    fs_device_tubes: &mut Vec<Tube>,
     usb_provider: HostBackendDeviceProvider,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
 ) -> DeviceResult<Vec<(Box<dyn PciDevice>, Option<Minijail>)>> {
@@ -1654,22 +1619,21 @@ fn create_devices(
         vm,
         resources,
         exit_evt,
-        wayland_device_socket,
-        gpu_device_socket,
-        balloon_device_socket,
-        disk_device_sockets,
-        pmem_device_sockets,
+        wayland_device_tube,
+        gpu_device_tube,
+        balloon_device_tube,
+        disk_device_tubes,
+        pmem_device_tubes,
         map_request,
-        fs_device_sockets,
+        fs_device_tubes,
     )?;
 
     let mut pci_devices = Vec::new();
 
     for stub in stubs {
-        let (msi_host_socket, msi_device_socket) =
-            msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
-        control_sockets.push(TaggedControlSocket::VmIrq(msi_host_socket));
-        let dev = VirtioPciDevice::new(mem.clone(), stub.dev, msi_device_socket)
+        let (msi_host_tube, msi_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
+        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+        let dev = VirtioPciDevice::new(mem.clone(), stub.dev, msi_device_tube)
             .map_err(Error::VirtioPciDev)?;
         let dev = Box::new(dev) as Box<dyn PciDevice>;
         pci_devices.push((dev, stub.jail));
@@ -1693,26 +1657,25 @@ fn create_devices(
 
         for vfio_path in &cfg.vfio {
             // create MSI, MSI-X, and Mem request sockets for each vfio device
-            let (vfio_host_socket_msi, vfio_device_socket_msi) =
-                msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
-            control_sockets.push(TaggedControlSocket::VmIrq(vfio_host_socket_msi));
+            let (vfio_host_tube_msi, vfio_device_tube_msi) =
+                Tube::pair().map_err(Error::CreateTube)?;
+            control_tubes.push(TaggedControlTube::VmIrq(vfio_host_tube_msi));
 
-            let (vfio_host_socket_msix, vfio_device_socket_msix) =
-                msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
-            control_sockets.push(TaggedControlSocket::VmIrq(vfio_host_socket_msix));
+            let (vfio_host_tube_msix, vfio_device_tube_msix) =
+                Tube::pair().map_err(Error::CreateTube)?;
+            control_tubes.push(TaggedControlTube::VmIrq(vfio_host_tube_msix));
 
-            let (vfio_host_socket_mem, vfio_device_socket_mem) =
-                msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>()
-                    .map_err(Error::CreateSocket)?;
-            control_sockets.push(TaggedControlSocket::VmMemory(vfio_host_socket_mem));
+            let (vfio_host_tube_mem, vfio_device_tube_mem) =
+                Tube::pair().map_err(Error::CreateTube)?;
+            control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
 
             let vfiodevice = VfioDevice::new(vfio_path.as_path(), vm, mem, vfio_container.clone())
                 .map_err(Error::CreateVfioDevice)?;
             let mut vfiopcidevice = Box::new(VfioPciDevice::new(
                 vfiodevice,
-                vfio_device_socket_msi,
-                vfio_device_socket_msix,
-                vfio_device_socket_mem,
+                vfio_device_tube_msi,
+                vfio_device_tube_msix,
+                vfio_device_tube_mem,
             ));
             // early reservation for pass-through PCI devices.
             if vfiopcidevice.allocate_address(resources).is_err() {
@@ -1915,7 +1878,7 @@ fn handle_debug_msg<V>(
     vcpu: &V,
     guest_mem: &GuestMemory,
     d: VcpuDebug,
-    reply_channel: &mpsc::Sender<VcpuDebugStatusMessage>,
+    reply_tube: &mpsc::Sender<VcpuDebugStatusMessage>,
 ) -> Result<()>
 where
     V: VcpuArch + 'static,
@@ -1928,13 +1891,13 @@ where
                     Arch::debug_read_registers(vcpu as &V).map_err(Error::HandleDebugCommand)?,
                 ),
             };
-            reply_channel
+            reply_tube
                 .send(msg)
                 .map_err(|e| Error::SendDebugStatus(Box::new(e)))
         }
         VcpuDebug::WriteRegs(regs) => {
             Arch::debug_write_registers(vcpu as &V, &regs).map_err(Error::HandleDebugCommand)?;
-            reply_channel
+            reply_tube
                 .send(VcpuDebugStatusMessage {
                     cpu: cpu_id as usize,
                     msg: VcpuDebugStatus::CommandComplete,
@@ -1949,14 +1912,14 @@ where
                         .unwrap_or(Vec::new()),
                 ),
             };
-            reply_channel
+            reply_tube
                 .send(msg)
                 .map_err(|e| Error::SendDebugStatus(Box::new(e)))
         }
         VcpuDebug::WriteMem(vaddr, buf) => {
             Arch::debug_write_memory(vcpu as &V, guest_mem, vaddr, &buf)
                 .map_err(Error::HandleDebugCommand)?;
-            reply_channel
+            reply_tube
                 .send(VcpuDebugStatusMessage {
                     cpu: cpu_id as usize,
                     msg: VcpuDebugStatus::CommandComplete,
@@ -1965,7 +1928,7 @@ where
         }
         VcpuDebug::EnableSinglestep => {
             Arch::debug_enable_singlestep(vcpu as &V).map_err(Error::HandleDebugCommand)?;
-            reply_channel
+            reply_tube
                 .send(VcpuDebugStatusMessage {
                     cpu: cpu_id as usize,
                     msg: VcpuDebugStatus::CommandComplete,
@@ -1975,7 +1938,7 @@ where
         VcpuDebug::SetHwBreakPoint(addrs) => {
             Arch::debug_set_hw_breakpoints(vcpu as &V, &addrs)
                 .map_err(Error::HandleDebugCommand)?;
-            reply_channel
+            reply_tube
                 .send(VcpuDebugStatusMessage {
                     cpu: cpu_id as usize,
                     msg: VcpuDebugStatus::CommandComplete,
@@ -2000,9 +1963,9 @@ fn run_vcpu<V>(
     mmio_bus: devices::Bus,
     exit_evt: Event,
     requires_pvclock_ctrl: bool,
-    from_main_channel: mpsc::Receiver<VcpuControl>,
+    from_main_tube: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))] to_gdb_channel: Option<
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))] to_gdb_tube: Option<
         mpsc::Sender<VcpuDebugStatusMessage>,
     >,
 ) -> Result<JoinHandle<()>>
@@ -2043,7 +2006,7 @@ where
 
             let mut run_mode = VmRunMode::Running;
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-            if to_gdb_channel.is_some() {
+            if to_gdb_tube.is_some() {
                 // Wait until a GDB client attaches
                 run_mode = VmRunMode::Breakpoint;
             }
@@ -2057,7 +2020,7 @@ where
                 if interrupted_by_signal || run_mode != VmRunMode::Running {
                     'state_loop: loop {
                         // Tries to get a pending message without blocking first.
-                        let msg = match from_main_channel.try_recv() {
+                        let msg = match from_main_tube.try_recv() {
                             Ok(m) => m,
                             Err(mpsc::TryRecvError::Empty) if run_mode == VmRunMode::Running => {
                                 // If the VM is running and no message is pending, the state won't
@@ -2066,23 +2029,23 @@ where
                             }
                             Err(mpsc::TryRecvError::Empty) => {
                                 // If the VM is not running, wait until a message is ready.
-                                match from_main_channel.recv() {
+                                match from_main_tube.recv() {
                                     Ok(m) => m,
                                     Err(mpsc::RecvError) => {
-                                        error!("Failed to read from main channel in vcpu");
+                                        error!("Failed to read from main tube in vcpu");
                                         break 'vcpu_loop;
                                     }
                                 }
                             }
                             Err(mpsc::TryRecvError::Disconnected) => {
-                                error!("Failed to read from main channel in vcpu");
+                                error!("Failed to read from main tube in vcpu");
                                 break 'vcpu_loop;
                             }
                         };
 
                         // Collect all pending messages.
                         let mut messages = vec![msg];
-                        messages.append(&mut from_main_channel.try_iter().collect());
+                        messages.append(&mut from_main_tube.try_iter().collect());
 
                         for msg in messages {
                             match msg {
@@ -2112,7 +2075,7 @@ where
                                 }
                                 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
                                 VcpuControl::Debug(d) => {
-                                    match &to_gdb_channel {
+                                    match &to_gdb_tube {
                                         Some(ref ch) => {
                                             if let Err(e) = handle_debug_msg(
                                                 cpu_id, &vcpu, &guest_mem, d, &ch,
@@ -2209,7 +2172,7 @@ where
                                     cpu: cpu_id as usize,
                                     msg: VcpuDebugStatus::HitBreakPoint,
                                 };
-                                if let Some(ref ch) = to_gdb_channel {
+                                if let Some(ref ch) = to_gdb_tube {
                                     if let Err(e) = ch.send(msg) {
                                         error!("failed to notify breakpoint to GDB thread: {}", e);
                                         break;
@@ -2289,7 +2252,7 @@ fn create_kvm(device_path: &Path, mem: GuestMemory) -> base::Result<KvmVm> {
 fn create_kvm_kernel_irq_chip(
     vm: &KvmVm,
     vcpu_count: usize,
-    _ioapic_device_socket: VmIrqRequestSocket,
+    _ioapic_device_tube: Tube,
 ) -> base::Result<impl IrqChipArch> {
     let irq_chip = KvmKernelIrqChip::new(vm.try_clone()?, vcpu_count)?;
     Ok(irq_chip)
@@ -2299,10 +2262,10 @@ fn create_kvm_kernel_irq_chip(
 fn create_kvm_split_irq_chip(
     vm: &KvmVm,
     vcpu_count: usize,
-    ioapic_device_socket: VmIrqRequestSocket,
+    ioapic_device_tube: Tube,
 ) -> base::Result<impl IrqChipArch> {
     let irq_chip =
-        KvmSplitIrqChip::new(vm.try_clone()?, vcpu_count, ioapic_device_socket, Some(120))?;
+        KvmSplitIrqChip::new(vm.try_clone()?, vcpu_count, ioapic_device_tube, Some(120))?;
     Ok(irq_chip)
 }
 
@@ -2332,8 +2295,8 @@ where
     FV: FnOnce(GuestMemory) -> base::Result<V>,
     FI: FnOnce(
         &V,
-        usize,              // vcpu_count
-        VmIrqRequestSocket, // ioapic_device_socket
+        usize, // vcpu_count
+        Tube,  // ioapic_device_tube
     ) -> base::Result<I>,
 {
     if cfg.sandbox {
@@ -2343,7 +2306,7 @@ where
         info!("crosvm entering multiprocess mode");
     }
 
-    let (usb_control_socket, usb_provider) =
+    let (usb_control_tube, usb_provider) =
         HostBackendDeviceProvider::new().map_err(Error::CreateUsbProvider)?;
     // Masking signals is inherently dangerous, since this can persist across clones/execs. Do this
     // before any jailed devices have been spawned, so that we can catch any of them that fail very
@@ -2366,14 +2329,13 @@ where
         _ => panic!("Did not receive a bios or kernel, should be impossible."),
     };
 
-    let mut control_sockets = Vec::new();
+    let mut control_tubes = Vec::new();
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     let gdb_socket = if let Some(port) = cfg.gdb {
         // GDB needs a control socket to interrupt vcpus.
-        let (gdb_host_socket, gdb_control_socket) =
-            msg_socket::pair::<VmResponse, VmRequest>().map_err(Error::CreateSocket)?;
-        control_sockets.push(TaggedControlSocket::Vm(gdb_host_socket));
-        Some((port, gdb_control_socket))
+        let (gdb_host_tube, gdb_control_tube) = Tube::pair().map_err(Error::CreateTube)?;
+        control_tubes.push(TaggedControlTube::Vm(gdb_host_tube));
+        Some((port, gdb_control_tube))
     } else {
         None
     };
@@ -2410,47 +2372,39 @@ where
 
     let control_server_socket = match &cfg.socket_path {
         Some(path) => Some(UnlinkUnixSeqpacketListener(
-            UnixSeqpacketListener::bind(path).map_err(Error::CreateSocket)?,
+            UnixSeqpacketListener::bind(path).map_err(Error::CreateControlServer)?,
         )),
         None => None,
     };
 
-    let (wayland_host_socket, wayland_device_socket) =
-        msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>().map_err(Error::CreateSocket)?;
-    control_sockets.push(TaggedControlSocket::VmMemory(wayland_host_socket));
+    let (wayland_host_tube, wayland_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
+    control_tubes.push(TaggedControlTube::VmMemory(wayland_host_tube));
     // Balloon gets a special socket so balloon requests can be forwarded from the main process.
-    let (balloon_host_socket, balloon_device_socket) =
-        msg_socket::pair::<BalloonControlCommand, BalloonControlResult>()
-            .map_err(Error::CreateSocket)?;
+    let (balloon_host_tube, balloon_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
 
     // Create one control socket per disk.
-    let mut disk_device_sockets = Vec::new();
-    let mut disk_host_sockets = Vec::new();
+    let mut disk_device_tubes = Vec::new();
+    let mut disk_host_tubes = Vec::new();
     let disk_count = cfg.disks.len();
     for _ in 0..disk_count {
-        let (disk_host_socket, disk_device_socket) =
-            msg_socket::pair::<DiskControlCommand, DiskControlResult>()
-                .map_err(Error::CreateSocket)?;
-        disk_host_sockets.push(disk_host_socket);
-        disk_device_sockets.push(disk_device_socket);
+        let (disk_host_tub, disk_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
+        disk_host_tubes.push(disk_host_tub);
+        disk_device_tubes.push(disk_device_tube);
     }
 
-    let mut pmem_device_sockets = Vec::new();
+    let mut pmem_device_tubes = Vec::new();
     let pmem_count = cfg.pmem_devices.len();
     for _ in 0..pmem_count {
-        let (pmem_host_socket, pmem_device_socket) =
-            msg_socket::pair::<VmMsyncResponse, VmMsyncRequest>().map_err(Error::CreateSocket)?;
-        pmem_device_sockets.push(pmem_device_socket);
-        control_sockets.push(TaggedControlSocket::VmMsync(pmem_host_socket));
+        let (pmem_host_tube, pmem_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
+        pmem_device_tubes.push(pmem_device_tube);
+        control_tubes.push(TaggedControlTube::VmMsync(pmem_host_tube));
     }
 
-    let (gpu_host_socket, gpu_device_socket) =
-        msg_socket::pair::<VmMemoryResponse, VmMemoryRequest>().map_err(Error::CreateSocket)?;
-    control_sockets.push(TaggedControlSocket::VmMemory(gpu_host_socket));
+    let (gpu_host_tube, gpu_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
+    control_tubes.push(TaggedControlTube::VmMemory(gpu_host_tube));
 
-    let (ioapic_host_socket, ioapic_device_socket) =
-        msg_socket::pair::<VmIrqResponse, VmIrqRequest>().map_err(Error::CreateSocket)?;
-    control_sockets.push(TaggedControlSocket::VmIrq(ioapic_host_socket));
+    let (ioapic_host_tube, ioapic_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
+    control_tubes.push(TaggedControlTube::VmIrq(ioapic_host_tube));
 
     let battery = if cfg.battery_type.is_some() {
         let jail = match simple_jail(&cfg, "battery")? {
@@ -2490,12 +2444,11 @@ where
         .iter()
         .filter(|sd| sd.kind == SharedDirKind::FS)
         .count();
-    let mut fs_device_sockets = Vec::with_capacity(fs_count);
+    let mut fs_device_tubes = Vec::with_capacity(fs_count);
     for _ in 0..fs_count {
-        let (fs_host_socket, fs_device_socket) =
-            msg_socket::pair::<VmResponse, FsMappingRequest>().map_err(Error::CreateSocket)?;
-        control_sockets.push(TaggedControlSocket::Fs(fs_host_socket));
-        fs_device_sockets.push(fs_device_socket);
+        let (fs_host_tube, fs_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
+        control_tubes.push(TaggedControlTube::Fs(fs_host_tube));
+        fs_device_tubes.push(fs_device_tube);
     }
 
     let mut linux: RunnableLinuxVm<_, Vcpu, _> = Arch::build_vm(
@@ -2510,19 +2463,19 @@ where
                 vm,
                 sys_allocator,
                 exit_evt,
-                &mut control_sockets,
-                wayland_device_socket,
-                gpu_device_socket,
-                balloon_device_socket,
-                &mut disk_device_sockets,
-                &mut pmem_device_sockets,
-                &mut fs_device_sockets,
+                &mut control_tubes,
+                wayland_device_tube,
+                gpu_device_tube,
+                balloon_device_tube,
+                &mut disk_device_tubes,
+                &mut pmem_device_tubes,
+                &mut fs_device_tubes,
                 usb_provider,
                 Arc::clone(&map_request),
             )
         },
         create_vm,
-        |vm, vcpu_count| create_irq_chip(vm, vcpu_count, ioapic_device_socket),
+        |vm, vcpu_count| create_irq_chip(vm, vcpu_count, ioapic_device_tube),
     )
     .map_err(Error::BuildVm)?;
 
@@ -2541,10 +2494,10 @@ where
     run_control(
         linux,
         control_server_socket,
-        control_sockets,
-        balloon_host_socket,
-        &disk_host_sockets,
-        usb_control_socket,
+        control_tubes,
+        balloon_host_tube,
+        &disk_host_tubes,
+        usb_control_tube,
         sigchld_fd,
         cfg.sandbox,
         Arc::clone(&map_request),
@@ -2553,8 +2506,8 @@ where
     )
 }
 
-/// Signals all running VCPUs to vmexit, sends VmRunMode message to each VCPU channel, and tells
-/// `irq_chip` to stop blocking halted VCPUs. The channel message is set first because both the
+/// Signals all running VCPUs to vmexit, sends VmRunMode message to each VCPU tube, and tells
+/// `irq_chip` to stop blocking halted VCPUs. The tube message is set first because both the
 /// signal and the irq_chip kick could cause the VCPU thread to continue through the VCPU run
 /// loop.
 fn kick_all_vcpus(
@@ -2562,8 +2515,8 @@ fn kick_all_vcpus(
     irq_chip: &impl IrqChip,
     run_mode: &VmRunMode,
 ) {
-    for (handle, channel) in vcpu_handles {
-        if let Err(e) = channel.send(VcpuControl::RunState(run_mode.clone())) {
+    for (handle, tube) in vcpu_handles {
+        if let Err(e) = tube.send(VcpuControl::RunState(run_mode.clone())) {
             error!("failed to send VmRunMode: {}", e);
         }
         let _ = handle.kill(SIGRTMIN() + 0);
@@ -2738,10 +2691,10 @@ impl BalloonPolicy {
 fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + 'static>(
     mut linux: RunnableLinuxVm<V, Vcpu, I>,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
-    mut control_sockets: Vec<TaggedControlSocket>,
-    balloon_host_socket: BalloonControlRequestSocket,
-    disk_host_sockets: &[DiskControlRequestSocket],
-    usb_control_socket: UsbControlSocket,
+    mut control_tubes: Vec<TaggedControlTube>,
+    balloon_host_tube: Tube,
+    disk_host_tubes: &[Tube],
+    usb_control_tube: Tube,
     sigchld_fd: SignalFd,
     sandbox: bool,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
@@ -2776,7 +2729,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
             .add(socket_server, Token::VmControlServer)
             .map_err(Error::WaitContextAdd)?;
     }
-    for (index, socket) in control_sockets.iter().enumerate() {
+    for (index, socket) in control_tubes.iter().enumerate() {
         wait_ctx
             .add(socket.as_ref(), Token::VmControl { index })
             .map_err(Error::WaitContextAdd)?;
@@ -2808,7 +2761,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
 
         // Listen for balloon statistics from the guest so we can balance.
         wait_ctx
-            .add(&balloon_host_socket, Token::BalloonResult)
+            .add(&balloon_host_tube, Token::BalloonResult)
             .map_err(Error::WaitContextAdd)?;
         Some(BalloonPolicy::new(
             linux.vm.get_memory().memory_size() as i64,
@@ -2878,13 +2831,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
 
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     // Spawn GDB thread.
-    if let Some((gdb_port_num, gdb_control_socket)) = linux.gdb.take() {
+    if let Some((gdb_port_num, gdb_control_tube)) = linux.gdb.take() {
         let to_vcpu_channels = vcpu_handles
             .iter()
             .map(|(_handle, channel)| channel.clone())
             .collect();
         let target = GdbStub::new(
-            gdb_control_socket,
+            gdb_control_tube,
             to_vcpu_channels,
             from_vcpu_channel.unwrap(), // Must succeed to unwrap()
         );
@@ -2946,12 +2899,12 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                 Token::BalanceMemory => {
                     balancemem_timer.wait().map_err(Error::Timer)?;
                     let command = BalloonControlCommand::Stats {};
-                    if let Err(e) = balloon_host_socket.send(&command) {
+                    if let Err(e) = balloon_host_tube.send(&command) {
                         warn!("failed to send stats request to balloon device: {}", e);
                     }
                 }
                 Token::BalloonResult => {
-                    match balloon_host_socket.recv() {
+                    match balloon_host_tube.recv() {
                         Ok(BalloonControlResult::Stats {
                             stats,
                             balloon_actual: balloon_actual_u,
@@ -2972,7 +2925,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                     let target = max((balloon_actual_u as i64) + delta, 0) as u64;
                                     let command =
                                         BalloonControlCommand::Adjust { num_bytes: target };
-                                    if let Err(e) = balloon_host_socket.send(&command) {
+                                    if let Err(e) = balloon_host_tube.send(&command) {
                                         warn!(
                                             "failed to send memory value to balloon device: {}",
                                             e
@@ -2995,31 +2948,30 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                     .add(
                                         &socket,
                                         Token::VmControl {
-                                            index: control_sockets.len(),
+                                            index: control_tubes.len(),
                                         },
                                     )
                                     .map_err(Error::WaitContextAdd)?;
-                                control_sockets
-                                    .push(TaggedControlSocket::Vm(MsgSocket::new(socket)));
+                                control_tubes.push(TaggedControlTube::Vm(Tube::new(socket)));
                             }
                             Err(e) => error!("failed to accept socket: {}", e),
                         }
                     }
                 }
                 Token::VmControl { index } => {
-                    if let Some(socket) = control_sockets.get(index) {
+                    if let Some(socket) = control_tubes.get(index) {
                         match socket {
-                            TaggedControlSocket::Vm(socket) => match socket.recv() {
+                            TaggedControlTube::Vm(tube) => match tube.recv::<VmRequest>() {
                                 Ok(request) => {
                                     let mut run_mode_opt = None;
                                     let response = request.execute(
                                         &mut run_mode_opt,
-                                        &balloon_host_socket,
-                                        disk_host_sockets,
-                                        &usb_control_socket,
+                                        &balloon_host_tube,
+                                        disk_host_tubes,
+                                        &usb_control_tube,
                                         &mut linux.bat_control,
                                     );
-                                    if let Err(e) = socket.send(&response) {
+                                    if let Err(e) = tube.send(&response) {
                                         error!("failed to send VmResponse: {}", e);
                                     }
                                     if let Some(run_mode) = run_mode_opt {
@@ -3042,34 +2994,36 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                     }
                                 }
                                 Err(e) => {
-                                    if let MsgError::RecvZero = e {
+                                    if let TubeError::Disconnected = e {
                                         vm_control_indices_to_remove.push(index);
                                     } else {
                                         error!("failed to recv VmRequest: {}", e);
                                     }
                                 }
                             },
-                            TaggedControlSocket::VmMemory(socket) => match socket.recv() {
-                                Ok(request) => {
-                                    let response = request.execute(
-                                        &mut linux.vm,
-                                        &mut linux.resources,
-                                        Arc::clone(&map_request),
-                                        &mut gralloc,
-                                    );
-                                    if let Err(e) = socket.send(&response) {
-                                        error!("failed to send VmMemoryControlResponse: {}", e);
+                            TaggedControlTube::VmMemory(tube) => {
+                                match tube.recv::<VmMemoryRequest>() {
+                                    Ok(request) => {
+                                        let response = request.execute(
+                                            &mut linux.vm,
+                                            &mut linux.resources,
+                                            Arc::clone(&map_request),
+                                            &mut gralloc,
+                                        );
+                                        if let Err(e) = tube.send(&response) {
+                                            error!("failed to send VmMemoryControlResponse: {}", e);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        if let TubeError::Disconnected = e {
+                                            vm_control_indices_to_remove.push(index);
+                                        } else {
+                                            error!("failed to recv VmMemoryControlRequest: {}", e);
+                                        }
                                     }
                                 }
-                                Err(e) => {
-                                    if let MsgError::RecvZero = e {
-                                        vm_control_indices_to_remove.push(index);
-                                    } else {
-                                        error!("failed to recv VmMemoryControlRequest: {}", e);
-                                    }
-                                }
-                            },
-                            TaggedControlSocket::VmIrq(socket) => match socket.recv() {
+                            }
+                            TaggedControlTube::VmIrq(tube) => match tube.recv::<VmIrqRequest>() {
                                 Ok(request) => {
                                     let response = {
                                         let irq_chip = &mut linux.irq_chip;
@@ -3102,43 +3056,45 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                                             &mut linux.resources,
                                         )
                                     };
-                                    if let Err(e) = socket.send(&response) {
+                                    if let Err(e) = tube.send(&response) {
                                         error!("failed to send VmIrqResponse: {}", e);
                                     }
                                 }
                                 Err(e) => {
-                                    if let MsgError::RecvZero = e {
+                                    if let TubeError::Disconnected = e {
                                         vm_control_indices_to_remove.push(index);
                                     } else {
                                         error!("failed to recv VmIrqRequest: {}", e);
                                     }
                                 }
                             },
-                            TaggedControlSocket::VmMsync(socket) => match socket.recv() {
-                                Ok(request) => {
-                                    let response = request.execute(&mut linux.vm);
-                                    if let Err(e) = socket.send(&response) {
-                                        error!("failed to send VmMsyncResponse: {}", e);
+                            TaggedControlTube::VmMsync(tube) => {
+                                match tube.recv::<VmMsyncRequest>() {
+                                    Ok(request) => {
+                                        let response = request.execute(&mut linux.vm);
+                                        if let Err(e) = tube.send(&response) {
+                                            error!("failed to send VmMsyncResponse: {}", e);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        if let TubeError::Disconnected = e {
+                                            vm_control_indices_to_remove.push(index);
+                                        } else {
+                                            error!("failed to recv VmMsyncRequest: {}", e);
+                                        }
                                     }
                                 }
-                                Err(e) => {
-                                    if let MsgError::BadRecvSize { actual: 0, .. } = e {
-                                        vm_control_indices_to_remove.push(index);
-                                    } else {
-                                        error!("failed to recv VmMsyncRequest: {}", e);
-                                    }
-                                }
-                            },
-                            TaggedControlSocket::Fs(socket) => match socket.recv() {
+                            }
+                            TaggedControlTube::Fs(tube) => match tube.recv::<FsMappingRequest>() {
                                 Ok(request) => {
                                     let response =
                                         request.execute(&mut linux.vm, &mut linux.resources);
-                                    if let Err(e) = socket.send(&response) {
+                                    if let Err(e) = tube.send(&response) {
                                         error!("failed to send VmResponse: {}", e);
                                     }
                                 }
                                 Err(e) => {
-                                    if let MsgError::BadRecvSize { actual: 0, .. } = e {
+                                    if let TubeError::Disconnected = e {
                                         vm_control_indices_to_remove.push(index);
                                     } else {
                                         error!("failed to recv VmResponse: {}", e);
@@ -3162,15 +3118,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
                 Token::VmControlServer => {}
                 Token::VmControl { index } => {
                     // It's possible more data is readable and buffered while the socket is hungup,
-                    // so don't delete the socket from the poll context until we're sure all the
+                    // so don't delete the tube from the poll context until we're sure all the
                     // data is read.
-                    match control_sockets
+                    if control_tubes
                         .get(index)
-                        .map(|s| s.as_ref().get_readable_bytes())
+                        .map(|s| !s.as_ref().is_packet_ready())
+                        .unwrap_or(false)
                     {
-                        Some(Ok(0)) | Some(Err(_)) => vm_control_indices_to_remove.push(index),
-                        Some(Ok(x)) => info!("control index {} has {} bytes readable", index, x),
-                        _ => {}
+                        vm_control_indices_to_remove.push(index);
                     }
                 }
             }
@@ -3189,7 +3144,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
             // now belongs to a different socket, the control loop will start to interact with
             // sockets that might not be ready to use. This can cause incorrect hangup detection or
             // blocking on a socket that will never be ready. See also: crbug.com/1019986
-            if let Some(socket) = control_sockets.get(index) {
+            if let Some(socket) = control_tubes.get(index) {
                 wait_ctx.delete(socket).map_err(Error::WaitContextDelete)?;
             }
 
@@ -3197,10 +3152,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
             // `swap_remove`. After this line, the socket at `index` is not the one from
             // `vm_control_indices_to_remove`. Because of this socket's change in index, we need to
             // use `wait_ctx.modify` to change the associated index in its `Token::VmControl`.
-            control_sockets.swap_remove(index);
-            if let Some(socket) = control_sockets.get(index) {
+            control_tubes.swap_remove(index);
+            if let Some(tube) = control_tubes.get(index) {
                 wait_ctx
-                    .modify(socket, EventType::Read, Token::VmControl { index })
+                    .modify(tube, EventType::Read, Token::VmControl { index })
                     .map_err(Error::WaitContextAdd)?;
             }
         }

@@ -2,10 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, RawDescriptor, Result};
+use serde::{Deserialize, Serialize};
+
+use base::{error, Result};
 use bit_field::*;
 use downcast_rs::impl_downcast;
-use msg_socket::MsgOnSocket;
+
 use vm_memory::GuestAddress;
 
 use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
@@ -566,7 +568,7 @@ pub struct DebugRegs {
 }
 
 /// State of one VCPU register.  Currently used for MSRs and XCRs.
-#[derive(Debug, Default, Copy, Clone, MsgOnSocket)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize)]
 pub struct Register {
     pub id: u32,
     pub value: u64,

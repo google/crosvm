@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
 
-use base::{warn, AsRawDescriptor, Event, RawDescriptor, Result};
+use base::{warn, AsRawDescriptor, Event, RawDescriptor, Result, Tube};
 use data_model::{DataInit, Le32};
 use hypervisor::Datamatch;
 use libc::ERANGE;
@@ -19,7 +19,6 @@ use crate::pci::{
     PciClassCode, PciConfiguration, PciDevice, PciDeviceError, PciDisplaySubclass, PciHeaderType,
     PciInterruptPin, PciSubclass,
 };
-use vm_control::VmIrqRequestSocket;
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
 
@@ -222,7 +221,7 @@ impl VirtioPciDevice {
     pub fn new(
         mem: GuestMemory,
         device: Box<dyn VirtioDevice>,
-        msi_device_socket: VmIrqRequestSocket,
+        msi_device_tube: Tube,
     ) -> Result<Self> {
         let mut queue_evts = Vec::new();
         for _ in device.queue_max_sizes() {
@@ -251,7 +250,7 @@ impl VirtioPciDevice {
 
         // One MSI-X vector per queue plus one for configuration changes.
         let msix_num = u16::try_from(num_queues + 1).map_err(|_| base::Error::new(ERANGE))?;
-        let msix_config = Arc::new(Mutex::new(MsixConfig::new(msix_num, msi_device_socket)));
+        let msix_config = Arc::new(Mutex::new(MsixConfig::new(msix_num, msi_device_tube)));
 
         let config_regs = PciConfiguration::new(
             VIRTIO_PCI_VENDOR_ID,

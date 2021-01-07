@@ -10,7 +10,7 @@ use std::result::Result;
 use std::sync::Arc;
 
 use crate::virtio::resource_bridge::{BufferInfo, PlaneInfo, ResourceInfo, ResourceResponse};
-use base::{error, AsRawDescriptor, ExternalMapping};
+use base::{error, AsRawDescriptor, ExternalMapping, Tube};
 
 use data_model::VolatileSlice;
 
@@ -19,8 +19,6 @@ use rutabaga_gfx::{
     ResourceCreate3D, ResourceCreateBlob, Rutabaga, RutabagaBuilder, RutabagaFenceData,
     RutabagaIovec, Transfer3D,
 };
-
-use msg_socket::{MsgReceiver, MsgSender};
 
 use libc::c_void;
 
@@ -35,9 +33,7 @@ use sync::Mutex;
 
 use vm_memory::{GuestAddress, GuestMemory};
 
-use vm_control::{
-    MaybeOwnedDescriptor, MemSlot, VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse,
-};
+use vm_control::{MemSlot, VmMemoryRequest, VmMemoryResponse};
 
 struct VirtioGpuResource {
     resource_id: u32,
@@ -81,7 +77,7 @@ pub struct VirtioGpu {
     cursor_surface_id: Option<u32>,
     // Maps event devices to scanout number.
     event_devices: Map<u32, u32>,
-    gpu_device_socket: VmMemoryControlRequestSocket,
+    gpu_device_tube: Tube,
     pci_bar: Alloc,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     rutabaga: Rutabaga,
@@ -119,7 +115,7 @@ impl VirtioGpu {
         display_height: u32,
         rutabaga_builder: RutabagaBuilder,
         event_devices: Vec<EventDevice>,
-        gpu_device_socket: VmMemoryControlRequestSocket,
+        gpu_device_tube: Tube,
         pci_bar: Alloc,
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         external_blob: bool,
@@ -137,7 +133,7 @@ impl VirtioGpu {
             scanout_surface_id: None,
             cursor_resource_id: None,
             cursor_surface_id: None,
-            gpu_device_socket,
+            gpu_device_tube,
             pci_bar,
             map_request,
             rutabaga,
@@ -617,9 +613,9 @@ impl VirtioGpu {
         let export = self.rutabaga.export_blob(resource_id);
 
         let request = match export {
-            Ok(ref export) => VmMemoryRequest::RegisterFdAtPciBarOffset(
+            Ok(export) => VmMemoryRequest::RegisterFdAtPciBarOffset(
                 self.pci_bar,
-                MaybeOwnedDescriptor::Borrowed(export.os_handle.as_raw_descriptor()),
+                export.os_handle,
                 resource.size as usize,
                 offset,
             ),
@@ -641,8 +637,8 @@ impl VirtioGpu {
             }
         };
 
-        self.gpu_device_socket.send(&request)?;
-        let response = self.gpu_device_socket.recv()?;
+        self.gpu_device_tube.send(&request)?;
+        let response = self.gpu_device_tube.recv()?;
 
         match response {
             VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
@@ -663,8 +659,8 @@ impl VirtioGpu {
 
         let slot = resource.slot.ok_or(ErrUnspec)?;
         let request = VmMemoryRequest::UnregisterMemory(slot);
-        self.gpu_device_socket.send(&request)?;
-        let response = self.gpu_device_socket.recv()?;
+        self.gpu_device_tube.send(&request)?;
+        let response = self.gpu_device_tube.recv()?;
 
         match response {
             VmMemoryResponse::Ok => {

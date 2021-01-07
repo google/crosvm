@@ -16,10 +16,9 @@ use std::str::from_utf8;
 use super::super::DescriptorError;
 use super::{Reader, Writer};
 use base::Error as SysError;
-use base::ExternalMappingError;
+use base::{ExternalMappingError, TubeError};
 use data_model::{DataInit, Le32, Le64};
 use gpu_display::GpuDisplayError;
-use msg_socket::MsgError;
 use rutabaga_gfx::RutabagaError;
 
 pub const VIRTIO_GPU_F_VIRGL: u32 = 0;
@@ -800,7 +799,7 @@ pub enum GpuResponse {
         map_info: u32,
     },
     ErrUnspec,
-    ErrMsg(MsgError),
+    ErrMsg(TubeError),
     ErrSys(SysError),
     ErrRutabaga(RutabagaError),
     ErrDisplay(GpuDisplayError),
@@ -815,8 +814,8 @@ pub enum GpuResponse {
     ErrInvalidParameter,
 }
 
-impl From<MsgError> for GpuResponse {
-    fn from(e: MsgError) -> GpuResponse {
+impl From<TubeError> for GpuResponse {
+    fn from(e: TubeError) -> GpuResponse {
         GpuResponse::ErrMsg(e)
     }
 }

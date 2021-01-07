@@ -5,7 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [features]
-gdb = ["gdbstub", "msg_socket", "arch/gdb"]
+gdb = ["gdbstub", "arch/gdb"]
 
 [dependencies]
 arch = { path = "../arch" }
@@ -17,7 +17,6 @@ hypervisor = { path = "../hypervisor" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 kernel_loader = { path = "../kernel_loader" }
 libc = "*"
-msg_socket = { path = "../msg_socket", optional = true }
 minijail = "*"
 remain = "*"
 resources = { path = "../resources" }
@@ -26,6 +25,3 @@ base = { path = "../base" }
 acpi_tables = {path = "../acpi_tables" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
-
-[dev-dependencies]
-msg_socket = { path = "../msg_socket"}

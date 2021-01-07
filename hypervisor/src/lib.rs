@@ -13,8 +13,9 @@ pub mod x86_64;
 use std::os::raw::c_int;
 use std::os::unix::io::AsRawFd;
 
-use base::{Event, MappedRegion, Protection, RawDescriptor, Result, SafeDescriptor};
-use msg_socket::MsgOnSocket;
+use serde::{Deserialize, Serialize};
+
+use base::{Event, MappedRegion, Protection, Result, SafeDescriptor};
 use vm_memory::{GuestAddress, GuestMemory};
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -281,7 +282,7 @@ pub trait Vcpu: downcast_rs::DowncastSync {
 downcast_rs::impl_downcast!(sync Vcpu);
 
 /// An address either in programmable I/O space or in memory mapped I/O space.
-#[derive(Copy, Clone, Debug, MsgOnSocket, PartialEq, Eq, std::hash::Hash)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, std::hash::Hash)]
 pub enum IoEventAddress {
     Pio(u64),
     Mmio(u64),

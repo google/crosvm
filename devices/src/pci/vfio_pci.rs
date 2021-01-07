@@ -7,17 +7,14 @@ use std::u32;
 
 use base::{
     error, pagesize, AsRawDescriptor, Event, MappedRegion, MemoryMapping, MemoryMappingBuilder,
-    RawDescriptor,
+    RawDescriptor, Tube,
 };
 use hypervisor::Datamatch;
-use msg_socket::{MsgReceiver, MsgSender};
+
 use resources::{Alloc, MmioType, SystemAllocator};
 
 use vfio_sys::*;
-use vm_control::{
-    MaybeOwnedDescriptor, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse,
-    VmMemoryControlRequestSocket, VmMemoryRequest, VmMemoryResponse,
-};
+use vm_control::{VmIrqRequest, VmIrqResponse, VmMemoryRequest, VmMemoryResponse};
 
 use crate::pci::msix::{
     MsixConfig, BITS_PER_PBA_ENTRY, MSIX_PBA_ENTRIES_MODULO, MSIX_TABLE_ENTRIES_MODULO,
@@ -129,13 +126,13 @@ struct VfioMsiCap {
     ctl: u16,
     address: u64,
     data: u16,
-    vm_socket_irq: VmIrqRequestSocket,
+    vm_socket_irq: Tube,
     irqfd: Option<Event>,
     gsi: Option<u32>,
 }
 
 impl VfioMsiCap {
-    fn new(config: &VfioPciConfig, msi_cap_start: u32, vm_socket_irq: VmIrqRequestSocket) -> Self {
+    fn new(config: &VfioPciConfig, msi_cap_start: u32, vm_socket_irq: Tube) -> Self {
         let msi_ctl = config.read_config_word(msi_cap_start + PCI_MSI_FLAGS);
 
         VfioMsiCap {
@@ -254,19 +251,27 @@ impl VfioMsiCap {
     }
 
     fn allocate_one_msi(&mut self) {
-        if self.irqfd.is_none() {
-            match Event::new() {
-                Ok(fd) => self.irqfd = Some(fd),
+        let irqfd = match self.irqfd.take() {
+            Some(e) => e,
+            None => match Event::new() {
+                Ok(e) => e,
                 Err(e) => {
                     error!("failed to create event: {:?}", e);
                     return;
                 }
-            };
-        }
+            },
+        };
 
-        if let Err(e) = self.vm_socket_irq.send(&VmIrqRequest::AllocateOneMsi {
-            irqfd: MaybeOwnedDescriptor::Borrowed(self.irqfd.as_ref().unwrap().as_raw_descriptor()),
-        }) {
+        let request = VmIrqRequest::AllocateOneMsi { irqfd };
+        let request_result = self.vm_socket_irq.send(&request);
+
+        // Stash the irqfd in self immediately because we used take above.
+        self.irqfd = match request {
+            VmIrqRequest::AllocateOneMsi { irqfd } => Some(irqfd),
+            _ => unreachable!(),
+        };
+
+        if let Err(e) = request_result {
             error!("failed to send AllocateOneMsi request: {:?}", e);
             return;
         }
@@ -311,7 +316,7 @@ struct VfioMsixCap {
 }
 
 impl VfioMsixCap {
-    fn new(config: &VfioPciConfig, msix_cap_start: u32, vm_socket_irq: VmIrqRequestSocket) -> Self {
+    fn new(config: &VfioPciConfig, msix_cap_start: u32, vm_socket_irq: Tube) -> Self {
         let msix_ctl = config.read_config_word(msix_cap_start + PCI_MSIX_FLAGS);
         let table_size = (msix_ctl & PCI_MSIX_FLAGS_QSIZE) + 1;
         let table = config.read_config_dword(msix_cap_start + PCI_MSIX_TABLE);
@@ -442,7 +447,7 @@ pub struct VfioPciDevice {
     msi_cap: Option<VfioMsiCap>,
     msix_cap: Option<VfioMsixCap>,
     irq_type: Option<VfioIrqType>,
-    vm_socket_mem: VmMemoryControlRequestSocket,
+    vm_socket_mem: Tube,
     device_data: Option<DeviceData>,
 
     // scratch MemoryMapping to avoid unmap beform vm exit
@@ -453,9 +458,9 @@ impl VfioPciDevice {
     /// Constructs a new Vfio Pci device for the give Vfio device
     pub fn new(
         device: VfioDevice,
-        vfio_device_socket_msi: VmIrqRequestSocket,
-        vfio_device_socket_msix: VmIrqRequestSocket,
-        vfio_device_socket_mem: VmMemoryControlRequestSocket,
+        vfio_device_socket_msi: Tube,
+        vfio_device_socket_msix: Tube,
+        vfio_device_socket_mem: Tube,
     ) -> Self {
         let dev = Arc::new(device);
         let config = VfioPciConfig::new(Arc::clone(&dev));
@@ -682,10 +687,14 @@ impl VfioPciDevice {
                 let guest_map_start = bar_addr + mmap_offset;
                 let region_offset = self.device.get_region_offset(index);
                 let offset = region_offset + mmap_offset;
+                let descriptor = match self.device.device_file().try_clone() {
+                    Ok(device_file) => device_file.into(),
+                    Err(_) => break,
+                };
                 if self
                     .vm_socket_mem
                     .send(&VmMemoryRequest::RegisterMmapMemory {
-                        descriptor: MaybeOwnedDescriptor::Borrowed(self.device.as_raw_descriptor()),
+                        descriptor,
                         size: mmap_size as usize,
                         offset,
                         gpa: guest_map_start,
@@ -695,7 +704,7 @@ impl VfioPciDevice {
                     break;
                 }
 
-                let response = match self.vm_socket_mem.recv() {
+                let response: VmMemoryResponse = match self.vm_socket_mem.recv() {
                     Ok(res) => res,
                     Err(_) => break,
                 };
@@ -705,7 +714,7 @@ impl VfioPciDevice {
                         // device process doesn't has this mapping, but vfio_dma_map() need it
                         // in device process, so here map it again.
                         let mmap = match MemoryMappingBuilder::new(mmap_size as usize)
-                            .from_descriptor(self.device.as_ref())
+                            .from_descriptor(self.device.device_file())
                             .offset(offset)
                             .build()
                         {

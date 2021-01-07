@@ -119,7 +119,7 @@ impl Ac97Mixer {
     /// Returns the front sample rate (reg 0x2c).
     pub fn get_sample_rate(&self) -> u16 {
         // MIXER_PCM_FRONT_DAC_RATE_2C, MIXER_PCM_SURR_DAC_RATE_2E, and MIXER_PCM_LFE_DAC_RATE_30
-        // are updated to the same rate when playback with 2,4 and 6 channels.
+        // are updated to the same rate when playback with 2,4 and 6 tubes.
         self.pcm_front_dac_rate
     }
 

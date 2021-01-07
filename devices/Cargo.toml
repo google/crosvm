@@ -36,8 +36,6 @@ libcras = "*"
 libvda = { version = "*", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
 minijail = "*"
-msg_on_socket_derive = { path = "../msg_socket/msg_on_socket_derive" }
-msg_socket = { path = "../msg_socket" }
 net_sys = { path = "../net_sys" }
 net_util = { path = "../net_util" }
 p9 = "*"
@@ -46,6 +44,7 @@ protos = { path = "../protos", optional = true }
 rand_ish = { path = "../rand_ish" }
 remain = "*"
 resources = { path = "../resources" }
+serde = { version = "1", features = [ "derive" ] }
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
 syscall_defines = { path = "../syscall_defines" }
@@ -61,6 +60,7 @@ vm_memory = { path = "../vm_memory" }
 
 [dependencies.futures]
 version = "*"
+features = ["std"]
 default-features = false
 
 [dev-dependencies]

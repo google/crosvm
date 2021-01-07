@@ -9,7 +9,7 @@ use std::thread;
 
 use net_util::{MacAddress, TapT};
 
-use base::{error, warn, AsRawDescriptor, Event, RawDescriptor};
+use base::{error, warn, AsRawDescriptor, Event, RawDescriptor, Tube};
 use vhost::NetT as VhostNetT;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
@@ -19,7 +19,6 @@ use super::worker::Worker;
 use super::{Error, Result};
 use crate::pci::MsixStatus;
 use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_NET};
-use msg_socket::{MsgReceiver, MsgSender};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -34,8 +33,8 @@ pub struct Net<T: TapT, U: VhostNetT<T>> {
     vhost_interrupt: Option<Vec<Event>>,
     avail_features: u64,
     acked_features: u64,
-    request_socket: Option<VhostDevRequestSocket>,
-    response_socket: Option<VhostDevResponseSocket>,
+    request_tube: Tube,
+    response_tube: Option<Tube>,
 }
 
 impl<T, U> Net<T, U>
@@ -92,7 +91,7 @@ where
             vhost_interrupt.push(Event::new().map_err(Error::VhostIrqCreate)?);
         }
 
-        let (request_socket, response_socket) = create_control_sockets();
+        let (request_tube, response_tube) = Tube::pair().map_err(Error::CreateTube)?;
 
         Ok(Net {
             workers_kill_evt: Some(kill_evt.try_clone().map_err(Error::CloneKillEvent)?),
@@ -103,8 +102,8 @@ where
             vhost_interrupt: Some(vhost_interrupt),
             avail_features,
             acked_features: 0u64,
-            request_socket,
-            response_socket,
+            request_tube,
+            response_tube: Some(response_tube),
         })
     }
 }
@@ -154,12 +153,10 @@ where
         }
         keep_rds.push(self.kill_evt.as_raw_descriptor());
 
-        if let Some(request_socket) = &self.request_socket {
-            keep_rds.push(request_socket.as_raw_descriptor());
-        }
+        keep_rds.push(self.request_tube.as_raw_descriptor());
 
-        if let Some(response_socket) = &self.response_socket {
-            keep_rds.push(response_socket.as_raw_descriptor());
+        if let Some(response_tube) = &self.response_tube {
+            keep_rds.push(response_tube.as_raw_descriptor());
         }
 
         keep_rds
@@ -208,8 +205,8 @@ where
                 if let Some(vhost_interrupt) = self.vhost_interrupt.take() {
                     if let Some(kill_evt) = self.workers_kill_evt.take() {
                         let acked_features = self.acked_features;
-                        let socket = if self.response_socket.is_some() {
-                            self.response_socket.take()
+                        let socket = if self.response_tube.is_some() {
+                            self.response_tube.take()
                         } else {
                             None
                         };
@@ -277,44 +274,50 @@ where
     }
 
     fn control_notify(&self, behavior: MsixStatus) {
-        if self.worker_thread.is_none() || self.request_socket.is_none() {
+        if self.worker_thread.is_none() {
             return;
         }
-        if let Some(socket) = &self.request_socket {
-            match behavior {
-                MsixStatus::EntryChanged(index) => {
-                    if let Err(e) = socket.send(&VhostDevRequest::MsixEntryChanged(index)) {
-                        error!(
-                            "{} failed to send VhostMsixEntryChanged request for entry {}: {:?}",
-                            self.debug_label(),
-                            index,
-                            e
-                        );
-                        return;
-                    }
-                    if let Err(e) = socket.recv() {
-                        error!("{} failed to receive VhostMsixEntryChanged response for entry {}: {:?}", self.debug_label(), index, e);
-                    }
+        match behavior {
+            MsixStatus::EntryChanged(index) => {
+                if let Err(e) = self
+                    .request_tube
+                    .send(&VhostDevRequest::MsixEntryChanged(index))
+                {
+                    error!(
+                        "{} failed to send VhostMsixEntryChanged request for entry {}: {:?}",
+                        self.debug_label(),
+                        index,
+                        e
+                    );
+                    return;
                 }
-                MsixStatus::Changed => {
-                    if let Err(e) = socket.send(&VhostDevRequest::MsixChanged) {
-                        error!(
-                            "{} failed to send VhostMsixChanged request: {:?}",
-                            self.debug_label(),
-                            e
-                        );
-                        return;
-                    }
-                    if let Err(e) = socket.recv() {
-                        error!(
-                            "{} failed to receive VhostMsixChanged response {:?}",
-                            self.debug_label(),
-                            e
-                        );
-                    }
+                if let Err(e) = self.request_tube.recv::<VhostDevResponse>() {
+                    error!(
+                        "{} failed to receive VhostMsixEntryChanged response for entry {}: {:?}",
+                        self.debug_label(),
+                        index,
+                        e
+                    );
                 }
-                _ => {}
             }
+            MsixStatus::Changed => {
+                if let Err(e) = self.request_tube.send(&VhostDevRequest::MsixChanged) {
+                    error!(
+                        "{} failed to send VhostMsixChanged request: {:?}",
+                        self.debug_label(),
+                        e
+                    );
+                    return;
+                }
+                if let Err(e) = self.request_tube.recv::<VhostDevResponse>() {
+                    error!(
+                        "{} failed to receive VhostMsixChanged response {:?}",
+                        self.debug_label(),
+                        e
+                    );
+                }
+            }
+            _ => {}
         }
     }
 
@@ -336,7 +339,7 @@ where
                     self.tap = Some(tap);
                     self.vhost_interrupt = Some(worker.vhost_interrupt);
                     self.workers_kill_evt = Some(worker.kill_evt);
-                    self.response_socket = worker.response_socket;
+                    self.response_tube = worker.response_tube;
                     return true;
                 }
             }

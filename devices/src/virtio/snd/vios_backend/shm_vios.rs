@@ -406,8 +406,8 @@ pub struct VioSStreamInfo {
     pub formats: u64,
     pub rates: u64,
     pub direction: u8,
-    pub channels_min: u8,
-    pub channels_max: u8,
+    pub tubes_min: u8,
+    pub tubes_max: u8,
     state: StreamState,
 }
 
@@ -420,8 +420,8 @@ impl VioSStreamInfo {
             formats: info.formats.to_native(),
             rates: info.rates.to_native(),
             direction: info.direction,
-            channels_min: info.channels_min,
-            channels_max: info.channels_max,
+            tubes_min: info.tubes_min,
+            tubes_max: info.tubes_max,
             state: StreamState::Available,
         }
     }
@@ -439,7 +439,7 @@ pub struct VioSStreamParams {
     pub buffer_bytes: u32,
     pub period_bytes: u32,
     pub features: u32,
-    pub channels: u8,
+    pub tubes: u8,
     pub format: u8,
     pub rate: u8,
 }
@@ -456,7 +456,7 @@ impl Into<virtio_snd_pcm_set_params> for (u32, VioSStreamParams) {
             buffer_bytes: self.1.buffer_bytes.into(),
             period_bytes: self.1.period_bytes.into(),
             features: self.1.features.into(),
-            channels: self.1.channels,
+            tubes: self.1.tubes,
             format: self.1.format,
             rate: self.1.rate,
             padding: 0u8,

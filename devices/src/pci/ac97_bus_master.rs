@@ -70,22 +70,22 @@ impl Ac97BusMasterRegs {
         }
     }
 
-    fn channel_count(&self, func: Ac97Function) -> usize {
-        fn output_channel_count(glob_cnt: u32) -> usize {
+    fn tube_count(&self, func: Ac97Function) -> usize {
+        fn output_tube_count(glob_cnt: u32) -> usize {
             let val = (glob_cnt & GLOB_CNT_PCM_246_MASK) >> 20;
             match val {
                 0 => 2,
                 1 => 4,
                 2 => 6,
                 _ => {
-                    warn!("unknown channel_count: 0x{:x}", val);
+                    warn!("unknown tube_count: 0x{:x}", val);
                     2
                 }
             }
         }
 
         match func {
-            Ac97Function::Output => output_channel_count(self.glob_cnt),
+            Ac97Function::Output => output_tube_count(self.glob_cnt),
             _ => DEVICE_INPUT_CHANNEL_COUNT,
         }
     }
@@ -341,7 +341,7 @@ impl Ac97BusMaster {
                     regs.po_regs.picb
                 } else {
                     // Estimate how many samples have been played since the last audio callback.
-                    let num_channels = regs.channel_count(Ac97Function::Output) as u64;
+                    let num_channels = regs.tube_count(Ac97Function::Output) as u64;
                     let micros = regs.po_pointer_update_time.elapsed().subsec_micros();
                     // Round down to the next 10 millisecond boundary. The linux driver often
                     // assumes that two rapid reads from picb will return the same value.
@@ -562,7 +562,7 @@ impl Ac97BusMaster {
         let locked_regs = self.regs.lock();
         let sample_rate = self.current_sample_rate(func, mixer);
         let buffer_samples = current_buffer_size(locked_regs.func_regs(func), &self.mem)?;
-        let num_channels = locked_regs.channel_count(func);
+        let num_channels = locked_regs.tube_count(func);
         let buffer_frames = buffer_samples / num_channels;
 
         let mut pending_buffers = VecDeque::with_capacity(2);
@@ -729,7 +729,7 @@ fn next_guest_buffer(
     let offset = get_buffer_offset(func_regs, mem, index)?
         .try_into()
         .map_err(|_| AudioError::InvalidBufferOffset)?;
-    let frames = get_buffer_samples(func_regs, mem, index)? / regs.channel_count(func);
+    let frames = get_buffer_samples(func_regs, mem, index)? / regs.tube_count(func);
 
     Ok(Some(GuestBuffer {
         index,
@@ -1037,7 +1037,7 @@ mod test {
     }
 
     #[test]
-    fn run_multi_channel_playback() {
+    fn run_multi_tube_playback() {
         start_playback(2, 48000);
         start_playback(4, 48000);
         start_playback(6, 48000);
@@ -1087,7 +1087,7 @@ mod test {
         bm.writeb(PO_LVI_15, LVI_MASK, &mixer);
         assert_eq!(bm.readb(PO_CIV_14), 0);
 
-        // Set channel count and sample rate.
+        // Set tube count and sample rate.
         let mut cnt = bm.readl(GLOB_CNT_2C);
         cnt &= !GLOB_CNT_PCM_246_MASK;
         mixer.writew(MIXER_PCM_FRONT_DAC_RATE_2C, rate);

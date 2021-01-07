@@ -7,7 +7,7 @@ use crate::{
     ControlRequestDataPhaseTransferDirection, ControlRequestRecipient, ControlRequestType,
     DeviceDescriptor, DeviceDescriptorTree, Error, Result, StandardControlRequest,
 };
-use base::{handle_eintr_errno, IoctlNr};
+use base::{handle_eintr_errno, AsRawDescriptor, IoctlNr, RawDescriptor};
 use data_model::vec_with_array_field;
 use libc::{EAGAIN, ENODEV, ENOENT};
 use std::convert::TryInto;
@@ -317,6 +317,12 @@ impl Device {
         }
 
         Ok(())
+    }
+}
+
+impl AsRawDescriptor for Device {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.fd.as_raw_descriptor()
     }
 }
 

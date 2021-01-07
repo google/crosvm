@@ -12,13 +12,10 @@ use futures::{channel::mpsc, pin_mut, StreamExt};
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-use base::{self, error, info, warn, AsRawDescriptor, Event, RawDescriptor};
+use base::{self, error, info, warn, AsRawDescriptor, AsyncTube, Event, RawDescriptor, Tube};
 use cros_async::{select6, EventAsync, Executor};
 use data_model::{DataInit, Le16, Le32, Le64};
-use msg_socket::MsgSender;
-use vm_control::{
-    BalloonControlCommand, BalloonControlResponseSocket, BalloonControlResult, BalloonStats,
-};
+use vm_control::{BalloonControlCommand, BalloonControlResult, BalloonStats};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
@@ -31,10 +28,10 @@ use super::{
 pub enum BalloonError {
     /// Failed to create async message receiver.
     #[error("failed to create async message receiver: {0}")]
-    CreatingMessageReceiver(msg_socket::MsgError),
+    CreatingMessageReceiver(base::TubeError),
     /// Failed to receive command message.
     #[error("failed to receive command message: {0}")]
-    ReceivingCommand(msg_socket::MsgError),
+    ReceivingCommand(base::TubeError),
     /// Failed to write config event.
     #[error("failed to write config event: {0}")]
     WritingConfigEvent(base::Error),
@@ -194,7 +191,7 @@ async fn handle_stats_queue(
     mut queue: Queue,
     mut queue_event: EventAsync,
     mut stats_rx: mpsc::Receiver<()>,
-    command_socket: &BalloonControlResponseSocket,
+    command_tube: &Tube,
     config: Arc<BalloonConfig>,
     interrupt: Rc<RefCell<Interrupt>>,
 ) {
@@ -229,13 +226,13 @@ async fn handle_stats_queue(
             balloon_actual: actual_pages << VIRTIO_BALLOON_PFN_SHIFT,
             stats,
         };
-        if let Err(e) = command_socket.send(&result) {
+        if let Err(e) = command_tube.send(&result) {
             error!("failed to send stats result: {}", e);
         }
 
         // Wait for a request to read the stats again.
         if stats_rx.next().await.is_none() {
-            error!("stats signal channel was closed");
+            error!("stats signal tube was closed");
             break;
         }
 
@@ -247,18 +244,14 @@ async fn handle_stats_queue(
 
 // Async task that handles the command socket. The command socket handles messages from the host
 // requesting that the guest balloon be adjusted or to report guest memory statistics.
-async fn handle_command_socket(
-    ex: &Executor,
-    command_socket: &BalloonControlResponseSocket,
+async fn handle_command_tube(
+    command_tube: &AsyncTube,
     interrupt: Rc<RefCell<Interrupt>>,
     config: Arc<BalloonConfig>,
     mut stats_tx: mpsc::Sender<()>,
 ) -> Result<()> {
-    let mut async_messages = command_socket
-        .async_receiver(ex)
-        .map_err(BalloonError::CreatingMessageReceiver)?;
     loop {
-        match async_messages.next().await {
+        match command_tube.next().await {
             Ok(command) => match command {
                 BalloonControlCommand::Adjust { num_bytes } => {
                     let num_pages = (num_bytes >> VIRTIO_BALLOON_PFN_SHIFT) as usize;
@@ -306,95 +299,98 @@ async fn wait_kill(kill_evt: EventAsync) {
 fn run_worker(
     mut queue_evts: Vec<Event>,
     mut queues: Vec<Queue>,
-    command_socket: &BalloonControlResponseSocket,
+    command_tube: Tube,
     interrupt: Interrupt,
     kill_evt: Event,
     mem: GuestMemory,
     config: Arc<BalloonConfig>,
-) {
+) -> Tube {
     // Wrap the interrupt in a `RefCell` so it can be shared between async functions.
     let interrupt = Rc::new(RefCell::new(interrupt));
 
     let ex = Executor::new().unwrap();
+    let command_tube = command_tube.into_async_tube(&ex).unwrap();
 
-    // The first queue is used for inflate messages
-    let inflate_event =
-        EventAsync::new(queue_evts.remove(0).0, &ex).expect("failed to set up the inflate event");
-    let inflate = handle_queue(
-        &mem,
-        queues.remove(0),
-        inflate_event,
-        interrupt.clone(),
-        |guest_address, len| {
-            if let Err(e) = mem.remove_range(guest_address, len) {
-                warn!("Marking pages unused failed: {}, addr={}", e, guest_address);
-            }
-        },
-    );
-    pin_mut!(inflate);
+    // We need a block to release all references to command_tube at the end before returning it.
+    {
+        // The first queue is used for inflate messages
+        let inflate_event = EventAsync::new(queue_evts.remove(0).0, &ex)
+            .expect("failed to set up the inflate event");
+        let inflate = handle_queue(
+            &mem,
+            queues.remove(0),
+            inflate_event,
+            interrupt.clone(),
+            |guest_address, len| {
+                if let Err(e) = mem.remove_range(guest_address, len) {
+                    warn!("Marking pages unused failed: {}, addr={}", e, guest_address);
+                }
+            },
+        );
+        pin_mut!(inflate);
 
-    // The second queue is used for deflate messages
-    let deflate_event =
-        EventAsync::new(queue_evts.remove(0).0, &ex).expect("failed to set up the deflate event");
-    let deflate = handle_queue(
-        &mem,
-        queues.remove(0),
-        deflate_event,
-        interrupt.clone(),
-        |_, _| {}, // Ignore these.
-    );
-    pin_mut!(deflate);
+        // The second queue is used for deflate messages
+        let deflate_event = EventAsync::new(queue_evts.remove(0).0, &ex)
+            .expect("failed to set up the deflate event");
+        let deflate = handle_queue(
+            &mem,
+            queues.remove(0),
+            deflate_event,
+            interrupt.clone(),
+            |_, _| {}, // Ignore these.
+        );
+        pin_mut!(deflate);
 
-    // The third queue is used for stats messages
-    let (stats_tx, stats_rx) = mpsc::channel::<()>(1);
-    let stats_event =
-        EventAsync::new(queue_evts.remove(0).0, &ex).expect("failed to set up the stats event");
-    let stats = handle_stats_queue(
-        &mem,
-        queues.remove(0),
-        stats_event,
-        stats_rx,
-        command_socket,
-        config.clone(),
-        interrupt.clone(),
-    );
-    pin_mut!(stats);
+        // The third queue is used for stats messages
+        let (stats_tx, stats_rx) = mpsc::channel::<()>(1);
+        let stats_event =
+            EventAsync::new(queue_evts.remove(0).0, &ex).expect("failed to set up the stats event");
+        let stats = handle_stats_queue(
+            &mem,
+            queues.remove(0),
+            stats_event,
+            stats_rx,
+            &command_tube,
+            config.clone(),
+            interrupt.clone(),
+        );
+        pin_mut!(stats);
 
-    // Future to handle command messages that resize the balloon.
-    let command = handle_command_socket(&ex, command_socket, interrupt.clone(), config, stats_tx);
-    pin_mut!(command);
+        // Future to handle command messages that resize the balloon.
+        let command = handle_command_tube(&command_tube, interrupt.clone(), config, stats_tx);
+        pin_mut!(command);
 
-    // Process any requests to resample the irq value.
-    let resample = handle_irq_resample(&ex, interrupt.clone());
-    pin_mut!(resample);
+        // Process any requests to resample the irq value.
+        let resample = handle_irq_resample(&ex, interrupt.clone());
+        pin_mut!(resample);
 
-    // Exit if the kill event is triggered.
-    let kill_evt = EventAsync::new(kill_evt.0, &ex).expect("failed to set up the kill event");
-    let kill = wait_kill(kill_evt);
-    pin_mut!(kill);
+        // Exit if the kill event is triggered.
+        let kill_evt = EventAsync::new(kill_evt.0, &ex).expect("failed to set up the kill event");
+        let kill = wait_kill(kill_evt);
+        pin_mut!(kill);
 
-    if let Err(e) = ex.run_until(select6(inflate, deflate, stats, command, resample, kill)) {
-        error!("error happened in executor: {}", e);
+        if let Err(e) = ex.run_until(select6(inflate, deflate, stats, command, resample, kill)) {
+            error!("error happened in executor: {}", e);
+        }
     }
+
+    command_tube.into()
 }
 
 /// Virtio device for memory balloon inflation/deflation.
 pub struct Balloon {
-    command_socket: Option<BalloonControlResponseSocket>,
+    command_tube: Option<Tube>,
     config: Arc<BalloonConfig>,
     features: u64,
     kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<BalloonControlResponseSocket>>,
+    worker_thread: Option<thread::JoinHandle<Tube>>,
 }
 
 impl Balloon {
     /// Creates a new virtio balloon device.
-    pub fn new(
-        base_features: u64,
-        command_socket: BalloonControlResponseSocket,
-    ) -> Result<Balloon> {
+    pub fn new(base_features: u64, command_tube: Tube) -> Result<Balloon> {
         Ok(Balloon {
-            command_socket: Some(command_socket),
+            command_tube: Some(command_tube),
             config: Arc::new(BalloonConfig {
                 num_pages: AtomicUsize::new(0),
                 actual_pages: AtomicUsize::new(0),
@@ -433,7 +429,7 @@ impl Drop for Balloon {
 
 impl VirtioDevice for Balloon {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        vec![self.command_socket.as_ref().unwrap().as_raw_descriptor()]
+        vec![self.command_tube.as_ref().unwrap().as_raw_descriptor()]
     }
 
     fn device_type(&self) -> u32 {
@@ -485,20 +481,19 @@ impl VirtioDevice for Balloon {
         self.kill_evt = Some(self_kill_evt);
 
         let config = self.config.clone();
-        let command_socket = self.command_socket.take().unwrap();
+        let command_tube = self.command_tube.take().unwrap();
         let worker_result = thread::Builder::new()
             .name("virtio_balloon".to_string())
             .spawn(move || {
                 run_worker(
                     queue_evts,
                     queues,
-                    &command_socket,
+                    command_tube,
                     interrupt,
                     kill_evt,
                     mem,
                     config,
-                );
-                command_socket // Return the command socket so it can be re-used.
+                )
             });
 
         match worker_result {
@@ -525,8 +520,8 @@ impl VirtioDevice for Balloon {
                     error!("{}: failed to get back resources", self.debug_label());
                     return false;
                 }
-                Ok(command_socket) => {
-                    self.command_socket = Some(command_socket);
+                Ok(command_tube) => {
+                    self.command_tube = Some(command_tube);
                     return true;
                 }
             }
