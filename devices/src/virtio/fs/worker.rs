@@ -14,7 +14,7 @@ use vm_control::{FsMappingRequest, VmResponse};
 use vm_memory::GuestMemory;
 
 use crate::virtio::fs::{Error, Result};
-use crate::virtio::{Interrupt, Queue, Reader, Writer};
+use crate::virtio::{Interrupt, Queue, Reader, SignalableInterrupt, Writer};
 
 impl fuse::Reader for Reader {}
 
@@ -217,9 +217,11 @@ impl<F: FileSystem + Sync> Worker<F> {
                 .map_err(Error::CreateWaitContext)?;
 
         if watch_resample_event {
-            wait_ctx
-                .add(self.irq.get_resample_evt(), Token::InterruptResample)
-                .map_err(Error::CreateWaitContext)?;
+            if let Some(resample_evt) = self.irq.get_resample_evt() {
+                wait_ctx
+                    .add(resample_evt, Token::InterruptResample)
+                    .map_err(Error::CreateWaitContext)?;
+            }
         }
 
         loop {

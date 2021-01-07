@@ -11,7 +11,7 @@ use cros_async::{AsyncError, EventAsync};
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::{GuestAddress, GuestMemory};
 
-use super::{Interrupt, VIRTIO_MSI_NO_VECTOR};
+use super::{SignalableInterrupt, VIRTIO_MSI_NO_VECTOR};
 
 const VIRTQ_DESC_F_NEXT: u16 = 0x1;
 const VIRTQ_DESC_F_WRITE: u16 = 0x2;
@@ -536,7 +536,11 @@ impl Queue {
     /// inject interrupt into guest on this queue
     /// return true: interrupt is injected into guest for this queue
     ///        false: interrupt isn't injected
-    pub fn trigger_interrupt(&mut self, mem: &GuestMemory, interrupt: &Interrupt) -> bool {
+    pub fn trigger_interrupt(
+        &mut self,
+        mem: &GuestMemory,
+        interrupt: &dyn SignalableInterrupt,
+    ) -> bool {
         if self.available_interrupt_enabled(mem) {
             self.last_used = self.next_used;
             interrupt.signal_used_queue(self.vector);
@@ -554,6 +558,7 @@ impl Queue {
 
 #[cfg(test)]
 mod tests {
+    use super::super::Interrupt;
     use super::*;
     use base::Event;
     use data_model::{DataInit, Le16, Le32, Le64};

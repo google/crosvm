@@ -33,8 +33,8 @@ use vm_control::{DiskControlCommand, DiskControlResult};
 use vm_memory::GuestMemory;
 
 use super::{
-    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
-    TYPE_BLOCK,
+    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt,
+    VirtioDevice, Writer, TYPE_BLOCK,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -306,7 +306,7 @@ async fn process_one_request_task(
 
     let mut queue = queue.borrow_mut();
     queue.add_used(&mem, descriptor_index, len as u32);
-    queue.trigger_interrupt(&mem, &interrupt.borrow());
+    queue.trigger_interrupt(&mem, &*interrupt.borrow());
     queue.update_int_required(&mem);
 }
 
@@ -347,19 +347,28 @@ async fn handle_irq_resample(
     ex: &Executor,
     interrupt: Rc<RefCell<Interrupt>>,
 ) -> result::Result<(), OtherError> {
-    let resample_evt = interrupt
-        .borrow_mut()
-        .get_resample_evt()
-        .try_clone()
-        .map_err(OtherError::CloneResampleEvent)?;
-    let resample_evt =
-        EventAsync::new(resample_evt.0, ex).map_err(OtherError::AsyncResampleCreate)?;
-    loop {
-        let _ = resample_evt
-            .next_val()
-            .await
-            .map_err(OtherError::ReadResampleEvent)?;
-        interrupt.borrow_mut().do_interrupt_resample();
+    let resample_evt = if let Some(resample_evt) = interrupt.borrow().get_resample_evt() {
+        let resample_evt = resample_evt
+            .try_clone()
+            .map_err(OtherError::CloneResampleEvent)?;
+        let resample_evt =
+            EventAsync::new(resample_evt.0, ex).map_err(OtherError::AsyncResampleCreate)?;
+        Some(resample_evt)
+    } else {
+        None
+    };
+    if let Some(resample_evt) = resample_evt {
+        loop {
+            let _ = resample_evt
+                .next_val()
+                .await
+                .map_err(OtherError::ReadResampleEvent)?;
+            interrupt.borrow().do_interrupt_resample();
+        }
+    } else {
+        // no resample event, park the future.
+        let () = futures::future::pending().await;
+        Ok(())
     }
 }
 

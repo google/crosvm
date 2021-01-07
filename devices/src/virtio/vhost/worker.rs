@@ -9,7 +9,7 @@ use vhost::Vhost;
 
 use super::control_socket::{VhostDevRequest, VhostDevResponse};
 use super::{Error, Result};
-use crate::virtio::{Interrupt, Queue};
+use crate::virtio::{Interrupt, Queue, SignalableInterrupt};
 use libc::EIO;
 
 /// Worker that takes care of running the vhost device.
@@ -105,11 +105,9 @@ impl<T: Vhost> Worker<T> {
             ControlNotify,
         }
 
-        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-            (self.interrupt.get_resample_evt(), Token::InterruptResample),
-            (&self.kill_evt, Token::Kill),
-        ])
-        .map_err(Error::CreateWaitContext)?;
+        let wait_ctx: WaitContext<Token> =
+            WaitContext::build_with(&[(&self.kill_evt, Token::Kill)])
+                .map_err(Error::CreateWaitContext)?;
 
         for (index, vhost_int) in self.vhost_interrupt.iter().enumerate() {
             wait_ctx
@@ -119,6 +117,11 @@ impl<T: Vhost> Worker<T> {
         if let Some(socket) = &self.response_tube {
             wait_ctx
                 .add(socket, Token::ControlNotify)
+                .map_err(Error::CreateWaitContext)?;
+        }
+        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
+            wait_ctx
+                .add(resample_evt, Token::InterruptResample)
                 .map_err(Error::CreateWaitContext)?;
         }
 

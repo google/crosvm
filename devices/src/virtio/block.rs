@@ -26,8 +26,8 @@ use vm_control::{DiskControlCommand, DiskControlResult};
 use vm_memory::GuestMemory;
 
 use super::{
-    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
-    TYPE_BLOCK,
+    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt,
+    VirtioDevice, Writer, TYPE_BLOCK,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -397,9 +397,14 @@ impl Worker {
         let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
             (&flush_timer, Token::FlushTimer),
             (&queue_evt, Token::QueueAvailable),
-            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ])
+        .and_then(|wc| {
+            if let Some(resample_evt) = self.interrupt.get_resample_evt() {
+                wc.add(resample_evt, Token::InterruptResample)?;
+            }
+            Ok(wc)
+        })
         .and_then(|pc| {
             if let Some(control_tube) = self.control_tube.as_ref() {
                 pc.add(control_tube, Token::ControlRequest)?

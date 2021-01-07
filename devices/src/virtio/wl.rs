@@ -67,7 +67,9 @@ use vm_control::GpuMemoryDesc;
 use super::resource_bridge::{
     get_resource_info, BufferInfo, ResourceBridgeError, ResourceInfo, ResourceRequest,
 };
-use super::{DescriptorChain, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_WL};
+use super::{
+    DescriptorChain, Interrupt, Queue, Reader, SignalableInterrupt, VirtioDevice, Writer, TYPE_WL,
+};
 use vm_control::{MemSlot, VmMemoryRequest, VmMemoryResponse};
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
@@ -1514,7 +1516,6 @@ impl Worker {
             (&out_queue_evt, Token::OutQueue),
             (&kill_evt, Token::Kill),
             (&self.state.wait_ctx, Token::State),
-            (self.interrupt.get_resample_evt(), Token::InterruptResample),
         ]) {
             Ok(pc) => pc,
             Err(e) => {
@@ -1522,6 +1523,15 @@ impl Worker {
                 return;
             }
         };
+        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
+            if wait_ctx
+                .add(resample_evt, Token::InterruptResample)
+                .is_err()
+            {
+                error!("failed adding resample event to WaitContext.");
+                return;
+            }
+        }
 
         'wait: loop {
             let mut signal_used_in = false;

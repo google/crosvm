@@ -14,7 +14,8 @@ use base::{error, Event, PollToken, RawDescriptor, WaitContext};
 use vm_memory::GuestMemory;
 
 use super::{
-    DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_TPM,
+    DescriptorChain, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt, VirtioDevice,
+    Writer, TYPE_TPM,
 };
 
 // A single queue of size 2. The guest kernel driver will enqueue a single
@@ -112,9 +113,14 @@ impl Worker {
 
         let wait_ctx = match WaitContext::build_with(&[
             (&self.queue_evt, Token::QueueAvailable),
-            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&self.kill_evt, Token::Kill),
-        ]) {
+        ])
+        .and_then(|wc| {
+            if let Some(resample_evt) = self.interrupt.get_resample_evt() {
+                wc.add(resample_evt, Token::InterruptResample)?;
+            }
+            Ok(wc)
+        }) {
             Ok(pc) => pc,
             Err(e) => {
                 error!("vtpm failed creating WaitContext: {}", e);

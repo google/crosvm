@@ -11,7 +11,8 @@ use data_model::{DataInit, Le16, Le32};
 use vm_memory::GuestMemory;
 
 use super::{
-    base_features, copy_config, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_CONSOLE,
+    base_features, copy_config, Interrupt, Queue, Reader, SignalableInterrupt, VirtioDevice,
+    Writer, TYPE_CONSOLE,
 };
 use crate::{ProtectionType, SerialDevice};
 
@@ -239,7 +240,6 @@ impl Worker {
             (&transmit_evt, Token::TransmitQueueAvailable),
             (&receive_evt, Token::ReceiveQueueAvailable),
             (&in_avail_evt, Token::InputAvailable),
-            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ]) {
             Ok(pc) => pc,
@@ -248,6 +248,15 @@ impl Worker {
                 return;
             }
         };
+        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
+            if wait_ctx
+                .add(resample_evt, Token::InterruptResample)
+                .is_err()
+            {
+                error!("failed adding resample event to WaitContext.");
+                return;
+            }
+        }
 
         let mut output: Box<dyn io::Write> = match self.output.take() {
             Some(o) => o,

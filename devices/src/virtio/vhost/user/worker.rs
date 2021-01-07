@@ -8,6 +8,7 @@ use futures::pin_mut;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
+use crate::virtio::interrupt::SignalableInterrupt;
 use crate::virtio::{Interrupt, Queue};
 
 #[derive(ThisError, Debug)]
@@ -49,6 +50,7 @@ impl Worker {
     pub fn run(&mut self, ex: &Executor, interrupt: Interrupt) -> Result<(), String> {
         let resample_evt = interrupt
             .get_resample_evt()
+            .expect("resample event required")
             .try_clone()
             .expect("failed to clone resample event");
         let async_resample_evt =

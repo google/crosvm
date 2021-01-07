@@ -37,8 +37,8 @@ use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
-    copy_config, resource_bridge::*, DescriptorChain, Interrupt, Queue, Reader, VirtioDevice,
-    Writer, TYPE_GPU,
+    copy_config, resource_bridge::*, DescriptorChain, Interrupt, Queue, Reader,
+    SignalableInterrupt, VirtioDevice, Writer, TYPE_GPU,
 };
 
 use super::{PciCapabilityType, VirtioPciShmCap};
@@ -703,7 +703,6 @@ impl Worker {
             (&self.ctrl_evt, Token::CtrlQueue),
             (&self.cursor_evt, Token::CursorQueue),
             (&*self.state.display().borrow(), Token::Display),
-            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&self.kill_evt, Token::Kill),
         ]) {
             Ok(pc) => pc,
@@ -712,6 +711,15 @@ impl Worker {
                 return;
             }
         };
+        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
+            if wait_ctx
+                .add(resample_evt, Token::InterruptResample)
+                .is_err()
+            {
+                error!("failed creating WaitContext");
+                return;
+            }
+        }
 
         for (index, bridge) in self.resource_bridges.iter().enumerate() {
             if let Err(e) = wait_ctx.add(bridge, Token::ResourceBridge { index }) {

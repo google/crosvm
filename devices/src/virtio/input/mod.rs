@@ -16,8 +16,8 @@ use vm_memory::GuestMemory;
 
 use self::event_source::{EvdevEventSource, EventSource, SocketEventSource};
 use super::{
-    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, VirtioDevice, Writer,
-    TYPE_INPUT,
+    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt,
+    VirtioDevice, Writer, TYPE_INPUT,
 };
 use linux_input_sys::{virtio_input_event, InputEventDecoder};
 use std::collections::BTreeMap;
@@ -463,7 +463,6 @@ impl<T: EventSource> Worker<T> {
             (&event_queue_evt, Token::EventQAvailable),
             (&status_queue_evt, Token::StatusQAvailable),
             (&self.event_source, Token::InputEventsAvailable),
-            (self.interrupt.get_resample_evt(), Token::InterruptResample),
             (&kill_evt, Token::Kill),
         ]) {
             Ok(wait_ctx) => wait_ctx,
@@ -472,6 +471,15 @@ impl<T: EventSource> Worker<T> {
                 return;
             }
         };
+        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
+            if wait_ctx
+                .add(resample_evt, Token::InterruptResample)
+                .is_err()
+            {
+                error!("failed adding resample event to WaitContext.");
+                return;
+            }
+        }
 
         'wait: loop {
             let wait_events = match wait_ctx.wait() {

@@ -19,8 +19,8 @@ use vm_control::{BalloonControlCommand, BalloonControlResult, BalloonStats};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
-    copy_config, descriptor_utils, DescriptorChain, Interrupt, Queue, Reader, VirtioDevice,
-    TYPE_BALLOON,
+    copy_config, descriptor_utils, DescriptorChain, Interrupt, Queue, Reader, SignalableInterrupt,
+    VirtioDevice, TYPE_BALLOON,
 };
 
 #[sorted]
@@ -276,14 +276,20 @@ async fn handle_command_tube(
 // Async task that resamples the status of the interrupt when the guest sends a request by
 // signalling the resample event associated with the interrupt.
 async fn handle_irq_resample(ex: &Executor, interrupt: Rc<RefCell<Interrupt>>) {
-    let resample_evt = interrupt
-        .borrow_mut()
-        .get_resample_evt()
-        .try_clone()
-        .unwrap();
-    let resample_evt = EventAsync::new(resample_evt.0, ex).unwrap();
-    while resample_evt.next_val().await.is_ok() {
-        interrupt.borrow_mut().do_interrupt_resample();
+    let resample_evt = if let Some(resample_evt) = interrupt.borrow_mut().get_resample_evt() {
+        let resample_evt = resample_evt.try_clone().unwrap();
+        let resample_evt = EventAsync::new(resample_evt.0, ex).unwrap();
+        Some(resample_evt)
+    } else {
+        None
+    };
+    if let Some(resample_evt) = resample_evt {
+        while resample_evt.next_val().await.is_ok() {
+            interrupt.borrow_mut().do_interrupt_resample();
+        }
+    } else {
+        // no resample event, park the future.
+        let () = futures::future::pending().await;
     }
 }
 

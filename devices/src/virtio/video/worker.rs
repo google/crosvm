@@ -18,7 +18,7 @@ use crate::virtio::video::device::{
 use crate::virtio::video::event::{self, EvtType, VideoEvt};
 use crate::virtio::video::response::{self, Response};
 use crate::virtio::video::{Error, Result};
-use crate::virtio::{Interrupt, Reader, Writer};
+use crate::virtio::{Interrupt, Reader, SignalableInterrupt, Writer};
 
 pub struct Worker {
     pub interrupt: Interrupt,
@@ -275,8 +275,13 @@ impl Worker {
             (&self.cmd_evt, Token::CmdQueue),
             (&self.event_evt, Token::EventQueue),
             (&self.kill_evt, Token::Kill),
-            (self.interrupt.get_resample_evt(), Token::InterruptResample),
         ])
+        .and_then(|wc| {
+            if let Some(resample_evt) = self.interrupt.get_resample_evt() {
+                wc.add(resample_evt, Token::InterruptResample)?;
+            }
+            Ok(wc)
+        })
         .map_err(Error::WaitContextCreationFailed)?;
 
         // Stores descriptors in which responses for asynchronous commands will be written.
