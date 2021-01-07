@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use crate::filesystem::{DirEntry, DirectoryIterator, FileSystem, ZeroCopyReader, ZeroCopyWriter};
-use crate::server::{Reader, Server, Writer};
+use crate::server::{Mapper, Reader, Server, Writer};
 
 // Use a file system that does nothing since we are fuzzing the server implementation.
 struct NullFs;
@@ -21,8 +21,12 @@ impl DirectoryIterator for NullIter {
 }
 
 /// Fuzz the server implementation.
-pub fn fuzz_server<R: Reader + ZeroCopyReader, W: Writer + ZeroCopyWriter>(r: R, w: W) {
+pub fn fuzz_server<R: Reader + ZeroCopyReader, W: Writer + ZeroCopyWriter, M: Mapper>(
+    r: R,
+    w: W,
+    m: M,
+) {
     let server = Server::new(NullFs);
 
-    let _ = server.handle_message(r, w);
+    let _ = server.handle_message(r, w, m);
 }
