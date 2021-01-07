@@ -30,7 +30,7 @@ use std::usize;
 
 use libc::iovec;
 
-use crate::{sys::IoSliceMut, DataInit};
+use crate::{sys::IoBufMut, DataInit};
 
 #[derive(Eq, PartialEq, Debug)]
 pub enum VolatileMemoryError {
@@ -99,17 +99,17 @@ pub trait VolatileMemory {
     }
 }
 
-/// A slice of raw memory that supports volatile access. Like `std::io::IoSliceMut`, this type is
-/// guaranteed to be ABI-compatible with `libc::iovec` but unlike `IoSliceMut`, it doesn't
+/// A slice of raw memory that supports volatile access. Like `std::io::IoBufMut`, this type is
+/// guaranteed to be ABI-compatible with `libc::iovec` but unlike `IoBufMut`, it doesn't
 /// automatically deref to `&mut [u8]`.
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
-pub struct VolatileSlice<'a>(IoSliceMut<'a>);
+pub struct VolatileSlice<'a>(IoBufMut<'a>);
 
 impl<'a> VolatileSlice<'a> {
     /// Creates a slice of raw memory that must support volatile access.
     pub fn new(buf: &mut [u8]) -> VolatileSlice {
-        VolatileSlice(IoSliceMut::new(buf))
+        VolatileSlice(IoBufMut::new(buf))
     }
 
     /// Creates a `VolatileSlice` from a pointer and a length.
@@ -119,7 +119,7 @@ impl<'a> VolatileSlice<'a> {
     /// In order to use this method safely, `addr` must be valid for reads and writes of `len` bytes
     /// and should live for the entire duration of lifetime `'a`.
     pub unsafe fn from_raw_parts(addr: *mut u8, len: usize) -> VolatileSlice<'a> {
-        VolatileSlice(IoSliceMut::from_raw_parts(addr, len))
+        VolatileSlice(IoBufMut::from_raw_parts(addr, len))
     }
 
     /// Gets a const pointer to this slice's memory.
@@ -145,9 +145,9 @@ impl<'a> VolatileSlice<'a> {
     /// Converts a slice of `VolatileSlice`s into a slice of `iovec`s
     #[allow(clippy::wrong_self_convention)]
     pub fn as_iobufs<'slice>(iovs: &'slice [VolatileSlice<'_>]) -> &'slice [iovec] {
-        // Safe because `VolatileSlice` is ABI-compatible with `IoSliceMut`.
-        IoSliceMut::as_iobufs(unsafe {
-            slice::from_raw_parts(iovs.as_ptr() as *const IoSliceMut, iovs.len())
+        // Safe because `VolatileSlice` is ABI-compatible with `IoBufMut`.
+        IoBufMut::as_iobufs(unsafe {
+            slice::from_raw_parts(iovs.as_ptr() as *const IoBufMut, iovs.len())
         })
     }
 

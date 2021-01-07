@@ -192,4 +192,4 @@ mod flexible_array;
 pub use flexible_array::{vec_with_array_field, FlexibleArray, FlexibleArrayWrapper};
 
 mod sys;
-pub use sys::IoSliceMut;
+pub use sys::IoBufMut;
