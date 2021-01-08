@@ -348,6 +348,7 @@ pub mod tests {
     use super::*;
     use crate::virtio::base_features;
     use crate::virtio::VIRTIO_MSI_NO_VECTOR;
+    use crate::ProtectionType;
     use net_util::fakes::FakeTap;
     use std::result;
     use std::sync::atomic::AtomicUsize;
@@ -363,7 +364,7 @@ pub mod tests {
 
     fn create_net_common() -> Net<FakeTap, FakeNet<FakeTap>> {
         let guest_memory = create_guest_memory().unwrap();
-        let features = base_features(false);
+        let features = base_features(ProtectionType::Unprotected);
         Net::<FakeTap, FakeNet<FakeTap>>::new(
             features,
             Ipv4Addr::new(127, 0, 0, 1),

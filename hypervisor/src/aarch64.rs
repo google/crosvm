@@ -4,6 +4,7 @@
 
 use base::Result;
 use downcast_rs::impl_downcast;
+use vm_memory::GuestAddress;
 
 use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
 
@@ -17,6 +18,10 @@ pub struct PsciVersion {
 pub trait VmAArch64: Vm {
     /// Gets the `Hypervisor` that created this VM.
     fn get_hypervisor(&self) -> &dyn Hypervisor;
+
+    /// Enables protected mode for the VM, creating a memslot for the firmware as needed.
+    /// Only works on VMs that support `VmCap::Protected`.
+    fn enable_protected_vm(&mut self, fw_addr: GuestAddress, fw_max_size: u64) -> Result<()>;
 
     /// Create a Vcpu with the specified Vcpu ID.
     fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>>;

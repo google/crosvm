@@ -2,14 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::ENXIO;
+use libc::{EINVAL, ENOMEM, ENOSYS, ENXIO};
 
-use base::{errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, Error, Result};
+use base::{
+    errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, Error, MemoryMappingBuilder, Result,
+};
 use kvm_sys::*;
+use vm_memory::GuestAddress;
 
-use super::{KvmVcpu, KvmVm};
+use super::{KvmCap, KvmVcpu, KvmVm};
 use crate::{
-    ClockState, DeviceKind, Hypervisor, IrqSourceChip, PsciVersion, VcpuAArch64, VcpuFeature,
+    ClockState, DeviceKind, Hypervisor, IrqSourceChip, PsciVersion, VcpuAArch64, VcpuFeature, Vm,
     VmAArch64, VmCap,
 };
 
@@ -47,11 +50,60 @@ impl KvmVm {
     pub fn set_pvclock_arch(&self, _state: &ClockState) -> Result<()> {
         Err(Error::new(ENXIO))
     }
+
+    fn get_protected_vm_info(&self) -> Result<KvmProtectedVmInfo> {
+        let mut info = KvmProtectedVmInfo {
+            firmware_size: 0,
+            reserved: [0; 7],
+        };
+        // Safe because we allocated the struct and we know the kernel won't write beyond the end of
+        // the struct or keep a pointer to it.
+        unsafe {
+            self.enable_raw_capability(
+                KvmCap::ArmProtectedVm,
+                KVM_CAP_ARM_PROTECTED_VM_FLAGS_INFO,
+                &[&mut info as *mut KvmProtectedVmInfo as u64, 0, 0, 0],
+            )
+        }?;
+        Ok(info)
+    }
+}
+
+#[repr(C)]
+struct KvmProtectedVmInfo {
+    firmware_size: u64,
+    reserved: [u64; 7],
 }
 
 impl VmAArch64 for KvmVm {
     fn get_hypervisor(&self) -> &dyn Hypervisor {
         &self.kvm
+    }
+
+    fn enable_protected_vm(&mut self, fw_addr: GuestAddress, fw_max_size: u64) -> Result<()> {
+        if !self.check_capability(VmCap::Protected) {
+            return Err(Error::new(ENOSYS));
+        }
+        let info = self.get_protected_vm_info()?;
+        let memslot = if info.firmware_size == 0 {
+            u64::MAX
+        } else {
+            if info.firmware_size > fw_max_size {
+                return Err(Error::new(ENOMEM));
+            }
+            let mem = MemoryMappingBuilder::new(info.firmware_size as usize)
+                .build()
+                .map_err(|_| Error::new(EINVAL))?;
+            self.add_memory_region(fw_addr, Box::new(mem), false, false)? as u64
+        };
+        // Safe because none of the args are pointers.
+        unsafe {
+            self.enable_raw_capability(
+                KvmCap::ArmProtectedVm,
+                KVM_CAP_ARM_PROTECTED_VM_FLAGS_ENABLE,
+                &[memslot, 0, 0, 0],
+            )
+        }
     }
 
     fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>> {

@@ -61,7 +61,7 @@ use arch::{
     VmComponents, VmImage,
 };
 use base::Event;
-use devices::{IrqChip, IrqChipX86_64, PciConfigIo, PciDevice};
+use devices::{IrqChip, IrqChipX86_64, PciConfigIo, PciDevice, ProtectionType};
 use hypervisor::{HypervisorX86_64, VcpuX86_64, VmX86_64};
 use minijail::Minijail;
 use remain::sorted;
@@ -124,6 +124,7 @@ pub enum Error {
     SetupSmbios(smbios::Error),
     SetupSregs(regs::Error),
     TranslatingVirtAddr,
+    UnsupportedProtectionType,
     WriteRegs(base::Error),
     WritingGuestMemory(GuestMemoryError),
     ZeroPagePastRamEnd,
@@ -183,6 +184,7 @@ impl Display for Error {
             SetupSmbios(e) => write!(f, "failed to set up SMBIOS: {}", e),
             SetupSregs(e) => write!(f, "failed to set up sregs: {}", e),
             TranslatingVirtAddr => write!(f, "failed to translate virtual address"),
+            UnsupportedProtectionType => write!(f, "protected VMs not supported on x86_64"),
             WriteRegs(e) => write!(f, "error writing CPU registers {}", e),
             WritingGuestMemory(e) => write!(f, "error writing guest memory {}", e),
             ZeroPagePastRamEnd => write!(f, "the zero page extends past the end of guest_mem"),
@@ -372,6 +374,10 @@ impl arch::LinuxArch for X8664arch {
         E2: StdError + 'static,
         E3: StdError + 'static,
     {
+        if components.protected_vm != ProtectionType::Unprotected {
+            return Err(Error::UnsupportedProtectionType);
+        }
+
         let bios_size = match components.vm_image {
             VmImage::Bios(ref mut bios_file) => {
                 Some(bios_file.metadata().map_err(Error::LoadBios)?.len())
@@ -1124,7 +1130,7 @@ impl X8664arch {
     /// * - `io_bus` the I/O bus to add the devices to
     /// * - `serial_parmaters` - definitions for how the serial devices should be configured
     fn setup_serial_devices(
-        protected_vm: bool,
+        protected_vm: ProtectionType,
         irq_chip: &mut impl IrqChip,
         io_bus: &mut devices::Bus,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,

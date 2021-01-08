@@ -868,6 +868,7 @@ mod tests {
 
     use crate::virtio::base_features;
     use crate::virtio::descriptor_utils::{create_descriptor_chain, DescriptorType};
+    use crate::ProtectionType;
 
     use super::*;
 
@@ -876,7 +877,7 @@ mod tests {
         let f = tempfile().unwrap();
         f.set_len(0x1000).unwrap();
 
-        let features = base_features(false);
+        let features = base_features(ProtectionType::Unprotected);
         let b = Block::new(features, Box::new(f), true, false, 512, None, None).unwrap();
         let mut num_sectors = [0u8; 4];
         b.read_config(0, &mut num_sectors);
@@ -893,7 +894,7 @@ mod tests {
         let f = tempfile().unwrap();
         f.set_len(0x1000).unwrap();
 
-        let features = base_features(false);
+        let features = base_features(ProtectionType::Unprotected);
         let b = Block::new(features, Box::new(f), true, false, 4096, None, None).unwrap();
         let mut blk_size = [0u8; 4];
         b.read_config(20, &mut blk_size);
@@ -906,7 +907,7 @@ mod tests {
         // read-write block device
         {
             let f = tempfile().unwrap();
-            let features = base_features(false);
+            let features = base_features(ProtectionType::Unprotected);
             let b = Block::new(features, Box::new(f), false, true, 512, None, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
@@ -917,7 +918,7 @@ mod tests {
         // read-write block device, non-sparse
         {
             let f = tempfile().unwrap();
-            let features = base_features(false);
+            let features = base_features(ProtectionType::Unprotected);
             let b = Block::new(features, Box::new(f), false, false, 512, None, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
@@ -928,7 +929,7 @@ mod tests {
         // read-only block device
         {
             let f = tempfile().unwrap();
-            let features = base_features(false);
+            let features = base_features(ProtectionType::Unprotected);
             let b = Block::new(features, Box::new(f), true, true, 512, None, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX

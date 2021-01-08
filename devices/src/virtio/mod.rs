@@ -56,6 +56,7 @@ pub use self::virtio_device::*;
 pub use self::virtio_pci_device::*;
 pub use self::wl::*;
 
+use crate::ProtectionType;
 use std::cmp;
 use std::convert::TryFrom;
 
@@ -156,10 +157,10 @@ pub fn copy_config(dst: &mut [u8], dst_offset: u64, src: &[u8], src_offset: u64)
 }
 
 /// Returns the set of reserved base features common to all virtio devices.
-pub fn base_features(protected_vm: bool) -> u64 {
+pub fn base_features(protected_vm: ProtectionType) -> u64 {
     let mut features: u64 = 1 << VIRTIO_F_VERSION_1;
 
-    if protected_vm {
+    if protected_vm == ProtectionType::Protected {
         features |= 1 << VIRTIO_F_ACCESS_PLATFORM;
     }
 

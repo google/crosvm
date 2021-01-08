@@ -4,7 +4,7 @@
 
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 
-use devices::IrqChipX86_64;
+use devices::{IrqChipX86_64, ProtectionType};
 use hypervisor::{HypervisorX86_64, VcpuExit, VcpuX86_64, VmX86_64};
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -158,8 +158,14 @@ where
 
     arch::set_default_serial_parameters(&mut serial_params);
 
-    X8664arch::setup_serial_devices(false, &mut irq_chip, &mut io_bus, &serial_params, None)
-        .unwrap();
+    X8664arch::setup_serial_devices(
+        ProtectionType::Unprotected,
+        &mut irq_chip,
+        &mut io_bus,
+        &serial_params,
+        None,
+    )
+    .unwrap();
 
     let param_args = "nokaslr";
 

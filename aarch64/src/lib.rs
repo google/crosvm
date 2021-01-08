@@ -17,6 +17,7 @@ use arch::{
 use base::Event;
 use devices::{
     Bus, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice, PciInterruptPin,
+    ProtectionType,
 };
 use hypervisor::{
     DeviceKind, Hypervisor, HypervisorCap, PsciVersion, VcpuAArch64, VcpuFeature, VmAArch64,
@@ -48,6 +49,10 @@ const AARCH64_FDT_OFFSET_IN_BIOS_MODE: u64 = 0x0;
 // Therefore, the BIOS is placed after the FDT in memory.
 const AARCH64_BIOS_OFFSET: u64 = AARCH64_FDT_MAX_SIZE;
 const AARCH64_BIOS_MAX_LEN: u64 = 1 << 20;
+
+const AARCH64_PROTECTED_VM_FW_MAX_SIZE: u64 = 0x200000;
+const AARCH64_PROTECTED_VM_FW_START: u64 =
+    AARCH64_PHYS_MEM_START - AARCH64_PROTECTED_VM_FW_MAX_SIZE;
 
 // These constants indicate the placement of the GIC registers in the physical
 // address space.
@@ -141,6 +146,7 @@ pub enum Error {
     GetSerialCmdline(GetSerialCmdlineError),
     InitrdLoadFailure(arch::LoadImageError),
     KernelLoadFailure(arch::LoadImageError),
+    ProtectVm(base::Error),
     RegisterIrqfd(base::Error),
     RegisterPci(BusError),
     RegisterVsock(arch::DeviceRegistrationError),
@@ -175,6 +181,7 @@ impl Display for Error {
             GetSerialCmdline(e) => write!(f, "failed to get serial cmdline: {}", e),
             InitrdLoadFailure(e) => write!(f, "initrd could not be loaded: {}", e),
             KernelLoadFailure(e) => write!(f, "kernel could not be loaded: {}", e),
+            ProtectVm(e) => write!(f, "failed to protect vm: {}", e),
             RegisterIrqfd(e) => write!(f, "failed to register irq fd: {}", e),
             RegisterPci(e) => write!(f, "error registering PCI bus: {}", e),
             RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
@@ -248,6 +255,14 @@ impl arch::LinuxArch for AArch64 {
         let mut resources = Self::get_resource_allocator(components.memory_size);
         let mem = Self::setup_memory(components.memory_size)?;
         let mut vm = create_vm(mem.clone()).map_err(|e| Error::CreateVm(Box::new(e)))?;
+
+        if components.protected_vm == ProtectionType::Protected {
+            vm.enable_protected_vm(
+                GuestAddress(AARCH64_PROTECTED_VM_FW_START),
+                AARCH64_PROTECTED_VM_FW_MAX_SIZE,
+            )
+            .map_err(Error::ProtectVm)?;
+        }
 
         let mut use_pmu = vm
             .get_hypervisor()

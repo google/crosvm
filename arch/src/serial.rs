@@ -15,7 +15,7 @@ use std::thread;
 use std::time::Duration;
 
 use base::{error, info, read_raw_stdin, syslog, AsRawDescriptor, Event, RawDescriptor};
-use devices::{Bus, ProxyDevice, Serial, SerialDevice};
+use devices::{Bus, ProtectionType, ProxyDevice, Serial, SerialDevice};
 use minijail::Minijail;
 use sync::Mutex;
 
@@ -211,7 +211,7 @@ impl SerialParameters {
     ///                this function.
     pub fn create_serial_device<T: SerialDevice>(
         &self,
-        protected_vm: bool,
+        protected_vm: ProtectionType,
         evt: &Event,
         keep_rds: &mut Vec<RawDescriptor>,
     ) -> std::result::Result<T, Error> {
@@ -409,7 +409,7 @@ pub const SERIAL_ADDR: [u64; 4] = [0x3f8, 0x2f8, 0x3e8, 0x2e8];
 /// * `serial_parameters` - definitions of serial parameter configurations.
 ///   All four of the traditional PC-style serial ports (COM1-COM4) must be specified.
 pub fn add_serial_devices(
-    protected_vm: bool,
+    protected_vm: ProtectionType,
     io_bus: &mut Bus,
     com_evt_1_3: &Event,
     com_evt_2_4: &Event,

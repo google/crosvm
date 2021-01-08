@@ -48,3 +48,12 @@ pub use self::usb::host_backend::host_backend_device_provider::HostBackendDevice
 pub use self::usb::xhci::xhci_controller::XhciController;
 pub use self::vfio::{VfioContainer, VfioDevice};
 pub use self::virtio::VirtioPciDevice;
+
+/// Whether the VM should be run in protected mode or not.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ProtectionType {
+    /// The VM should be run in the unprotected mode, where the host has access to its memory.
+    Unprotected,
+    /// The VM should be run in protected mode, so the host cannot access its memory directly.
+    Protected,
+}

@@ -34,6 +34,7 @@ use crosvm::{
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{GpuMode, GpuParameters};
+use devices::ProtectionType;
 #[cfg(feature = "audio")]
 use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
@@ -1505,7 +1506,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.acpi_tables.push(acpi_table);
         }
         "protected-vm" => {
-            cfg.protected_vm = true;
+            cfg.protected_vm = ProtectionType::Protected;
             cfg.params.push("swiotlb=force".to_string());
         }
         "battery" => {

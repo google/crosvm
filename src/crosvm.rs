@@ -25,6 +25,7 @@ use devices::virtio::fs::passthrough;
 use devices::virtio::gpu::GpuParameters;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
+use devices::ProtectionType;
 use libc::{getegid, geteuid};
 use vm_control::BatteryType;
 
@@ -223,7 +224,7 @@ pub struct Config {
     pub video_dec: bool,
     pub video_enc: bool,
     pub acpi_tables: Vec<PathBuf>,
-    pub protected_vm: bool,
+    pub protected_vm: ProtectionType,
     pub battery_type: Option<BatteryType>,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<u32>,
@@ -283,7 +284,7 @@ impl Default for Config {
             video_dec: false,
             video_enc: false,
             acpi_tables: Vec::new(),
-            protected_vm: false,
+            protected_vm: ProtectionType::Unprotected,
             battery_type: None,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: None,

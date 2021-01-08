@@ -12,6 +12,7 @@ use std::sync::Arc;
 use base::Event;
 use cros_fuzz::fuzz_target;
 use devices::virtio::{base_features, Block, Interrupt, Queue, VirtioDevice};
+use devices::ProtectionType;
 use tempfile;
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -77,7 +78,7 @@ fuzz_target!(|bytes| {
     let queue_evts: Vec<Event> = vec![Event::new().unwrap()];
     let queue_evt = queue_evts[0].try_clone().unwrap();
 
-    let features = base_features(false);
+    let features = base_features(ProtectionType::Unprotected);
 
     let disk_file = tempfile::tempfile().unwrap();
     let mut block =

@@ -568,6 +568,10 @@ pub const KVM_CAP_ARM_PTRAUTH_GENERIC: u32 = 172;
 pub const KVM_CAP_PMU_EVENT_FILTER: u32 = 173;
 pub const KVM_CAP_ARM_IRQ_LINE_LAYOUT_2: u32 = 174;
 pub const KVM_CAP_HYPERV_DIRECT_TLBFLUSH: u32 = 175;
+// TODO(qwandor): Update this once the pKVM patches are merged upstream with a stable capability ID.
+pub const KVM_CAP_ARM_PROTECTED_VM: u32 = 0xffbadab1;
+pub const KVM_CAP_ARM_PROTECTED_VM_FLAGS_ENABLE: u32 = 0;
+pub const KVM_CAP_ARM_PROTECTED_VM_FLAGS_INFO: u32 = 1;
 pub const KVM_IRQ_ROUTING_IRQCHIP: u32 = 1;
 pub const KVM_IRQ_ROUTING_MSI: u32 = 2;
 pub const KVM_IRQ_ROUTING_S390_ADAPTER: u32 = 3;

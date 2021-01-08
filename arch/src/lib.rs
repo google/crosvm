@@ -21,7 +21,7 @@ use base::{syslog, AsRawDescriptor, Event};
 use devices::virtio::VirtioDevice;
 use devices::{
     Bus, BusDevice, BusError, IrqChip, PciAddress, PciDevice, PciDeviceError, PciInterruptPin,
-    PciRoot, ProxyDevice,
+    PciRoot, ProtectionType, ProxyDevice,
 };
 use hypervisor::{IoEventAddress, Vm};
 use minijail::Minijail;
@@ -91,7 +91,7 @@ pub struct VmComponents {
     pub wayland_dmabuf: bool,
     pub acpi_sdts: Vec<SDT>,
     pub rt_cpus: Vec<usize>,
-    pub protected_vm: bool,
+    pub protected_vm: ProtectionType,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<(u32, VmControlRequestSocket)>, // port and control socket.
 }

@@ -4,13 +4,14 @@
 
 use std::io;
 
+use crate::ProtectionType;
 use base::{Event, RawDescriptor};
 
 /// Abstraction over serial-like devices that can be created given an event and optional input and
 /// output streams.
 pub trait SerialDevice {
     fn new(
-        protected_vm: bool,
+        protected_vm: ProtectionType,
         interrupt_evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         output: Option<Box<dyn io::Write + Send>>,
