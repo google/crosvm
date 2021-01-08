@@ -48,6 +48,11 @@ impl<'a> IoSliceMut<'a> {
         self.iov.iov_len as usize
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.iov.iov_len == 0
+    }
+
     /// Gets a const pointer to this slice's memory.
     #[inline]
     pub fn as_ptr(&self) -> *const u8 {

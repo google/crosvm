@@ -5,3 +5,4 @@ target/
 **/Cargo.lock
 !/Cargo.lock
 lcov.info
+.idea
