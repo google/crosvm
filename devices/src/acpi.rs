@@ -86,7 +86,7 @@ impl BusDevice for ACPIPMResource {
             return;
         }
 
-        let mut val_arr = u16::to_ne_bytes(0 as u16);
+        let mut val_arr = u16::to_ne_bytes(0u16);
         for i in 0..std::mem::size_of::<u16>() {
             if i < data.len() {
                 val_arr[i] = data[i];

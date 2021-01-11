@@ -150,7 +150,7 @@ fn write_string(mem: &GuestMemory, val: &str, mut curptr: GuestAddress) -> Resul
     for c in val.as_bytes().iter() {
         curptr = write_and_incr(mem, *c, curptr)?;
     }
-    curptr = write_and_incr(mem, 0 as u8, curptr)?;
+    curptr = write_and_incr(mem, 0_u8, curptr)?;
     Ok(curptr)
 }
 
@@ -163,32 +163,36 @@ pub fn setup_smbios(mem: &GuestMemory) -> Result<()> {
 
     {
         handle += 1;
-        let mut smbios_biosinfo = SmbiosBiosInfo::default();
-        smbios_biosinfo.typ = BIOS_INFORMATION;
-        smbios_biosinfo.length = mem::size_of::<SmbiosBiosInfo>() as u8;
-        smbios_biosinfo.handle = handle;
-        smbios_biosinfo.vendor = 1; // First string written in this section
-        smbios_biosinfo.version = 2; // Second string written in this section
-        smbios_biosinfo.characteristics = PCI_SUPPORTED;
-        smbios_biosinfo.characteristics_ext2 = IS_VIRTUAL_MACHINE;
+        let smbios_biosinfo = SmbiosBiosInfo {
+            typ: BIOS_INFORMATION,
+            length: mem::size_of::<SmbiosBiosInfo>() as u8,
+            handle,
+            vendor: 1,  // First string written in this section
+            version: 2, // Second string written in this section
+            characteristics: PCI_SUPPORTED,
+            characteristics_ext2: IS_VIRTUAL_MACHINE,
+            ..Default::default()
+        };
         curptr = write_and_incr(mem, smbios_biosinfo, curptr)?;
         curptr = write_string(mem, "crosvm", curptr)?;
         curptr = write_string(mem, "0", curptr)?;
-        curptr = write_and_incr(mem, 0 as u8, curptr)?;
+        curptr = write_and_incr(mem, 0_u8, curptr)?;
     }
 
     {
         handle += 1;
-        let mut smbios_sysinfo = SmbiosSysInfo::default();
-        smbios_sysinfo.typ = SYSTEM_INFORMATION;
-        smbios_sysinfo.length = mem::size_of::<SmbiosSysInfo>() as u8;
-        smbios_sysinfo.handle = handle;
-        smbios_sysinfo.manufacturer = 1; // First string written in this section
-        smbios_sysinfo.product_name = 2; // Second string written in this section
+        let smbios_sysinfo = SmbiosSysInfo {
+            typ: SYSTEM_INFORMATION,
+            length: mem::size_of::<SmbiosSysInfo>() as u8,
+            handle,
+            manufacturer: 1, // First string written in this section
+            product_name: 2, // Second string written in this section
+            ..Default::default()
+        };
         curptr = write_and_incr(mem, smbios_sysinfo, curptr)?;
         curptr = write_string(mem, "ChromiumOS", curptr)?;
         curptr = write_string(mem, "crosvm", curptr)?;
-        curptr = write_and_incr(mem, 0 as u8, curptr)?;
+        curptr = write_and_incr(mem, 0u8, curptr)?;
     }
 
     {

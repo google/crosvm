@@ -219,7 +219,7 @@ impl PortId {
     }
 
     fn set(&self, value: u8) -> Result<()> {
-        if value < 1 || value > MAX_PORTS {
+        if !(1..=MAX_PORTS).contains(&value) {
             return Err(Error::BadPortId(value));
         }
         *self.0.lock() = value;

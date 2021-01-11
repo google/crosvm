@@ -125,9 +125,9 @@ fn parse_chunk<T: Read + Seek>(
         }
         CHUNK_TYPE_FILL => {
             if chunk_header.total_sz == chunk_hdr_size as u32 {
-                return Err(Error::InvalidSpecification(format!(
-                    "Fill chunk did not have any data to fill"
-                )));
+                return Err(Error::InvalidSpecification(
+                    "Fill chunk did not have any data to fill".to_string(),
+                ));
             }
             let fill_size = chunk_header.total_sz.to_native() as u64 - chunk_hdr_size as u64;
             let mut fill_bytes = vec![0u8; fill_size as usize];

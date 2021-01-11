@@ -167,7 +167,7 @@ pub trait MsgReceiver: AsRef<UnixSeqpacket> {
             }
         };
 
-        if msg_buffer.len() == 0 && Self::M::fixed_size() != Some(0) {
+        if msg_buffer.is_empty() && Self::M::fixed_size() != Some(0) {
             return Err(MsgError::RecvZero);
         }
 

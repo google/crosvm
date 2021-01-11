@@ -672,8 +672,8 @@ impl PassthroughFs {
             inode,
             generation: 0,
             attr: st,
-            attr_timeout: self.cfg.attr_timeout.clone(),
-            entry_timeout: self.cfg.entry_timeout.clone(),
+            attr_timeout: self.cfg.attr_timeout,
+            entry_timeout: self.cfg.entry_timeout,
         })
     }
 
@@ -816,7 +816,7 @@ impl PassthroughFs {
     fn do_getattr(&self, inode: &InodeData) -> io::Result<(libc::stat64, Duration)> {
         let st = stat(&inode.file)?;
 
-        Ok((st, self.cfg.attr_timeout.clone()))
+        Ok((st, self.cfg.attr_timeout))
     }
 
     fn do_unlink(&self, parent: &InodeData, name: &CStr, flags: libc::c_int) -> io::Result<()> {
@@ -1442,8 +1442,7 @@ impl FileSystem for PassthroughFs {
     ) -> io::Result<Self::DirIter> {
         let data = self.find_handle(handle, inode)?;
 
-        let mut buf = Vec::with_capacity(size as usize);
-        buf.resize(size as usize, 0);
+        let buf = vec![0; size as usize];
 
         let dir = data.file.lock();
 
@@ -1879,8 +1878,7 @@ impl FileSystem for PassthroughFs {
     fn readlink(&self, _ctx: Context, inode: Inode) -> io::Result<Vec<u8>> {
         let data = self.find_inode(inode)?;
 
-        let mut buf = Vec::with_capacity(libc::PATH_MAX as usize);
-        buf.resize(libc::PATH_MAX as usize, 0);
+        let mut buf = vec![0; libc::PATH_MAX as usize];
 
         // Safe because this is a constant value and a valid C string.
         let empty = unsafe { CStr::from_bytes_with_nul_unchecked(EMPTY_CSTR) };
@@ -2350,7 +2348,6 @@ mod tests {
 
     use std::env;
     use std::os::unix::ffi::OsStringExt;
-    use std::path::PathBuf;
 
     #[test]
     fn create_temp_dir() {
@@ -2368,7 +2365,7 @@ mod tests {
         let t = TempDir::new(&parent, 0o755).expect("Failed to create temporary directory");
 
         let basename = t.basename().to_string_lossy();
-        let path = PathBuf::from(env::temp_dir()).join(&*basename);
+        let path = env::temp_dir().join(&*basename);
         assert!(path.exists());
         assert!(path.is_dir());
     }
@@ -2389,7 +2386,7 @@ mod tests {
         let t = TempDir::new(&parent, 0o755).expect("Failed to create temporary directory");
 
         let basename = t.basename().to_string_lossy();
-        let path = PathBuf::from(env::temp_dir()).join(&*basename);
+        let path = env::temp_dir().join(&*basename);
         mem::drop(t);
         assert!(!path.exists());
     }
@@ -2411,14 +2408,16 @@ mod tests {
 
         let (basename_cstr, _) = t.into_inner();
         let basename = basename_cstr.to_string_lossy();
-        let path = PathBuf::from(env::temp_dir()).join(&*basename);
+        let path = env::temp_dir().join(&*basename);
         assert!(path.exists());
     }
 
     #[test]
     fn rewrite_xattr_names() {
-        let mut cfg = Config::default();
-        cfg.rewrite_security_xattrs = true;
+        let cfg = Config {
+            rewrite_security_xattrs: true,
+            ..Default::default()
+        };
 
         let p = PassthroughFs::new(cfg).expect("Failed to create PassthroughFs");
 

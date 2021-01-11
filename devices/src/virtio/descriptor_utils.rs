@@ -116,7 +116,7 @@ impl DescriptorChainRegions {
 
         // Special case where the number of bytes to be copied is smaller than the `size()` of the
         // first regions.
-        if region_count == 0 && regions.len() > 0 && count > 0 {
+        if region_count == 0 && !regions.is_empty() && count > 0 {
             debug_assert!(count < regions[0].len);
             // Safe because we know that count is smaller than the length of the first slice.
             Cow::Owned(vec![MemRegion {
@@ -291,7 +291,7 @@ impl Reader {
     /// them as a collection. Returns an error if the size of the remaining data is indivisible by
     /// the size of an object of type `T`.
     pub fn collect<C: FromIterator<io::Result<T>>, T: DataInit>(&mut self) -> C {
-        C::from_iter(self.iter())
+        self.iter().collect()
     }
 
     /// Creates an iterator for sequentially reading `DataInit` objects from the `Reader`.
@@ -469,7 +469,7 @@ impl io::Read for Reader {
         let mut rem = buf;
         let mut total = 0;
         for b in self.regions.get_remaining(&self.mem) {
-            if rem.len() == 0 {
+            if rem.is_empty() {
                 break;
             }
 
@@ -547,8 +547,11 @@ impl Writer {
     /// this doesn't require the values to be stored in an intermediate collection first. It also
     /// allows callers to choose which elements in a collection to write, for example by using the
     /// `filter` or `take` methods of the `Iterator` trait.
-    pub fn write_iter<T: DataInit, I: Iterator<Item = T>>(&mut self, iter: I) -> io::Result<()> {
-        iter.map(|v| self.write_obj(v)).collect()
+    pub fn write_iter<T: DataInit, I: Iterator<Item = T>>(
+        &mut self,
+        mut iter: I,
+    ) -> io::Result<()> {
+        iter.try_for_each(|v| self.write_obj(v))
     }
 
     /// Writes a collection of objects into the descriptor chain buffer.
@@ -699,7 +702,7 @@ impl io::Write for Writer {
         let mut rem = buf;
         let mut total = 0;
         for b in self.regions.get_remaining(&self.mem) {
-            if rem.len() == 0 {
+            if rem.is_empty() {
                 break;
             }
 

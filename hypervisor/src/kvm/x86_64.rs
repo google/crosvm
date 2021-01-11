@@ -153,8 +153,10 @@ impl KvmVm {
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
     pub fn get_pic_state(&self, id: PicSelect) -> Result<kvm_pic_state> {
-        let mut irqchip_state = kvm_irqchip::default();
-        irqchip_state.chip_id = id as u32;
+        let mut irqchip_state = kvm_irqchip {
+            chip_id: id as u32,
+            ..Default::default()
+        };
         let ret = unsafe {
             // Safe because we know our file is a VM fd, we know the kernel will only write
             // correct amount of memory to our pointer, and we verify the return result.
@@ -175,8 +177,10 @@ impl KvmVm {
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
     pub fn set_pic_state(&self, id: PicSelect, state: &kvm_pic_state) -> Result<()> {
-        let mut irqchip_state = kvm_irqchip::default();
-        irqchip_state.chip_id = id as u32;
+        let mut irqchip_state = kvm_irqchip {
+            chip_id: id as u32,
+            ..Default::default()
+        };
         irqchip_state.chip.pic = *state;
         // Safe because we know that our file is a VM fd, we know the kernel will only read
         // correct amount of memory from our pointer, and we verify the return result.
@@ -192,8 +196,10 @@ impl KvmVm {
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
     pub fn get_ioapic_state(&self) -> Result<kvm_ioapic_state> {
-        let mut irqchip_state = kvm_irqchip::default();
-        irqchip_state.chip_id = 2;
+        let mut irqchip_state = kvm_irqchip {
+            chip_id: 2,
+            ..Default::default()
+        };
         let ret = unsafe {
             // Safe because we know our file is a VM fd, we know the kernel will only write
             // correct amount of memory to our pointer, and we verify the return result.
@@ -214,8 +220,10 @@ impl KvmVm {
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
     pub fn set_ioapic_state(&self, state: &kvm_ioapic_state) -> Result<()> {
-        let mut irqchip_state = kvm_irqchip::default();
-        irqchip_state.chip_id = 2;
+        let mut irqchip_state = kvm_irqchip {
+            chip_id: 2,
+            ..Default::default()
+        };
         irqchip_state.chip.ioapic = *state;
         // Safe because we know that our file is a VM fd, we know the kernel will only read
         // correct amount of memory from our pointer, and we verify the return result.
@@ -273,8 +281,10 @@ impl KvmVm {
 
     /// Enable support for split-irqchip.
     pub fn enable_split_irqchip(&self) -> Result<()> {
-        let mut cap: kvm_enable_cap = Default::default();
-        cap.cap = KVM_CAP_SPLIT_IRQCHIP;
+        let mut cap = kvm_enable_cap {
+            cap: KVM_CAP_SPLIT_IRQCHIP,
+            ..Default::default()
+        };
         cap.args[0] = NUM_IOAPIC_PINS as u64;
         // safe becuase we allocated the struct and we know the kernel will read
         // exactly the size of the struct
@@ -587,8 +597,8 @@ impl VcpuX86_64 for KvmVcpu {
         // bit 10: always 1.
         dbg.arch.debugreg[7] = 0x0600;
 
-        for i in 0..addrs.len() {
-            dbg.arch.debugreg[i] = addrs[i].0;
+        for (i, addr) in addrs.iter().enumerate() {
+            dbg.arch.debugreg[i] = addr.0;
             // Set global breakpoint enable flag
             dbg.arch.debugreg[7] |= 2 << (i * 2);
         }

@@ -6,7 +6,6 @@
 
 use devices::IrqChipX86_64;
 use hypervisor::{HypervisorX86_64, VcpuExit, VcpuX86_64, VmX86_64};
-use msg_socket;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::cpuid::setup_cpuid;

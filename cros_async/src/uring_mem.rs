@@ -136,7 +136,7 @@ impl VecIoWrapper {
 // iovecs are dropped because they borrow Self.  Nothing can borrow the owned inner vec until self
 // is consumed by `into`, which can't happen if there are outstanding mut borrows.
 unsafe impl BackingMemory for VecIoWrapper {
-    fn get_iovec<'s>(&'s self, mem_range: MemRegion) -> Result<BorrowedIoVec<'s>> {
+    fn get_iovec(&self, mem_range: MemRegion) -> Result<BorrowedIoVec<'_>> {
         self.check_addrs(&mem_range)?;
         // Safe because the mem_range range is valid in the backing memory as checked above.
         unsafe {

@@ -598,8 +598,8 @@ fn parse_battery_options(s: Option<&str>) -> argument::Result<BatteryType> {
 
     if let Some(s) = s {
         let opts = s
-            .split(",")
-            .map(|frag| frag.split("="))
+            .split(',')
+            .map(|frag| frag.split('='))
             .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
 
         for (k, v) in opts {
@@ -759,7 +759,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     SerialHardware::Serial => {}
                     _ => {
                         return Err(argument::Error::InvalidValue {
-                            value: serial_params.hardware.to_string().to_owned(),
+                            value: serial_params.hardware.to_string(),
                             expected: String::from("earlycon not supported for hardware"),
                         });
                     }
@@ -1187,7 +1187,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         })?;
 
                         let dur = Duration::from_secs(seconds);
-                        shared_dir.fs_cfg.entry_timeout = dur.clone();
+                        shared_dir.fs_cfg.entry_timeout = dur;
                         shared_dir.fs_cfg.attr_timeout = dur;
                     }
                     "cache" => {

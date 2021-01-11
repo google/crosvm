@@ -145,7 +145,7 @@ impl UnixSeqpacket {
 
     /// Gets the number of bytes that can be read from this socket without blocking.
     pub fn get_readable_bytes(&self) -> io::Result<usize> {
-        let mut byte_count = 0 as libc::c_int;
+        let mut byte_count = 0i32;
         let ret = unsafe { libc::ioctl(self.fd, libc::FIONREAD, &mut byte_count) };
         if ret < 0 {
             Err(io::Error::last_os_error())

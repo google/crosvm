@@ -630,7 +630,7 @@ impl VfioDevice {
                         let areas =
                             unsafe { sparse_mmap.areas.as_slice(sparse_mmap.nr_areas as usize) };
                         for area in areas.iter() {
-                            mmaps.push(area.clone());
+                            mmaps.push(*area);
                         }
                     } else if cap_header.id as u32 == VFIO_REGION_INFO_CAP_TYPE {
                         if offset + type_cap_sz > region_info_sz {

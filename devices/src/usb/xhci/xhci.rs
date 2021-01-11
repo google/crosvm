@@ -106,13 +106,13 @@ impl Xhci {
         let device_slots = DeviceSlots::new(
             fail_handle.clone(),
             regs.dcbaap.clone(),
-            hub.clone(),
+            hub,
             interrupter.clone(),
             event_loop.clone(),
             mem.clone(),
         );
         let command_ring_controller = CommandRingController::new(
-            mem.clone(),
+            mem,
             event_loop.clone(),
             device_slots.clone(),
             interrupter.clone(),

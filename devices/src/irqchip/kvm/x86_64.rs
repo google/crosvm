@@ -372,7 +372,7 @@ impl IrqChip for KvmSplitIrqChip {
         *current_routes = routes.to_vec();
 
         // We only call set_gsi_routing with the msi routes
-        let mut msi_routes = routes.to_vec().clone();
+        let mut msi_routes = routes.to_vec();
         msi_routes.retain(|r| matches!(r.source, IrqSource::Msi { .. }));
 
         self.vm.set_gsi_routing(&*msi_routes)

@@ -164,8 +164,9 @@ impl VirtioGpu {
 
         let mut display = self.display.borrow_mut();
         let event_device_id = display.import_event_device(event_device)?;
-        self.scanout_surface_id
-            .map(|s| display.attach_event_device(s, event_device_id));
+        if let Some(s) = self.scanout_surface_id {
+            display.attach_event_device(s, event_device_id)
+        }
         self.event_devices.insert(event_device_id, scanout);
         Ok(OkNoData)
     }
@@ -216,7 +217,7 @@ impl VirtioGpu {
             let surface_id =
                 display.create_surface(None, self.display_width, self.display_height)?;
             self.scanout_surface_id = Some(surface_id);
-            for (event_device_id, _) in &self.event_devices {
+            for event_device_id in self.event_devices.keys() {
                 display.attach_event_device(surface_id, *event_device_id);
             }
         }

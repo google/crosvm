@@ -167,14 +167,9 @@ impl VfioMsiCap {
             }
         };
 
-        if index >= self.offset as u64
+        index >= self.offset as u64
             && index + len as u64 <= (self.offset + msi_len) as u64
             && len as u32 <= msi_len
-        {
-            true
-        } else {
-            false
-        }
     }
 
     fn write_msi_reg(&mut self, index: u64, data: &[u8]) -> Option<VfioMsiChange> {
@@ -343,11 +338,7 @@ impl VfioMsixCap {
         let control_start = self.offset + PCI_MSIX_FLAGS;
         let control_end = control_start + 2;
 
-        if offset < control_end && offset + size > control_start {
-            true
-        } else {
-            false
-        }
+        offset < control_end && offset + size > control_start
     }
 
     fn read_msix_control(&self, data: &mut u32) {
@@ -372,14 +363,9 @@ impl VfioMsixCap {
 
     fn is_msix_table(&self, bar_index: u32, offset: u64) -> bool {
         let table_size: u64 = (self.table_size * (MSIX_TABLE_ENTRIES_MODULO as u16)).into();
-        if bar_index != self.table_pci_bar
-            || offset < self.table_offset
-            || offset >= self.table_offset + table_size
-        {
-            false
-        } else {
-            true
-        }
+        bar_index == self.table_pci_bar
+            && offset >= self.table_offset
+            && offset < self.table_offset + table_size
     }
 
     fn read_table(&self, offset: u64, data: &mut [u8]) {
@@ -396,14 +382,9 @@ impl VfioMsixCap {
         let pba_size: u64 = (((self.table_size + BITS_PER_PBA_ENTRY as u16 - 1)
             / BITS_PER_PBA_ENTRY as u16)
             * MSIX_PBA_ENTRIES_MODULO as u16) as u64;
-        if bar_index != self.pba_pci_bar
-            || offset < self.pba_offset
-            || offset >= self.pba_offset + pba_size
-        {
-            false
-        } else {
-            true
-        }
+        bar_index == self.pba_pci_bar
+            && offset >= self.pba_offset
+            && offset < self.pba_offset + pba_size
     }
 
     fn read_pba(&self, offset: u64, data: &mut [u8]) {
@@ -417,11 +398,7 @@ impl VfioMsixCap {
     }
 
     fn is_msix_bar(&self, bar_index: u32) -> bool {
-        if bar_index == self.table_pci_bar || bar_index == self.pba_pci_bar {
-            true
-        } else {
-            false
-        }
+        bar_index == self.table_pci_bar || bar_index == self.pba_pci_bar
     }
 
     fn get_msix_irqfds(&self) -> Option<Vec<&Event>> {
@@ -610,9 +587,8 @@ impl VfioPciDevice {
 
         // Above disable_msi() or disable_msix() will enable intx again.
         // so disable_intx here again.
-        match self.irq_type {
-            Some(VfioIrqType::Intx) => self.disable_intx(),
-            _ => (),
+        if let Some(VfioIrqType::Intx) = self.irq_type {
+            self.disable_intx();
         }
     }
 

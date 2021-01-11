@@ -405,7 +405,7 @@ impl arch::LinuxArch for X8664arch {
         let mut io_bus = Self::setup_io_bus(
             irq_chip.pit_uses_speaker_port(),
             exit_evt.try_clone().map_err(Error::CloneEvent)?,
-            Some(pci_bus.clone()),
+            Some(pci_bus),
             components.memory_size,
         )?;
 
@@ -1014,7 +1014,7 @@ impl X8664arch {
             io_bus.insert(pci_root, 0xcf8, 0x8).unwrap();
         } else {
             // ignore pci.
-            io_bus.insert(nul_device.clone(), 0xcf8, 0x8).unwrap();
+            io_bus.insert(nul_device, 0xcf8, 0x8).unwrap();
         }
 
         Ok(io_bus)

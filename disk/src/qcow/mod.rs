@@ -320,7 +320,7 @@ impl QcowHeader {
             autoclear_features: 0,
             refcount_order: DEFAULT_REFCOUNT_ORDER,
             header_size: V3_BARE_HEADER_SIZE,
-            backing_file_path: backing_file.map(|x| String::from(x)),
+            backing_file_path: backing_file.map(String::from),
         })
     }
 

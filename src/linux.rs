@@ -2533,7 +2533,7 @@ impl BalloonPolicy {
             }
             return Ok(result);
         }
-        return Ok(0);
+        Ok(0)
     }
 }
 
@@ -2644,7 +2644,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static, I: IrqChipArch + '
     setup_vcpu_signal_handler::<Vcpu>(use_hypervisor_signals)?;
 
     let vcpus: Vec<Option<_>> = match linux.vcpus.take() {
-        Some(vec) => vec.into_iter().map(|vcpu| Some(vcpu)).collect(),
+        Some(vec) => vec.into_iter().map(Some).collect(),
         None => iter::repeat_with(|| None).take(linux.vcpu_count).collect(),
     };
     for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {

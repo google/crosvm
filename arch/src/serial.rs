@@ -333,16 +333,13 @@ impl SerialParameters {
 
     pub fn add_bind_mounts(&self, jail: &mut Minijail) -> Result<(), minijail::Error> {
         if let Some(path) = &self.path {
-            match self.type_ {
-                SerialType::UnixSocket => {
-                    if let Some(parent) = path.as_path().parent() {
-                        if parent.exists() {
-                            info!("Bind mounting dir {}", parent.display());
-                            jail.mount_bind(parent, parent, true)?;
-                        }
+            if let SerialType::UnixSocket = self.type_ {
+                if let Some(parent) = path.as_path().parent() {
+                    if parent.exists() {
+                        info!("Bind mounting dir {}", parent.display());
+                        jail.mount_bind(parent, parent, true)?;
                     }
                 }
-                _ => {}
             }
         }
         Ok(())

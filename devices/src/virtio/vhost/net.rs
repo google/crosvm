@@ -358,7 +358,7 @@ pub mod tests {
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);
         let start_addr2 = GuestAddress(0x1000);
-        GuestMemory::new(&vec![(start_addr1, 0x1000), (start_addr2, 0x4000)])
+        GuestMemory::new(&[(start_addr1, 0x1000), (start_addr2, 0x4000)])
     }
 
     fn create_net_common() -> Net<FakeTap, FakeNet<FakeTap>> {
@@ -383,7 +383,7 @@ pub mod tests {
     fn keep_rds() {
         let net = create_net_common();
         let fds = net.keep_rds();
-        assert!(fds.len() >= 1, "We should have gotten at least one fd");
+        assert!(!fds.is_empty(), "We should have gotten at least one fd");
     }
 
     #[test]

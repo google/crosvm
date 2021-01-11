@@ -79,7 +79,7 @@ impl Ac97BusMasterRegs {
                 2 => 6,
                 _ => {
                     warn!("unknown channel_count: 0x{:x}", val);
-                    return 2;
+                    2
                 }
             }
         }
@@ -559,7 +559,7 @@ impl Ac97BusMaster {
             Ac97Function::Output => StreamDirection::Playback,
         };
 
-        let mut locked_regs = self.regs.lock();
+        let locked_regs = self.regs.lock();
         let sample_rate = self.current_sample_rate(func, mixer);
         let buffer_samples = current_buffer_size(locked_regs.func_regs(func), &self.mem)?;
         let num_channels = locked_regs.channel_count(func);
@@ -569,10 +569,10 @@ impl Ac97BusMaster {
         let starting_offsets = match direction {
             StreamDirection::Capture => {
                 let mut offsets = [0, 0];
-                for i in 0..2 {
-                    let buffer = next_guest_buffer(&mut locked_regs, &self.mem, func, 0)?
+                for offset in &mut offsets {
+                    let buffer = next_guest_buffer(&locked_regs, &self.mem, func, 0)?
                         .ok_or(AudioError::NoBufferAvailable)?;
-                    offsets[i] = buffer.offset as u64;
+                    *offset = buffer.offset as u64;
                     pending_buffers.push_back(Some(buffer));
                 }
                 offsets
@@ -692,7 +692,7 @@ fn get_buffer_samples(
 // This will return `None` if `civ + offset` is past LVI; if the DMA controlled
 // stopped bit is set, such as after an underrun where CIV hits LVI; or if
 // `civ + offset == LVI and the CELV flag is set.
-fn next_guest_buffer<'a>(
+fn next_guest_buffer(
     regs: &Ac97BusMasterRegs,
     mem: &GuestMemory,
     func: Ac97Function,
@@ -866,8 +866,7 @@ impl AudioWorker {
                 // Get a buffer to respond to our request. If there's no buffer
                 // available, we'll wait one buffer interval and check again.
                 loop {
-                    if let Some(buffer) =
-                        next_guest_buffer(&mut locked_regs, &self.mem, func, offset)?
+                    if let Some(buffer) = next_guest_buffer(&locked_regs, &self.mem, func, offset)?
                     {
                         break Some(buffer);
                     }

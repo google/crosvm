@@ -28,9 +28,7 @@ struct evdev_buffer {
 
 impl evdev_buffer {
     fn new() -> evdev_buffer {
-        evdev_buffer {
-            buffer: [0 as std::os::raw::c_uchar; 128],
-        }
+        evdev_buffer { buffer: [0u8; 128] }
     }
 
     fn get(&self, bit: usize) -> bool {

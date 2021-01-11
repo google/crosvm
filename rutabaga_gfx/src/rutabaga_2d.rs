@@ -68,7 +68,7 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
     checked_range!(checked_arithmetic!(rect_x + rect_w)?; <= resource_w)?;
     checked_range!(checked_arithmetic!(rect_y + rect_h)?; <= resource_h)?;
 
-    let bytes_per_pixel = 4 as u64;
+    let bytes_per_pixel = 4u64;
 
     let rect_x = rect_x as u64;
     let rect_y = rect_y as u64;
@@ -85,11 +85,11 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
 
     let mut next_src;
     let mut next_line;
-    let mut current_height = 0 as u64;
+    let mut current_height = 0u64;
     let mut src_opt = srcs.next();
 
     // Cumulative start offset of the current src.
-    let mut src_start_offset = 0 as u64;
+    let mut src_start_offset = 0u64;
     while let Some(src) = src_opt {
         if current_height >= rect_h {
             break;
@@ -117,10 +117,7 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
             let copyable_size =
                 checked_arithmetic!(src_copyable_end_offset - src_copyable_start_offset)?;
 
-            let offset_within_src = match src_copyable_start_offset.checked_sub(src_start_offset) {
-                Some(difference) => difference,
-                None => 0,
-            };
+            let offset_within_src = src_copyable_start_offset.saturating_sub(src_start_offset);
 
             if src_line_end_offset > src_end_offset {
                 next_src = true;
@@ -135,7 +132,7 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
 
             let src_subslice = src
                 .get_slice(offset_within_src as usize, copyable_size as usize)
-                .map_err(|e| RutabagaError::MemCopy(e))?;
+                .map_err(RutabagaError::MemCopy)?;
 
             let dst_line_vertical_offset = checked_arithmetic!(current_height * dst_stride)?;
             let dst_line_horizontal_offset =
@@ -146,7 +143,7 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
 
             let dst_subslice = dst
                 .get_slice(dst_start_offset as usize, copyable_size as usize)
-                .map_err(|e| RutabagaError::MemCopy(e))?;
+                .map_err(RutabagaError::MemCopy)?;
 
             src_subslice.copy_to_volatile_slice(dst_subslice);
         } else {

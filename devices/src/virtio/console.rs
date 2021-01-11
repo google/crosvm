@@ -115,7 +115,7 @@ impl Worker {
         // The input thread runs in detached mode and will exit when channel is disconnected because
         // the console device has been dropped.
         let res = thread::Builder::new()
-            .name(format!("console_input"))
+            .name("console_input".to_string())
             .spawn(move || {
                 loop {
                     let mut rx_buf = vec![0u8; 1 << 12];
@@ -402,7 +402,6 @@ impl VirtioDevice for Console {
         match worker_result {
             Err(e) => {
                 error!("failed to spawn virtio_console worker: {}", e);
-                return;
             }
             Ok(join_handle) => {
                 self.worker_thread = Some(join_handle);

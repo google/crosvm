@@ -184,8 +184,7 @@ impl<F: FileSystem + Sync> Server<F> {
             .checked_sub(size_of::<InHeader>())
             .ok_or(Error::InvalidHeaderLength)?;
 
-        let mut buf = Vec::with_capacity(namelen);
-        buf.resize(namelen, 0);
+        let mut buf = vec![0; namelen];
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 
@@ -296,8 +295,7 @@ impl<F: FileSystem + Sync> Server<F> {
         let len = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
             .ok_or(Error::InvalidHeaderLength)?;
-        let mut buf = Vec::with_capacity(len);
-        buf.resize(len, 0);
+        let mut buf = vec![0; len];
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 
@@ -337,8 +335,7 @@ impl<F: FileSystem + Sync> Server<F> {
             .checked_sub(size_of::<InHeader>())
             .and_then(|l| l.checked_sub(size_of::<MknodIn>()))
             .ok_or(Error::InvalidHeaderLength)?;
-        let mut buf = Vec::with_capacity(buflen);
-        buf.resize(buflen, 0);
+        let mut buf = vec![0; buflen];
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 
@@ -374,8 +371,7 @@ impl<F: FileSystem + Sync> Server<F> {
             .checked_sub(size_of::<InHeader>())
             .and_then(|l| l.checked_sub(size_of::<MkdirIn>()))
             .ok_or(Error::InvalidHeaderLength)?;
-        let mut buf = Vec::with_capacity(buflen);
-        buf.resize(buflen, 0);
+        let mut buf = vec![0; buflen];
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 
@@ -445,8 +441,7 @@ impl<F: FileSystem + Sync> Server<F> {
         let namelen = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
             .ok_or(Error::InvalidHeaderLength)?;
-        let mut name = Vec::with_capacity(namelen);
-        name.resize(namelen, 0);
+        let mut name = vec![0; namelen];
 
         r.read_exact(&mut name).map_err(Error::DecodeMessage)?;
 
@@ -464,8 +459,7 @@ impl<F: FileSystem + Sync> Server<F> {
         let namelen = (in_header.len as usize)
             .checked_sub(size_of::<InHeader>())
             .ok_or(Error::InvalidHeaderLength)?;
-        let mut name = Vec::with_capacity(namelen);
-        name.resize(namelen, 0);
+        let mut name = vec![0; namelen];
 
         r.read_exact(&mut name).map_err(Error::DecodeMessage)?;
 
@@ -492,8 +486,7 @@ impl<F: FileSystem + Sync> Server<F> {
             .checked_sub(size_of::<InHeader>())
             .and_then(|l| l.checked_sub(msg_size))
             .ok_or(Error::InvalidHeaderLength)?;
-        let mut buf = Vec::with_capacity(buflen);
-        buf.resize(buflen, 0);
+        let mut buf = vec![0; buflen];
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 
@@ -541,8 +534,7 @@ impl<F: FileSystem + Sync> Server<F> {
             .checked_sub(size_of::<InHeader>())
             .and_then(|l| l.checked_sub(size_of::<LinkIn>()))
             .ok_or(Error::InvalidHeaderLength)?;
-        let mut name = Vec::with_capacity(namelen);
-        name.resize(namelen, 0);
+        let mut name = vec![0; namelen];
 
         r.read_exact(&mut name).map_err(Error::DecodeMessage)?;
 
@@ -762,8 +754,7 @@ impl<F: FileSystem + Sync> Server<F> {
             .checked_sub(size_of::<InHeader>())
             .and_then(|l| l.checked_sub(size_of::<SetxattrIn>()))
             .ok_or(Error::InvalidHeaderLength)?;
-        let mut buf = Vec::with_capacity(len);
-        buf.resize(len, 0);
+        let mut buf = vec![0; len];
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 
@@ -800,8 +791,7 @@ impl<F: FileSystem + Sync> Server<F> {
             .checked_sub(size_of::<InHeader>())
             .and_then(|l| l.checked_sub(size_of::<GetxattrIn>()))
             .ok_or(Error::InvalidHeaderLength)?;
-        let mut name = Vec::with_capacity(namelen);
-        name.resize(namelen, 0);
+        let mut name = vec![0; namelen];
 
         r.read_exact(&mut name).map_err(Error::DecodeMessage)?;
 
@@ -876,8 +866,7 @@ impl<F: FileSystem + Sync> Server<F> {
             .checked_sub(size_of::<InHeader>())
             .ok_or(Error::InvalidHeaderLength)?;
 
-        let mut buf = Vec::with_capacity(namelen);
-        buf.resize(namelen, 0);
+        let mut buf = vec![0; namelen];
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 
@@ -1276,8 +1265,7 @@ impl<F: FileSystem + Sync> Server<F> {
             .and_then(|l| l.checked_sub(size_of::<CreateIn>()))
             .ok_or(Error::InvalidHeaderLength)?;
 
-        let mut buf = Vec::with_capacity(buflen);
-        buf.resize(buflen, 0);
+        let mut buf = vec![0; buflen];
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 

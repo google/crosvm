@@ -572,7 +572,7 @@ impl Vm for KvmVm {
         prot: Protection,
     ) -> Result<()> {
         let mut regions = self.mem_regions.lock();
-        let region = regions.get_mut(&slot).ok_or(Error::new(EINVAL))?;
+        let region = regions.get_mut(&slot).ok_or_else(|| Error::new(EINVAL))?;
 
         match region.add_fd_mapping(offset, size, fd, fd_offset, prot) {
             Ok(()) => Ok(()),
@@ -583,7 +583,7 @@ impl Vm for KvmVm {
 
     fn remove_mapping(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
         let mut regions = self.mem_regions.lock();
-        let region = regions.get_mut(&slot).ok_or(Error::new(EINVAL))?;
+        let region = regions.get_mut(&slot).ok_or_else(|| Error::new(EINVAL))?;
 
         match region.remove_mapping(offset, size) {
             Ok(()) => Ok(()),
@@ -792,7 +792,7 @@ impl Vcpu for KvmVcpu {
         // kvm_sigmask.len  = size_of::<sigset_t>() as u32;
         kvm_sigmask[0].len = 8;
         // Ensure the length is not too big.
-        const _ASSERT: usize = size_of::<sigset_t>() - 8 as usize;
+        const _ASSERT: usize = size_of::<sigset_t>() - 8usize;
 
         // Safe as we allocated exactly the needed space
         unsafe {

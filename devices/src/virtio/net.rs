@@ -441,7 +441,7 @@ where
         mac_addr: MacAddress,
         vq_pairs: u16,
     ) -> Result<Net<T>, NetError> {
-        let multi_queue = if vq_pairs > 1 { true } else { false };
+        let multi_queue = vq_pairs > 1;
         let tap: T = T::new(true, multi_queue).map_err(NetError::TapOpen)?;
         tap.set_ip_addr(ip_addr).map_err(NetError::TapSetIp)?;
         tap.set_netmask(netmask).map_err(NetError::TapSetNetmask)?;
@@ -747,6 +747,6 @@ where
             }
         }
 
-        return true;
+        true
     }
 }

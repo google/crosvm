@@ -270,9 +270,8 @@ impl Rutabaga {
 
     /// Forces context zero for the default rutabaga component.
     pub fn force_ctx_0(&self) {
-        match self.components.get(&self.default_component) {
-            Some(component) => component.force_ctx_0(),
-            None => (),
+        if let Some(component) = self.components.get(&self.default_component) {
+            component.force_ctx_0();
         }
     }
 
@@ -319,10 +318,9 @@ impl Rutabaga {
             fence_ctx_idx: 0,
         });
 
-        for (_ctx_id, ctx) in &mut self.contexts {
-            match ctx.context_poll() {
-                Some(ref mut ctx_completed_fences) => completed_fences.append(ctx_completed_fences),
-                None => (),
+        for ctx in self.contexts.values_mut() {
+            if let Some(ref mut ctx_completed_fences) = ctx.context_poll() {
+                completed_fences.append(ctx_completed_fences);
             }
         }
         completed_fences

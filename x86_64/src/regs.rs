@@ -360,7 +360,7 @@ mod tests {
     use vm_memory::{GuestAddress, GuestMemory};
 
     fn create_guest_mem() -> GuestMemory {
-        GuestMemory::new(&vec![(GuestAddress(0), 0x10000)]).unwrap()
+        GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap()
     }
 
     fn read_u64(gm: &GuestMemory, offset: u64) -> u64 {

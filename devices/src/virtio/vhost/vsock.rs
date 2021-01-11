@@ -252,7 +252,7 @@ mod tests {
         let cid = 0xfca9a559fdcb9756;
         let vsock = Vsock::new_for_testing(cid, 0);
 
-        let mut buf = [0 as u8; 8];
+        let mut buf = [0u8; 8];
         vsock.read_config(0, &mut buf);
         assert_eq!(cid, u64::from_le_bytes(buf));
 

@@ -77,7 +77,7 @@ impl BusDevice for Ioapic {
     }
 
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
-        if data.len() > 8 || data.len() == 0 {
+        if data.len() > 8 || data.is_empty() {
             warn!("IOAPIC: Bad read size: {}", data.len());
             return;
         }
@@ -102,7 +102,7 @@ impl BusDevice for Ioapic {
     }
 
     fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
-        if data.len() > 8 || data.len() == 0 {
+        if data.len() > 8 || data.is_empty() {
             warn!("IOAPIC: Bad write size: {}", data.len());
             return;
         }
@@ -172,7 +172,7 @@ impl Ioapic {
                 if self
                     .resample_events
                     .get(i)
-                    .map_or(false, |events| events.len() > 0)
+                    .map_or(false, |events| !events.is_empty())
                 {
                     self.service_irq(i, false);
                 }
@@ -328,7 +328,7 @@ impl Ioapic {
         let gsi = if let Some(evt) = &self.out_events[index] {
             evt.gsi
         } else {
-            let event = Event::new().map_err(|e| IoapicError::CreateEvent(e))?;
+            let event = Event::new().map_err(IoapicError::CreateEvent)?;
             let request = VmIrqRequest::AllocateOneMsi {
                 irqfd: MaybeOwnedDescriptor::Borrowed(event.as_raw_descriptor()),
             };

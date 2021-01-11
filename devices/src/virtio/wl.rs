@@ -1052,7 +1052,7 @@ impl WlState {
 
     fn process_wait_context(&mut self) {
         let events = match self.wait_ctx.wait_timeout(Duration::from_secs(0)) {
-            Ok(v) => v.to_owned(),
+            Ok(v) => v,
             Err(e) => {
                 error!("failed polling for vfd evens: {}", e);
                 return;
@@ -1547,16 +1547,16 @@ impl Worker {
                         let min_in_desc_len = (size_of::<CtrlVfdRecv>()
                             + size_of::<Le32>() * VIRTWL_SEND_MAX_ALLOCS)
                             as u32;
-                        in_desc_chains.extend(self.in_queue.iter(&self.mem).filter_map(|d| {
+                        in_desc_chains.extend(self.in_queue.iter(&self.mem).filter(|d| {
                             if d.len >= min_in_desc_len && d.is_write_only() {
-                                Some(d)
+                                true
                             } else {
                                 // Can not use queue.add_used directly because it's being borrowed
                                 // for the iterator chain, so we buffer the descriptor index in
                                 // rejects.
                                 rejects[rejects_len] = d.index;
                                 rejects_len += 1;
-                                None
+                                false
                             }
                         }));
                         for &reject in &rejects[..rejects_len] {

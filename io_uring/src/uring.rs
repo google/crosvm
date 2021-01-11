@@ -494,9 +494,7 @@ impl URingContext {
     /// completed operations. `wait` blocks until at least one completion is ready.  If called
     /// without any new events added, this simply waits for any existing events to complete and
     /// returns as soon an one or more is ready.
-    pub fn wait<'a>(
-        &'a mut self,
-    ) -> Result<impl Iterator<Item = (UserData, std::io::Result<u32>)> + 'a> {
+    pub fn wait(&mut self) -> Result<impl Iterator<Item = (UserData, std::io::Result<u32>)> + '_> {
         let completed = self.complete_ring.num_completed();
         self.stats.total_complete = self.stats.total_complete.wrapping_add(completed as u64);
         self.in_flight -= completed;
@@ -903,7 +901,7 @@ mod tests {
                 .add_write(buf.as_mut_ptr(), buf.len(), f.as_raw_fd(), 0, 55)
                 .unwrap();
             let (user_data, res) = uring.wait().unwrap().next().unwrap();
-            assert_eq!(user_data, 55 as UserData);
+            assert_eq!(user_data, 55_u64);
             assert_eq!(res.unwrap(), buf.len() as u32);
         }
     }
@@ -934,7 +932,7 @@ mod tests {
             let event = events.iter_readable().next().unwrap();
             assert_eq!(event.token(), 1);
             let (user_data, res) = uring.wait().unwrap().next().unwrap();
-            assert_eq!(user_data, 55 as UserData);
+            assert_eq!(user_data, 55_u64);
             assert_eq!(res.unwrap(), buf.len() as u32);
         }
     }
@@ -1009,7 +1007,7 @@ mod tests {
             .add_fallocate(f.as_raw_fd(), 0, set_size as u64, 0, 66)
             .unwrap();
         let (user_data, res) = uring.wait().unwrap().next().unwrap();
-        assert_eq!(user_data, 66 as UserData);
+        assert_eq!(user_data, 66_u64);
         match res {
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::InvalidInput {
@@ -1018,7 +1016,7 @@ mod tests {
                 }
                 panic!("Unexpected fallocate error: {}", e);
             }
-            Ok(val) => assert_eq!(val, 0 as u32),
+            Ok(val) => assert_eq!(val, 0_u32),
         }
 
         // Add a few writes and then fsync
@@ -1064,8 +1062,8 @@ mod tests {
             )
             .unwrap();
         let (user_data, res) = uring.wait().unwrap().next().unwrap();
-        assert_eq!(user_data, 68 as UserData);
-        assert_eq!(res.unwrap(), 0 as u32);
+        assert_eq!(user_data, 68_u64);
+        assert_eq!(res.unwrap(), 0_u32);
 
         drop(f); // Close to ensure directory entires for metadata are updated.
 
@@ -1081,8 +1079,8 @@ mod tests {
             .add_poll_fd(f.as_raw_fd(), &WatchingEvents::empty().set_read(), 454)
             .unwrap();
         let (user_data, res) = uring.wait().unwrap().next().unwrap();
-        assert_eq!(user_data, 454 as UserData);
-        assert_eq!(res.unwrap(), 1 as u32);
+        assert_eq!(user_data, 454_u64);
+        assert_eq!(res.unwrap(), 1_u32);
     }
 
     #[test]
@@ -1116,14 +1114,14 @@ mod tests {
         {
             let mut results = uring.wait().unwrap();
             for _i in 0..num_entries * 2 {
-                assert_eq!(results.next().unwrap().1.unwrap(), 1 as u32);
+                assert_eq!(results.next().unwrap().1.unwrap(), 1_u32);
             }
             assert!(results.next().is_none());
         }
         // The second will finish submitting any more sqes and return the rest.
         let mut results = uring.wait().unwrap();
         for _i in 0..num_entries + 1 {
-            assert_eq!(results.next().unwrap().1.unwrap(), 1 as u32);
+            assert_eq!(results.next().unwrap().1.unwrap(), 1_u32);
         }
         assert!(results.next().is_none());
     }

@@ -32,8 +32,8 @@ fn scan_path<P: AsRef<Path>, O: AsRef<OsStr>>(path: P, name: O) -> Option<PathBu
 
 // Searches for the given protocol in both the system wide and bundles protocols path.
 fn find_protocol(name: &str) -> PathBuf {
-    let protocols_path =
-        env::var("WAYLAND_PROTOCOLS_PATH").unwrap_or("/usr/share/wayland-protocols".to_owned());
+    let protocols_path = env::var("WAYLAND_PROTOCOLS_PATH")
+        .unwrap_or_else(|_| "/usr/share/wayland-protocols".to_owned());
     let protocol_file_name = PathBuf::from(format!("{}.xml", name));
 
     // Prioritize the systems wayland protocols before using the bundled ones.

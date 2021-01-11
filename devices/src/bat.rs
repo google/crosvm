@@ -458,7 +458,7 @@ impl BusDevice for GoldfishBattery {
             return;
         }
 
-        let mut val_arr = u32::to_ne_bytes(0 as u32);
+        let mut val_arr = u32::to_ne_bytes(0u32);
         val_arr.copy_from_slice(data);
         let val = u32::from_ne_bytes(val_arr);
 

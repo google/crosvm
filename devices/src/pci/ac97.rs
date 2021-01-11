@@ -144,7 +144,7 @@ impl Ac97Dev {
     fn create_cras_audio_device(params: Ac97Parameters, mem: GuestMemory) -> Result<Self> {
         let mut server = Box::new(
             CrasClient::with_type(CrasSocketType::Unified)
-                .map_err(|e| pci_device::Error::CreateCrasClientFailed(e))?,
+                .map_err(pci_device::Error::CreateCrasClientFailed)?,
         );
         server.set_client_type(CrasClientType::CRAS_CLIENT_TYPE_CROSVM);
         if params.capture {

@@ -671,10 +671,10 @@ impl GuestMemory {
 
 // It is safe to implement BackingMemory because GuestMemory can be mutated any time already.
 unsafe impl BackingMemory for GuestMemory {
-    fn get_iovec<'s>(
-        &'s self,
+    fn get_iovec(
+        &self,
         mem_range: cros_async::MemRegion,
-    ) -> uring_mem::Result<uring_mem::BorrowedIoVec<'s>> {
+    ) -> uring_mem::Result<uring_mem::BorrowedIoVec<'_>> {
         let vs = self
             .get_slice_at_addr(GuestAddress(mem_range.offset as u64), mem_range.len)
             .map_err(|_| uring_mem::Error::InvalidOffset(mem_range.offset, mem_range.len))?;

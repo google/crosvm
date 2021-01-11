@@ -544,7 +544,9 @@ impl Frontend {
                     }
                 }
             } else {
-                let likely_type = mem.read_obj_from_addr(desc.addr).unwrap_or(Le32::from(0));
+                let likely_type = mem
+                    .read_obj_from_addr(desc.addr)
+                    .unwrap_or_else(|_| Le32::from(0));
                 debug!(
                     "queue bad descriptor index = {} len = {} write = {} type = {}",
                     desc.index,
@@ -660,14 +662,14 @@ impl Frontend {
 
         self.fence_descriptors.retain(|f_desc| {
             for completed in &completed_fences {
-                if fence_ctx_equal(&f_desc.desc_fence, completed) {
-                    if f_desc.desc_fence.fence_id <= completed.fence_id {
-                        return_descs.push_back(ReturnDescriptor {
-                            index: f_desc.index,
-                            len: f_desc.len,
-                        });
-                        return false;
-                    }
+                if fence_ctx_equal(&f_desc.desc_fence, completed)
+                    && f_desc.desc_fence.fence_id <= completed.fence_id
+                {
+                    return_descs.push_back(ReturnDescriptor {
+                        index: f_desc.index,
+                        len: f_desc.len,
+                    });
+                    return false;
                 }
             }
             true

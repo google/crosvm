@@ -102,7 +102,7 @@ where
             name: name.clone(),
             state: Mutex::new(RingBufferState::Stopped),
             stop_callback: Mutex::new(Vec::new()),
-            ring_buffer: Mutex::new(RingBuffer::new(name.clone(), mem)),
+            ring_buffer: Mutex::new(RingBuffer::new(name, mem)),
             handler: Mutex::new(handler),
             event_loop: event_loop.clone(),
             event: evt,
