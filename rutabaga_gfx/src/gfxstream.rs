@@ -419,7 +419,7 @@ impl RutabagaComponent for Gfxstream {
     }
 
     fn map_info(&self, _resource_id: u32) -> RutabagaResult<u32> {
-        Ok(0x02)
+        Ok(RUTABAGA_MAP_CACHE_WC)
     }
 
     fn create_context(

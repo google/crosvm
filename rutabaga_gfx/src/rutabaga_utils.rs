@@ -80,6 +80,11 @@ pub struct RutabagaFenceData {
     pub fence_ctx_idx: u32,
 }
 
+/// Mapped memory caching flags (see virtio_gpu spec)
+pub const RUTABAGA_MAP_CACHE_CACHED: u32 = 0x01;
+pub const RUTABAGA_MAP_CACHE_UNCACHED: u32 = 0x02;
+pub const RUTABAGA_MAP_CACHE_WC: u32 = 0x03;
+
 /// Rutabaga capsets.
 pub const RUTABAGA_CAPSET_VIRGL: u32 = 1;
 pub const RUTABAGA_CAPSET_VIRGL2: u32 = 2;

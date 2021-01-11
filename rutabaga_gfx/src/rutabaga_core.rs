@@ -210,8 +210,8 @@ fn capset_index_to_component_info(index: u32) -> RutabagaResult<(RutabagaCompone
     let component_info = match index {
         0 => (RutabagaComponentType::VirglRenderer, RUTABAGA_CAPSET_VIRGL),
         1 => (RutabagaComponentType::VirglRenderer, RUTABAGA_CAPSET_VIRGL2),
-        2 => (RutabagaComponentType::VirglRenderer, RUTABAGA_CAPSET_VENUS),
-        3 => (RutabagaComponentType::Gfxstream, RUTABAGA_CAPSET_GFXSTREAM),
+        2 => (RutabagaComponentType::Gfxstream, RUTABAGA_CAPSET_GFXSTREAM),
+        3 => (RutabagaComponentType::VirglRenderer, RUTABAGA_CAPSET_VENUS),
         4 => (
             RutabagaComponentType::CrossDomain,
             RUTABAGA_CAPSET_CROSS_DOMAIN,
