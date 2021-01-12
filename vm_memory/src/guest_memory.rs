@@ -60,9 +60,9 @@ impl Display for Error {
             MemoryMappingFailed(e) => write!(f, "failed to map guest memory: {}", e),
             MemoryRegionOverlap => write!(f, "memory regions overlap"),
             MemoryRegionTooLarge(size) => write!(f, "memory region size {} is too large", size),
-            MemoryNotAligned => write!(f, "memfd regions must be page aligned"),
-            MemoryCreationFailed(_) => write!(f, "failed to create memfd region"),
-            MemoryAddSealsFailed(e) => write!(f, "failed to set seals on memfd region: {}", e),
+            MemoryNotAligned => write!(f, "shm regions must be page aligned"),
+            MemoryCreationFailed(_) => write!(f, "failed to create shm region"),
+            MemoryAddSealsFailed(e) => write!(f, "failed to set seals on shm region: {}", e),
             ShortWrite {
                 expected,
                 completed,
@@ -111,23 +111,23 @@ impl MemoryRegion {
 #[derive(Clone)]
 pub struct GuestMemory {
     regions: Arc<[MemoryRegion]>,
-    memfd: Arc<SharedMemory>,
+    shm: Arc<SharedMemory>,
 }
 
 impl AsRawDescriptor for GuestMemory {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.memfd.as_raw_descriptor()
+        self.shm.as_raw_descriptor()
     }
 }
 
 impl AsRef<SharedMemory> for GuestMemory {
     fn as_ref(&self) -> &SharedMemory {
-        &self.memfd
+        &self.shm
     }
 }
 
 impl GuestMemory {
-    /// Creates backing memfd for GuestMemory regions
+    /// Creates backing shm for GuestMemory regions
     fn create_memfd(ranges: &[(GuestAddress, u64)]) -> Result<SharedMemory> {
         let mut aligned_size = 0;
         let pg_size = pagesize();
@@ -145,21 +145,19 @@ impl GuestMemory {
         seals.set_grow_seal();
         seals.set_seal_seal();
 
-        let mut memfd = SharedMemory::named("crosvm_guest", aligned_size)
+        let mut shm = SharedMemory::named("crosvm_guest", aligned_size)
             .map_err(Error::MemoryCreationFailed)?;
-        memfd
-            .add_seals(seals)
-            .map_err(Error::MemoryAddSealsFailed)?;
+        shm.add_seals(seals).map_err(Error::MemoryAddSealsFailed)?;
 
-        Ok(memfd)
+        Ok(shm)
     }
 
     /// Creates a container for guest memory regions.
     /// Valid memory regions are specified as a Vec of (Address, Size) tuples sorted by Address.
     pub fn new(ranges: &[(GuestAddress, u64)]) -> Result<GuestMemory> {
-        // Create memfd
+        // Create shm
 
-        let memfd = GuestMemory::create_memfd(ranges)?;
+        let shm = GuestMemory::create_memfd(ranges)?;
         // Create memory regions
         let mut regions = Vec::<MemoryRegion>::new();
         let mut offset = 0;
@@ -178,7 +176,7 @@ impl GuestMemory {
             let size =
                 usize::try_from(range.1).map_err(|_| Error::MemoryRegionTooLarge(range.1))?;
             let mapping = MemoryMappingBuilder::new(size)
-                .from_descriptor(&memfd)
+                .from_descriptor(&shm)
                 .offset(offset)
                 .build()
                 .map_err(Error::MemoryMappingFailed)?;
@@ -193,7 +191,7 @@ impl GuestMemory {
 
         Ok(GuestMemory {
             regions: Arc::from(regions),
-            memfd: Arc::new(memfd),
+            shm: Arc::new(shm),
         })
     }
 
@@ -637,11 +635,11 @@ impl GuestMemory {
             })
     }
 
-    /// Convert a GuestAddress into an offset within self.memfd.
+    /// Convert a GuestAddress into an offset within self.shm.
     ///
     /// Due to potential gaps within GuestMemory, it is helpful to know the
-    /// offset within the memfd where a given address is found. This offset
-    /// can then be passed to another process mapping the memfd to read data
+    /// offset within the shm where a given address is found. This offset
+    /// can then be passed to another process mapping the shm to read data
     /// starting at that address.
     ///
     /// # Arguments
