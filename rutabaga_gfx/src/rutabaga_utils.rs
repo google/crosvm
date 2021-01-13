@@ -172,12 +172,12 @@ impl Display for RutabagaError {
 pub type RutabagaResult<T> = std::result::Result<T, RutabagaError>;
 
 /// Flags for virglrenderer.  Copied from virglrenderer bindings.
-pub const VIRGLRENDERER_USE_EGL: u32 = 1;
-pub const VIRGLRENDERER_THREAD_SYNC: u32 = 2;
-pub const VIRGLRENDERER_USE_GLX: u32 = 4;
-pub const VIRGLRENDERER_USE_SURFACELESS: u32 = 8;
-pub const VIRGLRENDERER_USE_GLES: u32 = 16;
-pub const VIRGLRENDERER_USE_EXTERNAL_BLOB: u32 = 32;
+const VIRGLRENDERER_USE_EGL: u32 = 1 << 0;
+const VIRGLRENDERER_THREAD_SYNC: u32 = 1 << 1;
+const VIRGLRENDERER_USE_GLX: u32 = 1 << 2;
+const VIRGLRENDERER_USE_SURFACELESS: u32 = 1 << 3;
+const VIRGLRENDERER_USE_GLES: u32 = 1 << 4;
+const VIRGLRENDERER_USE_EXTERNAL_BLOB: u32 = 1 << 5;
 
 /// virglrenderer flag struct.
 #[derive(Copy, Clone)]
@@ -239,9 +239,14 @@ impl VirglRendererFlags {
 }
 
 /// Flags for the gfxstream renderer.
-pub const GFXSTREAM_RENDERER_FLAGS_NO_SYNCFD_BIT: u32 = 1 << 20;
-pub const GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT: u32 = 1 << 5;
-pub const GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE: u32 = 1 << 21;
+const GFXSTREAM_RENDERER_FLAGS_USE_EGL: u32 = 1 << 0;
+const GFXSTREAM_RENDERER_FLAGS_THREAD_SYNC: u32 = 1 << 1;
+const GFXSTREAM_RENDERER_FLAGS_USE_GLX: u32 = 1 << 2;
+const GFXSTREAM_RENDERER_FLAGS_USE_SURFACELESS: u32 = 1 << 3;
+const GFXSTREAM_RENDERER_FLAGS_USE_GLES: u32 = 1 << 4;
+const GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT: u32 = 1 << 5;
+const GFXSTREAM_RENDERER_FLAGS_NO_SYNCFD_BIT: u32 = 1 << 20;
+const GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE: u32 = 1 << 21;
 
 /// gfxstream flag struct.
 #[derive(Copy, Clone, Default)]
@@ -259,6 +264,26 @@ impl GfxstreamFlags {
         } else {
             GfxstreamFlags(self.0 & (!bitmask))
         }
+    }
+
+    /// Use EGL for context creation.
+    pub fn use_egl(self, v: bool) -> GfxstreamFlags {
+        self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_EGL, v)
+    }
+
+    /// Use GLX for context creation.
+    pub fn use_glx(self, v: bool) -> GfxstreamFlags {
+        self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_GLX, v)
+    }
+
+    /// No surfaces required when creating context.
+    pub fn use_surfaceless(self, v: bool) -> GfxstreamFlags {
+        self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_SURFACELESS, v)
+    }
+
+    /// Use GLES drivers.
+    pub fn use_gles(self, v: bool) -> GfxstreamFlags {
+        self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_GLES, v)
     }
 
     /// Use external synchronization.

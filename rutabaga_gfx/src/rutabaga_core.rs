@@ -632,6 +632,8 @@ impl Rutabaga {
 /// Rutabaga Builder, following the Rust builder pattern.
 #[derive(Copy, Clone)]
 pub struct RutabagaBuilder {
+    display_width: Option<u32>,
+    display_height: Option<u32>,
     default_component: RutabagaComponentType,
     virglrenderer_flags: Option<VirglRendererFlags>,
     gfxstream_flags: Option<GfxstreamFlags>,
@@ -641,10 +643,24 @@ impl RutabagaBuilder {
     /// Create new a RutabagaBuilder.
     pub fn new(default_component: RutabagaComponentType) -> RutabagaBuilder {
         RutabagaBuilder {
+            display_width: None,
+            display_height: None,
             default_component,
             virglrenderer_flags: None,
             gfxstream_flags: None,
         }
+    }
+
+    /// Set display width for the RutabagaBuilder
+    pub fn set_display_width(mut self, display_width: u32) -> RutabagaBuilder {
+        self.display_width = Some(display_width);
+        self
+    }
+
+    /// Set display height for the RutabagaBuilder
+    pub fn set_display_height(mut self, display_height: u32) -> RutabagaBuilder {
+        self.display_height = Some(display_height);
+        self
     }
 
     /// Set virglrenderer flags for the RutabagaBuilder
@@ -687,11 +703,18 @@ impl RutabagaBuilder {
 
             #[cfg(feature = "gfxstream")]
             {
+                let display_width = self
+                    .display_width
+                    .ok_or(RutabagaError::InvalidRutabagaBuild)?;
+                let display_height = self
+                    .display_height
+                    .ok_or(RutabagaError::InvalidRutabagaBuild)?;
+
                 let gfxstream_flags = self
                     .gfxstream_flags
                     .ok_or(RutabagaError::InvalidRutabagaBuild)?;
 
-                let gfxstream = Gfxstream::init(gfxstream_flags)?;
+                let gfxstream = Gfxstream::init(display_width, display_height, gfxstream_flags)?;
                 rutabaga_components.insert(RutabagaComponentType::Gfxstream, gfxstream);
             }
         }

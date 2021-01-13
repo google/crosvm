@@ -195,7 +195,11 @@ fn unmap_func(resource_id: u32) {
 }
 
 impl Gfxstream {
-    pub fn init(gfxstream_flags: GfxstreamFlags) -> RutabagaResult<Box<dyn RutabagaComponent>> {
+    pub fn init(
+        display_width: u32,
+        display_height: u32,
+        gfxstream_flags: GfxstreamFlags,
+    ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
         let fence_state = Rc::new(RefCell::new(FenceState { latest_fence: 0 }));
 
         let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
@@ -204,8 +208,8 @@ impl Gfxstream {
 
         unsafe {
             gfxstream_backend_init(
-                0,
-                0,
+                display_width,
+                display_height,
                 1, /* default to shmem display */
                 cookie as *mut c_void,
                 gfxstream_flags.into(),

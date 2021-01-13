@@ -900,6 +900,10 @@ impl Gpu {
             .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .use_external_blob(external_blob);
         let gfxstream_flags = GfxstreamFlags::new()
+            .use_egl(gpu_parameters.renderer_use_egl)
+            .use_gles(gpu_parameters.renderer_use_gles)
+            .use_glx(gpu_parameters.renderer_use_glx)
+            .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .use_guest_angle(gpu_parameters.gfxstream_use_guest_angle)
             .use_syncfd(gpu_parameters.gfxstream_use_syncfd)
             .support_vulkan(gpu_parameters.gfxstream_support_vulkan);
@@ -911,6 +915,8 @@ impl Gpu {
         };
 
         let rutabaga_builder = RutabagaBuilder::new(component)
+            .set_display_width(gpu_parameters.display_width)
+            .set_display_height(gpu_parameters.display_height)
             .set_virglrenderer_flags(virglrenderer_flags)
             .set_gfxstream_flags(gfxstream_flags);
 
