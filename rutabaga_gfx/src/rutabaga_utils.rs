@@ -265,7 +265,6 @@ pub type RutabagaResult<T> = std::result::Result<T, RutabagaError>;
 
 /// Flags for virglrenderer.  Copied from virglrenderer bindings.
 const VIRGLRENDERER_USE_EGL: u32 = 1 << 0;
-#[allow(dead_code)]
 const VIRGLRENDERER_THREAD_SYNC: u32 = 1 << 1;
 const VIRGLRENDERER_USE_GLX: u32 = 1 << 2;
 const VIRGLRENDERER_USE_SURFACELESS: u32 = 1 << 3;
@@ -273,6 +272,7 @@ const VIRGLRENDERER_USE_GLES: u32 = 1 << 4;
 const VIRGLRENDERER_USE_EXTERNAL_BLOB: u32 = 1 << 5;
 const VIRGLRENDERER_VENUS: u32 = 1 << 6;
 const VIRGLRENDERER_NO_VIRGL: u32 = 1 << 7;
+const VIRGLRENDERER_USE_ASYNC_FENCE_CB: u32 = 1 << 8;
 
 /// virglrenderer flag struct.
 #[derive(Copy, Clone)]
@@ -324,6 +324,11 @@ impl VirglRendererFlags {
         self.set_flag(VIRGLRENDERER_USE_EGL, v)
     }
 
+    /// Use a dedicated thread for fence synchronization.
+    pub fn use_thread_sync(self, v: bool) -> VirglRendererFlags {
+        self.set_flag(VIRGLRENDERER_THREAD_SYNC, v)
+    }
+
     /// Use GLX for context creation.
     pub fn use_glx(self, v: bool) -> VirglRendererFlags {
         self.set_flag(VIRGLRENDERER_USE_GLX, v)
@@ -342,6 +347,11 @@ impl VirglRendererFlags {
     /// Use external memory when creating blob resources.
     pub fn use_external_blob(self, v: bool) -> VirglRendererFlags {
         self.set_flag(VIRGLRENDERER_USE_EXTERNAL_BLOB, v)
+    }
+
+    /// Retire fence directly from sync thread.
+    pub fn use_async_fence_cb(self, v: bool) -> VirglRendererFlags {
+        self.set_flag(VIRGLRENDERER_USE_ASYNC_FENCE_CB, v)
     }
 }
 
