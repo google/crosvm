@@ -279,7 +279,7 @@ impl<T: FutureList> Drop for FdExecutor<T> {
 // Used to `dup` the FDs passed to the executor so there is a guarantee they aren't closed while
 // waiting in TLS to be added to the main polling context.
 unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
-    let ret = libc::dup(fd);
+    let ret = libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0);
     if ret < 0 {
         Err(Error::DuplicatingFd(sys_util::Error::last()))
     } else {
