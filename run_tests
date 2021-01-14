@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Runs tests for crosvm.
+#
+# This script gives us more flexibility in running tests than using
+# `cargo test --workspace`:
+# - We can also test crates that are not part of the workspace.
+# - We can pick out tests that need to be run single-threaded.
+# - We can filter out tests that cannot be built or run due to missing build-
+#   dependencies or missing runtime requirements.
+
+import argparse
+import os
+import platform
+import subprocess
+from typing import List, Dict, Set
+import enum
+
+
+class Requirements(enum.Enum):
+    # Test can only be built for aarch64
+    AARCH64 = "aarch64"
+
+    # Test can only be built for x86_64
+    X86_64 = "x86_64"
+
+    # Test requires non-standard dependencies from chromiumos (i.e. those that are
+    # not available in debian buster).
+    CROS_DEPENDENCIES = "cros_dependencies"
+
+    # Test is disabled explicitly
+    DISABLED = "disabled"
+
+    # Test requires access to kernel devices at runtime.
+    DEVICE_ACCESS = "device_access"
+
+    # Test needs to be executed natively, not through emulation.
+    NATIVE = "native"
+
+    # Test needs to run single-threaded
+    SINGLE_THREADED = "single_threaded"
+
+
+BUILD_TIME_REQUIREMENTS = [
+    Requirements.AARCH64,
+    Requirements.X86_64,
+    Requirements.CROS_DEPENDENCIES,
+    Requirements.DISABLED,
+]
+
+RUN_TIME_REQUIREMENTS = [Requirements.DEVICE_ACCESS, Requirements.NATIVE]
+
+
+# A list of all crates and their requirements
+CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
+    "crosvm": [Requirements.DEVICE_ACCESS],
+    "aarch64": [Requirements.AARCH64],
+    "acpi_tables": [],
+    "arch": [],
+    "assertions": [],
+    "base": [],
+    "bit_field": [],
+    "bit_field_derive": [],
+    "cros_async": [Requirements.DISABLED],
+    "crosvm_plugin": [Requirements.X86_64],
+    "data_model": [],
+    "devices": [Requirements.SINGLE_THREADED, Requirements.DEVICE_ACCESS],
+    "disk": [Requirements.DISABLED],
+    "enumn": [],
+    "fuse": [],
+    "fuzz": [Requirements.DISABLED],
+    "gpu_buffer": [Requirements.CROS_DEPENDENCIES],
+    "gpu_display": [],
+    "hypervisor": [Requirements.DEVICE_ACCESS],
+    "io_uring": [Requirements.DISABLED],
+    "kernel_cmdline": [],
+    "kernel_loader": [Requirements.NATIVE],
+    "kvm_sys": [Requirements.DEVICE_ACCESS],
+    "kvm": [Requirements.DEVICE_ACCESS],
+    "linux_input_sys": [],
+    "msg_socket": [Requirements.NATIVE],
+    "msg_on_socket_derive": [],
+    "net_sys": [],
+    "net_util": [Requirements.DEVICE_ACCESS],
+    "power_monitor": [],
+    "protos": [],
+    "qcow_utils": [],
+    "rand_ish": [],
+    "resources": [],
+    "rutabaga_gfx": [Requirements.CROS_DEPENDENCIES],
+    "sync": [],
+    "sys_util": [Requirements.SINGLE_THREADED, Requirements.NATIVE],
+    "poll_token_derive": [],
+    "syscall_defines": [],
+    "tempfile": [],
+    "tpm2-sys": [],
+    "tpm2": [],
+    "usb_sys": [],
+    "usb_util": [],
+    "vfio_sys": [],
+    "vhost": [Requirements.DEVICE_ACCESS],
+    "virtio_sys": [],
+    "vm_control": [],
+    "vm_memory": [Requirements.DISABLED],
+    "x86_64": [Requirements.X86_64, Requirements.DEVICE_ACCESS],
+}
+
+# Just like for crates, lists requirements for each cargo feature flag.
+FEATURE_REQUIREMENTS: Dict[str, List[Requirements]] = {
+    "chromeos": [Requirements.CROS_DEPENDENCIES],
+    "audio": [],
+    "gpu": [Requirements.CROS_DEPENDENCIES],
+    "plugin": [Requirements.DEVICE_ACCESS, Requirements.X86_64],
+    "power-monitor-powerd": [],
+    "tpm": [Requirements.CROS_DEPENDENCIES],
+    "video-decoder": [Requirements.DISABLED],
+    "video-encoder": [Requirements.DISABLED],
+    "wl-dmabuf": [Requirements.CROS_DEPENDENCIES, Requirements.DISABLED],
+    "x": [],
+    "virgl_renderer_next": [Requirements.CROS_DEPENDENCIES],
+    "composite-disk": [],
+    "virgl_renderer": [Requirements.CROS_DEPENDENCIES],
+    "gfxstream": [Requirements.CROS_DEPENDENCIES, Requirements.DISABLED],
+    "gdb": [],
+}
+
+
+def target_arch():
+    """Returns architecture cargo is set up to build for."""
+    if "CARGO_BUILD_TARGET" in os.environ:
+        target = os.environ["CARGO_BUILD_TARGET"]
+        return target.split("-")[0]
+    else:
+        return platform.machine()
+
+
+def is_native():
+    """True if we are building for the architecture we are running on."""
+    return target_arch() == platform.machine()
+
+
+class CrateInfo(object):
+    """Informaton about whether a crate can be built or run on this host."""
+
+    def __init__(
+        self,
+        name: str,
+        requirements: Set[Requirements],
+        capabilities: Set[Requirements],
+    ):
+        self.name = name
+        self.requirements = requirements
+        self.single_threaded = Requirements.SINGLE_THREADED in requirements
+
+        build_reqs = requirements.intersection(BUILD_TIME_REQUIREMENTS)
+        self.can_build = all(req in capabilities for req in build_reqs)
+
+        run_reqs = requirements.intersection(RUN_TIME_REQUIREMENTS)
+        self.can_run = self.can_build and all(
+            req in capabilities for req in run_reqs
+        )
+
+
+def execute_tests(
+    crates: List[CrateInfo],
+    features: Set[str],
+    run: bool = True,
+    single_threaded: bool = False,
+):
+    """Executes the list of crates via `cargo test`."""
+    if not crates:
+        return True
+
+    cmd = ["cargo", "test", "-q"]
+    if not run:
+        cmd += ["--no-run"]
+    if features:
+        cmd += ["--no-default-features", "--features", ",".join(features)]
+    for crate in sorted(crate.name for crate in crates):
+        cmd += ["-p", crate]
+    if single_threaded:
+        cmd += ["--", "--test-threads=1"]
+
+    print("$", " ".join(cmd))
+    process = subprocess.run(cmd)
+    return process.returncode == 0
+
+
+def execute_test_batches(crates: List[CrateInfo], features: Set[str]):
+    """Groups tests and runs them in 3 batches:
+
+    - Those that can only be built, but not run.
+    - Those that can only be run single-threaded.
+    - And those that can be run in parallel.
+    """
+    passed = True
+
+    build_crates = [
+        crate for crate in crates if crate.can_build and not crate.can_run
+    ]
+    if not execute_tests(build_crates, features, run=False):
+        passed = False
+
+    run_single = [
+        crate for crate in crates if crate.can_run and crate.single_threaded
+    ]
+    if not execute_tests(run_single, features, single_threaded=True):
+        passed = False
+
+    run_parallel = [
+        crate for crate in crates if crate.can_run and not crate.single_threaded
+    ]
+    if not execute_tests(run_parallel, features):
+        passed = False
+    return passed
+
+
+def main(capabilities: Set[Requirements]):
+    if target_arch() == "aarch64":
+        capabilities.add(Requirements.AARCH64)
+    elif target_arch() == "x86_64":
+        capabilities.add(Requirements.X86_64)
+
+    if is_native():
+        capabilities.add(Requirements.NATIVE)
+    else:
+        capabilities.remove(Requirements.DEVICE_ACCESS)
+
+    print("Capabilities:", ", ".join(cap.value for cap in capabilities))
+
+    # Select all features where capabilities meet the requirements
+    features = set(
+        feature
+        for (feature, requirements) in FEATURE_REQUIREMENTS.items()
+        if all(r in capabilities for r in requirements)
+    )
+
+    # Disable sandboxing for tests until our builders are set up to run with
+    # sandboxing.
+    features.add("default-no-sandbox")
+    print("Features:", ", ".join(features))
+
+    crates = [
+        CrateInfo(crate, set(requirements), capabilities)
+        for (crate, requirements) in CRATE_REQUIREMENTS.items()
+    ]
+    passed = execute_test_batches(crates, features)
+
+    # TODO: We should parse test output and summarize the results
+    # Unfortunately machine readable output for `cargo test` is still a nightly
+    # rust feature.
+
+    print()
+    crates_not_built = [crate.name for crate in crates if not crate.can_build]
+    print(f"Tests not built: {', '.join(crates_not_built)}")
+
+    crates_not_run = [
+        crate.name for crate in crates if crate.can_build and not crate.can_run
+    ]
+    print(f"Tests not run: {', '.join(crates_not_run)}")
+
+    disabled_features = set(FEATURE_REQUIREMENTS.keys()).difference(features)
+    print(f"Disabled features: {', '.join(disabled_features)}")
+
+    print()
+    if not passed:
+        print("Some tests failed.")
+        exit(-1)
+    else:
+        print("All tests passed.")
+
+
+DESCRIPTION = """\
+Selects a subset of tests from crosvm to run depending on the capabilities of
+the local host.
+"""
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
+
+    parser.add_argument(
+        "--all", action="store_true", default=False, help="Enable all tests."
+    )
+    args = parser.parse_args()
+    main(
+        set([Requirements.DEVICE_ACCESS, Requirements.CROS_DEPENDENCIES])
+        if args.all
+        else set()
+    )

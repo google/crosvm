@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends  \
 
 RUN apt-get install --yes --no-install-recommends -o APT::Immediate-Configure=false \
     libcap-dev:arm64 \
+    libdbus-1-dev:arm64 \
     libdrm-dev:arm64 \
     libepoxy-dev:arm64 \
     libfdt-dev:arm64 \
