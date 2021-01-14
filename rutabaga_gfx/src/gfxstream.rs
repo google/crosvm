@@ -365,12 +365,15 @@ impl RutabagaComponent for Gfxstream {
             d: transfer.d,
         };
 
+        let mut iov = RutabagaIovec {
+            base: null_mut(),
+            len: 0,
+        };
+
         let (iovecs, num_iovecs) = match buf {
             Some(buf) => {
-                let mut iov = RutabagaIovec {
-                    base: buf.as_ptr() as *mut c_void,
-                    len: buf.size() as usize,
-                };
+                iov.base = buf.as_ptr() as *mut c_void;
+                iov.len = buf.size() as usize;
                 (&mut iov as *mut RutabagaIovec as *mut iovec, 1)
             }
             None => (null_mut(), 0),
