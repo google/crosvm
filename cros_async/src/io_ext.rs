@@ -170,9 +170,7 @@ mod tests {
         }
     }
 
-    // TODO: Enable this test once UringContext is Sync.
     #[test]
-    #[ignore]
     fn await_uring_from_poll() {
         // Start a uring operation and then await the result from an FdExecutor.
         async fn go(source: UringSource<File>) {

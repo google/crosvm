@@ -506,6 +506,7 @@ version = "0.1.0"
 dependencies = [
  "data_model",
  "libc",
+ "sync",
  "sys_util",
  "syscall_defines",
 ]

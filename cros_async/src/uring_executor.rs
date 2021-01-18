@@ -161,6 +161,7 @@ impl RegisteredSource {
         Ok(PendingOperation {
             waker_token: Some(token),
             ex: self.ex.clone(),
+            submitted: false,
         })
     }
 
@@ -176,6 +177,7 @@ impl RegisteredSource {
         Ok(PendingOperation {
             waker_token: Some(token),
             ex: self.ex.clone(),
+            submitted: false,
         })
     }
 
@@ -186,6 +188,7 @@ impl RegisteredSource {
         Ok(PendingOperation {
             waker_token: Some(token),
             ex: self.ex.clone(),
+            submitted: false,
         })
     }
 
@@ -196,6 +199,7 @@ impl RegisteredSource {
         Ok(PendingOperation {
             waker_token: Some(token),
             ex: self.ex.clone(),
+            submitted: false,
         })
     }
 
@@ -208,6 +212,7 @@ impl RegisteredSource {
         Ok(PendingOperation {
             waker_token: Some(token),
             ex: self.ex.clone(),
+            submitted: false,
         })
     }
 }
@@ -282,6 +287,7 @@ async fn notify_task(notify: EventFd, raw: Weak<RawExecutor>) {
         let op = PendingOperation {
             waker_token: Some(token),
             ex: raw.clone(),
+            submitted: false,
         };
 
         match op.await {
@@ -331,7 +337,7 @@ struct Ring {
 
 struct RawExecutor {
     queue: RunnableQueue,
-    ctx: Mutex<URingContext>,
+    ctx: URingContext,
     ring: Mutex<Ring>,
     thread_id: Mutex<Option<ThreadId>>,
     state: AtomicI32,
@@ -340,10 +346,9 @@ struct RawExecutor {
 
 impl RawExecutor {
     fn new(notify: EventFd) -> Result<RawExecutor> {
-        let ctx = URingContext::new(NUM_ENTRIES).map_err(Error::CreatingContext)?;
         Ok(RawExecutor {
             queue: RunnableQueue::new(),
-            ctx: Mutex::new(ctx),
+            ctx: URingContext::new(NUM_ENTRIES).map_err(Error::CreatingContext)?,
             ring: Mutex::new(Ring {
                 ops: Slab::with_capacity(NUM_ENTRIES),
                 registered_sources: Slab::with_capacity(NUM_ENTRIES),
@@ -426,15 +431,13 @@ impl RawExecutor {
                 continue;
             }
 
-            // We need to make sure we always acquire the ring lock before the ctx lock. TODO: drop
-            // the ctx lock once UringContext is Sync.
-            let mut ring = self.ring.lock();
-            let mut ctx = self.ctx.lock();
-            let events = ctx.wait().map_err(Error::URingEnter)?;
+            let events = self.ctx.wait().map_err(Error::URingEnter)?;
 
             // Set the state back to PROCESSING to prevent any tasks woken up by the loop below from
             // writing to the eventfd.
             self.state.store(PROCESSING, Ordering::Release);
+
+            let mut ring = self.ring.lock();
             for (raw_token, result) in events {
                 // While the `expect()` might fail on arbitrary `u64`s, the `raw_token` was
                 // something that we originally gave to the kernel and that was created from a
@@ -530,11 +533,7 @@ impl RawExecutor {
         source: &RegisteredSource,
         events: &sys_util::WatchingEvents,
     ) -> Result<WakerToken> {
-        // We need to make sure we always acquire the ring lock before the ctx lock. TODO: drop
-        // the ctx lock once UringContext is Sync.
         let mut ring = self.ring.lock();
-        let mut ctx = self.ctx.lock();
-
         let src = ring
             .registered_sources
             .get(source.tag)
@@ -542,7 +541,8 @@ impl RawExecutor {
             .ok_or(Error::InvalidSource)?;
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
-        ctx.add_poll_fd(src.as_raw_fd(), events, usize_to_u64(next_op_token))
+        self.ctx
+            .add_poll_fd(src.as_raw_fd(), events, usize_to_u64(next_op_token))
             .map_err(Error::SubmittingOp)?;
 
         entry.insert(OpStatus::Pending(OpData {
@@ -551,6 +551,7 @@ impl RawExecutor {
             waker: None,
             canceled: false,
         }));
+
         Ok(WakerToken(next_op_token))
     }
 
@@ -561,11 +562,7 @@ impl RawExecutor {
         len: u64,
         mode: u32,
     ) -> Result<WakerToken> {
-        // We need to make sure we always acquire the ring lock before the ctx lock. TODO: drop
-        // the ctx lock once UringContext is Sync.
         let mut ring = self.ring.lock();
-        let mut ctx = self.ctx.lock();
-
         let src = ring
             .registered_sources
             .get(source.tag)
@@ -573,38 +570,14 @@ impl RawExecutor {
             .ok_or(Error::InvalidSource)?;
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
-        ctx.add_fallocate(
-            src.as_raw_fd(),
-            offset,
-            len,
-            mode,
-            usize_to_u64(next_op_token),
-        )
-        .map_err(Error::SubmittingOp)?;
-
-        entry.insert(OpStatus::Pending(OpData {
-            _file: src,
-            _mem: None,
-            waker: None,
-            canceled: false,
-        }));
-        Ok(WakerToken(next_op_token))
-    }
-
-    fn submit_fsync(&self, source: &RegisteredSource) -> Result<WakerToken> {
-        // We need to make sure we always acquire the ring lock before the ctx lock. TODO: drop
-        // the ctx lock once UringContext is Sync.
-        let mut ring = self.ring.lock();
-        let mut ctx = self.ctx.lock();
-
-        let src = ring
-            .registered_sources
-            .get(source.tag)
-            .map(Arc::clone)
-            .ok_or(Error::InvalidSource)?;
-        let entry = ring.ops.vacant_entry();
-        let next_op_token = entry.key();
-        ctx.add_fsync(src.as_raw_fd(), usize_to_u64(next_op_token))
+        self.ctx
+            .add_fallocate(
+                src.as_raw_fd(),
+                offset,
+                len,
+                mode,
+                usize_to_u64(next_op_token),
+            )
             .map_err(Error::SubmittingOp)?;
 
         entry.insert(OpStatus::Pending(OpData {
@@ -613,6 +586,30 @@ impl RawExecutor {
             waker: None,
             canceled: false,
         }));
+
+        Ok(WakerToken(next_op_token))
+    }
+
+    fn submit_fsync(&self, source: &RegisteredSource) -> Result<WakerToken> {
+        let mut ring = self.ring.lock();
+        let src = ring
+            .registered_sources
+            .get(source.tag)
+            .map(Arc::clone)
+            .ok_or(Error::InvalidSource)?;
+        let entry = ring.ops.vacant_entry();
+        let next_op_token = entry.key();
+        self.ctx
+            .add_fsync(src.as_raw_fd(), usize_to_u64(next_op_token))
+            .map_err(Error::SubmittingOp)?;
+
+        entry.insert(OpStatus::Pending(OpData {
+            _file: src,
+            _mem: None,
+            waker: None,
+            canceled: false,
+        }));
+
         Ok(WakerToken(next_op_token))
     }
 
@@ -630,11 +627,7 @@ impl RawExecutor {
             return Err(Error::InvalidOffset);
         }
 
-        // We need to make sure we always acquire the ring lock before the ctx lock. TODO: drop
-        // the ctx lock once UringContext is Sync.
         let mut ring = self.ring.lock();
-        let mut ctx = self.ctx.lock();
-
         let src = ring
             .registered_sources
             .get(source.tag)
@@ -655,7 +648,8 @@ impl RawExecutor {
             // Safe because all the addresses are within the Memory that an Arc is kept for the
             // duration to ensure the memory is valid while the kernel accesses it.
             // Tested by `dont_drop_backing_mem_read` unit test.
-            ctx.add_readv_iter(iovecs, src.as_raw_fd(), offset, usize_to_u64(next_op_token))
+            self.ctx
+                .add_readv_iter(iovecs, src.as_raw_fd(), offset, usize_to_u64(next_op_token))
                 .map_err(Error::SubmittingOp)?;
         }
 
@@ -683,11 +677,7 @@ impl RawExecutor {
             return Err(Error::InvalidOffset);
         }
 
-        // We need to make sure we always acquire the ring lock before the ctx lock. TODO: drop
-        // the ctx lock once UringContext is Sync.
         let mut ring = self.ring.lock();
-        let mut ctx = self.ctx.lock();
-
         let src = ring
             .registered_sources
             .get(source.tag)
@@ -708,7 +698,8 @@ impl RawExecutor {
             // Safe because all the addresses are within the Memory that an Arc is kept for the
             // duration to ensure the memory is valid while the kernel accesses it.
             // Tested by `dont_drop_backing_mem_write` unit test.
-            ctx.add_writev_iter(iovecs, src.as_raw_fd(), offset, usize_to_u64(next_op_token))
+            self.ctx
+                .add_writev_iter(iovecs, src.as_raw_fd(), offset, usize_to_u64(next_op_token))
                 .map_err(Error::SubmittingOp)?;
         }
 
@@ -885,6 +876,7 @@ fn usize_to_u64(val: usize) -> u64 {
 pub struct PendingOperation {
     waker_token: Option<WakerToken>,
     ex: Weak<RawExecutor>,
+    submitted: bool,
 }
 
 impl Future for PendingOperation {
@@ -900,6 +892,17 @@ impl Future for PendingOperation {
                 self.waker_token = None;
                 Poll::Ready(result.map_err(Error::Io))
             } else {
+                // If we haven't submitted the operation yet, do it now.
+                if !self.submitted {
+                    match ex.ctx.submit() {
+                        Ok(()) => self.submitted = true,
+                        // If the kernel ring is full then wait until some ops are removed from the
+                        // completion queue. This op should get submitted the next time the executor
+                        // calls UringContext::wait.
+                        Err(io_uring::Error::RingEnter(libc::EBUSY)) => {}
+                        Err(e) => return Poll::Ready(Err(Error::URingEnter(e))),
+                    }
+                }
                 Poll::Pending
             }
         } else {
@@ -929,21 +932,20 @@ mod tests {
     use super::*;
     use crate::uring_mem::{BackingMemory, MemRegion, VecIoWrapper};
 
-    async fn pending() {
-        Pending { is_ready: false }.await
+    // A future that returns ready when the uring queue is empty.
+    struct UringQueueEmpty<'a> {
+        ex: &'a URingExecutor,
     }
 
-    struct Pending {
-        is_ready: bool,
-    }
-
-    impl Future for Pending {
+    impl<'a> Future for UringQueueEmpty<'a> {
         type Output = ();
-        fn poll(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-            if self.is_ready {
+
+        fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+            // When there is only one operation in the uring queue we know it must be empty because
+            // that 1 operation comes from `notify_task`.
+            if self.ex.raw.ring.lock().ops.len() == 1 {
                 Poll::Ready(())
             } else {
-                self.is_ready = true;
                 Poll::Pending
             }
         }
@@ -983,8 +985,8 @@ mod tests {
         // Finishing the operation should put the Arc count back to 1.
         // write to the pipe to wake the read pipe and then wait for the uring result in the
         // executor.
-        tx.write(&[0u8; 8]).expect("write failed");
-        ex.run_until(pending())
+        tx.write_all(&[0u8; 8]).expect("write failed");
+        ex.run_until(UringQueueEmpty { ex: &ex })
             .expect("Failed to wait for read pipe ready");
         assert_eq!(Arc::strong_count(&bm), 1);
     }
@@ -1024,9 +1026,9 @@ mod tests {
         // write to the pipe to wake the read pipe and then wait for the uring result in the
         // executor.
         let mut buf = vec![0u8; sys_util::round_up_to_page_size(1)];
-        rx.read(&mut buf).expect("read to empty failed");
-        ex.run_until(pending())
-            .expect("Failed to wait for read pipe ready");
+        rx.read_exact(&mut buf).expect("read to empty failed");
+        ex.run_until(UringQueueEmpty { ex: &ex })
+            .expect("Failed to wait for write pipe ready");
         assert_eq!(Arc::strong_count(&bm), 1);
     }
 
