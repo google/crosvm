@@ -19,7 +19,7 @@ use std::sync::{Arc, Weak};
 use std::task::{Context, Poll, Waker};
 
 use async_task::Task;
-use futures::task::{noop_waker, waker_ref, ArcWake};
+use futures::task::noop_waker;
 use pin_utils::pin_mut;
 use slab::Slab;
 use sync::Mutex;
@@ -27,7 +27,7 @@ use sys_util::{add_fd_flags, warn, EpollContext, EpollEvents, EventFd, WatchingE
 use thiserror::Error as ThisError;
 
 use crate::queue::RunnableQueue;
-use crate::waker::WakerToken;
+use crate::waker::{new_waker, WakerToken, WeakWake};
 
 #[derive(Debug, ThisError)]
 pub enum Error {
@@ -341,9 +341,11 @@ impl RawExecutor {
     }
 }
 
-impl ArcWake for RawExecutor {
-    fn wake_by_ref(arc_self: &Arc<Self>) {
-        RawExecutor::wake(arc_self);
+impl WeakWake for RawExecutor {
+    fn wake_by_ref(weak_self: &Weak<Self>) {
+        if let Some(arc_self) = weak_self.upgrade() {
+            RawExecutor::wake(&arc_self);
+        }
     }
 }
 
@@ -417,14 +419,14 @@ impl FdExecutor {
     }
 
     pub fn run(&self) -> Result<()> {
-        let waker = waker_ref(&self.raw);
+        let waker = new_waker(Arc::downgrade(&self.raw));
         let mut cx = Context::from_waker(&waker);
 
         self.raw.run(&mut cx, crate::empty::<()>())
     }
 
     pub fn run_until<F: Future>(&self, f: F) -> Result<F::Output> {
-        let waker = waker_ref(&self.raw);
+        let waker = new_waker(Arc::downgrade(&self.raw));
         let mut ctx = Context::from_waker(&waker);
 
         self.raw.run(&mut ctx, f)

@@ -367,15 +367,22 @@ mod tests {
 
     #[test]
     fn pend_on_pipe() {
+        use std::io::Write;
+
         use futures::future::Either;
 
         async fn do_test(ex: &URingExecutor) {
-            let (read_source, _w) = sys_util::pipe(true).unwrap();
+            let (read_source, mut w) = sys_util::pipe(true).unwrap();
             let source = UringSource::new(read_source, ex).unwrap();
             let done = Box::pin(async { 5usize });
             let pending = Box::pin(read_u64(&source));
             match futures::future::select(pending, done).await {
-                Either::Right((5, pending)) => std::mem::drop(pending),
+                Either::Right((5, pending)) => {
+                    // Write to the pipe so that the kernel will release the memory associated with
+                    // the uring read operation.
+                    w.write(&[0]).expect("failed to write to pipe");
+                    ::std::mem::drop(pending);
+                }
                 _ => panic!("unexpected select result"),
             };
         }
