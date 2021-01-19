@@ -173,6 +173,7 @@ pub type RutabagaResult<T> = std::result::Result<T, RutabagaError>;
 
 /// Flags for virglrenderer.  Copied from virglrenderer bindings.
 const VIRGLRENDERER_USE_EGL: u32 = 1 << 0;
+#[allow(dead_code)]
 const VIRGLRENDERER_THREAD_SYNC: u32 = 1 << 1;
 const VIRGLRENDERER_USE_GLX: u32 = 1 << 2;
 const VIRGLRENDERER_USE_SURFACELESS: u32 = 1 << 3;
@@ -240,6 +241,7 @@ impl VirglRendererFlags {
 
 /// Flags for the gfxstream renderer.
 const GFXSTREAM_RENDERER_FLAGS_USE_EGL: u32 = 1 << 0;
+#[allow(dead_code)]
 const GFXSTREAM_RENDERER_FLAGS_THREAD_SYNC: u32 = 1 << 1;
 const GFXSTREAM_RENDERER_FLAGS_USE_GLX: u32 = 1 << 2;
 const GFXSTREAM_RENDERER_FLAGS_USE_SURFACELESS: u32 = 1 << 3;
