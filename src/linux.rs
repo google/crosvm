@@ -33,6 +33,7 @@ use libc::{self, c_int, gid_t, uid_t};
 use acpi_tables::sdt::SDT;
 
 use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
+use devices::virtio::vhost::user::{Block as VhostUserBlock, Error as VhostUserBlockError};
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
 use devices::virtio::{self, Console, VirtioDevice};
@@ -76,7 +77,9 @@ use vm_memory::{GuestAddress, GuestMemory};
 
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use crate::gdb::{gdb_thread, GdbStub};
-use crate::{Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption};
+use crate::{
+    Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption, VhostUserOption,
+};
 use arch::{
     self, LinuxArch, RunnableLinuxVm, SerialHardware, SerialParameters, VcpuAffinity,
     VirtioDeviceStub, VmComponents, VmImage,
@@ -189,6 +192,7 @@ pub enum Error {
     Timer(base::Error),
     ValidateRawDescriptor(base::Error),
     VhostNetDeviceNew(virtio::vhost::Error),
+    VhostUserBlockDeviceNew(VhostUserBlockError),
     VhostVsockDeviceNew(virtio::vhost::Error),
     VirtioPciDev(base::Error),
     WaitContextAdd(base::Error),
@@ -309,6 +313,9 @@ impl Display for Error {
             Timer(e) => write!(f, "failed to read timer fd: {}", e),
             ValidateRawDescriptor(e) => write!(f, "failed to validate raw descriptor: {}", e),
             VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {}", e),
+            VhostUserBlockDeviceNew(e) => {
+                write!(f, "failed to set up vhost-user block device: {}", e)
+            }
             VhostVsockDeviceNew(e) => write!(f, "failed to set up virtual socket device: {}", e),
             VirtioPciDev(e) => write!(f, "failed to create virtio pci dev: {}", e),
             WaitContextAdd(e) => write!(f, "failed to add descriptor to wait context: {}", e),
@@ -533,6 +540,17 @@ fn create_block_device(
     Ok(VirtioDeviceStub {
         dev,
         jail: simple_jail(&cfg, "block_device")?,
+    })
+}
+
+fn create_vhost_user_block_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
+    let dev = VhostUserBlock::new(virtio::base_features(cfg.protected_vm), &opt.socket)
+        .map_err(Error::VhostUserBlockDeviceNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        // no sandbox here because virtqueue handling is exported to a different process.
+        jail: None,
     })
 }
 
@@ -1342,6 +1360,10 @@ fn create_virtio_devices(
     for disk in &cfg.disks {
         let disk_device_socket = disk_device_sockets.remove(0);
         devs.push(create_block_device(cfg, disk, disk_device_socket)?);
+    }
+
+    for blk in &cfg.vhost_user_blk {
+        devs.push(create_vhost_user_block_device(cfg, blk)?);
     }
 
     for (index, pmem_disk) in cfg.pmem_devices.iter().enumerate() {

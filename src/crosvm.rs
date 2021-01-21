@@ -58,6 +58,10 @@ pub struct DiskOption {
     pub id: Option<[u8; DISK_ID_LEN]>,
 }
 
+pub struct VhostUserOption {
+    pub socket: PathBuf,
+}
+
 /// A bind mount for directories in the plugin process.
 pub struct BindMount {
     pub src: PathBuf,
@@ -236,6 +240,7 @@ pub struct Config {
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<u32>,
     pub balloon_bias: i64,
+    pub vhost_user_blk: Vec<VhostUserOption>,
 }
 
 impl Default for Config {
@@ -300,6 +305,7 @@ impl Default for Config {
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: None,
             balloon_bias: 0,
+            vhost_user_blk: Vec::new(),
         }
     }
 }

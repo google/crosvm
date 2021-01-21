@@ -13,6 +13,7 @@ use vhost::Error as VhostError;
 
 mod control_socket;
 mod net;
+pub mod user;
 mod vsock;
 mod worker;
 

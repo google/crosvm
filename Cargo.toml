@@ -114,4 +114,5 @@ sync = { path = "sync" }
 syscall_defines = { path = "syscall_defines" }
 sys_util = { path = "sys_util" }
 tempfile = { path = "tempfile" }
+vmm_vhost = { path = "../../third_party/rust-vmm/vhost", features = ["vhost-user-master"] } # ignored by ebuild
 wire_format_derive = { path = "../../platform2/vm_tools/p9/wire_format_derive" } # ignored by ebuild

@@ -18,6 +18,7 @@ gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
 [dependencies]
 acpi_tables = {path = "../acpi_tables" }
 audio_streams = "*"
+base = { path = "../base" }
 bit_field = { path = "../bit_field" }
 cros_async = { path = "../cros_async" }
 data_model = { path = "../data_model" }
@@ -45,13 +46,13 @@ remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
-base = { path = "../base" }
 syscall_defines = { path = "../syscall_defines" }
 thiserror = "1.0.20"
 tpm2 = { path = "../tpm2", optional = true }
 usb_util = { path = "../usb_util" }
 vfio_sys = { path = "../vfio_sys" }
 vhost = { path = "../vhost" }
+vmm_vhost = { version = "*", features = ["vhost-user-master"] }
 virtio_sys = { path = "../virtio_sys" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }

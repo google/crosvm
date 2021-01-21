@@ -92,7 +92,7 @@ unsafe impl DataInit for virtio_blk_topology {}
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C, packed)]
-struct virtio_blk_config {
+pub(crate) struct virtio_blk_config {
     capacity: Le64,
     size_max: Le32,
     seg_max: Le32,
@@ -101,7 +101,7 @@ struct virtio_blk_config {
     topology: virtio_blk_topology,
     writeback: u8,
     unused0: u8,
-    num_queues: Le16,
+    pub num_queues: Le16,
     max_discard_sectors: Le32,
     max_discard_seg: Le32,
     discard_sector_alignment: Le32,

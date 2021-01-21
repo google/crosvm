@@ -30,7 +30,7 @@ use base::{
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
     platform, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
-    DISK_ID_LEN,
+    VhostUserOption, DISK_ID_LEN,
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{GpuMode, GpuParameters};
@@ -1585,6 +1585,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     * 1024
                     * 1024; // cfg.balloon_bias is in bytes.
         }
+        "vhost-user-blk" => cfg.vhost_user_blk.push(VhostUserOption {
+            socket: PathBuf::from(value.unwrap()),
+        }),
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -1794,6 +1797,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                                   "),
           Argument::value("gdb", "PORT", "(EXPERIMENTAL) gdb on the given port"),
           Argument::value("balloon_bias_mib", "N", "Amount to bias balance of memory between host and guest as the balloon inflates, in MiB."),
+          Argument::value("vhost-user-blk", "SOCKET_PATH", "Path to a socket for vhost-user block"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
