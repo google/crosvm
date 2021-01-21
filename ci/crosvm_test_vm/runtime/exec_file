@@ -1,0 +1,26 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Uploads and executes a file in the VM.
+
+${0%/*}/exec exit || exit 1 # Wait for VM to be available
+
+if [ "$1" = "--no-sync" ]; then
+    shift
+else
+    echo "Syncing shared objects..."
+    ${0%/*}/sync_so || exit 1
+fi
+
+filepath=$1
+filename=$(basename $filepath)
+
+echo "Executing $filename..."
+scp -q $filepath vm:$filename
+# Make sure to preserve the exit code of $filename after cleaning up the file.
+ssh vm -q -t "./$filename"
+ret=$?
+ssh vm -q -t "rm $filename"
+exit $ret

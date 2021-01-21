@@ -1,0 +1,21 @@
+#!/usr/bin/expect -f
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+set timeout -1
+
+spawn ./start_vm -hdb cloud_init.img
+
+expect "login:"
+send "crosvm\r"
+
+expect "Password:"
+send "crosvm\r"
+
+expect "$ "
+send "cloud-init status --wait\r"
+
+expect "$ "
+send "sudo poweroff\r"
+
+expect eof

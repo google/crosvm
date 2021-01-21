@@ -38,7 +38,9 @@ tpm2:
 	mkdir -p $(BUILD)/tpm2
 	$(MAKE) -C $(SRC)/third_party/tpm2 \
 		obj=$(BUILD)/tpm2 \
-		CROSS_COMPILE=$(CROSS_COMPILE)
+		AR=$(CROSS_COMPILE)ar \
+		CC=$(CROSS_COMPILE)gcc \
+		OBJCOPY=$(CROSS_COMPILE)objcopy V=1
 
 minijail:
 	mkdir -p $(BUILD)/minijail
@@ -93,6 +95,6 @@ $(LIB):
 	# virglrenderer
 	ln -sf $(BUILD)/virglrenderer/src/libvirglrenderer.so $(LIB)
 	ln -sf $(LIB)/libvirglrenderer.so $(LIB)/libvirglrenderer.so.1
-	ln -sf $(BUILD)/virglrenderer/libvirglrenderer.pc $(LIB)/pkgconfig/
+	ln -sf $(BUILD)/virglrenderer/virglrenderer.pc $(LIB)/pkgconfig/
 
 .PHONY: all clean tpm2 minijail sysroot minigbm virglrenderer

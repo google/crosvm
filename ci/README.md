@@ -32,23 +32,19 @@ A standard chromiumos checkout following the
 [ChromiumOS Developer Guide](https://chromium.googlesource.com/chromiumos/docs/+/master/developer_guide.md#Get-the-Source)
 will work too.
 
-To run the smoke tests suite for both x86 and aarch64 on an x86 machine, just
-run:
+To run all crosvm tests using the builder and it's included virtual machine:
 
 ```
-$ cd platform/src/crosvm
-$ ./ci/builder bin/smoke_test
-$ ./ci/aarch64_builder bin/smoke_test
+$ ./ci/builder --vm ./run_tests
+$ ./ci/aarch64_builder --vm ./run_tests
 ```
 
 or start an interactive shell for either of them:
 
 ```
-$ ./ci/builder
-$ ./ci/aarch64_builder
+$ ./ci/builder [--vm]
+$ ./ci/aarch64_builder [--vm]
 ```
-
-Note: Tests on aarch64 are a work in progress and may not pass.
 
 When the builder is started, it will prepare the environment for building and
 running tests, this includes building dependencies for crosvm that are provided
@@ -60,6 +56,16 @@ The environment in both is setup so that `cargo test` or existing scripts like
 
 The builders allow for incremental builds by storing build artifacts in
 `$CARGO_TARGET/ci/crosvm_builder`.
+
+### Using the built-in VM
+
+The builders come with a built-in VM which is automatically started in the
+background when run as `./ci/builder --vm`. The enviornment is then set up to
+automatically run `cargo test` binaries through the `/workspace/vm/exec_file`
+script, which will take care of copying the required .so files and executes the
+test binary.
+
+The `./run_tests` script will also make use of the VM for testing.
 
 ### Using podman
 
@@ -76,4 +82,4 @@ devices required by tests. Most notably `/dev/kvm` and `/dev/net/tun`.
 
 The docker images for all builders can be built with `make` and uploaded with
 `make upload`. Of course you need to have docker push permissions for
-`registry.gitlab.com/crosvm-ci/crosvm-ci` for the upload to work.
+`gcr.io/crosvm-packages/` for the upload to work.

@@ -1,0 +1,17 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Waits indefinitely for the VM to become available.
+
+test_ssh="ssh -o ConnectTimeout=1 vm -t exit"
+
+if ! $test_ssh 2>/dev/null >/dev/null; then
+    echo "Waiting for VM to be available."
+    until $test_ssh 2>/dev/null >/dev/null; do
+        sleep 1
+        printf "."
+    done
+    echo ""
+fi

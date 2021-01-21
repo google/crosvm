@@ -11,10 +11,28 @@ if ! make -j $(nproc) -C ci/build_environment \
     exit 1
 fi
 
+if [ "$1" = "--vm" ]; then
+    shift
+    echo "Starting testing vm..."
+    (cd /workspace/vm && screen -Sdm vm ./start_vm)
+    export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="\
+        /workspace/vm/exec_file"
+    test_target="Virtual Machine (See 'screen -r vm')"
+    export CROSVM_USE_VM=1
+else
+    test_target="Native execution"
+fi
+
 echo ""
-echo "crosvm-$(arch) builder is ready:"
+echo "crosvm builder is ready:"
 echo "  Cargo version: $(cargo --version)"
+echo "  Test target: ${test_target}"
 echo ""
 
-# Run user provided command (Docker defaults to bash)
-$@
+# Run user provided command or interactive shell
+if [[ $# -eq 0 ]]; then
+    /bin/bash
+else
+    echo "$ $@"
+    $@
+fi

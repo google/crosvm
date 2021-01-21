@@ -1,0 +1,20 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Synchronizes shared objects into the virtual machine to allow crosvm binaries
+# to run.
+
+${0%/*}/exec exit || exit 1 # Wait for VM to be available
+
+rust_toolchain=$(cat /workspace/src/platform/crosvm/rust-toolchain)
+
+# List of shared objects used by crosvm that need to be synced
+shared_objects=(
+    /workspace/scratch/lib/*.so*
+    /root/.rustup/toolchains/${rust_toolchain}-*/lib/libstd-*.so
+    /root/.rustup/toolchains/${rust_toolchain}-*/lib/libtest-*.so
+)
+
+rsync -azPL --rsync-path="sudo rsync" ${shared_objects[@]} vm:/usr/lib

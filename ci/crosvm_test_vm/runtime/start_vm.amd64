@@ -1,0 +1,19 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+qemu_args=(
+    -smp 8 -m 4G
+    -serial stdio -display none
+    -device virtio-net-pci,netdev=net0
+    -netdev user,id=net0,hostfwd=tcp::8022-:22
+    -hda rootfs.qcow2
+)
+
+# The build environment for first_boot.expect does not support KVM.
+if [ -e /dev/kvm ]; then
+    qemu_args+=(-enable-kvm -cpu host)
+fi
+
+qemu-system-x86_64 ${qemu_args[@]} $@

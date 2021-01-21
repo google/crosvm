@@ -1,0 +1,14 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+qemu_args=(
+    -M virt -machine virtualization=true -machine virt,gic-version=3
+    -cpu cortex-a57 -smp 8 -m 4G
+    -serial stdio -display none
+    -device virtio-net-pci,netdev=net0
+    -netdev user,id=net0,hostfwd=tcp::8022-:22
+    -bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd
+    -hda rootfs.qcow2
+)
+qemu-system-aarch64 ${qemu_args[@]} $@

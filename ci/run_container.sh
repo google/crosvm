@@ -1,7 +1,7 @@
 #!/bin/bash
-# Copyright 2021 The Chromium OS Authors. All rights reserved. Use of
-# this source code is governed by a BSD-style license that can be found in the
-# LICENSE file
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
 #
 # Runs a crosvm builder. Will use podman if available, falls back to docker.
 crosvm_root=$(realpath "$(dirname $0)/..")
@@ -24,26 +24,28 @@ if which podman >/dev/null; then
         podman run \
             --runtime /usr/bin/crun \
             --annotation run.oci.keep_original_groups=1 \
-            --cap-add=ALL \
             "$@"
     }
 else
     run() {
-        docker run --privileged "$@"
+        docker run "$@"
     }
 fi
 
+version=$(cat $(dirname $0)/image_tag)
 src="${cros_root}/src"
 scratch="${target}/ci/$1"
 mkdir -p "${scratch}"
 
+echo "Using builder version: ${version}"
+echo "Using source directory: ${src}"
+echo "Using scratch directory: ${scratch}"
+echo ""
+
 run --rm -it \
-    --device /dev/net \
     --device /dev/kvm \
-    --device /dev/vhost-net \
-    --device /dev/vhost-vsock \
     --volume /dev/log:/dev/log \
     --volume "${src}":/workspace/src:rw \
     --volume "${scratch}":/workspace/scratch:rw \
-    "gcr.io/crosvm-packages/$1" \
+    "gcr.io/crosvm-packages/$1:${version}" \
     "${@:2}"

@@ -1,6 +1,6 @@
-# Copyright 2018 The Chromium OS Authors. All rights reserved. Use of this
-# source code is governed by a BSD-style license that can be found in the
-# LICENSE file.
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
 #
 # Base image for crosvm_builder and crosvm_aarch64_builder containing basic
 # devleopment environment for building rust.
@@ -28,10 +28,13 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
     meson/testing \
     nasm \
     ninja-build \
+    openssh-client \
     pkg-config \
     protobuf-compiler \
     python3 \
     python3-setuptools \
+    rsync \
+    screen \
     sudo
 
 # This is a scratch volume for build files. It can be used to allow incremental
@@ -62,6 +65,9 @@ RUN cargo install thisiznotarealpackage -q || true
 # We are building out of source with a readonly source filesystem. This flag
 # tells some build.rs files to not write into the src filesystem.
 ENV RUSTFLAGS='--cfg hermetic'
+
+# Environment variables for the run_tests script to enable all tests.
+ENV CROSVM_CROS_BUILD=1
 
 # All commands will be executed in the crosvm src directory.
 WORKDIR /workspace/src/platform/crosvm
