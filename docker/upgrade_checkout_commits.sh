@@ -14,6 +14,7 @@ remotes=(
     "https://gitlab.freedesktop.org/mesa/drm.git/"
     "https://android.googlesource.com/platform/external/minijail"
     "https://gitlab.freedesktop.org/virgl/virglrenderer.git"
+    "https://chromium.googlesource.com/chromiumos/platform/minigbm"
 )
 
 keys=(
@@ -25,12 +26,18 @@ keys=(
     "DRM_COMMIT"
     "MINIJAIL_COMMIT"
     "VIRGL_COMMIT"
+    "MINIGBM_COMMIT"
 )
 
-for (( i=0; i<${#remotes[*]}; ++i)); do
+for ((i = 0; i < ${#remotes[*]}; ++i)); do
     remote="${remotes[$i]}"
     key="${keys[$i]}"
-    remote_chunk=$(git ls-remote --exit-code "${remote}" refs/heads/master)
+    branch="${branches[$i]}"
+    remote_chunk=$(git ls-remote --exit-code "${remote}" "refs/heads/main")
+    if [ -z "${remote_chunk}" ]; then
+        remote_chunk=$(git ls-remote --exit-code "${remote}" \
+            "refs/heads/master")
+    fi
     commit=$(echo "${remote_chunk}" | cut -f 1 -)
     echo $key=$commit
 done
