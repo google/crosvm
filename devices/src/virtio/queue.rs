@@ -21,6 +21,7 @@ const VIRTQ_DESC_F_WRITE: u16 = 0x2;
 const VIRTQ_DESC_F_INDIRECT: u16 = 0x4;
 
 const VIRTQ_USED_F_NO_NOTIFY: u16 = 0x1;
+#[allow(dead_code)]
 const VIRTQ_AVAIL_F_NO_INTERRUPT: u16 = 0x1;
 
 /// An iterator over a single descriptor chain.  Not to be confused with AvailIter,
@@ -361,6 +362,7 @@ impl Queue {
     // Query the value of a single-bit flag in the available ring.
     //
     // Returns `true` if `flag` is currently set (by the driver) in the available ring flags.
+    #[allow(dead_code)]
     fn get_avail_flag(&self, mem: &GuestMemory, flag: u16) -> bool {
         let avail_flags: u16 = mem.read_obj_from_addr(self.avail_ring).unwrap();
         avail_flags & flag == flag
@@ -523,7 +525,13 @@ impl Queue {
             // so no need to inject new interrupt.
             self.next_used - used_event - Wrapping(1) < self.next_used - self.last_used
         } else {
-            !self.get_avail_flag(mem, VIRTQ_AVAIL_F_NO_INTERRUPT)
+            // TODO(b/172975852): This branch should check the flag that requests interrupt
+            // supression:
+            // ```
+            // !self.get_avail_flag(mem, VIRTQ_AVAIL_F_NO_INTERRUPT)
+            // ```
+            // Re-enable the flag check once the missing interrupt issue is debugged.
+            true
         }
     }
 
