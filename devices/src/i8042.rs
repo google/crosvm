@@ -26,9 +26,9 @@ impl BusDevice for I8042Device {
     }
 
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
-        if data.len() == 1 && info.offset == 0x64 {
+        if data.len() == 1 && info.address == 0x64 {
             data[0] = 0x0;
-        } else if data.len() == 1 && info.offset == 0x61 {
+        } else if data.len() == 1 && info.address == 0x61 {
             // Like kvmtool, we return bit 5 set in I8042_PORT_B_REG to
             // avoid hang in pit_calibrate_tsc() in Linux kernel.
             data[0] = 0x20;
@@ -36,7 +36,7 @@ impl BusDevice for I8042Device {
     }
 
     fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
-        if data.len() == 1 && data[0] == 0xfe && info.offset == 0x64 {
+        if data.len() == 1 && data[0] == 0xfe && info.address == 0x64 {
             if let Err(e) = self.reset_evt.write(1) {
                 error!("failed to trigger i8042 reset event: {}", e);
             }
