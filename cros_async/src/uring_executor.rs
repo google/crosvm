@@ -254,8 +254,10 @@ struct Ring {
 }
 
 struct RawExecutor {
-    queue: RunnableQueue,
+    // The URingContext needs to be first so that it is dropped first, closing the uring fd, and
+    // releasing the resources borrowed by the kernel before we free them.
     ctx: URingContext,
+    queue: RunnableQueue,
     ring: Mutex<Ring>,
     thread_id: Mutex<Option<ThreadId>>,
     state: AtomicI32,
@@ -264,8 +266,8 @@ struct RawExecutor {
 impl RawExecutor {
     fn new() -> Result<RawExecutor> {
         Ok(RawExecutor {
-            queue: RunnableQueue::new(),
             ctx: URingContext::new(NUM_ENTRIES).map_err(Error::CreatingContext)?,
+            queue: RunnableQueue::new(),
             ring: Mutex::new(Ring {
                 ops: Slab::with_capacity(NUM_ENTRIES),
                 registered_sources: Slab::with_capacity(NUM_ENTRIES),
@@ -656,12 +658,10 @@ impl WeakWake for RawExecutor {
 }
 
 impl Drop for RawExecutor {
-    // We need to block until there are no more uring operations as the kernel may still be
-    // using the memory associated with them.
     fn drop(&mut self) {
+        // Wake up any futures still waiting on uring operations.
         let ring = self.ring.get_mut();
-        let mut to_remove = Vec::with_capacity(ring.ops.len());
-        for (tag, op) in ring.ops.iter_mut() {
+        for (_, op) in ring.ops.iter_mut() {
             match op {
                 OpStatus::Nop => {}
                 OpStatus::Pending(data) => {
@@ -674,44 +674,21 @@ impl Drop for RawExecutor {
                         }
                     }
 
-                    // Now mark this operation canceled so that it will be removed once it
-                    // completes.
                     data.canceled = true;
                 }
-
-                OpStatus::Completed(_) => {
-                    // The future waiting on this operation hasn't collected the result yet but if
-                    // it tries to get the result now it will just get an ExecutorGone error. Remove
-                    // this operation ourselves.
-                    to_remove.push(tag);
-                }
+                OpStatus::Completed(_) => {}
             }
         }
 
-        for tag in to_remove {
-            ring.ops.remove(tag);
-        }
+        // Since the RawExecutor is wrapped in an Arc it may end up being dropped from a different
+        // thread than the one that called `run` or `run_until`. Since we know there are no other
+        // references, just clear the thread id so that we don't panic.
+        *self.thread_id.lock() = None;
 
-        struct ShouldExit<'a> {
-            ring: &'a Mutex<Ring>,
-        }
-
-        impl<'a> Future for ShouldExit<'a> {
-            type Output = ();
-
-            fn poll(self: Pin<&mut Self>, _: &mut Context) -> Poll<()> {
-                if self.ring.lock().ops.is_empty() {
-                    Poll::Ready(())
-                } else {
-                    Poll::Pending
-                }
-            }
-        }
-
-        // Now run the uring until all pending operations have completed.
+        // Now run the executor loop once more to poll any futures we just woke up.
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
-        let res = self.run(&mut cx, ShouldExit { ring: &self.ring });
+        let res = self.run(&mut cx, async {});
 
         if let Err(e) = res {
             warn!("Failed to drive uring to completion: {}", e);
@@ -849,6 +826,8 @@ mod tests {
     use std::mem;
     use std::pin::Pin;
     use std::task::{Context, Poll};
+
+    use futures::executor::block_on;
 
     use super::*;
     use crate::uring_mem::{BackingMemory, MemRegion, VecIoWrapper};
@@ -1001,13 +980,13 @@ mod tests {
             }
         }
 
-        let (mut rx, tx) = sys_util::pipe(true).expect("Pipe failed");
+        let (mut rx, mut tx) = sys_util::pipe(true).expect("Pipe failed");
 
         let ex = URingExecutor::new().unwrap();
 
-        let tx = ex.register_source(&tx).expect("Failed to register source");
+        let tx_source = ex.register_source(&tx).expect("Failed to register source");
         let bm = Arc::new(VecIoWrapper::from(VALUE.to_ne_bytes().to_vec()));
-        let op = tx
+        let op = tx_source
             .start_write_from_mem(
                 0,
                 bm,
@@ -1020,13 +999,50 @@ mod tests {
 
         ex.spawn_local(check_op(op)).detach();
 
-        // Now drop the executor. It should still run until the write to the pipe is complete.
+        // Now drop the executor. It shouldn't run the write operation.
         mem::drop(ex);
-        mem::drop(tx);
+
+        // Make sure the executor did not complete the uring operation.
+        let new_val = [0x2e; 8];
+        tx.write_all(&new_val).unwrap();
 
         let mut buf = 0u64.to_ne_bytes();
-        rx.read(&mut buf[..]).expect("Failed to read from pipe");
+        rx.read_exact(&mut buf[..])
+            .expect("Failed to read from pipe");
 
-        assert_eq!(u64::from_ne_bytes(buf), VALUE);
+        assert_eq!(buf, new_val);
+    }
+
+    #[test]
+    fn drop_on_different_thread() {
+        let ex = URingExecutor::new().unwrap();
+
+        let ex2 = ex.clone();
+        let t = thread::spawn(move || ex2.run_until(async {}));
+
+        t.join().unwrap().unwrap();
+
+        // Leave an uncompleted operation in the queue so that the drop impl will try to drive it to
+        // completion.
+        let (_rx, tx) = sys_util::pipe(true).expect("Pipe failed");
+        let tx = ex.register_source(&tx).expect("Failed to register source");
+        let bm = Arc::new(VecIoWrapper::from(0xf2e96u64.to_ne_bytes().to_vec()));
+        let op = tx
+            .start_write_from_mem(
+                0,
+                bm,
+                &[MemRegion {
+                    offset: 0,
+                    len: mem::size_of::<u64>(),
+                }],
+            )
+            .expect("Failed to start write from mem");
+
+        mem::drop(ex);
+
+        match block_on(op).expect_err("Pending operation completed after executor was dropped") {
+            Error::ExecutorGone => {}
+            e => panic!("Unexpected error after dropping executor: {}", e),
+        }
     }
 }
