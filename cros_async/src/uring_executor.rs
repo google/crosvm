@@ -56,7 +56,7 @@ use std::fs::File;
 use std::future::Future;
 use std::io;
 use std::mem;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
@@ -70,21 +70,15 @@ use io_uring::URingContext;
 use pin_utils::pin_mut;
 use slab::Slab;
 use sync::Mutex;
-use sys_util::{warn, EventFd, WatchingEvents};
+use sys_util::{warn, WatchingEvents};
 use thiserror::Error as ThisError;
 
 use crate::queue::RunnableQueue;
-use crate::uring_mem::{BackingMemory, MemRegion, VecIoWrapper};
+use crate::uring_mem::{BackingMemory, MemRegion};
 use crate::waker::{new_waker, WakerToken, WeakWake};
 
 #[derive(Debug, ThisError)]
 pub enum Error {
-    /// Failed to clone the EventFd for waking the executor.
-    #[error("Failed to clone the EventFd for waking the executor: {0}")]
-    CloneEventFd(sys_util::Error),
-    /// Failed to create the EventFd for waking the executor.
-    #[error("Failed to create the EventFd for waking the executor: {0}")]
-    CreateEventFd(sys_util::Error),
     /// Failed to copy the FD for the polling context.
     #[error("Failed to copy the FD for the polling context: {0}")]
     DuplicatingFd(sys_util::Error),
@@ -225,86 +219,9 @@ impl Drop for RegisteredSource {
     }
 }
 
-// This function exists to guarantee that non-uring futures will not starve until a uring future is
-// ready to be polled again. The mechanism is very similar to the self-pipe trick used by C programs
-// to reliably mix select / poll with signal handling. This is how it works:
-//
-// * RawExecutor::new creates an eventfd, dupes it, and spawns this async function with the duped fd.
-// * The first time notify_task is polled it will add a read on the eventfd to the uring.
-// * Meanwhile the RawExecutor keeps the original fd for the eventfd.
-// * Whenever RawExecutor::wake is called it will write to the eventfd if it determines that the
-//   executor thread is currently blocked inside an io_uring_enter call. This can happen when a
-//   non-uring future becomes ready to poll.
-// * The write to the eventfd allows the read that we queued earlier to complete, which then causes
-//   the io_uring_enter call to return with at least one completed operation.
-// * The executor then polls the non-uring future that became ready, any uring futures that
-//   completed, and the notify_task function, which then queues up another read on the eventfd and
-//   the process can repeat.
-//
-// # Dropping the executor.
-//
-// When the URingExecutor is dropped it needs to block until all uring operations have completed
-// since the kernel is borrowing the memory associated with those operations. To ensure that the
-// notify_task doesn't cause the drop impl to block indefinitely, RawExecutor::drop writes to the
-// eventfd one more time. The next time notify_task is polled it will get an ExecutorGone error,
-// which it uses as a sign to break the loop and return.
-async fn notify_task(notify: EventFd, raw: Weak<RawExecutor>) {
-    // Safe because notify has a valid fd and we are just transferring it into a File.
-    let f = unsafe { File::from_raw_fd(notify.into_raw_fd()) };
-    let source = if let Some(ex) = raw.upgrade() {
-        let tag = ex.register_source(Arc::new(f));
-
-        // This is probably not necessary but drop order in rust is weird and we definitely don't
-        // want to hold an active reference to the executor in the loop below.
-        mem::drop(ex);
-
-        RegisteredSource {
-            tag,
-            ex: raw.clone(),
-        }
-    } else {
-        // The executor is already gone so just exit.
-        return;
-    };
-
-    let buf = Arc::new(VecIoWrapper::from(0u64.to_ne_bytes().to_vec()));
-    while let Some(ex) = raw.upgrade() {
-        let token = ex
-            .submit_read_to_vectored(
-                &source,
-                buf.clone(),
-                0,
-                &[MemRegion {
-                    offset: 0,
-                    len: buf.len(),
-                }],
-            )
-            .expect("Failed to start notify_task read");
-
-        // We don't want to hold an active reference to the executor in the .await below.
-        mem::drop(ex);
-
-        let op = PendingOperation {
-            waker_token: Some(token),
-            ex: raw.clone(),
-            submitted: false,
-        };
-
-        match op.await {
-            Ok(ret) => {
-                if ret != mem::size_of::<u64>() as u32 {
-                    panic!("Unexpected return value from notify EventFd");
-                }
-            }
-            Err(Error::ExecutorGone) => break,
-            Err(e) => panic!("Failed to read notify_task EventFd: {}", e),
-        }
-    }
-}
-
 // Indicates that the executor is either within or about to make an io_uring_enter syscall. When a
-// waker sees this value, it will write to the notify EventFd, which will cause the io_uring_enter
-// call to return.
+// waker sees this value, it will add and submit a NOP to the uring, which will wake up the thread
+// blocked on the io_uring_enter syscall.
 const WAITING: i32 = 0xb80d_21b5u32 as i32;
 
 // Indicates that the executor is processing any futures that are ready to run.
@@ -326,6 +243,7 @@ struct OpData {
 
 // The current status of an operation that's been submitted to the uring.
 enum OpStatus {
+    Nop,
     Pending(OpData),
     Completed(Option<::std::io::Result<u32>>),
 }
@@ -341,11 +259,10 @@ struct RawExecutor {
     ring: Mutex<Ring>,
     thread_id: Mutex<Option<ThreadId>>,
     state: AtomicI32,
-    notify: EventFd,
 }
 
 impl RawExecutor {
-    fn new(notify: EventFd) -> Result<RawExecutor> {
+    fn new() -> Result<RawExecutor> {
         Ok(RawExecutor {
             queue: RunnableQueue::new(),
             ctx: URingContext::new(NUM_ENTRIES).map_err(Error::CreatingContext)?,
@@ -355,15 +272,27 @@ impl RawExecutor {
             }),
             thread_id: Mutex::new(None),
             state: AtomicI32::new(PROCESSING),
-            notify,
         })
     }
 
     fn wake(&self) {
         let oldstate = self.state.swap(WOKEN, Ordering::Release);
         if oldstate == WAITING {
-            if let Err(e) = self.notify.write(1) {
-                warn!("Failed to notify executor that a future is ready: {}", e);
+            let mut ring = self.ring.lock();
+            let entry = ring.ops.vacant_entry();
+            let next_op_token = entry.key();
+            if let Err(e) = self.ctx.add_nop(usize_to_u64(next_op_token)) {
+                warn!("Failed to add NOP for waking up executor: {}", e);
+            }
+            entry.insert(OpStatus::Nop);
+            mem::drop(ring);
+
+            match self.ctx.submit() {
+                Ok(()) => {}
+                // If the kernel's submit ring is full then we know we won't block when calling
+                // io_uring_enter, which is all we really care about.
+                Err(io_uring::Error::RingEnter(libc::EBUSY)) => {}
+                Err(e) => warn!("Failed to submit NOP for waking up executor: {}", e),
             }
         }
     }
@@ -451,6 +380,8 @@ impl RawExecutor {
                     .get_mut(token)
                     .expect("Received completion token for unexpected operation");
                 match mem::replace(op, OpStatus::Completed(Some(result))) {
+                    // No one is waiting on a Nop.
+                    OpStatus::Nop => mem::drop(ring.ops.remove(token)),
                     OpStatus::Pending(data) => {
                         if data.canceled {
                             // No one is waiting for this operation and the uring is done with
@@ -477,6 +408,7 @@ impl RawExecutor {
             .get_mut(token.0)
             .expect("`get_result` called on unknown operation");
         match op {
+            OpStatus::Nop => panic!("`get_result` called on nop"),
             OpStatus::Pending(data) => {
                 if data.canceled {
                     panic!("`get_result` called on canceled operation");
@@ -497,6 +429,7 @@ impl RawExecutor {
         let mut ring = self.ring.lock();
         if let Some(op) = ring.ops.get_mut(token.0) {
             match op {
+                OpStatus::Nop => panic!("`cancel_operation` called on nop"),
                 OpStatus::Pending(data) => {
                     if data.canceled {
                         panic!("uring operation canceled more than once");
@@ -726,15 +659,11 @@ impl Drop for RawExecutor {
     // We need to block until there are no more uring operations as the kernel may still be
     // using the memory associated with them.
     fn drop(&mut self) {
-        // Wake up the notify_task. We set the state to WAITING here so that wake() will write to
-        // the eventfd.
-        self.state.store(WAITING, Ordering::Release);
-        self.wake();
-
         let ring = self.ring.get_mut();
         let mut to_remove = Vec::with_capacity(ring.ops.len());
         for (tag, op) in ring.ops.iter_mut() {
             match op {
+                OpStatus::Nop => {}
                 OpStatus::Pending(data) => {
                     // If the operation wasn't already canceled then wake up the future waiting on
                     // it. When polled that future will get an ExecutorGone error anyway so there's
@@ -799,15 +728,7 @@ pub struct URingExecutor {
 
 impl URingExecutor {
     pub fn new() -> Result<URingExecutor> {
-        let notify = EventFd::new().map_err(Error::CreateEventFd)?;
-        let raw = notify
-            .try_clone()
-            .map_err(Error::CloneEventFd)
-            .and_then(RawExecutor::new)
-            .map(Arc::new)?;
-
-        raw.spawn(notify_task(notify, Arc::downgrade(&raw)))
-            .detach();
+        let raw = RawExecutor::new().map(Arc::new)?;
 
         Ok(URingExecutor { raw })
     }
@@ -941,9 +862,7 @@ mod tests {
         type Output = ();
 
         fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-            // When there is only one operation in the uring queue we know it must be empty because
-            // that 1 operation comes from `notify_task`.
-            if self.ex.raw.ring.lock().ops.len() == 1 {
+            if self.ex.raw.ring.lock().ops.is_empty() {
                 Poll::Ready(())
             } else {
                 Poll::Pending
