@@ -558,6 +558,7 @@ dependencies = [
  "libc",
  "log",
  "protobuf",
+ "thiserror",
 ]
 
 [[package]]

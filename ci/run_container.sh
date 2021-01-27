@@ -4,15 +4,23 @@
 # found in the LICENSE file.
 #
 # Runs a crosvm builder. Will use podman if available, falls back to docker.
+# Usage:
+# run_container.sh builder_name [--clean] entry point args...
 crosvm_root=$(realpath "$(dirname $0)/..")
 cros_root=$(realpath "${crosvm_root}/../../..")
-target=$(
-    cargo metadata --no-deps --format-version 1 | jq -r ".target_directory"
-)
+tmpdir="${TMPDIR:-/tmp}"
 
 if [ ! -d "${cros_root}/.repo" ]; then
     echo "The CI builder must be run from a cros checkout. See ci/README.md"
     exit 1
+fi
+
+# Parse parameters
+builder="$1"
+shift
+if [ "$1" = "--clean" ]; then
+    shift
+    clean=1
 fi
 
 # User podman if available for root-less execution. Fall-back to docker.
@@ -34,18 +42,32 @@ fi
 
 version=$(cat $(dirname $0)/image_tag)
 src="${cros_root}/src"
-scratch="${target}/ci/$1"
-mkdir -p "${scratch}"
+scratch="${tmpdir}/crosvm-ci/${builder}"
 
-echo "Using builder version: ${version}"
+echo "Using builder: ${builder}:${version}"
 echo "Using source directory: ${src}"
 echo "Using scratch directory: ${scratch}"
-echo ""
 
-run --rm -it \
+if [[ -n "${clean}" ]]; then
+    rm -rf "${scratch}"
+    echo "Cleaned scratch directory."
+fi
+mkdir -p "${scratch}"
+
+docker_args=(
+    --rm
     --device /dev/kvm \
     --volume /dev/log:/dev/log \
     --volume "${src}":/workspace/src:rw \
     --volume "${scratch}":/workspace/scratch:rw \
-    "gcr.io/crosvm-packages/$1:${version}" \
-    "${@:2}"
+)
+
+# Enable interactive mode when running in an interactive terminal.
+if [ -t 1 ]; then
+    docker_args+=( -it )
+fi
+
+echo ""
+run ${docker_args[@]} \
+    "gcr.io/crosvm-packages/${builder}:${version}" \
+    "$@"

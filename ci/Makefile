@@ -20,9 +20,11 @@ DOCKER ?= docker
 all: crosvm_builder crosvm_aarch64_builder
 
 upload: all
-	$(DOCKER) push $(TAG_BASE)/crosvm_base
-	$(DOCKER) push $(TAG_BASE)/crosvm_builder
-	$(DOCKER) push $(TAG_BASE)/crosvm_aarch64_builder
+	$(DOCKER) push $(TAG_BASE)/crosvm_base:$(TAG_VERSION)
+	$(DOCKER) push $(TAG_BASE)/crosvm_builder:$(TAG_VERSION)
+	$(DOCKER) push $(TAG_BASE)/crosvm_aarch64_builder:$(TAG_VERSION)
+	$(DOCKER) push $(TAG_BASE)/crosvm_test_vm_amd64:$(TAG_VERSION)
+	$(DOCKER) push $(TAG_BASE)/crosvm_test_vm_arm64:$(TAG_VERSION)
 
 crosvm_base:
 	cd $@ && $(DOCKER) build -t $(TAG_BASE)/$@:$(TAG_VERSION) .

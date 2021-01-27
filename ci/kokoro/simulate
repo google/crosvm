@@ -1,0 +1,33 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Simulates a Kokoro run executing one of the build-*.sh scripts.
+# e.g. ./ci/kokoro/simulate build-aarch64.sh
+
+kokoro_root=$(mktemp -d)
+kokoro_src="${kokoro_root}/git/crosvm"
+local_src=$(realpath $(dirname $0)/../../)
+
+cleanup() {
+  echo "Unmounting ${kokoro_src}"
+  umount --lazy "${kokoro_src}" || true
+  rm -rf "${kokoro_root}"
+}
+
+main() {
+  # Bind mount source read-only to kokoro_src.
+  echo "Bind-mounting ${local_src} to ${kokoro_src}"
+  mkdir -p "${kokoro_src}"
+  bindfs "${local_src}" "${kokoro_src}" -p 0000,u=rxD
+
+  # Run user-provided kokoro build script.
+  export KOKORO_ARTIFACTS_DIR="${kokoro_root}"
+  echo "Running $1 in ${kokoro_root}"
+  bash $(dirname $0)/$1
+  echo "$1 returned $?"
+}
+
+trap cleanup EXIT
+main "$@"

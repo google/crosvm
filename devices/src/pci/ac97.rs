@@ -14,10 +14,6 @@ use libcras::{CrasClient, CrasClientType, CrasSocketType};
 use resources::{Alloc, MmioType, SystemAllocator};
 use vm_memory::GuestMemory;
 
-#[cfg(target_os = "linux")]
-use crate::virtio::snd::vios_backend::VioSShmStreamSource;
-#[cfg(not(target_os = "linux"))]
-use crate::virtio::snd::vios_backend::Error as VioSError;
 use crate::pci::ac97_bus_master::Ac97BusMaster;
 use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;
@@ -26,6 +22,10 @@ use crate::pci::pci_configuration::{
 };
 use crate::pci::pci_device::{self, PciDevice, Result};
 use crate::pci::{PciAddress, PciInterruptPin};
+#[cfg(not(target_os = "linux"))]
+use crate::virtio::snd::vios_backend::Error as VioSError;
+#[cfg(target_os = "linux")]
+use crate::virtio::snd::vios_backend::VioSShmStreamSource;
 
 // Use 82801AA because it's what qemu does.
 const PCI_DEVICE_ID_INTEL_82801AA_5: u16 = 0x2415;
@@ -179,7 +179,9 @@ impl Ac97Dev {
             return Ok(vios_audio);
         }
         #[cfg(not(target_os = "linux"))]
-        Err(pci_device::Error::CreateViosClientFailed(VioSError::PlatformNotSupported))
+        Err(pci_device::Error::CreateViosClientFailed(
+            VioSError::PlatformNotSupported,
+        ))
     }
 
     fn create_null_audio_device(mem: GuestMemory) -> Result<Self> {

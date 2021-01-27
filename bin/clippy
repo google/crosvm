@@ -10,14 +10,14 @@
 set -eo pipefail
 
 USE_CACHE=false
-CLIPPY_ARGS=( "$@" )
+CLIPPY_ARGS=("$@")
 
 # TODO: When we add more options, use a fancier parsing mechanism such as
 # getopts. Also use the Rust convention of -- separating the arguments for this
 # script itself from the ones for clippy.
-if (( "$#" > 0 )) && [[ "$1" == "--use-cache" ]]; then
+if (("$#" > 0)) && [[ "$1" == "--use-cache" ]]; then
     USE_CACHE=true
-    CLIPPY_ARGS=( "${CLIPPY_ARGS[@]:1}" )
+    CLIPPY_ARGS=("${CLIPPY_ARGS[@]:1}")
 fi
 
 # Change into directory of script, which is crosvm/bin.
@@ -77,6 +77,7 @@ SUPPRESS=(
     unreadable_literal
     useless_let_if_seq
     useless_transmute
+    new-ret-no-self
 )
 
 # Needed or else clippy won't re-run on code that has already compiled.
@@ -91,4 +92,4 @@ RUSTFLAGS="${RUSTFLAGS:-}"
 export RUSTFLAGS="$RUSTFLAGS --sysroot=$RUST_SYSROOT"
 
 cargo clippy --all-features --all-targets -- ${SUPPRESS[@]/#/-Aclippy::} \
-      "${CLIPPY_ARGS[@]}" -D warnings
+    "${CLIPPY_ARGS[@]}" -D warnings
