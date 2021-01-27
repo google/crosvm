@@ -100,7 +100,7 @@ where
     let write_addr = GuestAddress(0x4000);
 
     // guest mem is 400 pages
-    let guest_mem = X8664arch::setup_memory(memory_size, false).unwrap();
+    let guest_mem = X8664arch::setup_memory(memory_size, None).unwrap();
     // let guest_mem = GuestMemory::new(&[(GuestAddress(0), memory_size)]).unwrap();
     let mut resources = X8664arch::get_resource_allocator(&guest_mem);
 

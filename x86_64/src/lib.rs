@@ -205,11 +205,6 @@ const END_ADDR_BEFORE_32BITS: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
 const MMIO_SIZE: u64 = MEM_32BIT_GAP_SIZE - 0x8000000;
 const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
 const ZERO_PAGE_OFFSET: u64 = 0x7000;
-/// The x86 reset vector for i386+ and x86_64 puts the processor into an "unreal mode" where it
-/// can access the last 1 MB of the 32-bit address space in 16-bit mode, and starts the instruction
-/// pointer at the effective physical address 0xFFFFFFF0.
-const BIOS_LEN: usize = 1 << 20;
-const BIOS_START: u64 = FIRST_ADDR_PAST_32BITS - (BIOS_LEN as u64);
 const TSS_ADDR: u64 = 0xfffbd000;
 
 const KERNEL_START_OFFSET: u64 = 0x200000;
@@ -227,6 +222,13 @@ pub const X86_64_SCI_IRQ: u32 = 5;
 // The CMOS RTC uses IRQ 8; start allocating IRQs at 9.
 pub const X86_64_IRQ_BASE: u32 = 9;
 const ACPI_HI_RSDP_WINDOW_BASE: u64 = 0x000E0000;
+
+/// The x86 reset vector for i386+ and x86_64 puts the processor into an "unreal mode" where it
+/// can access the last 1 MB of the 32-bit address space in 16-bit mode, and starts the instruction
+/// pointer at the effective physical address 0xFFFFFFF0.
+fn bios_start(bios_size: u64) -> GuestAddress {
+    GuestAddress(FIRST_ADDR_PAST_32BITS - bios_size)
+}
 
 fn configure_system(
     guest_mem: &GuestMemory,
@@ -317,7 +319,7 @@ fn add_e820_entry(params: &mut boot_params, addr: u64, size: u64, mem_type: u32)
 /// These should be used to configure the GuestMemory structure for the platform.
 /// For x86_64 all addresses are valid from the start of the kernel except a
 /// carve out at the end of 32bit address space.
-fn arch_memory_regions(size: u64, has_bios: bool) -> Vec<(GuestAddress, u64)> {
+fn arch_memory_regions(size: u64, bios_size: Option<u64>) -> Vec<(GuestAddress, u64)> {
     let mem_end = GuestAddress(size);
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
     let end_32bit_gap_start = GuestAddress(END_ADDR_BEFORE_32BITS);
@@ -325,13 +327,13 @@ fn arch_memory_regions(size: u64, has_bios: bool) -> Vec<(GuestAddress, u64)> {
     let mut regions = Vec::new();
     if mem_end <= end_32bit_gap_start {
         regions.push((GuestAddress(0), size));
-        if has_bios {
-            regions.push((GuestAddress(BIOS_START), BIOS_LEN as u64));
+        if let Some(bios_size) = bios_size {
+            regions.push((bios_start(bios_size), bios_size));
         }
     } else {
         regions.push((GuestAddress(0), end_32bit_gap_start.offset()));
-        if has_bios {
-            regions.push((GuestAddress(BIOS_START), BIOS_LEN as u64));
+        if let Some(bios_size) = bios_size {
+            regions.push((bios_start(bios_size), bios_size));
         }
         regions.push((
             first_addr_past_32bits,
@@ -370,8 +372,14 @@ impl arch::LinuxArch for X8664arch {
         E2: StdError + 'static,
         E3: StdError + 'static,
     {
-        let has_bios = matches!(components.vm_image, VmImage::Bios(_));
-        let mem = Self::setup_memory(components.memory_size, has_bios)?;
+        let bios_size = match components.vm_image {
+            VmImage::Bios(ref mut bios_file) => {
+                Some(bios_file.metadata().map_err(Error::LoadBios)?.len())
+            }
+            VmImage::Kernel(_) => None,
+        };
+        let has_bios = bios_size.is_some();
+        let mem = Self::setup_memory(components.memory_size, bios_size)?;
         let mut resources = Self::get_resource_allocator(&mem);
 
         let vcpu_count = components.vcpu_count;
@@ -797,20 +805,24 @@ impl X8664arch {
         let bios_image_length = bios_image
             .seek(io::SeekFrom::End(0))
             .map_err(Error::LoadBios)?;
-        if bios_image_length != BIOS_LEN as u64 {
+        if bios_image_length >= FIRST_ADDR_PAST_32BITS {
             return Err(Error::LoadBios(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!(
-                    "bios was {} bytes, expected {}",
-                    bios_image_length, BIOS_LEN
+                    "bios was {} bytes, expected less than {}",
+                    bios_image_length, FIRST_ADDR_PAST_32BITS,
                 ),
             )));
         }
         bios_image
             .seek(io::SeekFrom::Start(0))
             .map_err(Error::LoadBios)?;
-        mem.read_to_memory(GuestAddress(BIOS_START), bios_image, BIOS_LEN)
-            .map_err(Error::SetupGuestMemory)?;
+        mem.read_to_memory(
+            bios_start(bios_image_length),
+            bios_image,
+            bios_image_length as usize,
+        )
+        .map_err(Error::SetupGuestMemory)?;
         Ok(())
     }
 
@@ -914,8 +926,8 @@ impl X8664arch {
     /// This creates a GuestMemory object for this VM
     ///
     /// * `mem_size` - Desired physical memory size in bytes for this VM
-    fn setup_memory(mem_size: u64, has_bios: bool) -> Result<GuestMemory> {
-        let arch_mem_regions = arch_memory_regions(mem_size, has_bios);
+    fn setup_memory(mem_size: u64, bios_size: Option<u64>) -> Result<GuestMemory> {
+        let arch_mem_regions = arch_memory_regions(mem_size, bios_size);
         let mem = GuestMemory::new(&arch_mem_regions).map_err(Error::SetupGuestMemory)?;
         Ok(mem)
     }
@@ -974,7 +986,7 @@ impl X8664arch {
 
         let mut io_bus = devices::Bus::new();
 
-        let mem_regions = arch_memory_regions(mem_size, false);
+        let mem_regions = arch_memory_regions(mem_size, None);
 
         let mem_below_4g = mem_regions
             .iter()
@@ -1151,7 +1163,7 @@ mod tests {
 
     #[test]
     fn regions_lt_4gb_nobios() {
-        let regions = arch_memory_regions(1u64 << 29, /* has_bios */ false);
+        let regions = arch_memory_regions(1u64 << 29, /* bios_size */ None);
         assert_eq!(1, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
         assert_eq!(1u64 << 29, regions[0].1);
@@ -1159,7 +1171,7 @@ mod tests {
 
     #[test]
     fn regions_gt_4gb_nobios() {
-        let regions = arch_memory_regions((1u64 << 32) + 0x8000, /* has_bios */ false);
+        let regions = arch_memory_regions((1u64 << 32) + 0x8000, /* bios_size */ None);
         assert_eq!(2, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
         assert_eq!(GuestAddress(1u64 << 32), regions[1].0);
@@ -1167,28 +1179,36 @@ mod tests {
 
     #[test]
     fn regions_lt_4gb_bios() {
-        let regions = arch_memory_regions(1u64 << 29, /* has_bios */ true);
+        let bios_len = 1 << 20;
+        let regions = arch_memory_regions(1u64 << 29, Some(bios_len));
         assert_eq!(2, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
         assert_eq!(1u64 << 29, regions[0].1);
-        assert_eq!(GuestAddress(BIOS_START), regions[1].0);
-        assert_eq!(BIOS_LEN as u64, regions[1].1);
+        assert_eq!(
+            GuestAddress(FIRST_ADDR_PAST_32BITS - bios_len),
+            regions[1].0
+        );
+        assert_eq!(bios_len, regions[1].1);
     }
 
     #[test]
     fn regions_gt_4gb_bios() {
-        let regions = arch_memory_regions((1u64 << 32) + 0x8000, /* has_bios */ true);
+        let bios_len = 1 << 20;
+        let regions = arch_memory_regions((1u64 << 32) + 0x8000, Some(bios_len));
         assert_eq!(3, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
-        assert_eq!(GuestAddress(BIOS_START), regions[1].0);
-        assert_eq!(BIOS_LEN as u64, regions[1].1);
+        assert_eq!(
+            GuestAddress(FIRST_ADDR_PAST_32BITS - bios_len),
+            regions[1].0
+        );
+        assert_eq!(bios_len, regions[1].1);
         assert_eq!(GuestAddress(1u64 << 32), regions[2].0);
     }
 
     #[test]
     fn regions_eq_4gb_nobios() {
         // Test with size = 3328, which is exactly 4 GiB minus the size of the gap (768 MiB).
-        let regions = arch_memory_regions(3328 << 20, /* has_bios */ false);
+        let regions = arch_memory_regions(3328 << 20, /* bios_size */ None);
         assert_eq!(1, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
         assert_eq!(3328 << 20, regions[0].1);
@@ -1197,11 +1217,15 @@ mod tests {
     #[test]
     fn regions_eq_4gb_bios() {
         // Test with size = 3328, which is exactly 4 GiB minus the size of the gap (768 MiB).
-        let regions = arch_memory_regions(3328 << 20, /* has_bios */ true);
+        let bios_len = 1 << 20;
+        let regions = arch_memory_regions(3328 << 20, Some(bios_len));
         assert_eq!(2, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
         assert_eq!(3328 << 20, regions[0].1);
-        assert_eq!(GuestAddress(BIOS_START), regions[1].0);
-        assert_eq!(BIOS_LEN as u64, regions[1].1);
+        assert_eq!(
+            GuestAddress(FIRST_ADDR_PAST_32BITS - bios_len),
+            regions[1].0
+        );
+        assert_eq!(bios_len, regions[1].1);
     }
 }
